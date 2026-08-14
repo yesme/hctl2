@@ -1,0 +1,106 @@
+# Project 与 Chat Room
+
+> 本文是 Project 模块的唯一领域权威；Chat Room 是其操作合同，不拥有独立领域事实。模块交接见[连接合同](./connections.md)，通用机制见[系统边界](./system.md)。
+
+## 模块职责
+
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实。它不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
+
+| 对象 | 含义 |
+| --- | --- |
+| Repo | Git 内容与共享配置的逻辑仓库 |
+| RepoInstance | 某个 clone/worktree 集合中的本地控制边界；拥有独立 SQLite 和 control writer |
+| Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
+| Participant / ProjectRoleBinding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
+| Room | 持久协作空间，保存消息、引用、调用、Request 和来源关系 |
+| ChatSurfaceBindingRevision | Room 到外部 Chat 端口的不可变身份、能力、路由与游标绑定 |
+| ContextManifest / ContextBundle | 一次调用所用来源、筛选、摘要、Skill 与权限的可解释快照 |
+| Request | 向一个人或角色索取信息、授权或决定的一级对象 |
+| Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
+| Artifact / ArtifactRevision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
+| RoomInvocation / InvocationBinding | 从 Room 发起的一次边界明确的 Harness 调用及其冻结绑定 |
+
+## 写入合同
+
+| 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
+| --- | --- | --- | --- |
+| Project | `project_version`；`Active / Archived` | control 处理 Create/Update/Archive/Restore Project Intent | Archived 拒绝新 Task、Run 和写入型 Invocation；历史只读 |
+| Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；事件有 `room_sequence` | control 处理 AppendRoomEvent、Create/ArchiveScopedRoom Intent | RoomEvent 只追加；Project Room 随 Project 归档只读 |
+| ChatSurface binding | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Bind/Rebind/Disable ChatSurface Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
+| Request | `request_version`；`Open / Resolved / Expired / Cancelled / Superseded` | Project reducer/control 处理 Create/Resolve/Cancel Intent 与 deadline | 终态不可复活；新问题创建新 Request |
+| RoomInvocation | `invocation_version`；`Pending / Running / WaitingForInput / Completed / Failed / Cancelled` | Project reducer/control 处理 Create/Cancel/AdmitResult，agentd 只提供观测 | 终态不可复活；重试创建新 Invocation |
+| Memo | 发布 revision 只追加 | control/core 处理 PublishMemoIntent | 已发布内容不可改写；更新以 supersedes 连接新 revision |
+| Artifact | `artifact_version`、current revision、`Active / Archived` | control/core 处理 Register/Publish/Archive/Restore Artifact Intent | ArtifactRevision 不可变，current pointer 只由 Publish 推进 |
+
+Repo 不等于外部组织或工作区。Project 在一个 RepoInstance 中至多有一个 Project Room；另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。
+
+Project 的目标、范围、角色和默认规则以单调 `project_version` 更新。创建 Task、Run 或 `project_scope` RoomInvocation 时必须冻结获准的 Project version 与相关策略摘要；`repo_scope` RoomInvocation 改为冻结 RepoInstance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
+
+从 Repo Room 创建 Project 时，`CreateProjectIntent` 只能按需显式选择来源 Message 引用和/或已预览的 ContextManifest/ContextBundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。
+
+## Room 类型
+
+| Room | 作用 | 生命周期 |
+| --- | --- | --- |
+| Repo Room | 无固定主题的研究、发现和 Project 入口 | 与 RepoInstance 同寿命 |
+| Project Room | 围绕一个 Project 的长期协作和里程碑 | Project 归档后只读 |
+| Scoped Room | 为复杂 Request 或决定临时建立的讨论空间 | 结论回填类型化动作后归档 |
+
+Scoped Room 创建时必须冻结 parent Room、精确讨论目标（Request 或待提交的类型化动作）、完成条件和结论回填动作。达到讨论完成条件本身不修改目标；只有获准的回填动作成功后才能归档，失败时保留可恢复的讨论和目标引用。
+
+Message 是只追加的协作事实；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。普通回复、表情或模型总结不会修改 Project、解决 Request 或发布 Artifact。
+
+## Context、Memo 与 Artifact
+
+Context 组装顺序固定为：显式引用 → 当前讨论窗口 → Project/Task/Run/Request → Git/Artifact/Receipt → 必需 Skill → 相关 Memo。InvocationBinding 冻结最终 ContextManifest、逻辑参与者、Harness 候选、能力和权限；之后的 Room 消息不会偷偷改变已确认调用。
+
+Memo 只由用户明确发布，至少固定 `memo_id`、来源 Message/Artifact refs、适用范围、作者、内容 digest/Git locator、取代关系和有效期。原始消息、执行日志和自动总结不会自动进入长期知识。
+
+Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通 Git 文件在登记前不是 Artifact。ArtifactRevision 至少固定 `artifact_revision_id`、`artifact_id`、不可变内容定位、内容摘要、可选 ChangeSetRevision 来源和 `revision_digest`。所有 `revision_digest` 使用 RFC 8785 JCS 规范对象的 SHA-256，摘要字段自身不参与计算。发布新版本只移动 current pointer，不改写历史。
+
+## RoomInvocation 与 Request
+
+RoomInvocation 适合一次性的研究、比较或范围明确的写入。它可以持有一个 InvocationBinding 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时应创建 [Run](./run.md)。
+
+InvocationBinding 的 scope 是 `repo_scope | project_scope`：Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version。用户重试会创建新的 RoomInvocation 并保留原调用引用；结果未知的调用不自动重放，旧调用的迟到流不能附着到新调用。
+
+InvocationBinding 还固定 invocation generation、ContextManifest、逻辑 Participant、WorkerProfile、Harness/Runtime ResolvedPortBinding、repo/base、能力与权限、预算/截止和 binding digest；只有 project_scope 可以携带 ChangeSet 规则。
+
+当执行需要输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中 CAS Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配 ACK/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
+
+活动 Request 的问题、目标人或角色、根因、blocking ref/version 和获准解决动作不得原地修改。相同根因且 blocking ref/version 相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；blocking version 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
+
+## Chat Room 场景
+
+Chat Room 是 Project 的主要操作场景，提供：
+
+- Room 源事件与单调 `room_sequence` 在同一事务提交；时间线按该序号排序，稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示；
+- `@` Participant/Role、`/` 类型化动作、`$` Skill、`#` 文件/Artifact/消息引用；
+- 并发 RoomInvocation 的独立流、取消和结果卡；
+- Request、Project 概览、Task/Run 里程碑和 Needs Attention 投影；
+- Context 预览、Memo/Artifact 发布预览和权限说明。
+
+| 角色 | 可以做什么 | 不能做什么 |
+| --- | --- | --- |
+| 场景客户端：Workbench Room | 提供完整时间线、Composer、预览和命令入口 | 直接写 SQLite 或把渲染动作当成领域结果 |
+| 场景客户端：CLI | 查询 Room/Request；第一阶段复杂编辑安全暂停 | 绕过预览、版本或权限检查 |
+| 受控端口 / 原生客户端：外部聊天平台 | 在能力允许时投递/接收同一 Room 的消息与 Request | 以外部 thread/message ID 取代 Project/Room 身份 |
+
+外部聊天桥接不是第一阶段出门条件；一旦交付，必须具备稳定身份、去重、回声抑制、outbox、重连和降级能力。
+
+## 模块交接
+
+以下只列所有权方向；字段、事务与故障语义由[四模块连接合同](./connections.md)统一定义。
+
+- Project 中的提案只有通过采纳命令才会产生 [TaskRevision](./task.md)。
+- Project 可以发起一次 RoomInvocation；持久自动施工必须显式创建 [Run](./run.md)。
+- Task、Run 和 Harness 的状态只以投影或引用回到 Chat Room，不能由聊天反向改写。
+- 稳定经验通过 Memo 回流；交付内容通过 ArtifactRevision 回流。
+
+## 不可破坏的边界
+
+- Room 只能形成提案，不能签发 Verdict、Receipt 或完成 Task。
+- Participant、ProjectRole、Room 和 Project 都不是 Harness 进程或外部账号。
+- Context 必须可解释；模型自由总结不能替代来源和版本。
+- Request 只能由获准动作解决，并且只推进其声明的阻塞范围。
+- Project/Room 历史不因客户端关闭、外部编辑或运行时崩溃而丢失。
