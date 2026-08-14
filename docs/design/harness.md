@@ -76,11 +76,15 @@ Terminal 是 Harness 的观察、诊断和接管场景；它可以渲染结构�
 | semantic resume | 以外部会话 ID 恢复上下文，可能创建新进程 |
 | replay | 只读历史 |
 
+Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 RoomInvocation 或 Attempt 逻辑 owner、对应 runtime binding 和 generation 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
+
+Execution Chat 中的输入和事件不会自动成为 Room 内容。只有显式 Share to Room 动作经 Project 命令准入后才能发布，并携带 source event、execution owner、generation 及 transcript/evidence provenance；该投影消失或 runtime 被替代都不改变 Room 身份。
+
 这些能力可以并存但不能互相冒充。AttachDescriptor 固定逻辑 owner、后端目标、host、runtime generation、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 TerminalInputLease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |
-| 场景客户端：Workbench Terminal | xterm/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run |
+| 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room |
 | 场景客户端：CLI / WezTerm | 使用短期 descriptor 观察或接管精确目标 | 提交任意 argv/cwd/pane ID 绕过 agentd |
 | 受控端口：HarnessAdapter | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
 | 受控端口：RuntimeBackend | 持有进程/PTY/容器/mux 资源 | 决定领域权限、Gate 或完成 |

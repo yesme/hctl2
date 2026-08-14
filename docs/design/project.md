@@ -28,15 +28,15 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 | Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；事件有 `room_sequence` | control 处理 AppendRoomEvent、Create/ArchiveScopedRoom Intent | RoomEvent 只追加；Project Room 随 Project 归档只读 |
 | ChatSurface binding | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Bind/Rebind/Disable ChatSurface Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
 | Request | `request_version`；`Open / Resolved / Expired / Cancelled / Superseded` | Project reducer/control 处理 Create/Resolve/Cancel Intent 与 deadline | 终态不可复活；新问题创建新 Request |
-| RoomInvocation | `invocation_version`；`Pending / Running / WaitingForInput / Completed / Failed / Cancelled` | Project reducer/control 处理 Create/Cancel/AdmitResult，agentd 只提供观测 | 终态不可复活；重试创建新 Invocation |
+| RoomInvocation | `invocation_version`；`Pending / Running / WaitingForInput / Interrupted / Completed / Failed / Cancelled` | Project reducer/control 处理 Create/Cancel/AdmitResult，agentd 只提供观测 | Interrupted 和其他终态不可复活；重试创建新 Invocation |
 | Memo | 发布 revision 只追加 | control/core 处理 PublishMemoIntent | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、`Active / Archived` | control/core 处理 Register/Publish/Archive/Restore Artifact Intent | ArtifactRevision 不可变，current pointer 只由 Publish 推进 |
 
-Repo 不等于外部组织或工作区。Project 在一个 RepoInstance 中至多有一个 Project Room；另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。
+Repo 不等于外部组织或工作区。Project 在一个 RepoInstance 中至多有一个 Project Room；另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
 
 Project 的目标、范围、角色和默认规则以单调 `project_version` 更新。创建 Task、Run 或 `project_scope` RoomInvocation 时必须冻结获准的 Project version 与相关策略摘要；`repo_scope` RoomInvocation 改为冻结 RepoInstance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
 
-从 Repo Room 创建 Project 时，`CreateProjectIntent` 只能按需显式选择来源 Message 引用和/或已预览的 ContextManifest/ContextBundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。
+从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交 `CreateProjectIntent`；Intent 只能显式选择来源 Message 引用和/或已预览的 ContextManifest/ContextBundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。
 
 ## Room 类型
 
@@ -62,7 +62,7 @@ Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通
 
 RoomInvocation 适合一次性的研究、比较或范围明确的写入。它可以持有一个 InvocationBinding 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时应创建 [Run](./run.md)。
 
-InvocationBinding 的 scope 是 `repo_scope | project_scope`：Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version。用户重试会创建新的 RoomInvocation 并保留原调用引用；结果未知的调用不自动重放，旧调用的迟到流不能附着到新调用。
+InvocationBinding 的 scope 是 `repo_scope | project_scope`：Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version。RoomInvocation 的合法边只有 `Pending → Running/Failed/Cancelled/Interrupted`、`Running ↔ WaitingForInput`，以及 `Running/WaitingForInput → Completed/Failed/Cancelled/Interrupted`。恢复对账无法证明原 session/process 身份及 lease/generation 仍匹配时，control 在同一收口事务将其置为 Interrupted、撤销输入/写租约并提交旧 runtime 的 stop/fence outbox；其迟到流或 ResultProposal 只留审计，不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 RoomInvocation、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
 InvocationBinding 还固定 invocation generation、ContextManifest、逻辑 Participant、WorkerProfile、Harness/Runtime ResolvedPortBinding、repo/base、能力与权限、预算/截止和 binding digest；只有 project_scope 可以携带 ChangeSet 规则。
 
@@ -78,6 +78,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 - `@` Participant/Role、`/` 类型化动作、`$` Skill、`#` 文件/Artifact/消息引用；
 - 并发 RoomInvocation 的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和 Needs Attention 投影；
+- mention/recipe 提交前的 Trigger Preview，必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
 
 | 角色 | 可以做什么 | 不能做什么 |

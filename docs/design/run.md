@@ -31,7 +31,7 @@ Run 模块保存“哪份自动施工已获授权、机械进度如何映射为�
 
 Run 合法边固定为：`Starting → Running/Failed/Cancelled`；`Running → Pausing/Cancelling/Completed/Failed/Superseded`；`Pausing → Paused/Cancelling/Failed`；`Paused → Running/Cancelling/Superseded`；`Cancelling → Cancelled`。外部 ACK 不直接写状态，control 只依据匹配 binding/generation 的回读推进。
 
-Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为 `Superseded`，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
+Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Obligation 的不可变绑定固定 EngineExecutionBinding generation 与精确 Engine task execution identity（外部 task ID 及 retry/attempt generation）；其带版本的租约视图记录生效租约、截止时间和最近一次由 adapter 回读确认的续租，超时与备用候选准入只能依据该确认值。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为 `Superseded`，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
 
 ## Workflow 与 Run 授权
 
@@ -52,7 +52,7 @@ Approve Workflow 只确认施工图；`StartRunIntent` 才授予资源和副作�
 
 本节定义 Run 内部归约；跨 Harness 的派发、结果信封和故障恢复见[连接合同](./connections.md)。
 
-1. control 领取一个 HCTL 外部 Engine task，并创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
+1. control 领取一个 HCTL 外部 Engine task，并按 Run、binding generation 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
 2. control 按规则创建 Seat，并为候选产生 AttemptSpec。
 3. [Harness](./harness.md) 执行 Attempt，只能返回 ResultProposal、Revision 和证据。
 4. control/core 校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
@@ -66,7 +66,7 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 
 只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 收口为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
 
-Gate 的每个 Seat 绑定同一 ReviewSubjectRef、策略和逻辑参与者。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 按 Gate 策略绑定彼此独立的逻辑 Participant，备用 Attempt 仍继承原 Seat 身份，不能借更换 WorkerProfile 绕过分离。control/core 在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果而不是无限等待。作者返工产生新 ChangeSetRevision/ArtifactRevision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；TaskRevision 只有在验收契约变化时才更新。
+Gate 的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、ContextManifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结逻辑参与者。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 按 Gate 策略绑定彼此独立的逻辑 Participant。备用 Attempt 必须继承原 Seat 的参与者和全部评审依据，不能借更换 WorkerProfile 改变 Context、Skill、权限、票位或绕过分离。control/core 在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果而不是无限等待。作者返工产生新 ChangeSetRevision/ArtifactRevision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；TaskRevision 只有在验收契约变化时才更新。
 
 Run 终态只说明 Workflow 到达机械终点，不完成 [Task](./task.md)。
 

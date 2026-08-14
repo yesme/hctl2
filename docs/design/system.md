@@ -28,7 +28,11 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
 | Terminal | Harness、RuntimeBackend、TerminalGateway 与 attach provider |
 
+第一阶段 Conductor 的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端，且仍只能由 control 经 WorkflowEngineAdapter 发起变更，不能把 Engine mutation 暴露给场景客户端或其他本地进程。
+
 每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别。运行中不得因“发现更好的插件”而响应式改绑；提供方消失时安全暂停、失败或创建替代执行。
+
+`trust_level` 只能由 control policy 根据允许的 trusted source 与精确 artifact digest 授予，扩展或 registry 的自我声明不能授信。discovery 只读取已配置 definition 和本地安装并执行无副作用探测，不得联网、安装/升级或修改 Harness/adapter 配置；install/upgrade 必须是用户显式提交的类型化动作，产生新 ExtensionRevision，后续解析再产生新 ResolvedPortBinding，不能改写活动绑定。
 
 跨模块可引用的扩展信息只有两个最小概念：
 
@@ -125,6 +129,7 @@ UI 重载只重建投影。无法证明同一执行身份时，宁可标记 Lost
 ## 安全边界
 
 - Electron renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
+- 打包后的 Electron 固定 `nodeIntegration=false`、`contextIsolation=true`、`sandbox=true`；narrow preload 只暴露具名 typed command，不暴露 raw `ipcRenderer`。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
 - 文件、Git、网络、凭据和进程能力由 control/core/agentd 授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。

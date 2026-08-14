@@ -18,15 +18,15 @@ Task 是 Project 中一项可排序、可指派、可阻塞、可验收的长期
 
 Task lifecycle 只有 `Open | Completed | Cancelled`。契约变化创建新 TaskRevision；高频操作变化只更新 TaskOperationalState。历史 Revision、Run 和 Receipt 永不改写或物理删除。
 
-`Backlog | Ready | InProgress | Review | Blocked` 是 TaskOperationalState 中的本地非终态 stage，不是 Task lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；Completed/Cancelled 由 lifecycle 决定，外部 Done/Closed 或拖卡都不能直接写成该终态。
+`Backlog | Ready | InProgress | Review` 是 TaskOperationalState 中的本地非终态 stage，不是 Task lifecycle。Blocked 与 Needs Attention 是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；Completed/Cancelled 由 lifecycle 决定，外部 Done/Closed 或拖卡都不能直接写成该终态。
 
 ## 契约与来源
 
 TaskRevision 冻结验收合同，不冻结施工步骤。外部变化都先成为 Snapshot；其中会改变 TaskRevision 契约的内容才形成 `PendingAdoption`，用户采纳后才创建新 TaskRevision。由外部系统拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。活动 Run 已冻结的 Revision 不能原地改写。
 
-每个 Project 对同一 `provider + account_stable_id + scope_stable_id` 至多有一个 active TaskSource connection。每个 active 外部实体在整个 RepoInstance 使用 `(provider, account_stable_id, scope_stable_id, external_entity_kind, external_entity_stable_id)` 唯一映射到一个 HCTL Task；该唯一键不含 connection ID，避免通过重复连接把同一实体绑定两次。
+每个 Project 对同一 `provider + account_stable_id + scope_stable_id` 至多有一个 active TaskSource connection。每个外部规范实体在整个 RepoInstance 使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task；该唯一键不含 connection、scope 或 placement，Disable/Rebind connection 或 placement 也不释放或重定向这份映射。TaskSourceBindingRevision 另行冻结可选的 placement identity（`placement_scope_stable_id + external_board_item_id`）及其写入权；移动 board placement 或更换 board-item binding 不会产生第二个 Task，也不能改写规范实体身份。
 
-TaskSource connection/binding 的本地 current projection 使用 control 维护的单调 `state_version` 做 CAS；TaskSourceSnapshot 另行保存 provider 的 remote revision、digest 和 cursor。远端 revision/digest 不能充当本地 `state_version`，本地版本也不能伪装成 provider 的并发令牌。
+TaskSource connection/binding 的本地 current projection 使用 control 维护的单调 `state_version` 做 CAS；TaskSourceSnapshot 另行保存 provider 的 remote revision、digest 和 cursor。AdoptTaskRevisionIntent 必须让 Snapshot、字段 authority policy 与新 TaskRevision 引用同一个 TaskSourceBindingRevision，并把 binding revision、snapshot、contract projection digest 和 authority-policy digest 一并写入 TaskRevision；任一 current pointer 已变化都使预览失效。远端 revision/digest 不能充当本地 `state_version`，本地版本也不能伪装成 provider 的并发令牌。
 
 字段写入权由 TaskSourceBindingRevision 逐字段决定：
 
@@ -44,13 +44,13 @@ TaskSource connection/binding 的本地 current projection 使用 control 维护
 | --- | --- | --- | --- |
 | Task / TaskRevision | contract version；`Open / Completed / Cancelled` 与独立 lifecycle version | control 处理 CreateTaskIntent、AdoptTaskRevisionIntent、CompleteTaskIntent、ReopenTaskIntent、CancelTaskIntent | TaskRevision 只追加；Reopen 不改写旧完成历史 |
 | TaskOperationalState | `operational_state_version` | control 处理 UpdateTaskIntent 与 MoveTaskIntent；后者只改获准排序/位置 | 不启动 Run，不改变 TaskRevision 或 lifecycle |
-| TaskSourceConnection / Binding | current revision + local `state_version`；`Active / Disabled / Replaced` | control 处理 Connect/Update/Disable 与 Bind/Rebind Intent，adapter 只返回观测 | 历史 Revision 不改写；active identity claim 唯一 |
+| TaskSourceConnection / Binding | current revision + local `state_version`；`Active / Disabled / Replaced` | control 处理 Connect/Update/Disable 与 Bind/Rebind Intent，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的 identity claim 持久唯一 |
 | TaskSourceSnapshot | append-only sequence + remote revision/digest/cursor；可产生 `PendingAdoption` | control 持久化 refresh/reconcile 观测；AdoptTaskRevisionIntent 才消费内容变化 | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | TaskCompletionReceipt | immutable | 只有成功的 CompleteTaskIntent 事务可写 | 精确绑定该次 lifecycle generation、TaskRevision 与证据 |
 
-CompleteTaskIntent 校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt；Reopen/Cancel 保留旧 Receipt 和历史。
+CompleteTaskIntent 校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt，并对影响契约的 PendingAdoption 默认拒绝（fail-closed）：actor 必须先采纳并按新 Revision 重新验收，或显式选择“按当前冻结 Revision 完成”；后者必须冻结并 CAS 当前 TaskSourceBindingRevision/state version、source head 和全部未采纳的契约 Snapshot refs/digests，预览后新增或变化的 drift 一律使命令失效。StartRun 时的拒绝或延期不能代替这次选择。CompleteTaskIntent 与 CancelTaskIntent 在任何绑定该 Task 的非终态 Run 存在时都拒绝；必须先显式结束该 Run 并等到旧执行撤权、隔离，Task 命令不会隐式停止 Run。Reopen/Cancel 保留旧 Receipt 和历史。
 
-TaskCompletionReceipt 至少固定 Task、CompleteTaskIntent、TaskRevision digest、验收策略、来源快照/head、逐项证据和 actor。Receipt、生命周期事件、当前投影与需要的外部写回 outbox 在同一事务提交。外部写回失败只显示 Needs Attention，不撤销已经成立的 HCTL 完成事实。
+TaskCompletionReceipt 至少固定 Task、CompleteTaskIntent、TaskRevision digest、验收策略、来源快照/head、逐项证据和 actor；若存在契约分歧，还必须固定显式 divergence choice、精确的未采纳 Snapshot refs/digests、BindingRevision/state version 与 authority-policy digest。Receipt、生命周期事件、当前投影与需要的外部写回 outbox 在同一事务提交。外部写回失败只显示 Needs Attention，不撤销已经成立的 HCTL 完成事实。
 
 Run 终态、Harness 自述、Git commit、CI 绿色或外部 Closed 都不是 CompleteTaskIntent。
 
@@ -93,7 +93,7 @@ HCTL 拥有排序字段时，MoveTaskIntent 必须冻结排序作用域、相邻
 ## 不可破坏的边界
 
 - TaskRevision、TaskOperationalState、外部字段和 lifecycle 是不同事实。
-- 外部实体只能映射一个 HCTL Task；provider 的不同实体种类使用不同稳定键。
+- 外部规范实体只能映射一个 HCTL Task；它的稳定键与可变 scope/placement/item 身份分离。
 - 活动 Run 的 TaskRevision 不漂移；改约必须结束或替代 Run。
 - 任何适配器都不能绕过 CompleteTaskIntent 写 TaskCompletionReceipt。
 - Task 可以没有 Run，Run 完成也不等于 Task 完成。

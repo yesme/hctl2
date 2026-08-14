@@ -126,7 +126,8 @@ Task 路径的验收证据 → TaskCompletionReceipt
 | --- | --- |
 | 目标事务提交前来源已变化 | CAS 拒绝，不创建下游事实 |
 | 目标已提交、调用方未收到结果 | 恢复后返回同一目标引用，不出现第二个下游对象 |
-| 外部结果仍未知 | 连接保持 Pending/Needs Attention，来源不会被伪装成已交接 |
+| owner 身份可证明但外部结果仍未知 | 连接保持 Pending/Needs Attention，来源不会被伪装成已交接 |
+| 执行身份、lease 或 generation 无法证明 | Attempt 进入 Lost、RoomInvocation 进入 Interrupted；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，Retry 只能使用新 owner/generation |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | 外部适配器不可用 | 已冻结的本地事实继续存在；连接显示 Pending/Needs Attention 或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
