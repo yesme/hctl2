@@ -20,7 +20,7 @@ HCTL2 的基本判断是：
 
 - Project、Task、Run 和 Harness 都有稳定身份，不能由聊天串、外部 Issue、工作流任务、worktree 或 pane 反向定义；
 - Chat Room、Kanban、Workflow 和 Terminal 是操作场景，不是第二份领域事实；
-- Workbench 是四个场景的集成客户端；适配后的第三方平台可以提供场景客户端、受控端口或两者，但使用同一命令、查询、事件和能力边界；
+- Workbench 是四个场景的集成客户端；适配后的第三方平台可以按场景替代或补充其中一个面板，也可以提供受控端口，但不会整体替代 Workbench 或领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部 Closed。
 
@@ -42,19 +42,44 @@ flowchart LR
 ## 目标架构
 
 ```mermaid
-flowchart TD
-    Bench["hctl2-workbench"] --> Control["hctl2-control"]
-    ExternalClient["第三方场景客户端"] --> Control
+flowchart LR
+    subgraph Clients["可并存的场景客户端"]
+        Bench["hctl2-workbench\nRoom · Kanban · Workflow · Terminal"]
+        ChatClient["Feishu / Slack / Discord\nChat Room 客户端"]
+        TaskClient["Linear / GitHub\nKanban 客户端"]
+        WorkflowClient["第三方 Workflow UI"]
+        TerminalClient["WezTerm / CLI\nTerminal 客户端"]
+    end
+
+    subgraph Control["hctl2-control · 四个领域模块"]
+        P["Project\nChat Room"]
+        T["Task\nKanban"]
+        R["Run\nWorkflow"]
+        H["Harness\nTerminal"]
+    end
+
+    Bench --> P
+    Bench --> T
+    Bench --> R
+    Bench --> H
+    ChatClient --> P
+    TaskClient --> T
+    WorkflowClient --> R
+    TerminalClient --> H
+
+    P --> ChatPort["Chat 受控端口"]
+    T --> TaskSource["TaskSource 受控端口"]
+    R --> Engine["WorkflowEngineAdapter"]
+    H --> Agentd["agentd"]
+    Agentd --> Runtime["Harness / RuntimeBackend"]
+
     Control --> DB["RepoInstance SQLite"]
     Control --> Core["hctl2-core · Git/SCM"]
-    Control --> ChatPort["Chat 受控端口"]
-    Control --> TaskSource["TaskSource 受控端口"]
-    Control --> Engine["WorkflowEngineAdapter"]
-    Control --> Agentd["agentd"]
-    Agentd --> Harness["Harness / RuntimeBackend"]
 ```
 
-Workbench 和第三方平台只是适配器。`hctl2-control` 拥有领域命令与本地账本，`hctl2-core` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。
+Workbench 是组合式场景客户端；第三方客户端只替代或补充对应场景，例如 Feishu/Slack/Discord 操作 Chat Room，WezTerm 操作 Terminal/Harness。它们都使用相应模块的 Query/Preview/Submit/Subscribe，不获得跨模块捷径。
+
+图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与本地账本，`hctl2-core` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。
 
 ## 设计文档
 
