@@ -1,13 +1,13 @@
 # HCTL2：产品与系统设计规范
 
-> 状态：Draft v0.6  
-> 日期：2026-08-13  
-> 范围：产品愿景、领域模型、用户流程、Room、Task Kanban、Workflow、运行时、持久化、UI 技术栈、产品 Radar 与实现选型  
+> 状态：Draft v0.6.1  
+> 日期：2026-08-14  
+> 范围：产品愿景、领域模型、用户流程、Room、Task Kanban、Workflow、运行时、持久化、UI 技术栈、分级自举、产品 Radar 与实现选型  
 > Phase 1：单用户；macOS 与 Linux；架构上保留 Windows 原生移植路径
 
 本文档是 HCTL2 的当前权威设计基线。它记录的不只是最终方案，也记录关键取舍、事实边界和实现验证条件。外部系统只作为参考；它们的 Workspace、Project、Issue、Task、Conversation、Agent 等名词不得反向定义 HCTL2。
 
-本文按“用户需求 → 目标体验 → 领域与事实边界 → 用户流程 → 组件与实现”的正向顺序书写。正文先规定 HCTL2 应该是什么，再给出组件 contract、实现分配与验证门槛；外部产品事实集中在信息性 Evidence Radar。实现选择一旦由需求与源码证据闭合，就直接写成架构决策；只有跨进程、跨平台和故障恢复等无法由静态审阅证明的事实才进入运行验收。
+本文按“用户需求 → 目标体验 → 领域与事实边界 → 用户流程 → 组件与实现”的正向顺序书写。正文先规定 HCTL2 应该是什么，再给出组件 contract、实现分配与验证门槛；外部产品事实集中在信息性 Evidence Radar。任何 A/B 结论都必须回到前文 contract 和用户体验验收。
 
 ---
 
@@ -35,7 +35,9 @@ HCTL2 的核心分工是：
 | Repo-local SQLite | Room、HCTL Task identity/contract/verification、local 运营字段、外部 snapshot/mirror、请求、Context、Run 映射与 control journal |
 | Git | 共享配置、Project/Workflow 产物、Memo、代码与正式交付物 |
 
-### 0.1 当前定案与 Phase 1 验收门槛
+这里需要区分两种“原生核心”。**产品原生核心**是 Project/Room-first 的完整推进体验：用户围绕稳定的 Repo 与 Project 组织讨论、Task、Run 和证据，而不是围绕 Harness session 工作。**架构最小内核**是即使更换全部 UI、终端、Task provider、Chat provider 与 Workflow Engine 仍不能丢失的 identity、authority、revision、evidence 与 reconciliation 规则。前者说明用户为什么使用 HCTL，后者保证这种体验不会因外部系统切换而失真。
+
+### 0.1 当前定案与开工前验证门槛
 
 1. 公共领域模型使用 Repo、Project、Task、Room、Run；不再使用公共 Workspace，也不引入 Work Item。
 2. HCTL2 的产品姿态是 **Project-scoped、Room-mediated shaping、Task-tracked、Run-executed**：稳定协作身份不依附任何 Harness session、tab、worktree 或 terminal。
@@ -48,19 +50,20 @@ HCTL2 的核心分工是：
 9. 简单 Room 调用不创建 Run domain object，也不进入 Conductor，只记录 RoomInvocationRecord。
 10. 结构化 `@` 指参与者；`/` 指动作或协作 Recipe；`$` 指显式 Expertise/Skill；`#` 指文件、消息、Artifact、Commit 等输入引用。`/compare`、cross-review 与 panel 是 Recipe，不是假想 Participant。
 11. Harness 接入采用 capability-first binding：ACP、provider JSON-RPC/app-server、Vendor SDK、native CLI + PTY、hooks/transcript 均是一等 adapter 形态；有足够 fidelity 时优先结构化协议，但不得牺牲原生 TUI 与精确 attach。
-12. Room 不映射任何 runtime container。Run 的 RuntimeShard 与无 Run 调用的 InvocationRuntime 才映射具体 RuntimeBackend；Attempt 或 InvocationRuntime 的 TerminalBundle 才拥有终端 channel。RuntimeBackend 必须可替换；Phase 1 默认 backend 为 Zellij，并通过统一 contract 隔离未来替换。该决定记录为 Architecture Decision Record（ADR，架构决策记录），不把 Zellij 提升为领域不变量。
+12. Room 不映射任何 runtime container。Run 的 RuntimeShard 与无 Run 调用的 InvocationRuntime 才映射具体 RuntimeBackend；Attempt 或 InvocationRuntime 的 TerminalBundle 才拥有终端 channel。RuntimeBackend 必须可替换；Phase 1 通过 §26.2 的限时 contract 验证在 Zellij/tmux 中只交付一个默认 backend。
 13. Workflow 使用 Conductor JSON 受控子集。JSON 必须由程序根据结构化模型生成，并通过 Schema 与 HCTL Profile 校验，禁止让模型直接写未经验证的 JSON 文本。
 14. Conductor 被动保存 Workflow 状态；只有 hctl2-control 可以 poll/complete/fail/signal HCTL external task，并发起领域副作用。
 15. Gater 的 primary→backup 是同一 Seat 内新增候选 Attempt，不是 Engine HA，也通常不改变 Workflow 图。业务 reject 是成功返回的语义 Verdict，不触发候选 failover；timeout、429、quota、runtime lost 等技术失败才有资格切换候选。
 16. Task Kanban 只投影 HCTL2 Task；Project 使用 Overview；Run、Request、Artifact 和 Workflow Node 都不冒充看板卡片。
-17. 架构支持 Local、GitHub 与 Linear Task Source；Phase 1 交付 Local 与 GitHub production external-authoritative adapter，Linear 完成 provider-neutral identity/mapping/snapshot fixtures 后作为下一 adapter。外部 provider 对 binding 中配置的 source workflow/contract/operational 字段拥有 source authority；HCTL2 始终拥有稳定 `task_id`、已采用的 TaskRevision、HCTL lifecycle、acceptance、Run binding、Receipt 与 semantic completion。
+17. 架构支持 Local、Linear 与 GitHub Task Source；Phase 1 完整双向范围以 §23 为准，至少交付一个 production external-authoritative adapter。外部 provider 对 binding 中配置的 source workflow/contract/operational 字段拥有 source authority；HCTL2 始终拥有稳定 `task_id`、已采用的 TaskRevision、HCTL lifecycle、acceptance、Run binding、Receipt 与 semantic completion。
 18. 外部 Done/Closed 是 provider lifecycle fact，不等于 HCTL 验收完成或 Done lane；UI 必须分别显示 provider 状态与 HCTL verification。
 19. Room、HCTL Task state、外部 Task snapshot/mirror 与 control journal 使用每个 Repo 独立的 SQLite；Memo 是显式固化动作，只有提炼后的稳定知识写入 Git。
-20. Phase 1 交付 HCTL-native、Project/Room-first Workbench。GUI 基线为 Rust + TypeScript + React 19 + Tailwind CSS 4 + Electron；Codeg、Orca 等只作为选择性组件供体和行为参考。WezTerm 通过 TerminalClientAdapter 接入，不成为领域不变量。
-21. Task Kanban 使用 React Aria Components；Run 图使用 React Flow + Dagre；Base UI/shadcn 统一 Shell overlay；Room timeline 由 HCTL 自己持有，可选择性复用 assistant-ui 的 headless renderer primitives；Semantic Composer 采用 Codeg-derived Tiptap/ProseMirror，并通过 ComposerPort 与 HCTL wire schema 隔离。
+20. Phase 1 交付 HCTL-native Workbench，GUI 基线为 Rust + TypeScript + React 19 + Tailwind CSS 4 + Electron。外部产品只作为协议、算法、组件或测试供体，不再作为 Project/Room-first Shell 的候选事实源。
+21. HCTL-native Task Kanban 采用 React Aria Components；Run 图采用 React Flow + Dagre；Base UI/shadcn 统一 Shell overlay。Room timeline 由 HCTL RoomProjector/RoomProjectionStore 驱动，以 `virtua` 负责长列表虚拟化，并只选择性复用 assistant-ui 的 scoped message/part renderer。Semantic Composer 固定采用 Tiptap/ProseMirror；assistant-ui 不拥有 Room runtime、Composer 或发送语义。
 22. `attach` 不是布尔能力。至少区分 exact native PTY、native-agent handoff、structured live inspect 与 semantic resume/replay；UI 必须准确标示当前能力。
-23. 实现选择从上述体验与事实边界反推。Codeg、Orca、Termio、Linear、GitHub 等只提供可复用模块、协议或交互证据；它们的产品对象、导航和数据模型不进入 HCTL2 公共 schema。
-24. HCTL 不复刻通用 Agent IDE，也不把现成产品整仓 fork 成第二套事实源。Phase 1 直接实现窄而完整的 HCTL Workbench，并从 Codeg、Orca、Termio 等项目选择性移植边界清楚、许可证允许的组件或测试方法。
+23. 实现选择从上述体验与事实边界反推。Codeg、First Tree、Orca、Termio、Linear、GitHub 等只提供可复用模块、协议或交互证据；它们的产品对象、导航和数据模型不进入 HCTL2 公共 schema。
+24. 内嵌终端采用 `@xterm/xterm`，经受信任的 Electron bridge 与 agentd TerminalGateway 接入当前 RuntimeBackend；xterm.js 只负责显示与输入，不拥有 PTY、进程或 session truth。WezTerm 保留为可选的 “Open externally” 高保真终端。
+25. 自举按 B0–B6 分级推进。第一次真正自举在 B2：HCTL N 从自身 Project Room/Local Task 发起单 Harness Invocation，在隔离 worktree 中完成 HCTL N+1 的真实代码与测试；Conductor、quorum 与外部 Task Source 不是该节点的前置条件。
 
 ---
 
@@ -114,6 +117,36 @@ HCTL2 在协作与导航层是 Project/Room-first，在执行层是 Run/Attempt-
 6. 需要诊断或接管时，用户从精确 Attempt 进入 Execution Chat Projection 或 terminal attach。
 
 因此，任何外部 shell、Conversation、worktree 或 terminal runtime 都只能实现其中一段体验；它不能反向成为 Project identity、Room history、Task verification 或 Workflow truth。
+
+### 1.5 产品原生核心与架构最小内核
+
+HCTL 不是 terminal、看板、聊天室和流程图的拼装器。它原生拥有的是一个 **repo-scoped project semantic control plane（Repo 范围内的 Project 语义控制面）**。
+
+产品原生核心包含三项能力：
+
+1. **Repo–Project 关系与 Project 生命周期**：Repo 注册、Project create/update/archive/restore，以及不随外部 provider 改变的稳定 identity；
+2. **Project continuity**：Room、Task、Run、Artifact、Request 与证据始终回到同一 Project 上下文；替换 Harness、session、terminal 或 SaaS 后仍能继续推进；
+3. **Project-driven control**：HCTL 根据 Project context、role/Expertise、revision、capability 与 evidence 决定下一步允许发生什么，并把需要人的决定带回 Project。
+
+Repo/Project CRUD 是这套核心的根，但不是全部。若只有 CRUD，HCTL 只是多工具入口；真正使它成为 HCTL 的，是下列架构最小内核：
+
+| 最小内核能力 | 必须保持的性质 |
+| --- | --- |
+| Stable identity 与 binding | Repo、Project、Task、Room、Run 及外部对象的身份不会因客户端/provider 更换而漂移 |
+| Command admission 与 authority | 所有动作都验证 actor、scope、capability、expected revision 与当前 policy；Workbench 没有隐藏特权 |
+| Revision、evidence 与 semantic validation | Task/Workflow/Context freeze、Verdict、Receipt、acceptance 与 stale-result fencing 可验证 |
+| Execution governance | Run Manifest、Obligation/Seat/Attempt、candidate fallback、quorum 与 regate 由 HCTL 语义控制面协调 |
+| Durable ledger 与 reconciliation | inbox/outbox、idempotency、provider read-back、crash recovery 与可重建 projection 保持跨组件一致性 |
+
+其最小状态转换可以概括为：
+
+~~~text
+actor + typed command + target revision + evidence
+  → hctl2-control/core validate
+  → committed domain event + durable outbox intent
+~~~
+
+外部 provider 的事件也不能绕过这条边界；它先成为 observation/proposal，经过 admission 后才可能改变 HCTL 语义。判断一个模块是否属于最小内核，可以使用替换测试：更换 terminal client、Task source、Chat bridge 或 passive workflow engine 后，Project identity、continuity、acceptance、Run evidence 与确定性控制若仍成立，该模块就是可替换实现，而不是 HCTL 内核。
 
 ---
 
@@ -184,6 +217,7 @@ Harness 结束一轮、进程退出、代码提交、review accept、CI 通过�
 12. **渐进披露。** 新用户先理解 Project、Task、Room、Run；只有在需要时才看到 Revision、Obligation、Seat、Attempt、RuntimeShard。
 13. **稳定协作身份高于执行会话。** 替换 Harness、关闭 tab、回收 worktree 或重建 runtime 都不能改变 Project/Room/Task 的身份和来源链。
 14. **外部事实按字段授权。** Linear/GitHub 可以成为看板字段的权威来源，但不可因此接管 TaskRevision、acceptance、Run binding、Receipt 或 semantic completion。
+15. **尽早 Dogfood，按能力分级自举。** 每个可运行版本都应通过正式产品 seam 帮助开发下一版本；稳定版本 N 治理隔离环境中的 N+1。bootstrap/recovery 脚本可以永久存在，但不得成为 Room、Task、Run、Workflow 或 Receipt 的第二事实源。
 
 ---
 
@@ -517,6 +551,46 @@ Room 时间线可包含：
 - 所有 derived room 保存 source message、ContextBundle 和 parent object 的双向链接；
 - 删除或归档 Room 不终止其引用的 Run/Attempt；停止执行必须走 controller command。
 
+### 6.6 Room event 与 timeline contract
+
+Room 的持久事实是 repo-local SQLite 中的版本化 event/message record；`RoomProjector` 生成可重建读取模型，renderer 中的 `RoomProjectionStore` 只是 cache。React 组件、assistant-ui runtime、虚拟列表和当前 scroll position 都不是事实源。
+
+Phase 1 的规范投影至少为：
+
+~~~text
+RoomTimelineVM {
+  room_id,
+  projection_revision,
+  window { before_cursor, after_cursor, has_more },
+  items[],
+  active_streams{}
+}
+
+RoomTimelineItem {
+  timeline_item_id,
+  source_event_id,
+  item_version,
+  room_sequence,
+  kind,
+  actor { kind, stable_id, label_snapshot },
+  provenance { correlation_id, invocation_id?, attempt_id?, trace_ref?, parent_event_id? },
+  blocks[],
+  actions[]
+}
+~~~
+
+`kind` 至少覆盖 comment、participant response、invocation、request、artifact、receipt 和 notice。`blocks` 使用版本化 data-only union，例如 text、reference、attachment 和 allowlisted semantic card；未知 card/version 必须安全降级，不能从消息 payload 注入任意 React component。
+
+并发与流式更新遵循以下规则：
+
+- fan-out 开始时按 Participant/Seat 的确定性顺序创建稳定 placeholder，完成先后不改变 timeline 顺序；
+- 流更新以 `(room_id, timeline_item_id, block_id, stream_id, epoch, seq)` 幂等应用；旧 epoch、重复或倒退 seq 被丢弃；
+- 高频 token/event 在 renderer 侧按 animation frame 合并，但持久 event/provenance 不丢失；
+- Room 切换、断线与进程重启后从 projection revision + cursor 重建；不得让旧 Room 的异步结果写入新 Room；
+- provider transcript、Execution Chat Projection 和 terminal scrollback 只能生成带 provenance 的引用或摘要，不能直接成为 Room history。
+
+Timeline 支持 cursor pagination、around-message 深链、首条未读标记、日期分隔、引用/回复链接和附件；Phase 1 不引入第二套 nested thread/Task Room 模型。已读位置是每个本地用户/Room 的运营状态，不影响消息事实。
+
 ---
 
 ## 7. Structured Composer、`@`、Context 与 Skills
@@ -644,7 +718,7 @@ Worker 不直接读取 Room SQLite。它只能通过 control 生成的 ContextBu
 RoomInvocation 是用户显式触发的一次 bounded 调用，不是隐藏 Run。它可以只读，也可以在明确 CapabilityBundle 下执行一次有边界的写入：
 
 1. control 先持久化 invocation intent、InvocationBinding、ContextManifest 与 idempotency key；
-2. 写入型 invocation 在启动 Harness 前创建/绑定 ChangeSet、worktree 与 writer lease；
+2. 写入型 invocation 在启动 Harness 前创建/绑定 ChangeSet、worktree 与 `ChangeSetWriteLease`；
 3. agentd 以同一 invocation ID 幂等 start/reattach，不得因控制面重试而悄悄启动第二份；
 4. invocation 不自动 retry/fallback，不自动触发下一步骤；完成后展示 diff/result，由用户 accept、继续追问或显式提升为 Run；
 5. control 重启时只 reattach 已知且身份/lease 匹配的现存 session/process；无法证明仍在运行时标记 Interrupted；
@@ -842,7 +916,7 @@ Promotion（提升）流程：
 
 ### 9.5 连接 Linear/GitHub Task Source
 
-架构允许 Project 保持 local mode，也允许连接 Linear 或 GitHub；Phase 1 的完整读写路径固定为 GitHub Repository + ProjectV2 ID + Status field/options + explicit filter，Linear 先实现相同 contract 的 identity/mapping/snapshot fixtures。通用连接流程为：
+Project 可以保持 local mode，也可以显式连接一个 Linear team/project，或一个 GitHub Repository + ProjectV2 ID + Status field/options + explicit filter。连接流程为：
 
 1. 用户选择 provider account、scope、filter 与目标 Project；HCTL 不按名称自动匹配外部 Project；
 2. Workbench 预览 stable IDs、lane/priority/owner mapping、读写权限、同步方向和不支持的字段；
@@ -859,7 +933,7 @@ Promotion（提升）流程：
 例如“完成 API spec”：
 
 1. 创建 Task，定义 desired outcome 与 acceptance；
-2. 用户显式触发一次 bounded 写入型 RoomInvocation，control 先创建 ChangeSet/worktree 与 writer lease；也可以由人直接编辑；
+2. 用户显式触发一次 bounded 写入型 RoomInvocation，control 先创建 ChangeSet/worktree 与 `ChangeSetWriteLease`；也可以由人直接编辑；
 3. invocation 没有自动后继、retry 或 fallback，完成后只提交 result/diff proposal；
 4. Artifact diff 被 review；
 5. core 校验文件、revision 和所需 review Receipt；
@@ -1241,6 +1315,8 @@ Candidate fallback 期间，Conductor external task 仍保持 IN_PROGRESS。Work
 
 HCTL Domain 不引用 Conductor-specific task ID 作为公共对象。Adapter 提供：validate/register definition、start/cancel/pause execution、poll external work、complete/fail/signal、query snapshot/history 与 health/version/migration。WorkflowRevision 的 portable domain model 和 HCTL semantic tests 保持 backend-neutral；Conductor JSON 是 Phase 1 executable backend。
 
+其中 start/cancel/pause/poll/complete/fail/signal 只供 hctl2-control 内部使用；Workbench 与任何外部 Workflow View 只获得 snapshot、history 与 event query。Run-level control 必须先成为 HCTL typed command，再由 control 经该 Adapter 执行，不能把 Conductor mutation API 暴露给 UI。
+
 Conductor task 完成前，control 必须先持久提交 HCTL domain result/outbox；崩溃重启后可重放 complete，而不重做 Harness 副作用。启动 Run 同样遵守该顺序：本地 `Run(Starting) + Manifest + StartWorkflow outbox` 必须先于外部 execution；`run_id` 是 correlation/idempotency key，未知启动结果必须先查询和 reconcile。
 
 ---
@@ -1342,7 +1418,7 @@ Worktree 按 ChangeSet/写入边界懒创建，而不是让每个 Task、Room �
 
 - Planning/只读 research 不创建；
 - 第一次 authorized write operation 才创建：可以是显式 bounded RoomInvocation，也可以是写入型 READY Obligation；
-- 一个 writer lease 同时只有一个 authorized Attempt 或 RoomInvocation；
+- 一个 `ChangeSetWriteLease` 同时只有一个 authorized Attempt 或 RoomInvocation；
 - reviewer 可用只读 checkout 或隔离 worktree；
 - retry 可在 policy 允许时复用 ChangeSet；
 - failover 必须 fence 旧 writer；
@@ -1422,9 +1498,9 @@ RuntimeBackend
   reconcile(observed, desired)
 ~~~
 
-backend 至少预留 `zellij | tmux | direct_pty | vendor_supervisor | remote_provider`。Phase 1 默认实现 Zellij mux backend 与必要的 direct/structured binding，不同时交付 tmux 或 vendor runtime。统一接口保留未来替换能力，但 UI、数据库与 Receipt 不得依赖 Zellij 名称、session ID 或 pane 编号。
+backend 至少预留 `zellij | tmux | direct_pty | vendor_supervisor | remote_provider`。Phase 1 只需交付经 §26.2 限时 contract 验证选定的一种默认 mux backend 与必要的 direct/structured binding，不承诺同时实现全部 backend。
 
-Zellij 的选择来自 Phase 1 的本地持久 session、attach/detach、Rust 生态与跨平台方向；未来 backend seam 保留 tmux、direct PTY、vendor supervisor 与 remote provider 等类别，Orca/Termio 只提供 ownership 与控制模式的实现证据。若 Zellij 无法通过 §25 的 Harness/Runtime 准入套件，再重开 RuntimeBackend ADR，而不是预先维护两套 backend。
+Zellij 与 tmux 是 Phase 1 RuntimeBackend 的两个最终候选；用 §26.2 的同一 contract 验证后只交付一个默认 backend。Orca/Termio 等实现只提供 app-owned PTY、vendor runtime、fencing 和 reconnect 的设计证据，不进入本次 backend 候选集。
 
 可选择性移植 Herdr 的 status authority、Termio ATP/session-control、HAPI/Paseo 的 provider capability matrix，以及 Orca 的 terminal ownership/fencing。不得同时启用 HCTL Run 与外部 provider Run 作为双重 workflow truth。
 
@@ -1440,7 +1516,7 @@ Zellij 的选择来自 Phase 1 的本地持久 session、attach/detach、Rust �
 | `semantic_resume` | 原进程可已消失；用 provider session ID 恢复上下文 | Codeg 与各 Harness native resume |
 | `replay_only` | 只读历史/trace，不能控制现存运行实例 | transcript/history viewer |
 
-这些 capability 非互斥，并由 adapter/runtime probe 产生，不按 OS、产品名或 Harness 名硬编码。Orca/Termio 证明了 same-PTY ownership/control 的实现模式，但 Phase 1 不把它们接成第二个 runtime truth。UI 必须显示 “Attach Terminal”“Inspect Live Session”“Resume Conversation” 或 “View Replay” 等准确动作。
+这些 capability 非互斥，并由 adapter/runtime probe 产生，不按 OS、产品名或 Harness 名硬编码。Orca/Termio 证明了自有 runtime 中 same-PTY ownership/control 的可行模式，但不因此成为 HCTL backend。UI 必须显示 “Attach Terminal”“Inspect Live Session”“Resume Conversation” 或 “View Replay” 等准确动作。
 
 ### 14.5 Attach UX 与权限
 
@@ -1464,6 +1540,8 @@ Detach 不停止 Attempt；关闭 Workbench/TerminalClient 不取消 Run。Room 
 
 agentd 为每次 attach 签发短期 `AttachDescriptor`（接入描述符），至少绑定 logical owner、backend target、host、generation/fence、capability、observe/input/takeover 权限与 expiry。TerminalClient 只消费 Descriptor；过期或 generation 不匹配时必须重新解析，不能缓存旧 pane/session 并继续输入。
 
+一个 terminal target 可有 0..N observer，但默认至多一个 current `TerminalInputLease`，它同时拥有 input/resize 权限。`takeover` 必须原子撤销旧 lease 并记录审计事件；最终授权始终由 agentd 校验，不能只靠前端禁用按钮。observe client 不得通过 resize、OSC side effect 或其他旁路改变目标状态。
+
 另外必须区分以下 identity：
 
 - `conversation_id`：Harness/provider 语义会话；
@@ -1475,26 +1553,63 @@ agentd 为每次 attach 签发短期 `AttachDescriptor`（接入描述符），�
 
 adopt 外部创建的 runtime 必须验证 cwd/process/owner/capability/generation，并经显式用户动作；不能因名称相同自动收养。
 
-### 14.6 TerminalClientAdapter 与 WezTerm
+### 14.6 TerminalClientAdapter、xterm.js 与外部 WezTerm
 
-WezTerm 是 Phase 1 默认外部 TerminalClient，不进入 React dependency graph，也不是 runtime truth。Workbench 只依赖：
+Phase 1 的默认内嵌 TerminalClient 是 `@xterm/xterm`。它运行在 Electron renderer 中，只承担 terminal emulation、字符绘制、选择、键盘/鼠标和 IME；PTY、process、scrollback/snapshot 的可恢复来源、`TerminalInputLease` 与 runtime identity 仍属于 agentd/RuntimeBackend。
+
+~~~text
+EmbeddedXtermClient
+  ↕ binary MessagePort / ArrayBuffer
+trusted Electron bridge
+  ↕ opaque connection_id
+agentd TerminalGateway
+  ↕ authorized RuntimeBackend channel
+Zellij / tmux / direct PTY / vendor runtime
+~~~
+
+Workbench renderer 只依赖 opaque logical request/connection contract；完整 AttachDescriptor 永远停留在 trusted main/preload/agentd：
 
 ~~~text
 TerminalClientAdapter
-  open(attach_target)
-  focus(attach_target)
-  close(surface)
+  request_open(logical_owner, mode) -> connection_id + MessagePort
+  focus(connection_id)
+  resize(connection_id, cols, rows)
+  request_input_mode(connection_id, observe | input | takeover)
+  detach(connection_id)
+  request_open_external(logical_owner, preferred_client?)
   capabilities()
+
+TerminalTransport
+  connect(trusted_attach_handle, resume_from?)
+    -> { connection_id, generation, snapshot?, next_seq }
+  output(connection_id) -> { generation, seq, bytes }
+  ack(connection_id, seq, credit)
+  resync(connection_id) -> { generation, snapshot, next_seq }
+  input(connection_id, bytes)
+  resize(connection_id, cols, rows)
+  close(connection_id)
 ~~~
 
-Workbench 通过受信任的 Rust/Electron bridge：
+具体实现为：
 
-- 让 selected RuntimeBackend 将 logical target 解析为安全 argv，再由 WezTerm 打开；
-- 不向未知 shell prompt 使用 send-text 拼命令；
-- 保存临时 presentation handle，但不作为 Room/Attempt identity；
-- Wayland 等平台不能保证 raise/focus 时，返回 SelectedButNotRaised 等明确结果。
+- `EmbeddedXtermClient`：默认路径；使用稳定的 `@xterm/*` 包，不使用 beta/proposed API；React 只包一层薄 lifecycle adapter，不再引入第三方 React terminal wrapper；
+- `ExternalWezTermClient`：可选的 “Open externally” 高保真逃生通道。trusted side 启动无 bearer 参数的 `hctl terminal attach --handle-fd N` shim，并通过 inherited pipe/local IPC 传入绑定 launcher PID/UID、TTL 且 single-use 的 handle；WezTerm 只 exec shim，不取得 AttachDescriptor，secret/token 不进入 argv、shell history 或 renderer。WezTerm 不进入 React dependency graph，也不成为 runtime truth；
+- 未来外部 Moshi/Remux/移动客户端仍通过同一 descriptor/capability seam 接入。
 
-未来可增加外部 Moshi/Remux/移动客户端 deep link 或嵌入 terminal；都通过同一 adapter/capability 边界，不改变领域模型。Phase 1 不自研移动终端、relay 或 terminal emulator。
+terminal 数据面与普通 command/query RPC 分离。高吞吐字节流使用 transferable binary MessagePort、sequence、ack/credit window 和有界 buffer；resize 合并发送。snapshot/resume cursor 必须绑定 runtime generation，跨 generation 只能全量 resync。慢 renderer 不得阻塞 PTY 或 control RPC，可以丢弃中间显示增量并从 agentd/backend 的 snapshot 重新同步。普通 JSON IPC 不承载持续 terminal output。
+
+renderer 永远不能：
+
+- 直接 spawn shell、持有 PTY fd 或访问 RuntimeBackend；
+- 提交 argv、cwd、shell string 或未经授权的 pane/session ID；
+- 把 xterm buffer 当作 crash recovery、Receipt 或 Room history；
+- 绕过 descriptor expiry、generation/fence 与 observe/input/takeover 权限。
+
+`@xterm/addon-fit`、search、WebGL 和无障碍能力可按需启用；内嵌 xterm.js 的 link、clipboard、title、file-open 与 OSC side effect 必须经 HCTL trusted bridge 的 allowlist/用户确认。默认不采用通用 WebSocket `addon-attach` 直接连 runtime，而由 HCTL bridge 绑定短期 AttachDescriptor、origin 和权限。
+
+内嵌 client 的 link/clipboard/OSC 由 HCTL trusted bridge policy 管理；外部 WezTerm 使用其独立 client trust profile。打开外部客户端前 UI 必须提示该 profile 的 clipboard/link/OSC 权限可能与内嵌策略不同，且 HCTL 不把外部 terminal output 自动采集进 Room/telemetry。
+
+关闭 terminal panel 或 Electron 只会 detach。重开时必须从 logical Attempt/Invocation 重新解析 descriptor、取得 snapshot 并接续 live stream，不能缓存旧 connection、pane 或 session。Phase 1 不自研移动终端、relay、terminal emulator 或 multiplexer。
 
 ---
 
@@ -1549,8 +1664,9 @@ Phase 1 单用户、单机、repo-scoped Room、本地 Task identity/contract/ve
 - tasks / task_revisions / task_operational_states / task_lifecycle_events / task_completion_receipts；
 - task_source_policies / task_source_bindings / task_source_binding_revisions / task_source_snapshots / task_source_sync_cursors / task_sync_conflicts；
 - external_principal_bindings；
-- rooms / room_messages / message_refs；
-- room_invocations / invocation_bindings；
+- rooms / room_messages / room_message_parts / message_refs；
+- room_timeline_items / room_projection_checkpoints；
+- room_invocations / invocation_bindings / room_drafts；
 - context_manifests / context_items；
 - workflow_revisions / runs / run_task_bindings；
 - obligations / seats / attempts / runtime_shards / invocation_runtimes / terminal_bundles；
@@ -1569,15 +1685,25 @@ Phase 1 单用户、单机、repo-scoped Room、本地 Task identity/contract/ve
 - Phase 1 同一 Task 最多一个 non-terminal active Run；
 - `seats.obligation_id` 非空；`attempts.seat_id` 非空；普通 Obligation 至少一个 Seat；
 - Run 路径的 TerminalBundle 必须引用 `attempt_id + runtime_shard_id`，且 Seat→Obligation→Run 与 RuntimeShard.run_id 一致；Room 路径必须且只能引用 `invocation_runtime_id`；
-- TaskOperationalState 的 `state_version` 只作为 local-authoritative mutation token 并单调递增；external materialized mirror version不得充当 provider 写入 CAS；
+- TaskOperationalState 的 `state_version` 只作为 local-authoritative mutation token 并单调递增；external materialized mirror version 不得充当 provider 写入 CAS；
 - `(provider_account_id, external_entity_kind, immutable_external_entity_id)` 唯一；一个外部实体只映射一个 HCTL Task；
 - GitHub binding 分开保存 Issue `external_object_id`、ProjectV2 `authoritative_board_scope_id` 与 ProjectV2Item `external_board_item_id`；一个 Task 同时最多一个可写 board binding；
 - TaskSourceSnapshot append-only；provider deletion 只写 tombstone；`state_version` 与 `source_revision` 不得混用；
-- TaskSourceBindingRevision append-only并有 head pointer；Run Manifest、TaskRevision adoption 与 outbox 必须引用具体 revision/digest；
+- TaskSourceBindingRevision append-only 并有 head pointer；Run Manifest、TaskRevision adoption 与 outbox 必须引用具体 revision/digest；
 - task_lifecycle_events append-only，至少包含 Complete/Reopen/Cancel；`hctl_lifecycle_state` 从事件投影；Reopen 保留旧 CompletionReceipt 历史；
 - Attempt generation/fencing token 单调；
 - stable reference 必须携带 repo scope；
 - cross-service event ID 唯一。
+
+Room 与 UI projection 还必须满足：
+
+- `room_sequence` 由 control 在 Room 内单调分配；timestamp、DOM index 与 virtualizer index 都不是 identity 或并发排序依据；
+- source event append 与 `room_sequence` 分配必须在同一个 SQLite transaction 完成，并以 `UNIQUE(room_id, room_sequence)` 约束；RoomProjector 只消费已提交 sequence；
+- `room_timeline_items` 是可重建 projection，只保存 source identity、source revision、projection revision、attention 与定位信息，不复制 Message、Invocation、Request、Artifact 或 Receipt 的第二份权威 payload；
+- `RoomProjector` 生成 snapshot/delta，renderer 中的 `RoomProjectionStore` 只是可丢弃 cache；assistant-ui 的 Thread/runtime/queue/cloud schema 不进入 SQLite、IPC 或公共 API；
+- Tiptap draft 以 `room_id + draft_schema_version + editor_json` 独立保存；`ComposerDocument`、发送后的 `ComposerEnvelope` 与正式 `RoomMessage` 是三个不同对象；
+- stream delta 以 `room_id + timeline_item_id + block_id + stream_id + epoch + sequence` 去重；Room 不存在全局 running/cancel flag；
+- unknown message part/version 必须安全降级为可检查的 fallback card，不能使整条 timeline 无法恢复。
 
 Task source outbox entry 至少保存 `binding_revision + base_remote_digest + desired_patch + ordering_scope + per_step_receipts`，状态为 `queued/sending/uncertain/confirmed/conflict/failed`。同一 ordering scope 的 rank/position mutation 串行执行并在最新邻居上 rebase；inbox 应用、snapshot 追加和 cursor 推进位于同一个 SQLite transaction。Binding/policy migration 在 active Run 或未完成 provider outbox 存在时被拒绝或延期。
 
@@ -1595,7 +1721,7 @@ Task source outbox entry 至少保存 `binding_revision + base_remote_digest + d
 | local Task operational fields | repo-local SQLite + hctl2-control；独立 `state_version` |
 | acceptance、Run binding、Task lifecycle events/CompletionReceipt、HCTL semantic completion | hctl2-control + hctl2-core；repo-local durable record |
 | Task health/attention | hctl2-control 从 Request、Run、CI、blocker refs 等权威事实计算的 projection/cache |
-| Room/message/Request/Context | repo-local SQLite + hctl2-control |
+| Room/message/Request/Context，包括从外部 Chat surface 归一化进入的 canonical event | repo-local SQLite + hctl2-control |
 | Workflow token/task/timer/retry/history | Conductor |
 | Obligation/Seat/candidate/Attempt/quorum | hctl2-control |
 | process/Harness binding/PTY/RuntimeBackend observed state | agentd |
@@ -1616,7 +1742,7 @@ Task source outbox entry 至少保存 `binding_revision + base_remote_digest + d
 8. 分类 Running、Waiting、Lost、Superseded、Orphan、Terminal Valid/Invalid；
 9. fence stale generation；
 10. 重放幂等 complete/signal/outbox；外部写的 unknown outcome 必须先 remote read-back；
-11. 对账完成前不授予任何新 writer lease，也不把 pending Task mirror 当成 provider 已提交事实。
+11. 对账完成前不授予任何新 `ChangeSetWriteLease` 或 `TerminalInputLease`，也不把 pending Task mirror 当成 provider 已提交事实。
 
 RuntimeBackend container、native Harness session、provider transcript 与 screen state 都不能被先验视为 exactly-once checkpoint。
 
@@ -1629,16 +1755,19 @@ RuntimeBackend container、native Harness session、provider transcript 与 scre
 ```mermaid
 flowchart TD
     UI["Workbench · Electron/React"] --> C["hctl2-control"]
+    UI --> XT["EmbeddedTerminalView · xterm.js"]
+    XT <--> EB["trusted preload · binary MessagePort"]
     C --> DB["Repo-local SQLite"]
     C --> TS["TaskSourceAdapter · Local/Linear/GitHub"]
     C --> WF["Conductor OSS"]
     C --> CORE["hctl2-core"]
     C --> AD["agentd"]
     AD --> HA["Harness Adapters"]
-    AD --> RB["RuntimeBackend"]
+    AD --> TG["TerminalGateway"]
+    EB <--> TG
+    TG <--> RB["RuntimeBackend"]
     RB --> RT["Zellij · tmux · direct/vendor runtime"]
-    RT --> TC["TerminalClientAdapter"]
-    TC --> W["WezTerm · future clients"]
+    TG -. "Open externally" .-> W["WezTerm · future clients"]
 ```
 
 ### 16.2 hctl2-workbench
@@ -1646,19 +1775,23 @@ flowchart TD
 Workbench 负责：
 
 - Project Room 作为默认 Project home，以及 Projects Overview、Task Kanban、Run Graph、Inspector、Attention；
-- Semantic Composer 与 typed reference picker；
+- HCTL `RoomProjectionStore`、虚拟化 timeline、unread/scroll anchor 与多个并发 Invocation 的独立状态；
+- Tiptap Semantic Composer 与 typed reference picker；
 - query projection、optimistic UI、rollback；
 - command preview 与 confirmation；
-- 打开 trace/TerminalClient；
+- 打开 trace、内嵌 terminal 或可选外部 TerminalClient；
 - 不持有领域 truth。
 
 Workbench 不直接访问 Git、SQLite、Conductor、RuntimeBackend 或启动 Harness；所有操作走 typed API。
+
+RoomProjectionStore 通过 snapshot + monotonic event stream 从 control 的 `RoomProjector` 接收数据。切换 Room、renderer reload、移除 assistant-ui renderer 或替换虚拟列表实现，都不得改变 SQLite 中的 Room identity、message、Invocation 与 timeline order。
 
 ### 16.3 hctl2-control
 
 control 是领域协调器，负责：
 
 - Repo/Project/Task/Room/Run command；
+- 外部 Chat surface 与 canonical HCTL Room 的 binding、message ingress/egress 和 reconciliation；
 - TaskSourceAdapter、TaskSyncCoordinator、source snapshot/adoption、provider outbox/inbox 与 conflict reconcile；
 - mention/role/recipe resolution；
 - ContextAssembler；
@@ -1695,7 +1828,7 @@ agentd 是 host-local runtime agent：
 - ACP、provider JSON-RPC/app-server、Vendor SDK 与 native PTY adapter；
 - process/PTY/hooks/transcript；
 - RuntimeBackend 与 attach capability negotiation；
-- RuntimeRegistry 与 terminal gateway；
+- RuntimeRegistry、TerminalGateway、`TerminalInputLease` 与有界字节流；
 - Hook/manifest detector；
 - Attempt lease/heartbeat/cancel；
 - native session ID/resume；
@@ -1725,13 +1858,17 @@ Conductor 是独立组件而不是 Rust SDK：
 
 Phase 1 只实现本地 IPC，不必同时交付 server，但 domain API 不依赖 Electron object。
 
+Workbench、CLI 与未来外部客户端必须走同一 command/query service；HCTL-native UI 不拥有绕过 admission、直接写 SQLite、Conductor 或 provider mirror 的私有路径。Terminal 字节流因吞吐与权限模型不同，独立走 TerminalGateway/TerminalTransport，但仍服从 agentd 签发的 capability 与 lease。
+
 Happy、HAPI、Paseo、MindFS 与 Orca 证明同一 command/query/event model 可以服务 desktop、browser 与 mobile client；这只验证 transport-neutral seam，不把 remote client、relay 或 cloud sync 偷渡进 Phase 1。
 
 ---
 
 ## 17. UI 抽象与交互边界
 
-### 17.1 一级 Surface
+### 17.1 HCTL-native Workbench 的一级 Surface
+
+本节只描述 HCTL-native Workbench 的导航与显示结构；可以在 HCTL 外消费的四个操作面由 §17.2 定义。
 
 | Surface | 用户主要回答的问题 |
 | --- | --- |
@@ -1740,13 +1877,35 @@ Happy、HAPI、Paseo、MindFS 与 Orca 证明同一 command/query/event model �
 | Task Kanban | 下一项工作是什么、哪些卡住或待 review？ |
 | Run View | 自动施工走到哪、哪个 node/obligation 在等待？ |
 | Inspector / Request Detail | 当前对象的精确 revision、evidence、动作和权限是什么？ |
-| TUI Attach | Harness/进程内部究竟发生了什么，是否需要接管？ |
+| Terminal / TUI Attach | Harness/进程内部究竟发生了什么，是否需要接管？默认内嵌查看，必要时在外部终端打开。 |
 
 Inspector 不是新的领域对象；它是对当前 Project/Task/Run/Node/Request/Artifact/Attempt 的详情视图。Request detail 可以表现为右侧 drawer（抽屉面板），但“drawer”只是 UI 形态，不进入领域术语。
 
 从 Projects Overview 进入一个 Project 时，默认打开 Project Room，并保留 Task/Run/Artifact 的邻接导航。用户从 Task Kanban 或深链进入时可直接落到目标对象，但 breadcrumb 和返回路径仍回到同一个 Project；不得把一次 Conversation tab 或 terminal pane当作 Project home。
 
-### 17.2 Room UI
+### 17.2 四个可内外访问的操作面
+
+HCTL 内外的区别只是客户端位置，不是事实权威。这里用两个用户可理解的词：
+
+- **可读**：客户端显示同一个逻辑对象的授权投影；
+- **可操作**：客户端把输入或 typed intent 交给事实拥有者，待其校验并确认后更新投影。它不表示直接写数据库、mirror 或状态机。
+
+四个首要操作面如下；Request、Attention、Artifact、Receipt 与 trace 等细节进入这四个操作面或 Inspector，不再各自制造一套外部访问模型。
+
+| 操作面 | 内外使用方式 | 权限 | 不变的边界 |
+| --- | --- | --- | --- |
+| Harness Terminal | HCTL 内用 xterm.js；外部用 WezTerm、Ghostty 等 terminal attach 到同一 target | 可读写 | process/PTY truth 在 agentd/RuntimeBackend；可多人看，同时至多一个 `TerminalInputLease` |
+| Task Kanban | HCTL 内用 Task Kanban；外部用 Linear/GitHub 原生界面 | 可读写，但按字段 owner | 每个字段只由 HCTL、Linear 或 GitHub 中一方写；外部 Done/Closed 不等于 HCTL semantic completion |
+| Chat Room | HCTL 内用 Project Room；外部用 Feishu、Slack、Discord 等 bridge | 可读写 | 外部消息经身份映射、鉴权与去重进入同一 canonical HCTL Room；外部 edit/delete 不抹掉已引用历史 |
+| Workflow View | HCTL 内用 Run View；外部用授权 Web/API/status card；Conductor 运维界面若启用也只读 | **只读** | Conductor 保存机械执行位置；hctl2-control 发起实际动作。任何 UI 都不能直接改图或 complete/fail/signal node |
+
+Start/Pause/Cancel 等若对用户开放，是独立的 HCTL Run command，不是对 Workflow View 的写入。
+
+更精确地说，**Workflow View 是投影，但 Conductor 的状态机不是缓存**：它是当前机械执行位置的 ground truth。之所以称 Conductor 为 passive engine，是因为 READY 只表示工作可以开始；它不会自行选择 Harness 或发起领域副作用。hctl2-control 创建 Obligation/Seat/Attempt、驱动 Harness，并在 Verdict/Receipt/evidence 校验后才向 Conductor complete/fail/signal。若外部客户端直接修改 Conductor task，就会绕过 fallback、quorum、regate、revision 与 evidence 规则，形成第二个 effect authority，因此被禁止。
+
+本节定义长期接口边界，并不承诺 Phase 1 同时交付所有外部客户端；Phase 1 的实际范围仍以 §23 为准。
+
+### 17.3 Room UI
 
 Room 默认布局：
 
@@ -1757,7 +1916,18 @@ Room 默认布局：
 - Run/Task 高频事件不刷屏，只原位更新卡片；
 - 只有 blocked、decision-required、review-ready、failed、completed 等里程碑产生新提示。
 
-### 17.3 Run Graph
+Room timeline 由 `RoomProjectionStore` 提供 cursor window、稳定 item ID、active stream 与 provenance；UI 不从 Harness transcript 或 assistant-ui thread 反推 Room 状态。长历史以 `virtua` 的动态高度列表呈现，并遵守：
+
+- prepend 历史时保持首个可见 item 与像素 offset；
+- 用户离开底部后不强制拉回，只显示“回到最新”和未读计数；
+- Room 切换保存 `{anchor_item_id, offset, at_end}`，不保存脆弱的绝对 `scrollTop`；
+- 当前 focus/selection 所在 item 不因虚拟化突然卸载；
+- 图片、diff、tool card 延迟变高时校正锚点，不重排稳定 item；
+- `aria-live` 只播报里程碑/完整短消息，不逐 token 朗读。
+
+assistant-ui 只用于单条消息内的 text/image/file/tool/data part 与 action 渲染；Room header、timeline、pagination、unread、stream ownership、cancel/retry 与 Composer 均由 HCTL 组件负责。
+
+### 17.4 Run Graph
 
 Run Graph 由三层组成：
 
@@ -1773,10 +1943,10 @@ WorkflowRevision（不可变 topology）
 - 状态变化只 patch overlay，不重算 layout；
 - retry、candidate、votes 显示在同一 node/Inspector，不把每个 Attempt画成新节点；
 - topology/revision 变化才重算；
-- Phase 1 只读，node 可聚焦/选择；
+- Run View 始终只读，node 可聚焦/选择，但不能直接修改 token、complete/fail/signal Conductor task；任何 Run-level control 都是独立 HCTL command，不是对图的写入；
 - 编辑 Workflow 发生在 proposal/form/diff，不在运行图上直接拖边。
 
-### 17.4 Semantic cards
+### 17.5 Semantic cards
 
 Harness/tool/runtime event 统一投影为语义卡：
 
@@ -1794,7 +1964,7 @@ Harness/tool/runtime event 统一投影为语义卡：
 
 当这些卡片绑定到一个正在运行的 Attempt/InvocationRuntime 并允许把输入写回同一 execution owner 时，UI 名称为 Execution Chat Projection，而不是 Room。它仍位于 Inspector/trace/TUI 路径下，不增加一级 Surface。
 
-### 17.5 Trigger Preview
+### 17.6 Trigger Preview
 
 发送 mention/recipe 前，Composer 显示：
 
@@ -1830,11 +2000,12 @@ HCTL-native Phase 1 使用：
 | --- | --- | --- |
 | Shell、Dialog、Popover、Menu、Drawer | shadcn + Base UI | 全局唯一 overlay/focus primitive family |
 | Task Kanban | React Aria Components | 只负责 collection/DnD/a11y，不保存 Task truth |
-| Room transcript | HCTL RoomProjection；选择性复用 assistant-ui headless renderer primitives | HCTL message/event schema 与 timeline 才是事实 |
-| Semantic Composer | Codeg-derived Tiptap/ProseMirror，经 ComposerPort 隔离 | editor document、draft 与 HCTL wire envelope 分离 |
+| Room timeline | HCTL RoomProjector/RoomProjectionStore + `virtua` | HCTL 持有 event/window/stream/scroll contract；虚拟列表不保存 Room truth |
+| Message/part renderer | assistant-ui scoped primitives | 仅渲染单条消息及 allowlisted parts/actions；不拥有 Thread/Room runtime |
+| Semantic Composer | Tiptap/ProseMirror + HCTL ComposerPort | atomic reference、IME、draft；发送仍由 control resolve/authorize |
 | Run graph | `@xyflow/react` / React Flow | 只读投影，不保存 Workflow truth |
 | Layout | Dagre 默认；ELK 可选 | 通过 LayoutEngine adapter |
-| Terminal | TerminalClientAdapter；Phase 1 默认外部 WezTerm | 不进入 React DOM，不成为 runtime truth |
+| Terminal | `@xterm/xterm` EmbeddedTerminalClient；可选外部 WezTerm | renderer only；I/O 经 AttachDescriptor + TerminalGateway，不拥有 PTY/session truth |
 
 ### 18.3 单一 Semantic Composer 引擎
 
@@ -1850,19 +2021,25 @@ Semantic Composer 必须满足 atomic reference、IME、draft fidelity 与独立
 - draft JSON 与 wire serialization 分离；
 - paste/restore/escaping tests。
 
-这些行为必须吸收，但复用边界只到 editor behavior、atomic reference-node 模式与测试方法。HCTL2 的 `@ / $ #` trigger extensions、Reference schema、serializer 与 ComposerEnvelope 必须按自己的协议重写；不得复用 Codeg 的 prompt token/wire encoding。其核心 React/Tiptap composer 可从 Tauri/Next 抽取，但 Codeg 的 Radix/body portal、全局 store、LLM-mediated routing 不能照搬。
+这些行为必须吸收，但复用边界只到 editor behavior、atomic reference-node 模式与测试方法。HCTL2 的 `@ / $ #` trigger extensions、Reference schema、serializer 与 ComposerEnvelope 必须按自己的协议实现；不得复用 Codeg 的 prompt token/wire encoding。其 Apache-2.0 React/Tiptap composer 可按文件级许可与 provenance 选择性移植，但 Codeg 的 Radix/body portal、全局 store、LLM-mediated routing 不能照搬。
 
-assistant-ui 只作为 headless Thread/Message renderer primitive 或经确认的 Base UI flavor 组件使用；它不拥有 Composer、Room runtime 或 wire schema。任何内部 tooltip/popover/dialog/composer popup 必须通过 HCTL overlay adapter 接入统一 Base UI/`#overlay-root`，不得私建第二套 portal/focus trap。
+**决策：Phase 1 只使用 Tiptap/ProseMirror。** Lexical 与 assistant-ui Composer 不进入 product bundle。Tiptap 通过 `ComposerPort` 与 HCTL draft/wire schema 隔离；所有 suggestion popup 通过 HCTL overlay adapter 接入 Base UI/`#overlay-root`，不得私建第二套 portal/focus trap。
 
-决策：Phase 1 采用 Codeg-derived Tiptap/ProseMirror。移植时必须：
+### 18.4 Room timeline 与消息 renderer
 
-- 把 Codeg 的 body portal 改为 HCTL `#overlay-root`；
-- 为每个 Composer instance 生成独立 ARIA/listbox ID；
-- 用 HCTL Reference schema、ComposerEnvelope 与 serializer 替换 donor wire encoding；
-- 保留 CJK IME、atomic reference、draft round-trip、undo/redo、paste/drop 与异步取消行为测试；
-- 不把 Codeg 的 Conversation、全局 store、Radix overlay 或 LLM-mediated routing 带入 HCTL。
+Room UI 不采用任何完整聊天产品、云端 chat backend 或外部 conversation store。实现组合固定为：
 
-### 18.4 React Flow
+1. `RoomStore` 持有规范 event；`RoomProjector` 生成 cursor window、active stream 与 unread projection；renderer 的 `RoomProjectionStore` 只缓存这些读取模型；
+2. `virtua` 负责动态高度 virtualization；HCTL 的 scroll controller 负责 prepend anchor、follow-at-end、around-message 和 Room 切换恢复；
+3. assistant-ui 的 `MessageProvider`/`MessagePrimitive`/`MessagePartPrimitive` 等 scoped primitives 只渲染单个 item 内的文本、文件、tool/data part 与 action；
+4. Tiptap Composer 独立发送 `ComposerEnvelope`，不经过 assistant-ui AppendMessage/Composer runtime；
+5. Base UI 是唯一 overlay primitive family。
+
+不得把 HCTL Room 映射为 assistant-ui 的单一 assistant Thread 语义。尤其禁用其全局 `isRunning`、全局 cancel、queue、branch/edit、ThreadList 与默认相邻 assistant-message join；每个 Invocation 的 running/cancel/retry 由 `active_streams` 和 provenance 精确寻址。必要的 assistant-ui adapter 使用 read-only/scoped provider，actor/participant/invocation identity 保存在 HCTL metadata，不丢失为 `user|assistant|system` 三角色模型。
+
+Rocket.Chat、Mattermost、Element 与 Zulip 只作为 prepend anchor、around-message、unread/thread、动态高度和 a11y 测试的实现证据；不嵌入其 Room/Redux/Matrix/store/design-system。
+
+### 18.5 React Flow
 
 HCTL-native Phase 1 使用 React Flow core（MIT）+ Dagre：
 
@@ -1876,31 +2053,32 @@ HCTL-native Phase 1 使用 React Flow core（MIT）+ Dagre：
 
 ELK 为 EPL-2.0 OR GPL-3.0-or-later，启用前做分发许可复核；不依赖 React Flow Pro 代码。
 
-### 18.5 Focus、keyboard 与 Portal
+### 18.6 Focus、keyboard 与 Portal
 
 最大兼容风险不是 React peer dependency，而是输入事件：
 
 优先级：
 
 1. IME composition；
-2. Modal/Popover/Composer；
-3. 当前 Board 或 Graph surface；
-4. Workbench global shortcuts。
+2. 当前聚焦的 embedded terminal；
+3. Modal/Popover/Composer；
+4. 当前 Board 或 Graph surface；
+5. Workbench global shortcuts。
 
-全局 HotkeyRouter 必须检查 `defaultPrevented`、`isComposing`、editable target 与 local scope。Electron `before-input-event` 只处理极少原生命令。
+全局 HotkeyRouter 必须检查 `defaultPrevented`、`isComposing`、editable target、terminal focus 与 local scope。IME composition 结束前不把中间键值发送给 Composer 或 PTY；terminal 获得焦点时绝大多数快捷键归 TUI，并提供一个可配置的显式 escape chord 把焦点还给 Workbench。Electron `before-input-event` 只处理极少原生命令。
 
 统一 `#overlay-root` 与 z-index tokens。Base UI 负责所有 Shell overlay；assistant-ui 仅可使用 headless primitives 或兼容的 Base UI flavor，其他 overlay 必须经 HCTL adapter；不要混用 React Aria Modal、Radix Modal 和手工 body portal。每个 Composer popup 使用唯一 ID，支持分屏/Drawer/scroll container。
 
-### 18.6 Full-window Integration Acceptance（全窗口集成验收）
+### 18.7 Full-window Integration Acceptance
 
 同一 packaged Electron window 同时运行：
 
 - React Aria Task Kanban；
-- Project Room + HCTL RoomProjection（可选择性复用 assistant-ui renderer primitives）；
+- Project Room + HCTL RoomProjector/RoomProjectionStore + `virtua` timeline + assistant-ui scoped message parts；
 - Tiptap Semantic Composer；
 - Base UI Request Drawer；
 - React Flow read-only Run Graph；
-- Open in TerminalClient typed IPC（Phase 1 为 WezTerm）。
+- 内嵌 `@xterm/xterm` terminal panel + 可选 Open Externally/WezTerm。
 
 验收：
 
@@ -1910,7 +2088,13 @@ ELK 为 EPL-2.0 OR GPL-3.0-or-later，启用前做分发许可复核；不依赖
 - popup 在 Drawer/分屏中定位与 focus restore 正确；
 - Board DnD、Composer drop、Graph pan/zoom 不抢事件；
 - stale async search/stream 不写入新 Room；
+- 10k 动态高度 item、prepend 100 条和 stream 扩高时 anchor 稳定，离底后不抢滚动；
+- 3–5 个 Participant 并发 stream 可独立 cancel/retry，旧 epoch/seq 不串流；
 - React Flow 状态更新不 relayout；
+- terminal alternate screen、mouse、resize、CJK IME、wide glyph 与 bracketed paste 正常；
+- renderer reload/窗口关闭只 detach，重新签发 descriptor 后恢复同一 target；
+- terminal 高吞吐时 buffer 有界，Room/Graph/control RPC 仍响应；
+- observe/input/takeover、`TerminalInputLease`、descriptor expiry 与 generation fence 在 agentd 侧强制；
 - TerminalClient 只接收逻辑/已解析 target，不接收 renderer 拼出的 shell string。
 
 ---
@@ -1939,13 +2123,17 @@ ELK 为 EPL-2.0 OR GPL-3.0-or-later，启用前做分发许可复核；不依赖
 | ContextAssembler | 生成 ContextManifest/ContextBundle 与 provenance | 原始 Room DB 的无限读取权 |
 | InvocationCoordinator | 冻结 InvocationBinding、持久 intent、启动/取消/恢复投影 | Workflow token、Task completion |
 | HarnessAdapter | ACP/app-server/SDK/PTY/hooks 的协议接入与事件归一 | Project/Room/Task identity |
-| RoomProjection | 将 message、invocation event、Request、Artifact proposal 投影到 timeline | provider transcript 或 terminal scrollback 的直接复制 |
+| RoomStore | 持久化 Room identity、message、Invocation intent 与 source links | renderer cache、第三方 chat runtime |
+| RoomProjector | 将 message、invocation event、Request、Artifact proposal 投影为 cursor window、stable item 与 active stream | assistant-ui thread、provider transcript 或 terminal scrollback |
+| RoomProjectionStore | 在 Workbench 中应用 snapshot/delta、保存 normalized cache 与 view window | Room event truth、timeline order authority |
+| VirtualizedRoomTimeline | virtualization、scroll anchor、unread、around-message、focus 与 selection retention | Room event、stream ownership、message rendering |
+| RoomMessageRendererPort | 将 immutable timeline item 的 allowlisted blocks/cards/actions 渲染为 UI，并发出 typed command intent | Room truth、直接领域副作用、任意 React payload |
 
-这些接口把已选依赖与选择性移植模块置于 HCTL contract 后，同时保持一个统一的 Project/Room 体验。
+这些接口允许 HCTL 采用成熟的 editor、message primitive、virtual list、ACP registry 与 runtime adapter，同时保持一个统一的 Project/Room 体验。
 
 ### 19.3 Stable reference、draft 与 wire envelope
 
-编辑器文档、显示 label、stable identity 和发送协议必须分开。Composer 保存 atomic reference 与版本化 draft；发送时生成 `ComposerEnvelope`，由 control 再次 authorize/resolve。异步搜索必须可取消，CJK IME、undo/redo、paste/drop、draft restore 与 queued edit 必须有行为测试。
+编辑器文档、显示 label、stable identity 和发送协议必须分开。Composer 保存 atomic reference 与版本化 draft；发送时生成 `ComposerEnvelope`，由 control 再次 authorize/resolve。异步搜索必须可取消；CJK IME、undo/redo、paste/drop、draft restore、Invocation 运行期间继续编辑/发送，以及 Room switch 后的 stale-event isolation 必须有行为测试。
 
 Codeg v0.24.0 的 typed Composer、ACP catalog 和 event cards 为这组契约提供了可执行证据与 Apache-2.0 代码参考；HCTL 只移植独立组件或行为测试，不采用其 Conversation、prompt token、Radix portal、全局 store 或 wire schema。
 
@@ -1973,11 +2161,12 @@ ComposerEnvelope
 4. central Skill store、symlink/junction/copy fallback、compatibility matrix；
 5. To-do 的 Needs you、timeline、preflight、follow-up intent、Git truth verification；
 6. optional native session importer 与 append-only custom ACP transcript；
-7. Rust core 的 transport-neutral desktop/server interface 思路。
+7. Rocket.Chat/Mattermost 等成熟聊天室的 prepend anchor、around-message、unread、动态高度与 a11y 测试模式；
+8. Rust core 的 transport-neutral desktop/server interface 思路。
 
 ### 19.6 HCTL 保留的语义权威
 
-- Project Room identity 与 timeline 由 HCTL Room store 持有；Conversation、session、native transcript 和全局 donor DB 只能作为来源/投影；
+- Project Room identity、event、timeline window、active stream 与 unread projection 由 HCTL Room store/projector 持有；assistant-ui Thread、Conversation、session、native transcript 和全局 donor DB 只能作为 renderer 输入或来源投影；
 - MentionResolver 由 control 确定性执行；lead LLM delegation 只能作为某个 Harness 内部能力；
 - ContextBundle 必须由 ContextAssembler 生成并记录 provenance，冷启动自由文本不能替代它；
 - Workflow/Task/Gate 由 HCTL/Conductor/core 持有；固定 To-do pipeline、worktree/session/agent 绑定和 Agent `task_complete` 都只是 advisory；
@@ -1987,24 +2176,24 @@ ComposerEnvelope
 
 ### 19.7 外部代码复用纪律
 
-若实际移植 Codeg、Orca、Termio、Remux、Happy 或其他外部实现：
+若实际移植 Codeg、First Tree、Orca、Termio、Remux、Happy 或其他外部实现：
 
 - 固定已审阅 tag/commit；
 - 核对每个目标文件与依赖的明确许可证；保留相应 license、copyright、attribution 与修改说明；
-- 在 Architecture Decision Record（ADR，架构决策记录）中记录来源、修改边界与上游同步策略；
+- 在 ADR 记录来源、修改边界与上游同步策略；
 - 用 HCTL contract tests 锁住行为；
 - 不直接依赖 donor 的 internal DB/schema/store 作为 HCTL truth；
-- 默认优先移植独立算法/组件。Codeg 与 Orca 都不整仓 fork；外部 shell、orchestration 和数据库不得成为第二套 HCTL 事实源。若未来确需用 fork 替换某个已选组件，必须以独立 ADR 明确替换关系、迁移路径与长期上游维护责任。
+- 默认优先采用稳定依赖或移植独立算法/组件；不整仓 fork Codeg、Orca 或其他 Workbench。需要 vendor runtime 时只通过 RuntimeBackend/effect adapter 接入，并保持 HCTL-native Project/Room shell 与单一事实源。
 
 AGPL 项目（MindFS、Paseo、HAPI）默认只作行为、协议与架构参考；任何源码集成必须先做独立许可决策。闭源产品（Redock、ServerCC、QuickTUI、Moshi）只作 UX/互操作参考。源码可见但许可证不明确时按不可复用处理，直到完成许可证核验。
 
 ---
 
-## 20. 已冻结的实现分配与复用边界
+## 20. 实现复用策略与开工决策
 
-### 20.1 从 HCTL contract 分配实现责任
+### 20.1 先固定 HCTL contract，再选择成熟实现
 
-实现选择不从“哪个产品功能最多”开始，而从前文已经定义的用户体验和事实边界开始。每个已选依赖或 donor 只为一个明确的 HCTL contract 提供实现、测试或协议证据：
+实现选择不从“哪个产品功能最多”开始，而从前文已经定义的用户体验和事实边界开始。每个候选实现只回答一个具体 sourcing 问题：
 
 | HCTL contract | 需要获得的成熟能力 | 采用方式 |
 | --- | --- | --- |
@@ -2015,31 +2204,57 @@ AGPL 项目（MindFS、Paseo、HAPI）默认只作行为、协议与架构参考
 | Workflow | READY/wait/retry/history 与 external work item | Conductor Adapter；control 仍是唯一 effect authority |
 | Governance | Seat、candidate fallback、quorum、regate、Revision/Receipt | HCTL semantic kernel；不得委托给 UI、Harness 或 donor pipeline |
 
-Phase 1 采用稳定标准或库、选择性移植边界清楚的模块，并通过 adapter 接入独立进程或 CLI；HCTL 直接实现自己的 semantic kernel 与必要 glue。所有实现都必须通过相同 HCTL contract tests；外部对象名和数据库 schema 不进入公共领域模型。
+优先顺序固定为：采用稳定标准或库 → 移植边界清楚的模块 → 通过 adapter 复用独立进程/CLI → 必要时受控 fork → 最后才自研通用 plumbing。每一步都必须通过相同 HCTL contract tests；外部对象名和数据库 schema 不进入公共领域模型。
 
-### 20.2 Phase 1 组件方案
+### 20.2 当前组件 sourcing 方案
 
-| 组件 | Phase 1 方案 | Phase 1 验收 |
+| 组件 | Phase 1 方案 | 开工前验证 |
 | --- | --- | --- |
-| Semantic Composer | Codeg-derived Tiptap/ProseMirror behind ComposerPort | typed reference、CJK IME、draft/wire round-trip、overlay/focus |
-| Room transcript | HCTL-owned RoomProjection；可选择性复用 assistant-ui headless renderer primitives | HCTL event schema、virtualization、stream/cancel/resume |
+| Semantic Composer | Tiptap/ProseMirror + HCTL Reference extensions；选择性移植 Codeg 已验证的行为与测试 | typed reference、CJK IME、draft/wire round-trip、overlay/focus |
+| Room timeline | HCTL RoomStore/RoomProjector/RoomProjectionStore + `virtua`；assistant-ui 仅作 scoped message/part/action renderer | 并发 Invocation、cursor pagination、scroll anchor、stream/cancel/retry isolation、a11y |
 | Task Kanban | React Aria GridList/useDragAndDrop | keyboard/screen reader、external Pending Sync/rollback |
 | Run Graph | React Flow + Dagre | 只读 overlay、高频更新不 relayout |
 | Harness Catalog | ACP registry/distribution pattern + HCTL schema | 三个首发 Harness 的 install/auth/capability/degradation |
-| RuntimeBackend | Zellij behind RuntimeBackend；observed-state authority 仍属于 agentd | crash/reconcile、exact target、generation/fence、macOS/Linux |
-| TerminalClient | WezTerm 起步；保留外部/mobile client adapter seam | typed target、observe/input 权限、focus/deep link |
+| RuntimeBackend | Zellij 与 tmux 置于同一 contract 后；Phase 1 只冻结并交付一个默认 backend，observed-state authority 属于 agentd | crash/reconcile、exact target、generation/fence、macOS/Linux |
+| Embedded TerminalClient | `@xterm/xterm` + narrow Electron bridge + agentd TerminalGateway | IME/宽字符、alternate screen、binary flow control、resize/reconnect、writer fence |
+| External TerminalClient | WezTerm 的可选 “Open externally” adapter | safe argv、同一逻辑 target、detach 不 stop |
 | Workflow Engine | Conductor supervised service | SQLite/打包、poll/complete 幂等、restart/reconcile |
-| Task Source | Local production adapter；GitHub 为首个 production external-authoritative adapter；Linear 完成 identity/mapping/snapshot fixture 后作为下一 adapter | stable identity、field mapping、outbox/read-back、rate limit/conflict |
+| Task Source | Local production adapter；Linear/GitHub 均做 identity fixture，至少一个完成 external-authoritative 验收 | stable identity、field mapping、outbox/read-back、rate limit/conflict |
 
 详细产品事实、版本基线、许可证与可复用线索放在附录 D 的 Implementation Evidence Radar；它们不改变本节的 HCTL contract。
 
-### 20.3 HCTL Workbench ownership 与选择性移植
+### 20.3 HCTL-native Workbench 与选择性复用
 
-Phase 1 由 HCTL 自主拥有 Workbench shell、Project/Room 导航、RoomProjection、Task/Run command surface 与 IPC。Codeg、Orca 等实现不能通过整仓 fork 或 donor database 接管这些语义。
+Phase 1 直接建设 HCTL-native Workbench。原因不是现有 Workbench 质量不足，而是 HCTL 的日常导航和协作连续性由 Repo/Project/Task/Room/Run 决定；把它套入 donor 的 Session/Conversation/Terminal/Worktree 主导航会持续产生 lossy mapping、双 UI 与双写。
 
-Codeg 固定版本提供 Tiptap Composer、ACP catalog、event cards 与 Skills 分发的实现来源；Orca 固定版本提供 worktree、PTY ownership、generation/fencing 与恢复算法的实现证据。只移植许可证允许、依赖闭包清楚的组件、算法和测试，并重写 donor schema/store/wire 边界。Orca orchestration 不进入 Phase 1；其 mutation receipt 与 generation 模式也不得冒充 HCTL semantic Receipt 或 Git writer fence。详细证据只在附录 D 登记。
+自有 Workbench 不等于重写全部通用能力。实现边界固定为：
 
-### 20.4 Harness Manifest 与 Session-Control Contract
+| 能力切片 | 复用方式 | HCTL 保留的责任 |
+| --- | --- | --- |
+| Semantic Composer | 移植/改写 Codeg 的 Tiptap atomic-reference、IME 与 draft 测试模式 | Reference schema、routing、ComposerEnvelope、权限与 Base UI overlay |
+| Room message rendering | assistant-ui scoped primitives 或小型 renderer pattern | Room event、actor/provenance、并发 Invocation、actions 与 timeline order |
+| 长历史 timeline | `virtua` dependency；参考 Rocket.Chat/Mattermost/Zulip 的 anchor/unread tests | cursor、stable ID、follow policy、Room switch 与 recovery |
+| Kanban/Graph | React Aria 与 React Flow/Dagre | Task/Workflow command、projection 与事实边界 |
+| Terminal | xterm.js renderer；选择性借鉴 Orca/Termio 等项目的 PTY、fence、reconnect pattern | AttachDescriptor、TerminalGateway、`TerminalInputLease` 与 RuntimeBackend truth |
+| Git/worktree/diff | 稳定库、CLI adapter 或许可清楚的独立模块 | ChangeSet、Revision、Receipt、writer fence 与 merge policy |
+
+Codeg、First Tree、Orca、Termio、MindFS、Paseo 等继续作为实现证据和选择性源码供体，不作为 Phase 1 的整仓 runtime dependency，也不把它们的数据库或 public object model 变成 HCTL schema。实际复制源码时必须 pin 来源 commit、保留许可/版权和修改记录，并由 HCTL contract tests 隔离上游漂移。
+
+每个 Run 仍只能有一个可写 Workflow execution truth：Phase 1 由 Conductor 持有 token/node/timer/history，HCTL 持有领域契约和语义治理；任何 donor Run/Task/Dispatch 只能提供算法或 observed runtime evidence，不能与其并行成为第二份 truth。
+
+### 20.4 RuntimeBackend 与 Attach Capability
+
+| AttachCapability | HCTL 可观察合同 | 已有实现证据 | Phase 1 复用形式 |
+| --- | --- | --- | --- |
+| `native_pty_exact` | 同一 PTY/process incarnation、双向输入、generation | Orca、Termio、Herdr、Remux、Moshi | RuntimeBackend + xterm.js/External TerminalClient |
+| `native_agent_handoff` | provider session 精确转交或本地/远端 handoff | HAPI、ServerCC、Happy | HarnessAdapter pattern；按 provider 验证 |
+| `structured_live_inspect` | event/transcript/card 与受控 follow-up | Codeg、Paseo、MindFS、Orca | protocol adapter / Execution Chat Projection |
+| `semantic_resume` | 以 provider session ID 恢复上下文 | Codeg、Termio、Happy | provider adapter；不得宣称同一 PTY |
+| `replay_only` | 不可写历史投影和 provenance | transcript importer family | renderer/importer |
+
+能力是非互斥集合，UI 不使用一个模糊的 Attach 布尔值；具体产品与许可证据登记在附录 D。
+
+### 20.5 Harness Manifest 与 Session-Control Contract
 
 Harness manifest/session-control 需要描述 Harness ID/launch、permission flag、hook 安装、事件映射、OSC title、screen classification、session ID/store 与 provider-native resume mapping。Termio 的 ATP 与 CLI 为下列合同提供了实现证据：
 
@@ -2051,26 +2266,38 @@ Harness manifest/session-control 需要描述 Harness ID/launch、permission fla
 - watch snapshot、actionable state、evidence 与 heartbeat；
 - supervision 发 signal，而不擅自替用户回答或直接 kill。
 
-Phase 1 采用 ATP-inspired、带 schema version 的 HCTL Harness manifest/session-control contract，并实现 fixture-driven importer/converter。ATP 是 Termio 自有协议，不应被误称为行业标准；Termio 也不作为 Phase 1 RuntimeBackend。HCTL 的 ProjectRoleBinding、Expertise、Seat、candidate 与 fallback 位于更高层，不应污染 Harness manifest。
+HCTL2 采用 schema-versioned `HarnessManifest`，并提供 ATP-inspired importer/fixture 作为兼容路径；ATP 是 Termio 自有协议，不是 HCTL wire protocol或行业标准。HCTL 的 ProjectRoleBinding、Expertise、Seat、candidate 与 fallback 位于更高层，不应污染 Harness manifest。Termio 当前为 macOS Swift app，且 durable mux 尚在 roadmap，因此只提供设计和兼容证据，不成为跨平台 RuntimeBackend truth。
 
-### 20.5 HCTL Semantic Kernel 的实现责任
+### 20.6 架构最小内核的实现责任
 
-复用把 HCTL 的自有建设范围收缩到跨组件语义权威。HCTL2 自主实现并测试：
+§1.5 定义了产品原生核心与架构最小内核的区别。本节只落实后者的实现边界；它不是另一套 UI，也不要求拆成微服务。Phase 1 由 hctl2-control、hctl2-core、repo-local ledger 及其与 agentd/Conductor 的受控接缝共同实现：
 
-- Repo/Project/Task/Room/Run 的 HCTL 边界与确定性 mention；
-- 独立、被动的 Workflow ground truth；
-- immutable Workflow/Task/Context revision 与 provenance；
-- Obligation/Seat/ordered candidate 与 typed technical fallback；
-- durable quorum/vote ledger；
-- 新 SHA 使旧 verdict stale，并强制 regate；
-- evidence-bound semantic Receipt 与 Git truth；
-- 以上语义在 Project/Room/Kanban/Run 中的一致投影。
+- Repo/Project/Task/Room/Run 的稳定 identity、lifecycle 与版本化 external binding；
+- typed command admission：actor、scope、capability、authority、expected revision、policy 与 idempotency；
+- immutable Task/Workflow/Context revision、provenance、Verdict、Receipt 与 stale-result fencing；
+- Run Manifest、Obligation/Seat/Attempt、ordered candidate、typed technical fallback、durable quorum 与 regate；
+- inbox/outbox、provider read-back、reconciliation、crash recovery 与可重建 projection。
 
-通用 UI、worktree、terminal、session transport、remote client 和 workflow storage按 §20.2 的已冻结方案直接实现、采用、移植或适配；所有模块都置于 HCTL contract 后。验收失败时先修正实现，只有出现新的架构证据时才通过新 ADR 修改实现分配。
+Conductor 仍在 WorkflowEngineAdapter 后持有 token/node/timer/retry/history 的机械执行 truth；HCTL 最小内核不重写这套状态机。HCTL 拥有的是 Workflow/Run binding、effect authority 与 completion admission，保证所有实际动作都由 hctl2-control 发起或授权，并在满足语义证据后再推进 Conductor。
 
-### 20.6 验收边界
+通用 UI primitive、worktree、terminal renderer、session transport、Task/Chat provider 与 workflow storage 都优先采用稳定依赖、选择性移植或 adapter。替换它们不得改变 §1.5 所列的 identity、authority、revision、evidence 与 reconciliation 规则。
 
-Conductor 的规范性职责只在 §11 定义，Runtime/Attach 只在 §14 定义，统一的纵向实现与准入套件只在 §25 定义。本章不复制第二份接口或测试规范。验收失败会阻止相应纵向切片发布，但不自动重开产品选型；不得为了保留 donor 或依赖而弱化 HCTL contract。
+### 20.7 Workflow 状态后端：Conductor
+
+Phase 1 sourcing 状态为 `Adopt dependency behind adapter`。规范性职责、HCTL Conductor Profile 与 WorkflowEngineAdapter 只在 §11 定义；本章不建立第二份接口规范。
+
+### 20.8 实现准入门槛
+
+各组件进入主分支前必须通过其 contract suite：
+
+- Workbench 的 Project/Room/Task/Run 导航不依赖 donor Session/Conversation identity；
+- Composer/Room stack 通过 CJK IME、typed-reference round-trip、并发 stream/cancel/retry、scroll anchor 与 focus 验收；
+- xterm.js/TerminalGateway 通过 binary backpressure、resize/reconnect、observe/input/takeover 与 generation fence 验收；
+- RuntimeBackend 通过 crash/reconcile 与精确 target 验收；
+- TaskSourceAdapter 通过 stable identity、field authority、outbox/read-back 与 divergence 验收；
+- Conductor 固定版本通过本地打包、SQLite 配置、poll/complete 幂等、restart/reconcile 与升级/备份验收。
+
+未通过时更换实现或重开相应 ADR；不得为了保留某个 donor/依赖而弱化 HCTL contract。
 
 ---
 
@@ -2122,7 +2349,10 @@ Room mention 不会扩大权限；换 Harness 也不改变 obligation 的 capabi
 - context isolation + sandbox；
 - preload 只暴露具名 typed command；
 - 不暴露 raw ipcRenderer；
-- file/process/PTY/RuntimeBackend/TerminalClient 全在受信任侧；
+- file/process/PTY、RuntimeBackend、AttachDescriptor 授权、TerminalGateway 与外部客户端启动位于受信任侧；
+- xterm.js 位于 sandboxed renderer，只能通过 narrow preload 取得 opaque connection 和二进制 MessagePort；它可见当前 terminal output/keystroke，但不能访问 PTY、process、secret store 或任意 IPC；
+- terminal input/output 不写入 React 全局 store、Room、Memo 或常规 telemetry；只有显式 trace policy 才能保存经 redaction 的诊断片段；
+- 禁止 remote runtime JavaScript/CDN；内嵌 xterm.js 的 link、clipboard、title、file-open 与 OSC side effect 必须经过 trusted bridge allowlist/确认；外部客户端只经显式 handoff 打开，并按其独立 trust profile 与用户提示运行；
 - CSP 禁止任意远程脚本；
 - repo content/Markdown/HTML preview 按不可信输入处理。
 
@@ -2176,7 +2406,8 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 | 无 Run RoomInvocation 状态不明 | 只 reattach 身份/lease 匹配的现存 runtime；否则标 Interrupted，不自动重放；用户 Retry 创建新 invocation |
 | Conductor 重启 | SQLite history 恢复；external task 可重新 poll/complete |
 | agentd 重启 | 只 adopt manifest/generation/lease 全匹配的 runtime |
-| TerminalClient/WezTerm 退出 | Attempt 继续；重新解析/签发 attach target 后可再次连接 |
+| Embedded terminal view/renderer 或外部 WezTerm 退出 | Attempt 继续；重新解析/签发 attach target 后可再次连接 |
+| terminal 数据流中断 | 以 connection sequence/snapshot 重新同步；旧 connection 不恢复 input 权限，必须重新授权 `TerminalInputLease` |
 | Attach target generation 过期 | 拒绝 observe 之外的 input/takeover；重新授权并解析当前 target |
 | structured event stream 断开 | 按 sequence/snapshot 重连；不能据此判定进程死亡 |
 | Harness adapter 与 backend 状态冲突 | liveness 服从 process/backend；semantic state 服从 structured adapter/hook；screen 仅 advisory |
@@ -2185,7 +2416,7 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 | GitHub status 已改、position 失败 | 保留 saga 进度并 reconcile；UI 显示 partial sync，不回写假完成 |
 | source contract 在 active Run 中改变 | 追加 Snapshot 与 SourceChanged；冻结 Run 不漂移，必要时创建 Request |
 | source item 删除或 mapping 失效 | binding tombstoned/Needs Attention；保留 TaskRevision、Run、Receipt 与审计历史 |
-| RuntimeBackend container 丢失 | Attempt LOST；control fence并按 candidate policy处理 |
+| RuntimeBackend container 丢失 | Attempt LOST；control fence 并按 candidate policy 处理 |
 | PTY 丢失但 provider session 可 resume | 原 Attempt 仍 LOST；resume 创建新 Attempt/Invocation，不伪装成 exact attach |
 | host 失联 | lease timeout，旧 generation 失权 |
 | Harness 迟到 | result journal 保存，但 fence/revision 不通过则无效 |
@@ -2197,16 +2428,19 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 
 ### 23.1 支持范围
 
-以下是 Phase 1 必须交付的产品能力。HCTL-native Workbench、semantic kernel 与领域 store 由 HCTL 自己拥有；稳定 dependency、选择性移植模块和 sidecar 可实现内部 plumbing，但不得替代 Project/Room-first shell、制造第二事实源或降低验收标准。
+以下是 Phase 1 必须交付的产品能力。Workbench、领域 schema 与 Project/Room/Task/Run 导航由 HCTL 自己拥有；成熟 library、选择性移植、sidecar 与 adapter 用来实现通用能力，但不能替换 HCTL contract 或引入第二事实源。
 
 - 单用户；
 - macOS + Linux；
 - 单 Repo Instance、多 Project；
 - Repo Room、Project Room、Scoped Room；
+- HCTL-owned Room event/timeline schema、RoomProjector/RoomProjectionStore 与 `virtua` 动态高度 timeline；
+- Tiptap Semantic Composer，以及同一 Room 至少两个可独立 stream/cancel/retry 的 RoomInvocation；
+- assistant-ui 仅限可替换的 scoped message/part/action renderer；
 - Project Overview；
 - Task CRUD/revision/lifecycle/rank；
-- Task Kanban；采用 React Aria，并通过统一 Task command/projection contract；
-- TaskSourceAdapter contract、local production adapter 与 GitHub production external-authoritative adapter；Linear 完成 identity/mapping/snapshot fixture，作为下一 adapter；
+- Task Kanban；HCTL-native 实现采用 React Aria，donor shell 必须通过同一 Task command/projection contract；
+- TaskSourceAdapter contract 与 local production adapter；Linear/GitHub 均完成 identity/mapping/snapshot fixture，Phase 1 exit 前至少一个 external-authoritative adapter 通过完整读写验收；
 - external Task source 先用 explicit refresh/周期 reconcile；不依赖公网 webhook relay；
 - structured `@ / $ #` 与 deterministic dispatch；
 - Harness discovery/profile/favorites；
@@ -2218,7 +2452,7 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 - candidate timeout/429 fallback；
 - 2-of-3 review reducer；
 - reject→revision→all required re-review；
-- Zellij RuntimeBackend + WezTerm TerminalClientAdapter；至少一个 PTY-backed Harness 支持精确 Attempt attach；
+- 经 RuntimeBackend ADR 选定一个默认 backend（当前基线为 Zellij）+ `@xterm/xterm` EmbeddedTerminalClient；WezTerm 作为可选外部打开路径；至少一个 PTY-backed Harness 支持精确 Attempt attach；
 - Attempt/InvocationRuntime Inspector 的 normalized Execution Chat Projection，并准确标示 exact PTY、structured live、handoff、resume/replay 能力；
 - read-only Run Graph；HCTL-native 实现采用 React Flow；
 - Request card + Scoped Room；
@@ -2235,13 +2469,15 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 - arbitrary user-defined Task lifecycle；
 - Project Kanban；
 - 跨 provider move/copy、外部评论自动同步为 Room、复杂双向 contract merge；
-- Linear full-bidirectional adapter；
+- 同时把 Linear 与 GitHub 两套 full bidirectional adapter都设为首个治理切片的前置条件；
 - Task Room/thread；
 - Board virtualization；
 - semantic vector search；
 - 自动导入所有 Harness 历史；
-- 内嵌 terminal；
-- tmux RuntimeBackend；
+- assistant-ui ThreadRuntime/Cloud/queue 作为 Room backend，或任何第二个 chat server/store；
+- 隐式 regenerate/branch/edit 语义；
+- presence、reaction、social read-receipt 等多人社交功能；
+- 同时交付 Zellij 与 tmux 两套 backend；
 - 自研 terminal emulator 或 multiplexer；
 - 复刻任一 donor 的完整 IDE、remote 或 mobile feature surface；
 - generic Workflow visual editor；
@@ -2261,7 +2497,7 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 5. READY node 经 external task 创建 Obligation；gate policy 在其下创建 voter Seats；
 6. author Seat 创建 Attempt 时冻结 HarnessAdapterBinding、capability snapshot、RuntimeBackend target 与 generation；author 产生 ChangeSetRevision 1；
 7. gater B/C/D 的三个独立 Seats 并行 review；
-8. B 需要开放式澄清，创建 Request并升级 Scoped Room；
+8. B 需要开放式澄清，创建 Request 并升级 Scoped Room；
 9. facilitator 形成 proposal，用户确认后继续；
 10. B reject、C accept、D changes_requested，reducer 产生 aggregate changes_requested；
 11. author 产生 ChangeSetRevision 2，TaskRevision 不变，旧 B/C/D verdict 全 stale；
@@ -2276,7 +2512,7 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 
 此切片独立于 §23.3 的治理切片，避免外部 tracker 集成阻塞 Seat/quorum/regate 验证。验收为：
 
-1. 连接 GitHub Repository 与 ProjectV2 scope，预览 stable identity、lane mapping 与权限；
+1. 连接一个 Linear 或 GitHub scope，预览 stable identity、lane mapping 与权限；
 2. import/bind external item，创建 TaskSourceSnapshot，补齐 desired outcome/acceptance/required capability 并采用为 TaskRevision；
 3. HCTL Kanban 拖动卡片，durable outbox→provider mutation→read-back→confirmed；
 4. 模拟 timeout/重复 delivery/rate limit；ambiguous create 不自动重复，先按 provider 策略查询，仍不确定则创建 Request；
@@ -2287,7 +2523,62 @@ PTY transcript 是二级诊断材料；TUI attach 是最后一级。
 
 ---
 
-## 24. Repository 目录建议
+## 24. Bootstrap 与分级 Dogfooding
+
+HCTL 不等到 Phase 1 全部完成后才开始开发自己。自举是一条贯穿实现顺序的产品主线，并按能力而不是“自举前/后”二分。每一级都必须使用公开的 Workbench/control/agentd seam，且包含真实负路径；能打开 HCTL Repo 或生成一次代码不等于完整自托管。
+
+### 24.1 自举等级
+
+| 等级 | 定义与最小能力 | 切换方式 | 晋级验收 |
+| --- | --- | --- | --- |
+| **B0 · Bootstrap substrate** | domain IDs、SQLite migration、command/query/event seam、`init/start/status/doctor/export` 与最小 supervisor 可运行 | Codeg、直接 Harness 和脚本仍负责开发 | clean clone 可启动；重启不丢状态；脚本只管理进程/恢复，不保存 Room/Task/Run 语义 |
+| **B1 · Shadow dogfood** | Repo/Project、Project Room、Local Task、RoomProjector/RoomProjectionStore、最薄 Workbench 与 Tiptap Composer | 建立 `HCTL Bootstrap` Project 镜像现有工作；旧工具仍是临时 truth | Workbench 重启后 Room/Task/draft 完整恢复；stable reference 不漂移；明确标记为 shadow，不宣称自举完成 |
+| **B2 · Assisted self-bootstrap** | B1 + deterministic mention、一个可用 HarnessAdapter、ContextBundle、agentd、冻结的 InvocationBinding/CapabilityBundle、RoomInvocationRecord/Execution Projection、隔离 worktree/branch、`ChangeSetWriteLease`、diff/test evidence | Bootstrap Project 的 Room/Task 切为权威入口；Codeg/CLI 只作为 worker 或 escape hatch | 由安装中的 HCTL N 从 Project Room 发起，在独立 worktree 完成 HCTL N+1 的一个非文档代码变更和自动测试；repo/path write scope、network/secret budget 与最小权限被冻结，越界写或旧 lease 被拒绝；无需复制 prompt、改 DB 或直接驱动 agentd。**这是第一次真正自举** |
+| **B3 · Operational self-hosting** | B2 + TaskRevision/acceptance、typed commit/Receipt/merge、Request、多个并发 RoomInvocation、xterm.js inspect/attach 与 cold-restart reconciliation | HCTL 接管全部自身 backlog/协作；旧工具不再承载 Conversation/To-do truth | 连续完成至少 5 个真实变更并覆盖 core、UI、adapter；至少一次失败重试和一次进程重启；无手工 DB 修复或 prompt 搬运；escape 全部形成带原因的审计事件 |
+| **B4 · Governed self-hosting** | B3 + Conductor adapter/compiler、WorkflowRevision/Run、Obligation/Seat/Attempt、author+独立 gater、revision fence、reject→rework→regate 与 merge Receipt | 正常变更进入正式 Run；脚本仅保留 install/start/doctor/migrate/recover | 一个真实 HCTL 代码变更完整经历 reject→rework→regate→merge，并在中途重启 Workbench/control/Conductor/agentd 至少一项；不得手工 complete Conductor task 或绕过 Receipt |
+| **B5 · Full semantic self-hosting** | B4 + ordered candidates、429/timeout backup、2-of-3 quorum、late-result fence、Scoped Room 与完整 reconcile | Codeg 等只保留为 WorkerProfile、实现供体或应急工具 | §23.3 的完整治理切片在 HCTL 自身的真实变更上通过，包含 backup gater、quorum、stale result 与故障恢复，而不只是 fixture |
+| **B6 · Self-release** | B5 + packaging、migration、version compatibility、clean-install smoke 与 rollback | 稳定版本 N 构建、验证和发布隔离环境中的 N+1 | N 在独立 worktree/data profile 驱动 N+1 的 build/test/package/upgrade/rollback；待测进程不得原地覆盖正在治理它的 control 或数据库 |
+
+### 24.2 第一自举点与实现顺序
+
+第一自举点固定在 **B2**，不等待 Conductor、quorum、Linear/GitHub、完整 Run Graph 或全部 terminal/runtime 能力。现有领域模型已经允许一条更短的路径：
+
+~~~text
+Project Room + Local Task
+  → ContextBundle
+  → 单 Harness RoomInvocation
+  → 隔离 worktree + ChangeSetWriteLease
+  → diff/test evidence
+  → 人工 review/merge
+~~~
+
+因此 B2 之前的开发优先级是：durable domain/storage seam → 最薄 Project Room/Local Task → Tiptap/Room timeline → 单 HarnessAdapter/agentd → worktree/evidence。Conductor、正式 Run、Seat/quorum/regate、外部 Task Source 和 self-release packaging 在 B2 之后尽量由 HCTL 自身继续开发。
+
+Phase 1 的自举成熟度目标是 **B5**；B6 是自举发布/升级能力的 release gate，但两者都不单独等于 Phase 1 产品退出。Phase 1 release 还必须同时通过 §23.1 的全部支持范围和 §23.4 的至少一个 external-authoritative Task Source 纵向切片。B0–B4 不是可跳过的内部原型标签，而是可以独立验收、用于开发下一阶段的可运行产品增量。
+
+### 24.3 Cutover 与 escape hatch
+
+- B0 以前：Codeg、直接 Harness 和脚本是正常施工工具；
+- B1：只允许 shadow mirror，不能让两个系统同时自称 Room/Task truth；
+- 进入 B2：对 `HCTL Bootstrap` Project 做一次显式 cutover；其 Project Room/Task 只在 HCTL 写入；
+- B3 起：正常 HCTL 开发必须从 HCTL 发起。直接 Codeg/CLI 属 escape hatch，必须补录原因、输入、结果和 evidence；
+- B4 起：脚本不得实现 retry、gate、Task completion、Run mutation 或 Receipt；其永久职责仅为 install/start/doctor/migrate/recover；
+- B5 起：外部 Workbench 是否仍安装不重要，但不得重新成为项目推进 shell 或事实源。
+
+### 24.4 防止伪自举
+
+1. HCTL Repo 必须作为普通 Repo 接入，禁止 `if repo == hctl` 的特殊路径；
+2. 稳定版本 N 管理独立 worktree/data profile 中的 N+1，不让正在被修改的 binary 原地治理自己；
+3. 必须走公开 Workbench/control/agentd/adapter seam；测试直接调用内部函数不算 dogfood；
+4. 首次自举不能只是文档变更，必须包含真实代码、自动测试和可检查 diff；
+5. 手工改 SQLite、手工 complete engine task、复制 prompt 或私下给 worker 补隐藏上下文，均使该次晋级验收失败；
+6. 每一级至少包含一次负路径和重启/恢复验证；
+7. external Task Source 不是自举前置条件；B1–B4 默认使用 Local Task Source；
+8. 持续记录 HCTL 内完成任务比例、escape 次数与原因、无追踪语义操作数、重启恢复成功率。
+
+---
+
+## 25. Repository 目录建议
 
 ~~~text
 README.md
@@ -2343,76 +2634,57 @@ apps/
 
 ---
 
-## 25. 架构决策、Phase 1 纵向实现与准入测试
+## 26. ADR 与验证清单
 
-本节将 Architecture Decision Record（ADR，架构决策记录）、正式实现和验收测试分开。源码与协议足以判断的事项直接定案；Phase 1 随后实现最终路径，而不是先写一次性 prototype。只有 OS、进程、PTY、外部 API 和崩溃交错等运行事实由实机与故障注入关闭。
+### 26.1 已收口或必须记录的 ADR
 
-标准推进方式是：
+ADR 记录“为何作此决定、适用边界和替换条件”，不是未决事项列表。Phase 1 至少保留下列记录：
 
-> 源码审计 → ADR 定案 → 薄而完整的最终路径 → contract/故障测试 → 只有出现新架构证据才重开 ADR。
+1. Repo/Project/Task/Room/Run 最小模型与 Project/Room-first 导航；
+2. Conductor external passive engine、HCTL Profile 与 JSON compiler；
+3. repo-local SQLite、Git、Conductor、control 与 agentd 的事实边界；
+4. capability-first Harness Registry、HarnessAdapterBinding 与状态 authority；
+5. deterministic `@ / $ #`、ProjectRoleBinding 与 Expertise；
+6. HCTL Room event/timeline schema、并发 Invocation 与 RoomProjector；
+7. Tiptap Semantic Composer、HCTL ReferenceNode 与 ComposerEnvelope；
+8. `virtua` timeline 与 assistant-ui renderer-only boundary；
+9. Task Kanban/React Aria 与 Run Graph/React Flow；
+10. worktree/ChangeSet/`ChangeSetWriteLease` 与 Receipt/quorum/regate；
+11. RuntimeBackend contract 与 Phase 1 默认 backend；
+12. `@xterm/xterm` EmbeddedTerminalClient、binary TerminalTransport、可选外部 WezTerm 与 attach capability；
+13. TaskSourcePolicy、字段级 authority、external identity/scope 与 snapshot adoption；
+14. provider lifecycle 与 HCTL semantic completion 分离；
+15. provider outbox、unknown outcome、conflict/tombstone 与 offline policy；
+16. 外部源码选择性移植的 license/provenance/upstream isolation；
+17. B0–B6 分级自举、Bootstrap Project cutover 与稳定 N 治理隔离 N+1。
 
-### 25.1 已接受的首批 ADR
+### 26.2 仍需有限探索的三项
 
-| ADR | 决策包 | Phase 1 已冻结结论 |
-| --- | --- | --- |
-| ADR-01 | 领域与控制边界 | Repo/Project/Task/Room/Run；Plan/Build 是 control regimes；Room 与 Run 正交 |
-| ADR-02 | Semantic Workbench | HCTL-native Project/Room-first shell；Tiptap Composer；React Aria Kanban；React Flow + Dagre；HCTL-owned RoomProjection |
-| ADR-03 | Harness 与 Context | capability-first Harness Registry/Adapter；deterministic mention；Skill availability、role 与 invocation expertise 分离 |
-| ADR-04 | Workflow、SCM 与治理 | Conductor passive engine；programmatic JSON compiler；Seat/fallback/quorum/regate/Receipt 由 HCTL 持有 |
-| ADR-05 | Runtime 与 Terminal | Zellij 是 Phase 1 RuntimeBackend；WezTerm 是默认 TerminalClient；attach capability 精确分级 |
-| ADR-06 | TaskSource 与 Kanban | Local + GitHub production adapter；Linear 走同一 adapter contract、Phase 1 完成 fixtures；external Closed 不等于 HCTL Done |
-| ADR-07 | 持久化与恢复 | repo-local SQLite + Git 分层；所有跨服务副作用使用 inbox/outbox、idempotency、fence 与 reconcile |
-| ADR-08 | 外部实现复用 | Codeg/Orca/Termio 等只作 dependency、选择性组件供体、协议或行为证据；Phase 1 不整仓 fork、不引入 donor truth |
+这些问题不能只靠读源码定案，因为结果依赖 HCTL 的打包目标、真实工作负载或 provider 配置；探索必须短、带明确退出条件：
 
-ADR 不是不可更改的永久结论。只有实现在相同 HCTL contract 下无法通过强制验收，或出现改变事实基础的新证据时，才新建 ADR 修订；不得静默切换实现。
+1. **Conductor 本地分发形态**：固定版本、SQLite 参数、JRE/JAR 体积、冷启动/RSS、升级/备份与 destructive restart；失败则重开 Workflow backend ADR，而不是重写 engine；
+2. **Phase 1 RuntimeBackend**：Zellij 与 tmux 在同一 contract 下验证 exact target、headless lifecycle、crash/reconcile、generation/fence 和 macOS/Linux；只交付胜出的一个；
+3. **首个 external-authoritative Task Source**：Linear 与 GitHub 用同一 fixture 验证 identity、field authority、rank/move、outbox/read-back、限流与 conflict；Phase 1 只要求一方达到完整读写。
 
-### 25.2 Phase 1 四条纵向实现
+### 26.3 Contract、集成与故障注入测试
 
-#### V1：Project Room 到一次可追踪调用
+以下属于实现验收，不再称为 Spike，也不重新打开产品方向：
 
-交付 Repo/Project/Room/Local Task、Tiptap Composer、`@ / $ #`、ContextBundle、Harness Catalog、Codex/Claude/OpenCode adapter、Room timeline 与 Execution Chat Projection。用户可以从 Project Room 发起、观察、取消和恢复一次 bounded invocation，并把结果提炼为 Task、Artifact 或 Memo。
-
-#### V2：Task 到受治理 Run
-
-交付 Conductor、Workflow compiler/Profile、Obligation/Seat/Attempt、Zellij RuntimeBackend、WezTerm handoff、technical fallback、2-of-3 quorum、revision invalidation、regate、Receipt 与 Git merge reconciliation。正常路径无需 attach；需要诊断时精确解析到当前 Attempt。
-
-#### V3：GitHub Task Source 到 HCTL 验收
-
-交付 GitHub Repository/Issue/ProjectV2 identity mapping、TaskSourceSnapshot/adoption、字段级 authority、Kanban command、durable outbox/read-back、unknown outcome/conflict/tombstone 与双生命周期投影。Linear 完成 provider-neutral identity/mapping/snapshot fixtures，但不作为 Phase 1 full-write 发布门槛。
-
-#### V4：安装、重启与跨平台硬化
-
-在 V1–V3 上完成 macOS/Linux 安装、升级、恢复和卸载；分别终止 Workbench、control、Conductor、agentd、Harness、Zellij 与 WezTerm 并对账；Windows 只做 path/process/IPC compile-only CI，防止形成结构性不可移植依赖。
-
-### 25.3 强制准入套件
-
-| 套件 | 覆盖内容 | 通过条件 |
-| --- | --- | --- |
-| UI/Room | Tiptap 移植；RoomProjection；Execution Chat；CJK IME；keyboard/screen-reader DnD；Pending Sync rollback；virtualization；overlay/focus；全窗口打包 | 通过 §18.6 全部条目；typed reference/draft/wire round-trip；stream/cancel/resume；异步结果不串 Room；Board/Composer/Graph 不抢事件；Run overlay 高频更新不 relayout；无第二 Room/conversation truth |
-| Harness/Runtime | ATP-inspired fixtures；ACP Registry/preflight；三个 Harness adapter；Zellij；attach taxonomy；WezTerm | 通过 §14 与 §22.3 crash matrix；capability 来自真实 probe；exact target/generation/fence 正确；未证明的能力准确降级为 Inspect/Resume/Replay |
-| Workflow/Governance/SCM | Conductor SQLite/打包/restart；poll/heartbeat/complete 幂等；engine lease/deadline/retry；429/timeout fallback；late result；quorum/regate；Git 中断 | 通过 §11.8–§11.10；backup budget 不越过 Obligation deadline；engine retry 创建新 Obligation并 fence 旧 Obligation；不重复 Harness/Git 副作用；业务 reject 不换候选；旧 verdict/result 不能越过 revision/fence；Receipt 才解锁 merge |
-| TaskSource | GitHub identity/scope；create/update/reorder/close saga；read-back；unknown outcome；source drift；Closed-before-acceptance；delete/relink；outage/re-auth/429 | 通过 §10.7、§15.3/§15.5 与不变量 43–56；Complete/Reopen/Cancel、projection 与 outbox 原子提交；active Run/pending outbox 时拒绝 binding migration；terminal-divergent/跨 ordering scope reorder 被拒绝；assignee 仅经 principal binding 成为 Participant；重启可恢复且不显示假成功或假 Done |
-| Release/Portability | macOS/Linux packaging、WezTerm handoff、Windows compile smoke | 固定版本和依赖可安装/升级/恢复；argv/path/IPC 安全；不承诺未经验证的平台能力 |
-
-Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership/fencing 都以固定版本形成 fixture、移植来源或测试方法；不再作为整套产品候选。所有实际复制代码必须记录来源 commit、许可证、修改边界和上游同步策略。
-
-### 25.4 跨组件故障注入
-
-组件套件通过后，再执行 §23.3 与 §23.4，并至少在以下切点终止进程或制造响应未知：
-
-1. Run Manifest 已提交，Conductor start 尚未确认；
-2. Conductor task 已 poll，Obligation 尚未完成创建；
-3. Attempt 已启动，agentd 或 Zellij 退出；
-4. Harness result 已写 journal，Conductor complete 尚未确认；
-5. Conductor engine task timeout/retry 已产生新 execution，旧 Obligation/Attempt 仍可能迟到；
-6. GitHub mutation 已发送，read-back 尚未完成；
-7. Git merge 已开始，但尚未形成可验证终态。
-
-最终必须做到：无重复 Harness/provider/Git 副作用；无 stale generation 获得 writer/input 权限；无 UI optimistic state、external Closed 或 Harness complete 冒充 HCTL semantic completion；Room、Task、Run 与 Workflow 始终只有各自规定的事实源。
+- Tiptap 的 CJK IME、typed reference、draft/wire round-trip、paste/drop 与 focus；
+- Room 多 Invocation 交错 stream、独立 cancel/retry、cursor pagination、prepend/height anchor、unread 与 stale-event isolation；
+- full-window 的 React Aria、Base UI、Tiptap、virtua、React Flow 与 xterm.js focus/wheel/drop 兼容；
+- xterm.js alternate screen、wide glyph、binary backpressure、resize/reconnect、observer/`TerminalInputLease` takeover 与旧 descriptor fence；
+- ACP Registry/custom agent/preflight，以及三个首发 Harness 的 degradation/capability matrix；
+- exact PTY、structured live、native handoff、semantic resume/replay 的准确标示和权限；
+- candidate timeout/429/late result、2-of-3 quorum、reject/revision/regate 与 control restart；
+- Task Source create/update/reorder/close saga、unknown outcome、contract divergence、delete/relink、re-auth/rate limit/reconcile；
+- Git merge interruption/reconcile；
+- macOS/Linux packaged Electron/Conductor/agentd；Windows 只做 path/process/IPC compile smoke。
+- B2、B4、B5 分别用 HCTL 自身的真实代码变更完成自举、治理和完整语义验收；fixture 不能替代 dogfood gate。
 
 ---
 
-## 26. 验收指标
+## 27. 验收指标
 
 用户应能在十秒内回答：
 
@@ -2432,7 +2704,14 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 - invalid drag/command 有清晰 rollback；
 - Harness failover 后用户仍感到是在同一个 Project/Task 中；
 - Room 不因 runtime crash 丢失；
+- 同一 Room 中至少两个 Invocation 可交错 stream；取消其中一个不影响另一个，也不阻塞继续发送；
+- RoomInvocation Retry 创建新记录并保留旧结果/provenance；切换 Room 后旧 epoch/sequence 不得串入当前 Room；
+- 向前加载历史、stream/diff/image 改变 item 高度时阅读 anchor 无可见跳动；离开底部后新内容不强制拉回，只显示 New activity；
+- 替换或完全移除 assistant-ui renderer 后，Room 数据、排序、commands 与恢复结果不变；
+- screen reader 能读出 actor、item type、状态与可用 action；高频 token 不逐个 live-announce；
 - terminal attach 不成为正常状态查询方式；
+- 关闭/重载 embedded terminal 不停止 Attempt；重连同一 target 后 screen 与 live output 可恢复；
+- terminal 高吞吐时 buffer 有界，Room/Graph/control RPC 仍响应；旧 descriptor/generation 无法输入，`TerminalInputLease` takeover 撤销旧 lease；
 - keyboard/screen reader 完成 Task 移列、打开 Request、浏览 Run node；
 - ContextBundle 可回答“这个 worker 当时看到了什么”；
 - mixed-source Kanban 能清楚区分 provider lifecycle、HCTL verification、Pending Sync、SourceChanged 与 Conflict；
@@ -2440,28 +2719,29 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 
 ---
 
-## 27. 尚未闭合的问题
+## 28. 尚未闭合的问题
 
 1. Task/ChangeSet/PR 的默认基数与多 Task Run 的 integration branch 策略；
-2. Conductor 的固定版本号以及安装、升级、备份的最终分发机制；
+2. Conductor fixed version、安装/升级/备份的最终打包方式；
 3. Repo-local Room 导出、跨 clone 迁移和隐私/保留策略；
 4. Project split/merge、Task dependency 的产品表达；
 5. Scoped Room 的最大生命周期和自动归档 policy；
 6. ACP native session import 的首批 provider 与维护预算；
 7. multi-host/remote agentd 的 A2A/transport 选择；
-8. Windows Phase 2 的 TerminalClient/RuntimeBackend/ConPTY/IME 验证；
+8. Windows Phase 2 的 xterm.js/RuntimeBackend/ConPTY/IME 验证；
 9. ELK 是否进入默认分发；
 10. 多人协作的 claim、authority chain 与 notification；
 11. budget/cost hard limit 的 UI 与中途不足策略；
-12. Phase 2 是否采用 Happy/Paseo 等现成 remote/multi-device 层，而不是自研 relay/client；
-13. Linear 在 Phase 2 是 read/link/import，还是升级为 external-authoritative full-write adapter；
-14. 本地 desktop 何时需要 webhook relay；在此之前 explicit refresh/周期 reconcile 的 freshness 与 rate budget；
-15. external title/body 中哪些字段可自动形成 revision proposal，哪些必须显式 adoption；
-16. 多人环境下 provider ACL、HCTL authority 与外部直接编辑冲突如何共同呈现。
+12. Zellij 与 tmux 的 RuntimeBackend 验证结果，以及 Phase 1 最终 backend；
+13. Phase 2 是否采用 Happy/Paseo 等现成 remote/multi-device 层，而不是自研 relay/client；
+14. Phase 1 首个 full external-authoritative adapter 选择 Linear 还是 GitHub；另一家停留在 read/link/import 还是同阶段完成双向；
+15. 本地 desktop 何时需要 webhook relay；在此之前 explicit refresh/周期 reconcile 的 freshness 与 rate budget；
+16. external title/body 中哪些字段可自动形成 revision proposal，哪些必须显式 adoption；
+17. 多人环境下 provider ACL、HCTL authority 与外部直接编辑冲突如何共同呈现。
 
 ---
 
-## 28. 思考与选型的演进路线
+## 29. 思考与选型的演进路线
 
 1. 从 HCTL1 的 Git/GitHub 约束出发，确认 hctl2-core 应保留确定性 SCM 事实。
 2. 初期把产品理解为多 Harness terminal/worktree manager，考虑 Zellij、WezTerm、cmux、Herdr。
@@ -2477,12 +2757,13 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 12. 研究 Codeg，验证结构化协议接入、Composer、Skills 分发、语义 event card 和异步 task UX 的工程可行性；同时拒绝 lead-agent routing、Conversation=Room 和 To-do=Workflow。
 13. 扩大协议与相邻产品扫描，发现 MindFS/Paseo/HAPI/Happy 已覆盖大量 provider daemon、session sync 与 remote control；Redock/Remux/ServerCC/QuickTUI/Moshi 已覆盖移动真实终端和 attention UX。
 14. 明确过去统称的 attach 实际至少包括 exact PTY、native-agent handoff、structured live inspect、semantic resume 与 replay；它们必须作为 capability 而不是一个布尔开关。
-15. 研究 Termio，确认 Harness manifest、status authority 与 session-control API 已有成熟参考；Phase 1 因而采用 ATP-inspired、版本化的 HCTL contract 与 importer fixtures，而不把 Termio 作为 RuntimeBackend。
-16. 深入 Stably Orca 后发现，它已有 experimental Run/Task/Dispatch/Decision、SQLite、fencing、幂等 mutation 与精确 terminal ownership；对照其 session/worktree-first 产品姿态后，最终确定 HCTL 自建 Project/Room-first shell，只选择性吸收边界清楚的实现和测试方法。
+15. 研究 Termio，确认 Harness manifest、status authority 与 session-control API 已有成熟参考；agentd 应优先兼容/复用协议而不是重新命名一套相同概念。
+16. 深入 Stably Orca 后发现，它已有 experimental Run/Task/Dispatch/Decision、SQLite、fencing、幂等 mutation 与精确 terminal ownership；这些模式进入 RuntimeBackend/TerminalGateway 的实现证据，但其 session/terminal-first shell 不取代 HCTL 的 Project/Room-first Workbench。
 17. 对照 Codeg/Orca 的实际交互后，进一步确认差异不在“有没有聊天或 tab”，而在谁拥有长期语义连续性：外部实现多以 Harness session/worktree/terminal 为主导航，HCTL 则由 Project Room 承担 shaping 与协作连续性，Run/Attempt 只承担执行。
-18. 重访 Task Kanban 后，决定 UI 留在 HCTL，但允许 Linear/GitHub 对配置字段提供 source authority；通过 field-level binding、snapshot/adoption、双完成状态与 outbox/read-back 保持外部 tracker 和 HCTL verification 各自真实。Phase 1 由 GitHub 先完成 production adapter，Linear 复用同一 contract 后续接入。
-19. AI 与可读源码显著降低了移植、胶水和 UI 实现成本，因此不再把静态可判定事项留作待研究项；流程改为源码审计后直接定案、实现最终纵向路径，再用实机和故障注入验证无法静态证明的运行事实。
-20. 最终收敛为：Repo-local Project/Task/Room + passive Workflow + deterministic control + capability-first HarnessAdapter + 可替换 RuntimeBackend/TerminalClient。HCTL 的独立价值集中在 Seat fallback、quorum、regate、Revision/Receipt 与这些语义的产品化，而不是复刻通用 Agent IDE、terminal 或 mobile client。
+18. 重访 Task Kanban 后，决定 UI 留在 HCTL，但允许 Linear/GitHub 对配置字段提供 source authority；通过 field-level binding、snapshot/adoption、双完成状态与 outbox/read-back 保持外部 tracker 和 HCTL verification 各自真实。
+19. 收敛为：Repo-local Project/Task/Room + passive Workflow + deterministic control + capability-first HarnessAdapter + 可替换 RuntimeBackend/TerminalClient。HCTL 的独立价值集中在 Seat fallback、quorum、regate、Revision/Receipt 与这些语义的产品化，而不是复刻通用 Agent IDE、terminal 或 mobile client。
+20. 重访聊天 UI 后，将 RoomStore/RoomProjector/RoomProjectionStore、并发 Invocation 与 timeline order 固定为 HCTL contract；`virtua`、assistant-ui scoped renderer 和成熟聊天产品只解决 viewport、message parts 与测试经验；Tiptap 成为唯一 Semantic Composer。
+21. 终端进入同一 Workbench 后，选择 `@xterm/xterm` 作为窄内嵌 renderer，通过 binary TerminalTransport 连接 agentd；WezTerm 保留为可选外部逃生通道，PTY/runtime truth 不迁入 Electron。
 
 ---
 
@@ -2493,6 +2774,8 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 | Repo | Git repository 的逻辑身份与可共享配置/Artifact 边界 |
 | Repo Instance | 一个本地 clone/git-common-dir；linked worktree 只拥有 checkout_id/ChangeSet identity |
 | Project | 具名目标、Room、Task、Artifact、Run 的聚合边界 |
+| Product-native Core | HCTL 的 Project/Room-first 推进体验：Repo–Project lifecycle、Project continuity 与 project-driven control；说明用户为何使用 HCTL |
+| Architecture-minimum Kernel | 更换 UI、terminal、Task/Chat provider 或 Workflow Engine 后仍必须保持的 identity、authority、revision/evidence、execution governance 与 reconciliation；说明系统为何可信 |
 | Task | 可独立排序、验收和完成的用户工作 |
 | TaskRevision | 不可变 Task contract |
 | TaskOperationalState | source_workflow_state/非终态 stage、rank、priority、owner、blocker refs 与独立 hctl_lifecycle_state；每个字段携带 authority，local 字段用 state_version，external 字段用 source revision/digest 与 sync state；board_lane/health/attention 为派生投影 |
@@ -2503,7 +2786,14 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 | Source Divergence | Provider 最新 contract projection 与已采用 TaskRevision 不一致的状态；不自动改写 active Run |
 | Semantic Completion | HCTL 在 acceptance、evidence、Receipt/policy 验证后记录的完成事实；不等于 provider Done/Closed |
 | TaskCompletionReceipt | 绑定 TaskRevision、acceptance policy、adopted source、provider head、evidence 与 actor 的 typed 完成证明；Reopen 不删除历史 Receipt |
+| ChangeSetWriteLease | control/core 对一个 ChangeSet/worktree 的唯一授权写入租约；不同于 terminal input 权限 |
 | Room | 多参与者持久协作空间 |
+| RoomStore | repo-local SQLite 中 Room identity、message、Invocation intent 与 source links 的 durable store |
+| RoomProjector | 将 Room message、Invocation、Request、Artifact/Receipt 等 typed source 投影为稳定、有序 timeline item 的 query-side 组件 |
+| RoomProjectionStore | Workbench 内可重建的 normalized Room cache；通过 snapshot/delta 接收数据，不是事实源 |
+| RoomTimelineItem | 带 stable ID、Room sequence、actor、provenance 与 versioned blocks/actions 的 timeline 投影单元 |
+| VirtualizedRoomTimeline | 负责 Room viewport、分页锚点、follow-bottom、unread 与 focus retention 的 React view |
+| RoomMessageRendererPort | 可替换的 message/part/card/action 表现接口；输入 data-only view model，输出 typed command intent |
 | RoomInvocationRecord | 无 Run 的 bounded Harness 调用记录 |
 | Scoped Room | 由 Request/Incident 派生的临时活跃、持久记录商议室 |
 | Run | 冻结 Workflow 的一次自动执行 |
@@ -2523,8 +2813,13 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 | InvocationBinding | 一次调用冻结的 participant/harness/skill/context 快照 |
 | HarnessAdapterBinding | 一次 Invocation/Attempt 冻结的 ACP、provider protocol、SDK、PTY/hook 等接入方式及 capability snapshot；内部技术概念 |
 | ContextBundle | 发给 worker 的可复现上下文 |
+| ComposerDocument | Tiptap/ProseMirror 的版本化编辑器 draft；不是 Room message 或 Harness prompt |
+| ComposerEnvelope | Semantic Composer 发送时生成的 data-only wire object，携带文本、stable references、附件与 commands |
 | RuntimeBackend | 承载/观察/控制 process、PTY 或 vendor runtime 的可替换实现接口；不是用户领域对象 |
-| TerminalClientAdapter | 打开/聚焦某个授权 attach target 的客户端接口；Phase 1 默认实现为 WezTerm |
+| TerminalClientAdapter | 将授权 AttachDescriptor 呈现为内嵌或外部终端的客户端接口；Phase 1 默认内嵌实现为 `@xterm/xterm`，WezTerm 为可选外部实现 |
+| TerminalTransport | 连接 agentd TerminalGateway 的短生命周期双向字节流，提供 sequence/backpressure/input/resize；不是 PTY/runtime truth |
+| EmbeddedTerminalClient | Workbench 内的 xterm.js presenter/control surface；不拥有 process、PTY、session 或 writer authority |
+| TerminalInputLease | agentd 对一个 terminal target 的唯一 input/resize 权限租约；可与多个 observe connection 并存 |
 | AttachCapability | exact PTY、native handoff、structured live、semantic resume/replay 等非互斥能力集合 |
 | AttachDescriptor | agentd 签发的短期接入描述符，绑定 runtime target、generation、能力、权限与 expiry |
 | Execution Chat Projection | 绑定单一 `attempt_id` 或 `invocation_runtime_id` 的 transcript/event/control 聊天式投影；不是 Room，也没有独立 conversation identity |
@@ -2549,7 +2844,7 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 10. TaskOperationalState 与 TaskRevision 分离；local-authoritative 字段使用 `state_version`，external-authoritative 字段使用 provider revision/digest、outbox 与 read-back；两种并发 token 不得混用。
 11. Run 固定 WorkflowRevision；运行中不静默漂移。
 12. Workflow canonical JSON 由程序生成并 validate，不能部署自由文本 JSON。
-13. 只有 hctl2-control 可领取/完成 Conductor HCTL external task。
+13. 只有 hctl2-control 可领取/完成/失败/信号 Conductor HCTL external task；所有 HCTL 内外 Workflow View 均只读。
 14. 每个被 control poll 的 HCTL external task execution 恰对应一个 Obligation；Conductor control/system task不对应 Obligation；Obligation → 1..N Seat；Seat → 0..N Attempt；candidate fallback 只在同一 Seat 新增 Attempt。
 15. 业务 reject 不换候选裁判；技术失败才可能 fallback。
 16. 每个 Verdict/Receipt 绑定 subject revision 与 policy digest。
@@ -2564,14 +2859,14 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 25. ContextBundle 由 control 生成并带 digest/provenance；worker 不直接读 Room DB。
 26. ACP/provider/native transcript 与 Execution Chat Projection 是 trace/control projection，不是 Room source of truth。
 27. Raw Room message 不自动进入 Git；Memo 必须显式 publish。
-28. Workbench、React store、Board、Graph、ACP card 都是 projection。
-29. TerminalClientAdapter 是 presenter/control client，不是 runtime truth；WezTerm 只是 Phase 1 实现。
+28. Workbench、React store、Board、Graph、ACP card 都是 projection；HCTL-native UI 不拥有外部客户端所没有的绕过 admission 特权。
+29. TerminalClientAdapter 是 presenter/control surface，不是 runtime truth；`@xterm/xterm` 是 Phase 1 默认内嵌实现，WezTerm 只是可选外部客户端。
 30. Room membership 不等于 approve/merge/terminal/secret 权限。
 31. 所有 cross-service command 使用 idempotency、inbox/outbox 与 fence；Start Run 的本地 durable intent 必须先于 Conductor execution。
 32. candidate fallback 创建新 Attempt；engine-level retry 创建新 Obligation，后续执行使用新 Attempt；短暂 transport retry 可留在当前 Attempt；旧 generation 失权。
 33. 无 Run RoomInvocation 不自动重放或恢复成新 invocation；未知状态标 Interrupted，由用户显式 Retry。
 34. 原生 session resume、structured reattach 与 exact PTY attach 都不能替代 Git/checkpoint/Receipt。
-35. 一个产品版本只使用一种 Composer editor engine。
+35. 一个产品版本只使用一种 Composer editor engine；Phase 1 为 Tiptap/ProseMirror。
 36. HarnessAdapterBinding 必须冻结并显式暴露能力；exact PTY、native handoff、structured live、semantic resume 与 replay 不得混称 attach。
 37. Codeg 的 Conversation、To-do、Agent、Workspace 名称不得进入 HCTL2 公共 schema。
 38. 任何外部产品的 Project、Task、Run、Session、Conversation 名称不得反向进入 HCTL2 公共 schema。
@@ -2588,11 +2883,22 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 49. Provider 删除只形成 tombstone，不删除 Task、Run、Revision、Receipt 或历史。
 50. 外部字段的 SQLite snapshot/mirror 不是第二份 provider truth；uncertain write 在 read-back 前不得宣称 committed 或盲目重试。
 51. Immutable external entity identity 与 board placement identity 分离；GitHub Issue 与 ProjectV2Item 不得混作一个 ID。
-52. Pending source snapshot 不自动进入 worker Context；只有被采用为 TaskRevision或被用户显式引用时才可进入，并在 ContextManifest 标注来源与 adoption state。
+52. Pending source snapshot 不自动进入 worker Context；只有被采用为 TaskRevision 或被用户显式引用时才可进入，并在 ContextManifest 标注来源与 adoption state。
 53. `source_workflow_state`、`hctl_lifecycle_state` 与派生 `board_lane` 是三种不同事实；Done/Reopen/Cancel 只能通过 typed HCTL intent。
 54. Run 必须冻结具体 TaskSourceBindingRevision；binding migration 不得改变历史 Run 的 scope、mapping 或 authority。
 55. Complete/Reopen/Cancel lifecycle event、当前投影与相应 provider outbox 必须原子提交；provider read-back 只确认同步，不决定 HCTL lane。
 56. provider lifecycle 已终态、但 `hctl_lifecycle_state` 仍为 Open 的 external Task 不参与普通 rank/reorder；跨 provider/ordering scope 的 `before_task_id` 必须被拒绝。
+57. Room 不等于 assistant thread；Participant/actor 不得被压缩为只有 `user|assistant|system` 的二元对话模型。
+58. Room 没有全局 running、cancel 或 queue；执行状态和控制动作必须绑定具体 Invocation/Attempt。Retry 创建新 Invocation/Attempt 并保留旧 provenance。
+59. assistant-ui Thread/runtime/store/queue/cloud schema 不得进入 SQLite、IPC 或公共领域模型；它只能位于可替换的 message/part/action renderer adapter 后。
+60. Timeline order 只使用 control 分配的稳定 Room sequence；timestamp、DOM/virtualizer index 与完成顺序都不是 identity，也不能使 fan-out 结果重排。
+61. Tiptap ComposerDocument、ComposerEnvelope 与 RoomMessage 是三个不同对象；editor state 或显示 label 不得直接成为 routing/prompt truth。
+62. Message renderer/action UI 只能发 HCTL typed command，不得直接启动 Harness、修改 Room truth、完成 Request 或签发 Receipt。
+63. Raw token delta、provider transcript 与 terminal scrollback 不自动成为 Room history；只有规范化结果、重要 milestone 或用户显式分享才进入 Room。
+64. Embedded terminal renderer 只能持有短期 connection；observe/input/takeover 最终由 agentd 验证，同一 target 默认允许多 observer 但至多一个 `TerminalInputLease` owner。
+65. Dogfood 必须使用与普通 Repo 相同的公开产品 seam；禁止为 HCTL 自身建立特殊路径、手改 SQLite、复制隐藏 prompt 或绕过 Receipt。
+66. 自举由稳定版本 N 治理隔离环境中的 N+1；bootstrap/recovery 脚本不得成为 Room、Task、Run、Workflow 或 Receipt 的第二事实源。
+67. “可操作” surface 只向事实 owner 提交受权 input/typed intent；任何原生或外部客户端都不得直接修改 SQLite、provider mirror 或 Workflow 状态机。
 
 ---
 
@@ -2617,6 +2923,12 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 
 ### Product 与实现 Radar
 
+- [First Tree Repository](https://github.com/agent-team-foundation/first-tree)
+- [First Tree v0.5.20](https://github.com/agent-team-foundation/first-tree/releases/tag/v0.5.20)
+- [First Tree Research Baseline 7fb6a950](https://github.com/agent-team-foundation/first-tree/tree/7fb6a950f457041ac4a8f30db88b4bb500dbcd32)
+- [First Tree Architecture Rules](https://github.com/agent-team-foundation/first-tree/blob/7fb6a950f457041ac4a8f30db88b4bb500dbcd32/AGENTS.md)
+- [First Tree Context Tree Policy](https://github.com/agent-team-foundation/first-tree/blob/7fb6a950f457041ac4a8f30db88b4bb500dbcd32/packages/client/src/runtime/assets/context-tree-policy.md)
+- [First Tree Feishu Cross-surface QA Contract](https://github.com/agent-team-foundation/first-tree/blob/7fb6a950f457041ac4a8f30db88b4bb500dbcd32/packages/qa/cases/cross-surface/feishu-agent-channel.md)
 - [Stably Orca Repository](https://github.com/stablyai/orca)
 - [Stably Orca Research Baseline 09ec516](https://github.com/stablyai/orca/tree/09ec516ae50b7b83fa65343d9ad96159e3fe71fc)
 - [Stably Orca Orchestration](https://www.onorca.dev/docs/cli/orchestration)
@@ -2652,9 +2964,21 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 - [React Aria Drag and Drop](https://react-aria.adobe.com/dnd)
 - [React Flow](https://reactflow.dev/)
 - [Dagre](https://github.com/dagrejs/dagre)
-- [assistant-ui Mentions](https://www.assistant-ui.com/docs/guides/mentions)
-- [assistant-ui External Store](https://www.assistant-ui.com/docs/runtimes/custom/external-store)
+- [Tiptap Custom Extensions](https://tiptap.dev/docs/editor/extensions/custom-extensions)
+- [Tiptap React Node Views](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)
+- [virtua](https://github.com/inokawa/virtua)
+- [assistant-ui MessagePrimitive](https://www.assistant-ui.com/docs/api-reference/primitives/message)
+- [assistant-ui MessagePartPrimitive](https://www.assistant-ui.com/docs/api-reference/primitives/message-part)
+- [assistant-ui Scoped Providers](https://www.assistant-ui.com/docs/api-reference/context-providers/scoped-providers)
+- [Rocket.Chat Message List](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)
+- [Mattermost Dynamic Virtualized List](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)
+- [Zulip Unread Messages](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md)
+- [xterm.js](https://github.com/xtermjs/xterm.js/)
+- [xterm.js Flow Control](https://xtermjs.org/docs/guides/flowcontrol/)
+- [xterm.js Security](https://xtermjs.org/docs/guides/security/)
+- [Electron MessagePorts](https://www.electronjs.org/docs/latest/tutorial/message-ports)
 - [Electron Security](https://www.electronjs.org/docs/latest/tutorial/security)
+- [WezTerm Embedding Discussion](https://github.com/wezterm/wezterm/discussions/6854)
 - [WezTerm CLI](https://wezterm.org/cli/cli/index.html)
 
 ### Runtime 与 Workflow
@@ -2695,14 +3019,17 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 
 ## 附录 D：Implementation Evidence Radar（信息性）
 
-本附录只登记“哪些现有实现证明了哪些能力、可通过何种接缝复用”。它不定义 HCTL 的对象模型、导航、事实源或产品路线。研究快照为 2026-08-12 至 2026-08-13；快速演进项目在实际复用时必须固定 tag/commit 并重新运行 contract tests。
+本附录只登记“哪些现有实现证明了哪些能力、可通过何种接缝复用”。它不定义 HCTL 的对象模型、导航、事实源或产品路线。研究快照为 2026-08-12 至 2026-08-14；快速演进项目在实际复用时必须固定 tag/commit 并重新运行 contract tests。
 
 ### D.1 Semantic collaboration、Workbench 与 Task surface
 
 | 实现证据 | 已验证的能力切片 | HCTL 计划用途 | 复用等级/边界 |
 | --- | --- | --- | --- |
-| Codeg v0.24.0 | ACP catalog、typed Composer、Skills、event cards、worktree、固定 task/review pipeline | Phase 1 ComposerPort 的固定版本供体；Harness Catalog、event renderer 与 review UX 参考 | Apache-2.0；选择性移植；Conversation/To-do/store/wire schema 不进入 HCTL |
-| Stably Orca | worktree/terminal/diff/remote、精确 PTY ownership、实验性 Run/Task/Dispatch | terminal/worktree/fencing 的选择性实现证据 | MIT；固定研究 commit `09ec516…`；不采用 whole shell 或 orchestration truth |
+| Codeg v0.24.0 | ACP catalog、typed Composer、Skills、event cards、worktree、固定 task/review pipeline | ComposerPort、Harness Catalog、event renderer 与 review UX 参考 | Apache-2.0；选择性移植；Conversation/To-do 不进入 HCTL schema |
+| First Tree v0.5.20；Feishu bridge 研究基线 `7fb6a95…` | Git-native Context Tree、持久 Chat、Web/CLI/daemon/local Agent Runtime 与 GitHub 集成；研究基线另有 Feishu canonical-message bridge、at-least-once inbox/dedupe、external identity/thread binding、connection lease/epoch fence 与 cross-surface QA | Project/Room continuity、Memo/Context promotion、Harness provider/Skill reconciliation、人工 Request UX，以及外部 Room bridge 的 binding、幂等 ingress/egress、权限降级与恢复测试参考 | Apache-2.0；可选择性移植独立代码，但不采用其 Team/Chat/Context Tree 领域模型、Fastify/PostgreSQL server truth 或 hosted identity；项目自身明确不是 orchestration framework |
+| Stably Orca | worktree/terminal/diff/remote、精确 PTY ownership、实验性 Run/Task/Dispatch | terminal/worktree/fencing/reconnect 的选择性源码与行为供体 | MIT；固定研究 commit `09ec516…`；不采用其 shell/domain truth |
+| assistant-ui | scoped Message/MessagePart/action rendering pattern | `RoomMessageRendererPort` 后的可替换表现层 | MIT；不采用 Thread/runtime/store/composer/cloud/queue |
+| virtua | React 动态高度虚拟列表，已有长聊天 timeline 使用经验 | `VirtualizedRoomTimeline` 的 viewport primitive | MIT；不拥有 Room identity、order、pagination 或 follow policy |
 | Superset | 多 worktree、persistent terminal、Changes/PR/CI | worktree/diff/attention UX 证据 | 行为参考；其 Project/Workspace 名词不映射 HCTL |
 | Multica | Issue Board、Inbox、Agent/Runtime 分离、timeline | Task/Attention/trigger preview 交互证据 | 行为参考；不采用 LLM coordinator 作 control truth |
 | Claude Tag | 共享 channel/thread、持久对话与临时 runtime 分离 | Project Room 与低噪声通知习惯 | 产品/UX 证据 |
@@ -2713,7 +3040,10 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 
 | 实现证据 | 已验证的能力切片 | HCTL 计划用途 | 复用等级/边界 |
 | --- | --- | --- | --- |
-| Termio | manifest、stable session URI、watch/heartbeat、signal、native terminal fleet | ATP-inspired manifest/import fixtures 与 session-control 行为证据 | MIT；固定研究 commit `d1fdac8…`；ATP 是其自有协议；不是 Phase 1 backend |
+| xterm.js | Electron/browser terminal frontend、CJK/IME、a11y、GPU/addon 生态 | Phase 1 EmbeddedTerminalClient | MIT；frontend only，不拥有 PTY/runtime truth |
+| WezTerm | 完整跨平台 terminal、CLI 与个人配置 | 可选 ExternalTerminalClient / escape path | MIT；不嵌入 GUI，不采用内部 mux protocol 作 HCTL ABI |
+| wterm + Ghostty core | React/DOM、可插拔 terminal core | 后续 renderer watchlist | Apache-2.0；当前不替换 xterm.js，需等待 IME/conformance 成熟 |
+| Termio | manifest、stable session URI、watch/heartbeat、signal、native terminal fleet | ATP-inspired manifest importer/fixtures 与 session-control 行为参考 | MIT；固定研究 commit `d1fdac8…`；ATP 是其自有协议 |
 | Herdr | server-owned PTY、agent-aware status、semantic/raw control | status authority 与 exact attach contract | Apache-2.0；选择性参考/适配 |
 | HAPI | 本地 native agent 与远端 structured handoff | provider-specific HarnessAdapter/handoff 模式 | AGPL；不作为 Task/Workflow backend |
 | Happy | daemon、E2EE conversation sync、remote spawn、多端 client | Phase 2 multi-device/E2EE 实现证据 | MIT；不进入 Phase 1 truth |
@@ -2728,11 +3058,11 @@ Termio 的 ATP/session-control、Codeg 的 Composer/ACP、Orca 的 PTY ownership
 | 实现证据 | 支持的 HCTL 主张 | 采用方式 |
 | --- | --- | --- |
 | Conductor OSS | external worker、workflow state/history/retry 可与 effect execution 分离 | Phase 1 selected dependency，置于 WorkflowEngineAdapter 后 |
-| Dagu | data-first graph、runner/action/human approval 已有成熟实现 | 历史选型与边界证据；runner ownership 与 HCTL control contract 不同，不作 Phase 1 backend |
+| Dagu | data-first graph、runner/action/human approval 已有成熟实现 | 选型证据；runner ownership 与 HCTL control contract 不同，不作 Phase 1 backend |
 | VirtusLab Orca | typed workflow stages、Git checkpoint/review loop | Workflow/Role DSL 与 checkpoint 行为参考，不是 Workbench/runtime |
 | Linear / GitHub Projects | 外部 tracker 可以拥有 Task operational fields，HCTL UI 可作 projection/command surface | TaskSourceAdapter；按字段 authority、snapshot/outbox/read-back 集成 |
 
-Radar 结论只作用于组件 sourcing：`Adopt dependency / Port component / Adapt protocol / Validate selected integration / Behavior reference / Defer`。不得给整个产品一个“取代 HCTL”的总分，也不得把 donor 的 Session、Conversation、Project、Task 或 Run 名称带入 HCTL 公共 schema。
+Radar 结论只作用于组件 sourcing：`Adopt dependency / Port component / Adapt protocol / Behavior reference / Defer`。不得给整个产品一个“取代 HCTL”的总分，也不得把 donor 的 Session、Conversation、Project、Task 或 Run 名称带入 HCTL 公共 schema。
 
 ---
 
@@ -2750,6 +3080,6 @@ HCTL2 的产品主语是 Repo 中的 Project、Task 与 Room。用户从稳定�
 
 实现上，HCTL 将成熟的 Composer、ACP、worktree、runtime、terminal、remote client、Kanban primitive 和 workflow storage 放进稳定 contract 后，只自主拥有跨组件的语义权威：
 
-> Room 用于形成上下文，Task 用于追踪承诺，Run 用于自动施工，Conductor 保存流程状态，control 选择和驱动 Harness，core 用 Revision 与 Receipt 保证结果有效；RuntimeBackend、TerminalClient 与选择性移植的外部 UI/runtime 组件是可替换实现层，Project/Room-first Workbench shell 由 HCTL 自己拥有，但不成为领域事实源。
+> Room 用于形成上下文，Task 用于追踪承诺，Run 用于自动施工，Conductor 保存流程状态，control 选择和驱动 Harness，core 用 Revision 与 Receipt 保证结果有效；RuntimeBackend、TerminalClient 与所采用的 UI primitives 始终只是可替换的执行和表现层。
 
-§20 已冻结 Phase 1 的采用、移植与适配边界；§25 的验证用于证明已选实现满足 HCTL contract，而不是重新比较整套产品。最终发布门槛取决于 HCTL2 能否以较小的新增表面积证明：Project/Room-first 的推进体验，以及 Seat fallback、quorum、regate、revision-bound Receipt，确实降低人工总线与故障恢复成本。
+具体模块采用、移植或适配必须通过 §20/§26 的 contract 与故障注入测试，而不是由产品总分决定。最终 Go/No-Go 取决于 HCTL2 能否以较小的新增表面积证明：Project/Room-first 的推进体验，以及 Seat fallback、quorum、regate、revision-bound Receipt，确实降低人工总线与故障恢复成本。
