@@ -2,6 +2,14 @@
 
 > 本文是 Project 模块的唯一领域权威；Chat Room 是其操作合同，不拥有独立领域事实。模块交接见[连接合同](./connections.md)，通用机制见[系统边界](./system.md)。
 
+## 为什么存在
+
+Harness 的会话、终端和 worktree（Git 工作树）都会结束或被替换；Project 的目标、论证、Participant（参与者）关系、来源和未决问题却必须继续存在。Project 模块保存的正是这份长期事实，Chat Room 则是所有 Harness 都消失之后仍然可以恢复的协作现场——它回答“我们要解决什么、为什么、依据是什么，以及哪些讨论已经足够稳定，可以成为承诺”。
+
+以 Room 为中心不等于所有工作都必须聊天：Kanban、Workflow 图和 Terminal 各有自己的操作面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
+
+Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”Agent；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。
+
 ## 模块职责
 
 Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实。它不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
@@ -73,6 +81,8 @@ InvocationBinding 还固定 invocation generation、ContextManifest、逻辑 Par
 
 当执行需要输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中 CAS Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配 ACK/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
 
+Request 的应答面按需升级，不是每个问题都要开一个房间：默认在卡片或详情里直接回答；需要多轮论述、多位 Participant 或共同编辑时才升级为 Scoped Room；涉及密钥等敏感内容时走安全输入通道，不进入普通消息、trace 或回放；只有诊断或接管精确执行时才连接终端。每一级都绑定同一个 Request 与阻塞范围，不创建平行事实。
+
 Request 的完整跨模块字段合同只在[连接合同](./connections.md#跨模块-request-回路)定义；本模块不另建一套同义字段。活动 Request 的问题、目标人或角色、`owner_ref + affected_revision_ref + blocked_scope + owner generation/state_version + dedupe root` 和获准解决动作不得原地修改。上述阻塞身份相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；任一 owner/version/scope 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
 
 ## Chat Room 场景
@@ -83,8 +93,10 @@ Chat Room 是 Project 的主要操作场景，提供：
 - `@` Participant/Role、`/` 类型化动作、`$` Skill、`#` 文件/Artifact/消息引用；
 - 并发 RoomInvocation 的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和 Needs Attention 投影；
-- mention/recipe 提交前的 Trigger Preview，必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker；
+- mention 提交前的 Trigger Preview，必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
+
+常见的多参与者用法——例如让两个 Harness 各自独立研究同一个问题、再并排对比结论——不需要专门的概念：它只是一次预填好多个调用的 Trigger Preview，人确认后同时创建几个独立的 RoomInvocation。这类用法可以在各个 Room 中重复使用；将来若要沉淀为可共享的一等对象，再另行设计。
 
 普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。Agent-authored Message、ResultProposal、模型总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。重复且无需临场判断的协作边应进入 [Workflow](./run.md)，由 reducer 只按冻结 WorkflowRevision 创建。
 

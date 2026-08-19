@@ -2,6 +2,12 @@
 
 > 本文是 Harness 模块的唯一领域权威；Terminal 是其操作合同，不拥有独立领域事实。模块交接见[连接合同](./connections.md)，通用机制见[系统边界](./system.md)。
 
+## 为什么存在
+
+进程、PTY（伪终端）、worktree（Git 工作树）和终端连接都是可替换的物理资源：它们可以丢失、重建和接管，但不能反过来定义 Project、Task 或 Run 的事实。Harness 模块的职责，是把上层的一次授权变成可观察、可隔离、可恢复的物理执行，并诚实上报发生了什么——执行结束了不等于上层成功了。
+
+正常路径上用户不需要进入终端：状态、diff、证据和 Request（请求卡）应该先把事情说清楚（默认无界面，headless by default）。观察手段是一道阶梯——结构化执行流是默认视图，PTY 转录是二级诊断，终端接管是最后一级。如果日常了解进度要靠开终端，说明上层投影失职。
+
 ## 模块职责
 
 Harness 模块把 [Project](./project.md) 的一次 InvocationBinding 或 [Run](./run.md) 的 AttemptSpec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。
@@ -67,6 +73,8 @@ agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 contro
 每个 ResultProposal 固定 proposal ID、owner kind/ID、execution generation、InvocationBinding 或 AttemptSpec digest、实际 Harness/Runtime binding revision、输出 schema、ChangeSetRevision/Artifact candidate、Evidence refs、producer sequence、适用 lease/fence 和 idempotency key。Harness 可以提交提案，但 Project/Run 才能准入；旧 generation 或越界输出只能留作审计。
 
 Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄能力，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant，但即使在执行环境中调用 `hctl2 task complete`、`task cancel` 或 Room fan-out，control 也必须按认证得到的 execution provenance 拒绝，不能依赖 Prompt 自律。
+
+原生会话导入（native session import）是可选能力：由用户显式发起导入，保留外部会话 ID 与路径来源，只把用户挑选的摘要或引用带入 ContextBundle，解析器使用固定版本的样本测试。它不把外部历史复制成 Room 事实，也不是第一阶段的交付前提。
 
 ## Terminal 场景
 

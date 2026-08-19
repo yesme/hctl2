@@ -2,6 +2,12 @@
 
 > 本文是 Task 模块的唯一领域权威；Kanban 是其操作合同，不拥有独立领域事实。模块交接见[连接合同](./connections.md)，通用机制见[系统边界](./system.md)。
 
+## 为什么存在
+
+“Harness 跑完一轮”“进程退出”“代码提交”“评审通过”“CI 绿了”“外部 Issue 关了”和“Task 验收完成”是七件不同的事。Task 模块的意义，是把“已承诺交付什么、验收标准是什么、现在到哪一步”从聊天、执行和外部系统中独立出来，让完成成为一个可核验的事实，而不是一种感觉。
+
+Kanban（看板）是它的操作场景。卡片的职责是把复杂的运行时细节压缩成可以直接行动的信息：一眼看到承诺内容、谁在做、卡在哪里、证据齐不齐、下一步该点什么。
+
 ## 模块职责
 
 Task 是 Project 中一项可排序、可指派、可阻塞、可验收的长期承诺。它不等于自由讨论、外部 Issue、Workflow Node、worktree 或一次 Harness 作业。
@@ -69,6 +75,8 @@ TaskRevision
   → TaskCompletionReceipt
 ```
 
+这条路径的产品标尺是：走完它，必须比直接开一个终端、用单个 Harness 干完这件事更轻。如果在 HCTL 里完成一件简单事反而更重，用户就会绕开系统，承诺追踪随之失效；若简单工作必须先画一张施工图，那是产品设计的失败，不是用户的失败。
+
 简单工作不需要先画 Workflow，也不伪造只能由 Run 产生的 Gate Receipt；TaskRevision 的验收合同若要求 HCTL 内部独立评审，必须使用带 Gate 的 [Run](./run.md)，若接受外部 SCM 评审则引用可回读的精确外部证据。需要持久重试、候选切换或 Gate 时，Task 才显式授权 Run。第一阶段一个 Run 绑定 0..1 个 TaskRevision，同一 Task 最多一个活动 Run。
 
 StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Context/AttemptSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。external_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
@@ -76,6 +84,10 @@ StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `Pending
 ## Kanban 场景
 
 Kanban 是 Task 的主要操作场景。卡片显示 TaskRevision、来源、排序、负责人、阻塞、Needs Attention、活跃 Run、Request、Artifact/PR/CI、外部生命周期和 HCTL 验证状态。Board lane 是投影，不是 Task lifecycle。
+
+卡片不只展示状态，还把后续动作显式化为可点的入口：返工、继续推进、追问、复核等，各自映射到拥有该动作的模块既有的类型化命令——追问对应 Request 创建，返工对应 Run 的返工路径，其余同理。它们不是往聊天里丢一句话，也不在本合同之外新增命令。准备动作（环境、依赖探测）与真正的施工在卡片时间线上分开展示；Agent 的进度自述始终标注为参考信息。这些交互源自对成熟外部工具的验证观察，但在 HCTL 中一律置于 TaskRevision、权限和 Receipt 之下。
+
+Board 不说谎：外部写回在确认前显示待同步，排队中的操作不显示假成功，乐观更新必须可回滚并始终标注不确定状态。两边分歧时如实展示双重状态——外部已 Closed 而 HCTL 未验证时，卡片保留最后有效的非终态 lane 并标注“外部已关闭 · HCTL 未验证”；HCTL 已验证而外部写回未确认时显示“已完成 · 已验证 · 外部同步中”。
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |

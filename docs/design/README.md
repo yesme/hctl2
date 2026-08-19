@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.8.1<br>
+> 状态：规范性索引 · 草案 v0.9.0<br>
 > 日期：2026-08-19
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
@@ -13,6 +13,28 @@ HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命�
 | [Harness](./harness.md) | Terminal | Worker/Harness 绑定、ChangeSet、运行时、终端、执行证据 | Workbench xterm、CLI / ACP、Harness、RuntimeBackend |
 
 场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact 投影。跨模块引用不转移事实所有权。
+
+四个模块对应[愿景文档](./vision.md)中“意图 → 承诺 → 治理 → 运行”的四个阶段，但不是部署组件，也不是界面菜单：从 Project 到 Harness，越靠前越接近人的意图，越靠后越是可替换的执行资源。第一次阅读建议先看[愿景与设计原则](./vision.md)，再回到本页和四个模块文档。
+
+## 对象关系
+
+```mermaid
+flowchart TD
+    R["Repo"] --> RI["RepoInstance 0..N"]
+    RI --> RR["Repo Room"]
+    R --> P["Project 0..N"]
+    P --> PR["Project Room（每实例一个投影）"]
+    P --> T["Task 0..N"]
+    P --> RN["Run 0..N"]
+    T --> TR["TaskRevision 只追加"]
+    RN -->|Manifest 冻结引用| W["WorkflowRevision"]
+    RN --> O["Obligation 0..N"]
+    O --> S["Seat 1..N"]
+    S --> A["Attempt 0..N"]
+    A --> CS["ChangeSet / Runtime（Harness 模块）"]
+```
+
+Room 与 Run 可以互相引用，但不存在包含关系：Project Room 可以展示多个 Run；Scoped Room 可以由某个 Run 的 Request 派生；Room 不拥有 Workflow token 或运行时，Run 也不需要自己的 Room。
 
 ## 场景客户端与受控端口
 
@@ -43,6 +65,7 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 为避免再次形成补丁链，后续修改遵守以下硬边界：
 
 - 只有四个模块文件可以定义模块特有的领域名词、状态、写入者和不变量；场景不得重定义它们。
+- `vision.md` 只回答“为什么、什么体验、按什么原则取舍”，不定义对象、状态或命令；与模块合同冲突时以模块合同为准。愿景与原则不因篇幅或“与合同重复”被删除——权威去重针对合同，不针对解释。
 - `connections.md` 只定义模块交接，`system.md` 只定义共享机制，`delivery.md` 只定义范围与验证，evidence 只记录来源。
 - 一个概念只在拥有它的模块完整定义一次；其他文件用链接和可观察结果引用。
 - 新持久对象必须对应第一阶段中的稳定引用、命令目标或恢复边界；否则先作为实现细节。
@@ -52,9 +75,11 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 
 ## 支持文档
 
+- [愿景与设计原则](./vision.md)：一句话定位、失败模式、四阶段心智模型、目标体验与设计原则。
 - [系统边界与适配器合同](./system.md)：组件、事实源、命令、单写者与恢复。
 - [四模块连接与端到端闭环](./connections.md)：类型化交接、事务边界、版本链和跨切恢复。
 - [第一阶段、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、契约测试和未决项。
+- [术语对照表](./references/glossary.md)：中英对照与一句话含义；语义以模块文档为准。
 - [从 HCTL 到 HCTL2 的来时路](./references/decision-history.md)：关键决策转折的非规范说明；它不形成第二套合同。
 - [实现证据](./references/implementation-evidence.md)：固定版本、许可证和采用边界；它不定义 HCTL 语义。
 

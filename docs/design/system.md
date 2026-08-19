@@ -17,7 +17,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 
 ## 固定内核与受控端口
 
-固定内核实现四模块定义的稳定身份、Revision、权限、字段权威、领域归约与 Receipt；本文件只拥有共享 command envelope、扩展绑定、outbox/inbox、单写者和恢复机制。
+固定内核是一个以仓库为边界的项目语义控制面（repo-scoped project semantic control plane）。固定内核实现四模块定义的稳定身份、Revision、权限、字段权威、领域归约与 Receipt；本文件只拥有共享 command envelope、扩展绑定、outbox/inbox、单写者和恢复机制。
+
+即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，内核所守的身份、权限、版本证据、治理与恢复边界也必须原样保留——这是[愿景文档](./vision.md#产品原生核心与架构最小内核)中“产品原生核心与架构最小内核”在系统层的落点。
 
 可以替换的端口包括：
 

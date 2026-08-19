@@ -68,15 +68,17 @@ CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBac
 
 ## 自举阶段
 
-| 阶段 | 事实切换 |
-| --- | --- |
-| B0 | ID、SQLite、command/query/event、进程和恢复底座 |
-| B1 | Project Room 与本地 Task 影子试用 |
-| B2 | 无 Run 切片成为真实开发入口 |
-| B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 |
-| B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate |
-| B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 |
-| B6 | 稳定版本 N 构建、验证、升级和回滚隔离环境中的 N+1 |
+HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能力分级，而不是“上线前/上线后”二分；每一级都走普通的命令与查询入口，并包含真实的失败路径。打开过自己的仓库，或替自己生成过一次代码，都不算完成自举。
+
+| 阶段 | 事实切换 | 晋级验收 |
+| --- | --- | --- |
+| B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
+| B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
+| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 完成一次真实的非文档代码改动和测试；越界写入被拒绝。第一次真正自举 |
+| B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
+| B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
+| B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
+| B6 | 稳定版本 N 构建、验证、升级和回滚隔离环境中的 N+1 | N 驱动 N+1 的构建、测试、打包、升级和回滚；被测进程不覆盖治理它的 control 与数据库 |
 
 旧工具在事实切换前可以作为执行者或逃生通道，不能继续保有平行 Project/Task/Run 账本。降级超过约定能力时回退到上一自举级别并留下审计记录。
 
@@ -101,7 +103,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 交付测试检查可观察行为，不复述模块状态机。模块新增合同必须在这里增加一个失败用例，而不是再建一份不变量文档。
 
-## 开工前 Spike
+## 开工前限时验证
 
 1. **Conductor 本地分发**：固定版本、JVM/SQLite 打包、启动、升级、备份和恢复；失败则重开 Engine ADR，不自研第二引擎。
 2. **RuntimeBackend**：Zellij 与 tmux 用同一套 attach、输入、resize、重启、残留进程、macOS/Linux 测试，第一阶段只选一个。
@@ -119,7 +121,7 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 - Repo Room 跨 clone 迁移、隐私和保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；
 - Scoped Room 自动归档策略；
-- 首批原生会话导入范围与长期维护预算；
+- 首批原生会话导入的范围与长期维护预算（能力定义见 [Harness](./harness.md#运行时与观测)）；
 - 多主机、Windows、远程/多设备和多用户权限；
 - 成本/预算硬上限及运行中耗尽的交互；
 - 第一阶段之后首个外部 Chat Room 适配器。

@@ -2,6 +2,17 @@
 
 > 本文是 Run 模块的唯一领域权威；Workflow 是其操作合同，不拥有独立领域事实。模块交接见[连接合同](./connections.md)，通用机制见[系统边界](./system.md)。
 
+## 为什么存在
+
+行业并不缺工作流引擎：DAG、代理委派、重试、定时器和历史恢复都已被反复实现。真正缺失的，是一套面向项目语义、绑定精确版本与证据的治理层——它回答“这个节点对应哪份交付义务、谁有资格尝试、结果是否有效、凭什么可以算完成”。这件事不能委托给聊天室、看板、Harness、终端或任何通用引擎；它是 Run 模块的原生价值。
+
+两种权威一句话可以分清：
+
+> 引擎说：“这个外部节点 READY / IN_PROGRESS / COMPLETED 了。”<br>
+> HCTL2 说：“它对应哪份交付义务（Obligation），谁可以尝试（Seat 与候选），结果是否有效（Verdict），是否可以完成（准入校验）。”
+
+引擎拥有机械位置，HCTL 拥有语义治理；两边不能互相冒充。
+
 ## 模块职责
 
 Run 模块保存“哪份自动施工已获授权、机械进度如何映射为语义结果”。Workflow 是它的操作与引擎场景，不是第五个领域模块。
@@ -37,6 +48,8 @@ Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同�
 
 WorkflowRevision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后写入 Git。EngineDeploymentRevision 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 WorkflowRevision。
 
+塑形与施工是[两种控制制度](./vision.md#两种控制制度)：批准施工图时推进权还在人手里，开工之后 control 才在冻结边界内自动推进。Run r1 按冻结版本施工时，Project Room 可以继续讨论 r2——讨论不必等施工结束，施工也不会随讨论漂移。
+
 Approve Workflow 只确认施工图；`StartRunIntent` 才授予资源和副作用权。Run Manifest 至少冻结：
 
 - Project、0..1 个 TaskRevision（第一阶段）、WorkflowRevision 与 EngineDeploymentRevision；
@@ -65,6 +78,16 @@ AttemptSpec 至少冻结 attempt/seat/run/generation、逻辑 Participant/Seat i
 ## Request、重试与 Gate
 
 Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request lifecycle。Request 冻结 deadline 与 `fail | cancel` 默认策略；Resolve/Expire 的跨模块事务都 CAS 精确 Request 与 blocker version，只有 Resolve 可以写答案 delivery，Expire 不能猜测答案而是按冻结策略收口对应 Attempt/Seat/Obligation。Run 只在匹配 ACK/观测后恢复绑定执行；节点仍通过正常 ResultProposal/Receipt 路径完成，不存在第二条 human-task 完成路径。
+
+“重试”不是一个概念，而是五种身份不同的路径；混用它们会复制票数、绕过验收或复活旧执行：
+
+| 路径 | 触发 | 产生的新身份 | 不变的身份 |
+| --- | --- | --- | --- |
+| 传输重投 | 投递超时、ACK 丢失 | 无：同一幂等键重投，重复命令返回原结果 | 一切领域对象 |
+| 候选切换 | 类型化技术故障 | 同一 Seat 下的新 Attempt | Obligation、Seat、票位 |
+| Engine retry | 引擎机械重试 | 新 Obligation（旧 Obligation 及其 Seat/Attempt 置为 Superseded） | Run |
+| 语义返工 | changes_requested 汇总 | 新 ChangeSetRevision/ArtifactRevision，旧票失效并完整 regate | Run、TaskRevision（通常） |
+| 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 TaskRevision | Project、Task 身份 |
 
 只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 收口为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
 
