@@ -1,5 +1,6 @@
 # 系统边界与适配器合同
 
+> 状态：规范性合同 · 草案 v0.9.1<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Harness 的领域状态。
 
 ## 组件
@@ -9,7 +10,7 @@
 | `hctl2-workbench` | 四个场景的集成客户端；提交命令、查询投影、显示事件 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账 |
 | `hctl2-core` | Git/SCM、Revision、digest、Receipt 和合并事实校验 |
-| agentd | Harness 发现、物理运行时、PTY、TerminalGateway 和主机观测 |
+| agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
@@ -19,7 +20,7 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 
 固定内核是一个以仓库为边界的项目语义控制面（repo-scoped project semantic control plane）。固定内核实现四模块定义的稳定身份、Revision、权限、字段权威、领域归约与 Receipt；本文件只拥有共享 command envelope、扩展绑定、outbox/inbox、单写者和恢复机制。
 
-即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，内核所守的身份、权限、版本证据、治理与恢复边界也必须原样保留——这是[愿景文档](./vision.md#产品原生核心与架构最小内核)中“产品原生核心与架构最小内核”在系统层的落点。
+即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，内核所守的身份、权限、版本证据、治理与恢复边界也必须原样保留——这是[愿景文档](../vision.md#产品原生核心与架构最小内核)中“产品原生核心与架构最小内核”在系统层的落点。
 
 可以替换的端口包括：
 
@@ -28,9 +29,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 | Chat Room | 消息/附件/身份转换与外部投递 |
 | Kanban | TaskSource 读取、字段写回与快照 |
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
-| Terminal | Harness、RuntimeBackend、TerminalGateway 与 attach provider |
+| Terminal | Harness、RuntimeBackend、终端网关与 attach provider |
 
-第一阶段 Conductor 的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端，且仍只能由 control 经 WorkflowEngineAdapter 发起变更，不能把 Engine mutation 暴露给场景客户端或其他本地进程。
+第一阶段 Conductor 的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端，且仍只能由 control 经 WorkflowEngine 端口适配器发起变更，不能把 Engine mutation 暴露给场景客户端或其他本地进程。
 
 每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别。运行中不得因“发现更好的插件”而响应式改绑；提供方消失时安全暂停、失败或创建替代执行。
 
@@ -41,9 +42,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 - `ExtensionRevision`：扩展稳定身份的一份不可变版本，固定代码/制品摘要、接口与 schema、依赖、声明能力和信任级别；
 - `ResolvedPortBinding`：一次已解析端口选择，固定 `binding_revision_id`、ExtensionRevision、provider/installation、配置摘要、credential reference、实测能力、权限作用域、health 和降级策略。
 
-同一 `(port_kind, scope_id)` 的一次准入只能解析出一个 binding revision；提供方加载顺序、hook 优先级或 UI 选择顺序不得决定事实。ChatSurfaceBindingRevision、TaskSourceBindingRevision、EngineDeploymentRevision、EngineExecutionBinding、InvocationBinding、AttemptSpec 和 HarnessAdapterBinding 都引用精确 ResolvedPortBinding；历史执行继续使用原 binding。credential reference 只定位 secret store 条目，不包含密钥。
+同一 `(port_kind, scope_id)` 的一次准入只能解析出一个 binding revision；提供方加载顺序、hook 优先级或 UI 选择顺序不得决定事实。Room 的 Chat 端口绑定、TaskBinding、EngineDeployment、EngineExecutionBinding 和 ExecutionSpec（含其接入方式字段组）都引用精确 ResolvedPortBinding；历史执行继续使用原 binding。credential reference 只定位 secret store 条目，不包含密钥。
 
-跨 Project 使用的 Skill 是带稳定 ID、revision 和 digest 的共享定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择，InvocationBinding/Manifest/AttemptSpec 必须冻结精确 ref+digest。Skill 可以提供方法并请求能力，不能授予权限、票权、委派或 Task 完成权。
+跨 Project 使用的 Skill 是带稳定 ID、revision 和 digest 的共享定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择，ExecutionSpec 与 Run Manifest 必须冻结精确 ref+digest。Skill 可以提供方法并请求能力，不能授予权限、票权、委派或 Task 完成权。
 
 进程内扩展等同受信任代码。普通独立进程只隔离崩溃；不可信扩展需要操作系统强制隔离和能力削减的代理接口。
 
@@ -85,7 +86,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影可�
 
 ## 外部权威副作用
 
-包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久 ExternalEffectIntent/outbox 记录，固定 owner ref、ResolvedPortBinding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更仍先由 control 持久化类型化 intent/outbox，再由 core 执行和回读；Harness/model 不直接取得集成权。
+包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久 EffectIntent/outbox 记录（executor = adapter），固定 owner ref、ResolvedPortBinding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更是同族 EffectIntent（executor = core）：先由 control 持久化 intent/outbox，再由 core 执行和回读；Harness/model 不直接取得集成权。
 
 adapter 只投递并回读；只有在它确认目标、版本和结果后，control/core 的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段不直接持有可绕过该端口的外部写凭据。
 

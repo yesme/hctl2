@@ -62,7 +62,7 @@
 | L4 · Project Room | First Tree 的持久 Chat、显式寻址、可见 handoff、Need You、Context 提升与跨渠道连续性；Multica 的共享 Issue 与私密探索发布边界；Claude Tag 的持久讨论串与临时沙箱分离；OpenClaw 的外部身份和路由 | HCTL2 用规范 Room、一级 Request、ContextManifest 和 Memo 提升流程统一这些经验；外部渠道只作同一 Room 的输入输出面，私聊和执行记录不会自动成为项目知识，协作边的创建权也不随消息作者身份下放给 Agent |
 | L3 · Task / Kanban | Codeg 的独立 WorkTask、Needs You、评审、后续动作和 Git 恢复；Multica 对 Issue 与单次运行、运行结束与承诺完成的明确分离；Hermes 的领取与重新领取；Linear/GitHub 的原生字段状态 | HCTL2 将长期承诺冻结为 TaskRevision，把高频操作状态、外部字段权威和 TaskCompletionReceipt 分开；启动 Run 与移动卡片分离，完成必须重新校验验收标准和证据 |
 | L2 · Workflow / Run / Gate | HCTL1 的版本/证据、领取/隔离栅栏、法定票数和 Receipt；Conductor 的机械图状态；Stably Orca 的持久监督协议；Multica 的租约/重试/恢复/归属；ZeroClaw 的审批准入；Herdr、Superset 的边界反例 | HCTL2 自己定义 WorkflowRevision、Run Manifest、Obligation、Seat、Attempt、Verdict 和 Receipt；外部机制只补机械推进、可靠领取、消息交付和故障测试，不能用执行者状态或会话传输替代语义治理 |
-| L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、HarnessAdapter、RuntimeBackend、ChangeSet 和 TerminalGateway 统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
+| L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、HarnessAdapter、RuntimeBackend、ChangeSet 和终端网关统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
 
 这张表是“整合关系”，不是对象映射。每个来源项目只贡献表中写明的机制；L4–L1 是本研究保留的历史标签，最终身份、权限、版本和证据由 HCTL2 的 Project、Task、Run、Harness 四模块定义。
 
@@ -237,7 +237,7 @@ HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和
 <a id="e-l2-conductor"></a>
 ## E-L2-CONDUCTOR · Conductor 机械状态后端
 
-L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，但不能直接提供完整的 HCTL2 Workflow。Conductor 证明外部 Worker，以及 READY、等待、定时、重试和历史记录等机械状态，可以与真正产生副作用的执行过程分开。HCTL 把它作为 `WorkflowEngineAdapter` 后面的精选依赖。
+L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，但不能直接提供完整的 HCTL2 Workflow。Conductor 证明外部 Worker，以及 READY、等待、定时、重试和历史记录等机械状态，可以与真正产生副作用的执行过程分开。HCTL 把它作为 WorkflowEngine 端口适配器后面的精选依赖。
 
 - [Conductor OSS](https://github.com/conductor-oss/conductor)
 - [核心概念](https://docs.conductor-oss.org/devguide/concepts/index.html)
@@ -416,7 +416,7 @@ DeepSeek Harness 在 L1 和跨层架构上都有独特价值。它没有把模�
 
 ### HCTL 的取舍
 
-HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../system.md#固定内核与受控端口)：
+HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../spec/system.md#固定内核与受控端口)：
 
 - Repo/Project/Task/Run 身份、命令准入、权限、版本与证据、领域归约器、持久账本、隔离栅栏和 Receipt 固定在内核中；
 - Harness、RuntimeBackend、Task Source、Workflow Engine、Chat Surface 和渲染组件通过类型化端口进行替换；

@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.9.0**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
+> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.9.1**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
 
 ## 为什么需要它
 
@@ -91,7 +91,7 @@ flowchart LR
 - Workbench 是四个场景的集成客户端；适配后的第三方平台可以按场景替代或补充其中一个面板，也可以提供受控端口，但不会整体替代 Workbench 或领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部 Closed；
-- 模型只能建议结果与下一位协作者。Task Completed 只接受有权人类命令或 task-bound Workflow 正常完成后的确定性 reducer 命令，Task Cancelled 只接受有权人类命令；普通 Room 的临场执行边只由人类创建，Workflow reducer 只能实例化冻结图中的边。
+- 模型只能建议结果与下一位协作者。Task Completed 只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task Cancelled 只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
 
 ## 目标架构
 
@@ -123,7 +123,7 @@ flowchart LR
 
     P --> ChatPort["Chat 受控端口"]
     T --> TaskSource["TaskSource 受控端口"]
-    R --> Engine["WorkflowEngineAdapter"]
+    R --> Engine["WorkflowEngine 端口"]
     H --> Agentd["agentd"]
     Agentd --> Runtime["Harness / RuntimeBackend"]
 
@@ -137,7 +137,7 @@ HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project
 
 ## 设计文档
 
-建议按这个顺序读：先看愿景，再看设计地图和四个模块，最后看连接、系统与交付。合同权威由设计地图所链接的四个模块及连接、系统、交付文档构成；愿景回答为什么与取舍原则，术语表和来时路是非合同的对照与沿革。
+设计文档分两层：设计层用产品语言回答为什么与怎么用；合同层（`docs/design/spec/`）承载精确的对象、状态机与写入合同，两层冲突时以合同层为准。建议先看愿景，再看设计地图和四个模块的设计正文，需要精确定义时下钻合同层。
 
 - [愿景与设计原则](./docs/design/vision.md)
 - [设计地图与文档纪律](./docs/design/README.md)
@@ -145,9 +145,10 @@ HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project
 - [Task 与 Kanban](./docs/design/task.md)
 - [Run 与 Workflow](./docs/design/run.md)
 - [Harness 与 Terminal](./docs/design/harness.md)
-- [四模块连接与端到端闭环](./docs/design/connections.md)
-- [系统边界与适配器合同](./docs/design/system.md)
 - [第一阶段、验证与自举](./docs/design/delivery.md)
+- [合同层总则](./docs/design/spec/README.md)（词汇分类、六族规则、归并对照）
+- [四模块连接与端到端闭环](./docs/design/spec/connections.md)
+- [系统边界与适配器合同](./docs/design/spec/system.md)
 - [术语对照表](./docs/design/references/glossary.md)
 - [从 HCTL 到 HCTL2 的来时路](./docs/design/references/decision-history.md)
 - [非规范实现证据](./docs/design/references/implementation-evidence.md)

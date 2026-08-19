@@ -1,90 +1,107 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.9.0<br>
-> 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以拥有该名词的模块文档为准，冲突时以模块文档为准。
+> 状态：非规范对照 · 草案 v0.9.1<br>
+> 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
-## 通用
+## 核心产品词
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
 | --- | --- | --- | --- |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的 Agent 工具 | [Harness](../harness.md) |
-| Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [系统边界](../system.md) |
-| Scene | 操作场景 | 一个模块的主操作界面（Chat Room / Kanban / Workflow / Terminal），不拥有领域事实 | [设计地图](../README.md) |
-| Revision | 不可变版本 | 内容变化产生的一份不可改写快照；新内容创建新 Revision，current pointer 只由类型化命令推进，界面只读取它 | [设计地图](../README.md) |
-| Intent（命令后缀） | 类型化命令 | 改变事实的唯一途径，携带 actor、目标、预期版本和幂等键 | [系统边界](../system.md) |
-| actor | 行动者 | 提交命令的人、reducer 或执行体；其身份由认证入口赋予，不能自报 | [系统边界](../system.md) |
-| reducer | 归约器 | control 内按冻结规则机械推进状态的确定性逻辑，不做自由判断 | [Run](../run.md) |
-| digest | 摘要 | 对规范化内容计算的 SHA-256 指纹，用于精确引用 | [系统边界](../system.md) |
-| generation | 代次 | 单调递增的所有权版本；旧代次的写入和结果一律失权 | [系统边界](../system.md) |
-| fence | 失权拦截 | 让旧执行者、旧租约或旧代次不再能写入的机制 | [系统边界](../system.md) |
-| lease | 租约 | 有期限、可撤销的独占权（如写入权、终端输入权） | [Harness](../harness.md) |
-| outbox / readback | 发件箱 / 回读 | 先持久记录要做的外部动作，再执行并回读确认，避免结果未知时盲目重做 | [系统边界](../system.md) |
-| CAS | 带版本前置的写入 | compare-and-set：写入时校验预期版本，版本不符即拒绝 | [系统边界](../system.md) |
-| fail-closed | 默认拒绝 | 信息不完整或校验不过时拒绝动作，而不是放行 | [Task](../task.md) |
-| headless | 无界面后台运行 | 正常执行不需要打开任何窗口或终端 | [愿景](../vision.md) |
+| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的控制边界，拥有独立账本 | [spec/project](../spec/project.md) |
+| Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
+| Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
+| Participant | 参与者 | 可寻址的逻辑协作者档案；不等于某个进程或外部账号 | [Project](../project.md) |
+| Request | 请求卡 | 向指定的人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md) |
+| Memo | 备忘 | 用户明确提炼、预览并发布的长期知识 | [Project](../project.md) |
+| Artifact | 工件 | 登记过的可引用交付物；发布版本见 Revision 族 | [Project](../project.md) |
+| Context | 上下文 | 一次调用看到了什么、为什么、来源是什么；由清单（Manifest）与内容包（Bundle）两份冻结记录承载 | [spec/project](../spec/project.md) |
+| Skill | 技能包 | 带版本与摘要的共享方法定义；提供方法，不授予权限 | [spec/system](../spec/system.md) |
+| Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
+| Kanban | 看板 | Task 的主操作场景；泳道（lane）只是投影 | [Task](../task.md) |
+| Run | 一次受治理施工 | 对冻结施工图、契约、候选和权限的一次授权执行 | [Run](../run.md) |
+| Workflow | 施工图 | 与引擎无关的控制图与治理规则；版本见 Revision 族 | [Run](../run.md) |
+| Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
+| Seat | 执行席位 | 义务中稳定的逻辑执行者或投票位置 | [spec/run](../spec/run.md) |
+| Attempt | 执行尝试 | 某个候选对席位的一次执行 | [spec/run](../spec/run.md) |
+| Gate | 评审关卡 | 施工图中冻结的治理节点；决定结果凭什么通过 | [spec/run](../spec/run.md) |
+| Verdict | 裁决 | 对精确版本的语义评审结论 | [spec/run](../spec/run.md) |
+| Receipt | 凭证 | 校验通过后签发的证明；见 Receipt 族 | [spec/README](../spec/README.md#六族规则) |
+| Terminal | 终端场景 | Harness 的观察、诊断和接管场景 | [Harness](../harness.md) |
+| ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/harness](../spec/harness.md) |
+| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/harness](../spec/harness.md) |
+| Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [spec/system](../spec/system.md) |
 
-## Project 模块（Chat Room 场景）
+## Revision 族（不可变版本）
 
-| 术语 | 中文对照 | 一句话含义 |
+| 成员 | 中文对照 | 版本化的是什么 |
 | --- | --- | --- |
-| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的控制边界，拥有独立账本 |
-| Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 |
-| Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room 三种 |
-| Participant | 参与者 | 可寻址的逻辑协作者档案；不等于某个进程或外部账号 |
-| ProjectRoleBinding | 角色绑定 | 把 Project 角色固定到精确 Participant 版本的冻结绑定 |
-| Context / ContextManifest / ContextBundle | 上下文 / 上下文清单 / 上下文包 | 一次调用看到了什么、为什么、来源是什么的可解释快照 |
-| Request | 请求卡 | 向指定的人或角色索取信息、授权或决定的一级对象 |
-| Memo | 备忘 | 用户明确提炼、预览并发布的长期知识 |
-| Artifact / ArtifactRevision | 工件 / 工件版本 | 登记过的可引用交付物及其不可变发布版本 |
-| RoomInvocation / InvocationBinding | 单次调用 / 调用绑定 | 从 Room 发起的一次有边界 Harness 调用及其冻结的授权 |
+| TaskRevision | 任务契约版本 | Task 的范围、验收标准与所需能力 |
+| WorkflowRevision | 施工图版本 | 与引擎无关的控制图和治理规则 |
+| ChangeSetRevision | 变更集快照 | 一次写入边界内的不可变 Git 快照 |
+| ArtifactRevision | 工件版本 | 登记交付物的一次不可变发布 |
+| ExtensionRevision | 扩展版本 | 一个扩展的代码、接口、能力与信任级别 |
+| EngineDeployment | 引擎部署版本 | 某施工图经编译器给某引擎的产物 |
 
-## Task 模块（Kanban 场景）
+## Binding 族（冻结的身份连接）
 
-| 术语 | 中文对照 | 一句话含义 |
+| 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
-| Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 |
-| TaskRevision | 任务契约版本 | 不可变的范围、验收标准和所需能力 |
-| TaskOperationalState | 任务操作态 | 排序、优先级、负责人、阻塞等高频变化的状态 |
-| Kanban / Board / lane | 看板 / 泳道 | Task 的主操作场景；泳道只是投影，不是生命周期 |
-| TaskSource | 任务来源 | Linear、GitHub 等外部任务系统的受控端口 |
-| TaskSourceSnapshot | 来源快照 | 外部系统的一次只追加观测；会改变契约的内容需采纳才生效，外部拥有的操作字段按绑定直接投影 |
-| PendingAdoption | 待采纳变更 | 外部契约变化在被用户采纳前的状态 |
-| TaskCompletionReceipt | 完成凭证 | 一次完成命令对精确契约、规则和证据的证明 |
+| ResolvedPortBinding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；TaskSource 连接也由它承载） |
+| TaskBinding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
+| ProjectRoleBinding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
+| EngineExecutionBinding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |
 
-## Run 模块（Workflow 场景）
+## Receipt 族（校验后的证明）
 
-| 术语 | 中文对照 | 一句话含义 |
+| 成员 | 证明什么 |
+| --- | --- |
+| Gate Receipt | 评审关卡按法定票数通过 |
+| TaskCompletionReceipt | 一次完成命令对精确契约、规则和证据成立 |
+| IntegrationReceipt | 精确变更集已按授权合入目标并回读确认 |
+
+## Lease 族（单持有者独占权）
+
+| 成员 | 中文对照 | 独占什么 |
 | --- | --- | --- |
-| Workflow / WorkflowRevision | 施工图 / 施工图版本 | 与引擎无关的不可变控制图和治理规则 |
-| Run | 一次受治理施工 | 对冻结施工图、契约、候选和权限的一次授权执行 |
+| WriteLease | 写入租约 | 一个变更集的写权；同时最多一个持有者 |
+| TerminalInputLease | 终端输入租约 | 一个终端目标的输入权；接管原子撤销旧租约 |
+
+control writer 与 agentd owner 的排他权同族，以 generation（代次）表达。
+
+## Intent 族（持久命令与副作用）
+
+各模块的 `*Intent` 命令（CompleteTaskIntent、StartRunIntent、AdoptTaskRevisionIntent、IntegrateChangeSetIntent 等）是改变事实的唯一途径。**EffectIntent**（副作用意图）承载会改变外部权威事实的动作：executor = core 时是本地 Git 集成，executor = adapter 时是远端 SCM 或第三方平台写入；均为先持久记录、再执行、回读确认后才可签 Receipt。
+
+## Snapshot / 观测族（先观测后准入）
+
+| 成员 | 中文对照 | 观测什么 |
+| --- | --- | --- |
+| TaskSourceSnapshot | 来源快照 | 外部任务系统的一次只追加观测；改变契约的内容须采纳才生效 |
+| ResultProposal | 结果提案 | Harness 提交、等待 owner 校验的结果；不是裁决或凭证 |
+| 运行时观测 | — | 进程、心跳、屏幕等物理观测；按来源证据分级仲裁 |
+
+## 票据与规格（步骤产物，不是领域对象）
+
+| 名字 | 中文对照 | 哪个步骤的产物 |
+| --- | --- | --- |
+| ExecutionSpec | 派发规格 | 派发一次执行时冻结的全部绑定（owner = RoomInvocation \| Attempt） |
 | Run Manifest | 施工清单 | 启动 Run 时冻结的全部绑定、规则和预算 |
-| Workflow Engine / Conductor | 工作流引擎 | 只保存机械位置（token、重试、定时器）的外部引擎 |
-| Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 |
-| Seat | 执行席位 | 义务中稳定的逻辑执行者或投票位置 |
-| Attempt / AttemptSpec | 执行尝试 / 尝试规格 | 某个候选对席位的一次执行及其不可变派发规格 |
-| Gate | 评审关卡 | 施工图中冻结的治理节点；决定结果凭什么通过 |
-| Verdict | 裁决 | 对精确版本的语义评审结论（通过 / 驳回 / 需修改） |
-| Receipt | 凭证 | control/core 校验后签发的正式证明 |
-| quorum | 法定票数 | 达到多少有效票才算通过（如三选二） |
-| regate | 重新评审 | 被评对象换版本后作废旧票、完整重过关卡 |
-| ReviewSubjectRef | 评审对象引用 | 对精确变更集或工件版本的 kind + ID + 摘要引用 |
+| AttachDescriptor | 连接票据 | 对精确终端目标的短期连接凭据 |
+| ContextManifest / ContextBundle | 上下文清单 / 上下文包 | 组装上下文时冻结的说明与内容 |
 
-## Harness 模块（Terminal 场景）
+## 独立对象（不属六族的领域对象）
 
-| 术语 | 中文对照 | 一句话含义 |
+| 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
-| WorkerProfile | 执行者配置 | Harness、模型、模式、权限和环境的可复用组合 |
-| HarnessAdapterBinding | 接入绑定 | 一次执行选定的接入方式（ACP/SDK/PTY 等）与降级能力 |
-| ChangeSet / ChangeSetRevision | 变更集 / 变更集版本 | 一次获准写入边界及其不可变 Git 快照 |
-| ChangeSetWriteLease | 写入租约 | 变更集的独占写入权；同时最多一个持有者 |
-| IntegrationIntent / IntegrationReceipt | 集成命令 / 集成凭证 | 把精确变更集合入目标分支的授权及回读证明 |
-| worktree | Git 工作树 | 变更集的可替换物理载体；可以丢弃重建 |
-| RuntimeShard / InvocationRuntime | 运行时分片 / 调用运行时 | 一次执行的主机、隔离域和代次 |
-| RuntimeBackend | 运行时后端 | 持有进程/PTY/容器资源的底层设施（如 Zellij、tmux） |
-| agentd | 执行守护进程 | 发现 Harness、持有物理运行时并上报观测的本机组件 |
-| TerminalBundle | 终端通道集 | 一次执行的全部终端通道 |
-| AttachDescriptor | 连接描述 | 对精确目标的短期连接凭据 |
-| TerminalInputLease | 终端输入租约 | 谁可以往这个终端打字；同时最多一个 |
-| ResultProposal | 结果提案 | Harness 提交、等待上层校验的结果；不是裁决或凭证 |
-| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 |
-| attach / resume / replay | 接管 / 恢复 / 回放 | 三种不同的连接能力，不能互相冒充 |
+| RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
+| ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
+| RoomEvent | 房间事件 | 协作账本的只追加单元；Message 是其一种 |
+| WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
+| TaskOperationalState | 任务操作态 | 排序、优先级、负责人等高频状态 |
+
+RepoInstance 也属独立对象，见核心产品词表。
+
+## 引用格式（不是对象）
+
+ReviewSubjectRef（评审对象引用：kind + ID + 摘要）、revision_digest 与 review_subject_digest（两种不同语义的摘要，不能互换）。
