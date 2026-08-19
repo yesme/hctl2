@@ -24,17 +24,22 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
+| RepoInstance | immutable repo identity + local writer generation | control 处理 InitRepoInstanceIntent；core 校验 Git identity | 同一 git-common-dir 只建立一个本地账本身份，重试返回原 identity |
 | Project | `project_version`；`Active / Archived` | control 处理 Create/Update/Archive/Restore Project Intent | Archived 拒绝新 Task、Run 和写入型 Invocation；历史只读 |
+| Participant / ProjectRoleBinding | Participant immutable revision + current pointer；binding version | control 处理 Create/Update Participant 与 Bind/Rebind ProjectRole Intent | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
 | Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；事件有 `room_sequence` | control 处理 AppendRoomEvent、Create/ArchiveScopedRoom Intent | RoomEvent 只追加；Project Room 随 Project 归档只读 |
 | ChatSurface binding | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Bind/Rebind/Disable ChatSurface Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
+| ContextManifest / ContextBundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；`Open / Resolved / Expired / Cancelled / Superseded` | Project reducer/control 处理 Create/Resolve/Cancel Intent 与 deadline | 终态不可复活；新问题创建新 Request |
 | RoomInvocation | `invocation_version`；`Pending / Running / WaitingForInput / Interrupted / Completed / Failed / Cancelled` | Project reducer/control 处理 Create/Cancel/AdmitResult，agentd 只提供观测 | Interrupted 和其他终态不可复活；重试创建新 Invocation |
 | Memo | 发布 revision 只追加 | control/core 处理 PublishMemoIntent | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、`Active / Archived` | control/core 处理 Register/Publish/Archive/Restore Artifact Intent | ArtifactRevision 不可变，current pointer 只由 Publish 推进 |
 
-Repo 不等于外部组织或工作区。Project 在一个 RepoInstance 中至多有一个 Project Room；另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
+Repo 不等于外部组织或工作区。CreateProjectIntent 在同一事务创建当前 RepoInstance 的唯一 Project Room；Project Archive 使其 ReadOnly，Restore 恢复 Active。另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
 
 Project 的目标、范围、角色和默认规则以单调 `project_version` 更新。创建 Task、Run 或 `project_scope` RoomInvocation 时必须冻结获准的 Project version 与相关策略摘要；`repo_scope` RoomInvocation 改为冻结 RepoInstance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
+
+Participant 使用稳定 `participant_id` 与不可变配置 revision；ProjectRoleBinding 把 Project/role 固定到精确 Participant revision，并保存职责、候选约束及权限/预算上限。显示名、外部账号、persona、WorkerProfile、Harness session 或模型名都不能替代 Participant ID；换版或换绑不改写活动 Invocation、Seat 或 Run。Participant 配置的进一步设计保留在专题 memo，在进入规范前不得成为第二套权限或委派来源。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交 `CreateProjectIntent`；Intent 只能显式选择来源 Message 引用和/或已预览的 ContextManifest/ContextBundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。
 
@@ -56,7 +61,7 @@ Context 组装顺序固定为：显式引用 → 当前讨论窗口 → Project/
 
 Memo 只由用户明确发布，至少固定 `memo_id`、来源 Message/Artifact refs、适用范围、作者、内容 digest/Git locator、取代关系和有效期。原始消息、执行日志和自动总结不会自动进入长期知识。
 
-Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通 Git 文件在登记前不是 Artifact。ArtifactRevision 至少固定 `artifact_revision_id`、`artifact_id`、不可变内容定位、内容摘要、可选 ChangeSetRevision 来源和 `revision_digest`。所有 `revision_digest` 使用 RFC 8785 JCS 规范对象的 SHA-256，摘要字段自身不参与计算。发布新版本只移动 current pointer，不改写历史。
+Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通 Git 文件在登记前不是 Artifact。ArtifactRevision 至少固定 `artifact_revision_id`、`artifact_id`、不可变内容定位、内容摘要、可选 ChangeSetRevision 来源和 `revision_digest`。Artifact 的评审 subject 对 `{artifact_revision_id, artifact_id, immutable_content_locator, content_digest, source_change_set_revision_ref?}` 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 `review_subject_digest`；它不能与完整 Revision digest 互换。发布新版本只移动 current pointer，不改写历史。
 
 ## RoomInvocation 与 Request
 
@@ -64,11 +69,11 @@ RoomInvocation 适合一次性的研究、比较或范围明确的写入。它�
 
 InvocationBinding 的 scope 是 `repo_scope | project_scope`：Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version。RoomInvocation 的合法边只有 `Pending → Running/Failed/Cancelled/Interrupted`、`Running ↔ WaitingForInput`，以及 `Running/WaitingForInput → Completed/Failed/Cancelled/Interrupted`。恢复对账无法证明原 session/process 身份及 lease/generation 仍匹配时，control 在同一收口事务将其置为 Interrupted、撤销输入/写租约并提交旧 runtime 的 stop/fence outbox；其迟到流或 ResultProposal 只留审计，不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 RoomInvocation、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
-InvocationBinding 还固定 invocation generation、ContextManifest、逻辑 Participant、WorkerProfile、Harness/Runtime ResolvedPortBinding、repo/base、能力与权限、预算/截止和 binding digest；只有 project_scope 可以携带 ChangeSet 规则。
+InvocationBinding 还固定 invocation generation、ContextManifest、逻辑 Participant、WorkerProfile、Harness/Runtime ResolvedPortBinding、repo/base、能力与权限、预算/截止和 binding digest；只有 project_scope 可以携带 ChangeSet 规则。由 human 批准 Agent 建议而创建的调用还必须固定精确 `source_suggestion_ref = RoomEvent/Message | ResultProposal`、建议摘要、可选 `parent_execution_ref = RoomInvocation | Attempt` 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；ResultProposal 分支还要逐项匹配其 owner/generation。这些 lineage 字段不能由新 worker 的 payload 改写。
 
 当执行需要输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中 CAS Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配 ACK/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
 
-活动 Request 的问题、目标人或角色、根因、blocking ref/version 和获准解决动作不得原地修改。相同根因且 blocking ref/version 相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；blocking version 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
+Request 的完整跨模块字段合同只在[连接合同](./connections.md#跨模块-request-回路)定义；本模块不另建一套同义字段。活动 Request 的问题、目标人或角色、`owner_ref + affected_revision_ref + blocked_scope + owner generation/state_version + dedupe root` 和获准解决动作不得原地修改。上述阻塞身份相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；任一 owner/version/scope 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
 
 ## Chat Room 场景
 
@@ -80,6 +85,8 @@ Chat Room 是 Project 的主要操作场景，提供：
 - Request、Project 概览、Task/Run 里程碑和 Needs Attention 投影；
 - mention/recipe 提交前的 Trigger Preview，必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
+
+普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。Agent-authored Message、ResultProposal、模型总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。重复且无需临场判断的协作边应进入 [Workflow](./run.md)，由 reducer 只按冻结 WorkflowRevision 创建。
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |
@@ -101,6 +108,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 ## 不可破坏的边界
 
 - Room 只能形成提案，不能签发 Verdict、Receipt 或完成 Task。
+- 普通 Room 中只有 human actor 能提交临场执行边；模型或 Agent 只能建议下一条边。
 - Participant、ProjectRole、Room 和 Project 都不是 Harness 进程或外部账号。
 - Context 必须可解释；模型自由总结不能替代来源和版本。
 - Request 只能由获准动作解决，并且只推进其声明的阻塞范围。

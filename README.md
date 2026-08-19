@@ -10,7 +10,7 @@ HCTL2 是一个以 Git 仓库为边界、面向多种 Coding Harness 的本地�
 | Harness | Terminal | 哪个执行实例在哪里，怎样观察、恢复或接管？ |
 
 > [!IMPORTANT]
-> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.8.0**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
+> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.8.1**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
 
 ## 为什么需要它
 
@@ -23,6 +23,7 @@ HCTL2 的基本判断是：
 - Workbench 是四个场景的集成客户端；适配后的第三方平台可以按场景替代或补充其中一个面板，也可以提供受控端口，但不会整体替代 Workbench 或领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部 Closed。
+- 模型只能建议结果与下一位协作者。Task Completed 只接受有权人类命令或 task-bound Workflow 正常完成后的确定性 reducer 命令，Task Cancelled 只接受有权人类命令；普通 Room 的临场执行边只由人类创建，Workflow reducer 只能实例化冻结图中的边。
 
 ## 核心流程
 
@@ -31,10 +32,12 @@ flowchart LR
     P["Project\nChat Room"] -->|提炼承诺| T["Task\nKanban"]
     T -->|批准自动施工| R["Run\nWorkflow"]
     P -->|批准无 Task Run| R
-    R -->|分派执行| H["Harness\nTerminal"]
+    P -->|一次有边界的调用| H["Harness\nTerminal"]
+    R -->|分派执行| H
+    H -->|提案与证据| P
     H -->|结果与证据| R
-    R -->|Verdict / Receipt| T
-    T -->|里程碑与知识| P
+    R -->|Verdict / Receipt；正常完成可提交 Task 命令| T
+    T -->|已验证里程碑| P
 ```
 
 简单 Task 可以不创建 Run；Project 也可以发起一次边界明确的 Harness 调用。它们是显式短路，不改变四个模块的事实所有权。

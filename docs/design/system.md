@@ -41,6 +41,8 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 
 同一 `(port_kind, scope_id)` 的一次准入只能解析出一个 binding revision；提供方加载顺序、hook 优先级或 UI 选择顺序不得决定事实。ChatSurfaceBindingRevision、TaskSourceBindingRevision、EngineDeploymentRevision、EngineExecutionBinding、InvocationBinding、AttemptSpec 和 HarnessAdapterBinding 都引用精确 ResolvedPortBinding；历史执行继续使用原 binding。credential reference 只定位 secret store 条目，不包含密钥。
 
+跨 Project 使用的 Skill 是带稳定 ID、revision 和 digest 的共享定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择，InvocationBinding/Manifest/AttemptSpec 必须冻结精确 ref+digest。Skill 可以提供方法并请求能力，不能授予权限、票权、委派或 Task 完成权。
+
 进程内扩展等同受信任代码。普通独立进程只隔离崩溃；不可信扩展需要操作系统强制隔离和能力削减的代理接口。
 
 ## 场景端口
@@ -64,22 +66,26 @@ Subscribe(cursor) -> ordered events or resync snapshot
 
 ```text
 command_id / idempotency_key
- actor and permission scope
- target stable ID
- expected revision or state version
- frozen adapter binding
- canonical input digest
+authenticated actor principal + actor kind/provenance + permission scope
+target stable ID
+expected revision or state version
+frozen adapter binding
+canonical input digest
 ```
+
+actor kind/provenance 由认证场景入口或 control 内部 reducer 赋予，调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task Completed 只接受有权 human actor 或 task-bound Workflow 的正常完成 reducer，Task Cancelled 只接受有权 human actor；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 WorkflowRevision 已冻结的边。
 
 control 在一个 SQLite 事务中写领域事件、幂等结果和 outbox。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。
 
 Receipt 证明的是已经校验的结果，不是另一个 writer。投影可以从事件重建，缓存或界面状态不能反向成为事实。
 
+跨模块引用的规范摘要统一使用 RFC 8785 JCS 规范对象的 SHA-256，摘要字段自身不参与计算；每个领域 owner 只定义自己规范对象包含哪些字段。完整 Revision 的 `revision_digest` 与为评审选取字段生成的 `review_subject_digest` 是不同语义，即使某次字节恰好相同也不能互换。
+
 ## 外部权威副作用
 
-Git/SCM 以外会改变第三方权威事实的动作统一写成持久 ExternalEffectIntent/outbox 记录，固定 owner ref、ResolvedPortBinding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。
+包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久 ExternalEffectIntent/outbox 记录，固定 owner ref、ResolvedPortBinding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更仍先由 control 持久化类型化 intent/outbox，再由 core 执行和回读；Harness/model 不直接取得集成权。
 
-adapter 只有在回读确认目标、版本和结果后才能写成功 Receipt；投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段不直接持有可绕过该端口的外部写凭据。
+adapter 只投递并回读；只有在它确认目标、版本和结果后，control/core 的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段不直接持有可绕过该端口的外部写凭据。
 
 第一阶段不承诺自动发现或补偿任意带外写：Harness 不获得可绕过受控端口的外部写凭据；provider 被人在 HCTL 外修改时，只由对应端口回读为 Snapshot/drift，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。带外观测不能成为 ResultProposal、Artifact、Verdict 或 Receipt。
 
@@ -88,7 +94,7 @@ adapter 只有在回读确认目标、版本和结果后才能写成功 Receipt�
 | 事实 | 权威来源 |
 | --- | --- |
 | Project/Task/Run/Harness 领域操作账本、Room、Request、绑定、租约和投影 | RepoInstance SQLite + control |
-| 共享 Project/Workflow 配置、Memo、Artifact/ChangeSet 内容 | Git + core |
+| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |
 | Linear/GitHub 等外部字段 | 对应 provider；本地只存 Snapshot 和同步账本 |
@@ -104,11 +110,13 @@ adapter 只有在回读确认目标、版本和结果后才能写成功 Receipt�
 
 `<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
 
+用户级 Profile/Skill/Runtime 定义也以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
+
 ## 单写者
 
 每个 RepoInstance 同时只有一个 control writer：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 推进 `control_writer_generation`。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
 
-每个 RuntimeBackend ownership scope 同时只有一个 agentd owner lease 和单调 generation。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权。
+每个 RuntimeBackend ownership scope 同时只有一个 agentd owner lease 和单调 generation；scope 至少覆盖相同资源 broker/socket/host namespace。agentd 必须先取得该资源侧的 OS lock、broker token 或等价排他原语才可执行输入、停止和接管。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权；不能强制排他的 backend 只可观察，不开放这些写能力。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 
@@ -116,12 +124,12 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 恢复顺序固定为：
 
-1. 取得 control/backend 写权并推进 generation；
-2. 打开 SQLite、验证 schema，恢复 inbox/outbox/租约；
+1. 取得 control/backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
+2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 writer/backend generation；
 3. 回读外部 Task Source 和未确认副作用；
 4. 查询 Workflow Engine、agentd runtime 和 core Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
-6. 隔离旧 generation，只重放可证明幂等的动作；
+6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
 
 UI 重载只重建投影。无法证明同一执行身份时，宁可标记 Lost/Interrupted 或要求人工对账，也不能自动接管或伪造成功。

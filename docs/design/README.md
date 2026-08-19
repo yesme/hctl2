@@ -1,7 +1,7 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.8.0<br>
-> 日期：2026-08-15
+> 状态：规范性索引 · 草案 v0.8.1<br>
+> 日期：2026-08-19
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
 
@@ -30,7 +30,8 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 - 稳定对象使用稳定 ID；内容变化产生不可变 Revision，界面使用 current pointer 或操作投影。
 - 正式变化只由类型化命令产生；命令携带 actor、目标、预期版本、权限范围和幂等键。
 - 外部事件先成为观测或提案；获准命令与持久 outbox 原子提交，结果未知时先回读。
-- Chat、拖卡、Run 终态、进程退出、Git commit、CI 绿色或外部 Closed 都不能自行完成 Task。
+- Task 只由有权 human actor 的 Kanban 命令，或 task-bound Run 正常完成后 reducer 提交的同一个 CompleteTaskIntent 终结；Harness、模型、拖卡、进程退出、Git commit、CI 或外部 Closed 都不能冒充该命令，失败类 Run 也不能取消 Task。
+- 普通 Room 的临场执行边只由 human actor 提交；Agent 可以建议下一位 Participant，但不能从消息正文自行 cue、扩大 fan-out 或递归委派。预授权自动边只由 Workflow reducer 按冻结 WorkflowRevision 创建。
 - 运行中的绑定被冻结；能力、权限、候选或验收条件变化时创建新 Revision 或替代执行。
 - Workbench 关闭不改变领域事实；缺少等价适配能力时安全暂停，而不是绕过 command service。
 - 同一 RepoInstance 只有一个 control 写入者，同一 RuntimeBackend scope 只有一个 agentd owner；旧 generation 失权。

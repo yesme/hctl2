@@ -9,9 +9,9 @@
 | 模块 | 集成场景必须交付 | 第三方适配必须交付 |
 | --- | --- | --- |
 | [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | 第一阶段外部聊天桥接不作为出门条件 |
-| [Task](./task.md) | 可访问 Kanban、本地 TaskSource、完成预览 | Linear/GitHub 均通过身份/快照测试，其中一个通过完整字段读写与对账 |
+| [Task](./task.md) | 可访问 Kanban、纯本地 Task、完成预览 | Linear/GitHub 均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | WorkflowRevision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Conductor 经 WorkflowEngineAdapter 通过本地分发与恢复测试 |
-| [Harness](./harness.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；一个 RuntimeBackend 通过完整契约测试；WezTerm 可选 |
+| [Harness](./harness.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 HarnessAdapter 和一个 RuntimeBackend 通过完整契约测试；WezTerm 可选 |
 
 四个场景由 Workbench 集成，但其命令必须可以由同一 service 供 CLI 或外部适配器使用。
 
@@ -45,7 +45,7 @@ CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBac
 2. 从 Project Room 发起一次写入型 RoomInvocation，冻结 InvocationBinding。
 3. Harness 在隔离 worktree 和有效写租约下修改代码，产出 ChangeSetRevision 与测试证据。
 4. Project 场景展示精确 diff；评审绑定 ReviewSubjectRef。
-5. 通过 CompleteTaskIntent 写 TaskCompletionReceipt。
+5. 有权 human actor 从 Kanban 完成预览提交 CompleteTaskIntent，写 TaskCompletionReceipt；Harness 不能代为提交。
 6. 重启 Workbench/control/agentd 后，账本、worktree 归属、证据和投影一致且不重复副作用。
 
 这是 B2 的第一次真正自举；它不等待 Workflow Engine 或 quorum。
@@ -59,7 +59,7 @@ CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBac
 5. B/C/D 对同一 ReviewSubjectRef 投票；备用候选只替换同一 Seat 的技术失败。
 6. `changes_requested` 产生新 ChangeSetRevision，旧票失效并完整 regate。
 7. 达到法定票数后写 Gate Receipt，再由 core 校验 SCM/合并事实。
-8. Run 结束后 Task 独立准入 CompleteTaskIntent。
+8. task-bound Run 正常 Completed 后，Run reducer 以稳定幂等键提交同一个 CompleteTaskIntent；Task 独立准入，失败类 Run 不终结 Task。
 9. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
 
 ## 外部 Task Source 切片
@@ -88,11 +88,11 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 | 范围 | 必须证明 |
 | --- | --- |
-| Project / Chat Room | CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致 room_sequence、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝 |
-| Task / Kanban | TaskRevision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；混用 BindingRevision 的 adoption 拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射 |
-| Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；retry 只产生一个新 Obligation 并隔离旧 Seat/Attempt，候选耗尽类型化收口；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum/regate 和迟到结果拒绝 |
-| Harness / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；失败清理不丢唯一未封存/未跟踪修改，SCM 中断先回读；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；观察、输入、Attempt 控制与安全输入权限分离；attach/resume/replay、IME/背压/慢客户端隔离 |
-| 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；client/port 权限分离；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复；Harness 绕过端口的写能力被拒绝，外部 drift 只形成 Snapshot/观测而不是结果 |
+| Project / Chat Room | CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致 room_sequence、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复；agent-authored `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝 |
+| Task / Kanban | TaskRevision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；本地 adoption 不要求伪造 TaskSourceBindingRevision，外部 adoption 混用 BindingRevision 时拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；human Kanban 完成与正常 Run reducer handoff 都走同一 CompleteTaskIntent，Harness/LLM/adapter/外部 Closed 冒充 actor 均拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射 |
+| Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许 Pending→Lost 并用新 Attempt 恢复，ResultProposed 不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；Failed/Cancelled/Superseded Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
+| Harness / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 intent 并回读，target-head 竞争或 ACK 未知时不得签成功 Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；Harness 内调用 Task terminal/Room fan-out 命令因 execution provenance 拒绝；control 签发 descriptor、agentd gateway 校验，观察、输入、Attempt 控制与安全输入权限分离；attach/resume/replay、IME/背压/慢客户端隔离 |
+| 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；Harness 绕过端口的写能力被拒绝，外部 drift 只形成 Snapshot/观测而不是结果 |
 | 系统 | 第二 control/agentd 只读或拒绝；命令幂等；commit/ACK 各崩溃点回读；schema migration、backup/restore、投影重建；旧 generation 与越权适配器拒绝；打包后的整窗启动/退出/升级和安全边界 |
 | 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
 | Workbench 信息架构 | 单 Project Overview 与全局 Needs Attention 都是可重建的只读导航投影，不产生第五场景或写状态；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；CreateProject 提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |

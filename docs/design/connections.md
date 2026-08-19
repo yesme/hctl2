@@ -25,7 +25,7 @@ flowchart LR
     R -->|AttemptSpec| H
     H -->|ResultProposal + Revision / Evidence| P
     H -->|ResultProposal + Revision / Evidence| R
-    R -->|Run ref + Verdict / Receipt| T
+    R -->|Run ref + Verdict / Receipt；正常完成可提交 Task 命令| T
     T -->|里程碑与稳定引用| P
 ```
 
@@ -40,7 +40,8 @@ Project → Harness 是无 Run 的显式短路；Harness → Task 不存在原�
 | Project → Harness | RoomInvocation + InvocationBinding | Project 先持久化调用授权，Harness 再预留、绑定和激活运行时 | invocation id + generation + binding digest |
 | Run → Harness | Attempt + AttemptSpec | Run 先持久化派发授权，Harness 再预留、绑定和激活运行时 | attempt id + generation + spec digest |
 | Harness → Project/Run | ResultProposal、精确 execution generation、Revision/Evidence refs | owner 模块去重并校验身份、代次、权限、写租约和输出 schema 后准入 | proposal id + owner/spec digest；迟到结果只留历史 |
-| Run/Harness → Task | Run ref、被冻结的 TaskRevision ref、Revision/Evidence/Verdict/Receipt refs | Task 的 Complete 命令按当前验收合同独立校验 | CompleteTaskIntent id → TaskCompletionReceipt |
+| Human scene / Run reducer → Harness | IntegrateChangeSetIntent、精确 ChangeSetRevision/target/evidence refs | Harness 模块准入授权并持久化 intent/outbox，core 执行与回读；IntegrationReceipt 返回发起模块作证据 | intent id + expected target head → 唯一 Receipt；ResultUnknown 不重投 |
+| Human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 TaskRevision ref、Revision/Evidence/Verdict/Receipt refs | human actor 或 task-bound Run reducer 提交同一个 CompleteTaskIntent；Task 按当前验收合同独立校验 | CompleteTaskIntent id → TaskCompletionReceipt；Harness 只提供证据 |
 | Task/Run/Harness → Project | source ref、event id/sequence、版本、敏感级别 | Project 只建低噪声投影；Memo/Artifact 仍需 Project 命令发布 | source event cursor，可从源账本重建 |
 
 ## Project → Task：从讨论到承诺
@@ -88,17 +89,19 @@ control inbox 先按 proposal/owner 去重，再逐项校验：owner 仍接受�
 
 旧 generation、被取消/替代 owner 或不匹配 spec 的结果只保留审计记录，不能推进 Project、Run 或 Task。
 
-## Run / Harness → Task → Project：验收与回流
+## Human Kanban / Run reducer → Task → Project：验收与回流
 
-无 Run 路径中，CompleteTaskIntent 直接引用精确 ChangeSetRevision/ArtifactRevision、ReviewSubjectRef、测试/SCM 证据和必需 Receipt。有 Run 路径中，还引用 Run ID、该 Run 冻结的 TaskRevision、终止原因及 Verdict/Receipt/subject refs。两条路径最终都由 Task 模块按当前 TaskRevision、来源 head、Artifact/SCM/CI 和权限独立验收；Run 终态永远不是 Task 完成命令。
+无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSetRevision/ArtifactRevision、ReviewSubjectRef 和测试/SCM 证据后提交 CompleteTaskIntent；它不伪造只能由 Run 产生的 Gate Receipt。验收合同若要求内部独立 Gate，Task 必须先授权 Run。有 Run 路径中，Run 返回其冻结的 TaskRevision、终止原因及 Verdict/Receipt/subject refs；只有正常 `Completed` 的 task-bound Run 才由 reducer 使用稳定幂等键提交同一个 CompleteTaskIntent。两条路径最终都由 Task 模块按当前 TaskRevision、来源 head、Artifact/SCM/CI、drift 和权限独立验收。裸 Run 终态不是 Task 命令，失败类 Run 也不能取消 Task；Task 拒绝自动命令时 Run 保持 Completed、Task 保持 Open/Needs Attention。
 
 Task、Run 和 Harness 以有序领域事件向 Project 返回里程碑。事件携带 source module、稳定引用、event ID/sequence、版本和敏感级别；Project Room 只显示 Request、失败、已验证 Task、Artifact 就绪等低噪声投影。发布 Memo/Artifact 或归档 Project 仍需 Project 自己的类型化命令，不能由投影反向触发。
 
 ## 跨模块 Request 回路
 
-Request 由 Project 模块保存，但可以阻塞 Task、Run 或 Harness owner。创建时固定 `owner_ref + affected_revision_ref + blocked_scope + owner generation/state_version + input_schema + required actor/role + permission + deadline/default policy + dedupe root`；被阻塞模块只保存 `request_id` 和自己的阻塞状态，不复制 Request lifecycle。
+Request 由 Project 模块保存，但可以阻塞 Task 待办、Run 中的 Attempt/Seat/Obligation，或直接 RoomInvocation。创建时固定 `owner_ref + affected_revision_ref + blocked_scope + owner generation/state_version + input_schema + required actor/role + permission + deadline/default policy + dedupe root`；被阻塞模块只保存 `request_id` 和自己的阻塞状态，不复制 Request lifecycle。Harness 只执行所属 Attempt/RoomInvocation 的物理等待，不另造语义 blocker。
 
-`ResolveRequestIntent` 固定 request/expected version、resolution digest、actor/delegation 和 idempotency key。对需要恢复执行的 Request，control 以一个跨模块事务 CAS Project Request 与来源 blocker 的精确版本，并提交解决结果及唯一 signal/delivery outbox；Project 或来源模块都不能在事务外再次 signal。接收方只接受匹配 owner、state version、binding 和 generation 的投递，ACK/观测后才由来源模块推进 blocker。普通 Room 回复不能解决 Request，也不能直接完成 Engine 节点。目标已失效时安全拒绝或保留为过期历史，不能把答案投给替代执行。
+`ResolveRequestIntent` 固定 request/expected version、resolution digest、actor/delegation 和 idempotency key。对需要恢复执行的 Request，control 以一个跨模块事务 CAS Project Request 与来源 blocker 的精确版本，并提交解决结果及唯一 signal/delivery outbox；Project 或来源模块都不能在事务外再次 signal。接收方只接受匹配 owner、state version、binding 和 generation 的投递，ACK/观测后才由来源模块推进 blocker。普通 Room 回复不能解决 Request，也不能直接完成 Engine 节点。目标已失效时安全拒绝或保留为过期历史。
+
+Deadline 到达以同样的版本 CAS 写 Expired，但不伪造答案，也不产生 Task terminal 命令。它只把冻结动作投回精确 owner：Task/Project 的待办动作失败或放弃并保留 Task lifecycle；Run owner 按 [Attempt/Seat/Obligation 的 fail/cancel 规则](./run.md#request重试与-gate)收口；直接 RoomInvocation 的 `fail|cancel` 分别进入 Failed|Cancelled，并撤销其 Harness 输入/写租约；Harness 本身没有独立语义终态，只执行所属 Attempt/RoomInvocation 的收口。任何分支都不得投给替代 execution 或留下活动 Seat/Attempt。
 
 ## 版本、权限与替代
 
