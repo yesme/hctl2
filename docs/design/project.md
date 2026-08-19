@@ -96,7 +96,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 - mention 提交前的 Trigger Preview，必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
 
-常见的多参与者用法——例如让两个 Harness 各自独立研究同一个问题、再并排对比结论——不需要专门的概念：它只是一次预填好多个调用的 Trigger Preview，人确认后同时创建几个独立的 RoomInvocation。这类用法可以在各个 Room 中重复使用；将来若要沉淀为可共享的一等对象，再另行设计。
+在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 RepoInstance 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
 普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。Agent-authored Message、ResultProposal、模型总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。重复且无需临场判断的协作边应进入 [Workflow](./run.md)，由 reducer 只按冻结 WorkflowRevision 创建。
 
