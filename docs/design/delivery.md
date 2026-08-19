@@ -117,6 +117,7 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 
 ## 未决问题
 
+- Room 的协作历史到底放哪里：同一个人在台式机和笔记本各 clone 一份仓库，台式机上与 Agent 的对话在笔记本上应当可见、可继续，但现行合同把 Room 账本的权威放在单个 clone 的本地账本里——clone 丢了协作记忆就丢了。候选方向与取舍见 `.memo/room-ground-truth-20260819.md`；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
 - Repo Room 跨 clone 迁移、隐私和保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；
