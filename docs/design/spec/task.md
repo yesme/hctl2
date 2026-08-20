@@ -9,41 +9,45 @@
 | --- | --- |
 | Task | 稳定身份、标题、目标结果和所属 Project |
 | TaskRevision | 不可变的范围、验收标准、来源、所需角色和能力 |
-| TaskOperationalState | 排序、优先级、负责人、阻塞、同步与派生健康状态 |
+| TaskOperationalState | 对后端操作字段（排序、优先级、负责人、阻塞）的本地投影与同步账，及派生健康状态；操作字段的 ground truth 在 content 后端 |
 | TaskBinding | Task 与外部来源、字段写入权和适配器版本的冻结绑定 |
 | TaskSourceSnapshot | 外部系统一次只追加的原始与规范化观测 |
 | TaskCompletionReceipt | 某次 CompleteTaskIntent 对精确 TaskRevision、规则、候选和证据的完成证明 |
 
 Project 到外部 provider/account/scope 的连接由 ResolvedPortBinding（port_kind = task_source）承载；每个 Project 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个 active binding。
 
-Task lifecycle 只有 `Open | Completed | Cancelled`。契约变化创建新 TaskRevision；高频操作变化只更新 TaskOperationalState。历史 Revision、Run 和 Receipt 永不改写或物理删除。
+Task lifecycle 只有 `Open | Completed | Cancelled`。契约变化创建新 TaskRevision；高频操作变化经受控端口写入 content 后端，回读为 TaskOperationalState 投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。
 
 `Backlog | Ready | InProgress | Review` 是 TaskOperationalState 中的本地非终态 stage，不是 Task lifecycle。Blocked 与 Needs Attention 是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；Completed/Cancelled 由 lifecycle 决定，外部 Done/Closed 或拖卡都不能直接写成该终态。
 
 ## 契约与来源
 
-TaskRevision 冻结验收合同，不冻结施工步骤。外部变化都先成为 Snapshot；其中会改变 TaskRevision 契约的内容才形成 `PendingAdoption`，用户采纳后才创建新 TaskRevision。由外部系统拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。活动 Run 已冻结的 Revision 不能原地改写。
+任务 content 的家是 Project 级选择：创建 Project 时为 Kanban 场景选定一个 content 后端——本地任务服务器，或 GitHub/Linear 这类远端平台（场景客户端经 API 直访远端，客户端只是投影）。一个 Project 一个 Board：Board 是该 Project 任务 content 的容器，与“一个 Project 一个 Room”对仗；后端连接由 ResolvedPortBinding（port_kind = task_source）承载，更换后端是显式的绑定替换，不改变既有 Task 身份映射。
 
-每个外部规范实体在整个 RepoInstance 使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task；该唯一键不含端口绑定、scope 或 placement，Disable/Rebind 端口绑定或 placement 也不释放或重定向这份映射。TaskBinding 另行冻结可选的 placement identity（`placement_scope_stable_id + external_board_item_id`）及其写入权；移动 board placement 或更换 board-item binding 不会产生第二个 Task，也不能改写规范实体身份。
+看板卡片是 content，粒度由后端自由承载（子任务、清单、微卡不受 HCTL 约束）。每张进入所选 scope 的卡都以稳定键映射一个 HCTL Task 身份（身份全量），但 TaskRevision 契约按需创建（契约惰性）：首次绑定 Run、首次提交完成命令或显式升格采纳时才冻结验收契约。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影，要让完成成为可核验事实，必须先升格出契约。
+
+TaskRevision 冻结验收合同，不冻结施工步骤。后端与关联来源的变化都先成为 Snapshot；其中会改变 TaskRevision 契约的内容才形成 `PendingAdoption`，用户采纳后才创建新 TaskRevision。由 content 后端拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。活动 Run 已冻结的 Revision 不能原地改写。
+
+每个外部规范实体在用户级控制面账本内使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task；该唯一键不含端口绑定、scope 或 placement，Disable/Rebind 端口绑定或 placement 也不释放或重定向这份映射。TaskBinding 另行冻结可选的 placement identity（`placement_scope_stable_id + external_board_item_id`）及其写入权；移动 board placement 或更换 board-item binding 不会产生第二个 Task，也不能改写规范实体身份。
 
 task_source 端口绑定与 TaskBinding 的本地 current projection 使用 control 维护的单调 `state_version` 做 CAS；TaskSourceSnapshot 另行保存 provider 的 remote revision、digest 和 cursor。只有采用外部来源内容的 AdoptTaskRevisionIntent 才必须让 Snapshot、字段 authority policy 与新 TaskRevision 引用同一个 TaskBinding，并把 binding revision、snapshot、contract projection digest 和 authority-policy digest 一并写入 TaskRevision；采用本地 Room/Project 提案时改为冻结精确 Project 来源 refs、预期 contract version 和 proposal digest，不伪造 TaskBinding。任一适用 current pointer 已变化都使预览失效。远端 revision/digest 不能充当本地 `state_version`，本地版本也不能伪装成 provider 的并发令牌。
 
-字段写入权由 TaskBinding 逐字段决定：
+字段写入权由 TaskBinding 逐字段决定；契约、lifecycle 与完成凭证永远归控制面，不可配置：
 
 | 模式 | 规则 |
 | --- | --- |
-| local | HCTL 拥有契约与操作字段 |
-| linked_readonly | 外部变化只形成快照、提案或 Needs Attention |
-| external_authoritative | 外部系统拥有绑定中明确列出的字段 |
+| backend_authoritative | 所选 content 后端拥有该字段（卡片、流转、排序、评论等操作字段默认如此），外部变化按 Snapshot 投影 |
+| hctl_authoritative | 控制面拥有该字段（契约、判决与验收类字段），后端只接收写回 |
+| linked_readonly | 非后端的关联来源只形成快照、提案或 Needs Attention |
 
-外部 Done/Closed/Reopen/Deleted 是来源事实，不会自动完成、重开、取消 HCTL Task，也不会停止 Run。删除只写 tombstone。
+后端或关联来源的 Done/Closed/Reopen/Deleted 是 content 事实，不会自动完成、重开、取消 HCTL Task，也不会停止 Run。删除只写 tombstone。
 
 ## 写入合同
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 不可变结果或边界 |
 | --- | --- | --- | --- |
 | Task / TaskRevision | contract version；`Open / Completed / Cancelled` 与独立 lifecycle version | control 处理 CreateTaskIntent、AdoptTaskRevisionIntent、CompleteTaskIntent、ReopenTaskIntent、CancelTaskIntent | TaskRevision 只追加；Reopen 不改写旧完成历史 |
-| TaskOperationalState | `operational_state_version` | control 处理 UpdateTaskIntent 与 MoveTaskIntent；后者只改获准排序/位置 | 不启动 Run，不改变 TaskRevision 或 lifecycle |
+| TaskOperationalState | binding `state_version` + 后端并发令牌 | control 准入 UpdateTaskIntent 与 MoveTaskIntent，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 TaskRevision 或 lifecycle |
 | task_source 端口绑定 / TaskBinding | current revision + local `state_version`；`Active / Disabled / Replaced` | control 处理 Connect/Update/Disable 与 Bind/Rebind Intent，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的 identity claim 持久唯一 |
 | TaskSourceSnapshot | append-only sequence + remote revision/digest/cursor；可产生 `PendingAdoption` | control 持久化 refresh/reconcile 观测；AdoptTaskRevisionIntent 才消费内容变化 | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | TaskCompletionReceipt | immutable | 只有成功的 CompleteTaskIntent 事务可写 | 精确绑定该次 `task_lifecycle_version`、TaskRevision 与证据 |
@@ -60,20 +64,20 @@ Run 的裸终态、Harness 自述、Git commit、CI 绿色或外部 Closed 都�
 
 ## StartRun 前置与排序令牌
 
-StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Manifest、ContextManifest 或 ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。external_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
+StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Manifest、ContextManifest 或 ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
 
-HCTL 拥有排序字段时，MoveTaskIntent 必须冻结排序作用域、相邻 Task 和涉及的 `operational_state_version`；任何本地移动都推进受影响版本，使旧 CAS 失败并按当前投影重新计算位置。外部系统拥有排序字段时，同一命令改为冻结 TaskBinding 的本地 `state_version` 与 provider remote token，经受控端口写入并回读 Snapshot；来源刷新推进 binding `state_version`，使旧预览失效。provider 若没有可条件写入的 remote token，adapter 不得伪造一个：只有 provider 提供等价原子版本前置时才开放相对排序写入，否则降级为只读或其确实支持且可回读的绝对移动。两种令牌不能混用，跨 provider 或排序作用域的相对移动必须拒绝。
+排序与位置永远归 content 后端。MoveTaskIntent 冻结 TaskBinding 的本地 `state_version` 与后端的并发令牌，经受控端口写入并回读 Snapshot；来源刷新推进 binding `state_version`，使旧预览失效。后端若没有可条件写入的并发令牌，adapter 不得伪造一个：只有后端提供等价原子版本前置时才开放相对排序写入，否则降级为只读或其确实支持且可回读的绝对移动。本地任务服务器与远端平台各用自己的令牌，本地 `state_version` 与后端令牌不能互相冒充，跨后端或排序作用域的相对移动必须拒绝。
 
 ## 外部概念对齐
 
 对齐用于翻译与接入，不转移权威。
 
-| HCTL | Linear / GitHub | 差异 |
+| HCTL | 任务后端（Linear / GitHub / 本地任务服务器） | 差异 |
 | --- | --- | --- |
-| Task | Issue | 外部 Issue 只是可选来源之一；Task 的身份与验收由 HCTL 拥有 |
+| Task | Issue / 任务卡 | 后端卡片承载 content；Task 的身份、契约与验收由 HCTL 拥有 |
 | TaskOperationalState 的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 TaskBinding 逐字段决定 |
 | 排序（rank） | Linear sortOrder / ProjectV2 排序 | 条件写入用 provider 自己的并发令牌；没有等价令牌就降级 |
 | TaskBinding 的 placement | GitHub ProjectV2 item；Linear 无独立看板项，位置由 workflow state + sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
 | TaskSourceSnapshot | webhook / API payload | 先观测后采纳；会改契约的内容必须经用户采纳 |
-| 外部 Closed | issue closed | 只是来源事实，不等于验收完成 |
+| 后端 Closed | issue closed / 卡片终态 | 只是 content 事实，不等于验收完成 |
 | TaskCompletionReceipt | 无对应 | HCTL 差异化语义：绑定精确契约与证据的完成证明 |

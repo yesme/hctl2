@@ -20,7 +20,7 @@
 | Context | 上下文 | 一次调用看到了什么、为什么、来源是什么；由清单（Manifest）与内容包（Bundle）两份冻结记录承载 | [spec/project](../spec/project.md) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；提供方法，不授予权限 | [spec/system](../spec/system.md) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
-| Kanban | 看板 | Task 的主操作场景；泳道（lane）只是投影 | [Task](../task.md) |
+| Kanban | 看板 | Task 的主操作场景；一个 Project 一个 Board，content 在所选任务后端；泳道（lane）只是投影 | [Task](../task.md) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选和权限的一次授权执行 | [Run](../run.md) |
 | Workflow | 施工图 | 与引擎无关的控制图与治理规则；版本见 Revision 族 | [Run](../run.md) |
 | Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
@@ -121,7 +121,7 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 | ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
 | RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
 | WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
-| TaskOperationalState | 任务操作态 | 排序、优先级、负责人等高频状态 |
+| TaskOperationalState | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
 
 RepoInstance 也属独立对象，见核心产品词表。
 
