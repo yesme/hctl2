@@ -1,7 +1,8 @@
 # Participant 配置设计 Memo
 
 > 状态：Informative · 讨论稿 · 2026-08-19<br>
-> 目的：把 Participant 从“自动探索到一个本地 Harness”扩展成可配置、可解析、可冻结、可审计的数字参与者。本文不改变现行规范，不创建第五模块，也不提前定义 marketplace。
+> 目的：把 Participant 从“自动探索到一个本地 Harness”扩展成可配置、可解析、可冻结、可审计的数字参与者。本文不改变现行规范，不创建第五模块，也不提前定义 marketplace。<br>
+> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
 
 ## 1. 核心判断
 

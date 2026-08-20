@@ -47,7 +47,7 @@ Project → Harness 是无 Run 的显式短路；Harness → Task 不存在原�
 
 ## Project → Task：从讨论到承诺
 
-Chat Room 可以生成 `DistillTaskProposal` 预览，但它不是第二个 Task。确认时，`CreateTaskIntent` 或 `AdoptTaskRevisionIntent` 必须冻结：
+Chat Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。确认时，`CreateTaskIntent` 或 `AdoptTaskRevisionIntent` 必须冻结：
 
 - `project_id` 与预期 Project version；
 - 来源 Message、Artifact、Memo、Request 的精确引用；

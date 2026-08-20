@@ -107,7 +107,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 ```text
 ~/.hctl2/                      # 用户级配置、Harness/Profile/Skill/Runtime 定义
 <repo>/.hctl2/                # Git tracked · repo.toml、projects/、workflows/
-                               # memory/、policies/、skills/、schemas/
+                               # memos/、policies/、skills/、schemas/
 <git-common-dir>/hctl2/       # untracked · state.sqlite、lock、traces/、cache/
 ```
 

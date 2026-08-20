@@ -60,7 +60,7 @@ Run 的裸终态、Harness 自述、Git commit、CI 绿色或外部 Closed 都�
 
 ## StartRun 前置与排序令牌
 
-StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Context/ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。external_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
+StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Manifest、ContextManifest 或 ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。external_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
 
 HCTL 拥有排序字段时，MoveTaskIntent 必须冻结排序作用域、相邻 Task 和涉及的 `operational_state_version`；任何本地移动都推进受影响版本，使旧 CAS 失败并按当前投影重新计算位置。外部系统拥有排序字段时，同一命令改为冻结 TaskBinding 的本地 `state_version` 与 provider remote token，经受控端口写入并回读 Snapshot；来源刷新推进 binding `state_version`，使旧预览失效。provider 若没有可条件写入的 remote token，adapter 不得伪造一个：只有 provider 提供等价原子版本前置时才开放相对排序写入，否则降级为只读或其确实支持且可回读的绝对移动。两种令牌不能混用，跨 provider 或排序作用域的相对移动必须拒绝。
 
