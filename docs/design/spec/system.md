@@ -59,7 +59,7 @@ Submit(typed command) -> accepted result or typed rejection
 Subscribe(cursor) -> ordered events or resync snapshot
 ```
 
-场景客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台只拥有明确授权的字段；其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 身份。
+场景客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台可以拥有其场景 content 的 ground truth，以及明确授权的字段；但它不拥有治理——其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 的身份、授权或判决来源。
 
 渲染器、拖放、按钮和终端输入都只是 command client。未能提供等价预览、版本或权限信息时，动作必须禁用或安全暂停。
 

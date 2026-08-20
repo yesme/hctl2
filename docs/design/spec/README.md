@@ -36,6 +36,24 @@ Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact�
 | Intent | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
 | Snapshot | 先观测后准入的只追加外部观测；观测无论置信度多高都不直接改写事实 |
 
+## 三类数据
+
+每个场景的持久数据分三类；类别的共同语义只在这里定义一次，各模块合同按场景导出，不再重复解释。三个类别词可在设计正文携中文对照使用：
+
+| 类别 | 中文对照 | 含义 | 权威所在 |
+| --- | --- | --- | --- |
+| metadata | 治理元数据 | 身份、绑定、授权与判决——谁是谁、谁连着谁、谁批了什么、凭什么算数 | HCTL 自己的账本（控制面） |
+| content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
+| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
+
+统一律：**每个场景的 artifact 是该场景 content 的结晶**——讨论结晶为决议与 Memo，任务流转结晶为冻结契约与施工图，机械执行结晶为凭证链，会话字节流结晶为代码变更。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+
+三条法贯穿全部模块合同，各处引用，不再各写一套：
+
+1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：平台消息不能触发派发，拖卡不能完成 Task，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
+2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
+3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；结果可以作为记录写回 content 系统，但平台里的记录只是记录，不是命令。
+
 ## 词汇索引（v0.9.1 归并后）
 
 - **Revision 族**：TaskRevision、WorkflowRevision、ChangeSetRevision、ArtifactRevision、ExtensionRevision、EngineDeployment

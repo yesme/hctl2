@@ -32,6 +32,16 @@
 | Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/harness](../spec/harness.md) |
 | Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [spec/system](../spec/system.md) |
 
+## 三类数据（数据类别，不是对象）
+
+| 类别 | 中文对照 | 一句话含义 |
+| --- | --- | --- |
+| metadata | 治理元数据 | 身份、绑定、授权与判决；住在 HCTL 自己的账本 |
+| content | 场景内容 | 各场景的协作与执行记忆；住在该场景的 content 系统 |
+| artifact | 结晶 | content 提炼出的不可变产物；进 Git。与领域对象 Artifact（工件）不同物 |
+
+权威定义见[合同层总则](../spec/README.md#三类数据)。
+
 ## Revision 族（不可变版本）
 
 | 成员 | 中文对照 | 版本化的是什么 |

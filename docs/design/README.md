@@ -45,7 +45,7 @@ Workbench、CLI 与第三方原生 UI 作为场景客户端，只使用四类操
 3. 提交类型化命令；
 4. 订阅带序号的领域事件或重同步快照。
 
-Workbench 把四个场景集成在一个客户端中，但没有额外权限。第三方平台可以实现部分场景客户端，也可以通过 Chat/TaskSource/WorkflowEngine/Harness/RuntimeBackend 受控端口提供底层能力；受控端口只报告读写能力和降级方式，字段权威由对应模块的权威绑定（authority binding）授予。同一产品兼任两者时，客户端绑定与权威绑定仍须分开。未实现或无权执行的动作必须隐藏或安全拒绝。平台自己的 Session、Issue、Workflow Task、pane 或数据库都不能成为 HCTL 的第五个事实源。
+Workbench 把四个场景集成在一个客户端中，但没有额外权限。第三方平台可以实现部分场景客户端，也可以通过 Chat/TaskSource/WorkflowEngine/Harness/RuntimeBackend 受控端口提供底层能力；受控端口只报告读写能力和降级方式，字段权威由对应模块的权威绑定（authority binding）授予。同一产品兼任两者时，客户端绑定与权威绑定仍须分开。未实现或无权执行的动作必须隐藏或安全拒绝。平台可以拥有本场景 content（场景内容）的 ground truth（事实源头），但不能拥有治理：它自己的 Session、Issue、Workflow Task、pane 或数据库不能成为 HCTL 身份、授权或判决的来源。
 
 ## 共同规则
 
