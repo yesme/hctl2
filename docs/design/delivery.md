@@ -135,6 +135,6 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 - Project 拆分/合并和 Task 依赖的产品表达；
 - Scoped Room 自动归档策略；
 - 首批原生会话导入的范围与长期维护预算（能力定义见 [Agent 设计正文](./agent.md#原生会话导入)）；
-- 多主机、Windows、远程/多设备和多用户权限；
+- 多主机与远程的实施：架构方向已定（Workbench 连接本机或远程控制面，见[三面架构](./architecture.md#三个面)），未决的是远程连接的认证与传输、多主机执行现场的编排、Windows 与多用户权限；
 - 成本/预算硬上限及运行中耗尽的交互；
 - 第一阶段之后首个非 Matrix 聊天平台桥接（Matrix 生态客户端已随 chat server 天然可用）。
