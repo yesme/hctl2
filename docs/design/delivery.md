@@ -4,11 +4,11 @@
 
 ## 第一阶段范围
 
-第一阶段面向单用户、单机（用户级控制面与 RepoInstance 服务同进程）、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine 生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+第一阶段面向单用户、单机（用户级控制面与 RepoInstance 服务同进程）、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine/chat server 生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 | 模块 | 集成场景必须交付 | 第三方适配必须交付 |
 | --- | --- | --- |
-| [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | 第一阶段外部聊天桥接不作为出门条件 |
+| [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面——这是对旧范围的显式反转；非 Matrix 平台桥接不作为出门条件 |
 | [Task](./task.md) | 可访问 Kanban、纯本地 Task、完成预览 | Linear/GitHub 均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | WorkflowRevision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Conductor 经 WorkflowEngine 受控端口通过本地分发与恢复测试 |
 | [Agent](./agent.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 HarnessAdapter 和一个 RuntimeBackend 通过完整契约测试；WezTerm 可选 |
@@ -34,7 +34,7 @@ CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBac
 - 多用户组织/RBAC、云队列、多主机调度和 Conductor 高可用；
 - 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md)），不是待补功能；
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
-- 完整外部聊天桥接、任意第三方插件市场；
+- 非 Matrix 平台的完整聊天桥接、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
 - 不对绕过受控端口的外部写入（带外写入）做全局检测与自动补偿；第一阶段只管理受控端口发出的意图，并把外部平台上的变化当作漂移/快照回读；
 - 同时完成 Linear 与 GitHub 两套完整双向适配器；
@@ -91,7 +91,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 | 范围 | 必须证明 |
 | --- | --- |
-| Project / Chat Room | CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致 room_sequence、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复；模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝；mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人；原始消息、执行日志和模型总结不经 PublishMemoIntent 不会成为 Memo |
+| Project / Chat Room | CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）；chat server 中的消息、反应或自动化不能成为命令，chat server 不可用时治理与施工命令照常、聊天入口安全降级；模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝；mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人；原始消息、执行日志和模型总结不经 PublishMemoIntent 不会成为 Memo |
 | Task / Kanban | TaskRevision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；本地 adoption 不要求伪造 TaskBinding，外部 adoption 混用 TaskBinding 版本时拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；human Kanban 完成与正常 Run reducer handoff 都走同一 CompleteTaskIntent，Harness/LLM/adapter/外部 Closed 冒充 actor 均拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射 |
 | Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许 Pending→Lost 并用新 Attempt 恢复，ResultProposed 不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；Failed/Cancelled/Superseded Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
 | Agent / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 intent 并回读，target-head 竞争或 ACK 未知时不得签成功 Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；Harness 内调用 Task terminal/Room fan-out 命令因 execution provenance 拒绝；control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离；attach/resume/replay、IME/背压/慢客户端隔离 |
@@ -118,7 +118,7 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 
 ## 未决问题
 
-- Room 的协作历史到底放哪里：同一个人在台式机和笔记本各 clone 一份仓库，台式机上与 Agent 的对话在笔记本上应当可见、可继续，但现行合同把 Room 账本的权威放在单个 clone 的本地账本里——clone 丢了协作记忆就丢了。候选方向与取舍见 `.memo/room-ground-truth-20260819.md`；
+- ~~Room 的协作历史到底放哪里~~ 已了结：消息 content 归 chat server，metadata 随用户级控制面走，结晶进 Git（见[来时路 §12](./references/decision-history.md)）；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
 - Repo Room 跨 clone 迁移、隐私和保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；

@@ -12,6 +12,7 @@
 | `hctl2-core` | Git/SCM、Revision、digest、Receipt 和合并事实校验 |
 | agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
+| chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
 Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
@@ -98,6 +99,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 | --- | --- |
 | 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约记账与判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 |
 | RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control |
+| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest |
 | 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |
@@ -133,7 +135,7 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 1. 取得 control/backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 writer/backend generation；
-3. 回读外部 Task Source 和未确认副作用；
+3. 回读全部已绑定 content 系统的游标（chat server、任务后端、Workflow Engine、runtime）和未确认副作用；
 4. 查询 Workflow Engine、agentd runtime 和 core Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；

@@ -12,7 +12,7 @@ Project 也不是施工管线：研究、规格说明、ADR（架构决策记录
 
 ## 模块拥有什么
 
-Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）与消息，Participant 与角色，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（RoomInvocation）。它不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，Participant 与角色，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（RoomInvocation）。消息本体是场景内容（content），住在 chat server；讨论的结晶（决议、Memo）进 Git。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
 
 ## 关键规则
 
@@ -41,7 +41,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 Chat Room 是 Project 的主要操作场景，提供：
 
-- 消息顺序由账本统一给出，不靠时间戳或渲染顺序；
+- 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
 - `@` Participant/Role、`/` 类型化动作、`$` Skill、`#` 文件/Artifact/消息引用；
 - 并发 RoomInvocation 的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和 Needs Attention（需要关注）投影；
@@ -54,11 +54,12 @@ Chat Room 是 Project 的主要操作场景，提供：
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |
-| 场景客户端：Workbench Room | 提供完整时间线、Composer（输入区）、预览和命令入口 | 直接写 SQLite 或把渲染动作当成领域结果 |
+| 场景客户端：Workbench Room | 提供完整时间线、Composer（输入区）、预览和命令入口 | 绕过命令服务直接写治理账本或 chat server，把渲染动作当成领域结果 |
 | 场景客户端：CLI | 查询 Room/Request；第一阶段复杂编辑安全暂停 | 绕过预览、版本或权限检查 |
-| 受控端口 / 原生客户端：外部聊天平台 | 在能力允许时投递/接收同一 Room 的消息与 Request | 以外部 thread/message ID 取代 Project/Room 身份 |
+| content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth；Matrix 生态客户端可直接读写聊天 | 触发派发、解决 Request 或改变任何治理事实——记录不是命令 |
+| 受控端口 / 原生客户端：非 Matrix 聊天平台桥接 | 在能力允许时投递/接收同一 Room 的消息与 Request | 以外部 thread/message ID 取代 Project/Room 身份 |
 
-外部聊天桥接不是第一阶段出门条件；一旦交付，必须具备稳定身份、去重、回声抑制、outbox、重连和降级能力。
+chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用。非 Matrix 平台的桥接不是第一阶段出门条件；一旦交付，必须具备稳定身份、去重、回声抑制、outbox、重连和降级能力。
 
 ## 模块交接
 

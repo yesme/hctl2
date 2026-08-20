@@ -119,7 +119,7 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 | --- | --- | --- |
 | RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
-| RoomEvent | 房间事件 | 协作账本的只追加单元；Message 是其一种 |
+| RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
 | WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
 | TaskOperationalState | 任务操作态 | 排序、优先级、负责人等高频状态 |
 
