@@ -51,11 +51,11 @@ Approve Workflow 只确认施工图；`StartRunIntent` 才授予资源和副作�
 
 ## 从节点到结果
 
-本节定义 Run 内部归约；跨 Harness 的派发、结果信封和故障恢复见[连接合同](./connections.md)。
+本节定义 Run 内部归约；对 Agent 模块的派发、结果信封和故障恢复见[连接合同](./connections.md)。
 
 1. control 领取一个 HCTL 外部 Engine task，并按 Run、binding generation 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
 2. control 按规则创建 Seat，并为候选产生 ExecutionSpec。
-3. [Harness](./harness.md) 执行 Attempt，只能返回 ResultProposal、Revision 和证据。
+3. [Agent](./agent.md) 模块执行 Attempt，只能返回 ResultProposal、Revision 和证据。
 4. control/core 校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与 Engine completion outbox 先持久提交，再幂等完成外部任务。
 

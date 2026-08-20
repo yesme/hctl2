@@ -35,7 +35,7 @@ Run 模块保存“哪份自动施工已获授权、机械进度如何映射为�
 - “重试”有五种身份不同的路径——传输重投、候选切换、引擎重试、语义返工、替代执行；混用它们会复制票数、绕过验收或复活旧执行。完整分类见[合同附录](./spec/run.md#request重试与-gate)。
 - 评审必须独立：被评对象的作者不占必需评审席位；备用尝试不增加票数；被评对象换版本后旧票作废、完整重评。
 - 引擎的 READY、进程退出和 Harness 自述都只是输入信号，不是语义结果；引擎界面只作诊断，发现越界修改时标记分歧并安全暂停。
-- 尝试的逻辑身份由 Run 拥有，物理进程由 Harness 模块观测；两边不维护两套状态。
+- 尝试的逻辑身份由 Run 拥有，物理进程由 Agent 模块观测；两边不维护两套状态。
 - Run 终态不直接改写 Task：只有正常完成且绑定契约的 Run 才由归约器机械提交同一个 Task 完成命令，Task 仍独立验收；失败类 Run 不终结 Task。
 - 裁决与凭证必须绑定精确的评审对象版本；当前指针或文件路径不能替代版本。
 
@@ -47,7 +47,7 @@ Workflow 场景提供施工清单预览、只读图、节点/席位/尝试的渐
 | --- | --- | --- |
 | 场景客户端：Workbench Run 图 | 查询、预览并提交 Run 命令 | 直接修改 Engine 或签发结果 |
 | 场景客户端：CLI | show/preview/start/pause/cancel；写操作先预览确认 | 绕过绑定、版本或权限 |
-| 受控端口：WorkflowEngine / Conductor | 保存令牌、机械任务、定时器、重试和历史 | 选择 Harness、创建 Seat、计算 HCTL Gate、签发 Receipt 或写 Git |
+| 受控端口：WorkflowEngine | 保存令牌、机械任务、定时器、重试和历史 | 选择 Harness、创建 Seat、计算 HCTL Gate、签发 Receipt 或写 Git |
 
 Workbench 关闭不停止 Run。
 
@@ -56,5 +56,5 @@ Workbench 关闭不停止 Run。
 以下只列所有权方向；字段、事务与故障语义由[连接合同](./spec/connections.md)统一定义。
 
 - Project 通过启动命令交付冻结的 Project 与施工图引用；可选的契约版本由 Task 提供，Run 独占施工清单与执行生命周期。
-- Run 向 Harness 交付派发时冻结的执行规格（ExecutionSpec）；Harness 只返回结果提议、版本、证据和物理观测。
+- Run 向 [Agent](./agent.md) 模块交付派发时冻结的执行规格（ExecutionSpec）；Agent 模块只返回结果提议、版本、证据和物理观测。
 - Run 向 Task 返回精确的 Run、裁决与凭证引用；正常完成且绑定契约的 Run 可由归约器提交同一个 Task 完成命令。Run 向 Project 提交 Request 并投影低噪声里程碑。

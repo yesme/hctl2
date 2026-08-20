@@ -7,10 +7,12 @@
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
 | --- | --- | --- | --- |
-| Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的 Agent 工具 | [Harness](../harness.md) |
+| Agent | 执行治理模块 | 第四个领域模块：执行授权、写入边界、物理运行时观测与结果证据。与 Harness（工具）、agentd（组件）不同物 | [Agent](../agent.md) |
+| Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的工具；Terminal 场景的系统角色 | [三面架构](../architecture.md#场景与系统) |
 | Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的控制边界，拥有独立账本 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
+| Chat Room | 聊天室场景 | Project 模块的主操作场景；Room 的场景视图 | [Project](../project.md) |
 | Participant | 参与者 | 可寻址的逻辑协作者档案；不等于某个进程或外部账号 | [Project](../project.md) |
 | Request | 请求卡 | 向指定的人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md) |
 | Memo | 备忘 | 用户明确提炼、预览并发布的长期知识 | [Project](../project.md) |
@@ -27,9 +29,9 @@
 | Gate | 评审关卡 | 施工图中冻结的治理节点；决定结果凭什么通过 | [spec/run](../spec/run.md) |
 | Verdict | 裁决 | 对精确版本的语义评审结论 | [spec/run](../spec/run.md) |
 | Receipt | 凭证 | 校验通过后签发的证明；见 Receipt 族 | [spec/README](../spec/README.md#六族规则) |
-| Terminal | 终端场景 | Harness 的观察、诊断和接管场景 | [Harness](../harness.md) |
-| ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/harness](../spec/harness.md) |
-| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/harness](../spec/harness.md) |
+| Terminal | 终端场景 | Agent 模块的观察、诊断和接管场景 | [Agent](../agent.md) |
+| ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/agent](../spec/agent.md) |
+| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/agent](../spec/agent.md) |
 | Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [spec/system](../spec/system.md) |
 
 ## 三类数据（数据类别，不是对象）
@@ -51,7 +53,7 @@
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
 | Terminal | harness（编码代理工具）/ 运行时后端 | 会话转录、PTY 流 |
 
-权威定义见[三面架构](../architecture.md#场景与系统)。
+权威定义见[三面架构](../architecture.md#场景与系统)。agentd 是组件实现名（Agent 模块的本机执行守护进程），与 Agent 模块、harness 系统角色都不同物。
 
 ## Revision 族（不可变版本）
 

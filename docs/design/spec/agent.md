@@ -1,11 +1,11 @@
-# Harness 模块合同
+# Agent 模块合同
 
 > 状态：规范性合同 · 草案 v0.9.1<br>
-> 本文是 Harness 模块对象、状态机与写入合同的唯一权威。设计正文见 [Harness 与 Terminal](../harness.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
+> 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
 
-Harness 模块把 [Project](./project.md) 拥有的 RoomInvocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 ExecutionSpec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 ExecutionSpec 冻结，不是独立对象；ExecutionSpec 由 Project 与 Run 各自作为 owner 定义。
+Agent 模块把 [Project](./project.md) 拥有的 RoomInvocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 ExecutionSpec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 ExecutionSpec 冻结，不是独立对象；ExecutionSpec 由 Project 与 Run 各自作为 owner 定义。
 
 | 对象 | 含义 |
 | --- | --- |
@@ -49,7 +49,7 @@ change_set_revision_id
 
 评审 subject 对 `{change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha}` 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 `review_subject_digest`；它不是完整 ChangeSetRevision 的 `revision_digest`。`result_commit_sha` 只存在于后续 Integration/SCM evidence，不属于 ChangeSetRevision；因此给同一 Revision 增加不同 commit 包装不会改变其评审身份。返工或 result tree 变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review subject digest，但 author/reviewer separation 必须沿它解析并校验当前逻辑身份。
 
-Agent 自述“已合并”不可信。本地 `IntegrateChangeSetIntent` 至少固定 ChangeSetRevision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，core 才执行并回读 Git，成功时写唯一 IntegrationReceipt。远端 push/PR/merge 是同族 EffectIntent（executor = adapter），字段与本地 IntegrateChangeSetIntent 等价。Harness/model 不能直接取得集成 authority。core 校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，Intent 保持 ResultUnknown，core 必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
+模型自述“已合并”不可信。本地 `IntegrateChangeSetIntent` 至少固定 ChangeSetRevision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，core 才执行并回读 Git，成功时写唯一 IntegrationReceipt。远端 push/PR/merge 是同族 EffectIntent（executor = adapter），字段与本地 IntegrateChangeSetIntent 等价。Harness/model 不能直接取得集成 authority。core 校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，Intent 保持 ResultUnknown，core 必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
 
 失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理前，core 必须确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，agentd 只有得到该确认才可拆除资源；保全或封存失败时保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
 
@@ -69,7 +69,7 @@ Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄�
 
 ## 终端通道、连接与租约
 
-Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../harness.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 ExecutionRuntime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding/generation 签发短期 AttachDescriptor，并为写输入另行 CAS TerminalInputLease；agentd 只接受由当前 control writer 签发且仍匹配 runtime generation 的 descriptor/lease。AttachDescriptor 固定逻辑 owner、后端目标、host、runtime generation、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 TerminalInputLease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。
+Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 ExecutionRuntime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding/generation 签发短期 AttachDescriptor，并为写输入另行 CAS TerminalInputLease；agentd 只接受由当前 control writer 签发且仍匹配 runtime generation 的 descriptor/lease。AttachDescriptor 固定逻辑 owner、后端目标、host、runtime generation、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 TerminalInputLease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。
 
 Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 RoomInvocation 或 Attempt 逻辑 owner、对应 runtime binding 和 generation 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 

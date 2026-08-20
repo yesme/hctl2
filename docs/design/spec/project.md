@@ -17,7 +17,7 @@
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
 | Artifact / ArtifactRevision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
-| RoomInvocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [ExecutionSpec](./connections.md#project--run--harness从授权到物理执行) 承载 |
+| RoomInvocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [ExecutionSpec](./connections.md#project--run--agent从授权到物理执行) 承载 |
 
 ## 写入合同
 
@@ -64,7 +64,7 @@ RoomInvocation 适合一次性的研究、比较或范围明确的写入。它�
 
 RoomInvocation 的合法边只有 `Pending → Running/Failed/Cancelled/Interrupted`、`Running ↔ WaitingForInput`，以及 `Running/WaitingForInput → Completed/Failed/Cancelled/Interrupted`。恢复对账无法证明原 session/process 身份及 lease/generation 仍匹配时，control 在同一收口事务将其置为 Interrupted、撤销输入/写租约并提交旧 runtime 的 stop/fence outbox；其迟到流或 ResultProposal 只留审计，不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 RoomInvocation、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
-RoomInvocation 的 ExecutionSpec 除[连接合同定义的共同字段](./connections.md#project--run--harness从授权到物理执行)外，还固定 scope（`repo_scope | project_scope`）与 human 批准 Agent 建议时的 lineage 字段：精确 `source_suggestion_ref = RoomEvent/Message | ResultProposal`、建议摘要、可选 `parent_execution_ref = RoomInvocation | Attempt` 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；ResultProposal 分支还要逐项匹配其 owner/generation。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
+RoomInvocation 的 ExecutionSpec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（`repo_scope | project_scope`）与 human 批准 Agent 建议时的 lineage 字段：精确 `source_suggestion_ref = RoomEvent/Message | ResultProposal`、建议摘要、可选 `parent_execution_ref = RoomInvocation | Attempt` 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；ResultProposal 分支还要逐项匹配其 owner/generation。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
 
 ## Request
 
@@ -78,7 +78,7 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；需
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。Agent-authored Message、ResultProposal、模型总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。模型 Participant 的 Message、ResultProposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
 
 mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 

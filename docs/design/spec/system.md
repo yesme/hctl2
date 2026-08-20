@@ -1,7 +1,7 @@
 # 系统边界与适配器合同
 
 > 状态：规范性合同 · 草案 v0.9.1<br>
-> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Harness 的领域状态。
+> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
 
@@ -14,7 +14,7 @@
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
-Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。
+Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
 
 ## 固定内核与受控端口
 
@@ -96,7 +96,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 | 事实 | 权威来源 |
 | --- | --- |
-| Project/Task/Run/Harness 领域操作账本、Room、Request、绑定、租约和投影 | RepoInstance SQLite + control |
+| Project/Task/Run/Agent 领域操作账本、Room、Request、绑定、租约和投影 | RepoInstance SQLite + control |
 | 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |

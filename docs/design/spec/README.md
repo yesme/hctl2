@@ -19,7 +19,9 @@
 
 ## 核心产品词
 
-Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Harness、Terminal、ChangeSet、Evidence、Workbench。
+Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
+
+另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
 
 另有六个高频合同词可在设计正文携中文对照使用：TaskRevision（契约版本）、WorkflowRevision（施工图版本）、RoomInvocation（单次调用）、ExecutionSpec（执行规格）、ResultProposal（结果提议）、Run Manifest（施工清单）。`*Intent` 命令名只出现在合同层。
 
@@ -92,6 +94,6 @@ Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact�
 - [project.md](./project.md)：Project 模块合同 + Chat 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块合同 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块合同 + Conductor / BPMN 对齐
-- [harness.md](./harness.md)：Harness 模块合同 + PTY / tmux / ACP 对齐
+- [agent.md](./agent.md)：Agent 模块合同 + PTY / tmux / ACP 对齐
 - [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复
