@@ -130,6 +130,7 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 ## 未决问题
 
 - ~~Room 的协作历史到底放哪里~~ 已了结：消息 content 归 chat server，metadata 随用户级控制面走，结晶进 Git（见[来时路 §12](./references/decision-history.md)）；
+- 控制面存储三分（用户级 metadata 账本 / 仓库物理事实账本 / Git 结晶）需要重新掰扯：所有者尚未被说服“仓库物理事实账本”与另外两者的边界及其作为独立账本的必要性——候选方向包括把它降级为“OS 锁 + 可丢弃缓存”（取消第二本 SQLite）；待专门讨论后定案或简化（合同见 `spec/system.md` 事实与存储）；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
 - Repo Room 跨 clone 迁移、隐私和保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；
