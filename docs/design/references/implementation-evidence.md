@@ -242,6 +242,7 @@ L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，�
 - [Conductor OSS](https://github.com/conductor-oss/conductor)
 - [核心概念](https://docs.conductor-oss.org/devguide/concepts/index.html)
 - [部署](https://docs.conductor-oss.org/devguide/running/deploy.html)
+- 固定评估版本：[v3.21.23](https://github.com/conductor-oss/conductor/releases)（2026-01 稳定版，Apache-2.0）；采用时补记已审阅 commit。持久化仅支持 Redis/Postgres/MySQL（无 SQLite），单机最小持久化组合与打包重量是限时验证要点。
 
 Conductor 不选择 Harness，不创建 Seat/Attempt，不解释语义拒绝，不计算 HCTL 法定票数，不签发 Receipt，也不直接写入 Git 或外部系统。Dagu 的[数据优先工作流与 Runner](https://github.com/dagu-org/dagu)只用于对照 Runner 的所有权设计，不是第一阶段后端。
 
@@ -471,6 +472,16 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 
 Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考项目：[自定义扩展](https://tiptap.dev/docs/editor/extensions/custom-extensions)、[React 节点视图](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)。
 
+<a id="e-l4-matrix-homeserver"></a>
+## E-L4-MATRIX-HOMESERVER · chat server 候选（限时验证）
+
+三类数据模型（v0.10.0）把 Chat Room 的消息 content 判给采用 Matrix 协议的 chat server。两个候选并列进入开工前限时验证（见[交付文档](../delivery.md#开工前限时验证)），均为 Rust 单二进制 + SQLite 后端、conduwuit 谱系：
+
+- [Tuwunel](https://github.com/matrix-construct/tuwunel)：conduwuit 原作者延续、全职维护；Apache-2.0。
+- [Continuwuity](https://github.com/continuwuity/continuwuity)：conduwuit 社区延续、Matrix 基金会生态成员；Apache-2.0。
+
+角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；选定后固定已审阅发布版本并补记 pinned commit。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
+
 ## L3 外部系统与观察清单
 
 Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时的外部系统原生降级方案；它们不是 HCTL 的 Task 模型：
@@ -478,6 +489,20 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 - Linear：[GraphQL](https://linear.app/developers/graphql)、[Webhook](https://linear.app/developers/webhooks)、[速率限制](https://linear.app/developers/rate-limiting)、[分页](https://linear.app/developers/pagination)
 - GitHub：[Projects API 指南](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects)、[GraphQL 参考](https://docs.github.com/en/graphql/reference/projects)、[Webhook](https://docs.github.com/en/webhooks/webhook-events-and-payloads)、[REST 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
 - React Aria：[Kanban 示例](https://react-aria.adobe.com/examples/kanban)、[拖放](https://react-aria.adobe.com/dnd)——只作为 UI 基础组件。
+
+<a id="e-l3-vikunja"></a>
+## E-L3-VIKUNJA · 本地任务服务器首选候选（限时验证）
+
+[Vikunja](https://github.com/go-vikunja/vikunja)：Go 单二进制、默认 SQLite、REST API（v1/v2）与 webhooks，看板/列表/甘特多视图；AGPL-3.0-or-later（desktop 组件 GPL-3.0-or-later）。
+
+角色：Kanban 场景本地 content 后端的首选候选。采用边界：独立进程托管、经 TaskSource 受控端口访问，不 vendor、不链接其源码——AGPL 义务因此限于该服务自身。验证要点见[交付文档](../delivery.md#开工前限时验证)；选定后固定已审阅发布版本并补记 pinned commit。
+
+<a id="e-l3-git-bug"></a>
+## E-L3-GIT-BUG · 零服务器任务后端对照（限时验证）
+
+[git-bug](https://github.com/git-bug/git-bug)：分布式、离线优先的任务追踪，任务以 git 对象存于 refs、随 push/pull 同步；Go 实现，CLI/TUI/Web UI 与 GraphQL API，带 GitHub/GitLab/Jira 桥接；GPL-3.0-or-later。
+
+角色：与 Vikunja 并列的对照候选，代表“零服务器、随仓库分布式”的另一条路。已知张力：看板语义弱（排序/泳道需另行承载）、无 webhook（观测靠 refs 轮询）、任务 content 进 git refs 与“content 归第三方服务器”的统一律相悖。若验证胜出，须显式接受模型例外并记入[来时路](./decision-history.md)。采用边界同上：独立进程/CLI 调用，不 vendor（GPL 义务隔离）。
 
 <a id="l1-selected-evidence"></a>
 ## L1 精选证据与能力观察清单

@@ -104,15 +104,26 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 交付测试检查可观察行为，不复述模块状态机。模块新增合同必须在这里增加一个失败用例，而不是再建一份不变量文档。
 
+## 选型判据
+
+执行面各系统的实现选型按以下准入标准评估；实现名只出现在本文与[实现证据](./references/implementation-evidence.md)，设计层正文只用系统角色名：
+
+1. **接口公开干净**：优先公开协议与文档化 API，保证第三方 UI 与场景客户端互操作——chat 场景直接采用 Matrix 协议；任务场景没有同级的开放协议，选择 API 完整、支持条件写入的实现并以受控端口隔离。
+2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
+3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
+4. **Conductor 先例三件套**：每个新增系统都设开工前限时验证；验证失败重开对应 ADR；不自研第二个同类系统。
+
 ## 开工前限时验证
 
-1. **Conductor 本地分发**：固定版本、JVM/SQLite 打包、启动、升级、备份和恢复；失败则重开 Engine ADR，不自研第二引擎。
+1. **Workflow Engine（conductor-oss）本地分发**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败则重开 Engine ADR，不自研第二引擎。
 2. **RuntimeBackend**：Zellij 与 tmux 用同一套 attach、输入、resize、重启、残留进程、macOS/Linux 测试，第一阶段只选一个。
-3. **外部 Task Source**：Linear/GitHub 用同一身份、字段权威、outbox/readback、限流和 tombstone 样本，选择首个完整双向适配器。
+3. **chat server**：Tuwunel 与 Continuwuity（均为 Rust 单二进制 + SQLite 的 Matrix homeserver）并列验证：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停；只选一个。
+4. **task server**：Vikunja 首选（Go 单二进制、SQLite、REST API + webhooks），git-bug 并列对照（零服务器、任务存于 git refs、随仓库分布式同步）。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停；git-bug 若胜出，须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
+5. **远端任务后端**：Linear/GitHub 用同一身份、字段权威、outbox/readback、限流和 tombstone 样本，选择首个完整双向适配器。
 
 ## 技术基线
 
-Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js；Conductor 经适配器接入。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：conductor-oss（Workflow Engine）、Matrix homeserver（Tuwunel 或 Continuwuity，chat server）、本地任务服务器（Vikunja 首选，git-bug 对照，限时验证定夺）。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
@@ -126,4 +137,4 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 - 首批原生会话导入的范围与长期维护预算（能力定义见 [Agent 设计正文](./agent.md#原生会话导入)）；
 - 多主机、Windows、远程/多设备和多用户权限；
 - 成本/预算硬上限及运行中耗尽的交互；
-- 第一阶段之后首个外部 Chat Room 适配器。
+- 第一阶段之后首个非 Matrix 聊天平台桥接（Matrix 生态客户端已随 chat server 天然可用）。
