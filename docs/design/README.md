@@ -20,10 +20,10 @@ HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命�
 
 ```mermaid
 flowchart TD
-    R["Repo"] --> RI["RepoInstance 0..N"]
-    RI --> RR["Repo Room"]
+    R["Repo"] --> RI["RepoInstance 0..N（代码物理现场）"]
+    R --> RR["Repo Room"]
     R --> P["Project 0..N"]
-    P --> PR["Project Room（每实例一个投影）"]
+    P --> PR["Project Room（一个 Project 一个）"]
     P --> T["Task 0..N"]
     P --> RN["Run 0..N"]
     T --> TR["TaskRevision 只追加"]
@@ -56,7 +56,7 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 - 普通 Room 的临场执行边只由人提交；模型 Participant 可以建议下一位协作者，但不能自行点名执行者、扩大群发范围或递归委派。预授权的自动边只由确定性规则按冻结的施工图创建。
 - 运行中的绑定被冻结；能力、权限、候选或验收条件变化时创建新版本或替代执行。
 - Workbench 关闭不改变领域事实；缺少等价适配能力时安全暂停，而不是绕过命令服务。
-- 同一仓库实例只有一个 control 写入者，同一运行时后端范围只有一个 agentd 持有者；旧代次一律失权。
+- 用户级治理账本只有一个写入者（可搬迁，身份不变），同一仓库实例只有一个 control 写入者，同一运行时后端范围只有一个 agentd 持有者；旧代次一律失权。
 
 以上是概括；精确措辞以[连接合同](./spec/connections.md)与[系统边界](./spec/system.md)为准。
 

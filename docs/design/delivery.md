@@ -4,7 +4,7 @@
 
 ## 第一阶段范围
 
-第一阶段面向单用户、单机、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine 生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+第一阶段面向单用户、单机（用户级控制面与 RepoInstance 服务同进程）、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine 生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 | 模块 | 集成场景必须交付 | 第三方适配必须交付 |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBac
 ## 明确不做
 
 - 多用户组织/RBAC、云队列、多主机调度和 Conductor 高可用；
+- 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md)），不是待补功能；
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
 - 完整外部聊天桥接、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；

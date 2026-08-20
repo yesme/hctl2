@@ -8,7 +8,7 @@
 | 对象 | 含义 |
 | --- | --- |
 | Repo | Git 内容与共享配置的逻辑仓库 |
-| RepoInstance | 某个 clone/worktree 集合中的本地控制边界；拥有独立 SQLite 和 control writer |
+| RepoInstance | 某个 clone/worktree 集合中的代码侧物理边界：worktree、ChangeSet 现场、运行时与单写锁；协作与治理事实不住在 clone 里 |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
 | Participant / ProjectRoleBinding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
 | Room | 持久协作空间，保存消息、引用、调用、Request 和来源关系 |
@@ -34,7 +34,7 @@
 | Memo | 发布 revision 只追加 | control/core 处理 PublishMemoIntent | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、`Active / Archived` | control/core 处理 Register/Publish/Archive/Restore Artifact Intent | ArtifactRevision 不可变，current pointer 只由 Publish 推进 |
 
-Repo 不等于外部组织或工作区。CreateProjectIntent 在同一事务创建当前 RepoInstance 的唯一 Project Room；Project Archive 使其 ReadOnly，Restore 恢复 Active。另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
+Repo 不等于外部组织或工作区。CreateProjectIntent 在同一事务创建该 Project 的唯一 Project Room：一个 Project 一个 Room，Room 身份与治理账本在用户级控制面，任何 clone 打开的都是同一个 Room；clone 只持有投影与现场操作态（草稿、未读、本地租约）。Project Archive 使其 ReadOnly，Restore 恢复 Active。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
 
 Project 的目标、范围、角色和默认规则以单调 `project_version` 更新。创建 Task、Run 或 `project_scope` RoomInvocation 时必须冻结获准的 Project version 与相关策略摘要；`repo_scope` RoomInvocation 改为冻结 RepoInstance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
 

@@ -1,6 +1,6 @@
 # HCTL2
 
-HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连接起来的本地项目协作系统。它以 Git 仓库为边界，面向同时使用多个 Coding Harness（Codex、Claude Code、OpenCode 这类编码代理工具，下称 Harness）的开发者。
+HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连接起来的项目协作系统。它的交付物与承诺以 Git 仓库为边界，协作与治理随用户走，默认部署在本地；面向同时使用多个 Coding Harness（Codex、Claude Code、OpenCode 这类编码代理工具，下称 Harness）的开发者。
 
 产品姿态一句话：
 

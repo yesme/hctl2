@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | Agent | 执行治理模块 | 第四个领域模块：执行授权、写入边界、物理运行时观测与结果证据。与 Harness（工具）、agentd（组件）不同物 | [Agent](../agent.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的工具；Terminal 场景的系统角色 | [三面架构](../architecture.md#场景与系统) |
-| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的控制边界，拥有独立账本 | [spec/project](../spec/project.md) |
+| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的代码物理现场（worktree、运行时、单写锁），不拥有协作与治理账本 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
 | Chat Room | 聊天室场景 | Project 模块的主操作场景；Room 的场景视图 | [Project](../project.md) |

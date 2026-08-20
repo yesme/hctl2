@@ -96,7 +96,8 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 | 事实 | 权威来源 |
 | --- | --- |
-| Project/Task/Run/Agent 领域操作账本、Room、Request、绑定、租约和投影 | RepoInstance SQLite + control |
+| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约记账与判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 |
+| RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control |
 | 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |
@@ -106,9 +107,10 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 ```text
 ~/.hctl2/                      # 用户级配置、Harness/Profile/Skill/Runtime 定义
+                               # control.sqlite、control.lock —— 用户级 metadata 账本与写锁
 <repo>/.hctl2/                # Git tracked · repo.toml、projects/、workflows/
                                # memos/、policies/、skills/、schemas/
-<git-common-dir>/hctl2/       # untracked · state.sqlite、lock、traces/、cache/
+<git-common-dir>/hctl2/       # untracked · state.sqlite（RepoInstance 物理事实账本）、lock、traces/、cache/
 ```
 
 `<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
@@ -116,6 +118,8 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 用户级 Profile/Skill/Runtime 定义也以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
 
 ## 单写者
+
+用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 writer generation；writer 可以搬迁（换机器、上服务器），账本身份不变。第一阶段单机部署时，它与 RepoInstance 服务同进程，行为不变。
 
 每个 RepoInstance 同时只有一个 control writer：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 推进 `control_writer_generation`。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
 

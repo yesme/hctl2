@@ -31,7 +31,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 | Room | 作用 | 生命周期 |
 | --- | --- | --- |
-| Repo Room | 无固定主题的研究、发现和 Project 入口 | 与 RepoInstance 同寿命 |
+| Repo Room | 无固定主题的研究、发现和 Project 入口 | 与 Repo 注册同寿命；身份在用户级控制面 |
 | Project Room | 围绕一个 Project 的长期协作和里程碑 | Project 归档后只读 |
 | Scoped Room | 为复杂 Request 或决定临时建立的讨论空间 | 结论回填类型化动作后归档 |
 
@@ -48,7 +48,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 - mention 提交前的 Trigger Preview：发出前先看清楚谁来执行、带什么上下文、有什么权限和预算、会创建什么；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
 
-在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 RepoInstance 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
+在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
 普通 Room 里的临场执行边只能由经过认证的人提交，并且必须先看过 Trigger Preview；人可以在 Workbench、CLI 或适配后的外部聊天平台上操作，但消息来源必须能证明是人。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker 或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
 
