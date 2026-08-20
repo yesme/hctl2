@@ -98,16 +98,11 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 ## 事实与存储
 
-每类事实的不可用与永久丢失分开立约：不可用走降级合同（Pending / Needs Attention / 安全暂停，不绕过命令服务），永久丢失走重建合同；产品层叙述见[三面架构](../architecture.md#数据丢了怎么办)，逐场景降级的可观察结果见[连接合同](./connections.md#失败与恢复)。
+### 控制面自己的存储
 
-| 事实 | 权威来源 | 不可用时（降级合同） | 永久丢失时（重建合同） |
-| --- | --- | --- | --- |
-| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约与现场记账（含 clone 的实例注册、worktree/ChangeSet 归属）、判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
-| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；ResultUnknown 先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
-| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
-| 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
-| Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按 Lost/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
-| Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
+hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata（身份、绑定、授权、租约与现场记账、判决）的唯一权威，一人多机连同一本，必须备份。仓库 clone 本地的 `<git-common-dir>/hctl2/`（当前 RepoInstance 及其 linked worktree 的共享运行目录）只有 OS 锁、traces 与可丢弃缓存——**不是账本，也不是事实源**：现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按 Lost/Interrupted 收口）。
+
+control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是它的存储：判决的结晶副本经 core 写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
 存储拓扑固定为：
 
@@ -119,11 +114,27 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 <git-common-dir>/hctl2/       # untracked · lock、traces/、cache/ —— 仅 OS 锁与可丢弃缓存
 ```
 
-`<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录；它**不是账本，也不是事实源**——现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按 Lost/Interrupted 收口）。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
+HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。用户级 Profile/Skill/Runtime 定义以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
 
-判决双层保存：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；其**结晶副本**由 core 写入 Git，用于审计与随仓库同步。结晶副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以 metadata 账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
+### Git 的双重角色
 
-用户级 Profile/Skill/Runtime 定义也以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
+Git 里与 HCTL 相关的持久内容分两种；混淆它们会把 Git 误读成控制面的第二本账：
+
+- **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；结晶副本由 core 写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
+- **content 结晶与共享定义**（领域产物，家就在 Repo）：决议、Memo、Artifact/ChangeSet 不可变内容与共享配置 Revision。它们由人驱动的类型化命令经 core 写入，不是任何账本的副本；control 账本只保存 admission、current pointer 和 lifecycle 投影。
+
+### 全系统事实权威地图
+
+下表回答“哪类事实由谁拥有”，覆盖控制面、Git 与执行面 content 系统——它是系统地图，不是任何单一组件的存储清单。每类事实的不可用与永久丢失分开立约：不可用走降级合同（Pending / Needs Attention / 安全暂停，不绕过命令服务），永久丢失走重建合同；产品层叙述见[三面架构](../architecture.md#数据丢了怎么办)，逐场景降级的可观察结果见[连接合同](./connections.md#失败与恢复)。
+
+| 事实 | 权威来源 | 不可用时（降级合同） | 永久丢失时（重建合同） |
+| --- | --- | --- | --- |
+| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约与现场记账（含 clone 的实例注册、worktree/ChangeSet 归属）、判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
+| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；ResultUnknown 先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
+| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
+| 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
+| Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按 Lost/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
+| Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
 
