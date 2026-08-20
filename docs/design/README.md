@@ -5,16 +5,16 @@
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
 
-| 权威模块 | 对应场景 | 模块拥有 | 场景客户端 / 受控端口示例 |
-| --- | --- | --- | --- |
-| [Project](./project.md) | Chat Room | 目标与范围、协作现场与消息、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
-| [Task](./task.md) | Kanban | 承诺与验收契约、操作态与排序、外部来源映射、完成证明 | Workbench Board / Linear、GitHub TaskSource |
-| [Run](./run.md) | Workflow | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / Conductor 端口 |
-| [Harness](./harness.md) | Terminal | 执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench xterm、CLI / ACP、Harness、RuntimeBackend |
+| 权威模块 | 对应场景 | content 系统 | 模块拥有 | 场景客户端 / 受控端口示例 |
+| --- | --- | --- | --- | --- |
+| [Project](./project.md) | Chat Room | chat server（聊天服务器） | 目标与范围、协作现场与消息、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
+| [Task](./task.md) | Kanban | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、操作态与排序、外部来源映射、完成证明 | Workbench Board / Linear、GitHub TaskSource |
+| [Run](./run.md) | Workflow | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / Conductor 端口 |
+| [Harness](./harness.md) | Terminal | harness 与运行时后端 | 执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench xterm、CLI / ACP、Harness、RuntimeBackend |
 
-场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact 投影。跨模块引用不转移事实所有权。
+每场景三类数据的完整归属、系统角色与丢失恢复见[三面架构](./architecture.md)。场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact 投影。跨模块引用不转移事实所有权。
 
-四个模块对应[愿景文档](./vision.md)中“意图 → 承诺 → 治理 → 运行”的四个阶段，但不是部署组件，也不是界面菜单：从 Project 到 Harness，越靠前越接近人的意图，越靠后越是可替换的执行资源。第一次阅读建议先看[愿景与设计原则](./vision.md)，再回到本页和四个模块的设计正文。文档分两层：设计层（本目录）用产品语言回答为什么与怎么用；[合同层](./spec/README.md)承载精确的对象、状态机、写入合同与外部概念对齐，两层冲突时以合同层为准。
+四个模块对应[愿景文档](./vision.md)中“意图 → 承诺 → 治理 → 运行”的四个阶段，是语义分责，不是界面菜单；部署分层是与之正交的另一刀，由[三面架构](./architecture.md)回答（展示面、控制面、执行面）。从 Project 到 Harness，越靠前越接近人的意图，越靠后越是可替换的执行资源。第一次阅读建议先看[愿景与设计原则](./vision.md)，再回到本页和四个模块的设计正文。文档分两层：设计层（本目录）用产品语言回答为什么与怎么用；[合同层](./spec/README.md)承载精确的对象、状态机、写入合同与外部概念对齐，两层冲突时以合同层为准。
 
 ## 对象关系
 
@@ -81,6 +81,7 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 ## 支持文档
 
 - [愿景与设计原则](./vision.md)：一句话定位、失败模式、四阶段心智模型、目标体验与设计原则。
+- [三面架构](./architecture.md)：展示/控制/执行三面、场景与系统、4×3 归属矩阵、模块咬合点、数据丢失与恢复。
 - [合同层总则](./spec/README.md)：词汇分类法、六族规则、命名门槛、归并对照与外部对齐原则。
 - [系统边界与适配器合同](./spec/system.md)：组件、事实源、命令、单写者与恢复。
 - [四模块连接与端到端闭环](./spec/connections.md)：类型化交接、事务边界、版本链和跨切恢复。

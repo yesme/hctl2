@@ -62,7 +62,7 @@ Project · Chat Room        Task · Kanban              Run · Workflow         
 两点必须同时成立：
 
 1. **这是心智模型，不是流水线。** 一件事不必完整经历四个阶段：简单 Task 可以不创建 Run；Project 可以直接发起一次边界明确的 Harness 调用；纯研究或文档的 Project 可以从未施工。短路是显式设计，不改变事实所有权。
-2. **这是语义责任的梯度，不是部署层级。** 从 Project 到 Harness，越靠前越接近人的意图，越靠后越是可替换的执行资源。上端的事实必须在工具更换后继续存在；下端的资源可以丢失、重建和接管。
+2. **这是语义责任的梯度，不是部署层级——部署由正交的[三面架构](./architecture.md)回答。** 从 Project 到 Harness，越靠前越接近人的意图，越靠后越是可替换的执行资源。上端的事实必须在工具更换后继续存在；下端的资源可以丢失、重建和接管。
 
 ## 目标体验
 
@@ -101,7 +101,7 @@ Project · Chat Room        Task · Kanban              Run · Workflow         
 
 ## 产品原生核心与架构最小内核
 
-HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装。它的产品原生核心是一个**以仓库为边界的项目语义控制面**（repo-scoped project semantic control plane），由三项能力构成：
+HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装——执行面确实由这四类系统组成（见[三面架构](./architecture.md)），但把它们黏合成一个产品的，是一个**以仓库为边界的项目语义控制面**（repo-scoped project semantic control plane）。这才是产品原生核心，由三项能力构成：
 
 1. **Repo–Project 生命周期**：仓库注册、Project 的创建/更新/归档/恢复，以及不随外部平台漂移的稳定身份；
 2. **Project 连续性**：Room、Task、Run、Artifact、Request 和证据始终回到同一个 Project——替换 Harness、会话、终端甚至外部 SaaS 之后，项目仍可继续；
@@ -129,7 +129,7 @@ actor + 类型化命令 + 目标版本 + 证据
 
 这组对仗构成产品的双重检验：**产品原生核心**回答用户为什么使用 HCTL2；**架构最小内核**回答换掉一切之后什么必须仍然成立。
 
-这个内核在结构上是 client-server 的：Workbench、CLI 和第三方界面都是客户端，控制面才是事实的家。**架构是 client-server 的，local-first 是默认部署形态而不是架构假设**——把客户端和服务装在同一台机器上，是第一阶段的默认选择，不是系统的本质。
+这个内核在结构上是 client-server 的：Workbench、CLI 和第三方界面都是客户端，控制面才是事实的家。**架构是 client-server 的，local-first 是默认部署形态而不是架构假设**——把客户端和服务装在同一台机器上，是第一阶段的默认选择，不是系统的本质。展示面、控制面与执行面的划分见[三面架构](./architecture.md)。
 
 ## 三类数据
 

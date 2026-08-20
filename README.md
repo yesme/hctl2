@@ -131,6 +131,8 @@ flowchart LR
     Control --> Core["hctl2-core · Git/SCM"]
 ```
 
+部署视角上，系统分三个面：展示面（Workbench 与第三方客户端）、控制面（`hctl2-control`/`hctl2-core` 与治理账本）、执行面（各场景的 content 系统与 agentd 物理执行），详见[三面架构](./docs/design/architecture.md)。
+
 HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航。Workbench 是组合式场景客户端；第三方客户端只替代或补充对应场景，例如 Feishu/Slack/Discord 操作 Chat Room，WezTerm 操作 Terminal/Harness。它们都使用相应模块的 Query/Preview/Submit/Subscribe，不获得跨模块捷径。
 
 图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与本地账本，`hctl2-core` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
@@ -141,6 +143,7 @@ HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project
 
 - [愿景与设计原则](./docs/design/vision.md)
 - [设计地图与文档纪律](./docs/design/README.md)
+- [三面架构](./docs/design/architecture.md)
 - [Project 与 Chat Room](./docs/design/project.md)
 - [Task 与 Kanban](./docs/design/task.md)
 - [Run 与 Workflow](./docs/design/run.md)

@@ -42,6 +42,17 @@
 
 权威定义见[合同层总则](../spec/README.md#三类数据)。
 
+## 场景-系统对照
+
+| 场景 | 系统角色（中文对照） | 系统拥有的 content |
+| --- | --- | --- |
+| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
+| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
+| Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
+| Terminal | harness（编码代理工具）/ 运行时后端 | 会话转录、PTY 流 |
+
+权威定义见[三面架构](../architecture.md#场景与系统)。
+
 ## Revision 族（不可变版本）
 
 | 成员 | 中文对照 | 版本化的是什么 |
