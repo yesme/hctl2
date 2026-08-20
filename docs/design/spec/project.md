@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.9.1<br>
+> 状态：规范性合同 · 草案 v0.10.0<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -8,16 +8,16 @@
 | 对象 | 含义 |
 | --- | --- |
 | Repo | Git 内容与共享配置的逻辑仓库 |
-| RepoInstance | 某个 clone/worktree 集合中的本地控制边界；拥有独立 SQLite 和 control writer |
+| RepoInstance | 某个 clone/worktree 集合中的代码侧物理边界：worktree、ChangeSet 现场、运行时与单写锁；协作与治理事实不住在 clone 里 |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
 | Participant / ProjectRoleBinding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
-| Room | 持久协作空间，保存消息、引用、调用、Request 和来源关系 |
-| Chat 端口绑定 | Room 引用的 ResolvedPortBinding，及外部 account/thread stable IDs、成员映射、去重游标的字段组 |
+| Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
+| Chat 端口绑定 | Room 到 chat server 房间（及非 Matrix 桥接面）的 ResolvedPortBinding，及外部 account/room/thread stable IDs、成员映射、去重游标的字段组；Room 的 content 家由它指认 |
 | ContextManifest / ContextBundle | 一次调用所用来源、筛选、摘要、Skill 与权限的可解释快照 |
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
 | Artifact / ArtifactRevision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
-| RoomInvocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [ExecutionSpec](./connections.md#project--run--harness从授权到物理执行) 承载 |
+| RoomInvocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [ExecutionSpec](./connections.md#project--run--agent从授权到物理执行) 承载 |
 
 ## 写入合同
 
@@ -26,7 +26,7 @@
 | RepoInstance | immutable repo identity + local writer generation | control 处理 InitRepoInstanceIntent；core 校验 Git identity | 同一 git-common-dir 只建立一个本地账本身份，重试返回原 identity |
 | Project | `project_version`；`Active / Archived` | control 处理 Create/Update/Archive/Restore Project Intent | Archived 拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Participant / ProjectRoleBinding | Participant immutable revision + current pointer；binding version | control 处理 Create/Update Participant 与 Bind/Rebind ProjectRole Intent | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
-| Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；事件有 `room_sequence` | control 处理 AppendRoomEvent、Create/ArchiveScopedRoom Intent | RoomEvent 只追加；Project Room 随 Project 归档只读 |
+| Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Create/ArchiveScopedRoom Intent，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
 | Chat 端口绑定 | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Bind/Rebind/Disable ChatSurface Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
 | ContextManifest / ContextBundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；`Open / Resolved / Expired / Cancelled / Superseded` | Project reducer/control 处理 Create/Resolve/Cancel Intent 与 deadline | 终态不可复活；新问题创建新 Request |
@@ -34,7 +34,7 @@
 | Memo | 发布 revision 只追加 | control/core 处理 PublishMemoIntent | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、`Active / Archived` | control/core 处理 Register/Publish/Archive/Restore Artifact Intent | ArtifactRevision 不可变，current pointer 只由 Publish 推进 |
 
-Repo 不等于外部组织或工作区。CreateProjectIntent 在同一事务创建当前 RepoInstance 的唯一 Project Room；Project Archive 使其 ReadOnly，Restore 恢复 Active。另一个 clone 对同一 Project 有自己的 Project Room 投影和本地操作账本。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
+Repo 不等于外部组织或工作区。CreateProjectIntent 在同一事务创建该 Project 的唯一 Project Room：一个 Project 一个 Room，Room 身份与治理账本在用户级控制面，任何 clone 打开的都是同一个 Room；clone 只持有投影与现场操作态（草稿、未读、本地租约）。Project Archive 使其 ReadOnly，Restore 恢复 Active。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局 Needs Attention。
 
 Project 的目标、范围、角色和默认规则以单调 `project_version` 更新。创建 Task、Run 或 `project_scope` RoomInvocation 时必须冻结获准的 Project version 与相关策略摘要；`repo_scope` RoomInvocation 改为冻结 RepoInstance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
 
@@ -46,9 +46,9 @@ Participant 使用稳定 `participant_id` 与不可变配置 revision；ProjectR
 
 Scoped Room 创建时必须冻结 parent Room、精确讨论目标（Request 或待提交的类型化动作）、完成条件和结论回填动作。达到讨论完成条件本身不修改目标；只有获准的回填动作成功后才能归档，失败时保留可恢复的讨论和目标引用。
 
-Message 是只追加的协作事实；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。普通回复、表情或模型总结不会修改 Project、解决 Request 或发布 Artifact。
+Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。普通回复、表情或模型总结不会修改 Project、解决 Request 或发布 Artifact。
 
-Room 源事件与单调 `room_sequence` 在同一事务提交；时间线按该序号排序，稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。
+时间线顺序由 chat server 的线性事件顺序给出（单 homeserver 合同前提，写入以事务 ID 幂等）；稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 `Chat 端口绑定 + chat server 事件 ID` 精确引用消息；被治理引用的消息（升格来源、Context 锚点）在引用时冻结事件 ID 与内容 digest，此后 content 漂移不改写已冻结引用。chat server 不可用时治理命令照常执行，聊天入口安全降级。
 
 ## Context、Memo 与 Artifact
 
@@ -64,7 +64,7 @@ RoomInvocation 适合一次性的研究、比较或范围明确的写入。它�
 
 RoomInvocation 的合法边只有 `Pending → Running/Failed/Cancelled/Interrupted`、`Running ↔ WaitingForInput`，以及 `Running/WaitingForInput → Completed/Failed/Cancelled/Interrupted`。恢复对账无法证明原 session/process 身份及 lease/generation 仍匹配时，control 在同一收口事务将其置为 Interrupted、撤销输入/写租约并提交旧 runtime 的 stop/fence outbox；其迟到流或 ResultProposal 只留审计，不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 RoomInvocation、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
-RoomInvocation 的 ExecutionSpec 除[连接合同定义的共同字段](./connections.md#project--run--harness从授权到物理执行)外，还固定 scope（`repo_scope | project_scope`）与 human 批准 Agent 建议时的 lineage 字段：精确 `source_suggestion_ref = RoomEvent/Message | ResultProposal`、建议摘要、可选 `parent_execution_ref = RoomInvocation | Attempt` 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；ResultProposal 分支还要逐项匹配其 owner/generation。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
+RoomInvocation 的 ExecutionSpec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（`repo_scope | project_scope`）与 human 批准 Agent 建议时的 lineage 字段：精确 `source_suggestion_ref = RoomEvent/Message | ResultProposal`、建议摘要、可选 `parent_execution_ref = RoomInvocation | Attempt` 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；ResultProposal 分支还要逐项匹配其 owner/generation。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
 
 ## Request
 
@@ -78,7 +78,11 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；需
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/WorkerProfile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 RoomInvocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。Agent-authored Message、ResultProposal、模型总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。模型 Participant 的 Message、ResultProposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 RoomInvocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、ContextManifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+
+mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
+
+命令走 HCTL，记录落平台：类型化命令的预览、准入与判决都在控制面执行；结果可以作为结构化事件写回 chat server 供时间线展示，但平台里的记录只是记录——chat server 中的任何消息、反应、成员动作或自动化都不是命令，不能触发派发、解决 Request 或改变治理事实。
 
 ## 外部概念对齐
 
@@ -86,10 +90,10 @@ mention 提交前的 Trigger Preview 必须显示实际 Participant/WorkerProfil
 
 | HCTL 词 | 外部体系 | 一句话差异 |
 | --- | --- | --- |
-| Room | Matrix room / Slack channel | 语义基本一致：持久、多参与者、可桥接 |
-| RoomEvent | Matrix event / Slack message | 与 Matrix 的只追加事件语义一致（编辑/撤回是新事件）；Slack 消息可原地编辑，桥接时按新事件或 tombstone 落账；HCTL 侧顺序由账本的 `room_sequence` 给出 |
+| Room | Matrix room / Slack channel | HCTL Room 身份与治理在控制面；它的 content 房间就是 chat server 上的 Matrix room |
+| RoomEvent | Matrix event / Slack message | Matrix event 就是消息 content 本体（chat server 承载，编辑/撤回是新事件）；Slack 这类可原地编辑的平台经桥接按新事件或 tombstone 落账；HCTL 治理事件以事件 ID 精确引用消息 |
 | mention | @mention | HCTL 的 `@` 解析目标是逻辑 Participant/Role 而非平台账号，且必须经 Trigger Preview 准入 |
 | Scoped Room | thread / 子频道 | 差异：有冻结的讨论目标与结论回填动作，不是自由分叉 |
-| Chat 端口绑定 | Matrix bridge / Slack app 安装 | 差异：桥接只投递与回读，不拥有 Room 身份或历史 |
+| Chat 端口绑定 | Matrix bridge / Slack app 安装 | 差异：绑定指认 Room 的 content 家；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 桥接只投递与回读 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
 | Request | 无直接对应 | 差异化语义：向指定人/角色索取输入的一级对象，只能由获准动作解决 |

@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.9.1<br>
+> 状态：规范性合同 · 草案 v0.10.0<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -32,6 +32,8 @@ Run 合法边固定为：`Starting → Running/Failed/Cancelled/Superseded`；`R
 
 Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Obligation 的不可变绑定固定 EngineExecutionBinding generation 与精确 Engine task execution identity（外部 task ID 及 retry/attempt generation）；其带版本的租约视图记录生效租约、截止时间和最近一次由 adapter 回读确认的续租，超时与备用候选准入只能依据该确认值。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为 `Superseded`，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
 
+Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了的证明”）：权威在 metadata 账本，结晶副本按[双层保存政策](./system.md#事实与存储)写入 Git。
+
 ## Workflow 与 Run 授权
 
 WorkflowRevision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后写入 Git。EngineDeployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 WorkflowRevision。
@@ -51,11 +53,11 @@ Approve Workflow 只确认施工图；`StartRunIntent` 才授予资源和副作�
 
 ## 从节点到结果
 
-本节定义 Run 内部归约；跨 Harness 的派发、结果信封和故障恢复见[连接合同](./connections.md)。
+本节定义 Run 内部归约；对 Agent 模块的派发、结果信封和故障恢复见[连接合同](./connections.md)。
 
 1. control 领取一个 HCTL 外部 Engine task，并按 Run、binding generation 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
 2. control 按规则创建 Seat，并为候选产生 ExecutionSpec。
-3. [Harness](./harness.md) 执行 Attempt，只能返回 ResultProposal、Revision 和证据。
+3. [Agent](./agent.md) 模块执行 Attempt，只能返回 ResultProposal、Revision 和证据。
 4. control/core 校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与 Engine completion outbox 先持久提交，再幂等完成外部任务。
 

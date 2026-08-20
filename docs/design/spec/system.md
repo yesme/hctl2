@@ -1,7 +1,7 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.9.1<br>
-> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Harness 的领域状态。
+> 状态：规范性合同 · 草案 v0.10.0<br>
+> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
 
@@ -12,9 +12,11 @@
 | `hctl2-core` | Git/SCM、Revision、digest、Receipt 和合并事实校验 |
 | agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
+| chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
+| task backend | 经 TaskSource 端口访问的任务后端（本地任务服务器或远端平台，按 Project 选择）；承载任务卡 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
-Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。
+Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
 
 ## 固定内核与受控端口
 
@@ -31,7 +33,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
 | Terminal | Harness、RuntimeBackend、终端网关与 attach provider |
 
-第一阶段 Conductor 的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端，且仍只能由 control 经 WorkflowEngine 端口适配器发起变更，不能把 Engine mutation 暴露给场景客户端或其他本地进程。
+第一阶段全部执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；治理变更仍只能由 control 经对应受控端口发起，不能把服务器 mutation 暴露给场景客户端或其他本地进程。chat server 与任务后端的 content 读写不在此限——那是场景内容，不是治理。
+
+hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，启动顺序、健康检查、备份与升级由 control 统一编排。托管不授予 content 之外的任何权威；服务器进程的死活只影响对应场景的可用性，不改变治理事实。
 
 每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别。运行中不得因“发现更好的插件”而响应式改绑；提供方消失时安全暂停、失败或创建替代执行。
 
@@ -59,7 +63,7 @@ Submit(typed command) -> accepted result or typed rejection
 Subscribe(cursor) -> ordered events or resync snapshot
 ```
 
-场景客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台只拥有明确授权的字段；其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 身份。
+场景客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台可以拥有其场景 content 的 ground truth，以及明确授权的字段；但它不拥有治理——其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 的身份、授权或判决来源。
 
 渲染器、拖放、按钮和终端输入都只是 command client。未能提供等价预览、版本或权限信息时，动作必须禁用或安全暂停。
 
@@ -94,28 +98,37 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 ## 事实与存储
 
-| 事实 | 权威来源 |
-| --- | --- |
-| Project/Task/Run/Harness 领域操作账本、Room、Request、绑定、租约和投影 | RepoInstance SQLite + control |
-| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
-| Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
-| Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |
-| Linear/GitHub 等外部字段 | 对应 provider；本地只存 Snapshot 和同步账本 |
+每类事实的不可用与永久丢失分开立约：不可用走降级合同（Pending / Needs Attention / 安全暂停，不绕过命令服务），永久丢失走重建合同；产品层叙述见[三面架构](../architecture.md#数据丢了怎么办)，逐场景降级的可观察结果见[连接合同](./connections.md#失败与恢复)。
+
+| 事实 | 权威来源 | 不可用时（降级合同） | 永久丢失时（重建合同） |
+| --- | --- | --- | --- |
+| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约记账与判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
+| RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control | 该仓库现场暂停；其他仓库与控制面不受影响 | 可从 Git、metadata 账本与运行时对账重建；无法证明的旧执行按 Lost/Interrupted 收口 |
+| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；ResultUnknown 先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
+| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
+| 任务卡、流转、排序、评论（content） | Project 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
+| Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按 Lost/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
+| Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 存储拓扑固定为：
 
 ```text
 ~/.hctl2/                      # 用户级配置、Harness/Profile/Skill/Runtime 定义
+                               # control.sqlite、control.lock —— 用户级 metadata 账本与写锁
 <repo>/.hctl2/                # Git tracked · repo.toml、projects/、workflows/
-                               # memory/、policies/、skills/、schemas/
-<git-common-dir>/hctl2/       # untracked · state.sqlite、lock、traces/、cache/
+                               # memos/、policies/、skills/、schemas/
+<git-common-dir>/hctl2/       # untracked · state.sqlite（RepoInstance 物理事实账本）、lock、traces/、cache/
 ```
 
 `<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
 
+判决双层保存：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；其**结晶副本**由 core 写入 Git，用于审计与随仓库同步。结晶副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以 metadata 账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
+
 用户级 Profile/Skill/Runtime 定义也以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
 
 ## 单写者
+
+用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 writer generation；writer 可以搬迁（换机器、上服务器），账本身份不变。第一阶段单机部署时，它与 RepoInstance 服务同进程，行为不变。
 
 每个 RepoInstance 同时只有一个 control writer：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 推进 `control_writer_generation`。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
 
@@ -129,7 +142,7 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 1. 取得 control/backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 writer/backend generation；
-3. 回读外部 Task Source 和未确认副作用；
+3. 回读全部已绑定 content 系统的游标（chat server、任务后端、Workflow Engine、runtime）和未确认副作用；
 4. 查询 Workflow Engine、agentd runtime 和 core Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；

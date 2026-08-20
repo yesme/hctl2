@@ -1,7 +1,7 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.9.1<br>
-> 日期：2026-08-19<br>
+> 状态：规范性 · 草案 v0.10.0<br>
+> 日期：2026-08-21<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
 ## 词汇分类法
@@ -19,7 +19,9 @@
 
 ## 核心产品词
 
-Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Harness、Terminal、ChangeSet、Evidence、Workbench。
+Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
+
+另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
 
 另有六个高频合同词可在设计正文携中文对照使用：TaskRevision（契约版本）、WorkflowRevision（施工图版本）、RoomInvocation（单次调用）、ExecutionSpec（执行规格）、ResultProposal（结果提议）、Run Manifest（施工清单）。`*Intent` 命令名只出现在合同层。
 
@@ -35,6 +37,24 @@ Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact�
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
 | Intent | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
 | Snapshot | 先观测后准入的只追加外部观测；观测无论置信度多高都不直接改写事实 |
+
+## 三类数据
+
+每个场景的持久数据分三类；类别的共同语义只在这里定义一次，各模块合同按场景导出，不再重复解释。三个类别词可在设计正文携中文对照使用：
+
+| 类别 | 中文对照 | 含义 | 权威所在 |
+| --- | --- | --- | --- |
+| metadata | 治理元数据 | 身份、绑定、授权与判决——谁是谁、谁连着谁、谁批了什么、凭什么算数 | HCTL 自己的账本（控制面） |
+| content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
+| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
+
+统一律：**每个场景的 artifact 是该场景 content 的结晶**——讨论结晶为决议与 Memo，任务流转结晶为冻结契约与施工图，机械执行结晶为凭证链，会话字节流结晶为代码变更。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+
+三条法贯穿全部模块合同，各处引用，不再各写一套：
+
+1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：平台消息不能触发派发，拖卡不能完成 Task，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
+2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
+3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；结果可以作为记录写回 content 系统，但平台里的记录只是记录，不是命令。
 
 ## 词汇索引（v0.9.1 归并后）
 
@@ -74,6 +94,6 @@ Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact�
 - [project.md](./project.md)：Project 模块合同 + Chat 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块合同 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块合同 + Conductor / BPMN 对齐
-- [harness.md](./harness.md)：Harness 模块合同 + PTY / tmux / ACP 对齐
+- [agent.md](./agent.md)：Agent 模块合同 + PTY / tmux / ACP 对齐
 - [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复

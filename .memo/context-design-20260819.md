@@ -2,6 +2,7 @@
 
 > 状态：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。
 > 日期：2026-08-19
+> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
 > 核心判断：Context 是 Project 模块内的一组来源、投影、冻结与消费合同，不是 SQLite 聊天表，也不是 Project、Task、Run、Harness 之外的第五模块。
 
 ## 1. 要解决的问题
@@ -107,7 +108,7 @@ Trigger Preview 是从 evolving working context 到冻结 ContextManifest 的边
 
 Context 不复制各模块 ledger，也不默认摄取 Harness 原始 trace。它只消费公开投影的稳定 ref；外部 snapshot 则记录 binding revision、外部 ID、版本/ETag/token、digest、时间、可读 scope 和已知 gap。来源端口决定“能读到什么”，Project 组装器才决定某次 Invocation 获准看到什么。
 
-connector 的 checkpoint、幂等、回读、撤权和恢复沿用[系统边界](../docs/design/system.md)及各受控端口合同，Context 不另建采集框架。SourceRef 只需说明：读取的版本、能否重取、digest/必要摘录/retention，以及当前 freshness、已知 gap 和派生索引失效条件。派生数据丢失只影响召回效率，重建索引不得改变 stable refs。
+connector 的 checkpoint、幂等、回读、撤权和恢复沿用[系统边界](../docs/design/spec/system.md)及各受控端口合同，Context 不另建采集框架。SourceRef 只需说明：读取的版本、能否重取、digest/必要摘录/retention，以及当前 freshness、已知 gap 和派生索引失效条件。派生数据丢失只影响召回效率，重建索引不得改变 stable refs。
 
 召回可以组合四种信号，而不是绑定一种数据库：
 

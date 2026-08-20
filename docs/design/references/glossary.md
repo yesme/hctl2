@@ -1,16 +1,18 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.9.1<br>
+> 状态：非规范对照 · 草案 v0.10.0<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
 | --- | --- | --- | --- |
-| Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的 Agent 工具 | [Harness](../harness.md) |
-| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的控制边界，拥有独立账本 | [spec/project](../spec/project.md) |
+| Agent | 执行治理模块 | 第四个领域模块：执行授权、写入边界、物理运行时观测与结果证据。与 Harness（工具）、agentd（组件）不同物 | [Agent](../agent.md) |
+| Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的工具；Terminal 场景的系统角色 | [三面架构](../architecture.md#场景与系统) |
+| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的代码物理现场（worktree、运行时、单写锁），不拥有协作与治理账本 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
+| Chat Room | 聊天室场景 | Project 模块的主操作场景；Room 的场景视图 | [Project](../project.md) |
 | Participant | 参与者 | 可寻址的逻辑协作者档案；不等于某个进程或外部账号 | [Project](../project.md) |
 | Request | 请求卡 | 向指定的人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md) |
 | Memo | 备忘 | 用户明确提炼、预览并发布的长期知识 | [Project](../project.md) |
@@ -18,7 +20,7 @@
 | Context | 上下文 | 一次调用看到了什么、为什么、来源是什么；由清单（Manifest）与内容包（Bundle）两份冻结记录承载 | [spec/project](../spec/project.md) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；提供方法，不授予权限 | [spec/system](../spec/system.md) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
-| Kanban | 看板 | Task 的主操作场景；泳道（lane）只是投影 | [Task](../task.md) |
+| Kanban | 看板 | Task 的主操作场景；一个 Project 一个 Board，content 在所选任务后端；泳道（lane）只是投影 | [Task](../task.md) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选和权限的一次授权执行 | [Run](../run.md) |
 | Workflow | 施工图 | 与引擎无关的控制图与治理规则；版本见 Revision 族 | [Run](../run.md) |
 | Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
@@ -27,10 +29,31 @@
 | Gate | 评审关卡 | 施工图中冻结的治理节点；决定结果凭什么通过 | [spec/run](../spec/run.md) |
 | Verdict | 裁决 | 对精确版本的语义评审结论 | [spec/run](../spec/run.md) |
 | Receipt | 凭证 | 校验通过后签发的证明；见 Receipt 族 | [spec/README](../spec/README.md#六族规则) |
-| Terminal | 终端场景 | Harness 的观察、诊断和接管场景 | [Harness](../harness.md) |
-| ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/harness](../spec/harness.md) |
-| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/harness](../spec/harness.md) |
+| Terminal | 终端场景 | Agent 模块的观察、诊断和接管场景 | [Agent](../agent.md) |
+| ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/agent](../spec/agent.md) |
+| Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/agent](../spec/agent.md) |
 | Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [spec/system](../spec/system.md) |
+
+## 三类数据（数据类别，不是对象）
+
+| 类别 | 中文对照 | 一句话含义 |
+| --- | --- | --- |
+| metadata | 治理元数据 | 身份、绑定、授权与判决；住在 HCTL 自己的账本 |
+| content | 场景内容 | 各场景的协作与执行记忆；住在该场景的 content 系统 |
+| artifact | 结晶 | content 提炼出的不可变产物；进 Git。与领域对象 Artifact（工件）不同物 |
+
+权威定义见[合同层总则](../spec/README.md#三类数据)。
+
+## 场景-系统对照
+
+| 场景 | 系统角色（中文对照） | 系统拥有的 content |
+| --- | --- | --- |
+| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
+| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
+| Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
+| Terminal | harness（编码代理工具）/ 运行时后端 | 会话转录、PTY 流 |
+
+权威定义见[三面架构](../architecture.md#场景与系统)。agentd 是组件实现名（Agent 模块的本机执行守护进程），与 Agent 模块、harness 系统角色都不同物。
 
 ## Revision 族（不可变版本）
 
@@ -96,9 +119,9 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 | --- | --- | --- |
 | RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
-| RoomEvent | 房间事件 | 协作账本的只追加单元；Message 是其一种 |
+| RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
 | WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
-| TaskOperationalState | 任务操作态 | 排序、优先级、负责人等高频状态 |
+| TaskOperationalState | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
 
 RepoInstance 也属独立对象，见核心产品词表。
 
