@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | Agent | 执行治理模块 | 第四个领域模块：执行授权、写入边界、物理运行时观测与结果证据。与 Harness（工具）、agentd（组件）不同物 | [Agent](../agent.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的工具；Terminal 场景的系统角色 | [三面架构](../architecture.md#场景与系统) |
-| Repo / RepoInstance | 仓库 / 仓库实例 | Git 仓库的逻辑身份；某个本地 clone 的代码物理现场（worktree、运行时、单写锁），不拥有协作与治理账本 | [spec/project](../spec/project.md) |
+| Repo | 仓库 | Git 仓库的逻辑身份；共享配置与结晶随它走 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
 | Chat Room | 聊天室场景 | Project 模块的主操作场景；Room 的场景视图 | [Project](../project.md) |
@@ -117,13 +117,12 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 
 | 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
+| RepoInstance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；不拥有协作与治理账本 |
 | RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
 | RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
 | WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
 | TaskOperationalState | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
-
-RepoInstance 也属独立对象，见核心产品词表。
 
 ## 引用格式（不是对象）
 

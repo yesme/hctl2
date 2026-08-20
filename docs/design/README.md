@@ -20,8 +20,7 @@ HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命�
 
 ```mermaid
 flowchart TD
-    R["Repo"] --> RI["RepoInstance 0..N（代码物理现场）"]
-    R --> RR["Repo Room"]
+    R["Repo"] --> RR["Repo Room"]
     R --> P["Project 0..N"]
     P --> PR["Project Room（一个 Project 一个）"]
     P --> T["Task 0..N"]

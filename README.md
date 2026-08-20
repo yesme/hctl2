@@ -129,7 +129,7 @@ flowchart LR
     H --> Agentd["agentd"]
     Agentd --> Runtime["Harness / RuntimeBackend"]
 
-    Control --> DB["用户级 metadata 账本 · RepoInstance SQLite"]
+    Control --> DB["用户级 metadata 账本 · 仓库物理账本（SQLite）"]
     Control --> Core["hctl2-core · Git/SCM"]
 ```
 

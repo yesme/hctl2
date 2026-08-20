@@ -19,7 +19,7 @@
 
 ## 核心产品词
 
-Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
+Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
 
 另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
 
@@ -66,7 +66,7 @@ Repo、RepoInstance、Project、Room、Participant、Request、Memo、Artifact�
 - **Snapshot/观测族**：TaskSourceSnapshot、ResultProposal、运行时观测
 - **票据与规格**：ExecutionSpec、Run Manifest、AttachDescriptor、ContextManifest、ContextBundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
-- **独立对象**（核心产品词之外的合同层领域对象）：RoomInvocation、RoomEvent、ExecutionRuntime、WorkerProfile、TaskOperationalState
+- **独立对象**（核心产品词之外的合同层领域对象）：RepoInstance、RoomInvocation、RoomEvent、ExecutionRuntime、WorkerProfile、TaskOperationalState
 
 ## v0.9.1 归并对照
 
