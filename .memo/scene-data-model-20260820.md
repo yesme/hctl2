@@ -36,7 +36,7 @@ hctl-bench 看上去是本机一体的 IDE/ADE，实质是瘦客户端——chat
 
 ## 代价与倾向
 
-- **主要价格是本机部署重量**：control + agentd + Conductor 之外再加 Matrix homeserver 与任务服务器。所有者修正：**轻不等于嵌入式**——Matrix homeserver 与 Conductor 都是独立服务器进程；“轻”指轻量实现选择（如 Continuwuity 之于 Synapse）、低资源占用，以及随 HCTL 一键启停的生命周期托管，而不是把服务塞进 control 进程。因此任务场景的方向也是找轻量的独立任务服务器（保持四场景全真服务器、模型无例外），而非嵌入式默认；Plane 偏重，作为候选之一进入选型评估。各项均需 Conductor 式的开工前限时验证。
+- **主要价格是本机部署重量**：control + agentd + Conductor 之外再加 Matrix homeserver 与任务服务器。所有者修正：**轻不等于嵌入式**——Matrix homeserver、Conductor 和 Harness（Codex/Claude Code 这类独立进程）都不是嵌入式；“轻”指轻量实现选择（如 Continuwuity 之于 Synapse）、低资源占用，以及随 HCTL 一键启停的生命周期托管，而不是把服务塞进 control 进程。因此任务场景的方向也是找轻量的独立任务服务器（保持四场景全真服务器、模型无例外），而非嵌入式默认；Plane 偏重，作为候选之一进入选型评估。各项均需 Conductor 式的开工前限时验证。
 - **次要价格**：每个 content 平台的幂等/顺序/恢复合同逐场景核验（Matrix 事务 ID 幂等、单 homeserver 线性顺序，过关；Plane 类待验）；平台宕机降级合同——故障隔离反而更好（聊天服务器挂了，治理与施工照常）。
 
 ## 顺手了结的存量问题
@@ -57,6 +57,6 @@ hctl-bench 看上去是本机一体的 IDE/ADE，实质是瘦客户端——chat
 
 - **术语**：场景与系统分开命名——Terminal 是场景、Harness 是系统；Workflow 是场景、Conductor 是系统；Chat Room 是场景、Matrix homeserver 是系统；Kanban 是场景、任务服务器是系统。现行文档用 Harness 兼指场景与系统，需要正名。
 - **架构**：在四模块之上进一步切出三个面——**展示面**（hctl-bench 及第三方客户端）、**控制面**（hctl-control：metadata 与治理）、**执行面**（chat server、task server、workflow server、harness——即各场景 content 的承载系统与物理执行）。
-- **选型**：如何让本机部署尽量轻。轻不等于嵌入式：Matrix homeserver 与 Conductor 都是独立服务器；轻指轻量实现选择、低资源占用与随 HCTL 一键启停的生命周期托管，限时验证兜底。
+- **选型**：如何让本机部署尽量轻。轻不等于嵌入式：Matrix homeserver、Conductor、Harness 都是独立进程/服务器；轻指轻量实现选择、低资源占用与随 HCTL 一键启停的生命周期托管，限时验证兜底。
 
 预计改动不小；先讨论清楚再动手。
