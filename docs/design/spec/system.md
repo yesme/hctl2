@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.10.1<br>
+> 状态：规范性合同 · 草案 v0.10.2<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -102,8 +102,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 | 事实 | 权威来源 | 不可用时（降级合同） | 永久丢失时（重建合同） |
 | --- | --- | --- | --- |
-| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约记账与判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
-| RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control | 该仓库现场暂停；其他仓库与控制面不受影响 | 可从 Git、metadata 账本与运行时对账重建；无法证明的旧执行按 Lost/Interrupted 收口 |
+| 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约与现场记账（含 clone 的实例注册、worktree/ChangeSet 归属）、判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
 | 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；ResultUnknown 先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
@@ -117,10 +116,10 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
                                # control.sqlite、control.lock —— 用户级 metadata 账本与写锁
 <repo>/.hctl2/                # Git tracked · repo.toml、projects/、workflows/
                                # memos/、policies/、skills/、schemas/
-<git-common-dir>/hctl2/       # untracked · state.sqlite（RepoInstance 物理事实账本）、lock、traces/、cache/
+<git-common-dir>/hctl2/       # untracked · lock、traces/、cache/ —— 仅 OS 锁与可丢弃缓存
 ```
 
-`<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
+`<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录；它**不是账本，也不是事实源**——现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按 Lost/Interrupted 收口）。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
 
 判决双层保存：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；其**结晶副本**由 core 写入 Git，用于审计与随仓库同步。结晶副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以 metadata 账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
 
@@ -128,9 +127,9 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 ## 单写者
 
-用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 writer generation；writer 可以搬迁（换机器、上服务器），账本身份不变。第一阶段单机部署时，它与 RepoInstance 服务同进程，行为不变。
+用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 writer generation；writer 可以搬迁（换机器、上服务器），账本身份不变。
 
-每个 RepoInstance 同时只有一个 control writer：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 推进 `control_writer_generation`。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
+每个 RepoInstance（clone 物理现场）同时只有一个 control 服务写入者：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 在 metadata 账本推进该现场的 `control_writer_generation`——锁是 OS 原语，代次记在账本。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
 
 每个 RuntimeBackend ownership scope 同时只有一个 agentd owner lease 和单调 generation；scope 至少覆盖相同资源 broker/socket/host namespace。agentd 必须先取得该资源侧的 OS lock、broker token 或等价排他原语才可执行输入、停止和接管。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权；不能强制排他的 backend 只可观察，不开放这些写能力。
 

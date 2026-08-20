@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.10.1<br>
+> 状态：非规范对照 · 草案 v0.10.2<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -117,7 +117,7 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 
 | 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
-| RepoInstance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；不拥有协作与治理账本 |
+| RepoInstance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；仅是注册在 metadata 账本的现场身份，本地无账本 |
 | RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
 | RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |

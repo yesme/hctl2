@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.1<br>
+> 状态：规范性合同 · 草案 v0.10.2<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -23,7 +23,7 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| RepoInstance | immutable repo identity + local writer generation | control 处理 InitRepoInstanceIntent；core 校验 Git identity | 同一 git-common-dir 只建立一个本地账本身份，重试返回原 identity |
+| RepoInstance | immutable repo identity + local writer generation | control 处理 InitRepoInstanceIntent；core 校验 Git identity | 同一 git-common-dir 只在 metadata 账本注册一个物理现场身份，重试返回原 identity；clone 本地不设账本 |
 | Project | `project_version`；`Active / Archived` | control 处理 Create/Update/Archive/Restore Project Intent | Archived 拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Participant / ProjectRoleBinding | Participant immutable revision + current pointer；binding version | control 处理 Create/Update Participant 与 Bind/Rebind ProjectRole Intent | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
 | Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Create/ArchiveScopedRoom Intent，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |

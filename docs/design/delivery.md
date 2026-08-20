@@ -4,7 +4,7 @@
 
 ## 第一阶段范围
 
-第一阶段面向单用户、单机（用户级控制面与 RepoInstance 服务同进程）、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine/chat server/本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+第一阶段面向单用户、单机、单 RepoInstance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine/chat server/本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 | 模块 | 集成场景必须交付 | 第三方适配必须交付 |
 | --- | --- | --- |
@@ -96,7 +96,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 | Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许 Pending→Lost 并用新 Attempt 恢复，ResultProposed 不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；Failed/Cancelled/Superseded Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
 | Agent / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 intent 并回读，target-head 竞争或 ACK 未知时不得签成功 Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；Harness 内调用 Task terminal/Room fan-out 命令因 execution provenance 拒绝；control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离；attach/resume/replay、IME/背压/慢客户端隔离 |
 | 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；Harness 绕过端口的写能力被拒绝，外部 drift 只形成 Snapshot/观测而不是结果 |
-| 系统 | 第二 control/agentd 只读或拒绝；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本备份/恢复，每个执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的备份与恢复；content 服务器宕机不阻断治理命令，从 Git 结晶回灌不得伪造未结晶判决；一键启停下各服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
+| 系统 | 第二 control/agentd 只读或拒绝；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本备份/恢复，每个执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的备份与恢复；content 服务器宕机不阻断治理命令，从 Git 结晶回灌不得伪造未结晶判决；clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实；一键启停下各服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
 | 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
 | Workbench 信息架构 | 单 Project Overview 与全局 Needs Attention 都是可重建的只读导航投影，不产生第五场景或写状态；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；CreateProject 提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
 | Workbench 输入与无障碍 | Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价；输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入 |
@@ -130,7 +130,6 @@ Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 ## 未决问题
 
 - ~~Room 的协作历史到底放哪里~~ 已了结：消息 content 归 chat server，metadata 随用户级控制面走，结晶进 Git（见[来时路 §12](./references/decision-history.md)）；
-- 控制面存储三分（用户级 metadata 账本 / 仓库物理事实账本 / Git 结晶）需要重新掰扯：所有者尚未被说服“仓库物理事实账本”与另外两者的边界及其作为独立账本的必要性——候选方向包括把它降级为“OS 锁 + 可丢弃缓存”（取消第二本 SQLite）；待专门讨论后定案或简化（合同见 `spec/system.md` 事实与存储）；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
 - Repo Room 跨 clone 迁移、隐私和保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；
