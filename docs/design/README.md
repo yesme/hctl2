@@ -1,14 +1,14 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.9.1<br>
-> 日期：2026-08-19
+> 状态：规范性索引 · 草案 v0.10.0<br>
+> 日期：2026-08-21
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
 
 | 权威模块 | 对应场景 | content 系统 | 模块拥有 | 场景客户端 / 受控端口示例 |
 | --- | --- | --- | --- | --- |
-| [Project](./project.md) | Chat Room | chat server（聊天服务器） | 目标与范围、协作现场与消息、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
-| [Task](./task.md) | Kanban | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、操作态与排序、外部来源映射、完成证明 | Workbench Board / Linear、GitHub TaskSource |
+| [Project](./project.md) | Chat Room | chat server（聊天服务器） | 目标与范围、协作现场的身份与升格记录、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
+| [Task](./task.md) | Kanban | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、后端映射与字段权威、操作态投影、完成证明 | Workbench Board / Linear、GitHub TaskSource |
 | [Run](./run.md) | Workflow | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / WorkflowEngine 端口 |
 | [Agent](./agent.md) | Terminal | harness 与运行时后端 | 执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench xterm、CLI / ACP、Harness、RuntimeBackend |
 

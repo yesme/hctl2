@@ -27,7 +27,7 @@
 | Run / Workflow | `run show\|preview\|start\|pause\|cancel`；修改动作先预览确认 |
 | Agent / Terminal | `terminal inspect\|attach\|resume\|replay`；必须指向精确 descriptor |
 
-CLI 没有隐藏权限，也不直接写 SQLite、Workflow Engine 或 RuntimeBackend。
+CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或 RuntimeBackend。
 
 ## 明确不做
 

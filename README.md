@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.9.1**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
+> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.10.0**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
 
 ## 为什么需要它
 
@@ -122,12 +122,14 @@ flowchart LR
     TerminalClient --> H
 
     P --> ChatPort["Chat 受控端口"]
+    ChatPort --> ChatSrv["chat server（Matrix 协议）"]
     T --> TaskSource["TaskSource 受控端口"]
+    TaskSource --> TaskBackend["任务后端（本地任务服务器 / Linear、GitHub）"]
     R --> Engine["WorkflowEngine 端口"]
     H --> Agentd["agentd"]
     Agentd --> Runtime["Harness / RuntimeBackend"]
 
-    Control --> DB["RepoInstance SQLite"]
+    Control --> DB["用户级 metadata 账本 · RepoInstance SQLite"]
     Control --> Core["hctl2-core · Git/SCM"]
 ```
 
