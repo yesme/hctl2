@@ -1,6 +1,6 @@
 # Task 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.0<br>
+> 状态：规范性合同 · 草案 v0.10.1<br>
 > 本文是 Task 模块对象、状态机与写入合同的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -14,7 +14,7 @@
 | TaskSourceSnapshot | 外部系统一次只追加的原始与规范化观测 |
 | TaskCompletionReceipt | 某次 CompleteTaskIntent 对精确 TaskRevision、规则、候选和证据的完成证明 |
 
-Project 到外部 provider/account/scope 的连接由 ResolvedPortBinding（port_kind = task_source）承载；每个 Project 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个 active binding。
+Repo 到外部 provider/account/scope 的连接由 ResolvedPortBinding（port_kind = task_source）承载；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个 active binding。
 
 Task lifecycle 只有 `Open | Completed | Cancelled`。契约变化创建新 TaskRevision；高频操作变化经受控端口写入 content 后端，回读为 TaskOperationalState 投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。
 
@@ -22,7 +22,7 @@ Task lifecycle 只有 `Open | Completed | Cancelled`。契约变化创建新 Tas
 
 ## 契约与来源
 
-任务 content 的家是 Project 级选择：创建 Project 时为 Kanban 场景选定一个 content 后端——本地任务服务器，或 GitHub/Linear 这类远端平台（场景客户端经 API 直访远端，客户端只是投影）。一个 Project 一个 Board：Board 是该 Project 任务 content 的容器，与“一个 Project 一个 Room”对仗；后端连接由 ResolvedPortBinding（port_kind = task_source）承载，更换后端是显式的绑定替换，不改变既有 Task 身份映射。
+任务 content 的家是 Repo 级选择：注册仓库或首次启用 Kanban 时为整个 Repo 选定一个 content 后端——本地任务服务器，或 GitHub/Linear 这类远端平台（场景客户端经 API 直访远端，客户端只是投影）。一个 Repo 一个 Board：Board 是该仓库任务 content 的容器；HCTL Project 在板上映射为后端的分组实体（父任务、milestone、Linear project 等，由适配器按能力声明，能力不足时降级为标签或过滤视图），Task 映射为分组之下的卡片。后端连接由 ResolvedPortBinding（port_kind = task_source）承载，更换后端是显式的绑定替换，不改变既有 Task 身份映射。
 
 看板卡片是 content，粒度由后端自由承载（子任务、清单、微卡不受 HCTL 约束）。每张进入所选 scope 的卡都以稳定键映射一个 HCTL Task 身份（身份全量），但 TaskRevision 契约按需创建（契约惰性）：首次绑定 Run、首次提交完成命令或显式升格采纳时才冻结验收契约。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影，要让完成成为可核验事实，必须先升格出契约。
 

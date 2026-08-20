@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.10.0<br>
+> 状态：规范性合同 · 草案 v0.10.1<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -13,7 +13,7 @@
 | agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
-| task backend | 经 TaskSource 端口访问的任务后端（本地任务服务器或远端平台，按 Project 选择）；承载任务卡 content 的 ground truth |
+| task backend | 经 TaskSource 端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
 Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
@@ -106,7 +106,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 | RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control | 该仓库现场暂停；其他仓库与控制面不受影响 | 可从 Git、metadata 账本与运行时对账重建；无法证明的旧执行按 Lost/Interrupted 收口 |
 | 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；ResultUnknown 先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
-| 任务卡、流转、排序、评论（content） | Project 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
+| 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按 Lost/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 

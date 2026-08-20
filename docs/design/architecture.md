@@ -1,6 +1,6 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.10.0<br>
+> 状态：规范性（架构层）· 草案 v0.10.1<br>
 > 日期：2026-08-21<br>
 > 定位：本文回答部署与数据视角——系统由哪三个面组成，每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[合同层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
@@ -25,7 +25,7 @@
 | 场景 | 系统角色 | 系统拥有的 content | 备注 |
 | --- | --- | --- | --- |
 | Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端即互操作面 |
-| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 创建 Project 时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访 |
+| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
 | Terminal | harness（编码代理工具）与运行时后端 | 会话转录、PTY 流 | 会话由 agentd（HCTL 的本机执行守护进程）持有与观测——它之于 Terminal，如同 chat server 之于 Chat Room |
 
@@ -42,7 +42,7 @@
 
 统一律与三条法（能承载不等于能裁决；冻结摘要是防火墙；命令走 HCTL、记录落平台）见[合同层总则](./spec/README.md#三类数据)，此处不重复。
 
-每个场景有一个 **Project 级的 content 容器**，彼此对仗：一个 Project 一个 Room（聊天现场）、一个 Board（看板）、一份机械执行历史、一组执行会话。容器归属 Project，不归属某个 clone 或客户端。
+content 容器的层级随场景各得其所：聊天两级——一个 Repo 一个 Repo Room，一个 Project 一个 Project Room；看板一级——一个 Repo 一个 Board，Project 是板上的分组，Task 是卡片，子任务归后端原生能力；机械执行历史与执行会话随各自的 Run 与执行归属。容器归属 Repo/Project 身份，不归属某个 clone 或客户端。
 
 ## 模块咬合点
 

@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.10.0<br>
+> 状态：非规范对照 · 草案 v0.10.1<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -20,7 +20,7 @@
 | Context | 上下文 | 一次调用看到了什么、为什么、来源是什么；由清单（Manifest）与内容包（Bundle）两份冻结记录承载 | [spec/project](../spec/project.md) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；提供方法，不授予权限 | [spec/system](../spec/system.md) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
-| Kanban | 看板 | Task 的主操作场景；一个 Project 一个 Board，content 在所选任务后端；泳道（lane）只是投影 | [Task](../task.md) |
+| Kanban | 看板 | Task 的主操作场景；一个 Repo 一个 Board，Project 是板上分组，content 在所选任务后端；泳道（lane）只是投影 | [Task](../task.md) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选和权限的一次授权执行 | [Run](../run.md) |
 | Workflow | 施工图 | 与引擎无关的控制图与治理规则；版本见 Revision 族 | [Run](../run.md) |
 | Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
