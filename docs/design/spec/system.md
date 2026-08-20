@@ -101,7 +101,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 | 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约记账与判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 |
 | RepoInstance 物理事实：worktree 与 ChangeSet 的本地归属、运行现场、单写锁与本地投影缓存 | RepoInstance SQLite + control |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest |
-| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容 | Git + core；control 账本保存本 RepoInstance 的 admission、current pointer 和 lifecycle 投影 |
+| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 |
 | 任务卡、流转、排序、评论（content） | Project 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 |
@@ -117,6 +117,8 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 ```
 
 `<git-common-dir>/hctl2/` 是当前 RepoInstance 及其 linked worktree 的共享运行目录。HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。
+
+判决双层保存：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；其**结晶副本**由 core 写入 Git，用于审计与随仓库同步。结晶副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以 metadata 账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
 
 用户级 Profile/Skill/Runtime 定义也以不可变 revision/digest 被引用；更新 current pointer 必须取得用户配置存储的排他锁并做 expected-version CAS。某个 RepoInstance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
 

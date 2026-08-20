@@ -58,6 +58,8 @@ Task 终结只有两个获准来源：有权 human actor 从 Kanban 场景提交
 
 TaskCompletionReceipt 至少固定 Task、CompleteTaskIntent、TaskRevision digest、验收策略、来源快照/head、逐项证据和 actor；若存在契约分歧，还必须固定显式 divergence choice、精确的未采纳 Snapshot refs/digests、TaskBinding revision/state version 与 authority-policy digest。Receipt、生命周期事件、当前投影与需要的外部写回 outbox 在同一事务提交。外部写回失败只显示 Needs Attention，不撤销已经成立的 HCTL 完成事实。
 
+冻结契约（TaskRevision）、完成凭证与施工图是 Kanban 场景的结晶（“干什么的计划”与其完成证明）：权威在 metadata 账本，结晶副本按[双层保存政策](./system.md#事实与存储)写入 Git；施工图（WorkflowRevision）的对象定义与写入者仍归 [Run 模块合同](./run.md)，此处只归属其结晶类别。
+
 ReopenTaskIntent 只接受有权 human actor，必须以预期 `task_lifecycle_version` 把 `Completed/Cancelled → Open` 并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 TaskRevision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 
 Run 的裸终态、Harness 自述、Git commit、CI 绿色或外部 Closed 都不是 CompleteTaskIntent；唯一 Workflow 例外是 task-bound Run 正常完成后由 reducer 提交上述同一个 Task 命令。
