@@ -151,7 +151,11 @@ Task 路径的验收证据 → TaskCompletionReceipt
 | owner 身份可证明但外部结果仍未知 | 连接保持 Pending/Needs Attention，来源不会被伪装成已交接 |
 | 执行身份、lease 或 generation 无法证明 | Attempt 进入 Lost、RoomInvocation 进入 Interrupted；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，Retry 只能使用新 owner/generation |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
-| 外部适配器不可用 | 已冻结的本地事实继续存在；连接显示 Pending/Needs Attention 或安全暂停 |
+| chat server 不可用 | 治理与施工命令照常；聊天入口降级，Room 投影显示重同步中 |
+| 任务后端不可用 | 契约、升格与完成命令照常；看板显示待同步，排队操作不显示假成功 |
+| Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task |
+| harness / RuntimeBackend 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
+| 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示 Pending/Needs Attention 或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 
 系统对账完成前，各模块都不得表现为已完成交接。连接需要的新尝试或替代执行必须拥有新的 generation/spec；不能复活旧 owner。
