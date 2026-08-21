@@ -475,14 +475,14 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 <a id="e-l4-matrix-homeserver"></a>
 ## E-L4-MATRIX-HOMESERVER · chat server 候选（限时验证）
 
-三类数据模型（v0.10.0）把 Chat Room 的消息 content 判给采用 Matrix 协议的 chat server。两个候选并列进入开工前限时验证（见[交付文档](../delivery.md#开工前限时验证)），均为 Rust 单二进制 + SQLite 后端、conduwuit 谱系：
+三类数据模型（v0.10.0）把 Chat Room 的消息 content 判给采用 Matrix 协议的 chat server。两个候选并列进入开工前限时验证（见[交付文档](../delivery.md#开工前限时验证)），均为 Rust 单二进制、采用 RocksDB 系嵌入式存储的 conduwuit 谱系：
 
 - [Tuwunel](https://github.com/matrix-construct/tuwunel)：conduwuit 原作者延续、全职维护；Apache-2.0。
 - [Continuwuity](https://github.com/continuwuity/continuwuity)：conduwuit 社区延续、Matrix 基金会生态成员；Apache-2.0。
 
 已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化而非房间内发命令。
 
-角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；选定后固定已审阅发布版本并补记 pinned commit。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
+角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；P0 必须固定已审阅发布版本、pinned commit、实际存储后端及 build features。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
 
 ## L3 外部系统与观察清单
 

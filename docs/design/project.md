@@ -44,7 +44,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 - 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
 - `@` Participant/Role、/ 类型化动作、$ Skill、`#` 文件/Artifact/消息引用；
 - 并发 Room Invocation 的独立流、取消和结果卡；
-- Request、Project 概览、Task/Run 里程碑和需要关注（需要关注）投影；
+- Request、Project 概览、Task/Run 里程碑和需要关注投影；
 - mention 提交前的 Trigger Preview：发出前先看清楚谁来执行、带什么上下文、有什么权限和预算、会创建什么；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
 
@@ -66,6 +66,6 @@ chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.
 以下只列所有权方向；字段、事务与故障语义由[连接合同](./spec/connections.md)统一定义。
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
-- Project 可以发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
-- Task、Run 和 Harness 的状态只以投影或引用回到 Chat Room，不能由聊天反向改写。
+- Project 可以通过 [Agent](./agent.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
+- Task、Run 和 Agent 模块的状态只以投影或引用回到 Chat Room，不能由聊天反向改写。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流。

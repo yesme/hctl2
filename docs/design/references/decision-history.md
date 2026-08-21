@@ -15,18 +15,18 @@ HCTL1 首先解决的是“谁可以对哪个精确版本作出什么裁决”�
 
 HCTL2 最初面对的产品表象，是同时管理多个 Harness、终端、session、pane 和 worktree。Zellij、WezTerm、cmux、Termio、Herdr 等实现说明了进程托管、终端重连、布局和运行信号应怎样做得可靠，也暴露了一个边界：终端只能说明“哪里在运行”，不能说明“为什么运行、代表哪个用户目标、谁批准了写入、结果如何验收”。
 
-因此 Terminal 从产品中心退为 Harness 的操作场景。进程、PTY、pane 和 runtime 都是物理承载；它们可以丢失和重建，却不能反向定义 Project、Task 或 Run 的事实。这一转折把 HCTL2 从“更好的多终端管理器”推向了治理工作台。
+因此 Terminal 从产品中心退为第四模块的操作场景；该模块在当时称 Harness，v0.10.0 后正名为 Agent。进程、PTY、pane 和 runtime 都是物理承载；它们可以丢失和重建，却不能反向定义 Project、Task 或 Run 的事实。这一转折把 HCTL2 从“更好的多终端管理器”推向了治理工作台。
 
 ## 3. 从工作区直觉到四个权威模块
 
-接下来需要把几个生命周期不同的问题拆开：用户围绕什么持续协作、什么构成可验收承诺、何时值得启动自动施工、哪个执行体真正接触资源。早期研究曾用四层来整理 donor 的长处；收敛后的领域所有权则落在四个模块，而不是四个实现层：
+接下来需要把几个生命周期不同的问题拆开：用户围绕什么持续协作、什么构成可验收承诺、何时值得启动自动施工、哪个执行体真正接触资源。早期研究曾用四层来整理 donor 的长处；v0.8/v0.9 当时收敛出的领域所有权落在四个模块，而不是四个实现层：
 
 - **Project** 保存长期目标、协作上下文、Request、Memo 与 Artifact；
 - **Task** 保存可排队、可分派、可独立验收的承诺及其来源绑定；
 - **Run** 保存 Workflow Revision、受治理执行、Obligation、Seat、Attempt、Verdict 与 Receipt；
-- **Harness** 保存 Worker/Harness 绑定、ChangeSet、runtime、终端与执行证据。
+- **第四模块（当时称 Harness，现为 Agent）** 保存 Worker/Harness 绑定、ChangeSet、runtime、终端与执行证据。
 
-拆分的关键不是把流程强制串成四步，而是让可选关系保持真实：Task 可以不启动 Run，Project 也可以直接发起一次 Harness 调用；只有需要耐久、可恢复的自动施工时才创建 Run。历史证据中的 L1–L4 标签仍可用于追溯参考实现，但不再构成 HCTL2 的领域层级。
+拆分的关键不是把流程强制串成四步，而是让可选关系保持真实：Task 可以不启动 Run，Project 也可以通过第四模块发起一次 Harness 调用；只有需要耐久、可恢复的自动施工时才创建 Run。历史证据中的 L1–L4 标签仍可用于追溯参考实现，但不再构成 HCTL2 的领域层级。
 
 ## 4. 四个 Scene 与模块对仗
 
@@ -37,13 +37,13 @@ HCTL2 最初面对的产品表象，是同时管理多个 Harness、终端、ses
 | Project | Chat Room | 对话、上下文与协作不再依附某个常驻 foreman 或终端 |
 | Task | Kanban | 承诺、来源同步和完成验收不再退化为聊天消息或 Run 终态 |
 | Run | Workflow | 施工图、机械进度与语义 Gate 可以展开查看，但图本身不是事实源 |
-| Harness | Terminal | 进程、输入输出和物理恢复有明确归属，不冒充上层成功 |
+| 第四模块（当时称 Harness，现为 Agent） | Terminal | 进程、输入输出和物理恢复有明确归属，不冒充上层成功 |
 
 Scene 是投影和操作面，不是第五个 writer。Room 的 repo/project/scoped 拓扑也与控制拓扑正交：共享协作不要求某个 Harness 永久在线，终端重连更不能接管 Room 或 Project 的身份。
 
 ## 5. Workbench、第三方客户端与受控端口分离
 
-Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领域层。自建它的理由不是重写通用 UI，而是四模块的导航结构无法无损套入任何 donor 的会话、终端或工作树主导航。CLI、Workbench 和第三方原生 UI 都通过同一类 Query、Preview、Submit、Subscribe 合同工作；关闭客户端不改变领域事实，也不授予额外权限。
+Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领域层。自建它的理由不是重写通用 UI，而是四模块的导航结构无法无损套入任何 donor 的会话、终端或工作树主导航。CLI、Workbench 和适配后的第三方 Scene UI 都通过同一类 Query、Preview、Submit、Subscribe 合同工作；provider 原生 UI 若只操作本系统 content，仍只是 content 客户端或诊断面。关闭任何客户端不改变领域事实，也不授予额外权限。
 
 与此同时，Chat、任务源、workflow engine、harness 和运行时后端被收敛为受控端口。它们提供外部能力、报告版本与降级方式，但不能凭平台自身的 Session、Issue、workflow task、pane 或数据库取得 HCTL 字段权威（第 12 节后来把这条精确化为“可拥有 content、不可拥有治理”）。一个产品可以同时提供原生客户端和受控端口，例如第三方看板既展示 Task 又承载部分外部字段；此时 client binding 与 authority binding 仍须分开，避免“能显示”被误写成“能决定”。
 
@@ -80,7 +80,7 @@ HCTL2 对 HCTL1 的继承是合同层的，而不是表结构层的：
 | 精确 Verdict、quorum 与 Receipt | Run Gate 及 control 与工具箱校验后的正式证明 |
 | fail-closed reconciliation | outbox/readback、未知结果保留和冷启动恢复 |
 
-与此同时，对象含义发生了变化。HCTL1 的 `Seat = harness × model`；HCTL2 的 Seat 是 Obligation 内稳定的逻辑执行者或投票位置，并允许多个 Attempt。HCTL1 的 Obligation 主要承载静态 author/gate/merge 责任；HCTL2 的 Obligation 对应一次 Engine external task 的逻辑产出责任。HCTL1 以 Seat refs、PR 和 squash Receipt 作为主要协调事实；HCTL2 把四模块操作账本放入 Repo Instance SQLite，把共享定义和内容证据放入 Git，把机械工作流位置交给 Conductor，并通过连接合同交换精确引用。
+与此同时，对象含义发生了变化。HCTL1 的 `Seat = harness × model`；HCTL2 的 Seat 是 Obligation 内稳定的逻辑执行者或投票位置，并允许多个 Attempt。HCTL1 的 Obligation 主要承载静态 author/gate/merge 责任；HCTL2 的 Obligation 对应一次 Engine external task 的逻辑产出责任。HCTL1 以 Seat refs、PR 和 squash Receipt 作为主要协调事实；在 v0.8/v0.9 当时的设计里，HCTL2 把四模块操作账本放入 Repo Instance SQLite，把共享定义和内容证据放入 Git，把机械工作流位置交给 Conductor，并通过连接合同交换精确引用。
 
 所以 Git 的地位从“几乎全部协调状态”变成“共享、低频、可审计的定义与内容事实”；Receipt 仍是已经校验之结果的证明，却不再暗示旧对象或旧存储布局继续有效。
 
@@ -100,7 +100,7 @@ v0.9.1 处理概念层面的同类问题。全量清点暴露出 75 个以上具
 
 ## 12. 场景数据的三分：metadata / content / artifact
 
-v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第 9 节）。随后的多设备讨论暴露了一个产品语义错误：同一个人在两台机器各 clone 一份仓库，Room 的协作历史却被锁在单个 clone 的本地账本里——clone 丢了，协作记忆就丢了。`.memo/room-ground-truth-20260819.md` 曾比较四个候选，当时把“Matrix 作为权威”判为违反端口纪律，倾向用户级 hub。
+v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第 9 节记录的是这一时期的设计，并非当前落点）。随后的多设备讨论暴露了一个产品语义错误：同一个人在两台机器各 clone 一份仓库，Room 的协作历史却被锁在单个 clone 的本地账本里——clone 丢了，协作记忆就丢了。`.memo/room-ground-truth-20260819.md` 曾比较四个候选，当时把“Matrix 作为权威”判为违反端口纪律，倾向用户级 hub。
 
 `.memo/scene-data-model-20260820.md` 给出了更精确的刀法：每个场景的持久数据分三类——metadata（治理元数据：身份、绑定、授权、判决）、content（场景内容：消息、任务卡与流转、机械执行历史、会话转录）、artifact（结晶：决议、冻结契约与施工图、凭证链、代码变更）。Workflow 与 Terminal 两个场景本来就这样运作——工作流引擎拥有机械历史，harness 会话拥有转录，HCTL 只留绑定与治理；三分法把这条规则推广到 Chat 与 Kanban，补掉了不对称。
 
@@ -110,7 +110,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 13. 词汇清扫（v0.10.3）
 
-v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.10.3 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（含仓库 README 架构图源码里的节点 ID）。教训与 §11 同源：命名门槛不因“端口/组件”语境而豁免，图纸节点 ID 也不豁免。
+v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.10.3 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（当时连仓库 README 架构图源码里的节点 ID 也纳入清理）。这轮正确收紧了自造语义名的门槛，但把所有代码形态都视作概念命名的做法后来在 v0.12.0 复审中被收窄。
 
 ## 14. 实现计划：P/B 双表与 P0 选型（v0.11.0）
 
@@ -118,11 +118,13 @@ v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（10
 
 ## 15. 词形收敛与 chat server 定夺（v0.11.1）
 
-分层原则推到词形上：语义是文档的本职，拼写是实现的权利。25 个驼峰对象/票据名退化为带空格专名（对齐 Run Manifest / Gate Receipt 先例）；16 个 `*Intent` 命令名退化为动宾语义名；约二百处状态值枚举拼写退化为中文语义名——设计仓库从此不含任何代码标识符，「语义名 ↔ 标识符」对照表在实现期随命令底座生成。同轮拍板 chat server 为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；P0 四项选型至此全部定案。
+分层原则推到词形上：语义是文档的本职，拼写是实现的权利。25 个驼峰对象/票据名退化为带空格专名（对齐 Run Manifest / Gate Receipt 先例）；16 个 `*Intent` 命令名退化为动宾语义名；约二百处状态值枚举拼写退化为中文语义名。当时把结论绝对化为“设计仓库不含任何代码标识符”；v0.12.0 复审将其修正为：自造语义名不冻结代码词形，但合同必须逐字指认的协议/schema 字段、序列化格式标识与外部原名可以保留，「语义名 ↔ 标识符」对照仍在实现期随命令底座生成。同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。
 
 ## 16. 四段施工序与组件正名（v0.12.0）
 
-实现计划从 P0–P6 收敛为按三面架构分层的四段：P0 立营（四个执行面系统可运维）→ P1 备装（agentd + 工具箱，standalone 即自举）→ P2 接钥匙（control + CLI，四场景经第三方客户端观看，B0–B5 全在此内）→ P3 装门面（Workbench + B6 发布链）。P2 用第三方客户端自举，本身就是对「第三方客户端可用」架构承诺的验证。打包策略定为原生优先：执行现场组件不进容器，Tuwunel/Vikunja 的 darwin 构建由我方 CI 为 pinned 版本产出，容器只留给 Conductor。同轮组件正名：`hctl2-core` 更名 `hctl2-tool`（机械工具箱）——它与「工具」本是一具身体的两种在场方式（standalone 直接可用；被 control 编排时执行已持久化的意图并回读），且 core 是零信息量的万金油名；agentd 在组件表正名 `hctl2-agentd`，散文继续简称。执行侧工序的机械化纪律成文：commit 署名、lint、PR 正文拼装、memo 写入、有效变化侦测——该机械做的绝不交给模型。
+v0.12.0 最初把 P0–P6 收敛为按三面架构分层的四段：P0 立营（先让四个执行面系统可运维）→ P1 备装（agentd + 工具箱）→ P2 接钥匙（control + CLI，B0–B5）→ P3 装门面（Workbench + B6）。它也把 `hctl2-core` 正名为机械工具箱 `hctl2-tool`，把 agentd 在组件表中正名为 `hctl2-agentd`，并写下“commit 署名、lint、PR 正文拼装、memo 写入、有效变化侦测等机械工作不交给模型”的施工纪律。
+
+同一基线的复审保留四段骨架，但修正了三处过强表达：P0 改为限时、可丢弃的实现探针，content 系统在 P2 首次被纵向切片消费时才产品化；P1 的 standalone 工具只能辅助开发，B2 才是第一次真正自举；P2 的完整治理入口是公共 CLI，Matrix/Vikunja 原生界面只验证 content 互操作，Engine console 与裸 Zellij 分别只是诊断和 break-glass，除非适配器实现公开合同，否则不能统称“第三方场景客户端”。同轮也收窄了两条方法论：“外部无对应”是差异化语义的证据而非账本存储清单；自造语义名不冻结代码词形，但精确协议、字段、格式与外部原名可以保留。原生优先的打包方向不变，精确版本、后端与 build features 在 P0 证据通过后固定。
 
 ## 17. 当前落点
 

@@ -17,7 +17,7 @@
 | Request | 请求卡 | 向指定的人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md) |
 | Memo | 备忘 | 用户明确提炼、预览并发布的长期知识 | [Project](../project.md) |
 | Artifact | 工件 | 登记过的可引用交付物；发布版本见 Revision 族 | [Project](../project.md) |
-| Context | 上下文 | 一次调用看到了什么、为什么、来源是什么；由清单（Manifest）与内容包（Bundle）两份冻结记录承载 | [spec/project](../spec/project.md) |
+| Context | 上下文 | 顶层授权为何、从哪些精确来源取材，以及每个消费执行实际收到哪些字节；由根清单与消费包分开承载 | [spec/project](../spec/project.md) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；提供方法，不授予权限 | [spec/system](../spec/system.md) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
 | Kanban | 看板 | Task 的主操作场景；一个 Repo 一个 Board，Project 是板上分组，content 在所选任务后端；泳道（lane）只是投影 | [Task](../task.md) |
@@ -59,8 +59,8 @@
 
 | 成员 | 中文对照 | 版本化的是什么 |
 | --- | --- | --- |
-| Task Revision | 任务契约版本 | Task 的范围、验收标准与所需能力 |
-| Workflow Revision | 施工图版本 | 与引擎无关的控制图和治理规则 |
+| Task Revision | 任务契约版本 | Task 的范围、验收标准与所需能力；不可变正文在 Git，准入/current 在账本 |
+| Workflow Revision | 施工图版本 | 与引擎无关的控制图和治理规则；不可变正文在 Git，批准/current 在账本 |
 | ChangeSet Revision | 变更集快照 | 一次写入边界内的不可变 Git 快照 |
 | Artifact Revision | 工件版本 | 登记交付物的一次不可变发布 |
 | Extension Revision | 扩展版本 | 一个扩展的代码、接口、能力与信任级别 |
@@ -70,7 +70,7 @@
 
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
-| Resolved Port Binding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；任务源连接也由它承载） |
+| Resolved Port Binding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；动态 health/cursor 不进不可变 binding） |
 | Task Binding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
 | Project Role Binding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
 | Engine Execution Binding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |
@@ -90,7 +90,7 @@
 | Write Lease | 写入租约 | 一个变更集的写权；同时最多一个持有者 |
 | Terminal Input Lease | 终端输入租约 | 一个终端目标的输入权；接管原子撤销旧租约 |
 
-control writer 与 agentd owner 的排他权同族，以 generation（代次）表达。
+control writer、Repo Instance site 与 agentd/backend owner 的排他权以各自 generation（代次）表达；Attempt 的 owner generation 与 Execution Runtime 的 runtime generation 是另外两层身份，不能共用一个裸 `generation`。Participant/Binding revision、producer sequence 和 cursor 都不是代次。
 
 ## 命令族（持久命令与副作用）
 
@@ -108,16 +108,17 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 
 | 名字 | 中文对照 | 哪个步骤的产物 |
 | --- | --- | --- |
-| Execution Spec | 派发规格 | 派发一次执行时冻结的全部绑定（owner = Room Invocation \| Attempt） |
-| Run Manifest | 施工清单 | 启动 Run 时冻结的全部绑定、规则和预算 |
+| Execution Spec | 派发规格 | 派发一次执行时冻结 owner version、根 Context Manifest、消费 Bundle、Participant/Role/Skill/Profile 与权限；runtime identity 在后续激活映射产生 |
+| Run Manifest | 施工清单 | 启动 Run 时冻结 Project/Task/Workflow、根 Context、Participant/Role/Skill、候选、规则和预算 |
 | Attach Descriptor | 连接票据 | 对精确终端目标的短期连接凭据 |
-| Context Manifest / Context Bundle | 上下文清单 / 上下文包 | 组装上下文时冻结的说明与内容 |
+| Context Manifest | 根上下文清单 | 顶层授权冻结的目的、精确来源/父清单、freshness/gap、Skill 与权限/预算边界 |
+| Context Bundle | 消费上下文包 | 某个 Invocation/Attempt 从根清单实际物化并交付的有序内容、工具版本与 bytes digest |
 
 ## 独立对象（不属六族的领域对象）
 
 | 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
-| Repo Instance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；仅是注册在 metadata 账本的现场身份，本地无账本 |
+| Repo Instance | 仓库实例 | 系统挂接到逻辑 Repo 的 clone/执行现场（worktree、ChangeSet 物化、运行时与 site fence）；不属于 Project，本地无账本 |
 | Room Invocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | Execution Runtime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
 | Room Event | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |

@@ -10,7 +10,7 @@
 | Workflow Revision | 与引擎无关、不可变的控制图、节点、输入输出和治理规则（Revision 族） |
 | Engine Deployment | 某个 Workflow Revision 经固定编译器和 workflow engine 端口适配器生成的不可变引擎版本（Revision 族） |
 | Run | 对冻结 Workflow、Task、基线、角色、候选、权限和预算的一次授权执行 |
-| Engine Execution Binding | Run、Engine Deployment、Resolved Port Binding、外部 execution ID/correlation key 和 generation 的稳定映射（Binding 族） |
+| Engine Execution Binding | Run、Engine Deployment、Resolved Port Binding、外部 execution ID/correlation key 和 `engine_binding_generation` 的稳定映射（Binding 族） |
 | Obligation | 一个 HCTL 外部节点必须产出的逻辑结果 |
 | Seat | Obligation 中稳定的逻辑执行者或投票位置 |
 | Attempt | 某个候选对 Seat 的一次执行。其派发冻结由 Execution Spec（定义见[连接合同](./connections.md)）承载；Attempt 侧特有字段只有 attempt/seat/run 身份与代次，Seat identity、截止时间等见共同字段 |
@@ -23,29 +23,40 @@
 | --- | --- | --- | --- |
 | Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
-| Engine Execution Binding | binding generation；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
+| Engine Execution Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | Run reducer/control 根据 Engine task、Attempt 结果和 Gate 策略推进 | 终态不可复活；Engine retry 创建新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；agentd 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
-Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能被取消、失败或替代路径收口，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 不直接写状态，control 只依据匹配 binding/generation 的回读推进。
+Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能被取消、失败或替代路径收口，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 不直接写状态，control 只依据匹配 Engine binding 与 `engine_binding_generation` 的回读推进。
 
-Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Obligation 的不可变绑定固定 Engine Execution Binding generation 与精确 Engine task execution identity（外部 task ID 及 retry/attempt generation）；其带版本的租约视图记录生效租约、截止时间和最近一次由 adapter 回读确认的续租，超时与备用候选准入只能依据该确认值。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为被替代，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
+`运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的 success terminal 已由当前 Engine Execution Binding/`engine_binding_generation` 回读；全部 required Obligation、Seat、Gate 与声明输出均以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并以被替代/已取消收口；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine binding 和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine task 结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词。
+
+任何失败、取消或替代终态在释放 Task Run claim 前，也必须在同一收口事务撤销旧 dispatch、输入/写租约与外部副作用资格，并提交 runtime stop/fence；若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 worktree/ChangeSet，后续执行按 Agent 合同使用新 worktree **和**新 ChangeSet。不能证明旧执行被限制在该隔离边界内时，Run 保持取消中/需要关注且 claim 不释放，不能以“失败了”为由并发启动第二个 writer。
+
+Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Obligation 的不可变绑定固定 `engine_binding_generation` 与精确 Engine task execution identity（外部 task ID 及 engine retry/attempt token）；其带版本的租约视图记录生效租约、截止时间和最近一次由 adapter 回读确认的续租，超时与备用候选准入只能依据该确认值。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为被替代，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
 
 Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了的证明”）：权威在 metadata 账本，结晶副本按[双层保存政策](./system.md#事实与存储)写入 Git。
 
 ## Workflow 与 Run 授权
 
-Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后写入 Git。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。
+Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入/回读 Git；Git 保存不可变正文，control 账本独占 identity、admission、digest、approval/current pointer。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
 - Project、0..1 个 Task Revision（第一阶段）、Workflow Revision 与 Engine Deployment；
-- repo/base revision、角色与逻辑 Seat；
+- repo/base revision、根 Context Manifest ref+digest、角色与逻辑 Seat；
+- 每个角色/Seat 的精确 Participant revision、Project Role Binding version/digest、required/optional Skill refs+digests；
 - 获准 Worker Profile 候选、切换规则、能力和权限；
 - Gate、预算、放置和截止规则。
 
 第一阶段，绑定 Task Revision 的 Run 表示对该完整 Task 验收合同的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
+
+### 启动与 Manifest
+
+「启动 Run」必须 CAS 活跃 Project/version、可选 Task 的开放 lifecycle/current Revision 及该 Task 的 Run claim，并在同一用户级账本事务创建 Run、不可变 Manifest、幂等结果、`active` Task claim（有 Task 时）和 Engine start outbox。每个 Task 至多一个 `active | completion_pending` claim；相同 idempotency key 的第二次 Start 返回原 Run，其他 Start 返回 typed conflict，不能只靠 Engine correlation key 去重。Project 已归档、Task 无契约、Project 不匹配或已有 claim 都拒绝。
+
+「替代 Run」不是先取消再另起：同一事务校验旧 Run/version，撤销旧 runtime、输入/写租约与 owner-specific fence，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交 stop/fence outbox，同时创建新 Run/Manifest、把唯一 Task claim 从旧 ref 转到新 ref；不得为了替代一个 Run 任意推进共享 site generation 而误伤其他执行。新执行必须使用新的 Execution Spec/runtime generation；旧写入未能物理证明静默时还必须按 [Agent 合同](./agent.md#changeset-与-git-事实)使用新 ChangeSet 与新 worktree。事务任一步失败就不转移 claim。
 
 运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
 
@@ -55,13 +66,13 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 本节定义 Run 内部归约；对 Agent 模块的派发、结果信封和故障恢复见[连接合同](./connections.md)。
 
-1. control 领取一个 HCTL 外部 Engine task，并按 Run、binding generation 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
+1. control 领取一个 HCTL 外部 Engine task，并按 Run、`engine_binding_generation` 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
 3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
 4. control 与工具箱校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与 Engine completion outbox 先持久提交，再幂等完成外部任务。
 
-Attempt 的派发在 Execution Spec 中至少冻结 attempt/seat/run/generation、逻辑 Participant/Seat identity、Worker Profile、接入方式与降级能力、运行时后端 binding、可选 ChangeSet/Write Lease、Context/Skill/能力/权限摘要和截止时间。Attempt lifecycle 为待启动 | 运行中 | 等待输入 | 已交提案 | 失败 | 丢失 | 已取消 | 被替代：待启动可进入运行中/失败/丢失/已取消；运行中与等待输入可互转并进入已交提案/失败/丢失/已取消；任一尚未提交 Proposal 的非终态可进入被替代。已交提案是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
+Attempt 的派发在 Execution Spec 中至少冻结 attempt/seat/run ref + `attempt_generation`、精确 Participant revision/Project Role Binding、Worker Profile、接入方式与降级能力、运行时后端 binding、可选 ChangeSet/Write Lease、根 Context Manifest ref+digest、该 Attempt 的 Context Bundle ref+digest、实际 Skill refs+digests、能力/权限和截止时间。`attempt_generation` 是语义 owner 代次；它既不是后续激活时分配的 `runtime_generation`，也不是 control/site/backend 的基础设施 fence generation，所有层都必须分别携带并逐项校验。Attempt lifecycle 为待启动 | 运行中 | 等待输入 | 已交提案 | 失败 | 丢失 | 已取消 | 被替代：待启动可进入运行中/失败/丢失/已取消；运行中与等待输入可互转并进入已交提案/失败/丢失/已取消；任一尚未提交 Proposal 的非终态可进入被替代。已交提案是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
 
 ## Request、重试与 Gate
 
@@ -79,11 +90,13 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 
 只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 收口为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
 
-Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结逻辑参与者。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 按 Gate 策略绑定彼此独立的逻辑 Participant。备用 Attempt 必须继承原 Seat 的参与者和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control 与工具箱在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果，使 Obligation 失败并沿 Workflow Revision 的失败边推进，不能无限等待。作者返工产生新 ChangeSet Revision/Artifact Revision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；Task Revision 只有在验收契约变化时才更新。
+Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、根 Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结精确 Participant revision 与 Project Role Binding。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 绑定互不相同的 Participant revision，备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control 与工具箱在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。
+
+第一阶段这只证明**逻辑 Participant 分离与 producer/reviewer 分离**，不证明背后是不同人类 operator、公司、模型提供方、基础模型或 post-train。Manifest/Gate policy 应冻结 provider/model/operator refs 中受控端口实际认证的部分并在预览、Verdict 和审计中展示 `known / unknown`；Participant、Harness 或模型自报不能把 unknown 变成 known。策略若要求上述物理或组织独立，而当前端口不能机械认证，就必须把该 Gate 判为 unsupported，不能用不同 Participant 名称冒充独立。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果，使 Obligation 失败并沿 Workflow Revision 的失败边推进，不能无限等待。作者返工产生新 ChangeSet Revision/Artifact Revision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；Task Revision 只有在验收契约变化时才更新。
 
 ## Run → Task
 
-Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)。绑定精确 Task Revision 的 Run 只有正常进入完成后，control 才以稳定幂等键机械提交同一个「完成 Task」命令；Task 重新校验当前 Revision、来源 drift 和全部证据。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只形成需要关注/历史，不完成或取消 Task；Engine task 结束、进程退出或模型自述均不能触发该 handoff。
+Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)。绑定精确 Task Revision 的 Run 只有满足上述正常完成谓词后，完成事务才把该 Task 的 claim 从 `active` CAS 为 `completion_pending(run_ref)`，并以 Run/Task 派生的稳定幂等键写内部「完成 Task」command outbox；pending 阻止新 Run 插入。随后 Task 按同一个用户级账本中的当前 Revision、来源 freshness/drift 和逐项证据独立校验，并在成功 Receipt 或持久拒绝结果的事务清除该 claim。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只有满足上一段隔离前置，其收口事务才释放旧 active claim；它们只形成需要关注/历史，不提交完成或取消 Task。Engine task 结束、进程退出或模型自述均不能触发该 handoff。若完成谓词需要 Engine 或外部证据 fresh readback，端口不可用、cursor gap 或 `engine_binding_generation` 不明时 Run 不进入完成。
 
 ## 外部概念对齐
 

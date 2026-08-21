@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.10.2**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
+> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.12.0**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
 
 ## 为什么需要它
 
@@ -38,7 +38,7 @@ Project · Chat Room        Task · Kanban              Run · Workflow         
 
 结果沿相反方向回流：运行层交出提案与证据；治理层校验后形成 Verdict（裁决）与 Receipt（凭证）；承诺层据此独立验收；意图层沉淀里程碑与长期经验。
 
-这条链是心智模型，不是流水线：**一件事不必完整经历四个阶段。** 简单 Task 可以不创建 Run；Project 可以直接发起一次边界明确的 Harness 调用；纯研究或文档的 Project 可以从未施工。四个模块是语义分责，不是界面菜单；部署由正交的[三面架构](./docs/design/architecture.md)回答。从 Project 到 Agent，越靠前越接近人的意图，越靠后越是可替换的执行资源。
+这条链是心智模型，不是流水线：**一件事不必完整经历四个阶段。** 简单 Task 可以不创建 Run；Project 可以通过 Agent 模块发起一次边界明确的 Harness 调用；纯研究或文档的 Project 可以从未施工。四个模块是语义分责，不是界面菜单；部署由正交的[三面架构](./docs/design/architecture.md)回答。从 Project 到 Agent，越靠前越接近人的意图，越靠后越是可替换的执行资源。
 
 | 领域模块 | 操作场景 | 回答的问题 |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ flowchart LR
     T -->|已验证里程碑| P
 ```
 
-图中的短路边（Project 直达 Run 或 Harness）是显式设计，不是例外；它们不改变四个模块的事实所有权。
+图中的短路边（Project 直达 Run 或 Agent）是显式设计，不是例外；它们不改变四个模块的事实所有权。
 
 ## 目标体验
 
@@ -137,7 +137,7 @@ flowchart LR
 
 HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航。Workbench 是组合式场景客户端；第三方客户端只替代或补充对应场景，例如 Feishu/Slack/Discord 操作 Chat Room，WezTerm 操作 Terminal。它们都使用相应模块的 Query/Preview/Submit/Subscribe，不获得跨模块捷径。
 
-图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与本地账本，`hctl2-tool` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
+图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
 
 ## 设计文档
 

@@ -15,19 +15,23 @@
 
 四个场景由 Workbench 集成，但其命令必须可以由同一 service 供 CLI 或外部适配器使用。
 
+第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `zellij attach` 是带外诊断 / break-glass，不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
+
 ## 公共 CLI
 
 公共二进制固定为 `hctl2`：
 
 | 范围 | 第一阶段命令 |
 | --- | --- |
-| 运维 | `init`、`start`、`status`、`doctor`、`export` |
-| Project / Chat Room | `room list\|show`、`request list\|show`；复杂编辑暂由 Workbench 提供 |
+| 运维 | `init`、`start`、`status`、`doctor`、`export`、`backup create\|verify`、`restore preview\|apply` |
+| Repo / Project | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`project create\|list\|show\|update\|archive\|restore` |
+| Participant / Context | `participant create\|update\|list\|show`、`role bind\|unbind\|list`、`context show\|preview` |
+| Project / Chat Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
-| Run / Workflow | `run show\|preview\|start\|pause\|cancel`；修改动作先预览确认 |
-| Agent / Terminal | `terminal inspect\|attach\|resume\|replay`；必须指向精确 descriptor |
+| Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
+| Agent / Integration / Terminal | `changeset show\|diff`、`integration preview\|submit\|show`、`terminal inspect\|attach\|replay`；Terminal 命令必须指向精确 descriptor |
 
-CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或运行时后端。
+CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或运行时后端。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象；Run 的语义恢复 / 替换使用 `run resume|replace`，Room Invocation 的再次施工使用创建新 Invocation 与新 generation 的 `invocation retry`，不能用终端重连偷渡 lifecycle 推进。
 
 ## 明确不做
 
@@ -42,23 +46,24 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 ## 实现阶段
 
-施工顺序按三面架构分层：先执行面、再工具、再控制面、最后展示面。P 表回答「先建什么」，「自举阶段」的 B 表回答「什么时候敢切换事实」——B0–B5 全部发生在 P2 内部（按其子阶梯晋级），B6 对应 P3 末。建完不等于敢用，两表互相校验。
+施工顺序以最小纵向切片闭环：先做可丢弃的实现探针，再做物理执行原语，随后由 control + CLI 接管治理；各 content 系统的产品打包、备份恢复与一键生命周期在 control 出现后，按其首次被切片消费时落地，而不是先把四套服务器全部产品化。P 表回答「先建什么」，「自举阶段」的 B 表回答「什么时候敢切换事实」——B0–B5 全部发生在 P2 内部（按其子阶梯晋级），B6 对应 P3 末。建完不等于敢用，两表互相校验。
 
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
-| P0 · 立营 | 四个执行面系统在本机装起来：一键启停、备份恢复演练、打包形态定案（见「开工前限时验证」与「打包策略」） | 四服务器可运维 |
-| P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 即用，当天开始自举我们自己的提交；该机械做的绝不交给模型 | 工具链就位并自举 |
-| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与 `hctl2` CLI 把四个系统串接起来；四场景经第三方客户端观看（Matrix 客户端、任务后端界面、引擎控制台、Zellij attach）——用第三方客户端自举，本身就是对「第三方客户端可用」这条架构承诺的验证。内部按子阶梯推进：底座 → 场景接入 → 无 Run 切片（纵向切片 A）→ 日常自举 → 治理切片（纵向切片 B） | B0 → B5 |
+| P0 · 探路 | 对已选实现做限时、可丢弃的协议 / 分发 / 打包探针并记录实现证据；探针脚本、临时数据与拼装环境不进入产品生命周期。失败则重开并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四服务器已可运维 |
+| P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 可辅助开发；此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | 物理工具链就位，未切换治理事实 |
+| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw Zellij 只作 break-glass；合规第三方客户端必须走公开命令或 agentd 网关。Conductor 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
 ## 纵向切片 A：无 Run 自举
 
-1. 初始化 Repo Instance，创建 Project 与 Task Revision。
+1. 注册 Repo、挂接 Repo Instance，创建 Project 与 Task Revision。
 2. 从 Project Room 发起一次写入型 Room Invocation，冻结其 Execution Spec。
 3. Harness 在隔离 worktree 和有效写租约下修改代码，产出 ChangeSet Revision 与测试证据。
 4. Project 场景展示精确 diff；评审绑定 ReviewSubjectRef。
-5. 有权 human actor 从 Kanban 完成预览提交「完成 Task」命令，写 Task Completion Receipt；Harness 不能代为提交。
-6. 重启 Workbench/control/agentd 后，账本、worktree 归属、证据和投影一致且不重复副作用。
+5. 有权 human actor 提交固定 ChangeSet Revision、target ref、expected target head 与证据的 integration intent；control 先持久化，`hctl2-tool` 执行本地 Git 集成并 readback，确认后写唯一 Integration Receipt。
+6. 有权 human actor 从 Kanban 完成预览提交「完成 Task」命令，Task 准入校验精确 Integration Receipt 后写 Task Completion Receipt；Harness 不能代为提交。
+7. 重启 control/agentd 与已消费的 content 后端后，账本、worktree 归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
 
 这是 B2 的第一次真正自举；它不等待 Workflow Engine 或 quorum。
 
@@ -70,9 +75,10 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 4. 需要输入时创建 Project Request；答案 signal 回原执行。
 5. B/C/D 对同一 ReviewSubjectRef 投票；备用候选只替换同一 Seat 的技术失败。
 6. `changes_requested` 产生新 ChangeSet Revision，旧票失效并完整 regate。
-7. 达到法定票数后写 Gate Receipt，再由工具箱校验 SCM/合并事实。
-8. task-bound Run 正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入，失败类 Run 不终结 Task。
-9. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
+7. 达到法定票数后写 Gate Receipt；有权 human actor 或冻结 reducer 再提交固定 ChangeSet Revision、target、expected head 与 Gate evidence 的 integration intent。
+8. control 先持久化 intent/outbox，`hctl2-tool`（本地）或 adapter（远端）执行并 readback；只有确认目标事实后才写唯一 Integration Receipt，结果未知时不得签成功或盲重投。
+9. task-bound Run 按合同正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入并校验精确 Integration Receipt，失败类 Run 不终结 Task。
+10. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
 
 ## Kanban content 后端切片
 
@@ -86,7 +92,7 @@ HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能�
 | --- | --- | --- |
 | B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
 | B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
-| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 完成一次真实的非文档代码改动和测试；越界写入被拒绝。第一次真正自举 |
+| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 完成一次真实的非文档代码改动和测试；execution provenance 不能经 CLI/受控端口冒充 human，所声明的 sandbox 边界通过越界负例。第一次真正自举 |
 | B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
 | B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
 | B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
@@ -100,18 +106,18 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 ## 契约测试矩阵
 
-| 范围 | 必须证明 |
-| --- | --- |
-| Project / Chat Room | CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）；chat server 中的消息、反应或自动化不能成为命令，chat server 不可用时治理与施工命令照常、聊天入口安全降级；模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝；mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人；原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo |
-| Task / Kanban | Task Revision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令，Harness/LLM/adapter/外部已关闭冒充 actor 均拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射；content 后端按 Repo 选定，跨后端相对移动拒绝；Project 分组映射（父任务/milestone/标签降级）有测试；无契约 Task 的看板终态只是 content 投影，完成命令仍需先升格契约 |
-| Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
-| Agent / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 intent 并回读，target-head 竞争或 ACK 未知时不得签成功 Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；Harness 内调用 Task terminal/Room fan-out 命令因 execution provenance 拒绝；control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离；attach/resume/replay、IME/背压/慢客户端隔离 |
-| 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；Harness 绕过端口的写能力被拒绝，外部 drift 只形成 Snapshot/观测而不是结果 |
-| 系统 | 第二 control/agentd 只读或拒绝；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本备份/恢复，每个执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的备份与恢复；content 服务器宕机不阻断治理命令，从 Git 结晶回灌不得伪造未结晶判决；clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实；一键启停下各服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
-| 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
-| Workbench 信息架构 | 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生第五场景或写状态；打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
-| Workbench 输入与无障碍 | Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价；输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入 |
-| 产品 | 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本；正常成功保持安静；HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实 |
+| 稳定 family ID | 范围 | 必须证明 |
+| --- | --- | --- |
+| `CT-PROJECT` | Project / Chat Room | 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认；Project 分组与 Room anchor 可重建；有活动 Invocation/Run 或开放 Request 时归档 Project 拒绝。CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）；chat server 不可用时，依赖 fresh Room 来源、身份或 Context 的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用；chat server 中的消息、反应或自动化不能成为命令；模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝；mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人；原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo |
+| `CT-TASK` | Task / Kanban | Task Revision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令，Harness/LLM/adapter/外部已关闭冒充 actor 均拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射；content 后端按 Repo 选定，跨后端相对移动拒绝；Project 分组 anchor 在删除、重绑和重建后保持稳定，原生 UI 把卡跨 Project 分组移动只形成 jurisdictional drift，不静默改写 `project_id`；Project 分组映射（父任务/milestone/标签降级）有测试；无契约 Task 的看板终态只是 content 投影，完成命令仍需先升格契约 |
+| `CT-RUN` | Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；engine 报告完成但 required Obligation/Gate/Integration Receipt 未满足、仍有 blocking Request 或活跃 execution/lease 未收口时，Run completion predicate 拒绝进入正常完成；失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
+| `CT-AGENT` | Agent / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；execution principal 即使复制 human payload、调用公共 CLI 或继承普通环境变量，也不能升级为 human provenance；第一阶段每个 Worker Profile 都必须通过越权文件、target Git ref/common-dir、control/人类 credential、OS secret store、SSH agent、未授权 provider config、网络目的地与工具接口访问负例，凭据不得经环境变量、普通 stdin/history 注入且只能由 gateway 代用，不满足物理隔离就拒绝受治理启动；人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果；control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离；attach 只接通道，不能恢复 Run/Invocation 语义；attach/replay、IME/背压/慢客户端隔离 |
+| `CT-CONNECTION` | 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；Run/Invocation 冻结精确 Context Manifest ref+digest，每个实际 consumer 冻结对应 Context Bundle ref+digest，权限过滤、来源版本或预算变化使旧预览失效；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；provider 离线时，不要求 fresh readback 的查询/命令可继续，要求 current head/revision/lease/readback 的准入统一 fail closed；Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果 |
+| `CT-SYSTEM` | 系统 | 同一用户级账本只能有一个 control writer，第二 writer 拒绝；多个 agentd 可以登记为不同 execution site，但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本执行一致性 backup、restore preview/apply、writer generation 重置与恢复后 content readback，每个首次消费的 content 服务器执行备份与恢复；content 服务器宕机不抹掉已接纳事实，但依赖 fresh provider readback 的命令 fail closed；从 Git 结晶回灌不得伪造未结晶判决；clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实；一键启停下已消费服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
+| `CT-PACKAGING` | 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
+| `CT-WORKBENCH-IA` | Workbench 信息架构 | 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生第五场景或写状态；打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
+| `CT-WORKBENCH-INPUT` | Workbench 输入与无障碍 | Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价；输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入 |
+| `CT-PRODUCT` | 产品 | 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本；正常成功保持安静；HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实 |
 
 交付测试检查可观察行为，不复述模块状态机。模块新增合同必须在这里增加一个失败用例，而不是再建一份不变量文档。
 
@@ -122,24 +128,24 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 1. **接口公开干净**：优先公开协议与文档化 API，保证第三方 UI 与场景客户端互操作——chat 场景直接采用 Matrix 协议；任务场景没有同级的开放协议，选择 API 完整、支持条件写入的实现并以受控端口隔离。
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
 3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
-4. **Conductor 先例三件套**：每个新增系统都设开工前限时验证；验证失败重开对应 ADR；不自研第二个同类系统。
+4. **Conductor 先例三件套**：每个新增系统都设限时、可丢弃的开工前验证；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
 
 ## 开工前限时验证
 
-P0 的内容就是本节。四项选型已全部拍板，验证因此从“选谁”变为“确认能落地”：按 Conductor 先例三件套照跑，通过则固定版本进入 P1，失败才重开对应 ADR。
+P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
-1. **workflow engine（conductor-oss，已拍板）**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败重开 Engine ADR，不自研第二引擎。
+1. **workflow engine（conductor-oss，已拍板）**：以可丢弃环境探测固定版本的分发、启动、升级路径及备份恢复机制。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是找到单机可运维的最小持久化组合并量出打包重量；产品生命周期到 B4 首次消费前才由 control 落地。失败则重开并修订 Engine 选型决定与 decision-history，不自研第二引擎。
 2. **运行时后端（Zellij，已拍板；tmux 为记录在案的降级方向）**：attach、输入、resize、重启、残留进程、macOS/Linux 全套测试，另加三点——headless 启动时的终端查询应答（无人 attach 期间 TUI 的能力查询须有应答）、增强键盘协议（kitty keyboard protocol）下各 harness 的按键实测、内建 web 客户端保持默认关闭（需要瘦身时可用 `zellij-no-web` 构建裁剪）；打包重量与常驻内存实测记入实现证据。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、内嵌存储的 Matrix homeserver（内嵌存储后端实为 SQLite 还是 RocksDB 系，P0 核实并修正本文）。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化，不靠房间内发命令。验证要点：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停。
-4. **task server（Vikunja，已拍板）**：Go 单二进制、SQLite、REST API + webhooks。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败重开 ADR 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化，不靠房间内发命令。探针验证并固定精确 release/commit、storage backend 与 build features，再验证本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步及备份恢复机制；由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。
+4. **task server（Vikunja，已拍板）**：Go 单二进制、SQLite、REST API + webhooks。探针验证看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性及备份恢复机制；由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
 
-## 打包策略（P0 的预设答案，验证确认）
+## 打包策略（P0 验证假设，首次消费时产品化）
 
 分界线是**碰不碰宿主机现场**：
 
 - **必须原生**：Zellij、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；均为 Rust/Go 单二进制，macOS/Linux 原生分发。
-- **服务器按服务声明形态**：生命周期托管器为每个服务声明「原生二进制」或「容器」。Linux 全原生；macOS 上 Tuwunel/Vikunja 官方不出 darwin 包，由我方 CI 为 pinned 版本交叉编译产出（合规上本就固定已审阅版本，顺手产出构建物）；Conductor（JVM + Postgres，postgres-only 模式免 Elasticsearch）用容器形态交付，容器运行时选 Colima/Podman 等免授权方案，且它到 P2 治理子阶梯才需要安装。
+- **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前为其声明「原生二进制」或「容器」。Linux 全原生；macOS 上 Tuwunel/Vikunja 官方不出 darwin 包，由我方 CI 为 pinned 版本交叉编译产出（合规上本就固定已审阅版本，顺手产出构建物）；Conductor（JVM + Postgres，postgres-only 模式免 Elasticsearch）用容器形态交付，容器运行时选 Colima/Podman 等免授权方案，且它到 B4 治理子阶梯才需要安装。
 - **Docker 不做统一打包方式**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。容器仅是 Conductor 的交付形态与服务器三件的可选形态。
 - Windows 不在第一阶段范围；事实层面 Zellij 0.44 起支持 Windows（tmux 无原生 Windows——降级方向在 Windows 上不可用），Vikunja/Conductor 可跑，Tuwunel 未见官方包。
 

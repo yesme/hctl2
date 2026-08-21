@@ -5,7 +5,7 @@
 
 ## 对象
 
-Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 Execution Spec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 Execution Spec 冻结，不是独立对象；Execution Spec 由 Project 与 Run 各自作为 owner 定义。
+Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 Execution Spec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 Execution Spec 冻结，不是独立对象；Execution Spec 由 Project 与 Run 各自作为 owner 定义。所选 Repo Instance 只是[系统合同](./system.md#repo-与执行现场)中的物理执行现场引用，不由 Project 或 Agent 聚合拥有。
 
 | 对象 | 含义 |
 | --- | --- |
@@ -25,15 +25,17 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 | Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；agentd 只报告探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | ChangeSet / Write Lease | change_set_version、current revision；lease 为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git，agentd 执行失权 | 一个 ChangeSet 至多一个活跃 lease；ChangeSet Revision 只追加 |
 | 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
-| Execution Runtime | `runtime_generation`；Reserved / 活跃 / Stopping / Stopped / 丢失 | control 记录 binding 并处理 Activate/Stop；agentd 持有物理资源与观测 | Stopped/丢失不复活；恢复或接管使用新 generation |
+| Execution Runtime | `runtime_generation`；Reserved / 活跃 / Stopping / Stopped / 丢失 | control 记录 binding 并处理 Activate/Stop；agentd 持有物理资源与观测 | Stopped/丢失不复活；恢复或接管使用新 runtime generation |
 | Terminal Input Lease | lease generation；活跃 / Revoked / 已过期 | control 授予/撤销，agentd 输入门执行；takeover 原子撤销旧 lease | 一个目标最多一个活跃输入者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
 
+第一阶段每个 HCTL 启动的 Harness 都必须由 agentd 放进 OS 强制的执行沙箱；Worker Profile 只能收窄沙箱，不能声明关闭。沙箱只暴露 Execution Spec 获准的 Context Bundle、ChangeSet worktree/broker、网络目的地和工具接口，不得读取目标 ref/其他 ChangeSet、control/人类 credential、OS secret store、SSH agent 或未授权 provider 配置。外部凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用；安全输入经 agentd 的一次性通道写给精确 runtime，不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay。agentd 启动前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部 fence；不能强制这些边界的候选不得启动受治理执行。
+
 ## ChangeSet 与 Git 事实
 
-Worktree（Git 工作树）是 ChangeSet 的可替换物理资源，不永久属于 Project、Task、Room 或 Harness。一个 ChangeSet 同时最多一个有效写入租约；候选切换、接管或取消必须先让旧 writer 失权。恢复时若无法证明旧 writer 已经静默并被 fence，原 worktree/ChangeSet 不得授予新写租约，只能保全并隔离，新的执行使用新物理 worktree；显式人工恢复可以在预览旧残留后另行采用，不能把未知来源的未封存字节洗入新 producer。
+Worktree（Git 工作树）是 ChangeSet 的可替换物理资源，不永久属于 Project、Task、Room 或 Harness。一个 ChangeSet 同时最多一个有效写入租约；候选切换、接管或取消必须先让旧 writer 失权。恢复时若无法证明旧 writer 已经静默并被 fence，原 worktree **和原 ChangeSet identity** 都不得授予新写租约，只能保全并隔离；新的执行必须从获准 baseline 创建新物理 worktree 与新 ChangeSet，再取得新 lease。显式人工恢复可以在预览旧残留后把其封存为原 producer 的 Revision，或通过新命令采用到另一 ChangeSet；不能把未知来源的未封存字节、旧 lease 或旧 producer identity 自动洗入新执行。
 
 ChangeSet Revision 在有效租约下封存，至少固定：
 
@@ -43,7 +45,7 @@ change_set_revision_id
 + parent_revision_id?
 + base_commit_sha
 + result_tree_sha
-+ producer_ref             # human command 或精确 Invocation/Attempt generation
++ producer_ref             # human command，或精确 Invocation + invocation_version / Attempt + attempt_generation
 + revision_digest
 ```
 
@@ -57,25 +59,27 @@ change_set_revision_id
 
 Run 经其 Attempt 可以有多个 Execution Runtime；Room Invocation 至多一个。Attempt 与 Room Invocation 各至多一组终端通道。Execution Runtime 可以是容器、隔离作用域或结构化会话，不以 TTY 存在为前提。
 
-Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、Execution Runtime、binding、generation、权限和适用 fence；已知运行时不能被降级成无主进程或模糊仓库活动。
+Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、Execution Runtime、binding、各层代次、权限和适用 fence；已知运行时不能被降级成无主进程或模糊仓库活动。
+
+代次必须分层记录而不能共用一个模糊 `generation`：语义 owner 是 Room Invocation 的 `invocation_version` 或 Attempt 的 `attempt_generation`；物理 Execution Runtime 在激活映射时取得独立 `runtime_generation`；基础设施 envelope 另带 `control_writer_generation`、Repo Instance 的 `site_generation` 与运行时 backend/agentd owner generation。Participant revision、Project Role Binding version 与 producer sequence 都不是 generation。替代任一层只使引用该层旧值的动作失效，不得顺带把别层 identity 改写成新值。
 
 agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 control 已获准的 start/input/cancel/stop；Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按运行时后端/进程/租约 > 结构化 lifecycle 事件或 hook > title/screen 仲裁，语义观测按结构化提供方协议或原生 hook > 转录推断 > title/screen 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
 
 结构化事件统一归一为生命周期提示、工具调用、权限请求、文件变化、测试、用量和原始输出。未知事件保留原文并安全降级，不得凭渲染器猜测完成。
 
-每个 Result Proposal 固定 proposal ID、owner kind/ID、execution generation、Execution Spec digest、实际 Harness/Runtime binding revision、输出 schema、ChangeSet Revision/Artifact candidate、Evidence refs、producer sequence、适用 lease/fence 和 idempotency key。Harness 可以提交提案，但 Project/Run 才能准入；旧 generation 或越界输出只能留作审计。
+物理执行的每个 Result Proposal 固定 proposal ID、owner kind/ID + `invocation_version | attempt_generation`、Execution Runtime ID + `runtime_generation`、`control_writer_generation`、Repo Instance + `site_generation`、backend/agentd owner generation、Execution Spec 与 Context Bundle digest、实际 Harness/Runtime binding revision、producer sequence、适用 lease generation/fence 和 idempotency key。只有 Execution Spec 明示的受信任 `in_process` 执行可省略 runtime/site/backend/lease，改为固定 owner、control writer、Extension/Resolved Port Binding、spec/bundle digest 与 producer sequence，也不得提交 ChangeSet。Proposal 内每个输出项还必须分别固定 schema key、content digest、ChangeSet Revision/Artifact candidate/Evidence refs，以及产生该项的同一适用 generation tuple；不得用顶层“本次执行”概括后混入旧 Attempt、旧 runtime 或另一现场的输出。Harness 可以提交提案，但 Project/Run 才能逐项校验；只有冻结 output schema 明确声明可独立准入时，合格项才能单独进入 owner，其他情况下任一 required 项不匹配就拒绝整组。任一代次、binding、bundle、lease 或输出范围不匹配的项只能留作审计，不能让其他合格项替它背书。修正创建新 Proposal 和新 producer sequence，不改写原项。
 
-Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄能力，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant，但即使在执行环境中调用 `hctl2 task complete`、`task cancel` 或 Room fan-out，control 也必须按认证得到的 execution provenance 拒绝，不能依赖 Prompt 自律。
+Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant，但即使在执行环境中复制 human payload、调用 `hctl2 task complete`、`task cancel` 或 Room fan-out，control 也必须按认证来源和用户在场证明拒绝，不能依赖 Prompt 自律。
 
 ## 终端通道、连接与租约
 
-Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding/generation 签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；agentd 只接受由当前 control writer 签发且仍匹配 runtime generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、runtime generation、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。
+Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding 与全部适用代次签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；写输入、接管和安全输入还要求认证入口提供绑定该规范命令摘要的一次性用户在场证明。agentd 只接受由当前 control writer 签发且仍匹配 owner/runtime/site/backend generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、各层代次、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。绕过 agentd 直连 backend 只能标为带外诊断，该通道产生的输入、输出或“完成”不能准入 HCTL 结果。
 
-Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 Room Invocation 或 Attempt 逻辑 owner、对应 runtime binding 和 generation 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
+Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 Room Invocation/invocation_version 或 Attempt/attempt_generation、对应 Execution Runtime/runtime_generation 与适用 fence 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 
-Execution Chat 中的输入和事件不会自动成为 Room 内容。只有显式 Share to Room 动作经 Project 命令准入后才能发布，并携带 source event、execution owner、generation 及 transcript/evidence provenance；该投影消失或 runtime 被替代都不改变 Room 身份。
+Execution Chat 中的输入和事件不会自动成为 Room 内容。只有显式 Share to Room 动作经 Project 命令准入后才能发布，并携带 source event、execution owner version/generation、runtime generation 及 transcript/evidence provenance；该投影消失或 runtime 被替代都不改变 Room 身份。
 
-Workbench 或终端客户端退出不停止执行。断流按 generation/sequence 和快照恢复；无法证明是同一进程时只能 semantic resume、replay 或新建执行，不能声称 exact attach。
+Workbench 或终端客户端退出不停止执行。断流按 runtime generation、provider sequence 和快照恢复；无法证明是同一进程时只能 semantic resume、replay 或新建执行，不能声称 exact attach。
 
 ## 外部概念对齐
 
