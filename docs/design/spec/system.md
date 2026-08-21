@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.11.1<br>
+> 状态：规范性合同 · 草案 v0.12.0<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -9,8 +9,8 @@
 | --- | --- |
 | `hctl2-workbench` | 四个场景的集成客户端；提交命令、查询投影、显示事件 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账 |
-| `hctl2-core` | Git/SCM、Revision、digest、Receipt 和合并事实校验 |
-| agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
+| `hctl2-tool` | 机械工具箱：Git/SCM 操作与事实校验、Revision/digest、合并核验、lint、PR/memo 的机械拼装、有效变化侦测。独立可用（standalone 时只做普通本地操作、不产生治理宣称）；被 control 编排时执行已持久化的意图并回读 |
+| `hctl2-agentd` | Harness 发现、物理运行时、PTY、终端网关和主机观测（散文简称 agentd） |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
@@ -90,9 +90,9 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影可�
 
 ## 外部权威副作用
 
-包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久外部副作用命令/outbox 记录（executor = adapter），固定 owner ref、Resolved Port Binding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更是同族外部副作用命令（executor = core）：先由 control 持久化 intent/outbox，再由 core 执行和回读；Harness/model 不直接取得集成权。
+包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久外部副作用命令/outbox 记录（executor = adapter），固定 owner ref、Resolved Port Binding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更是同族外部副作用命令（executor = tool）：先由 control 持久化 intent/outbox，再由工具箱执行和回读；Harness/model 不直接取得集成权。
 
-adapter 只投递并回读；只有在它确认目标、版本和结果后，control/core 的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段不直接持有可绕过该端口的外部写凭据。
+adapter 只投递并回读；只有在它确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段不直接持有可绕过该端口的外部写凭据。
 
 第一阶段不承诺自动发现或补偿任意带外写：Harness 不获得可绕过受控端口的外部写凭据；provider 被人在 HCTL 外修改时，只由对应端口回读为 Snapshot/drift，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。带外观测不能成为 Result Proposal、Artifact、Verdict 或 Receipt。
 
@@ -102,7 +102,7 @@ adapter 只投递并回读；只有在它确认目标、版本和结果后，con
 
 hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata（身份、绑定、授权、租约与现场记账、判决）的唯一权威，一人多机连同一本，必须备份。仓库 clone 本地的 `<git-common-dir>/hctl2/`（当前 Repo Instance 及其 linked worktree 的共享运行目录）只有 OS 锁、traces 与可丢弃缓存——**不是账本，也不是事实源**：现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按丢失/中断收口）。
 
-control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是它的存储：判决的结晶副本经 core 写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
+control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是它的存储：判决的结晶副本经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
 账本里的边只有**跨系统的边**——身份、锚定与 ID 映射；各承载系统内部的边（如任务后端里分组与卡片的从属）留在该系统，控制面凭获准命令与快照对账治理它们。账本与其余本地存储（锁、缓存、定义文件）都是控制面的**私事**：事实经服务接口流通，存储格式与位置不构成对外合同，也不进 Git。「无需继承」只对空间成立——账本必须由同一控制面的下一任传承（备份与 writer 搬迁）。
 
@@ -122,8 +122,8 @@ HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入
 
 Git 里与 HCTL 相关的持久内容分两种；混淆它们会把 Git 误读成控制面的第二本账：
 
-- **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；结晶副本由 core 写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
-- **content 结晶与共享定义**（领域产物，家就在 Repo）：决议、Memo、Artifact/ChangeSet 不可变内容与共享配置 Revision。它们由人驱动的类型化命令经 core 写入，不是任何账本的副本；control 账本只保存 admission、current pointer 和 lifecycle 投影。
+- **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 与冻结契约的**权威**在用户级 metadata 账本产生并保存；结晶副本由工具箱写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只能恢复已结晶的判决，不能伪造未结晶的判决，两边分歧时以账本为准。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要（digest 引用，可验证而不泄密）。
+- **content 结晶与共享定义**（领域产物，家就在 Repo）：决议、Memo、Artifact/ChangeSet 不可变内容与共享配置 Revision。它们由人驱动的类型化命令经工具箱写入，不是任何账本的副本；control 账本只保存 admission、current pointer 和 lifecycle 投影。
 
 ### 全系统事实权威地图
 
@@ -132,7 +132,7 @@ Git 里与 HCTL 相关的持久内容分两种；混淆它们会把 Git 误读�
 | 事实 | 权威来源 | 不可用时（降级合同） | 永久丢失时（重建合同） |
 | --- | --- | --- | --- |
 | 四模块的 metadata：领域账本、Room/Request 身份与绑定、Participant 名册、授权、租约与现场记账（含 clone 的实例注册、worktree/ChangeSet 归属）、判决 | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的权威，必须备份；可从 Git 结晶副本部分回灌，回灌不得伪造未结晶判决 |
-| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + core；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；结果未知先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
+| 共享 Project/Workflow 配置 Revision、Memo、Artifact/ChangeSet 不可变内容，以及判决的结晶副本（冻结契约、凭证链） | Git + 工具箱；control 账本保存 admission、current pointer 和 lifecycle 投影 | SCM 操作安全暂停；结果未知先回读 | Git 分布式冗余：任一 clone/remote 即备份 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按丢失/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
@@ -155,7 +155,7 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 1. 取得 control/backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 writer/backend generation；
 3. 回读全部已绑定 content 系统的游标（chat server、任务后端、Workflow Engine、runtime）和未确认副作用；
-4. 查询 Workflow Engine、agentd runtime 和 core Git/SCM；
+4. 查询 Workflow Engine、agentd runtime 和工具箱 Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
@@ -166,7 +166,7 @@ UI 重载只重建投影。无法证明同一执行身份时，宁可标记丢�
 
 - Electron renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
 - 打包后的 Electron 固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true；narrow preload 只暴露具名 typed command，不暴露 raw ipcRenderer。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
-- 文件、Git、网络、凭据和进程能力由 control/core/agentd 授权，不交给渲染器。
+- 文件、Git、网络、凭据和进程能力由 control、工具箱和 agentd 授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
 - 第一阶段是单用户信任模型，不声称隔离同一 OS 用户的恶意进程。

@@ -1,6 +1,6 @@
 # 四模块连接与端到端闭环
 
-> 状态：规范性合同 · 草案 v0.11.1<br>
+> 状态：规范性合同 · 草案 v0.12.0<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -41,7 +41,7 @@ Project → Agent 是无 Run 的显式短路；Agent → Task 不存在原始状
 | Project → Agent | Room Invocation + Execution Spec | Project 先持久化调用授权，Agent 模块再预留、绑定和激活运行时 | invocation id + generation + Execution Spec digest |
 | Run → Agent | Attempt + Execution Spec | Run 先持久化派发授权，Agent 模块再预留、绑定和激活运行时 | attempt id + generation + Execution Spec digest |
 | Agent → Project/Run | Result Proposal、精确 execution generation、Revision/Evidence refs | owner 模块去重并校验身份、代次、权限、写租约和输出 schema 后准入 | proposal id + owner/spec digest；迟到结果只留历史 |
-| Human scene / Run reducer → Agent | 「合入 ChangeSet」命令、精确 ChangeSet Revision/target/evidence refs | Agent 模块准入授权并持久化 intent/outbox，core 执行与回读；Integration Receipt 返回发起模块作证据 | intent id + expected target head → 唯一 Receipt；结果未知不重投 |
+| Human scene / Run reducer → Agent | 「合入 ChangeSet」命令、精确 ChangeSet Revision/target/evidence refs | Agent 模块准入授权并持久化 intent/outbox，工具箱执行与回读；Integration Receipt 返回发起模块作证据 | intent id + expected target head → 唯一 Receipt；结果未知不重投 |
 | Human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收合同独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
 | Task/Run/Agent → Project | source ref、event id/sequence、版本、敏感级别 | Project 只建低噪声投影；Memo/Artifact 仍需 Project 命令发布 | source event cursor，可从源账本重建 |
 

@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.11.1<br>
+> 状态：规范性合同 · 草案 v0.12.0<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -23,7 +23,7 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Repo Instance | immutable repo identity + local writer generation | control 处理「初始化 Repo Instance」命令；core 校验 Git identity | 同一 git-common-dir 只在 metadata 账本注册一个物理现场身份，重试返回原 identity；clone 本地不设账本 |
+| Repo Instance | immutable repo identity + local writer generation | control 处理「初始化 Repo Instance」命令；工具箱校验 Git identity | 同一 git-common-dir 只在 metadata 账本注册一个物理现场身份，重试返回原 identity；clone 本地不设账本 |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Participant / Project Role Binding | Participant immutable revision + current pointer；binding version | control 处理「创建/更新 Participant」与「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
 | Room / Room Event | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
@@ -31,8 +31,8 @@
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
 | Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 中断 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，agentd 只提供观测 | 中断和其他终态不可复活；重试创建新 Invocation |
-| Memo | 发布 revision 只追加 | control/core 处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
-| Artifact | `artifact_version`、current revision、活跃 / 已归档 | control/core 处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
+| Memo | 发布 revision 只追加 | control 与工具箱处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
+| Artifact | `artifact_version`、current revision、活跃 / 已归档 | control 与工具箱处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
 
 Repo 不等于外部组织或工作区。「创建 Project」命令在同一事务创建该 Project 的唯一 Project Room：一个 Project 一个 Room，Room 身份与治理账本在用户级控制面，任何 clone 打开的都是同一个 Room；clone 只持有投影与现场操作态（草稿、未读、本地租约）。Project Archive 使其只读，Restore 恢复活跃。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局需要关注。
 

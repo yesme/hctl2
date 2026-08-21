@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.11.1<br>
+> 状态：非规范对照 · 草案 v0.12.0<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、命令、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -94,7 +94,7 @@ control writer 与 agentd owner 的排他权同族，以 generation（代次）�
 
 ## 命令族（持久命令与副作用）
 
-各模块的类型化命令（「完成 Task」「启动 Run」「采纳契约」「合入 ChangeSet」等动宾语义名）是改变事实的唯一途径。**外部副作用命令**（副作用意图）承载会改变外部权威事实的动作：executor = core 时是本地 Git 集成，executor = adapter 时是远端 SCM 或第三方平台写入；均为先持久记录、再执行、回读确认后才可签 Receipt。
+各模块的类型化命令（「完成 Task」「启动 Run」「采纳契约」「合入 ChangeSet」等动宾语义名）是改变事实的唯一途径。**外部副作用命令**（副作用意图）承载会改变外部权威事实的动作：executor = tool 时是本地 Git 集成，executor = adapter 时是远端 SCM 或第三方平台写入；均为先持久记录、再执行、回读确认后才可签 Receipt。
 
 ## Snapshot / 观测族（先观测后准入）
 

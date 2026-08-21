@@ -1,6 +1,6 @@
 # Agent 模块合同
 
-> 状态：规范性合同 · 草案 v0.11.1<br>
+> 状态：规范性合同 · 草案 v0.12.0<br>
 > 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
@@ -13,7 +13,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
 | ChangeSet / ChangeSet Revision | 一次获准写入边界及其不可变 Git 快照 |
 | Write Lease | ChangeSet 的独占写入权与失权拦截（Lease 族） |
-| 外部副作用命令（executor = core）/ Integration Receipt | 把精确 ChangeSet Revision 集成到目标 ref 的持久授权及回读证明 |
+| 外部副作用命令（executor = tool）/ Integration Receipt | 把精确 ChangeSet Revision 集成到目标 ref 的持久授权及回读证明 |
 | Execution Runtime | 一次执行的主机、隔离域和代次（owner = Attempt \| Room Invocation）；终端通道是其字段组 |
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
 | Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt |
@@ -23,8 +23,8 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；agentd 只报告探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
-| ChangeSet / Write Lease | change_set_version、current revision；lease 为待启动 / 活跃 / Revoking / Revoked | control 准入 Prepare/Grant/Revoke/Seal，core 物化并回读 Git，agentd 执行失权 | 一个 ChangeSet 至多一个活跃 lease；ChangeSet Revision 只追加 |
-| 外部副作用命令（executor = core）/ Integration Receipt | intent state version；待启动 / 结果未知 / Succeeded / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；core 执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
+| ChangeSet / Write Lease | change_set_version、current revision；lease 为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git，agentd 执行失权 | 一个 ChangeSet 至多一个活跃 lease；ChangeSet Revision 只追加 |
+| 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
 | Execution Runtime | `runtime_generation`；Reserved / 活跃 / Stopping / Stopped / 丢失 | control 记录 binding 并处理 Activate/Stop；agentd 持有物理资源与观测 | Stopped/丢失不复活；恢复或接管使用新 generation |
 | Terminal Input Lease | lease generation；活跃 / Revoked / 已过期 | control 授予/撤销，agentd 输入门执行；takeover 原子撤销旧 lease | 一个目标最多一个活跃输入者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
@@ -49,9 +49,9 @@ change_set_revision_id
 
 评审 subject 对 {change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不是完整 ChangeSet Revision 的 revision_digest。`result_commit_sha` 只存在于后续 Integration/SCM evidence，不属于 ChangeSet Revision；因此给同一 Revision 增加不同 commit 包装不会改变其评审身份。返工或 result tree 变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review subject digest，但 author/reviewer separation 必须沿它解析并校验当前逻辑身份。
 
-模型自述“已合并”不可信。本地「合入 ChangeSet」命令至少固定 ChangeSet Revision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，core 才执行并回读 Git，成功时写唯一 Integration Receipt。远端 push/PR/merge 是同族外部副作用命令（executor = adapter），字段与本地「合入 ChangeSet」命令等价。Harness/model 不能直接取得集成 authority。core 校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，该命令保持结果未知，core 必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
+模型自述“已合并”不可信。本地「合入 ChangeSet」命令至少固定 ChangeSet Revision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，工具箱才执行并回读 Git，成功时写唯一 Integration Receipt。远端 push/PR/merge 是同族外部副作用命令（executor = adapter），字段与本地「合入 ChangeSet」命令等价。Harness/model 不能直接取得集成 authority。工具箱校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，该命令保持结果未知，工具箱必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
 
-失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理前，core 必须确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，agentd 只有得到该确认才可拆除资源；保全或封存失败时保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
+失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理前，工具箱必须确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，agentd 只有得到该确认才可拆除资源；保全或封存失败时保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
 
 ## 运行时与观测
 

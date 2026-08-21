@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.11.1<br>
+> 状态：规范性合同 · 草案 v0.12.0<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -15,18 +15,18 @@
 | Seat | Obligation 中稳定的逻辑执行者或投票位置 |
 | Attempt | 某个候选对 Seat 的一次执行。其派发冻结由 Execution Spec（定义见[连接合同](./connections.md)）承载；Attempt 侧特有字段只有 attempt/seat/run 身份与代次，Seat identity、截止时间等见共同字段 |
 | ReviewSubjectRef | 对 ChangeSet Revision 或 Artifact Revision 的精确 kind、ID 和 digest 引用（引用格式） |
-| Verdict / Receipt | 对精确版本的语义裁决，以及 control/core 校验后的正式证明（Receipt 族） |
+| Verdict / Receipt | 对精确版本的语义裁决，以及 control 与工具箱校验后的正式证明（Receipt 族） |
 
 ## 写入合同
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，core 校验摘要 | Revision 不改写；新内容创建新 Revision |
+| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Engine Execution Binding | binding generation；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | Run reducer/control 根据 Engine task、Attempt 结果和 Gate 策略推进 | 终态不可复活；Engine retry 创建新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；agentd 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
-| Verdict / Receipt | immutable | 只有 Run reducer 与 control/core 校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
+| Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
 Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能被取消、失败或替代路径收口，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 不直接写状态，control 只依据匹配 binding/generation 的回读推进。
 
@@ -58,7 +58,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 1. control 领取一个 HCTL 外部 Engine task，并按 Run、binding generation 与精确 Engine task execution identity 幂等创建唯一 Obligation；Engine 的 join/switch/wait 等机械节点不创建 Obligation。
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
 3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
-4. control/core 校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
+4. control 与工具箱校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与 Engine completion outbox 先持久提交，再幂等完成外部任务。
 
 Attempt 的派发在 Execution Spec 中至少冻结 attempt/seat/run/generation、逻辑 Participant/Seat identity、Worker Profile、接入方式与降级能力、运行时后端 binding、可选 ChangeSet/Write Lease、Context/Skill/能力/权限摘要和截止时间。Attempt lifecycle 为待启动 | 运行中 | 等待输入 | 已交提案 | 失败 | 丢失 | 已取消 | 被替代：待启动可进入运行中/失败/丢失/已取消；运行中与等待输入可互转并进入已交提案/失败/丢失/已取消；任一尚未提交 Proposal 的非终态可进入被替代。已交提案是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
@@ -79,7 +79,7 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 
 只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 收口为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
 
-Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结逻辑参与者。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 按 Gate 策略绑定彼此独立的逻辑 Participant。备用 Attempt 必须继承原 Seat 的参与者和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control/core 在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果，使 Obligation 失败并沿 Workflow Revision 的失败边推进，不能无限等待。作者返工产生新 ChangeSet Revision/Artifact Revision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；Task Revision 只有在验收契约变化时才更新。
+Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结逻辑参与者。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 按 Gate 策略绑定彼此独立的逻辑 Participant。备用 Attempt 必须继承原 Seat 的参与者和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control 与工具箱在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。达到法定票数后，control 隔离未完成 Attempt，持久提交汇总 Verdict/Receipt，再完成 Engine task；剩余票数已不可能达到门槛时，Gate 产生类型化的 quorum-unreachable 结果，使 Obligation 失败并沿 Workflow Revision 的失败边推进，不能无限等待。作者返工产生新 ChangeSet Revision/Artifact Revision，旧必需 Verdict 因 subject digest 不匹配而失效并重新过 Gate；Task Revision 只有在验收契约变化时才更新。
 
 ## Run → Task
 

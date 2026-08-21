@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.11.1<br>
+> 状态：规范性 · 草案 v0.12.0<br>
 > 日期：2026-08-21<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -33,7 +33,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | --- | --- |
 | Revision | 只追加的不可变版本；以 digest 精确引用；current pointer 只由类型化命令推进，界面只读取 |
 | Binding | 把两个身份连起来的冻结解析；活动执行永远引用准入时的版本，换绑不改写历史 |
-| Receipt | control/core 校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
+| Receipt | control 与工具箱校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
 | 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
 | Snapshot | 先观测后准入的只追加外部观测；观测无论置信度多高都不直接改写事实 |
@@ -76,7 +76,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | RuntimeShard / InvocationRuntime | 合并为 Execution Runtime（owner 字段） |
 | TerminalBundle | Execution Runtime 的终端通道字段组 |
 | HarnessAdapterBinding | Execution Spec 冻结的接入方式字段组 |
-| IntegrationIntent / ExternalEffectIntent | 合并为外部副作用命令（executor = core 本地 Git \| adapter 远端） |
+| IntegrationIntent / ExternalEffectIntent | 合并为外部副作用命令（executor = tool 本地 Git \| adapter 远端） |
 | TaskSourceConnection / TaskSourceConnectionRevision | 由 Resolved Port Binding（port_kind = task_source）承载 |
 | ChatSurfaceBindingRevision | Room 的 Chat 端口绑定字段组（引用 Resolved Port Binding） |
 | TaskSourceBindingRevision（及裸用 BindingRevision） | Task Binding |
@@ -85,7 +85,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
 | TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / workflow engine 端口适配器 |
 
-## v0.11.1 清扫
+## v0.10.3 清扫
 
 | 旧名 | 现状 |
 | --- | --- |

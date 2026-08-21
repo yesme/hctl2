@@ -42,17 +42,14 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 ## 实现阶段
 
-施工顺序与信任阶梯是两个维度：本节的 P 表回答「先建什么」，「自举阶段」的 B 表回答「什么时候敢切换事实」。建完不等于敢用——P2 的代码可以很快写完，B1 的晋级要靠真实试用去挣；两表一一映射，工程进度与敢用程度互相校验。
+施工顺序按三面架构分层：先执行面、再工具、再控制面、最后展示面。P 表回答「先建什么」，「自举阶段」的 B 表回答「什么时候敢切换事实」——B0–B5 全部发生在 P2 内部（按其子阶梯晋级），B6 对应 P3 末。建完不等于敢用，两表互相校验。
 
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
-| P0 · 选型确认 | 跑「开工前限时验证」四项：Tuwunel、Vikunja、conductor-oss 单机栈、Zellij；产出 ADR 定案与固定版本 | 四个执行面系统各定一个可运维版本 |
-| P1 · 底座 | 账本 schema、ID、command/query/event、单写者与恢复、`init/start/status/doctor`、四服务器一键启停 | B0 |
-| P2 · 场景接入 | chat server 接入与 Repo/Project Room；任务服务器接入与身份映射/快照（「Kanban content 后端切片」前半） | B1 |
-| P3 · 无 Run 自举 | 「纵向切片 A」全流程：Room Invocation、写租约、ChangeSet/diff/证据、完成预览 | B2（第一次真正自举） |
-| P4 · 日常自举 | 并发 Invocation、Request、Receipt、冷启动恢复；此后按需启动远端任务后端验证 | B3 |
-| P5 · 治理 | workflow engine 接入、Run/Seat/Gate、「纵向切片 B」、候选切换/三选二/regate | B4 → B5 |
-| P6 · 发布 | 打包、升级、回滚隔离 | B6 |
+| P0 · 立营 | 四个执行面系统在本机装起来：一键启停、备份恢复演练、打包形态定案（见「开工前限时验证」与「打包策略」） | 四服务器可运维 |
+| P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 即用，当天开始自举我们自己的提交；该机械做的绝不交给模型 | 工具链就位并自举 |
+| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与 `hctl2` CLI 把四个系统串接起来；四场景经第三方客户端观看（Matrix 客户端、任务后端界面、引擎控制台、Zellij attach）——用第三方客户端自举，本身就是对「第三方客户端可用」这条架构承诺的验证。内部按子阶梯推进：底座 → 场景接入 → 无 Run 切片（纵向切片 A）→ 日常自举 → 治理切片（纵向切片 B） | B0 → B5 |
+| P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
 ## 纵向切片 A：无 Run 自举
 
@@ -73,7 +70,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 4. 需要输入时创建 Project Request；答案 signal 回原执行。
 5. B/C/D 对同一 ReviewSubjectRef 投票；备用候选只替换同一 Seat 的技术失败。
 6. `changes_requested` 产生新 ChangeSet Revision，旧票失效并完整 regate。
-7. 达到法定票数后写 Gate Receipt，再由 core 校验 SCM/合并事实。
+7. 达到法定票数后写 Gate Receipt，再由工具箱校验 SCM/合并事实。
 8. task-bound Run 正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入，失败类 Run 不终结 Task。
 9. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
 
@@ -83,7 +80,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 ## 自举阶段
 
-HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能力分级，而不是“上线前/上线后”二分（施工顺序见「实现阶段」，P 与 B 一一映射）；每一级都走普通的命令与查询入口，并包含真实的失败路径。打开过自己的仓库，或替自己生成过一次代码，都不算完成自举。
+HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能力分级，而不是“上线前/上线后”二分（施工顺序见「实现阶段」：B0–B5 全部发生在 P2 内部，B6 对应 P3 末）；每一级都走普通的命令与查询入口，并包含真实的失败路径。打开过自己的仓库，或替自己生成过一次代码，都不算完成自举。
 
 | 阶段 | 事实切换 | 晋级验收 |
 | --- | --- | --- |
@@ -133,13 +130,22 @@ P0 的内容就是本节。四项选型已全部拍板，验证因此从“选�
 
 1. **workflow engine（conductor-oss，已拍板）**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败重开 Engine ADR，不自研第二引擎。
 2. **运行时后端（Zellij，已拍板；tmux 为记录在案的降级方向）**：attach、输入、resize、重启、残留进程、macOS/Linux 全套测试，另加三点——headless 启动时的终端查询应答（无人 attach 期间 TUI 的能力查询须有应答）、增强键盘协议（kitty keyboard protocol）下各 harness 的按键实测、内建 web 客户端保持默认关闭（需要瘦身时可用 `zellij-no-web` 构建裁剪）；打包重量与常驻内存实测记入实现证据。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制 + SQLite 的 Matrix homeserver。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化，不靠房间内发命令。验证要点：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、内嵌存储的 Matrix homeserver（内嵌存储后端实为 SQLite 还是 RocksDB 系，P0 核实并修正本文）。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化，不靠房间内发命令。验证要点：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停。
 4. **task server（Vikunja，已拍板）**：Go 单二进制、SQLite、REST API + webhooks。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败重开 ADR 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
-5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P4 之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
+5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
+
+## 打包策略（P0 的预设答案，验证确认）
+
+分界线是**碰不碰宿主机现场**：
+
+- **必须原生**：Zellij、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；均为 Rust/Go 单二进制，macOS/Linux 原生分发。
+- **服务器按服务声明形态**：生命周期托管器为每个服务声明「原生二进制」或「容器」。Linux 全原生；macOS 上 Tuwunel/Vikunja 官方不出 darwin 包，由我方 CI 为 pinned 版本交叉编译产出（合规上本就固定已审阅版本，顺手产出构建物）；Conductor（JVM + Postgres，postgres-only 模式免 Elasticsearch）用容器形态交付，容器运行时选 Colima/Podman 等免授权方案，且它到 P2 治理子阶梯才需要安装。
+- **Docker 不做统一打包方式**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。容器仅是 Conductor 的交付形态与服务器三件的可选形态。
+- Windows 不在第一阶段范围；事实层面 Zellij 0.44 起支持 Windows（tmux 无原生 Windows——降级方向在 Windows 上不可用），Vikunja/Conductor 可跑，Tuwunel 未见官方包。
 
 ## 技术基线
 
-Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：conductor-oss（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（Zellij；tmux 为降级方向）。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：conductor-oss（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（Zellij；tmux 为降级方向）。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
