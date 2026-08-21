@@ -68,8 +68,8 @@ flowchart LR
 
 1. 用户进入 Repo Room，引用代码、Artifact（登记过的交付物）、Commit 或 Memo（沉淀的备忘），邀请多个 Participant（参与者）做有边界的研究。
 2. 话题成型后，把相关来源和上下文提升为一个具名 Project。
-3. 在 Project Room 中塑形目标、范围和验收标准，把承诺提炼成 TaskRevision（任务契约版本）。
-4. 简单工作由人完成，或通过一次有边界的 RoomInvocation（从聊天室发起的单次调用）完成；它不需要 Run。
+3. 在 Project Room 中塑形目标、范围和验收标准，把承诺提炼成 Task Revision（任务契约版本）。
+4. 简单工作由人完成，或通过一次有边界的 Room Invocation（从聊天室发起的单次调用）完成；它不需要 Run。
 5. 需要持久自动施工时，先批准 Workflow（施工图），再显式启动 Run，授予有边界的自主权。
 6. Run 默认在后台无界面推进；需要澄清、决定或授权时，系统创建 Request（请求卡）并投影回 Project。
 7. 只有需要观察或接管某次精确执行时，用户才打开结构化执行投影或终端。
@@ -90,8 +90,8 @@ flowchart LR
 - Chat Room、Kanban、Workflow 和 Terminal 是操作场景，不是第二份领域事实；
 - Workbench 是四个场景的集成客户端；适配后的第三方平台可以按场景替代或补充其中一个面板，也可以提供受控端口，但不会整体替代 Workbench 或领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
-- Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部 Closed；
-- 模型只能建议结果与下一位协作者。Task Completed 只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task Cancelled 只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
+- Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部已关闭；
+- 模型只能建议结果与下一位协作者。Task 完成只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task 已取消只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
 
 ## 目标架构
 
@@ -137,7 +137,7 @@ flowchart LR
 
 HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航。Workbench 是组合式场景客户端；第三方客户端只替代或补充对应场景，例如 Feishu/Slack/Discord 操作 Chat Room，WezTerm 操作 Terminal。它们都使用相应模块的 Query/Preview/Submit/Subscribe，不获得跨模块捷径。
 
-图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与本地账本，`hctl2-core` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
+图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control 拥有领域命令与本地账本，hctl2-core` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
 
 ## 设计文档
 

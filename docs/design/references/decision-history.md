@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.11.0 · 2026-08-21<br>
+> 状态：Informative · 对应草案 v0.11.1 · 2026-08-21<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -23,7 +23,7 @@ HCTL2 最初面对的产品表象，是同时管理多个 Harness、终端、ses
 
 - **Project** 保存长期目标、协作上下文、Request、Memo 与 Artifact；
 - **Task** 保存可排队、可分派、可独立验收的承诺及其来源绑定；
-- **Run** 保存 WorkflowRevision、受治理执行、Obligation、Seat、Attempt、Verdict 与 Receipt；
+- **Run** 保存 Workflow Revision、受治理执行、Obligation、Seat、Attempt、Verdict 与 Receipt；
 - **Harness** 保存 Worker/Harness 绑定、ChangeSet、runtime、终端与执行证据。
 
 拆分的关键不是把流程强制串成四步，而是让可选关系保持真实：Task 可以不启动 Run，Project 也可以直接发起一次 Harness 调用；只有需要耐久、可恢复的自动施工时才创建 Run。历史证据中的 L1–L4 标签仍可用于追溯参考实现，但不再构成 HCTL2 的领域层级。
@@ -57,15 +57,15 @@ Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领
 
 早期实践曾试图通过 prompt 要求 Harness 在“确实完成”时才报告完成，并期待模型自行维持 Task、Run 与执行结果之间的边界。实际使用表明，这种约束不能稳定提供终结权：模型输出仍是受上下文影响的建议，Harness 也只能观察本次执行，无法替 Task 的冻结验收合同作出权威裁决。由此形成一条更一般的教训：凡是能够由身份、版本、状态与证据机械判断的事项，就不再交给 LLM 灵活解释。
 
-当前合同因而把 Task 完成收窄为两条可审计路径。其一是有权 human actor 从 Kanban Scene 提交 `CompleteTaskIntent`；其二是绑定该 TaskRevision 的 Workflow 正常完成后，由 reducer 按冻结规则提交同一个 `CompleteTaskIntent`。第二条路径不是让 `Run.Completed` 静默传染给 Task：Task 仍须重新校验版本、证据和来源状态，校验失败便保持 Open；Workflow 的失败、取消或替代终态也不会终结 Task。`Task.Cancelled` 则仍由有权 human actor 显式决定。
+当前合同因而把 Task 完成收窄为两条可审计路径。其一是有权 human actor 从 Kanban Scene 提交「完成 Task」命令；其二是绑定该 Task Revision 的 Workflow 正常完成后，由 reducer 按冻结规则提交同一个「完成 Task」命令。第二条路径不是让 Run 的完成态静默传染给 Task：Task 仍须重新校验版本、证据和来源状态，校验失败便保持开放；Workflow 的失败、取消或替代终态也不会终结 Task。Task 的取消则仍由有权 human actor 显式决定。
 
-Harness、Participant、模型输出和 runtime signal 可以提供 ResultProposal、Artifact 与 Evidence，却不成为 terminal actor。这个 pivot 把过去依赖提示词维持的行为期望，下沉为 core/control 可以拒绝的 actor provenance、命令与 reducer 规则。
+Harness、Participant、模型输出和 runtime signal 可以提供 Result Proposal、Artifact 与 Evidence，却不成为 terminal actor。这个 pivot 把过去依赖提示词维持的行为期望，下沉为 core/control 可以拒绝的 actor provenance、命令与 reducer 规则。
 
 ## 8. 从开放 Agent mesh 到受控协作边
 
 First Tree 证明了持久 Chat、稳定且显式的 recipient，以及发生在共享对话中的可见 handoff，能够维持多 Agent 协作连续性；这些优点被保留。它也允许 Agent 在运行中 `invite + send`，并由接收者继续寻址第三个 Agent，使协作图临场生长。HCTL2 没有把这后一项作为普通 Room 的默认能力，因为创建下一条执行边同时改变参与者、Context 披露、权限、预算与终止条件。
 
-因此当前设计只承认两类边：普通 Chat Room 的临场协作边由有权 human actor 创建，Workflow 的执行边由 reducer 按冻结的 WorkflowRevision 创建。Agent-authored message、ResultProposal 或模型总结可以建议下一位 Participant，却不能自行 cue 新 worker、扩大 fan-out 或递归委派。在 Chat Room 中，人本来就处于讨论焦点；系统应把建议变成可一键批准、自动携带引用与 Context 的 handoff，而不是让人重新复制和转述内容。
+因此当前设计只承认两类边：普通 Chat Room 的临场协作边由有权 human actor 创建，Workflow 的执行边由 reducer 按冻结的 Workflow Revision 创建。Agent-authored message、Result Proposal 或模型总结可以建议下一位 Participant，却不能自行 cue 新 worker、扩大 fan-out 或递归委派。在 Chat Room 中，人本来就处于讨论焦点；系统应把建议变成可一键批准、自动携带引用与 Context 的 handoff，而不是让人重新复制和转述内容。
 
 这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](./implementation-evidence.md#e-l4-first-tree)。
 
@@ -80,7 +80,7 @@ HCTL2 对 HCTL1 的继承是合同层的，而不是表结构层的：
 | 精确 Verdict、quorum 与 Receipt | Run Gate 及 core/control 校验后的正式证明 |
 | fail-closed reconciliation | outbox/readback、未知结果保留和冷启动恢复 |
 
-与此同时，对象含义发生了变化。HCTL1 的 `Seat = harness × model`；HCTL2 的 Seat 是 Obligation 内稳定的逻辑执行者或投票位置，并允许多个 Attempt。HCTL1 的 Obligation 主要承载静态 author/gate/merge 责任；HCTL2 的 Obligation 对应一次 Engine external task 的逻辑产出责任。HCTL1 以 Seat refs、PR 和 squash Receipt 作为主要协调事实；HCTL2 把四模块操作账本放入 RepoInstance SQLite，把共享定义和内容证据放入 Git，把机械工作流位置交给 Conductor，并通过连接合同交换精确引用。
+与此同时，对象含义发生了变化。HCTL1 的 `Seat = harness × model`；HCTL2 的 Seat 是 Obligation 内稳定的逻辑执行者或投票位置，并允许多个 Attempt。HCTL1 的 Obligation 主要承载静态 author/gate/merge 责任；HCTL2 的 Obligation 对应一次 Engine external task 的逻辑产出责任。HCTL1 以 Seat refs、PR 和 squash Receipt 作为主要协调事实；HCTL2 把四模块操作账本放入 Repo Instance SQLite，把共享定义和内容证据放入 Git，把机械工作流位置交给 Conductor，并通过连接合同交换精确引用。
 
 所以 Git 的地位从“几乎全部协调状态”变成“共享、低频、可审计的定义与内容事实”；Receipt 仍是已经校验之结果的证明，却不再暗示旧对象或旧存储布局继续有效。
 
@@ -100,22 +100,26 @@ v0.9.1 处理概念层面的同类问题。全量清点暴露出 75 个以上具
 
 ## 12. 场景数据的三分：metadata / content / artifact
 
-v0.9.1 之前，四模块操作账本整体放在 RepoInstance SQLite 里（第 9 节）。随后的多设备讨论暴露了一个产品语义错误：同一个人在两台机器各 clone 一份仓库，Room 的协作历史却被锁在单个 clone 的本地账本里——clone 丢了，协作记忆就丢了。`.memo/room-ground-truth-20260819.md` 曾比较四个候选，当时把“Matrix 作为权威”判为违反端口纪律，倾向用户级 hub。
+v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第 9 节）。随后的多设备讨论暴露了一个产品语义错误：同一个人在两台机器各 clone 一份仓库，Room 的协作历史却被锁在单个 clone 的本地账本里——clone 丢了，协作记忆就丢了。`.memo/room-ground-truth-20260819.md` 曾比较四个候选，当时把“Matrix 作为权威”判为违反端口纪律，倾向用户级 hub。
 
 `.memo/scene-data-model-20260820.md` 给出了更精确的刀法：每个场景的持久数据分三类——metadata（治理元数据：身份、绑定、授权、判决）、content（场景内容：消息、任务卡与流转、机械执行历史、会话转录）、artifact（结晶：决议、冻结契约与施工图、凭证链、代码变更）。Workflow 与 Terminal 两个场景本来就这样运作——工作流引擎拥有机械历史，harness 会话拥有转录，HCTL 只留绑定与治理；三分法把这条规则推广到 Chat 与 Kanban，补掉了不对称。
 
-这次转向显式推翻了两条旧结论。其一，“平台不能成为第五事实源”精确化为**可以拥有 content、不能拥有治理**——room-ground-truth memo 对 Matrix 候选的否决在三分下失效：平台拥有的是记忆，不是裁决。其二，metadata 账本的归属从 RepoInstance 上移到用户级控制面（一人多机连同一个控制面），RepoInstance 只剩代码侧的物理事实。该 memo 的两个遗留分叉同时裁决：用户级 hub 以“控制面即 hub”的形式采纳；用户级“总入口对话面”否决——用户进入产品就在某个 repo 之下，这是显式设计决定，不是遗漏。
+这次转向显式推翻了两条旧结论。其一，“平台不能成为第五事实源”精确化为**可以拥有 content、不能拥有治理**——room-ground-truth memo 对 Matrix 候选的否决在三分下失效：平台拥有的是记忆，不是裁决。其二，metadata 账本的归属从 Repo Instance 上移到用户级控制面（一人多机连同一个控制面），Repo Instance 只剩代码侧的物理事实。该 memo 的两个遗留分叉同时裁决：用户级 hub 以“控制面即 hub”的形式采纳；用户级“总入口对话面”否决——用户进入产品就在某个 repo 之下，这是显式设计决定，不是遗漏。
 
-这不是把治理交给平台，也不是回到 HCTL1 的“Git 承载一切”：判决仍只在 metadata 层产生，冻结摘要仍是 content 与治理之间的防火墙（第 9 节的继承表原样成立）。v0.10.1 对落点做了一处修正：Board 从 Project 级上移为 Repo 级——一个 Repo 一个 Board，Project 是板上的分组实体，Task 是卡片；这让 GitHub issues 这类天然 repo 级的后端直接对齐，也让支持父子任务的本地服务器以“任务–子任务”承载 Project–Task。v0.11.0 进一步取消了仓库侧的独立物理账本：现场记账本可由 metadata 账本、Git 与运行时观测推导，单立一本账是把实现细节写进合同——clone 本地从此只有 OS 锁与可丢弃缓存，实例注册与现场记账并入用户级账本，存储从“两本账 + Git”收敛为“一本账 + Git”。另有一条词汇裁决随本次转向生效：自 v0.10.0 起，“Agent”一词专属第四模块（原 Harness 模块更名），“Harness”专指编码代理工具这一系统角色，散文中的 AI 协作者用 Participant 表述。类别的权威定义见[合同层总则](../spec/README.md#三类数据)；候选系统与限时验证见[交付文档](../delivery.md)。
+这不是把治理交给平台，也不是回到 HCTL1 的“Git 承载一切”：判决仍只在 metadata 层产生，冻结摘要仍是 content 与治理之间的防火墙（第 9 节的继承表原样成立）。v0.10.1 对落点做了一处修正：Board 从 Project 级上移为 Repo 级——一个 Repo 一个 Board，Project 是板上的分组实体，Task 是卡片；这让 GitHub issues 这类天然 repo 级的后端直接对齐，也让支持父子任务的本地服务器以“任务–子任务”承载 Project–Task。v0.11.1 进一步取消了仓库侧的独立物理账本：现场记账本可由 metadata 账本、Git 与运行时观测推导，单立一本账是把实现细节写进合同——clone 本地从此只有 OS 锁与可丢弃缓存，实例注册与现场记账并入用户级账本，存储从“两本账 + Git”收敛为“一本账 + Git”。另有一条词汇裁决随本次转向生效：自 v0.10.0 起，“Agent”一词专属第四模块（原 Harness 模块更名），“Harness”专指编码代理工具这一系统角色，散文中的 AI 协作者用 Participant 表述。类别的权威定义见[合同层总则](../spec/README.md#三类数据)；候选系统与限时验证见[交付文档](../delivery.md)。
 
-## 13. 词汇清扫（v0.11.0）
+## 13. 词汇清扫（v0.11.1）
 
-v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.11.0 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（含仓库 README 架构图源码里的节点 ID）。教训与 §11 同源：命名门槛不因“端口/组件”语境而豁免，图纸节点 ID 也不豁免。
+v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.11.1 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（含仓库 README 架构图源码里的节点 ID）。教训与 §11 同源：命名门槛不因“端口/组件”语境而豁免，图纸节点 ID 也不豁免。
 
-## 14. 实现计划：P/B 双表与 P0 选型（v0.11.0）
+## 14. 实现计划：P/B 双表与 P0 选型（v0.11.1）
 
-三份外部评审一致指出开工前限时验证是“事实上的 phase 0”。v0.11.0 据此给交付文档补上施工视角：P0–P6 实现阶段表与 B0–B6 自举阶梯一一映射——P 表回答先建什么，B 表回答什么时候敢切换事实，建完不等于敢用。P0 选型同轮拍板：conductor-oss；Vikunja（git-bug 降为记录在案的对照）；运行时后端 Zellij（同栈、结构化接口、内建 web 客户端默认关闭、可作额外访问门；tmux 为降级方向，验证新增 headless 查询应答与增强键盘协议两点）；chat server 在 Tuwunel 与 Continuwuity 并列验证后定夺。远端任务后端验证移出 P0、延至 P4 后按需。
+三份外部评审一致指出开工前限时验证是“事实上的 phase 0”。v0.11.1 据此给交付文档补上施工视角：P0–P6 实现阶段表与 B0–B6 自举阶梯一一映射——P 表回答先建什么，B 表回答什么时候敢切换事实，建完不等于敢用。P0 选型同轮拍板：conductor-oss；Vikunja（git-bug 降为记录在案的对照）；运行时后端 Zellij（同栈、结构化接口、内建 web 客户端默认关闭、可作额外访问门；tmux 为降级方向，验证新增 headless 查询应答与增强键盘协议两点）；chat server 在 Tuwunel 与 Continuwuity 并列验证后定夺。远端任务后端验证移出 P0、延至 P4 后按需。
 
-## 15. 当前落点
+## 15. 词形收敛与 chat server 定夺（v0.11.1）
+
+分层原则推到词形上：语义是文档的本职，拼写是实现的权利。25 个驼峰对象/票据名退化为带空格专名（对齐 Run Manifest / Gate Receipt 先例）；16 个 `*Intent` 命令名退化为动宾语义名；约二百处状态值枚举拼写退化为中文语义名——设计仓库从此不含任何代码标识符，「语义名 ↔ 标识符」对照表在实现期作为 P1 交付物生成。同轮拍板 chat server 为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；P0 四项选型至此全部定案。
+
+## 16. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

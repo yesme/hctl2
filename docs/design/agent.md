@@ -54,7 +54,7 @@ Execution Chat 是绑定一次精确执行的结构化观察与控制视图：�
 
 以下只列所有权方向；派发、结果准入与恢复由[连接合同](./spec/connections.md)统一定义。
 
-- Project 与 Run 各传入一份冻结的执行规格（ExecutionSpec）；Agent 模块不重新解释上层范围。
+- Project 与 Run 各传入一份冻结的执行规格（Execution Spec）；Agent 模块不重新解释上层范围。
 - Agent 模块只返回结果提案、变更集快照、测试/SCM 证据和运行时观测。
 - control/core 校验后才可形成 Run 的 Verdict/Receipt 或 Task 的验收证据。
 - Skill 提供指导和上下文，不获得命令、评审或写入权。

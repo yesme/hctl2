@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.11.0<br>
+> 状态：规范性 · 草案 v0.11.1<br>
 > 日期：2026-08-21<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -11,11 +11,11 @@
 | 类别 | 判据 | 例子 |
 | --- | --- | --- |
 | 领域对象 | 独立生命周期、恢复边界或权限边界至少居其一 | Task、Run、Seat、ChangeSet、Request |
-| 票据与记录 | 某个步骤的产物：只追加、短期或一次性，但需要被精确引用 | ExecutionSpec、AttachDescriptor、Receipt、EffectIntent、Snapshot |
-| 状态值 | lifecycle 枚举，不是对象 | Open、PendingAdoption、ResultUnknown |
+| 票据与记录 | 某个步骤的产物：只追加、短期或一次性，但需要被精确引用 | Execution Spec、Attach Descriptor、Receipt、外部副作用命令、Snapshot |
+| 状态值 | lifecycle 枚举，不是对象 | 开放、待采纳、结果未知 |
 | 引用格式 | 指认他物的结构化引用，不是对象 | ReviewSubjectRef、digest |
 
-新名字的引入门槛：不满足前两类判据的不得命名；能用日常语言或外部标准词说清的不另造词。设计层正文不使用合同层词汇，只使用下列核心产品词。
+新名字的引入门槛：不满足前两类判据的不得命名；能用日常语言或外部标准词说清的不另造词。具名对象与票据一律写成带空格的专名（如 Task Revision、Gate Receipt）——驼峰是代码标识符的视觉信号，不出现在任何文档层；命令写动宾语义名（如「完成 Task」命令），状态值写中文语义名。代码里的枚举拼写、命令符号与字段名由实现仓库决定，实现时附「语义名 ↔ 标识符」对照表回溯合同。设计层正文不使用合同层词汇，只使用下列核心产品词。
 
 ## 核心产品词
 
@@ -23,7 +23,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
 
-另有六个高频合同词可在设计正文携中文对照使用：TaskRevision（契约版本）、WorkflowRevision（施工图版本）、RoomInvocation（单次调用）、ExecutionSpec（执行规格）、ResultProposal（结果提议）、Run Manifest（施工清单）。`*Intent` 命令名只出现在合同层与交付文档。[交付文档](../delivery.md)（工程选型、里程碑与契约测试）与合同层同侧，可直接使用合同层词汇；设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
+另有六个高频合同词可在设计正文携中文对照使用：Task Revision（契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提议）、Run Manifest（施工清单）。[交付文档](../delivery.md)（工程选型、里程碑与契约测试）与合同层同侧，可直接使用合同层词汇；设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
 
 ## 六族规则
 
@@ -35,7 +35,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | Binding | 把两个身份连起来的冻结解析；活动执行永远引用准入时的版本，换绑不改写历史 |
 | Receipt | control/core 校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
-| Intent | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
+| 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
 | Snapshot | 先观测后准入的只追加外部观测；观测无论置信度多高都不直接改写事实 |
 
 ## 三类数据
@@ -58,34 +58,34 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 ## 词汇索引（v0.9.1 归并后）
 
-- **Revision 族**：TaskRevision、WorkflowRevision、ChangeSetRevision、ArtifactRevision、ExtensionRevision、EngineDeployment
-- **Binding 族**：ResolvedPortBinding、TaskBinding、ProjectRoleBinding、EngineExecutionBinding
-- **Receipt 族**：Gate Receipt、TaskCompletionReceipt、IntegrationReceipt
-- **Lease 族**：WriteLease、TerminalInputLease；control writer 与 agentd owner 的排他权同族（以 generation 表达）
-- **Intent 族**：各模块的 `*Intent` 命令，以及承载外部副作用的 EffectIntent
-- **Snapshot/观测族**：TaskSourceSnapshot、ResultProposal、运行时观测
-- **票据与规格**：ExecutionSpec、Run Manifest、AttachDescriptor、ContextManifest、ContextBundle（场景投影如 Execution Chat 不占概念名额）
+- **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
+- **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding
+- **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
+- **Lease 族**：Write Lease、Terminal Input Lease；control writer 与 agentd owner 的排他权同族（以 generation 表达）
+- **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
+- **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
+- **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
-- **独立对象**（核心产品词之外的合同层领域对象）：RepoInstance、RoomInvocation、RoomEvent、ExecutionRuntime、WorkerProfile、TaskOperationalState
+- **独立对象**（核心产品词之外的合同层领域对象）：Repo Instance、Room Invocation、Room Event、Execution Runtime、Worker Profile、Task Operational State
 
 ## v0.9.1 归并对照
 
 | 旧名 | 现状 |
 | --- | --- |
-| InvocationBinding / AttemptSpec | 合并为 ExecutionSpec（owner = RoomInvocation \| Attempt） |
-| RuntimeShard / InvocationRuntime | 合并为 ExecutionRuntime（owner 字段） |
-| TerminalBundle | ExecutionRuntime 的终端通道字段组 |
-| HarnessAdapterBinding | ExecutionSpec 冻结的接入方式字段组 |
-| IntegrationIntent / ExternalEffectIntent | 合并为 EffectIntent（executor = core 本地 Git \| adapter 远端） |
-| TaskSourceConnection / TaskSourceConnectionRevision | 由 ResolvedPortBinding（port_kind = task_source）承载 |
-| ChatSurfaceBindingRevision | Room 的 Chat 端口绑定字段组（引用 ResolvedPortBinding） |
-| TaskSourceBindingRevision（及裸用 BindingRevision） | TaskBinding |
-| EngineDeploymentRevision | EngineDeployment |
-| ChangeSetWriteLease | WriteLease |
+| InvocationBinding / AttemptSpec | 合并为 Execution Spec（owner = Room Invocation \| Attempt） |
+| RuntimeShard / InvocationRuntime | 合并为 Execution Runtime（owner 字段） |
+| TerminalBundle | Execution Runtime 的终端通道字段组 |
+| HarnessAdapterBinding | Execution Spec 冻结的接入方式字段组 |
+| IntegrationIntent / ExternalEffectIntent | 合并为外部副作用命令（executor = core 本地 Git \| adapter 远端） |
+| TaskSourceConnection / TaskSourceConnectionRevision | 由 Resolved Port Binding（port_kind = task_source）承载 |
+| ChatSurfaceBindingRevision | Room 的 Chat 端口绑定字段组（引用 Resolved Port Binding） |
+| TaskSourceBindingRevision（及裸用 BindingRevision） | Task Binding |
+| EngineDeploymentRevision | Engine Deployment |
+| ChangeSetWriteLease | Write Lease |
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
 | TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / workflow engine 端口适配器 |
 
-## v0.11.0 清扫
+## v0.11.1 清扫
 
 | 旧名 | 现状 |
 | --- | --- |
@@ -94,9 +94,19 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | WorkflowEngine | 系统角色小写 workflow engine；端口写「workflow engine 端口」 |
 | HarnessAdapter | 描述性说法：harness 适配器 |
 
+## v0.11.1 词形收敛
+
+| 旧形 | 新形 |
+| --- | --- |
+| 驼峰对象/票据名（TaskRevision 等 25 个） | 带空格专名（Task Revision 等），对齐 Run Manifest / Gate Receipt 先例 |
+| `*Intent` 命令名（16 个） | 动宾语义名（「完成 Task」命令等）；代码标识符由实现仓库定，实现时附对照表 |
+| 状态值枚举拼写 | 中文语义名（待采纳、结果未知、等待输入等） |
+
+ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名（`port_kind`、`review_subject_digest`、ReviewSubjectRef 等）留待单独一轮裁定。
+
 ## 外部对齐原则
 
-每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、WriteLease）。这条有个反向读法：凡对齐表里「无对应」的差异化概念，就是控制面账本的存储清单——新概念想进账本，先证明外部体系确实没有它；凡外部有原生概念的，content 归它，账本最多存绑定与摘要。
+每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、Write Lease）。这条有个反向读法：凡对齐表里「无对应」的差异化概念，就是控制面账本的存储清单——新概念想进账本，先证明外部体系确实没有它；凡外部有原生概念的，content 归它，账本最多存绑定与摘要。
 
 ## 文件
 

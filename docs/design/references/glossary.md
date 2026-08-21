@@ -1,7 +1,7 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.11.0<br>
-> 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
+> 状态：非规范对照 · 草案 v0.11.1<br>
+> 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、命令、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
 
@@ -59,70 +59,70 @@
 
 | 成员 | 中文对照 | 版本化的是什么 |
 | --- | --- | --- |
-| TaskRevision | 任务契约版本 | Task 的范围、验收标准与所需能力 |
-| WorkflowRevision | 施工图版本 | 与引擎无关的控制图和治理规则 |
-| ChangeSetRevision | 变更集快照 | 一次写入边界内的不可变 Git 快照 |
-| ArtifactRevision | 工件版本 | 登记交付物的一次不可变发布 |
-| ExtensionRevision | 扩展版本 | 一个扩展的代码、接口、能力与信任级别 |
-| EngineDeployment | 引擎部署版本 | 某施工图经编译器给某引擎的产物 |
+| Task Revision | 任务契约版本 | Task 的范围、验收标准与所需能力 |
+| Workflow Revision | 施工图版本 | 与引擎无关的控制图和治理规则 |
+| ChangeSet Revision | 变更集快照 | 一次写入边界内的不可变 Git 快照 |
+| Artifact Revision | 工件版本 | 登记交付物的一次不可变发布 |
+| Extension Revision | 扩展版本 | 一个扩展的代码、接口、能力与信任级别 |
+| Engine Deployment | 引擎部署版本 | 某施工图经编译器给某引擎的产物 |
 
 ## Binding 族（冻结的身份连接）
 
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
-| ResolvedPortBinding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；任务源连接也由它承载） |
-| TaskBinding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
-| ProjectRoleBinding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
-| EngineExecutionBinding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |
+| Resolved Port Binding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；任务源连接也由它承载） |
+| Task Binding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
+| Project Role Binding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
+| Engine Execution Binding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |
 
 ## Receipt 族（校验后的证明）
 
 | 成员 | 证明什么 |
 | --- | --- |
 | Gate Receipt | 评审关卡按法定票数通过 |
-| TaskCompletionReceipt | 一次完成命令对精确契约、规则和证据成立 |
-| IntegrationReceipt | 精确变更集已按授权合入目标并回读确认 |
+| Task Completion Receipt | 一次完成命令对精确契约、规则和证据成立 |
+| Integration Receipt | 精确变更集已按授权合入目标并回读确认 |
 
 ## Lease 族（单持有者独占权）
 
 | 成员 | 中文对照 | 独占什么 |
 | --- | --- | --- |
-| WriteLease | 写入租约 | 一个变更集的写权；同时最多一个持有者 |
-| TerminalInputLease | 终端输入租约 | 一个终端目标的输入权；接管原子撤销旧租约 |
+| Write Lease | 写入租约 | 一个变更集的写权；同时最多一个持有者 |
+| Terminal Input Lease | 终端输入租约 | 一个终端目标的输入权；接管原子撤销旧租约 |
 
 control writer 与 agentd owner 的排他权同族，以 generation（代次）表达。
 
-## Intent 族（持久命令与副作用）
+## 命令族（持久命令与副作用）
 
-各模块的 `*Intent` 命令（CompleteTaskIntent、StartRunIntent、AdoptTaskRevisionIntent、IntegrateChangeSetIntent 等）是改变事实的唯一途径。**EffectIntent**（副作用意图）承载会改变外部权威事实的动作：executor = core 时是本地 Git 集成，executor = adapter 时是远端 SCM 或第三方平台写入；均为先持久记录、再执行、回读确认后才可签 Receipt。
+各模块的类型化命令（「完成 Task」「启动 Run」「采纳契约」「合入 ChangeSet」等动宾语义名）是改变事实的唯一途径。**外部副作用命令**（副作用意图）承载会改变外部权威事实的动作：executor = core 时是本地 Git 集成，executor = adapter 时是远端 SCM 或第三方平台写入；均为先持久记录、再执行、回读确认后才可签 Receipt。
 
 ## Snapshot / 观测族（先观测后准入）
 
 | 成员 | 中文对照 | 观测什么 |
 | --- | --- | --- |
-| TaskSourceSnapshot | 来源快照 | 外部任务系统的一次只追加观测；改变契约的内容须采纳才生效 |
-| ResultProposal | 结果提案 | Harness 提交、等待 owner 校验的结果；不是裁决或凭证 |
+| Task Source Snapshot | 来源快照 | 外部任务系统的一次只追加观测；改变契约的内容须采纳才生效 |
+| Result Proposal | 结果提案 | Harness 提交、等待 owner 校验的结果；不是裁决或凭证 |
 | 运行时观测 | — | 进程、心跳、屏幕等物理观测；按来源证据分级仲裁 |
 
 ## 票据与规格（步骤产物，不是领域对象）
 
 | 名字 | 中文对照 | 哪个步骤的产物 |
 | --- | --- | --- |
-| ExecutionSpec | 派发规格 | 派发一次执行时冻结的全部绑定（owner = RoomInvocation \| Attempt） |
+| Execution Spec | 派发规格 | 派发一次执行时冻结的全部绑定（owner = Room Invocation \| Attempt） |
 | Run Manifest | 施工清单 | 启动 Run 时冻结的全部绑定、规则和预算 |
-| AttachDescriptor | 连接票据 | 对精确终端目标的短期连接凭据 |
-| ContextManifest / ContextBundle | 上下文清单 / 上下文包 | 组装上下文时冻结的说明与内容 |
+| Attach Descriptor | 连接票据 | 对精确终端目标的短期连接凭据 |
+| Context Manifest / Context Bundle | 上下文清单 / 上下文包 | 组装上下文时冻结的说明与内容 |
 
 ## 独立对象（不属六族的领域对象）
 
 | 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
-| RepoInstance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；仅是注册在 metadata 账本的现场身份，本地无账本 |
-| RoomInvocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
-| ExecutionRuntime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
-| RoomEvent | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
-| WorkerProfile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
-| TaskOperationalState | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
+| Repo Instance | 仓库实例 | 某个本地 clone 的代码物理现场（worktree、运行时、单写锁）；仅是注册在 metadata 账本的现场身份，本地无账本 |
+| Room Invocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
+| Execution Runtime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
+| Room Event | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
+| Worker Profile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
+| Task Operational State | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
 
 ## 引用格式（不是对象）
 
