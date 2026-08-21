@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.10.3<br>
+> 状态：规范性 · 草案 v0.11.0<br>
 > 日期：2026-08-21<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -85,7 +85,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
 | TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / workflow engine 端口适配器 |
 
-## v0.10.3 清扫
+## v0.11.0 清扫
 
 | 旧名 | 现状 |
 | --- | --- |
@@ -96,7 +96,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 ## 外部对齐原则
 
-每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、WriteLease）。
+每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、WriteLease）。这条有个反向读法：凡对齐表里「无对应」的差异化概念，就是控制面账本的存储清单——新概念想进账本，先证明外部体系确实没有它；凡外部有原生概念的，content 归它，账本最多存绑定与摘要。
 
 ## 文件
 
