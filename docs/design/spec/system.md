@@ -178,7 +178,7 @@ UI 重载只重建投影。无法证明同一执行身份时，宁可标记丢�
 
 ### 备份与恢复
 
-metadata 备份必须是由唯一 writer 协调的一致备份集：账本快照包含 ledger identity、schema/version、领域记录与有序事件、幂等结果、inbox/outbox、租约、Repo/现场注册和各层 generation，并连同账本引用的精确用户级 Profile/Skill/Runtime 不可变定义字节与 digest 保存。secret value、可丢弃 cache、PTY 原始流和场景 content 正文不进入该备份集。备份完成前验证快照边界、所有定义引用/校验和与 schema 可读性；Repo Git、content 系统与 secret store 按各自合同另行备份，缺少其中之一不能用伪造 Receipt 补齐。
+metadata 备份必须是由唯一 writer 协调的一致备份集：完整账本快照，连同账本引用的精确用户级 Profile/Skill/Runtime 不可变定义字节与 digest——后者存放在账本之外，单备份账本文件会漏掉它们。secret value、可丢弃 cache、PTY 原始流和场景 content 正文不进入该备份集。备份完成前验证快照边界、所有定义引用/校验和与 schema 可读性；Repo Git、content 系统与 secret store 按各自合同另行备份，缺少其中之一不能用伪造 Receipt 补齐。
 
 恢复只能在旧 writer 已停止且取得用户级排他锁后进行；不得合并两份分叉账本或把备份恢复成新的账本身份。恢复保留原 ledger identity，推进 control writer 及所有可能仍存活的 site/backend generation，令旧 descriptor、lease、outbox 执行权和 Result Proposal 失效，再按上述顺序回读结果未知的外部副作用。secret reference 仍在但值缺失时，对应 binding 标为不可用并阻止依赖命令，不能把空值当凭据或静默降权。
 
