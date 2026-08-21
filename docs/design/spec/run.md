@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -8,7 +8,7 @@
 | 对象 | 含义 |
 | --- | --- |
 | WorkflowRevision | 与引擎无关、不可变的控制图、节点、输入输出和治理规则（Revision 族） |
-| EngineDeployment | 某个 WorkflowRevision 经固定编译器和 WorkflowEngine 端口适配器生成的不可变引擎版本（Revision 族） |
+| EngineDeployment | 某个 WorkflowRevision 经固定编译器和 workflow engine 端口适配器生成的不可变引擎版本（Revision 族） |
 | Run | 对冻结 Workflow、Task、基线、角色、候选、权限和预算的一次授权执行 |
 | EngineExecutionBinding | Run、EngineDeployment、ResolvedPortBinding、外部 execution ID/correlation key 和 generation 的稳定映射（Binding 族） |
 | Obligation | 一个 HCTL 外部节点必须产出的逻辑结果 |
@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | WorkflowRevision / EngineDeployment | immutable revision + approval version | control 协调 Register、Compile、Approve Intent；固定 compiler/adapter 产出，core 校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；`Starting / Running / Pausing / Paused / Cancelling / Completed / Failed / Cancelled / Superseded` | control 处理 StartRunIntent、Pause/Resume/Cancel/Replace Run Intent | Completed、Failed、Cancelled、Superseded 不复活；替代创建新 Run |
-| EngineExecutionBinding | binding generation；`Starting / Bound / Closed / Diverged` | control 经 WorkflowEngine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
+| EngineExecutionBinding | binding generation；`Starting / Bound / Closed / Diverged` | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；`Active / Satisfied / Failed / Cancelled / Superseded` | Run reducer/control 根据 Engine task、Attempt 结果和 Gate 策略推进 | 终态不可复活；Engine retry 创建新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；agentd 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/core 校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
@@ -61,7 +61,7 @@ Approve Workflow 只确认施工图；`StartRunIntent` 才授予资源和副作�
 4. control/core 校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与 Engine completion outbox 先持久提交，再幂等完成外部任务。
 
-Attempt 的派发在 ExecutionSpec 中至少冻结 attempt/seat/run/generation、逻辑 Participant/Seat identity、WorkerProfile、接入方式与降级能力、RuntimeBackend binding、可选 ChangeSet/WriteLease、Context/Skill/能力/权限摘要和截止时间。Attempt lifecycle 为 `Pending | Running | WaitingForInput | ResultProposed | Failed | Lost | Cancelled | Superseded`：`Pending` 可进入 `Running/Failed/Lost/Cancelled`；`Running` 与 `WaitingForInput` 可互转并进入 `ResultProposed/Failed/Lost/Cancelled`；任一尚未提交 Proposal 的非终态可进入 `Superseded`。`ResultProposed` 是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
+Attempt 的派发在 ExecutionSpec 中至少冻结 attempt/seat/run/generation、逻辑 Participant/Seat identity、WorkerProfile、接入方式与降级能力、运行时后端 binding、可选 ChangeSet/WriteLease、Context/Skill/能力/权限摘要和截止时间。Attempt lifecycle 为 `Pending | Running | WaitingForInput | ResultProposed | Failed | Lost | Cancelled | Superseded`：`Pending` 可进入 `Running/Failed/Lost/Cancelled`；`Running` 与 `WaitingForInput` 可互转并进入 `ResultProposed/Failed/Lost/Cancelled`；任一尚未提交 Proposal 的非终态可进入 `Superseded`。`ResultProposed` 是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
 
 ## Request、重试与 Gate
 

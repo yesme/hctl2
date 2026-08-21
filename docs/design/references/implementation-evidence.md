@@ -26,7 +26,7 @@
 | [First Tree](https://github.com/agent-team-foundation/first-tree) | L4 核心；L2/L1 专项 | 核心参考 + 专项证据 | 持久 Chat、显式寻址与可见 handoff、Context 筛选与治理、Need You、可靠 Inbox、跨渠道协作和托管运行时连续性 |
 | [Claude Tag](https://www.anthropic.com/news/introducing-claude-tag) | L4 | 行为参考 | 共享且可继续引导的讨论串、按作用域拥有的身份和记忆、持久协作与临时运行时分离 |
 | [OpenClaw](https://github.com/openclaw/openclaw) | L4 | 专项参考 | 确定性的多渠道身份与路由、配对/白名单和按渠道降级投递 |
-| [Codeg](https://github.com/xintaofei/codeg) | L3 核心；L1/L2 专项 | 核心参考 + 专项证据 | 独立异步 WorkTask、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
+| [Codeg](https://github.com/xintaofei/codeg) | L3 核心；L1/L2 专项 | 核心参考 + 专项证据 | 独立异步 `WorkTask`、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | L3 | 专项参考 | 持久 Task/Attempt、原子领取、心跳/回收、依赖推进和多客户端共用内核 |
 | [Multica](https://github.com/multica-ai/multica) | L4/L3/L2/L1 专项 | 行为、边界与实现证据 | L4 的 Project/Issue/私聊发布边界；L3 的 Issue 与单次运行分离；L2 的领取、租约、重试、恢复与归属；L1 的多 Harness 能力矩阵和无损 worktree |
 | [HCTL1 / yesme/hctl](https://github.com/yesme/hctl) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
@@ -60,9 +60,9 @@
 | 层 | 主要设计来源 | HCTL2 的组合方式 |
 | --- | --- | --- |
 | L4 · Project Room | First Tree 的持久 Chat、显式寻址、可见 handoff、Need You、Context 提升与跨渠道连续性；Multica 的共享 Issue 与私密探索发布边界；Claude Tag 的持久讨论串与临时沙箱分离；OpenClaw 的外部身份和路由 | HCTL2 用规范 Room、一级 Request、ContextManifest 和 Memo 提升流程统一这些经验；外部渠道只作同一 Room 的输入输出面，私聊和执行记录不会自动成为项目知识，协作边的创建权也不随消息作者身份下放给 Agent |
-| L3 · Task / Kanban | Codeg 的独立 WorkTask、Needs You、评审、后续动作和 Git 恢复；Multica 对 Issue 与单次运行、运行结束与承诺完成的明确分离；Hermes 的领取与重新领取；Linear/GitHub 的原生字段状态 | HCTL2 将长期承诺冻结为 TaskRevision，把高频操作状态、外部字段权威和 TaskCompletionReceipt 分开；启动 Run 与移动卡片分离，完成必须重新校验验收标准和证据 |
+| L3 · Task / Kanban | Codeg 的独立 `WorkTask`、Needs You、评审、后续动作和 Git 恢复；Multica 对 Issue 与单次运行、运行结束与承诺完成的明确分离；Hermes 的领取与重新领取；Linear/GitHub 的原生字段状态 | HCTL2 将长期承诺冻结为 TaskRevision，把高频操作状态、外部字段权威和 TaskCompletionReceipt 分开；启动 Run 与移动卡片分离，完成必须重新校验验收标准和证据 |
 | L2 · Workflow / Run / Gate | HCTL1 的版本/证据、领取/隔离栅栏、法定票数和 Receipt；Conductor 的机械图状态；Stably Orca 的持久监督协议；Multica 的租约/重试/恢复/归属；ZeroClaw 的审批准入；Herdr、Superset 的边界反例 | HCTL2 自己定义 WorkflowRevision、Run Manifest、Obligation、Seat、Attempt、Verdict 和 Receipt；外部机制只补机械推进、可靠领取、消息交付和故障测试，不能用执行者状态或会话传输替代语义治理 |
-| L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、HarnessAdapter、RuntimeBackend、ChangeSet 和终端网关统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
+| L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、harness 适配器、运行时后端、ChangeSet 和终端网关统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
 
 这张表是“整合关系”，不是对象映射。每个来源项目只贡献表中写明的机制；L4–L1 是本研究保留的历史标签，最终身份、权限、版本和证据由 HCTL2 的 Project、Task、Run、Agent 四模块定义。
 
@@ -84,7 +84,7 @@ First Tree 真正跑通的是协作闭环，而不是任务或工作流闭环：
 | 基线 | 状态 | 可支持的结论 |
 | --- | --- | --- |
 | [`v0.5.20 / 19e66032`](https://github.com/agent-team-foundation/first-tree/commit/19e66032af7f9f482168c350fe0b3998599388f3) · 2026-08-11 | 已发布 | Context Tree、持久 Chat、基于稳定身份的 mention、Request/Need You、Inbox、GitHub/GitLab，以及执行提供方的运行与恢复 |
-| [`main@f0d46f9e`](https://github.com/agent-team-foundation/first-tree/commit/f0d46f9ec8b14ace536d242db8860065c124f2c7) · 2026-08-14 | 未发布审计快照；比发布版前进 41 个 commit | Feishu Agent Channel、OpenTag 入门流程、更新后的 GitHub Issue 激活规则，以及运行权限、ReplayFence 和 Reset 机制 |
+| [`main@f0d46f9e`](https://github.com/agent-team-foundation/first-tree/commit/f0d46f9ec8b14ace536d242db8860065c124f2c7) · 2026-08-14 | 未发布审计快照；比发布版前进 41 个 commit | Feishu Agent Channel、`OpenTag` 入门流程、更新后的 GitHub Issue 激活规则，以及运行权限、`ReplayFence` 和 Reset 机制 |
 
 [发布版与审计快照的差异](https://github.com/agent-team-foundation/first-tree/compare/19e66032af7f9f482168c350fe0b3998599388f3...f0d46f9ec8b14ace536d242db8860065c124f2c7)。Feishu QA 文件只是可执行的验收契约，不是公开的通过报告；这些主干能力不能写成 v0.5.20 已发布功能。
 
@@ -96,16 +96,16 @@ First Tree 真正跑通的是协作闭环，而不是任务或工作流闭环：
 | --- | --- | --- | --- |
 | 产品对象 | Team、Agent、人类成员、持久 Chat、类型化 Message、Context Tree、Agent 会话，以及 SCM entity↔Chat 映射 | 没有 HCTL 的 Repo/Project/Task/WorkflowRevision/Run/Seat；Team 还可能横跨多个代码仓库 | 证明 L4 协作可以持续；不照搬 Team/Agent/Chat 数据结构，也不把 Chat 直接叫作 Project Room |
 | Context Tree | Decision Test + Durability Test；Tree 与代码不一致时，默认以代码事实为准；按精确 commit 读取快照；写入必须有来源材料、独立 worktree、校验和 PR/MR 评审 | 治理模型绑定 First Tree 的 Team、Reviewer 和代码托管平台；知识晋升是独立流程，不会在每次任务后自动执行 | 把筛选标准和有来源支撑的评审流程改编成 Memo→Project 知识准入；不新增 `ContextTree` 一级对象 |
-| 类型化 mention / Inbox | Web 发送稳定的 Participant ID，服务端校验成员关系和启用状态；Message 与接收者分发在同一事务中；支持 `pending/delivered/acked`、`SKIP LOCKED`、逐 Chat 前缀 ACK 和断线恢复 | CLI/API 仍兼容名称寻址；普通发送没有调用方幂等键；消息可原地编辑，只有 `editedAt`，没有 revision/history/tombstone | 采用稳定身份、ACK 责任链和事务测试；HCTL 另补命令 ID、只追加的 correction/tombstone 和冻结的 MentionRef |
+| 类型化 mention / Inbox | Web 发送稳定的 Participant ID，服务端校验成员关系和启用状态；Message 与接收者分发在同一事务中；支持 `pending/delivered/acked`、`SKIP LOCKED`、逐 Chat 前缀 ACK 和断线恢复 | CLI/API 仍兼容名称寻址；普通发送没有调用方幂等键；消息可原地编辑，只有 `editedAt`，没有 revision/history/tombstone | 采用稳定身份、ACK 责任链和事务测试；HCTL 另补命令 ID、只追加的 correction/tombstone 和冻结的 mention 引用 |
 | 协作边 / handoff | `chat send` 使用显式 recipient；只有被具名寻址的 Agent 被唤醒，其他 participant 只获得 silent context；邀请、交接和结果留在持久 Chat 中 | Agent 可以自行 `invite + send`，接收者还能继续寻址第三个 Agent；系统没有冻结的通用 Workflow 图约束这条动态链 | 采用显式寻址、持久 Chat 和对人可见的 handoff；不采用 Agent 消息直接创建执行边或开放 mesh，普通 Room 的临场边由人提交，自动化边由 reducer 按冻结图创建 |
 | Request / Need You | 当前权威事实是 `format="request"` 消息与后续 resolution 行；只允许一个用户作为目标；目标用户的界面会局部阻塞，其他成员仍可阅读；多个请求先进先出；普通回复或 `inReplyTo` 不会关闭请求，只有目标用户显式写入 `metadata.resolves` 才产生新 resolution；跨 Chat 队列从持久记录推导 | 旧 `attentions`、`pending_questions` 只是历史审计表；Request 仍是一种消息格式，不含 revision、权限或法定人数语义 | 借鉴归约器、显式关闭、先进先出和仅阻塞目标用户的交互；HCTL 将其提升为一级 Request，但绝不让它替代 Gate、Seat 或法定人数规则 |
 | GitHub 集成 | HMAC、delivery ID 去重、entity↔权威 Chat、由服务端记录的 run 来源、受管 Task Agent 和幂等 App 回复；当前主干中，普通 Issue 要等非自身输出的新评论或已有精确 owner mapping 才激活，PR 不受此限制 | 工作事实仍是 Issue/PR + Chat，没有独立 Task、TaskRevision、Board 或验收生命周期；部分故障、排序和身份主体语义仍不完整 | 借鉴绑定、来源证明、去重和跨界面测试；可在 L3 作为外部工作触发与权威映射的边界证据，但不把 GitHub entity/Chat 当作 HCTL Task 事实 |
-| 仅主干存在的 Feishu | bot/chat 绑定、精确 mention、回声抑制、作者快照、事件与消息双重去重、附件取回，以及租约与代次 | 当前是 1 Chat↔1 Feishu；Web 只读；不支持编辑/删除；ACK 可能早于权威事务提交；最终事务没有隔离令牌；出站没有 DeliveryReceipt 生命周期 | 借鉴格式转换、去重、租约和验收测试；HCTL 另补多界面绑定、RoomEvent 与出站队列的原子性、提交时隔离、Receipt 和对账 |
-| 执行提供方运行时 / Skills | `start/resume/inject/suspend/shutdown`、ACK、重试、恢复与持久化、目录与能力声明、Skill 的锁、日志、摘要和版本隔离、守护进程监管；主干又加入 ReplayFence 和 reset 权限 | 私有客户端与 Hub/Chat 强耦合；API 仍在快速变化；重试只覆盖同一个执行提供方和会话；协议层回执不是语义 Receipt | 只借鉴契约、故障、重放和 Skill 测试，不直接建立包依赖，也不把它当作 Seat 的降级方案 |
+| 仅主干存在的 Feishu | bot/chat 绑定、精确 mention、回声抑制、作者快照、事件与消息双重去重、附件取回，以及租约与代次 | 当前是 1 Chat↔1 Feishu；Web 只读；不支持编辑/删除；ACK 可能早于权威事务提交；最终事务没有隔离令牌；出站回执没有生命周期管理 | 借鉴格式转换、去重、租约和验收测试；HCTL 另补多界面绑定、RoomEvent 与出站队列的原子性、提交时隔离、Receipt 和对账 |
+| 执行提供方运行时 / Skills | `start/resume/inject/suspend/shutdown`、ACK、重试、恢复与持久化、目录与能力声明、Skill 的锁、日志、摘要和版本隔离、守护进程监管；主干又加入 `ReplayFence` 和 reset 权限 | 私有客户端与 Hub/Chat 强耦合；API 仍在快速变化；重试只覆盖同一个执行提供方和会话；协议层回执不是语义 Receipt | 只借鉴契约、故障、重放和 Skill 测试，不直接建立包依赖，也不把它当作 Seat 的降级方案 |
 | 会话 / 终端 | 执行提供方会话主要通过 SDK、app-server 或子进程运行；通用运行时管理代次、ACK、重试、恢复和会话持久化；内部 `tmux` 驱动支持粘贴与捕获输出 | 新配置已禁用 TUI 选项；没有公开的重新接入接口或稳定 PTY 目标 | 可作为 L1 受管会话与运行恢复的专项实现证据；终端所有权和重新接入仍需参考其他项目 |
 | Workflow / 治理 | Context 读取、写入和 Reviewer 流程采用精确快照、来源门槛、精确 head 批准及失效规则；cron 到点生成定向消息，并限制同一个 job 不积压多个未 ACK 触发器 | 没有通用运行历史、DAG、WorkflowRevision、Seat、候选执行者、法定人数、重新过 Gate 或绑定版本的 Receipt | L2 可参考 Context 变更准入、快照与批准失效，以及带版本的触发器；不把这些局部机制扩写成通用 Workflow 模型 |
 
-复用结论：**选择性移植**，许可证为 Apache-2.0。可以直接改编 Context Policy 的两项筛选测试、Need You 行为旅程、Inbox ACK 责任链，以及 Feishu/GitHub 的跨界面验收测试；也可按需移植纯数据结构、内容转换、绑定与租约更新、前缀 ACK、ReplayFence/reset 代次，以及受管 Skill 的事务纪律。不整仓派生，也不采用其中心化 PostgreSQL 或云端事实源。
+复用结论：**选择性移植**，许可证为 Apache-2.0。可以直接改编 Context Policy 的两项筛选测试、Need You 行为旅程、Inbox ACK 责任链，以及 Feishu/GitHub 的跨界面验收测试；也可按需移植纯数据结构、内容转换、绑定与租约更新、前缀 ACK、`ReplayFence`/reset 代次，以及受管 Skill 的事务纪律。不整仓派生，也不采用其中心化 PostgreSQL 或云端事实源。
 
 主要源码：
 
@@ -139,9 +139,9 @@ HCTL 只借鉴适配、路由、配对、防循环和降级测试；OpenClaw 的
 
 ### 核心价值与跨层画像
 
-Codeg 的产品闭环是：先把一项工作写成独立 WorkTask，再排队并按并发上限领取；启动时根据精确的 base SHA 创建隔离 worktree；Agent 执行过程中可以进入 Needs You；完成一轮后由用户查看结果、diff、时间线和预检，再选择 Rework、Keep going、Ask、Double-check 或 merge；最后用 Git 事实确认结果是否真正落地。官方 Tasks 指南对边界的概括也很准确：Conversation 是用户坐在前面共同推进的会话，Task 则是写下以后可以暂时离开的异步承诺。
+Codeg 的产品闭环是：先把一项工作写成独立 `WorkTask`，再排队并按并发上限领取；启动时根据精确的 base SHA 创建隔离 worktree；Agent 执行过程中可以进入 Needs You；完成一轮后由用户查看结果、diff、时间线和预检，再选择 Rework、Keep going、Ask、Double-check 或 merge；最后用 Git 事实确认结果是否真正落地。官方 Tasks 指南对边界的概括也很准确：Conversation 是用户坐在前面共同推进的会话，Task 则是写下以后可以暂时离开的异步承诺。
 
-WorkTask 的 `worktree_folder_id`、`conversation_id` 和 `connection_id` 都可以为空，因此 Task 身份不依赖某次运行环境。状态变化使用“预期状态 + `run_seq`”进行 CAS，并把只追加的时间线事件放在同一事务中。Board、排队、Needs You、评审、后续动作、预检、Git 事实和重启恢复，共同构成其完整的 L3 产品机制。
+`WorkTask` 的 `worktree_folder_id`、`conversation_id` 和 `connection_id` 都可以为空，因此 Task 身份不依赖某次运行环境。状态变化使用“预期状态 + `run_seq`”进行 CAS，并把只追加的时间线事件放在同一事务中。Board、排队、Needs You、评审、后续动作、预检、Git 事实和重启恢复，共同构成其完整的 L3 产品机制。
 
 Codeg 的核心价值在 L3，其他层也有可单独采用的机制。L1 可以专项参考它把 ACP、worktree、Git、diff、Composer、事件卡片，以及由 Agent 所在环境提供的文件系统和终端沙箱接成一条执行体验；L2 可以把 Automations 的定时触发、单个 Automation 串行、补跑，以及固定 Task 流程与 merge 恢复，当作“产品层自动化”和“通用 Workflow 治理”之间的边界证据。桌面终端由进程内 `HashMap` 持有，没有持久滚屏记录、进程重启恢复或稳定的远程重新接入，因此 PTY 所有权与重连主要参考 Stably Orca。Automations 没有带版本的图、权限与法定人数规则或通用 Gate，也不能单独定义 HCTL 的 L2。
 
@@ -149,7 +149,7 @@ Codeg 的核心价值在 L3，其他层也有可单独采用的机制。L1 可�
 
 | 基线 | 状态 | 可支持的结论 |
 | --- | --- | --- |
-| [`v0.24.0 / df7a872d`](https://github.com/xintaofei/codeg/commit/df7a872de44546277e4c49cfe9d173c631161dc6) · 2026-08-11 | 已发布 | 独立 WorkTask、四列 Board、排队/并发/定时启动、Needs You、评审/预检/后续动作、merge 与基于 Git 事实的恢复 |
+| [`v0.24.0 / df7a872d`](https://github.com/xintaofei/codeg/commit/df7a872de44546277e4c49cfe9d173c631161dc6) · 2026-08-11 | 已发布 | 独立 `WorkTask`、四列 Board、排队/并发/定时启动、Needs You、评审/预检/后续动作、merge 与基于 Git 事实的恢复 |
 | [`main@a34a047a`](https://github.com/xintaofei/codeg/commit/a34a047a568018ee180dee75add8c9c7d30b2ea6) · 2026-08-14 | 未发布审计快照；按 first-parent 口径比发布版前进 23 个 commit | merge 排队、[由 Agent 所在环境提供文件系统与终端沙箱](https://github.com/xintaofei/codeg/commit/b7e21e4c789ba70036ec87de5ed72dec3d25a678)，以及重连与权限修正 |
 
 [发布版与审计快照的差异](https://github.com/xintaofei/codeg/compare/df7a872de44546277e4c49cfe9d173c631161dc6...a34a047a568018ee180dee75add8c9c7d30b2ea6)。v0.24.0 和当前 Tasks 指南规定“同一项目已有 merge 时拒绝第二个 merge”，主干从 [`597a7eeb`](https://github.com/xintaofei/codeg/commit/597a7eeb24e4a5f8aca149f2f5c182d3c2c90510)起改为排队。发布能力与主干能力在本文中分别标注。
@@ -237,7 +237,7 @@ HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和
 <a id="e-l2-conductor"></a>
 ## E-L2-CONDUCTOR · Conductor 机械状态后端
 
-L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，但不能直接提供完整的 HCTL2 Workflow。Conductor 证明外部 Worker，以及 READY、等待、定时、重试和历史记录等机械状态，可以与真正产生副作用的执行过程分开。HCTL 把它作为 WorkflowEngine 端口适配器后面的精选依赖。
+L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，但不能直接提供完整的 HCTL2 Workflow。Conductor 证明外部 Worker，以及 READY、等待、定时、重试和历史记录等机械状态，可以与真正产生副作用的执行过程分开。HCTL 把它作为 workflow engine 端口适配器后面的精选依赖。
 
 - [Conductor OSS](https://github.com/conductor-oss/conductor)
 - [核心概念](https://docs.conductor-oss.org/devguide/concepts/index.html)
@@ -337,7 +337,7 @@ Superset 的几类恢复必须分开描述：
 - 守护进程被真正杀死或机器重启后，原进程无法保留。系统只能创建新的 shell，并在已有终端与 Agent 绑定、外部系统会话 ID 仍可用时尝试恢复 Agent 会话；
 - `epoch:seq` 的精确模式只覆盖主机服务仍保有对应代际和字节范围的情况。代际变化或缺口超出环形缓冲区时会进入 `tail` 或 `reanchor`，不能宣称任意断线都能不重复、不遗漏地恢复。
 
-HCTL 的失败语义必须采用上述细分，不能只写“应用重启后会话仍在”。Superset 当前的守护进程协议使用 Unix 域套接字和文件描述符移交，并明确没有 Windows ConPTY；HCTL 只能借鉴机制和测试，仍需通过自己的跨平台 `RuntimeBackend` 契约实现。
+HCTL 的失败语义必须采用上述细分，不能只写“应用重启后会话仍在”。Superset 当前的守护进程协议使用 Unix 域套接字和文件描述符移交，并明确没有 Windows ConPTY；HCTL 只能借鉴机制和测试，仍需通过自己的跨平台运行时后端契约实现。
 
 ### 采用结论
 
@@ -420,7 +420,7 @@ DeepSeek Harness 在 L1 和跨层架构上都有独特价值。它没有把模�
 HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../spec/system.md#固定内核与受控端口)：
 
 - Repo/Project/Task/Run 身份、命令准入、权限、版本与证据、领域归约器、持久账本、隔离栅栏和 Receipt 固定在内核中；
-- Harness、RuntimeBackend、Task Source、Workflow Engine、Chat Surface 和渲染组件通过类型化端口进行替换；
+- harness、运行时后端、任务源、workflow engine、Chat 端口和渲染组件通过类型化端口进行替换；
 - 多个提供方可以声明同一个带命名空间和版本的能力，唯一的是一次已经选定的权威绑定；插件加载顺序和钩子优先级不能决定权限或语义结果；
 - `ExtensionRevision` 与 `ResolvedPortBinding` 固定代码、接口、数据结构、配置、依赖图和信任级别；Run、Attempt、Invocation、Task Source 与外部聊天渠道在各自正确粒度冻结绑定；
 - 响应式依赖只用于准入前发现或纯展示/遥测；提供方在活动执行中消失时安全暂停或失败，不能在原执行内自动改绑；
@@ -466,7 +466,7 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 
 | 证据 | 独特价值 | 边界 |
 | --- | --- | --- |
-| [assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) | 有明确作用域的 Message/MessagePart/Action 渲染器 | 不采用 Thread、运行时、Store、Composer、Cloud 或 Queue |
+| [assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) | 有明确作用域的 Message/`MessagePart`/Action 渲染器 | 不采用 Thread、运行时、Store、Composer、Cloud 或 Queue |
 | [virtua](https://github.com/inokawa/virtua) | 支持动态高度的 React 视口 | 不负责 Room 的顺序、游标或跟随策略 |
 | [Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)、[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)、[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) | 前插消息、定位到指定消息、未读状态、动态高度和无障碍测试 | 合并为行为证据；不采用其后端或领域模型 |
 
@@ -495,7 +495,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 
 [Vikunja](https://github.com/go-vikunja/vikunja)：Go 单二进制、默认 SQLite、REST API（v1/v2）与 webhooks，看板/列表/甘特多视图；AGPL-3.0-or-later（desktop 组件 GPL-3.0-or-later）。
 
-角色：Kanban 场景本地 content 后端的首选候选。采用边界：独立进程托管、经 TaskSource 受控端口访问，不 vendor、不链接其源码——AGPL 义务因此限于该服务自身。验证要点见[交付文档](../delivery.md#开工前限时验证)；选定后固定已审阅发布版本并补记 pinned commit。
+角色：Kanban 场景本地 content 后端的首选候选。采用边界：独立进程托管、经任务源受控端口访问，不 vendor、不链接其源码——AGPL 义务因此限于该服务自身。验证要点见[交付文档](../delivery.md#开工前限时验证)；选定后固定已审阅发布版本并补记 pinned commit。
 
 <a id="e-l3-git-bug"></a>
 ## E-L3-GIT-BUG · 零服务器任务后端对照（限时验证）

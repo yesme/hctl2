@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -13,10 +13,10 @@
 | agentd | Harness 发现、物理运行时、PTY、终端网关和主机观测 |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
-| task backend | 经 TaskSource 端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
+| task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
-Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 是由内核调用的受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
+Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、任务源、workflow engine、harness 和运行时后端是由内核调用的五类受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
 
 ## 固定内核与受控端口
 
@@ -29,9 +29,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 | 场景 | 端口 |
 | --- | --- |
 | Chat Room | 消息/附件/身份转换与外部投递 |
-| Kanban | TaskSource 读取、字段写回与快照 |
+| Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
-| Terminal | Harness、RuntimeBackend、终端网关与 attach provider |
+| Terminal | harness、运行时后端、终端网关与 attach provider |
 
 第一阶段全部执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；治理变更仍只能由 control 经对应受控端口发起，不能把服务器 mutation 暴露给场景客户端或其他本地进程。chat server 与任务后端的 content 读写不在此限——那是场景内容，不是治理。
 
@@ -134,7 +134,7 @@ Git 里与 HCTL 相关的持久内容分两种；混淆它们会把 Git 误读�
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；治理与施工命令照常 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步，排队操作不显示假成功；契约与完成命令照常 | 卡片与流转丢失；冻结契约与完成凭证在 metadata 账本与 Git 结晶中存活；远端后端由 provider 负责持久 |
 | Workflow 机械位置 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task | 活动 Run 的机械位置按 Lost/结果未知收口或显式替代；凭证链在 metadata 账本与 Git 结晶中存活 |
-| Harness 进程、PTY、容器、主机与原始流 | agentd / RuntimeBackend 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
+| Harness 进程、PTY、容器、主机与原始流 | agentd / 运行时后端仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
 
@@ -142,7 +142,7 @@ Git 里与 HCTL 相关的持久内容分两种；混淆它们会把 Git 误读�
 
 每个 RepoInstance（clone 物理现场）同时只有一个 control 服务写入者：先取得 `<git-common-dir>/hctl2/control.lock` 排他锁，再以 CAS 在 metadata 账本推进该现场的 `control_writer_generation`——锁是 OS 原语，代次记在账本。失败的第二实例只能连接现有服务或只读诊断。所有改变事实的下游 envelope 携带当前 generation，旧 generation 被拒绝。
 
-每个 RuntimeBackend ownership scope 同时只有一个 agentd owner lease 和单调 generation；scope 至少覆盖相同资源 broker/socket/host namespace。agentd 必须先取得该资源侧的 OS lock、broker token 或等价排他原语才可执行输入、停止和接管。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权；不能强制排他的 backend 只可观察，不开放这些写能力。
+每个运行时后端 ownership scope 同时只有一个 agentd owner lease 和单调 generation；scope 至少覆盖相同资源 broker/socket/host namespace。agentd 必须先取得该资源侧的 OS lock、broker token 或等价排他原语才可执行输入、停止和接管。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权；不能强制排他的 backend 只可观察，不开放这些写能力。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 

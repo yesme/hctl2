@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.10.2<br>
+> 状态：规范性 · 草案 v0.10.3<br>
 > 日期：2026-08-21<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -23,7 +23,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
 
-另有六个高频合同词可在设计正文携中文对照使用：TaskRevision（契约版本）、WorkflowRevision（施工图版本）、RoomInvocation（单次调用）、ExecutionSpec（执行规格）、ResultProposal（结果提议）、Run Manifest（施工清单）。`*Intent` 命令名只出现在合同层。
+另有六个高频合同词可在设计正文携中文对照使用：TaskRevision（契约版本）、WorkflowRevision（施工图版本）、RoomInvocation（单次调用）、ExecutionSpec（执行规格）、ResultProposal（结果提议）、Run Manifest（施工清单）。`*Intent` 命令名只出现在合同层与交付文档。[交付文档](../delivery.md)（工程选型、里程碑与契约测试）与合同层同侧，可直接使用合同层词汇；设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
 
 ## 六族规则
 
@@ -83,7 +83,16 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | EngineDeploymentRevision | EngineDeployment |
 | ChangeSetWriteLease | WriteLease |
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
-| TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / WorkflowEngine 端口适配器 |
+| TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / workflow engine 端口适配器 |
+
+## v0.10.3 清扫
+
+| 旧名 | 现状 |
+| --- | --- |
+| RuntimeBackend | 描述性说法：运行时后端（受控端口与物理资源持有者，无对象名） |
+| TaskSource | 端口种类 `port_kind = task_source`；散文写「任务源端口」 |
+| WorkflowEngine | 系统角色小写 workflow engine；端口写「workflow engine 端口」 |
+| HarnessAdapter | 描述性说法：harness 适配器 |
 
 ## 外部对齐原则
 

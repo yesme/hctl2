@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.10.2<br>
+> 状态：非规范对照 · 草案 v0.10.3<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、Intent、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -70,7 +70,7 @@
 
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
-| ResolvedPortBinding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；TaskSource 连接也由它承载） |
+| ResolvedPortBinding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；任务源连接也由它承载） |
 | TaskBinding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
 | ProjectRoleBinding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
 | EngineExecutionBinding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |

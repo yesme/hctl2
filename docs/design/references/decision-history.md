@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.10.2 · 2026-08-21<br>
+> 状态：Informative · 对应草案 v0.10.3 · 2026-08-21<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -45,7 +45,7 @@ Scene 是投影和操作面，不是第五个 writer。Room 的 repo/project/sco
 
 Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领域层。自建它的理由不是重写通用 UI，而是四模块的导航结构无法无损套入任何 donor 的会话、终端或工作树主导航。CLI、Workbench 和第三方原生 UI 都通过同一类 Query、Preview、Submit、Subscribe 合同工作；关闭客户端不改变领域事实，也不授予额外权限。
 
-与此同时，Chat、TaskSource、WorkflowEngine、Harness 和 RuntimeBackend 被收敛为受控端口。它们提供外部能力、报告版本与降级方式，但不能凭平台自身的 Session、Issue、workflow task、pane 或数据库取得 HCTL 字段权威（第 12 节后来把这条精确化为“可拥有 content、不可拥有治理”）。一个产品可以同时提供原生客户端和受控端口，例如第三方看板既展示 Task 又承载部分外部字段；此时 client binding 与 authority binding 仍须分开，避免“能显示”被误写成“能决定”。
+与此同时，Chat、任务源、workflow engine、harness 和运行时后端被收敛为受控端口。它们提供外部能力、报告版本与降级方式，但不能凭平台自身的 Session、Issue、workflow task、pane 或数据库取得 HCTL 字段权威（第 12 节后来把这条精确化为“可拥有 content、不可拥有治理”）。一个产品可以同时提供原生客户端和受控端口，例如第三方看板既展示 Task 又承载部分外部字段；此时 client binding 与 authority binding 仍须分开，避免“能显示”被误写成“能决定”。
 
 ## 6. Conductor 只拥有机械状态
 
@@ -106,8 +106,12 @@ v0.9.1 之前，四模块操作账本整体放在 RepoInstance SQLite 里（第 
 
 这次转向显式推翻了两条旧结论。其一，“平台不能成为第五事实源”精确化为**可以拥有 content、不能拥有治理**——room-ground-truth memo 对 Matrix 候选的否决在三分下失效：平台拥有的是记忆，不是裁决。其二，metadata 账本的归属从 RepoInstance 上移到用户级控制面（一人多机连同一个控制面），RepoInstance 只剩代码侧的物理事实。该 memo 的两个遗留分叉同时裁决：用户级 hub 以“控制面即 hub”的形式采纳；用户级“总入口对话面”否决——用户进入产品就在某个 repo 之下，这是显式设计决定，不是遗漏。
 
-这不是把治理交给平台，也不是回到 HCTL1 的“Git 承载一切”：判决仍只在 metadata 层产生，冻结摘要仍是 content 与治理之间的防火墙（第 9 节的继承表原样成立）。v0.10.1 对落点做了一处修正：Board 从 Project 级上移为 Repo 级——一个 Repo 一个 Board，Project 是板上的分组实体，Task 是卡片；这让 GitHub issues 这类天然 repo 级的后端直接对齐，也让支持父子任务的本地服务器以“任务–子任务”承载 Project–Task。v0.10.2 进一步取消了仓库侧的独立物理账本：现场记账本可由 metadata 账本、Git 与运行时观测推导，单立一本账是把实现细节写进合同——clone 本地从此只有 OS 锁与可丢弃缓存，实例注册与现场记账并入用户级账本，存储从“两本账 + Git”收敛为“一本账 + Git”。另有一条词汇裁决随本次转向生效：自 v0.10.0 起，“Agent”一词专属第四模块（原 Harness 模块更名），“Harness”专指编码代理工具这一系统角色，散文中的 AI 协作者用 Participant 表述。类别的权威定义见[合同层总则](../spec/README.md#三类数据)；候选系统与限时验证见[交付文档](../delivery.md)。
+这不是把治理交给平台，也不是回到 HCTL1 的“Git 承载一切”：判决仍只在 metadata 层产生，冻结摘要仍是 content 与治理之间的防火墙（第 9 节的继承表原样成立）。v0.10.1 对落点做了一处修正：Board 从 Project 级上移为 Repo 级——一个 Repo 一个 Board，Project 是板上的分组实体，Task 是卡片；这让 GitHub issues 这类天然 repo 级的后端直接对齐，也让支持父子任务的本地服务器以“任务–子任务”承载 Project–Task。v0.10.3 进一步取消了仓库侧的独立物理账本：现场记账本可由 metadata 账本、Git 与运行时观测推导，单立一本账是把实现细节写进合同——clone 本地从此只有 OS 锁与可丢弃缓存，实例注册与现场记账并入用户级账本，存储从“两本账 + Git”收敛为“一本账 + Git”。另有一条词汇裁决随本次转向生效：自 v0.10.0 起，“Agent”一词专属第四模块（原 Harness 模块更名），“Harness”专指编码代理工具这一系统角色，散文中的 AI 协作者用 Participant 表述。类别的权威定义见[合同层总则](../spec/README.md#三类数据)；候选系统与限时验证见[交付文档](../delivery.md)。
 
-## 13. 当前落点
+## 13. 词汇清扫（v0.10.3）
+
+v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.10.3 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（含仓库 README 架构图源码里的节点 ID）。教训与 §11 同源：命名门槛不因“端口/组件”语境而豁免，图纸节点 ID 也不豁免。
+
+## 14. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

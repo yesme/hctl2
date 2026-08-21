@@ -43,8 +43,8 @@ Execution Chat 是绑定一次精确执行的结构化观察与控制视图：�
 | --- | --- | --- |
 | 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room |
 | 场景客户端：CLI / WezTerm | 使用短期连接票据观察或接管精确目标 | 提交任意 argv/cwd/pane ID 绕过 agentd |
-| 受控端口：HarnessAdapter | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
-| 受控端口：RuntimeBackend | 持有进程/PTY/容器/mux 资源 | 决定领域权限、评审或完成 |
+| 受控端口：harness 适配器 | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
+| 受控端口：运行时后端 | 持有进程/PTY/容器/mux 资源 | 决定领域权限、评审或完成 |
 
 ## 原生会话导入
 

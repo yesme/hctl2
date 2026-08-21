@@ -1,6 +1,6 @@
 # 四模块连接与端到端闭环
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -138,7 +138,7 @@ Task 路径的验收证据 → TaskCompletionReceipt
 
 每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结合同继续收口，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
 
-权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ ExecutionSpec → agentd/adapter envelope。任何下游都不能扩展网络、secret、Git、TaskSource、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
+权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ ExecutionSpec → agentd/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
 
 ## 失败与恢复
 
@@ -154,7 +154,7 @@ Task 路径的验收证据 → TaskCompletionReceipt
 | chat server 不可用 | 治理与施工命令照常；聊天入口降级，Room 投影显示重同步中 |
 | 任务后端不可用 | 契约、升格与完成命令照常；看板显示待同步，排队操作不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 按恢复合同对账，过渡态可收口，不永久阻塞绑定 Task |
-| harness / RuntimeBackend 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
+| harness / 运行时后端不可用 | 执行安全暂停或按代次收口，不冒充成功 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示 Pending/Needs Attention 或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 

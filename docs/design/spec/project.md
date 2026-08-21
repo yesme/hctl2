@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -25,9 +25,9 @@
 | --- | --- | --- | --- |
 | RepoInstance | immutable repo identity + local writer generation | control 处理 InitRepoInstanceIntent；core 校验 Git identity | 同一 git-common-dir 只在 metadata 账本注册一个物理现场身份，重试返回原 identity；clone 本地不设账本 |
 | Project | `project_version`；`Active / Archived` | control 处理 Create/Update/Archive/Restore Project Intent | Archived 拒绝新 Task、Run 和写入型 Invocation；历史只读 |
-| Participant / ProjectRoleBinding | Participant immutable revision + current pointer；binding version | control 处理 Create/Update Participant 与 Bind/Rebind ProjectRole Intent | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
-| Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Create/ArchiveScopedRoom Intent，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
-| Chat 端口绑定 | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Bind/Rebind/Disable ChatSurface Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
+| Participant / ProjectRoleBinding | Participant immutable revision + current pointer；binding version | control 处理 Create/Update Participant 与 ProjectRoleBinding 的 Bind/Rebind Intent | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
+| Room / RoomEvent | Room state version；`Active / ReadOnly / Archived`；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的 Create/Archive Intent，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
+| Chat 端口绑定 | immutable revision + current pointer；`Active / Disabled / Replaced` | control 处理 Chat 端口绑定的 Bind/Rebind/Disable Intent，adapter 只投递/回读 | 固定 ResolvedPortBinding、外部 account/thread stable IDs、成员映射、去重 cursor 与降级能力 |
 | ContextManifest / ContextBundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；`Open / Resolved / Expired / Cancelled / Superseded` | Project reducer/control 处理 Create/Resolve/Cancel Intent 与 deadline | 终态不可复活；新问题创建新 Request |
 | RoomInvocation | `invocation_version`；`Pending / Running / WaitingForInput / Interrupted / Completed / Failed / Cancelled` | Project reducer/control 处理 Create/Cancel/AdmitResult，agentd 只提供观测 | Interrupted 和其他终态不可复活；重试创建新 Invocation |

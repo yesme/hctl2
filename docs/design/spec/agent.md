@@ -1,6 +1,6 @@
 # Agent 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
@@ -59,7 +59,7 @@ Run 经其 Attempt 可以有多个 ExecutionRuntime；RoomInvocation 至多一�
 
 RoomInvocation 拥有的 ExecutionRuntime 继承其 ExecutionSpec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 RoomInvocation、ExecutionRuntime、binding、generation、权限和适用 fence；已知运行时不能被降级成无主进程或模糊仓库活动。
 
-agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 control 已获准的 start/input/cancel/stop；Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按 `RuntimeBackend/进程/租约 > 结构化 lifecycle 事件或 hook > title/screen` 仲裁，语义观测按 `结构化提供方协议或原生 hook > 转录推断 > title/screen` 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
+agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 control 已获准的 start/input/cancel/stop；Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按 `运行时后端/进程/租约 > 结构化 lifecycle 事件或 hook > title/screen` 仲裁，语义观测按 `结构化提供方协议或原生 hook > 转录推断 > title/screen` 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
 
 结构化事件统一归一为生命周期提示、工具调用、权限请求、文件变化、测试、用量和原始输出。未知事件保留原文并安全降级，不得凭渲染器猜测完成。
 

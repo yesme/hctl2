@@ -49,7 +49,7 @@ Workflow 场景提供施工清单预览、只读图、节点/席位/尝试的渐
 | --- | --- | --- |
 | 场景客户端：Workbench Run 图 | 查询、预览并提交 Run 命令 | 直接修改 Engine 或签发结果 |
 | 场景客户端：CLI | show/preview/start/pause/cancel；写操作先预览确认 | 绕过绑定、版本或权限 |
-| 受控端口：WorkflowEngine | 保存令牌、机械任务、定时器、重试和历史 | 选择 Harness、创建 Seat、计算 HCTL Gate、签发 Receipt 或写 Git |
+| 受控端口：workflow engine | 保存令牌、机械任务、定时器、重试和历史 | 选择 Harness、创建 Seat、计算 HCTL Gate、签发 Receipt 或写 Git |
 
 Workbench 关闭不停止 Run。
 

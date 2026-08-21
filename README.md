@@ -99,10 +99,10 @@ flowchart LR
 flowchart LR
     subgraph Clients["可并存的场景客户端"]
         Bench["hctl2-workbench\nRoom · Kanban · Workflow · Terminal"]
-        ChatClient["Feishu / Slack / Discord\nChat Room 客户端"]
-        TaskClient["Linear / GitHub\nKanban 客户端"]
-        WorkflowClient["第三方 Workflow UI"]
-        TerminalClient["WezTerm / CLI\nTerminal 客户端"]
+        chat_client["Feishu / Slack / Discord\nChat Room 客户端"]
+        task_client["Linear / GitHub\nKanban 客户端"]
+        workflow_client["第三方 Workflow UI"]
+        terminal_client["WezTerm / CLI\nTerminal 客户端"]
     end
 
     subgraph Control["hctl2-control · 四个领域模块"]
@@ -116,18 +116,18 @@ flowchart LR
     Bench --> T
     Bench --> R
     Bench --> H
-    ChatClient --> P
-    TaskClient --> T
-    WorkflowClient --> R
-    TerminalClient --> H
+    chat_client --> P
+    task_client --> T
+    workflow_client --> R
+    terminal_client --> H
 
-    P --> ChatPort["Chat 受控端口"]
-    ChatPort --> ChatSrv["chat server（Matrix 协议）"]
-    T --> TaskSource["TaskSource 受控端口"]
-    TaskSource --> TaskBackend["任务后端（本地任务服务器 / Linear、GitHub）"]
-    R --> Engine["WorkflowEngine 端口"]
+    P --> chat_port["Chat 受控端口"]
+    chat_port --> chat_srv["chat server（Matrix 协议）"]
+    T --> task_source["任务源受控端口"]
+    task_source --> task_backend["任务后端（本地任务服务器 / Linear、GitHub）"]
+    R --> Engine["workflow engine 端口"]
     H --> Agentd["agentd"]
-    Agentd --> Runtime["Harness / RuntimeBackend"]
+    Agentd --> Runtime["harness / 运行时后端"]
 
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Core["hctl2-core · Git/SCM"]

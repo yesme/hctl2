@@ -1,6 +1,6 @@
 # Task 模块合同
 
-> 状态：规范性合同 · 草案 v0.10.2<br>
+> 状态：规范性合同 · 草案 v0.10.3<br>
 > 本文是 Task 模块对象、状态机与写入合同的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -52,7 +52,7 @@ task_source 端口绑定与 TaskBinding 的本地 current projection 使用 cont
 | TaskSourceSnapshot | append-only sequence + remote revision/digest/cursor；可产生 `PendingAdoption` | control 持久化 refresh/reconcile 观测；AdoptTaskRevisionIntent 才消费内容变化 | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | TaskCompletionReceipt | immutable | 只有成功的 CompleteTaskIntent 事务可写 | 精确绑定该次 `task_lifecycle_version`、TaskRevision 与证据 |
 
-CompleteTaskIntent 校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt，并对影响契约的 PendingAdoption 默认拒绝（fail-closed）：actor 必须先采纳并按新 Revision 重新验收，或显式选择“按当前冻结 Revision 完成”；后者必须冻结并 CAS 当前 TaskBinding/state version、source head 和全部未采纳的契约 Snapshot refs/digests，预览后新增或变化的 drift 一律使命令失效。StartRun 时的拒绝或延期不能代替这次选择。CompleteTaskIntent 与 CancelTaskIntent 在任何绑定该 Task 的非终态 Run 存在时都拒绝；必须先显式结束该 Run 并等到旧执行撤权、隔离，Task 命令不会隐式停止 Run。Reopen/Cancel 保留旧 Receipt 和历史。
+CompleteTaskIntent 校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt，并对影响契约的 PendingAdoption 默认拒绝（fail-closed）：actor 必须先采纳并按新 Revision 重新验收，或显式选择“按当前冻结 Revision 完成”；后者必须冻结并 CAS 当前 TaskBinding/state version、source head 和全部未采纳的契约 Snapshot refs/digests，预览后新增或变化的 drift 一律使命令失效。StartRunIntent 预览时的拒绝或延期不能代替这次选择。CompleteTaskIntent 与 CancelTaskIntent 在任何绑定该 Task 的非终态 Run 存在时都拒绝；必须先显式结束该 Run 并等到旧执行撤权、隔离，Task 命令不会隐式停止 Run。Reopen/Cancel 保留旧 Receipt 和历史。
 
 Task 终结只有两个获准来源：有权 human actor 从 Kanban 场景提交 Task 命令，或绑定精确 TaskRevision 的 Run 正常进入 `Completed` 后由 Run reducer/control 机械提交同一个 CompleteTaskIntent。后者使用由 Run/Task 身份派生的稳定幂等键，仍经过本段全部 Task 准入；Run 已完成而 Task 校验失败时，Run 保持 `Completed`，Task 保持 `Open` 并显示 Needs Attention。`Failed / Cancelled / Superseded` Run 不能完成或取消 Task。CancelTaskIntent 只接受有权 human actor。这里的 Kanban 是命令场景而非某个窗口：Workbench、CLI 或适配后的第三方客户端都可以承载，但必须由认证入口证明 human provenance；外部 Closed、Participant、WorkerProfile、Harness、adapter、模型输出和 execution principal 都不是终结 actor。
 
@@ -64,9 +64,9 @@ ReopenTaskIntent 只接受有权 human actor，必须以预期 `task_lifecycle_v
 
 Run 的裸终态、Harness 自述、Git commit、CI 绿色或外部 Closed 都不是 CompleteTaskIntent；唯一 Workflow 例外是 task-bound Run 正常完成后由 reducer 提交上述同一个 Task 命令。
 
-## StartRun 前置与排序令牌
+## 启动 Run 的前置与排序令牌
 
-StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRun 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Manifest、ContextManifest 或 ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
+StartRunIntent 预览必须列出会影响当前 TaskRevision 的全部 `PendingAdoption`，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 TaskRevision，再以新 Revision 重做 StartRunIntent 预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 TaskRevision、Run Manifest、ContextManifest 或 ExecutionSpec。存在未处理的 PendingAdoption 时不得启动 Run，control 也不得自动采纳或静默越过；只有 AdoptTaskRevisionIntent 能让外部契约内容进入施工合同。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
 
 排序与位置永远归 content 后端。MoveTaskIntent 冻结 TaskBinding 的本地 `state_version` 与后端的并发令牌，经受控端口写入并回读 Snapshot；来源刷新推进 binding `state_version`，使旧预览失效。后端若没有可条件写入的并发令牌，adapter 不得伪造一个：只有后端提供等价原子版本前置时才开放相对排序写入，否则降级为只读或其确实支持且可回读的绝对移动。本地任务服务器与远端平台各用自己的令牌，本地 `state_version` 与后端令牌不能互相冒充，跨后端或排序作用域的相对移动必须拒绝。
 

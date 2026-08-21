@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面——这是对旧范围的显式反转；非 Matrix 平台桥接不作为出门条件 |
 | [Task](./task.md) | 可访问 Kanban、以本地任务服务器为默认 content 后端、完成预览 | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
-| [Run](./run.md) | WorkflowRevision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Conductor 经 WorkflowEngine 受控端口通过本地分发与恢复测试 |
-| [Agent](./agent.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 HarnessAdapter 和一个 RuntimeBackend 通过完整契约测试；WezTerm 可选 |
+| [Run](./run.md) | WorkflowRevision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Conductor 经 workflow engine 受控端口通过本地分发与恢复测试 |
+| [Agent](./agent.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时后端通过完整契约测试；WezTerm 可选 |
 
 四个场景由 Workbench 集成，但其命令必须可以由同一 service 供 CLI 或外部适配器使用。
 
@@ -27,7 +27,7 @@
 | Run / Workflow | `run show\|preview\|start\|pause\|cancel`；修改动作先预览确认 |
 | Agent / Terminal | `terminal inspect\|attach\|resume\|replay`；必须指向精确 descriptor |
 
-CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或 RuntimeBackend。
+CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或运行时后端。
 
 ## 明确不做
 
@@ -98,7 +98,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 | 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；Harness 绕过端口的写能力被拒绝，外部 drift 只形成 Snapshot/观测而不是结果 |
 | 系统 | 第二 control/agentd 只读或拒绝；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本备份/恢复，每个执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的备份与恢复；content 服务器宕机不阻断治理命令，从 Git 结晶回灌不得伪造未结晶判决；clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实；一键启停下各服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
 | 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
-| Workbench 信息架构 | 单 Project Overview 与全局 Needs Attention 都是可重建的只读导航投影，不产生第五场景或写状态；打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；CreateProject 提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
+| Workbench 信息架构 | 单 Project Overview 与全局 Needs Attention 都是可重建的只读导航投影，不产生第五场景或写状态；打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；CreateProjectIntent 提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
 | Workbench 输入与无障碍 | Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价；输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入 |
 | 产品 | 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本；正常成功保持安静；HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实 |
 
@@ -116,7 +116,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 ## 开工前限时验证
 
 1. **Workflow Engine（conductor-oss）本地分发**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败则重开 Engine ADR，不自研第二引擎。
-2. **RuntimeBackend**：Zellij 与 tmux 用同一套 attach、输入、resize、重启、残留进程、macOS/Linux 测试，第一阶段只选一个。
+2. **运行时后端**：Zellij 与 tmux 用同一套 attach、输入、resize、重启、残留进程、macOS/Linux 测试，第一阶段只选一个。
 3. **chat server**：Tuwunel 与 Continuwuity（均为 Rust 单二进制 + SQLite 的 Matrix homeserver）并列验证：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停；只选一个。
 4. **task server**：Vikunja 首选（Go 单二进制、SQLite、REST API + webhooks），git-bug 并列对照（零服务器、任务存于 git refs、随仓库分布式同步）。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停；git-bug 若胜出，须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端**：Linear/GitHub 用同一身份、字段权威、outbox/readback、限流和 tombstone 样本，选择首个完整双向适配器。
