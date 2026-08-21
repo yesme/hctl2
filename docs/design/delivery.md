@@ -106,20 +106,116 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 ## 契约测试矩阵
 
-| 稳定 family ID | 范围 | 必须证明 |
-| --- | --- | --- |
-| `CT-PROJECT` | Project / Chat Room | 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认；Project 分组与 Room anchor 可重建；有活动 Invocation/Run 或开放 Request 时归档 Project 拒绝。CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离；Repo Room 只把显式选中的来源链带入新 Project；Scoped Room 回填和同根因 Request 去重；Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）；chat server 不可用时，依赖 fresh Room 来源、身份或 Context 的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用；chat server 中的消息、反应或自动化不能成为命令；模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context；无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝；mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人；原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo |
-| `CT-TASK` | Task / Kanban | Task Revision、lifecycle、stage、正交 health、lane 投影与外部状态分离；非法 move/complete 拒绝；local state version 与 remote revision 不混用，过期邻项移动重算；本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝；未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效；active Run 未收口时 terminal intent 拒绝；human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令，Harness/LLM/adapter/外部已关闭冒充 actor 均拒绝；同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射；content 后端按 Repo 选定，跨后端相对移动拒绝；Project 分组 anchor 在删除、重绑和重建后保持稳定，原生 UI 把卡跨 Project 分组移动只形成 jurisdictional drift，不静默改写 `project_id`；Project 分组映射（父任务/milestone/标签降级）有测试；无契约 Task 的看板终态只是 content 投影，完成命令仍需先升格契约 |
-| `CT-RUN` | Run / Workflow | 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control；过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换；dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功；retry 只产生一个新 Obligation并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代；dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝；placement 变更留下不可变审计；Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat；quorum-unreachable 沿冻结失败边推进；engine 报告完成但 required Obligation/Gate/Integration Receipt 未满足、仍有 blocking Request 或活跃 execution/lease 未收口时，Run completion predicate 拒绝进入正常完成；失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝 |
-| `CT-AGENT` | Agent / Terminal | 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation；无法证明旧 writer 已 fence 时隔离旧 worktree且不得重授租约，失败清理不丢唯一未封存/未跟踪修改；本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt；冲突观测按来源证据仲裁；Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝；execution principal 即使复制 human payload、调用公共 CLI 或继承普通环境变量，也不能升级为 human provenance；第一阶段每个 Worker Profile 都必须通过越权文件、target Git ref/common-dir、control/人类 credential、OS secret store、SSH agent、未授权 provider config、网络目的地与工具接口访问负例，凭据不得经环境变量、普通 stdin/history 注入且只能由 gateway 代用，不满足物理隔离就拒绝受治理启动；人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果；control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离；attach 只接通道，不能恢复 Run/Invocation 语义；attach/replay、IME/背压/慢客户端隔离 |
-| `CT-CONNECTION` | 连接 / 端口 | 每条 handoff 固定 source ref/digest 与唯一 binding；Run/Invocation 冻结精确 Context Manifest ref+digest，每个实际 consumer 冻结对应 Context Bundle ref+digest，权限过滤、来源版本或预算变化使旧预览失效；client/port 权限分离；actor provenance 不能由 payload 自报；dispatch/result 迟到拒绝；外部 effect ACK 未知不重复且 adapter 不写 Receipt；provider 离线时，不要求 fresh readback 的查询/命令可继续，要求 current head/revision/lease/readback 的准入统一 fail closed；Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果 |
-| `CT-SYSTEM` | 系统 | 同一用户级账本只能有一个 control writer，第二 writer 拒绝；多个 agentd 可以登记为不同 execution site，但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限；命令幂等；commit/ACK 各崩溃点回读；schema migration、投影重建；metadata 账本执行一致性 backup、restore preview/apply、writer generation 重置与恢复后 content readback，每个首次消费的 content 服务器执行备份与恢复；content 服务器宕机不抹掉已接纳事实，但依赖 fresh provider readback 的命令 fail closed；从 Git 结晶回灌不得伪造未结晶判决；clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实；一键启停下已消费服务器的启动顺序与健康检查；旧 generation 与越权适配器拒绝；等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝；打包后的整窗启动/退出/升级和安全边界 |
-| `CT-PACKAGING` | 扩展 / 打包 | 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝 |
-| `CT-WORKBENCH-IA` | Workbench 信息架构 | 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生第五场景或写状态；打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）；进入 Project 默认打开 Project Room，deep link 保留返回路径；同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态；「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链；Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out |
-| `CT-WORKBENCH-INPUT` | Workbench 输入与无障碍 | Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价；输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入 |
-| `CT-PRODUCT` | 产品 | 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本；正常成功保持安静；HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实 |
+交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
 
-交付测试检查可观察行为，不复述模块状态机。模块新增合同必须在这里增加一个失败用例，而不是再建一份不变量文档。
+### `CT-PROJECT` · Project / Chat Room
+
+- 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认
+- Project 分组与 Room anchor 可重建
+- 有活动 Invocation/Run 或开放 Request 时归档 Project 拒绝
+- CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离
+- Repo Room 只把显式选中的来源链带入新 Project
+- Scoped Room 回填和同根因 Request 去重
+- Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
+- chat server 不可用时，依赖 fresh Room 来源、身份或 Context 的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
+- chat server 中的消息、反应或自动化不能成为命令
+- 模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context
+- 无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝
+- mention 解析无唯一授权候选时明确失败，不按显示名模糊匹配或静默换人
+- 原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo
+
+### `CT-TASK` · Task / Kanban
+
+- Task Revision、lifecycle、stage、正交 health、lane 投影与外部状态分离
+- 非法 move/complete 拒绝
+- local state version 与 remote revision 不混用，过期邻项移动重算
+- 本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝
+- 未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效
+- active Run 未收口时 terminal intent 拒绝
+- human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令，Harness/LLM/adapter/外部已关闭冒充 actor 均拒绝
+- 同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射
+- content 后端按 Repo 选定，跨后端相对移动拒绝
+- Project 分组 anchor 在删除、重绑和重建后保持稳定，原生 UI 把卡跨 Project 分组移动只形成 jurisdictional drift，不静默改写 `project_id`
+- Project 分组映射（父任务/milestone/标签降级）有测试
+- 无契约 Task 的看板终态只是 content 投影，完成命令仍需先升格契约
+
+### `CT-RUN` · Run / Workflow
+
+- 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control
+- 过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换
+- dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功
+- retry 只产生一个新 Obligation 并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代
+- dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝
+- placement 变更留下不可变审计
+- Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat
+- quorum-unreachable 沿冻结失败边推进
+- engine 报告完成但 required Obligation/Gate/Integration Receipt 未满足、仍有 blocking Request 或活跃 execution/lease 未收口时，Run completion predicate 拒绝进入正常完成
+- 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
+
+### `CT-AGENT` · Agent / Terminal
+
+- 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation
+- 无法证明旧 writer 已 fence 时隔离旧 worktree 且不得重授租约，失败清理不丢唯一未封存/未跟踪修改
+- 本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt
+- 冲突观测按来源证据仲裁
+- Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝
+- execution principal 即使复制 human payload、调用公共 CLI 或继承普通环境变量，也不能升级为 human provenance
+- 第一阶段每个 Worker Profile 都必须通过越权文件、target Git ref/common-dir、control/人类 credential、OS secret store、SSH agent、未授权 provider config、网络目的地与工具接口访问负例，凭据不得经环境变量、普通 stdin/history 注入且只能由 gateway 代用，不满足物理隔离就拒绝受治理启动
+- 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
+- control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离
+- attach 只接通道，不能恢复 Run/Invocation 语义
+- attach/replay、IME/背压/慢客户端隔离
+
+### `CT-CONNECTION` · 连接 / 端口
+
+- 每条 handoff 固定 source ref/digest 与唯一 binding
+- Run/Invocation 冻结精确 Context Manifest ref+digest，每个实际 consumer 冻结对应 Context Bundle ref+digest，权限过滤、来源版本或预算变化使旧预览失效
+- client/port 权限分离
+- actor provenance 不能由 payload 自报
+- dispatch/result 迟到拒绝
+- 外部 effect ACK 未知不重复且 adapter 不写 Receipt
+- provider 离线时，不要求 fresh readback 的查询/命令可继续，要求 current head/revision/lease/readback 的准入统一 fail closed
+- Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
+
+### `CT-SYSTEM` · 系统
+
+- 同一用户级账本只能有一个 control writer，第二 writer 拒绝
+- 多个 agentd 可以登记为不同 execution site，但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限
+- 命令幂等
+- commit/ACK 各崩溃点回读
+- schema migration、投影重建
+- metadata 账本执行一致性 backup、restore preview/apply、writer generation 重置与恢复后 content readback，每个首次消费的 content 服务器执行备份与恢复
+- content 服务器宕机不抹掉已接纳事实，但依赖 fresh provider readback 的命令 fail closed
+- 从 Git 结晶回灌不得伪造未结晶判决
+- clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实
+- 一键启停下已消费服务器的启动顺序与健康检查
+- 旧 generation 与越权适配器拒绝
+- 等价对象的 JCS 规范摘要一致、内容篡改被 digest 校验拒绝
+- 打包后的整窗启动/退出/升级和安全边界
+
+### `CT-PACKAGING` · 扩展 / 打包
+
+- 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Conductor、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝
+
+### `CT-WORKBENCH-IA` · Workbench 信息架构
+
+- 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生第五场景或写状态
+- 打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）
+- 进入 Project 默认打开 Project Room，deep link 保留返回路径
+- 同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态
+- 「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链
+- Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out
+
+### `CT-WORKBENCH-INPUT` · Workbench 输入与无障碍
+
+- Board 移动、Request 操作和 Run 浏览在 mouse/touch/keyboard/screen reader 下等价
+- 输入优先级为 IME composition → 已聚焦 terminal → modal/composer → 当前场景 → 全局快捷键，任何上层快捷键都不能截获正在组合或发往 terminal 的输入
+
+### `CT-PRODUCT` · 产品
+
+- 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本
+- 正常成功保持安静
+- HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实
 
 ## 选型判据
 
