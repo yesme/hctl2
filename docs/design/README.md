@@ -27,11 +27,10 @@ flowchart TD
     P --> RN["Run 0..N"]
     T --> TR["Task Revision 只追加"]
     RN -->|Manifest 冻结引用| W["Workflow Revision"]
-    RN --> O["Obligation 0..N"]
-    O --> S["Seat 1..N"]
-    S --> A["Attempt 0..N"]
-    A --> CS["ChangeSet / Runtime（Agent 模块）"]
+    RN -->|执行产出| CS["ChangeSet（Agent 模块）"]
 ```
+
+Run 内部如何把工作分成交付义务、席位与尝试（重试不灌票、换人不换裁判、掉线不丢身份），见 [Run 设计正文](./run.md)；这属于一次施工内部的防线，不属于管辖骨架。
 
 Room 与 Run 可以互相引用，但不存在包含关系：Project Room 可以展示多个 Run；Scoped Room 可以由某个 Run 的 Request 派生；Room 不拥有 Workflow token 或运行时，Run 也不需要自己的 Room。
 
