@@ -9,7 +9,7 @@ HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的�
 
 HCTL1 首先解决的是“谁可以对哪个精确版本作出什么裁决”。它把协调事实放在 Git 上，形成 append-only 事件、local/remote CAS、claim OID fence、精确 `{base, head}` Verdict、quorum、可重放的 squash merge Receipt，以及事实不完整时 fail-closed 的 level-triggered reconciliation。这套可执行内核证明：治理可以依靠稳定身份、精确版本和可重放证据，而不依赖常驻 daemon、数据库时钟或界面状态。
 
-这条谱系没有被 HCTL2 丢弃。HCTL2 延续了版本化证据、claim/fence、法定票数、Receipt 和对账思想；但 HCTL1 的对象模型和 Git 事实布局只适合它当时的窄范围，不是 HCTL2 的存储或产品蓝图。具体基线与限制见 [`E-L2-HCTL1`](./implementation-evidence.md#e-l2-hctl1)。
+这条谱系没有被 HCTL2 丢弃。HCTL2 延续了版本化证据、claim/fence、法定票数、Receipt 和对账思想；但 HCTL1 的对象模型和 Git 事实布局只适合它当时的窄范围，不是 HCTL2 的存储或产品蓝图。具体基线与限制见 [`E-L2-HCTL1`](./implementation-evidence.md#e-l2-hctl1--hctl1--yesmehctl)。
 
 ## 2. 多 Harness 终端是产品问题的起点
 
@@ -67,7 +67,7 @@ First Tree 证明了持久 Chat、稳定且显式的 recipient，以及发生在
 
 因此当前设计只承认两类边：普通 Chat Room 的临场协作边由有权 human actor 创建，Workflow 的执行边由 reducer 按冻结的 Workflow Revision 创建。Agent-authored message、Result Proposal 或模型总结可以建议下一位 Participant，却不能自行 cue 新 worker、扩大 fan-out 或递归委派。在 Chat Room 中，人本来就处于讨论焦点；系统应把建议变成可一键批准、自动携带引用与 Context 的 handoff，而不是让人重新复制和转述内容。
 
-这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](./implementation-evidence.md#e-l4-first-tree)。
+这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](./implementation-evidence.md#e-l4-first-tree--first-tree)。
 
 ## 9. 延续治理合同，同时更换对象与事实源
 

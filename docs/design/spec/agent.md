@@ -25,8 +25,8 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 | Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；agentd 只报告探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | ChangeSet / Write Lease | change_set_version、current revision；lease 为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git，agentd 执行失权 | 一个 ChangeSet 至多一个活跃 lease；ChangeSet Revision 只追加 |
 | 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
-| Execution Runtime | `runtime_generation`；Reserved / 活跃 / Stopping / Stopped / 丢失 | control 记录 binding 并处理 Activate/Stop；agentd 持有物理资源与观测 | Stopped/丢失不复活；恢复或接管使用新 runtime generation |
-| Terminal Input Lease | lease generation；活跃 / Revoked / 已过期 | control 授予/撤销，agentd 输入门执行；takeover 原子撤销旧 lease | 一个目标最多一个活跃输入者 |
+| Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录 binding 并处理「激活/停止」命令；agentd 持有物理资源与观测 | 已停止/丢失不复活；恢复或接管使用新 runtime generation |
+| Terminal Input Lease | lease generation；活跃 / 已撤销 / 已过期 | control 授予/撤销，agentd 输入门执行；接管原子撤销旧 lease | 一个目标最多一个活跃输入者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。

@@ -36,7 +36,7 @@ Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；�
 
 Workflow Node、Engine task execution、Obligation、Seat 和 Attempt 是不同身份。Obligation 的不可变绑定固定 `engine_binding_generation` 与精确 Engine task execution identity（外部 task ID 及 engine retry/attempt token）；其带版本的租约视图记录生效租约、截止时间和最近一次由 adapter 回读确认的续租，超时与备用候选准入只能依据该确认值。Engine retry 创建新 Obligation 前，control 必须在同一领域事务中把旧 Obligation 及其未终态 Seat/Attempt 置为被替代，令其派发、写入与输入授权失效，并提交物理隔离 outbox；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
 
-Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了的证明”）：权威在 metadata 账本，结晶副本按[双层保存政策](./system.md#事实与存储)写入 Git。
+Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了的证明”）：权威在 metadata 账本，结晶副本按[系统存储合同](./system.md#git-的双重角色)写入 Git。
 
 ## Workflow 与 Run 授权
 
