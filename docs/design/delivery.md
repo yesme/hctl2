@@ -1,6 +1,6 @@
 # 第一阶段、验证与自举
 
-> 本文只定义“交付什么、怎样证明”；对象和状态以[合同层](./spec/README.md)的四个模块合同为准，端到端步骤按[连接合同](./spec/connections.md)验收。本文属验证文档：可引用合同层词汇以指认被测合同，但不重定义它们。
+> 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[合同层](./spec/README.md)的四个模块合同为准，端到端步骤按[连接合同](./spec/connections.md)验收。本文属验证文档：可引用合同层词汇以指认被测合同，但不重定义它们。
 
 ## 第一阶段范围
 
@@ -40,6 +40,20 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 - 同时完成 Linear 与 GitHub 两套完整双向适配器；
 - 多 Task Run 的分支/合并政策；第一阶段每个 Run 只绑定 0..1 个 TaskRevision。
 
+## 实现阶段
+
+施工顺序与信任阶梯是两个维度：本节的 P 表回答「先建什么」，「自举阶段」的 B 表回答「什么时候敢切换事实」。建完不等于敢用——P2 的代码可以很快写完，B1 的晋级要靠真实试用去挣；两表一一映射，工程进度与敢用程度互相校验。
+
+| 阶段 | 建什么 | 达成 |
+| --- | --- | --- |
+| P0 · 选型确认 | 跑「开工前限时验证」四项：chat server 二选一定夺、Vikunja、conductor-oss 单机栈、Zellij；产出 ADR 定案与固定版本 | 四个执行面系统各定一个可运维版本 |
+| P1 · 底座 | 账本 schema、ID、command/query/event、单写者与恢复、`init/start/status/doctor`、四服务器一键启停 | B0 |
+| P2 · 场景接入 | chat server 接入与 Repo/Project Room；任务服务器接入与身份映射/快照（「Kanban content 后端切片」前半） | B1 |
+| P3 · 无 Run 自举 | 「纵向切片 A」全流程：RoomInvocation、写租约、ChangeSet/diff/证据、完成预览 | B2（第一次真正自举） |
+| P4 · 日常自举 | 并发 Invocation、Request、Receipt、冷启动恢复；此后按需启动远端任务后端验证 | B3 |
+| P5 · 治理 | workflow engine 接入、Run/Seat/Gate、「纵向切片 B」、候选切换/三选二/regate | B4 → B5 |
+| P6 · 发布 | 打包、升级、回滚隔离 | B6 |
+
 ## 纵向切片 A：无 Run 自举
 
 1. 初始化 RepoInstance，创建 Project 与 TaskRevision。
@@ -69,7 +83,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 ## 自举阶段
 
-HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能力分级，而不是“上线前/上线后”二分；每一级都走普通的命令与查询入口，并包含真实的失败路径。打开过自己的仓库，或替自己生成过一次代码，都不算完成自举。
+HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能力分级，而不是“上线前/上线后”二分（施工顺序见「实现阶段」，P 与 B 一一映射）；每一级都走普通的命令与查询入口，并包含真实的失败路径。打开过自己的仓库，或替自己生成过一次代码，都不算完成自举。
 
 | 阶段 | 事实切换 | 晋级验收 |
 | --- | --- | --- |
@@ -115,15 +129,17 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 ## 开工前限时验证
 
-1. **Workflow Engine（conductor-oss）本地分发**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败则重开 Engine ADR，不自研第二引擎。
-2. **运行时后端**：Zellij 与 tmux 用同一套 attach、输入、resize、重启、残留进程、macOS/Linux 测试，第一阶段只选一个。
-3. **chat server**：Tuwunel 与 Continuwuity（均为 Rust 单二进制 + SQLite 的 Matrix homeserver）并列验证：本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停；只选一个。
-4. **task server**：Vikunja 首选（Go 单二进制、SQLite、REST API + webhooks），git-bug 并列对照（零服务器、任务存于 git refs、随仓库分布式同步）。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停；git-bug 若胜出，须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
-5. **远端任务后端**：Linear/GitHub 用同一身份、字段权威、outbox/readback、限流和 tombstone 样本，选择首个完整双向适配器。
+P0 的内容就是本节。选型已拍板（chat server 尚在二选一），验证因此从“选谁”变为“确认能落地”：按 Conductor 先例三件套照跑，通过则固定版本进入 P1，失败才重开对应 ADR。
+
+1. **workflow engine（conductor-oss，已拍板）**：固定版本打包、启动、升级、备份和恢复。其持久化仅支持 Redis/Postgres/MySQL（无 SQLite），验证目标是单机可运维的最小持久化组合与打包重量；失败重开 Engine ADR，不自研第二引擎。
+2. **运行时后端（Zellij，已拍板；tmux 为记录在案的降级方向）**：attach、输入、resize、重启、残留进程、macOS/Linux 全套测试，另加三点——headless 启动时的终端查询应答（无人 attach 期间 TUI 的能力查询须有应答）、增强键盘协议（kitty keyboard protocol）下各 harness 的按键实测、内建 web 客户端保持默认关闭（需要瘦身时可用 `zellij-no-web` 构建裁剪）；打包重量与常驻内存实测记入实现证据。
+3. **chat server（Tuwunel vs Continuwuity，并列验证后所有者定夺）**：均为 Rust 单二进制 + SQLite 的 Matrix homeserver。本地分发、账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序、重同步、备份恢复与一键启停。
+4. **task server（Vikunja，已拍板）**：Go 单二进制、SQLite、REST API + webhooks。验证要点：看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性、备份恢复与一键启停。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败重开 ADR 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
+5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P4 之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
 
 ## 技术基线
 
-Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：conductor-oss（Workflow Engine）、Matrix homeserver（Tuwunel 或 Continuwuity，chat server）、本地任务服务器（Vikunja 首选，git-bug 对照，限时验证定夺）。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/core/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：conductor-oss（workflow engine）、Matrix homeserver（Tuwunel 或 Continuwuity，二选一定夺中）、本地任务服务器（Vikunja）、运行时后端（Zellij；tmux 为降级方向）。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
