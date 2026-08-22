@@ -25,11 +25,13 @@
 | --- | --- | --- | --- |
 | [First Tree](https://github.com/agent-team-foundation/first-tree) | L4 核心；L2/L1 专项 | 核心参考 + 专项证据 | 持久 Chat、显式寻址与可见 handoff、Context 筛选与治理、Need You、可靠 Inbox、跨渠道协作和托管运行时连续性 |
 | [Claude Tag](https://www.anthropic.com/news/introducing-claude-tag) | L4 | 行为参考 | 共享且可继续引导的讨论串、按作用域拥有的身份和记忆、持久协作与临时运行时分离 |
+| [Grok Bot](https://x.ai/news/introducing-grok-bot) | L4 行为;L3/L2/L1 边界 | 行为参考 | Bot 作为应用原生一等参与者与 handoff 可见性原则、审批双规则与"审批不可逆已完成工作"的显式声明、观察-接管-交还回路;账号级共享云机与凭证的反面证据 |
 | [OpenClaw](https://github.com/openclaw/openclaw) | L4 | 专项参考 | 确定性的多渠道身份与路由、配对/白名单和按渠道降级投递 |
 | [Codeg](https://github.com/xintaofei/codeg) | L3 核心；L1/L2 专项 | 核心参考 + 专项证据 | 独立异步 `WorkTask`、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | L3 | 专项参考 | 持久 Task/Attempt、原子领取、心跳/回收、依赖推进和多客户端共用内核 |
 | [Multica](https://github.com/multica-ai/multica) | L4/L3/L2/L1 专项 | 行为、边界与实现证据 | L4 的 Project/Issue/私聊发布边界；L3 的 Issue 与单次运行分离；L2 的领取、租约、重试、恢复与归属；L1 的多 Harness 能力矩阵和无损 worktree |
 | [LobeHub](https://github.com/lobehub/lobehub) | L4/L1 专项；L2 边界 | 专项参考 + 边界证据 | Context 组装的纯机械处理器管道与增量持久化压缩；外部 Harness 子进程适配器的终局结果契约、状态提取与会话重建；supervisor LLM 路由和默认工具 token 重量的反面实证 |
+| [Rakazo](https://github.com/elie222/rakazo) | L2/L1 专项;L4 专项 | 专项参考 + 边界证据 | 三层带隔离栅栏的租约与幂等效果账本、挂起前强制 checkpoint 的等人状态、供应商中立的可移植工作区、人/机双租约接管;记忆修订携带 run 级出处;提示词代替策略引擎的反面实证 |
 | [HCTL1 / yesme/hctl](https://github.com/yesme/hctl) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
 | [HCTL2 Run 语义内核](../run.md) | L2 | 原生语义核心 | 与版本和证据绑定的 Run、Seat 候选切换、法定票数、重新过 Gate 和 Receipt |
 | [Conductor OSS](https://github.com/conductor-oss/conductor) | L2 | 机械状态后端 | 外部执行者与 token、定时器、重试和历史的被动机械状态 |
@@ -127,6 +129,34 @@ Claude Tag 为 L4 提供产品行为证据。它最独特的设计是：一条 S
 HCTL 借鉴持久 Room 与临时运行环境分离、多人共同引导、Agent 独立身份和受作用域约束的访问控制，并且只把 Checklist/Routine 当作投影或触发器。Slack 频道或讨论串不映射为 Project/Room，Checklist、Memory 或 Routine 不成为 Task、Run 或知识的权威事实，频道成员身份也不能绕过 HCTL 的权限与 Gate。Claude Tag 是闭源的公开测试产品，只能作为行为证据，不能移植源码，也不承担 L1 运行环境方案。
 
 基线按公开资料日期固定为 2026-06-23 Public Beta：[发布公告](https://www.anthropic.com/news/introducing-claude-tag)、[工作原理](https://claude.com/docs/claude-tag/concepts/how-it-works)、[Agent 身份](https://claude.com/docs/claude-tag/concepts/agent-identity)、[Routines](https://claude.com/docs/claude-tag/users/proactivity)、[Memory](https://claude.com/docs/claude-tag/users/memory)。
+
+<a id="e-grok-bot"></a>
+## E-GROK-BOT · Grok Bot 与 Grok Build
+
+### 产品定位与基线
+
+Grok Bot 是 SpaceXAI(前 xAI,2026-07 改名,Grok 产品品牌保留)于 2026-08-11 发布的多 Agent 助理平台,early beta,闭源 SaaS;账号、订阅与数据面构建在 Cursor 账号体系上(SpaceX 于 2026 年收购 Cursor 开发商 Anysphere 并入 SpaceXAI)。用户在专用桌面/移动应用中创建至多 50 个具名 Bot(name/title/description/avatar 四字段身份),每个 Bot 跨会话持久、拥有独立记忆;但**全账号所有 Bot 共享同一台托管 Linux 云虚拟机**——官方明说各 Bot 的屏幕只是 "separate work surfaces, not separate security boundaries"(各自的工作面,不是安全边界)。姊妹产品 Grok Build 是其编码 Harness(2026-05-25 发布):CLI 本体开源(Rust、Apache-2.0、不接受外部贡献、从内部 monorepo 单向同步),支持 TUI、headless 与 ACP 三种运行形态;闭源的是服务端模型与 Grok Bot 平台本身。
+
+行为基线固定为 2026-08-22 的官方文档快照。引用第三方评测时必须过滤两处经核实的系统性错误:"每个 Bot 有自己的云计算机"(官方:账号级共享)与 "ACP 是 xAI 的协议"(实为 Zed 发起的中立协议)。
+
+### 各层行为证据
+
+**L4**:Bot 是应用原生的一等参与者——四字段身份、侧栏可寻址、Bot 间消息是一等公民,房间围绕 Bot 而不是围绕人组织。官方文档同时给出两条与 HCTL2 立场同构的行为原则:"Put Bots in a group chat when the handoff itself needs to be visible"(需要交接可见时就放进群聊,群聊 "preserves the handoffs in one conversation"),以及 "Memory is not a substitute for an authoritative source"(记忆不能替代权威来源,重大结论要求 Bot 给出引用)。与已收录的 Claude Tag 互补而不重叠:Claude Tag 证明"assistant 进入人类房间"(寄生于 Slack 的房间与身份体系、单 assistant);Grok Bot 证明"Agent 身份原生化与 Agent 间通信房间化"。反面是 Bot 间私聊——用户不在场的上下文传递无法追溯出处,官方文档自己也把用户往可见群聊引导。
+
+**L3**:官方任务请求五要素(outcome、sources、constraints、deliverable、review point)加"指明 artifact 及其 acceptance criteria",证明头部商用产品已经认识到验收标准必须前置——但只做到了文档建议层:没有独立任务对象、没有生命周期、没有契约版本,验收标准只活在提示词与记忆里随对话漂移。第三方实测的 "Work stops just short of done"(工作停在差一步完成)与审批漏判,正是验收与执行不分离的代价实录。
+
+**L2**:Auto Review 规则有精确的双模式语义——Require Approval(必停)与 Always Allow(仅当自动审查没有其他停下理由时放行),两者同时命中时保守方优先;另有七类固定必审批动作(发消息/邀请、发布内容、购买与转账、删除或覆盖数据、改权限、生产变更、接受法律条款)。官方还明文承认 "An approval controls the proposed action. It does not reverse work already completed"(审批只控制拟议动作,不能撤销已完成的工作)——这是"先冻结、后放行、留凭证"立场的市场印证。官方证据保全清单(来源直链、带状态截图、时间戳与时区、输入输出文件名、动作日志、**显式列出 Bot 无法核验的内容**)等于提示词级的 Receipt。反面:routine(例程)删除即时且无撤销、仅保留 20 条运行记录、无试运行,Auto Review 分类由模型判断且按桌面端本地存储不同步。
+
+**L1**:Agent Computer 视图提供目前所见最完整的商用观察-接管-交还回路:实时观看点击/输入/导航,密码、2FA、CAPTCHA、支付确认等敏感步骤由人接管计算机、完成后交还 Bot 继续,移动端同样可观察与接管。凭证边界留下正反双样本:正面是 secure secret request(值被掩码、不进 transcript、不给模型)、托管 MCP token 留在服务端("The computer never stores those tokens")与 WebAuthn 硬件密钥转发;反面是一次登录全 Bot 共享、文件系统全 Bot 可读、删除 Bot 后文件与登录残留在云机上。Grok Build 侧的编排方向是单向的:它可以作为 ACP agent 被任何应用托管编排,但 Grok Bot 平台不接受第三方 Harness 接入、也没有公开 API——平台封闭,开放的只有编码 Harness 这一层。
+
+### 采用与边界
+
+HCTL 借鉴的行为:handoff 可见性原则、"审批不撤销已完成工作"的诚实声明、固定必审批动作清单、证据保全清单(升级为系统级 Receipt 对象)、敏感步骤接管-交还回路、secret 掩码与不入上下文纪律。明确不采用:Bot 间私聊传递上下文(违背上下文出处可溯)、模型判断代替确定性 Gate、账号级共享虚拟机与凭证(HCTL 的凭证按任务与执行者定界)、验收标准只存在于提示词。Grok Bot 是闭源产品,只作行为证据,不移植任何实现;Grok Build 的开源仓库可另作 L1 ACP 接入的协议证据,但不因此进入 L1 主参考。
+
+主要证据:
+
+- 官方:[Grok Bot 发布公告](https://x.ai/news/introducing-grok-bot)(2026-08-11)、[Grok Build 发布公告](https://x.ai/news/grok-build-cli)(2026-05-25)、官方文档 [overview](https://docs.x.ai/grok-bot/overview)、[bots](https://docs.x.ai/grok-bot/bots)、[computer-and-apps](https://docs.x.ai/grok-bot/computer-and-apps)、[files-and-results](https://docs.x.ai/grok-bot/files-and-results)、[approvals-security-and-privacy](https://docs.x.ai/grok-bot/approvals-security-and-privacy)、[teams-and-enterprises](https://docs.x.ai/grok-bot/teams-and-enterprises)与[faq](https://docs.x.ai/grok-bot/faq);[Grok Build 开源仓库](https://github.com/xai-org/grok-build)(Apache-2.0)与 [Zed ACP Registry 条目](https://zed.dev/acp/agent/grok-build)
+- 第三方(已过滤系统性错误):[VentureBeat](https://venturebeat.com/orchestration/spacexais-grok-bot-turns-agents-into-persistent-digital-coworkers-that-can-operate-your-apps-for-120-per-month)(定价、三 Bot 编排实测、内部 Chief of Staff 用法)、[eesel 缺口审计](https://www.eesel.ai/blog/grok-bot-review)(无试运行、审计日志未交付、routine 只留 20 条记录、Bot 删除残留)、[Composio 实测](https://composio.dev/content/guide-to-frok-bot)(群聊 2-6 成员上限、公司模拟实验)与 [atomicbot](https://atomicbot.ai/blog/what-is-grok-bot)(审批与打断细节)
 
 <a id="e-l4-openclaw"></a>
 ## E-L4-OPENCLAW · OpenClaw
@@ -251,6 +281,43 @@ HCTL 对照 agentd 与 harness 适配器采用：适配器终局结果契约（�
 - 外部 Harness 适配：[派发 argv](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/heterogeneous-agents/src/spawn/spawnAgent.ts)、[Claude Code 适配器（transcript 解析与重建、子代理谱系）](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/heterogeneous-agents/src/adapters/claudeCode.ts)、[终局结果契约示例](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/heterogeneous-agents/src/adapters/amp.ts)、[子代理谱系归约器](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/heterogeneous-agents/src/subagentCoordinator/reducer.ts)、[无缺口批量上报](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/cli/src/utils/BatchIngester.ts)与[反向终结](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/services/agentRuntime/AbandonOperationService.ts)
 - 状态机与调度：[7 态状态定义](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/types/state.ts)、[指令执行核心](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/core/runtime.ts)、[Redis 活状态](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/modules/AgentRuntime/AgentStateManager.ts)、[耐久操作行](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/database/src/schemas/agentOperations.ts)、[cron 派发](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/router-hono/workflows/task/handlers/scheduleDispatch.ts)、[DB 权威 tick](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/services/taskRunner/scheduleTick.ts)、[心跳看门狗](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/router-hono/workflows/task/handlers/watchdog.ts)与[子代理深度限制与屏障](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/executors/subAgent.ts)
 - verify 与内部设计：[验证子代理指令](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/builtin-tool-verify/src/systemRole.ts)、[验证执行](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/services/verify/agentVerifier.ts)与[Goal→Task→Attempt→Operations 内部设计备忘](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/docs/development/agent-goals-design.md)
+
+<a id="e-rakazo"></a>
+## E-RAKAZO · Rakazo
+
+### 核心价值与跨层画像
+
+Rakazo 定位为 [Grok Bot](#e-grok-bot) 的自托管开源替代:每个 bot 拥有自己的聊天线程、Markdown 记忆、cron 例程、示范教学技能和一台带图形桌面的沙箱"计算机";模型自选(BYOK 或订阅 OAuth),agent loop 用 Pi 内嵌在自家 API/worker 进程中自建,不适配 Claude Code/Codex 等外部 Harness。仓库在审计时只有 9 天历史、单人主导、迭代极快;但它最值得收录的不是产品形态,而是一个反差事实:**这个 early beta 在运行治理上的工程严谨度远超其产品成熟度**,并有属性测试、Postgres 集成测试、崩溃恢复拓扑测试和真模型 canary 背书。三块经源码验证的亮点:
+
+1. **三层带隔离栅栏的租约加幂等效果账本(L2)**。Run 租约以 CAS 认领、`leaseFence` 递增、60 秒心跳续租、续租失败即中止,每次执行留 Attempt 行;计算机执行租约与屏幕租约(`runId:fence`)各自独立,防止旧执行回抢;恢复语义是双保险——事件驱动入队之外,一个用 Postgres advisory lock 选主的对账器每 30 秒兜底扫描过期租约与到期例程。所有非只读工具调用前先写 `ExternalEffect` 意向行(幂等键=工具调用 ID),完成后置 completed;重放时已完成的直接返回旧结果,**状态不确定的非幂等工具直接拒绝重复执行**。状态机显式断言合法迁移(`failed→queued` 可重试,`completed/cancelled` 终态)。
+2. **等人状态与人/机双租约接管(L2/L1)**。`waiting_input`(等回答)与 `waiting_takeover`(等上屏)是 Run 的一等状态,挂起前强制把工作区 checkpoint 到持久存储;接管期间执行租约转 24 小时保持、控制权交给人,人的控制租约限时、到期由后台任务自动回收,释放时自动找回等待中的 Run 重新入队恢复。
+3. **供应商中立的可移植工作区(L1)**。沙箱经统一 `SandboxProvider` 契约支持 Docker/E2B/Daytona/本机等后端并逐后端探测能力降级(非图形后端过滤图形工具、分不出屏时显式报错而非静默排队);文档明确 `providerRef` 只是"加速路径而非持久数据",机器消失即从 checkpoint 重建——与 HCTL2"领域对象不被进程反向定义"同源。Docker 路径有特权分离:API/worker 进程不持有 Docker socket,由独立 supervisor 服务代管。另有值得单记的 L4 细节:Markdown 记忆文档带整数修订号与全量修订表,**每条修订携带 `sourceRunId`/`sourceThreadId` 出处**,可导出导入;这是"知识修订可溯源到产生它的 Run"的野生同构实现。
+
+反面证据同样直接。官网称"给 bot 演示一次工作流,它存成你能读、能改、能提交的纯 Markdown",实现里并不存在可提交的 Markdown 工作流文件:例程是无版本号的数据库行(name+prompt+cron),触发时读**当前** prompt;示范教学的产物是 JSON playbook(由确定性代码而非 LLM 从录屏编译,这一点反而诚实),可编辑但无修订历史,Run 不记录执行时用的是哪个版本。官网的"Approvals that hold"经全库检索只是 playbook 文本约定加 ask 机制,没有任何策略引擎;防越权靠提示词自律("Prefer tools over claiming you already did the work")。凭证边界的"credentials never leave your environment"只在纯 Docker 自托管路径严格成立——选云沙箱时浏览器登录态在第三方 VM 上,长历史压缩外包给 Supermemory SaaS。
+
+### 审计基线
+
+| 基线 | 状态 | 可支持的结论 |
+| --- | --- | --- |
+| [`v0.1.0-beta / 53b119a6`](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta) · 2026-08-13 | 已发布 prerelease | 产品骨架与自托管路径 |
+| [`main@90572cb2`](https://github.com/elie222/rakazo/tree/90572cb2bcab4458aebbe1994b3ffbc9ddfac339) · 2026-08-21 | 审计快照(本地克隆核验 HEAD 与许可证) | 上述租约/效果账本/接管/工作区机制全部在此基线经源码验证 |
+
+许可证为 [Apache-2.0](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)。仓库创建于 2026-08-13,单一维护者贡献约 92% 提交,处于极速演进期;能力判断以固定源码为准,官网叙事必须逐条对照实现甄别。
+
+### 采用与边界
+
+HCTL 对照 L2 采用:三层租约的隔离栅栏组合、意向-完成两段式幂等效果账本(含"不确定态拒绝重试非幂等操作")、advisory lock 选主的兜底对账器、挂起前强制 checkpoint 的等人状态,以及 `failed→queued` 显式可重试的状态机断言。对照 L1 采用:供应商中立契约与"可移植工作区为唯一持久边界、供应商引用仅缓存"的纪律、逐后端能力探测与显式降级、执行进程与容器特权的分离,以及人控制租约与机执行租约分开计时的接管模型。对照 L4 采用:记忆修订携带 Run 级出处的最小可行样板。
+
+明确不采用:无版本冻结的例程与 playbook(Run 必须绑定冻结的 Workflow Revision,这正是 Rakazo 反向验证的差异化空间);提示词自律代替确定性 Gate 与策略引擎(与"证据高于自述"相反,是现成反例);模型 loop 与业务同进程(HCTL 的 Harness 边界要求进程级隔离与无隐藏写权限);把长期记忆压缩外包给第三方 SaaS;一 bot 一线程的二元对话不映射为 Room。Rakazo 没有 L3:Task 仅是 prompt+status,无契约、无验收、无看板。
+
+主要证据(固定到 `90572cb2`):
+
+- [仓库](https://github.com/elie222/rakazo)、[v0.1.0-beta](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta)、[官网](https://rakazo.com/)与[许可证](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)
+- 领域对象与治理:[Prisma schema(Run 租约 L342-376、ExternalEffect L392-409、Routine L411-432、MemoryRevision L514-526)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/prisma/schema.prisma)、[Run 状态机断言](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/run-state.ts)、[执行器(租约/效果账本/工具分发)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/executor.ts)与[选主对账器](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/job-reconciler.ts)
+- 等人与接管:[事务性线程事件](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/src/events.ts)、[API 路由(ask/takeover/release)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/router.ts)、[屏幕租约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/screen-lease.ts)与[签名屏幕代理](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/screen-proxy.ts)
+- 沙箱与工作区:[计算机生命周期](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-lifecycle.ts)、[工作区 checkpoint](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-workspace.ts)、[supervisor 特权分离](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/infra/sandboxes/supervisor/src/supervisor-logic.ts)、[适配器契约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapter-kit/src/interfaces.ts)与[计算机运行时文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/computer-runtime.md)
+- 记忆与教学:[Markdown 记忆(修订+出处)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/memory/src/index.ts)、[确定性 playbook 编译](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/teach-playbook.ts)与[官网 Markdown 声称处](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/www/src/pages/index.astro#L107)
+- 加密与凭证:[secret 加密存储](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/secrets.ts)与[自托管文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/self-host.md)
 
 <a id="e-l2-hctl1"></a>
 ## E-L2-HCTL1 · HCTL1 / yesme/hctl
