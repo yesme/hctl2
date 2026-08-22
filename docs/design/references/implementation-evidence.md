@@ -45,6 +45,7 @@
 | [Pi](https://github.com/earendil-works/pi) | L1 | 专项参考 | 内嵌 SDK + 严格 JSONL RPC，以及 `steer`/`follow_up` 队列契约 |
 | [Kimi Code](https://github.com/MoonshotAI/kimi-code) | L1 | 专项参考 | ACP/原生能力矩阵和可以验证的降级行为 |
 | [Termio](https://github.com/termio-sh/termio) | L1 | 专项参考 | Harness Manifest、会话 URI，以及监听/心跳/信号契约 |
+| [tmux](https://github.com/tmux/tmux) | L1 | 运行时后端（采用为依赖） | 公开 control mode、稳定 pane ID、headless 终端应答、捕获/转发与多客户端能力，以很小的 native footprint 提供 agentd 所需物理原语 |
 | [Herdr](https://github.com/herdrdev/herdr) | L1 专项；L2 边界 | 专项参考 + 边界证据 | L1 的服务端 PTY、观察/控制分离、单写者接管和分级恢复；L2 的运行状态信号与语义完成权威分离 |
 | [Codex Remote Feishu](https://github.com/kxn/codex-remote-feishu) | L1 | 行为参考 | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
 | [Superset](https://github.com/superset-sh/superset) | L1 核心；L2 边界 | 核心参考 + 边界证据 | L1 的 PTY 守护进程、断线重连与重放、Agent 会话恢复和 worktree 分阶段清理；L2 证明分派与会话传输不等于执行结果或 Workflow 事实 |
@@ -709,6 +710,31 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 
 角色：与 Vikunja 并列的对照候选，代表“零服务器、随仓库分布式”的另一条路。已知张力：看板语义弱（排序/泳道需另行承载）、无 webhook（观测靠 refs 轮询）、任务 content 进 git refs 与“content 归第三方服务器”的统一律相悖。若验证胜出，须显式接受模型例外并记入[来时路](./decision-history.md)。采用边界同上：独立进程/CLI 调用，不 vendor（GPL 义务隔离）。
 
+<a id="e-l1-tmux-runtime"></a>
+## E-L1-TMUX-RUNTIME · 运行时后端复审
+
+### 当前决定与接入边界
+
+第一阶段采用 [`tmux 3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) 作为源码审阅基线。它提供 agentd 真正需要的窄接口：control mode 以命令和 `%output` 等通知驱动；客户端可设 `read-only`、`ignore-size` 和 `pause-after`；server 对 DA、DSR、DECRQM 等无人值守终端查询有明确应答；control output 使用有界缓冲、非阻塞写和 pause/continue。对应实现见 [`tmux.1` 的客户端标志](https://github.com/tmux/tmux/blob/3.7c/tmux.1#L1080-L1145)、[control mode 协议](https://github.com/tmux/tmux/blob/3.7c/tmux.1#L8113-L8235)、[`input.c` 查询应答](https://github.com/tmux/tmux/blob/3.7c/input.c#L1557-L1707)，以及 [`control.c` 的缓冲水位](https://github.com/tmux/tmux/blob/3.7c/control.c#L130-L138)和[非阻塞输出处理](https://github.com/tmux/tmux/blob/3.7c/control.c#L732-L804)。本机 detached 探针中，子进程发送 DSR `ESC [ 5 n` 后收到 `ESC [ 0 n`；同一探针在 shpool `v0.11.2` 超时。
+
+产品形态不是把 tmux 暴露成第二套 API。agentd 默认给每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，记住 session/window/pane ID、进程退出状态和 runtime generation；一个 runtime 只建一个 session/window/pane，并启用 `remain-on-exit`。Workbench、CLI 和浏览器观察者由 agentd 扇出、限速与重放，不能按名称猜 pane，也不能直连取得输入权；裸 `tmux attach-session` 即便只读仍绕过 descriptor，因而只作明确标记的 break-glass。共享一个 server 承载多个 runtime 只有在故障域和背压探针通过后才可作为优化。
+
+### 候选源码与 footprint 对照
+
+测量均在 Apple Silicon macOS 上完成；进程数值不含各 session 的 harness/`sleep` 子进程。文件大小是实际字节换算的 MiB，不把“压缩包小”冒充运行时占用。
+
+| 候选 | 源码审阅结论 | 本机 footprint | 决定 |
+| --- | --- | --- | --- |
+| **tmux 3.7c** | 公开 control mode、多客户端、稳定 pane ID、`capture-pane`/`pipe-pane`、退出状态和 headless 查询应答；慢 control client 有 pause/有界缓冲接缝 | Homebrew macOS arm64 bottle **0.52 MiB**，executable **0.95 MiB**，直接非系统 dylib **1.45 MiB**；一个 server 承载 10 个 detached session 时 **3.7 MiB RSS**。若默认每 runtime 一 server，十个约 **37 MiB RSS** | **采用**；HCTL 分发只带审阅过的最小 dylib/terminfo/许可集合，不把约 61 MiB 的完整 Homebrew dependency 目录原样打包 |
+| **Zellij v0.45.0** | 原生跨平台与结构化插件能力较强，但[默认 layout](https://github.com/zellij-org/zellij/blob/v0.45.0/zellij-utils/assets/layouts/default.kdl)启动 tab/status WASM，二进制还[嵌入插件资产](https://github.com/zellij-org/zellij/blob/v0.45.0/zellij-server/src/plugins/plugin_loader.rs#L480-L490) | 官方 macOS arm64 `zellij-no-web` archive **11.3 MiB**、binary **32.4 MiB**；一个默认 detached session **89.7 MiB RSS**，10 个合计 **841.6 MiB RSS**（physical footprint 约 583 MiB）；无插件单 session 仍约 41.2 MiB physical footprint | **不采用**；多 Harness 常态下每 session 的 server/plugin 成本过高，其 web/插件面也不是第一阶段所需 |
+| **shpool v0.11.2** | 轻量 daemon + attach 路径清楚，但当前合同[一次只允许一个客户端](https://github.com/shell-pool/shpool/blob/v0.11.2/README.md#L365-L370)，[事件只有类型而无 payload](https://github.com/shell-pool/shpool/blob/v0.11.2/libshpool/src/daemon/events.rs#L11-L18)；多客户端 [`#40`](https://github.com/shell-pool/shpool/issues/40)、快照/旁观 [`#363`](https://github.com/shell-pool/shpool/issues/363)及慢客户端阻塞修复 [`#399`](https://github.com/shell-pool/shpool/pull/399)仍未形成已发布合同 | 官方 macOS binary **4.04 MiB**，仅链接系统库；一个 daemon 承载 10 个空闲 detached session 时 **23.1 MiB RSS**。10 × 约 200 KiB 输出后，默认 vt100 restore 的 physical footprint 约 **252.3 MiB**，实验 vterm 约 63.7 MiB，simple 约 5.3 MiB但放弃可靠 replay | **不采用**；agentd 若补齐终端模拟/查询应答、多观察者扇出、背压、快照和 replay，已重新承担运行时最难的一半 |
+
+### P0 阻断条件
+
+tmux 支持 `extended-keys` 的 CSI-u/modifyOtherKeys 形态，但[没有完整 Kitty keyboard protocol](https://github.com/tmux/tmux/issues/5406)；必须通过能力探测降级，不能在 manifest 中虚报。`3.7c` 已包含 OpenCode palette 修复（[`#4793`](https://github.com/tmux/tmux/issues/4793)），`3.7b` 已修复 Codex/Grok 低对比度（[`#5312`](https://github.com/tmux/tmux/issues/5312)）和 Claude synchronized-output 回归（[`#5340`](https://github.com/tmux/tmux/issues/5340)），但这些历史修复不等于当前兼容性证明；OpenCode 仍有启动期查询/粘贴（[`#42915`](https://github.com/anomalyco/opencode/issues/42915)）和 passthrough 应答泄漏（[`#40035`](https://github.com/anomalyco/opencode/issues/40035)），Codex 有增强键位问题（[`#34717`](https://github.com/openai/codex/issues/34717)），Kimi `/copy` 有 OSC 52 问题（[`#3173`](https://github.com/MoonshotAI/kimi-code/issues/3173)）。
+
+因此 B2 前必须在实际分发物上跑 Antigravity `1.1.18`、Claude Code `2.1.240`、Codex `0.149.0`、OpenCode `1.18.21`（GLM 环境）、Grok Build `1.0.5`、Kimi Code `0.38.0` 的启动/退出、attach/重连、颜色、CJK/IME、普通与 bracketed paste、OSC 52、组合键、全屏 resize、DA/DSR/DECRQM 和慢观察者矩阵。另以每 runtime 独立 server 和共享 server 两种拓扑复现 [`tmux #5510`](https://github.com/tmux/tmux/issues/5510) 的多窗格、快速滚动、copy-mode、resize 组合；任一模式卡死、跨 runtime 污染或无法 fencing 都阻断发布。最终 pin 可以前进到含修复的新版本，但必须重新固定审阅 commit 并跑同一矩阵。
+
 <a id="l1-selected-evidence"></a>
 ## L1 精选证据与能力观察清单
 
@@ -720,7 +746,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 | [Herdr `v0.8.0 / 346411fa`](https://github.com/herdrdev/herdr/tree/346411fa21afd297f5ed3b3fa56f9e3fbf7654b7) / [专项审计](#e-l1-herdr) | 后台服务持有 PTY；观察/控制与原始/语义操作面分离；单写者接管；状态信号仲裁与分级恢复 | Apache-2.0；控制方不是持久租约，运行状态不等于领域完成；完整边界见专项审计 |
 | [xterm.js](https://github.com/xtermjs/xterm.js/) | 嵌入式终端渲染器，以及 CJK、输入法、无障碍和流量控制 | MIT；只负责前端，不拥有 PTY、进程或 Session |
 | [WezTerm](https://wezterm.org/cli/cli/index.html) | 成熟的跨平台外部终端与 CLI | MIT；不嵌入应用，也不把 Mux 协议当作 ABI |
-| [Zellij `v0.45.0 / 13e1c25a`](https://github.com/zellij-org/zellij/tree/13e1c25a2b1ef61d90ecd1765e660c575e90977b) / tmux | 真实的 Mux 与运行环境；Zellij 已选，tmux 为降级方向 | 使用官方 `zellij-no-web` 构建；Pane 名称不作为身份标识，PTY/headless/input lease 与 session 清理仍过契约测试 |
+| [tmux `3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) / [专项复审](#e-l1-tmux-runtime) | 公开 control mode、稳定 pane ID、headless 查询应答、捕获/转发、退出状态和很小的 native footprint | ISC；采用为运行时依赖，不作为公开 HCTL API；完整 Kitty 键盘协议、六 Harness 兼容性、背压与 `#5510` 仍是 P0 阻断项 |
 
 ### 只列入观察清单的产品
 
@@ -738,16 +764,16 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 
 ## 执行面已选依赖的运维与 footprint
 
-这里的“已选依赖”指需要独立托管生命周期的 Dagu、Tuwunel、Vikunja、Zellij 四项；React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，不是容量承诺。文件大小取官方 release asset 的实际字节；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。Tuwunel 官方只有 Linux 发布物，本机没有既有 Linux 容器/VM，故不伪造 RSS 数字。
+这里的“已选依赖”指需要独立托管生命周期的 Dagu、Tuwunel、Vikunja、tmux 四项；React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，不是容量承诺。文件大小取官方 release asset 或明确标注的 Homebrew bottle 实际字节；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。Tuwunel 官方只有 Linux 发布物，本机没有既有 Linux 容器/VM，故不伪造 RSS 数字。
 
-| 模块 | 固定版本与许可 | 官方发布 footprint | 空载实测 / 数据 | 运维判断 |
+| 模块 | 固定版本与许可 | 发布 / 分发 footprint | 空载实测 / 数据 | 运维判断 |
 | --- | --- | --- | --- | --- |
 | **Dagu** | [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/releases/tag/v2.15.1)，GPL-3.0-or-later | macOS arm64 archive **45.9 MiB**、binary **148.1 MiB**；Linux amd64 为 48.3/154.6 MiB | `start-all`、coordinator 关闭：**92.4 MiB RSS**；空数据目录约 84 KiB | **低—中**：一个进程、文件备份；主要风险是 adapter/fencing，不是日常运维 |
 | **Tuwunel** | [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0)，Apache-2.0 | Linux x86_64 GNU zstd **31.2 MiB**、binary **98.1 MiB**；无官方 Darwin asset | macOS RSS **待 P0**。默认 cache capacity 源码为 [`128 + 64 × parallelism` MiB，write buffer 为 `48 + 4 × parallelism` MiB](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/core/config/mod.rs#L5185-L5189)，capacity 不等于已提交 RSS | **中—高**：macOS 额外需要 Linux VM/container；需固定低内存配置，并一致备份 RocksDB、media 与 secret |
 | **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
-| **Zellij** | [`v0.45.0 / 13e1c25a`](https://github.com/zellij-org/zellij/releases/tag/v0.45.0)，MIT | macOS arm64 `zellij-no-web` archive **11.3 MiB**、binary **32.4 MiB** | 一个 detached 默认 session 的 server **89.7 MiB RSS**；attach client 另约 18.3 MiB；无 session 时无常驻 daemon | **低安装 / 中集成**：无需数据库；成本随 session 与 harness 子进程增长，难点在 PTY、headless 应答、输入租约和残留 session 清理 |
+| **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | Homebrew macOS arm64 bottle **0.52 MiB**、executable **0.95 MiB**；直接非系统 dylib **1.45 MiB** | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库；要固定最小动态库/terminfo、owner-only socket、control mode、pane ID、背压与残留 session 清理，六 Harness 矩阵是阻断项 |
 
-选择对应平台发布物时，四个 archive 合计约 **135 MiB**，解压后的四个 binary 合计约 **386 MiB**。本机能直接测量的 Dagu + Vikunja + 一个 detached Zellij session 合计约 **239 MiB RSS**；这还没有 Tuwunel 的进程与 macOS Linux VM、任何 harness、control 或 Workbench。因而整体并非“几十 MiB 常驻”：Dagu/Vikunja 的服务运维简单，Zellij 的成本按会话增长，**Tuwunel 是当前明确最高的运维与资源不确定项**，必须在 B1 前量出完整 macOS 组合，而 Dagu 的 fencing 则在 B4 前验收。
+选择对应平台发布物时，三个 archive 加 tmux bottle 合计约 **125 MiB**，四个主 executable 合计约 **354.5 MiB**；tmux 的直接非系统 dylib 另加约 **1.45 MiB**。本机能直接测量的 Dagu + Vikunja + 一个 tmux server 合计约 **152.8 MiB RSS**；若按默认故障隔离启动十个 tmux server，则约 **186 MiB RSS**。这还没有 Tuwunel 的进程与 macOS Linux VM、任何 harness、control 或 Workbench；**Tuwunel 仍是明确最高的运维与资源不确定项**，必须在 B1 前量出完整 macOS 组合，而 tmux 的六 Harness/fencing/背压与 Dagu 的 fencing 分别在 B2、B4 前验收。
 
 ## 标准与通用库，不作为产品主参考
 

@@ -15,7 +15,7 @@
 
 四个场景由 Workbench 集成，但其命令必须可以由同一 service 供 CLI 或外部适配器使用。
 
-第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `zellij attach` 是带外诊断 / break-glass，不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
+第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 是带外诊断 / break-glass，不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
 
 ## 公共 CLI
 
@@ -52,7 +52,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 | --- | --- | --- |
 | P0 · 探路 | 对已选实现做限时、可丢弃的协议 / 分发 / 打包探针并记录实现证据；探针脚本、临时数据与拼装环境不进入产品生命周期。失败则重开并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四服务器已可运维 |
 | P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 可辅助开发；此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | 物理工具链就位，未切换治理事实 |
-| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw Zellij 只作 break-glass；合规第三方客户端必须走公开命令或 agentd 网关。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
+| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw tmux attach 只作 break-glass；合规第三方客户端必须走公开命令或 agentd 网关。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
 ## 纵向切片 A：无 Run 自举
@@ -231,7 +231,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 必须验证 schema/Profile lint、环检测、启动/暂停/恢复/取消、重启恢复、备份恢复，以及 `human.task` 完成 API 在 ACK 未知、retry/repeat 和迟到请求下的代次隔离；若不能证明旧完成请求不会推进新检查点，B4 阻断并重开本决定，不自研第二引擎。
-2. **运行时后端（Zellij，已拍板；tmux 为记录在案的降级方向）**：attach、输入、resize、重启、残留进程、macOS/Linux 全套测试，另加三点——headless 启动时的终端查询应答（无人 attach 期间 TUI 的能力查询须有应答）、增强键盘协议（kitty keyboard protocol）下各 harness 的按键实测、内建 web 客户端保持默认关闭（需要瘦身时可用 `zellij-no-web` 构建裁剪）；打包重量与常驻内存实测记入实现证据。
+2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 必须覆盖 attach、输入、resize、重启、残留进程、退出码、慢观察者/背压和 macOS/Linux，验证无人 attach 时的终端查询应答，并对 Antigravity、Claude Code、Codex、OpenCode、Grok Build、Kimi Code 做颜色、粘贴、复制、组合键和全屏 TUI 矩阵。tmux 只提供 CSI-u/modifyOtherKeys 子集而非完整 Kitty keyboard protocol，能力必须诚实降级；[`#5510`](https://github.com/tmux/tmux/issues/5510) 所述多窗格/滚动/copy-mode/resize 卡死必须有阻断性回归测试。分发版本固定在通过该矩阵的已审阅 commit，不因保留 `3.7c` 而跳过上游修复；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。官方发布物只有 Linux，macOS 的容器/轻量 VM、内存配置和 RocksDB/media 一致性备份因此是 P0 阻断项；另须验证账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序和重同步。由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。
 4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针验证看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性及备份恢复机制；由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
@@ -240,14 +240,14 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 分界线是**碰不碰宿主机现场**：
 
-- **必须原生**：Zellij、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；均为 Rust/Go 单二进制，macOS/Linux 原生分发。
+- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 不是无依赖单二进制，P0 须固定并最小化其动态库、terminfo、许可文件和升级集合。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前为其声明「原生二进制」或「容器/轻量 VM」。Linux 全原生；macOS 上 Dagu 与 Vikunja 使用官方 arm64 原生发布物，Tuwunel 因官方只有 Linux 发布物而作为容器/轻量 VM 例外，除非 P0 证明受支持的原生构建与恢复路径。
 - **Docker 不做统一打包方式**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。第一阶段只把它作为 Tuwunel 的 macOS 交付候选，不要求用户安装完整 Docker Desktop。
-- Windows 不在第一阶段范围；事实层面 Zellij 0.44 起支持 Windows（tmux 无原生 Windows——降级方向在 Windows 上不可用），Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
+- Windows 不在第一阶段范围；tmux 没有原生 Windows 后端，未来 Windows 版本须在同一运行时合同下另选实现并重新过兼容矩阵，当前选型不宣称跨平台。Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
 
 ## 技术基线
 
-Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（Zellij；tmux 为降级方向）。精确版本、实测 footprint 与运维分级见[实现证据](./references/implementation-evidence.md#执行面已选依赖的运维与-footprint)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）。精确版本、实测 footprint 与运维分级见[实现证据](./references/implementation-evidence.md#执行面已选依赖的运维与-footprint)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 

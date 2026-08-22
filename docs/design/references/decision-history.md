@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.12.0 · 2026-08-21<br>
+> 状态：Informative · 对应草案 v0.12.0 · 2026-08-23<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -158,6 +158,14 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 这条决定取代 §6 和 §14 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
 
-## 20. 当前落点
+## 20. 运行时后端从 Zellij 改为 tmux（v0.12.0 补充）
+
+2026-08-23 按源码、发布物和本机多会话实测复审 tmux、Zellij 与 shpool 后，第一阶段运行时后端改为 **tmux**。决定性的不是功能最多，而是 agentd 所需的最小、可控原语：tmux 有公开 control mode、稳定 pane ID、只读/不参与尺寸协商的观察客户端、`capture-pane`/`pipe-pane`、`remain-on-exit` 和明确的终端查询应答；control mode 的输出暂停/恢复与有界缓冲也给慢观察者隔离留下了可靠接缝。采用形态固定为 agentd 持有 owner-only socket 与唯一可写 control client，默认每个 runtime 独立 server，其他客户端经 agentd 扇出；裸 attach 仍只是 break-glass。
+
+体积使取舍进一步明确。本机 Apple Silicon 基线中，tmux 可执行文件约 **0.95 MiB**，直接非系统动态库约 **1.45 MiB**；一个 server 承载十个 detached `/bin/sleep` session 时约 **3.7 MiB RSS**。Zellij 的 `zellij-no-web` 可执行文件约 **32.4 MiB**，一个默认 detached session 约 **89.7 MiB RSS**，十个约 **841.6 MiB RSS**；它的结构化接口与原生跨平台优势不足以抵消多 Harness 常态下的成本。shpool 可执行文件约 **4.04 MiB**、十个空闲 session 的 daemon 约 **23.1 MiB RSS**，但当前公开合同仍以单客户端 attach 为中心，没有 headless 终端查询应答、可承载 payload 的结构化事件、多观察者扇出或成熟的慢客户端背压；采用它会迫使 agentd 自建终端模拟、快照/重放与流量控制，等于把难题搬回自身。
+
+tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §14 的 Zellij 实现选型和 §16 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
+
+## 21. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。
