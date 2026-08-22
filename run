@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: run <agent> [--print|--session-id] [-- extra args...]
+       run --help
+       run help
+
+Agents:
+  agy      Antigravity CLI
+  claude   Claude Code
+  codex    OpenAI Codex
+  glm      GLM via opencode
+  grok     Grok Build (xAI)
+  kimi     Kimi Code
+
+Worktrees:
+  agy      ~/workspace/hctl2-agy
+  claude   ~/workspace/hctl2-claude
+  codex    ~/workspace/hctl2-codex
+  glm      ~/workspace/hctl2-glm
+  grok     ~/workspace/hctl2-grok
+  kimi     ~/workspace/hctl2-kimi
+
+Options:
+  --print, --dry-run  print cd + command without launching
+  --session-id        print the selected persisted session id
+  --                  pass remaining args to the target CLI
+
+Session ids (macOS):
+  agy     30876bc1-f249-4569-b4cd-1a671577017d
+  claude  197c3f1e-7e43-46b4-a228-26a497574897
+  codex   01a027ea-f719-7a00-b833-2a587b2a05ac
+  glm     ses_fd816ff58ffew9OZpjG0y62oc6
+  grok    01a027e9-a557-7cf1-ac64-878cb7208851
+  kimi    session_e96e0466-cdf7-4790-870f-20ae8b6e862b
+
+Examples:
+  ./run claude
+  ./run codex --print
+  ./run glm --session-id
+  ./run codex -- --search
+USAGE
+}
+
+die() {
+  echo "run: $*" >&2
+  exit 1
+}
+
+quote_cmd() {
+  local part
+  printf '%q' "$1"
+  shift
+  for part in "$@"; do
+    printf ' %q' "$part"
+  done
+  printf '\n'
+}
+
+agent=""
+print_only=0
+session_only=0
+extra=()
+
+while (($#)); do
+  case "$1" in
+    --print|--dry-run) print_only=1 ;;
+    --session-id) session_only=1 ;;
+    -h|--help|help) usage; exit 0 ;;
+    --)
+      shift
+      extra=("$@")
+      break
+      ;;
+    -*)
+      die "unknown option: $1"
+      ;;
+    *)
+      if [[ -n "$agent" ]]; then
+        die "unexpected argument: $1"
+      fi
+      agent="$1"
+      ;;
+  esac
+  shift
+done
+
+[[ -n "$agent" ]] || { usage; exit 2; }
+
+workspace="$HOME/workspace"
+
+case "$agent" in
+  agy)
+    workdir="$workspace/hctl2-agy"
+    session="30876bc1-f249-4569-b4cd-1a671577017d"
+    cmd=(agy --dangerously-skip-permissions --conversation "$session")
+    ;;
+  claude)
+    workdir="$workspace/hctl2-claude"
+    session="197c3f1e-7e43-46b4-a228-26a497574897"
+    cmd=(claude --dangerously-skip-permissions --resume "$session")
+    ;;
+  codex)
+    workdir="$workspace/hctl2-codex"
+    session="01a027ea-f719-7a00-b833-2a587b2a05ac"
+    cmd=(codex --dangerously-bypass-approvals-and-sandbox -C "$workdir" resume "$session")
+    ;;
+  glm)
+    workdir="$workspace/hctl2-glm"
+    session="ses_fd816ff58ffew9OZpjG0y62oc6"
+    cmd=(opencode -s "$session" "$workdir")
+    ;;
+  grok)
+    workdir="$workspace/hctl2-grok"
+    session="01a027e9-a557-7cf1-ac64-878cb7208851"
+    cmd=(grok --always-approve --resume "$session")
+    ;;
+  kimi)
+    workdir="$workspace/hctl2-kimi"
+    session="session_e96e0466-cdf7-4790-870f-20ae8b6e862b"
+    cmd=(kimi --yolo -S "$session")
+    ;;
+  *)
+    die "unknown agent: $agent"
+    ;;
+esac
+
+if ((session_only)); then
+  printf '%s\n' "$session"
+  exit 0
+fi
+
+if ((${#extra[@]})); then
+  cmd+=("${extra[@]}")
+fi
+
+# Session-scoped attribution handle inherited by harness tool subprocesses.
+export COAGNET_HARNESS="$agent"
+export COAGNET_SESSION_ID="$session"
+
+if ((print_only)); then
+  printf 'cd '
+  quote_cmd "$workdir"
+  printf 'export COAGNET_HARNESS='
+  quote_cmd "$COAGNET_HARNESS"
+  printf 'export COAGNET_SESSION_ID='
+  quote_cmd "$COAGNET_SESSION_ID"
+  printf 'exec '
+  quote_cmd "${cmd[@]}"
+  exit 0
+fi
+
+[[ -d "$workdir" ]] || die "worktree not found: $workdir"
+command -v "${cmd[0]}" >/dev/null 2>&1 || die "command not found: ${cmd[0]}"
+cd "$workdir"
+
+if [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" =~ [Uu][Tt][Ff]-?8 ]]; then
+  case "$agent" in
+    agy)    term_title="HCTL2 · 🛠 𝕬𝖓𝖙𝖎𝖌𝖗𝖆𝖛𝖎𝖙𝖞" ;;
+    claude) term_title="HCTL2 · ✴️ 𝑪𝒍𝒂𝒖𝒅𝒆" ;;
+    codex)  term_title="HCTL2 · ❄️ 𝗖𝗼𝗱𝗲𝘅" ;;
+    glm)    term_title="HCTL2 · 🔳 🅶🅻🅼" ;;
+    grok)   term_title="HCTL2 · 🛰️ 𝐆𝐫𝐨𝐤" ;;
+    kimi)   term_title="HCTL2 · 🎹 𝕂𝕚𝕞𝕚" ;;
+    *)      term_title="HCTL2 · $agent" ;;
+  esac
+else
+  case "$agent" in
+    agy)    term_title="HCTL2 · Antigravity" ;;
+    claude) term_title="HCTL2 · Claude" ;;
+    codex)  term_title="HCTL2 · Codex" ;;
+    glm)    term_title="HCTL2 · GLM" ;;
+    grok)   term_title="HCTL2 · Grok" ;;
+    kimi)   term_title="HCTL2 · Kimi" ;;
+    *)      term_title="HCTL2 · $agent" ;;
+  esac
+fi
+
+printf '\033]0;%s\007' "$term_title"
+(
+  # Some CLIs overwrite the title during startup; refresh it a few times.
+  sleep 0.5; printf '\033]0;%s\007' "$term_title"
+  sleep 1.0; printf '\033]0;%s\007' "$term_title"
+  sleep 1.5; printf '\033]0;%s\007' "$term_title"
+) &
+
+exec "${cmd[@]}"
