@@ -47,11 +47,11 @@ Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领
 
 与此同时，Chat、任务源、workflow engine、harness 和运行时后端被收敛为受控端口。它们提供外部能力、报告版本与降级方式，但不能凭平台自身的 Session、Issue、workflow task、pane 或数据库取得 HCTL 字段权威（第 12 节后来把这条精确化为“可拥有 content、不可拥有治理”）。一个产品可以同时提供原生客户端和受控端口，例如第三方看板既展示 Task 又承载部分外部字段；此时 client binding 与 authority binding 仍须分开，避免“能显示”被误写成“能决定”。
 
-## 6. Conductor 只拥有机械状态
+## 6. 当时的 Conductor 只拥有机械状态（后由 §19 取代实现选型）
 
-引入 Conductor 的目的，是复用耐久 external task、wait/timer、retry 与历史恢复，而不是把 HCTL 的语义交给工作流引擎。这个边界最终固定为：Conductor 保存机械工作流位置，HCTL control 领取外部任务并建立 Obligation/Seat/Attempt，工具箱与 control 校验精确版本、证据、权限、Gate 和 Receipt。
+当时引入 Conductor 的目的，是复用耐久 external task、wait/timer、retry 与历史恢复，而不是把 HCTL 的语义交给工作流引擎。当时固定的边界是：Conductor 保存机械工作流位置，HCTL control 领取外部任务并建立 Obligation/Seat/Attempt，工具箱与 control 校验精确版本、证据、权限、Gate 和 Receipt。
 
-因此 Conductor 不选择 Harness、不创建逻辑 Seat、不解释语义驳回、不计算 HCTL quorum、不签发 Receipt，也不直接写 Git 或第三方系统。机械 retry 与 HCTL 的替代执行、返工和 regate 是不同身份；把两者分开，才使引擎恢复不会复制票数、绕过验收或把旧执行复活。
+因此当时的 Conductor 不选择 Harness、不创建逻辑 Seat、不解释语义驳回、不计算 HCTL quorum、不签发 Receipt，也不直接写 Git 或第三方系统。机械 retry 与 HCTL 的替代执行、返工和 regate 是不同身份；这条权威边界在 §19 换成 Dagu 后仍保留。
 
 ## 7. 从 prompt 约束到机械终结权
 
@@ -150,6 +150,14 @@ Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先�
 
 同轮补一句能力边界：semantic resume 可以用自有观测留痕重建续跑输入，重建物按投影处理，不进入权威记录——恢复能力不再依赖厂商保留会话文件。术语取“终局”而非“终端”，避免与 Terminal 通道词族冲突。权威文本在 [Agent 模块合同](../spec/agent.md)的「运行时与观测」与「终端通道」。本条按 §17 的方法论教训单独立项提交并当轮补记决策。
 
-## 19. 当前落点
+## 19. workflow engine 从 Conductor 改为 Dagu（v0.12.0 补充）
+
+2026-08-23 重新按源码而非 README 审阅 workflow 候选后，第一阶段选型从 Conductor 改为 **Dagu**。判据收敛为三条：Workflow Revision 必须是声明式事实源并可机械 lint schema、引用、Profile 与图结构；不要求一般性证明 loop 终止；本机运行优先单二进制、文件或嵌入式持久化，避免为机械状态引入 JVM 与数据库/队列组合。Conductor 当前版其实已默认 SQLite，旧记录“没有 SQLite”已经过时；它的逐任务 poll/complete 仍比 Dagu 更贴近被驱动模型，但总体分发和 footprint 仍较大。
+
+Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。
+
+这条决定取代 §6 和 §14 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
+
+## 20. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

@@ -1,6 +1,6 @@
 # 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-19<br>
+> 状态：信息性文档 · 研究快照 2026-08-23<br>
 > 上级文档：[HCTL2 设计规范](../README.md)<br>
 > 规则：本文只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。<br>
 > 研究标签沿用原始脉络：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。
@@ -36,9 +36,9 @@
 | [Helio](https://www.helio.im/) | L4/L2/L1 专项;L3 边界 | 行为参考 + 专项参考(开源外围)+ 边界证据 | 消息面 CAS/cede/receipts/turn 级出处与人批 charter、三元归约与未收尾看门狗、机械 stop-gate 与证据分级、side_effect 安全默认与临时凭证注入;"关单人类专属"营销与实现落差、agent 自行关单的反面证据 |
 | [HCTL1 / yesme/hctl](https://github.com/yesme/hctl) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
 | [HCTL2 Run 语义内核](../run.md) | L2 | 原生语义核心 | 与版本和证据绑定的 Run、Seat 候选切换、法定票数、重新过 Gate 和 Receipt |
-| [Conductor OSS](https://github.com/conductor-oss/conductor) | L2 | 机械状态后端 | 外部执行者与 token、定时器、重试和历史的被动机械状态 |
+| [Dagu](https://github.com/dagucloud/dagu) | L2 | 机械状态后端 | 声明式 DAG、单进程文件持久化，以及可由 control 完成的无进程等待检查点 |
+| [Conductor OSS](https://github.com/conductor-oss/conductor) | L2 | 已评估对照 | 外部任务领取/完成接口更直接，但 JVM 分发与整体 footprint 不及 Dagu 贴合第一阶段 |
 | [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | L2 | 相邻实现参考 | SOP 准入、按版本审批与法定票数、恢复和失败时默认拒绝的规则测试 |
-| [Dagu](https://github.com/dagu-org/dagu) | L2 | 观察清单 | 数据优先的图、运行器/动作/人工审批，用作后端选型对照 |
 | [Stably Orca](https://github.com/stablyai/orca) | L1 核心；L2 专项 | 核心参考 + 专项参考 | L1 的 PTY 所有权、冷热恢复、代际隔离和 worktree/差异/远程/交付；L2 的持久 Run 收件箱、Dispatch 权威、可靠交付、幂等收据和执行者资源生命周期 |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | L1；横切架构 | 专项参考 + 架构边界 | 能力端口、类型化事件和可撤销注册、模型可见只追加日志，以及插件组合的收益与风险 |
 | [OpenCode](https://github.com/anomalyco/opencode) | L1 | 专项参考 | OpenAPI + SSE + 类型化 SDK 的服务端优先、多客户端 Harness 操作面 |
@@ -66,7 +66,7 @@
 | --- | --- | --- |
 | L4 · Project Room | First Tree 的持久 Chat、显式寻址、可见 handoff、Need You、Context 提升与跨渠道连续性；Multica 的共享 Issue 与私密探索发布边界；Claude Tag 的持久讨论串与临时沙箱分离；OpenClaw 的外部身份和路由 | HCTL2 用规范 Room、一级 Request、Context Manifest 和 Memo 提升流程统一这些经验；外部渠道只作同一 Room 的输入输出面，私聊和执行记录不会自动成为项目知识，协作边的创建权也不随消息作者身份下放给 Agent |
 | L3 · Task / Kanban | Codeg 的独立 `WorkTask`、Needs You、评审、后续动作和 Git 恢复；Multica 对 Issue 与单次运行、运行结束与承诺完成的明确分离；Hermes 的领取与重新领取；Linear/GitHub 的原生字段状态 | HCTL2 将长期承诺冻结为 Task Revision，把高频操作状态、外部字段权威和 Task Completion Receipt 分开；启动 Run 与移动卡片分离，完成必须重新校验验收标准和证据 |
-| L2 · Workflow / Run / Gate | HCTL1 的版本/证据、领取/隔离栅栏、法定票数和 Receipt；Conductor 的机械图状态；Stably Orca 的持久监督协议；Multica 的租约/重试/恢复/归属；ZeroClaw 的审批准入；Herdr、Superset 的边界反例 | HCTL2 自己定义 Workflow Revision、Run Manifest、Obligation、Seat、Attempt、Verdict 和 Receipt；外部机制只补机械推进、可靠领取、消息交付和故障测试，不能用执行者状态或会话传输替代语义治理 |
+| L2 · Workflow / Run / Gate | HCTL1 的版本/证据、领取/隔离栅栏、法定票数和 Receipt；Dagu 的机械图状态与被动等待检查点；Stably Orca 的持久监督协议；Multica 的租约/重试/恢复/归属；ZeroClaw 的审批准入；Herdr、Superset 的边界反例 | HCTL2 自己定义 Workflow Revision、Run Manifest、Obligation、Seat、Attempt、Verdict 和 Receipt；外部机制只补机械推进、可靠领取、消息交付和故障测试，不能用执行者状态或会话传输替代语义治理 |
 | L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、harness 适配器、运行时后端、ChangeSet 和终端网关统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
 
 这张表是“整合关系”，不是对象映射。每个来源项目只贡献表中写明的机制；L4–L1 是本研究保留的历史标签，最终身份、权限、版本和证据由 HCTL2 的 Project、Task、Run、Agent 四模块定义。
@@ -405,8 +405,8 @@ HCTL1 是 HCTL2 L2 语义内核的直接前身，也是可执行的技术谱系�
 HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和对账的思路，但不会原样继承其对象与事实源：
 
 - HCTL1 的 `Seat = harness × model` 表示协作身份；HCTL2 的 Seat 是 Obligation 内的逻辑执行者或投票者位置，下挂 `0..N` 个 Attempt；
-- HCTL1 的 Obligation 来自静态分派中的 author/gate/merge；HCTL2 的 Obligation 对应 Conductor 外部任务的一次执行责任；
-- HCTL1 把每个 Seat 的 ref、PR 和 squash Receipt 作为全局协调事实；HCTL2 把运行治理放入 SQLite 控制库，以 Git 保存共享且低频变化的定义和证据，并由 Conductor 保存机械工作流位置；
+- HCTL1 的 Obligation 来自静态分派中的 author/gate/merge；HCTL2 的 Obligation 对应 Dagu 外部检查点的一次执行责任；
+- HCTL1 把每个 Seat 的 ref、PR 和 squash Receipt 作为全局协调事实；HCTL2 把运行治理放入 SQLite 控制库，以 Git 保存共享且低频变化的定义和证据，并由 Dagu 保存机械工作流位置；
 - HCTL1 的回收机制不等于候选方案降级，而且没有 Project Room、Task Board、Workflow Revision、Run、Attempt、进程/PTY 或外部系统同步；
 - 单一人类信任、唯一合并协调者且容量为 1，以及把 PR 当作协作原子，只适用于它所定义的窄范围运行方式。
 
@@ -416,17 +416,38 @@ HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和
 - [派生引擎](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/derive/derive.go#L47-L124)；[CAS 与待处理状态恢复](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/store/store.go#L15-L191)；[Receipt 重放](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/receipt/receipt.go#L14-L187)
 - [可执行用例库](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/tests/corpus/README.md#L1-L53)；[Apache-2.0 许可证](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/LICENSE)
 
-<a id="e-l2-conductor"></a>
-## E-L2-CONDUCTOR · Conductor 机械状态后端
+<a id="e-l2-dagu"></a>
+## E-L2-DAGU · Dagu 机械状态后端与 workflow 候选复审
 
-L2 的语义核心由 HCTL2 原生建设；HCTL1 是它的直接谱系证据，但不能直接提供完整的 HCTL2 Workflow。Conductor 证明外部 Worker，以及 READY、等待、定时、重试和历史记录等机械状态，可以与真正产生副作用的执行过程分开。HCTL 把它作为 workflow engine 端口适配器后面的精选依赖。
+### 当前决定
 
-- [Conductor OSS](https://github.com/conductor-oss/conductor)
-- [核心概念](https://docs.conductor-oss.org/devguide/concepts/index.html)
-- [部署](https://docs.conductor-oss.org/devguide/running/deploy.html)
-- 固定评估版本：[v3.21.23](https://github.com/conductor-oss/conductor/releases)（2026-01 稳定版，Apache-2.0）；采用时补记已审阅 commit。持久化仅支持 Redis/Postgres/MySQL（无 SQLite），单机最小持久化组合与打包重量是限时验证要点。
+第一阶段 workflow engine 拍板 **Dagu**，固定审阅基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)（2026-08-22，[GPL-3.0-or-later](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/LICENSE)）。判据已经按讨论弱化为：Workflow 的 HCTL JSON 必须是声明式事实源，可以机械执行 schema/Profile/引用/环等 lint；**不要求**对任意 loop 证明终止。运行时再以冻结预算、deadline、取消和替代规则收口。
 
-Conductor 不选择 Harness，不创建 Seat/Attempt，不解释语义拒绝，不计算 HCTL 法定票数，不签发 Receipt，也不直接写入 Git 或外部系统。Dagu 的[数据优先工作流与 Runner](https://github.com/dagu-org/dagu)只用于对照 Runner 的所有权设计，不是第一阶段后端。
+Dagu 胜出的原因很窄：声明式 YAML、单二进制、文件系统持久化，`start-all` 在[一个进程内启动服务](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/startall.go#L94-L99)，比需要 JVM 或数据库/队列组合的候选更贴合单机第一阶段；同时，无进程的 [`human.task`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/runner.go#L766-L798) 会进入等待态，可经[完成 API](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/humantasks.go#L78-L126)恢复，足以作为 control 驱动的外部检查点。它不是纯被驱动引擎：普通 step 会直接[构造 executor](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L823-L827)并[自行执行](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L265-L269)；HCTL Profile 因此只准依赖/条件/等待结构和 `human.task`，拒绝 command/script/action/HTTP/agent/Harness。
+
+Workflow Revision 仍是 HCTL 规范化 JSON；Dagu YAML 只是固定 compiler/adapter 生成的 Engine Deployment。lint 分两层：HCTL 工具箱先验证完整 schema、Profile、引用与图结构，再调用 Dagu [`validate`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/validate.go#L25-L47)检查生成物。不能只相信后者：公开 `DAG.Validate` 只检查[名称和缺失依赖](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/ir/dag.go#L448-L475)，环是在[执行计划构建](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/plan.go#L287-L409)时才被拒绝，所以 HCTL 图 lint 必须更早拒绝并以负例锁定。
+
+### 阻断性 P0 风险
+
+`human.task` 完成服务内部有 CAS/幂等保护并把恢复写入队列（[completion](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/completion.go#L18-L113)、[resume](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/resume.go#L43-L92)），但公开请求只给 DAG、run 和 step，不能携带调用者预期的 engine attempt generation。adapter 必须在 ACK 未知、retry/repeat、重启和迟到完成的压力测试中证明 readback/fence 不会让旧请求推进新检查点；做不到就阻断 B4 并重开选型。inline spec start API 已存在（[源码](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/dagruns.go#L163-L253)），但固定定义摘要、恢复后的 binding 对账和备份一致性仍由 HCTL adapter/control 负责。Dagu 不选择 Harness、不创建 Seat/Attempt、不解释语义拒绝、不计算 quorum、不签发 Receipt，也不直接写 Git 或外部系统。
+
+### 本轮源码复审的全部 workflow 候选
+
+以下是本轮实际审阅过的集合，不冒充整个市场清单；“stepfunlocal”按 AWS Step Functions Local 理解。结论基于固定源码/官方实现，而不是 README 特性表。
+
+| 候选 | 源码层事实 | 结论 |
+| --- | --- | --- |
+| **Dagu** | 单进程/文件持久化；普通 step 自驱动，但 `human.task` 可作被动检查点；验证器与 completion fencing 的缺口如上 | **采用**；最小运维面，受严格 HCTL Profile 和 P0 fencing 门禁约束 |
+| **Conductor OSS** | 当前 `v3.32.1` 已把 [SQLite 设为默认 DB/queue/index](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/src/main/resources/application.properties#L14-L24)，旧评估“只支持 Redis/Postgres/MySQL”已经过时；其[逐 task poll/update API](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/rest/src/main/java/com/netflix/conductor/rest/controllers/TaskResource.java#L66-L112)比 Dagu 更原生地被驱动，但 [JVM server 分发](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/build.gradle#L42-L79)仍重；loop validator 只查[条件与 body 存在](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/validations/WorkflowTaskTypeConstraint.java#L260-L284)，runtime 可[持续迭代](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/core/execution/tasks/DoWhile.java#L161-L184) | 不采用；外部任务接口最好，但 footprint/分发不符合本轮轻量优先，且同样不证明终止 |
+| **Windmill** | flow schema 本身允许 script、raw script、for/while loop、subflow 与 agent 等[代码承载模块](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L984-L1093)，validator 主要做[反序列化、retry 与 path](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L233-L275)，部署由 [PostgreSQL、server 和 worker](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/docker-compose.yml#L10-L79)组成，且[许可混合](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/LICENSE#L1-L31) | 不采用；明显偏 code platform，服务面和授权面都过大 |
+| **Kestra** | YAML 是声明式入口，但 Flow validator 只挡重复 ID 与[直接自递归](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/core/validations/validator/FlowValidator.java#L32-L78)，测试中存在[合法互递归 subflow](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/test/resources/flows/valids/subflow-function-mutual-a.yaml#L1-L9)，`LoopUntil` 未设限制时[不限制迭代数](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/plugin/core/flow/LoopUntil.java#L242-L263)；local mode 仍是 [JVM + H2](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/cli/src/main/java/io/kestra/cli/commands/servers/LocalCommand.java#L25-L42) | 不采用；插件/运行面远超所需，lint 能力没有抵消重量 |
+| **Direktiv** | 稳定版有声明式 [workflow model](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L13-L84)与[validator](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L174-L232)，同时允许[显式自循环](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/tests/engine/simple-loop.test.js#L22-L48)并依赖 NATS/Postgres/Kubernetes/Knative 等[较重栈](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/go.mod#L21-L53)；当前主干 compiler 已消费 [`.wf.ts`](https://github.com/direktiv/direktiv/blob/9ad27a0de2aa986a85612867cf8e73c8822d0529/internal/core/compiler.go#L8-L64) | 不采用；部署重，且演进方向重新引入 code-as-workflow |
+| **Serverless Workflow Synapse** | CNCF Serverless Workflow schema 原生允许 [for/while 条件循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/schema/workflow.yaml#L685-L729)，官方示例包含[永久消费循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/examples/call-asyncapi-subscribe-consume-forever-foreach.yaml#L1-L27)；Synapse compose 由 [Redis、API、operator、correlator](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/deployments/docker-compose/docker-compose.yml#L1-L55)组成，standalone runner 只给[内存执行上下文](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/src/runner/Synapse.Runner/Services/StandAloneWorkflowExecutionContext.cs#L27-L40) | 不采用 runtime；保留 DSL/spec 作为 schema 参考 |
+| **TIBCO Flogo / project-flogo/flow** | flow JSON 是 task/link 图（[serializer](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/definition/definition_ser.go#L26-L61)），含 [DoWhile](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/model/simple/dowhilebehavior.go#L72-L99)；runtime 用[最大 step 数](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/action.go#L421-L443)作保险，但 persistence 只有[可选 recorder 接口](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/state/recorder.go#L1-L14) | 不采用 runtime；它是嵌入式 flow library，不是完整耐久服务 |
+| **AWS Step Functions Local** | ASL 声明式、可配合 [StateLint](https://github.com/awslabs/statelint/blob/5388321f0c0c4b24df9308c02dff4d3adfe74527/lib/statelint/state_node.rb#L207-L224)，但 AWS 官方明确称 Local [unsupported、仅供测试](https://docs.aws.amazon.com/step-functions/latest/dg/sfn-local.html) | 不可作生产本地 runtime；ASL/StateLint 仅作语法设计参考 |
+| **SCXML / XState 自建** | SCXML 是成熟的[状态图标准](https://www.w3.org/TR/scxml/)；XState machine config 仍可嵌入[函数实现](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createMachine.ts#L31-L77)，默认内部迭代上限可为 [Infinity](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/StateMachine.ts#L126-L145)，snapshot API 只解决[状态快照](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createActor.ts#L783-L819) | 不自建；还需补 durable store、lease、timer、API、恢复与运维，收益不足以抵消重造引擎 |
+
+结论不是“Dagu 最强”，而是它在当前约束下最小：Conductor 的外部 task 合同更顺手，Serverless Workflow/SCXML 的形式更标准，Windmill/Kestra 的产品能力更多；这些优势都不值得引入相应重量或自建耐久运行时。
 
 <a id="e-l2-stably-orca"></a>
 ## E-L2-STABLY-ORCA · Stably Orca 持久监督协议
@@ -655,16 +676,16 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考项目：[自定义扩展](https://tiptap.dev/docs/editor/extensions/custom-extensions)、[React 节点视图](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)。
 
 <a id="e-l4-matrix-homeserver"></a>
-## E-L4-MATRIX-HOMESERVER · chat server 候选（限时验证）
+## E-L4-MATRIX-HOMESERVER · chat server 选型（限时验证）
 
 三类数据模型（v0.10.0）把 Chat Room 的消息 content 判给采用 Matrix 协议的 chat server。两个候选并列进入开工前限时验证（见[交付文档](../delivery.md#开工前限时验证)），均为 Rust 单二进制、采用 RocksDB 系嵌入式存储的 conduwuit 谱系：
 
-- [Tuwunel](https://github.com/matrix-construct/tuwunel)：conduwuit 原作者延续、全职维护；Apache-2.0。
+- [Tuwunel `v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)：conduwuit 原作者延续、全职维护；Apache-2.0。
 - [Continuwuity](https://github.com/continuwuity/continuwuity)：conduwuit 社区延续、Matrix 基金会生态成员；Apache-2.0。
 
-已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化而非房间内发命令。
+已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化而非房间内发命令。其官方 `v1.9.0` 发布物只有 Linux，macOS 需要容器/轻量 VM，不能再笼统写成“单二进制所以运维压力低”。
 
-角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；P0 必须固定已审阅发布版本、pinned commit、实际存储后端及 build features。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
+角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；P0 必须固定实际存储后端及 build features，并验证 macOS 承载、低内存配置与 RocksDB/media 一致性备份。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
 
 ## L3 外部系统与观察清单
 
@@ -675,11 +696,11 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 - React Aria：[Kanban 示例](https://react-aria.adobe.com/examples/kanban)、[拖放](https://react-aria.adobe.com/dnd)——只作为 UI 基础组件。
 
 <a id="e-l3-vikunja"></a>
-## E-L3-VIKUNJA · 本地任务服务器首选候选（限时验证）
+## E-L3-VIKUNJA · 本地任务服务器选型（限时验证）
 
-[Vikunja](https://github.com/go-vikunja/vikunja)：Go 单二进制、默认 SQLite、REST API（v1/v2）与 webhooks，看板/列表/甘特多视图；AGPL-3.0-or-later（desktop 组件 GPL-3.0-or-later）。
+[Vikunja `v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)：Go 单二进制、默认 SQLite、REST API（v1/v2）与 webhooks，看板/列表/甘特多视图；AGPL-3.0-or-later（desktop 组件 GPL-3.0-or-later）。该发布已有官方 macOS arm64/amd64 full zip，旧记录“无 Darwin 包”已作废。
 
-角色：Kanban 场景本地 content 后端的首选候选。采用边界：独立进程托管、经任务源受控端口访问，不 vendor、不链接其源码——AGPL 义务因此限于该服务自身。验证要点见[交付文档](../delivery.md#开工前限时验证)；选定后固定已审阅发布版本并补记 pinned commit。
+角色：Kanban 场景本地 content 后端的已选实现。采用边界：独立进程托管、经任务源受控端口访问，不 vendor、不链接其源码——AGPL 义务因此限于该服务自身。验证要点见[交付文档](../delivery.md#开工前限时验证)。
 
 <a id="e-l3-git-bug"></a>
 ## E-L3-GIT-BUG · 零服务器任务后端对照（限时验证）
@@ -699,7 +720,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 | [Herdr `v0.8.0 / 346411fa`](https://github.com/herdrdev/herdr/tree/346411fa21afd297f5ed3b3fa56f9e3fbf7654b7) / [专项审计](#e-l1-herdr) | 后台服务持有 PTY；观察/控制与原始/语义操作面分离；单写者接管；状态信号仲裁与分级恢复 | Apache-2.0；控制方不是持久租约，运行状态不等于领域完成；完整边界见专项审计 |
 | [xterm.js](https://github.com/xtermjs/xterm.js/) | 嵌入式终端渲染器，以及 CJK、输入法、无障碍和流量控制 | MIT；只负责前端，不拥有 PTY、进程或 Session |
 | [WezTerm](https://wezterm.org/cli/cli/index.html) | 成熟的跨平台外部终端与 CLI | MIT；不嵌入应用，也不把 Mux 协议当作 ABI |
-| [Zellij](https://zellij.dev/documentation/programmatic-control.html) / tmux | 真实的 Mux 与运行环境候选 | 经过同一套契约测试后，第一阶段只选择一个；Pane 名称不作为身份标识 |
+| [Zellij `v0.45.0 / 13e1c25a`](https://github.com/zellij-org/zellij/tree/13e1c25a2b1ef61d90ecd1765e660c575e90977b) / tmux | 真实的 Mux 与运行环境；Zellij 已选，tmux 为降级方向 | 使用官方 `zellij-no-web` 构建；Pane 名称不作为身份标识，PTY/headless/input lease 与 session 清理仍过契约测试 |
 
 ### 只列入观察清单的产品
 
@@ -714,6 +735,19 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 | [ServerCC](https://servercc.app/docs/sessions) | 外部接管、厂商会话恢复、移动端控制 | 闭源；作为身份与交接的产品行为证据 |
 | [QuickTUI](https://quicktui.ai/) | 自托管 tmux 加移动端或浏览器终端 | 应用闭源；公开仓库只能证明分发方式 |
 | [Redock](https://redock.dev/) | 分阶段输入、CJK 与语音、Activity 深链 | 闭源；只参考用户体验 |
+
+## 执行面已选依赖的运维与 footprint
+
+这里的“已选依赖”指需要独立托管生命周期的 Dagu、Tuwunel、Vikunja、Zellij 四项；React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，不是容量承诺。文件大小取官方 release asset 的实际字节；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。Tuwunel 官方只有 Linux 发布物，本机没有既有 Linux 容器/VM，故不伪造 RSS 数字。
+
+| 模块 | 固定版本与许可 | 官方发布 footprint | 空载实测 / 数据 | 运维判断 |
+| --- | --- | --- | --- | --- |
+| **Dagu** | [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/releases/tag/v2.15.1)，GPL-3.0-or-later | macOS arm64 archive **45.9 MiB**、binary **148.1 MiB**；Linux amd64 为 48.3/154.6 MiB | `start-all`、coordinator 关闭：**92.4 MiB RSS**；空数据目录约 84 KiB | **低—中**：一个进程、文件备份；主要风险是 adapter/fencing，不是日常运维 |
+| **Tuwunel** | [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0)，Apache-2.0 | Linux x86_64 GNU zstd **31.2 MiB**、binary **98.1 MiB**；无官方 Darwin asset | macOS RSS **待 P0**。默认 cache capacity 源码为 [`128 + 64 × parallelism` MiB，write buffer 为 `48 + 4 × parallelism` MiB](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/core/config/mod.rs#L5185-L5189)，capacity 不等于已提交 RSS | **中—高**：macOS 额外需要 Linux VM/container；需固定低内存配置，并一致备份 RocksDB、media 与 secret |
+| **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
+| **Zellij** | [`v0.45.0 / 13e1c25a`](https://github.com/zellij-org/zellij/releases/tag/v0.45.0)，MIT | macOS arm64 `zellij-no-web` archive **11.3 MiB**、binary **32.4 MiB** | 一个 detached 默认 session 的 server **89.7 MiB RSS**；attach client 另约 18.3 MiB；无 session 时无常驻 daemon | **低安装 / 中集成**：无需数据库；成本随 session 与 harness 子进程增长，难点在 PTY、headless 应答、输入租约和残留 session 清理 |
+
+选择对应平台发布物时，四个 archive 合计约 **135 MiB**，解压后的四个 binary 合计约 **386 MiB**。本机能直接测量的 Dagu + Vikunja + 一个 detached Zellij session 合计约 **239 MiB RSS**；这还没有 Tuwunel 的进程与 macOS Linux VM、任何 harness、control 或 Workbench。因而整体并非“几十 MiB 常驻”：Dagu/Vikunja 的服务运维简单，Zellij 的成本按会话增长，**Tuwunel 是当前明确最高的运维与资源不确定项**，必须在 B1 前量出完整 macOS 组合，而 Dagu 的 fencing 则在 B4 前验收。
 
 ## 标准与通用库，不作为产品主参考
 

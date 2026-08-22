@@ -112,7 +112,7 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 
 - [project.md](./project.md)：Project 模块合同 + Chat 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块合同 + Linear / GitHub 对齐
-- [run.md](./run.md)：Run 模块合同 + Conductor / BPMN 对齐
+- [run.md](./run.md)：Run 模块合同 + Dagu / BPMN 对齐
 - [agent.md](./agent.md)：Agent 模块合同 + PTY / tmux / ACP 对齐
 - [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复
