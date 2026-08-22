@@ -164,6 +164,18 @@ ContextBundle 是 Manifest 对某个 Invocation/Attempt/Participant 的最小权
 
 Harness 不能绕过 binding 读取 Room、Memo 或外部 Context store 来“补上下文”。但 coding Harness 仍可在已授权的 file/Git/tool scope 内正常读取 repo；这些读取属于执行能力，按既有工具观测/Evidence 留痕，不要求全部经过 Project retriever。
 
+### 7.3 定向投喂：显式引用切片
+
+当一次调用把工作交给某个特定 Participant 或 harness（例如 Room 中显式 @ 某个执行者）时，Bundle 组装遵循“显式引用为锚、结构先行、压缩有谱”：
+
+1. 被 @ 的消息与其显式引用对象是 Must Include，原样保留；
+2. “与之有关的前文”先用结构关系机械求解：回复链、同 thread、同对象 refs（Task/Run/Artifact）、pin——零处理 token；
+3. 结构闭包之外的候选再用本地词法检索与（可选）embedding 相似度补足，仍在本地完成；
+4. 入选内容按 §8 的分层摘要压缩，段落级保留 lineage；
+5. 路由本身永远是机械的：@ 解析是确定性寻址，不交给一个协调者模型去猜“该派给谁、该给它看什么”。
+
+两个外部实证（完整审计见 [E-LOBEHUB](../docs/design/references/implementation-evidence.md#e-lobehub)）：LobeHub 在群外把单个 @ 实现为机械直达路由（零额外 LLM 调用），群内却交给 supervisor LLM 路由——一个广播回合默认 N+2 次全量历史 LLM 调用（supervisor 可显式跳过收尾降为 N+1）、每个成员收到一份全量共享 transcript 的逐成员改写，这就是“路由与切片交给大模型”的成本后果；它的 topic-reference 则是好的机械回退梯子：显式引用标签 → 已存摘要 → 末 5 条消息节选 → 仅标题。HCTL2 的对应物是 Room 的显式寻址、ContextManifest 的 Must Include 与面向 Seat 的最小权限 child Bundle；本节只是把“定向”场景的组装顺序写死。
+
 ## 8. Token budget 与组装策略
 
 Context budget 不是模型窗口大小。可用输入预算应先扣除 system/policy、工具 schema、必需 Skill、输出预留和安全余量，再分配给 Context。
@@ -179,6 +191,14 @@ Context budget 不是模型窗口大小。可用输入预算应先扣除 system/
 7. 若 Must Include 已超过硬预算，停止并要求缩小范围、换更大窗口或显式确认新的压缩方案，不能从验收与权限条款中间截断。
 
 每次 Preview 显示估算；实际 tokenizer 与最终 Bundle 产生实测账本。Context 的效率指标不是“塞满率”，而包括 grounded answer rate、必要来源覆盖率、无效 token 比例、重复核验次数和从 Room 到有效首个动作的时间。
+
+**萃取过程自身的成本纪律**：facilitation（挑选、压缩、路由、估算）必须高速且少消耗处理 token。这是设计约束，不是优化建议：
+
+- 每个组装/萃取步骤要么纯机械（结构化关系、词法检索、规则改写、去重），要么用本地小模型/embedding 确立相关性；调用大模型的步骤必须显式列名、可单独关闭，不允许作为隐式副作用出现。
+- 大模型摘要（若启用）必须同时满足：显式指令而非黑盒副作用、有独立预算并入账、结果持久化为一等对象供后续复用（仍是可重建投影，不覆盖来源）、增量折叠既有摘要而不是每轮从原文重推。LobeHub 的正例是压缩产物存成一等 DB 行并增量折叠；反例即其社区投诉的摘要每轮重算（[#9380](https://github.com/lobehub/lobehub/issues/9380)）。
+- token 估算用本地估算器加漂移系数即可支撑预算决策（LobeHub：启发式估算 × 1.25 漂移系数触发压缩），不为计数本身付费或调外部服务；估算与触发本身也要可靠——压缩不触发导致整段对话倾倒（[#12810](https://github.com/lobehub/lobehub/issues/12810)）就是触发失灵的代价。
+- 组装顺序对 provider 前缀缓存友好：稳定内容在前、高变动内容排在尾部，让每步重发的固定前缀命中缓存。
+- MyContext 的经验同向且更激进：它没有本地相关性分类器，靠机械 rank 融合（RRF）加消费端 agent 判断（另留有默认关闭的外部 rerank 挂点）；本地向量索引已实现但因 embedding 费用不接线；LLM 画像抽取管道建成后被实测下线，换成零模型的确定性测量。“能用规则就不用模型”在它那里是执行过的决定，不是口号。
 
 ## 9. Repo Room → Project → Task / Run / Attempt 的传承
 
@@ -332,6 +352,7 @@ Phase 1 只利用已有显式 HCTL/Git/source 关系；语义 fact/community gra
 
 ## 17. 来源与取舍
 
-- [openTrinity/MyContext](https://github.com/openTrinity/mycontext/tree/81b3c7ac178dbf141ca97cbe6b6682f73e3d3199)：采用“多来源、增量采集、规范化/派生、检索与图、AI 只是受控消费者、故障显式降级”的分层思想；不照搬其个人数字分身产品边界，也不把 SQLite vault 当成 HCTL2 Context 的定义。该项目为开发者预览，且采用 Elastic License 2.0；本文只作设计研究，没有复制实现。
+- [openTrinity/MyContext](https://github.com/openTrinity/mycontext/tree/81b3c7ac178dbf141ca97cbe6b6682f73e3d3199)：采用“多来源、增量采集、规范化/派生、检索与图、AI 只是受控消费者、故障显式降级”的分层思想；不照搬其个人数字分身产品边界，也不把 SQLite vault 当成 HCTL2 Context 的定义。该项目为开发者预览，且采用 Elastic License 2.0；本文只作设计研究，没有复制实现。2026-08-22 源码复审（pin 不变，HEAD 即 81b3c7ac）确认其分层成本设计已深化：双层轮询探针 + 单事务 outbox 采集、CJK bigram FTS 作为常驻零费用检索层、kl-graph 的 RRF 多路融合与逐 chunk 抽取缓存、三级可见降级（agent → 有来源的本地检索列表 → 建索引提示），以及 LLM 画像抽取下线换零模型确定性测量；§7.3 与 §8 的成本纪律以此为对照样本之一。
+- [LobeHub](https://github.com/lobehub/lobehub)（审计基线 `v2.2.14 / 363797b1`，LobeHub Community License，非 OSI）：采用其“组装全程机械化、摘要是唯一显式 LLM 步骤”的管道形态、压缩产物一等持久化与增量折叠、前缀缓存友好排序，以及 ctx-map 式“每次调用的上下文构成”审计投影；不采用 supervisor LLM 路由、默认工具集无相关性筛选注入和全量历史逐成员重发。完整审计与社区 token 成本证据见 [E-LOBEHUB](../docs/design/references/implementation-evidence.md#e-lobehub)。
 - 用户提供的 First Tree 对比记录及其引用的 [Context Tree Policy](https://github.com/first-tree-ai/first-tree/blob/9a7dd4d94373921cfe2022bfef91c132fdf74824/packages/client/src/runtime/assets/context-tree-policy.md)：采用“共同认知应保存当前决定、原因、约束与 ownership；默认不把 Chat/日志写入长期知识；历史交给 Git”的经验；保留 HCTL2 的 Manifest 执行证据、显式 Memo 晋升与四模块权威边界。
 - HCTL2 当前规范：沿用 `project.md` 已有的 Context 组装顺序、InvocationBinding 冻结、Repo Room 提升预览、Memo 人工发布，以及 `run.md` 中 AttemptSpec/Gate 对 ContextManifest digest 的约束。本 memo 只补足这些合同背后的 Context plane 设计。
