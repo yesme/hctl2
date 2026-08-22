@@ -247,7 +247,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 ## 技术基线
 
-Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）。精确版本、实测 footprint 与运维分级见[实现证据](./references/implementation-evidence.md#执行面已选依赖的运维与-footprint)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）。精确版本、实测 footprint 与运维分级见[实现证据](./references/implementation-evidence.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](./references/implementation-evidence.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
