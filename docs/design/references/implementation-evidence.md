@@ -783,7 +783,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 
 [git-bug](https://github.com/git-bug/git-bug)：分布式、离线优先的任务追踪，任务以 git 对象存于 refs、随 push/pull 同步；Go 实现，CLI/TUI/Web UI 与 GraphQL API，带 GitHub/GitLab/Jira 桥接；GPL-3.0-or-later。
 
-角色：与 Vikunja 并列的对照候选，代表“零服务器、随仓库分布式”的另一条路。已知张力：看板语义弱（排序/泳道需另行承载）、无 webhook（观测靠 refs 轮询）、任务 content 进 git refs 与“content 归第三方服务器”的统一律相悖。若验证胜出，须显式接受模型例外并记入[来时路](./decision-history.md)。采用边界同上：独立进程/CLI 调用，不 vendor（GPL 义务隔离）。
+角色：与 Vikunja 并列的对照候选，代表“零服务器、随仓库分布式”的另一条路。已知冲突：看板语义弱（排序/泳道需另行承载）、无 webhook（观测靠 refs 轮询）、任务 content 进 git refs 与“content 归第三方服务器”的统一律相悖。若验证胜出，须显式接受模型例外并记入[来时路](./decision-history.md)。采用边界同上：独立进程/CLI 调用，不 vendor（GPL 义务隔离）。
 
 <a id="e-l1-tmux-runtime"></a>
 ## E-L1-TMUX-RUNTIME · 运行时后端复审
