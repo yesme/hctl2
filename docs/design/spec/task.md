@@ -9,16 +9,15 @@
 | --- | --- |
 | Task | 稳定身份、标题、目标结果和所属 Project |
 | Task Revision | 不可变的范围、验收标准、来源、所需角色和能力 |
-| Task Operational State | 对后端操作字段（排序、优先级、负责人、阻塞）的本地投影与同步账，及派生健康状态；操作字段的 ground truth 在 content 后端 |
-| Task Binding | Task 与外部来源、字段写入权和适配器版本的冻结绑定 |
+| Task Binding | Task 与外部来源、字段写入权和适配器版本的冻结绑定。后端操作字段（排序、优先级、负责人、阻塞）的本地投影、同步账与派生健康状态是它的字段组（下称"操作投影"），不是独立对象；操作字段的 ground truth 在 content 后端 |
 | Task Source Snapshot | 外部系统一次只追加的原始与规范化观测 |
 | Task Completion Receipt | 某次「完成 Task」命令对精确 Task Revision、规则、候选和证据的完成证明 |
 
 Repo 到外部 provider/account/scope 的连接由 Resolved Port Binding（port_kind = task_source）承载；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个 active binding。
 
-Task lifecycle 只有开放 | 完成 | 已取消。第一阶段 `project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Operational State 投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 合同](./project.md#repo-注册与-project-归档)。
+Task lifecycle 只有开放 | 完成 | 已取消。第一阶段 `project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 合同](./project.md#repo-注册与-project-归档)。
 
-Backlog | Ready | In Progress | Review 是 Task Operational State 中的本地非终态 stage，不是 Task lifecycle。Blocked 与需要关注是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；完成/已取消由 lifecycle 决定，外部 Done/Closed 或拖卡都不能直接写成该终态。
+Backlog | Ready | In Progress | Review 是操作投影中的本地非终态 stage，不是 Task lifecycle。Blocked 与需要关注是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；完成/已取消由 lifecycle 决定，外部 Done/Closed 或拖卡都不能直接写成该终态。
 
 ## 契约与来源
 
@@ -53,7 +52,7 @@ task_source 端口绑定与 Task Binding 的本地 current projection 使用 con
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 不可变结果或边界 |
 | --- | --- | --- | --- |
 | Task / Task Revision | contract version；开放 / 完成 / 已取消与独立 lifecycle version | control 处理「创建/采纳契约/完成/重开/取消 Task」命令 | Task Revision 只追加；Reopen 不改写旧完成历史 |
-| Task Operational State | binding `state_version` + 后端并发令牌 | control 准入「更新 Task」命令与「移动 Task」命令，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 Task Revision 或 lifecycle |
+| 操作投影（Task Binding 字段组） | binding `state_version` + 后端并发令牌 | control 准入「更新 Task」命令与「移动 Task」命令，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 Task Revision 或 lifecycle |
 | task_source 端口绑定 / Task Binding | current revision + local `state_version`；活跃 / 停用 / 已替换 | control 处理「接通/更新/停用」与「绑定/换绑」命令，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的 identity claim 持久唯一 |
 | Task Source Snapshot | append-only sequence + remote revision/digest/cursor；可产生待采纳 | control 持久化 refresh/reconcile 观测；「采纳契约」命令才消费内容变化 | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | Task Completion Receipt | immutable | 只有成功的「完成 Task」命令事务可写 | 精确绑定该次 `task_lifecycle_version`、Task Revision 与证据 |
@@ -87,7 +86,7 @@ Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当�
 | HCTL | 任务后端（Linear / GitHub / 本地任务服务器） | 差异 |
 | --- | --- | --- |
 | Task | Issue / 任务卡 | 后端卡片承载 content；Task 的身份、契约与验收由 HCTL 拥有 |
-| Task Operational State 的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 Task Binding 逐字段决定 |
+| 操作投影的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 Task Binding 逐字段决定 |
 | 排序（rank） | Linear sortOrder / ProjectV2 排序 | 条件写入用 provider 自己的并发令牌；没有等价令牌就降级 |
 | Task Binding 的 placement | GitHub ProjectV2 item；Linear 无独立看板项，位置由 workflow state + sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
 | Task Source Snapshot | webhook / API payload | 先观测后采纳；会改契约的内容必须经用户采纳 |

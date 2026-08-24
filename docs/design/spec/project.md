@@ -25,11 +25,11 @@
 | Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；工具箱只写入/回读 Git identity | 一个 Repo identity 只有一个 Repo 与 Repo Room；待确认的外部写入按关联键恢复，不重复注册 |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Participant / Project Role Binding | Participant immutable revision + current pointer；binding version | control 处理「创建/更新 Participant」与「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
-| Room / Room Event | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
+| Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
 | Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略与降级能力；health、成员现状和同步 cursor 是另行版本化的运行投影 |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
-| Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 中断 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，agentd 只提供观测 | 中断和其他终态不可复活；重试创建新 Invocation |
+| Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，agentd 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
 | Memo | 发布 revision 只追加 | control 与工具箱处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、活跃 / 已归档 | control 与工具箱处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
 
@@ -69,9 +69,9 @@ Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通
 
 Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时应创建 [Run](./run.md)。
 
-Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/中断、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/中断。恢复对账无法证明原 session/process、invocation_version、runtime_generation、lease 或适用 site/backend fence 仍匹配时，control 在同一收口事务将其置为中断、撤销输入/写租约并提交旧 runtime 的 stop/fence outbox；其迟到流或 Result Proposal 只留审计，不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
+Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失，收口动作（撤销租约、stop/fence outbox、迟到结果只留审计）由[连接合同的统一收口规则](./connections.md#失败与恢复)定义一次，本模块不复述；其迟到流或 Result Proposal 不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
-Room Invocation 的 Execution Spec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（repo_scope | project_scope）与 human 批准 Agent 建议时的 lineage 字段：精确 source_suggestion_ref = Room Event/Message | Result Proposal、建议摘要、可选 parent_execution_ref = Room Invocation | Attempt 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；Result Proposal 分支还要逐项匹配其 owner invocation_version、control writer generation、spec/binding/Context Bundle digests，以及物理执行时的 Execution Runtime/runtime_generation 与 site/backend fence generations。`in_process` 只能使用连接合同明确的缩减 tuple。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
+Room Invocation 的 Execution Spec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（repo_scope | project_scope）与 human 批准 Agent 建议时的 lineage 字段：精确 source_suggestion_ref = 消息事件（chat server 事件 ID）| Result Proposal、建议摘要、可选 parent_execution_ref = Room Invocation | Attempt 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；Result Proposal 分支还要逐项匹配其 owner invocation_version、control writer generation、spec/binding/Context Bundle digests，以及物理执行时的 Execution Runtime/runtime_generation 与 site/backend fence generations。`in_process` 只能使用连接合同明确的缩减 tuple。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
 
 ## Request
 

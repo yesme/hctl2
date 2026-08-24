@@ -153,7 +153,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | 目标事务提交前来源已变化 | CAS 拒绝，不创建下游事实 |
 | 目标已提交、调用方未收到结果 | 恢复后返回同一目标引用，不出现第二个下游对象 |
 | owner 身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接 |
-| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 进入丢失、Room Invocation 进入中断；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，Retry 使用新 owner、Execution Spec 与 runtime generation |
+| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份收口规则的唯一定义，模块合同引用而不复述 |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要 fresh chat readback 的准入拒绝，聊天入口显示重同步中 |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |

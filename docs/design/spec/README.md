@@ -66,7 +66,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 - **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
-- **独立对象**（核心产品词之外的合同层领域对象）：Repo Instance、Room Invocation、Room Event、Execution Runtime、Worker Profile、Task Operational State
+- **独立对象**（核心产品词之外的合同层领域对象）：Repo Instance、Room Invocation、Execution Runtime、Worker Profile
 
 ## v0.9.1 归并对照
 
@@ -103,6 +103,16 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | 状态值枚举拼写 | 中文语义名（待采纳、结果未知、等待输入等） |
 
 ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名（`port_kind`、`review_subject_digest`、ReviewSubjectRef 等）在合同需要逐字指认时保留原形，不受自造语义名的词形规则约束。
+
+## v0.12.1 清扫
+
+三类数据切分落地后按概念门槛复查的降级与统一：
+
+| 旧名 / 旧词 | 现状 |
+| --- | --- |
+| Room Event | 除名：消息 content 本体就是 chat server 的 Matrix event；HCTL 侧只有账本内只追加的"治理事件"（以事件 ID 精确引用消息），两者都不占领域对象名额 |
+| Task Operational State | 降级为 Task Binding 的字段组"操作投影"（后端操作字段的回读投影、同步账与派生健康状态）；ground truth 在 content 后端 |
+| 状态值"中断"（Room Invocation） | 统一为"丢失"：执行身份无法证明时 Room Invocation 与 Attempt 进入同一状态；收口规则只在[连接合同](./connections.md#失败与恢复)定义一次 |
 
 ## 外部对齐原则
 

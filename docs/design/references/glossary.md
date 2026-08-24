@@ -121,9 +121,7 @@ control writer、Repo Instance site 与 agentd/backend owner 的排他权以各�
 | Repo Instance | 仓库实例 | 系统挂接到逻辑 Repo 的 clone/执行现场（worktree、ChangeSet 物化、运行时与 site fence）；不属于 Project，本地无账本 |
 | Room Invocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | Execution Runtime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
-| Room Event | 房间事件 | 消息 content 的只追加单元，由 chat server 承载；治理事件另记于控制面账本并精确引用它 |
 | Worker Profile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
-| Task Operational State | 任务操作态 | 后端操作字段（排序、优先级、负责人）的本地投影与同步账；ground truth 在任务后端 |
 
 ## 引用格式（不是对象）
 

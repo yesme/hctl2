@@ -112,7 +112,7 @@ Repo 是四模块可归属的逻辑仓库，由 [Project 模块](./project.md#re
 
 ### 控制面自己的存储
 
-hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata（稳定身份、Revision 准入与 current、绑定、授权、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入、Verdict/Receipt）的唯一权威，一人多机连同一本，必须备份。仓库 clone 本地的 `<git-common-dir>/hctl2/`（当前 Repo Instance 及其 linked worktree 的共享运行目录）只有 OS 锁、traces 与可丢弃缓存——**不是账本，也不是事实源**：现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按丢失/中断收口）。
+hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata（稳定身份、Revision 准入与 current、绑定、授权、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入、Verdict/Receipt）的唯一权威，一人多机连同一本，必须备份。仓库 clone 本地的 `<git-common-dir>/hctl2/`（当前 Repo Instance 及其 linked worktree 的共享运行目录）只有 OS 锁、traces 与可丢弃缓存——**不是账本，也不是事实源**：现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行按丢失收口）。
 
 control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份 metadata 账本：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
@@ -174,7 +174,7 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
 
-UI 重载只重建投影。无法证明同一执行身份时，宁可标记丢失/中断或要求人工对账，也不能自动接管或伪造成功。
+UI 重载只重建投影。无法证明同一执行身份时，宁可标记丢失或要求人工对账，也不能自动接管或伪造成功。
 
 ### 备份与恢复
 
