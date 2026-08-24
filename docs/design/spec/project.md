@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.12.2<br>
+> 状态：规范性合同 · 草案 v0.12.3<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -45,7 +45,7 @@ Project 的目标、范围、角色和默认规则以单调 project_version 更�
 
 Participant 使用稳定 `participant_id` 与不可变配置 revision；该 revision 描述逻辑身份、persona/沟通约束、可选 post-train 或模型资格约束、默认 Skill refs 和 Worker Profile 候选约束，但不携带 secret、Project 权限或运行时身份。Project Role Binding 再把 Project/role 固定到精确 Participant revision，并保存职责、候选约束及权限/预算上限；Skill revision 只是另行冻结的方法包，Worker Profile 则只是物理 Harness/model/runtime 候选。四者不能互相替代：显示名、外部账号、persona、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。换版或换绑不改写活动 Invocation、Seat 或 Run；每次 Execution Spec 必须同时固定实际 Participant revision、Project Role Binding version/digest（repo_scope 可无）与实际 Skill refs/digests。
 
-从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。
+从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
 ## Room 与消息
 
@@ -59,9 +59,15 @@ Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 
 
 Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。物化进 Context Bundle 的只有执行体自己拿不到或不该自己翻的部分——从聊天史萃取的相关讨论、契约与范围说明、用户显式引用的原文；Repo/Git 内容、Artifact、Memo 与 Skill 以精确 ref+digest 作为**指针**进入 Manifest 与 Bundle，由执行体在获准范围内自行取用。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Receipt 指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
 
-每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，agentd 在启动前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
+每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，agentd 在启动前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
-Memo 只由用户明确发布，至少固定 `memo_id`、来源 Message/Artifact refs、适用范围、作者、内容 digest/Git locator、取代关系和有效期。原始消息、执行日志和自动总结不会自动进入长期知识。
+萃取与相关性判定全部本地，不消耗大模型 token：第一级是显式引用与当前讨论窗口；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流与账本增量维护，不进权威账本，删除后可完整重建。相关性门只以账本事实（提及、认领、Request 关联、游标）为判定输入，不以消息措辞正文做路由；每次判定连同输入事实引用与结论记为可审计观测，观测不改写任何事实。
+
+压缩缺省关闭。仅当用户配置了专用压缩模型（small-brain——经用户级定义机制固定 revision/digest 的模型引用，不是新对象）时，Bundle 物化才可压缩。每个被压缩条目必须记录 compressor ref+digest、压缩率与原文 ref+digest，且压缩产物的每个片段可回源到原文位置。证据类内容——digest、Receipt、验收标准原文与被治理引用冻结的消息原文——永不压缩；压缩条目缺来源记录或压缩了证据类内容的 Bundle 拒绝交付。萃取与压缩产物可作为以（room、cursor 区间、消费者范围）为键的派生缓存跨调用复用；复用时 Bundle 记录所引产物的 ref+digest，缓存可丢弃重建。
+
+房间可维护一份滚动纪要（前情提要）：挂在（room、cursor）上、由组装器机械触发并经 small-brain 增量折叠的派生缓存。未配置 small-brain 时不生成纪要，物化端以近详远略裁剪代替（近期消息全文、更早消息降为标题加事件指针）。纪要逐条携带消息事件回源指针；它不是权威——治理引用不得指向纪要，只能指向精确事件；不进权威账本，被使用时 Bundle 只记其 ref+digest；不由房间内模型 Participant 书写或改写。
+
+Memo 只由用户明确发布，至少固定 `memo_id`、来源 Message/Artifact refs、适用范围、作者、内容 digest/Git locator、取代关系和有效期。原始消息、执行日志和自动总结不会自动进入长期知识。组装的指针清单机械过滤已过有效期或已被取代的 Memo；显式引用不受此过滤。
 
 Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通 Git 文件在登记前不是 Artifact。Artifact Revision 至少固定 `artifact_revision_id`、artifact_id、不可变内容定位、内容摘要、可选 ChangeSet Revision 来源和 revision_digest。Artifact 的评审 subject 对 {artifact_revision_id, artifact_id, immutable_content_locator, content_digest, source_change_set_revision_ref?} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不能与完整 Revision digest 互换。发布新版本只移动 current pointer，不改写历史。
 
