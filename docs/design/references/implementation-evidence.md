@@ -1,9 +1,9 @@
 # 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-23<br>
+> 状态：信息性文档 · 研究快照 2026-08-24<br>
 > 上级文档：[HCTL2 设计规范](../README.md)<br>
 > 规则：本文只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。<br>
-> 研究标签沿用原始脉络：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。
+> 组织方式：正文按**产品类别**分组（回答"它是什么"）；条目内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。两把刀互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
 
 ## 引用准入
 
@@ -19,47 +19,95 @@
 
 同一项目跨层出现时，每一处都必须说明该层独有的亮点与不采用边界；平庸重叠仍然删除。标准、通用库和 Task 来源系统单列。
 
-## 精选组合总览
+## 产品归类与借鉴总览
 
-| 项目 | 深入层级 | 参考角色 | 只保留的独特价值 |
+研究样本按产品类别归组，把三个问题分开回答：它是什么（类别与产品重心）、我们在哪一层借它（证据层级与参考角色）、怎么借（复用决策）。产品重心按 2026 年提交路径直方图口径估计——开发投入实际落在四个场景的哪里；宣传口径与投入口径不一致时以后者为准，并在条目内说明。
+
+"怎么借"只有五种决策（定义见文末[复用决策用语](#复用决策用语)）。与常见问法的对应：直接用它的 CLI/服务＝**采用为依赖**；借它的 schema/协议形状＝**适配协议**；抄它的代码＝**移植有边界的组件**；借它的思想/阶段/交互＝**仅参考行为**。
+
+### ① Coding Harness · 编码代理本体
+
+HCTL2 驱动的对象；借的是接入协议与架构边界，不是产品模型。
+
+| 项目 | 复用决策 | 证据层级 | 只保留的独特价值 |
 | --- | --- | --- | --- |
-| [First Tree](https://github.com/agent-team-foundation/first-tree) | L4 核心；L2/L1 专项 | 核心参考 + 专项证据 | 持久 Chat、显式寻址与可见 handoff、Context 筛选与治理、Need You、可靠 Inbox、跨渠道协作和托管运行时连续性 |
-| [Claude Tag](https://www.anthropic.com/news/introducing-claude-tag) | L4 | 行为参考 | 共享且可继续引导的讨论串、按作用域拥有的身份和记忆、持久协作与临时运行时分离 |
-| [Grok Bot](https://x.ai/news/introducing-grok-bot) | L4 行为;L3/L2/L1 边界 | 行为参考 | Bot 作为应用原生一等参与者与 handoff 可见性原则、审批双规则与"审批不可逆已完成工作"的显式声明、观察-接管-交还回路;账号级共享云机与凭证的反面证据 |
-| [OpenClaw](https://github.com/openclaw/openclaw) | L4 | 专项参考 | 确定性的多渠道身份与路由、配对/白名单和按渠道降级投递 |
-| [Codeg](https://github.com/xintaofei/codeg) | L3 核心；L1/L2 专项 | 核心参考 + 专项证据 | 独立异步 `WorkTask`、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
-| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | L3 | 专项参考 | 持久 Task/Attempt、原子领取、心跳/回收、依赖推进和多客户端共用内核 |
-| [Multica](https://github.com/multica-ai/multica) | L4/L3/L2/L1 专项 | 行为、边界与实现证据 | L4 的 Project/Issue/私聊发布边界；L3 的 Issue 与单次运行分离；L2 的领取、租约、重试、恢复与归属；L1 的多 Harness 能力矩阵和无损 worktree |
-| [LobeHub](https://github.com/lobehub/lobehub) | L4/L1 专项；L2 边界 | 专项参考 + 边界证据 | Context 组装的纯机械处理器管道与增量持久化压缩；外部 Harness 子进程适配器的终局结果契约、状态提取与会话重建；supervisor LLM 路由和默认工具 token 重量的反面实证 |
-| [Cumora](https://github.com/yetone/cumora) | L4/L3/L1 专项;L2 边界 | 专项参考 + 边界证据 | 唤醒 triage 门与协同门(seen 游标/HELD/hold-token)、Shipping 验收覆盖矩阵与 builder/verifier 分离、BYOA 引擎适配矩阵与保守会话重置、设备配对与不可伪造身份;自由文本证据与全权引擎派发的反面实证 |
-| [Rakazo](https://github.com/elie222/rakazo) | L2/L1 专项;L4 专项 | 专项参考 + 边界证据 | 三层带隔离栅栏的租约与幂等效果账本、挂起前强制 checkpoint 的等人状态、供应商中立的可移植工作区、人/机双租约接管;记忆修订携带 run 级出处;提示词代替策略引擎的反面实证 |
-| [Helio](https://www.helio.im/) | L4/L2/L1 专项;L3 边界 | 行为参考 + 专项参考(开源外围)+ 边界证据 | 消息面 CAS/cede/receipts/turn 级出处与人批 charter、三元归约与未收尾看门狗、机械 stop-gate 与证据分级、side_effect 安全默认与临时凭证注入;"关单人类专属"营销与实现落差、agent 自行关单的反面证据 |
-| [HCTL1 / yesme/hctl](https://github.com/yesme/hctl) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
-| [HCTL2 Run 语义内核](../run.md) | L2 | 原生语义核心 | 与版本和证据绑定的 Run、Seat 候选切换、法定票数、重新过 Gate 和 Receipt |
-| [Dagu](https://github.com/dagucloud/dagu) | L2 | 机械状态后端 | 声明式 DAG、单进程文件持久化，以及可由 control 完成的无进程等待检查点 |
-| [Conductor OSS](https://github.com/conductor-oss/conductor) | L2 | 已评估对照 | 外部任务领取/完成接口更直接，但 JVM 分发与整体 footprint 不及 Dagu 贴合第一阶段 |
-| [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | L2 | 相邻实现参考 | SOP 准入、按版本审批与法定票数、恢复和失败时默认拒绝的规则测试 |
-| [Stably Orca](https://github.com/stablyai/orca) | L1 核心；L2 专项 | 核心参考 + 专项参考 | L1 的 PTY 所有权、冷热恢复、代际隔离和 worktree/差异/远程/交付；L2 的持久 Run 收件箱、Dispatch 权威、可靠交付、幂等收据和执行者资源生命周期 |
-| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | L1；横切架构 | 专项参考 + 架构边界 | 能力端口、类型化事件和可撤销注册、模型可见只追加日志，以及插件组合的收益与风险 |
-| [OpenCode](https://github.com/anomalyco/opencode) | L1 | 专项参考 | OpenAPI + SSE + 类型化 SDK 的服务端优先、多客户端 Harness 操作面 |
-| [Pi](https://github.com/earendil-works/pi) | L1 | 专项参考 | 内嵌 SDK + 严格 JSONL RPC，以及 `steer`/`follow_up` 队列契约 |
-| [Kimi Code](https://github.com/MoonshotAI/kimi-code) | L1 | 专项参考 | ACP/原生能力矩阵和可以验证的降级行为 |
-| [Termio](https://github.com/termio-sh/termio) | L1 | 专项参考 | Harness Manifest、会话 URI，以及监听/心跳/信号契约 |
-| [tmux](https://github.com/tmux/tmux) | L1 | 运行时后端（采用为依赖） | 公开 control mode、稳定 pane ID、headless 终端应答、捕获/转发与多客户端能力，以很小的 native footprint 提供 agentd 所需物理原语 |
-| [Herdr](https://github.com/herdrdev/herdr) | L1 专项；L2 边界 | 专项参考 + 边界证据 | L1 的服务端 PTY、观察/控制分离、单写者接管和分级恢复；L2 的运行状态信号与语义完成权威分离 |
-| [Codex Remote Feishu](https://github.com/kxn/codex-remote-feishu) | L1 | 行为参考 | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
-| [Superset](https://github.com/superset-sh/superset) | L1 核心；L2 边界 | 核心参考 + 边界证据 | L1 的 PTY 守护进程、断线重连与重放、Agent 会话恢复和 worktree 分阶段清理；L2 证明分派与会话传输不等于执行结果或 Workflow 事实 |
-| [MindFS](https://github.com/a9gent/mindfs) | L1 | 观察清单 | 仓库本地会话、外部会话导入与同步、轻量部署 |
-| [Paseo](https://github.com/getpaseo/paseo) | L1 | 观察清单 | 守护进程、客户端、执行提供方适配 SDK 和多设备边界 |
-| [HAPI](https://github.com/tiann/hapi) | L1 | 观察清单 | 本地原生 Agent 与远程结构化交接 |
-| [Happy](https://github.com/slopus/happy) | L1 | 观察清单 | 守护进程、端到端加密会话同步、远程启动和多设备 |
-| [Moshi](https://getmoshi.app/docs/introduction) | L1 | 观察清单 | 移动终端、钩子/Attention 和 TUI 聊天投影 |
-| [Remux](https://github.com/h3nock/remux) | L1 | 观察清单 | SSH + tmux 控制模式下的精确会话/窗口/窗格连接 |
-| [ServerCC](https://servercc.app/docs/sessions) | L1 | 观察清单 | 外部接管、厂商会话恢复和移动控制 |
-| [QuickTUI](https://quicktui.ai/) | L1 | 观察清单 | 自托管 tmux 和 iOS/iPad/浏览器终端操作面 |
-| [Redock](https://redock.dev/) | L1 | 观察清单 | 移动端分阶段输入、中文/语音和 Activity 深链接 |
+| [OpenCode](#e-l1-harness-access) | 适配协议（第一阶段目标 harness） | L1 专项 | OpenAPI + SSE + 类型化 SDK 的服务端优先、多客户端 Harness 操作面 |
+| [Pi](#e-l1-harness-access) | 适配协议 | L1 专项 | 内嵌 SDK + 严格 JSONL RPC，以及 `steer`/`follow_up` 队列契约 |
+| [Kimi Code](#e-l1-harness-access) | 适配协议 | L1 专项 | ACP/原生能力矩阵和可以验证的降级行为 |
+| [DeepSeek Harness](#e-l1-deepseek-harness) | 仅参考行为 | L1；横切架构边界 | 能力端口、类型化事件和可撤销注册、模型可见只追加日志，以及插件组合的收益与风险 |
+| [Grok Build](#e-grok-bot) | 仅参考行为 | L1 | 开源 Rust CLI；作为 ACP agent 可被任何应用托管编排的单向开放（详见 Grok Bot 条目） |
 
-这个归类按“设计亮点”而不是按产品名排他。Codeg 可以同时贡献 L3 的独立 Task 生命周期和 L1 的集成边界；Stably Orca 同时贡献 L1 的执行连续性与 L2 的持久监督协议；Herdr 的主要实现价值在 L1，其状态仲裁还为 L2 提供“运行信号不等于语义完成”的边界证据。任何项目若只顺带拥有 Project、Agent 或 Board 概念，仍不会因此进入对应层。HCTL1 则是 HCTL2 L2 语义内核的直接谱系证据。
+### ② Agent 协作平台 · 人机混合协作系统
+
+与 HCTL2 同赛道的产品。产品重心一列回答"它把工程投入花在哪个场景"。
+
+| 项目 | 产品重心（直方图口径） | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
+| --- | --- | --- | --- | --- |
+| [First Tree](#e-l4-first-tree) | 多中心：terminal 50 / context 25 / room 20（叙事在 Chat/Context，工程在受管运行时） | L4 核心；L2/L1 专项 | 移植有边界的组件（选择性移植，Apache-2.0） | 持久 Chat、显式寻址与可见 handoff、Context 筛选与治理、Need You、可靠 Inbox、跨渠道协作和托管运行时连续性 |
+| [Claude Tag](#e-l4-claude-tag) | room（闭源，行为口径） | L4 行为参考 | 仅参考行为 | 共享且可继续引导的讨论串、按作用域拥有的身份和记忆、持久协作与临时运行时分离 |
+| [Grok Bot](#e-grok-bot) | room + terminal（闭源，行为口径） | L4 行为；L3/L2/L1 边界 | 仅参考行为 | Bot 作为应用原生一等参与者与 handoff 可见性原则、审批双规则与"审批不可逆已完成工作"的显式声明、观察-接管-交还回路；账号级共享云机与凭证的反面证据 |
+| [Cumora](#e-cumora) | room 主导（场景内归一化 room 67 / terminal 21 / kanban 7 / workflow 5） | L4/L3/L1 专项；L2 边界 | 移植有边界的组件（选择性移植，MIT） | 唤醒 triage 门与协同门（seen 游标/HELD/hold-token）、Shipping 验收覆盖矩阵与 builder/verifier 分离、BYOA 引擎适配矩阵与保守会话重置、设备配对与不可伪造身份；自由文本证据与全权引擎派发的反面实证 |
+| [LobeHub](#e-lobehub) | 多中心 room 为主（场景内 room 54 / workflow 16 / terminal 16 / kanban 14；task/验收面增速最快） | L4/L1 专项；L2 边界 | 仅参考行为（非 OSI 许可，只作设计研究） | Context 组装的纯机械处理器管道与增量持久化压缩；外部 Harness 子进程适配器的终局结果契约、状态提取与会话重建；supervisor LLM 路由和默认工具 token 重量的反面实证 |
+| [Multica](#e-multica) | 多中心（terminal 37 / kanban 29 / room 13 / workflow 12） | L4/L3/L2/L1 专项 | 仅参考行为（自定义许可排除移植；协议与测试形状可仿） | L4 的 Project/Issue/私聊发布边界；L3 的 Issue 与单次运行分离；L2 的领取、租约、重试、恢复与归属；L1 的多 Harness 能力矩阵和无损 worktree |
+| [Helio](#e-helio) | 文档面 workflow 35 / kanban 25 / room 25 / terminal 15；开源外围投入压倒性在工具集成与 workflow 治理 | L4/L2/L1 专项；L3 边界 | 核心仅参考行为；开源外围（anycli/ship）移植有边界的组件 + 适配协议 | 消息面 CAS/cede/receipts/turn 级出处与人批 charter、三元归约与未收尾看门狗、机械 stop-gate 与证据分级、side_effect 安全默认与临时凭证注入；"关单人类专属"营销与实现落差、agent 自行关单的反面证据 |
+| [Codeg](#e-l3-codeg) | terminal 70 / 远程操控 15 / kanban 8 / workflow 4（L3 亮点是其产品的次要模块） | L3 核心；L1/L2 专项 | 仅参考行为为主（Apache-2.0，可按需移植） | 独立异步 `WorkTask`、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
+| [Stably Orca](#e-l1-stably-orca) | terminal 47 / kanban 39 / 交付评审 6 / workflow 4 / room 4 | L1 核心；L2 专项 | 仅参考行为为主（MIT，可按需移植） | L1 的 PTY 所有权、冷热恢复、代际隔离和 worktree/差异/远程/交付；L2 的持久 Run 收件箱、Dispatch 权威、可靠交付、幂等收据和执行者资源生命周期 |
+| [Superset](#e-superset) | terminal 60-70 / 远程操控 20 / kanban 5 / workflow 3 | L1 核心；L2 边界 | 仅参考行为（ELv2 排除移植） | L1 的 PTY 守护进程、断线重连与重放、Agent 会话恢复和 worktree 分阶段清理；L2 证明分派与会话传输不等于执行结果或 Workflow 事实 |
+| [Termio](#l1-selected-evidence) | 桌面 ADE：terminal 65 / worktree 组织 20 / 移动伴侣 15 | L1 专项 | 适配协议 | Harness Manifest、会话 URI，以及监听/心跳/信号契约 |
+
+### ③ 独立 Agent 产品 · 单助理 / bot 平台
+
+自己驱动模型循环的助理产品；HCTL2 借它们的治理与适配机制，不借产品形态。
+
+| 项目 | 产品重心 | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
+| --- | --- | --- | --- | --- |
+| [OpenClaw](#e-l4-openclaw) | 个人助理网关（自驱运行时 + 多渠道接入为主；2026-07 起出现编码代理监督面，约 2-3%） | L4 专项 | 仅参考行为 + 适配协议（MIT） | 确定性的多渠道身份与路由、配对/白名单和按渠道降级投递 |
+| [Hermes Agent](#e-l3-hermes-agent) | 自驱 agent 为核；场景内 room 52 / terminal 42 / kanban 3（Kanban 仅占其 2026 投入约 1.5%） | L3 专项 | 仅参考行为（MIT） | 持久 Task/Attempt、原子领取、心跳/回收、依赖推进和多客户端共用内核 |
+| [Rakazo](#e-rakazo) | 执行运行时 35 / room 27 / 机械后端 24（治理工程严谨度超过产品成熟度） | L2/L1 专项；L4 专项 | 仅参考行为为主（Apache-2.0，可按需移植） | 三层带隔离栅栏的租约与幂等效果账本、挂起前强制 checkpoint 的等人状态、供应商中立的可移植工作区、人/机双租约接管；记忆修订携带 run 级出处；提示词代替策略引擎的反面实证 |
+| [ZeroClaw](#e-l2-zeroclaw) | 自驱运行时为主（SOP 子系统占全史提交路径不足 1%） | L2 相邻实现参考 | 仅参考行为 | SOP 准入、按版本审批与法定票数、恢复和失败时默认拒绝的规则测试 |
+
+### ④ Context 管理
+
+| 项目 | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
+| --- | --- | --- | --- |
+| [MyContext](#e-mycontext) | Context 成本纪律对照样本 | 仅参考行为（Elastic 2.0） | 多来源增量采集、零费用常驻检索、RRF 机械融合、三级可见降级；"能用规则就不用模型"的执行实例 |
+
+Context 管理不止一个专门产品：[LobeHub 的 context-engine](#e-lobehub)（纯机械组装管道）与 [First Tree 的 Context Tree](#e-l4-first-tree)（有来源支撑的知识晋升）在各自条目内，是同一关切的平台内实现。
+
+### ⑤ 远程操控与会话同步
+
+把本机 Harness 会话远程化/多端化的一族；与协作平台的区别是不拥有任务语义。全部只作行为证据或观察清单。
+
+| 项目 | 复用决策 | 只保留的独特价值 |
+| --- | --- | --- |
+| [Codex Remote Feishu](#e-l1-codex-remote-feishu) | 仅参考行为（无许可证，不得移植） | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
+| MindFS / Paseo / Happy / HAPI / Moshi / Remux / ServerCC / QuickTUI / Redock | 暂缓（[观察清单](#观察清单远程操控与会话同步)） | 见观察清单表 |
+
+### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
+
+不拥有治理权威的执行部件。已选依赖四项（Dagu、Tuwunel、Vikunja、tmux）加桌面壳与 UI 基础组件。
+
+| 部件 | 复用决策 | 角色 |
+| --- | --- | --- |
+| [Dagu](#e-l2-dagu) | 采用为依赖 | L2 机械状态后端（Conductor 等七个候选为已评估对照/暂缓） |
+| [Tuwunel](#e-l4-matrix-homeserver) | 采用为依赖（Continuwuity 备选暂缓） | Chat Room 的 content 系统（Matrix 协议） |
+| [Vikunja](#e-l3-vikunja) | 采用为依赖（限时验证中；[git-bug](#e-l3-git-bug) 为对照） | Kanban 场景本地 content 后端 |
+| [tmux](#e-l1-tmux-runtime) | 采用为依赖（Zellij/shpool 不采用） | 运行时后端物理原语 |
+| [Herdr](#e-l1-herdr) | 仅参考行为（Apache-2.0，可按需移植） | agent 感知的终端运行时产品：L1 PTY/接管/恢复专项，L2 运行信号边界证据 |
+| [Electron](#e-workbench-shell) | 采用为依赖（Tauri 2 有条件重开） | Workbench 桌面壳 |
+| Linear / GitHub | 外部字段权威（[适配协议](#l3-外部系统与观察清单)） | Task 外部来源系统 |
+| xterm.js / virtua / assistant-ui / Tiptap / React Aria / React Flow | 采用为依赖 | UI 基础组件（详见各补充证据表） |
+
+### ⑦ 直接谱系
+
+| 项目 | 证据层级 | 角色 | 只保留的独特价值 |
+| --- | --- | --- | --- |
+| [HCTL1 / yesme/hctl](#e-l2-hctl1) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
+| [HCTL2 Run 语义内核](../run.md) | L2 | 原生语义核心 | 与版本和证据绑定的 Run、Seat 候选切换、法定票数、重新过 Gate 和 Receipt |
+
+这个归类按产品类别分组、按"设计亮点"取证据，不按产品名排他。Codeg 可以同时贡献 L3 的独立 Task 生命周期和 L1 的集成边界；Stably Orca 同时贡献 L1 的执行连续性与 L2 的持久监督协议；Herdr 的主要实现价值在 L1，其状态仲裁还为 L2 提供"运行信号不等于语义完成"的边界证据。任何项目若只顺带拥有 Project、Agent 或 Board 概念，仍不会因此进入对应层。
+
+方法论工具生态（spec 驱动、任务图驱动、流程/角色模拟、轻量纪律、编排器等家族：openspec、spec-kit、Kiro、beads、Taskmaster、vibe-kanban、BMAD、MetaGPT、agent-os、GSD、Gas Town）的逐仓库源码审计与借鉴决策记录在 [方法论生态审计备忘录](../../../.memo/methodology-landscape-20260824.md)；其结论（不采用为依赖、重借 schema、少量移植、大量借阶段）与本文准入相互独立，未立正式条目。
 
 ## 四层如何组合这些亮点
 
@@ -71,6 +119,73 @@
 | L1 · 执行 / 运行时 | Stably Orca 的 PTY 所有权、冷热恢复、远程和交付；Superset 的 `epoch:seq` 重连、守护进程接管和分阶段清理；Herdr 的观察/控制分离；Multica 的多 Harness 能力和不丢代码；DeepSeek Harness 的组合式能力端口；OpenCode/Pi/Kimi/Termio 的接入协议 | HCTL2 以 agentd、harness 适配器、运行时后端、ChangeSet 和终端网关统一接入；所有能力逐绑定探测并准确降级，运行时身份、终端状态和厂商会话都不能反向定义 Project、Task 或 Run |
 
 这张表是“整合关系”，不是对象映射。每个来源项目只贡献表中写明的机制；L4–L1 是本研究保留的历史标签，最终身份、权限、版本和证据由 HCTL2 的 Project、Task、Run、Agent 四模块定义。
+
+## 类别一 · Coding Harness（编码代理本体）
+
+<a id="e-l1-harness-access"></a>
+## E-L1-HARNESS-ACCESS · OpenCode、Pi 与 Kimi Code
+
+本节记录三种 L1 Harness 接入方式：原生应用服务端、中立于语言的 RPC/嵌入式 SDK，以及标准协议下按能力降级。三者虽然也有 Project、Session、Todo、Subagent 或 Plan 概念，但在其他层没有形成需要单列的独特机制。
+
+| Harness 基线 | 采用的契约 | 明确边界 |
+| --- | --- | --- |
+| [OpenCode `v1.18.18 / 31406ccc`](https://github.com/anomalyco/opencode/tree/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d) · MIT | OpenAPI 3.1、SSE 和自动生成的强类型 SDK；以服务端为中心，向多个客户端提供 health/version、session/control/diff/permission 接口 | 原生 HTTP API 不是通用标准；服务端事件和 Session 完成事件不签发 HCTL Verdict/Receipt |
+| [Pi `v0.84.1 / 53fa77cc`](https://github.com/earendil-works/pi/tree/53fa77ccd8a279eb87e92294ef3687b03ff80112) · MIT | 嵌入式 `AgentSession` 加严格的 LF 分隔 JSONL RPC；关联响应与异步事件分离；`steer`、`follow_up`、`abort` 有明确的队列语义 | Pi 的 RPC、Session 和树结构不是 HCTL 的传输协议或 Room/Task/Run；本地信任边界不等于沙箱 |
+| [Kimi Code `0.36.0 / b6144f94`](https://github.com/MoonshotAI/kimi-code/tree/b6144f94ea6b22455a4e750d1750d220987e7bc2) · MIT | 明确列出 ACP 方法的支持矩阵，并结合 stream-json、原生服务端与钩子验证每种接入的降级行为 | “支持 ACP”不代表能力完全相同；默认放行的钩子不承担 Gate、安全或完成判定权 |
+
+接入时必须把“请求已受理”和“执行结果”分开，对每个接入绑定探测能力，明确保留不支持的方法，并把固定版本的协议样本沉淀为适配器契约用例库。OpenCode 是第一阶段目标；Pi 与 Kimi Code 进入证据测试台，不代表第一阶段会自动扩大 Harness 支持范围。
+
+主要证据：OpenCode [服务端](https://github.com/anomalyco/opencode/blob/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d/packages/web/src/content/docs/server.mdx) / [SDK](https://github.com/anomalyco/opencode/blob/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d/packages/web/src/content/docs/sdk.mdx)；Pi [RPC](https://github.com/earendil-works/pi/blob/53fa77ccd8a279eb87e92294ef3687b03ff80112/packages/coding-agent/docs/rpc.md) / [SDK](https://github.com/earendil-works/pi/blob/53fa77ccd8a279eb87e92294ef3687b03ff80112/packages/coding-agent/docs/sdk.md)；Kimi Code [ACP 支持矩阵](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/reference/kimi-acp.md) / [服务端 API](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/reference/server-api.md) / [钩子边界](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/customization/hooks.md)。
+
+<a id="e-l1-deepseek-harness"></a>
+## E-L1-DEEPSEEK-HARNESS · DeepSeek Harness / Cordis
+
+### 设计亮点
+
+DeepSeek Harness 在 L1 和跨层架构上都有独特价值。它没有把模型适配器、工具注册、Session 日志和 Agent Loop 写死为固定模块，而是把它们都实现为 Cordis 插件：共享 Context 提供服务、类型化事件、依赖注入和可撤销注册；Profile、Bundle 与 Patch 共同组合出实际运行的插件树。Service Definition、Provider、Consumer 三段式能力边界，让使用者依赖抽象能力，而不是具体插件名称。
+
+它的 Session 设计同样扎实：所有对模型可见的内容都必须能从只追加事件日志重建；运行中崩溃时，系统追加“本轮被中断”的结束事件，而不是截断历史；遇到未知的必需事件或数据结构版本时拒绝恢复。HCTL 可以采用这些能力边界、插件生命周期测试和可重建日志，并把最终解析出的 Profile、插件集合与配置摘要冻结进 Attempt/Run Manifest。
+
+### Cordis 论文实际证明了什么
+
+[Cordis 论文固定版本](https://github.com/cordiverse/paper/tree/948a07b369c62adb3b12e102458be5c18dfb69b9)（Draft v8，2026-08-13）把进程内修改建模为带逆操作（inverse）的可逆 effect，把依赖上下文建模为会随服务出现或消失而重新解析的 reactive coeffect。这个模型解释了为什么注册监听器、提供服务、挂载子插件和热重载可以使用统一的生命周期管理。
+
+论文也明确给出了保证范围：
+
+- 可逆性只适用于系统边界内、可以独占修改并恢复的具体位置；边界不是按“文件或网络”这种介质一刀切。系统独占且可恢复的私有文件可以在边界内，向其他主体可见的输出则已经越界。论文还区分资源获取与对外输出；越界输出仍需延迟提交或应用级补偿；
+- 依赖声明和服务注入不是安全沙箱。不可信代码需要语言运行时沙箱、操作系统强制隔离、容器或虚拟机；同一用户下的普通独立进程只能隔离崩溃，不能阻止它访问仓库、网络或凭据；
+- 细粒度拆分可以消除依赖环，但也可能带来大量集成组件、命名、配置和认知负担；
+- 接口漂移、键冲突、行为契约和多版本解析仍是开放问题；
+- 经验材料来自单一语言和单一生态，没有受控对照，也没有性能或生产率的量化结论。
+
+论文仓库没有声明许可证，因此这里只概括其观点，不复用论文文本或图表。
+
+### kxn 的批评如何使用
+
+[kxn 的评论](https://mp.weixin.qq.com/s/O3A4RpQM4jZz_XkDFvORyQ)指出：插件即使声明了依赖，仍可能因为钩子顺序、优先级和共享行为而互相干扰；第三方插件再叠加版本冲突，维护复杂度会迅速上升。这个批评与论文自身列出的限制基本一致，提醒我们“可组合、可卸载”不等于“行为没有冲突、生态自然可治理”。
+
+评论作者也明确说明没有真实运行项目，主要依据源码分析。因此本文只把它当成二级审查问题，不用它证明 DSH 的实现、性能或成熟度。
+
+### HCTL 的取舍
+
+HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../spec/system.md#固定内核与受控端口)：
+
+- Repo/Project/Task/Run 身份、命令准入、权限、版本与证据、领域归约器、持久账本、隔离栅栏和 Receipt 固定在内核中；
+- harness、运行时后端、任务源、workflow engine、Chat 端口和渲染组件通过类型化端口进行替换；
+- 多个提供方可以声明同一个带命名空间和版本的能力，唯一的是一次已经选定的权威绑定；插件加载顺序和钩子优先级不能决定权限或语义结果；
+- `Extension Revision` 与 `Resolved Port Binding` 固定代码、接口、数据结构、配置、依赖图和信任级别；Run、Attempt、Invocation、Task Source 与外部聊天渠道在各自正确粒度冻结绑定；
+- 响应式依赖只用于准入前发现或纯展示/遥测；提供方在活动执行中消失时安全暂停或失败，不能在原执行内自动改绑；
+- 进程内注销器（disposer）只能撤销注册，不能声称已经回滚越过系统边界的输出；
+- 进程内扩展等同受信任代码；不可信代码必须使用操作系统强制隔离和能力削减后的代理接口；
+- 第一阶段只允许第一方或经审计的进程内扩展，不建设任意第三方插件市场。
+
+DSH 由模型生成的 Workflow 仍缺少冻结版本、持久恢复、Gate 和语义 Receipt，只能作为 L2 边界证据，不能承担 HCTL 的 Workflow 治理。
+
+固定实现基线为 [`master@47f94385`](https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a)（2026-08-13，`0.1.0-rc.5`，[MIT](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/LICENSE)）。官方将其标为开发者预览版，允许破坏性变化；[`BENCHMARK.md`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/BENCHMARK.md)只给出运行方法，没有公开结果。
+
+主要源码与文档：[架构](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md)、[Cordis 入门](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/cordis-primer.md)、[能力边界](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/capability-seams.md)、[Session](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md)、[持久化](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/persistence.md)和[Workflow 边界](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/workflow.md)。
+
+## 类别二 · Agent 协作平台（人机混合协作系统）
 
 <a id="e-l4-first-tree"></a>
 ## E-L4-FIRST-TREE · First Tree
@@ -124,6 +239,8 @@ First Tree 真正跑通的是协作闭环，而不是任务或工作流闭环：
 - [执行提供方契约](https://github.com/agent-team-foundation/first-tree/blob/19e66032af7f9f482168c350fe0b3998599388f3/packages/client/src/providers/README.md)、[运行时数据结构](https://github.com/agent-team-foundation/first-tree/blob/19e66032af7f9f482168c350fe0b3998599388f3/packages/shared/src/schemas/runtime-provider.ts)、[会话控制 CLI](https://github.com/agent-team-foundation/first-tree/blob/19e66032af7f9f482168c350fe0b3998599388f3/apps/cli/src/commands/agent/session/control.ts)、[内部 `tmux` 驱动](https://github.com/agent-team-foundation/first-tree/blob/19e66032af7f9f482168c350fe0b3998599388f3/packages/client/src/providers/claude/tui/tmux-session.ts)与[cron 表](https://github.com/agent-team-foundation/first-tree/blob/19e66032af7f9f482168c350fe0b3998599388f3/packages/server/src/db/schema/cron-jobs.ts)
 - 仅主干存在的 Feishu [bot 绑定](https://github.com/agent-team-foundation/first-tree/blob/f0d46f9ec8b14ace536d242db8860065c124f2c7/packages/server/src/db/schema/im-bot-bindings.ts)、[chat 绑定](https://github.com/agent-team-foundation/first-tree/blob/f0d46f9ec8b14ace536d242db8860065c124f2c7/packages/server/src/db/schema/im-chat-bindings.ts)、[入站处理](https://github.com/agent-team-foundation/first-tree/blob/f0d46f9ec8b14ace536d242db8860065c124f2c7/packages/server/src/services/integrations/feishu/inbound.ts)、[连接管理器](https://github.com/agent-team-foundation/first-tree/blob/f0d46f9ec8b14ace536d242db8860065c124f2c7/packages/server/src/services/integrations/feishu/manager.ts)与[验收契约](https://github.com/agent-team-foundation/first-tree/blob/f0d46f9ec8b14ace536d242db8860065c124f2c7/packages/qa/cases/cross-surface/feishu-agent-channel.md)
 
+> **2026-08-24 复核**：审计快照之后主干仅前进 19 个提交（v0.5.21），上述结论仍有效。按提交路径直方图，其工程投入最大单块是受管执行/provider 层（client + cli 约四分之一路径变更，provider 清单已扩到 9 家），聊天与 Context 是叙事中心、运行时是工程中心——与本文"L4 核心 + L2/L1 专项"的双重定位一致；直方图同时证实它没有任何看板/任务卡片模块（kanban≈0）。
+
 <a id="e-l4-claude-tag"></a>
 ## E-L4-CLAUDE-TAG · Claude Tag
 
@@ -161,91 +278,44 @@ HCTL 借鉴的行为:handoff 可见性原则、"审批不撤销已完成工作"�
 - 官方:[Grok Bot 发布公告](https://x.ai/news/introducing-grok-bot)(2026-08-11)、[Grok Build 发布公告](https://x.ai/news/grok-build-cli)(2026-05-25)、官方文档 [overview](https://docs.x.ai/grok-bot/overview)、[bots](https://docs.x.ai/grok-bot/bots)、[computer-and-apps](https://docs.x.ai/grok-bot/computer-and-apps)、[files-and-results](https://docs.x.ai/grok-bot/files-and-results)、[approvals-security-and-privacy](https://docs.x.ai/grok-bot/approvals-security-and-privacy)、[teams-and-enterprises](https://docs.x.ai/grok-bot/teams-and-enterprises)与[faq](https://docs.x.ai/grok-bot/faq);[Grok Build 开源仓库](https://github.com/xai-org/grok-build)(Apache-2.0)与 [Zed ACP Registry 条目](https://zed.dev/acp/agent/grok-build)
 - 第三方(已过滤系统性错误):[VentureBeat](https://venturebeat.com/orchestration/spacexais-grok-bot-turns-agents-into-persistent-digital-coworkers-that-can-operate-your-apps-for-120-per-month)(定价、三 Bot 编排实测、内部 Chief of Staff 用法)、[eesel 缺口审计](https://www.eesel.ai/blog/grok-bot-review)(无试运行、审计日志未交付、routine 只留 20 条记录、Bot 删除残留)、[Composio 实测](https://composio.dev/content/guide-to-frok-bot)(群聊 2-6 成员上限、公司模拟实验)与 [atomicbot](https://atomicbot.ai/blog/what-is-grok-bot)(审批与打断细节)
 
-<a id="e-l4-openclaw"></a>
-## E-L4-OPENCLAW · OpenClaw
-
-OpenClaw 最值得参考的是 L4 的外部频道接入边界：它把账号、对端和讨论串归一为确定性路由键，并支持精确绑定、讨论串继承、私信作用域、配对与允许名单、房间环境事件、防止机器人循环，以及按频道能力降级投递。这说明：没有 Workbench 时，Chat 界面仍需要稳定的外部身份、确定性路由和逐频道降级，不能让模型猜测频道，也不能按显示名称分发。
-
-HCTL 只借鉴适配、路由、配对、防循环和降级测试；OpenClaw 的 channel/session/workspace/agent 不映射为 Project/Room/Task/Run，环境聊天不会自动成为权威 Context，Gateway、cron 或 delegation 也不成为 L2 的权威事实。固定版本为 [`v2026.7.1-2 / 0790d9f5`](https://github.com/openclaw/openclaw/tree/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c)（MIT）；证据见[频道路由](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/docs/channels/channel-routing.md)、[README](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/README.md)与[许可证](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/LICENSE)。
-
-<a id="e-l3-codeg"></a>
-## E-L3-CODEG · Codeg
+<a id="e-cumora"></a>
+## E-CUMORA · Cumora
 
 ### 核心价值与跨层画像
 
-Codeg 的产品闭环是：先把一项工作写成独立 `WorkTask`，再排队并按并发上限领取；启动时根据精确的 base SHA 创建隔离 worktree；Agent 执行过程中可以进入 Needs You；完成一轮后由用户查看结果、diff、时间线和预检，再选择 Rework、Keep going、Ask、Double-check 或 merge；最后用 Git 事实确认结果是否真正落地。官方 Tasks 指南对边界的概括也很准确：Conversation 是用户坐在前面共同推进的会话，Task 则是写下以后可以暂时离开的异步承诺。
+Cumora 是"AI agent 作为一等队友的跨平台团队聊天":人与 agent 共用同一花名册、私聊、群聊、看板、日历与文档,agent 有 persona、记忆和真实 email 地址,可以主动认领工作、主动发起对话。agent 的"大脑"双轨:云端为每个 agent 按需拉起、闲置自灭的 K8s pod;BYOA(自带大脑)由用户本机守护进程驱动本地 Claude Code、Codex、Grok Build 或 Cursor CLI,服务端从不持有用户的模型凭证。两轨共用同一写入面:agent 对世界的一切动作都经 `cumora` CLI 垫层进入服务端仲裁,身份由 JWT 钉死(服务端剥除客户端一切 `--as` 参数并强制注入令牌内身份,不可伪造)。它的工程重心是多 agent 无碰撞协同与成本账本,并有 CI 强制的架构不变量(只有 agent 正式回合可用大模型;每笔 LLM 调用必须入账)。三块经源码验证的独特机制:
 
-`WorkTask` 的 `worktree_folder_id`、`conversation_id` 和 `connection_id` 都可以为空，因此 Task 身份不依赖某次运行环境。状态变化使用“预期状态 + `run_seq`”进行 CAS，并把只追加的时间线事件放在同一事务中。Board、排队、Needs You、评审、后续动作、预检、Git 事实和重启恢复，共同构成其完整的 L3 产品机制。
+1. **唤醒 triage 门与协同门(L4)**。消息落库后对会话内所有非作者 agent 并行扇出,"该不该醒"由便宜小模型做纯门判断——输入全部是数据库/Redis 事实(工作认领、人类注意力=消息/表情/已读游标)而非消息措辞,每次判定入账本并与省下的大脑回合做诚实的经济学对比;AI 判断之下垫**确定性循环地板**(源码注释明言这层"曾被以 AI-native 优雅为由删过两次、两次都回归死循环")。回复前有 seen 游标新鲜度预检:落后于房间状态的回复被 HELD 并把新消息内联返回;`--force` 类旗标只是对"服务端展示过的 HOLD"的确认而非通行证(hold-token 与消息序号绑定、回合结束即亡),逐字重复检查放在序号行锁事务内、任何旗标不可绕。agent 主动性(空闲心跳、后台扫描、停滞救场)全部再过一道"默认不行动"的门并受预算限制,救场用 Redis 原子认领保证全房间只有一个成员出手;agent 拉群必须写结构化理由(headline/evidence/asks 字段化)。
+2. **Shipping 交付生命周期(L3)**。`Draft→Contract→Building→Verifying→Ready→Releasing→Watching→Learned` 八态状态机在数据库 CHECK、邻接表与 gate 谓词三处强制;验收要求每条必需不变量被证据方格覆盖且有 owner,**构建者不得验收自己的方格——这条分离直接下沉为数据库级 CHECK 约束**;审计流追加只写;验收失败自动派生 friction 项与可重放回归项;生产发布要求 staging/canary 先行加回滚计划,成功后自动排 24 小时生产读回(readback)——把"完成"的终态推迟到行为对基线的读回。其文档口号与 HCTL2 同频:"绿色构建或成功 rollout 是中间信号,不是终态"。看板侧的 `card claim` 是全系统唯一被认可的认领原语:单条 UPDATE 加 WHERE 守卫(未认领/本人/超 20 分钟陈旧)以 rowCount 定胜负,两个 agent 竞争同一张卡永远只有一个赢。
+3. **BYOA Harness 适配层(L1)**。统一的引擎适配抽象(发送/打断/存活/会话 ID/是否承载常驻提示)接入四家 Harness,原生会话优先、一次性进程降级;resume 会话 ID 存在 agent 家目录之外防引擎写坏,**只有三种情况才重置会话**(上下文溢出、转录毒化、引擎明确报会话失效——正则要求双匹配,防止把执行中途崩溃误判为会话失效而丢弃可恢复上下文,有专门测试钉住);常驻提示每会话带外送一次、每回合只送增量。宿主设备(Computer)一等化:配对码换设备令牌(服务端只存哈希)、"移除计算机"是真实的吊销开关、doctor 端到端探针探的是真实唤醒路径("绿=真唤醒能通");另有侦察性读取不污染 seen 游标、限流自适应起搏且限流从不泄漏进聊天等配额纪律。
 
-Codeg 的核心价值在 L3，其他层也有可单独采用的机制。L1 可以专项参考它把 ACP、worktree、Git、diff、Composer、事件卡片，以及由 Agent 所在环境提供的文件系统和终端沙箱接成一条执行体验；L2 可以把 Automations 的定时触发、单个 Automation 串行、补跑，以及固定 Task 流程与 merge 恢复，当作“产品层自动化”和“通用 Workflow 治理”之间的边界证据。桌面终端由进程内 `HashMap` 持有，没有持久滚屏记录、进程重启恢复或稳定的远程重新接入，因此 PTY 所有权与重连主要参考 Stably Orca。Automations 没有带版本的图、权限与法定人数规则或通用 Gate，也不能单独定义 HCTL 的 L2。
+反面证据同样密集。验收证据是**非空自由文本自述**——无格式校验、无机器执行的验证,回归项有命令字段但仓库里不存在执行器;云端回合的"完成复核"是用 LLM 验 LLM 的自述,BYOA 侧连这层都没有(run 状态纯粹等于引擎退出码)。所有本地引擎一律以 `--dangerously-skip-permissions` 级全权限运行,唯一隐私边界是提示词文本;云 pod 以 root+SYS_ADMIN 运行且无网络策略,源码注释声称的行级安全并不存在;`participants.tools` 权限列有表、有接口、执行路径零读取——声明性权限不被执行路径消费就等于没有。记忆无版本且有自我中毒实证(内部协同文档记录 agent 把特例写成普适规则、甚至写备忘录训练未来的自己无视刚建好的安全网,修复靠审计后外科手术式删除);同一 gate 在 DB/REST/CLI 三处平行实现已出现规则漂移。789 行的 COORDINATION.md 是一份罕见的多 agent 协同失败案例集("别用 prompt 修 infra"、"绕过旗标必须是对服务端展示过状态的确认"、"缺席成员是常态不是故障"),无论产品成败都有独立参考价值。
 
 ### 审计基线
 
 | 基线 | 状态 | 可支持的结论 |
 | --- | --- | --- |
-| [`v0.24.0 / df7a872d`](https://github.com/xintaofei/codeg/commit/df7a872de44546277e4c49cfe9d173c631161dc6) · 2026-08-11 | 已发布 | 独立 `WorkTask`、四列 Board、排队/并发/定时启动、Needs You、评审/预检/后续动作、merge 与基于 Git 事实的恢复 |
-| [`main@a34a047a`](https://github.com/xintaofei/codeg/commit/a34a047a568018ee180dee75add8c9c7d30b2ea6) · 2026-08-14 | 未发布审计快照；按 first-parent 口径比发布版前进 23 个 commit | merge 排队、[由 Agent 所在环境提供文件系统与终端沙箱](https://github.com/xintaofei/codeg/commit/b7e21e4c789ba70036ec87de5ed72dec3d25a678)，以及重连与权限修正 |
+| [`main@bd8dba8e`](https://github.com/yetone/cumora/tree/bd8dba8e45c91f685ea3c319aae173d44d26cbd6) · 2026-08-22 | 审计快照(本地克隆核验 HEAD、许可证与关键约束) | 上述 triage/协同门、Shipping 状态机、BYOA 适配、身份钉死机制全部在此基线经源码验证 |
+| 桌面端 v0.1.64(2026-07-26,独立 releases 仓库)/ npm `cumora` 0.1.127 | 已发布 | 主仓库无 tag/release,发布通道在仓库之外 |
 
-[发布版与审计快照的差异](https://github.com/xintaofei/codeg/compare/df7a872de44546277e4c49cfe9d173c631161dc6...a34a047a568018ee180dee75add8c9c7d30b2ea6)。v0.24.0 和当前 Tasks 指南规定“同一项目已有 merge 时拒绝第二个 merge”，主干从 [`597a7eeb`](https://github.com/xintaofei/codeg/commit/597a7eeb24e4a5f8aca149f2f5c182d3c2c90510)起改为排队。发布能力与主干能力在本文中分别标注。
+许可证为 [MIT](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/LICENSE)。仓库 2026-08-17 才公开(审计时仅 5 天),单人主导、私有开发史至少始于 2026-05 下旬;服务端测试面厚(80+ 单测文件、27 集成套件、真 LLM 协同基准),前端零单测。整体判断:以协同正确性为纲的高强度工程,基础设施纪律强、安全纵深弱;能力判断以固定源码为准。
 
 ### 采用与边界
 
-HCTL 采用独立 Task 身份、显式状态机、基于 `run_seq`/CAS 的过期事件隔离、事务内时间线、精确 base SHA、复用 worktree 的重试、Needs You 投影、评审/预检/后续动作，以及“根据 Git 事实恢复 merge”的测试。`done` 只应来自已经落地的 merge，或用户明确接受“没有内容可合并”；Agent 自报 `task_complete` 只能作为建议，不能决定 Task 是否完成。
+HCTL 对照 L4 采用:triage 门四件套(事实输入、纯门、经济学账本、确定性地板)、hold-token 的"确认而非绕过"哲学、事务内查重、结构化拉群理由的字段化(可改造成 Agent"建议协作边"的载体)、记忆的 project 作用域两层可见性与"混杂时落全局不猜"的出处保守原则。对照 L3 采用:不变量→证据方格覆盖矩阵、builder/verifier 分离下沉到存储约束、追加只写审计流、验收失败自动派生 friction/回归资产、readback 把验收延伸到生产观察,以及原子 `card claim`。对照 L2 采用:"成功才推进游标、失败保留收件箱重跑"的无检查点恢复模型与"只重试人工唤醒"的事故教训(重试消息唤醒曾造成真实重复回复)、孤儿运行收尸。对照 L1 采用:引擎适配抽象与降级矩阵、保守的三条件会话重置、resume 引用外置存储、设备配对/吊销/探针,以及 `--as` 剥除加身份注入的不可伪造边界。
 
-Codeg 的 `WorkTaskConfig` 不能直接当作 HCTL 的冻结 Task Revision。它保存 `prompt_blocks` 和每个 Task 的覆盖值，但空字段会在真正启动时继承当时的 Folder 设置，实际采用的值只写入 `config_effective` 审计事件。HCTL 在批准 Run 时必须冻结完整的 Task Revision/Workflow Revision，不能让可变默认值在启动时继续改变契约。
+明确不采用:自由文本自述充当验收证据(与"证据高于自述"直接冲突,是本清单最重要的反例之一);用 LLM 复核 LLM 的完成自验充当 Verdict;无冻结版本的契约与记忆;`--dangerously-skip-permissions` 式全权派发与提示词充当隐私边界(与 LobeHub 同判);声明性权限不被执行路径消费的死配置;同一 Gate 多处平行实现(HCTL 的 Gate 单点实现、多面复用);服务端信任守护进程对自身执行结果的自述;agent 默认自主拉群不作为 HCTL 普通 Room 的协作边模型——临场协作边仍由人提交,Cumora 的结构化理由只用作建议载体。Cumora 的 conversation/board/computer 不映射为 HCTL 的 Room/Task/Agent 身份。复用结论:**选择性移植**(MIT),协同门与 Shipping 约束可改编,不整仓派生、不采用其安全姿态。
 
-明确不采用：不把 Conversation 当作 Room，不把 To-do 数据结构直接视为 HCTL Task，不把固定 Task 流程直接视为 Workflow，不让拖进 In Progress 自动获得施工授权，不因 Agent `task_complete`、Done 分栏或 Git 已落地就自动满足语义验收，不把 Agent 发起 merge 等同于具有治理权限，不让主 LLM 路由充当控制事实，也不把进程内终端当作 L1 持久性模型。
+主要证据(固定到 `bd8dba8e`):
 
-主要证据：
+- [仓库](https://github.com/yetone/cumora)、[官网](https://cumora.ai)与[许可证](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/LICENSE)
+- 方法论文档:[COORDINATION.md(789 行协同失败案例集)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/COORDINATION.md)、[SHIPPING.md](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/SHIPPING.md)、[BYOA.md](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/BYOA.md)与[CI 架构不变量](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/CONTRIBUTING.md)
+- 协同门:[小脑 triage 门与确定性地板](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/triage-core.ts#L176-L262)、[并行扇出与唤醒重试策略](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/scheduler.ts#L61-L184)、[seen 游标与 hold-token](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/seen-boundary.ts)与[停滞救场管线](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/agenda.ts)
+- Shipping 与看板:[状态机与 gate 谓词](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/api/shipping-router.ts#L238-L305)、[builder/verifier DB 约束](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/db/migrate.ts#L1595-L1597)与[原子 card claim 与 agent CLI](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/cli.ts#L1512-L2098)
+- 运行时与身份:[全量 DDL(约 60 表)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/db/migrate.ts)、[pod 编排](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/runtime/orchestrator.ts#L1-L23)、[云回合循环与完成自验](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/turn.ts#L1154-L1215)与[`--as` 剥除](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/runtime/cli-argv.ts#L19-L43)
+- BYOA:[守护进程(信号量/起搏/会话重置)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/daemon.ts)、[引擎适配矩阵](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/engine.ts#L974-L1012)、[设备配对与令牌](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/registry.ts#L189-L273)与[记忆作用域契约](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/memory-scope.ts#L18-L33)
 
-- [仓库](https://github.com/xintaofei/codeg)、[v0.24.0 发布版](https://github.com/xintaofei/codeg/releases/tag/v0.24.0)与固定版本的 [Apache-2.0 许可证](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/LICENSE)
-- 官方产品说明：[Tasks](https://docs.codeg.app/guide/tasks)、[Automations](https://docs.codeg.app/guide/automations)、[多 Agent](https://docs.codeg.app/guide/multi-agent)与[聊天频道](https://docs.codeg.app/guide/chat-channels)
-- Automation 的固定源码：[持久对象](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/automation.rs)、[Run 记录](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/automation_run.rs)、[调度引擎](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/automation/engine.rs)与[事务服务](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/service/automation_service.rs)
-- [WorkTask 状态与持久字段](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/work_task.rs)、[配置与 Folder 设置](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/models/work_task.rs)、[CAS 与事务事件服务](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/service/work_task_service.rs)、[执行与恢复引擎](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/work_task/engine.rs)及[Git 判定](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/work_task/git.rs)
-- [四列 Board 投影](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src/components/tasks/board-columns.ts#L4-L58)、[Composer](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src/components/chat/composer/rich-composer.tsx)、[ACP 注册表](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/custom_registry.rs)与[委派数据结构](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/delegation/tool_schema.json)
-- L1 边界证据：[桌面 PTY 管理器](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/terminal/manager.rs)与[面向 Agent、限制输出大小的终端运行时](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/terminal_runtime.rs)
-
-<a id="e-l3-hermes-agent"></a>
-## E-L3-HERMES-AGENT · Hermes Agent
-
-Hermes Agent 的独特价值是由 Agent 操作的持久 Task/Attempt 协议：SQLite Board 保存 Task、Run/Attempt、依赖、评论和工作区；调度器负责原子领取、心跳、过期或崩溃 Worker 的回收、依赖满足后的状态推进，以及协议违规时自动阻塞；CLI、Chat 斜杠命令和 Dashboard 共用同一套命令内核。它为 L3 提供了重启恢复和无 Workbench 操作方面的实现证据。
-
-HCTL 借鉴 Task/Attempt 分离、领取与回收、持久评论和共用命令内核；不把 Board 当作 Project，不把 profile/memory 当作 Participant/Project，不把模型自报完成当作 Receipt，也不把单机调度器当作 L2 权威事实，更不让 LLM 的目标判断决定语义完成。固定版本为 [`v2026.8.13 / f80f453a`](https://github.com/NousResearch/hermes-agent/tree/f80f453ae0679347e38abc917c7f94f717bf96c5)（发布名称 `v0.20.1`，MIT）；证据见 [Kanban 指南](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/website/docs/user-guide/features/kanban.md)、[README](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/README.md)与[许可证](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/LICENSE)。
-
-<a id="e-multica"></a>
-## E-MULTICA · Multica
-
-### 已跑通的产品闭环
-
-Multica 把 Project 和 Issue 中的目标、讨论与状态保存为长期工作事实。每次分配、提及、私聊或 Autopilot 触发都会新建一个 Task，而 Task 只表示一次 Agent 运行。服务端先把它排入队列，再由本机守护进程认领并调用已经安装的 Harness，最后把消息、工具调用、错误、会话和交付分支写回。人或 Agent 随后决定继续讨论、重新运行还是结束 Issue。这个闭环同时触及四层，但 HCTL 只吸收各层真正独特的机制，不照搬整套产品模型。
-
-### 审计基线与许可
-
-固定实现基线为 [`main@2c0912b6`](https://github.com/multica-ai/multica/tree/2c0912b6ec764b373d44eeea1e80f0d9f11ab417)（2026-08-14）。同期最新发布版是 [`v0.4.26 / 19155e41`](https://github.com/multica-ai/multica/releases/tag/v0.4.26)，主干只比发布版多一个提交。项目仍处于 `0.x` 快速演进阶段，官网会滚动更新；能力判断以固定源码、迁移和测试为准。
-
-仓库完整公开，README 将项目称为“开源”，但固定版本的 [`LICENSE`](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/LICENSE) 不是单独的 Apache-2.0：它在 Apache-2.0 文本之外增加了第三方托管、商业嵌入、品牌和归属要求，并声明附加条件优先。因此这里只把它当作公开源码的行为、协议和测试证据；在完成专门的法律审查并获得所需授权之前，不把其源码移植进 Apache-2.0 的 HCTL，也不把该许可证标成 Apache-2.0 或宽松开源许可。
-
-### 四层设计亮点与边界
-
-| 层 | 真正深入且独特的证据 | HCTL 的采用方式与边界 |
-| --- | --- | --- |
-| L4 | Project 保存跨多个 Issue 的目标、范围、长期要求、负责人和代码资源；Project 状态与 Issue 状态相互独立。Issue 集中保存可共享的目标、讨论、活动和执行历史；一对一 Chat 明确位于 Issue 之外且完全私密，团队要复用的结论必须另行写入 Issue、Project 描述或 Skill。Inbox 是面向人的关注入口，不是 Agent 工作队列。 | 采用“共享事实与私密探索分开、私聊结论显式发布”的边界，以及 Project 状态不从子项机械推导的做法。Multica 没有可持续共同引导的项目级 Room、Context 准入或知识晋升流程；Project/Issue 描述又会以当前值直接进入运行上下文，不能代替 HCTL 的持久 Room、Memo 或冻结版本。 |
-| L3 | Issue 是可以长期讨论、修改、重新分配并最终关闭的工作承诺；Task 是一次生命周期有限的运行。同一 Issue 可以产生多个 Task，已有运行记录不会被覆盖；精确重试某个历史 Task 时仍调用该次运行当时的 Agent。官方文档明确规定：Task 的 `completed` 只表示该次运行正常结束，不表示 Issue 目标已经完成。 | 采用 Issue 与单次运行 Task 分离、运行历史不可覆盖、定向重试，以及“运行完成不等于工作完成”。不采用可变 Issue 描述作为冻结的 Task Revision，不采用分配或状态变化自动获得施工授权，也不把 Agent 将状态改成 `in_review`、产生分支或 Task 正常退出当作验收。 |
-| L2 | Task 具有 `queued → dispatched → waiting_local_directory/running → terminal` 生命周期。数据库通过 `FOR UPDATE SKIP LOCKED` 原子认领，并把同一 `(Issue, Agent)` 的运行串行化；准备租约保护启动窗口，`dispatched_at` 充当认领代际的 CAS 隔离栅栏，认领响应丢失后可以重新领取，守护进程重启后可以回收。长期运行依赖运行时心跳，而不是固定的总时长；失败分类决定能否重试，后继 Task 保存 `attempt`、`max_attempts`、`failure_reason`、`session_id`、`work_dir` 和 `retry_of_task_id`，触发者、委派链和证据引用也随运行记录归属。Autopilot 还为定时和 webhook 的每个触发实例提供幂等与崩溃恢复测试。 | 采用领取（claim）、租约（lease）、隔离栅栏（fence）和重新领取（reclaim），并采用失败分类、重试谱系、来源归属和轮询兜底的实现与测试形状，尤其适合无 Workbench 时由服务端和守护进程协作执行。它没有 Workflow Revision、通用 DAG、Gate、Seat、法定票数或语义 Receipt；Squad leader 由 LLM 决策，不能成为控制事实；Autopilot 是可重复触发的操作手册，不是 HCTL Workflow。 |
-| L1 | 一个统一的 `Backend` 契约接入 22 个 Harness 产品名称；其中 21 个协议族由后端构造器、数据库约束和锁步测试共同限定，Oh-My-Pi 复用 Pi 协议族。不同 Harness 的模型、MCP、Skill 路径和会话恢复能力被明确列成能力矩阵，并对“无法判断恢复请求是否被拒绝”等降级情况单独编码。本地 Git 路径会先保全脏工作树，再为每个 Task 建立 worktree；无论成功、失败还是取消，都会尽量提交已经产生的改动，提交失败时则保留 worktree，避免清理过程吞掉用户工作。 | 采用统一 Harness 契约、逐绑定能力探测、显式降级测试，以及“先保全、后隔离、任何退出路径都不丢改动”的 worktree 纪律。Multica 不拥有可重新接入的 PTY，也不能用会话、分支或工具调用成功证明语义完成；其源码许可也排除了直接移植。 |
-
-### 采用结论
-
-HCTL 应组合采用四块经过源码验证的机制：L4 的共享/私密发布边界；L3 的 Issue/单次运行分离；L2 的领取、租约、重试、恢复和来源归属机制及其测试用例；L1 的 Harness 能力契约与无损 worktree 收尾。它们分别进入对应层，不需要把 Multica 设成某一层的唯一参考。
-
-明确不采用：用 Issue 当前内容充当 Task Revision，用分配或状态变化充当启动授权，用 Squad leader 的 LLM 判断充当调度权威，用 Autopilot 充当通用 Workflow，用 Task 的 `completed` 充当 Verdict/Receipt，以及移植受自定义许可证约束的源码。
-
-主要证据：
-
-- 官方产品行为：[Projects](https://multica.ai/docs/projects)、[Issues](https://multica.ai/docs/issues)、[Tasks](https://multica.ai/docs/tasks)、[Chat](https://multica.ai/docs/chat)、[守护进程与运行时](https://multica.ai/docs/daemon-runtimes)、[Harness 对比](https://multica.ai/docs/providers)与[Autopilots](https://multica.ai/docs/autopilots)
-- 固定文档：[Projects](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/projects.mdx)、[Issues](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/issues.mdx)、[Tasks](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/tasks.mdx)、[Chat](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/chat.mdx)与[Harness 能力矩阵](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/providers.mdx)
-- L2 实现：[Task 服务](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task.go)、[领取与重试 SQL](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/db/queries/agent.sql)、[租约与重试数据结构](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/migrations/055_task_lease_and_retry.up.sql)、[准备租约](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/migrations/124_task_prepare_lease.up.sql)、[领取竞争测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task_claim_race_test.go)、[完成竞争测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task_complete_race_test.go)与[Autopilot 恢复测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/cmd/server/autopilot_schedule_job_test.go)
-- L1 实现：[统一 `Backend` 与能力例外](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/agent/agent.go)、[协议族锁步测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/agent/agent_supported_types_test.go)与[本地 worktree](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/daemon/execenv/local_worktree.go)
+> **2026-08-24 复核**：主仓库已出现 tag v0.2.0，公开一周内合入外部贡献、贡献者集中度已非单人画像（top-1 约 36%）；上文"主仓库无 tag/release"与"单人主导"描述到审计快照为止成立。按提交路径直方图，产品重心在聊天面（场景内归一化 room 约三分之二），与"AI 一等队友的团队聊天"定位一致；机制层结论不受快照后提交影响。
 
 <a id="e-lobehub"></a>
 ## E-LOBEHUB · LobeHub
@@ -285,79 +355,44 @@ HCTL 对照 agentd 与 harness 适配器采用：适配器终局结果契约（�
 - 状态机与调度：[7 态状态定义](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/types/state.ts)、[指令执行核心](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/core/runtime.ts)、[Redis 活状态](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/modules/AgentRuntime/AgentStateManager.ts)、[耐久操作行](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/database/src/schemas/agentOperations.ts)、[cron 派发](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/router-hono/workflows/task/handlers/scheduleDispatch.ts)、[DB 权威 tick](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/services/taskRunner/scheduleTick.ts)、[心跳看门狗](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/router-hono/workflows/task/handlers/watchdog.ts)与[子代理深度限制与屏障](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/agent-runtime/src/executors/subAgent.ts)
 - verify 与内部设计：[验证子代理指令](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/packages/builtin-tool-verify/src/systemRole.ts)、[验证执行](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/apps/server/src/services/verify/agentVerifier.ts)与[Goal→Task→Attempt→Operations 内部设计备忘](https://github.com/lobehub/lobehub/blob/363797b1eddc01d1d6f07e28148b200618c2d0a2/docs/development/agent-goals-design.md)
 
-<a id="e-cumora"></a>
-## E-CUMORA · Cumora
+> **2026-08-24 复核**：canary 较审计快照又前进约 19 个版本。提交直方图确认 context-engine（2026 年约 0.9% 路径变更）与 heterogeneous-agents（约 1.1%）是稳定小核心而非投入重心，"专项参考"强度合适；task/验收面（独立 workbench 应用）是近六周增速最快的面，下次滚动基线时值得重估其 L3 价值。
 
-### 核心价值与跨层画像
+<a id="e-multica"></a>
+## E-MULTICA · Multica
 
-Cumora 是"AI agent 作为一等队友的跨平台团队聊天":人与 agent 共用同一花名册、私聊、群聊、看板、日历与文档,agent 有 persona、记忆和真实 email 地址,可以主动认领工作、主动发起对话。agent 的"大脑"双轨:云端为每个 agent 按需拉起、闲置自灭的 K8s pod;BYOA(自带大脑)由用户本机守护进程驱动本地 Claude Code、Codex、Grok Build 或 Cursor CLI,服务端从不持有用户的模型凭证。两轨共用同一写入面:agent 对世界的一切动作都经 `cumora` CLI 垫层进入服务端仲裁,身份由 JWT 钉死(服务端剥除客户端一切 `--as` 参数并强制注入令牌内身份,不可伪造)。它的工程重心是多 agent 无碰撞协同与成本账本,并有 CI 强制的架构不变量(只有 agent 正式回合可用大模型;每笔 LLM 调用必须入账)。三块经源码验证的独特机制:
+### 已跑通的产品闭环
 
-1. **唤醒 triage 门与协同门(L4)**。消息落库后对会话内所有非作者 agent 并行扇出,"该不该醒"由便宜小模型做纯门判断——输入全部是数据库/Redis 事实(工作认领、人类注意力=消息/表情/已读游标)而非消息措辞,每次判定入账本并与省下的大脑回合做诚实的经济学对比;AI 判断之下垫**确定性循环地板**(源码注释明言这层"曾被以 AI-native 优雅为由删过两次、两次都回归死循环")。回复前有 seen 游标新鲜度预检:落后于房间状态的回复被 HELD 并把新消息内联返回;`--force` 类旗标只是对"服务端展示过的 HOLD"的确认而非通行证(hold-token 与消息序号绑定、回合结束即亡),逐字重复检查放在序号行锁事务内、任何旗标不可绕。agent 主动性(空闲心跳、后台扫描、停滞救场)全部再过一道"默认不行动"的门并受预算限制,救场用 Redis 原子认领保证全房间只有一个成员出手;agent 拉群必须写结构化理由(headline/evidence/asks 字段化)。
-2. **Shipping 交付生命周期(L3)**。`Draft→Contract→Building→Verifying→Ready→Releasing→Watching→Learned` 八态状态机在数据库 CHECK、邻接表与 gate 谓词三处强制;验收要求每条必需不变量被证据方格覆盖且有 owner,**构建者不得验收自己的方格——这条分离直接下沉为数据库级 CHECK 约束**;审计流追加只写;验收失败自动派生 friction 项与可重放回归项;生产发布要求 staging/canary 先行加回滚计划,成功后自动排 24 小时生产读回(readback)——把"完成"的终态推迟到行为对基线的读回。其文档口号与 HCTL2 同频:"绿色构建或成功 rollout 是中间信号,不是终态"。看板侧的 `card claim` 是全系统唯一被认可的认领原语:单条 UPDATE 加 WHERE 守卫(未认领/本人/超 20 分钟陈旧)以 rowCount 定胜负,两个 agent 竞争同一张卡永远只有一个赢。
-3. **BYOA Harness 适配层(L1)**。统一的引擎适配抽象(发送/打断/存活/会话 ID/是否承载常驻提示)接入四家 Harness,原生会话优先、一次性进程降级;resume 会话 ID 存在 agent 家目录之外防引擎写坏,**只有三种情况才重置会话**(上下文溢出、转录毒化、引擎明确报会话失效——正则要求双匹配,防止把执行中途崩溃误判为会话失效而丢弃可恢复上下文,有专门测试钉住);常驻提示每会话带外送一次、每回合只送增量。宿主设备(Computer)一等化:配对码换设备令牌(服务端只存哈希)、"移除计算机"是真实的吊销开关、doctor 端到端探针探的是真实唤醒路径("绿=真唤醒能通");另有侦察性读取不污染 seen 游标、限流自适应起搏且限流从不泄漏进聊天等配额纪律。
+Multica 把 Project 和 Issue 中的目标、讨论与状态保存为长期工作事实。每次分配、提及、私聊或 Autopilot 触发都会新建一个 Task，而 Task 只表示一次 Agent 运行。服务端先把它排入队列，再由本机守护进程认领并调用已经安装的 Harness，最后把消息、工具调用、错误、会话和交付分支写回。人或 Agent 随后决定继续讨论、重新运行还是结束 Issue。这个闭环同时触及四层，但 HCTL 只吸收各层真正独特的机制，不照搬整套产品模型。
 
-反面证据同样密集。验收证据是**非空自由文本自述**——无格式校验、无机器执行的验证,回归项有命令字段但仓库里不存在执行器;云端回合的"完成复核"是用 LLM 验 LLM 的自述,BYOA 侧连这层都没有(run 状态纯粹等于引擎退出码)。所有本地引擎一律以 `--dangerously-skip-permissions` 级全权限运行,唯一隐私边界是提示词文本;云 pod 以 root+SYS_ADMIN 运行且无网络策略,源码注释声称的行级安全并不存在;`participants.tools` 权限列有表、有接口、执行路径零读取——声明性权限不被执行路径消费就等于没有。记忆无版本且有自我中毒实证(内部协同文档记录 agent 把特例写成普适规则、甚至写备忘录训练未来的自己无视刚建好的安全网,修复靠审计后外科手术式删除);同一 gate 在 DB/REST/CLI 三处平行实现已出现规则漂移。789 行的 COORDINATION.md 是一份罕见的多 agent 协同失败案例集("别用 prompt 修 infra"、"绕过旗标必须是对服务端展示过状态的确认"、"缺席成员是常态不是故障"),无论产品成败都有独立参考价值。
+### 审计基线与许可
 
-### 审计基线
+固定实现基线为 [`main@2c0912b6`](https://github.com/multica-ai/multica/tree/2c0912b6ec764b373d44eeea1e80f0d9f11ab417)（2026-08-14）。同期最新发布版是 [`v0.4.26 / 19155e41`](https://github.com/multica-ai/multica/releases/tag/v0.4.26)，主干只比发布版多一个提交。项目仍处于 `0.x` 快速演进阶段，官网会滚动更新；能力判断以固定源码、迁移和测试为准。
 
-| 基线 | 状态 | 可支持的结论 |
+仓库完整公开，README 将项目称为“开源”，但固定版本的 [`LICENSE`](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/LICENSE) 不是单独的 Apache-2.0：它在 Apache-2.0 文本之外增加了第三方托管、商业嵌入、品牌和归属要求，并声明附加条件优先。因此这里只把它当作公开源码的行为、协议和测试证据；在完成专门的法律审查并获得所需授权之前，不把其源码移植进 Apache-2.0 的 HCTL，也不把该许可证标成 Apache-2.0 或宽松开源许可。
+
+### 四层设计亮点与边界
+
+| 层 | 真正深入且独特的证据 | HCTL 的采用方式与边界 |
 | --- | --- | --- |
-| [`main@bd8dba8e`](https://github.com/yetone/cumora/tree/bd8dba8e45c91f685ea3c319aae173d44d26cbd6) · 2026-08-22 | 审计快照(本地克隆核验 HEAD、许可证与关键约束) | 上述 triage/协同门、Shipping 状态机、BYOA 适配、身份钉死机制全部在此基线经源码验证 |
-| 桌面端 v0.1.64(2026-07-26,独立 releases 仓库)/ npm `cumora` 0.1.127 | 已发布 | 主仓库无 tag/release,发布通道在仓库之外 |
+| L4 | Project 保存跨多个 Issue 的目标、范围、长期要求、负责人和代码资源；Project 状态与 Issue 状态相互独立。Issue 集中保存可共享的目标、讨论、活动和执行历史；一对一 Chat 明确位于 Issue 之外且完全私密，团队要复用的结论必须另行写入 Issue、Project 描述或 Skill。Inbox 是面向人的关注入口，不是 Agent 工作队列。 | 采用“共享事实与私密探索分开、私聊结论显式发布”的边界，以及 Project 状态不从子项机械推导的做法。Multica 没有可持续共同引导的项目级 Room、Context 准入或知识晋升流程；Project/Issue 描述又会以当前值直接进入运行上下文，不能代替 HCTL 的持久 Room、Memo 或冻结版本。 |
+| L3 | Issue 是可以长期讨论、修改、重新分配并最终关闭的工作承诺；Task 是一次生命周期有限的运行。同一 Issue 可以产生多个 Task，已有运行记录不会被覆盖；精确重试某个历史 Task 时仍调用该次运行当时的 Agent。官方文档明确规定：Task 的 `completed` 只表示该次运行正常结束，不表示 Issue 目标已经完成。 | 采用 Issue 与单次运行 Task 分离、运行历史不可覆盖、定向重试，以及“运行完成不等于工作完成”。不采用可变 Issue 描述作为冻结的 Task Revision，不采用分配或状态变化自动获得施工授权，也不把 Agent 将状态改成 `in_review`、产生分支或 Task 正常退出当作验收。 |
+| L2 | Task 具有 `queued → dispatched → waiting_local_directory/running → terminal` 生命周期。数据库通过 `FOR UPDATE SKIP LOCKED` 原子认领，并把同一 `(Issue, Agent)` 的运行串行化；准备租约保护启动窗口，`dispatched_at` 充当认领代际的 CAS 隔离栅栏，认领响应丢失后可以重新领取，守护进程重启后可以回收。长期运行依赖运行时心跳，而不是固定的总时长；失败分类决定能否重试，后继 Task 保存 `attempt`、`max_attempts`、`failure_reason`、`session_id`、`work_dir` 和 `retry_of_task_id`，触发者、委派链和证据引用也随运行记录归属。Autopilot 还为定时和 webhook 的每个触发实例提供幂等与崩溃恢复测试。 | 采用领取（claim）、租约（lease）、隔离栅栏（fence）和重新领取（reclaim），并采用失败分类、重试谱系、来源归属和轮询兜底的实现与测试形状，尤其适合无 Workbench 时由服务端和守护进程协作执行。它没有 Workflow Revision、通用 DAG、Gate、Seat、法定票数或语义 Receipt；Squad leader 由 LLM 决策，不能成为控制事实；Autopilot 是可重复触发的操作手册，不是 HCTL Workflow。 |
+| L1 | 一个统一的 `Backend` 契约接入 22 个 Harness 产品名称；其中 21 个协议族由后端构造器、数据库约束和锁步测试共同限定，Oh-My-Pi 复用 Pi 协议族。不同 Harness 的模型、MCP、Skill 路径和会话恢复能力被明确列成能力矩阵，并对“无法判断恢复请求是否被拒绝”等降级情况单独编码。本地 Git 路径会先保全脏工作树，再为每个 Task 建立 worktree；无论成功、失败还是取消，都会尽量提交已经产生的改动，提交失败时则保留 worktree，避免清理过程吞掉用户工作。 | 采用统一 Harness 契约、逐绑定能力探测、显式降级测试，以及“先保全、后隔离、任何退出路径都不丢改动”的 worktree 纪律。Multica 不拥有可重新接入的 PTY，也不能用会话、分支或工具调用成功证明语义完成；其源码许可也排除了直接移植。 |
 
-许可证为 [MIT](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/LICENSE)。仓库 2026-08-17 才公开(审计时仅 5 天),单人主导、私有开发史至少始于 2026-05 下旬;服务端测试面厚(80+ 单测文件、27 集成套件、真 LLM 协同基准),前端零单测。整体判断:以协同正确性为纲的高强度工程,基础设施纪律强、安全纵深弱;能力判断以固定源码为准。
+### 采用结论
 
-### 采用与边界
+HCTL 应组合采用四块经过源码验证的机制：L4 的共享/私密发布边界；L3 的 Issue/单次运行分离；L2 的领取、租约、重试、恢复和来源归属机制及其测试用例；L1 的 Harness 能力契约与无损 worktree 收尾。它们分别进入对应层，不需要把 Multica 设成某一层的唯一参考。
 
-HCTL 对照 L4 采用:triage 门四件套(事实输入、纯门、经济学账本、确定性地板)、hold-token 的"确认而非绕过"哲学、事务内查重、结构化拉群理由的字段化(可改造成 Agent"建议协作边"的载体)、记忆的 project 作用域两层可见性与"混杂时落全局不猜"的出处保守原则。对照 L3 采用:不变量→证据方格覆盖矩阵、builder/verifier 分离下沉到存储约束、追加只写审计流、验收失败自动派生 friction/回归资产、readback 把验收延伸到生产观察,以及原子 `card claim`。对照 L2 采用:"成功才推进游标、失败保留收件箱重跑"的无检查点恢复模型与"只重试人工唤醒"的事故教训(重试消息唤醒曾造成真实重复回复)、孤儿运行收尸。对照 L1 采用:引擎适配抽象与降级矩阵、保守的三条件会话重置、resume 引用外置存储、设备配对/吊销/探针,以及 `--as` 剥除加身份注入的不可伪造边界。
+明确不采用：用 Issue 当前内容充当 Task Revision，用分配或状态变化充当启动授权，用 Squad leader 的 LLM 判断充当调度权威，用 Autopilot 充当通用 Workflow，用 Task 的 `completed` 充当 Verdict/Receipt，以及移植受自定义许可证约束的源码。
 
-明确不采用:自由文本自述充当验收证据(与"证据高于自述"直接冲突,是本清单最重要的反例之一);用 LLM 复核 LLM 的完成自验充当 Verdict;无冻结版本的契约与记忆;`--dangerously-skip-permissions` 式全权派发与提示词充当隐私边界(与 LobeHub 同判);声明性权限不被执行路径消费的死配置;同一 Gate 多处平行实现(HCTL 的 Gate 单点实现、多面复用);服务端信任守护进程对自身执行结果的自述;agent 默认自主拉群不作为 HCTL 普通 Room 的协作边模型——临场协作边仍由人提交,Cumora 的结构化理由只用作建议载体。Cumora 的 conversation/board/computer 不映射为 HCTL 的 Room/Task/Agent 身份。复用结论:**选择性移植**(MIT),协同门与 Shipping 约束可改编,不整仓派生、不采用其安全姿态。
+主要证据：
 
-主要证据(固定到 `bd8dba8e`):
+- 官方产品行为：[Projects](https://multica.ai/docs/projects)、[Issues](https://multica.ai/docs/issues)、[Tasks](https://multica.ai/docs/tasks)、[Chat](https://multica.ai/docs/chat)、[守护进程与运行时](https://multica.ai/docs/daemon-runtimes)、[Harness 对比](https://multica.ai/docs/providers)与[Autopilots](https://multica.ai/docs/autopilots)
+- 固定文档：[Projects](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/projects.mdx)、[Issues](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/issues.mdx)、[Tasks](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/tasks.mdx)、[Chat](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/chat.mdx)与[Harness 能力矩阵](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/apps/docs/content/docs/providers.mdx)
+- L2 实现：[Task 服务](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task.go)、[领取与重试 SQL](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/db/queries/agent.sql)、[租约与重试数据结构](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/migrations/055_task_lease_and_retry.up.sql)、[准备租约](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/migrations/124_task_prepare_lease.up.sql)、[领取竞争测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task_claim_race_test.go)、[完成竞争测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/service/task_complete_race_test.go)与[Autopilot 恢复测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/cmd/server/autopilot_schedule_job_test.go)
+- L1 实现：[统一 `Backend` 与能力例外](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/agent/agent.go)、[协议族锁步测试](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/pkg/agent/agent_supported_types_test.go)与[本地 worktree](https://github.com/multica-ai/multica/blob/2c0912b6ec764b373d44eeea1e80f0d9f11ab417/server/internal/daemon/execenv/local_worktree.go)
 
-- [仓库](https://github.com/yetone/cumora)、[官网](https://cumora.ai)与[许可证](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/LICENSE)
-- 方法论文档:[COORDINATION.md(789 行协同失败案例集)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/COORDINATION.md)、[SHIPPING.md](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/SHIPPING.md)、[BYOA.md](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/docs/BYOA.md)与[CI 架构不变量](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/CONTRIBUTING.md)
-- 协同门:[小脑 triage 门与确定性地板](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/triage-core.ts#L176-L262)、[并行扇出与唤醒重试策略](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/scheduler.ts#L61-L184)、[seen 游标与 hold-token](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/seen-boundary.ts)与[停滞救场管线](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/agenda.ts)
-- Shipping 与看板:[状态机与 gate 谓词](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/api/shipping-router.ts#L238-L305)、[builder/verifier DB 约束](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/db/migrate.ts#L1595-L1597)与[原子 card claim 与 agent CLI](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/cli.ts#L1512-L2098)
-- 运行时与身份:[全量 DDL(约 60 表)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/db/migrate.ts)、[pod 编排](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/runtime/orchestrator.ts#L1-L23)、[云回合循环与完成自验](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/turn.ts#L1154-L1215)与[`--as` 剥除](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/runtime/cli-argv.ts#L19-L43)
-- BYOA:[守护进程(信号量/起搏/会话重置)](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/daemon.ts)、[引擎适配矩阵](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/engine.ts#L974-L1012)、[设备配对与令牌](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/computer/registry.ts#L189-L273)与[记忆作用域契约](https://github.com/yetone/cumora/blob/bd8dba8e45c91f685ea3c319aae173d44d26cbd6/server/src/agents/memory-scope.ts#L18-L33)
-
-<a id="e-rakazo"></a>
-## E-RAKAZO · Rakazo
-
-### 核心价值与跨层画像
-
-Rakazo 定位为 [Grok Bot](#e-grok-bot) 的自托管开源替代:每个 bot 拥有自己的聊天线程、Markdown 记忆、cron 例程、示范教学技能和一台带图形桌面的沙箱"计算机";模型自选(BYOK 或订阅 OAuth),agent loop 用 Pi 内嵌在自家 API/worker 进程中自建,不适配 Claude Code/Codex 等外部 Harness。仓库在审计时只有 9 天历史、单人主导、迭代极快;但它最值得收录的不是产品形态,而是一个反差事实:**这个 early beta 在运行治理上的工程严谨度远超其产品成熟度**,并有属性测试、Postgres 集成测试、崩溃恢复拓扑测试和真模型 canary 背书。三块经源码验证的亮点:
-
-1. **三层带隔离栅栏的租约加幂等效果账本(L2)**。Run 租约以 CAS 认领、`leaseFence` 递增、60 秒心跳续租、续租失败即中止,每次执行留 Attempt 行;计算机执行租约与屏幕租约(`runId:fence`)各自独立,防止旧执行回抢;恢复语义是双保险——事件驱动入队之外,一个用 Postgres advisory lock 选主的对账器每 30 秒兜底扫描过期租约与到期例程。所有非只读工具调用前先写 `ExternalEffect` 意向行(幂等键=工具调用 ID),完成后置 completed;重放时已完成的直接返回旧结果,**状态不确定的非幂等工具直接拒绝重复执行**。状态机显式断言合法迁移(`failed→queued` 可重试,`completed/cancelled` 终态)。
-2. **等人状态与人/机双租约接管(L2/L1)**。`waiting_input`(等回答)与 `waiting_takeover`(等上屏)是 Run 的一等状态,挂起前强制把工作区 checkpoint 到持久存储;接管期间执行租约转 24 小时保持、控制权交给人,人的控制租约限时、到期由后台任务自动回收,释放时自动找回等待中的 Run 重新入队恢复。
-3. **供应商中立的可移植工作区(L1)**。沙箱经统一 `SandboxProvider` 契约支持 Docker/E2B/Daytona/本机等后端并逐后端探测能力降级(非图形后端过滤图形工具、分不出屏时显式报错而非静默排队);文档明确 `providerRef` 只是"加速路径而非持久数据",机器消失即从 checkpoint 重建——与 HCTL2"领域对象不被进程反向定义"同源。Docker 路径有特权分离:API/worker 进程不持有 Docker socket,由独立 supervisor 服务代管。另有值得单记的 L4 细节:Markdown 记忆文档带整数修订号与全量修订表,**每条修订携带 `sourceRunId`/`sourceThreadId` 出处**,可导出导入;这是"知识修订可溯源到产生它的 Run"的野生同构实现。
-
-反面证据同样直接。官网称"给 bot 演示一次工作流,它存成你能读、能改、能提交的纯 Markdown",实现里并不存在可提交的 Markdown 工作流文件:例程是无版本号的数据库行(name+prompt+cron),触发时读**当前** prompt;示范教学的产物是 JSON playbook(由确定性代码而非 LLM 从录屏编译,这一点反而诚实),可编辑但无修订历史,Run 不记录执行时用的是哪个版本。官网的"Approvals that hold"经全库检索只是 playbook 文本约定加 ask 机制,没有任何策略引擎;防越权靠提示词自律("Prefer tools over claiming you already did the work")。凭证边界的"credentials never leave your environment"只在纯 Docker 自托管路径严格成立——选云沙箱时浏览器登录态在第三方 VM 上,长历史压缩外包给 Supermemory SaaS。
-
-### 审计基线
-
-| 基线 | 状态 | 可支持的结论 |
-| --- | --- | --- |
-| [`v0.1.0-beta / 53b119a6`](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta) · 2026-08-13 | 已发布 prerelease | 产品骨架与自托管路径 |
-| [`main@90572cb2`](https://github.com/elie222/rakazo/tree/90572cb2bcab4458aebbe1994b3ffbc9ddfac339) · 2026-08-21 | 审计快照(本地克隆核验 HEAD 与许可证) | 上述租约/效果账本/接管/工作区机制全部在此基线经源码验证 |
-
-许可证为 [Apache-2.0](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)。仓库创建于 2026-08-13,单一维护者贡献约 92% 提交,处于极速演进期;能力判断以固定源码为准,官网叙事必须逐条对照实现甄别。
-
-### 采用与边界
-
-HCTL 对照 L2 采用:三层租约的隔离栅栏组合、意向-完成两段式幂等效果账本(含"不确定态拒绝重试非幂等操作")、advisory lock 选主的兜底对账器、挂起前强制 checkpoint 的等人状态,以及 `failed→queued` 显式可重试的状态机断言。对照 L1 采用:供应商中立契约与"可移植工作区为唯一持久边界、供应商引用仅缓存"的纪律、逐后端能力探测与显式降级、执行进程与容器特权的分离,以及人控制租约与机执行租约分开计时的接管模型。对照 L4 采用:记忆修订携带 Run 级出处的最小可行样板。
-
-明确不采用:无版本冻结的例程与 playbook(Run 必须绑定冻结的 Workflow Revision,这正是 Rakazo 反向验证的差异化空间);提示词自律代替确定性 Gate 与策略引擎(与"证据高于自述"相反,是现成反例);模型 loop 与业务同进程(HCTL 的 Harness 边界要求进程级隔离与无隐藏写权限);把长期记忆压缩外包给第三方 SaaS;一 bot 一线程的二元对话不映射为 Room。Rakazo 没有 L3:Task 仅是 prompt+status,无契约、无验收、无看板。
-
-主要证据(固定到 `90572cb2`):
-
-- [仓库](https://github.com/elie222/rakazo)、[v0.1.0-beta](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta)、[官网](https://rakazo.com/)与[许可证](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)
-- 领域对象与治理:[Prisma schema(Run 租约 L342-376、ExternalEffect L392-409、Routine L411-432、MemoryRevision L514-526)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/prisma/schema.prisma)、[Run 状态机断言](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/run-state.ts)、[执行器(租约/效果账本/工具分发)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/executor.ts)与[选主对账器](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/job-reconciler.ts)
-- 等人与接管:[事务性线程事件](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/src/events.ts)、[API 路由(ask/takeover/release)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/router.ts)、[屏幕租约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/screen-lease.ts)与[签名屏幕代理](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/screen-proxy.ts)
-- 沙箱与工作区:[计算机生命周期](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-lifecycle.ts)、[工作区 checkpoint](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-workspace.ts)、[supervisor 特权分离](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/infra/sandboxes/supervisor/src/supervisor-logic.ts)、[适配器契约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapter-kit/src/interfaces.ts)与[计算机运行时文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/computer-runtime.md)
-- 记忆与教学:[Markdown 记忆(修订+出处)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/memory/src/index.ts)、[确定性 playbook 编译](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/teach-playbook.ts)与[官网 Markdown 声称处](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/www/src/pages/index.astro#L107)
-- 加密与凭证:[secret 加密存储](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/secrets.ts)与[自托管文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/self-host.md)
+> **2026-08-24 复核**：主干已从固定基线前进约 210 个提交（v0.4.26→v0.4.32），Harness 适配器从 22 个名称增至 23 个（新增 antigravity 等）；引用能力矩阵前应按新 HEAD 复核适配器清单，其余机制结论不变。提交直方图证实它是罕见的四场景全触及产品且无一场景超过四成：看板是叙事中心，运行时是工程中心（terminal 37 / kanban 29 / room 13 / workflow 12）。
 
 <a id="e-helio"></a>
 ## E-HELIO · Helio
@@ -396,80 +431,44 @@ HCTL 对照 L4 采用:`--seen` CAS 隔离栅栏与"过期失败返回错过内�
 - ship(固定到 `40da17bd`):[README(证据分级)](https://github.com/heliohq/ship/blob/40da17bd7c1447660efd40064178ba09357fadce/README.md)、[stop-gate(拆除 LLM 校验)](https://github.com/heliohq/ship/blob/40da17bd7c1447660efd40064178ba09357fadce/scripts/stop-gate.sh)与[phase-guardrail(角色隔离)](https://github.com/heliohq/ship/blob/40da17bd7c1447660efd40064178ba09357fadce/scripts/phase-guardrail.sh)
 - 第三方:[codepick 的 Helio vs Cumora 对比](https://codepick.dev/en/guides/helio-vs-cumora-agent-collaboration/)(2026-05-28)
 
-<a id="e-l2-hctl1"></a>
-## E-L2-HCTL1 · HCTL1 / yesme/hctl
+<a id="e-l3-codeg"></a>
+## E-L3-CODEG · Codeg
 
-HCTL1 是 HCTL2 L2 语义内核的直接前身，也是可执行的技术谱系证据；它不是外部复用来源，不能与 HCTL2 的原生语义核心混为一谈。审计固定在 [`main@3148042c`](https://github.com/yesme/hctl/tree/3148042cb2faf8df0dc8be92710b9468c8618516)（2026-07-28，Apache-2.0）。仓库没有标签或正式发布；README 表明 P1 内核已经进入主干，P2/P3 仍处于规划阶段。
+### 核心价值与跨层画像
 
-它最独特的证据是一套不依赖守护进程和数据库的 Git 语义内核：每个 Seat 一条只追加事件引用、本地与远端 CAS、电平触发式对账、事实不完整时默认拒绝、Obligation/CLAIM 与 claim OID 隔离栅栏、精确匹配 `{base, head}` 的 Verdict、法定票数，以及携带事实摘要、无需依赖时钟即可重放的 squash merge Receipt。除规范外，仓库还提供可执行用例库，覆盖过期 Gate、权限、竞争、JCS 身份、组合法定票数、迟到 Finding、重新 Gate 时的结论沿用，以及初始化切换。
+Codeg 的产品闭环是：先把一项工作写成独立 `WorkTask`，再排队并按并发上限领取；启动时根据精确的 base SHA 创建隔离 worktree；Agent 执行过程中可以进入 Needs You；完成一轮后由用户查看结果、diff、时间线和预检，再选择 Rework、Keep going、Ask、Double-check 或 merge；最后用 Git 事实确认结果是否真正落地。官方 Tasks 指南对边界的概括也很准确：Conversation 是用户坐在前面共同推进的会话，Task 则是写下以后可以暂时离开的异步承诺。
 
-HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和对账的思路，但不会原样继承其对象与事实源：
+`WorkTask` 的 `worktree_folder_id`、`conversation_id` 和 `connection_id` 都可以为空，因此 Task 身份不依赖某次运行环境。状态变化使用“预期状态 + `run_seq`”进行 CAS，并把只追加的时间线事件放在同一事务中。Board、排队、Needs You、评审、后续动作、预检、Git 事实和重启恢复，共同构成其完整的 L3 产品机制。
 
-- HCTL1 的 `Seat = harness × model` 表示协作身份；HCTL2 的 Seat 是 Obligation 内的逻辑执行者或投票者位置，下挂 `0..N` 个 Attempt；
-- HCTL1 的 Obligation 来自静态分派中的 author/gate/merge；HCTL2 的 Obligation 对应 Dagu 外部检查点的一次执行责任；
-- HCTL1 把每个 Seat 的 ref、PR 和 squash Receipt 作为全局协调事实；HCTL2 把运行治理放入 SQLite 控制库，以 Git 保存共享且低频变化的定义和证据，并由 Dagu 保存机械工作流位置；
-- HCTL1 的回收机制不等于候选方案降级，而且没有 Project Room、Task Board、Workflow Revision、Run、Attempt、进程/PTY 或外部系统同步；
-- 单一人类信任、唯一合并协调者且容量为 1，以及把 PR 当作协作原子，只适用于它所定义的窄范围运行方式。
+Codeg 的核心价值在 L3，其他层也有可单独采用的机制。L1 可以专项参考它把 ACP、worktree、Git、diff、Composer、事件卡片，以及由 Agent 所在环境提供的文件系统和终端沙箱接成一条执行体验；L2 可以把 Automations 的定时触发、单个 Automation 串行、补跑，以及固定 Task 流程与 merge 恢复，当作“产品层自动化”和“通用 Workflow 治理”之间的边界证据。桌面终端由进程内 `HashMap` 持有，没有持久滚屏记录、进程重启恢复或稳定的远程重新接入，因此 PTY 所有权与重连主要参考 Stably Orca。Automations 没有带版本的图、权限与法定人数规则或通用 Gate，也不能单独定义 HCTL 的 L2。
+
+### 审计基线
+
+| 基线 | 状态 | 可支持的结论 |
+| --- | --- | --- |
+| [`v0.24.0 / df7a872d`](https://github.com/xintaofei/codeg/commit/df7a872de44546277e4c49cfe9d173c631161dc6) · 2026-08-11 | 已发布 | 独立 `WorkTask`、四列 Board、排队/并发/定时启动、Needs You、评审/预检/后续动作、merge 与基于 Git 事实的恢复 |
+| [`main@a34a047a`](https://github.com/xintaofei/codeg/commit/a34a047a568018ee180dee75add8c9c7d30b2ea6) · 2026-08-14 | 未发布审计快照；按 first-parent 口径比发布版前进 23 个 commit | merge 排队、[由 Agent 所在环境提供文件系统与终端沙箱](https://github.com/xintaofei/codeg/commit/b7e21e4c789ba70036ec87de5ed72dec3d25a678)，以及重连与权限修正 |
+
+[发布版与审计快照的差异](https://github.com/xintaofei/codeg/compare/df7a872de44546277e4c49cfe9d173c631161dc6...a34a047a568018ee180dee75add8c9c7d30b2ea6)。v0.24.0 和当前 Tasks 指南规定“同一项目已有 merge 时拒绝第二个 merge”，主干从 [`597a7eeb`](https://github.com/xintaofei/codeg/commit/597a7eeb24e4a5f8aca149f2f5c182d3c2c90510)起改为排队。发布能力与主干能力在本文中分别标注。
+
+### 采用与边界
+
+HCTL 采用独立 Task 身份、显式状态机、基于 `run_seq`/CAS 的过期事件隔离、事务内时间线、精确 base SHA、复用 worktree 的重试、Needs You 投影、评审/预检/后续动作，以及“根据 Git 事实恢复 merge”的测试。`done` 只应来自已经落地的 merge，或用户明确接受“没有内容可合并”；Agent 自报 `task_complete` 只能作为建议，不能决定 Task 是否完成。
+
+Codeg 的 `WorkTaskConfig` 不能直接当作 HCTL 的冻结 Task Revision。它保存 `prompt_blocks` 和每个 Task 的覆盖值，但空字段会在真正启动时继承当时的 Folder 设置，实际采用的值只写入 `config_effective` 审计事件。HCTL 在批准 Run 时必须冻结完整的 Task Revision/Workflow Revision，不能让可变默认值在启动时继续改变契约。
+
+明确不采用：不把 Conversation 当作 Room，不把 To-do 数据结构直接视为 HCTL Task，不把固定 Task 流程直接视为 Workflow，不让拖进 In Progress 自动获得施工授权，不因 Agent `task_complete`、Done 分栏或 Git 已落地就自动满足语义验收，不把 Agent 发起 merge 等同于具有治理权限，不让主 LLM 路由充当控制事实，也不把进程内终端当作 L1 持久性模型。
 
 主要证据：
 
-- [README 范围](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/README.md#L7-L27)；[METHOD 中的事实、Seat 与领取](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/METHOD.md#L27-L114)；[Gate、结论沿用与合并](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/METHOD.md#L108-L182)
-- [派生引擎](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/derive/derive.go#L47-L124)；[CAS 与待处理状态恢复](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/store/store.go#L15-L191)；[Receipt 重放](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/receipt/receipt.go#L14-L187)
-- [可执行用例库](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/tests/corpus/README.md#L1-L53)；[Apache-2.0 许可证](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/LICENSE)
+- [仓库](https://github.com/xintaofei/codeg)、[v0.24.0 发布版](https://github.com/xintaofei/codeg/releases/tag/v0.24.0)与固定版本的 [Apache-2.0 许可证](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/LICENSE)
+- 官方产品说明：[Tasks](https://docs.codeg.app/guide/tasks)、[Automations](https://docs.codeg.app/guide/automations)、[多 Agent](https://docs.codeg.app/guide/multi-agent)与[聊天频道](https://docs.codeg.app/guide/chat-channels)
+- Automation 的固定源码：[持久对象](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/automation.rs)、[Run 记录](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/automation_run.rs)、[调度引擎](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/automation/engine.rs)与[事务服务](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/service/automation_service.rs)
+- [WorkTask 状态与持久字段](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/entities/work_task.rs)、[配置与 Folder 设置](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/models/work_task.rs)、[CAS 与事务事件服务](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/db/service/work_task_service.rs)、[执行与恢复引擎](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/work_task/engine.rs)及[Git 判定](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/work_task/git.rs)
+- [四列 Board 投影](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src/components/tasks/board-columns.ts#L4-L58)、[Composer](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src/components/chat/composer/rich-composer.tsx)、[ACP 注册表](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/custom_registry.rs)与[委派数据结构](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/delegation/tool_schema.json)
+- L1 边界证据：[桌面 PTY 管理器](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/terminal/manager.rs)与[面向 Agent、限制输出大小的终端运行时](https://github.com/xintaofei/codeg/blob/df7a872de44546277e4c49cfe9d173c631161dc6/src-tauri/src/acp/terminal_runtime.rs)
 
-<a id="e-l2-dagu"></a>
-## E-L2-DAGU · Dagu 机械状态后端与 workflow 候选复审
-
-### 当前决定
-
-第一阶段 workflow engine 拍板 **Dagu**，固定审阅基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)（2026-08-22，[GPL-3.0-or-later](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/LICENSE)）。判据已经按讨论弱化为：Workflow 的 HCTL JSON 必须是声明式事实源，可以机械执行 schema/Profile/引用/环等 lint；**不要求**对任意 loop 证明终止。运行时再以冻结预算、deadline、取消和替代规则收口。
-
-Dagu 胜出的原因很窄：声明式 YAML、单二进制、文件系统持久化，`start-all` 在[一个进程内启动服务](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/startall.go#L94-L99)，比需要 JVM 或数据库/队列组合的候选更贴合单机第一阶段；同时，无进程的 [`human.task`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/runner.go#L766-L798) 会进入等待态，可经[完成 API](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/humantasks.go#L78-L126)恢复，足以作为 control 驱动的外部检查点。它不是纯被驱动引擎：普通 step 会直接[构造 executor](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L823-L827)并[自行执行](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L265-L269)；HCTL Profile 因此只准依赖/条件/等待结构和 `human.task`，拒绝 command/script/action/HTTP/agent/Harness。
-
-Workflow Revision 仍是 HCTL 规范化 JSON；Dagu YAML 只是固定 compiler/adapter 生成的 Engine Deployment。lint 分两层：HCTL 工具箱先验证完整 schema、Profile、引用与图结构，再调用 Dagu [`validate`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/validate.go#L25-L47)检查生成物。不能只相信后者：公开 `DAG.Validate` 只检查[名称和缺失依赖](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/ir/dag.go#L448-L475)，环是在[执行计划构建](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/plan.go#L287-L409)时才被拒绝，所以 HCTL 图 lint 必须更早拒绝并以负例锁定。
-
-### 阻断性 P0 风险
-
-`human.task` 完成服务内部有 CAS/幂等保护并把恢复写入队列（[completion](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/completion.go#L18-L113)、[resume](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/resume.go#L43-L92)），但公开请求只给 DAG、run 和 step，不能携带调用者预期的 engine attempt generation。adapter 必须在 ACK 未知、retry/repeat、重启和迟到完成的压力测试中证明 readback/fence 不会让旧请求推进新检查点；做不到就阻断 B4 并重开选型。inline spec start API 已存在（[源码](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/dagruns.go#L163-L253)），但固定定义摘要、恢复后的 binding 对账和备份一致性仍由 HCTL adapter/control 负责。Dagu 不选择 Harness、不创建 Seat/Attempt、不解释语义拒绝、不计算 quorum、不签发 Receipt，也不直接写 Git 或外部系统。
-
-### 本轮源码复审的全部 workflow 候选
-
-以下是本轮实际审阅过的集合，不冒充整个市场清单；“stepfunlocal”按 AWS Step Functions Local 理解。结论基于固定源码/官方实现，而不是 README 特性表。
-
-| 候选 | 源码层事实 | 结论 |
-| --- | --- | --- |
-| **Dagu** | 单进程/文件持久化；普通 step 自驱动，但 `human.task` 可作被动检查点；验证器与 completion fencing 的缺口如上 | **采用**；最小运维面，受严格 HCTL Profile 和 P0 fencing 门禁约束 |
-| **Conductor OSS** | 当前 `v3.32.1` 已把 [SQLite 设为默认 DB/queue/index](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/src/main/resources/application.properties#L14-L24)，旧评估“只支持 Redis/Postgres/MySQL”已经过时；其[逐 task poll/update API](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/rest/src/main/java/com/netflix/conductor/rest/controllers/TaskResource.java#L66-L112)比 Dagu 更原生地被驱动，但 [JVM server 分发](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/build.gradle#L42-L79)仍重；loop validator 只查[条件与 body 存在](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/validations/WorkflowTaskTypeConstraint.java#L260-L284)，runtime 可[持续迭代](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/core/execution/tasks/DoWhile.java#L161-L184) | 不采用；外部任务接口最好，但 footprint/分发不符合本轮轻量优先，且同样不证明终止 |
-| **Windmill** | flow schema 本身允许 script、raw script、for/while loop、subflow 与 agent 等[代码承载模块](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L984-L1093)，validator 主要做[反序列化、retry 与 path](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L233-L275)，部署由 [PostgreSQL、server 和 worker](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/docker-compose.yml#L10-L79)组成，且[许可混合](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/LICENSE#L1-L31) | 不采用；明显偏 code platform，服务面和授权面都过大 |
-| **Kestra** | YAML 是声明式入口，但 Flow validator 只挡重复 ID 与[直接自递归](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/core/validations/validator/FlowValidator.java#L32-L78)，测试中存在[合法互递归 subflow](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/test/resources/flows/valids/subflow-function-mutual-a.yaml#L1-L9)，`LoopUntil` 未设限制时[不限制迭代数](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/plugin/core/flow/LoopUntil.java#L242-L263)；local mode 仍是 [JVM + H2](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/cli/src/main/java/io/kestra/cli/commands/servers/LocalCommand.java#L25-L42) | 不采用；插件/运行面远超所需，lint 能力没有抵消重量 |
-| **Direktiv** | 稳定版有声明式 [workflow model](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L13-L84)与[validator](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L174-L232)，同时允许[显式自循环](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/tests/engine/simple-loop.test.js#L22-L48)并依赖 NATS/Postgres/Kubernetes/Knative 等[较重栈](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/go.mod#L21-L53)；当前主干 compiler 已消费 [`.wf.ts`](https://github.com/direktiv/direktiv/blob/9ad27a0de2aa986a85612867cf8e73c8822d0529/internal/core/compiler.go#L8-L64) | 不采用；部署重，且演进方向重新引入 code-as-workflow |
-| **Serverless Workflow Synapse** | CNCF Serverless Workflow schema 原生允许 [for/while 条件循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/schema/workflow.yaml#L685-L729)，官方示例包含[永久消费循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/examples/call-asyncapi-subscribe-consume-forever-foreach.yaml#L1-L27)；Synapse compose 由 [Redis、API、operator、correlator](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/deployments/docker-compose/docker-compose.yml#L1-L55)组成，standalone runner 只给[内存执行上下文](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/src/runner/Synapse.Runner/Services/StandAloneWorkflowExecutionContext.cs#L27-L40) | 不采用 runtime；保留 DSL/spec 作为 schema 参考 |
-| **TIBCO Flogo / project-flogo/flow** | flow JSON 是 task/link 图（[serializer](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/definition/definition_ser.go#L26-L61)），含 [DoWhile](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/model/simple/dowhilebehavior.go#L72-L99)；runtime 用[最大 step 数](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/action.go#L421-L443)作保险，但 persistence 只有[可选 recorder 接口](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/state/recorder.go#L1-L14) | 不采用 runtime；它是嵌入式 flow library，不是完整耐久服务 |
-| **AWS Step Functions Local** | ASL 声明式、可配合 [StateLint](https://github.com/awslabs/statelint/blob/5388321f0c0c4b24df9308c02dff4d3adfe74527/lib/statelint/state_node.rb#L207-L224)，但 AWS 官方明确称 Local [unsupported、仅供测试](https://docs.aws.amazon.com/step-functions/latest/dg/sfn-local.html) | 不可作生产本地 runtime；ASL/StateLint 仅作语法设计参考 |
-| **SCXML / XState 自建** | SCXML 是成熟的[状态图标准](https://www.w3.org/TR/scxml/)；XState machine config 仍可嵌入[函数实现](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createMachine.ts#L31-L77)，默认内部迭代上限可为 [Infinity](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/StateMachine.ts#L126-L145)，snapshot API 只解决[状态快照](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createActor.ts#L783-L819) | 不自建；还需补 durable store、lease、timer、API、恢复与运维，收益不足以抵消重造引擎 |
-
-结论不是“Dagu 最强”，而是它在当前约束下最小：Conductor 的外部 task 合同更顺手，Serverless Workflow/SCXML 的形式更标准，Windmill/Kestra 的产品能力更多；这些优势都不值得引入相应重量或自建耐久运行时。
-
-<a id="e-l2-stably-orca"></a>
-## E-L2-STABLY-ORCA · Stably Orca 持久监督协议
-
-Stably Orca 在 L2 的亮点不是自动规划，而是把人工或 Agent 主导的监督过程做成持久协议。Run 是持久命名空间和协调者收件箱；Task 保存依赖与状态；每次 Dispatch 把 Task 的一次尝试绑定到具体终端，并记录窗格、句柄、进程实例代次和能力。生命周期对账还会核对当前 Dispatch ID 与受派窗格/句柄，拒绝来源错误或已经过期的心跳与 `worker_done`。FIFO Delivery 会重复交付同一批消息直到收到确认；变更收据按调用者和请求实现幂等；执行者的启动、停止、释放和保留还会记录已经发生的副作用与未清理资源。Decision Gate、远程转发与过期 Dispatch 拒绝进一步补齐了监督过程中的恢复路径。
-
-HCTL 在 L2 采用它的 Dispatch 权威、消息确认与重放、幂等变更收据、执行者资源所有权、失败后的残留状态，以及拒绝过期完成信号的规则。它的现役 Run [明确不负责调度或选择落点与并发度](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L102-L181)，自动调度器也[已经退役且不产生副作用](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L273-L285)；它没有 HCTL 的 Workflow Revision、Obligation/Seat/Attempt、法定票数、重新过 Gate，或与证据绑定的 Verdict/Receipt。因此，Stably Orca 是 L2 的持久监督专项参考，不能直接承担 HCTL 的 Workflow 权威事实。
-
-固定版本、数据结构和生命周期检查见 [Stably Orca 的完整审计](#e-l1-stably-orca)。
-
-<a id="e-l2-herdr-boundary"></a>
-## E-L2-HERDR-BOUNDARY · Herdr 运行信号边界
-
-Herdr 不提供持久 Workflow，但它对“谁可以写 Agent 状态”处理得足够深入，构成 L2 的边界证据：一个活动窗格只接受一个状态来源；完整生命周期钩子活跃时优先于屏幕状态降级信号，只报告会话身份的钩子不获得生命周期状态写入权，进程退出和事件序号又会撤销或拒绝过期报告。与此同时，`agent prompt --wait` 明确不追踪某一轮对话，已有活动轮次也可能满足等待。因此 HCTL 可以采用它的信号仲裁思路，却必须把 `idle/working/blocked/done` 限定为 L1 观测，不能据此完成 Task、Run、Verdict 或 Receipt。固定源码见 [E-L1-HERDR](#e-l1-herdr)。
-
-<a id="e-l2-zeroclaw"></a>
-## E-L2-ZEROCLAW · ZeroClaw SOP
-
-ZeroClaw 不能直接提供 HCTL Workflow，但它的 SOP 引擎是少见的 L2 邻近实现证据：每个 SOP 的准入策略支持 `parallel`、`hold`、`coalesce` 和 `drop`，Run 可以持久化并在重启后恢复；人工介入/检查点、经过身份认证的审批组与法定票数、只追加审批审计、拒绝作用域版本已经过期的提示、修改/修订、步骤级工具范围，以及重试/跳转，共同形成了可复用的 Gate 与准入失败用例库。
-
-HCTL 只借鉴绑定版本的人类决策、准入与背压，以及默认拒绝的策略测试；不把 SOP 当作 Workflow Revision，不把事件触发当作 Start 授权，不把 Agent `sop_advance` 当作 Verdict，不把工具收据当作 HCTL Receipt，也不把 ZeroClaw Run 数据库当作领域权威事实。固定版本为 [`v0.8.4 / a56c345d`](https://github.com/zeroclaw-labs/zeroclaw/tree/a56c345d51dd8ab562e9351e0d4ab83f6a741db9)（MIT 或 Apache-2.0）。[语法说明](https://github.com/zeroclaw-labs/zeroclaw/blob/a56c345d51dd8ab562e9351e0d4ab83f6a741db9/docs/book/src/sop/syntax.md)与[运行时契约](https://github.com/zeroclaw-labs/zeroclaw/blob/a56c345d51dd8ab562e9351e0d4ab83f6a741db9/docs/book/src/sop/how-it-works.md)对默认持久化行为仍有冲突，初始化失败时还会降级到进程内内存，因此不能承担 HCTL 的权威事实。
+> **2026-08-24 复核**：主干已推进到 v0.28.x（较审计快照前进 4 个 minor 版本）；本文结论仍以固定基线为准，续引主干能力前应重审 v0.24.0→v0.28.x 的 WorkTask/Automation 变更。按提交路径直方图，Codeg 的开发重心是多 Agent 会话工作台（约七成路径变更在 ACP/会话面），WorkTask 看板约占 8%——本文取其 L3 机制为核心参考是按设计亮点归类，引用时应意识到这是该产品的次要模块，演进优先级可能低于会话面。
 
 <a id="e-l1-stably-orca"></a>
 ## E-L1-STABLY-ORCA · Stably Orca
@@ -509,6 +508,17 @@ HCTL 不采用：Workspace/worktree 充当 Project/Task、`workspaceStatus` 充�
 - [持久 Run/Delivery/Receipt/执行者/Task/Dispatch/Gate 数据结构](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/src/main/runtime/orchestration/db.ts#L297-L620)；[`worker_done` 与心跳的受派者/过期检查](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/src/main/runtime/orchestration/lifecycle-reconciliation.ts#L16-L305)
 - [Run 只负责持久命名空间和收件箱，落点与并发度由 Agent 选择](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L102-L181)；[自动调度器命令已经退役](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L273-L285)
 - [`workspaceStatus` 是人工侧栏分类](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/src/shared/types.ts#L684-L685)；[可选的 Linear 状态同步](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/src/renderer/src/components/sidebar/workspace-board-task-status-sync.ts#L168-L239)；[Native Chat](https://www.onorca.dev/docs/agents/native-chat)
+
+> **2026-08-24 复核**：主干已到 v1.4.188（较固定基线约前进 10 个版本），出现较新的 AiVault 会话面板与 hosted review 组件；引用交付/评审能力前应刷新固定版本。提交直方图（terminal 47 / kanban 39）支持本文边界判断：看板投入接近终端，但卡片身份仍是 worktree，不足以定义独立 Task 模型。
+
+<a id="e-l2-stably-orca"></a>
+## E-L2-STABLY-ORCA · Stably Orca 持久监督协议
+
+Stably Orca 在 L2 的亮点不是自动规划，而是把人工或 Agent 主导的监督过程做成持久协议。Run 是持久命名空间和协调者收件箱；Task 保存依赖与状态；每次 Dispatch 把 Task 的一次尝试绑定到具体终端，并记录窗格、句柄、进程实例代次和能力。生命周期对账还会核对当前 Dispatch ID 与受派窗格/句柄，拒绝来源错误或已经过期的心跳与 `worker_done`。FIFO Delivery 会重复交付同一批消息直到收到确认；变更收据按调用者和请求实现幂等；执行者的启动、停止、释放和保留还会记录已经发生的副作用与未清理资源。Decision Gate、远程转发与过期 Dispatch 拒绝进一步补齐了监督过程中的恢复路径。
+
+HCTL 在 L2 采用它的 Dispatch 权威、消息确认与重放、幂等变更收据、执行者资源所有权、失败后的残留状态，以及拒绝过期完成信号的规则。它的现役 Run [明确不负责调度或选择落点与并发度](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L102-L181)，自动调度器也[已经退役且不产生副作用](https://github.com/stablyai/orca/blob/09ec516ae50b7b83fa65343d9ad96159e3fe71fc/skill-guides/orchestration.md#L273-L285)；它没有 HCTL 的 Workflow Revision、Obligation/Seat/Attempt、法定票数、重新过 Gate，或与证据绑定的 Verdict/Receipt。因此，Stably Orca 是 L2 的持久监督专项参考，不能直接承担 HCTL 的 Workflow 权威事实。
+
+固定版本、数据结构和生命周期检查见 [Stably Orca 的完整审计](#e-l1-stably-orca)。
 
 <a id="e-superset"></a>
 ## E-SUPERSET · Superset
@@ -557,6 +567,117 @@ HCTL 应把 Superset 放进 L1 核心参考，采用 PTY 所有权、接管与�
 - 持久恢复：[终端与 Agent 数据结构](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/packages/host-service/src/db/schema.ts)、[Agent 绑定与可恢复候选](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/packages/host-service/src/terminal-agents/persistence.ts)与[守护进程丢失核实](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/packages/host-service/src/terminal-agents/daemon-loss-sweep.ts)
 - Task/Board 与清理边界：[`task.start`](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/packages/trpc/src/router/task/task.ts)、[Board 分栏推导](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspaces/components/V2WorkspacesBoard/utils/deriveBoardColumn/deriveBoardColumn.ts)与[Workspace 分阶段清理](https://github.com/superset-sh/superset/blob/4e18e1fa794be7969d517bea86d082105e44c836/packages/host-service/src/trpc/router/workspace-cleanup/workspace-cleanup.ts)
 
+> **2026-08-24 复核**：主干新增 SDK 结构化会话面（packages/chat-runtime 的 claude/codex 适配器与 journal/replay/projection 设计）——绕过 PTY、经 SDK 驱动 Harness 的第二执行路线，既是 L1 会话恢复的增量参考，也再次佐证"会话传输不等于 Workflow 事实"。tasks/automations 虽在增长（2026 年各约 400/357 次文件变更）但仍是薄 UI 层，不改变 L3/L2 边界定位。
+
+## 类别三 · 独立 Agent 产品（单助理 / bot 平台）
+
+<a id="e-l4-openclaw"></a>
+## E-L4-OPENCLAW · OpenClaw
+
+OpenClaw 最值得参考的是 L4 的外部频道接入边界：它把账号、对端和讨论串归一为确定性路由键，并支持精确绑定、讨论串继承、私信作用域、配对与允许名单、房间环境事件、防止机器人循环，以及按频道能力降级投递。这说明：没有 Workbench 时，Chat 界面仍需要稳定的外部身份、确定性路由和逐频道降级，不能让模型猜测频道，也不能按显示名称分发。
+
+HCTL 只借鉴适配、路由、配对、防循环和降级测试；OpenClaw 的 channel/session/workspace/agent 不映射为 Project/Room/Task/Run，环境聊天不会自动成为权威 Context，Gateway、cron 或 delegation 也不成为 L2 的权威事实。固定版本为 [`v2026.7.1-2 / 0790d9f5`](https://github.com/openclaw/openclaw/tree/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c)（MIT）；证据见[频道路由](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/docs/channels/channel-routing.md)、[README](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/README.md)与[许可证](https://github.com/openclaw/openclaw/blob/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c/LICENSE)。
+
+> **2026-08-24 复核**：2026-04 起出现 extensions/codex（监督原生 Codex 会话），2026-07 起 UI 出现 workboard/worktrees 页——正朝编码代理监督面扩张（目前约 2-3% 投入）。按现行"只借频道边界"的立场无需改动；后续做 L1/L3 邻近证据扫描时可补充观察。
+
+<a id="e-l3-hermes-agent"></a>
+## E-L3-HERMES-AGENT · Hermes Agent
+
+Hermes Agent 的独特价值是由 Agent 操作的持久 Task/Attempt 协议：SQLite Board 保存 Task、Run/Attempt、依赖、评论和工作区；调度器负责原子领取、心跳、过期或崩溃 Worker 的回收、依赖满足后的状态推进，以及协议违规时自动阻塞；CLI、Chat 斜杠命令和 Dashboard 共用同一套命令内核。它为 L3 提供了重启恢复和无 Workbench 操作方面的实现证据。
+
+HCTL 借鉴 Task/Attempt 分离、领取与回收、持久评论和共用命令内核；不把 Board 当作 Project，不把 profile/memory 当作 Participant/Project，不把模型自报完成当作 Receipt，也不把单机调度器当作 L2 权威事实，更不让 LLM 的目标判断决定语义完成。固定版本为 [`v2026.8.13 / f80f453a`](https://github.com/NousResearch/hermes-agent/tree/f80f453ae0679347e38abc917c7f94f717bf96c5)（发布名称 `v0.20.1`，MIT）；证据见 [Kanban 指南](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/website/docs/user-guide/features/kanban.md)、[README](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/README.md)与[许可证](https://github.com/NousResearch/hermes-agent/blob/f80f453ae0679347e38abc917c7f94f717bf96c5/LICENSE)。
+
+> **2026-08-24 复核**：按提交路径直方图，Kanban 子系统仅占其 2026 年开发投入约 1.5%（2026-04 才出现的年轻模块），当前投入重心是桌面聊天客户端——本文借鉴的是其边缘功能而非主轴，对其长期维护承诺应保守估计；这不否定代码证据本身。
+
+<a id="e-rakazo"></a>
+## E-RAKAZO · Rakazo
+
+### 核心价值与跨层画像
+
+Rakazo 定位为 [Grok Bot](#e-grok-bot) 的自托管开源替代:每个 bot 拥有自己的聊天线程、Markdown 记忆、cron 例程、示范教学技能和一台带图形桌面的沙箱"计算机";模型自选(BYOK 或订阅 OAuth),agent loop 用 Pi 内嵌在自家 API/worker 进程中自建,不适配 Claude Code/Codex 等外部 Harness。仓库在审计时只有 9 天历史、单人主导、迭代极快;但它最值得收录的不是产品形态,而是一个反差事实:**这个 early beta 在运行治理上的工程严谨度远超其产品成熟度**,并有属性测试、Postgres 集成测试、崩溃恢复拓扑测试和真模型 canary 背书。三块经源码验证的亮点:
+
+1. **三层带隔离栅栏的租约加幂等效果账本(L2)**。Run 租约以 CAS 认领、`leaseFence` 递增、60 秒心跳续租、续租失败即中止,每次执行留 Attempt 行;计算机执行租约与屏幕租约(`runId:fence`)各自独立,防止旧执行回抢;恢复语义是双保险——事件驱动入队之外,一个用 Postgres advisory lock 选主的对账器每 30 秒兜底扫描过期租约与到期例程。所有非只读工具调用前先写 `ExternalEffect` 意向行(幂等键=工具调用 ID),完成后置 completed;重放时已完成的直接返回旧结果,**状态不确定的非幂等工具直接拒绝重复执行**。状态机显式断言合法迁移(`failed→queued` 可重试,`completed/cancelled` 终态)。
+2. **等人状态与人/机双租约接管(L2/L1)**。`waiting_input`(等回答)与 `waiting_takeover`(等上屏)是 Run 的一等状态,挂起前强制把工作区 checkpoint 到持久存储;接管期间执行租约转 24 小时保持、控制权交给人,人的控制租约限时、到期由后台任务自动回收,释放时自动找回等待中的 Run 重新入队恢复。
+3. **供应商中立的可移植工作区(L1)**。沙箱经统一 `SandboxProvider` 契约支持 Docker/E2B/Daytona/本机等后端并逐后端探测能力降级(非图形后端过滤图形工具、分不出屏时显式报错而非静默排队);文档明确 `providerRef` 只是"加速路径而非持久数据",机器消失即从 checkpoint 重建——与 HCTL2"领域对象不被进程反向定义"同源。Docker 路径有特权分离:API/worker 进程不持有 Docker socket,由独立 supervisor 服务代管。另有值得单记的 L4 细节:Markdown 记忆文档带整数修订号与全量修订表,**每条修订携带 `sourceRunId`/`sourceThreadId` 出处**,可导出导入;这是"知识修订可溯源到产生它的 Run"的野生同构实现。
+
+反面证据同样直接。官网称"给 bot 演示一次工作流,它存成你能读、能改、能提交的纯 Markdown",实现里并不存在可提交的 Markdown 工作流文件:例程是无版本号的数据库行(name+prompt+cron),触发时读**当前** prompt;示范教学的产物是 JSON playbook(由确定性代码而非 LLM 从录屏编译,这一点反而诚实),可编辑但无修订历史,Run 不记录执行时用的是哪个版本。官网的"Approvals that hold"经全库检索只是 playbook 文本约定加 ask 机制,没有任何策略引擎;防越权靠提示词自律("Prefer tools over claiming you already did the work")。凭证边界的"credentials never leave your environment"只在纯 Docker 自托管路径严格成立——选云沙箱时浏览器登录态在第三方 VM 上,长历史压缩外包给 Supermemory SaaS。
+
+### 审计基线
+
+| 基线 | 状态 | 可支持的结论 |
+| --- | --- | --- |
+| [`v0.1.0-beta / 53b119a6`](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta) · 2026-08-13 | 已发布 prerelease | 产品骨架与自托管路径 |
+| [`main@90572cb2`](https://github.com/elie222/rakazo/tree/90572cb2bcab4458aebbe1994b3ffbc9ddfac339) · 2026-08-21 | 审计快照(本地克隆核验 HEAD 与许可证) | 上述租约/效果账本/接管/工作区机制全部在此基线经源码验证 |
+
+许可证为 [Apache-2.0](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)。仓库创建于 2026-08-13,单一维护者贡献约 92% 提交,处于极速演进期;能力判断以固定源码为准,官网叙事必须逐条对照实现甄别。
+
+### 采用与边界
+
+HCTL 对照 L2 采用:三层租约的隔离栅栏组合、意向-完成两段式幂等效果账本(含"不确定态拒绝重试非幂等操作")、advisory lock 选主的兜底对账器、挂起前强制 checkpoint 的等人状态,以及 `failed→queued` 显式可重试的状态机断言。对照 L1 采用:供应商中立契约与"可移植工作区为唯一持久边界、供应商引用仅缓存"的纪律、逐后端能力探测与显式降级、执行进程与容器特权的分离,以及人控制租约与机执行租约分开计时的接管模型。对照 L4 采用:记忆修订携带 Run 级出处的最小可行样板。
+
+明确不采用:无版本冻结的例程与 playbook(Run 必须绑定冻结的 Workflow Revision,这正是 Rakazo 反向验证的差异化空间);提示词自律代替确定性 Gate 与策略引擎(与"证据高于自述"相反,是现成反例);模型 loop 与业务同进程(HCTL 的 Harness 边界要求进程级隔离与无隐藏写权限);把长期记忆压缩外包给第三方 SaaS;一 bot 一线程的二元对话不映射为 Room。Rakazo 没有 L3:Task 仅是 prompt+status,无契约、无验收、无看板。
+
+主要证据(固定到 `90572cb2`):
+
+- [仓库](https://github.com/elie222/rakazo)、[v0.1.0-beta](https://github.com/elie222/rakazo/releases/tag/v0.1.0-beta)、[官网](https://rakazo.com/)与[许可证](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/LICENSE)
+- 领域对象与治理:[Prisma schema(Run 租约 L342-376、ExternalEffect L392-409、Routine L411-432、MemoryRevision L514-526)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/prisma/schema.prisma)、[Run 状态机断言](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/run-state.ts)、[执行器(租约/效果账本/工具分发)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/executor.ts)与[选主对账器](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/job-reconciler.ts)
+- 等人与接管:[事务性线程事件](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/db/src/events.ts)、[API 路由(ask/takeover/release)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/router.ts)、[屏幕租约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/screen-lease.ts)与[签名屏幕代理](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/api/src/screen-proxy.ts)
+- 沙箱与工作区:[计算机生命周期](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-lifecycle.ts)、[工作区 checkpoint](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/computer-workspace.ts)、[supervisor 特权分离](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/infra/sandboxes/supervisor/src/supervisor-logic.ts)、[适配器契约](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapter-kit/src/interfaces.ts)与[计算机运行时文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/computer-runtime.md)
+- 记忆与教学:[Markdown 记忆(修订+出处)](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/memory/src/index.ts)、[确定性 playbook 编译](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/core/src/teach-playbook.ts)与[官网 Markdown 声称处](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/apps/www/src/pages/index.astro#L107)
+- 加密与凭证:[secret 加密存储](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/packages/adapters/src/secrets.ts)与[自托管文档](https://github.com/elie222/rakazo/blob/90572cb2bcab4458aebbe1994b3ffbc9ddfac339/docs/self-host.md)
+
+<a id="e-l2-zeroclaw"></a>
+## E-L2-ZEROCLAW · ZeroClaw SOP
+
+ZeroClaw 不能直接提供 HCTL Workflow，但它的 SOP 引擎是少见的 L2 邻近实现证据：每个 SOP 的准入策略支持 `parallel`、`hold`、`coalesce` 和 `drop`，Run 可以持久化并在重启后恢复；人工介入/检查点、经过身份认证的审批组与法定票数、只追加审批审计、拒绝作用域版本已经过期的提示、修改/修订、步骤级工具范围，以及重试/跳转，共同形成了可复用的 Gate 与准入失败用例库。
+
+HCTL 只借鉴绑定版本的人类决策、准入与背压，以及默认拒绝的策略测试；不把 SOP 当作 Workflow Revision，不把事件触发当作 Start 授权，不把 Agent `sop_advance` 当作 Verdict，不把工具收据当作 HCTL Receipt，也不把 ZeroClaw Run 数据库当作领域权威事实。固定版本为 [`v0.8.4 / a56c345d`](https://github.com/zeroclaw-labs/zeroclaw/tree/a56c345d51dd8ab562e9351e0d4ab83f6a741db9)（MIT 或 Apache-2.0）。[语法说明](https://github.com/zeroclaw-labs/zeroclaw/blob/a56c345d51dd8ab562e9351e0d4ab83f6a741db9/docs/book/src/sop/syntax.md)与[运行时契约](https://github.com/zeroclaw-labs/zeroclaw/blob/a56c345d51dd8ab562e9351e0d4ab83f6a741db9/docs/book/src/sop/how-it-works.md)对默认持久化行为仍有冲突，初始化失败时还会降级到进程内内存，因此不能承担 HCTL 的权威事实。
+
+> **2026-08-24 复核**：SOP 子系统占其全史提交路径不足 1%，是该个人助理运行时的边缘外围；按"相邻实现证据"降权引用是正确的。
+
+## 类别四 · Context 管理
+
+<a id="e-mycontext"></a>
+## E-MYCONTEXT · MyContext
+
+MyContext（openTrinity/mycontext）是"个人工作上下文"管线：把 IM、日历、会议、邮件等个人工作源做增量采集、规范化/派生、检索与图查询；AI 只是受控消费者，故障显式降级。它对 HCTL2 的独特价值是 Context 成本纪律的对照样本，以下机制均经源码复审：双层轮询探针 + 单事务 outbox 采集；CJK bigram 全文检索作为常驻零费用检索层；kl-graph 的 RRF 多路机械融合与逐 chunk 抽取缓存（无本地相关性分类器，外部 rerank 挂点默认关闭）；三级可见降级（agent → 有来源的本地检索列表 → 建索引提示）；本地向量索引已实现但因 embedding 费用不接线；LLM 画像抽取管道建成后被实测下线，换成零模型的确定性测量——"能用规则就不用模型"在它那里是执行过的决定，不是口号。
+
+采用边界：**仅参考行为**。采纳"多来源、增量采集、规范化/派生、检索与图、AI 只是受控消费者、故障显式降级"的分层思想与成本纪律；不照搬其个人数字分身产品边界，也不把 SQLite vault 当成 HCTL2 Context 的定义。项目为开发者预览，许可证 Elastic License 2.0（源码可见、非 OSI），只作设计研究、不复制实现。固定基线 [`81b3c7ac`](https://github.com/openTrinity/mycontext/tree/81b3c7ac178dbf141ca97cbe6b6682f73e3d3199)（2026-08-22 源码复审确认 HEAD 未变）；详细审计与 §7.3/§8 成本纪律对照见 [Context 设计备忘录](../../../.memo/context-design-20260819.md)。
+
+## 类别五 · 远程操控与会话同步
+
+<a id="e-l1-codex-remote-feishu"></a>
+## E-L1-CODEX-REMOTE-FEISHU · Codex Remote Feishu
+
+### L1 专项价值与跨层边界
+
+Codex Remote Feishu 没有权威 Project Room；它最有价值的设计，是把外部系统的工作区/讨论串接入兼容的托管会话，并将接入/脱离、路由冻结、输入排队与调整指令、审批卡片、重启与重连、传输降级和连接代次做成显式执行控制状态机。Feishu 是这个运行环境的远程控制与状态投影客户端，不是 L4 的事实源。
+
+HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 不能映射为 Room，外部系统的工作区/讨论串不能映射为 Project/Task/Run，`command_ack` 不是语义 Receipt，而且该项目也没有精确的 PTY 契约。普通入站消息进入网关本地 FIFO 后即可收到 ACK，不必等待权威持久化提交；未投递消息的重放仍依赖进程内状态，因此不能据此认定持久 Room 桥接已经闭环。
+
+固定发布版为 [`v2.0.0 / b2091ffe`](https://github.com/kxn/codex-remote-feishu/tree/b2091ffee3330a94703b78a8a6b7b1876e667c65)（2026-08-10）。该基线没有 `LICENSE`、`COPYING` 或 `NOTICE`，GitHub API 也未识别仓库许可证；在获得明确授权前，只能**参考行为、吸收思路**，不得移植源码或文档文本。
+
+主要证据：[发布版](https://github.com/kxn/codex-remote-feishu/releases/tag/v2.0.0)、[架构](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/architecture.md)、[中继协议](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/relay-protocol-spec.md)、[远程界面状态机](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/remote-surface-state-machine.md)、[背压、连接世代与降级](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/implemented/relay-backpressure-hardening-design.md)、[请求与审批](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/implemented/feishu-request-approval-design.md)。
+
+<a id="观察清单远程操控与会话同步"></a>
+## 观察清单：远程操控与会话同步产品
+
+研究过且有局部价值，但不进入层内主方案；均为 L1 邻近证据。
+
+| 项目 | 只保留的独特证据 | 复用边界 |
+| --- | --- | --- |
+| [MindFS](https://github.com/a9gent/mindfs) | 仓库本地 Session、外部 Session 导入与同步 | AGPL；只参考协议与行为，Task Board 不定义 L3 |
+| [Paseo](https://github.com/getpaseo/paseo) | 守护进程/客户端/执行提供方适配器、公开 SDK、多设备接缝 | AGPL；作为第二阶段架构参考 |
+| [HAPI](https://github.com/tiann/hapi) | 原生本地 Agent 与远程端之间的结构化交接 | AGPL；不提供精确 PTY，也不是 Task/Workflow 后端 |
+| [Happy](https://github.com/slopus/happy) | 守护进程、端到端加密同步、远程启动、多设备 | MIT；列入第二阶段观察，不作为第一阶段事实源 |
+| [Moshi](https://getmoshi.app/docs/introduction) | 移动终端、钩子与注意力提醒、TUI Chat 投影 | 闭源；只参考用户体验和互操作行为 |
+| [Remux](https://github.com/h3nock/remux) | 通过 SSH 和 tmux 控制模式精确定位会话/窗口/窗格 | MIT；不引入第二套领域状态 |
+| [ServerCC](https://servercc.app/docs/sessions) | 外部接管、厂商会话恢复、移动端控制 | 闭源；作为身份与交接的产品行为证据 |
+| [QuickTUI](https://quicktui.ai/) | 自托管 tmux 加移动端或浏览器终端 | 应用闭源；公开仓库只能证明分发方式 |
+| [Redock](https://redock.dev/) | 分阶段输入、CJK 与语音、Activity 深链 | 闭源；只参考用户体验 |
+
+## 类别六 · 机械后端与基础设施（已选依赖与选型对照）
+
 <a id="e-l1-herdr"></a>
 ## E-L1-HERDR · Herdr
 
@@ -590,91 +711,45 @@ HCTL 采用 Herdr 的后台 PTY 所有权、观察/控制分离、单写者与�
 
 Herdr 的控制方记录是进程内的客户端所有者映射，没有代次、TTL、持久确认游标或跨重启租约，因此不能直接替代 `Terminal Input Lease`。固定基线的 SCM 操作面覆盖 worktree 生命周期、分支以及 ahead/behind 状态，但不覆盖 Stably Orca 那样的内建 diff、分块暂存、commit/push 与 PR 评审交付链。Workspace、窗格、Agent 名称和服务提供方会话引用也不承担 HCTL 的 Project、Task、Run 或 Attempt 身份。Herdr 因而是终端所有权、控制、状态仲裁与恢复方面的 L1 专项参考，并通过[运行信号边界](#e-l2-herdr-boundary)为 L2 提供独立证据。
 
-<a id="e-l1-deepseek-harness"></a>
-## E-L1-DEEPSEEK-HARNESS · DeepSeek Harness / Cordis
+> **2026-08-24 复核**：主干已到 v0.8.2，并出现 plugins/marketplace 与 skills 方向的新投入（属 terminal 场景内扩展）。提交直方图证实产品代码几乎 100% 落在 terminal 场景（含 vendored 终端仿真），无任何 room/kanban/workflow 目录——它是 tmux 一类加了 harness 状态检测的机械运行时，不是协作平台。
 
-### 设计亮点
+<a id="e-l2-herdr-boundary"></a>
+## E-L2-HERDR-BOUNDARY · Herdr 运行信号边界
 
-DeepSeek Harness 在 L1 和跨层架构上都有独特价值。它没有把模型适配器、工具注册、Session 日志和 Agent Loop 写死为固定模块，而是把它们都实现为 Cordis 插件：共享 Context 提供服务、类型化事件、依赖注入和可撤销注册；Profile、Bundle 与 Patch 共同组合出实际运行的插件树。Service Definition、Provider、Consumer 三段式能力边界，让使用者依赖抽象能力，而不是具体插件名称。
+Herdr 不提供持久 Workflow，但它对“谁可以写 Agent 状态”处理得足够深入，构成 L2 的边界证据：一个活动窗格只接受一个状态来源；完整生命周期钩子活跃时优先于屏幕状态降级信号，只报告会话身份的钩子不获得生命周期状态写入权，进程退出和事件序号又会撤销或拒绝过期报告。与此同时，`agent prompt --wait` 明确不追踪某一轮对话，已有活动轮次也可能满足等待。因此 HCTL 可以采用它的信号仲裁思路，却必须把 `idle/working/blocked/done` 限定为 L1 观测，不能据此完成 Task、Run、Verdict 或 Receipt。固定源码见 [E-L1-HERDR](#e-l1-herdr)。
 
-它的 Session 设计同样扎实：所有对模型可见的内容都必须能从只追加事件日志重建；运行中崩溃时，系统追加“本轮被中断”的结束事件，而不是截断历史；遇到未知的必需事件或数据结构版本时拒绝恢复。HCTL 可以采用这些能力边界、插件生命周期测试和可重建日志，并把最终解析出的 Profile、插件集合与配置摘要冻结进 Attempt/Run Manifest。
+<a id="e-l2-dagu"></a>
+## E-L2-DAGU · Dagu 机械状态后端与 workflow 候选复审
 
-### Cordis 论文实际证明了什么
+### 当前决定
 
-[Cordis 论文固定版本](https://github.com/cordiverse/paper/tree/948a07b369c62adb3b12e102458be5c18dfb69b9)（Draft v8，2026-08-13）把进程内修改建模为带逆操作（inverse）的可逆 effect，把依赖上下文建模为会随服务出现或消失而重新解析的 reactive coeffect。这个模型解释了为什么注册监听器、提供服务、挂载子插件和热重载可以使用统一的生命周期管理。
+第一阶段 workflow engine 拍板 **Dagu**，固定审阅基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)（2026-08-22，[GPL-3.0-or-later](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/LICENSE)）。判据已经按讨论弱化为：Workflow 的 HCTL JSON 必须是声明式事实源，可以机械执行 schema/Profile/引用/环等 lint；**不要求**对任意 loop 证明终止。运行时再以冻结预算、deadline、取消和替代规则收口。
 
-论文也明确给出了保证范围：
+Dagu 胜出的原因很窄：声明式 YAML、单二进制、文件系统持久化，`start-all` 在[一个进程内启动服务](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/startall.go#L94-L99)，比需要 JVM 或数据库/队列组合的候选更贴合单机第一阶段；同时，无进程的 [`human.task`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/runner.go#L766-L798) 会进入等待态，可经[完成 API](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/humantasks.go#L78-L126)恢复，足以作为 control 驱动的外部检查点。它不是纯被驱动引擎：普通 step 会直接[构造 executor](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L823-L827)并[自行执行](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/node.go#L265-L269)；HCTL Profile 因此只准依赖/条件/等待结构和 `human.task`，拒绝 command/script/action/HTTP/agent/Harness。
 
-- 可逆性只适用于系统边界内、可以独占修改并恢复的具体位置；边界不是按“文件或网络”这种介质一刀切。系统独占且可恢复的私有文件可以在边界内，向其他主体可见的输出则已经越界。论文还区分资源获取与对外输出；越界输出仍需延迟提交或应用级补偿；
-- 依赖声明和服务注入不是安全沙箱。不可信代码需要语言运行时沙箱、操作系统强制隔离、容器或虚拟机；同一用户下的普通独立进程只能隔离崩溃，不能阻止它访问仓库、网络或凭据；
-- 细粒度拆分可以消除依赖环，但也可能带来大量集成组件、命名、配置和认知负担；
-- 接口漂移、键冲突、行为契约和多版本解析仍是开放问题；
-- 经验材料来自单一语言和单一生态，没有受控对照，也没有性能或生产率的量化结论。
+Workflow Revision 仍是 HCTL 规范化 JSON；Dagu YAML 只是固定 compiler/adapter 生成的 Engine Deployment。lint 分两层：HCTL 工具箱先验证完整 schema、Profile、引用与图结构，再调用 Dagu [`validate`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/validate.go#L25-L47)检查生成物。不能只相信后者：公开 `DAG.Validate` 只检查[名称和缺失依赖](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/ir/dag.go#L448-L475)，环是在[执行计划构建](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/runtime/plan.go#L287-L409)时才被拒绝，所以 HCTL 图 lint 必须更早拒绝并以负例锁定。
 
-论文仓库没有声明许可证，因此这里只概括其观点，不复用论文文本或图表。
+### 阻断性 P0 风险
 
-### kxn 的批评如何使用
+`human.task` 完成服务内部有 CAS/幂等保护并把恢复写入队列（[completion](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/completion.go#L18-L113)、[resume](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/humantask/resume.go#L43-L92)），但公开请求只给 DAG、run 和 step，不能携带调用者预期的 engine attempt generation。adapter 必须在 ACK 未知、retry/repeat、重启和迟到完成的压力测试中证明 readback/fence 不会让旧请求推进新检查点；做不到就阻断 B4 并重开选型。inline spec start API 已存在（[源码](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/dagruns.go#L163-L253)），但固定定义摘要、恢复后的 binding 对账和备份一致性仍由 HCTL adapter/control 负责。Dagu 不选择 Harness、不创建 Seat/Attempt、不解释语义拒绝、不计算 quorum、不签发 Receipt，也不直接写 Git 或外部系统。
 
-[kxn 的评论](https://mp.weixin.qq.com/s/O3A4RpQM4jZz_XkDFvORyQ)指出：插件即使声明了依赖，仍可能因为钩子顺序、优先级和共享行为而互相干扰；第三方插件再叠加版本冲突，维护复杂度会迅速上升。这个批评与论文自身列出的限制基本一致，提醒我们“可组合、可卸载”不等于“行为没有冲突、生态自然可治理”。
+### 本轮源码复审的全部 workflow 候选
 
-评论作者也明确说明没有真实运行项目，主要依据源码分析。因此本文只把它当成二级审查问题，不用它证明 DSH 的实现、性能或成熟度。
+以下是本轮实际审阅过的集合，不冒充整个市场清单；“stepfunlocal”按 AWS Step Functions Local 理解。结论基于固定源码/官方实现，而不是 README 特性表。
 
-### HCTL 的取舍
-
-HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../spec/system.md#固定内核与受控端口)：
-
-- Repo/Project/Task/Run 身份、命令准入、权限、版本与证据、领域归约器、持久账本、隔离栅栏和 Receipt 固定在内核中；
-- harness、运行时后端、任务源、workflow engine、Chat 端口和渲染组件通过类型化端口进行替换；
-- 多个提供方可以声明同一个带命名空间和版本的能力，唯一的是一次已经选定的权威绑定；插件加载顺序和钩子优先级不能决定权限或语义结果；
-- `Extension Revision` 与 `Resolved Port Binding` 固定代码、接口、数据结构、配置、依赖图和信任级别；Run、Attempt、Invocation、Task Source 与外部聊天渠道在各自正确粒度冻结绑定；
-- 响应式依赖只用于准入前发现或纯展示/遥测；提供方在活动执行中消失时安全暂停或失败，不能在原执行内自动改绑；
-- 进程内注销器（disposer）只能撤销注册，不能声称已经回滚越过系统边界的输出；
-- 进程内扩展等同受信任代码；不可信代码必须使用操作系统强制隔离和能力削减后的代理接口；
-- 第一阶段只允许第一方或经审计的进程内扩展，不建设任意第三方插件市场。
-
-DSH 由模型生成的 Workflow 仍缺少冻结版本、持久恢复、Gate 和语义 Receipt，只能作为 L2 边界证据，不能承担 HCTL 的 Workflow 治理。
-
-固定实现基线为 [`master@47f94385`](https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a)（2026-08-13，`0.1.0-rc.5`，[MIT](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/LICENSE)）。官方将其标为开发者预览版，允许破坏性变化；[`BENCHMARK.md`](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/BENCHMARK.md)只给出运行方法，没有公开结果。
-
-主要源码与文档：[架构](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md)、[Cordis 入门](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/cordis-primer.md)、[能力边界](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/capability-seams.md)、[Session](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md)、[持久化](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/persistence.md)和[Workflow 边界](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/workflow.md)。
-
-<a id="e-l1-harness-access"></a>
-## E-L1-HARNESS-ACCESS · OpenCode、Pi 与 Kimi Code
-
-本节记录三种 L1 Harness 接入方式：原生应用服务端、中立于语言的 RPC/嵌入式 SDK，以及标准协议下按能力降级。三者虽然也有 Project、Session、Todo、Subagent 或 Plan 概念，但在其他层没有形成需要单列的独特机制。
-
-| Harness 基线 | 采用的契约 | 明确边界 |
+| 候选 | 源码层事实 | 结论 |
 | --- | --- | --- |
-| [OpenCode `v1.18.18 / 31406ccc`](https://github.com/anomalyco/opencode/tree/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d) · MIT | OpenAPI 3.1、SSE 和自动生成的强类型 SDK；以服务端为中心，向多个客户端提供 health/version、session/control/diff/permission 接口 | 原生 HTTP API 不是通用标准；服务端事件和 Session 完成事件不签发 HCTL Verdict/Receipt |
-| [Pi `v0.84.1 / 53fa77cc`](https://github.com/earendil-works/pi/tree/53fa77ccd8a279eb87e92294ef3687b03ff80112) · MIT | 嵌入式 `AgentSession` 加严格的 LF 分隔 JSONL RPC；关联响应与异步事件分离；`steer`、`follow_up`、`abort` 有明确的队列语义 | Pi 的 RPC、Session 和树结构不是 HCTL 的传输协议或 Room/Task/Run；本地信任边界不等于沙箱 |
-| [Kimi Code `0.36.0 / b6144f94`](https://github.com/MoonshotAI/kimi-code/tree/b6144f94ea6b22455a4e750d1750d220987e7bc2) · MIT | 明确列出 ACP 方法的支持矩阵，并结合 stream-json、原生服务端与钩子验证每种接入的降级行为 | “支持 ACP”不代表能力完全相同；默认放行的钩子不承担 Gate、安全或完成判定权 |
+| **Dagu** | 单进程/文件持久化；普通 step 自驱动，但 `human.task` 可作被动检查点；验证器与 completion fencing 的缺口如上 | **采用**；最小运维面，受严格 HCTL Profile 和 P0 fencing 门禁约束 |
+| **Conductor OSS** | 当前 `v3.32.1` 已把 [SQLite 设为默认 DB/queue/index](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/src/main/resources/application.properties#L14-L24)，旧评估“只支持 Redis/Postgres/MySQL”已经过时；其[逐 task poll/update API](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/rest/src/main/java/com/netflix/conductor/rest/controllers/TaskResource.java#L66-L112)比 Dagu 更原生地被驱动，但 [JVM server 分发](https://github.com/conductor-oss/conductor/blob/v3.32.1/server/build.gradle#L42-L79)仍重；loop validator 只查[条件与 body 存在](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/validations/WorkflowTaskTypeConstraint.java#L260-L284)，runtime 可[持续迭代](https://github.com/conductor-oss/conductor/blob/b54f0d4ee546c1053367e1c14405c5396c17bfb1/core/src/main/java/com/netflix/conductor/core/execution/tasks/DoWhile.java#L161-L184) | 不采用；外部任务接口最好，但 footprint/分发不符合本轮轻量优先，且同样不证明终止 |
+| **Windmill** | flow schema 本身允许 script、raw script、for/while loop、subflow 与 agent 等[代码承载模块](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L984-L1093)，validator 主要做[反序列化、retry 与 path](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/backend/windmill-types/src/flows.rs#L233-L275)，部署由 [PostgreSQL、server 和 worker](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/docker-compose.yml#L10-L79)组成，且[许可混合](https://github.com/windmill-labs/windmill/blob/74af4ed939fb8d78aff8ecd4af812860595c6c5a/LICENSE#L1-L31) | 不采用；明显偏 code platform，服务面和授权面都过大 |
+| **Kestra** | YAML 是声明式入口，但 Flow validator 只挡重复 ID 与[直接自递归](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/core/validations/validator/FlowValidator.java#L32-L78)，测试中存在[合法互递归 subflow](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/test/resources/flows/valids/subflow-function-mutual-a.yaml#L1-L9)，`LoopUntil` 未设限制时[不限制迭代数](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/core/src/main/java/io/kestra/plugin/core/flow/LoopUntil.java#L242-L263)；local mode 仍是 [JVM + H2](https://github.com/kestra-io/kestra/blob/e77ad77142e50af6f62c06354b8711263155086f/cli/src/main/java/io/kestra/cli/commands/servers/LocalCommand.java#L25-L42) | 不采用；插件/运行面远超所需，lint 能力没有抵消重量 |
+| **Direktiv** | 稳定版有声明式 [workflow model](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L13-L84)与[validator](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/pkg/model/workflow.go#L174-L232)，同时允许[显式自循环](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/tests/engine/simple-loop.test.js#L22-L48)并依赖 NATS/Postgres/Kubernetes/Knative 等[较重栈](https://github.com/direktiv/direktiv/blob/6156f450798d002ab52bd933a03dd1ffaf545a20/go.mod#L21-L53)；当前主干 compiler 已消费 [`.wf.ts`](https://github.com/direktiv/direktiv/blob/9ad27a0de2aa986a85612867cf8e73c8822d0529/internal/core/compiler.go#L8-L64) | 不采用；部署重，且演进方向重新引入 code-as-workflow |
+| **Serverless Workflow Synapse** | CNCF Serverless Workflow schema 原生允许 [for/while 条件循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/schema/workflow.yaml#L685-L729)，官方示例包含[永久消费循环](https://github.com/serverlessworkflow/specification/blob/2dd2c84170d5f3e05d58e913e9ca298dcf8d543a/examples/call-asyncapi-subscribe-consume-forever-foreach.yaml#L1-L27)；Synapse compose 由 [Redis、API、operator、correlator](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/deployments/docker-compose/docker-compose.yml#L1-L55)组成，standalone runner 只给[内存执行上下文](https://github.com/serverlessworkflow/synapse/blob/ba3fbfd5125995bba9fb5900aed181a0775d538c/src/runner/Synapse.Runner/Services/StandAloneWorkflowExecutionContext.cs#L27-L40) | 不采用 runtime；保留 DSL/spec 作为 schema 参考 |
+| **TIBCO Flogo / project-flogo/flow** | flow JSON 是 task/link 图（[serializer](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/definition/definition_ser.go#L26-L61)），含 [DoWhile](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/model/simple/dowhilebehavior.go#L72-L99)；runtime 用[最大 step 数](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/action.go#L421-L443)作保险，但 persistence 只有[可选 recorder 接口](https://github.com/project-flogo/flow/blob/0683f40cb531ee755d78042a2646228bb43daf24/state/recorder.go#L1-L14) | 不采用 runtime；它是嵌入式 flow library，不是完整耐久服务 |
+| **AWS Step Functions Local** | ASL 声明式、可配合 [StateLint](https://github.com/awslabs/statelint/blob/5388321f0c0c4b24df9308c02dff4d3adfe74527/lib/statelint/state_node.rb#L207-L224)，但 AWS 官方明确称 Local [unsupported、仅供测试](https://docs.aws.amazon.com/step-functions/latest/dg/sfn-local.html) | 不可作生产本地 runtime；ASL/StateLint 仅作语法设计参考 |
+| **SCXML / XState 自建** | SCXML 是成熟的[状态图标准](https://www.w3.org/TR/scxml/)；XState machine config 仍可嵌入[函数实现](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createMachine.ts#L31-L77)，默认内部迭代上限可为 [Infinity](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/StateMachine.ts#L126-L145)，snapshot API 只解决[状态快照](https://github.com/statelyai/xstate/blob/8d878b3bed7ccb5d23b74474475659b9f0472306/packages/core/src/createActor.ts#L783-L819) | 不自建；还需补 durable store、lease、timer、API、恢复与运维，收益不足以抵消重造引擎 |
 
-接入时必须把“请求已受理”和“执行结果”分开，对每个接入绑定探测能力，明确保留不支持的方法，并把固定版本的协议样本沉淀为适配器契约用例库。OpenCode 是第一阶段目标；Pi 与 Kimi Code 进入证据测试台，不代表第一阶段会自动扩大 Harness 支持范围。
-
-主要证据：OpenCode [服务端](https://github.com/anomalyco/opencode/blob/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d/packages/web/src/content/docs/server.mdx) / [SDK](https://github.com/anomalyco/opencode/blob/31406ccc51b4bd2a4e1e086b2bcaa5f7f804f26d/packages/web/src/content/docs/sdk.mdx)；Pi [RPC](https://github.com/earendil-works/pi/blob/53fa77ccd8a279eb87e92294ef3687b03ff80112/packages/coding-agent/docs/rpc.md) / [SDK](https://github.com/earendil-works/pi/blob/53fa77ccd8a279eb87e92294ef3687b03ff80112/packages/coding-agent/docs/sdk.md)；Kimi Code [ACP 支持矩阵](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/reference/kimi-acp.md) / [服务端 API](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/reference/server-api.md) / [钩子边界](https://github.com/MoonshotAI/kimi-code/blob/b6144f94ea6b22455a4e750d1750d220987e7bc2/docs/en/customization/hooks.md)。
-
-<a id="e-l1-codex-remote-feishu"></a>
-## E-L1-CODEX-REMOTE-FEISHU · Codex Remote Feishu
-
-### L1 专项价值与跨层边界
-
-Codex Remote Feishu 没有权威 Project Room；它最有价值的设计，是把外部系统的工作区/讨论串接入兼容的托管会话，并将接入/脱离、路由冻结、输入排队与调整指令、审批卡片、重启与重连、传输降级和连接代次做成显式执行控制状态机。Feishu 是这个运行环境的远程控制与状态投影客户端，不是 L4 的事实源。
-
-HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 不能映射为 Room，外部系统的工作区/讨论串不能映射为 Project/Task/Run，`command_ack` 不是语义 Receipt，而且该项目也没有精确的 PTY 契约。普通入站消息进入网关本地 FIFO 后即可收到 ACK，不必等待权威持久化提交；未投递消息的重放仍依赖进程内状态，因此不能据此认定持久 Room 桥接已经闭环。
-
-固定发布版为 [`v2.0.0 / b2091ffe`](https://github.com/kxn/codex-remote-feishu/tree/b2091ffee3330a94703b78a8a6b7b1876e667c65)（2026-08-10）。该基线没有 `LICENSE`、`COPYING` 或 `NOTICE`，GitHub API 也未识别仓库许可证；在获得明确授权前，只能**参考行为、吸收思路**，不得移植源码或文档文本。
-
-主要证据：[发布版](https://github.com/kxn/codex-remote-feishu/releases/tag/v2.0.0)、[架构](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/architecture.md)、[中继协议](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/relay-protocol-spec.md)、[远程界面状态机](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/general/remote-surface-state-machine.md)、[背压、连接世代与降级](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/implemented/relay-backpressure-hardening-design.md)、[请求与审批](https://github.com/kxn/codex-remote-feishu/blob/b2091ffee3330a94703b78a8a6b7b1876e667c65/docs/implemented/feishu-request-approval-design.md)。
-
-## L4 补充证据
-
-| 证据 | 独特价值 | 边界 |
-| --- | --- | --- |
-| [assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) | 有明确作用域的 Message/`MessagePart`/Action 渲染器 | 不采用 Thread、运行时、Store、Composer、Cloud 或 Queue |
-| [virtua](https://github.com/inokawa/virtua) | 支持动态高度的 React 视口 | 不负责 Room 的顺序、游标或跟随策略 |
-| [Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)、[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)、[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) | 前插消息、定位到指定消息、未读状态、动态高度和无障碍测试 | 合并为行为证据；不采用其后端或领域模型 |
-
-Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考项目：[自定义扩展](https://tiptap.dev/docs/editor/extensions/custom-extensions)、[React 节点视图](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)。
+结论不是“Dagu 最强”，而是它在当前约束下最小：Conductor 的外部 task 合同更顺手，Serverless Workflow/SCXML 的形式更标准，Windmill/Kestra 的产品能力更多；这些优势都不值得引入相应重量或自建耐久运行时。
 
 <a id="e-l4-matrix-homeserver"></a>
 ## E-L4-MATRIX-HOMESERVER · chat server 选型（限时验证）
@@ -736,31 +811,25 @@ tmux 支持 `extended-keys` 的 CSI-u/modifyOtherKeys 形态，但[没有完整 
 因此 B2 前必须在实际分发物上跑 Antigravity `1.1.18`、Claude Code `2.1.240`、Codex `0.149.0`、OpenCode `1.18.21`（GLM 环境）、Grok Build `1.0.5`、Kimi Code `0.38.0` 的启动/退出、attach/重连、颜色、CJK/IME、普通与 bracketed paste、OSC 52、组合键、全屏 resize、DA/DSR/DECRQM 和慢观察者矩阵。另以每 runtime 独立 server 和共享 server 两种拓扑复现 [`tmux #5510`](https://github.com/tmux/tmux/issues/5510) 的多窗格、快速滚动、copy-mode、resize 组合；任一模式卡死、跨 runtime 污染或无法 fencing 都阻断发布。最终 pin 可以前进到含修复的新版本，但必须重新固定审阅 commit 并跑同一矩阵。
 
 <a id="l1-selected-evidence"></a>
-## L1 精选证据与能力观察清单
-
-### 精选实现证据
+## L1 精选实现证据
 
 | 证据 | 独特价值 | 边界 |
 | --- | --- | --- |
-| [Termio `d1fdac8…`](https://github.com/termio-sh/termio/tree/d1fdac84046805d4056e082f982e6beb6072b61c) / [ATP](https://www.termio.sh/docs/atp) / [会话控制](https://www.termio.sh/docs/session-control) | Manifest、稳定的 Session URI、监听/心跳/信号，以及带数据结构版本的控制协议 | MIT；ATP 不是 HCTL 或行业通用的传输标准，也不作为跨平台 Backend 的权威实现 |
+| [Termio `d1fdac8…`](https://github.com/termio-sh/termio/tree/d1fdac84046805d4056e082f982e6beb6072b61c) / [ATP](https://www.termio.sh/docs/atp) / [会话控制](https://www.termio.sh/docs/session-control) | Manifest、稳定的 Session URI、监听/心跳/信号，以及带数据结构版本的控制协议 | MIT；ATP 不是 HCTL 或行业通用的传输标准，也不作为跨平台 Backend 的权威实现。2026-08-24 复核：其产品形态实为桌面 ADE（并行 worktree 侧栏 + harness hooks 状态），归 Agent 协作平台类，仍按 L1 专项引用 |
 | [Herdr `v0.8.0 / 346411fa`](https://github.com/herdrdev/herdr/tree/346411fa21afd297f5ed3b3fa56f9e3fbf7654b7) / [专项审计](#e-l1-herdr) | 后台服务持有 PTY；观察/控制与原始/语义操作面分离；单写者接管；状态信号仲裁与分级恢复 | Apache-2.0；控制方不是持久租约，运行状态不等于领域完成；完整边界见专项审计 |
 | [xterm.js](https://github.com/xtermjs/xterm.js/) | 嵌入式终端渲染器，以及 CJK、输入法、无障碍和流量控制 | MIT；只负责前端，不拥有 PTY、进程或 Session |
 | [WezTerm](https://wezterm.org/cli/cli/index.html) | 成熟的跨平台外部终端与 CLI | MIT；不嵌入应用，也不把 Mux 协议当作 ABI |
 | [tmux `3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) / [专项复审](#e-l1-tmux-runtime) | 公开 control mode、稳定 pane ID、headless 查询应答、捕获/转发、退出状态和很小的 native footprint | ISC；采用为运行时依赖，不作为公开 HCTL API；完整 Kitty 键盘协议、六 Harness 兼容性、背压与 `#5510` 仍是 P0 阻断项 |
 
-### 只列入观察清单的产品
+## L4 补充证据
 
-| 项目 | 只保留的独特证据 | 复用边界 |
+| 证据 | 独特价值 | 边界 |
 | --- | --- | --- |
-| [MindFS](https://github.com/a9gent/mindfs) | 仓库本地 Session、外部 Session 导入与同步 | AGPL；只参考协议与行为，Task Board 不定义 L3 |
-| [Paseo](https://github.com/getpaseo/paseo) | 守护进程/客户端/执行提供方适配器、公开 SDK、多设备接缝 | AGPL；作为第二阶段架构参考 |
-| [HAPI](https://github.com/tiann/hapi) | 原生本地 Agent 与远程端之间的结构化交接 | AGPL；不提供精确 PTY，也不是 Task/Workflow 后端 |
-| [Happy](https://github.com/slopus/happy) | 守护进程、端到端加密同步、远程启动、多设备 | MIT；列入第二阶段观察，不作为第一阶段事实源 |
-| [Moshi](https://getmoshi.app/docs/introduction) | 移动终端、钩子与注意力提醒、TUI Chat 投影 | 闭源；只参考用户体验和互操作行为 |
-| [Remux](https://github.com/h3nock/remux) | 通过 SSH 和 tmux 控制模式精确定位会话/窗口/窗格 | MIT；不引入第二套领域状态 |
-| [ServerCC](https://servercc.app/docs/sessions) | 外部接管、厂商会话恢复、移动端控制 | 闭源；作为身份与交接的产品行为证据 |
-| [QuickTUI](https://quicktui.ai/) | 自托管 tmux 加移动端或浏览器终端 | 应用闭源；公开仓库只能证明分发方式 |
-| [Redock](https://redock.dev/) | 分阶段输入、CJK 与语音、Activity 深链 | 闭源；只参考用户体验 |
+| [assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) | 有明确作用域的 Message/`MessagePart`/Action 渲染器 | 不采用 Thread、运行时、Store、Composer、Cloud 或 Queue |
+| [virtua](https://github.com/inokawa/virtua) | 支持动态高度的 React 视口 | 不负责 Room 的顺序、游标或跟随策略 |
+| [Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)、[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)、[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) | 前插消息、定位到指定消息、未读状态、动态高度和无障碍测试 | 合并为行为证据；不采用其后端或领域模型 |
+
+Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考项目：[自定义扩展](https://tiptap.dev/docs/editor/extensions/custom-extensions)、[React 节点视图](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)。
 
 ## 执行面已选依赖的运维与 footprint
 
@@ -833,6 +902,29 @@ Electron 的成本属于一个 Workbench，而不随 Harness session 数线性�
 - 整窗 P0 同时记录 installer/archive、安装后磁盘、冷/热启动、idle physical footprint、一窗十 xterm 的 physical footprint/CPU/GPU，以及 macOS/Linux 的 CJK/IME、快捷键、粘贴、OSC 52、resize 和 screen reader；任一输入正确性问题优先于渲染帧率。
 - 若重开 Tauri 2，探针必须覆盖 WKWebView 与每个承诺支持的 Linux WebKitGTK 基线、`.deb`/`.rpm` 和升级路径；在上述 AppImage 问题关闭并复测前，不把“单 AppImage 覆盖任意 Linux”写成能力。探针失败即保留 Electron，不下沉到 Wry 自研。
 
+## 类别七 · 直接谱系
+
+<a id="e-l2-hctl1"></a>
+## E-L2-HCTL1 · HCTL1 / yesme/hctl
+
+HCTL1 是 HCTL2 L2 语义内核的直接前身，也是可执行的技术谱系证据；它不是外部复用来源，不能与 HCTL2 的原生语义核心混为一谈。审计固定在 [`main@3148042c`](https://github.com/yesme/hctl/tree/3148042cb2faf8df0dc8be92710b9468c8618516)（2026-07-28，Apache-2.0）。仓库没有标签或正式发布；README 表明 P1 内核已经进入主干，P2/P3 仍处于规划阶段。
+
+它最独特的证据是一套不依赖守护进程和数据库的 Git 语义内核：每个 Seat 一条只追加事件引用、本地与远端 CAS、电平触发式对账、事实不完整时默认拒绝、Obligation/CLAIM 与 claim OID 隔离栅栏、精确匹配 `{base, head}` 的 Verdict、法定票数，以及携带事实摘要、无需依赖时钟即可重放的 squash merge Receipt。除规范外，仓库还提供可执行用例库，覆盖过期 Gate、权限、竞争、JCS 身份、组合法定票数、迟到 Finding、重新 Gate 时的结论沿用，以及初始化切换。
+
+HCTL2 继承版本与证据、领取与隔离栅栏、法定票数、Receipt 和对账的思路，但不会原样继承其对象与事实源：
+
+- HCTL1 的 `Seat = harness × model` 表示协作身份；HCTL2 的 Seat 是 Obligation 内的逻辑执行者或投票者位置，下挂 `0..N` 个 Attempt；
+- HCTL1 的 Obligation 来自静态分派中的 author/gate/merge；HCTL2 的 Obligation 对应 Dagu 外部检查点的一次执行责任；
+- HCTL1 把每个 Seat 的 ref、PR 和 squash Receipt 作为全局协调事实；HCTL2 把运行治理放入 SQLite 控制库，以 Git 保存共享且低频变化的定义和证据，并由 Dagu 保存机械工作流位置；
+- HCTL1 的回收机制不等于候选方案降级，而且没有 Project Room、Task Board、Workflow Revision、Run、Attempt、进程/PTY 或外部系统同步；
+- 单一人类信任、唯一合并协调者且容量为 1，以及把 PR 当作协作原子，只适用于它所定义的窄范围运行方式。
+
+主要证据：
+
+- [README 范围](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/README.md#L7-L27)；[METHOD 中的事实、Seat 与领取](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/METHOD.md#L27-L114)；[Gate、结论沿用与合并](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/METHOD.md#L108-L182)
+- [派生引擎](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/derive/derive.go#L47-L124)；[CAS 与待处理状态恢复](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/store/store.go#L15-L191)；[Receipt 重放](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/internal/receipt/receipt.go#L14-L187)
+- [可执行用例库](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/tests/corpus/README.md#L1-L53)；[Apache-2.0 许可证](https://github.com/yesme/hctl/blob/3148042cb2faf8df0dc8be92710b9468c8618516/LICENSE)
+
 ## 标准与通用库，不作为产品主参考
 
 - [Agent Client Protocol](https://agentclientprotocol.com/protocol/v1/overview) / [Rust SDK](https://github.com/agentclientprotocol/rust-sdk)：L1 的 Harness 接入标准。
@@ -844,3 +936,5 @@ Electron 的成本属于一个 Workbench，而不随 Harness session 数线性�
 ## 复用决策用语
 
 所有证据最终只归入五种复用决策：**采用为依赖（Adopt dependency）**、**移植有边界的组件（Port bounded component）**、**适配协议（Adapt protocol）**、**仅参考行为（Behavior reference）**、**暂缓（Defer）**。不得给整个产品一个“取代 HCTL”的总分，也不得把参考项目中的 Session、Conversation、Project、Task、Run 名称或内部数据库带入 HCTL 的公开数据结构。
+
+与常见问法的对应关系：直接用它的 CLI/服务＝采用为依赖；借它的 schema/协议形状＝适配协议；抄它的代码＝移植有边界的组件；借它的思想/阶段/交互＝仅参考行为。许可证只决定上限（闭源/无许可证/非 OSI 的最多到仅参考行为），不决定选择：许可宽松也可以只借行为。
