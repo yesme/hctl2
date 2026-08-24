@@ -1,6 +1,6 @@
 # HCTL2 Context 管理设计备忘
 
-> 状态：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。设计层正文已落 docs/design/context.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源。
+> 状态：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。设计层正文已落 docs/design/context.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源；2026-08-24 增补 §18（所有者拍板：萃取 + 省 token 为中心设计），生态四族地图见 context-landscape-20260824.md。
 > 日期：2026-08-19
 > 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
 > 核心判断：Context 是 Project 模块内的一组来源、投影、冻结与消费合同，不是 SQLite 聊天表，也不是 Project、Task、Run、Harness 之外的第五模块。
@@ -356,3 +356,14 @@ Phase 1 只利用已有显式 HCTL/Git/source 关系；语义 fact/community gra
 - [LobeHub](https://github.com/lobehub/lobehub)（审计基线 `v2.2.14 / 363797b1`，LobeHub Community License，非 OSI）：采用其“组装全程机械化、摘要是唯一显式 LLM 步骤”的管道形态、压缩产物一等持久化与增量折叠、前缀缓存友好排序，以及 ctx-map 式“每次调用的上下文构成”审计投影；不采用 supervisor LLM 路由、默认工具集无相关性筛选注入和全量历史逐成员重发。完整审计与社区 token 成本证据见 [E-LOBEHUB](../docs/design/references/implementation-evidence.md#e-lobehub)。
 - 用户提供的 First Tree 对比记录及其引用的 [Context Tree Policy](https://github.com/first-tree-ai/first-tree/blob/9a7dd4d94373921cfe2022bfef91c132fdf74824/packages/client/src/runtime/assets/context-tree-policy.md)：采用“共同认知应保存当前决定、原因、约束与 ownership；默认不把 Chat/日志写入长期知识；历史交给 Git”的经验；保留 HCTL2 的 Manifest 执行证据、显式 Memo 晋升与四模块权威边界。
 - HCTL2 当前规范：沿用 `project.md` 已有的 Context 组装顺序、InvocationBinding 冻结、Repo Room 提升预览、Memo 人工发布，以及 `run.md` 中 AttemptSpec/Gate 对 ContextManifest digest 的约束。本 memo 只补足这些合同背后的 Context plane 设计。
+
+## 18. 所有者拍板：萃取上下文 + 省 token 是中心设计（2026-08-24 增补）
+
+三条定盘（已写入 docs/design/context.md 的「萃取与压缩」一节与快省准标准）：
+
+1. **两步管线**。进展由聊天室驱动，因此：① 从聊天史识别与这位执行者相关的部分，必须快、必须全本地、不花模型 token——落为三级阶梯（结构化引用 → 本地全文检索 + 机械融合 → 可选小模型相关性门，门的判定输入用账本事实不用消息措辞）；② 萃取出的上下文（即给模型的 prompt）可压缩——**缺省不压**，只有用户配置了专用小模型（small-brain）才启用；压缩是清单里显式记录的一步（模型 ref、压缩率、原文 digest 冻结），证据类内容永不压缩。small-brain 在 Participant 七层里只是执行者配置的一个模型引用，不是新对象。
+2. **需要 survey**。Context 处理是热门课题——MyContext 之外还有各家协调器的树形方案、长短期记忆方案、小模型压缩等；已完成第一轮链接级四族地图与快省准横评（`.memo/context-landscape-20260824.md`），已深审的四条（MyContext / LobeHub / First Tree / Cumora）恰好各占一族最优实践；small-brain 若采 LLMLingua-2 路线需升级为克隆级审计。
+3. **快 + 省 + 准是最重要的标准**。三者同时成立才合格，牺牲任何一个都要在清单里显式可见；准由既有的冻结与可解释合同兜底。
+
+合同裁决时的落点提示：三级阶梯的第二、三级都是可重建的派生投影（不进权威账本）；压缩记录进 Context Manifest/Bundle 的字段合同（spec/project）；small-brain 配置走用户级定义与 Worker Profile 既有机制，无新对象。
+
