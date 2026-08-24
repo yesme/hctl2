@@ -28,13 +28,22 @@ Options:
   --session-id        print the selected persisted session id
   --                  pass remaining args to the target CLI
 
-Session ids (macOS):
-  agy     30876bc1-f249-4569-b4cd-1a671577017d
-  claude  197c3f1e-7e43-46b4-a228-26a497574897
-  codex   01a027ea-f719-7a00-b833-2a587b2a05ac
-  glm     ses_fd816ff58ffew9OZpjG0y62oc6
-  grok    01a027e9-a557-7cf1-ac64-878cb7208851
-  kimi    session_e96e0466-cdf7-4790-870f-20ae8b6e862b
+Session ids:
+  macOS
+    agy     30876bc1-f249-4569-b4cd-1a671577017d
+    claude  197c3f1e-7e43-46b4-a228-26a497574897
+    codex   01a027ea-f719-7a00-b833-2a587b2a05ac
+    glm     ses_fd816ff58ffew9OZpjG0y62oc6
+    grok    01a027e9-a557-7cf1-ac64-878cb7208851
+    kimi    session_e96e0466-cdf7-4790-870f-20ae8b6e862b
+
+  Ubuntu
+    agy     702ce8fd-5edb-4847-a2fc-d64d346e26ec
+    claude  2ec5c59a-3a19-4a2d-bb13-9e15b27a8227
+    codex   01a0323b-aa8e-7cc1-ae36-2edf4235924b
+    glm     ses_fcdc15286ffemJbNe8YfvztD91
+    grok    01a03240-17b3-7003-95ab-a8c9100d96b6
+    kimi    session_891005b1-7f90-401f-aef7-b79a8d6d5737
 
 Examples:
   ./run claude
@@ -89,37 +98,61 @@ done
 
 [[ -n "$agent" ]] || { usage; exit 2; }
 
+case "$(uname -s)" in
+  Darwin) platform="macos" ;;
+  Linux)  platform="ubuntu" ;;
+  *)      die "unsupported platform: $(uname -s)" ;;
+esac
+
 workspace="$HOME/workspace"
 
 case "$agent" in
   agy)
     workdir="$workspace/hctl2-agy"
-    session="30876bc1-f249-4569-b4cd-1a671577017d"
+    case "$platform" in
+      macos)  session="30876bc1-f249-4569-b4cd-1a671577017d" ;;
+      ubuntu) session="702ce8fd-5edb-4847-a2fc-d64d346e26ec" ;;
+    esac
     cmd=(agy --dangerously-skip-permissions --conversation "$session")
     ;;
   claude)
     workdir="$workspace/hctl2-claude"
-    session="197c3f1e-7e43-46b4-a228-26a497574897"
+    case "$platform" in
+      macos)  session="197c3f1e-7e43-46b4-a228-26a497574897" ;;
+      ubuntu) session="2ec5c59a-3a19-4a2d-bb13-9e15b27a8227" ;;
+    esac
     cmd=(claude --dangerously-skip-permissions --resume "$session")
     ;;
   codex)
     workdir="$workspace/hctl2-codex"
-    session="01a027ea-f719-7a00-b833-2a587b2a05ac"
+    case "$platform" in
+      macos)  session="01a027ea-f719-7a00-b833-2a587b2a05ac" ;;
+      ubuntu) session="01a0323b-aa8e-7cc1-ae36-2edf4235924b" ;;
+    esac
     cmd=(codex --dangerously-bypass-approvals-and-sandbox -C "$workdir" resume "$session")
     ;;
   glm)
     workdir="$workspace/hctl2-glm"
-    session="ses_fd816ff58ffew9OZpjG0y62oc6"
+    case "$platform" in
+      macos)  session="ses_fd816ff58ffew9OZpjG0y62oc6" ;;
+      ubuntu) session="ses_fcdc15286ffemJbNe8YfvztD91" ;;
+    esac
     cmd=(opencode -s "$session" "$workdir")
     ;;
   grok)
     workdir="$workspace/hctl2-grok"
-    session="01a027e9-a557-7cf1-ac64-878cb7208851"
+    case "$platform" in
+      macos)  session="01a027e9-a557-7cf1-ac64-878cb7208851" ;;
+      ubuntu) session="01a03240-17b3-7003-95ab-a8c9100d96b6" ;;
+    esac
     cmd=(grok --always-approve --resume "$session")
     ;;
   kimi)
     workdir="$workspace/hctl2-kimi"
-    session="session_e96e0466-cdf7-4790-870f-20ae8b6e862b"
+    case "$platform" in
+      macos)  session="session_e96e0466-cdf7-4790-870f-20ae8b6e862b" ;;
+      ubuntu) session="session_891005b1-7f90-401f-aef7-b79a8d6d5737" ;;
+    esac
     cmd=(kimi --yolo -S "$session")
     ;;
   *)
