@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.12.1<br>
+> 状态：规范性 · 草案 v0.12.2<br>
 > 日期：2026-08-24<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -104,7 +104,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名（`port_kind`、`review_subject_digest`、ReviewSubjectRef 等）在合同需要逐字指认时保留原形，不受自造语义名的词形规则约束。
 
-## v0.12.1 清扫
+## v0.12.2 清扫
 
 三类数据切分落地后按概念门槛复查的降级与统一：
 

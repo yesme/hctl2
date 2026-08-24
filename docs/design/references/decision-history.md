@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.12.1 · 2026-08-24<br>
+> 状态：Informative · 对应草案 v0.12.2 · 2026-08-24<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -47,7 +47,7 @@ Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领
 
 与此同时，Chat、任务源、workflow engine、harness 和运行时后端被收敛为受控端口。它们提供外部能力、报告版本与降级方式，但不能凭平台自身的 Session、Issue、workflow task、pane 或数据库取得 HCTL 字段权威（第 12 节后来把这条精确化为“可拥有 content、不可拥有治理”）。一个产品可以同时提供原生客户端和受控端口，例如第三方看板既展示 Task 又承载部分外部字段；此时 client binding 与 authority binding 仍须分开，避免“能显示”被误写成“能决定”。
 
-## 6. 当时的 Conductor 只拥有机械状态（后由 §19 取代实现选型）
+## 6. 当时的 Conductor 只拥有机械状态（后由 §18 取代实现选型）
 
 当时引入 Conductor 的目的，是复用耐久 external task、wait/timer、retry 与历史恢复，而不是把 HCTL 的语义交给工作流引擎。当时固定的边界是：Conductor 保存机械工作流位置，HCTL control 领取外部任务并建立 Obligation/Seat/Attempt，工具箱与 control 校验精确版本、证据、权限、Gate 和 Receipt。
 
@@ -108,25 +108,21 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 这不是把治理交给平台，也不是回到 HCTL1 的“Git 承载一切”：判决仍只在 metadata 层产生，冻结摘要仍是 content 与治理之间的防火墙（第 9 节的继承表原样成立）。v0.10.1 对落点做了一处修正：Board 从 Project 级上移为 Repo 级——一个 Repo 一个 Board，Project 是板上的分组实体，Task 是卡片；这让 GitHub issues 这类天然 repo 级的后端直接对齐，也让支持父子任务的本地服务器以“任务–子任务”承载 Project–Task。v0.10.2 进一步取消了仓库侧的独立物理账本：现场记账本可由 metadata 账本、Git 与运行时观测推导，单立一本账是把实现细节写进合同——clone 本地从此只有 OS 锁与可丢弃缓存，实例注册与现场记账并入用户级账本，存储从“两本账 + Git”收敛为“一本账 + Git”。另有一条词汇裁决随本次转向生效：自 v0.10.0 起，“Agent”一词专属第四模块（原 Harness 模块更名），“Harness”专指编码代理工具这一系统角色，散文中的 AI 协作者用 Participant 表述。类别的权威定义见[合同层总则](../spec/README.md#三类数据)；候选系统与限时验证见[交付文档](../delivery.md)。
 
-## 13. 词汇清扫（v0.10.3）
-
-v0.10 合入后的一轮全量清点显示：具名概念总量并未增长（109 → 109），但四个高频名字从未入册——RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter。裁决全部降级为描述语或端口种类，不补章程（见[合同层总则的 v0.10.3 清扫表](../spec/README.md#v0103-清扫)）；同时明确交付文档与合同层同侧（可用合同词与 `*Intent` 命令名），并清洗了设计层残留（当时连仓库 README 架构图源码里的节点 ID 也纳入清理）。这轮正确收紧了自造语义名的门槛，但把所有代码形态都视作概念命名的做法后来在 v0.12.0 复审中被收窄。
-
-## 14. 实现计划：P/B 双表与 P0 选型（v0.11.0）
+## 13. 实现计划：P/B 双表与 P0 选型（v0.11.0）
 
 三份外部评审一致指出开工前限时验证是“事实上的 phase 0”。v0.11.0 据此给交付文档补上施工视角：P0–P6 实现阶段表与 B0–B6 自举阶梯一一映射——P 表回答先建什么，B 表回答什么时候敢切换事实，建完不等于敢用。P0 选型同轮拍板：conductor-oss；Vikunja（git-bug 降为记录在案的对照）；运行时后端 Zellij（同栈、结构化接口、内建 web 客户端默认关闭、可作额外访问门；tmux 为降级方向，验证新增 headless 查询应答与增强键盘协议两点）；chat server 在 Tuwunel 与 Continuwuity 并列验证后定夺。远端任务后端验证移出 P0、延至 P4 后按需。
 
-## 15. 词形收敛与 chat server 定夺（v0.11.1）
+## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-分层原则推到词形上：语义是文档的本职，拼写是实现的权利。25 个驼峰对象/票据名退化为带空格专名（对齐 Run Manifest / Gate Receipt 先例）；16 个 `*Intent` 命令名退化为动宾语义名；约二百处状态值枚举拼写退化为中文语义名。当时把结论绝对化为“设计仓库不含任何代码标识符”；v0.12.0 复审将其修正为：自造语义名不冻结代码词形，但合同必须逐字指认的协议/schema 字段、序列化格式标识与外部原名可以保留，「语义名 ↔ 标识符」对照仍在实现期随命令底座生成。同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#21-小修订台账)。
 
-## 16. 四段施工序与组件正名（v0.12.0）
+## 15. 四段施工序与组件正名（v0.12.0）
 
 v0.12.0 最初把 P0–P6 收敛为按三面架构分层的四段：P0 立营（先让四个执行面系统可运维）→ P1 备装（agentd + 工具箱）→ P2 接钥匙（control + CLI，B0–B5）→ P3 装门面（Workbench + B6）。它也把 `hctl2-core` 正名为机械工具箱 `hctl2-tool`，把 agentd 在组件表中正名为 `hctl2-agentd`，并写下“commit 署名、lint、PR 正文拼装、memo 写入、有效变化侦测等机械工作不交给模型”的施工纪律。
 
 同一基线的复审保留四段骨架，但修正了三处过强表达：P0 改为限时、可丢弃的实现探针，content 系统在 P2 首次被纵向切片消费时才产品化；P1 的 standalone 工具只能辅助开发，B2 才是第一次真正自举；P2 的完整治理入口是公共 CLI，Matrix/Vikunja 原生界面只验证 content 互操作，Engine console 与裸 Zellij 分别只是诊断和 break-glass，除非适配器实现公开合同，否则不能统称“第三方场景客户端”。同轮也收窄了两条方法论：“外部无对应”是差异化语义的证据而非账本存储清单；自造语义名不冻结代码词形，但精确协议、字段、格式与外部原名可以保留。原生优先的打包方向不变，精确版本、后端与 build features 在 P0 证据通过后固定。
 
-## 17. 缺口审计：转向传播与五个新机制（v0.12.0 审计）
+## 16. 缺口审计：转向传播与五个新机制（v0.12.0 审计）
 
 v0.10–v0.12 的数次横切转向（用户级 control、Repo 级 Board、三类数据、Agent 正名、四段施工序）各自合理，但旧摘要、连接与验收仍残留前一版假设。一轮根因审计据此收口（方法与全部发现见 `.memo/v07-v012-retrospective-and-architecture-audit-20260821.md`）：恢复缺失的交接与恢复合同，消除同一事实的两种解释，不恢复 v0.7 的对象爆炸。其中一部分是纯反漂移修正，如固定内核的“以仓库为边界”残句改为用户级 command service，以及三处“后端不可用时命令照常/入口降级”统一为“需要 fresh readback 的命令 fail closed，不依赖者可继续”。
 
@@ -140,7 +136,7 @@ v0.10–v0.12 的数次横切转向（用户级 control、Repo 级 Board、三�
 
 方法论记录：这五项随审计一次合并落地，未按「真语义变更单独立项」拆批——同根问题跨文件归并可取，但代价是回滚粒度整体化、新机制险些没有决策记录（本节即补记）。后续审计若再引入新机制，机制本身应单独立项提交。
 
-## 18. 适配器诚实合同：终局结果、观测截断与派生谱系（v0.12.0 补充）
+## 17. 适配器诚实合同：终局结果、观测截断与派生谱系（v0.12.0 补充）
 
 Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先级阶梯、观测不推进领域结果），但留着两个物理层必须表态的空洞：进程干净退出算什么？上报中断后的残缺事件流还算不算历史？本轮据 LobeHub 源码审计（[E-LOBEHUB](./implementation-evidence.md#e-lobehub)，其 heterogeneous-agents 适配器层的经验证做法）补齐三条 harness 适配器义务：
 
@@ -148,34 +144,44 @@ Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先�
 - **观测流完整性**：观测上报通道失败时，只能显式标记该执行的观测截断并终结事件流；有缺口的事件流不得冒充完整历史。
 - **派生谱系保留**：harness 内部再派生的子执行体事件必须携带稳定的派生谱系引用，不摊平进主执行流。
 
-同轮补一句能力边界：semantic resume 可以用自有观测留痕重建续跑输入，重建物按投影处理，不进入权威记录——恢复能力不再依赖厂商保留会话文件。术语取“终局”而非“终端”，避免与 Terminal 通道词族冲突。权威文本在 [Agent 模块合同](../spec/agent.md)的「运行时与观测」与「终端通道」。本条按 §17 的方法论教训单独立项提交并当轮补记决策。
+同轮补一句能力边界：semantic resume 可以用自有观测留痕重建续跑输入，重建物按投影处理，不进入权威记录——恢复能力不再依赖厂商保留会话文件。术语取“终局”而非“终端”，避免与 Terminal 通道词族冲突。权威文本在 [Agent 模块合同](../spec/agent.md)的「运行时与观测」与「终端通道」。本条按 §16 的方法论教训单独立项提交并当轮补记决策。
 
-## 19. workflow engine 从 Conductor 改为 Dagu（v0.12.0 补充）
+## 18. workflow engine 从 Conductor 改为 Dagu（v0.12.1）
 
-2026-08-23 重新按源码而非 README 审阅 workflow 候选后，第一阶段选型从 Conductor 改为 **Dagu**。判据收敛为三条：Workflow Revision 必须是声明式事实源并可机械 lint schema、引用、Profile 与图结构；不要求一般性证明 loop 终止；本机运行优先单二进制、文件或嵌入式持久化，避免为机械状态引入 JVM 与数据库/队列组合。Conductor 当前版其实已默认 SQLite，旧记录“没有 SQLite”已经过时；它的逐任务 poll/complete 仍比 Dagu 更贴近被驱动模型，但总体分发和 footprint 仍较大。
+2026-08-23 重新按源码而非 README 审阅 workflow 候选后，第一阶段选型从 Conductor 改为 **Dagu**。本节与 §19 的两项选型改判构成 v0.12.1；该轮当时未随文件重 stamp，随 v0.12.2 补记。判据收敛为三条：Workflow Revision 必须是声明式事实源并可机械 lint schema、引用、Profile 与图结构；不要求一般性证明 loop 终止；本机运行优先单二进制、文件或嵌入式持久化，避免为机械状态引入 JVM 与数据库/队列组合。Conductor 当前版其实已默认 SQLite，旧记录“没有 SQLite”已经过时；它的逐任务 poll/complete 仍比 Dagu 更贴近被驱动模型，但总体分发和 footprint 仍较大。
 
 Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。
 
-这条决定取代 §6 和 §14 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
+这条决定取代 §6 和 §13 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
 
-## 20. 运行时后端从 Zellij 改为 tmux（v0.12.0 补充）
+## 19. 运行时后端从 Zellij 改为 tmux（v0.12.1）
 
 2026-08-23 按源码、发布物和本机多会话实测复审 tmux、Zellij 与 shpool 后，第一阶段运行时后端改为 **tmux**。决定性的不是功能最多，而是 agentd 所需的最小、可控原语：tmux 有公开 control mode、稳定 pane ID、只读/不参与尺寸协商的观察客户端、`capture-pane`/`pipe-pane`、`remain-on-exit` 和明确的终端查询应答；control mode 的输出暂停/恢复与有界缓冲也给慢观察者隔离留下了可靠接缝。采用形态固定为 agentd 持有 owner-only socket 与唯一可写 control client，默认每个 runtime 独立 server，其他客户端经 agentd 扇出；裸 attach 仍只是 break-glass。
 
 体积使取舍进一步明确。本机 Apple Silicon 基线中，tmux 可执行文件约 **0.95 MiB**，直接非系统动态库约 **1.45 MiB**；一个 server 承载十个 detached `/bin/sleep` session 时约 **3.7 MiB RSS**。Zellij 的 `zellij-no-web` 可执行文件约 **32.4 MiB**，一个默认 detached session 约 **89.7 MiB RSS**，十个约 **841.6 MiB RSS**；它的结构化接口与原生跨平台优势不足以抵消多 Harness 常态下的成本。shpool 可执行文件约 **4.04 MiB**、十个空闲 session 的 daemon 约 **23.1 MiB RSS**，但当前公开合同仍以单客户端 attach 为中心，没有 headless 终端查询应答、可承载 payload 的结构化事件、多观察者扇出或成熟的慢客户端背压；采用它会迫使 agentd 自建终端模拟、快照/重放与流量控制，等于把难题搬回自身。
 
-tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §14 的 Zellij 实现选型和 §16 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
+tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
-## 21. 桥接退役、结晶归位与概念清扫（v0.12.1）
+## 20. 桥接退役、结晶归位与概念清扫（v0.12.2）
 
 一轮按最新方法论（三类数据、概念门槛）对 README 与设计/合同骨架的复查，收口了六件事：
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫（表见[合同层总则](../spec/README.md#v0121-清扫)）**：Room Event 除名（消息本体即 chat server 的 Matrix event，账本只有引用它的治理事件）；Task Operational State 降级为 Task Binding 的字段组“操作投影”（三类数据判给后端操作字段产权后，它只剩投影与同步账，不过概念门槛）；执行身份无法证明的收口状态统一为“丢失”（原 Room Invocation 侧称“中断”，同一触发、同一收口动作却用两个名字写了两遍），收口规则唯一定义在连接合同的失败表。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的收口状态统一为“丢失”（收口规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#21-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不能携带用户在场证明。交付范围表按 P2/P3 出门条件重切。
-- **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§17 已修系统层，本次补愿景层残句）。
+- **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
+
+## 21. 小修订台账
+
+来时路只收转向：承重墙移动、实现选型更换、权威归属变化各自成章。词汇、词形与概念清扫类修订各记一行，细节在合同层清扫表，不再单独成章：
+
+| 版本 | 日期 | 内容 | 详情 |
+| --- | --- | --- | --- |
+| v0.10.3 | 2026-08-19 | 词汇清扫：RuntimeBackend、TaskSource、WorkflowEngine、HarnessAdapter 四个未入册高频名降级为描述语或端口种类；交付文档定为与合同层同侧 | [清扫表](../spec/README.md#v0103-清扫) |
+| v0.11.1 | 2026-08-21 | 词形收敛：25 个驼峰名改带空格专名、16 个 `*Intent` 命令名改动宾语义名、状态值改中文语义名；“不含任何代码标识符”的绝对化后被 v0.12.0 复审收窄（协议/schema 字段与外部原名保留原形） | [词形表](../spec/README.md#v0111-词形收敛) |
+| v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、收口状态统一为“丢失” | [清扫表](../spec/README.md#v0122-清扫) |
 
 ## 22. 当前落点
 
