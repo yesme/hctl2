@@ -1,6 +1,6 @@
 # Participant 配置设计 Memo
 
-> 状态：Informative · 讨论稿 · 2026-08-19<br>
+> 状态：Informative · 讨论稿 · 2026-08-19 · 2026-08-24 增补 §8（评审方法论化：从 BYOA 到专业化 Participant），原 §8–§15 顺延为 §9–§16<br>
 > 目的：把 Participant 从“自动探索到一个本地 Harness”扩展成可配置、可解析、可冻结、可审计的数字参与者。本文不改变现行规范，不创建第五模块，也不提前定义 marketplace。<br>
 > 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
 
@@ -179,7 +179,30 @@ Skill 使用已有共享版本机制固定 manifest/instructions/assets/scripts�
 
 Skill 可以请求能力，不能自己授予能力。含脚本的 Skill 是代码供应链输入；required Skill 缺失则解析失败，optional Skill 缺失则显示降级。同名 current pointer 不能替代 Gate/Attempt 已冻结的 ref+digest。
 
-## 8. WorkerProfile 与 Harness resolution
+## 8. 评审方法论化：从 BYOA 到专业化 Participant（2026-08-24 增补，所有者方向）
+
+出发点（所有者论断）：现在的评审——无论评设计文档还是评代码——完全靠 LLM 的自发判断，没有方法论；给评审加"场景走查"一类检查清单只是微小的查漏补缺，不是解法。真正的解法在确定 Participant 的阶段：**不再是 BYOA（bring your own agent——手边正好有哪个 harness 就让哪个裸模型来评），而是引入外部的专业化 Participant——实际形态是模型 + 专用方法论 Skill。**
+
+### 机制：完全落在既有七层里，不新增对象
+
+- **方法论是 Skill，不是 prompt 习惯。** 评审方法论（如 design-doc-method memo 的六问骨架、对抗核验、合同漂移检查，methodology-landscape memo 的完成判定权横评这类审计方法）沉淀为带 revision/digest 的 Skill；评审 Participant = 稳定 Participant 身份 + 该 Skill（activated 态，§7 三态照用）+ 合适的 model/post-train 与 WorkerProfile。
+- **由此获得三件 BYOA 给不了的性质**：可复现（凭证链冻结了"是哪一版方法论查的"）、可升级（方法论出新 revision，所有 Project 的评审同步受益）、可审计（ResultProposal 沿冻结链回溯到 Skill revision，两次评审结论不同时能回答"是方法变了还是模型变了"）。
+- **与 reviewer 独立性正交叠加**（§5）：Gate 的 reviewer Seat 绑定这类 Participant，得到的是"有方法论且独立"的评审；专业化不改变票权规则。
+- **边界不变**：方法论 Skill 提供方法，不授予票权、权限或完成权；专业化评审 Participant 的结论仍只是 Verdict 输入，按 Gate/quorum 规则计票。
+
+### 与 BYOA 的区别一句话
+
+BYOA 回答"机器上装了什么"；专业化 Participant 回答"这类工作该由谁、按什么方法做"。选评审者不再是"随便 @ 一个在场模型"，而是引入以评审为业的 Participant——可以本地配置，也可以外部引入（这是 §12 远程数字员工的第一个真实用例：最先值得"雇"的外部数字员工就是带成熟方法论的评审者）。
+
+### 自食其力
+
+HCTL2 仓库自身的设计评审应最早切换到这个模式：用装载方法论 Skill 的评审 Participant 评自己的设计文档，替代目前各 harness 裸模型的自发评审——`.memo/` 里历次评审备忘的质量波动正是 BYOA 现状的实证。design-doc-method memo 已预告"未来可抽取为 skill/规范"，即本节的第一个种子 Skill。
+
+### 落地节奏
+
+设计文档正文先显式提及这个方向（一句话 + 指向本专题）；本专题升格为正式章节时给出完整合同。配套必需品是 Context（所有者遍览各 ADE 的共同结论），由 `.memo/context-design-20260819.md` 专章承载，两者一起升格。
+
+## 9. WorkerProfile 与 Harness resolution
 
 WorkerProfile 是 Harness 已有的可复用执行配方，不是数字员工本人。它组合：
 
@@ -194,15 +217,15 @@ WorkerProfile 是 Harness 已有的可复用执行配方，不是数字员工本
 
 HarnessDefinition、Installation、Capability、ExtensionRevision、ResolvedPortBinding、discovery/install 和 secret handling 已由 Harness/system 定义，本 memo 不重复。关键结论只有一个：自动探索本地 Harness 是解析链最后一步，只回答“这里有什么”，不能回答“谁工作、采用什么 persona/post-train/Skill、是否有权参与”。远程 endpoint 同样必须经过既有端口解析才能进入执行 binding。
 
-## 9. 配置、Preview 与冻结
+## 10. 配置、Preview 与冻结
 
-### 9.1 配置与采用
+### 10.1 配置与采用
 
 用户维护 Participant declaration，引用 persona、skill claims 和 WorkerProfile candidates；Project 通过 RoleBinding 选择精确 Participant revision 并附加角色约束。声明阶段不启动 Harness、不联网搜索、不安装制品，也不取得 secret。
 
 采用前需要 schema/canonical digest、来源/签名/license、alias/key continuity、persona 白名单去敏，以及模型/Skill/adapter 供应链校验。外部签名只证明某 key 签过材料，不证明能力、安全或商业可信。通用 digest、install、credential 与 command 机制直接复用 system 合同。
 
-### 9.2 Preview / Resolve
+### 10.2 Preview / Resolve
 
 Trigger Preview 或 StartRun Preview 按固定顺序：
 
@@ -217,7 +240,7 @@ Trigger Preview 或 StartRun Preview 按固定顺序：
 
 这里只产生 Preview 与既有 binding 字段，不新增 `ResolvedParticipant` 对象。
 
-### 9.3 Freeze
+### 10.3 Freeze
 
 一次 InvocationBinding 或 Run Manifest/Seat 至少冻结：
 
@@ -237,7 +260,7 @@ ContextManifest ref + digest
 
 AttemptSpec 继承逻辑身份链，再增加 execution generation、ChangeSet/lease 和物理 adapter binding。ResultProposal 必须能沿该链回溯 Participant、实际 WorkerProfile/model/Skills 和物理 bindings，但 attribution 不授予命令权。
 
-### 9.4 Fallback 不变量
+### 10.4 Fallback 不变量
 
 技术候选切换只有在 Run Manifest 预先允许，并保持以下内容不变时才属于同一 Seat/Participant：
 
@@ -249,7 +272,7 @@ AttemptSpec 继承逻辑身份链，再增加 execution generation、ChangeSet/l
 
 变化越过任一项时必须重新授权或替代 Seat/Run，不能把语义换人包装成技术 fallback。current pointer 更新、安全撤销或 provider 漂移也不改写活动 binding；迟到结果仍按旧 generation 处理。
 
-## 10. 存储、版本与安全
+## 11. 存储、版本与安全
 
 | 存储 | 内容 | 不是 |
 | --- | --- | --- |
@@ -265,7 +288,7 @@ Participant 与所引用配置均使用 stable ID/ref + immutable revision/diges
 
 persona、AIEOS profile、remote agent card 和 Skill 文本都视为不可信输入；profile 自报能力、endpoint 或 wallet 没有权限效果。敏感 persona 字段最少导入；人类 Participant 的履历需要来源许可。发给远程 Participant 的 Context 只物化获准的去敏子集；远程 success/断线/ACK 仍只是观测或 ResultProposal，不形成 HCTL Receipt。
 
-## 11. 远程数字员工：只保留协议边界
+## 12. 远程数字员工：只保留协议边界
 
 未来商业化至少分开三类协议面：
 
@@ -279,7 +302,7 @@ AIEOS 可以成为第一类 profile 来源，并携带 presence/settlement hints
 
 远程发现不等于信任，报价不等于预留，预留不等于执行，执行 ACK 不等于结果。未来设计仍须分别验证 identity、operator、artifact supply chain、capability Evidence、execution/data isolation 和商业记录，不压成一个“可信分数”。
 
-## 12. Phase 1
+## 13. Phase 1
 
 ### 必须有
 
@@ -302,7 +325,7 @@ AIEOS 可以成为第一类 profile 来源，并携带 presence/settlement hints
 - 网络自动发现、公开 registry/marketplace、远程 reservation/SLA/payment/reputation；
 - 跨组织 federation、多租户和通用商业身份。
 
-## 13. 验证用例
+## 14. 验证用例
 
 1. 两个 Participant 复用 profile，结果仍归于各自精确 revision；
 2. Participant 换 session 不换身份，实际 binding/generation 仍可追溯；
@@ -315,7 +338,7 @@ AIEOS 可以成为第一类 profile 来源，并携带 presence/settlement hints
 9. Harness payload 自报 human/另一 Participant 时被拒绝；
 10. fallback 改变身份、persona、Skill、Context、权限或独立性时须重新授权。
 
-## 14. 开放问题
+## 15. 开放问题
 
 1. Participant ID 使用本地 UUID、组织 issuer namespace，还是可选外部 identity binding？
 2. Participant declaration 的 repo/user scope 与跨 repo 导入合同是什么？
@@ -328,7 +351,7 @@ AIEOS 可以成为第一类 profile 来源，并携带 presence/settlement hints
 9. reviewer independence 第一阶段是否只验证 Participant？
 10. Participant suspension 对活动执行的隔离权限和恢复合同是什么？
 
-## 15. 回填现行设计的最小落点
+## 16. 回填现行设计的最小落点
 
 若方向确认，不新增 Participant 模块：
 
@@ -337,6 +360,7 @@ AIEOS 可以成为第一类 profile 来源，并携带 presence/settlement hints
 - `run.md`：Seat 冻结 Participant、producer/reviewer 独立性和 fallback 不变量；
 - `connections.md`：Project 逻辑配置到 Harness 物理 binding 的 typed handoff；
 - `system.md`：共享版本、制品、ResolvedPortBinding、secret 和安全机制；
-- `delivery.md`：第一阶段范围与负例。
+- `delivery.md`：第一阶段范围与负例；
+- `vision.md` 或相应设计正文：显式提及评审方法论化方向（§8），并把 HCTL2 自身评审切换为专业化 Participant 作为自举内容之一。
 
 这样既允许 Participant 具备特殊训练、Skill、人设和未来商业身份，又不把 persona、模型、Skill、Harness 与 marketplace 叠成新的超级对象。
