@@ -51,7 +51,7 @@ Workflow 场景提供施工清单预览、只读图、节点/席位/尝试的渐
 | 场景客户端：CLI | show/preview/start/pause/cancel；写操作先预览确认 | 绕过绑定、版本或权限 |
 | 受控端口：workflow engine | 保存令牌、机械任务、定时器、重试和历史 | 选择 Harness、创建 Seat、计算 HCTL Gate、签发 Receipt 或写 Git |
 
-Workbench 关闭不停止 Run。
+Workbench 关闭不停止 Run。Workbench 就位之前（P2），Run 的预览、启动、暂停与取消走 `hctl2` CLI；引擎自带的控制台只作诊断，不是治理入口。
 
 ## 模块交接
 

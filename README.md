@@ -88,7 +88,7 @@ flowchart LR
 
 - Project、Task、Run 和 Agent 模块的对象都有稳定身份，不能由聊天串、外部 Issue、工作流任务、worktree 或终端面板反向定义；
 - Chat Room、Kanban、Workflow 和 Terminal 是操作场景，不是第二份领域事实；
-- Workbench 是四个场景的集成客户端；适配后的第三方平台可以按场景替代或补充其中一个面板，也可以提供受控端口，但不会整体替代 Workbench 或领域模块；
+- Workbench 是四个场景的集成客户端；第三方界面分两类——content 客户端（任意 Matrix 客户端、任务后端原生界面）直接读写场景内容但不能提交治理命令，治理客户端走同一命令服务；谁都不整体替代领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部已关闭；
 - 模型只能建议结果与下一位协作者。Task 完成只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task 已取消只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
@@ -97,47 +97,51 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph Clients["可并存的场景客户端"]
-        Bench["hctl2-workbench\nRoom · Kanban · Workflow · Terminal"]
-        chat_client["Feishu / Slack / Discord\nChat Room 客户端"]
-        task_client["Linear / GitHub\nKanban 客户端"]
-        workflow_client["第三方 Workflow UI"]
-        terminal_client["WezTerm / CLI\nTerminal 客户端"]
+    subgraph Gov["治理客户端 · 同一命令服务，无隐藏特权"]
+        CLI["hctl2 CLI\n（P2 起承载全部治理命令）"]
+        Bench["hctl2-workbench（P3）\nRoom · Kanban · Workflow · Terminal"]
+        Third["适配后的第三方场景客户端"]
     end
 
-    subgraph Control["hctl2-control · 四个领域模块"]
+    subgraph Control["控制面 · hctl2-control 四个领域模块"]
         P["Project\nChat Room"]
         T["Task\nKanban"]
         R["Run\nWorkflow"]
         H["Agent\nTerminal"]
     end
 
-    Bench --> P
-    Bench --> T
-    Bench --> R
-    Bench --> H
-    chat_client --> P
-    task_client --> T
-    workflow_client --> R
-    terminal_client --> H
+    subgraph Exec["执行面 · content 系统与物理执行"]
+        chat_srv["chat server\n（Matrix 协议）"]
+        task_backend["任务后端\n（本地任务服务器 / Linear、GitHub）"]
+        engine["workflow engine"]
+        agentd["agentd"]
+        runtime["harness / 运行时后端"]
+    end
 
-    P --> chat_port["Chat 受控端口"]
-    chat_port --> chat_srv["chat server（Matrix 协议）"]
-    T --> task_source["任务源受控端口"]
-    task_source --> task_backend["任务后端（本地任务服务器 / Linear、GitHub）"]
-    R --> Engine["workflow engine 端口"]
-    H --> Agentd["agentd"]
-    Agentd --> Runtime["harness / 运行时后端"]
+    subgraph ContentClients["content 客户端 · 读写内容，不能提交治理命令"]
+        matrix_client["任意 Matrix 客户端"]
+        task_ui["任务后端原生界面"]
+    end
 
+    CLI --> Control
+    Bench --> Control
+    Third --> Control
+    P -->|Chat 端口| chat_srv
+    T -->|任务源端口| task_backend
+    R -->|workflow engine 端口| engine
+    H --> agentd
+    agentd --> runtime
+    matrix_client --> chat_srv
+    task_ui --> task_backend
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Tool["hctl2-tool · Git/SCM 工具箱"]
 ```
 
-部署视角上，系统分三个面：展示面（Workbench 与第三方客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统与 agentd 物理执行），详见[三面架构](./docs/design/architecture.md)。
+部署视角上，系统分三个面：展示面（治理客户端与 content 客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统与 agentd 物理执行），详见[三面架构](./docs/design/architecture.md)。
 
-HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航。Workbench 是组合式场景客户端；第三方客户端只替代或补充对应场景，例如 Feishu/Slack/Discord 操作 Chat Room，WezTerm 操作 Terminal。它们都使用相应模块的 Query/Preview/Submit/Subscribe，不获得跨模块捷径。
+第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用，非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面并肩构成完整的日常操作面。
 
-图右侧的受控端口提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
+受控端口（图中控制面到执行面的连线）提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
 
 ## 设计文档
 
