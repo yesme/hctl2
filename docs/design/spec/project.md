@@ -11,7 +11,7 @@
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
 | Participant / Project Role Binding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
-| Chat 端口绑定 | Room 到 chat server 房间（及非 Matrix 桥接面）的 Resolved Port Binding，及外部 account/room/thread stable IDs 与获准身份映射策略；Room 的 content 家由它指认 |
+| Chat 端口绑定 | Room 到 chat server 房间的 Resolved Port Binding，及外部 account/room stable IDs 与获准身份映射策略（含经 homeserver 桥接接入的外部平台用户）；Room 的 content 家由它指认 |
 | Context Manifest / Context Bundle | 一次授权的根来源清单，以及为某个消费执行实际物化并交付的内容包 |
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
@@ -98,9 +98,9 @@ mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role �
 | HCTL 词 | 外部体系 | 一句话差异 |
 | --- | --- | --- |
 | Room | Matrix room / Slack channel | HCTL Room 身份与治理在控制面；它的 content 房间就是 chat server 上的 Matrix room |
-| Room Event | Matrix event / Slack message | Matrix event 就是消息 content 本体（chat server 承载，编辑/撤回是新事件）；Slack 这类可原地编辑的平台经桥接按新事件或 tombstone 落账；HCTL 治理事件以事件 ID 精确引用消息 |
+| 消息 | Matrix event | 消息 content 本体就是 chat server 上的 Matrix event（编辑/撤回是新事件；非 Matrix 平台的消息经 homeserver 桥接生态落为 Matrix event）；HCTL 治理事件只在控制面账本追加，以事件 ID 精确引用消息，不占领域对象名额 |
 | mention | @mention | HCTL 的 `@` 解析目标是逻辑 Participant/Role 而非平台账号，且必须经 Trigger Preview 准入 |
 | Scoped Room | thread / 子频道 | 差异：有冻结的讨论目标与结论回填动作，不是自由分叉 |
-| Chat 端口绑定 | Matrix bridge / Slack app 安装 | 差异：绑定指认 Room 的 content 家；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 桥接只投递与回读 |
+| Chat 端口绑定 | AppService 注册 / homeserver 配置 | 差异：绑定指认 Room 的 content 家；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
 | Request | 无直接对应 | 差异化语义：向指定人/角色索取输入的一级对象，只能由获准动作解决 |

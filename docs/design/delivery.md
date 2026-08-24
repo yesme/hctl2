@@ -8,7 +8,7 @@
 
 | 模块 | 集成场景必须交付 | 第三方适配必须交付 |
 | --- | --- | --- |
-| [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面——这是对旧范围的显式反转；非 Matrix 平台桥接不作为出门条件 |
+| [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面——这是对旧范围的显式反转；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 可访问 Kanban、以本地任务服务器为默认 content 后端、完成预览 | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Dagu 经 workflow engine 受控端口通过本地分发与恢复测试 |
 | [Agent](./agent.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时后端通过完整契约测试；WezTerm 可选 |
@@ -38,7 +38,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 - 多用户组织/RBAC、云队列、多主机调度和 Dagu coordinator/worker 集群；
 - 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md)），不是待补功能；
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
-- 非 Matrix 平台的完整聊天桥接、任意第三方插件市场；
+- 自建聊天桥接（永久不做，不只是第一阶段：非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入，HCTL 只保留桥接用户的身份映射）、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
 - 不对绕过受控端口的外部写入（带外写入）做全局检测与自动补偿；第一阶段只管理受控端口发出的意图，并把外部平台上的变化当作漂移/快照回读；
 - 同时完成 Linear 与 GitHub 两套完整双向适配器；
@@ -255,10 +255,10 @@ Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 
 - ~~Room 的协作历史到底放哪里~~ 已了结：消息 content 归 chat server，metadata 随用户级控制面走，结晶进 Git（见[来时路 §12](./references/decision-history.md)）；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
-- Repo Room 跨 clone 迁移、隐私和保留期限；
+- ~~Repo Room 跨 clone 迁移~~ 已了结：Room 身份随用户级控制面、消息 content 在 chat server，与 clone 无关（见[三面架构](./architecture.md)）；仍开放的是 Repo Room 的隐私与保留期限；
 - Project 拆分/合并和 Task 依赖的产品表达；
 - Scoped Room 自动归档策略；
 - 首批原生会话导入的范围与长期维护预算（能力定义见 [Agent 设计正文](./agent.md#原生会话导入)）；
 - 多主机与远程的实施：架构方向已定（Workbench 连接本机或远程控制面，见[三面架构](./architecture.md#三个面)），未决的是远程连接的认证与传输、多主机执行现场的编排、Windows 与多用户权限；
 - 成本/预算硬上限及运行中耗尽的交互；
-- 第一阶段之后首个非 Matrix 聊天平台桥接（Matrix 生态客户端已随 chat server 天然可用）。
+- ~~第一阶段之后首个非 Matrix 聊天平台桥接~~ 已了结：HCTL 永不自建聊天桥接——非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入（content 层），HCTL 只保留桥接用户的身份映射策略（见 [Project 设计正文](./project.md#chat-room-场景)与来时路）。

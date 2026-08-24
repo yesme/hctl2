@@ -57,9 +57,8 @@ Chat Room 是 Project 的主要操作场景，提供：
 | 场景客户端：Workbench Room | 提供完整时间线、Composer（输入区）、预览和命令入口 | 绕过命令服务直接写治理账本或 chat server，把渲染动作当成领域结果 |
 | 场景客户端：CLI | 查询 Room/Request；第一阶段复杂编辑安全暂停 | 绕过预览、版本或权限检查 |
 | content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth；Matrix 生态客户端可直接读写聊天 | 触发派发、解决 Request 或改变任何治理事实——记录不是命令 |
-| 受控端口 / 原生客户端：非 Matrix 聊天平台桥接 | 在能力允许时投递/接收同一 Room 的消息与 Request | 以外部 thread/message ID 取代 Project/Room 身份 |
 
-chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用。非 Matrix 平台的桥接不是第一阶段出门条件；一旦交付，必须具备稳定身份、去重、回声抑制、outbox、重连和降级能力。
+chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用。非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入——桥接是 content 层的事，聊天里永远不跑治理，因此 HCTL 不自建聊天桥接；HCTL 侧只需身份映射策略覆盖桥接来的外部用户（映射为可寻址 Participant，或保持只读旁观），并且外部 thread/message ID 永远不取代 Project/Room 身份。
 
 ## 模块交接
 

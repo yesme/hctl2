@@ -28,7 +28,7 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 
 | 场景 | 端口 |
 | --- | --- |
-| Chat Room | 消息/附件/身份转换与外部投递 |
+| Chat Room | chat server 连接：消息/附件读写、账号与房间管理、身份映射（非 Matrix 平台经 homeserver 侧 Matrix 桥接接入，不是 HCTL 端口） |
 | Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
 | Terminal | harness、运行时后端、终端网关与 attach provider |
