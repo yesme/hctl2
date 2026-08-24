@@ -154,6 +154,8 @@ flowchart LR
 - [Task 与 Kanban](./docs/design/task.md)
 - [Run 与 Workflow](./docs/design/run.md)
 - [Agent 与 Terminal](./docs/design/agent.md)
+- [Participant 与数字参与者](./docs/design/participant.md)（横切设计正文）
+- [Context 与可解释上下文](./docs/design/context.md)（横切设计正文）
 - [第一阶段、验证与自举](./docs/design/delivery.md)
 - [合同层总则](./docs/design/spec/README.md)（词汇分类、六族规则、归并对照）
 - [四模块连接与端到端闭环](./docs/design/spec/connections.md)

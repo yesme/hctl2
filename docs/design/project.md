@@ -8,7 +8,7 @@ Harness 的会话、终端和 worktree（Git 工作树）都会结束或被替�
 
 以 Room 为中心不等于所有工作都必须聊天：Kanban、Workflow 图和 Terminal 各有自己的操作面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
 
-Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。
+Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。Participant 的完整设计（七层拆分、专业化与评审方法论）见[横切正文](./participant.md)；Context 的完整设计（冻结、传承与成本纪律）见[横切正文](./context.md)。
 
 ## 模块拥有什么
 
