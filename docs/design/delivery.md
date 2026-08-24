@@ -6,14 +6,16 @@
 
 第一阶段面向单用户、单机、单 Repo Instance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine/chat server/本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
-| 模块 | 集成场景必须交付 | 第三方适配必须交付 |
-| --- | --- | --- |
-| [Project](./project.md) | Repo Room、Project Room（含只读 Project Overview）、Scoped Room、时间线、Composer、Context、Request、Memo/Artifact、至少两个并发 Invocation | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面——这是对旧范围的显式反转；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
-| [Task](./task.md) | 可访问 Kanban、以本地任务服务器为默认 content 后端、完成预览 | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
-| [Run](./run.md) | Workflow Revision 编译、Run 预览、只读图、Request、三选二 Gate、返工/regate | Dagu 经 workflow engine 受控端口通过本地分发与恢复测试 |
-| [Agent](./agent.md) | ChangeSet/diff/证据、Execution Chat/结构化执行检查、xterm、精确 attach | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时后端通过完整契约测试；WezTerm 可选 |
+范围按施工序两段陈列（见「实现阶段」）：P2 出门条件经公共 CLI 与各 content 系统原生界面即可达、可测，不等 Workbench；P3 出门条件是 Workbench 场景本身。
 
-四个场景由 Workbench 集成，但其命令必须可以由同一 service 供 CLI 或外部适配器使用。
+| 模块 | P2 出门（control + CLI + content 系统） | P3 出门（Workbench 场景） | 执行面与第三方适配 |
+| --- | --- | --- | --- |
+| [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
+| [Task](./task.md) | 以本地任务服务器为默认 content 后端、CLI 完整 Task 管理与完成预览 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
+| [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过本地分发与恢复测试 |
+| [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay 凭精确票据 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时后端通过完整契约测试；WezTerm 可选 |
+
+P3 的 Workbench 把四个场景集成到一个客户端，但不引入任何 CLI 不可达的命令：同一 command service 供 CLI、Workbench 与外部适配器使用。
 
 第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 是带外诊断 / break-glass，不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
 

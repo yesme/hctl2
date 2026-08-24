@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.12.0 · 2026-08-23<br>
+> 状态：Informative · 对应草案 v0.12.1 · 2026-08-24<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -166,6 +166,17 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §14 的 Zellij 实现选型和 §16 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
-## 21. 当前落点
+## 21. 桥接退役、结晶归位与概念清扫（v0.12.1）
+
+一轮按最新方法论（三类数据、概念门槛）对 README 与设计/合同骨架的复查，收口了六件事：
+
+- **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
+- **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
+- **概念清扫（表见[合同层总则](../spec/README.md#v0121-清扫)）**：Room Event 除名（消息本体即 chat server 的 Matrix event，账本只有引用它的治理事件）；Task Operational State 降级为 Task Binding 的字段组“操作投影”（三类数据判给后端操作字段产权后，它只剩投影与同步账，不过概念门槛）；执行身份无法证明的收口状态统一为“丢失”（原 Room Invocation 侧称“中断”，同一触发、同一收口动作却用两个名字写了两遍），收口规则唯一定义在连接合同的失败表。
+- **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
+- **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不能携带用户在场证明。交付范围表按 P2/P3 出门条件重切。
+- **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§17 已修系统层，本次补愿景层残句）。
+
+## 22. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。
