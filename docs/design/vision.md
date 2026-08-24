@@ -101,7 +101,7 @@ Project · Chat Room        Task · Kanban              Run · Workflow         
 
 ## 产品原生核心与架构最小内核
 
-HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装——执行面确实由这四类系统组成（见[三面架构](./architecture.md)），但把它们黏合成一个产品的，是一个**以仓库为边界的项目语义控制面**（repo-scoped project semantic control plane）。这才是产品原生核心，由三项能力构成：
+HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装——执行面确实由这四类系统组成（见[三面架构](./architecture.md)），但把它们黏合成一个产品的，是一个**随用户走、按仓库划分语义范围的项目语义控制面**（project semantic control plane：控制面归用户级，语义范围以 Repo 为界）。这才是产品原生核心，由三项能力构成：
 
 1. **Repo–Project 生命周期**：仓库注册、Project 的创建/更新/归档/恢复，以及不随外部平台漂移的稳定身份；
 2. **Project 连续性**：Room、Task、Run、Artifact、Request 和证据始终回到同一个 Project——替换 Harness、会话、终端甚至外部 SaaS 之后，项目仍可继续；

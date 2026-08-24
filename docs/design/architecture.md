@@ -39,12 +39,12 @@
 
 | 场景 | metadata（控制面账本） | content（执行面系统） | artifact（Git 结晶） |
 | --- | --- | --- | --- |
-| Chat Room | Room 身份、归属 Project、Participant 名册与角色绑定、桥接配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo |
-| Kanban | Task 身份映射、字段权威绑定、冻结契约及其摘要、完成凭证 | 任务卡、流转、排序、评论（所选任务后端） | 冻结的任务契约、施工图 |
+| Chat Room | Room 身份、归属 Project、Participant 名册与角色绑定、身份映射配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo、施工图 |
+| Kanban | Task 身份映射、字段权威绑定、冻结契约及其摘要、完成凭证 | 任务卡、流转、排序、评论（所选任务后端） | 冻结的任务契约 |
 | Workflow | Run 授权、引擎绑定、代次、Gate 规则、裁决 | 令牌位置、重试、定时器、机械执行历史（workflow engine） | 凭证链 |
 | Terminal | 执行授权与派发规格、写租约、输入租约、代次、观测账 | 会话转录、PTY 流（harness 会话 / 运行时后端） | ChangeSet 与合入的代码变更 |
 
-矩阵里的 artifact 是一种**解释性结晶规律**：重要结果通常会形成可审阅、可分发的 Git 工件；它不是把 metadata 或 content 逐字节变换成 Git 文件的存储定律。对于合同明确以 Git 为 home 的不可变正文，Git 保存正文，控制面仍独占其身份、准入、摘要、current pointer 与裁决；Git 中出现一份正文或副本本身不能证明它已经被 HCTL 接纳。Receipt、绑定、授权和 lifecycle 等以合同层标定的 metadata 仍以控制面账本为权威。
+矩阵里的 artifact 是一种**解释性结晶规律**：重要结果通常会形成可审阅、可分发的 Git 工件；它不是把 metadata 或 content 逐字节变换成 Git 文件的存储定律。结晶的归属以事实为准绳——它从哪个场景长出来就归哪一格（施工图从 Room 的塑形讨论中长出，故归 Chat Room），不为对称硬填。对于合同明确以 Git 为 home 的不可变正文，Git 保存正文，控制面仍独占其身份、准入、摘要、current pointer 与裁决；Git 中出现一份正文或副本本身不能证明它已经被 HCTL 接纳。Receipt、绑定、授权和 lifecycle 等以合同层标定的 metadata 仍以控制面账本为权威。
 
 统一律与三条法（能承载不等于能裁决；冻结摘要是防火墙；命令走 HCTL、记录落平台）见[合同层总则](./spec/README.md#三类数据)，此处不重复。
 

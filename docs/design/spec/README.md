@@ -48,7 +48,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
 | artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
 
-统一律：**每个场景的 artifact 是该场景 content 的结晶**——讨论结晶为决议与 Memo，任务流转结晶为冻结契约与施工图，机械执行结晶为凭证链，会话字节流结晶为代码变更。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+统一律：**每个场景的 artifact 是该场景 content 的结晶**——讨论结晶为决议、Memo 与施工图（“干什么的计划”从塑形讨论中长出），任务流转结晶为冻结契约，机械执行结晶为凭证链，会话字节流结晶为代码变更。归属以事实为准绳：结晶从哪个场景长出来就归哪个场景，不为对称硬填。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
 
 三条法贯穿全部模块合同，各处引用，不再各写一套：
 

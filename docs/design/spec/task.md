@@ -66,7 +66,7 @@ Task 终结只有两个获准来源：有权 human actor 从 Kanban 场景提交
 
 Task Completion Receipt 至少固定 Task、「完成 Task」命令、Task Revision ref+digest、验收策略，以及每一条验收项各自的 pass/fail、Evidence/Verdict/Receipt ref+digest、来源 snapshot/head/version 与适用的 producer/执行代次；不能用一个总括“tests passed”替代逐项绑定。若存在契约分歧，还必须固定显式 divergence choice、精确的未采纳 Snapshot refs/digests、Task Binding revision/state version 与 authority-policy digest。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` claim 清除与需要的外部写回 outbox 在同一事务提交；Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一 claim。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
-冻结契约（Task Revision）、完成凭证与施工图是 Kanban 场景的结晶（“干什么的计划”与其完成证明）：Task/Workflow Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储合同](./system.md#git-的双重角色)；施工图对象与写入者仍归 [Run 模块合同](./run.md)。
+冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储合同](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Chat Room 场景，其对象与写入者归 [Run 模块合同](./run.md)。
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 

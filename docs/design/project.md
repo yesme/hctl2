@@ -12,7 +12,7 @@ Project 也不是施工管线：研究、规格说明、ADR（架构决策记录
 
 ## 模块拥有什么
 
-Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，Participant 与角色，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（Room Invocation）。消息本体是场景内容（content），住在 chat server；讨论的结晶（决议、Memo）进 Git。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，Participant 与角色，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（Room Invocation）。消息本体是场景内容（content），住在 chat server；讨论的结晶——决议、Memo，以及作为“干什么的计划”的施工图——进 Git。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 worktree。
 
 ## 关键规则
 
