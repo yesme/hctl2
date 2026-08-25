@@ -114,7 +114,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#22-小修订台账)。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#26-小修订台账)。
 
 ## 15. 四段施工序与组件正名（v0.12.0）
 
@@ -128,8 +128,8 @@ v0.10–v0.12 的数次横切转向（用户级 control、Repo 级 Board、三�
 
 除传播既有决定外，这轮引入了五个此前不存在的机制，在此补记决策：
 
-- **用户在场证明**：以 human provenance 提交 Task 终结、普通 Room 执行边、扩权、安全输入或集成授权时，认证入口必须给出一次性、绑定规范命令摘要的用户在场证明。动因是旧威胁模型自相矛盾——execution principal 复制 human payload 调用公共 CLI 即可冒充人，单靠“human actor 才能终结 Task”挡不住。权威文本在[系统边界](../spec/system.md#命令与跨服务正确性)。
-- **受治理 Harness 的 OS 沙箱入场券**：第一阶段受治理执行必须运行在操作系统强制的沙箱中，凭据只经网关代用；不能强制这些边界的候选不得作为受治理执行启动。这是把“managed Harness”与“不隔离同 OS 用户”的互斥承诺改成一致，代价是 P0/B2 新增阻断性工程验证。
+- **用户在场证明**（v0.12.4 撤销，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0124)）：以 human provenance 提交 Task 终结、普通 Room 执行边、扩权、安全输入或集成授权时，认证入口必须给出一次性、绑定规范命令摘要的用户在场证明。动因是旧威胁模型自相矛盾——execution principal 复制 human payload 调用公共 CLI 即可冒充人，单靠“human actor 才能终结 Task”挡不住。权威文本在[系统边界](../spec/system.md#命令与跨服务正确性)。
+- **受治理 Harness 的 OS 沙箱入场券**（v0.12.4 降为可选加固，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0124)）：第一阶段受治理执行必须运行在操作系统强制的沙箱中，凭据只经网关代用；不能强制这些边界的候选不得作为受治理执行启动。这是把“managed Harness”与“不隔离同 OS 用户”的互斥承诺改成一致，代价是 P0/B2 新增阻断性工程验证。
 - **Run 正常完成谓词与 Task claim 双态**：Run 进入正常完成前须机械满足 required Obligation/Seat/Gate/output、Receipt、Attempt 撤权与外部副作用收口；Task 对 Run 的绑定以 active / completion_pending 双态消除交接竞态。填补“Engine 报告完成即 Run 完成”的空洞。
 - **挂接 Repo Instance**：Repo 与 clone 之间补显式身份链——工具箱无副作用读取 Git identity、control 预览后入账；remote URL、目录名或碰巧相同的 HEAD 不单独证明身份。这是用户级 control 转向早该有的配套。
 - **账本备份集合同**：备份必须是唯一 writer 协调的一致快照（含各层 generation 与账本引用的不可变定义字节），恢复保留账本身份、推进全部代次、令旧凭证失效。把既有的“账本必须备份”从一句话落成合同。
@@ -168,9 +168,9 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的收口状态统一为“丢失”（收口规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#22-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的收口状态统一为“丢失”（收口规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#26-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
-- **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不能携带用户在场证明。交付范围表按 P2/P3 出门条件重切。
+- **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
 
 ## 21. Context 合同裁决轮（v0.12.3）
@@ -184,7 +184,15 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 - **省的计量**：Bundle 记录候选/实选/实际交付 token 量，使"省"成为逐次调用可审计的指标；Memo 指针清单机械过滤过期与被取代项。
 - 交付验证在 `CT-PROJECT` 新增对应失败用例。仍留 memo 待裁决：派生索引的具体形态、检索融合策略、跨 Repo 传承。设计正文见 Context 横切正文，底稿与生态对照见 `.memo/context-design-20260819.md` 与 `.memo/context-landscape-20260824.md`。
 
-## 22. 小修订台账
+## 22. 信任模型收窄：三条底线不可关、外层笼子可选、CLI 即人（v0.12.4）
+
+复审 v0.12.0 §16 引入的两项机制后改判。当时把 OS 强制沙箱写成受治理执行的入场券、把“一次性用户在场证明”当作防止执行体冒充人的机制，两者都把治理面必须成立的底线和宿主机层面的加固绑在了一起：前者让第一阶段在 macOS 上启动不了多数真实 Harness，并把容器反向推成事实上的桌面沙箱；后者让 CLI 变成需要二次交互的入口，与“Workbench 与 CLI 同一验证规则、CLI 是 P2 正面形态”相抵。
+
+正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（human provenance 只由经认证的 Workbench/CLI 会话赋予；Harness 适配器、受控端口、Room 消息、adapter payload 与模型输出都不是入口；agentd 交给受治理执行的执行凭据使其中发出的 CLI 调用以 execution principal 提交）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结、agentd 按声明施加并记录为运行时事实；未声明或宿主不支持不阻止启动，也不得记录为已生效。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
+
+本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应合同句在 [Agent 模块合同](../spec/agent.md)的写入合同与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
+
+## 26. 小修订台账
 
 来时路只收转向：承重墙移动、实现选型更换、权威归属变化各自成章。词汇、词形与概念清扫类修订各记一行，细节在合同层清扫表，不再单独成章：
 
@@ -194,6 +202,6 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 | v0.11.1 | 2026-08-21 | 词形收敛：25 个驼峰名改带空格专名、16 个 `*Intent` 命令名改动宾语义名、状态值改中文语义名；“不含任何代码标识符”的绝对化后被 v0.12.0 复审收窄（协议/schema 字段与外部原名保留原形） | [词形表](../spec/README.md#v0111-词形收敛) |
 | v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、收口状态统一为“丢失” | [清扫表](../spec/README.md#v0122-清扫) |
 
-## 23. 当前落点
+## 27. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

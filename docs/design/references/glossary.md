@@ -121,7 +121,7 @@ control writer、Repo Instance site 与 agentd/backend owner 的排他权以各�
 | Repo Instance | 仓库实例 | 系统挂接到逻辑 Repo 的 clone/执行现场（worktree、ChangeSet 物化、运行时与 site fence）；不属于 Project，本地无账本 |
 | Room Invocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用；有完整生命周期 |
 | Execution Runtime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道；有完整生命周期与代次 |
-| Worker Profile | 执行者配置 | Harness、模型、模式、权限的可复用组合 |
+| Worker Profile | 执行者配置 | Harness、模型、模式、权限与可选执行加固声明的可复用组合 |
 
 ## 引用格式（不是对象）
 

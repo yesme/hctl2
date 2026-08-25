@@ -50,7 +50,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 
 在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
-Workbench 就位之前（P2），这个场景由两只手共同承载：Matrix 客户端负责聊——读写消息、引用、讨论；`hctl2` CLI 负责治理——Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。聊天文字不是命令、不携带用户在场证明，所以 mention 触发的 Trigger Preview 是治理客户端（Workbench/CLI）的能力，不是聊天平台的能力。
+Workbench 就位之前（P2），这个场景由两只手共同承载：Matrix 客户端负责聊——读写消息、引用、讨论；`hctl2` CLI 负责治理——Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。聊天文字不是命令、聊天平台也不能证明“这是人在提交”，所以 mention 触发的 Trigger Preview 是治理客户端（Workbench/CLI）的能力，不是聊天平台的能力。
 
 普通 Room 里的临场执行边只能由经过认证的人提交，并且必须先看过 Trigger Preview；人可以在 Workbench、CLI 或适配后的外部聊天平台上操作，但消息来源必须能证明是人。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker 或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
 

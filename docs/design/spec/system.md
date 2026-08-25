@@ -10,7 +10,7 @@
 | `hctl2-workbench` | 四个场景的集成客户端；提交命令、查询投影、显示事件 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账 |
 | `hctl2-tool` | 机械工具箱：Git/SCM 操作与事实校验、Revision/digest、合并核验、lint、PR/memo 的机械拼装、有效变化侦测。独立可用（standalone 时只做普通本地操作、不产生治理宣称）；被 control 编排时执行已持久化的意图并回读 |
-| `hctl2-agentd` | Harness 发现、受控执行沙箱、物理运行时、PTY、终端/凭据网关和主机观测（散文简称 agentd） |
+| `hctl2-agentd` | Harness 发现、物理运行时、PTY、终端网关、按声明施加的执行加固与主机观测（散文简称 agentd） |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
@@ -84,7 +84,7 @@ canonical input digest
 
 actor kind/provenance 由认证场景入口或 control 内部 reducer 赋予，调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 完成只接受有权 human actor 或 task-bound Workflow 的正常完成 reducer，Task 已取消只接受有权 human actor；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。
 
-以 human provenance 提交 Task 终结、普通 Room 执行边、扩权、安全输入或集成授权时，认证入口还必须给出一次性且绑定规范命令摘要的用户在场证明；它不发给 execution principal，不能由 CLI payload、进程环境或 Room 文字代填。Workbench 与 CLI 使用同一验证规则，这是 actor 认证而非界面隐藏特权。
+human provenance 由经认证的场景客户端会话直接赋予：用户在 Workbench 或 CLI 里提交的命令就是 human。agentd 启动受治理执行时交付执行凭据，凭该凭据发出的 CLI 调用以 execution principal 提交，只获得该 Invocation/Attempt 冻结的窄能力。Task 终结、普通 Room 执行边、扩权、安全输入与集成授权只接受这样赋予的 human provenance 或获准的 reducer，不设额外的用户在场证明。Workbench 与 CLI 使用同一验证规则，这是 actor 认证而非界面隐藏特权。
 
 control 在用户级 metadata 账本的一个 SQLite 事务中写领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界，不能由两个模块或两个 clone 事后拼接。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。
 
@@ -98,9 +98,9 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影可�
 
 包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久外部副作用命令/outbox 记录（executor = adapter），固定 owner ref、Resolved Port Binding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，不能仅因 close/reopen/update 等 operation 不同而拆开。本地 Git 变更是同族外部副作用命令（executor = tool）：先由 control 持久化 intent/outbox，再由工具箱执行和回读；Harness/model 不直接取得集成权。
 
-adapter 只投递并回读；只有在它确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段必须在操作系统强制的执行沙箱中运行：不能读 control 客户端凭据、OS secret store、SSH agent 或未授权的 provider 配置，也不能绕过 agentd/工具箱写目标 ref 或其他 ChangeSet 现场。外部写凭据只在校验当前 control writer 及适用 site/backend generation 的工具箱/adapter 网关内使用，不注入 Harness 环境。
+adapter 只投递并回读；只有在它确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段以窄 execution principal 运行：HCTL 不向它交付 control 客户端凭据、OS secret store、SSH agent 或未授权 provider 配置中的密钥；集成与外部写凭据只在校验当前 control writer 及适用 site/backend generation 的工具箱/adapter 网关内使用，不注入 Harness 环境。Harness 可读所属 Repo Instance 的 Git common-dir 与 refs 并在本 ChangeSet 分支提交；对目标 ref 或其他 ChangeSet 现场的直接写入不取得集成权，只回读为 drift。OS 沙箱、网络白名单等执行加固由 Worker Profile 声明、Execution Spec 冻结并记录为运行时事实，不是受治理执行的启动前置。
 
-第一阶段不承诺自动发现或补偿任意带外写：Harness 不获得可绕过受控端口的外部写凭据；provider 被人在 HCTL 外修改时，只由对应端口回读为 Snapshot/drift，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。带外观测不能成为 Result Proposal、Artifact、Verdict 或 Receipt。
+第一阶段不承诺自动发现或补偿任意带外写：Harness 不获得可绕过受控端口的外部写凭据；provider 被人在 HCTL 外修改，或本地目标 ref 被 Harness/人在「合入 ChangeSet」命令之外直接改写时，只由对应端口或工具箱回读为 Snapshot/drift（后者表现为 expected target head 不匹配），并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。带外观测不能成为 Result Proposal、Artifact、Verdict 或 Receipt。
 
 ## 事实与存储
 
@@ -189,4 +189,4 @@ metadata 备份必须是由唯一 writer 协调的一致备份集：完整账本
 - 文件、Git、网络、凭据和进程能力由 control、工具箱和 agentd 授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
-- 第一阶段是单用户授权模型，不提供多租户隔离，也不声称在任意同 OS 用户恶意进程已经取得账户权限后仍能保护整个账户。这个威胁模型不能豁免 HCTL 自己启动的 Harness：它仍必须经过上述 OS 沙箱、窄 execution principal、凭据网关与 site/backend fence；不能强制这些边界的候选不得作为第一阶段受治理执行启动。
+- 第一阶段是单用户授权模型，不提供多租户隔离，也不声称在任意同 OS 用户恶意进程已经取得账户权限后仍能保护整个账户。HCTL 自己启动的 Harness 仍以窄 execution principal 运行、不获交付集成与外部写凭据、只在独立 worktree 与 Write Lease 内写入并受 site/backend fence 约束；OS 执行沙箱、凭据网关代用范围与网络白名单是 Worker Profile 可声明的加固，未启用时 Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺上述三条底线在治理面成立，不承诺宿主文件系统层面的隔离。

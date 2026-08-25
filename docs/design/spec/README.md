@@ -114,6 +114,14 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 | Task Operational State | 降级为 Task Binding 的字段组"操作投影"（后端操作字段的回读投影、同步账与派生健康状态）；ground truth 在 content 后端 |
 | 状态值"中断"（Room Invocation） | 统一为"丢失"：执行身份无法证明时 Room Invocation 与 Attempt 进入同一状态；收口规则只在[连接合同](./connections.md#失败与恢复)定义一次 |
 
+## v0.12.4 收窄
+
+| 旧名 / 旧词 | 现状 |
+| --- | --- |
+| 用户在场证明 | 撤销：human provenance 由经认证的 Workbench/CLI 会话直接赋予；agentd 启动的执行环境内发出的 CLI 调用以 execution principal 提交 |
+| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、agentd 记录为事实；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
+| “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
+
 ## 外部对齐原则
 
 每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、Write Lease）。对齐表中的「无对应」只是引入差异化语义的强信号，不是控制面账本的完整存储清单；是否进入账本仍取决于它是否有独立生命周期、恢复或权限边界，以及 HCTL 是否拥有该事实。外部系统原生承载的可变 content 与内部拓扑不在账本复制，但 HCTL 自己的稳定身份、领域关系、授权、判决及必要绑定与摘要仍由控制面保存。

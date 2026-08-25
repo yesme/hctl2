@@ -9,7 +9,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 
 | 对象 | 含义 |
 | --- | --- |
-| Worker Profile | Harness、模型、模式、权限和环境的可复用配置 |
+| Worker Profile | Harness、模型、模式、权限、环境与可选执行加固声明的可复用配置 |
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
 | ChangeSet / ChangeSet Revision | 一次获准写入边界及其不可变 Git 快照 |
 | Write Lease | ChangeSet 的独占写入权与失权拦截（Lease 族） |
@@ -31,7 +31,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
 
-第一阶段每个 HCTL 启动的 Harness 都必须由 agentd 放进 OS 强制的执行沙箱；Worker Profile 只能收窄沙箱，不能声明关闭。沙箱只暴露 Execution Spec 获准的 Context Bundle、ChangeSet worktree/broker、网络目的地和工具接口，不得读取目标 ref/其他 ChangeSet、control/人类 credential、OS secret store、SSH agent 或未授权 provider 配置。外部凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用；安全输入经 agentd 的一次性通道写给精确 runtime，不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay。agentd 启动前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部 fence；不能强制这些边界的候选不得启动受治理执行。
+第一阶段 HCTL 启动的每个 Harness 都以窄 execution principal 运行，三条底线不可声明关闭：**工具不是人**——Harness、runtime hook 与模型不能取得 human provenance，它们在执行环境里发出的 CLI 调用也以 execution principal 提交（见[系统边界](./system.md#命令与跨服务正确性)）；**合入钥匙不进工具**——HCTL 不向 Harness 交付集成与外部写凭据（目标 ref、远端 SCM、任务后端、chat 写入），这些凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用，Harness 也不获交付 control 客户端凭据与 human principal credential；**隔离工作树**——写入只发生在该 ChangeSet 的独立 worktree 与有效 Write Lease 内。在此之内 Harness 是普通的 Git 用户：可读所属 Repo Instance 的 Git common-dir 与 refs（log、fetch、比对目标分支）并在本 ChangeSet 分支上提交；绕过「合入 ChangeSet」命令直接改写目标 ref 或其他 ChangeSet 现场不取得集成 authority，只回读为 drift。OS 强制的执行沙箱、凭据网关代用范围、网络目的地与工具接口白名单是可选执行加固：由 Worker Profile 声明、随 Execution Spec 冻结，agentd 按声明施加并把实际生效项记录为 Execution Runtime 事实；未声明或宿主不支持不阻止受治理执行启动，也不得记录为已生效。安全输入经 agentd 的一次性通道写给精确 runtime，不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay。agentd 启动前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部 fence。
 
 ## ChangeSet 与 Git 事实
 
@@ -51,7 +51,7 @@ change_set_revision_id
 
 评审 subject 对 {change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不是完整 ChangeSet Revision 的 revision_digest。`result_commit_sha` 只存在于后续 Integration/SCM evidence，不属于 ChangeSet Revision；因此给同一 Revision 增加不同 commit 包装不会改变其评审身份。返工或 result tree 变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review subject digest，但 author/reviewer separation 必须沿它解析并校验当前逻辑身份。
 
-模型自述“已合并”不可信。本地「合入 ChangeSet」命令至少固定 ChangeSet Revision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，工具箱才执行并回读 Git，成功时写唯一 Integration Receipt。远端 push/PR/merge 是同族外部副作用命令（executor = adapter），字段与本地「合入 ChangeSet」命令等价。Harness/model 不能直接取得集成 authority。工具箱校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，该命令保持结果未知，工具箱必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
+模型自述“已合并”不可信。本地「合入 ChangeSet」命令至少固定 ChangeSet Revision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，工具箱才执行并回读 Git，成功时写唯一 Integration Receipt。远端 push/PR/merge 是同族外部副作用命令（executor = adapter），字段与本地「合入 ChangeSet」命令等价。Harness/model 可以在 worktree 内做普通 Git 操作，但不能取得集成 authority：绕过该命令直接改写目标 ref 不产生 Integration Receipt，只在下一次预览或回读时表现为 expected target head 不匹配的 drift，由有权 actor 对账处理。工具箱校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，该命令保持结果未知，工具箱必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
 
 失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理前，工具箱必须确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，agentd 只有得到该确认才可拆除资源；保全或封存失败时保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
 
@@ -71,11 +71,11 @@ agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 contro
 
 物理执行的每个 Result Proposal 固定 proposal ID、owner kind/ID + `invocation_version | attempt_generation`、Execution Runtime ID + `runtime_generation`、`control_writer_generation`、Repo Instance + `site_generation`、backend/agentd owner generation、Execution Spec 与 Context Bundle digest、实际 Harness/Runtime binding revision、producer sequence、适用 lease generation/fence 和 idempotency key。只有 Execution Spec 明示的受信任 `in_process` 执行可省略 runtime/site/backend/lease，改为固定 owner、control writer、Extension/Resolved Port Binding、spec/bundle digest 与 producer sequence，也不得提交 ChangeSet。Proposal 内每个输出项还必须分别固定 schema key、content digest、ChangeSet Revision/Artifact candidate/Evidence refs，以及产生该项的同一适用 generation tuple；不得用顶层“本次执行”概括后混入旧 Attempt、旧 runtime 或另一现场的输出。Harness 可以提交提案，但 Project/Run 才能逐项校验；只有冻结 output schema 明确声明可独立准入时，合格项才能单独进入 owner，其他情况下任一 required 项不匹配就拒绝整组。任一代次、binding、bundle、lease 或输出范围不匹配的项只能留作审计，不能让其他合格项替它背书。修正创建新 Proposal 和新 producer sequence，不改写原项。
 
-Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant，但即使在执行环境中复制 human payload、调用 `hctl2 task complete`、`task cancel` 或 Room fan-out，control 也必须按认证来源和用户在场证明拒绝，不能依赖 Prompt 自律。
+Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant，但即使在执行环境中复制 human payload、调用 `hctl2 task complete`、`task cancel` 或 Room fan-out，也只以 execution principal 提交并被 control 按认证来源拒绝，不能依赖 Prompt 自律。
 
 ## 终端通道、连接与租约
 
-Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding 与全部适用代次签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；写输入、接管和安全输入还要求认证入口提供绑定该规范命令摘要的一次性用户在场证明。agentd 只接受由当前 control writer 签发且仍匹配 owner/runtime/site/backend generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、各层代次、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。绕过 agentd 直连 backend 只能标为带外诊断，该通道产生的输入、输出或“完成”不能准入 HCTL 结果。
+Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding 与全部适用代次签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；写输入、接管和安全输入只接受认证入口赋予 human provenance 的请求。agentd 只接受由当前 control writer 签发且仍匹配 owner/runtime/site/backend generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、各层代次、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。绕过 agentd 直连 backend 只能标为带外诊断，该通道产生的输入、输出或“完成”不能准入 HCTL 结果。
 
 Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 Room Invocation/invocation_version 或 Attempt/attempt_generation、对应 Execution Runtime/runtime_generation 与适用 fence 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 

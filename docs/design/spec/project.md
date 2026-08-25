@@ -91,7 +91,7 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；需
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 可以来自 Workbench、CLI 或适配后的外部 Chat 场景，但消息来源必须映射为人的 principal provenance。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 来自经认证的场景客户端会话——Workbench、CLI 或按公开合同适配的第三方场景客户端；chat server 里的消息本身不是入口。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
 
 mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 

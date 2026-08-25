@@ -42,7 +42,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
 - 自建聊天桥接（永久不做，不只是第一阶段：非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入，HCTL 只保留桥接用户的身份映射）、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
-- 不对绕过受控端口的外部写入（带外写入）做全局检测与自动补偿；第一阶段只管理受控端口发出的意图，并把外部平台上的变化当作漂移/快照回读；
+- 不对绕过受控端口的外部写入（带外写入，含 Harness 或人在「合入 ChangeSet」命令之外直接改写本地目标 ref）做全局检测与自动补偿；第一阶段只管理受控端口发出的意图，并把外部平台与本地目标分支上的变化当作漂移/快照回读；
 - 同时完成 Linear 与 GitHub 两套完整双向适配器；
 - 多 Task Run 的分支/合并政策；第一阶段每个 Run 只绑定 0..1 个 Task Revision。
 
@@ -94,7 +94,7 @@ HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能�
 | --- | --- | --- |
 | B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
 | B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
-| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 完成一次真实的非文档代码改动和测试；execution provenance 不能经 CLI/受控端口冒充 human，所声明的 sandbox 边界通过越界负例。第一次真正自举 |
+| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 与有效写租约下完成一次真实的非文档代码改动和测试；执行环境内的 CLI 调用以 execution principal 提交，Harness 环境中取不到集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录。第一次真正自举 |
 | B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
 | B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
 | B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
@@ -165,8 +165,9 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝
-- execution principal 即使复制 human payload、调用公共 CLI 或继承普通环境变量，也不能升级为 human provenance
-- 第一阶段每个 Worker Profile 都必须通过越权文件、target Git ref/common-dir、control/人类 credential、OS secret store、SSH agent、未授权 provider config、网络目的地与工具接口访问负例，凭据不得经环境变量、普通 stdin/history 注入且只能由 gateway 代用，不满足物理隔离就拒绝受治理启动
+- 由 agentd 启动的执行环境内发出的 CLI 调用以 execution principal 提交；同一命令由用户的 Workbench/CLI 会话提交即 human provenance
+- 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
+- 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；未声明或宿主不支持时照常启动、不记录为已生效
 - 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
 - control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离
 - attach 只接通道，不能恢复 Run/Invocation 语义
@@ -248,7 +249,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 - **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 不是无依赖单二进制，P0 须固定并最小化其动态库、terminfo、许可文件和升级集合。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前为其声明「原生二进制」或「容器/轻量 VM」。Linux 全原生；macOS 上 Dagu 与 Vikunja 使用官方 arm64 原生发布物，Tuwunel 因官方只有 Linux 发布物而作为容器/轻量 VM 例外，除非 P0 证明受支持的原生构建与恢复路径。
-- **Docker 不做统一打包方式**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。第一阶段只把它作为 Tuwunel 的 macOS 交付候选，不要求用户安装完整 Docker Desktop。
+- **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。执行加固只按声明用宿主 OS 原生机制施加；第一阶段只把 Docker 作为 Tuwunel 的 macOS 交付候选，不要求用户安装完整 Docker Desktop。
 - Windows 不在第一阶段范围；tmux 没有原生 Windows 后端，未来 Windows 版本须在同一运行时合同下另选实现并重新过兼容矩阵，当前选型不宣称跨平台。Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
 
 ## 技术基线

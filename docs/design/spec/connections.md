@@ -84,6 +84,7 @@ execution owner stable ref + invocation_version | attempt_generation
 + 能力与权限摘要
 + 预算与截止
 + 可选 ChangeSet / Write Lease 规则
++ 可选执行加固声明（来自 Worker Profile：OS 沙箱、凭据代用范围、网络目的地与工具接口白名单）
 + spec digest 与幂等键
 ```
 
