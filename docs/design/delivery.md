@@ -73,7 +73,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 1. 从 Project 提炼 Task，批准 Workflow Revision 和 Engine Deployment。
 2. 预览并启动绑定一个 Task Revision 的 Run。
-3. Engine external task 产生 Obligation/Seat/Attempt，Harness 执行并返回提案。
+3. control 观察到 Engine 检查点进入等待态，在账本创建 Obligation/Seat/Attempt，Harness 执行并返回提案。
 4. 需要输入时创建 Project Request；答案 signal 回原执行。
 5. B/C/D 对同一 ReviewSubjectRef 投票；备用候选只替换同一 Seat 的技术失败。
 6. `changes_requested` 产生新 ChangeSet Revision，旧票失效并完整 regate。
