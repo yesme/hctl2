@@ -125,9 +125,10 @@ printf '%s\n' "$PACKAGE_ID" >"$PAYLOAD_ROOT/share/hctl2/package-id"
 
 install -m 0755 "$SCRIPT_DIR/install-package.sh" "$PACKAGE_ROOT/install.sh"
 install -m 0644 "$SCRIPT_DIR/PACKAGE-README.md" "$PACKAGE_ROOT/README.md"
+install -m 0644 "$REPOSITORY_ROOT/docs/usage.md" "$PACKAGE_ROOT/USAGE.md"
 (
     cd "$PACKAGE_ROOT"
-    find README.md install.sh payload -type f -print0 | sort -z | xargs -0 sha256sum >MANIFEST.sha256
+    find README.md USAGE.md install.sh payload -type f -print0 | sort -z | xargs -0 sha256sum >MANIFEST.sha256
 )
 
 mkdir -p "$DIST_DIR"

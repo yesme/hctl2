@@ -42,8 +42,14 @@ trap cleanup EXIT
 
 "$SCRIPT_DIR/build-package.sh"
 tar -xzf "$ARCHIVE" -C "$TEST_ROOT"
+grep -F '# HCTL2 使用说明' "$TEST_ROOT/$PACKAGE_ID/USAGE.md" >/dev/null
 "$TEST_ROOT/$PACKAGE_ID/install.sh" --prefix "$PREFIX"
 "$TEST_ROOT/$PACKAGE_ID/install.sh" --prefix "$PREFIX"
+"$SERVICES" --help | grep -F 'Usage:' >/dev/null
+if "$SERVICES" status unexpected >/dev/null 2>&1; then
+    printf 'error: hctl2-services accepted an argument for status\n' >&2
+    exit 1
+fi
 HCTL2_STATE_ROOT="$STATE_ROOT" "$SERVICES" start
 HCTL2_STATE_ROOT="$STATE_ROOT" "$SERVICES" smoke
 HCTL2_STATE_ROOT="$STATE_ROOT" "$SERVICES" stop
