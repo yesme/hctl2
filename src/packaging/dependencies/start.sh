@@ -108,12 +108,13 @@ start_dagu() {
 start_tmux() {
     local binary="$P0_BIN_DIR/tmux"
     local runtime="$P0_RUNTIME_DIR/tmux"
-    local socket="$runtime/tmux.sock"
+    local socket
     local pid
 
     [[ -x "$binary" ]] || die "tmux is not installed; run bootstrap.sh"
     mkdir -p "$runtime"
     chmod 700 "$runtime"
+    socket="$(tmux_socket_path)"
     if "$binary" -S "$socket" has-session -t "$TMUX_SESSION" 2>/dev/null; then
         note "tmux already running"
         return

@@ -1,52 +1,86 @@
 # 依赖打包
 
-这个目录是 HCTL2 外部依赖供应链的第一段实现。最终用户拿到的是一个可离线安装的归档，而不是一份联网引导方案。网络访问、校验和验证、归档解压与编译都由构建机负责。
+这个目录把 HCTL2 的四个外部运行组件制作成按目标平台区分、可离线安装的归档。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Homebrew 或 Linux 构建工具。
 
-## 构建流程
+## 代码树边界
 
-`versions.sh` 是四个选定依赖的锁定文件。`bootstrap.sh` 下载并验证官方发行物：Tuwunel、Vikunja 和 Dagu 使用已发布的 Linux 二进制；tmux 因上游不发布 Linux 二进制而从源码构建。缺少的 tmux 构建头文件与 bison 会按锁定版本下载并解压到构建缓存，全程不使用 sudo 安装。最终包还会记录这些 deb 版本，以及构建机使用的编译器、binutils、glibc、make 和 pkg-config 版本。
+构建代码按三层组织，避免把 OS 差异塞进公共流程：
 
-`build-package.sh` 随后组装一个带版本的 payload，其中包含：
+```text
+common/                 平台无关的下载校验、包组装、生命周期和整包测试
+platforms/linux/        Linux 构建、ELF 依赖收集、运行时与 GNU tar 归档
+platforms/macos/        macOS 原生构建、Mach-O 重定位/签名、运行时与 BSD tar 归档
+targets/*.sh            每个 OS/CPU 组合的 target ID、Rust triple、发行物 URL 和 SHA-256
+*-<target>.sh           明确的 bootstrap、build-package、test-package 入口
+bootstrap.sh            兼容入口：只按当前宿主机分派到对应 target
+build-package.sh        同上
+test-package.sh         同上
+```
 
-- 四个可执行文件与 tmux 需要的非系统共享库；
-- 纳入版本控制的 `hctl2-services` 生命周期入口及其启动、停止、状态与冒烟检查实现；
-- 依赖版本、commit、发行物 digest、许可证与版权材料；
-- 四个依赖的锁定源码归档，包括 GPL 许可的 Dagu 与 AGPL 许可的 Vikunja 对应源码；
-- 离线安装器与完整的 payload 校验和清单。
+`common/versions.sh` 锁定跨平台版本和源码 commit；`platforms/<os>/versions.sh` 只锁定该 OS 的构建输入。`targets/` 不包含构建过程。新增 CPU 架构时应增加 target 描述和三个显式入口；只有构建机制发生变化时才修改 platform 层。
 
-在 Ubuntu x86_64 上构建：
+三个发布 target 都要求原生构建，不在另一架构上伪装交叉构建：
+
+| target | 构建宿主 | 组件来源 |
+| --- | --- | --- |
+| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu 官方包；tmux 锁定源码 |
+| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu 官方包；Tuwunel/tmux 锁定源码 |
+| `macos-x86_64` | Intel macOS | Vikunja/Dagu 官方包；Tuwunel/tmux 锁定源码 |
+
+Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Homebrew 头文件、链接库、Mach-O 闭包和最终生命周期都要按真实目标验证。
+
+## 构建与验证
+
+在当前宿主机生成原生包：
 
 ```bash
 src/packaging/dependencies/build-package.sh
 ```
 
-在隔离的临时前缀中运行完整的构建、离线安装、幂等重装、启动、冒烟检查和停止流程：
+也可以显式选择与宿主架构一致的入口：
 
 ```bash
-src/packaging/dependencies/test-package.sh
+src/packaging/dependencies/build-package-linux-x86_64.sh
+src/packaging/dependencies/build-package-macos-aarch64.sh
+src/packaging/dependencies/build-package-macos-x86_64.sh
 ```
 
-被忽略的输出是 `src/dist/hctl2-0.0.0-linux-x86_64.tar.gz` 及其 SHA-256 文件。发行 CI 必须在支持范围内最旧的 glibc 基线上构建；本地构建能够证明打包流水线，但不能单独确定最终 Linux 兼容下限。
+把 `build-package` 换为 `bootstrap` 只准备四个组件；换为 `test-package` 会继续做离线安装、幂等重装、四组件启动、smoke 和停止，是发布前必须通过的完整验证。
 
-构建输入默认存放在 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`。设置绝对路径 `HCTL2_BUILD_CACHE` 可以复用或隔离另一份已验证构建缓存。
+构建输入默认放在 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies/<target>`。设置绝对路径 `HCTL2_BUILD_CACHE` 可以隔离或复用另一份缓存；不同 target 即使共享缓存根目录也不会混用产物。归档输出到 `src/dist/hctl2-<version>-<target>.tar.gz`，不提交 Git。
 
-发行矩阵为每个受支持平台生成一个包，因此最终用户仍然只需下载一个发行物。当前切片实现并验证 Linux x86_64。macOS arm64 构建机将使用官方 Dagu 与 Vikunja 二进制，并从锁定源码构建 tmux 和 Tuwunel；只有原生 Tuwunel 构建在 macOS 上通过相同的已安装 payload 测试后，才能提供该目标。
+Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make 和 pkg-config。正式发行必须使用支持范围内最旧的 glibc 构建基线。
+
+macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；这与开发 HCTL2 Rust workspace 使用的 1.98.0 分开。所有自建 Mach-O 都以 macOS 13 为 deployment target。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+
+## 供应链内容
+
+每个归档包括：
+
+- Tuwunel、Vikunja、Dagu、tmux 四个可执行文件和所需的非系统动态库；
+- `hctl2-services` 以及公共生命周期代码和目标平台 runtime hook；
+- target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
+- HCTL2 与所有分发依赖的许可证；
+- 四个组件及 macOS 随包 dylib 对应的锁定上游源码；
+- 根归档与 payload 两层 SHA-256 清单。
+
+macOS arm64 当前实测归档约 157.4 MiB，解压 payload 约 367.0 MiB，其中约 34.3 MiB 是随包提供的对应源码。安装器不联网、不编译，也不会自动启动进程。
 
 ## 用户流程
 
-安装器不会下载或编译任何内容：
+把 `<target>` 换成下载包名中的目标：
 
 ```bash
-tar -xzf hctl2-0.0.0-linux-x86_64.tar.gz
-cd hctl2-0.0.0-linux-x86_64
+tar -xzf hctl2-0.0.0-<target>.tar.gz
+cd hctl2-0.0.0-<target>
 ./install.sh
 ~/.local/bin/hctl2-services start
 ~/.local/bin/hctl2-services smoke
 ```
 
-默认安装到 `$HOME/.local`；`--prefix` 可以选择另一个绝对前缀。持久数据、secret、日志、socket 和 PID 位于版本化安装目录之外的 `${XDG_STATE_HOME:-$HOME/.local/state}/hctl2`。开发与测试可以用绝对路径 `HCTL2_STATE_ROOT` 隔离状态。安装发行包不会自动启动进程。
+默认安装到 `$HOME/.local`；`--prefix` 可以指定其他绝对路径。状态、数据、secret、日志和 PID 位于版本化安装之外的 `${XDG_STATE_HOME:-$HOME/.local/state}/hctl2`。macOS 为避开 Unix socket 路径上限，把 tmux socket 放在 owner-only 的短 `/tmp/hctl2-tmux-<uid>/` 目录中，并用状态根目录哈希隔离并行 harness；Linux socket 仍位于状态根目录。
 
-完整命令说明见[HCTL2 使用说明](../../../docs/usage.md)。
+完整命令见[HCTL2 使用说明](../../../docs/usage.md)。
 
 ## 运行策略
 
@@ -55,8 +89,6 @@ cd hctl2-0.0.0-linux-x86_64
 | Tuwunel | 1.9.0 | `http://127.0.0.1:6167` |
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
-| tmux | 3.7c | HCTL2 状态根目录下仅 owner 可访问的 socket |
+| tmux | 3.7c | owner-only Unix socket |
 
-所有 listener 都绑定 loopback。按照 HCTL Room 的要求，这份本地 Tuwunel 配置关闭 federation 与房间加密。Dagu 只在其 loopback listener 上关闭认证。Vikunja 会在首次启动时创建随机本地 secret。
-
-这些脚本证明了打包与第一段启动接缝。公共 Rust CLI 完成后，`hctl2 start` 将调用同一生命周期层；不会再给用户增加第二套运维 API。
+所有 listener 都绑定 loopback。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。

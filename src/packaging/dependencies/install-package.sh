@@ -16,6 +16,34 @@ usage() {
     printf 'usage: ./install.sh [--prefix ABSOLUTE_PATH]\n'
 }
 
+hash_file() {
+    local path="$1"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$path" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$path" | awk '{print $1}'
+    else
+        die "required SHA-256 tool not found: sha256sum or shasum"
+    fi
+}
+
+verify_manifest() {
+    local root="$1"
+    local manifest="$2"
+    local expected
+    local relative
+    local actual
+
+    while read -r expected relative; do
+        [[ -n "$expected" && -n "$relative" ]] || die "invalid checksum line in $manifest"
+        relative="${relative#\*}"
+        [[ -f "$root/$relative" ]] || die "manifest file is missing: $relative"
+        actual="$(hash_file "$root/$relative")"
+        [[ "$actual" == "$expected" ]] || die "checksum mismatch for $relative"
+    done <"$root/$manifest"
+}
+
 prefix="${HCTL2_INSTALL_PREFIX:-${HOME:?HOME must be set}/.local}"
 while (($# > 0)); do
     case "$1" in
@@ -35,10 +63,7 @@ done
 [[ "$prefix" == /* && "$prefix" != "/" ]] || die "install prefix must be an absolute, non-root path"
 [[ -f "$PAYLOAD_ROOT/share/hctl2/package-id" ]] || die "package payload is incomplete"
 
-(
-    cd "$PACKAGE_ROOT"
-    sha256sum --check --quiet MANIFEST.sha256
-) || die "package integrity check failed"
+verify_manifest "$PACKAGE_ROOT" MANIFEST.sha256
 
 read -r package_id <"$PAYLOAD_ROOT/share/hctl2/package-id"
 [[ "$package_id" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid package id"
@@ -50,10 +75,7 @@ readonly BIN_DIR="$prefix/bin"
 verify_payload() {
     local root="$1"
 
-    (
-        cd "$root"
-        sha256sum --check --quiet share/hctl2/PAYLOAD.sha256
-    )
+    verify_manifest "$root" share/hctl2/PAYLOAD.sha256
 }
 
 mkdir -p "$RELEASES_DIR" "$BIN_DIR"
@@ -74,7 +96,7 @@ if [[ -e "$COMMAND_LINK" && ! -L "$COMMAND_LINK" ]]; then
     die "refusing to replace non-symlink $COMMAND_LINK"
 fi
 if [[ -L "$COMMAND_LINK" ]]; then
-    case "$(readlink -- "$COMMAND_LINK")" in
+    case "$(readlink "$COMMAND_LINK")" in
         ../lib/hctl2/*/bin/hctl2-services) ;;
         *) die "refusing to replace foreign symlink $COMMAND_LINK" ;;
     esac

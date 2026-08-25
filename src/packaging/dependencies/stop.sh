@@ -12,8 +12,10 @@ ensure_layout
 
 stop_tmux() {
     local binary="$P0_BIN_DIR/tmux"
-    local socket="$P0_RUNTIME_DIR/tmux/tmux.sock"
+    local socket
     local pid
+
+    socket="$(tmux_socket_path)"
 
     if [[ ! -x "$binary" || ! -S "$socket" ]]; then
         note "tmux is not running"

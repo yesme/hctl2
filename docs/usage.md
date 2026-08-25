@@ -18,13 +18,13 @@
 
 ## 安装当前离线包
 
-当前离线包支持 Linux x86_64，内含固定版本的 Tuwunel、Vikunja、Dagu、tmux 及 `hctl2-services`。安装过程不联网，也不在用户机器上编译；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS arm64 已通过原生整包生命周期验证。包内含固定版本的 Tuwunel、Vikunja、Dagu、tmux 及 `hctl2-services`。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
 
 解压并按默认位置安装：
 
 ```bash
-tar -xzf hctl2-0.0.0-linux-x86_64.tar.gz
-cd hctl2-0.0.0-linux-x86_64
+tar -xzf hctl2-0.0.0-<target>.tar.gz
+cd hctl2-0.0.0-<target>
 ./install.sh
 ```
 
@@ -126,7 +126,7 @@ hctl2-services stop tmux
 | Tuwunel | HCTL Room 的 Matrix homeserver | `http://127.0.0.1:6167` |
 | Vikunja | 本地任务后端 | `http://127.0.0.1:3456` |
 | Dagu | 本地工作流引擎 | `http://127.0.0.1:18080` |
-| tmux | 无界面终端会话承载 | 状态目录下的 `runtime/tmux/tmux.sock` |
+| tmux | 无界面终端会话承载 | Linux 位于状态目录；macOS 位于 owner-only 的短 `/tmp` 目录 |
 
 这些网络服务只监听 loopback，不对局域网或公网开放。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
 
@@ -153,7 +153,7 @@ hctl2-services start
 | `data/` | 三个服务的持久数据 |
 | `logs/` | `tuwunel.log`、`vikunja.log`、`dagu.log` |
 | `pids/` | 受管进程的 PID 文件 |
-| `runtime/` | tmux socket 等运行时文件 |
+| `runtime/` | Linux 的 tmux socket 等运行时文件；macOS socket 因路径上限放在 `/tmp/hctl2-tmux-<uid>/`，以状态根哈希命名 |
 
 状态目录与安装目录相互独立，升级或重装同一发行包不会主动删除用户数据。
 
@@ -214,11 +214,21 @@ cargo run --locked -p hctl2-tool -- --help
 
 ## 从源码制作离线包
 
-这一节面向发布与打包开发者，不是最终用户安装步骤。在 Ubuntu x86_64 上运行：
+这一节面向发布与打包开发者，不是最终用户安装步骤。在支持的原生构建宿主上运行：
 
 ```bash
 src/packaging/dependencies/build-package.sh
 ```
+
+兼容入口按当前 `uname` 自动分派。发布流水线也可以显式调用三个互不混用的 target 入口：
+
+```bash
+src/packaging/dependencies/build-package-linux-x86_64.sh
+src/packaging/dependencies/build-package-macos-aarch64.sh
+src/packaging/dependencies/build-package-macos-x86_64.sh
+```
+
+macOS arm64 与 Intel 必须分别在对应架构的 Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel、tmux、链接 dylib 和运行验证都属于目标合同。
 
 完整验证构建、离线安装、幂等重装、启动、冒烟检查和停止：
 

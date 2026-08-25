@@ -23,8 +23,8 @@ note "checking Dagu health API"
 http_status_ok 127.0.0.1 "$DAGU_PORT" /api/v1/health
 
 note "checking tmux headless query, stable IDs, and owner-only socket"
-readonly TMUX_SOCKET="$P0_RUNTIME_DIR/tmux/tmux.sock"
-TMUX_MODE="$(stat -c '%a' "$TMUX_SOCKET")"
+readonly TMUX_SOCKET="$(tmux_socket_path)"
+TMUX_MODE="$(file_mode "$TMUX_SOCKET")"
 readonly TMUX_MODE
 ((10#$TMUX_MODE % 100 == 0)) || die "tmux socket exposes group/other permissions: $TMUX_MODE"
 "$P0_BIN_DIR/tmux" -S "$TMUX_SOCKET" list-panes -t "$TMUX_SESSION" -F '#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}' |

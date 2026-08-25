@@ -762,7 +762,7 @@ Workflow Revision 仍是 HCTL 规范化 JSON；Dagu YAML 只是固定 compiler/a
 - [Tuwunel `v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)：conduwuit 原作者延续、全职维护；Apache-2.0。
 - [Continuwuity](https://github.com/continuwuity/continuwuity)：conduwuit 社区延续、Matrix 基金会生态成员；Apache-2.0。
 
-已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化而非房间内发命令。其官方 `v1.9.0` 发布物只有 Linux，macOS 需要容器/轻量 VM，不能再笼统写成“单二进制所以运维压力低”。
+已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化而非房间内发命令。其官方 `v1.9.0` 发布物只有 Linux，但 2026-08-26 已用锁定 commit、Rust 1.95.0 和明确 feature 集在 Apple Silicon 原生构建，并通过安装、启动、HTTP smoke 和停止；不再需要为 macOS 引入 Linux VM。Intel 包仍须在 Intel Mac 上独立构建验证，不能用 arm64 上的交叉编译代替。
 
 角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；P0 必须固定实际存储后端及 build features，并验证 macOS 承载、低内存配置与 RocksDB/media 一致性备份。它们承载消息 content，不获得任何治理权威；HCTL 依赖的合同前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
 
@@ -836,16 +836,16 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 
 ## 执行面已选依赖的运维与 footprint
 
-这里的“已选依赖”指需要独立托管生命周期的 Dagu、Tuwunel、Vikunja、tmux 四项；React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，不是容量承诺。文件大小取官方 release asset 或明确标注的 Homebrew bottle 实际字节；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。Tuwunel 官方只有 Linux 发布物，本机没有既有 Linux 容器/VM，故不伪造 RSS 数字。
+这里的“已选依赖”指需要独立托管生命周期的 Dagu、Tuwunel、Vikunja、tmux 四项；React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，并在 2026-08-26 补入 Tuwunel 原生构建与整包验证，不是容量承诺。文件大小取官方 release asset、明确标注的 Homebrew bottle 或实际 HCTL2 发行包；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。
 
 | 模块 | 固定版本与许可 | 发布 / 分发 footprint | 空载实测 / 数据 | 运维判断 |
 | --- | --- | --- | --- | --- |
 | **Dagu** | [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/releases/tag/v2.15.1)，GPL-3.0-or-later | macOS arm64 archive **45.9 MiB**、binary **148.1 MiB**；Linux amd64 为 48.3/154.6 MiB | `start-all`、coordinator 关闭：**92.4 MiB RSS**；空数据目录约 84 KiB | **低—中**：一个进程、文件备份；主要风险是 adapter/fencing，不是日常运维 |
-| **Tuwunel** | [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0)，Apache-2.0 | Linux x86_64 GNU zstd **31.2 MiB**、binary **98.1 MiB**；无官方 Darwin asset | macOS RSS **待 P0**。默认 cache capacity 源码为 [`128 + 64 × parallelism` MiB，write buffer 为 `48 + 4 × parallelism` MiB](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/core/config/mod.rs#L5185-L5189)，capacity 不等于已提交 RSS | **中—高**：macOS 额外需要 Linux VM/container；需固定低内存配置，并一致备份 RocksDB、media 与 secret |
+| **Tuwunel** | [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0)，Apache-2.0 | Linux x86_64 GNU zstd **31.2 MiB**、binary **98.1 MiB**；无官方 Darwin asset；HCTL2 源码构建的签名后 macOS arm64 binary **76.6 MiB** | 原生空服务约 **60 MiB RSS**，版本与 health endpoint、非加密/非 federation 配置及整包生命周期均通过 | **中**：单原生进程，不再有 VM；仍须固定低内存配置，并一致备份 RocksDB、media 与 secret |
 | **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
 | **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | Homebrew macOS arm64 bottle **0.52 MiB**、executable **0.95 MiB**；直接非系统 dylib **1.45 MiB** | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库；要固定最小动态库/terminfo、owner-only socket、control mode、pane ID、背压与残留 session 清理，六 Harness 矩阵是阻断项 |
 
-选择对应平台发布物时，三个 archive 加 tmux bottle 合计约 **125 MiB**，四个主 executable 合计约 **354.5 MiB**；tmux 的直接非系统 dylib 另加约 **1.45 MiB**。本机能直接测量的 Dagu + Vikunja + 一个 tmux server 合计约 **152.8 MiB RSS**；若按默认故障隔离启动十个 tmux server，则约 **186 MiB RSS**。这还没有 Tuwunel 的进程与 macOS Linux VM、任何 harness、control 或 Workbench；**Tuwunel 仍是明确最高的运维与资源不确定项**，必须在 B1 前量出完整 macOS 组合，而 tmux 的六 Harness/fencing/背压与 Dagu 的 fencing 分别在 B2、B4 前验收。
+当前 macOS arm64 离线归档实测约 **157.4 MiB**，解压 payload 约 **367.0 MiB**；它已包含四个主 executable、约 **0.98 MiB** 的 tmux 非系统 dylib、许可证和约 **34.3 MiB** 的对应源码。tmux 及三项自建 dylib 的 deployment target 都固定为 macOS 13，包内不残留 Homebrew 或构建缓存路径。按单实例空载测量相加，四服务约 **212.8 MiB RSS**；若把一个 tmux server 换成十个，约 **246 MiB RSS**。这些数字仍不含任何 harness、control、Workbench 或业务数据；持续风险已从“macOS VM 能否承载”收敛为 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
 
 <a id="e-workbench-shell"></a>
 ## E-WORKBENCH-SHELL · Workbench 桌面壳：Electron 与 Tauri 2
@@ -865,7 +865,7 @@ Tauri 2 保留为有明确重开条件的对照：若发布物体积成为产品
 | **Electron 43.4.0** | ZIP **116.46 MiB**（122,121,746 bytes）；解压后的 `Electron.app` **275.86 MiB**，其中 `Electron Framework` 约 **273.9 MiB** | main、GPU、network、renderer 四进程；RSS 直接相加约 **346.1 MiB**，但会重复计算共享页；`footprint` 的总 physical footprint 为 **77.58 MiB**（81,351,240 bytes） | 只是隐藏空窗下限；真实 React/xterm、缓存、字体和滚动缓冲仍须在整窗发布探针中测量 |
 | **[Tauri 2.11.5](https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.11.5)** | 官方说明[最小应用可低于 600 KiB](https://v2.tauri.app/start/)，因为[不捆绑系统 WebView](https://v2.tauri.app/concept/process-model/) | 本机未构建同口径 Tauri 空壳，不填写推测内存 | 600 KiB 是最小示例，不是 HCTL Workbench 的安装包或内存承诺；React 资产、Rust 依赖、图标、签名和更新组件都会进入实际发布物 |
 
-按上一节已选执行面依赖的现有口径做下限算术，Electron 路线约为 **241 MiB 下载 / 632 MiB 已安装**，再加 Workbench 代码；Tauri 路线仍约为 **125 MiB 下载 / 356 MiB 已安装**，再加尚未实测的 Tauri/Workbench 壳。两者都仍排除 control、agentd、harness、数据和 Tuwunel 的 macOS VM/container，因而不是整套产品容量承诺。
+按上一节当前 macOS arm64 离线包做下限算术，Electron 路线约为 **274 MiB 下载 / 643 MiB 已安装**，再加 Workbench 代码；Tauri 路线仍约为 **157 MiB 下载 / 367 MiB 已安装**，再加尚未实测的 Tauri/Workbench 壳。两者都仍排除 control、agentd、harness 和业务数据，因而不是整套产品容量承诺。
 
 Electron 的成本属于一个 Workbench，而不随 Harness session 数线性复制：十个并行 Harness 应仍在一个主窗口/renderer 中承载十个 xterm 视图，不能为每个 runtime 新建一份 Electron 应用。xterm 的 DOM/canvas、字体和 scrollback 成本在 Electron 与 Tauri 中都会存在；P0 必须分别量出一窗一终端和一窗十终端，不能把空壳值当成完整场景。
 

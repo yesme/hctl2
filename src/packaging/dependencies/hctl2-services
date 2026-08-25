@@ -3,18 +3,27 @@
 
 set -euo pipefail
 
-EXECUTABLE_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+resolve_executable_path() {
+    local path="$1"
+    local link
+    local directory
+
+    while [[ -L "$path" ]]; do
+        link="$(readlink "$path")"
+        case "$link" in
+            /*) path="$link" ;;
+            *) path="$(dirname -- "$path")/$link" ;;
+        esac
+    done
+    directory="$(cd -- "$(dirname -- "$path")" && pwd -P)"
+    printf '%s/%s\n' "$directory" "$(basename -- "$path")"
+}
+
+EXECUTABLE_PATH="$(resolve_executable_path "${BASH_SOURCE[0]}")"
 readonly EXECUTABLE_PATH
 HCTL2_INSTALL_ROOT="$(cd -- "$(dirname -- "$EXECUTABLE_PATH")/.." && pwd -P)"
 readonly HCTL2_INSTALL_ROOT
 export HCTL2_INSTALL_ROOT
-
-readonly VENDOR_LIBRARY_DIR="$HCTL2_INSTALL_ROOT/lib/hctl2/vendor"
-if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
-    export LD_LIBRARY_PATH="$VENDOR_LIBRARY_DIR:$LD_LIBRARY_PATH"
-else
-    export LD_LIBRARY_PATH="$VENDOR_LIBRARY_DIR"
-fi
 
 print_help() {
     printf '%s\n' \
