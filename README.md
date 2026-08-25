@@ -8,7 +8,8 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 当前处于设计阶段。权威基线是 **草案 v0.13.0**；仓库里还没有可安装应用、CLI、构建脚本或测试套件。
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.13.0**。`src/` 现有 Rust 工作区与
+> Linux x86_64 依赖打包首片，但还没有可用的公共 CLI 或完整应用。
 
 ## 为什么需要它
 
