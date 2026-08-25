@@ -1,6 +1,19 @@
 use std::process::Command;
 
 #[test]
+fn binary_prints_english_help() {
+    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
+        .arg("--help")
+        .output()
+        .expect("hctl2-tool must start");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("help output must be UTF-8");
+    assert!(stdout.contains("Mechanical Git/SCM toolbox"));
+    assert!(stdout.contains("Usage:"));
+}
+
+#[test]
 fn binary_prints_its_version() {
     let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
         .arg("--version")

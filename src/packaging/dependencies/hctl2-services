@@ -16,22 +16,51 @@ else
     export LD_LIBRARY_PATH="$VENDOR_LIBRARY_DIR"
 fi
 
-usage() {
-    printf 'usage: hctl2-services {start|stop|restart|status|smoke} [component ...]\n' >&2
+print_help() {
+    printf '%s\n' \
+        'hctl2-services manages the dependency services bundled with HCTL2.' \
+        '' \
+        'Usage:' \
+        '  hctl2-services start [COMPONENT ...]' \
+        '  hctl2-services stop [COMPONENT ...]' \
+        '  hctl2-services restart [COMPONENT ...]' \
+        '  hctl2-services status' \
+        '  hctl2-services smoke' \
+        '  hctl2-services --help' \
+        '' \
+        'Components:' \
+        '  tuwunel  vikunja  dagu  tmux' \
+        '' \
+        'With no COMPONENT, start, stop, and restart operate on all components.'
+}
+
+usage_error() {
+    if (($# > 0)); then
+        printf 'error: %s\n\n' "$*" >&2
+    fi
+    print_help >&2
     exit 2
 }
 
 readonly COMMAND="${1:-}"
-[[ -n "$COMMAND" ]] || usage
+[[ -n "$COMMAND" ]] || usage_error "a command is required"
 shift
 
 case "$COMMAND" in
-    start | stop | status | smoke)
+    --help | -h)
+        (($# == 0)) || usage_error "--help does not accept arguments"
+        print_help
+        ;;
+    start | stop)
         exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/$COMMAND.sh" "$@"
         ;;
     restart)
         "$HCTL2_INSTALL_ROOT/lib/hctl2/services/stop.sh" "$@"
         exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/start.sh" "$@"
         ;;
-    *) usage ;;
+    status | smoke)
+        (($# == 0)) || usage_error "$COMMAND does not accept arguments"
+        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/$COMMAND.sh"
+        ;;
+    *) usage_error "unknown command: $COMMAND" ;;
 esac

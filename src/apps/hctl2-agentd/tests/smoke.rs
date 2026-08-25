@@ -1,6 +1,19 @@
 use std::process::Command;
 
 #[test]
+fn binary_prints_english_help() {
+    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-agentd"))
+        .arg("--help")
+        .output()
+        .expect("hctl2-agentd must start");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("help output must be UTF-8");
+    assert!(stdout.contains("Harness and runtime process"));
+    assert!(stdout.contains("Usage:"));
+}
+
+#[test]
 fn binary_prints_its_version() {
     let output = Command::new(env!("CARGO_BIN_EXE_hctl2-agentd"))
         .arg("--version")

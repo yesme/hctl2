@@ -1,22 +1,20 @@
-# HCTL2 product workspace
+# HCTL2 产品代码工作区
 
-This directory contains all HCTL2 product code and product tests. The repository root remains
-the home of product and design documentation.
+这个目录存放全部 HCTL2 产品代码和产品测试。仓库根目录继续存放产品与设计文档。
 
-The initial P1 workspace contains only the standalone mechanical components:
+最初的 P1 工作区只包含独立的机械组件：
 
-- `hctl2-tool`: Git/SCM and repository mechanics;
-- `hctl2-agentd`: harness discovery, runtime ownership, PTY, and host observation;
-- `hctl2-protocol`: transport envelopes shared by HCTL2 processes.
+- `hctl2-tool`：Git/SCM 与仓库机械操作；
+- `hctl2-agentd`：Harness 发现、运行时所有权、PTY 与主机观测；
+- `hctl2-protocol`：HCTL2 进程共享的传输 envelope。
 
-`hctl2-control`, the public `hctl2` CLI, and Workbench enter in P2/P3. Neither P1 executable is a
-governance command entry.
+`hctl2-control`、公共 `hctl2` CLI 与 Workbench 将在 P2/P3 进入代码树。两个 P1 可执行文件目前都不是治理命令入口。
 
-`packaging/dependencies` owns the external-dependency supply chain. It pins Tuwunel, Vikunja,
-Dagu, and tmux; builds the Linux x86_64 payload; and ships the offline installer plus tracked
-lifecycle scripts. Downloaded inputs and generated release archives are not committed.
+`packaging/dependencies` 负责外部依赖供应链。它固定 Tuwunel、Vikunja、Dagu 和 tmux 的版本，构建 Linux x86_64 payload，并交付离线安装器与纳入版本控制的生命周期脚本。下载的输入与生成的发行归档不提交到 Git。
 
-Run the workspace checks from this directory:
+面向人的 README、使用说明和其他产品文档使用中文；源码、配置和脚本使用英文；命令行 `--help` 内容使用英文。
+
+在此目录运行工作区检查：
 
 ```bash
 cargo fmt --all --check
@@ -24,3 +22,5 @@ cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 cargo build --locked --workspace --all-targets
 cargo test --locked --workspace --all-targets
 ```
+
+当前各命令的构建与操作方法见[HCTL2 使用说明](../docs/usage.md)。
