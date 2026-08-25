@@ -118,8 +118,8 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 
 | 旧名 / 旧词 | 现状 |
 | --- | --- |
-| 用户在场证明 | 撤销：治理命令只有 Workbench、CLI、施工图走完三个入口，只验入口，不判断 CLI 是被人还是子进程启动 |
-| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、agentd 记录为事实；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
+| 用户在场证明 | 撤销：治理命令只有两类入口——经认证的场景客户端会话（Workbench、CLI、适配的第三方客户端）与施工图走完的 reducer，只验入口，不判断客户端是被人还是子进程启动 |
+| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、agentd 记录为事实，已声明而宿主施加不了则该次执行不激活；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
 | “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
 | Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |
 | Room 的“加密/降级”状态 | 不设：房间端到端加密状态是 Chat 端口绑定的 health 投影，不进不可变 binding，也不是 Room 的 lifecycle 值；可观察结果只在[连接合同失败表](./connections.md#失败与恢复)登记一行，恢复动作是既有的「换绑」命令 |

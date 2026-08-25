@@ -93,7 +93,7 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 外部运行时的启动顺序固定为：
 
 1. owner 模块提交 Execution Spec 与 dispatch outbox；此时只有 `invocation_version | attempt_generation`，不得预填 runtime identity；
-2. agentd 在选定 Repo Instance 上进行无副作用预留，校验当前 control/site/backend fence，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；
+2. agentd 在选定 Repo Instance 上进行无副作用预留，校验当前 control/site/backend fence，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；
 3. control 在用户级账本事务记录 owner 到 Execution Runtime 的精确映射、适用的 Write Lease 和 activate outbox；
 4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 backend/agentd owner generation 激活，并按完整 tuple 回读；任一旧代次、旧租约和重复激活都被拒绝。
 

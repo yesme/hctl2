@@ -24,13 +24,13 @@
 | Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Engine Execution Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
-| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | Run reducer/control 根据 Engine 外部检查点、Attempt 结果和 Gate 策略推进 | 终态不可复活；Engine retry 创建新 Obligation |
+| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时铸造，此后按账本内的 Attempt 结果与 Gate 策略推进 | 终态不可复活；Engine 重试只是路标再次进入等待态，由 control 按新观察序号铸造新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；agentd 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
 Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能被取消、失败或替代路径收口，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 与 Engine 回读都不直接写状态：Run 状态只由 control 按账本事实推进，Engine 位置只是路标，用于关联与分歧检测。
 
-`运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并以被替代/已取消收口；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine binding 和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
+`运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并以被替代/已取消收口；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine Execution Binding 的账本记录和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
 
 任何失败、取消或替代终态在释放 Task Run claim 前，也必须在同一收口事务撤销旧 dispatch、输入/写租约与外部副作用资格，并提交 runtime stop/fence；若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 worktree/ChangeSet，后续执行按 Agent 合同使用新 worktree **和**新 ChangeSet。不能证明旧执行被限制在该隔离边界内时，Run 保持取消中/需要关注且 claim 不释放，不能以“失败了”为由并发启动第二个 writer。
 
@@ -84,7 +84,7 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 | --- | --- | --- | --- |
 | 传输重投 | 投递超时、ACK 丢失 | 无：同一幂等键重投，重复命令返回原结果 | 一切领域对象 |
 | 候选切换 | 类型化技术故障 | 同一 Seat 下的新 Attempt | Obligation、Seat、票位 |
-| Engine retry | 引擎机械重试 | 新 Obligation（旧 Obligation 及其 Seat/Attempt 置为被替代） | Run |
+| Engine retry | 路标再次进入等待态 | control 按新观察序号铸造的新 Obligation（旧 Obligation 及其 Seat/Attempt 置为被替代） | Run |
 | 语义返工 | changes_requested 汇总 | 新 ChangeSet Revision/Artifact Revision，旧票失效并完整 regate | Run、Task Revision（通常） |
 | 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 Task Revision | Project、Task 身份 |
 

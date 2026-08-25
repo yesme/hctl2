@@ -94,7 +94,7 @@ HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能�
 | --- | --- | --- |
 | B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
 | B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
-| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 与有效写租约下完成一次真实的非文档代码改动和测试；Harness 环境中取不到 HCTL 交付的集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录。第一次真正自举 |
+| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 与有效写租约下完成一次真实的非文档代码改动和测试；Harness 环境中取不到 HCTL 交付的集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录，宿主施加不了则不启动。第一次真正自举 |
 | B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
 | B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
 | B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
@@ -166,9 +166,9 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝
-- 治理命令只有三个入口：认证的 Workbench 会话、认证的 CLI 会话（human）与 task-bound Run 正常完成的 reducer（system）；Result Proposal 通道提交不了治理命令
+- 治理命令只有两类入口：认证的场景客户端会话（human：Workbench、CLI 或适配的第三方客户端）与 task-bound Run 正常完成的 reducer（system）；Result Proposal 通道提交不了治理命令
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
-- 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；未声明或宿主不支持时照常启动、不记录为已生效
+- 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
 - control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离
 - attach 只接通道，不能恢复 Run/Invocation 语义
