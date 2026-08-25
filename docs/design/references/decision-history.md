@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.12.3 · 2026-08-24<br>
+> 状态：Informative · 对应草案 v0.12.4 · 2026-08-25<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -160,7 +160,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 体积使取舍进一步明确。本机 Apple Silicon 基线中，tmux 可执行文件约 **0.95 MiB**，直接非系统动态库约 **1.45 MiB**；一个 server 承载十个 detached `/bin/sleep` session 时约 **3.7 MiB RSS**。Zellij 的 `zellij-no-web` 可执行文件约 **32.4 MiB**，一个默认 detached session 约 **89.7 MiB RSS**，十个约 **841.6 MiB RSS**；它的结构化接口与原生跨平台优势不足以抵消多 Harness 常态下的成本。shpool 可执行文件约 **4.04 MiB**、十个空闲 session 的 daemon 约 **23.1 MiB RSS**，但当前公开合同仍以单客户端 attach 为中心，没有 headless 终端查询应答、可承载 payload 的结构化事件、多观察者扇出或成熟的慢客户端背压；采用它会迫使 agentd 自建终端模拟、快照/重放与流量控制，等于把难题搬回自身。
 
-tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
+tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.12.4 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0124)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
 ## 20. 桥接退役、结晶归位与概念清扫（v0.12.2）
 
@@ -199,6 +199,10 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 ## 24. Room 对控制面明文可读：不启用端到端加密（v0.12.4）
 
 §12 把消息 content 交给 chat server 时隐含了一个没写出来的前提：控制面能按事件 ID 读到消息正文——冻结升格来源与 Context 锚点的 digest、本地萃取相关讨论、AppService 写结果卡与 homeserver 侧桥接都建立在这一点上。Matrix 的端到端加密（`m.room.encryption`）会把正文锁在客户端设备里，房间一旦开启，这些能力整体失效而账本并不知情。v0.12.4 把“房间对 control 明文可读”写成 Chat 端口绑定的准入前置：创建或绑定时以 fresh 房间状态回读校验，已加密房间拒绝；事后被开启加密视同 control 读不到正文，走与 chat server 不可用同一条 fail-closed 规则并标为需要关注，恢复只有换绑到未加密房间。这不是新对象或新状态值，加密状态只是绑定的 health 投影。隐私与敏感输入的答案由此收窄：敏感输入走安全通道，仓库级隐私靠 homeserver 访问控制与保留策略，不靠给房间加密。权威文本在 [Project 模块合同](../spec/project.md#room-与消息)。
+
+## 25. P0 只验接缝（v0.12.4）
+
+复审开工前限时验证时发现，P0 条目里混进了大量第三方产品自身的功能项：Dagu 的重启与备份恢复、tmux 在六个 Harness 下的颜色/粘贴/复制/组合键/全屏 TUI 矩阵与 `#5510` 卡死回归、Tuwunel 在 macOS 的容器/VM 形态、内存配置与 RocksDB/media 一致性备份、Vikunja 的备份恢复，以及 tmux 动态库/terminfo/许可文件的最小化。这些不是 HCTL 的假设，是在替第三方验轮子。本轮把 P0 收窄为只验接缝——适配器、受控端口或 agentd 实际调用的那几个 API 与行为：Dagu 的 DAG 控制 API 与 `human.task` 等待/完成/回读；tmux control mode 的 owner-only socket、观察者扇出、输入/resize、ID 稳定、查询应答与背压；Matrix 的账号与房间管理 API、AppService、事务 ID 幂等、事件顺序、重同步与房间加密状态回读；Vikunja 的条件写入、webhook/轮询与身份稳定。第三方自身功能分两类处置：发布物形态、键盘协议子集、footprint 之类属选型时的资料判断（已记在实现证据）；备份恢复、一键启停、TUI 矩阵、分发 commit 固定与打包最小化属对应场景首次消费前的产品化项（B1/B2/B4）。本条改判 §19 中“最终分发 commit 必须通过六个 Harness 矩阵与卡死场景阻断测试”的时点归属（B2 前产品化，不再是 P0），不改变任何选型。权威文本在[交付文档](../delivery.md#开工前限时验证)。
 
 ## 26. 小修订台账
 

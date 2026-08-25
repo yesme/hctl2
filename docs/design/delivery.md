@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以本地任务服务器为默认 content 后端、CLI 完整 Task 管理与完成预览 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
-| [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过本地分发与恢复测试 |
+| [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接缝测试 |
 | [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay 凭精确票据 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时后端通过完整契约测试；WezTerm 可选 |
 
 P3 的 Workbench 把四个场景集成到一个客户端，但不引入任何 CLI 不可达的命令：同一 command service 供 CLI、Workbench 与外部适配器使用。
@@ -52,7 +52,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
-| P0 · 探路 | 对已选实现做限时、可丢弃的协议 / 分发 / 打包探针并记录实现证据；探针脚本、临时数据与拼装环境不进入产品生命周期。失败则重开并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四服务器已可运维 |
+| P0 · 探路 | 只对 HCTL 与已选实现之间的接缝做限时、可丢弃的协议探针并记录实现证据，不替第三方验其自身功能；探针脚本、临时数据与拼装环境不进入产品生命周期。失败则重开并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四服务器已可运维 |
 | P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 可辅助开发；此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | 物理工具链就位，未切换治理事实 |
 | P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw tmux attach 只作 break-glass；合规第三方客户端必须走公开命令或 agentd 网关。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
@@ -232,24 +232,24 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 1. **接口公开干净**：优先公开协议与文档化 API，保证第三方 UI 与场景客户端互操作——chat 场景直接采用 Matrix 协议；任务场景没有同级的开放协议，选择 API 完整、支持条件写入的实现并以受控端口隔离。
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
 3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
-4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
+4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证，且只验 HCTL 与该系统的接缝（第 2、3 条是选型时的资料判断，在首次消费时产品化，不进 P0）；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
 
 ## 开工前限时验证
 
-P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
+P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”；关键假设只指 HCTL 与该系统的**接缝**——我们的适配器、受控端口或 agentd 实际调用的那几个 API 与行为。第三方自身的功能（它自己的备份恢复、重启、渲染、内存配置、发布物形态）不在 P0：要么是选型时的资料判断，要么在首次消费时产品化。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 只验接缝：DAG 提交与启动/暂停/恢复/取消 API 的应答与状态回读，`human.task` 检查点的等待态观察、完成与回读，以及路标被 Engine 自行推进或重试时能否回读为分歧。代次不在 Dagu：Obligation 的身份与隔离由 HCTL 账本承担，Dagu 只当路标，"完成 API 的代次隔离"不再是 B4 阻断项。
-2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 必须覆盖 attach、输入、resize、重启、残留进程、退出码、慢观察者/背压和 macOS/Linux，验证无人 attach 时的终端查询应答，并对 Antigravity、Claude Code、Codex、OpenCode、Grok Build、Kimi Code 做颜色、粘贴、复制、组合键和全屏 TUI 矩阵。tmux 只提供 CSI-u/modifyOtherKeys 子集而非完整 Kitty keyboard protocol，能力必须诚实降级；[`#5510`](https://github.com/tmux/tmux/issues/5510) 所述多窗格/滚动/copy-mode/resize 卡死必须有阻断性回归测试。分发版本固定在通过该矩阵的已审阅 commit，不因保留 `3.7c` 而跳过上游修复；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。官方发布物只有 Linux，macOS 的容器/轻量 VM、内存配置和 RocksDB/media 一致性备份因此是 P0 阻断项；另须验证账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序和重同步。由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。
-4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针验证看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性及备份恢复机制；由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
+2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝：owner-only socket 与唯一可写 control client、观察者经 agentd 扇出、输入与 resize 下发、session/pane ID 与 generation 稳定、退出码与残留进程回读、无人 attach 时的终端查询应答、输出暂停/恢复与有界缓冲对慢观察者/背压的隔离。tmux 只提供 CSI-u/modifyOtherKeys 子集而非完整 Kitty keyboard protocol，这是选型时已知的资料判断，能力诚实降级。对 Antigravity、Claude Code、Codex、OpenCode、Grok Build、Kimi Code 的颜色、粘贴、复制、组合键和全屏 TUI 矩阵、macOS/Linux 双平台与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 所述卡死场景的回归，属 B2 首次消费前的产品化项；分发版本在那时固定于通过该矩阵的已审阅 commit，不因保留 `3.7c` 而跳过上游修复；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝：账号与房间管理 API、AppService 注册与事件投递、事务 ID 幂等、单 homeserver 线性事件顺序与重同步，以及房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。官方发布物只有 Linux 是选型时已知的资料判断；macOS 的容器/轻量 VM 形态、内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
+4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝：条件写入与看板语义（排序令牌、泳道）、观测机制（webhook/轮询）与身份稳定性；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
 
-## 打包策略（P0 验证假设，首次消费时产品化）
+## 打包策略（选型判断，首次消费时产品化）
 
 分界线是**碰不碰宿主机现场**：
 
-- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 不是无依赖单二进制，P0 须固定并最小化其动态库、terminfo、许可文件和升级集合。
-- **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前为其声明「原生二进制」或「容器/轻量 VM」。Linux 全原生；macOS 上 Dagu 与 Vikunja 使用官方 arm64 原生发布物，Tuwunel 因官方只有 Linux 发布物而作为容器/轻量 VM 例外，除非 P0 证明受支持的原生构建与恢复路径。
+- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 不是无依赖单二进制，其动态库、terminfo、许可文件和升级集合的固定与最小化属 B2 首次消费前的产品化项。
+- **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前为其声明「原生二进制」或「容器/轻量 VM」。Linux 全原生；macOS 上 Dagu 与 Vikunja 使用官方 arm64 原生发布物，Tuwunel 因官方只有 Linux 发布物而作为容器/轻量 VM 例外，除非 B1 首次消费前的产品化证明存在受支持的原生构建与恢复路径。
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。执行加固只按声明用宿主 OS 原生机制施加；第一阶段只把 Docker 作为 Tuwunel 的 macOS 交付候选，不要求用户安装完整 Docker Desktop。
 - Windows 不在第一阶段范围；tmux 没有原生 Windows 后端，未来 Windows 版本须在同一运行时合同下另选实现并重新过兼容矩阵，当前选型不宣称跨平台。Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
 
