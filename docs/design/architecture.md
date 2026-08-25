@@ -69,7 +69,7 @@ content 容器的层级随场景各得其所：聊天两级——一个 Repo 一
 
 - chat server 宕机不抹掉已经接纳的治理事实；不依赖 Room 新消息、来源链或 fresh Context 的施工可以继续，依赖这些新鲜读数的预览与命令安全暂停；
 - 任务后端失联时，看板显示待同步，排队中的操作不显示假成功；依赖 current binding、remote revision、来源 head 或 readback 的采纳、移动与完成命令 fail closed；
-- workflow engine 失联时，已冻结的本地事实继续存在，Run 按恢复合同对账；依赖 engine lease、execution state 或 readback 的推进安全暂停；
+- workflow engine 失联时，已冻结的本地事实继续存在；完成与评审都在控制面账本，引擎只是路标，路标停更只待对账，不拦判决；
 - 运行时失联时，执行安全暂停，不冒充成功。
 
 后端离线不等于全部治理命令不可用，也不等于全部治理命令照常可用：是否继续由该命令的准入合同是否需要 fresh provider readback 决定。受影响的入口显示待处理 / 需要关注或安全暂停，不绕过命令服务。

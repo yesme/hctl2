@@ -121,6 +121,7 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 | 用户在场证明 | 撤销：human provenance 由经认证的 Workbench/CLI 会话直接赋予；agentd 启动的执行环境内发出的 CLI 调用以 execution principal 提交 |
 | OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、agentd 记录为事实；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
 | “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
+| Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |
 
 ## 外部对齐原则
 

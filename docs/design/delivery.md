@@ -148,14 +148,14 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 ### `CT-RUN` · Run / Workflow
 
 - 编译/Profile 拒绝、0..1 Task 绑定、Engine mutation 只有 control
-- 过期或未回读确认的 Engine lease/deadline 不能触发超时与候选切换
+- 超时与候选切换只依据账本自己的 Obligation deadline
 - dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功
 - retry 只产生一个新 Obligation 并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 类型化收口，所有 Run 过渡态可失败/替代
 - dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝
 - placement 变更留下不可变审计
 - Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat
 - quorum-unreachable 沿冻结失败边推进
-- engine 报告完成但 required Obligation/Gate/Integration Receipt 未满足、仍有 blocking Request 或活跃 execution/lease 未收口时，Run completion predicate 拒绝进入正常完成
+- Run 正常完成只由账本谓词决定；引擎路标与账本不一致时标分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
 
 ### `CT-AGENT` · Agent / Terminal
@@ -237,7 +237,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
-1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 必须验证 schema/Profile lint、环检测、启动/暂停/恢复/取消、重启恢复、备份恢复，以及 `human.task` 完成 API 在 ACK 未知、retry/repeat 和迟到请求下的代次隔离；若不能证明旧完成请求不会推进新检查点，B4 阻断并重开本决定，不自研第二引擎。
+1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 只验接缝：DAG 提交与启动/暂停/恢复/取消 API 的应答与状态回读，`human.task` 检查点的等待态观察、完成与回读，以及路标被 Engine 自行推进或重试时能否回读为分歧。代次不在 Dagu：Obligation 的身份与隔离由 HCTL 账本承担，Dagu 只当路标，"完成 API 的代次隔离"不再是 B4 阻断项。
 2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 必须覆盖 attach、输入、resize、重启、残留进程、退出码、慢观察者/背压和 macOS/Linux，验证无人 attach 时的终端查询应答，并对 Antigravity、Claude Code、Codex、OpenCode、Grok Build、Kimi Code 做颜色、粘贴、复制、组合键和全屏 TUI 矩阵。tmux 只提供 CSI-u/modifyOtherKeys 子集而非完整 Kitty keyboard protocol，能力必须诚实降级；[`#5510`](https://github.com/tmux/tmux/issues/5510) 所述多窗格/滚动/copy-mode/resize 卡死必须有阻断性回归测试。分发版本固定在通过该矩阵的已审阅 commit，不因保留 `3.7c` 而跳过上游修复；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。官方发布物只有 Linux，macOS 的容器/轻量 VM、内存配置和 RocksDB/media 一致性备份因此是 P0 阻断项；另须验证账号与房间管理 API、事务 ID 幂等、单 homeserver 线性顺序和重同步。由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。
 4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针验证看板语义（排序令牌、泳道）、观测机制（webhook/轮询）、身份稳定性及备份恢复机制；由 control 托管的一键启停和恢复演练到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。

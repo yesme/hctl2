@@ -150,7 +150,7 @@ Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先�
 
 2026-08-23 重新按源码而非 README 审阅 workflow 候选后，第一阶段选型从 Conductor 改为 **Dagu**。本节与 §19 的两项选型改判构成 v0.12.1；该轮当时未随文件重 stamp，随 v0.12.2 补记。判据收敛为三条：Workflow Revision 必须是声明式事实源并可机械 lint schema、引用、Profile 与图结构；不要求一般性证明 loop 终止；本机运行优先单二进制、文件或嵌入式持久化，避免为机械状态引入 JVM 与数据库/队列组合。Conductor 当前版其实已默认 SQLite，旧记录“没有 SQLite”已经过时；它的逐任务 poll/complete 仍比 Dagu 更贴近被驱动模型，但总体分发和 footprint 仍较大。
 
-Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。
+Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。（v0.12.4 改判：代次不在 Dagu，见 [§23](#23-代次不在-dagu完成与评审都在-hctldagu-只当路标v0124)。）
 
 这条决定取代 §6 和 §13 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
 
@@ -191,6 +191,10 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（human provenance 只由经认证的 Workbench/CLI 会话赋予；Harness 适配器、受控端口、Room 消息、adapter payload 与模型输出都不是入口；agentd 交给受治理执行的执行凭据使其中发出的 CLI 调用以 execution principal 提交）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结、agentd 按声明施加并记录为运行时事实；未声明或宿主不支持不阻止启动，也不得记录为已生效。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
 
 本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应合同句在 [Agent 模块合同](../spec/agent.md)的写入合同与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
+
+## 23. 代次不在 Dagu：完成与评审都在 HCTL，Dagu 只当路标（v0.12.4）
+
+§18 换用 Dagu 时留下一个阻断项：要求 `human.task` 完成 API 能隔离迟到的完成请求，否则 B4 重开选型。复审发现这把 Engine 当成了半个权威——Obligation 身份、租约与超时都绑到“adapter 回读证明的 engine attempt/status generation”上，Run 完成还要等 Engine success terminal 回读。正确道路是：完成与评审只在 HCTL 账本发生。Obligation 由 control 按 Run、节点与观察序号铸造，deadline、候选切换、Verdict/Receipt 与 Run 完成谓词全部只依据账本；Engine 只是路标——control 观察它进入等待态就铸 Obligation，账本结果落定后再把路标推过检查点；路标被 Engine 自行推进、重试或读不到时，只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止任何判决。重复进入同一节点按观察序号产生新 Obligation，不再要求 Engine 提供可隔离的检查点身份。本条撤掉 §18 的 B4 阻断项，P0 的 Dagu 探针相应只验接缝（见 §25）。权威文本在 [Run 模块合同](../spec/run.md)。
 
 ## 26. 小修订台账
 
