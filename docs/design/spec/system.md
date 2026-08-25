@@ -84,7 +84,7 @@ canonical input digest
 
 actor kind/provenance 由认证场景入口或 control 内部 reducer 赋予，调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 完成只接受有权 human actor 或 task-bound Workflow 的正常完成 reducer，Task 已取消只接受有权 human actor；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。
 
-human provenance 由经认证的场景客户端会话直接赋予：用户在 Workbench 或 CLI 里提交的命令就是 human。agentd 启动受治理执行时交付执行凭据，凭该凭据发出的 CLI 调用以 execution principal 提交，只获得该 Invocation/Attempt 冻结的窄能力。Task 终结、普通 Room 执行边、扩权、安全输入与集成授权只接受这样赋予的 human provenance 或获准的 reducer，不设额外的用户在场证明。Workbench 与 CLI 使用同一验证规则，这是 actor 认证而非界面隐藏特权。
+治理命令只有三个入口：经认证的 Workbench 会话、经认证的 CLI 会话（两者赋予 human provenance），以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。Harness 适配器与受控端口只有 Result Proposal 通道，产出经 owner 准入进入账本，不是命令入口。只验入口，不判断 CLI 是被人还是子进程启动，也不设额外的用户在场证明；Workbench 与 CLI 使用同一验证规则，这是 actor 认证而非界面隐藏特权。
 
 control 在用户级 metadata 账本的一个 SQLite 事务中写领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界，不能由两个模块或两个 clone 事后拼接。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。
 
@@ -158,7 +158,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。agentd 对该现场启动、输入或清理时还必须校验同一 site generation 与自己的资源 lease。失败的第二工具箱/agentd 只能只读诊断；所有改变现场事实的下游 envelope 同时携带当前 control writer generation 与适用的 site/backend generation，任一旧代次都被执行端拒绝。
 
-每个运行时后端 ownership scope 同时只有一个 agentd owner lease 和单调 generation；scope 至少覆盖相同资源 broker/socket/host namespace。agentd 必须先取得该资源侧的 OS lock、broker token 或等价排他原语才可执行输入、停止和接管。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权；不能强制排他的 backend 只可观察，不开放这些写能力。
+每个运行时后端 ownership scope 同时只有一个 agentd owner lease 和单调 generation，租约与代次记在账本；scope 至少覆盖相同资源 broker/socket/host namespace。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权。后端自身的排他原语（OS lock、broker token）有则由 agentd 取得作为加固，没有也不改变租约的权威。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 

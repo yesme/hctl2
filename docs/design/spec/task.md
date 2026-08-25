@@ -52,7 +52,7 @@ task_source 端口绑定与 Task Binding 的本地 current projection 使用 con
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 不可变结果或边界 |
 | --- | --- | --- | --- |
 | Task / Task Revision | contract version；开放 / 完成 / 已取消与独立 lifecycle version | control 处理「创建/采纳契约/完成/重开/取消 Task」命令 | Task Revision 只追加；Reopen 不改写旧完成历史 |
-| 操作投影（Task Binding 字段组） | binding `state_version` + 后端并发令牌 | control 准入「更新 Task」命令与「移动 Task」命令，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 Task Revision 或 lifecycle |
+| 操作投影（Task Binding 字段组） | binding `state_version`；后端并发前置按其能力使用 | control 准入「更新 Task」命令与「移动 Task」命令，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 Task Revision 或 lifecycle |
 | task_source 端口绑定 / Task Binding | current revision + local `state_version`；活跃 / 停用 / 已替换 | control 处理「接通/更新/停用」与「绑定/换绑」命令，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的 identity claim 持久唯一 |
 | Task Source Snapshot | append-only sequence + remote revision/digest/cursor；可产生待采纳 | control 持久化 refresh/reconcile 观测；「采纳契约」命令才消费内容变化 | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | Task Completion Receipt | immutable | 只有成功的「完成 Task」命令事务可写 | 精确绑定该次 `task_lifecycle_version`、Task Revision 与证据 |
@@ -61,7 +61,7 @@ task_source 端口绑定与 Task Binding 的本地 current projection 使用 con
 
 「完成 Task」命令校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt，并对影响契约的待采纳默认拒绝（fail-closed）：actor 必须先采纳并按新 Revision 重新验收，或显式选择“按当前冻结 Revision 完成”；后者必须冻结并 CAS 当前 Task Binding/state version、source head 和全部未采纳的契约 Snapshot refs/digests，预览后新增或变化的 drift 一律使命令失效。「启动 Run」命令预览时的拒绝或延期不能代替这次选择。「完成 Task」命令与「取消 Task」命令在任何绑定该 Task 的非终态 Run 存在时都拒绝；必须先显式结束该 Run 并等到旧执行撤权、隔离，Task 命令不会隐式停止 Run。Reopen/Cancel 保留旧 Receipt 和历史。
 
-Task 终结只有两个获准来源：有权 human actor 从 Kanban 场景提交 Task 命令，或绑定精确 Task Revision 的 Run 正常进入完成后由 Run reducer/control 机械提交同一个「完成 Task」命令。后者使用由 Run/Task 身份派生的稳定幂等键，仍经过本段全部 Task 准入；Run 已完成而 Task 校验失败时，Run 保持完成，Task 保持开放并显示需要关注。失败 / 已取消 / 被替代 Run 不能完成或取消 Task。「取消 Task」命令只接受有权 human actor。这里的 Kanban 是命令场景而非某个窗口：Workbench、CLI 或适配后的第三方客户端都可以承载，但必须由认证入口证明 human provenance；外部关闭态、Participant、Worker Profile、Harness、adapter、模型输出和 execution principal 都不是终结 actor。
+Task 终结只有两个获准来源：有权 human actor 从 Kanban 场景提交 Task 命令，或绑定精确 Task Revision 的 Run 正常进入完成后由 Run reducer/control 机械提交同一个「完成 Task」命令。后者使用由 Run/Task 身份派生的稳定幂等键，仍经过本段全部 Task 准入；Run 已完成而 Task 校验失败时，Run 保持完成，Task 保持开放并显示需要关注。失败 / 已取消 / 被替代 Run 不能完成或取消 Task。「取消 Task」命令只接受有权 human actor。这里的 Kanban 是命令场景而非某个窗口：Workbench、CLI 或适配后的第三方客户端都可以承载，human provenance 由认证入口赋予。
 
 Task Completion Receipt 至少固定 Task、「完成 Task」命令、Task Revision ref+digest、验收策略，以及每一条验收项各自的 pass/fail、Evidence/Verdict/Receipt ref+digest、来源 snapshot/head/version 与适用的 producer/执行代次；不能用一个总括“tests passed”替代逐项绑定。若存在契约分歧，还必须固定显式 divergence choice、精确的未采纳 Snapshot refs/digests、Task Binding revision/state version 与 authority-policy digest。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` claim 清除与需要的外部写回 outbox 在同一事务提交；Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一 claim。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
@@ -77,7 +77,7 @@ Run 的裸终态、Harness 自述、Git commit、CI 绿色或外部已关闭都�
 
 Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当前 placement、remote revision、source head 或完整 cursor，必须先完成 fresh readback；后端不可用、cursor 有 gap 或 readback 超出冻结 freshness 上限时类型化拒绝。只有验收策略明确允许某项 cached evidence 时，命令才可固定其观测版本、时间和已知 gap 继续；“后端离线”本身不放宽 Project group、drift 或 CAS 前置。
 
-排序与位置永远归 content 后端。「移动 Task」命令冻结 Task Binding 的本地 state_version 与后端的并发令牌，经受控端口写入并回读 Snapshot；来源刷新推进 binding state_version，使旧预览失效。后端若没有可条件写入的并发令牌，adapter 不得伪造一个：只有后端提供等价原子版本前置时才开放相对排序写入，否则降级为只读或其确实支持且可回读的绝对移动。本地任务服务器与远端平台各用自己的令牌，本地 state_version 与后端令牌不能互相冒充，跨后端或排序作用域的相对移动必须拒绝。
+排序与位置永远归 content 后端。「移动 Task」命令冻结 Task Binding 的本地 state_version，经受控端口按该后端提供的写入语义写入并回读 Snapshot；来源刷新推进 binding state_version，使旧预览失效。后端的并发控制是后端自己的事：adapter 按能力声明使用它有的前置（条件写入、排序令牌），没有就以回读为准。
 
 ## 外部概念对齐
 
@@ -87,7 +87,7 @@ Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当�
 | --- | --- | --- |
 | Task | Issue / 任务卡 | 后端卡片承载 content；Task 的身份、契约与验收由 HCTL 拥有 |
 | 操作投影的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 Task Binding 逐字段决定 |
-| 排序（rank） | Linear sortOrder / ProjectV2 排序 | 条件写入用 provider 自己的并发令牌；没有等价令牌就降级 |
+| 排序（rank） | Linear sortOrder / ProjectV2 排序 | 归后端；adapter 按后端能力用其条件写入，以回读为准 |
 | Task Binding 的 placement | GitHub ProjectV2 item；Linear 无独立看板项，位置由 workflow state + sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
 | Task Source Snapshot | webhook / API payload | 先观测后采纳；会改契约的内容必须经用户采纳 |
 | 后端关闭态 | issue closed / 卡片终态 | 只是 content 事实，不等于验收完成 |

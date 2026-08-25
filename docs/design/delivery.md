@@ -94,7 +94,7 @@ HCTL2 不会等到第一阶段完整交付才用来开发自己。自举按能�
 | --- | --- | --- |
 | B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
 | B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
-| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 与有效写租约下完成一次真实的非文档代码改动和测试；执行环境内的 CLI 调用以 execution principal 提交，Harness 环境中取不到集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录。第一次真正自举 |
+| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 worktree 与有效写租约下完成一次真实的非文档代码改动和测试；Harness 环境中取不到 HCTL 交付的集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录。第一次真正自举 |
 | B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
 | B4 | 引入 Workflow Engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
 | B5 | 候选切换、三选二、regate 和完整故障恢复；第一阶段目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
@@ -115,7 +115,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认
 - Project 分组与 Room anchor 可重建
 - 有活动 Invocation/Run 或开放 Request 时归档 Project 拒绝
-- CJK 输入、结构化引用、草稿/游标/未读、并发写入得到一致时间线顺序（chat server 线性顺序 + 事务 ID 幂等）、并发流隔离
+- CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结
 - Repo Room 只把显式选中的来源链带入新 Project
 - Scoped Room 回填和同根因 Request 去重
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
@@ -139,7 +139,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝
 - 未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效
 - active Run 未收口时 terminal intent 拒绝
-- human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令，Harness/LLM/adapter/外部已关闭冒充 actor 均拒绝
+- human Kanban 完成与正常 Run reducer handoff 都走同一「完成 Task」命令；Result Proposal 通道与外部关闭态提交不了它
 - 同一规范实体跨 Project/connection/placement 不得产生第二个 Task，禁用 binding 也不释放映射
 - content 后端按 Repo 选定，跨后端相对移动拒绝
 - Project 分组 anchor 在删除、重绑和重建后保持稳定，原生 UI 把卡跨 Project 分组移动只形成 jurisdictional drift，不静默改写 `project_id`
@@ -166,7 +166,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝
-- 由 agentd 启动的执行环境内发出的 CLI 调用以 execution principal 提交；同一命令由用户的 Workbench/CLI 会话提交即 human provenance
+- 治理命令只有三个入口：认证的 Workbench 会话、认证的 CLI 会话（human）与 task-bound Run 正常完成的 reducer（system）；Result Proposal 通道提交不了治理命令
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；未声明或宿主不支持时照常启动、不记录为已生效
 - 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
@@ -239,9 +239,9 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”；关键假设只指 HCTL 与该系统的**接缝**——我们的适配器、受控端口或 agentd 实际调用的那几个 API 与行为。第三方自身的功能（它自己的备份恢复、重启、渲染、内存配置、发布物形态）不在 P0：要么是选型时的资料判断，要么在首次消费时产品化。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 只验接缝：DAG 提交与启动/暂停/恢复/取消 API 的应答与状态回读，`human.task` 检查点的等待态观察、完成与回读，以及路标被 Engine 自行推进或重试时能否回读为分歧。代次不在 Dagu：Obligation 的身份与隔离由 HCTL 账本承担，Dagu 只当路标，"完成 API 的代次隔离"不再是 B4 阻断项。
-2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝：owner-only socket 与唯一可写 control client、观察者经 agentd 扇出、输入与 resize 下发、session/pane ID 与 generation 稳定、退出码与残留进程回读、无人 attach 时的终端查询应答、输出暂停/恢复与有界缓冲对慢观察者/背压的隔离。tmux 只提供 CSI-u/modifyOtherKeys 子集而非完整 Kitty keyboard protocol，这是选型时已知的资料判断，能力诚实降级。对 Antigravity、Claude Code、Codex、OpenCode、Grok Build、Kimi Code 的颜色、粘贴、复制、组合键和全屏 TUI 矩阵、macOS/Linux 双平台与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 所述卡死场景的回归，属 B2 首次消费前的产品化项；分发版本在那时固定于通过该矩阵的已审阅 commit，不因保留 `3.7c` 而跳过上游修复；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝：账号与房间管理 API、AppService 注册与事件投递、事务 ID 幂等、单 homeserver 线性事件顺序与重同步，以及房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。官方发布物只有 Linux 是选型时已知的资料判断；macOS 的容器/轻量 VM 形态、内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
-4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝：条件写入与看板语义（排序令牌、泳道）、观测机制（webhook/轮询）与身份稳定性；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
+2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝够不够用：能建 owner-only socket 并持有唯一可写 control client、观察者能经 agentd 扇出、输入与 resize 能下发、session/pane ID 稳定可持久化、退出码与残留进程能回读、无人 attach 时能查询应答。键盘协议子集、慢观察者背压、各 Harness 的 TUI 兼容与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 之类是 tmux 自己的轮子：选型时作资料判断，使用中不够用就按选型三件套升 commit 或换家，不为它们维护验证矩阵；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝够不够用：账号与房间管理 API、AppService 注册与事件投递、按事件 ID 读取正文、房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。事务 ID 幂等、事件顺序、重同步是 homeserver 自己的合同，HCTL 拿来用、不替它验。官方发布物只有 Linux 是选型时已知的资料判断；macOS 的容器/轻量 VM 形态、内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
+4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝够不够用：卡片与分组的读写 API、按分组稳定回读归属、条件写入是否可用、webhook 或轮询能否观测变化、实体 ID 稳定；排序算法与看板语义是它自己的轮子；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
 
 ## 打包策略（选型判断，首次消费时产品化）

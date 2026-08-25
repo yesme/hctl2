@@ -188,7 +188,7 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 复审 v0.12.0 §16 引入的两项机制后改判。当时把 OS 强制沙箱写成受治理执行的入场券、把“一次性用户在场证明”当作防止执行体冒充人的机制，两者都把治理面必须成立的底线和宿主机层面的加固绑在了一起：前者让第一阶段在 macOS 上启动不了多数真实 Harness，并把容器反向推成事实上的桌面沙箱；后者让 CLI 变成需要二次交互的入口，与“Workbench 与 CLI 同一验证规则、CLI 是 P2 正面形态”相抵。
 
-正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（human provenance 只由经认证的 Workbench/CLI 会话赋予；Harness 适配器、受控端口、Room 消息、adapter payload 与模型输出都不是入口；agentd 交给受治理执行的执行凭据使其中发出的 CLI 调用以 execution principal 提交）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结、agentd 按声明施加并记录为运行时事实；未声明或宿主不支持不阻止启动，也不得记录为已生效。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
+正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（治理命令只有三个入口：经认证的 Workbench 会话、经认证的 CLI 会话，以及施工图走完后 reducer 提交的同一「完成 Task」命令；Harness 的产出只经 Result Proposal 通道进来，不是入口——只验入口，不判断 CLI 是被人还是子进程启动）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结、agentd 按声明施加并记录为运行时事实；未声明或宿主不支持不阻止启动，也不得记录为已生效。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
 
 本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应合同句在 [Agent 模块合同](../spec/agent.md)的写入合同与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
 
@@ -202,7 +202,7 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 ## 25. P0 只验接缝（v0.13.0）
 
-复审开工前限时验证时发现，P0 条目里混进了大量第三方产品自身的功能项：Dagu 的重启与备份恢复、tmux 在六个 Harness 下的颜色/粘贴/复制/组合键/全屏 TUI 矩阵与 `#5510` 卡死回归、Tuwunel 在 macOS 的容器/VM 形态、内存配置与 RocksDB/media 一致性备份、Vikunja 的备份恢复，以及 tmux 动态库/terminfo/许可文件的最小化。这些不是 HCTL 的假设，是在替第三方验轮子。本轮把 P0 收窄为只验接缝——适配器、受控端口或 agentd 实际调用的那几个 API 与行为：Dagu 的 DAG 控制 API 与 `human.task` 等待/完成/回读；tmux control mode 的 owner-only socket、观察者扇出、输入/resize、ID 稳定、查询应答与背压；Matrix 的账号与房间管理 API、AppService、事务 ID 幂等、事件顺序、重同步与房间加密状态回读；Vikunja 的条件写入、webhook/轮询与身份稳定。第三方自身功能分两类处置：发布物形态、键盘协议子集、footprint 之类属选型时的资料判断（已记在实现证据）；备份恢复、一键启停、TUI 矩阵、分发 commit 固定与打包最小化属对应场景首次消费前的产品化项（B1/B2/B4）。本条改判 §19 中“最终分发 commit 必须通过六个 Harness 矩阵与卡死场景阻断测试”的时点归属（B2 前产品化，不再是 P0），不改变任何选型。权威文本在[交付文档](../delivery.md#开工前限时验证)。
+复审开工前限时验证时发现，P0 条目里混进了大量第三方产品自身的功能项：Dagu 的重启与备份恢复、tmux 在六个 Harness 下的颜色/粘贴/复制/组合键/全屏 TUI 矩阵与 `#5510` 卡死回归、Tuwunel 在 macOS 的容器/VM 形态、内存配置与 RocksDB/media 一致性备份、Vikunja 的备份恢复，以及 tmux 动态库/terminfo/许可文件的最小化。这些不是 HCTL 的假设，是在替第三方验轮子。本轮把 P0 收窄为只验接缝够不够用——适配器、受控端口或 agentd 实际调用的那几个 API：Dagu 的 DAG 控制 API 与 `human.task` 等待/完成/回读；tmux control mode 的 owner-only socket、观察者扇出、输入/resize、ID 稳定与查询应答；Matrix 的账号与房间管理 API、AppService、按事件 ID 读正文与房间加密状态回读；Vikunja 的卡片/分组读写、条件写入可用性、webhook/轮询与身份稳定。事务 ID 幂等、事件顺序、排序令牌、背压这类是依赖自己的合同，HCTL 拿来用、不替它验——同一条边界感也收回了合同里两处替依赖立法的句子：任务后端的并发控制归后端（adapter 按能力用其前置、以回读为准），运行时后端的排他原语只是租约之上的加固。第三方自身功能分两类处置：发布物形态、键盘协议子集、footprint 之类属选型时的资料判断（已记在实现证据）；备份恢复、一键启停、TUI 矩阵、分发 commit 固定与打包最小化属对应场景首次消费前的产品化项（B1/B2/B4）。本条改判 §19 中“最终分发 commit 必须通过六个 Harness 矩阵与卡死场景阻断测试”的时点归属（B2 前产品化，不再是 P0），不改变任何选型。权威文本在[交付文档](../delivery.md#开工前限时验证)。
 
 ## 26. 小修订台账
 
