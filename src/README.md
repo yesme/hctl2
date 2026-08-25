@@ -12,6 +12,10 @@ The initial P1 workspace contains only the standalone mechanical components:
 `hctl2-control`, the public `hctl2` CLI, and Workbench enter in P2/P3. Neither P1 executable is a
 governance command entry.
 
+`packaging/dependencies` owns the external-dependency supply chain. It pins Tuwunel, Vikunja,
+Dagu, and tmux; builds the Linux x86_64 payload; and ships the offline installer plus tracked
+lifecycle scripts. Downloaded inputs and generated release archives are not committed.
+
 Run the workspace checks from this directory:
 
 ```bash

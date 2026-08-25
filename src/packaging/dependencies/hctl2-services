@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Installed lifecycle entry for bundled HCTL2 services.
+
+set -euo pipefail
+
+EXECUTABLE_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+readonly EXECUTABLE_PATH
+HCTL2_INSTALL_ROOT="$(cd -- "$(dirname -- "$EXECUTABLE_PATH")/.." && pwd -P)"
+readonly HCTL2_INSTALL_ROOT
+export HCTL2_INSTALL_ROOT
+
+readonly VENDOR_LIBRARY_DIR="$HCTL2_INSTALL_ROOT/lib/hctl2/vendor"
+if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    export LD_LIBRARY_PATH="$VENDOR_LIBRARY_DIR:$LD_LIBRARY_PATH"
+else
+    export LD_LIBRARY_PATH="$VENDOR_LIBRARY_DIR"
+fi
+
+usage() {
+    printf 'usage: hctl2-services {start|stop|restart|status|smoke} [component ...]\n' >&2
+    exit 2
+}
+
+readonly COMMAND="${1:-}"
+[[ -n "$COMMAND" ]] || usage
+shift
+
+case "$COMMAND" in
+    start | stop | status | smoke)
+        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/$COMMAND.sh" "$@"
+        ;;
+    restart)
+        "$HCTL2_INSTALL_ROOT/lib/hctl2/services/stop.sh" "$@"
+        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/start.sh" "$@"
+        ;;
+    *) usage ;;
+esac
