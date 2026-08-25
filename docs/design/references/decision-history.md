@@ -196,6 +196,10 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 §18 换用 Dagu 时留下一个阻断项：要求 `human.task` 完成 API 能隔离迟到的完成请求，否则 B4 重开选型。复审发现这把 Engine 当成了半个权威——Obligation 身份、租约与超时都绑到“adapter 回读证明的 engine attempt/status generation”上，Run 完成还要等 Engine success terminal 回读。正确道路是：完成与评审只在 HCTL 账本发生。Obligation 由 control 按 Run、节点与观察序号铸造，deadline、候选切换、Verdict/Receipt 与 Run 完成谓词全部只依据账本；Engine 只是路标——control 观察它进入等待态就铸 Obligation，账本结果落定后再把路标推过检查点；路标被 Engine 自行推进、重试或读不到时，只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止任何判决。重复进入同一节点按观察序号产生新 Obligation，不再要求 Engine 提供可隔离的检查点身份。本条撤掉 §18 的 B4 阻断项，P0 的 Dagu 探针相应只验接缝（见 §25）。权威文本在 [Run 模块合同](../spec/run.md)。
 
+## 24. Room 对控制面明文可读：不启用端到端加密（v0.12.4）
+
+§12 把消息 content 交给 chat server 时隐含了一个没写出来的前提：控制面能按事件 ID 读到消息正文——冻结升格来源与 Context 锚点的 digest、本地萃取相关讨论、AppService 写结果卡与 homeserver 侧桥接都建立在这一点上。Matrix 的端到端加密（`m.room.encryption`）会把正文锁在客户端设备里，房间一旦开启，这些能力整体失效而账本并不知情。v0.12.4 把“房间对 control 明文可读”写成 Chat 端口绑定的准入前置：创建或绑定时以 fresh 房间状态回读校验，已加密房间拒绝；事后被开启加密视同 control 读不到正文，走与 chat server 不可用同一条 fail-closed 规则并标为需要关注，恢复只有换绑到未加密房间。这不是新对象或新状态值，加密状态只是绑定的 health 投影。隐私与敏感输入的答案由此收窄：敏感输入走安全通道，仓库级隐私靠 homeserver 访问控制与保留策略，不靠给房间加密。权威文本在 [Project 模块合同](../spec/project.md#room-与消息)。
+
 ## 26. 小修订台账
 
 来时路只收转向：承重墙移动、实现选型更换、权威归属变化各自成章。词汇、词形与概念清扫类修订各记一行，细节在合同层清扫表，不再单独成章：

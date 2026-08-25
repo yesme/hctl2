@@ -28,7 +28,7 @@
 
 | 场景 | 系统角色 | 系统拥有的 content | 备注 |
 | --- | --- | --- | --- |
-| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端即互操作面 |
+| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端即互操作面；HCTL 房间不开端到端加密，控制面按消息 ID 读正文 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
 | Terminal | harness（编码代理工具）与运行时后端 | 会话转录、PTY 流 | 会话由 agentd（HCTL 的本机执行守护进程）持有与观测——它之于 Terminal，如同 chat server 之于 Chat Room |

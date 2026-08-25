@@ -71,6 +71,7 @@
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
 | Resolved Port Binding | 端口解析绑定 | 一个受控端口 ↔ 具体提供方（含实测能力与降级；动态 health/cursor 不进不可变 binding） |
+| Chat 端口绑定 | 聊天端口绑定 | Room ↔ chat server 房间的 Resolved Port Binding；被指认房间对控制面明文可读（不启用端到端加密），加密状态是其 health 投影 |
 | Task Binding | 任务来源绑定 | 一个 Task ↔ 外部实体、字段写入权与适配器版本 |
 | Project Role Binding | 角色绑定 | 一个 Project 角色 ↔ 精确 Participant 版本 |
 | Engine Execution Binding | 引擎执行绑定 | 一个 Run ↔ 外部引擎的执行实例与关联键 |

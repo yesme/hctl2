@@ -147,7 +147,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | --- | --- | --- | --- |
 | 四模块 metadata：稳定身份、准入/current、Room/Request、Participant/角色绑定、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
 | Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/Skill/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
-| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级；不依赖 fresh 消息/成员/cursor 的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
+| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖 fresh 消息/成员/cursor 的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖 fresh placement/drift/head/cursor 的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
 | Workflow 机械位置（路标） | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，路标停更只让 Engine Execution Binding 待对账 | 路标丢失不丢任何判决：Run 按账本继续收口或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
 | Harness 进程、PTY、容器、主机与原始流 | agentd / 运行时后端仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |

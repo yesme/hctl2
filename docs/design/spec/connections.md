@@ -157,6 +157,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份收口规则的唯一定义，模块合同引用而不复述 |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要 fresh chat readback 的准入拒绝，聊天入口显示重同步中 |
+| 已绑定房间被开启端到端加密 | 同上一行的可继续/拒绝规则；聊天入口显示需要关注，已冻结引用与 digest 不受影响，由有权 human actor 换绑到未加密房间恢复 |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账 |
 | harness / 运行时后端不可用 | 执行安全暂停或按代次收口，不冒充成功 |

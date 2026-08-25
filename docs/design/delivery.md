@@ -120,6 +120,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - Scoped Room 回填和同根因 Request 去重
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
 - chat server 不可用时，依赖 fresh Room 来源、身份或 Context 的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
+- Chat 端口绑定只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
 - chat server 中的消息、反应或自动化不能成为命令
 - 模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context
 - 无法证明身份的 Invocation 撤权并终止，Retry 产生新调用且旧结果被拒绝
@@ -262,7 +263,7 @@ Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git
 
 - ~~Room 的协作历史到底放哪里~~ 已了结：消息 content 归 chat server，metadata 随用户级控制面走，结晶进 Git（见[来时路 §12](./references/decision-history.md)）；
 - ChangeSet/PR 默认基数与后续多 Task Run 的集成策略；
-- ~~Repo Room 跨 clone 迁移~~ 已了结：Room 身份随用户级控制面、消息 content 在 chat server，与 clone 无关（见[三面架构](./architecture.md)）；仍开放的是 Repo Room 的隐私与保留期限；
+- ~~Repo Room 跨 clone 迁移~~ 已了结：Room 身份随用户级控制面、消息 content 在 chat server，与 clone 无关（见[三面架构](./architecture.md)）；仍开放的是 Repo Room 的隐私与保留期限——端到端加密不是答案（HCTL 房间对 control 明文可读），只能由 homeserver 侧访问控制、传输/存储加密与保留策略回答；
 - Project 拆分/合并和 Task 依赖的产品表达；
 - Scoped Room 自动归档策略；
 - 首批原生会话导入的范围与长期维护预算（能力定义见 [Agent 设计正文](./agent.md#原生会话导入)）；
