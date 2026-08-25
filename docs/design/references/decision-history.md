@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.12.4 · 2026-08-25<br>
+> 状态：Informative · 对应草案 v0.13.0 · 2026-08-25<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -128,8 +128,8 @@ v0.10–v0.12 的数次横切转向（用户级 control、Repo 级 Board、三�
 
 除传播既有决定外，这轮引入了五个此前不存在的机制，在此补记决策：
 
-- **用户在场证明**（v0.12.4 撤销，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0124)）：以 human provenance 提交 Task 终结、普通 Room 执行边、扩权、安全输入或集成授权时，认证入口必须给出一次性、绑定规范命令摘要的用户在场证明。动因是旧威胁模型自相矛盾——execution principal 复制 human payload 调用公共 CLI 即可冒充人，单靠“human actor 才能终结 Task”挡不住。权威文本在[系统边界](../spec/system.md#命令与跨服务正确性)。
-- **受治理 Harness 的 OS 沙箱入场券**（v0.12.4 降为可选加固，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0124)）：第一阶段受治理执行必须运行在操作系统强制的沙箱中，凭据只经网关代用；不能强制这些边界的候选不得作为受治理执行启动。这是把“managed Harness”与“不隔离同 OS 用户”的互斥承诺改成一致，代价是 P0/B2 新增阻断性工程验证。
+- **用户在场证明**（v0.13.0 撤销，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0130)）：以 human provenance 提交 Task 终结、普通 Room 执行边、扩权、安全输入或集成授权时，认证入口必须给出一次性、绑定规范命令摘要的用户在场证明。动因是旧威胁模型自相矛盾——execution principal 复制 human payload 调用公共 CLI 即可冒充人，单靠“human actor 才能终结 Task”挡不住。权威文本在[系统边界](../spec/system.md#命令与跨服务正确性)。
+- **受治理 Harness 的 OS 沙箱入场券**（v0.13.0 降为可选加固，见 [§22](#22-信任模型收窄三条底线不可关外层笼子可选cli-即人v0130)）：第一阶段受治理执行必须运行在操作系统强制的沙箱中，凭据只经网关代用；不能强制这些边界的候选不得作为受治理执行启动。这是把“managed Harness”与“不隔离同 OS 用户”的互斥承诺改成一致，代价是 P0/B2 新增阻断性工程验证。
 - **Run 正常完成谓词与 Task claim 双态**：Run 进入正常完成前须机械满足 required Obligation/Seat/Gate/output、Receipt、Attempt 撤权与外部副作用收口；Task 对 Run 的绑定以 active / completion_pending 双态消除交接竞态。填补“Engine 报告完成即 Run 完成”的空洞。
 - **挂接 Repo Instance**：Repo 与 clone 之间补显式身份链——工具箱无副作用读取 Git identity、control 预览后入账；remote URL、目录名或碰巧相同的 HEAD 不单独证明身份。这是用户级 control 转向早该有的配套。
 - **账本备份集合同**：备份必须是唯一 writer 协调的一致快照（含各层 generation 与账本引用的不可变定义字节），恢复保留账本身份、推进全部代次、令旧凭证失效。把既有的“账本必须备份”从一句话落成合同。
@@ -150,7 +150,7 @@ Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先�
 
 2026-08-23 重新按源码而非 README 审阅 workflow 候选后，第一阶段选型从 Conductor 改为 **Dagu**。本节与 §19 的两项选型改判构成 v0.12.1；该轮当时未随文件重 stamp，随 v0.12.2 补记。判据收敛为三条：Workflow Revision 必须是声明式事实源并可机械 lint schema、引用、Profile 与图结构；不要求一般性证明 loop 终止；本机运行优先单二进制、文件或嵌入式持久化，避免为机械状态引入 JVM 与数据库/队列组合。Conductor 当前版其实已默认 SQLite，旧记录“没有 SQLite”已经过时；它的逐任务 poll/complete 仍比 Dagu 更贴近被驱动模型，但总体分发和 footprint 仍较大。
 
-Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。（v0.12.4 改判：代次不在 Dagu，见 [§23](#23-代次不在-dagu完成与评审都在-hctldagu-只当路标v0124)。）
+Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。（v0.13.0 改判：代次不在 Dagu，见 [§23](#23-代次不在-dagu完成与评审都在-hctldagu-只当路标v0130)。）
 
 这条决定取代 §6 和 §13 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
 
@@ -160,7 +160,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 体积使取舍进一步明确。本机 Apple Silicon 基线中，tmux 可执行文件约 **0.95 MiB**，直接非系统动态库约 **1.45 MiB**；一个 server 承载十个 detached `/bin/sleep` session 时约 **3.7 MiB RSS**。Zellij 的 `zellij-no-web` 可执行文件约 **32.4 MiB**，一个默认 detached session 约 **89.7 MiB RSS**，十个约 **841.6 MiB RSS**；它的结构化接口与原生跨平台优势不足以抵消多 Harness 常态下的成本。shpool 可执行文件约 **4.04 MiB**、十个空闲 session 的 daemon 约 **23.1 MiB RSS**，但当前公开合同仍以单客户端 attach 为中心，没有 headless 终端查询应答、可承载 payload 的结构化事件、多观察者扇出或成熟的慢客户端背压；采用它会迫使 agentd 自建终端模拟、快照/重放与流量控制，等于把难题搬回自身。
 
-tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.12.4 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0124)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
+tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.13.0 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0130)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
 ## 20. 桥接退役、结晶归位与概念清扫（v0.12.2）
 
@@ -184,7 +184,7 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 - **省的计量**：Bundle 记录候选/实选/实际交付 token 量，使"省"成为逐次调用可审计的指标；Memo 指针清单机械过滤过期与被取代项。
 - 交付验证在 `CT-PROJECT` 新增对应失败用例。仍留 memo 待裁决：派生索引的具体形态、检索融合策略、跨 Repo 传承。设计正文见 Context 横切正文，底稿与生态对照见 `.memo/context-design-20260819.md` 与 `.memo/context-landscape-20260824.md`。
 
-## 22. 信任模型收窄：三条底线不可关、外层笼子可选、CLI 即人（v0.12.4）
+## 22. 信任模型收窄：三条底线不可关、外层笼子可选、CLI 即人（v0.13.0）
 
 复审 v0.12.0 §16 引入的两项机制后改判。当时把 OS 强制沙箱写成受治理执行的入场券、把“一次性用户在场证明”当作防止执行体冒充人的机制，两者都把治理面必须成立的底线和宿主机层面的加固绑在了一起：前者让第一阶段在 macOS 上启动不了多数真实 Harness，并把容器反向推成事实上的桌面沙箱；后者让 CLI 变成需要二次交互的入口，与“Workbench 与 CLI 同一验证规则、CLI 是 P2 正面形态”相抵。
 
@@ -192,15 +192,15 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应合同句在 [Agent 模块合同](../spec/agent.md)的写入合同与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
 
-## 23. 代次不在 Dagu：完成与评审都在 HCTL，Dagu 只当路标（v0.12.4）
+## 23. 代次不在 Dagu：完成与评审都在 HCTL，Dagu 只当路标（v0.13.0）
 
 §18 换用 Dagu 时留下一个阻断项：要求 `human.task` 完成 API 能隔离迟到的完成请求，否则 B4 重开选型。复审发现这把 Engine 当成了半个权威——Obligation 身份、租约与超时都绑到“adapter 回读证明的 engine attempt/status generation”上，Run 完成还要等 Engine success terminal 回读。正确道路是：完成与评审只在 HCTL 账本发生。Obligation 由 control 按 Run、节点与观察序号铸造，deadline、候选切换、Verdict/Receipt 与 Run 完成谓词全部只依据账本；Engine 只是路标——control 观察它进入等待态就铸 Obligation，账本结果落定后再把路标推过检查点；路标被 Engine 自行推进、重试或读不到时，只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止任何判决。重复进入同一节点按观察序号产生新 Obligation，不再要求 Engine 提供可隔离的检查点身份。本条撤掉 §18 的 B4 阻断项，P0 的 Dagu 探针相应只验接缝（见 §25）。权威文本在 [Run 模块合同](../spec/run.md)。
 
-## 24. Room 对控制面明文可读：不启用端到端加密（v0.12.4）
+## 24. Room 对控制面明文可读：不启用端到端加密（v0.13.0）
 
-§12 把消息 content 交给 chat server 时隐含了一个没写出来的前提：控制面能按事件 ID 读到消息正文——冻结升格来源与 Context 锚点的 digest、本地萃取相关讨论、AppService 写结果卡与 homeserver 侧桥接都建立在这一点上。Matrix 的端到端加密（`m.room.encryption`）会把正文锁在客户端设备里，房间一旦开启，这些能力整体失效而账本并不知情。v0.12.4 把“房间对 control 明文可读”写成 Chat 端口绑定的准入前置：创建或绑定时以 fresh 房间状态回读校验，已加密房间拒绝；事后被开启加密视同 control 读不到正文，走与 chat server 不可用同一条 fail-closed 规则并标为需要关注，恢复只有换绑到未加密房间。这不是新对象或新状态值，加密状态只是绑定的 health 投影。隐私与敏感输入的答案由此收窄：敏感输入走安全通道，仓库级隐私靠 homeserver 访问控制与保留策略，不靠给房间加密。权威文本在 [Project 模块合同](../spec/project.md#room-与消息)。
+§12 把消息 content 交给 chat server 时隐含了一个没写出来的前提：控制面能按事件 ID 读到消息正文——冻结升格来源与 Context 锚点的 digest、本地萃取相关讨论、AppService 写结果卡与 homeserver 侧桥接都建立在这一点上。Matrix 的端到端加密（`m.room.encryption`）会把正文锁在客户端设备里，房间一旦开启，这些能力整体失效而账本并不知情。v0.13.0 把“房间对 control 明文可读”写成 Chat 端口绑定的准入前置：创建或绑定时以 fresh 房间状态回读校验，已加密房间拒绝；事后被开启加密视同 control 读不到正文，走与 chat server 不可用同一条 fail-closed 规则并标为需要关注，恢复只有换绑到未加密房间。这不是新对象或新状态值，加密状态只是绑定的 health 投影。隐私与敏感输入的答案由此收窄：敏感输入走安全通道，仓库级隐私靠 homeserver 访问控制与保留策略，不靠给房间加密。权威文本在 [Project 模块合同](../spec/project.md#room-与消息)。
 
-## 25. P0 只验接缝（v0.12.4）
+## 25. P0 只验接缝（v0.13.0）
 
 复审开工前限时验证时发现，P0 条目里混进了大量第三方产品自身的功能项：Dagu 的重启与备份恢复、tmux 在六个 Harness 下的颜色/粘贴/复制/组合键/全屏 TUI 矩阵与 `#5510` 卡死回归、Tuwunel 在 macOS 的容器/VM 形态、内存配置与 RocksDB/media 一致性备份、Vikunja 的备份恢复，以及 tmux 动态库/terminfo/许可文件的最小化。这些不是 HCTL 的假设，是在替第三方验轮子。本轮把 P0 收窄为只验接缝——适配器、受控端口或 agentd 实际调用的那几个 API 与行为：Dagu 的 DAG 控制 API 与 `human.task` 等待/完成/回读；tmux control mode 的 owner-only socket、观察者扇出、输入/resize、ID 稳定、查询应答与背压；Matrix 的账号与房间管理 API、AppService、事务 ID 幂等、事件顺序、重同步与房间加密状态回读；Vikunja 的条件写入、webhook/轮询与身份稳定。第三方自身功能分两类处置：发布物形态、键盘协议子集、footprint 之类属选型时的资料判断（已记在实现证据）；备份恢复、一键启停、TUI 矩阵、分发 commit 固定与打包最小化属对应场景首次消费前的产品化项（B1/B2/B4）。本条改判 §19 中“最终分发 commit 必须通过六个 Harness 矩阵与卡死场景阻断测试”的时点归属（B2 前产品化，不再是 P0），不改变任何选型。权威文本在[交付文档](../delivery.md#开工前限时验证)。
 
