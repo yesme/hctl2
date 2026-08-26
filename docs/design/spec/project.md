@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.0<br>
+> 状态：规范性合同 · 草案 v0.13.1<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -55,13 +55,14 @@ Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 
 
 时间线顺序由 chat server 的线性事件顺序给出（单 homeserver 合同前提，写入以事务 ID 幂等）；稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 Chat 端口绑定 + chat server 事件 ID 精确引用消息；被治理引用的消息（升格来源、Context 锚点）在引用时冻结事件 ID 与内容 digest，此后 content 漂移不改写已冻结引用。冻结 digest、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密（第二个合同前提，与单 homeserver 并列）。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新 cursor 的 metadata 命令可以继续；需要 fresh message body、成员身份或完整 cursor 才能准入的命令类型化拒绝，聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实；加密情形由有权 human actor 「换绑」到未加密房间恢复，已冻结的引用与 digest 不受影响。
 
+<a id="context-memo-artifact"></a>
 ## Context、Memo 与 Artifact
 
-Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。物化进 Context Bundle 的只有执行体自己拿不到或不该自己翻的部分——从聊天史萃取的相关讨论、契约与范围说明、用户显式引用的原文；Repo/Git 内容、Artifact、Memo 与 Skill 以精确 ref+digest 作为**指针**进入 Manifest 与 Bundle，由执行体在获准范围内自行取用。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Receipt 指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
+Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。Bundle 的每个条目按投喂档记录为 inline / pointer / recall 之一。inline 物化原文，只用于执行体自己拿不到或不该自己翻的部分——从聊天史与绑定 Task 的任务后端评论线萃取的相关讨论、契约与范围说明、用户显式引用的原文，以及冻结策略列为必用的同 Run 前序节点结果（Gate Seat 的 ReviewSubjectRef diff、返工 Seat 的 Verdict 正文，见 [Run 模块合同](./run.md#request重试与-gate)）；必用条目超预算时改为 pointer 并附分片建议，不得静默丢弃。pointer 只记精确 ref+digest 与一句摘要，且只能指向执行体在获准范围内以自身工具可打开的位置——Git 对象与 worktree 路径：Repo/Git 内容、ChangeSet Revision、Artifact、Memo、Skill 与 Verdict/Receipt 的 Git 结晶副本；指向账本或任务后端的引用不得作为 pointer 交付。recall 是运行中经 recall policy 追加的子包条目。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Verdict-Receipt 结晶副本指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
 
 每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，agentd 在启动前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
-萃取与相关性判定全部本地，不消耗大模型 token：第一级是显式引用与当前讨论窗口；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流与账本增量维护，不进权威账本，删除后可完整重建。相关性门只以账本事实（提及、认领、Request 关联、游标）为判定输入，不以消息措辞正文做路由；每次判定连同输入事实引用与结论记为可审计观测，观测不改写任何事实。
+萃取与相关性判定全部本地，不消耗大模型 token：第一级是显式引用与当前讨论窗口，绑定 Task 的任务后端评论线整条属于这一级——以当前 Task Source Snapshot 的 ref+digest 冻结进 Manifest，不经检索；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流、task_source Snapshot 与账本增量维护，不进权威账本，删除后可完整重建。相关性门只以账本事实（提及、认领、Request 关联、游标）为判定输入，不以消息措辞正文做路由；每次判定连同输入事实引用与结论记为可审计观测，观测不改写任何事实。
 
 压缩缺省关闭。仅当用户配置了专用压缩模型（small-brain——经用户级定义机制固定 revision/digest 的模型引用，不是新对象）时，Bundle 物化才可压缩。每个被压缩条目必须记录 compressor ref+digest、压缩率与原文 ref+digest，且压缩产物的每个片段可回源到原文位置。证据类内容——digest、Receipt、验收标准原文与被治理引用冻结的消息原文——永不压缩；压缩条目缺来源记录或压缩了证据类内容的 Bundle 拒绝交付。萃取与压缩产物可作为以（room、cursor 区间、消费者范围）为键的派生缓存跨调用复用；复用时 Bundle 记录所引产物的 ref+digest，缓存可丢弃重建。
 

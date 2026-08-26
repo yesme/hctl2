@@ -1,6 +1,6 @@
 # Task 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.0<br>
+> 状态：规范性合同 · 草案 v0.13.1<br>
 > 本文是 Task 模块对象、状态机与写入合同的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -27,7 +27,7 @@ Board 与 Project 分组不是新聚合；其稳定锚定保存在 Repo 的 task
 
 看板卡片是 content，粒度由后端自由承载（子任务、清单、微卡不受 HCTL 约束）。只有稳定落在恰好一个已准入 Project group anchor 下的规范卡片，才可 claim 一个 HCTL Task 身份；未分组、同时落入多个 Project group 或 anchor 不可稳定回读的卡片只形成未认领 Snapshot/需要关注，不得猜 Project 或先造 Task。Task Revision 契约按需创建（契约惰性），但只能由显式「采纳契约」或带已预览契约的「创建 Task」产生；无契约的「启动 Run」或「完成 Task」必须先要求该独立动作。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影。「完成 Task」不得在同一命令中隐式生成契约：预览必须要求先执行可审阅的「采纳契约」，再针对返回的精确 Revision 重新预览完成。
 
-Task Revision 冻结验收合同，不冻结施工步骤；其不可变正文与 locator/digest 在 Git，账本保存稳定 identity、准入与 current pointer。后端与关联来源的变化都先成为 Snapshot；其中会改变 Task Revision 契约的内容才形成待采纳，用户采纳并由工具箱回读正文后才准入新 Task Revision。由 content 后端拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。存在绑定该 Task 的非终态 Run 时，「采纳契约」及任何改变 current Task Revision 的命令都拒绝；活动 Run 已冻结的 Revision 既不能原地改写，也不能让 Task current 在其背后漂移。
+Task Revision 冻结验收合同，不冻结施工步骤；其不可变正文与 locator/digest 在 Git，账本保存稳定 identity、准入与 current pointer。后端与关联来源的变化都先成为 Snapshot；其中会改变 Task Revision 契约的内容才形成待采纳，用户采纳并由工具箱回读正文后才准入新 Task Revision。由 content 后端拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。存在绑定该 Task 的非终态 Run 时，「采纳契约」及任何改变 current Task Revision 的命令都拒绝；活动 Run 已冻结的 Revision 既不能原地改写，也不能让 Task current 在其背后漂移。绑定 Task 的后端评论线是 Context 的萃取来源：组装器按当前 Snapshot 的 ref+digest 把评论线冻结进 Context Manifest 并物化（投喂档见 [Project 合同](./project.md#context-memo-artifact)）；它进入 Task Revision 仍只经「采纳契约」，物化不改变契约。
 
 每个外部规范实体在用户级控制面账本内使用 (provider, account_stable_id, external_entity_kind, immutable_external_entity_id) 持久映射到一个 HCTL Task；该唯一键不含端口绑定、scope 或 placement，Disable/Rebind 端口绑定或 placement 也不释放或重定向这份映射。Task Binding 另行冻结可选的 placement identity（placement_scope_stable_id + external_board_item_id）及其写入权；移动 board placement 或更换 board-item binding 不会产生第二个 Task，也不能改写规范实体身份。
 
