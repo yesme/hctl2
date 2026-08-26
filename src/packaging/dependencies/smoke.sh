@@ -16,6 +16,12 @@ note "checking Tuwunel version endpoint and plaintext-room policy"
 http_status_ok 127.0.0.1 "$TUWUNEL_PORT" /_tuwunel/server_version
 grep -Fx 'allow_encryption = false' "$P0_CONFIG_DIR/tuwunel.toml" >/dev/null
 
+note "checking bundled Element Web client configuration"
+http_status_ok 127.0.0.1 "$ELEMENT_WEB_PORT" /
+http_status_ok 127.0.0.1 "$ELEMENT_WEB_PORT" /config.json
+grep -F '"base_url": "http://127.0.0.1:6167"' "$P0_ELEMENT_WEB_ROOT/config.json" >/dev/null
+grep -F '"server_name": "hctl2.localhost"' "$P0_ELEMENT_WEB_ROOT/config.json" >/dev/null
+
 note "checking Vikunja API discovery"
 http_status_ok 127.0.0.1 "$VIKUNJA_PORT" /api/v1/info
 
@@ -30,4 +36,4 @@ readonly TMUX_MODE
 "$P0_BIN_DIR/tmux" -S "$TMUX_SOCKET" list-panes -t "$TMUX_SESSION" -F '#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}' |
     grep -E '^\$[0-9]+\|@[0-9]+\|%[0-9]+\|[0-9]+$' >/dev/null
 
-note "all four local dependency seams are alive"
+note "all four local dependency seams and the bundled Chatroom client are alive"

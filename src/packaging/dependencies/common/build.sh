@@ -112,12 +112,48 @@ download_locked_inputs() {
         "$DAGU_URL" "$DAGU_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_ASSET"
     download_verified "tmux $TMUX_VERSION" \
         "$TMUX_URL" "$TMUX_SHA256" "$P0_DOWNLOAD_DIR/$TMUX_ASSET"
+    download_verified "Element Web $ELEMENT_WEB_VERSION" \
+        "$ELEMENT_WEB_URL" "$ELEMENT_WEB_SHA256" "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_ASSET"
     download_verified "Tuwunel source $TUWUNEL_SOURCE_COMMIT" \
         "$TUWUNEL_SOURCE_URL" "$TUWUNEL_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET"
     download_verified "Vikunja corresponding source $VIKUNJA_SOURCE_COMMIT" \
         "$VIKUNJA_SOURCE_URL" "$VIKUNJA_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET"
     download_verified "Dagu corresponding source $DAGU_SOURCE_COMMIT" \
         "$DAGU_SOURCE_URL" "$DAGU_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET"
+    download_verified "Element Web corresponding source $ELEMENT_WEB_SOURCE_COMMIT" \
+        "$ELEMENT_WEB_SOURCE_URL" "$ELEMENT_WEB_SOURCE_SHA256" \
+        "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET"
+}
+
+prepare_element_web() {
+    local destination="$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION"
+
+    prepare_source_tree "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_ASSET" \
+        "$ELEMENT_WEB_SHA256" "$destination"
+    install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/element-web-config.json" \
+        "$destination/config.json"
+}
+
+build_hctl2_web_server() {
+    local repository_root
+    local source_root
+    local target_dir="$P0_ROOT/hctl2-target"
+    local binary="$target_dir/$HCTL2_RUST_TARGET/release/hctl2-web-server"
+
+    require_command cargo
+    repository_root="$(cd -- "$P0_DEPENDENCY_SOURCE_ROOT/../../.." && pwd -P)"
+    source_root="$repository_root/src"
+    note "building hctl2-web-server for $HCTL2_RUST_TARGET"
+    (
+        cd "$source_root"
+        if [[ "$HCTL2_TARGET_OS" == "macos" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
+        fi
+        cargo build --locked --release --target "$HCTL2_RUST_TARGET" \
+            --target-dir "$target_dir" -p hctl2-web-server
+    )
+    [[ -x "$binary" ]] || die "hctl2-web-server build did not produce $binary"
+    install -m 0755 "$binary" "$P0_BIN_DIR/hctl2-web-server"
 }
 
 prepare_source_tree() {
@@ -160,5 +196,9 @@ write_installed_manifest() {
         printf 'vikunja\t%s\t%s\n' "$VIKUNJA_VERSION" "$(hash_file "$P0_BIN_DIR/vikunja")"
         printf 'dagu\t%s\t%s\n' "$DAGU_VERSION" "$(hash_file "$P0_BIN_DIR/dagu")"
         printf 'tmux\t%s\t%s\n' "$TMUX_VERSION" "$(hash_file "$P0_BIN_DIR/tmux")"
+        printf 'element-web\t%s\t%s\n' "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SHA256"
+        printf 'hctl2-web-server\t%s\t%s\n' \
+            "$(read_hctl2_version "$P0_DEPENDENCY_SOURCE_ROOT/../../Cargo.toml")" \
+            "$(hash_file "$P0_BIN_DIR/hctl2-web-server")"
     } >"$P0_MANIFEST_DIR/installed.tsv"
 }

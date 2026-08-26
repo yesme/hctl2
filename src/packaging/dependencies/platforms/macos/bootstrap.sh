@@ -316,6 +316,8 @@ write_macos_build_environment() {
         printf 'target\t%s\n' "$HCTL2_RUST_TARGET"
         printf 'deployment-target\t%s\n' "$MACOS_DEPLOYMENT_TARGET"
         printf 'rustc\t%s\n' "$("$toolchain_bin/rustc" --version)"
+        printf 'hctl-rustc\t%s\n' \
+            "$(cd "$P0_DEPENDENCY_SOURCE_ROOT/../.." && rustc --version)"
         printf 'clang\t%s\n' "$(clang --version | sed -n '1p')"
         printf 'make\t%s\n' "$(make --version | sed -n '1p')"
         printf 'pkg-config\t%s\n' "$(pkg-config --version)"
@@ -351,6 +353,8 @@ bootstrap_dependencies() {
     install_vikunja_macos
     install_dagu_macos
     install_tmux_macos
+    prepare_element_web
+    build_hctl2_web_server
     write_macos_build_environment
     write_installed_manifest
 
@@ -359,4 +363,5 @@ bootstrap_dependencies() {
     "$P0_BIN_DIR/vikunja" version
     "$P0_BIN_DIR/dagu" version
     "$P0_BIN_DIR/tmux" -V
+    "$P0_BIN_DIR/hctl2-web-server" --version
 }

@@ -1,0 +1,22 @@
+{
+    "default_server_config": {
+        "m.homeserver": {
+            "base_url": "http://127.0.0.1:6167",
+            "server_name": "hctl2.localhost"
+        }
+    },
+    "disable_custom_urls": true,
+    "disable_guests": true,
+    "disable_3pid_login": true,
+    "force_verification": false,
+    "brand": "HCTL2 Chatroom",
+    "default_federate": false,
+    "default_theme": "light",
+    "room_directory": {
+        "servers": ["hctl2.localhost"]
+    },
+    "features": {},
+    "setting_defaults": {
+        "breadcrumbs": true
+    }
+}

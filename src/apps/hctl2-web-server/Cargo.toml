@@ -1,0 +1,12 @@
+[package]
+name = "hctl2-web-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Loopback-only static server for bundled HCTL2 browser clients"
+
+[lints]
+workspace = true

@@ -1,6 +1,6 @@
 # 依赖打包
 
-这个目录把 HCTL2 的四个外部运行组件制作成按目标平台区分、可离线安装的归档。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Homebrew 或 Linux 构建工具。
+这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分、可离线安装的归档：Chatroom（Tuwunel 服务端与 Element Web 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 ## 代码树边界
 
@@ -23,9 +23,9 @@ test-package.sh         同上
 
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
-| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu 官方包；tmux 锁定源码 |
-| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu 官方包；Tuwunel/tmux 锁定源码 |
-| `macos-x86_64` | Intel macOS | Vikunja/Dagu 官方包；Tuwunel/tmux 锁定源码 |
+| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Element Web 官方包；tmux 锁定源码 |
+| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Element Web 官方包；Tuwunel/tmux 锁定源码 |
+| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Element Web 官方包；Tuwunel/tmux 锁定源码 |
 
 Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Homebrew 头文件、链接库、Mach-O 闭包和最终生命周期都要按真实目标验证。
 
@@ -45,11 +45,11 @@ src/packaging/dependencies/build-package-macos-aarch64.sh
 src/packaging/dependencies/build-package-macos-x86_64.sh
 ```
 
-把 `build-package` 换为 `bootstrap` 只准备四个组件；换为 `test-package` 会继续做离线安装、幂等重装、四组件启动、smoke 和停止，是发布前必须通过的完整验证。
+把 `build-package` 换为 `bootstrap` 只准备依赖和内部静态文件服务；换为 `test-package` 会继续做离线安装、幂等重装、完整启动、smoke 和停止，是发布前必须通过的完整验证。
 
 构建输入默认放在 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies/<target>`。设置绝对路径 `HCTL2_BUILD_CACHE` 可以隔离或复用另一份缓存；不同 target 即使共享缓存根目录也不会混用产物。归档输出到 `src/dist/hctl2-<version>-<target>.tar.gz`，不提交 Git。
 
-Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make 和 pkg-config。正式发行必须使用支持范围内最旧的 glibc 构建基线。
+Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make、pkg-config，以及 HCTL2 workspace 锁定的 Rust 1.98.0 toolchain。正式发行必须使用支持范围内最旧的 glibc 构建基线。
 
 macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；这与开发 HCTL2 Rust workspace 使用的 1.98.0 分开。所有自建 Mach-O 都以 macOS 13 为 deployment target。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
@@ -57,14 +57,15 @@ macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定�
 
 每个归档包括：
 
-- Tuwunel、Vikunja、Dagu、tmux 四个可执行文件和所需的非系统动态库；
+- Tuwunel、Vikunja、Dagu、tmux 四个上游可执行文件和所需的非系统动态库；
+- Element Web 官方发行内容，以及只绑定 loopback 的内部 `hctl2-web-server`；
 - `hctl2-services` 以及公共生命周期代码和目标平台 runtime hook；
 - target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
 - HCTL2 与所有分发依赖的许可证；
-- 四个组件及 macOS 随包 dylib 对应的锁定上游源码；
+- 四类依赖及 macOS 随包 dylib 对应的锁定上游源码；
 - 根归档与 payload 两层 SHA-256 清单。
 
-macOS arm64 当前实测归档约 157.4 MiB，解压 payload 约 367.0 MiB，其中约 34.3 MiB 是随包提供的对应源码。安装器不联网、不编译，也不会自动启动进程。
+含 Element Web 的 Linux x86_64 归档当前实测约 232.2 MiB，解压 payload 约 510 MiB；两个 macOS target 需要原生重建后再记录新体积。安装器不联网、不编译，也不会自动启动进程。
 
 ## 用户流程
 
@@ -87,8 +88,9 @@ cd hctl2-0.0.0-<target>
 | 组件 | 版本 | 本地端点 |
 | --- | --- | --- |
 | Tuwunel | 1.9.0 | `http://127.0.0.1:6167` |
+| Element Web | 1.12.26 | `http://127.0.0.1:6168/` |
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
 | tmux | 3.7c | owner-only Unix socket |
 
-所有 listener 都绑定 loopback。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+所有 listener 都绑定 loopback。Element Web 与 Tuwunel 合在一起是 Chatroom 解决方案，并不增加第五类执行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。

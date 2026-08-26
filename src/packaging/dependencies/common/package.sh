@@ -58,21 +58,30 @@ assemble_dependency_package() {
     if [[ "${HCTL2_SKIP_BOOTSTRAP:-0}" != "1" ]]; then
         bootstrap_dependencies
     fi
-    for component in tuwunel vikunja dagu tmux; do
+    for component in tuwunel vikunja dagu tmux hctl2-web-server; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing after bootstrap"
     done
+    [[ -f "$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION/index.html" ]] || \
+        die "Element Web is missing after bootstrap"
 
     mkdir -p \
         "$payload_root/bin" \
         "$payload_root/lib/hctl2/services" \
         "$payload_root/lib/hctl2/vendor" \
         "$payload_root/libexec/hctl2" \
+        "$payload_root/share/hctl2/chatroom/element-web" \
         "$payload_root/share/hctl2/licenses" \
         "$payload_root/share/hctl2/sources"
 
     for component in tuwunel vikunja dagu tmux; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
+    install -m 0755 "$P0_BIN_DIR/hctl2-web-server" \
+        "$payload_root/libexec/hctl2/hctl2-web-server"
+    cp -a "$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION/." \
+        "$payload_root/share/hctl2/chatroom/element-web/"
+    find "$payload_root/share/hctl2/chatroom/element-web" \
+        -name .hctl2-source-sha256 -delete
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/hctl2-services" "$payload_root/bin/hctl2-services"
     for script in smoke.sh start.sh status.sh stop.sh; do
         install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/$script" "$payload_root/lib/hctl2/services/$script"
@@ -87,6 +96,9 @@ assemble_dependency_package() {
 
     install -m 0644 "$repository_root/LICENSE" \
         "$payload_root/share/hctl2/licenses/HCTL2-Apache-2.0.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
+        "element-web-$ELEMENT_WEB_SOURCE_COMMIT/LICENSE-GPL-3.0" \
+        >"$payload_root/share/hctl2/licenses/Element-Web-GPL-3.0-or-later.txt"
     platform_stage_licenses
 
     install -m 0644 "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET" \
@@ -97,6 +109,8 @@ assemble_dependency_package() {
         "$payload_root/share/hctl2/sources/$TUWUNEL_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_ASSET" \
         "$payload_root/share/hctl2/sources/$TMUX_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
+        "$payload_root/share/hctl2/sources/$ELEMENT_WEB_SOURCE_ASSET"
     platform_stage_build_metadata
 
     printf '%s\n' "$package_id" >"$payload_root/share/hctl2/package-id"
@@ -119,6 +133,9 @@ assemble_dependency_package() {
         printf 'tmux\t%s\t%s\t%s\t%s\t%s\n' \
             "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_SHA256" "$TMUX_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/tmux")"
+        printf 'element-web\t%s\t%s\t%s\t%s\t%s\n' \
+            "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SOURCE_COMMIT" "$ELEMENT_WEB_SHA256" \
+            "$ELEMENT_WEB_SOURCE_SHA256" "$ELEMENT_WEB_SHA256"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
     write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share

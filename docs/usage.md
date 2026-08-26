@@ -1,12 +1,12 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行四个打包依赖及两个 Rust 骨架程序，但公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖及两个 Rust 骨架程序，但公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
 
 ## 当前入口一览
 
 | 名称 | 当前状态 | 面向谁 | 现在能做什么 |
 | --- | --- | --- | --- |
-| `hctl2-services` | 可用 | 安装包用户、开发者 | 启动、停止、重启并检查 Tuwunel、Vikunja、Dagu 和 tmux |
+| `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Element Web）、Vikunja、Dagu 和 tmux |
 | `hctl2-agentd` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能创建 Harness 会话或持有 PTY |
 | `hctl2-tool` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能执行 Git/SCM 操作 |
 | `hctl2-protocol` | Rust 库，不是命令 | HCTL2 开发者 | 为进程间通信提供共享 envelope 类型 |
@@ -18,7 +18,7 @@
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS arm64 已通过原生整包生命周期验证。包内含固定版本的 Tuwunel、Vikunja、Dagu、tmux 及 `hctl2-services`。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包。含 Element Web 的 Linux x86_64 包已通过完整生命周期验证；macOS arm64 此前验证的是未含 Element Web 的基线，两个 Mac target 都需要在对应机器上重跑当前包。包内含固定版本的 Tuwunel、Element Web、Vikunja、Dagu、tmux、内部静态文件服务及 `hctl2-services`。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
 
 解压并按默认位置安装：
 
@@ -58,7 +58,7 @@ hctl2-services --help
 
 ### 启动
 
-启动全部四个依赖：
+启动全部四类依赖：
 
 ```bash
 hctl2-services start
@@ -69,9 +69,10 @@ hctl2-services start
 ```bash
 hctl2-services start tuwunel
 hctl2-services start vikunja dagu
+hctl2-services start element-web
 ```
 
-可用组件名固定为 `tuwunel`、`vikunja`、`dagu` 和 `tmux`。不指定组件时，启动顺序为 Tuwunel、Vikunja、Dagu、tmux。重复执行 `start` 不会重复启动已经由 HCTL2 管理的进程。
+可用组件名固定为 `tuwunel`、`element-web`、`vikunja`、`dagu` 和 `tmux`。其中 Tuwunel 与 Element Web 共同构成 Chatroom，后者不是第五类执行依赖。不指定组件时依次启动 Tuwunel、Element Web、Vikunja、Dagu、tmux，并打印 Chatroom、Kanban、Workflow 三个浏览器地址；单独启动 `element-web` 也会先确保 Tuwunel 已启动。重复执行 `start` 不会重复启动已经由 HCTL2 管理的进程。
 
 ### 查看状态
 
@@ -79,9 +80,9 @@ hctl2-services start vikunja dagu
 hctl2-services status
 ```
 
-`status` 总是检查全部四个组件。每行会显示 `ready`、`running`、`stopped`、`unhealthy` 或非托管 socket 等状态，并在可用时显示 PID、端点或 socket。
+`status` 总是检查五个受管组件。每行会显示 `ready`、`running`、`stopped`、`unhealthy` 或非托管 socket 等状态，并在可用时显示 PID、端点或 socket。
 
-只有四个组件全部就绪时，`status` 才返回退出码 `0`；任一组件未就绪都会返回非零退出码。因此它可以直接用于脚本、健康检查和 CI，但在启用了 `set -e` 的 shell 中也会使脚本立即退出。
+只有五个受管组件全部就绪时，`status` 才返回退出码 `0`；任一组件未就绪都会返回非零退出码。因此它可以直接用于脚本、健康检查和 CI，但在启用了 `set -e` 的 shell 中也会使脚本立即退出。
 
 ### 运行冒烟检查
 
@@ -89,7 +90,7 @@ hctl2-services status
 hctl2-services smoke
 ```
 
-`smoke` 不只检查进程是否存在，还会检查三个 HTTP 端点、Tuwunel 的非加密房间策略，以及 tmux 的无界面查询、稳定 ID 格式和 socket 权限。全部检查通过时返回退出码 `0`。
+`smoke` 不只检查进程是否存在，还会检查四个 HTTP 端点、Element Web 是否只指向随包 Tuwunel、Tuwunel 的非加密房间策略，以及 tmux 的无界面查询、稳定 ID 格式和 socket 权限。全部检查通过时返回退出码 `0`。
 
 ### 重启或停止
 
@@ -124,11 +125,12 @@ hctl2-services stop tmux
 | 组件 | 用途 | 本地位置 |
 | --- | --- | --- |
 | Tuwunel | HCTL Room 的 Matrix homeserver | `http://127.0.0.1:6167` |
-| Vikunja | 本地任务后端 | `http://127.0.0.1:3456` |
-| Dagu | 本地工作流引擎 | `http://127.0.0.1:18080` |
+| Element Web | Chatroom 随包浏览器客户端 | `http://127.0.0.1:6168/` |
+| Vikunja | Kanban 浏览器客户端与本地任务后端 | `http://127.0.0.1:3456/` |
+| Dagu | Workflow 浏览器客户端与本地工作流引擎 | `http://127.0.0.1:18080/` |
 | tmux | 无界面终端会话承载 | Linux 位于状态目录；macOS 位于 owner-only 的短 `/tmp` 目录 |
 
-这些网络服务只监听 loopback，不对局域网或公网开放。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+这些网络服务只监听 loopback，不对局域网或公网开放。Element Web 是官方发行包的静态内容，由随包的内部 `hctl2-web-server` 提供；它主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
 
 ### 状态、日志和数据
 
@@ -151,7 +153,7 @@ hctl2-services start
 | --- | --- |
 | `config/` | 自动生成的配置与本地 secret |
 | `data/` | 三个服务的持久数据 |
-| `logs/` | `tuwunel.log`、`vikunja.log`、`dagu.log` |
+| `logs/` | `tuwunel.log`、`element-web.log`、`vikunja.log`、`dagu.log` |
 | `pids/` | 受管进程的 PID 文件 |
 | `runtime/` | Linux 的 tmux socket 等运行时文件；macOS socket 因路径上限放在 `/tmp/hctl2-tmux-<uid>/`，以状态根哈希命名 |
 
@@ -163,6 +165,7 @@ hctl2-services start
 - 如果 HTTP 服务未能就绪，查看状态根目录下 `logs/<component>.log` 的末尾信息。
 - 如果停止时报告 foreign PID、stale PID 或 unmanaged socket，不要直接向该 PID 发信号；先确认当前使用的 `HCTL2_STATE_ROOT` 是否与启动时一致，再检查 PID 文件和实际进程。
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
+- 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `element-web` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
 ## 使用 `hctl2-agentd`
 

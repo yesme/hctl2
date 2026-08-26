@@ -10,7 +10,9 @@
 
 `hctl2-control`、公共 `hctl2` CLI 与 Workbench 将在 P2/P3 进入代码树。两个 P1 可执行文件目前都不是治理命令入口。
 
-`packaging/dependencies` 负责外部依赖供应链。它固定 Tuwunel、Vikunja、Dagu 和 tmux 的版本，构建 Linux x86_64 payload，并交付离线安装器与纳入版本控制的生命周期脚本。下载的输入与生成的发行归档不提交到 Git。
+`packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Element Web 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）的版本，构建三种目标平台的 payload，并交付离线安装器与纳入版本控制的生命周期脚本。下载的输入与生成的发行归档不提交到 Git。
+
+`hctl2-web-server` 是离线包内部使用的 loopback 静态文件服务，不是公共用户命令。它让随包的 Element Web 无需 Python 或 Node.js 即可由 `hctl2-services` 启停。`testing/element-web` 记录这个 Chatroom 浏览器客户端的人工验收边界；Element Web 不是 HCTL2 Workbench，也不是第五个执行面依赖。
 
 面向人的 README、使用说明和其他产品文档使用中文；源码、配置和脚本使用英文；命令行 `--help` 内容使用英文。
 
