@@ -6,9 +6,21 @@
 > 目标环境:macOS Apple Silicon;**Ubuntu 物理机、NVIDIA 显卡、Wayland(GNOME)**(所有者主开发机);Windows。<br>
 > 模式:六条调研线(GPUI 本体、GPUI 控件生态、Iced、Flutter、Linux 上的 Web 路线、本机同口径探针 ×3)+ 主线复核(gpuix、libghostty、awesome-gpui、tty7/gpui_xterm、Zed GPL crate 依赖扇出)。每条事实附来源;未核实项单列。<br>
 > 性质:**讨论备忘,不是决定**。是否重开 E-WORKBENCH-SHELL、是否改 delivery.md 的 Workbench 技术栈、是否给 `hctl2-workbench` 换许可证,由所有者拍板。<br>
-> 附录(原始调研报告,英文,含全部 URL 与数字):A1 GPUI 本体 `…-a1-gpui-core.md` · A2 GPUI 控件生态 `…-a2-gpui-ecosystem.md` · A3 Linux 上的 Web 壳路线 `…-a3-linux-web-routes.md` · A4 Iced `…-a4-iced.md` · A5 Flutter `…-a5-flutter.md` · A6 本机探针 `…-a6-local-probes.md`(文件名前缀均为 `workbench-shell-reopen-20260826`)。
+> 附录(原始调研报告,含全部 URL 与数字):A1 GPUI 本体 `…-a1-gpui-core.md` · A2 GPUI 控件生态 `…-a2-gpui-ecosystem.md` · A3 Linux 上的 Web 壳路线 `…-a3-linux-web-routes.md` · A4 Iced `…-a4-iced.md` · A5 Flutter `…-a5-flutter.md` · A6 macOS 本机探针 `…-a6-local-probes.md` · A7 Ubuntu NVIDIA/Wayland 实机探针 `…-a7-ubuntu-probes.md`(文件名前缀均为 `workbench-shell-reopen-20260826`)。
 
-## 结论先行
+## Ubuntu 实测回填（2026-08-26）
+
+下列 Ubuntu 物理机实测**覆盖本备忘原先仅根据上游 issue 得出的平台推断**，完整环境、步骤、数值、上游反馈和产物校验见附录 A7：
+
+1. **Tauri 2.11.5 在所有者的 Ubuntu 26.04 / GNOME 50.1 / Wayland / Quadro P620 / NVIDIA 580.173.02 上通过。** Canvas 2D、WebGL、10 个 xterm.js WebGL terminal、长列表滚动、最大化和中文输入均可用；应用把前端 caret 矩形传给 WebKitGTK `InputMethodContext` 后，所有者确认各输入控件的 IME 候选窗也正常。此前“在主开发机上可以判死”的结论被实测证伪。
+2. **GPUI + gpui-component Gallery 通过。** 原生 Wayland、NVIDIA GPU、输入、滚动和 IME 正常，完整 release 构建及独立二进制运行成功。它保留为原生备选，剩余问题是生态与开发总成本，不是本机兼容性。
+3. **Flutter 暂时淘汰。** 普通窗口和 IME 正常，但默认应用最大化时在 Wayland/X11 均稳定 SIGSEGV；已提交 [flutter/flutter#191775](https://github.com/flutter/flutter/issues/191775)。
+4. **Electron 44 可用但原生 Wayland 有顶边 1 px 闪动。** XWayland 对照消失；若采用 Electron，此类 NVIDIA/分数缩放环境应默认 `--ozone-platform=x11`。统一重载探针下 Electron `.deb` 95.69 MiB、PSS 371.71 MiB，Tauri `.deb` 2.80 MiB、PSS 283.95 MiB；GPUI Gallery 的不同负载 PSS 204.97 MiB，不能严格横比。
+5. **实测后的工程建议：Tauri 2 + TS/React 优先，GPUI 为原生备选，Electron 为安全网，Flutter 等上游修复。** 本备忘仍是讨论记录，正式技术栈决定需另行落入 implementation evidence / delivery，而不是由探针备忘暗改。
+
+Tauri IME 候选窗定位的复现和应用侧修正已反馈到 [tauri-apps/tauri#11412](https://github.com/tauri-apps/tauri/issues/11412#issuecomment-5420366006)。组合下划线在已有文本前可能延伸到行末，是 WebKitGTK 的 preedit 绘制瑕疵；候选、选字和最终输入不受影响，所有者接受不在应用层叠加特判。
+
+## Ubuntu 探针前的调研阶段结论（保留原文供追溯）
 
 1. **Tauri 2 在所有者的主开发机上可以判死。** WebKitGTK + NVIDIA + Wayland 的黑屏/Error 71 问题从 2024-08 开到今天(tauri#10702,2026-08 仍有 WebKitGTK 2.52.5 + 驱动 580 的报告),WebKit 上游把"为 NVIDIA 禁用 DMA-BUF"标成 WONTFIX,Tauri 官方文档(2026-06-15 更新)仍教三级环境变量降级。替代运行时全灭:Verso 归档(2025-10),CEF 分支仅 X11 且"source available",qtwebengine 方向暂停。
 2. **GPUI + WebView 不是出路。** gpui-component 的 WebView 就是 wry(Tauri 的 WebView 层),Linux 仍是 WebKitGTK,且 gpui-component 自己的 Linux 示例标注 "doesn't work yet"。混合方案 = Tauri 的短板 + GPUI 的复杂度。
@@ -194,16 +206,15 @@ echo "IM: $GTK_IM_MODULE / $QT_IM_MODULE / $XMODIFIERS"; pgrep -l -E 'fcitx5|ibu
 ## 未核实项
 
 - GPUI/wgpu 是否在 NVIDIA Wayland 上协商 explicit sync;#52944 在 Zed 1.16 是否仍复现。
-- gpui-component 的 IME 仅从源码核实,未在 Linux/Windows 实机运行;`CompletionProvider` 能否挂 Textarea。
+- gpui-component 的 Linux/Wayland IME 已由附录 A7 实机核实；Windows IME 仍未实测，`CompletionProvider` 能否挂 Textarea 仍未核实。
 - gpui-component WebView 在 Linux 的官方支持声明(仅见示例 TODO)。
 - Rust 侧是否有 dagre 级分层布局 crate 可直接配 gpui/iced(未搜)。
-- Electron 冷启动时间与真实 Workbench 场景的内存(本轮只有空壳)。
+- Electron 冷启动时间与最终真实 Workbench 场景的内存仍未核实；附录 A7 已补一窗 10 个 xterm.js WebGL terminal + 长列表的中间负载数据。
 - gpuix 在 Linux/Windows 的实际运行状态(README 自述未验证)。
 - `gpui-ghostty` 0.0.1(2026-08-04)仓库已 404;`gpui_xterm` 功能完整度(选区/滚动/IME)未运行验证。
 - libcosmic 在 macOS/Windows 的 2026 构建状态。
 - Iced 的 NVIDIA + GNOME Wayland 实机表现(无 issue ≠ 无问题)。
 - Flutter:Impeller 在 Linux 的官方"可用性"表(Google Sheet 不可抓取),"OpenGL 后端"结论来自 PR #189584 的自述;`graphview` 节点拖拽后能否重排;`xterm.dart` 的 OSC 8 链接与选区;`super_editor`/`flutter_quill` 的桌面 IME 可靠性;AppFlowy 空载 RSS;FluffyChat 是否有非 CI 的 Windows/macOS 构建;本机 Flutter `.app` 为双架构,单架构数字是按 slice 估算。
-- 一台 Ubuntu 机器的具体版本、驱动版本、GNOME 版本(所有者未提供数字)。
 
 ## 主要证据
 
