@@ -1,6 +1,6 @@
 # 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-24<br>
+> 状态：信息性文档 · 研究快照 2026-08-24（来时路归类补于 2026-08-26）<br>
 > 上级文档：[HCTL2 设计规范](../README.md)<br>
 > 规则：本文只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。<br>
 > 组织方式：正文按**产品类别**分组（回答"它是什么"）；条目内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。两把刀互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
@@ -108,6 +108,40 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](#e-lobehub
 这个归类按产品类别分组、按"设计亮点"取证据，不按产品名排他。Codeg 可以同时贡献 L3 的独立 Task 生命周期和 L1 的集成边界；Stably Orca 同时贡献 L1 的执行连续性与 L2 的持久监督协议；Herdr 的主要实现价值在 L1，其状态仲裁还为 L2 提供"运行信号不等于语义完成"的边界证据。任何项目若只顺带拥有 Project、Agent 或 Board 概念，仍不会因此进入对应层。
 
 方法论工具生态（spec 驱动、任务图驱动、流程/角色模拟、轻量纪律、编排器等家族：openspec、spec-kit、Kiro、beads、Taskmaster、vibe-kanban、BMAD、MetaGPT、agent-os、GSD、Gas Town）的逐仓库源码审计与借鉴决策记录在 [方法论生态审计备忘录](../../../.memo/methodology-landscape-20260824.md)；其结论（不采用为依赖、重借 schema、少量移植、大量借阶段）与本文准入相互独立，未立正式条目。
+
+<a id="lineage-scene-map"></a>
+### ⑧ 来时路与场景落点
+
+同赛道产品的产品重心不是随机分布的：一个产品从哪条路走来，决定它把界面和叙事放在四个场景（Chat Room / Kanban / Workflow / Terminal）的哪一个；而提交直方图显示的工程投入又常常落在另一个场景。下表把这两件事分开写。百分比沿用上文"产品重心（直方图口径）"一列，闭源产品按行为口径。
+
+| 来时路 | 产品 | 叙事中心 | 工程中心（直方图） | 后来长出的第二场景 |
+| --- | --- | --- | --- | --- |
+| 聊天客户端 / 助理网关 | [LobeHub](#e-lobehub)（LobeChat 原地演化） | Room | room 54 / workflow 16 / terminal 16 / kanban 14 | task/验收 workbench 是增速最快的面 |
+| | [Cumora](#e-cumora)（agent 当一等队友的团队聊天） | Room | room 67 / terminal 21 / kanban 7 / workflow 5 | Shipping 八态状态机往 Kanban 长 |
+| | [Hermes Agent](#e-l3-hermes-agent) | Room | room 52 / terminal 42 / kanban 3 | Kanban 占 1.5%，2026-04 才出现 |
+| | [OpenClaw](#e-l4-openclaw) / [ZeroClaw](#e-l2-zeroclaw) | Room（多渠道） | 自驱运行时 | OpenClaw 2026-07 起出现 workboard/worktrees 页，约 2-3% |
+| | [Claude Tag](#e-l4-claude-tag)（寄生 Slack） | Room | 闭源，行为口径 | Checklist/Routine 只是投影 |
+| 带电脑的 Bot（IDE 厂商的云 agent 转助理） | [Grok Bot](#e-grok-bot)（Cursor 栈） | Room + Terminal（Agent Computer 视图） | 闭源；客户端源码印证 | 没有任务对象，L3 只有隐藏的 TodoWrite |
+| | [Rakazo](#e-rakazo)（Grok Bot 自托管替代） | Room（一 bot 一线程） | 执行运行时 35 / room 27 / 机械后端 24 | 没有 L3 |
+| 工单 / Issue 跟踪器 | [Multica](#e-multica) | Kanban（Project/Issue） | terminal 37 / kanban 29 / room 13 / workflow 12 | 四场景全触及且无一超四成，唯一的均衡样本 |
+| | [Helio](#e-helio)（票据 + 审批 + Vault） | Kanban + 审批收件箱 | 文档面 workflow 35 / kanban 25 / room 25 / terminal 15；开源外围集中在工具集成与 workflow 治理 | ship 插件的 stop-gate 与证据分级是 TDD/eval 那条路在协作平台里的落点 |
+| 终端复用 / 并行 worktree | [Superset](#e-superset) | Terminal | terminal 60-70 / 远程 20 / kanban 5 / workflow 3 | Board 分栏从 PR 与运行信号派生 |
+| | [Herdr](#e-l1-herdr) | Terminal | ≈100% terminal | 无 room/kanban/workflow 目录 |
+| | [Termio](#l1-selected-evidence) | Terminal（桌面 ADE） | terminal 65 / worktree 20 / 移动 15 | — |
+| | [Codeg](#e-l3-codeg) | Terminal（多 Agent 会话工作台） | ACP/会话面约 70 / WorkTask 看板 8 | 本文借的 L3 是它的次要模块 |
+| | [Stably Orca](#e-l1-stably-orca) | Terminal + worktree Board | terminal 47 / kanban 39 | 看板卡片身份仍是 worktree；有 Decision Gate |
+| 上下文 / 知识工程 | [First Tree](#e-l4-first-tree)（Context Tree） | Room + Context | terminal 50 / context 25 / room 20；kanban≈0 | 叙事在 Chat/Context，工程在受管运行时 |
+| 远程操控 | [Codex Remote Feishu](#e-l1-codex-remote-feishu) 及[观察清单](#观察清单远程操控与会话同步) | Terminal（Room 只是投影） | 会话与中继 | 刻意不拥有任务语义 |
+
+方法论工具没有产品形态，但来时路最清楚，落点按驱动机制归：spec 驱动（Kiro、spec-kit、OpenSpec）落 Kanban，只是"文件里的任务清单"而没有板；任务图驱动（beads、Taskmaster）落 Kanban；编排器（Gas Town、vibe-kanban）落 Workflow + Terminal；群体自治（ruflo）与流程/角色模拟（BMAD、MetaGPT）落 Workflow；TDD/eval（tdd-guard）落 Workflow 的门但活在 harness hook 里；会话复用（claude-squad、crystal）落 Terminal。三个 Workflow 落点的家族表面相似、内里不同，辨析见[方法论生态审计备忘录](../../../.memo/methodology-landscape-20260824.md)的 2026-08-26 补记。
+
+从表里读出三条规律：
+
+1. **来时路决定叙事中心，几乎不决定工程中心。** 工程重心不约而同漂向 Terminal：First Tree 讲 Chat/Context 但一半提交在受管运行时，Multica 讲 Issue 但 terminal 高于 kanban，Codeg 七成在会话面，LobeHub 与 Cumora 都是聊天出身却各自长出 harness 适配层与 BYOA 守护进程。把 harness 真跑起来、跑得住是最难的工程，谁都绕不过。
+2. **Workflow 场景没有产品主人。** 每家都有一个 routine/automation/autopilot，投入都不超过 16%，而且都是"定时触发 + 至少一次投递"的薄层，没有版本、没有 Gate。真正把 Workflow 当中心的全是方法论工具，它们又没有产品面。这与方法论备忘录的完成判定权横评是同一事实的两面。
+3. **Kanban 是最晚长出、也最容易长歪的场景。** 聊天出身的最后才补看板；终端出身的看板卡片身份是 worktree；工单出身的两家看板是叙事中心，但任务是可随时改写的活行，没有冻结契约。
+
+对 HCTL2 的含义：没有一家的四个场景是同时有主人的，四场景齐备本身就是空位；HCTL2 押的差异（Kanban 的契约冻结、Workflow 的完成判定权）恰好落在两个没人做主的场景上。这一节只回答"它们从哪来、落在哪"，不改变各条目的复用决策。
 
 ## 四层如何组合这些亮点
 

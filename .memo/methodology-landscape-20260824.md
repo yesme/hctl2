@@ -36,6 +36,16 @@
 
 未单列的：Tessl（spec 注册表商业化，公开仓库仅 70★，spec 族极端）；异步云 agent PR 交付（Devin/Codex cloud/Jules）机制已被"系统记录寄生"覆盖；代码知识图谱、模型路由网关、awesome 清单——是基础设施或教学材料，不是方法论。
 
+> **2026-08-26 补记：编排器、群体自治、流程/角色模拟是不是一族。** 三家都把"多个 agent 之间的形状"当成方法论本身，所以在四场景里都落 Workflow；画场景地图时可以合成一个"多 agent 拓扑家族"标三个亚种。做借鉴决策时必须分开，因为它们在三个轴上分得很开：
+>
+> | | 编排器（Gas Town、vibe-kanban） | 群体自治（ruflo/claude-flow） | 流程/角色模拟（MetaGPT、BMAD） |
+> | --- | --- | --- | --- |
+> | 拓扑由谁持有 | 代码写死，运行时不变 | 模型临场生成（hive-mind、自组织） | 名义上是角色 SOP，实际骨架是阶段文档链 |
+> | "agent"是什么 | 真进程：spawn/监控/回收 tmux 里的外部 harness | 同一运行时内的一批 LLM 调用，共享内存 | 提示词角色（BMAD v6 明说角色是"可选交互皮肤"） |
+> | 完成怎么判、人在哪 | 机械关单：gates 过 + 推送验证后由 Go 代码带 commit SHA 关闭；人在门上 | consensus 投票，仍是自述；人不在回路 | 人批阶段门 + 模型自勾 done；MetaGPT 没有人类否决位 |
+>
+> 角色模拟这一族正在塌缩：MetaGPT 默认路径把 SOP 瀑布换成 TeamLeader 单点 LLM 路由（往 swarm 塌），BMAD 砍到只剩四阶段文档链加确定性脚本（往 spec 驱动塌）。稳得住的只有两头——拓扑在代码里、进程是真的（编排器），和拓扑在模型里、进程是假的（swarm）。对 HCTL2 的用法因此不同：编排器是 Run/Workflow + agentd + tmux 的同问题域亲戚，机械关单、convoy 归约、Witness 是正面证据；swarm 暂缓；角色模拟不是拓扑问题而是 Worker Profile 问题——角色是提示词层的东西，HCTL2 托管它但不拥有它，其阶段门可借给 Workflow Revision 当 Gate 形状。产品侧的来时路归类见[实现证据 ⑧ 来时路与场景落点](../docs/design/references/implementation-evidence.md#lineage-scene-map)。
+
 ## 二、我们属于哪种实践
 
 **产品层面**（HCTL2 是什么）：四段链各对应一个家族的强项，外加一个全场缺失的差异化环节——
