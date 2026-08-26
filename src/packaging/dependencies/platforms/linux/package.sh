@@ -3,6 +3,7 @@
 
 platform_stage_payload() {
     local library
+    local library_dir="$P0_VENDOR_DIR/tmux-sysroot/usr/lib/x86_64-linux-gnu"
     local resolved
     local link_name
 
@@ -16,7 +17,8 @@ platform_stage_payload() {
         # Install the resolved bytes under the SONAME requested by tmux. This
         # keeps the payload free of unchecked symlinks.
         install -m 0755 "$resolved" "$PAYLOAD_ROOT/lib/hctl2/vendor/$link_name"
-    done < <(ldd "$P0_BIN_DIR/tmux" | awk '/=> \// { print $3 } /^\// { print $1 }')
+    done < <(LD_LIBRARY_PATH="$library_dir" ldd "$P0_BIN_DIR/tmux" |
+        awk '/=> \// { print $3 } /^\// { print $1 }')
 
     [[ -e "$PAYLOAD_ROOT/lib/hctl2/vendor/libevent_core-2.1.so.7" ]] || \
         die "tmux's bundled libevent runtime was not resolved from the build sysroot"

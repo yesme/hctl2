@@ -74,8 +74,10 @@ readonly P0_TMP_DIR="$P0_ROOT/tmp"
 readonly P0_VENDOR_DIR="$P0_ROOT/vendor"
 if [[ -n "$P0_INSTALL_ROOT" ]]; then
     readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_INSTALL_ROOT/lib/hctl2/vendor"
+    readonly P0_ELEMENT_WEB_ROOT="$P0_INSTALL_ROOT/share/hctl2/chatroom/element-web"
 else
     readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_VENDOR_DIR"
+    readonly P0_ELEMENT_WEB_ROOT="$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION"
 fi
 
 die() {
@@ -221,7 +223,9 @@ http_status_ok() {
     local protocol
     local status
 
-    exec 3<>"/dev/tcp/$host/$port" 2>/dev/null || return 1
+    if ! { exec 3<>"/dev/tcp/$host/$port"; } 2>/dev/null; then
+        return 1
+    fi
     if ! printf 'GET %s HTTP/1.1\r\nHost: %s:%s\r\nConnection: close\r\n\r\n' \
         "$path" "$host" "$port" >&3; then
         exec 3>&-

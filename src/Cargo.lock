@@ -19,3 +19,7 @@ version = "0.0.0"
 dependencies = [
  "hctl2-protocol",
 ]
+
+[[package]]
+name = "hctl2-web-server"
+version = "0.0.0"

@@ -107,6 +107,7 @@ prepare_tmux_linux_build_deps() {
         printf 'glibc\t%s\n' "$(getconf GNU_LIBC_VERSION)"
         printf 'make\t%s\n' "$(make --version | sed -n '1p')"
         printf 'pkg-config\t%s\n' "$(pkg-config --version)"
+        printf 'hctl-rustc\t%s\n' "$(rustc --version)"
     } >"$P0_MANIFEST_DIR/tmux-build-environment.tsv"
 
     export PKG_CONFIG_PATH="$sysroot/usr/lib/x86_64-linux-gnu/pkgconfig"
@@ -118,10 +119,11 @@ prepare_tmux_linux_build_deps() {
 install_tmux_linux() {
     local build_dir
     local install_dir="$P0_VENDOR_DIR/tmux-$TMUX_VERSION"
+    local library_dir="$P0_VENDOR_DIR/tmux-sysroot/usr/lib/x86_64-linux-gnu"
 
     prepare_tmux_linux_build_deps
     if [[ -x "$P0_BIN_DIR/tmux" ]] &&
-        [[ "$("$P0_BIN_DIR/tmux" -V)" == "tmux $TMUX_VERSION" ]] &&
+        [[ "$(LD_LIBRARY_PATH="$library_dir" "$P0_BIN_DIR/tmux" -V)" == "tmux $TMUX_VERSION" ]] &&
         readelf -d "$P0_BIN_DIR/tmux" | grep -F "$TMUX_RELATIVE_RUNPATH" >/dev/null; then
         note "tmux $TMUX_VERSION already built"
         return
@@ -146,6 +148,8 @@ install_tmux_linux() {
 }
 
 bootstrap_dependencies() {
+    local tmux_library_dir
+
     require_target_host
     require_command apt-get
     require_command dpkg-deb
@@ -155,6 +159,7 @@ bootstrap_dependencies() {
     require_command make
     require_command pkg-config
     require_command readelf
+    require_command rustc
     require_command tar
     require_command unzip
 
@@ -163,11 +168,15 @@ bootstrap_dependencies() {
     install_vikunja_linux
     install_dagu_linux
     install_tmux_linux
+    prepare_element_web
+    build_hctl2_web_server
     write_installed_manifest
 
     note "installed $HCTL2_TARGET_ID binaries in $P0_BIN_DIR"
     "$P0_BIN_DIR/tuwunel" --version
     "$P0_BIN_DIR/vikunja" version
     "$P0_BIN_DIR/dagu" version
-    "$P0_BIN_DIR/tmux" -V
+    tmux_library_dir="$P0_VENDOR_DIR/tmux-sysroot/usr/lib/x86_64-linux-gnu"
+    LD_LIBRARY_PATH="$tmux_library_dir" "$P0_BIN_DIR/tmux" -V
+    "$P0_BIN_DIR/hctl2-web-server" --version
 }

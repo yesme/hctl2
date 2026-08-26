@@ -31,6 +31,7 @@ stop_tmux() {
 stop_component() {
     case "$1" in
         tuwunel) stop_background tuwunel "$P0_BIN_DIR/tuwunel" ;;
+        element-web) stop_background element-web "$P0_BIN_DIR/hctl2-web-server" ;;
         vikunja) stop_background vikunja "$P0_BIN_DIR/vikunja" ;;
         dagu) stop_background dagu "$P0_BIN_DIR/dagu" ;;
         tmux) stop_tmux ;;
@@ -39,7 +40,7 @@ stop_component() {
 }
 
 if (($# == 0)); then
-    set -- tmux dagu vikunja tuwunel
+    set -- tmux dagu vikunja element-web tuwunel
 fi
 
 for component in "$@"; do
