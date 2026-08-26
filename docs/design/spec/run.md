@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.0<br>
+> 状态：规范性合同 · 草案 v0.13.1<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -73,6 +73,8 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 5. 领域结果与 Engine completion outbox 先持久提交，再经 Dagu `human.task` API 把路标推过该检查点；ACK 未知时先回读再重投。路标与账本不一致（检查点已被 Engine 自行推进或重试）只把 Engine Execution Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
 Attempt 的派发在 Execution Spec 中至少冻结 attempt/seat/run ref + `attempt_generation`、精确 Participant revision/Project Role Binding、Worker Profile、接入方式与降级能力、运行时后端 binding、可选 ChangeSet/Write Lease、根 Context Manifest ref+digest、该 Attempt 的 Context Bundle ref+digest、实际 Skill refs+digests、能力/权限和截止时间。`attempt_generation` 是语义 owner 代次；它既不是后续激活时分配的 `runtime_generation`，也不是 control/site/backend 的基础设施 fence generation，所有层都必须分别携带并逐项校验。Attempt lifecycle 为待启动 | 运行中 | 等待输入 | 已交提案 | 失败 | 丢失 | 已取消 | 被替代：待启动可进入运行中/失败/丢失/已取消；运行中与等待输入可互转并进入已交提案/失败/丢失/已取消；任一尚未提交 Proposal 的非终态可进入被替代。已交提案是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 agentd 观测推进，全部终态不可复活。
+
+Attempt 的 Context Bundle 按 [Project 合同](./project.md#context-memo-artifact)的投喂档装入同 Run 前序节点的结果：Gate Seat 的 ReviewSubjectRef 所指 Revision 与返工 Seat 所依据的 Verdict 正文是必用条目——预算内 inline，超预算改 pointer 并附分片建议；Verdict 以账本记录物化，其 Git 结晶副本只作 pointer。Engine 路标、step 日志与终端 trace 不是来源。同一 Seat 的备用 Attempt 复用同一 Bundle 并附旧 ChangeSet Revision 的 pointer；未形成 ChangeSet Revision 的工作树内容不传承。
 
 ## Request、重试与 Gate
 
