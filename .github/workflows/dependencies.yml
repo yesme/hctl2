@@ -50,7 +50,7 @@ jobs:
       matrix:
         include:
           - platform: Linux x86_64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             target: linux-x86_64
             needs_homebrew: false
           - platform: macOS x86_64
@@ -69,7 +69,14 @@ jobs:
 
       - name: Install macOS build prerequisites
         if: ${{ matrix.needs_homebrew }}
-        run: brew install bison pkgconf
+        run: |
+          brew update
+          if brew list pkgconf >/dev/null 2>&1; then
+            brew upgrade pkgconf
+          else
+            brew install pkgconf
+          fi
+          brew install bison
 
       - name: Build native dependency packages
         env:
