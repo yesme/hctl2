@@ -98,6 +98,15 @@ verify_macos_binary_compatibility() {
 
     verify_macos_binary_arch "$name" "$binary"
     minimum="$(vtool -show-build "$binary" | awk '$1 == "minos" { print $2; exit }')"
+    if [[ -z "$minimum" ]]; then
+        minimum="$(otool -l "$binary" | awk '
+            $1 == "cmd" {
+                in_version_command = ($2 == "LC_VERSION_MIN_MACOSX")
+                next
+            }
+            in_version_command && $1 == "version" { print $2; exit }
+        ')"
+    fi
     [[ -n "$minimum" ]] || die "$name does not declare a macOS deployment target"
     macos_version_at_most "$minimum" "$MACOS_DEPLOYMENT_TARGET" || \
         die "$name requires macOS $minimum, above the $MACOS_DEPLOYMENT_TARGET release baseline"
@@ -334,6 +343,7 @@ bootstrap_dependencies() {
     require_command clang
     require_command lipo
     require_command make
+    require_command otool
     require_command pkg-config
     require_command rustup
     require_command sysctl
