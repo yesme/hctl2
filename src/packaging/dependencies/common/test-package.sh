@@ -79,12 +79,21 @@ test_dependency_package() {
     tar -xzf "$SOURCE_ARCHIVE" -C "$test_root"
     grep -F '# HCTL2 使用说明' "$test_root/$PACKAGE_ID/USAGE.md" >/dev/null
     grep -F "$SOURCE_PACKAGE_ID.tar.gz" "$test_root/$PACKAGE_ID/SOURCES.md" >/dev/null
+    [[ -f "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/cinny/index.html" ]] || \
+        die "runtime package does not contain Cinny"
+    [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/element-web" ]] || \
+        die "runtime package still contains Element Web"
+    grep -F $'cinny\t' "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
+    ! grep -F $'element-web\t' \
+        "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/sources" ]] || \
         die "runtime package still contains upstream source archives"
     [[ ! -e "$test_root/$SOURCE_PACKAGE_ID/install.sh" ]] || \
         die "source package unexpectedly contains an installer"
     verify_test_manifest "$test_root/$SOURCE_PACKAGE_ID" SOURCE-MANIFEST.sha256
     grep -F "$HCTL2_TARGET_ID" "$test_root/$SOURCE_PACKAGE_ID/target.tsv" >/dev/null
+    grep -F $'cinny\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
+    ! grep -F $'element-web\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     while IFS=$'\t' read -r source_component source_version source_commit \
         source_asset source_sha256 source_role; do
         [[ "$source_asset" != "archive" ]] || continue
@@ -93,6 +102,7 @@ test_dependency_package() {
     "$test_root/$PACKAGE_ID/install.sh" --prefix "$prefix"
     "$test_root/$PACKAGE_ID/install.sh" --prefix "$prefix"
     "$services" --help | grep -F 'Usage:' >/dev/null
+    "$services" --help | grep -F 'tuwunel  cinny  vikunja  dagu  tmux' >/dev/null
     if "$services" status unexpected >/dev/null 2>&1; then
         die "hctl2-services accepted an argument for status"
     fi

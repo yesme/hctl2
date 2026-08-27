@@ -85,13 +85,13 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](#e-lobehub
 
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
-不拥有治理权威的执行部件。已选外部系统为 Dagu、Tuwunel、Vikunja、tmux 四项；Chatroom 解决方案另随包提供 Element Web 互操作客户端。再加桌面壳与 UI 基础组件。
+不拥有治理权威的执行部件。已选外部系统为 Dagu、Tuwunel、Vikunja、tmux 四项；Chatroom 解决方案另随包提供 Cinny 互操作客户端。再加桌面壳与 UI 基础组件。
 
 | 部件 | 复用决策 | 角色 |
 | --- | --- | --- |
 | [Dagu](#e-l2-dagu) | 采用为依赖 | L2 机械状态后端（Conductor 等七个候选为已评估对照/暂缓） |
 | [Tuwunel](#e-l4-matrix-homeserver) | 采用为依赖（Continuwuity 备选暂缓） | Chat Room 的 content 系统（Matrix 协议） |
-| [Element Web](https://github.com/element-hq/element-web/releases/tag/v1.12.26) | 采用官方发行包作为随包客户端 | Chatroom 的 Matrix 互操作与人工查看界面；不是 Workbench，不拥有治理权威 |
+| [Cinny](https://github.com/cinnyapp/cinny/releases/tag/v4.12.6) | 采用官方 Web 发行包作为随包客户端 | Chatroom 的 Matrix 互操作与人工查看界面；不是 Workbench，不拥有治理权威 |
 | [Vikunja](#e-l3-vikunja) | 采用为依赖（限时验证中；[git-bug](#e-l3-git-bug) 为对照） | Kanban 场景本地 content 后端 |
 | [tmux](#e-l1-tmux-runtime) | 采用为依赖（Zellij/shpool 不采用） | 运行时后端物理原语 |
 | [Herdr](#e-l1-herdr) | 仅参考行为（Apache-2.0，可按需移植） | agent 感知的终端运行时产品：L1 PTY/接管/恢复专项，L2 运行信号边界证据 |
@@ -871,17 +871,17 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 
 ## 执行面已选依赖的运维与 footprint
 
-这里的“已选依赖”仍指 Dagu、Tuwunel、Vikunja、tmux 四个外部系统；Tuwunel 与 Element Web 合为 Chatroom 解决方案，因此生命周期实现会管理五个进程/组件，但没有第五类执行依赖。React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，并在 2026-08-26 补入 Tuwunel 原生构建、Element Web 随包客户端与整包验证，不是容量承诺。文件大小取官方 release asset、明确标注的 Homebrew bottle 或实际 HCTL2 发行包；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。
+这里的“已选依赖”仍指 Dagu、Tuwunel、Vikunja、tmux 四个外部系统；Tuwunel 与 Cinny 合为 Chatroom 解决方案，因此生命周期实现会管理五个进程/组件，但没有第五类执行依赖。React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，2026-08-26 补入 Tuwunel 原生构建和随包浏览器客户端，2026-08-27 再以 Cinny 替换 Element Web 并完成整包验证，不是容量承诺。文件大小取官方 release asset、明确标注的 Homebrew bottle 或实际 HCTL2 发行包；RSS 在 Apple Silicon macOS 上用空数据、默认或文中注明的最小配置启动，稳定约 10 秒后读取，且不含 control、Workbench 和 harness 子进程。
 
 | 模块 | 固定版本与许可 | 发布 / 分发 footprint | 空载实测 / 数据 | 运维判断 |
 | --- | --- | --- | --- | --- |
 | **Dagu** | [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/releases/tag/v2.15.1)，GPL-3.0-or-later | macOS arm64 archive **45.9 MiB**、binary **148.1 MiB**；Linux amd64 为 48.3/154.6 MiB | `start-all`、coordinator 关闭：**92.4 MiB RSS**；空数据目录约 84 KiB | **低—中**：一个进程、文件备份；主要风险是 adapter/fencing，不是日常运维 |
 | **Tuwunel** | [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0)，Apache-2.0 | Linux x86_64 GNU zstd **31.2 MiB**、binary **98.1 MiB**；无官方 Darwin asset；HCTL2 源码构建的签名后 macOS arm64 binary **76.6 MiB** | 原生空服务约 **60 MiB RSS**，版本与 health endpoint、非加密/非 federation 配置及整包生命周期均通过 | **中**：单原生进程，不再有 VM；仍须固定低内存配置，并一致备份 RocksDB、media 与 secret |
-| **Element Web** | [`v1.12.26 / c43ef70b`](https://github.com/element-hq/element-web/releases/tag/v1.12.26)，随包选择 GPL-3.0-or-later | 官方发行包 **38.5 MiB**、解压内容约 **134 MiB**；对应源码归档 **33.8 MiB** | 官方浏览器内容由约 **0.52 MiB** 的 HCTL2 loopback 静态服务提供；登录、输入与消息交互已人工通过，安装包配置与 HTTP lifecycle 已自动通过 | **低**：无独立数据库；浏览器存储不是权威事实，客户端不获得 HCTL2 治理权限 |
+| **Cinny** | [`v4.12.6 / 33f4ba36`](https://github.com/cinnyapp/cinny/releases/tag/v4.12.6)，AGPL-3.0-only | 官方 Web 发行包 **18.5 MiB**，随包配置后内容 **59.0 MiB**；对应源码归档 **2.1 MiB** | 浏览器内容由约 **0.52 MiB** 的 HCTL2 loopback 静态服务提供；Homeserver 锁定、Chrome 登录页渲染和 HTTP lifecycle 已自动通过，注册、输入与消息交互待人工验收 | **低**：无独立数据库；浏览器存储不是权威事实，客户端不获得 HCTL2 治理权限；上游 SDK 替换期升级需复测 |
 | **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
 | **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | Homebrew macOS arm64 bottle **0.52 MiB**、executable **0.95 MiB**；直接非系统 dylib **1.45 MiB** | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库；要固定最小动态库/terminfo、owner-only socket、control mode、pane ID、背压与残留 session 清理，六 Harness 矩阵是阻断项 |
 
-源码与运行内容拆包后，Linux x86_64 于 2026-08-27 实测为：用户需要的运行安装包 **169.0 MiB**、解压文件约 **445.0 MiB**；同 Release 单独提供、不参与安装的源码伴随包 **63.2 MiB**。两者合计仍约 **232.2 MiB**，但普通安装不再承担源码体积。双包校验、离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止均纳入整包测试。此前 macOS arm64 未含 Element Web、未拆包的基线为归档 **157.4 MiB**、payload **367.0 MiB**，下一次必须在 Mac 原生重建后刷新，不能沿用为当前包体积。既有四服务 RSS 基线约 **212.8 MiB**；Element Web 的浏览器进程不由 HCTL2 托管，内部静态服务只提供内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
+换用 Cinny 并拆分源码后，Linux x86_64 于 2026-08-27 实测为：用户需要的运行安装包 **148.9 MiB**、解压文件约 **371.8 MiB**；同 Release 单独提供、不参与安装的源码伴随包 **31.4 MiB**，两者合计约 **180.3 MiB**。相较 Element Web 双包基线，运行包减少约 **20.1 MiB**，源码包减少约 **31.8 MiB**。双包校验、离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止均纳入整包测试。两个 macOS target 必须在对应架构原生重建后刷新体积。既有四服务 RSS 基线约 **212.8 MiB**；Cinny 的浏览器进程不由 HCTL2 托管，内部静态服务只提供内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
 
 <a id="e-workbench-shell"></a>
 ## E-WORKBENCH-SHELL · Workbench 桌面壳：Electron 与 Tauri 2

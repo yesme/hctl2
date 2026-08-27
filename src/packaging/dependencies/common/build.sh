@@ -112,25 +112,25 @@ download_locked_inputs() {
         "$DAGU_URL" "$DAGU_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_ASSET"
     download_verified "tmux $TMUX_VERSION" \
         "$TMUX_URL" "$TMUX_SHA256" "$P0_DOWNLOAD_DIR/$TMUX_ASSET"
-    download_verified "Element Web $ELEMENT_WEB_VERSION" \
-        "$ELEMENT_WEB_URL" "$ELEMENT_WEB_SHA256" "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_ASSET"
+    download_verified "Cinny $CINNY_VERSION" \
+        "$CINNY_URL" "$CINNY_SHA256" "$P0_DOWNLOAD_DIR/$CINNY_ASSET"
     download_verified "Tuwunel source $TUWUNEL_SOURCE_COMMIT" \
         "$TUWUNEL_SOURCE_URL" "$TUWUNEL_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET"
     download_verified "Vikunja corresponding source $VIKUNJA_SOURCE_COMMIT" \
         "$VIKUNJA_SOURCE_URL" "$VIKUNJA_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET"
     download_verified "Dagu corresponding source $DAGU_SOURCE_COMMIT" \
         "$DAGU_SOURCE_URL" "$DAGU_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET"
-    download_verified "Element Web corresponding source $ELEMENT_WEB_SOURCE_COMMIT" \
-        "$ELEMENT_WEB_SOURCE_URL" "$ELEMENT_WEB_SOURCE_SHA256" \
-        "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET"
+    download_verified "Cinny corresponding source $CINNY_SOURCE_COMMIT" \
+        "$CINNY_SOURCE_URL" "$CINNY_SOURCE_SHA256" \
+        "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET"
 }
 
-prepare_element_web() {
-    local destination="$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION"
+prepare_cinny() {
+    local destination="$P0_VENDOR_DIR/cinny-$CINNY_VERSION"
 
-    prepare_source_tree "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_ASSET" \
-        "$ELEMENT_WEB_SHA256" "$destination"
-    install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/element-web-config.json" \
+    prepare_source_tree "$P0_DOWNLOAD_DIR/$CINNY_ASSET" \
+        "$CINNY_SHA256" "$destination"
+    install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/cinny-config.json" \
         "$destination/config.json"
 }
 
@@ -196,7 +196,7 @@ write_installed_manifest() {
         printf 'vikunja\t%s\t%s\n' "$VIKUNJA_VERSION" "$(hash_file "$P0_BIN_DIR/vikunja")"
         printf 'dagu\t%s\t%s\n' "$DAGU_VERSION" "$(hash_file "$P0_BIN_DIR/dagu")"
         printf 'tmux\t%s\t%s\n' "$TMUX_VERSION" "$(hash_file "$P0_BIN_DIR/tmux")"
-        printf 'element-web\t%s\t%s\n' "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SHA256"
+        printf 'cinny\t%s\t%s\n' "$CINNY_VERSION" "$CINNY_SHA256"
         printf 'hctl2-web-server\t%s\t%s\n' \
             "$(read_hctl2_version "$P0_DEPENDENCY_SOURCE_ROOT/../../Cargo.toml")" \
             "$(hash_file "$P0_BIN_DIR/hctl2-web-server")"

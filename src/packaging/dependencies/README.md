@@ -1,6 +1,6 @@
 # 依赖打包
 
-这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Element Web 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 ## 代码树边界
 
@@ -23,9 +23,9 @@ test-package.sh         同上
 
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
-| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Element Web 官方包；tmux 锁定源码 |
-| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Element Web 官方包；Tuwunel/tmux 锁定源码 |
-| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Element Web 官方包；Tuwunel/tmux 锁定源码 |
+| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Cinny 官方包；tmux 锁定源码 |
+| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Cinny 官方包；Tuwunel/tmux 锁定源码 |
+| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Cinny 官方包；Tuwunel/tmux 锁定源码 |
 
 Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Homebrew 头文件、链接库、Mach-O 闭包和最终生命周期都要按真实目标验证。
 
@@ -65,13 +65,13 @@ macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定�
 运行安装包包括：
 
 - Tuwunel、Vikunja、Dagu、tmux 四个上游可执行文件和所需的非系统动态库；
-- Element Web 官方发行内容，以及只绑定 loopback 的内部 `hctl2-web-server`；
+- Cinny 官方 Web 发行内容，以及只绑定 loopback 的内部 `hctl2-web-server`；
 - `hctl2-services` 以及公共生命周期代码和目标平台 runtime hook；
 - target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
 - HCTL2 与所有分发依赖的许可证；
 - 根归档与 payload 两层 SHA-256 清单。
 
-源码伴随包包括四类依赖的锁定上游源码；macOS 包还包括随包 dylib 的锁定源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Element Web 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
+源码伴随包包括四类依赖的锁定上游源码；macOS 包还包括随包 dylib 的锁定源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
 
 运行包与源码包必须在同一个 Release 下载位置以相同方式、无额外费用提供；运行包内的 `SOURCES.md` 指向精确的源码包名。真正通过 U 盘或其他离线介质再次分发时，应同时携带两份归档。当前 Linux x86_64 双包体积见[实现证据](../../../docs/design/references/implementation-evidence.md#执行面已选依赖的运维与-footprint)；两个 macOS target 需要原生重建后刷新体积。
 
@@ -96,9 +96,9 @@ cd hctl2-0.0.0-<target>
 | 组件 | 版本 | 本地端点 |
 | --- | --- | --- |
 | Tuwunel | 1.9.0 | `http://127.0.0.1:6167` |
-| Element Web | 1.12.26 | `http://127.0.0.1:6168/` |
+| Cinny | 4.12.6 | `http://127.0.0.1:6168/` |
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
 | tmux | 3.7c | owner-only Unix socket |
 
-所有 listener 都绑定 loopback。Element Web 与 Tuwunel 合在一起是 Chatroom 解决方案，并不增加第五类执行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+所有 listener 都绑定 loopback。Cinny 与 Tuwunel 合在一起是 Chatroom 解决方案，并不增加第五类执行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。Cinny 只允许连接随包 Tuwunel，并启用 hash router 适配内部静态服务。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。

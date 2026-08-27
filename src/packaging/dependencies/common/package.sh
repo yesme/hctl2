@@ -74,15 +74,15 @@ assemble_dependency_package() {
     for component in tuwunel vikunja dagu tmux hctl2-web-server; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing after bootstrap"
     done
-    [[ -f "$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION/index.html" ]] || \
-        die "Element Web is missing after bootstrap"
+    [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
+        die "Cinny is missing after bootstrap"
 
     mkdir -p \
         "$payload_root/bin" \
         "$payload_root/lib/hctl2/services" \
         "$payload_root/lib/hctl2/vendor" \
         "$payload_root/libexec/hctl2" \
-        "$payload_root/share/hctl2/chatroom/element-web" \
+        "$payload_root/share/hctl2/chatroom/cinny" \
         "$payload_root/share/hctl2/licenses" \
         "$source_files_root"
 
@@ -91,9 +91,9 @@ assemble_dependency_package() {
     done
     install -m 0755 "$P0_BIN_DIR/hctl2-web-server" \
         "$payload_root/libexec/hctl2/hctl2-web-server"
-    cp -a "$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION/." \
-        "$payload_root/share/hctl2/chatroom/element-web/"
-    find "$payload_root/share/hctl2/chatroom/element-web" \
+    cp -a "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/." \
+        "$payload_root/share/hctl2/chatroom/cinny/"
+    find "$payload_root/share/hctl2/chatroom/cinny" \
         -name .hctl2-source-sha256 -delete
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/hctl2-services" "$payload_root/bin/hctl2-services"
     for script in smoke.sh start.sh status.sh stop.sh; do
@@ -109,9 +109,9 @@ assemble_dependency_package() {
 
     install -m 0644 "$repository_root/LICENSE" \
         "$payload_root/share/hctl2/licenses/HCTL2-Apache-2.0.txt"
-    tar -xOf "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
-        "element-web-$ELEMENT_WEB_SOURCE_COMMIT/LICENSE-GPL-3.0" \
-        >"$payload_root/share/hctl2/licenses/Element-Web-GPL-3.0-or-later.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
+        "cinny-$CINNY_SOURCE_COMMIT/LICENSE" \
+        >"$payload_root/share/hctl2/licenses/Cinny-AGPL-3.0-only.txt"
     platform_stage_licenses
 
     platform_stage_build_metadata
@@ -136,9 +136,9 @@ assemble_dependency_package() {
         printf 'tmux\t%s\t%s\t%s\t%s\t%s\n' \
             "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_SHA256" "$TMUX_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/tmux")"
-        printf 'element-web\t%s\t%s\t%s\t%s\t%s\n' \
-            "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SOURCE_COMMIT" "$ELEMENT_WEB_SHA256" \
-            "$ELEMENT_WEB_SOURCE_SHA256" "$ELEMENT_WEB_SHA256"
+        printf 'cinny\t%s\t%s\t%s\t%s\t%s\n' \
+            "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" "$CINNY_SHA256" \
+            "$CINNY_SOURCE_SHA256" "$CINNY_SHA256"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
     write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share
@@ -159,8 +159,8 @@ assemble_dependency_package() {
         "$source_files_root/$TUWUNEL_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_ASSET" \
         "$source_files_root/$TMUX_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
-        "$source_files_root/$ELEMENT_WEB_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
+        "$source_files_root/$CINNY_SOURCE_ASSET"
     {
         printf 'component\tversion\tcommit\tarchive\tsha256\trole\n'
         printf 'tuwunel\t%s\t%s\t%s\t%s\treproducibility\n' \
@@ -174,9 +174,9 @@ assemble_dependency_package() {
             "$DAGU_SOURCE_ASSET" "$DAGU_SOURCE_SHA256"
         printf 'tmux\t%s\t%s\t%s\t%s\treproducibility\n' \
             "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_ASSET" "$TMUX_SHA256"
-        printf 'element-web\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
-            "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SOURCE_COMMIT" \
-            "$ELEMENT_WEB_SOURCE_ASSET" "$ELEMENT_WEB_SOURCE_SHA256"
+        printf 'cinny\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
+            "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" \
+            "$CINNY_SOURCE_ASSET" "$CINNY_SOURCE_SHA256"
     } >"$source_package_root/sources.tsv"
     platform_stage_sources "$source_files_root" "$source_package_root/sources.tsv"
     {

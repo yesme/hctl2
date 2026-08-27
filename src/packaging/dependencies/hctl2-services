@@ -38,10 +38,10 @@ print_help() {
         '  hctl2-services --help' \
         '' \
         'Components:' \
-        '  tuwunel  element-web  vikunja  dagu  tmux' \
+        '  tuwunel  cinny  vikunja  dagu  tmux' \
         '' \
         'With no COMPONENT, start, stop, and restart operate on all components.' \
-        'Element Web is the bundled browser client for the Tuwunel Chatroom solution.'
+        'Cinny is the bundled browser client for the Tuwunel Chatroom solution.'
 }
 
 usage_error() {

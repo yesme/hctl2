@@ -353,7 +353,7 @@ bootstrap_dependencies() {
     install_vikunja_macos
     install_dagu_macos
     install_tmux_macos
-    prepare_element_web
+    prepare_cinny
     build_hctl2_web_server
     write_macos_build_environment
     write_installed_manifest
