@@ -16,11 +16,12 @@ note "checking Tuwunel version endpoint and plaintext-room policy"
 http_status_ok 127.0.0.1 "$TUWUNEL_PORT" /_tuwunel/server_version
 grep -Fx 'allow_encryption = false' "$P0_CONFIG_DIR/tuwunel.toml" >/dev/null
 
-note "checking bundled Element Web client configuration"
-http_status_ok 127.0.0.1 "$ELEMENT_WEB_PORT" /
-http_status_ok 127.0.0.1 "$ELEMENT_WEB_PORT" /config.json
-grep -F '"base_url": "http://127.0.0.1:6167"' "$P0_ELEMENT_WEB_ROOT/config.json" >/dev/null
-grep -F '"server_name": "hctl2.localhost"' "$P0_ELEMENT_WEB_ROOT/config.json" >/dev/null
+note "checking bundled Cinny client configuration"
+http_status_ok 127.0.0.1 "$CINNY_PORT" /
+http_status_ok 127.0.0.1 "$CINNY_PORT" /config.json
+grep -F '"homeserverList": ["http://127.0.0.1:6167"]' "$P0_CINNY_ROOT/config.json" >/dev/null
+grep -F '"allowCustomHomeservers": false' "$P0_CINNY_ROOT/config.json" >/dev/null
+grep -F '"enabled": true' "$P0_CINNY_ROOT/config.json" >/dev/null
 
 note "checking Vikunja API discovery"
 http_status_ok 127.0.0.1 "$VIKUNJA_PORT" /api/v1/info

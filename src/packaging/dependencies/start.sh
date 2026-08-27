@@ -46,35 +46,35 @@ EOF
     wait_http tuwunel 127.0.0.1 "$TUWUNEL_PORT" /_tuwunel/server_version
 }
 
-show_element_web_access() {
+show_cinny_access() {
     local registration_token_file="$P0_CONFIG_DIR/tuwunel-registration-token"
     local registration_token
 
-    note "Chatroom client: http://127.0.0.1:$ELEMENT_WEB_PORT/"
+    note "Chatroom client: http://127.0.0.1:$CINNY_PORT/"
     if [[ -f "$registration_token_file" ]]; then
         read -r registration_token <"$registration_token_file"
         note "Tuwunel registration token: $registration_token"
     fi
 }
 
-start_element_web() {
+start_cinny() {
     local binary="$P0_BIN_DIR/hctl2-web-server"
 
     start_tuwunel
     [[ -x "$binary" ]] || die "hctl2-web-server is not installed"
-    [[ -f "$P0_ELEMENT_WEB_ROOT/index.html" ]] || \
-        die "Element Web is not installed: $P0_ELEMENT_WEB_ROOT"
-    if component_running element-web "$binary"; then
-        note "element-web already running"
-        show_element_web_access
+    [[ -f "$P0_CINNY_ROOT/index.html" ]] || \
+        die "Cinny is not installed: $P0_CINNY_ROOT"
+    if component_running cinny "$binary"; then
+        note "cinny already running"
+        show_cinny_access
         return
     fi
-    ensure_tcp_port_free "$ELEMENT_WEB_PORT"
+    ensure_tcp_port_free "$CINNY_PORT"
 
-    start_background element-web "$binary" \
-        "$binary" --root "$P0_ELEMENT_WEB_ROOT" --port "$ELEMENT_WEB_PORT"
-    wait_http element-web 127.0.0.1 "$ELEMENT_WEB_PORT" /config.json
-    show_element_web_access
+    start_background cinny "$binary" \
+        "$binary" --root "$P0_CINNY_ROOT" --port "$CINNY_PORT"
+    wait_http cinny 127.0.0.1 "$CINNY_PORT" /config.json
+    show_cinny_access
 }
 
 start_vikunja() {
@@ -163,7 +163,7 @@ start_tmux() {
 start_component() {
     case "$1" in
         tuwunel) start_tuwunel ;;
-        element-web) start_element_web ;;
+        cinny) start_cinny ;;
         vikunja) start_vikunja ;;
         dagu) start_dagu ;;
         tmux) start_tmux ;;
@@ -173,7 +173,7 @@ start_component() {
 
 if (($# == 0)); then
     start_all=1
-    set -- tuwunel element-web vikunja dagu tmux
+    set -- tuwunel cinny vikunja dagu tmux
 else
     start_all=0
 fi
@@ -185,7 +185,7 @@ done
 
 if ((start_all)); then
     note "browser clients:"
-    note "  Chatroom  http://127.0.0.1:$ELEMENT_WEB_PORT/"
+    note "  Chatroom  http://127.0.0.1:$CINNY_PORT/"
     note "  Kanban    http://127.0.0.1:$VIKUNJA_PORT/"
     note "  Workflow  http://127.0.0.1:$DAGU_PORT/"
 fi

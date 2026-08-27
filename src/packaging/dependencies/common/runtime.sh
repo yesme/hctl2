@@ -74,10 +74,10 @@ readonly P0_TMP_DIR="$P0_ROOT/tmp"
 readonly P0_VENDOR_DIR="$P0_ROOT/vendor"
 if [[ -n "$P0_INSTALL_ROOT" ]]; then
     readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_INSTALL_ROOT/lib/hctl2/vendor"
-    readonly P0_ELEMENT_WEB_ROOT="$P0_INSTALL_ROOT/share/hctl2/chatroom/element-web"
+    readonly P0_CINNY_ROOT="$P0_INSTALL_ROOT/share/hctl2/chatroom/cinny"
 else
     readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_VENDOR_DIR"
-    readonly P0_ELEMENT_WEB_ROOT="$P0_VENDOR_DIR/element-web-$ELEMENT_WEB_VERSION"
+    readonly P0_CINNY_ROOT="$P0_VENDOR_DIR/cinny-$CINNY_VERSION"
 fi
 
 die() {

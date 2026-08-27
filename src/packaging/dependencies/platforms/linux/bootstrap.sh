@@ -168,7 +168,7 @@ bootstrap_dependencies() {
     install_vikunja_linux
     install_dagu_linux
     install_tmux_linux
-    prepare_element_web
+    prepare_cinny
     build_hctl2_web_server
     write_installed_manifest
 

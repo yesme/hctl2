@@ -262,6 +262,8 @@ fn content_type(path: &Path) -> &'static str {
         Some("jpeg" | "jpg") => "image/jpeg",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("json" | "map") => "application/json; charset=utf-8",
+        Some("mp3") => "audio/mpeg",
+        Some("ogg") => "audio/ogg",
         Some("png") => "image/png",
         Some("svg") => "image/svg+xml",
         Some("ttf") => "font/ttf",
@@ -357,5 +359,7 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert_eq!(content_type(Path::new("decoder.wasm")), "application/wasm");
+        assert_eq!(content_type(Path::new("ringtone.mp3")), "audio/mpeg");
+        assert_eq!(content_type(Path::new("ringtone.ogg")), "audio/ogg");
     }
 }
