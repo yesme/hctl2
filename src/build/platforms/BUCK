@@ -1,0 +1,8 @@
+load(":defs.bzl", "hctl2_host_platform", "hctl2_platform")
+
+oncall("hctl2")
+
+hctl2_platform(name = "linux_x86_64_gnu")
+hctl2_platform(name = "macos_x86_64")
+hctl2_platform(name = "macos_arm64")
+hctl2_host_platform(name = "host")

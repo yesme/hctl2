@@ -25,4 +25,6 @@ cargo build --locked --workspace --all-targets
 cargo test --locked --workspace --all-targets
 ```
 
+Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)。Cargo 在 Buck2 迁移期间继续作为行为一致性检查；第一方日常构建入口将在四批迁移完成后统一切换。
+
 当前各命令的构建与操作方法见[HCTL2 使用说明](../docs/usage.md)。
