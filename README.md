@@ -166,7 +166,7 @@ flowchart LR
 - [系统边界与适配器合同](./docs/design/spec/system.md)
 - [术语对照表](./docs/design/references/glossary.md)
 - [从 HCTL 到 HCTL2 的来时路](./docs/design/references/decision-history.md)
-- [非规范实现证据](./docs/design/references/implementation-evidence.md)
+- [非规范实现证据](./docs/research/README.md)
 
 第一阶段面向单用户和 macOS/Linux。具体范围、技术栈、CLI、验证切片和未决问题统一记录在[交付文档](./docs/design/delivery.md)，不在各模块重复。
 

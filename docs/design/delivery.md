@@ -227,7 +227,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 ## 选型判据
 
-执行面各系统的实现选型按以下准入标准评估；实现名只出现在本文与[实现证据](./references/implementation-evidence.md)，设计层正文只用系统角色名：
+执行面各系统的实现选型按以下准入标准评估；实现名只出现在本文与[实现证据](../research/README.md)，设计层正文只用系统角色名：
 
 1. **接口公开干净**：优先公开协议与文档化 API，保证第三方 UI 与场景客户端互操作——chat 场景直接采用 Matrix 协议；任务场景没有同级的开放协议，选择 API 完整、支持条件写入的实现并以受控端口隔离。
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
@@ -239,7 +239,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”；关键假设只指 HCTL 与该系统的**接缝**——我们的适配器、受控端口或 agentd 实际调用的那几个 API 与行为。第三方自身的功能（它自己的备份恢复、重启、渲染、内存配置、发布物形态）不在 P0：要么是选型时的资料判断，要么在首次消费时产品化。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 只验接缝：DAG 提交与启动/暂停/恢复/取消 API 的应答与状态回读，`human.task` 检查点的等待态观察、完成与回读，以及路标被 Engine 自行推进或重试时能否回读为分歧。代次不在 Dagu：Obligation 的身份与隔离由 HCTL 账本承担，Dagu 只当路标，"完成 API 的代次隔离"不再是 B4 阻断项。
-2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝够不够用：能建 owner-only socket 并持有唯一可写 control client、观察者能经 agentd 扇出、输入与 resize 能下发、session/pane ID 稳定可持久化、退出码与残留进程能回读、无人 attach 时能查询应答。键盘协议子集、慢观察者背压、各 Harness 的 TUI 兼容与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 之类是 tmux 自己的轮子：选型时作资料判断，使用中不够用就按选型三件套升 commit 或换家，不为它们维护验证矩阵；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](./references/implementation-evidence.md#e-l1-tmux-runtime)。
+2. **运行时后端（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝够不够用：能建 owner-only socket 并持有唯一可写 control client、观察者能经 agentd 扇出、输入与 resize 能下发、session/pane ID 稳定可持久化、退出码与残留进程能回读、无人 attach 时能查询应答。键盘协议子集、慢观察者背压、各 Harness 的 TUI 兼容与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 之类是 tmux 自己的轮子：选型时作资料判断，使用中不够用就按选型三件套升 commit 或换家，不为它们维护验证矩阵；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](../research/tmux-runtime.md#e-l1-tmux-runtime)。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝够不够用：账号与房间管理 API、AppService 注册与事件投递、按事件 ID 读取正文、房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。事务 ID 幂等、事件顺序、重同步是 homeserver 自己的合同，HCTL 拿来用、不替它验。Chatroom 发行形态同时固定 Cinny `v4.12.6` 官方 Web 发行包为随包互操作/查看客户端；它不是 Workbench，也不拥有治理权威。Tuwunel 官方发布物虽只有 Linux，锁定源码已在 Apple Silicon 原生构建；含 Cinny 的 Linux 包已通过完整生命周期，两个 macOS target 仍须分别原生重建验证。低内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
 4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝够不够用：卡片与分组的读写 API、按分组稳定回读归属、条件写入是否可用、webhook 或轮询能否观测变化、实体 ID 稳定；排序算法与看板语义是它自己的轮子；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
@@ -255,7 +255,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 ## 技术基线
 
-Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](./references/implementation-evidence.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](./references/implementation-evidence.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 

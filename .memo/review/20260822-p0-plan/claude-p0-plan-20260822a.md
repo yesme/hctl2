@@ -142,7 +142,7 @@ pin 候选 v3.32.1（按镜像 digest 固定；**禁用 standalone 旧镜像**�
 ## 五、工程形态
 
 - 落点：hctl2 repo 内新建 `probes/` 目录（`probes/README.md` 顶部声明：全目录可丢弃，不进产品生命周期，P0 收口后可整体删除或归档）；每卡一个子目录（`probes/zellij/` 等），内含安装/冒烟脚本、`REPORT.md`、测试计划。
-- 长期产物只有三处：`docs/design/references/implementation-evidence.md` 新条目（按既有格式：锚点、固定版本 `vX.Y.Z / 短commit`、许可证链接、主要证据链接）、decision-history 的定案/翻案记录、delivery.md 的勘误与回填（每处独立提交，真语义变更单独立项——方法论纪律）。
+- 长期产物只有三处：`docs/research/README.md` 新条目（按既有格式：锚点、固定版本 `vX.Y.Z / 短commit`、许可证链接、主要证据链接）、decision-history 的定案/翻案记录、delivery.md 的勘误与回填（每处独立提交，真语义变更单独立项——方法论纪律）。
 - P0 期间已知要落的文档勘误（探针确认后逐条提交）：Vikunja darwin 包事实（delivery.md:244）；Tuwunel storage backend/features 回填（delivery.md:235）；Conductor 评估版本 v3.21.23 → 实际 pin 版本（evidence E-L2-CONDUCTOR）；Zellij/tmux 选型定案后补独立 evidence 条目（现仅 L1 表格一行）。
 
 ## 六、日历（建议，两个日历周）

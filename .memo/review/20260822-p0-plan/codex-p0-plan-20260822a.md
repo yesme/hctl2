@@ -40,7 +40,7 @@ P0 也不是一个全局大门：
 - 足以触发重选组件或修改契约的反例；
 - 对安装、升级、备份、恢复和资源预算的事实记录。
 
-已接受的结论汇总到 `docs/design/references/implementation-evidence.md`。只有当结果改变组件选择或设计契约时，才同步修改 `docs/design/references/decision-history.md`、交付计划或相应 spec。
+已接受的结论汇总到 `docs/research/README.md`。只有当结果改变组件选择或设计契约时，才同步修改 `docs/design/references/decision-history.md`、交付计划或相应 spec。
 
 ### 2.2 P0 不做什么
 
