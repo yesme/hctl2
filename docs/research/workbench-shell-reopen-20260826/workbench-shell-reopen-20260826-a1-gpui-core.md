@@ -1,6 +1,6 @@
 # 附录 A1 · GPUI 本体调研原始报告(2026-08-26)
 
-> 主备忘:`workbench-shell-reopen-20260826.md`。本文为调研代理的原始英文报告,经主线复核后保留;主备忘引用的事实以此为据。"gpui on main" 指 `zed-industries/zed` 当日 `main`,"gpui 0.2.2" 指 crates.io 发布版;两者已明显分叉(§1)。
+> 主备忘:`README.md`。本文为调研代理的原始英文报告,经主线复核后保留;主备忘引用的事实以此为据。"gpui on main" 指 `zed-industries/zed` 当日 `main`,"gpui 0.2.2" 指 crates.io 发布版;两者已明显分叉(§1)。
 
 ## 1. Release / packaging status
 

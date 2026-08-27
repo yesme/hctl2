@@ -24,11 +24,11 @@
 
 精确来源：
 
-- [`docs/design/spec/agent.md`](../docs/design/spec/agent.md) 第 34 行：“不得读取目标 ref/其他 ChangeSet”；
-- [`docs/design/delivery.md`](../docs/design/delivery.md) 第 169 行：把 `target Git ref/common-dir` 访问列为必须失败的负例；
-- [`docs/design/spec/system.md`](../docs/design/spec/system.md) 第 101、192 行把 OS sandbox、credential gateway 和拒绝启动继续强化。
+- [`docs/design/spec/agent.md`](../../../docs/design/spec/agent.md) 第 34 行：“不得读取目标 ref/其他 ChangeSet”；
+- [`docs/design/delivery.md`](../../../docs/design/delivery.md) 第 169 行：把 `target Git ref/common-dir` 访问列为必须失败的负例；
+- [`docs/design/spec/system.md`](../../../docs/design/spec/system.md) 第 101、192 行把 OS sandbox、credential gateway 和拒绝启动继续强化。
 
-来源追溯：这些条款由 `454d800608b4d9a1f4ecff05162675c5645403e2`（`docs: audit and close v0.12 architecture gaps`）引入。Git author/committer 为 Yesme，提交 trailer 为 `GPT-5.6 Codex xhigh`。它不是更早产品愿景，而是 2026-08-21 architecture-gap audit 新增的机制；[`decision-history.md`](../docs/design/references/decision-history.md) 第 131–137 行也承认当时五个新机制一次合入，回滚粒度过大。
+来源追溯：这些条款由 `454d800608b4d9a1f4ecff05162675c5645403e2`（`docs: audit and close v0.12 architecture gaps`）引入。Git author/committer 为 Yesme，提交 trailer 为 `GPT-5.6 Codex xhigh`。它不是更早产品愿景，而是 2026-08-21 architecture-gap audit 新增的机制；[`decision-history.md`](../../../docs/design/references/decision-history.md) 第 131–137 行也承认当时五个新机制一次合入，回滚粒度过大。
 
 复核纠正：文档没有逐字说“common-dir 不可读”；这是初审把“target ref 不可读”和 delivery 的 common-dir 负例揉在一起后的外推。但 delivery 的测试条款确实明确要求 common-dir 访问失败，所以实质问题仍在。
 
@@ -38,15 +38,15 @@
 
 ### R2 · human-presence proof
 
-初审质疑：[`spec/system.md`](../docs/design/spec/system.md) 第 87 行要求一次性、绑定规范命令摘要且不能由 CLI payload/env 代填的用户在场证明，但没有 challenge、TTL、防重放或 CLI handshake，无法实现。
+初审质疑：[`spec/system.md`](../../../docs/design/spec/system.md) 第 87 行要求一次性、绑定规范命令摘要且不能由 CLI payload/env 代填的用户在场证明，但没有 challenge、TTL、防重放或 CLI handshake，无法实现。
 
 关联传播：
 
-- [`spec/agent.md`](../docs/design/spec/agent.md) 第 74、78 行；
-- [`delivery.md`](../docs/design/delivery.md) 第 97、168 行；
-- [`docs/design/README.md`](../docs/design/README.md) 第 48 行；
-- [`docs/design/project.md`](../docs/design/project.md) 第 53–55 行；
-- [`decision-history.md`](../docs/design/references/decision-history.md) 第 131、173 行。
+- [`spec/agent.md`](../../../docs/design/spec/agent.md) 第 74、78 行；
+- [`delivery.md`](../../../docs/design/delivery.md) 第 97、168 行；
+- [`docs/design/README.md`](../../../docs/design/README.md) 第 48 行；
+- [`docs/design/project.md`](../../../docs/design/project.md) 第 53–55 行；
+- [`decision-history.md`](../../../docs/design/references/decision-history.md) 第 131、173 行。
 
 所有者裁决：**用户只要正在操作 HCTL Workbench 或 `hctl2` CLI，就算“人在”。** 第一阶段不需要 nonce、challenge、command-digest proof，也不需要判断 CLI 是被人还是子进程启动。
 
@@ -64,7 +64,7 @@
 
 ### R4 · Context Bundle 实际 bytes 放在哪里
 
-初审说法过重：[`spec/project.md`](../docs/design/spec/project.md) 第 62 行要求实际交付内容至少保留到 owner 终态和 Result Proposal 准入窗口关闭，而系统存储图只明确列出 metadata ledger、Git、content server 和 cache，因此初审把“缺少 durable blob home”列成 blocker。
+初审说法过重：[`spec/project.md`](../../../docs/design/spec/project.md) 第 62 行要求实际交付内容至少保留到 owner 终态和 Result Proposal 准入窗口关闭，而系统存储图只明确列出 metadata ledger、Git、content server 和 cache，因此初审把“缺少 durable blob home”列成 blocker。
 
 人话解释：HCTL 拼好一份 prompt 发给 Harness。文档说这份实际内容短期内要留着，以便崩溃后查看“当时到底发了什么”。问题只是这些 bytes 放 SQLite、普通文件还是缓存目录。
 
@@ -79,7 +79,7 @@
 
 初审要求为 Matrix room create/archive 增加 `pending/active/result_unknown/unavailable` provisioning 状态机。这个要求过头了。
 
-[`spec/system.md`](../docs/design/spec/system.md) 已经有通用 outbox/readback/结果未知合同；Room binding 也已有 health 投影。Matrix 创建超时、ACK 丢失和重试属于 adapter implementation，不需要再造一组 Project/Room 领域状态。
+[`spec/system.md`](../../../docs/design/spec/system.md) 已经有通用 outbox/readback/结果未知合同；Room binding 也已有 health 投影。Matrix 创建超时、ACK 丢失和重试属于 adapter implementation，不需要再造一组 Project/Room 领域状态。
 
 唯一产品问题是：Project 归档后，“Project Room 只读”究竟只指 HCTL 不再接受治理命令，还是还要修改 Matrix power level 禁止继续发消息。这个选择可以在实现归档切片时补一句，不阻塞当前 coding。
 
@@ -104,9 +104,9 @@
 
 P0/P1/P2/P3 是施工阶段：P2 的意思是 control 已经可用、Workbench 还没有完成，因此当时靠 CLI 和 content 系统原生界面工作。
 
-初审发现 [`delivery.md`](../docs/design/delivery.md) 的 P2 scope 表列出 Scoped Room、Memo/Artifact、完整 Task 管理等能力，但 CLI 表没有逐项列出对应子命令。这个发现本身成立，但性质只是交付清单 bookkeeping，不是架构 blocker。
+初审发现 [`delivery.md`](../../../docs/design/delivery.md) 的 P2 scope 表列出 Scoped Room、Memo/Artifact、完整 Task 管理等能力，但 CLI 表没有逐项列出对应子命令。这个发现本身成立，但性质只是交付清单 bookkeeping，不是架构 blocker。
 
-不需要新增 generic escape hatch；[`spec/system.md`](../docs/design/spec/system.md) 已定义 Query/Preview/Submit/Subscribe。更合理的原则是：Workbench 不得绕过 public control API；CLI 覆盖自举、自动化和当前切片所需动作，并随切片增长。没有必要要求每个 GUI 动作都预先拥有一条专用 CLI 子命令。
+不需要新增 generic escape hatch；[`spec/system.md`](../../../docs/design/spec/system.md) 已定义 Query/Preview/Submit/Subscribe。更合理的原则是：Workbench 不得绕过 public control API；CLI 覆盖自举、自动化和当前切片所需动作，并随切片增长。没有必要要求每个 GUI 动作都预先拥有一条专用 CLI 子命令。
 
 ## 三、同类过强断言清单
 
@@ -156,7 +156,7 @@ P0/P1/P2/P3 是施工阶段：P2 的意思是 control 已经可用、Workbench �
 
 评审时仓库仍是纯文档仓库，没有 Cargo workspace、`rust-toolchain.toml`、`Cargo.toml`、Node/package-manager pin 或 CI。Ubuntu 侧现有 GCC、Make、pkg-config、SQLite/FTS5、OpenSSL、Node/npm；本轮之后已安装 Rust/Cargo 1.98.0、rustfmt 与 Clippy，并完成临时 crate 编译验证，但这些是本机环境，不是仓库可复现基线。
 
-另外，`.memo/*-p0-plan-20260822a.md` 多份旧计划仍写 Zellij/Conductor，而当前权威选型已是 tmux/Dagu。开六个 Harness 编码前应明确这些计划已过时，避免执行者照旧 memo 实现被取代的技术。
+另外，`.memo/review/20260822-p0-plan/*-p0-plan-20260822a.md` 多份旧计划仍写 Zellij/Conductor，而当前权威选型已是 tmux/Dagu。开六个 Harness 编码前应明确这些计划已过时，避免执行者照旧 memo 实现被取代的技术。
 
 ## 五、最终 Go / No-go
 

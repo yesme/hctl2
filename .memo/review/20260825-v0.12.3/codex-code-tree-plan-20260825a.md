@@ -7,7 +7,7 @@
 
 ## 一、施工主线
 
-现有分步骤计划没有消失，权威版本是 [`docs/design/delivery.md`](../docs/design/delivery.md) 的 P0～P3：
+现有分步骤计划没有消失，权威版本是 [`docs/design/delivery.md`](../../../docs/design/delivery.md) 的 P0～P3：
 
 1. **P0 · 探路**：先让 Tuwunel、Vikunja、tmux、Dagu 在本地独立跑起来，验证 HCTL 要使用的接缝。探针可丢弃，不进入产品代码树；留下的结论写入实现证据。
 2. **P1 · 备装**：建立 Rust workspace，实现 `hctl2-tool`、`hctl2-agentd` 和必要的 typed protocol；先取得 Git/readback、Harness、tmux、PTY 等物理原语，此时没有治理账本。

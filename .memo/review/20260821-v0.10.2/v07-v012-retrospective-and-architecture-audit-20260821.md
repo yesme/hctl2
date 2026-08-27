@@ -150,7 +150,7 @@ Repo 注册 / 现场挂接
 
 - macOS/Linux 上对通用 coding Harness 的 OS sandbox、Git broker、credential gateway 是否真能强制，是 P0/B2 的阻断性工程验证；若做不到，候选必须标 unsupported，不能把设计承诺降成 prompt。
 - 用户级 control 的远程认证/传输、多主机现场编排和 split-brain 仍在第一阶段之外。
-- Participant 商业化与 Context plane 的详细方案已分别留在 `.memo/participant-design-20260819.md` 和 `.memo/context-design-20260819.md`；进入规范前应逐条裁决，不应整篇升格成第五模块。
+- Participant 商业化与 Context plane 的详细方案已分别留在 `.memo/design/participant-design-20260819.md` 和 `.memo/design/context-design-20260819.md`；进入规范前应逐条裁决，不应整篇升格成第五模块。
 - Project 跨组 reparent、多 Task Run、全局检测/自动补偿任意带外写仍是明确后置范围。
 
 ## 本轮发现与修复

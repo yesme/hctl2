@@ -1,6 +1,6 @@
 # 附录 A3 · Linux 上的 Web 壳路线调研原始报告(2026-08-26)
 
-> 主备忘:`workbench-shell-reopen-20260826.md`。调研代理原始英文报告。范围:TS/React UI(xterm.js、Tiptap CJK/@、React Flow、kanban)在 macOS + Ubuntu(物理机、NVIDIA、GNOME Wayland)+ Windows 上的壳选择。"[secondary]" 为非一手来源,"[unverified]" 为未核实。
+> 主备忘:`README.md`。调研代理原始英文报告。范围:TS/React UI(xterm.js、Tiptap CJK/@、React Flow、kanban)在 macOS + Ubuntu(物理机、NVIDIA、GNOME Wayland)+ Windows 上的壳选择。"[secondary]" 为非一手来源,"[unverified]" 为未核实。
 
 ## 1. Tauri 2 on Linux (mid-2026)
 

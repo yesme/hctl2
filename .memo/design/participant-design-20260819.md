@@ -2,7 +2,7 @@
 
 > 状态：Informative · 讨论稿 · 2026-08-19 · 2026-08-24 增补 §8（评审方法论化：从 BYOA 到专业化 Participant），原 §8–§15 顺延为 §9–§16 · 设计层正文已落 docs/design/participant.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源<br>
 > 目的：把 Participant 从“自动探索到一个本地 Harness”扩展成可配置、可解析、可冻结、可审计的数字参与者。本文不改变现行规范，不创建第五模块，也不提前定义 marketplace。<br>
-> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
+> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../../docs/design/spec/README.md#v091-归并对照)）。
 
 ## 1. 核心判断
 
@@ -200,7 +200,7 @@ HCTL2 仓库自身的设计评审应最早切换到这个模式：用装载方�
 
 ### 落地节奏
 
-设计文档正文先显式提及这个方向（一句话 + 指向本专题）；本专题升格为正式章节时给出完整合同。配套必需品是 Context（所有者遍览各 ADE 的共同结论），由 `.memo/context-design-20260819.md` 专章承载，两者一起升格。
+设计文档正文先显式提及这个方向（一句话 + 指向本专题）；本专题升格为正式章节时给出完整合同。配套必需品是 Context（所有者遍览各 ADE 的共同结论），由 `.memo/design/context-design-20260819.md` 专章承载，两者一起升格。
 
 ## 9. WorkerProfile 与 Harness resolution
 

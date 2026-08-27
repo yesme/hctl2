@@ -1,7 +1,7 @@
 # 方法论生态审计：家族地图、HCTL2 的定位与借鉴决策
 
 > 日期：2026-08-24<br>
-> 状态：Informative 研究备忘录，不定义 HCTL2 语义；复用判断以 [实现证据](../docs/design/references/implementation-evidence.md) 的五种复用决策用语为准。<br>
+> 状态：Informative 研究备忘录，不定义 HCTL2 语义；复用判断以 [实现证据](../design/references/implementation-evidence.md) 的五种复用决策用语为准。<br>
 > 方法：11 个方法论工具逐仓库克隆审计（源码 + 完整提交历史 + 许可证 + 完成判定权专项核对），另做一轮生态扫尾（gh api / 搜索，约 25 个候选仓库验证）。所有结论钉在具体 commit；宣传语一律不作数。
 
 ## 结论先行
@@ -44,7 +44,7 @@
 > | "agent"是什么 | 真进程：spawn/监控/回收 tmux 里的外部 harness | 同一运行时内的一批 LLM 调用，共享内存 | 提示词角色（BMAD v6 明说角色是"可选交互皮肤"） |
 > | 完成怎么判、人在哪 | 机械关单：gates 过 + 推送验证后由 Go 代码带 commit SHA 关闭；人在门上 | consensus 投票，仍是自述；人不在回路 | 人批阶段门 + 模型自勾 done；MetaGPT 没有人类否决位 |
 >
-> 角色模拟这一族正在塌缩：MetaGPT 默认路径把 SOP 瀑布换成 TeamLeader 单点 LLM 路由（往 swarm 塌），BMAD 砍到只剩四阶段文档链加确定性脚本（往 spec 驱动塌）。稳得住的只有两头——拓扑在代码里、进程是真的（编排器），和拓扑在模型里、进程是假的（swarm）。对 HCTL2 的用法因此不同：编排器是 Run/Workflow + agentd + tmux 的同问题域亲戚，机械关单、convoy 归约、Witness 是正面证据；swarm 暂缓；角色模拟不是拓扑问题而是 Worker Profile 问题——角色是提示词层的东西，HCTL2 托管它但不拥有它，其阶段门可借给 Workflow Revision 当 Gate 形状。产品侧的来时路归类见[实现证据 ⑧ 来时路与场景落点](../docs/design/references/implementation-evidence.md#lineage-scene-map)。
+> 角色模拟这一族正在塌缩：MetaGPT 默认路径把 SOP 瀑布换成 TeamLeader 单点 LLM 路由（往 swarm 塌），BMAD 砍到只剩四阶段文档链加确定性脚本（往 spec 驱动塌）。稳得住的只有两头——拓扑在代码里、进程是真的（编排器），和拓扑在模型里、进程是假的（swarm）。对 HCTL2 的用法因此不同：编排器是 Run/Workflow + agentd + tmux 的同问题域亲戚，机械关单、convoy 归约、Witness 是正面证据；swarm 暂缓；角色模拟不是拓扑问题而是 Worker Profile 问题——角色是提示词层的东西，HCTL2 托管它但不拥有它，其阶段门可借给 Workflow Revision 当 Gate 形状。产品侧的来时路归类见[实现证据 ⑧ 来时路与场景落点](../design/references/implementation-evidence.md#lineage-scene-map)。
 
 ## 二、我们属于哪种实践
 
