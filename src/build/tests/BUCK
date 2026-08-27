@@ -1,0 +1,15 @@
+oncall("hctl2")
+
+rust_binary(
+    name = "rust_toolchain_probe",
+    srcs = ["rust_toolchain_probe.rs"],
+    crate_root = "rust_toolchain_probe.rs",
+    edition = "2024",
+)
+
+rust_test(
+    name = "rust_toolchain_test",
+    srcs = ["rust_toolchain_test.rs"],
+    crate_root = "rust_toolchain_test.rs",
+    edition = "2024",
+)
