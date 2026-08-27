@@ -1,0 +1,23 @@
+load("//src/build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+rust_library(
+    name = "hctl2_protocol",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "hctl2_protocol_unit_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)

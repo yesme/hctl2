@@ -1,0 +1,47 @@
+load("//src/build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+rust_library(
+    name = "hctl2_tool",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    deps = ["root//src/crates/hctl2-protocol:hctl2_protocol"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "hctl2-tool",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = [":hctl2_tool"],
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "unit_test",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    deps = ["root//src/crates/hctl2-protocol:hctl2_protocol"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "smoke_test",
+    srcs = ["tests/smoke.rs"],
+    crate_root = "tests/smoke.rs",
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
