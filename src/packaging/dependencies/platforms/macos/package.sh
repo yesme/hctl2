@@ -129,12 +129,29 @@ platform_stage_build_metadata() {
         "$PAYLOAD_ROOT/share/hctl2/build-environment.tsv"
     install -m 0644 "$P0_MANIFEST_DIR/tuwunel-features.txt" \
         "$PAYLOAD_ROOT/share/hctl2/tuwunel-features.txt"
+}
+
+platform_stage_sources() {
+    local source_root="$1"
+    local metadata="$2"
+
     install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_LIBEVENT_SOURCE_ASSET" \
-        "$PAYLOAD_ROOT/share/hctl2/sources/$MACOS_LIBEVENT_SOURCE_ASSET"
+        "$source_root/$MACOS_LIBEVENT_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_NCURSES_SOURCE_ASSET" \
-        "$PAYLOAD_ROOT/share/hctl2/sources/$MACOS_NCURSES_SOURCE_ASSET"
+        "$source_root/$MACOS_NCURSES_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_UTF8PROC_SOURCE_ASSET" \
-        "$PAYLOAD_ROOT/share/hctl2/sources/$MACOS_UTF8PROC_SOURCE_ASSET"
+        "$source_root/$MACOS_UTF8PROC_SOURCE_ASSET"
+    {
+        printf 'libevent\t%s\trelease-%s-stable\t%s\t%s\treproducibility\n' \
+            "$MACOS_LIBEVENT_VERSION" "$MACOS_LIBEVENT_VERSION" \
+            "$MACOS_LIBEVENT_SOURCE_ASSET" "$MACOS_LIBEVENT_SOURCE_SHA256"
+        printf 'ncurses\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$MACOS_NCURSES_VERSION" "$MACOS_NCURSES_VERSION" \
+            "$MACOS_NCURSES_SOURCE_ASSET" "$MACOS_NCURSES_SOURCE_SHA256"
+        printf 'utf8proc\t%s\tv%s\t%s\t%s\treproducibility\n' \
+            "$MACOS_UTF8PROC_VERSION" "$MACOS_UTF8PROC_VERSION" \
+            "$MACOS_UTF8PROC_SOURCE_ASSET" "$MACOS_UTF8PROC_SOURCE_SHA256"
+    } >>"$metadata"
 }
 
 platform_create_archive() {

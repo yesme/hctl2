@@ -18,7 +18,16 @@
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包。含 Element Web 的 Linux x86_64 包已通过完整生命周期验证；macOS arm64 此前验证的是未含 Element Web 的基线，两个 Mac target 都需要在对应机器上重跑当前包。包内含固定版本的 Tuwunel、Element Web、Vikunja、Dagu、tmux、内部静态文件服务及 `hctl2-services`。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包。含 Element Web 的 Linux x86_64 包已通过完整生命周期验证；macOS arm64 此前验证的是未含 Element Web 的基线，两个 Mac target 都需要在对应机器上重跑当前包。运行安装包内含固定版本的 Tuwunel、Element Web、Vikunja、Dagu、tmux、内部静态文件服务、许可证及 `hctl2-services`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+
+每个 target 同时发布两份归档：
+
+| 文件 | 用途 | 是否需要安装 |
+| --- | --- | --- |
+| `hctl2-0.0.0-<target>.tar.gz` | 运行安装包 | 是 |
+| `hctl2-0.0.0-<target>-sources.tar.gz` | GPL/AGPL 对应源码与其余构建审计源码 | 否 |
+
+两份归档各有独立的 `.sha256` 文件。源码包必须和运行包保存在同一 Release 下载位置，但普通用户安装和运行 HCTL2 时不需要下载它。
 
 解压并按默认位置安装：
 
@@ -40,7 +49,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ./install.sh --prefix /absolute/path/to/hctl2
 ```
 
-安装器会校验整个归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2-services` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。
+安装器会校验整个运行归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2-services` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。运行包根目录的 `SOURCES.md` 会明确指出与它对应的源码伴随包名。
 
 查看安装器的英文命令帮助：
 
@@ -233,12 +242,12 @@ src/packaging/dependencies/build-package-macos-x86_64.sh
 
 macOS arm64 与 Intel 必须分别在对应架构的 Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel、tmux、链接 dylib 和运行验证都属于目标合同。
 
-完整验证构建、离线安装、幂等重装、启动、冒烟检查和停止：
+完整验证两份归档的内容与校验清单，以及运行包的离线安装、幂等重装、启动、冒烟检查和停止：
 
 ```bash
 src/packaging/dependencies/test-package.sh
 ```
 
-生成物位于 `src/dist/`，不会提交到 Git。依赖下载和编译缓存默认为 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`；需要隔离或复用缓存时，设置绝对路径 `HCTL2_BUILD_CACHE`。
+运行安装包、源码伴随包及各自的 `.sha256` 位于 `src/dist/`，不会提交到 Git。依赖下载和编译缓存默认为 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`；需要隔离或复用缓存时，设置绝对路径 `HCTL2_BUILD_CACHE`。
 
 在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`。
