@@ -2,88 +2,113 @@ name: Code
 
 on:
   push:
-    paths:
-      - ".github/workflows/code.yml"
-      - "src/**"
+    branches:
+      - main
   pull_request:
-    paths:
-      - ".github/workflows/code.yml"
-      - "src/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: code-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  rust-linux:
-    name: Rust workspace / Linux
-    runs-on: ubuntu-latest
+  buck:
+    name: Buck2 / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86_64
+            runner: ubuntu-24.04
+            target: linux_x86_64_gnu
+            uname_s: Linux
+            uname_m: x86_64
+          - platform: macOS x86_64
+            runner: macos-15-intel
+            target: macos_x86_64
+            uname_s: Darwin
+            uname_m: x86_64
+          - platform: macOS arm64
+            runner: macos-15
+            target: macos_arm64
+            uname_s: Darwin
+            uname_m: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      BUCK_CONSOLE: simple
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Restore Buck2 cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cache/dotslash
+            buck-out
+          key: buck2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('buck2', '.buckconfig', 'src/build/platforms/**', 'src/build/toolchains/**') }}
+
+      - name: Install pinned DotSlash
+        run: |
+          src/build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Verify runner and tools
+        run: |
+          test "$(uname -s)" = "${{ matrix.uname_s }}"
+          test "$(uname -m)" = "${{ matrix.uname_m }}"
+          dotslash --version
+          ./buck2 --version
+
+      - name: Analyze target graph
+        run: >-
+          ./buck2 cquery root//src/...
+          --target-platforms root//src/build/platforms:${{ matrix.target }}
+
+      - name: Build first-party targets
+        run: >-
+          ./buck2 build root//src/...
+          --target-platforms root//src/build/platforms:${{ matrix.target }}
+
+      - name: Test first-party targets
+        run: >-
+          ./buck2 test root//src/...
+          --target-platforms root//src/build/platforms:${{ matrix.target }}
+
+      - name: Run Clippy
+        run: >-
+          ./buck2 build root//src:clippy
+          --target-platforms root//src/build/platforms:${{ matrix.target }}
+
+  cargo-parity:
+    name: Cargo parity / Linux x86_64
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: src
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Install pinned Rust toolchain
+      - name: Install parity toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
 
-      - name: Check packaging shell syntax
-        run: find packaging/dependencies -type f \( -name '*.sh' -o -name hctl2-services \) -print0 | xargs -0 bash -n
-
-      - name: Check service command help
-        run: |
-          packaging/dependencies/hctl2-services --help | grep -F 'Usage:'
-          if packaging/dependencies/hctl2-services status unexpected >/dev/null 2>&1; then
-            echo 'hctl2-services accepted an argument for status' >&2
-            exit 1
-          fi
+      - name: Verify toolchain
+        run: rustc +1.98.0 --version | grep -F 'rustc 1.98.0'
 
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: cargo +1.98.0 fmt --all --check
 
       - name: Run Clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+        run: cargo +1.98.0 clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Build workspace
-        run: cargo build --locked --workspace --all-targets
+        run: cargo +1.98.0 build --locked --workspace --all-targets
 
       - name: Test workspace
-        run: cargo test --locked --workspace --all-targets
-
-  rust-macos:
-    name: Rust workspace / macOS
-    runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: src
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
-
-      - name: Check packaging shell syntax
-        run: find packaging/dependencies -type f \( -name '*.sh' -o -name hctl2-services \) -print0 | xargs -0 bash -n
-
-      - name: Check service command help
-        run: |
-          packaging/dependencies/hctl2-services --help | grep -F 'Usage:'
-          if packaging/dependencies/hctl2-services status unexpected >/dev/null 2>&1; then
-            echo 'hctl2-services accepted an argument for status' >&2
-            exit 1
-          fi
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Run Clippy
-        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-      - name: Build workspace
-        run: cargo build --locked --workspace --all-targets
-
-      - name: Test workspace
-        run: cargo test --locked --workspace --all-targets
+        run: cargo +1.98.0 test --locked --workspace --all-targets
