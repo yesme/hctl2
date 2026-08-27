@@ -1,8 +1,8 @@
 [cells]
 root = .
 prelude = prelude
-toolchains = src/build/toolchains
-none = src/build/empty_cell
+toolchains = build/toolchains
+none = build/empty_cell
 
 [cell_aliases]
 config = prelude

@@ -224,9 +224,21 @@ cargo run --locked -p hctl2-tool -- --help
 
 当前无参数调用等同于 `--help`。除此之外的参数会返回结构化错误码 `HCTL2_TOOL_UNSUPPORTED_ARGUMENT`。Git/SCM 操作、事实回读和其他机械能力尚未落地。
 
-## 从源码制作离线包
+## 安装完整离线包
 
-这一节面向发布与打包开发者，不是最终用户安装步骤。在支持的原生构建宿主上运行：
+最终用户下载同一版本和目标平台的运行包、源码伴随包及 SHA-256 文件后，先校验 sidecar，再解压运行包：
+
+```bash
+tar -xzf hctl2-<version>-<target>.tar.gz
+cd hctl2-<version>-<target>
+./install.sh
+```
+
+默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-agentd`、`hctl2-tool`、`hctl2-services` 三个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端。
+
+## 从源码制作外部子系统包
+
+这一节面向发布与打包开发者，产物是完整发行组装器的中间输入，不是最终用户安装步骤。在支持的原生构建宿主上运行：
 
 ```bash
 src/packaging/dependencies/build-package.sh
@@ -248,6 +260,6 @@ macOS arm64 与 Intel 必须分别在对应架构的 Mac 上原生构建和测�
 src/packaging/dependencies/test-package.sh
 ```
 
-运行安装包、源码伴随包及各自的 `.sha256` 位于 `src/dist/`，不会提交到 Git。依赖下载和编译缓存默认为 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`；需要隔离或复用缓存时，设置绝对路径 `HCTL2_BUILD_CACHE`。
+外部运行包、源码伴随包及各自的 `.sha256` 位于 `src/dist/`，不会提交到 Git。依赖下载和编译缓存默认为 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`；需要隔离或复用缓存时，设置绝对路径 `HCTL2_BUILD_CACHE`。
 
-在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`。
+在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`；Buck2 第一方导出、确定性组装和完整包验收记录在 `src/packaging/release/README.md`。

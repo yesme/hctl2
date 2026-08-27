@@ -39,7 +39,7 @@ jobs:
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
           if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/|\.github/workflows/code\.yml$|buck2$|\.buckconfig$|\.buckroot$)'; then
+            '^(src/|\.github/workflows/code\.yml$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -71,6 +71,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       BUCK_CONSOLE: simple
+    defaults:
+      run:
+        working-directory: src
 
     steps:
       - name: Check out repository
@@ -81,12 +84,12 @@ jobs:
         with:
           path: |
             ~/.cache/dotslash
-            buck-out
-          key: buck2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('buck2', '.buckconfig', 'src/build/platforms/**', 'src/build/toolchains/**') }}
+            src/buck-out
+          key: buck2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('src/buck2', 'src/.buckconfig', 'src/build/platforms/**', 'src/build/toolchains/**') }}
 
       - name: Install pinned DotSlash
         run: |
-          src/build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
 
       - name: Verify runner and tools
@@ -98,23 +101,23 @@ jobs:
 
       - name: Analyze target graph
         run: >-
-          ./buck2 cquery root//src/...
-          --target-platforms root//src/build/platforms:${{ matrix.target }}
+          ./buck2 cquery root//...
+          --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Build first-party targets
         run: >-
-          ./buck2 build root//src/...
-          --target-platforms root//src/build/platforms:${{ matrix.target }}
+          ./buck2 build root//...
+          --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Test first-party targets
         run: >-
-          ./buck2 test root//src/...
-          --target-platforms root//src/build/platforms:${{ matrix.target }}
+          ./buck2 test root//...
+          --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Run Clippy
         run: >-
-          ./buck2 build root//src:clippy
-          --target-platforms root//src/build/platforms:${{ matrix.target }}
+          ./buck2 build root//:clippy
+          --target-platforms root//build/platforms:${{ matrix.target }}
 
   cargo-parity:
     name: Cargo parity / Linux x86_64

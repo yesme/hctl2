@@ -1,0 +1,10 @@
+load(":defs.bzl", "first_party_release")
+
+oncall("hctl2")
+
+export_file(
+    name = "export-first-party.sh",
+    src = "export-first-party.sh",
+)
+
+first_party_release(name = "first-party")

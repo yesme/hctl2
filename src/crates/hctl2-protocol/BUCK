@@ -1,4 +1,4 @@
-load("//src/build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
 
 oncall("hctl2")
 
