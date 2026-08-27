@@ -2,7 +2,7 @@
 
 > 日期：2026-08-25<br>
 > 状态：Informative · 待办清单，不改规范。<br>
-> 来源：[grok-20260824a](./grok-20260824a.md) §4 与 [codex-design-review-20260825a](./codex-design-review-20260825a.md) §三，经所有者裁决"记下来，先不改"。
+> 来源：[grok-20260824a](./grok-20260824a.md) §4 与 [codex-design-review-20260825a](../review/20260825-v0.12.3/codex-design-review-20260825a.md) §三，经所有者裁决"记下来，先不改"。
 
 ## 1. 禁令清单清扫（正确道路只有一条，反例写不完）
 

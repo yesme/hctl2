@@ -2,7 +2,7 @@
 
 > 状态：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。设计层正文已落 docs/design/context.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源；2026-08-24 增补 §18（萃取 + 省 token 为中心设计）与 §19（前情提要），均经所有者拍板，生态四族地图见 context-landscape-20260824.md。
 > 日期：2026-08-19
-> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../docs/design/spec/README.md#v091-归并对照)）。
+> 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../../docs/design/spec/README.md#v091-归并对照)）。
 > 核心判断：Context 是 Project 模块内的一组来源、投影、冻结与消费合同，不是 SQLite 聊天表，也不是 Project、Task、Run、Harness 之外的第五模块。
 
 ## 1. 要解决的问题
@@ -108,7 +108,7 @@ Trigger Preview 是从 evolving working context 到冻结 ContextManifest 的边
 
 Context 不复制各模块 ledger，也不默认摄取 Harness 原始 trace。它只消费公开投影的稳定 ref；外部 snapshot 则记录 binding revision、外部 ID、版本/ETag/token、digest、时间、可读 scope 和已知 gap。来源端口决定“能读到什么”，Project 组装器才决定某次 Invocation 获准看到什么。
 
-connector 的 checkpoint、幂等、回读、撤权和恢复沿用[系统边界](../docs/design/spec/system.md)及各受控端口合同，Context 不另建采集框架。SourceRef 只需说明：读取的版本、能否重取、digest/必要摘录/retention，以及当前 freshness、已知 gap 和派生索引失效条件。派生数据丢失只影响召回效率，重建索引不得改变 stable refs。
+connector 的 checkpoint、幂等、回读、撤权和恢复沿用[系统边界](../../docs/design/spec/system.md)及各受控端口合同，Context 不另建采集框架。SourceRef 只需说明：读取的版本、能否重取、digest/必要摘录/retention，以及当前 freshness、已知 gap 和派生索引失效条件。派生数据丢失只影响召回效率，重建索引不得改变 stable refs。
 
 召回可以组合四种信号，而不是绑定一种数据库：
 
@@ -174,7 +174,7 @@ Harness 不能绕过 binding 读取 Room、Memo 或外部 Context store 来“�
 4. 入选内容按 §8 的分层摘要压缩，段落级保留 lineage；
 5. 路由本身永远是机械的：@ 解析是确定性寻址，不交给一个协调者模型去猜“该派给谁、该给它看什么”。
 
-两个外部实证（完整审计见 [E-LOBEHUB](../docs/design/references/implementation-evidence.md#e-lobehub)）：LobeHub 在群外把单个 @ 实现为机械直达路由（零额外 LLM 调用），群内却交给 supervisor LLM 路由——一个广播回合默认 N+2 次全量历史 LLM 调用（supervisor 可显式跳过收尾降为 N+1）、每个成员收到一份全量共享 transcript 的逐成员改写，这就是“路由与切片交给大模型”的成本后果；它的 topic-reference 则是好的机械回退梯子：显式引用标签 → 已存摘要 → 末 5 条消息节选 → 仅标题。HCTL2 的对应物是 Room 的显式寻址、ContextManifest 的 Must Include 与面向 Seat 的最小权限 child Bundle；本节只是把“定向”场景的组装顺序写死。
+两个外部实证（完整审计见 [E-LOBEHUB](../../docs/design/references/implementation-evidence.md#e-lobehub)）：LobeHub 在群外把单个 @ 实现为机械直达路由（零额外 LLM 调用），群内却交给 supervisor LLM 路由——一个广播回合默认 N+2 次全量历史 LLM 调用（supervisor 可显式跳过收尾降为 N+1）、每个成员收到一份全量共享 transcript 的逐成员改写，这就是“路由与切片交给大模型”的成本后果；它的 topic-reference 则是好的机械回退梯子：显式引用标签 → 已存摘要 → 末 5 条消息节选 → 仅标题。HCTL2 的对应物是 Room 的显式寻址、ContextManifest 的 Must Include 与面向 Seat 的最小权限 child Bundle；本节只是把“定向”场景的组装顺序写死。
 
 ## 8. Token budget 与组装策略
 
@@ -353,7 +353,7 @@ Phase 1 只利用已有显式 HCTL/Git/source 关系；语义 fact/community gra
 ## 17. 来源与取舍
 
 - [openTrinity/MyContext](https://github.com/openTrinity/mycontext/tree/81b3c7ac178dbf141ca97cbe6b6682f73e3d3199)：采用“多来源、增量采集、规范化/派生、检索与图、AI 只是受控消费者、故障显式降级”的分层思想；不照搬其个人数字分身产品边界，也不把 SQLite vault 当成 HCTL2 Context 的定义。该项目为开发者预览，且采用 Elastic License 2.0；本文只作设计研究，没有复制实现。2026-08-22 源码复审（pin 不变，HEAD 即 81b3c7ac）确认其分层成本设计已深化：双层轮询探针 + 单事务 outbox 采集、CJK bigram FTS 作为常驻零费用检索层、kl-graph 的 RRF 多路融合与逐 chunk 抽取缓存、三级可见降级（agent → 有来源的本地检索列表 → 建索引提示），以及 LLM 画像抽取下线换零模型确定性测量；§7.3 与 §8 的成本纪律以此为对照样本之一。
-- [LobeHub](https://github.com/lobehub/lobehub)（审计基线 `v2.2.14 / 363797b1`，LobeHub Community License，非 OSI）：采用其“组装全程机械化、摘要是唯一显式 LLM 步骤”的管道形态、压缩产物一等持久化与增量折叠、前缀缓存友好排序，以及 ctx-map 式“每次调用的上下文构成”审计投影；不采用 supervisor LLM 路由、默认工具集无相关性筛选注入和全量历史逐成员重发。完整审计与社区 token 成本证据见 [E-LOBEHUB](../docs/design/references/implementation-evidence.md#e-lobehub)。
+- [LobeHub](https://github.com/lobehub/lobehub)（审计基线 `v2.2.14 / 363797b1`，LobeHub Community License，非 OSI）：采用其“组装全程机械化、摘要是唯一显式 LLM 步骤”的管道形态、压缩产物一等持久化与增量折叠、前缀缓存友好排序，以及 ctx-map 式“每次调用的上下文构成”审计投影；不采用 supervisor LLM 路由、默认工具集无相关性筛选注入和全量历史逐成员重发。完整审计与社区 token 成本证据见 [E-LOBEHUB](../../docs/design/references/implementation-evidence.md#e-lobehub)。
 - 用户提供的 First Tree 对比记录及其引用的 [Context Tree Policy](https://github.com/first-tree-ai/first-tree/blob/9a7dd4d94373921cfe2022bfef91c132fdf74824/packages/client/src/runtime/assets/context-tree-policy.md)：采用“共同认知应保存当前决定、原因、约束与 ownership；默认不把 Chat/日志写入长期知识；历史交给 Git”的经验；保留 HCTL2 的 Manifest 执行证据、显式 Memo 晋升与四模块权威边界。
 - HCTL2 当前规范：沿用 `project.md` 已有的 Context 组装顺序、InvocationBinding 冻结、Repo Room 提升预览、Memo 人工发布，以及 `run.md` 中 AttemptSpec/Gate 对 ContextManifest digest 的约束。本 memo 只补足这些合同背后的 Context plane 设计。
 
@@ -362,7 +362,7 @@ Phase 1 只利用已有显式 HCTL/Git/source 关系；语义 fact/community gra
 三条定盘（已写入 docs/design/context.md 的「萃取与压缩」一节与快省准标准）：
 
 1. **两步管线**。进展由聊天室驱动，因此：① 从聊天史识别与这位执行者相关的部分，必须快、必须全本地、不花模型 token——落为三级阶梯（结构化引用 → 本地全文检索 + 机械融合 → 可选小模型相关性门，门的判定输入用账本事实不用消息措辞）；② 萃取出的上下文（即给模型的 prompt）可压缩——**缺省不压**，只有用户配置了专用小模型（small-brain）才启用；压缩是清单里显式记录的一步（模型 ref、压缩率、原文 digest 冻结），证据类内容永不压缩。small-brain 在 Participant 七层里只是执行者配置的一个模型引用，不是新对象。
-2. **需要 survey**。Context 处理是热门课题——MyContext 之外还有各家协调器的树形方案、长短期记忆方案、小模型压缩等；已完成第一轮链接级四族地图与快省准横评（`.memo/context-landscape-20260824.md`），已深审的四条（MyContext / LobeHub / First Tree / Cumora）恰好各占一族最优实践；small-brain 若采 LLMLingua-2 路线需升级为克隆级审计。
+2. **需要 survey**。Context 处理是热门课题——MyContext 之外还有各家协调器的树形方案、长短期记忆方案、小模型压缩等；已完成第一轮链接级四族地图与快省准横评（`docs/research/context-landscape-20260824.md`），已深审的四条（MyContext / LobeHub / First Tree / Cumora）恰好各占一族最优实践；small-brain 若采 LLMLingua-2 路线需升级为克隆级审计。
 3. **快 + 省 + 准是最重要的标准**。三者同时成立才合格，牺牲任何一个都要在清单里显式可见；准由既有的冻结与可解释合同兜底。
 
 合同裁决时的落点提示：三级阶梯的第二、三级都是可重建的派生投影（不进权威账本）；压缩记录进 Context Manifest/Bundle 的字段合同（spec/project）；small-brain 配置走用户级定义与 Worker Profile 既有机制，无新对象。

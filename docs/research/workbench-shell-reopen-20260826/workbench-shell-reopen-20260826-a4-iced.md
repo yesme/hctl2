@@ -1,6 +1,6 @@
 # 附录 A4 · Iced 调研原始报告(2026-08-26)
 
-> 主备忘:`workbench-shell-reopen-20260826.md`。调研代理原始英文报告(GitHub/crates.io API + 仓库源码 + 网页);§12 含该代理在本机的独立测量,与附录 A6 的探针代理数字相互印证。
+> 主备忘:`README.md`。调研代理原始英文报告(GitHub/crates.io API + 仓库源码 + 网页);§12 含该代理在本机的独立测量,与附录 A6 的探针代理数字相互印证。
 
 ## 1. Release status
 

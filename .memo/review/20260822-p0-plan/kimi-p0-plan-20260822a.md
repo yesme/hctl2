@@ -1,7 +1,7 @@
 # P0 实施计划（kimi）
 
 > 日期：2026-08-22<br>
-> 状态：Informative · P0 施工组织方案，不改规范。P0 范围与验收以 [delivery.md](../docs/design/delivery.md)「开工前限时验证」为准。<br>
+> 状态：Informative · P0 施工组织方案，不改规范。P0 范围与验收以 [delivery.md](../../../docs/design/delivery.md)「开工前限时验证」为准。<br>
 > 对象：HCTL2 仓库 @ `main`（草案 v0.12.0）；依据 delivery.md、retrospective memo 与三份 20260821 评审 memo。
 
 ## P0 是什么

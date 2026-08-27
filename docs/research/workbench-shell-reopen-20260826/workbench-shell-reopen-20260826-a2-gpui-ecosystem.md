@@ -1,6 +1,6 @@
 # 附录 A2 · GPUI 控件生态调研原始报告(2026-08-26)
 
-> 主备忘:`workbench-shell-reopen-20260826.md`。调研代理原始英文报告,主线复核补充见文末。gpui-component 的源码事实核对于 shallow clone `d5821f27`(2026-08-25,`main`)。
+> 主备忘:`README.md`。调研代理原始英文报告,主线复核补充见文末。gpui-component 的源码事实核对于 shallow clone `d5821f27`(2026-08-25,`main`)。
 
 Conventions: **exists** = shipped and verified in source; **partial** = building blocks exist but the surface must be assembled; **missing** = not found.
 

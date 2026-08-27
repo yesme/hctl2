@@ -2,7 +2,7 @@
 
 > 日期：2026-08-24<br>
 > 状态：Informative 研究备忘，不定义 HCTL2 语义。<br>
-> 深度标注：本轮是**链接级 web survey**，与 methodology-landscape 的逐仓库克隆审计不同级；其中四个样本（MyContext、LobeHub context-engine、First Tree Context Tree、Cumora triage 门）已在[实现证据](../docs/design/references/implementation-evidence.md)完成源码级深审，直接引用其结论。值得升级为克隆审计的候选在文末列出。<br>
+> 深度标注：本轮是**链接级 web survey**，与 methodology-landscape 的逐仓库克隆审计不同级；其中四个样本（MyContext、LobeHub context-engine、First Tree Context Tree、Cumora triage 门）已在[实现证据](../design/references/implementation-evidence.md)完成源码级深审，直接引用其结论。值得升级为克隆审计的候选在文末列出。<br>
 > 触发：所有者拍板 Context 的中心设计为"萃取上下文 + 省 token"，检验标准为**快、省、准**；本备忘回答生态里各家怎么做、HCTL2 的两步管线落在地图哪里。
 
 ## 结论先行

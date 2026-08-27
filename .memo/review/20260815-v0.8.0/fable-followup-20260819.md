@@ -1,7 +1,7 @@
 # fable-20260815a 备忘核销记录（对照 v0.9.1）
 
 > 日期：2026-08-19<br>
-> 对象：`.memo/fable-20260815a.md`（评审 v0.8.0 @ 36db492）↔ 当前草案 v0.9.1（3aa2950 及随本记录的修订）<br>
+> 对象：`.memo/review/20260815-v0.8.0/fable-20260815a.md`（评审 v0.8.0 @ 36db492）↔ 当前草案 v0.9.1（3aa2950 及随本记录的修订）<br>
 > 状态：Informative · 核销记录。v0.9.0/v0.9.1 两轮修订未按惯例附带「前次备忘跟进」小节，本文补记；只记录处置结论与现状依据，不新增合同。
 
 ## 阻断级（2/2 已解决）
@@ -32,8 +32,8 @@
 | M15 Lost 旧 writer 的 worktree 复用规则缺失 | 已解决 | 无法证明旧 writer 已 fence 时"原 worktree/ChangeSet 不得授予新写租约，只能保全并隔离，新的执行使用新物理 worktree"（`spec/harness.md`）；矩阵有对应负例 |
 | M16 generation 持久位置与恢复顺序矛盾 | 已解决 | 恢复顺序改为"先取得 OS/资源侧排他权 → 打开权威账本 → CAS 推进 writer/backend generation"，control 与 agentd 主体分列（`spec/system.md`「单写者」「启动与恢复」） |
 | M17 agentd 单 owner 无互斥机制 | 已解决 | agentd 必须先取得资源侧 OS lock/broker token 等排他原语；scope 定义为"相同资源 broker/socket/host namespace"；不能强制排他的 backend 只可观察（`spec/system.md`） |
-| M18 Project 权威存储 SQLite/Git 不明 | 部分解决 | 分界已写明：Git 存不可变 Revision 内容，每实例账本存 admission/current pointer/lifecycle 投影（`spec/system.md`「事实与存储」）；多 clone 并发写共享配置的收敛合同仍未定，已并入 Room ground-truth 开放问题（`.memo/room-ground-truth-20260819.md`、delivery 未决项） |
-| M19 Gate 身份链不完整、单用户三选二无法构成 | 部分解决 | producer→Participant 身份链已补（ExecutionSpec 冻结逻辑 Participant/Seat identity；producer_ref 解析校验）；"彼此独立"的判定维度与单用户构成移交 `.memo/participant-design-20260819.md` §5 及其开放问题 9，第一阶段按逻辑 Participant 分离执行 |
+| M18 Project 权威存储 SQLite/Git 不明 | 部分解决 | 分界已写明：Git 存不可变 Revision 内容，每实例账本存 admission/current pointer/lifecycle 投影（`spec/system.md`「事实与存储」）；多 clone 并发写共享配置的收敛合同仍未定，已并入 Room ground-truth 开放问题（`.memo/design/room-ground-truth-20260819.md`、delivery 未决项） |
+| M19 Gate 身份链不完整、单用户三选二无法构成 | 部分解决 | producer→Participant 身份链已补（ExecutionSpec 冻结逻辑 Participant/Seat identity；producer_ref 解析校验）；"彼此独立"的判定维度与单用户构成移交 `.memo/design/participant-design-20260819.md` §5 及其开放问题 9，第一阶段按逻辑 Participant 分离执行 |
 | M20 `~/.hctl2/` 共享无锁无版本合同 | 已解决 | 用户级 current 更新需排他锁 + expected-version CAS；活动执行只读冻结 revision（`spec/system.md`「事实与存储」） |
 | M21 外部排序强制 remote token | 已解决 | 无等价 remote token 时"adapter 不得伪造"，降级为只读或可回读的绝对移动（`spec/task.md`「StartRun 前置与排序令牌」及外部对齐表） |
 | M22 Harness 适配器无契约测试出门条件、OpenCode 范围写在 evidence | 已解决 | 出门条件补"至少一个 HarnessAdapter 和一个 RuntimeBackend 通过完整契约测试"；Codex/Claude Code/OpenCode 进入 delivery 范围表 |

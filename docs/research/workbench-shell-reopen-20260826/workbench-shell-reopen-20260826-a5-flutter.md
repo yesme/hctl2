@@ -1,6 +1,6 @@
 # 附录 A5 · Flutter 调研原始报告(2026-08-26)
 
-> 主备忘:`workbench-shell-reopen-20260826.md`。调研代理原始英文报告;pub.dev 日期取自 API `published` 字段,GitHub 数字取自 2026-08-26 的 API。**[unverified]** 为未核实。主线复核补充(Canonical 四件 Flutter 应用)见 §7 末尾。
+> 主备忘:`README.md`。调研代理原始英文报告;pub.dev 日期取自 API `published` 字段,GitHub 数字取自 2026-08-26 的 API。**[unverified]** 为未核实。主线复核补充(Canonical 四件 Flutter 应用)见 §7 末尾。
 
 ## 1. Release & stewardship
 
