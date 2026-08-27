@@ -91,6 +91,6 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 - [第一阶段、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、契约测试和未决项。
 - [术语对照表](./references/glossary.md)：中英对照与一句话含义；语义以模块文档为准。
 - [从 HCTL 到 HCTL2 的来时路](./references/decision-history.md)：关键决策转折的非规范说明；它不形成第二套合同。
-- [实现证据](./references/implementation-evidence.md)：固定版本、许可证和采用边界；它不定义 HCTL 语义。
+- [实现证据](../research/README.md)：固定版本、许可证和采用边界；它不定义 HCTL 语义。
 
 发生冲突时，四个模块合同解释连接端点，spec/connections.md 解释交接，spec/system.md 解释共享执行机制；delivery.md 不得改变领域含义，实现证据不得反向定义产品。

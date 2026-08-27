@@ -1,7 +1,7 @@
 # 从 HCTL 到 HCTL2 的来时路
 
 > 状态：Informative · 对应草案 v0.13.1 · 2026-08-26<br>
-> 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](./implementation-evidence.md)。
+> 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
 
@@ -9,7 +9,7 @@ HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的�
 
 HCTL1 首先解决的是“谁可以对哪个精确版本作出什么裁决”。它把协调事实放在 Git 上，形成 append-only 事件、local/remote CAS、claim OID fence、精确 `{base, head}` Verdict、quorum、可重放的 squash merge Receipt，以及事实不完整时 fail-closed 的 level-triggered reconciliation。这套可执行内核证明：治理可以依靠稳定身份、精确版本和可重放证据，而不依赖常驻 daemon、数据库时钟或界面状态。
 
-这条谱系没有被 HCTL2 丢弃。HCTL2 延续了版本化证据、claim/fence、法定票数、Receipt 和对账思想；但 HCTL1 的对象模型和 Git 事实布局只适合它当时的窄范围，不是 HCTL2 的存储或产品蓝图。具体基线与限制见 [`E-L2-HCTL1`](./implementation-evidence.md#e-l2-hctl1--hctl1--yesmehctl)。
+这条谱系没有被 HCTL2 丢弃。HCTL2 延续了版本化证据、claim/fence、法定票数、Receipt 和对账思想；但 HCTL1 的对象模型和 Git 事实布局只适合它当时的窄范围，不是 HCTL2 的存储或产品蓝图。具体基线与限制见 [`E-L2-HCTL1`](../../research/hctl1.md#e-l2-hctl1)。
 
 ## 2. 多 Harness 终端是产品问题的起点
 
@@ -67,7 +67,7 @@ First Tree 证明了持久 Chat、稳定且显式的 recipient，以及发生在
 
 因此当前设计只承认两类边：普通 Chat Room 的临场协作边由有权 human actor 创建，Workflow 的执行边由 reducer 按冻结的 Workflow Revision 创建。Agent-authored message、Result Proposal 或模型总结可以建议下一位 Participant，却不能自行 cue 新 worker、扩大 fan-out 或递归委派。在 Chat Room 中，人本来就处于讨论焦点；系统应把建议变成可一键批准、自动携带引用与 Context 的 handoff，而不是让人重新复制和转述内容。
 
-这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](./implementation-evidence.md#e-l4-first-tree--first-tree)。
+这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](../../research/first-tree.md#e-l4-first-tree)。
 
 ## 9. 延续治理合同，同时更换对象与事实源
 
@@ -138,7 +138,7 @@ v0.10–v0.12 的数次横切转向（用户级 control、Repo 级 Board、三�
 
 ## 17. 适配器诚实合同：终局结果、观测截断与派生谱系（v0.12.0 补充）
 
-Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先级阶梯、观测不推进领域结果），但留着两个物理层必须表态的空洞：进程干净退出算什么？上报中断后的残缺事件流还算不算历史？本轮据 LobeHub 源码审计（[E-LOBEHUB](./implementation-evidence.md#e-lobehub)，其 heterogeneous-agents 适配器层的经验证做法）补齐三条 harness 适配器义务：
+Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先级阶梯、观测不推进领域结果），但留着两个物理层必须表态的空洞：进程干净退出算什么？上报中断后的残缺事件流还算不算历史？本轮据 LobeHub 源码审计（[E-LOBEHUB](../../research/lobehub.md#e-lobehub)，其 heterogeneous-agents 适配器层的经验证做法）补齐三条 harness 适配器义务：
 
 - **终局结果契约**：每个接入端口声明其终局结果事件；执行体进程正常退出但缺少该事件时，适配器必须合成类型化协议错误，不得默认成功——静默死亡不能冒充交付。由 control/agentd 主动取消导致的退出归因为取消，不上报为执行失败。
 - **观测流完整性**：观测上报通道失败时，只能显式标记该执行的观测截断并终结事件流；有缺口的事件流不得冒充完整历史。
@@ -152,7 +152,7 @@ Agent 模块的观测合同原本回答的是“信号如何仲裁”（优先�
 
 Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。采用边界因此固定为 HCTL JSON 经 compiler 生成受限 Dagu YAML，只使用依赖/条件/等待等机械结构和无进程 `human.task` 检查点；control 观察等待态，在 HCTL 结果先落账后经 API 完成它。Dagu 不获得 Harness 选择、Seat/Attempt、语义 Gate、quorum、Receipt 或外部副作用权威。公开 completion API 不能携带调用者预期的 engine attempt generation，迟到请求是否可能推进 retry/repeat 后的新检查点是 B4 前的阻断性 P0；失败就重开选型，而不是自建第二个引擎。（v0.13.0 改判：代次不在 Dagu，见 [§23](#23-代次不在-dagu完成与评审都在-hctldagu-只当路标v0130)。）
 
-这条决定取代 §6 和 §13 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](./implementation-evidence.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](./implementation-evidence.md#执行面已选依赖的运维与-footprint)。
+这条决定取代 §6 和 §13 的 Conductor 实现选型，不推翻“引擎只拥有机械状态”的边界。Dagu、Conductor、Windmill、Kestra、Direktiv、Serverless Workflow Synapse、Flogo、Step Functions Local 与 SCXML/XState 自建路线的源码证据和完整取舍，见 [`E-L2-DAGU`](../../research/workflow-engines.md#e-l2-dagu)；四个现役执行面依赖的版本、体积和运维账见[实现证据](../../research/README.md#执行面已选依赖的运维与-footprint)。
 
 ## 19. 运行时后端从 Zellij 改为 tmux（v0.12.1）
 
@@ -160,7 +160,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 体积使取舍进一步明确。本机 Apple Silicon 基线中，tmux 可执行文件约 **0.95 MiB**，直接非系统动态库约 **1.45 MiB**；一个 server 承载十个 detached `/bin/sleep` session 时约 **3.7 MiB RSS**。Zellij 的 `zellij-no-web` 可执行文件约 **32.4 MiB**，一个默认 detached session 约 **89.7 MiB RSS**，十个约 **841.6 MiB RSS**；它的结构化接口与原生跨平台优势不足以抵消多 Harness 常态下的成本。shpool 可执行文件约 **4.04 MiB**、十个空闲 session 的 daemon 约 **23.1 MiB RSS**，但当前公开合同仍以单客户端 attach 为中心，没有 headless 终端查询应答、可承载 payload 的结构化事件、多观察者扇出或成熟的慢客户端背压；采用它会迫使 agentd 自建终端模拟、快照/重放与流量控制，等于把难题搬回自身。
 
-tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.13.0 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0130)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](./implementation-evidence.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
+tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.13.0 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0130)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](../../research/tmux-runtime.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
 ## 20. 桥接退役、结晶归位与概念清扫（v0.12.2）
 
