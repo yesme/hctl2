@@ -19,11 +19,15 @@ assemble_dependency_package() {
     local source_root
     local hctl2_version
     local package_id
+    local source_package_id
     local dist_dir
     local archive
+    local source_archive
     local build_dir
     local package_root
     local payload_root
+    local source_package_root
+    local source_files_root
     local source_date_epoch
     local component
     local script
@@ -31,6 +35,7 @@ assemble_dependency_package() {
     require_target_host
     require_command gzip
     require_command install
+    require_command sed
     require_command tar
 
     repository_root="$(cd -- "$P0_DEPENDENCY_SOURCE_ROOT/../../.." && pwd -P)"
@@ -39,17 +44,25 @@ assemble_dependency_package() {
     [[ -n "$hctl2_version" ]] || die "could not read workspace package version"
 
     package_id="hctl2-$hctl2_version-$HCTL2_TARGET_ID"
+    source_package_id="$package_id-sources"
     dist_dir="${HCTL2_DIST_DIR:-$source_root/dist}"
     archive="$dist_dir/$package_id.tar.gz"
+    source_archive="$dist_dir/$source_package_id.tar.gz"
     build_dir="$(mktemp -d "$P0_TMP_DIR/package.XXXXXX")"
     package_root="$build_dir/$package_id"
     payload_root="$package_root/payload"
+    source_package_root="$build_dir/$source_package_id"
+    source_files_root="$source_package_root/sources"
 
     PACKAGE_ID="$package_id"
+    SOURCE_PACKAGE_ID="$source_package_id"
     PACKAGE_ROOT="$package_root"
     PAYLOAD_ROOT="$payload_root"
+    SOURCE_PACKAGE_ROOT="$source_package_root"
     ARCHIVE="$archive"
-    readonly PACKAGE_ID PACKAGE_ROOT PAYLOAD_ROOT ARCHIVE
+    SOURCE_ARCHIVE="$source_archive"
+    readonly PACKAGE_ID SOURCE_PACKAGE_ID PACKAGE_ROOT PAYLOAD_ROOT SOURCE_PACKAGE_ROOT
+    readonly ARCHIVE SOURCE_ARCHIVE
 
     PACKAGE_BUILD_DIR_TO_CLEAN="$build_dir"
     readonly PACKAGE_BUILD_DIR_TO_CLEAN
@@ -71,7 +84,7 @@ assemble_dependency_package() {
         "$payload_root/libexec/hctl2" \
         "$payload_root/share/hctl2/chatroom/element-web" \
         "$payload_root/share/hctl2/licenses" \
-        "$payload_root/share/hctl2/sources"
+        "$source_files_root"
 
     for component in tuwunel vikunja dagu tmux; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
@@ -101,16 +114,6 @@ assemble_dependency_package() {
         >"$payload_root/share/hctl2/licenses/Element-Web-GPL-3.0-or-later.txt"
     platform_stage_licenses
 
-    install -m 0644 "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET" \
-        "$payload_root/share/hctl2/sources/$VIKUNJA_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET" \
-        "$payload_root/share/hctl2/sources/$DAGU_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET" \
-        "$payload_root/share/hctl2/sources/$TUWUNEL_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_ASSET" \
-        "$payload_root/share/hctl2/sources/$TMUX_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
-        "$payload_root/share/hctl2/sources/$ELEMENT_WEB_SOURCE_ASSET"
     platform_stage_build_metadata
 
     printf '%s\n' "$package_id" >"$payload_root/share/hctl2/package-id"
@@ -143,16 +146,64 @@ assemble_dependency_package() {
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/install-package.sh" "$package_root/install.sh"
     install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/PACKAGE-README.md" "$package_root/README.md"
     install -m 0644 "$repository_root/docs/usage.md" "$package_root/USAGE.md"
-    write_checksum_manifest "$package_root" MANIFEST.sha256 README.md USAGE.md install.sh payload
+    sed "s/@SOURCE_PACKAGE_ID@/$source_package_id/g" \
+        "$P0_DEPENDENCY_SOURCE_ROOT/SOURCE-INFO.md.in" >"$package_root/SOURCES.md"
+    write_checksum_manifest "$package_root" MANIFEST.sha256 \
+        README.md SOURCES.md USAGE.md install.sh payload
+
+    install -m 0644 "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET" \
+        "$source_files_root/$VIKUNJA_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET" \
+        "$source_files_root/$DAGU_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET" \
+        "$source_files_root/$TUWUNEL_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_ASSET" \
+        "$source_files_root/$TMUX_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$ELEMENT_WEB_SOURCE_ASSET" \
+        "$source_files_root/$ELEMENT_WEB_SOURCE_ASSET"
+    {
+        printf 'component\tversion\tcommit\tarchive\tsha256\trole\n'
+        printf 'tuwunel\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$TUWUNEL_VERSION" "$TUWUNEL_SOURCE_COMMIT" \
+            "$TUWUNEL_SOURCE_ASSET" "$TUWUNEL_SOURCE_SHA256"
+        printf 'vikunja\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
+            "$VIKUNJA_VERSION" "$VIKUNJA_SOURCE_COMMIT" \
+            "$VIKUNJA_SOURCE_ASSET" "$VIKUNJA_SOURCE_SHA256"
+        printf 'dagu\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
+            "$DAGU_VERSION" "$DAGU_SOURCE_COMMIT" \
+            "$DAGU_SOURCE_ASSET" "$DAGU_SOURCE_SHA256"
+        printf 'tmux\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_ASSET" "$TMUX_SHA256"
+        printf 'element-web\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
+            "$ELEMENT_WEB_VERSION" "$ELEMENT_WEB_SOURCE_COMMIT" \
+            "$ELEMENT_WEB_SOURCE_ASSET" "$ELEMENT_WEB_SOURCE_SHA256"
+    } >"$source_package_root/sources.tsv"
+    platform_stage_sources "$source_files_root" "$source_package_root/sources.tsv"
+    {
+        printf 'target\tos\tarch\trust_target\n'
+        printf '%s\t%s\t%s\t%s\n' \
+            "$HCTL2_TARGET_ID" "$HCTL2_TARGET_OS" "$HCTL2_TARGET_ARCH" "$HCTL2_RUST_TARGET"
+    } >"$source_package_root/target.tsv"
+    sed "s/@PACKAGE_ID@/$package_id/g" \
+        "$P0_DEPENDENCY_SOURCE_ROOT/SOURCE-PACKAGE-README.md.in" \
+        >"$source_package_root/README.md"
+    write_checksum_manifest "$source_package_root" SOURCE-MANIFEST.sha256 \
+        README.md sources.tsv target.tsv sources
 
     mkdir -p "$dist_dir"
     source_date_epoch="${SOURCE_DATE_EPOCH:-$(git -C "$repository_root" log -1 --format=%ct)}"
     platform_create_archive "$build_dir" "$package_id" "$archive" "$source_date_epoch"
+    platform_create_archive \
+        "$build_dir" "$source_package_id" "$source_archive" "$source_date_epoch"
     printf '%s  %s\n' "$(hash_file "$archive")" "$(basename -- "$archive")" >"$archive.sha256"
+    printf '%s  %s\n' "$(hash_file "$source_archive")" "$(basename -- "$source_archive")" \
+        >"$source_archive.sha256"
 
     find "$build_dir" -depth -delete
     trap - EXIT
 
     note "built offline installation package $archive"
     note "package checksum: $(hash_file "$archive")"
+    note "built corresponding source package $source_archive"
+    note "source package checksum: $(hash_file "$source_archive")"
 }

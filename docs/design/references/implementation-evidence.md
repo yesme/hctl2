@@ -881,7 +881,7 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 | **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
 | **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | Homebrew macOS arm64 bottle **0.52 MiB**、executable **0.95 MiB**；直接非系统 dylib **1.45 MiB** | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库；要固定最小动态库/terminfo、owner-only socket、control mode、pane ID、背压与残留 session 清理，六 Harness 矩阵是阻断项 |
 
-纳入 Element Web 后，Linux x86_64 离线归档于 2026-08-26 实测约 **232.2 MiB**，解压 payload 约 **510 MiB**，并通过离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止。此前 macOS arm64 未含 Element Web 的基线为归档 **157.4 MiB**、payload **367.0 MiB**，下一次必须在 Mac 原生重建后刷新，不能沿用为当前包体积。既有四服务 RSS 基线约 **212.8 MiB**；Element Web 的浏览器进程不由 HCTL2 托管，内部静态服务只提供内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
+源码与运行内容拆包后，Linux x86_64 于 2026-08-27 实测为：用户需要的运行安装包 **169.0 MiB**、解压文件约 **445.0 MiB**；同 Release 单独提供、不参与安装的源码伴随包 **63.2 MiB**。两者合计仍约 **232.2 MiB**，但普通安装不再承担源码体积。双包校验、离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止均纳入整包测试。此前 macOS arm64 未含 Element Web、未拆包的基线为归档 **157.4 MiB**、payload **367.0 MiB**，下一次必须在 Mac 原生重建后刷新，不能沿用为当前包体积。既有四服务 RSS 基线约 **212.8 MiB**；Element Web 的浏览器进程不由 HCTL2 托管，内部静态服务只提供内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
 
 <a id="e-workbench-shell"></a>
 ## E-WORKBENCH-SHELL · Workbench 桌面壳：Electron 与 Tauri 2

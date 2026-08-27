@@ -46,6 +46,10 @@ platform_stage_build_metadata() {
         "$PAYLOAD_ROOT/share/hctl2/build-environment.tsv"
 }
 
+platform_stage_sources() {
+    :
+}
+
 platform_create_archive() {
     local build_dir="$1"
     local package_id="$2"
