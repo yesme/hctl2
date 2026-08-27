@@ -1,6 +1,9 @@
 # Claude 提案：P0 实施方案（2026-08-22）
 
-> 状态：Informative 提案 · Claude Code / Fable 5 出品，供与其他 harness 的提案对比裁决，不是定案。<br>
+> 状态：已废弃：Zellij/Conductor 选型 v0.12.1 改为 tmux/Dagu（§18、§19），P0 v0.13.0 收窄为只验接缝（§25）；未采纳为施工依据<br>
+> 基线：草案 v0.12.0（2026-08-22 main，未记 sha）<br>
+> 去向：无；P0 权威在 docs/design/delivery.md<br>
+> 说明：Informative 提案 · Claude Code / Fable 5 出品，供与其他 harness 的提案对比裁决，不是定案。<br>
 > 输入：全库精读（delivery / evidence / system+architecture / decision-history+回顾 memo / project+task 合同 / agent+run 合同，六路并行）+ 四系统 2026-08 现状联网核实（Tuwunel / Vikunja / conductor-oss / Zellij）+ 六 harness 社区口碑核实。行号引用以 2026-08-22 的 main（ffb861a）为准。<br>
 > 口径：P0 = 『探路』——限时、可丢弃的协议/分发/打包探针（delivery.md:53）。本方案只安排探针，不安排产品化；产品化按首次消费在 P2 落地。
 

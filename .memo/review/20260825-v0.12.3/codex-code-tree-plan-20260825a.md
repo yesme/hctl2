@@ -1,8 +1,11 @@
 # HCTL2 代码树与分阶段落地计划
 
+> 状态：已落地：150937f `feat: bootstrap the HCTL2 codebase` 按本计划的首批提交边界落地<br>
+> 基线：origin/main @ b1d22a8（草案 v0.12.3）<br>
+> 去向：src/（代码树）；不进设计合同<br>
 > 日期：2026-08-25<br>
 > 基线：`origin/main` @ `b1d22a8`（draft v0.12.3）<br>
-> 状态：Informative · 开工布局记录，不修改设计合同<br>
+> 说明：Informative · 开工布局记录，不修改设计合同<br>
 > 所有者决定：产品代码统一放在仓库顶层 `src/`，不与 README、设计文档和 memo 混放。
 
 ## 一、施工主线

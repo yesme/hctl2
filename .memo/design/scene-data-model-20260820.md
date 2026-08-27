@@ -1,8 +1,11 @@
 # 场景数据模型：4 场景 × 3 类数据（讨论备忘）
 
+> 状态：已落地（v0.10.0 全量写入）<br>
+> 基线：main @ 3aa2950（草案 v0.9.1）<br>
+> 去向：docs/design/architecture.md + spec/system.md 4×3 归属与丢失恢复合同 + decision-history §12<br>
 > 日期：2026-08-20<br>
 > 主题：metadata / content / artifact 三分与四场景的完整矩阵；由此确立的架构与术语方向<br>
-> 状态：已落地——2026-08-21 随草案 v0.10.0 全量写入设计文档（术语正名 Agent 模块、三面架构 architecture.md、4×3 归属与丢失恢复合同、选型判据与五项限时验证）；决策记录见 decision-history §12。关联：[room-ground-truth-20260819](./room-ground-truth-20260819.md)、[design-doc-method-20260819](../notes/design-doc-method-20260819.md)。
+> 说明：已落地——2026-08-21 随草案 v0.10.0 全量写入设计文档（术语正名 Agent 模块、三面架构 architecture.md、4×3 归属与丢失恢复合同、选型判据与五项限时验证）；决策记录见 decision-history §12。关联：[room-ground-truth-20260819](./room-ground-truth-20260819.md)、[design-doc-method-20260819](../notes/design-doc-method-20260819.md)。
 
 ## 出发点（所有者论断）
 

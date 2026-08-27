@@ -1,7 +1,10 @@
 # Context 讨论记录：投喂三档、Run 内接力与任务评论线
 
+> 状态：已落地 · §8（执行中经验的沉淀）待拍板<br>
+> 基线：main @ dba6ace（草案 v0.13.1）<br>
+> 去向：docs/design/context.md「投喂三档」「同一 Run 内的接力」+ spec/project.md / spec/run.md / spec/task.md + decision-history §26<br>
 > 日期：2026-08-26<br>
-> 状态：Informative 讨论记录。裁决已进入 [Context 横切正文](../../docs/design/context.md)与各模块合同（基线 v0.13.1），来时路见 [decision-history §26](../../docs/design/references/decision-history.md#26-context-投喂三档与-run-内接力v0131)。本文只保留推导过程、被否掉的切法和一个待拍板项。<br>
+> 说明：Informative 讨论记录。裁决已进入 [Context 横切正文](../../docs/design/context.md)与各模块合同（基线 v0.13.1），来时路见 [decision-history §26](../../docs/design/references/decision-history.md#26-context-投喂三档与-run-内接力v0131)。本文只保留推导过程、被否掉的切法和一个待拍板项。<br>
 > 前序底稿：`context-design-20260819.md`（合同底稿）、`docs/research/context-landscape-20260824.md`（生态四族）。
 
 ## 1. 起点：所有者的两类判定与一个问句

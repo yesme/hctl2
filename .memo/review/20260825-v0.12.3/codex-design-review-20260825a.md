@@ -1,9 +1,12 @@
 # HCTL2 draft v0.12.3 开工前设计评审
 
+> 状态：已核销：所有者逐项裁决记录在文内；13 条过强断言转入 ../../notes/doc-cleanup-backlog-20260825.md<br>
+> 基线：origin/main @ 79da0e3（草案 v0.12.3）<br>
+> 去向：无（评审不进合同）；裁决直接进入 v0.13.0（decision-history §22–§25）<br>
 > 日期：2026-08-25<br>
 > 对象：`origin/main` @ `79da0e3`（draft v0.12.3）<br>
 > 范围：README、设计层、四模块合同、连接/系统合同、delivery、decision history 与当前实现证据<br>
-> 状态：Informative · 评审记录，不直接修改规范<br>
+> 说明：Informative · 评审记录，不直接修改规范<br>
 > 说明：本文同时保留初审发现、复核后的降级判断和所有者逐项裁决，避免把一次评审意见误写成新产品合同。
 
 ## 一、结论
