@@ -92,7 +92,7 @@ flowchart LR
 
 - Project、Task、Run 和 Agent 模块的对象都有稳定身份，不能由聊天串、外部 Issue、工作流任务、worktree 或终端面板反向定义；
 - Chat Room、Kanban、Workflow 和 Terminal 是操作场景，不是第二份领域事实；
-- Workbench 是四个场景的集成客户端；第三方界面分两类——content 客户端（任意 Matrix 客户端、任务后端原生界面）直接读写场景内容但不能提交治理命令，治理客户端走同一命令服务；谁都不整体替代领域模块；
+- Workbench 是四个场景的集成客户端；第三方界面分两类——content 客户端（任意 Matrix 客户端、任务后端原生界面）直接读写场景内容但不能提交治理命令，治理客户端走同一命令服务；引擎控制台与裸终端 attach 分别是诊断面与带外接管面，同样不产生治理事实，也不因此成为合规场景客户端；谁都不整体替代领域模块；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部已关闭；
 - 模型只能建议结果与下一位协作者。Task 完成只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task 已取消只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
@@ -122,9 +122,11 @@ flowchart LR
         runtime["harness / 运行时后端"]
     end
 
-    subgraph ContentClients["content 客户端 · 读写内容，不能提交治理命令"]
-        matrix_client["任意 Matrix 客户端"]
-        task_ui["任务后端原生界面"]
+    subgraph ContentClients["content 客户端与带外界面 · 不产生治理事实"]
+        matrix_client["任意 Matrix 客户端\n（content 客户端）"]
+        task_ui["任务后端原生界面\n（content 客户端）"]
+        engine_console["workflow engine 控制台\n（诊断面）"]
+        term_attach["裸终端 attach\n（带外接管面）"]
     end
 
     CLI --> Control
@@ -137,13 +139,15 @@ flowchart LR
     agentd --> runtime
     matrix_client --> chat_srv
     task_ui --> task_backend
+    engine_console --> engine
+    term_attach --> runtime
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Tool["hctl2-tool · Git/SCM 工具箱"]
 ```
 
 部署视角上，系统分三个面：展示面（治理客户端与 content 客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统与 agentd 物理执行），详见[三面架构](./docs/design/architecture.md)。
 
-第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用（HCTL 的房间不开端到端加密，控制面要按消息 ID 读正文），非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面并肩构成完整的日常操作面。
+第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用（HCTL 的房间不开端到端加密，控制面要按消息 ID 读正文），非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。另两个执行面系统也各有原生界面，但分级不同：workflow engine 的控制台是**诊断面**，绕过 agentd 网关直连运行时后端的裸终端 attach 是**带外接管面**——它们的写操作带物理副作用，不算日常 content 客户端，同样产生不了治理事实（分级合同见[三面架构](./docs/design/architecture.md)与[系统边界](./docs/design/spec/system.md)）。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面并肩构成完整的日常操作面。
 
 受控端口（图中控制面到执行面的连线）提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实，agentd 拥有物理运行时观测，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
 
