@@ -58,7 +58,7 @@ hctl2-<version>-<target>-sources.tar.gz.sha256
 
 Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make 和 pkg-config，不再需要 Rust toolchain。Static Web Server 使用上游完全静态链接的 musl 二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
-macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；Static Web Server 直接使用上游目标架构二进制，不参与 Rust 构建。所有自建 Mach-O 都以 macOS 13 为 deployment target。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；Static Web Server 直接使用上游目标架构二进制，不参与 Rust 构建。所有自建 Mach-O 都以 macOS 13 为 deployment target；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，两者都必须声明不高于这个基线。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
 ## 供应链内容
 

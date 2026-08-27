@@ -1,0 +1,89 @@
+name: External dependencies
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/dependencies.yml"
+      - "src/packaging/dependencies/**"
+  pull_request:
+    paths:
+      - ".github/workflows/dependencies.yml"
+      - "src/packaging/dependencies/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependencies-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Static contract
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Check shell syntax
+        run: >-
+          find src/packaging/dependencies -type f
+          \( -name '*.sh' -o -name hctl2-services \) -print0
+          | xargs -0 bash -n
+
+      - name: Check service command contract
+        run: |
+          src/packaging/dependencies/hctl2-services --help | grep -F 'Usage:'
+          if src/packaging/dependencies/hctl2-services status unexpected >/dev/null 2>&1; then
+            echo 'hctl2-services accepted an argument for status' >&2
+            exit 1
+          fi
+
+  package-lifecycle:
+    name: Package lifecycle / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86_64
+            runner: ubuntu-26.04
+            target: linux-x86_64
+            needs_homebrew: false
+          - platform: macOS x86_64
+            runner: macos-15-intel
+            target: macos-x86_64
+            needs_homebrew: true
+          - platform: macOS arm64
+            runner: macos-15
+            target: macos-aarch64
+            needs_homebrew: true
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install macOS build prerequisites
+        if: ${{ matrix.needs_homebrew }}
+        run: |
+          brew update
+          if brew list pkgconf >/dev/null 2>&1; then
+            brew upgrade pkgconf
+          else
+            brew install pkgconf
+          fi
+          brew install bison
+
+      - name: Build native dependency packages
+        env:
+          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
+        run: src/packaging/dependencies/build-package-${{ matrix.target }}.sh
+
+      - name: Test offline install and lifecycle
+        env:
+          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
+        run: src/packaging/dependencies/test-package-${{ matrix.target }}.sh
