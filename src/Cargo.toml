@@ -2,7 +2,6 @@
 members = [
     "apps/hctl2-agentd",
     "apps/hctl2-tool",
-    "apps/hctl2-web-server",
     "crates/hctl2-protocol",
 ]
 resolver = "3"

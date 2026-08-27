@@ -114,6 +114,9 @@ download_locked_inputs() {
         "$TMUX_URL" "$TMUX_SHA256" "$P0_DOWNLOAD_DIR/$TMUX_ASSET"
     download_verified "Cinny $CINNY_VERSION" \
         "$CINNY_URL" "$CINNY_SHA256" "$P0_DOWNLOAD_DIR/$CINNY_ASSET"
+    download_verified "Static Web Server $STATIC_WEB_SERVER_VERSION" \
+        "$STATIC_WEB_SERVER_URL" "$STATIC_WEB_SERVER_SHA256" \
+        "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_ASSET"
     download_verified "Tuwunel source $TUWUNEL_SOURCE_COMMIT" \
         "$TUWUNEL_SOURCE_URL" "$TUWUNEL_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET"
     download_verified "Vikunja corresponding source $VIKUNJA_SOURCE_COMMIT" \
@@ -123,6 +126,9 @@ download_locked_inputs() {
     download_verified "Cinny corresponding source $CINNY_SOURCE_COMMIT" \
         "$CINNY_SOURCE_URL" "$CINNY_SOURCE_SHA256" \
         "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET"
+    download_verified "Static Web Server source $STATIC_WEB_SERVER_SOURCE_COMMIT" \
+        "$STATIC_WEB_SERVER_SOURCE_URL" "$STATIC_WEB_SERVER_SOURCE_SHA256" \
+        "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_SOURCE_ASSET"
 }
 
 prepare_cinny() {
@@ -134,26 +140,15 @@ prepare_cinny() {
         "$destination/config.json"
 }
 
-build_hctl2_web_server() {
-    local repository_root
-    local source_root
-    local target_dir="$P0_ROOT/hctl2-target"
-    local binary="$target_dir/$HCTL2_RUST_TARGET/release/hctl2-web-server"
+install_static_web_server() {
+    local destination="$P0_VENDOR_DIR/static-web-server-$STATIC_WEB_SERVER_VERSION"
+    local binary="$destination/static-web-server"
 
-    require_command cargo
-    repository_root="$(cd -- "$P0_DEPENDENCY_SOURCE_ROOT/../../.." && pwd -P)"
-    source_root="$repository_root/src"
-    note "building hctl2-web-server for $HCTL2_RUST_TARGET"
-    (
-        cd "$source_root"
-        if [[ "$HCTL2_TARGET_OS" == "macos" ]]; then
-            export MACOSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
-        fi
-        cargo build --locked --release --target "$HCTL2_RUST_TARGET" \
-            --target-dir "$target_dir" -p hctl2-web-server
-    )
-    [[ -x "$binary" ]] || die "hctl2-web-server build did not produce $binary"
-    install -m 0755 "$binary" "$P0_BIN_DIR/hctl2-web-server"
+    prepare_source_tree "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_ASSET" \
+        "$STATIC_WEB_SERVER_SHA256" "$destination"
+    [[ -x "$binary" ]] || \
+        die "Static Web Server archive did not contain an executable named static-web-server"
+    install -m 0755 "$binary" "$P0_BIN_DIR/static-web-server"
 }
 
 prepare_source_tree() {
@@ -197,8 +192,7 @@ write_installed_manifest() {
         printf 'dagu\t%s\t%s\n' "$DAGU_VERSION" "$(hash_file "$P0_BIN_DIR/dagu")"
         printf 'tmux\t%s\t%s\n' "$TMUX_VERSION" "$(hash_file "$P0_BIN_DIR/tmux")"
         printf 'cinny\t%s\t%s\n' "$CINNY_VERSION" "$CINNY_SHA256"
-        printf 'hctl2-web-server\t%s\t%s\n' \
-            "$(read_hctl2_version "$P0_DEPENDENCY_SOURCE_ROOT/../../Cargo.toml")" \
-            "$(hash_file "$P0_BIN_DIR/hctl2-web-server")"
+        printf 'static-web-server\t%s\t%s\n' "$STATIC_WEB_SERVER_VERSION" \
+            "$(hash_file "$P0_BIN_DIR/static-web-server")"
     } >"$P0_MANIFEST_DIR/installed.tsv"
 }

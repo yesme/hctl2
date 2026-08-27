@@ -23,9 +23,9 @@ test-package.sh         同上
 
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
-| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Cinny 官方包；tmux 锁定源码 |
-| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Cinny 官方包；Tuwunel/tmux 锁定源码 |
-| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Cinny 官方包；Tuwunel/tmux 锁定源码 |
+| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Cinny/Static Web Server 官方包；tmux 锁定源码 |
+| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Cinny/Static Web Server 官方包；Tuwunel/tmux 锁定源码 |
+| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Cinny/Static Web Server 官方包；Tuwunel/tmux 锁定源码 |
 
 Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Homebrew 头文件、链接库、Mach-O 闭包和最终生命周期都要按真实目标验证。
 
@@ -45,7 +45,7 @@ src/packaging/dependencies/build-package-macos-aarch64.sh
 src/packaging/dependencies/build-package-macos-x86_64.sh
 ```
 
-把 `build-package` 换为 `bootstrap` 只准备依赖和内部静态文件服务；换为 `test-package` 会继续校验运行包与源码包的内容，执行离线安装、幂等重装、完整启动、smoke 和停止，是发布前必须通过的完整验证。
+把 `build-package` 换为 `bootstrap` 只准备依赖和 Cinny 静态内容；换为 `test-package` 会继续校验运行包与源码包的内容，执行离线安装、幂等重装、完整启动、smoke 和停止，是发布前必须通过的完整验证。
 
 构建输入默认放在 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies/<target>`。设置绝对路径 `HCTL2_BUILD_CACHE` 可以隔离或复用另一份缓存；不同 target 即使共享缓存根目录也不会混用产物。构建在 `src/dist/` 同时输出以下文件，不提交 Git：
 
@@ -56,22 +56,22 @@ hctl2-<version>-<target>-sources.tar.gz
 hctl2-<version>-<target>-sources.tar.gz.sha256
 ```
 
-Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make、pkg-config，以及 HCTL2 workspace 锁定的 Rust 1.98.0 toolchain。正式发行必须使用支持范围内最旧的 glibc 构建基线。
+Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make 和 pkg-config，不再需要 Rust toolchain。Static Web Server 使用上游完全静态链接的 musl 二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
-macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；这与开发 HCTL2 Rust workspace 使用的 1.98.0 分开。所有自建 Mach-O 都以 macOS 13 为 deployment target。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；Static Web Server 直接使用上游目标架构二进制，不参与 Rust 构建。所有自建 Mach-O 都以 macOS 13 为 deployment target。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
 ## 供应链内容
 
 运行安装包包括：
 
 - Tuwunel、Vikunja、Dagu、tmux 四个上游可执行文件和所需的非系统动态库；
-- Cinny 官方 Web 发行内容，以及只绑定 loopback 的内部 `hctl2-web-server`；
+- Cinny 官方 Web 发行内容，以及只绑定 loopback 的官方 `static-web-server` 单二进制；
 - `hctl2-services` 以及公共生命周期代码和目标平台 runtime hook；
 - target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
 - HCTL2 与所有分发依赖的许可证；
 - 根归档与 payload 两层 SHA-256 清单。
 
-源码伴随包包括四类依赖的锁定上游源码；macOS 包还包括随包 dylib 的锁定源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
+源码伴随包包括四类依赖和 Static Web Server 的锁定上游源码；macOS 包还包括随包 dylib 的锁定源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
 
 运行包与源码包必须在同一个 Release 下载位置以相同方式、无额外费用提供；运行包内的 `SOURCES.md` 指向精确的源码包名。真正通过 U 盘或其他离线介质再次分发时，应同时携带两份归档。当前 Linux x86_64 双包体积见[实现证据](../../../docs/design/references/implementation-evidence.md#执行面已选依赖的运维与-footprint)；两个 macOS target 需要原生重建后刷新体积。
 

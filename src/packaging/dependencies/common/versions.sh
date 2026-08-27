@@ -37,6 +37,12 @@ readonly CINNY_SOURCE_ASSET="cinny-$CINNY_SOURCE_COMMIT-source.tar.gz"
 readonly CINNY_SOURCE_URL="https://github.com/cinnyapp/cinny/archive/$CINNY_SOURCE_COMMIT.tar.gz"
 readonly CINNY_SOURCE_SHA256="df400a9fe206e6fedb87701d6854d05035d9f06dd97558b7b0bb484c8ced8d36"
 
+readonly STATIC_WEB_SERVER_VERSION="2.44.0"
+readonly STATIC_WEB_SERVER_SOURCE_COMMIT="27aa3450b6bf70bd1fa553b2197b53032affcba1"
+readonly STATIC_WEB_SERVER_SOURCE_ASSET="static-web-server-$STATIC_WEB_SERVER_SOURCE_COMMIT-source.tar.gz"
+readonly STATIC_WEB_SERVER_SOURCE_URL="https://github.com/static-web-server/static-web-server/archive/$STATIC_WEB_SERVER_SOURCE_COMMIT.tar.gz"
+readonly STATIC_WEB_SERVER_SOURCE_SHA256="fa04fc2ed8d8ff6cce6e1001cb80746bc7f0b9dc635324fb5b72d87ed4b9603f"
+
 readonly TUWUNEL_PORT="6167"
 readonly VIKUNJA_PORT="3456"
 readonly DAGU_PORT="18080"

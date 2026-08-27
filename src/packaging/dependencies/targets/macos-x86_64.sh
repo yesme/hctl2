@@ -25,3 +25,8 @@ readonly DAGU_ASSET="dagu-v2.15.1-darwin-amd64.tar.gz"
 readonly DAGU_URL="https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_amd64.tar.gz"
 readonly DAGU_SHA256="a7fbed8e194668b9ede73de486f06f706574731ccf58fba1cffa86a1ffe84c18"
 readonly DAGU_BUILD_INPUT_SHA256="$DAGU_SHA256"
+
+readonly STATIC_WEB_SERVER_ASSET="static-web-server-v${STATIC_WEB_SERVER_VERSION}-x86_64-apple-darwin.tar.gz"
+readonly STATIC_WEB_SERVER_URL="https://github.com/static-web-server/static-web-server/releases/download/v${STATIC_WEB_SERVER_VERSION}/${STATIC_WEB_SERVER_ASSET}"
+readonly STATIC_WEB_SERVER_SHA256="484708863fa0fa39fbfe1a46d99c3671f46c72862dff724da2b480cdc79ced1b"
+readonly STATIC_WEB_SERVER_BUILD_INPUT_SHA256="$STATIC_WEB_SERVER_SHA256"
