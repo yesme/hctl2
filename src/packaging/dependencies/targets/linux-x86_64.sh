@@ -25,6 +25,11 @@ readonly DAGU_URL="https://github.com/dagucloud/dagu/releases/download/v2.15.1/d
 readonly DAGU_SHA256="cfadd9606af9ff74d0ea8aef91fd89a831b3c63cf99a95c456fe2fcb3bb0471e"
 readonly DAGU_BUILD_INPUT_SHA256="$DAGU_SHA256"
 
+readonly STATIC_WEB_SERVER_ASSET="static-web-server-v${STATIC_WEB_SERVER_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+readonly STATIC_WEB_SERVER_URL="https://github.com/static-web-server/static-web-server/releases/download/v${STATIC_WEB_SERVER_VERSION}/${STATIC_WEB_SERVER_ASSET}"
+readonly STATIC_WEB_SERVER_SHA256="804bc0c31c78385ac04e9a36f3c2aa3d3170eb77d66807c2a1660c56b2026bb1"
+readonly STATIC_WEB_SERVER_BUILD_INPUT_SHA256="$STATIC_WEB_SERVER_SHA256"
+
 # shellcheck disable=SC2016 # The dynamic loader, not Bash, expands $ORIGIN.
 readonly TMUX_RELATIVE_RUNPATH='$ORIGIN/../../lib/hctl2/vendor'
 readonly TMUX_BUILD_BISON_APT_VERSION="2:3.8.2+dfsg-1build4"

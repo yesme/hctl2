@@ -139,7 +139,7 @@ hctl2-services stop tmux
 | Dagu | Workflow 浏览器客户端与本地工作流引擎 | `http://127.0.0.1:18080/` |
 | tmux | 无界面终端会话承载 | Linux 位于状态目录；macOS 位于 owner-only 的短 `/tmp` 目录 |
 
-这些网络服务只监听 loopback，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的内部 `hctl2-web-server` 提供；其 Homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。它主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+这些网络服务只监听 loopback，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的官方 `static-web-server` 单二进制提供；其 Homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。它主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
 
 ### 状态、日志和数据
 

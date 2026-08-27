@@ -71,7 +71,7 @@ assemble_dependency_package() {
     if [[ "${HCTL2_SKIP_BOOTSTRAP:-0}" != "1" ]]; then
         bootstrap_dependencies
     fi
-    for component in tuwunel vikunja dagu tmux hctl2-web-server; do
+    for component in tuwunel vikunja dagu tmux static-web-server; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing after bootstrap"
     done
     [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
@@ -86,11 +86,9 @@ assemble_dependency_package() {
         "$payload_root/share/hctl2/licenses" \
         "$source_files_root"
 
-    for component in tuwunel vikunja dagu tmux; do
+    for component in tuwunel vikunja dagu tmux static-web-server; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
-    install -m 0755 "$P0_BIN_DIR/hctl2-web-server" \
-        "$payload_root/libexec/hctl2/hctl2-web-server"
     cp -a "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/." \
         "$payload_root/share/hctl2/chatroom/cinny/"
     find "$payload_root/share/hctl2/chatroom/cinny" \
@@ -112,6 +110,12 @@ assemble_dependency_package() {
     tar -xOf "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
         "cinny-$CINNY_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Cinny-AGPL-3.0-only.txt"
+    install -m 0644 \
+        "$P0_VENDOR_DIR/static-web-server-$STATIC_WEB_SERVER_VERSION/LICENSE-APACHE" \
+        "$payload_root/share/hctl2/licenses/Static-Web-Server-Apache-2.0.txt"
+    install -m 0644 \
+        "$P0_VENDOR_DIR/static-web-server-$STATIC_WEB_SERVER_VERSION/LICENSE-MIT" \
+        "$payload_root/share/hctl2/licenses/Static-Web-Server-MIT.txt"
     platform_stage_licenses
 
     platform_stage_build_metadata
@@ -139,6 +143,10 @@ assemble_dependency_package() {
         printf 'cinny\t%s\t%s\t%s\t%s\t%s\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" "$CINNY_SHA256" \
             "$CINNY_SOURCE_SHA256" "$CINNY_SHA256"
+        printf 'static-web-server\t%s\t%s\t%s\t%s\t%s\n' \
+            "$STATIC_WEB_SERVER_VERSION" "$STATIC_WEB_SERVER_SOURCE_COMMIT" \
+            "$STATIC_WEB_SERVER_BUILD_INPUT_SHA256" "$STATIC_WEB_SERVER_SOURCE_SHA256" \
+            "$(hash_file "$payload_root/libexec/hctl2/static-web-server")"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
     write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share
@@ -161,6 +169,8 @@ assemble_dependency_package() {
         "$source_files_root/$TMUX_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
         "$source_files_root/$CINNY_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_SOURCE_ASSET" \
+        "$source_files_root/$STATIC_WEB_SERVER_SOURCE_ASSET"
     {
         printf 'component\tversion\tcommit\tarchive\tsha256\trole\n'
         printf 'tuwunel\t%s\t%s\t%s\t%s\treproducibility\n' \
@@ -177,6 +187,9 @@ assemble_dependency_package() {
         printf 'cinny\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" \
             "$CINNY_SOURCE_ASSET" "$CINNY_SOURCE_SHA256"
+        printf 'static-web-server\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$STATIC_WEB_SERVER_VERSION" "$STATIC_WEB_SERVER_SOURCE_COMMIT" \
+            "$STATIC_WEB_SERVER_SOURCE_ASSET" "$STATIC_WEB_SERVER_SOURCE_SHA256"
     } >"$source_package_root/sources.tsv"
     platform_stage_sources "$source_files_root" "$source_package_root/sources.tsv"
     {

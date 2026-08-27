@@ -107,7 +107,6 @@ prepare_tmux_linux_build_deps() {
         printf 'glibc\t%s\n' "$(getconf GNU_LIBC_VERSION)"
         printf 'make\t%s\n' "$(make --version | sed -n '1p')"
         printf 'pkg-config\t%s\n' "$(pkg-config --version)"
-        printf 'hctl-rustc\t%s\n' "$(rustc --version)"
     } >"$P0_MANIFEST_DIR/tmux-build-environment.tsv"
 
     export PKG_CONFIG_PATH="$sysroot/usr/lib/x86_64-linux-gnu/pkgconfig"
@@ -159,7 +158,6 @@ bootstrap_dependencies() {
     require_command make
     require_command pkg-config
     require_command readelf
-    require_command rustc
     require_command tar
     require_command unzip
 
@@ -169,7 +167,7 @@ bootstrap_dependencies() {
     install_dagu_linux
     install_tmux_linux
     prepare_cinny
-    build_hctl2_web_server
+    install_static_web_server
     write_installed_manifest
 
     note "installed $HCTL2_TARGET_ID binaries in $P0_BIN_DIR"
@@ -178,5 +176,5 @@ bootstrap_dependencies() {
     "$P0_BIN_DIR/dagu" version
     tmux_library_dir="$P0_VENDOR_DIR/tmux-sysroot/usr/lib/x86_64-linux-gnu"
     LD_LIBRARY_PATH="$tmux_library_dir" "$P0_BIN_DIR/tmux" -V
-    "$P0_BIN_DIR/hctl2-web-server" --version
+    "$P0_BIN_DIR/static-web-server" --version
 }

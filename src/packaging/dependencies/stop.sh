@@ -31,7 +31,7 @@ stop_tmux() {
 stop_component() {
     case "$1" in
         tuwunel) stop_background tuwunel "$P0_BIN_DIR/tuwunel" ;;
-        cinny) stop_background cinny "$P0_BIN_DIR/hctl2-web-server" ;;
+        cinny) stop_background cinny "$P0_BIN_DIR/static-web-server" ;;
         vikunja) stop_background vikunja "$P0_BIN_DIR/vikunja" ;;
         dagu) stop_background dagu "$P0_BIN_DIR/dagu" ;;
         tmux) stop_tmux ;;

@@ -58,10 +58,10 @@ show_cinny_access() {
 }
 
 start_cinny() {
-    local binary="$P0_BIN_DIR/hctl2-web-server"
+    local binary="$P0_BIN_DIR/static-web-server"
 
     start_tuwunel
-    [[ -x "$binary" ]] || die "hctl2-web-server is not installed"
+    [[ -x "$binary" ]] || die "static-web-server is not installed"
     [[ -f "$P0_CINNY_ROOT/index.html" ]] || \
         die "Cinny is not installed: $P0_CINNY_ROOT"
     if component_running cinny "$binary"; then
@@ -72,7 +72,14 @@ start_cinny() {
     ensure_tcp_port_free "$CINNY_PORT"
 
     start_background cinny "$binary" \
-        "$binary" --root "$P0_CINNY_ROOT" --port "$CINNY_PORT"
+        "$binary" \
+        --host 127.0.0.1 \
+        --port "$CINNY_PORT" \
+        --root "$P0_CINNY_ROOT" \
+        --compression false \
+        --directory-listing false \
+        --cache-control-headers false \
+        --log-level error
     wait_http cinny 127.0.0.1 "$CINNY_PORT" /config.json
     show_cinny_access
 }

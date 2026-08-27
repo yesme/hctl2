@@ -40,10 +40,13 @@ test_dependency_package() {
     local source_asset
     local source_sha256
     local source_role
+    local cinny_headers
+    local cinny_range_status
 
     [[ -n "${PACKAGE_ID:-}" && -n "${ARCHIVE:-}" && \
         -n "${SOURCE_PACKAGE_ID:-}" && -n "${SOURCE_ARCHIVE:-}" ]] || \
         die "assemble_dependency_package must run before test_dependency_package"
+    require_command curl
 
     test_root="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-package-test.XXXXXX")"
     prefix="$test_root/prefix"
@@ -81,9 +84,15 @@ test_dependency_package() {
     grep -F "$SOURCE_PACKAGE_ID.tar.gz" "$test_root/$PACKAGE_ID/SOURCES.md" >/dev/null
     [[ -f "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/cinny/index.html" ]] || \
         die "runtime package does not contain Cinny"
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/static-web-server" ]] || \
+        die "runtime package does not contain static-web-server"
+    [[ ! -e "$test_root/$PACKAGE_ID/payload/libexec/hctl2/hctl2-web-server" ]] || \
+        die "runtime package still contains hctl2-web-server"
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/element-web" ]] || \
         die "runtime package still contains Element Web"
     grep -F $'cinny\t' "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
+    grep -F $'static-web-server\t' \
+        "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     ! grep -F $'element-web\t' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/sources" ]] || \
@@ -93,6 +102,7 @@ test_dependency_package() {
     verify_test_manifest "$test_root/$SOURCE_PACKAGE_ID" SOURCE-MANIFEST.sha256
     grep -F "$HCTL2_TARGET_ID" "$test_root/$SOURCE_PACKAGE_ID/target.tsv" >/dev/null
     grep -F $'cinny\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
+    grep -F $'static-web-server\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     ! grep -F $'element-web\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     while IFS=$'\t' read -r source_component source_version source_commit \
         source_asset source_sha256 source_role; do
@@ -108,6 +118,15 @@ test_dependency_package() {
     fi
     HCTL2_STATE_ROOT="$state_root" "$services" start
     HCTL2_STATE_ROOT="$state_root" "$services" smoke
+    cinny_headers="$(curl --fail --silent --show-error --head \
+        http://127.0.0.1:$CINNY_PORT/config.json | tr -d '\r')"
+    grep -Fi 'content-type: application/json' <<<"$cinny_headers" >/dev/null || \
+        die "static-web-server returned the wrong MIME type for Cinny config.json"
+    cinny_range_status="$(curl --silent --show-error --output /dev/null \
+        --header 'Range: bytes=0-9' --write-out '%{http_code}' \
+        http://127.0.0.1:$CINNY_PORT/index.html)"
+    [[ "$cinny_range_status" == "206" ]] || \
+        die "static-web-server did not honor a Cinny byte-range request"
     HCTL2_STATE_ROOT="$state_root" "$services" stop
 
     note "$HCTL2_TARGET_ID runtime and source packages passed integrity and lifecycle tests"

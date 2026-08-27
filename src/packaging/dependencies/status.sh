@@ -60,7 +60,7 @@ check_tmux() {
 }
 
 check_process tuwunel "$P0_BIN_DIR/tuwunel" "$TUWUNEL_PORT" /_tuwunel/server_version
-check_process cinny "$P0_BIN_DIR/hctl2-web-server" "$CINNY_PORT" /config.json
+check_process cinny "$P0_BIN_DIR/static-web-server" "$CINNY_PORT" /config.json
 check_process vikunja "$P0_BIN_DIR/vikunja" "$VIKUNJA_PORT" /api/v1/info
 check_process dagu "$P0_BIN_DIR/dagu" "$DAGU_PORT" /api/v1/health
 check_tmux

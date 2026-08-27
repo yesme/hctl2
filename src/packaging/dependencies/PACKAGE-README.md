@@ -1,6 +1,6 @@
 # HCTL2 离线依赖包
 
-这是按目标平台构建的 HCTL2 可离线安装开发包。它包含锁定版本的 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）、所需的非系统动态库、许可证，以及统一管理它们的 `hctl2-services`。
+这是按目标平台构建的 HCTL2 可离线安装开发包。它包含锁定版本的 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）、为 Cinny 提供 loopback HTTP 的官方 Static Web Server 单二进制、所需的非系统动态库、许可证，以及统一管理它们的 `hctl2-services`。
 
 安装到当前用户：
 
