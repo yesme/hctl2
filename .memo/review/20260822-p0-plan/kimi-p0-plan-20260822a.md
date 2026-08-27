@@ -1,7 +1,10 @@
 # P0 实施计划（kimi）
 
+> 状态：已废弃：Zellij/Conductor 选型 v0.12.1 改为 tmux/Dagu（§18、§19），P0 v0.13.0 收窄为只验接缝（§25）；未采纳为施工依据<br>
+> 基线：草案 v0.12.0（2026-08-22 main，未记 sha）<br>
+> 去向：无；P0 权威在 docs/design/delivery.md<br>
 > 日期：2026-08-22<br>
-> 状态：Informative · P0 施工组织方案，不改规范。P0 范围与验收以 [delivery.md](../../../docs/design/delivery.md)「开工前限时验证」为准。<br>
+> 说明：Informative · P0 施工组织方案，不改规范。P0 范围与验收以 [delivery.md](../../../docs/design/delivery.md)「开工前限时验证」为准。<br>
 > 对象：HCTL2 仓库 @ `main`（草案 v0.12.0）；依据 delivery.md、retrospective memo 与三份 20260821 评审 memo。
 
 ## P0 是什么

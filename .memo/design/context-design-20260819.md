@@ -1,6 +1,9 @@
 # HCTL2 Context 管理设计备忘
 
-> 状态：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。设计层正文已落 docs/design/context.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源；2026-08-24 增补 §18（萃取 + 省 token 为中心设计）与 §19（前情提要），均经所有者拍板，生态四族地图见 context-landscape-20260824.md。
+> 状态：已落地 · 留作底稿（派生索引形态、检索融合策略、跨 Repo 传承三项未入合同，仍以本稿为准）<br>
+> 基线：main @ c3f5086（草案 v0.8.1）<br>
+> 去向：docs/design/context.md（2026-08-24）+ spec/project.md「Context、Memo 与 Artifact」+ decision-history §21、§26<br>
+> 说明：讨论稿，非规范正文。本文用于收敛后续设计，不改变现有领域合同。设计层正文已落 docs/design/context.md（2026-08-24），本 memo 保留为底稿与合同逐条裁决来源；2026-08-24 增补 §18（萃取 + 省 token 为中心设计）与 §19（前情提要），均经所有者拍板，生态四族地图见 context-landscape-20260824.md。
 > 日期：2026-08-19
 > 术语说明：成稿于 v0.9.1 概念归并前，文中 InvocationBinding / AttemptSpec 已合并为 ExecutionSpec（见[归并对照](../../docs/design/spec/README.md#v091-归并对照)）。
 > 核心判断：Context 是 Project 模块内的一组来源、投影、冻结与消费合同，不是 SQLite 聊天表，也不是 Project、Task、Run、Harness 之外的第五模块。
