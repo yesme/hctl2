@@ -2,21 +2,6 @@ name: Release
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/code.yml"
-      - ".github/workflows/release.yml"
-      - "src/.buckconfig"
-      - "src/.buckroot"
-      - "src/buck2"
-      - "src/BUCK"
-      - "src/Cargo.lock"
-      - "src/Cargo.toml"
-      - "src/apps/**"
-      - "src/build/**"
-      - "src/crates/**"
-      - "src/packaging/dependencies/**"
-      - "src/packaging/release/**"
-      - "src/third-party/**"
   push:
     tags:
       - "v*"
@@ -27,11 +12,43 @@ permissions:
 
 concurrency:
   group: release-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Release path filter
+    runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.paths.outputs.release }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Detect product and release paths
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --prune origin "$BASE_REF"
+          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
+            '^(src/|\.github/workflows/release\.yml$)'; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
   package:
     name: Complete package / ${{ matrix.platform }}
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
     permissions:
       attestations: write
       contents: read
@@ -155,6 +172,27 @@ jobs:
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
           subject-path: ${{ runner.temp }}/hctl2-release/*
+
+  release-gate:
+    name: Release gate
+    needs: [changes, package]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Aggregate complete package jobs
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RELEASE: ${{ needs.changes.outputs.release }}
+          PACKAGE: ${{ needs.package.result }}
+        run: |
+          set -euo pipefail
+          echo "changes=$CHANGES release=$RELEASE package=$PACKAGE"
+          test "$CHANGES" = success
+          if [ "$RELEASE" != true ]; then
+            echo "No product or release paths; skip complete packages."
+            exit 0
+          fi
+          test "$PACKAGE" = success
 
   publish:
     name: Publish GitHub release
