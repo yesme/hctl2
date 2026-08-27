@@ -12,16 +12,18 @@
 
 `packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器与纳入版本控制的生命周期脚本。下载的输入与生成的发行归档不提交到 Git。
 
+`packaging/release` 由 Buck2 导出第一方二进制和 manifest，校验并消费外部运行包与源码包，确定性地生成三平台完整用户安装包、checksums、SPDX SBOM 与 release manifest。它只在子系统边界组装，不改写外部项目的原生构建方式。
+
 Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二进制提供，并由 `hctl2-services` 直接启停；HCTL2 不实现 HTTP 服务器，也不要求最终用户安装 Python 或 Node.js。`testing/cinny` 记录这个 Chatroom 浏览器客户端的人工验收边界；Cinny 不是 HCTL2 Workbench，也不是第五个执行面依赖。
 
 面向人的 README、使用说明和其他产品文档使用中文；源码、配置和脚本使用英文；命令行 `--help` 内容使用英文。
 
-在仓库根目录运行第一方 Buck2 检查：
+在 `src/` 产品工作区运行第一方 Buck2 检查：
 
 ```bash
-./buck2 build root//src/...
-./buck2 test root//src/...
-./buck2 build root//src:clippy
+./buck2 build root//...
+./buck2 test root//...
+./buck2 build root//:clippy
 ```
 
 迁移期间仍在 `src/` 目录运行 Cargo 一致性检查：
@@ -33,6 +35,6 @@ cargo build --locked --workspace --all-targets
 cargo test --locked --workspace --all-targets
 ```
 
-Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)。Cargo 在迁移期间继续作为行为一致性检查，但不再单独定义另一份依赖版本。
+Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)，完整用户包的构建与验收见[发行组装说明](packaging/release/README.md)。Cargo 在迁移期间继续作为行为一致性检查，但不再单独定义另一份依赖版本。
 
 当前各命令的构建与操作方法见[HCTL2 使用说明](../docs/usage.md)。

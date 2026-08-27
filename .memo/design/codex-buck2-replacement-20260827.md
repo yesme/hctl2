@@ -1,8 +1,8 @@
 # Buck2 替换方案：第一方构建图与外部子系统边界
 
-> 状态：已拍板 · 待落地（Accepted 为四批实现 PR 的施工依据；转向与 Buck2 commit 钉定尚未写入）<br>
-> 基线：main @ c99114d（草案 v0.13.1）<br>
-> 去向：decision-history 转向 + docs/research 钉 Buck2 commit + src/ 四批实现 PR<br>
+> 状态：已落地 · 四批实现完成后由本文保留决定、边界与验收记录<br>
+> 基线：main @ c99114d（决定基线）；实现从 PR #15 起逐批合入<br>
+> 去向：已进入 src/ 第一方构建、CI 与发行组装；后续按显式工具链升级维护<br>
 > 日期：2026-08-27  
 > 说明：Accepted · 作为后续四批实现 PR 的施工依据  
 > 关联：[Grok 构建确定性备忘](./grok-20260827a.md)  
@@ -86,10 +86,13 @@ external subsystem builds
 
 ## 仓库形状
 
-Buck2 启动所需的 `.buckconfig`、`.buckroot` 与 DotSlash launcher 位于仓库根；其余产品构建代码进入 `src/`：
+Buck2 启动所需的 `.buckconfig`、`.buckroot` 与 DotSlash launcher 和其他产品构建代码一并位于 `src/`。仓库根保持文档层，不属于 Buck cell：
 
 ```text
-src/
+src/                         # Buck project/cell root
+├── .buckconfig
+├── .buckroot
+├── buck2
 ├── build/
 │   ├── platforms/
 │   ├── toolchains/
@@ -109,7 +112,7 @@ src/
 - 钉 Buck2、DotSlash 与匹配 Prelude；
 - 建立三个 platform configuration；
 - 建立 Rust 1.98.0 toolchain；
-- 提供 `./buck2 build //src/...` 与 `./buck2 test //src/...` 的稳定入口；
+- 提供在 `src/` 运行的 `./buck2 build root//...` 与 `./buck2 test root//...` 稳定入口；
 - 验证工具链或平台定义变化会让相关 action 失效。
 
 ### PR 2 · 第一方 Rust workspace
@@ -165,3 +168,19 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 - CI 分清第一方、外部子系统与完整发行三种健康状态；
 - 从空 runner 产生三个可安装发行包，完成 checksum、安装、启动、状态、smoke 与停止验证；
 - `remote/main` 只接受通过相应检查的 PR，工作树与发布产物边界保持干净。
+
+## 实施记录
+
+四批按顺序完成，后一批只从前一批合并后的 `remote/main` 开始：
+
+- PR #15 固化本文；
+- PR #16 建立 Buck2、DotSlash、Prelude、三平台定义和 Rust 1.98.0 工具链；
+- PR #17 迁移 protocol、agentd、tool、单元测试、smoke 与 Clippy，并钉 Reindeer；
+- PR #18 把 Linux、macOS Intel、macOS Apple Silicon 的主检查切到 Buck2，独立跑通三平台外部整包生命周期；
+- 最后一批把 Buck project root、`.buckconfig`、`.buckroot` 与 launcher 收进 `src/`，导出第一方二进制合同，加入确定性完整发行组装、SPDX、checksums、artifact attestation 与 tag 发布流水线。
+
+第 3 批远端冷构建实测：Linux 外部整包 1 分 58 秒，Apple Silicon 26 分 35 秒，Intel Mac 37 分 9 秒；三者都完成离线安装、四执行面启动、状态、smoke 和停止。Intel 链接器可能产生旧式 `LC_VERSION_MIN_MACOSX`，校验器因此同时识别它与现代 `LC_BUILD_VERSION`，但两种形式仍共同受 macOS 13 deployment target 上限约束。
+
+最后一批在 Ubuntu 26.04 本机用既有 159,585,630 字节外部运行包组装出 162,026,924 字节完整包；连续两次组装的运行归档与 SPDX 均通过字节级 `cmp`。最终包随后通过第一方命令链接、幂等安装、Tuwunel、Cinny、Vikunja、Dagu、tmux 完整生命周期验证。三平台的同一验收由 Release workflow 在临时 GitHub-hosted runner 上复跑。
+
+`main` 已要求 PR、最新主线、单一 `CI gate`、管理员不可绕过、对话已解决，并禁止 force-push 与删除；自合不要求额外审批。仓库还强制所有 GitHub Action 使用完整 commit SHA。`ubuntu-26.04` 是 GitHub-hosted public-preview 标准镜像，不是本机或长期虚拟机；公开仓库使用标准 Linux/Intel Mac/Apple Silicon runner 不计 Actions 分钟费用，缓存和 artifact 存储仍按仓库额度管理。

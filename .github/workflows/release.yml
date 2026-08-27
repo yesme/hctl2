@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Release path filter
+    runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.paths.outputs.release }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Detect product and release paths
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --prune origin "$BASE_REF"
+          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
+            '^(src/|\.github/workflows/release\.yml$)'; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  package:
+    name: Complete package / ${{ matrix.platform }}
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86_64
+            runner: ubuntu-26.04
+            buck_target: linux_x86_64_gnu
+            package_target: linux-x86_64
+            needs_homebrew: false
+          - platform: macOS x86_64
+            runner: macos-15-intel
+            buck_target: macos_x86_64
+            package_target: macos-x86_64
+            needs_homebrew: true
+          - platform: macOS arm64
+            runner: macos-15
+            buck_target: macos_arm64
+            package_target: macos-aarch64
+            needs_homebrew: true
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: src
+    env:
+      BUCK_CONSOLE: simple
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Read workspace release version
+        id: metadata
+        run: |
+          version="$(awk '$0 == "[workspace.package]" { found = 1; next } found && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' Cargo.toml)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore release build cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cache/dotslash
+            src/buck-out
+            ${{ runner.temp }}/hctl2-build-cache
+          key: release-${{ runner.os }}-${{ runner.arch }}-${{ matrix.package_target }}-${{ hashFiles('src/buck2', 'src/.buckconfig', 'src/build/**', 'src/packaging/dependencies/**') }}
+
+      - name: Install macOS build prerequisites
+        if: ${{ matrix.needs_homebrew }}
+        run: |
+          brew update
+          if brew list pkgconf >/dev/null 2>&1; then
+            brew upgrade pkgconf
+          else
+            brew install pkgconf
+          fi
+          brew install bison
+
+      - name: Install pinned DotSlash
+        run: |
+          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Verify release tag matches workspace version
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: test "$GITHUB_REF_NAME" = "v${{ steps.metadata.outputs.version }}"
+
+      - name: Export first-party binaries with Buck2
+        run: >-
+          ./buck2 build root//packaging/release:first-party
+          --target-platforms root//build/platforms:${{ matrix.buck_target }}
+          --out "$RUNNER_TEMP/hctl2-first-party"
+
+      - name: Build native external subsystem packages
+        env:
+          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
+          HCTL2_DIST_DIR: ${{ runner.temp }}/hctl2-dependencies
+        run: packaging/dependencies/build-package-${{ matrix.package_target }}.sh
+
+      - name: Assemble complete release
+        run: >-
+          packaging/release/assemble.sh
+          --first-party "$RUNNER_TEMP/hctl2-first-party"
+          --dependencies "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
+          --sources "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz"
+          --output "$RUNNER_TEMP/hctl2-release"
+
+      - name: Verify deterministic assembly
+        run: |
+          packaging/release/assemble.sh \
+            --first-party "$RUNNER_TEMP/hctl2-first-party" \
+            --dependencies "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz" \
+            --sources "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz" \
+            --output "$RUNNER_TEMP/hctl2-release-repeat"
+          cmp \
+            "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz" \
+            "$RUNNER_TEMP/hctl2-release-repeat/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
+          cmp \
+            "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.spdx" \
+            "$RUNNER_TEMP/hctl2-release-repeat/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.spdx"
+
+      - name: Test complete offline install and lifecycle
+        run: >-
+          packaging/release/test-package.sh
+          "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
+          "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hctl2-release-${{ matrix.package_target }}
+          path: ${{ runner.temp }}/hctl2-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attest release provenance
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-path: ${{ runner.temp }}/hctl2-release/*
+
+  release-gate:
+    name: Release gate
+    needs: [changes, package]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Aggregate complete package jobs
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RELEASE: ${{ needs.changes.outputs.release }}
+          PACKAGE: ${{ needs.package.result }}
+        run: |
+          set -euo pipefail
+          echo "changes=$CHANGES release=$RELEASE package=$PACKAGE"
+          test "$CHANGES" = success
+          if [ "$RELEASE" != true ]; then
+            echo "No product or release paths; skip complete packages."
+            exit 0
+          fi
+          test "$PACKAGE" = success
+
+  publish:
+    name: Publish GitHub release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified platform artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          pattern: hctl2-release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish immutable tag artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-artifacts/* \
+              --verify-tag \
+              --title "HCTL2 $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

@@ -2,21 +2,21 @@
 
 这个目录只描述 HCTL2 第一方代码的构建环境。Tuwunel、Vikunja、Dagu、tmux、Cinny 和 Static Web Server 仍由 `src/packaging/dependencies` 按各自上游方式获取或编译，不进入它们内部的 Buck2 构建图。
 
-仓库根目录的 `buck2` 是 Buck2 官方发行的 DotSlash 清单。开发机可以安装 [DotSlash](https://dotslash-cli.com/)，也可以用仓库内固定版本和 SHA-256 的安装器准备它：
+`src/buck2` 是 Buck2 官方发行的 DotSlash 清单。开发机可以安装 [DotSlash](https://dotslash-cli.com/)，也可以在 `src/` 产品工作区用固定版本和 SHA-256 的安装器准备它：
 
 ```bash
-src/build/tools/install-dotslash /path/to/tools
+build/tools/install-dotslash /path/to/tools
 export PATH=/path/to/tools:$PATH
 ```
 
-随后直接使用仓库内 `./buck2` 入口；Buck2 和匹配的 Prelude 会按清单自动下载并校验。第一次执行还会下载当前平台的 Rust 官方工具链归档。
+随后在 `src/` 内直接使用 `./buck2` 入口；同目录的 `.buckroot` 与 `.buckconfig` 把构建图限制在产品工作区。Buck2 和匹配的 Prelude 会按清单自动下载并校验，第一次执行还会下载当前平台的 Rust 官方工具链归档。
 
 验证构建基础设施：
 
 ```bash
-./buck2 targets root//src/build/platforms: toolchains//:
-./buck2 build root//src/build/tests:rust_toolchain_probe
-./buck2 test root//src/build/tests:rust_toolchain_test
+./buck2 targets root//build/platforms: toolchains//:
+./buck2 build root//build/tests:rust_toolchain_probe
+./buck2 test root//build/tests:rust_toolchain_test
 ./buck2 run toolchains//:rustc -- --version
 ./buck2 run toolchains//:rustfmt -- --version
 ```
@@ -24,16 +24,16 @@ export PATH=/path/to/tools:$PATH
 构建和测试当前全部第一方 Rust 目标：
 
 ```bash
-./buck2 build root//src/...
-./buck2 test root//src/...
-./buck2 build root//src:clippy
+./buck2 build root//...
+./buck2 test root//...
+./buck2 build root//:clippy
 ```
 
 当前发行目标平台为：
 
-- `root//src/build/platforms:linux_x86_64_gnu`；
-- `root//src/build/platforms:macos_x86_64`；
-- `root//src/build/platforms:macos_arm64`。
+- `root//build/platforms:linux_x86_64_gnu`；
+- `root//build/platforms:macos_x86_64`；
+- `root//build/platforms:macos_arm64`。
 
 其中 `macos` 是 HCTL2 产品平台名；映射到 Rust 或 Go 生态时，分别使用 `*-apple-darwin` 和 `darwin/*`。默认本机开发构建使用 Prelude 的宿主平台检测；发行任务必须显式选择上面的目标平台。
 
