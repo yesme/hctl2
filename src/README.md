@@ -16,7 +16,15 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 
 面向人的 README、使用说明和其他产品文档使用中文；源码、配置和脚本使用英文；命令行 `--help` 内容使用英文。
 
-在此目录运行工作区检查：
+在仓库根目录运行第一方 Buck2 检查：
+
+```bash
+./buck2 build root//src/...
+./buck2 test root//src/...
+./buck2 build root//src:clippy
+```
+
+迁移期间仍在 `src/` 目录运行 Cargo 一致性检查：
 
 ```bash
 cargo fmt --all --check
@@ -25,6 +33,6 @@ cargo build --locked --workspace --all-targets
 cargo test --locked --workspace --all-targets
 ```
 
-Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)。Cargo 在 Buck2 迁移期间继续作为行为一致性检查；第一方日常构建入口将在四批迁移完成后统一切换。
+Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)。Cargo 在迁移期间继续作为行为一致性检查，但不再单独定义另一份依赖版本。
 
 当前各命令的构建与操作方法见[HCTL2 使用说明](../docs/usage.md)。

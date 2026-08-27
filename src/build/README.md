@@ -14,6 +14,14 @@
 ./buck2 run toolchains//:rustfmt -- --version
 ```
 
+构建和测试当前全部第一方 Rust 目标：
+
+```bash
+./buck2 build root//src/...
+./buck2 test root//src/...
+./buck2 build root//src:clippy
+```
+
 当前发行目标平台为：
 
 - `root//src/build/platforms:linux_x86_64_gnu`；
@@ -23,3 +31,5 @@
 其中 `macos` 是 HCTL2 产品平台名；映射到 Rust 或 Go 生态时，分别使用 `*-apple-darwin` 和 `darwin/*`。默认本机开发构建使用 Prelude 的宿主平台检测；发行任务必须显式选择上面的目标平台。
 
 Rust 版本、三个目标平台的官方归档地址与 SHA-256 都在 `toolchains/rust/defs.bzl` 中声明。修改工具链或平台定义属于构建输入，会使对应 Buck2 action 失效并重新验证。
+
+外部 crate 仍在 Cargo manifests 与 `Cargo.lock` 中声明，由固定版本的 Reindeer 生成 `third-party/rust/BUCK`。更新方法见[Rust 第三方依赖说明](../third-party/rust/README.md)。
