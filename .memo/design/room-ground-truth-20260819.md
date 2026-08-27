@@ -1,8 +1,11 @@
 # Chat Room 的 ground truth 该放在哪（讨论备忘）
 
+> 状态：已落地 · 文末两个分叉由 decision-history §12 裁决（用户级 hub 以「控制面即 hub」采纳，总入口对话面否决）；本稿对 Matrix 候选的否决在三分法下失效<br>
+> 基线：main @ 9737530（草案 v0.9.1）<br>
+> 去向：decision-history §12 + spec/system.md「事实与存储」<br>
 > 日期：2026-08-19<br>
 > 主题：Room 协作历史的权威归属；RepoInstance 的边界；OpenClaw/Hermes 场景的启示<br>
-> 状态：讨论备忘，尚未修改合同。两个分叉待所有者拍板（见文末）。
+> 说明：讨论备忘，尚未修改合同。两个分叉待所有者拍板（见文末）。
 
 ## 问题
 

@@ -1,8 +1,12 @@
 # P0 实施计划（Codex）
 
+> 状态：已废弃：Zellij/Conductor 选型 v0.12.1 改为 tmux/Dagu（§18、§19），P0 v0.13.0 收窄为只验接缝（§25）；未采纳为施工依据<br>
+> 基线：草案 v0.12.0（2026-08-22 main，未记 sha）<br>
+> 去向：无；P0 权威在 docs/design/delivery.md<br>
+
 - 日期：2026-08-22
 - 作者：Codex
-- 状态：Proposed
+- 原状态：Proposed
 - 性质：独立实施方案；P0 只做可丢弃、限时、可复现的风险探针，不实现产品功能
 
 ## 1. 结论先行

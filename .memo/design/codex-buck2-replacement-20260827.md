@@ -1,7 +1,10 @@
 # Buck2 替换方案：第一方构建图与外部子系统边界
 
+> 状态：已拍板 · 待落地（Accepted 为四批实现 PR 的施工依据；转向与 Buck2 commit 钉定尚未写入）<br>
+> 基线：main @ c99114d（草案 v0.13.1）<br>
+> 去向：decision-history 转向 + docs/research 钉 Buck2 commit + src/ 四批实现 PR<br>
 > 日期：2026-08-27  
-> 状态：Accepted · 作为后续四批实现 PR 的施工依据  
+> 说明：Accepted · 作为后续四批实现 PR 的施工依据  
 > 关联：[Grok 构建确定性备忘](./grok-20260827a.md)  
 > 范围：HCTL2 第一方代码、工具链、CI/CD 与最终发行组装；不重写外部独立产品的原生构建图。
 

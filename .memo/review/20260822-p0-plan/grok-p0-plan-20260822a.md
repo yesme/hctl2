@@ -1,8 +1,11 @@
 # HCTL2 P0 实施计划
 
+> 状态：已废弃：Zellij/Conductor 选型 v0.12.1 改为 tmux/Dagu（§18、§19），P0 v0.13.0 收窄为只验接缝（§25）；未采纳为施工依据<br>
+> 基线：草案 v0.12.0（2026-08-22 main，未记 sha）<br>
+> 去向：无；P0 权威在 docs/design/delivery.md<br>
 > 日期：2026-08-22<br>
 > 对象：草案 v0.12.0 的 P0（`docs/design/delivery.md`「实现阶段」「开工前限时验证」「打包策略」；沙箱入场券见 `spec/system.md` / `spec/agent.md` 与缺口审计）<br>
-> 状态：Informative · 实施提案，不改规范。
+> 说明：Informative · 实施提案，不改规范。
 
 ## 一句话
 
