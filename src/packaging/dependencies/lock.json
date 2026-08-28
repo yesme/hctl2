@@ -1,0 +1,147 @@
+{
+  "common": {
+    "tuwunel_source": {
+      "filename": "tuwunel-5b3669144219d5d4c0774743c84191b476f1b54f-source.tar.gz",
+      "url": "https://github.com/matrix-construct/tuwunel/archive/5b3669144219d5d4c0774743c84191b476f1b54f.tar.gz",
+      "sha256": "e3a1844fe969660e4d418e9a1013718d4ec92f9289b0c7c122ef7eccee91bafa"
+    },
+    "vikunja_source": {
+      "filename": "vikunja-ef2200e9429c5cc42f5c1811433418bfcc72b3aa-source.tar.gz",
+      "url": "https://github.com/go-vikunja/vikunja/archive/ef2200e9429c5cc42f5c1811433418bfcc72b3aa.tar.gz",
+      "sha256": "b4ff02d3484321613eeca34a84d4e64d955e28ed03bdfe3535b431e03e0929d6"
+    },
+    "dagu_source": {
+      "filename": "dagu-532c512944b2e5eb8991b5bc7cbeafa74fd5b47a-source.tar.gz",
+      "url": "https://github.com/dagucloud/dagu/archive/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a.tar.gz",
+      "sha256": "9f6e4a4e5e2cb63e0c46e9b5e7b4d4a4a1c3edc452433dbd60cb83e75538ce0a"
+    },
+    "tmux_source": {
+      "filename": "tmux-3.7c-source.tar.gz",
+      "url": "https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz",
+      "sha256": "7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf"
+    },
+    "tmux_licenses": {
+      "filename": "tmux-builds-3.7c-LICENSES.tar.gz",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/LICENSES.tar.gz",
+      "sha256": "094905d3ba42397c65fecd817dc29736dd14bd35e75600441403a365125f47d1"
+    },
+    "cinny": {
+      "filename": "cinny-v4.12.6.tar.gz",
+      "url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.6/cinny-v4.12.6.tar.gz",
+      "sha256": "d478bf11c6101b9c218257772ed6de38f9b1d3ed156f019d14f180cb30592595"
+    },
+    "cinny_source": {
+      "filename": "cinny-33f4ba3674fa4f57e048e81b28f8426defc03eac-source.tar.gz",
+      "url": "https://github.com/cinnyapp/cinny/archive/33f4ba3674fa4f57e048e81b28f8426defc03eac.tar.gz",
+      "sha256": "df400a9fe206e6fedb87701d6854d05035d9f06dd97558b7b0bb484c8ced8d36"
+    },
+    "static_web_server_source": {
+      "filename": "static-web-server-27aa3450b6bf70bd1fa553b2197b53032affcba1-source.tar.gz",
+      "url": "https://github.com/static-web-server/static-web-server/archive/27aa3450b6bf70bd1fa553b2197b53032affcba1.tar.gz",
+      "sha256": "fa04fc2ed8d8ff6cce6e1001cb80746bc7f0b9dc635324fb5b72d87ed4b9603f"
+    }
+  },
+  "targets": {
+    "linux_x86_64": {
+      "package_target": "linux-x86_64",
+      "bootstrap": "bootstrap-linux-x86_64.sh",
+      "assets": {
+        "tuwunel": {
+          "filename": "tuwunel-v1.9.0-linux-amd64.deb",
+          "url": "https://github.com/matrix-construct/tuwunel/releases/download/v1.9.0/v1.9.0-release-all-x86_64-v1-linux-gnu-tuwunel.deb",
+          "sha256": "1d5d9d326e16b52a3e8b13d6e847fc1b661803a415c189d90b2755bef236c613"
+        },
+        "vikunja": {
+          "filename": "vikunja-v2.5.0-linux-amd64-full.zip",
+          "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-linux-amd64-full.zip",
+          "sha256": "8843de18f5f297bac83db010a54064a45033f82cffdf53421f6ce39f12a8ad98"
+        },
+        "dagu": {
+          "filename": "dagu-v2.15.1-linux-amd64.tar.gz",
+          "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_linux_amd64.tar.gz",
+          "sha256": "cfadd9606af9ff74d0ea8aef91fd89a831b3c63cf99a95c456fe2fcb3bb0471e"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-linux-x86_64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-linux-x86_64.tar.gz",
+          "sha256": "cc56bd1cc873eb6089c615f0496b072385bda8a6d944069f38564a5d49c128aa"
+        },
+        "static_web_server": {
+          "filename": "static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
+          "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
+          "sha256": "804bc0c31c78385ac04e9a36f3c2aa3d3170eb77d66807c2a1660c56b2026bb1"
+        }
+      }
+    },
+    "macos_x86_64": {
+      "package_target": "macos-x86_64",
+      "bootstrap": "bootstrap-macos-x86_64.sh",
+      "assets": {
+        "vikunja": {
+          "filename": "vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
+          "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
+          "sha256": "0df68cadc84984372353d3436dbe7593e499d04382e0a1950d579c1a83727982"
+        },
+        "dagu": {
+          "filename": "dagu-v2.15.1-darwin-amd64.tar.gz",
+          "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_amd64.tar.gz",
+          "sha256": "a7fbed8e194668b9ede73de486f06f706574731ccf58fba1cffa86a1ffe84c18"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-macos-x86_64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-x86_64.tar.gz",
+          "sha256": "1c21f9ade964e4a539be05ffe3a4e95854ab76a0a9c4c05d0ffbe7fc6c4d783f"
+        },
+        "static_web_server": {
+          "filename": "static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
+          "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
+          "sha256": "484708863fa0fa39fbfe1a46d99c3671f46c72862dff724da2b480cdc79ced1b"
+        }
+      }
+    },
+    "macos_arm64": {
+      "package_target": "macos-aarch64",
+      "bootstrap": "bootstrap-macos-aarch64.sh",
+      "assets": {
+        "vikunja": {
+          "filename": "vikunja-v2.5.0-darwin-10.15-arm64-full.zip",
+          "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-arm64-full.zip",
+          "sha256": "9c77cb6afddc3191696696f624830620361bf12a0016dd41c4028a7428651d91"
+        },
+        "dagu": {
+          "filename": "dagu-v2.15.1-darwin-arm64.tar.gz",
+          "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_arm64.tar.gz",
+          "sha256": "e7343a08bfb42091c2a177cc1a75f7df5a4fc9c256735dfc769b3bed18f2a319"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-macos-arm64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-arm64.tar.gz",
+          "sha256": "0a763dd0380aa980d239509654da1bc7455843706a3c050f6709c8cd2e13d12d"
+        },
+        "static_web_server": {
+          "filename": "static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",
+          "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",
+          "sha256": "5f22e1d0072a0f5bf8bb32468885d6ba7bc9df470d37f16bdd71f9697832964f"
+        }
+      }
+    }
+  },
+  "tuwunel_rust": {
+    "version": "1.95.0",
+    "date": "2026-04-16",
+    "targets": {
+      "macos_x86_64": {
+        "triple": "x86_64-apple-darwin",
+        "cargo_sha256": "e2e1131ade2dddc0d779e0ab3a6a990085c7a654951235742823c3a1ce0f190f",
+        "rustc_sha256": "33db457715446a69ed6f69f78f5fbb9ca8e17a16585d1d7a0060479bfe4c7afc",
+        "std_sha256": "2be13c14122b8d4d09b7f7c434fca9ae7215ec72049944189c88c4d9128ce504"
+      },
+      "macos_arm64": {
+        "triple": "aarch64-apple-darwin",
+        "cargo_sha256": "6c2ffed8e1ac9cf4dc9e80f282a869a6b237a153e7c55cca039d33de29d80aaf",
+        "rustc_sha256": "149e85a285b6eba58eb6c8bdf7deb1b93763890598e62cb635a712e3a8454f04",
+        "std_sha256": "9b30089b0f767cb91b2190ffec55a9beeb2a21a1405d8da0f664d7e09d08e6d8"
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@
 
 HCTL2 采用 Buck2 管理自己的跨平台、多语言编译环境。选择理由不是替代 Cargo、pnpm、Vite 或上游项目的原生构建系统，而是把第一方源码、工具链、平台、生成动作、测试与产物纳入同一张可查询、可缓存、可验证的依赖图。
 
-外部独立产品不做细粒度 Buck2 化。Tuwunel、Vikunja、Dagu、tmux、Cinny 与 Static Web Server 继续按各自上游形态获取或编译：有官方二进制时消费固定版本与摘要的官方制品；需要源码编译时继续使用上游 Cargo、`configure && make` 等原生入口。HCTL2 只在子系统边界接收并验证它们的产物合同，不维护其内部 crate、Go package 或 C target 图。
+外部独立产品不做细粒度 Buck2 化，但它们的粗粒度构建边界必须进入 HCTL2 的 Buck action graph。Tuwunel、Vikunja、Dagu、tmux、Cinny 与 Static Web Server 继续按各自上游形态获取或编译：有官方二进制时由 Buck 原生下载规则消费固定版本与摘要的官方制品；需要源码编译时由一个外部 action 调用上游 Cargo、`configure && make` 等原生入口。HCTL2 不维护其内部 crate、Go package 或 C target 图。
 
 这条边界也修正了“所有我们交付的组件必须使用同一编译器版本”的过宽表述：HCTL2 自己编译的同一种语言默认共用一把钉死的工具链；外部子系统使用其上游工具链，版本与构建环境进入该子系统自己的记录。官方二进制视为摘要锁定的外部 blob，除非上游提供可验证 provenance，不推断它使用了哪一把编译器。
 
@@ -52,6 +52,8 @@ external subsystem builds
     ├── workflow package
     └── terminal package
 ```
+
+这里的连线是 Buck target 的真实依赖边，不是 workflow 中约定的执行顺序。发行输入目标同时依赖第一方导出和外部子系统目标；外部目标的命令、环境、声明输入、工具链和平台共同形成 Buck action key。供应链 SHA-256 是下载规则的输入校验，不再额外发明一套“package fingerprint”。
 
 外部子系统向发行层只暴露固定合同：
 
@@ -148,6 +150,8 @@ src/                         # Buck project/cell root
 - 不为了 Buck2 重写已经通过生命周期验证的外部子系统脚本；
 - 不把运行期启停脚本包装成编译规则；
 - 不在 parity 成立之前一次性删除 Cargo 或现有发行路径。
+- 不用 workflow 自制 fingerprint、Cargo 目录 cache 或最终依赖包 artifact 模拟 Buck action cache。
+- 当前不采购、注册或配置第三方 Remote Execution/Remote Action Cache 服务。
 
 ## 工作量表达方式
 
@@ -184,3 +188,18 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 最后一批在 Ubuntu 26.04 本机用既有 159,585,630 字节外部运行包组装出 162,026,924 字节完整包；连续两次组装的运行归档与 SPDX 均通过字节级 `cmp`。最终包随后通过第一方命令链接、幂等安装、Tuwunel、Cinny、Vikunja、Dagu、tmux 完整生命周期验证。三平台的同一验收由 Release workflow 在临时 GitHub-hosted runner 上复跑。
 
 `main` 已要求 PR、最新主线、单一 `CI gate`、管理员不可绕过、对话已解决，并禁止 force-push 与删除；自合不要求额外审批。仓库还强制所有 GitHub Action 使用完整 commit SHA。`ubuntu-26.04` 是 GitHub-hosted public-preview 标准镜像，不是本机或长期虚拟机；公开仓库使用标准 Linux/Intel Mac/Apple Silicon runner 不计 Actions 分钟费用，缓存和 artifact 存储仍按仓库额度管理。
+
+## 后续修正：外部构建进入 action graph
+
+2026-08-28 的复盘确认，早期“Buck 只接收 workflow 预先生成的外部包”边界太弱：Buck 看不到发行包依赖 Tuwunel 构建，因此也无法用自己的 action key 判断是否需要重建。曾短暂提出用一份 shell fingerprint 和 GitHub artifact 复用最终依赖包，这会形成与 Buck 平行的身份系统，现已撤销。
+
+修正后的边界如下：
+
+- `packaging/dependencies/lock.json` 声明外部发行物、源码和 macOS Tuwunel Rust 组件的 URL 与 SHA-256；
+- Buck `http_file`/`http_archive` 负责下载与摘要验证，只把当前 target 所需资产放进执行闭包；
+- Linux 外部 action 解包官方二进制；macOS 外部 action 使用 Buck 声明的 Rust 1.95.0 工具链调用 Tuwunel 的 Cargo 构建，其余组件消费官方二进制；
+- `packaging/release:inputs` 同时依赖第一方导出和外部子系统准备目标，因此一条 Buck 请求覆盖完整发行输入；
+- 包组装仍消费仓库根的许可证和中文使用说明，属于 Buck cell 外的发行封装阶段；它设置 `HCTL2_SKIP_BOOTSTRAP=1`，不会重复外部构建。
+- Code workflow 的 target pattern 明确限定在第一方应用、crate 与工具链探针；外部子系统只由 Release workflow 构建一次。依赖 workflow 在 PR 中只跑静态合同，main push 或手动触发时才独立复验三平台生命周期。
+
+本机相同 `buckd` 下，连续第二次构建 `packaging/release:inputs` 为零下载、零 action。GitHub-hosted runner 每个 job 是临时机器；在没有 REAPI 服务的现状下，跨 job 构建保持冷启动。这个事实写进 CI 边界，不用独立成品缓存掩盖。将来若采购标准 REAPI，现有 target/action key 可直接复用，不需要再次改写外部目标。

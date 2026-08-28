@@ -1,4 +1,4 @@
-load(":defs.bzl", "first_party_release")
+load(":defs.bzl", "complete_release_inputs", "first_party_release")
 
 oncall("hctl2")
 
@@ -8,3 +8,5 @@ export_file(
 )
 
 first_party_release(name = "first-party")
+
+complete_release_inputs(name = "inputs")

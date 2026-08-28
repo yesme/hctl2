@@ -45,6 +45,7 @@ jobs:
 
   package-lifecycle:
     name: Package lifecycle / ${{ matrix.platform }}
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -52,24 +53,39 @@ jobs:
           - platform: Linux x86_64
             runner: ubuntu-26.04
             target: linux-x86_64
+            buck_target: linux_x86_64_gnu
           - platform: macOS x86_64
             runner: macos-15-intel
             target: macos-x86_64
+            buck_target: macos_x86_64
           - platform: macOS arm64
             runner: macos-15
             target: macos-aarch64
+            buck_target: macos_arm64
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: src
+    env:
+      BUCK_CONSOLE: simple
 
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Build native dependency packages
-        env:
-          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
-        run: src/packaging/dependencies/build-package-${{ matrix.target }}.sh
+      - name: Install pinned DotSlash
+        run: |
+          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Build external subsystems with Buck2
+        run: >-
+          ./buck2 build root//packaging/dependencies:prepared
+          --target-platforms root//build/platforms:${{ matrix.buck_target }}
+          --out "$RUNNER_TEMP/hctl2-build-cache"
 
       - name: Test offline install and lifecycle
         env:
           HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
-        run: src/packaging/dependencies/test-package-${{ matrix.target }}.sh
+          HCTL2_SKIP_BOOTSTRAP: "1"
+        run: packaging/dependencies/test-package-${{ matrix.target }}.sh

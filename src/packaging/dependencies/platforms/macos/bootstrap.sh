@@ -73,9 +73,7 @@ install_tuwunel_macos() {
         "$TUWUNEL_SOURCE_SHA256" \
         "$source_dir"
 
-    rustup toolchain install "$TUWUNEL_RUST_TOOLCHAIN" --profile minimal
-    rustup target add --toolchain "$TUWUNEL_RUST_TOOLCHAIN" "$HCTL2_RUST_TARGET"
-    toolchain_bin="$(dirname -- "$(rustup which --toolchain "$TUWUNEL_RUST_TOOLCHAIN" rustc)")"
+    toolchain_bin="$(tuwunel_toolchain_bin)"
 
     (
         cd "$source_dir"
@@ -83,6 +81,9 @@ install_tuwunel_macos() {
         LIBCLANG_PATH="$(macos_libclang_path)"
         export CARGO_TARGET_DIR="$target_dir"
         export CARGO_BUILD_JOBS="$jobs"
+        if [[ -n "${HCTL2_CARGO_HOME:-}" ]]; then
+            export CARGO_HOME="$HCTL2_CARGO_HOME"
+        fi
         export MACOSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
         export PATH="$toolchain_bin:$PATH"
         "$toolchain_bin/cargo" build \
@@ -97,6 +98,24 @@ install_tuwunel_macos() {
     [[ -x "$binary" ]] || die "Tuwunel native build did not produce $binary"
     verify_macos_binary_compatibility Tuwunel "$binary"
     install -m 0755 "$binary" "$P0_BIN_DIR/tuwunel"
+}
+
+tuwunel_toolchain_bin() {
+    local toolchain_root
+
+    if [[ -n "${HCTL2_TUWUNEL_TOOLCHAIN_ROOT:-}" ]]; then
+        toolchain_root="$HCTL2_TUWUNEL_TOOLCHAIN_ROOT"
+        [[ "$toolchain_root" == /* ]] || \
+            die "HCTL2_TUWUNEL_TOOLCHAIN_ROOT must be an absolute path"
+        [[ -x "$toolchain_root/bin/cargo" && -x "$toolchain_root/bin/rustc" ]] || \
+            die "Tuwunel Rust toolchain is incomplete: $toolchain_root"
+        printf '%s\n' "$toolchain_root/bin"
+        return
+    fi
+
+    rustup toolchain install "$TUWUNEL_RUST_TOOLCHAIN" --profile minimal
+    rustup target add --toolchain "$TUWUNEL_RUST_TOOLCHAIN" "$HCTL2_RUST_TARGET"
+    dirname -- "$(rustup which --toolchain "$TUWUNEL_RUST_TOOLCHAIN" rustc)"
 }
 
 install_vikunja_macos() {
@@ -126,7 +145,7 @@ install_dagu_macos() {
 write_macos_build_environment() {
     local toolchain_bin
 
-    toolchain_bin="$(dirname -- "$(rustup which --toolchain "$TUWUNEL_RUST_TOOLCHAIN" rustc)")"
+    toolchain_bin="$(tuwunel_toolchain_bin)"
     {
         printf 'tool\tversion\n'
         printf 'target\t%s\n' "$HCTL2_RUST_TARGET"
@@ -145,7 +164,9 @@ bootstrap_dependencies() {
     require_command lipo
     require_command make
     require_command otool
-    require_command rustup
+    if [[ -z "${HCTL2_TUWUNEL_TOOLCHAIN_ROOT:-}" ]]; then
+        require_command rustup
+    fi
     require_command sysctl
     require_command tar
     require_command unzip

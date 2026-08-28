@@ -39,7 +39,7 @@ jobs:
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
           if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/|\.github/workflows/code\.yml$)'; then
+            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.github/workflows/code\.yml$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -101,17 +101,17 @@ jobs:
 
       - name: Analyze target graph
         run: >-
-          ./buck2 cquery root//...
+          ./buck2 cquery 'set(root//apps/... root//crates/... root//build/tests/...)'
           --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Build first-party targets
         run: >-
-          ./buck2 build root//...
+          ./buck2 build root//apps/... root//crates/... root//build/tests/...
           --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Test first-party targets
         run: >-
-          ./buck2 test root//...
+          ./buck2 test root//apps/... root//crates/... root//build/tests/...
           --target-platforms root//build/platforms:${{ matrix.target }}
 
       - name: Run Clippy

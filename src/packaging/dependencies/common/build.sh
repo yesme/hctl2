@@ -78,7 +78,13 @@ init_build_environment() {
         die "HCTL2_BUILD_CACHE must be an absolute, non-root path"
 
     P0_BIN_DIR="$P0_ROOT/bin"
-    P0_DOWNLOAD_DIR="$P0_ROOT/downloads"
+    if [[ -n "${HCTL2_DOWNLOAD_ROOT:-}" ]]; then
+        P0_DOWNLOAD_DIR="$HCTL2_DOWNLOAD_ROOT"
+        [[ "$P0_DOWNLOAD_DIR" == /* && -d "$P0_DOWNLOAD_DIR" ]] || \
+            die "HCTL2_DOWNLOAD_ROOT must be an existing absolute directory"
+    else
+        P0_DOWNLOAD_DIR="$P0_ROOT/downloads"
+    fi
     P0_MANIFEST_DIR="$P0_ROOT/manifests"
     P0_TMP_DIR="$P0_ROOT/tmp"
     P0_VENDOR_DIR="$P0_ROOT/vendor"
