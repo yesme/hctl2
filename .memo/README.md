@@ -45,4 +45,5 @@
 | `design/context-feeding-20260826.md` §8 | 执行中产生的经验（lesson）是否作为 Result Proposal 可选输出项自动提案；晋升仍走 Memo/Skill |
 | `design/hctl2-agentd-prd-20260826.md` | 讨论稿 → 合同或交付文档 |
 | `design/grok-20260827a.md` / `design/codex-buck2-replacement-20260827.md` | Buck2 采纳后走转向、钉 commit 进 decision-history 与 implementation-evidence |
+| `design/grok-shell-scripts-buck2-20260828a.md` | 六类 shell 哪些进图、哪些留运行期；官方 blob 是否第一批全部 `http_file` |
 | `notes/doc-cleanup-backlog-20260825.md` | 13 条过强断言逐条裁决（零散进行，不整份等） |
