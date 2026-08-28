@@ -248,8 +248,8 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 分界线是**碰不碰宿主机现场**：
 
-- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 不是无依赖单二进制，其动态库、terminfo、许可文件和升级集合的固定与最小化属 B2 首次消费前的产品化项。
-- **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行 target。Linux x86_64、macOS arm64 与 macOS x86_64 分别构建；macOS 上 Dagu/Vikunja 使用官方原生发布物，Tuwunel/tmux 从锁定源码原生构建；三者共用锁定的 Cinny 官方 Web 发行包。不同 OS/CPU 不混用缓存、动态库闭包或生命周期验证。
+- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 直接消费摘要锁定的官方 `tmux-builds` 单二进制：Linux 制品静态链接，macOS 制品只链接系统 dylib；随包保留上游许可证集合，不再维护自主 C 构建链。
+- **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行 target。Linux x86_64、macOS arm64 与 macOS x86_64 分别构建；macOS 最低基线为 15。Dagu、Vikunja、tmux 使用官方原生发布物，Tuwunel 因上游没有 Darwin 二进制而从锁定源码原生构建；各 target 共用锁定的 Cinny 官方 Web 发行包。不同 OS/CPU 不混用缓存、动态库闭包或生命周期验证。
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。第一阶段的 Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
 - Windows 不在第一阶段范围；tmux 没有原生 Windows 后端，未来 Windows 版本须在同一运行时合同下另选实现并重新过兼容矩阵，当前选型不宣称跨平台。Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
 

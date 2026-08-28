@@ -114,14 +114,6 @@ platform_stage_licenses() {
         Vikunja-AGPL-3.0.txt
     install_named_license "$P0_VENDOR_DIR/dagu-$DAGU_VERSION" \
         Dagu-GPL-3.0.txt
-    install_named_license "$P0_VENDOR_DIR/tmux-source-$TMUX_VERSION" \
-        tmux-ISC.txt
-    install_named_license "$P0_VENDOR_DIR/libevent-source-$MACOS_LIBEVENT_VERSION" \
-        libevent-license.txt
-    install_named_license "$P0_VENDOR_DIR/ncurses-source-$MACOS_NCURSES_VERSION" \
-        ncurses-license.txt
-    install_named_license "$P0_VENDOR_DIR/utf8proc-source-$MACOS_UTF8PROC_VERSION" \
-        utf8proc-license.txt
 }
 
 platform_stage_build_metadata() {
@@ -132,26 +124,7 @@ platform_stage_build_metadata() {
 }
 
 platform_stage_sources() {
-    local source_root="$1"
-    local metadata="$2"
-
-    install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_LIBEVENT_SOURCE_ASSET" \
-        "$source_root/$MACOS_LIBEVENT_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_NCURSES_SOURCE_ASSET" \
-        "$source_root/$MACOS_NCURSES_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$MACOS_UTF8PROC_SOURCE_ASSET" \
-        "$source_root/$MACOS_UTF8PROC_SOURCE_ASSET"
-    {
-        printf 'libevent\t%s\trelease-%s-stable\t%s\t%s\treproducibility\n' \
-            "$MACOS_LIBEVENT_VERSION" "$MACOS_LIBEVENT_VERSION" \
-            "$MACOS_LIBEVENT_SOURCE_ASSET" "$MACOS_LIBEVENT_SOURCE_SHA256"
-        printf 'ncurses\t%s\t%s\t%s\t%s\treproducibility\n' \
-            "$MACOS_NCURSES_VERSION" "$MACOS_NCURSES_VERSION" \
-            "$MACOS_NCURSES_SOURCE_ASSET" "$MACOS_NCURSES_SOURCE_SHA256"
-        printf 'utf8proc\t%s\tv%s\t%s\t%s\treproducibility\n' \
-            "$MACOS_UTF8PROC_VERSION" "$MACOS_UTF8PROC_VERSION" \
-            "$MACOS_UTF8PROC_SOURCE_ASSET" "$MACOS_UTF8PROC_SOURCE_SHA256"
-    } >>"$metadata"
+    :
 }
 
 platform_create_archive() {

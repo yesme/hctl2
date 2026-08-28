@@ -116,6 +116,18 @@ assemble_dependency_package() {
     install -m 0644 \
         "$P0_VENDOR_DIR/static-web-server-$STATIC_WEB_SERVER_VERSION/LICENSE-MIT" \
         "$payload_root/share/hctl2/licenses/Static-Web-Server-MIT.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./COPYING.tmux \
+        >"$payload_root/share/hctl2/licenses/tmux-ISC.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./COPYING.ncurses \
+        >"$payload_root/share/hctl2/licenses/tmux-builds-ncurses.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./LICENSE.libevent \
+        >"$payload_root/share/hctl2/licenses/tmux-builds-libevent.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./LICENSE.utf8proc \
+        >"$payload_root/share/hctl2/licenses/tmux-builds-utf8proc.txt"
+    if [[ "$HCTL2_TARGET_OS" == "linux" ]]; then
+        tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./COPYRIGHT.musl \
+            >"$payload_root/share/hctl2/licenses/tmux-builds-musl.txt"
+    fi
     platform_stage_licenses
 
     platform_stage_build_metadata
@@ -138,7 +150,8 @@ assemble_dependency_package() {
             "$DAGU_VERSION" "$DAGU_SOURCE_COMMIT" "$DAGU_BUILD_INPUT_SHA256" \
             "$DAGU_SOURCE_SHA256" "$(hash_file "$payload_root/libexec/hctl2/dagu")"
         printf 'tmux\t%s\t%s\t%s\t%s\t%s\n' \
-            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_SHA256" "$TMUX_SHA256" \
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_BUILD_INPUT_SHA256" \
+            "$TMUX_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/tmux")"
         printf 'cinny\t%s\t%s\t%s\t%s\t%s\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" "$CINNY_SHA256" \
@@ -165,8 +178,8 @@ assemble_dependency_package() {
         "$source_files_root/$DAGU_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET" \
         "$source_files_root/$TUWUNEL_SOURCE_ASSET"
-    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_ASSET" \
-        "$source_files_root/$TMUX_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_SOURCE_ASSET" \
+        "$source_files_root/$TMUX_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
         "$source_files_root/$CINNY_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_SOURCE_ASSET" \
@@ -183,7 +196,8 @@ assemble_dependency_package() {
             "$DAGU_VERSION" "$DAGU_SOURCE_COMMIT" \
             "$DAGU_SOURCE_ASSET" "$DAGU_SOURCE_SHA256"
         printf 'tmux\t%s\t%s\t%s\t%s\treproducibility\n' \
-            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_ASSET" "$TMUX_SHA256"
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" \
+            "$TMUX_SOURCE_ASSET" "$TMUX_SOURCE_SHA256"
         printf 'cinny\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" \
             "$CINNY_SOURCE_ASSET" "$CINNY_SOURCE_SHA256"

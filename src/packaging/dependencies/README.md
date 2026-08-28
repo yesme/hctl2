@@ -1,6 +1,6 @@
 # 依赖打包
 
-这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）。联网下载、源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）。联网下载、必要的源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 ## 代码树边界
 
@@ -23,11 +23,11 @@ test-package.sh         同上
 
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
-| `linux-x86_64` | Linux x86_64 | Tuwunel/Vikunja/Dagu/Cinny/Static Web Server 官方包；tmux 锁定源码 |
-| `macos-aarch64` | Apple Silicon macOS | Vikunja/Dagu/Cinny/Static Web Server 官方包；Tuwunel/tmux 锁定源码 |
-| `macos-x86_64` | Intel macOS | Vikunja/Dagu/Cinny/Static Web Server 官方包；Tuwunel/tmux 锁定源码 |
+| `linux-x86_64` | Linux x86_64 | 六项第三方运行内容均消费上游官方发行包 |
+| `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/tmux/Cinny/Static Web Server 官方包；Tuwunel 锁定源码 |
+| `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/tmux/Cinny/Static Web Server 官方包；Tuwunel 锁定源码 |
 
-Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Homebrew 头文件、链接库、Mach-O 闭包和最终生命周期都要按真实目标验证。
+Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Tuwunel 原生构建、Mach-O 闭包和最终生命周期都要按真实目标验证。
 
 ## 构建与验证
 
@@ -56,24 +56,24 @@ hctl2-<version>-<target>-sources.tar.gz
 hctl2-<version>-<target>-sources.tar.gz.sha256
 ```
 
-Linux 构建需要 Ubuntu/Debian 的 `apt-get`、`dpkg-deb`、GCC、binutils、make 和 pkg-config，不再需要 Rust toolchain。Static Web Server 使用上游完全静态链接的 musl 二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
+Linux 构建只需基本归档工具和用于解开 Tuwunel 官方包的 `dpkg-deb`，不需要 Rust 或 C toolchain，也不调用 `apt-get`。Static Web Server 和 tmux 都使用上游完全静态链接的二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
-macOS 构建需要 Xcode Command Line Tools、Homebrew `rustup`，以及锁定版本的 Homebrew `bison` 和 `pkgconf`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain，并从锁定源码为 tmux 构建 libevent、ncurses 和 utf8proc；Static Web Server 直接使用上游目标架构二进制，不参与 Rust 构建。所有自建 Mach-O 都以 macOS 13 为 deployment target；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，两者都必须声明不高于这个基线。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+macOS 构建需要 Xcode Command Line Tools 和 `rustup`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain；tmux 与 Static Web Server 直接使用上游目标架构二进制，不参与本地构建。产品最低基线为 **macOS 15**，与 `tmux/tmux-builds` 官方 Darwin 发行物声明的最低系统一致；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把其他组件可能存在的非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
 ## 供应链内容
 
 运行安装包包括：
 
-- Tuwunel、Vikunja、Dagu、tmux 四个上游可执行文件和所需的非系统动态库；
+- Tuwunel、Vikunja、Dagu、tmux 四个上游可执行文件和所需的非系统动态库；tmux 来自官方 `tmux-builds`，Linux 为静态 ELF，macOS 只链接系统 dylib；
 - Cinny 官方 Web 发行内容，以及只绑定 loopback 的官方 `static-web-server` 单二进制；
 - `hctl2-services` 以及公共生命周期代码和目标平台 runtime hook；
 - target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
 - HCTL2 与所有分发依赖的许可证；
 - 根归档与 payload 两层 SHA-256 清单。
 
-源码伴随包包括四类依赖和 Static Web Server 的锁定上游源码；macOS 包还包括随包 dylib 的锁定源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
+源码伴随包包括四类依赖和 Static Web Server 的锁定上游源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。tmux 运行包另纳入 `tmux-builds` 官方许可证集合，覆盖其静态链接依赖。源码包没有安装器，也不进入安装前缀。
 
-运行包与源码包必须在同一个 Release 下载位置以相同方式、无额外费用提供；运行包内的 `SOURCES.md` 指向精确的源码包名。真正通过 U 盘或其他离线介质再次分发时，应同时携带两份归档。当前 Linux x86_64 双包体积见[实现证据](../../../docs/design/references/implementation-evidence.md#执行面已选依赖的运维与-footprint)；两个 macOS target 需要原生重建后刷新体积。
+运行包与源码包必须在同一个 Release 下载位置以相同方式、无额外费用提供；运行包内的 `SOURCES.md` 指向精确的源码包名。真正通过 U 盘或其他离线介质再次分发时，应同时携带两份归档。当前各平台体积见[实现证据](../../../docs/research/README.md#执行面已选依赖的运维与-footprint)；Intel macOS 仍需在对应 runner 上刷新。
 
 ## 用户流程
 

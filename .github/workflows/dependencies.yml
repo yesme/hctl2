@@ -52,31 +52,17 @@ jobs:
           - platform: Linux x86_64
             runner: ubuntu-26.04
             target: linux-x86_64
-            needs_homebrew: false
           - platform: macOS x86_64
             runner: macos-15-intel
             target: macos-x86_64
-            needs_homebrew: true
           - platform: macOS arm64
             runner: macos-15
             target: macos-aarch64
-            needs_homebrew: true
     runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-
-      - name: Install macOS build prerequisites
-        if: ${{ matrix.needs_homebrew }}
-        run: |
-          brew update
-          if brew list pkgconf >/dev/null 2>&1; then
-            brew upgrade pkgconf
-          else
-            brew install pkgconf
-          fi
-          brew install bison
 
       - name: Build native dependency packages
         env:

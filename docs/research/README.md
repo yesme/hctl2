@@ -212,7 +212,7 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 
 ## 执行面已选依赖的运维与 footprint
 
-这里的“已选依赖”仍指 Dagu、Tuwunel、Vikunja、tmux 四个外部系统；Tuwunel 与 Cinny 合为 Chatroom 解决方案，因此生命周期实现会管理五个进程/组件，但没有第五类执行依赖。React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，2026-08-26 补入 Tuwunel 原生构建和随包浏览器客户端，2026-08-27 再以 Cinny 替换 Element Web、以 Static Web Server 官方二进制替换内部 HTTP 实现并完成整包验证，不是容量承诺。文件大小取官方 release asset、明确标注的 Homebrew bottle 或实际 HCTL2 发行包；RSS 在对应记录注明的平台上用空数据、默认或文中注明的最小配置启动，稳定后读取，且不含 control、Workbench 和 harness 子进程。
+这里的“已选依赖”仍指 Dagu、Tuwunel、Vikunja、tmux 四个外部系统；Tuwunel 与 Cinny 合为 Chatroom 解决方案，因此生命周期实现会管理五个进程/组件，但没有第五类执行依赖。React/Tiptap/xterm.js 等随 Workbench 打包的库没有独立运维面，其体积在整窗发布探针中计算。这是 2026-08-23 的第一阶段基线，2026-08-26 补入 Tuwunel 原生构建和随包浏览器客户端，2026-08-27 再以 Cinny 替换 Element Web、以 Static Web Server 官方二进制替换内部 HTTP 实现并完成整包验证，2026-08-28 把 tmux 切到官方 `tmux-builds` 并将 macOS 基线统一为 15，不是容量承诺。文件大小取官方 release asset 或实际 HCTL2 发行包；RSS 在对应记录注明的平台上用空数据、默认或文中注明的最小配置启动，稳定后读取，且不含 control、Workbench 和 harness 子进程。
 
 | 模块 | 固定版本与许可 | 发布 / 分发 footprint | 空载实测 / 数据 | 运维判断 |
 | --- | --- | --- | --- | --- |
@@ -221,9 +221,9 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 | **Cinny** | [`v4.12.6 / 33f4ba36`](https://github.com/cinnyapp/cinny/releases/tag/v4.12.6)，AGPL-3.0-only | 官方 Web 发行包 **18.5 MiB**，随包配置后内容 **59.0 MiB**；对应源码归档 **2.1 MiB** | Homeserver 锁定、Chrome 登录页渲染和 HTTP lifecycle 已自动通过，注册、输入与消息交互待人工验收 | **低**：无独立数据库；浏览器存储不是权威事实，客户端不获得 HCTL2 治理权限；上游 SDK 替换期升级需复测 |
 | **Static Web Server** | [`v2.44.0 / 27aa3450`](https://github.com/static-web-server/static-web-server/releases/tag/v2.44.0)，MIT OR Apache-2.0 | 官方 Linux x86_64 musl archive **3.48 MiB**、静态 binary **7.99 MiB**；macOS x86_64 为 **3.15/6.83 MiB**，arm64 为 **2.87/5.96 MiB** | Ubuntu 以官方 musl binary 服务 Cinny 时空载 **12.4 MiB RSS**；loopback 绑定、HTML/JSON/WASM/音频 MIME、Range、整包 lifecycle 均通过 | **低**：单进程、无数据库、无需解释器或随包动态库；只作为 Cinny 的内部静态文件服务，不增加执行面类型 |
 | **Vikunja** | [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)，AGPL-3.0-or-later | macOS arm64 full zip **46.9 MiB**、binary **107.3 MiB** | SQLite 空服务 **56.7 MiB RSS**；初始 DB/WAL 约 2.3 MiB | **低**：一个进程 + SQLite；备份 DB、attachments 和 secret，升级前做 migration/restore 演练 |
-| **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | Homebrew macOS arm64 bottle **0.52 MiB**、executable **0.95 MiB**；直接非系统 dylib **1.45 MiB** | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库；要固定最小动态库/terminfo、owner-only socket、control mode、pane ID、背压与残留 session 清理，六 Harness 矩阵是阻断项 |
+| **tmux** | [`3.7c / e476c123`](https://github.com/tmux/tmux/releases/tag/3.7c)，ISC | 官方 `tmux-builds` macOS arm64 archive **0.62 MiB**、binary **1.62 MiB**；x86_64 为 **0.65/1.66 MiB**。二者只链接系统 dylib，最低 macOS 15 | 一个 server + 10 个 detached session **3.7 MiB RSS**；默认每 runtime 独立 server 时十个约 **37 MiB RSS** | **低安装 / 中集成**：无数据库、无需自主编译；固定官方归档/许可证摘要、owner-only socket、control mode、pane ID、背压与残留 session 清理 |
 
-换用 Cinny、拆分源码并以 Static Web Server 官方二进制替换内部 HTTP 实现后，Linux x86_64 于 2026-08-27 实测为：用户需要的运行安装包 **152.2 MiB**、解压文件约 **379.3 MiB**；同 Release 单独提供、不参与安装的源码伴随包 **31.6 MiB**，两者合计约 **183.8 MiB**。相较自研静态服务基线，运行包增加约 **3.26 MiB**，但删除了 418 行产品与测试代码，Linux 发布构建不再需要 Rust toolchain。双包校验、离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止均纳入整包测试。两个 macOS target 必须在对应架构原生重建后刷新整包体积。既有四服务 RSS 基线约 **212.8 MiB**；Cinny 的浏览器进程不由 HCTL2 托管，Static Web Server 只提供 loopback 静态内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
+换用 Cinny、拆分源码并以 Static Web Server 官方二进制替换内部 HTTP 实现后，Linux x86_64 于 2026-08-27 实测为：用户需要的运行安装包 **152.2 MiB**、解压文件约 **379.3 MiB**；同 Release 单独提供、不参与安装的源码伴随包 **31.6 MiB**，两者合计约 **183.8 MiB**。相较自研静态服务基线，运行包增加约 **3.26 MiB**，但删除了 418 行产品与测试代码，Linux 发布构建不再需要 Rust toolchain。2026-08-28 改用官方 tmux 后，macOS arm64 依赖运行包实测 **144.29 MiB**、源码伴随包 **31.63 MiB**，加入第一方产物的完整运行包 **144.66 MiB**；两次组装逐字节一致，并通过离线安装、幂等重装、五个受管组件启动、三浏览器入口 smoke 和逆序停止。Intel macOS 与新 Linux 包仍由对应 CI runner 刷新。既有四服务 RSS 基线约 **212.8 MiB**；Cinny 的浏览器进程不由 HCTL2 托管，Static Web Server 只提供 loopback 静态内容。持续风险仍集中在 Tuwunel 数据恢复/内存配置、tmux fencing/背压和 Dagu fencing。
 
 ## 标准与通用库，不作为产品主参考
 

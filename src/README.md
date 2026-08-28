@@ -10,7 +10,7 @@
 
 `hctl2-control`、公共 `hctl2` CLI 与 Workbench 将在 P2/P3 进入代码树。两个 P1 可执行文件目前都不是治理命令入口。
 
-`packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器与纳入版本控制的生命周期脚本。下载的输入与生成的发行归档不提交到 Git。
+`packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（tmux）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器与纳入版本控制的生命周期脚本。除上游没有 Darwin 二进制的 Tuwunel 外，第三方运行内容都直接消费摘要锁定的官方发行物；下载输入与生成归档不提交 Git。
 
 `packaging/release` 由 Buck2 导出第一方二进制和 manifest，校验并消费外部运行包与源码包，确定性地生成三平台完整用户安装包、checksums、SPDX SBOM 与 release manifest。它只在子系统边界组装，不改写外部项目的原生构建方式。
 

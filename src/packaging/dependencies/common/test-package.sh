@@ -42,6 +42,7 @@ test_dependency_package() {
     local source_role
     local cinny_headers
     local cinny_range_status
+    local tmux_license
 
     [[ -n "${PACKAGE_ID:-}" && -n "${ARCHIVE:-}" && \
         -n "${SOURCE_PACKAGE_ID:-}" && -n "${SOURCE_ARCHIVE:-}" ]] || \
@@ -93,6 +94,20 @@ test_dependency_package() {
     grep -F $'cinny\t' "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     grep -F $'static-web-server\t' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
+    awk -F '\t' \
+        -v build_input="$TMUX_BUILD_INPUT_SHA256" \
+        -v source="$TMUX_SOURCE_SHA256" \
+        '$1 == "tmux" && $4 == build_input && $5 == source { found = 1 } END { exit !found }' \
+        "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" || \
+        die "runtime package records the wrong tmux build input or source digest"
+    for tmux_license in tmux-ISC tmux-builds-ncurses tmux-builds-libevent tmux-builds-utf8proc; do
+        [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/$tmux_license.txt" ]] || \
+            die "runtime package is missing official tmux license: $tmux_license"
+    done
+    if [[ "$HCTL2_TARGET_OS" == "linux" ]]; then
+        [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/tmux-builds-musl.txt" ]] || \
+            die "Linux runtime package is missing the tmux-builds musl license"
+    fi
     ! grep -F $'element-web\t' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/sources" ]] || \
@@ -103,6 +118,9 @@ test_dependency_package() {
     grep -F "$HCTL2_TARGET_ID" "$test_root/$SOURCE_PACKAGE_ID/target.tsv" >/dev/null
     grep -F $'cinny\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     grep -F $'static-web-server\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
+    grep -F $'tmux\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
+        grep -F "$TMUX_SOURCE_ASSET" >/dev/null || \
+        die "source package does not contain the locked tmux source"
     ! grep -F $'element-web\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     while IFS=$'\t' read -r source_component source_version source_commit \
         source_asset source_sha256 source_role; do

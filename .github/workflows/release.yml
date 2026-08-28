@@ -61,17 +61,14 @@ jobs:
             runner: ubuntu-26.04
             buck_target: linux_x86_64_gnu
             package_target: linux-x86_64
-            needs_homebrew: false
           - platform: macOS x86_64
             runner: macos-15-intel
             buck_target: macos_x86_64
             package_target: macos-x86_64
-            needs_homebrew: true
           - platform: macOS arm64
             runner: macos-15
             buck_target: macos_arm64
             package_target: macos-aarch64
-            needs_homebrew: true
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -98,17 +95,6 @@ jobs:
             src/buck-out
             ${{ runner.temp }}/hctl2-build-cache
           key: release-${{ runner.os }}-${{ runner.arch }}-${{ matrix.package_target }}-${{ hashFiles('src/buck2', 'src/.buckconfig', 'src/build/**', 'src/packaging/dependencies/**') }}
-
-      - name: Install macOS build prerequisites
-        if: ${{ matrix.needs_homebrew }}
-        run: |
-          brew update
-          if brew list pkgconf >/dev/null 2>&1; then
-            brew upgrade pkgconf
-          else
-            brew install pkgconf
-          fi
-          brew install bison
 
       - name: Install pinned DotSlash
         run: |
