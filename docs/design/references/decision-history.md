@@ -162,6 +162,8 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实现完整 Kitty keyboard protocol；`3.7c` 还有一个特定多窗格、快速滚动、copy-mode 与 resize 组合下的 [`#5510`](https://github.com/tmux/tmux/issues/5510) 卡死报告。因此 `3.7c / e476c123` 只是源码审阅基线，最终分发 commit 必须通过六个 Harness 的颜色、粘贴、复制、组合键、全屏 TUI、退出码，以及 headless 查询、背压和该卡死场景的阻断测试。（v0.13.0 改判：这些矩阵与回归归 B2 首次消费前的产品化，P0 只验 control mode 接缝，见 [§25](#25-p0-只验接缝v0130)。）完整源码证据、候选差异和测量口径见 [`E-L1-TMUX-RUNTIME`](../../research/tmux-runtime.md#e-l1-tmux-runtime)。本条取代 §13 的 Zellij 实现选型和 §15 的裸 Zellij 表述，不改变“运行时后端只拥有物理会话、不拥有领域事实”的合同。
 
+2026-08-28 的分发复核发现 `tmux/tmux-builds` 已为 Linux x86_64、macOS arm64 与 macOS x86_64 发布 `3.7c` 官方单二进制。它取代 HCTL2 自主编译 tmux 及 libevent/ncurses/utf8proc 的链路；Linux 制品静态链接，两个 Darwin 制品只链接系统 dylib 并声明最低 macOS 15，因此产品 macOS 基线同步升为 15。运行归档、官方许可证集合和上游源码分别钉 SHA-256；macOS 上仍需源码编译的第三方运行时只剩没有 Darwin 发行物的 Tuwunel。
+
 ## 20. 桥接退役、结晶归位与概念清扫（v0.12.2）
 
 一轮按最新方法论（三类数据、概念门槛）对 README 与设计/合同骨架的复查，收口了六件事：

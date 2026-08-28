@@ -18,7 +18,7 @@
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包。含 Cinny 的 Linux x86_64 包已通过完整生命周期验证；两个 Mac target 需要在对应机器上重跑当前包。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、tmux、内部静态文件服务、许可证及 `hctl2-services`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 最低版本为 15。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、tmux、内部静态文件服务、许可证及 `hctl2-services`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
 
 每个 target 同时发布两份归档：
 
@@ -252,7 +252,7 @@ src/packaging/dependencies/build-package-macos-aarch64.sh
 src/packaging/dependencies/build-package-macos-x86_64.sh
 ```
 
-macOS arm64 与 Intel 必须分别在对应架构的 Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel、tmux、链接 dylib 和运行验证都属于目标合同。
+macOS arm64 与 Intel 必须分别在对应架构的 macOS 15+ Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel 原生构建、架构专属官方二进制、Mach-O 闭包和运行验证都属于目标合同。
 
 完整验证两份归档的内容与校验清单，以及运行包的离线安装、幂等重装、启动、冒烟检查和停止：
 

@@ -112,6 +112,9 @@ download_locked_inputs() {
         "$DAGU_URL" "$DAGU_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_ASSET"
     download_verified "tmux $TMUX_VERSION" \
         "$TMUX_URL" "$TMUX_SHA256" "$P0_DOWNLOAD_DIR/$TMUX_ASSET"
+    download_verified "tmux-builds licenses $TMUX_VERSION" \
+        "$TMUX_LICENSES_URL" "$TMUX_LICENSES_SHA256" \
+        "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET"
     download_verified "Cinny $CINNY_VERSION" \
         "$CINNY_URL" "$CINNY_SHA256" "$P0_DOWNLOAD_DIR/$CINNY_ASSET"
     download_verified "Static Web Server $STATIC_WEB_SERVER_VERSION" \
@@ -123,6 +126,8 @@ download_locked_inputs() {
         "$VIKUNJA_SOURCE_URL" "$VIKUNJA_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$VIKUNJA_SOURCE_ASSET"
     download_verified "Dagu corresponding source $DAGU_SOURCE_COMMIT" \
         "$DAGU_SOURCE_URL" "$DAGU_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET"
+    download_verified "tmux source $TMUX_SOURCE_COMMIT" \
+        "$TMUX_SOURCE_URL" "$TMUX_SOURCE_SHA256" "$P0_DOWNLOAD_DIR/$TMUX_SOURCE_ASSET"
     download_verified "Cinny corresponding source $CINNY_SOURCE_COMMIT" \
         "$CINNY_SOURCE_URL" "$CINNY_SOURCE_SHA256" \
         "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET"
@@ -149,6 +154,39 @@ install_static_web_server() {
     [[ -x "$binary" ]] || \
         die "Static Web Server archive did not contain an executable named static-web-server"
     install -m 0755 "$binary" "$P0_BIN_DIR/static-web-server"
+}
+
+install_tmux_release() {
+    local destination="$P0_VENDOR_DIR/tmux-release-$TMUX_VERSION-$HCTL2_TARGET_ID"
+    local archive="$P0_DOWNLOAD_DIR/$TMUX_ASSET"
+    local marker="$destination/.hctl2-archive-sha256"
+    local recorded=""
+    local entry
+
+    if [[ -f "$marker" ]]; then
+        read -r recorded <"$marker"
+    fi
+    if [[ "$recorded" != "$TMUX_SHA256" ]]; then
+        while IFS= read -r entry; do
+            entry="${entry#./}"
+            entry="${entry%/}"
+            [[ -z "$entry" || "$entry" == "tmux" ]] || \
+                die "unexpected path in official tmux archive: $entry"
+        done < <(tar -tzf "$archive")
+
+        case "$destination" in
+            "$P0_VENDOR_DIR"/*) ;;
+            *) die "refusing to replace tmux directory outside the build cache: $destination" ;;
+        esac
+        mkdir -p "$destination"
+        find "$destination" -mindepth 1 -depth -delete
+        tar -xzf "$archive" -C "$destination"
+        printf '%s\n' "$TMUX_SHA256" >"$marker"
+    fi
+
+    [[ -f "$destination/tmux" && ! -L "$destination/tmux" && -x "$destination/tmux" ]] || \
+        die "official tmux archive did not contain an executable named tmux"
+    install -m 0755 "$destination/tmux" "$P0_BIN_DIR/tmux"
 }
 
 prepare_source_tree() {

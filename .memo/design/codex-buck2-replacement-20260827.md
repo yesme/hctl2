@@ -179,7 +179,7 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 - PR #18 把 Linux、macOS Intel、macOS Apple Silicon 的主检查切到 Buck2，独立跑通三平台外部整包生命周期；
 - 最后一批把 Buck project root、`.buckconfig`、`.buckroot` 与 launcher 收进 `src/`，导出第一方二进制合同，加入确定性完整发行组装、SPDX、checksums、artifact attestation 与 tag 发布流水线。
 
-第 3 批远端冷构建实测：Linux 外部整包 1 分 58 秒，Apple Silicon 26 分 35 秒，Intel Mac 37 分 9 秒；三者都完成离线安装、四执行面启动、状态、smoke 和停止。Intel 链接器可能产生旧式 `LC_VERSION_MIN_MACOSX`，校验器因此同时识别它与现代 `LC_BUILD_VERSION`，但两种形式仍共同受 macOS 13 deployment target 上限约束。
+第 3 批远端冷构建实测：Linux 外部整包 1 分 58 秒，Apple Silicon 26 分 35 秒，Intel Mac 37 分 9 秒；三者都完成离线安装、四执行面启动、状态、smoke 和停止。Intel 链接器可能产生旧式 `LC_VERSION_MIN_MACOSX`，校验器因此同时识别它与现代 `LC_BUILD_VERSION`；当时两种形式共同受 macOS 13 deployment target 上限约束。2026-08-28 改用最低系统为 15 的官方 `tmux-builds` Darwin 二进制后，产品基线升为 macOS 15，自主 tmux/libevent/ncurses/utf8proc 构建链一并删除。
 
 最后一批在 Ubuntu 26.04 本机用既有 159,585,630 字节外部运行包组装出 162,026,924 字节完整包；连续两次组装的运行归档与 SPDX 均通过字节级 `cmp`。最终包随后通过第一方命令链接、幂等安装、Tuwunel、Cinny、Vikunja、Dagu、tmux 完整生命周期验证。三平台的同一验收由 Release workflow 在临时 GitHub-hosted runner 上复跑。
 

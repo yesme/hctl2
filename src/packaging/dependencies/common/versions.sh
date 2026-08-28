@@ -23,10 +23,13 @@ readonly DAGU_SOURCE_URL="https://github.com/dagucloud/dagu/archive/$DAGU_SOURCE
 readonly DAGU_SOURCE_SHA256="9f6e4a4e5e2cb63e0c46e9b5e7b4d4a4a1c3edc452433dbd60cb83e75538ce0a"
 
 readonly TMUX_VERSION="3.7c"
-readonly TMUX_ASSET="tmux-3.7c.tar.gz"
-readonly TMUX_URL="https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz"
-readonly TMUX_SHA256="7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf"
 readonly TMUX_SOURCE_COMMIT="e476c1230b958df0cb12977517d24b3dc931375b"
+readonly TMUX_SOURCE_ASSET="tmux-3.7c-source.tar.gz"
+readonly TMUX_SOURCE_URL="https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz"
+readonly TMUX_SOURCE_SHA256="7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf"
+readonly TMUX_LICENSES_ASSET="tmux-builds-3.7c-LICENSES.tar.gz"
+readonly TMUX_LICENSES_URL="https://github.com/tmux/tmux-builds/releases/download/v3.7c/LICENSES.tar.gz"
+readonly TMUX_LICENSES_SHA256="094905d3ba42397c65fecd817dc29736dd14bd35e75600441403a365125f47d1"
 
 readonly CINNY_VERSION="4.12.6"
 readonly CINNY_SOURCE_COMMIT="33f4ba3674fa4f57e048e81b28f8426defc03eac"
