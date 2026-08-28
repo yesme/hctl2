@@ -1,0 +1,5 @@
+load(":defs.bzl", "hctl2_local_cache_platforms")
+
+oncall("hctl2")
+
+hctl2_local_cache_platforms(name = "platforms")

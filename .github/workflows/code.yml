@@ -39,7 +39,7 @@ jobs:
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
           if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.buckconfig$|\.buckroot$|BUCK$|\.github/workflows/code\.yml$)'; then
+            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.github/workflows/code\.yml$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -71,6 +71,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       BUCK_CONSOLE: simple
+      HCTL2_BUCK2_CACHE: 0
     defaults:
       run:
         working-directory: src
@@ -84,8 +85,8 @@ jobs:
         with:
           path: |
             ~/.cache/dotslash
-            buck-out
-          key: buck2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('src/buck2', '.buckconfig', 'src/build/platforms/**', 'src/build/toolchains/**') }}
+            src/buck-out
+          key: buck2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('src/build/tools/buck2-bin', 'src/.buckconfig', 'src/build/platforms/**', 'src/build/toolchains/**') }}
 
       - name: Install pinned DotSlash
         run: |

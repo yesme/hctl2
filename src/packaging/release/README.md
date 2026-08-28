@@ -35,4 +35,4 @@ hctl2-<version>-<target>.SHA256SUMS
   --target-platforms root//build/platforms:linux_x86_64_gnu
 ```
 
-`complete` 声明第一方导出、外部运行/源码包、许可证、用户文档和组装器为输入；`complete-test` 声明最终目录、生成的目标 metadata 和生命周期测试体为输入。workflow 只负责选择平台、调用这两个目标、上传、证明和发布，不再编码组包步骤。macOS Intel 与 Apple Silicon 必须在对应架构的 GitHub-hosted Mac 上分别执行同一流程。组装阶段对自建 Mach-O 做 ad-hoc 签名；公开发布所需的 Developer ID 签名和 notarization 属于凭证受控的 CD 阶段，不混入确定性构建输入。
+`complete` 声明第一方导出、外部运行/源码包、`assets/` 中的许可证与用户文档快照、组装器为输入；`complete-test` 声明最终目录、生成的目标 metadata 和生命周期测试体为输入。仓库级 `LICENSE` 与 `docs/usage.md` 是文档事实源，CI 机械校验发行快照与它们一致；Buck workspace 因而保持在 `src/` 内。workflow 只负责选择平台、调用这两个目标、上传、证明和发布，不再编码组包步骤。macOS Intel 与 Apple Silicon 必须在对应架构的 GitHub-hosted Mac 上分别执行同一流程。组装阶段对自建 Mach-O 做 ad-hoc 签名；公开发布所需的 Developer ID 签名和 notarization 属于凭证受控的 CD 阶段，不混入确定性构建输入。

@@ -24,6 +24,8 @@ def first_party_release(name: str):
             }),
         }),
         visibility = ["PUBLIC"],
+        cacheable = True,
+        labels = ["large_copy"],
     )
 
 def _complete_release_command(target: str) -> str:
@@ -76,6 +78,7 @@ def complete_release(name: str):
         }),
         out = "release",
         cacheable = True,
+        labels = ["large_copy"],
         tests = [":{}-test".format(name)],
         visibility = ["PUBLIC"],
     )

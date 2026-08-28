@@ -1,0 +1,35 @@
+[cells]
+root = .
+prelude = prelude
+toolchains = build/toolchains
+none = build/empty_cell
+
+[cell_aliases]
+config = prelude
+ovr_config = prelude
+fbcode = none
+fbsource = none
+buck = none
+
+[external_cells]
+prelude = bundled
+
+[buck2]
+digest_algorithms = SHA256
+default_allow_cache_upload = true
+
+[buck2_re_client]
+action_cache_address = 127.0.0.1:19092
+cas_address = 127.0.0.1:19092
+engine_address = 127.0.0.1:19092
+instance_name = hctl2
+capabilities = true
+tls = false
+
+[build]
+execution_platforms = root//build/execution:platforms
+
+[parser]
+target_platform_detector_spec = target:root//...->prelude//platforms:default \
+  target:prelude//...->prelude//platforms:default \
+  target:toolchains//...->prelude//platforms:default
