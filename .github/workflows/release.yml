@@ -130,12 +130,13 @@ jobs:
       - name: Verify exact cache restored Tuwunel
         if: matrix.cache_enabled == '1' && steps.dependency-cache.outputs.cache-hit == 'true'
         run: |
-          ./build/tools/buck2-bin log show | jq -e '
-            any(
-              .Event.data.SpanEnd.data.ActionExecution? as $action
-              | select($action.owner.label.name == "tuwunel")
-              | $action.commands[]?.details.command_kind.command.RemoteCommand.cache_hit?;
-              . == true
+          ./build/tools/buck2-bin log show | jq -s -e '
+            any(.[].Event.data.SpanEnd.data.ActionExecution?;
+              .key.owner.TargetLabel.label.name == "tuwunel"
+              and any(
+                .commands[]?.details.command_kind.command.RemoteCommand.cache_hit?;
+                . == true
+              )
             )
           '
 

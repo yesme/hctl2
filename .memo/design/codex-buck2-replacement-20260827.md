@@ -233,4 +233,6 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 
 Apple Silicon 本机最终实测：`tuwunel` action 输出 77 MiB；Vikunja、Dagu、tmux、Cinny、Static Web Server 分别约 107、148、1.6、59、6 MiB，均不再保留同一大二进制的解压副本；依赖归档目录 176 MiB，完整发行目录 192 MiB。原单体准备输出约 855 MiB，其中包含完整 Cargo target/source tree 与全部下载；这些内容现已退出 action output。
 
+最终提交的干净 detached worktree 验收在 4 秒内完成 Tuwunel 请求，Buck 汇总 83% cache hit（5 cached、1 local）；event log 中 `tuwunel` 的 `RemoteCommand.cache_hit` 为 `true`，materialized output 为 80,880,970 字节。CI 使用同一条 slurp 后的 jq 断言，避免对 JSON event stream 逐条输出布尔值而误判退出码。
+
 CI 不再保存第一方 `buck-out` 或 DotSlash 下载目录。前者实测恢复 300–570 MiB 后仍有 0% Buck action hit，而三平台第一方冷构建只需约半分钟到两分钟。仅 macOS 外部构建保留标准 REAPI 数据目录：外层 key 包含 runner image 与昂贵 action 的受控输入；精确 key 恢复后必须从 Buck event log 机械确认 `tuwunel` 是 remote cache hit，否则 workflow 失败。Actionlint 与 ShellCheck 使用摘要锁定的官方单文件发行物，版本字段由 Buck test 校验 Cargo 与 Starlark 事实一致。
