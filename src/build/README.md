@@ -1,6 +1,6 @@
 # HCTL2 构建环境
 
-这个目录只描述 HCTL2 第一方代码的构建环境。Tuwunel、Vikunja、Dagu、tmux、Cinny 和 Static Web Server 仍由 `src/packaging/dependencies` 按各自上游方式获取或编译，不进入它们内部的 Buck2 构建图。
+这个目录描述 HCTL2 自己的构建环境。第一方代码使用 Buck2 原生目标；Tuwunel、Vikunja、Dagu、tmux、Cinny 和 Static Web Server 以粗粒度外部子系统目标接入同一 action graph，但不把它们内部的 Cargo、Go 或 C 构建图改写成 Buck rules。Buck2 决定何时获取或构建，真正的子系统编译仍调用上游原生构建系统。
 
 `src/buck2` 是 Buck2 官方发行的 DotSlash 清单。开发机可以安装 [DotSlash](https://dotslash-cli.com/)，也可以在 `src/` 产品工作区用固定版本和 SHA-256 的安装器准备它：
 
@@ -42,3 +42,5 @@ Rust 版本、三个目标平台的官方归档地址与 SHA-256 都在 `toolcha
 外部 crate 仍在 Cargo manifests 与 `Cargo.lock` 中声明，由固定版本的 Reindeer 生成 `third-party/rust/BUCK`。更新方法见[Rust 第三方依赖说明](../third-party/rust/README.md)。
 
 CI 的第一方主检查分别运行在 Linux x86_64、macOS x86_64 和 macOS arm64 原生 runner，显式选择对应 Buck platform；Cargo 只在 Linux 保留为迁移期一致性检查。外部依赖的 native build 与完整离线安装生命周期位于独立 workflow，不用第一方绿色检查代替发行健康状态。
+
+当前没有采购或部署 Remote Execution/Remote Action Cache。相同 `buckd` 生命周期内，未变化的 action 由 Buck2 原生复用；GitHub-hosted runner 是临时机器，每个新 job 会从空的 action cache 开始。CI 不用另一套自制 fingerprint 或成品缓存冒充 Buck cache，未来接入标准 REAPI 服务时也不需要改 target 定义。

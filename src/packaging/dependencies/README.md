@@ -11,6 +11,8 @@ common/                 平台无关的下载校验、包组装、生命周期�
 platforms/linux/        Linux 构建、ELF 依赖收集、运行时与 GNU tar 归档
 platforms/macos/        macOS 原生构建、Mach-O 重定位/签名、运行时与 BSD tar 归档
 targets/*.sh            每个 OS/CPU 组合的 target ID、Rust triple、发行物 URL 和 SHA-256
+lock.json               Buck2 使用的外部制品、源码和工具链 URL/SHA-256 锁
+defs.bzl、BUCK           原生下载校验、平台选择与外部构建 action
 *-<target>.sh           明确的 bootstrap、build-package、test-package 入口
 bootstrap.sh            兼容入口：只按当前宿主机分派到对应 target
 build-package.sh        同上
@@ -31,7 +33,21 @@ Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Roset
 
 ## 构建与验证
 
-在当前宿主机生成原生包：
+发布和 CI 的主入口在 `src/` 内。下面的目标根据显式 Buck platform 选择外部制品；URL 与 SHA-256 由 `http_file`/`http_archive` 规则声明，macOS Tuwunel 则由一个粗粒度 action 调用锁定的 Cargo 与 Rust 工具链：
+
+```bash
+./buck2 build root//packaging/dependencies:prepared \
+  --target-platforms root//build/platforms:linux_x86_64_gnu \
+  --out /absolute/path/hctl2-build-cache
+
+HCTL2_BUILD_CACHE=/absolute/path/hctl2-build-cache \
+HCTL2_SKIP_BOOTSTRAP=1 \
+  packaging/dependencies/test-package-linux-x86_64.sh
+```
+
+同一 `buckd` 中再次请求没有变化的目标会直接复用 Buck action 结果。当前 GitHub-hosted runner 没有跨 job 的远端 action cache；流水线会如实冷构建，不另建平行 fingerprint 或缓存最终依赖包。
+
+这些脚本仍保留为独立调试和兼容入口。在当前宿主机不经 Buck 直接生成原生包：
 
 ```bash
 src/packaging/dependencies/build-package.sh
@@ -58,7 +74,7 @@ hctl2-<version>-<target>-sources.tar.gz.sha256
 
 Linux 构建只需基本归档工具和用于解开 Tuwunel 官方包的 `dpkg-deb`，不需要 Rust 或 C toolchain，也不调用 `apt-get`。Static Web Server 和 tmux 都使用上游完全静态链接的二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
-macOS 构建需要 Xcode Command Line Tools 和 `rustup`。脚本自行安装 Tuwunel 要求的 Rust 1.95.0 toolchain；tmux 与 Static Web Server 直接使用上游目标架构二进制，不参与本地构建。产品最低基线为 **macOS 15**，与 `tmux/tmux-builds` 官方 Darwin 发行物声明的最低系统一致；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把其他组件可能存在的非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+macOS 构建需要 Xcode Command Line Tools。Buck 路径直接下载并校验 Tuwunel 要求的 Rust 1.95.0 官方组件，把该工具链交给 Cargo；独立脚本路径则使用 `rustup` 安装同一版本。tmux 与 Static Web Server 直接使用上游目标架构二进制，不参与本地构建。产品最低基线为 **macOS 15**，与 `tmux/tmux-builds` 官方 Darwin 发行物声明的最低系统一致；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把其他组件可能存在的非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
 ## 供应链内容
 

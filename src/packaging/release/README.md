@@ -1,6 +1,6 @@
 # HCTL2 完整发行组装
 
-这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。它不进入 Tuwunel、Vikunja、Dagu、tmux、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物合同。
+这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。`root//packaging/release:inputs` 在 Buck action graph 中同时依赖第一方产物和粗粒度外部子系统产物；它不进入 Tuwunel、Vikunja、Dagu、tmux、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物合同。
 
 ## 产物
 
@@ -20,17 +20,30 @@ hctl2-<version>-<target>.SHA256SUMS
 
 ## 本地构建
 
-先在 `src/` 导出当前原生平台的第一方二进制：
+先在 `src/` 请求完整发行输入。这个目标建立“发行依赖外部构建”的真实图边，不产生另一份 fingerprint 或复制产物：
+
+```bash
+./buck2 build root//packaging/release:inputs \
+  --target-platforms root//build/platforms:linux_x86_64_gnu
+```
+
+然后把已经构建的两侧产物导出到组装工作目录：
 
 ```bash
 ./buck2 build root//packaging/release:first-party \
   --target-platforms root//build/platforms:linux_x86_64_gnu \
   --out /absolute/path/first-party
+
+./buck2 build root//packaging/dependencies:prepared \
+  --target-platforms root//build/platforms:linux_x86_64_gnu \
+  --out /absolute/path/hctl2-build-cache
 ```
 
-然后用对应平台的原生入口生成外部运行包与源码包，再组装完整发行：
+随后只做外部运行包与源码包的确定性组装，不再重复 bootstrap，再组装完整发行：
 
 ```bash
+HCTL2_BUILD_CACHE=/absolute/path/hctl2-build-cache \
+HCTL2_SKIP_BOOTSTRAP=1 \
 HCTL2_DIST_DIR=/absolute/path/dependencies \
   packaging/dependencies/build-package-linux-x86_64.sh
 
