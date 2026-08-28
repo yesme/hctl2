@@ -40,7 +40,6 @@ bootstrap_dependencies() {
     require_command tar
     require_command unzip
 
-    download_locked_inputs
     install_tuwunel_linux
     install_vikunja_linux
     install_dagu_linux

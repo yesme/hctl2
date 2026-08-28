@@ -238,18 +238,12 @@ cd hctl2-<version>-<target>
 
 ## 从源码制作外部子系统包
 
-这一节面向发布与打包开发者，产物是完整发行组装器的中间输入，不是最终用户安装步骤。在支持的原生构建宿主上运行：
+这一节面向发布与打包开发者，产物是完整发行组装器的中间输入，不是最终用户安装步骤。在支持的原生构建宿主上进入 `src/`，显式选择平台并运行 Buck：
 
 ```bash
-src/packaging/dependencies/build-package.sh
-```
-
-兼容入口按当前 `uname` 自动分派。发布流水线也可以显式调用三个互不混用的 target 入口：
-
-```bash
-src/packaging/dependencies/build-package-linux-x86_64.sh
-src/packaging/dependencies/build-package-macos-aarch64.sh
-src/packaging/dependencies/build-package-macos-x86_64.sh
+./buck2 build root//packaging/dependencies:package \
+  --target-platforms root//build/platforms:macos_arm64 \
+  --out /absolute/path/dependency-packages
 ```
 
 macOS arm64 与 Intel 必须分别在对应架构的 macOS 15+ Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel 原生构建、架构专属官方二进制、Mach-O 闭包和运行验证都属于目标合同。
@@ -257,9 +251,10 @@ macOS arm64 与 Intel 必须分别在对应架构的 macOS 15+ Mac 上原生构�
 完整验证两份归档的内容与校验清单，以及运行包的离线安装、幂等重装、启动、冒烟检查和停止：
 
 ```bash
-src/packaging/dependencies/test-package.sh
+./buck2 test root//packaging/dependencies:package-test \
+  --target-platforms root//build/platforms:macos_arm64
 ```
 
-外部运行包、源码伴随包及各自的 `.sha256` 位于 `src/dist/`，不会提交到 Git。依赖下载和编译缓存默认为 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/dependencies`；需要隔离或复用缓存时，设置绝对路径 `HCTL2_BUILD_CACHE`。
+外部运行包、源码伴随包及各自的 `.sha256` 位于导出的 Buck 目录，不会提交到 Git。版本、URL、SHA-256 和 target identity 统一来自 `packaging/dependencies/lock.json`；不存在另一套脚本缓存或目标分发表。
 
 在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`；Buck2 第一方导出、确定性组装和完整包验收记录在 `src/packaging/release/README.md`。

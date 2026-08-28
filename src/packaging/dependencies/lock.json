@@ -1,4 +1,50 @@
 {
+  "metadata": {
+    "components": {
+      "tuwunel": {
+        "version": "1.9.0",
+        "source_commit": "5b3669144219d5d4c0774743c84191b476f1b54f",
+        "source_asset": "tuwunel_source"
+      },
+      "vikunja": {
+        "version": "2.5.0",
+        "source_commit": "ef2200e9429c5cc42f5c1811433418bfcc72b3aa",
+        "source_asset": "vikunja_source"
+      },
+      "dagu": {
+        "version": "2.15.1",
+        "source_commit": "532c512944b2e5eb8991b5bc7cbeafa74fd5b47a",
+        "source_asset": "dagu_source"
+      },
+      "tmux": {
+        "version": "3.7c",
+        "source_commit": "e476c1230b958df0cb12977517d24b3dc931375b",
+        "source_asset": "tmux_source"
+      },
+      "cinny": {
+        "version": "4.12.6",
+        "source_commit": "33f4ba3674fa4f57e048e81b28f8426defc03eac",
+        "source_asset": "cinny_source"
+      },
+      "static_web_server": {
+        "version": "2.44.0",
+        "source_commit": "27aa3450b6bf70bd1fa553b2197b53032affcba1",
+        "source_asset": "static_web_server_source"
+      }
+    },
+    "runtime": {
+      "tuwunel_port": "6167",
+      "vikunja_port": "3456",
+      "dagu_port": "18080",
+      "dagu_scheduler_port": "18090",
+      "dagu_coordinator_port": "15055",
+      "dagu_coordinator_health_port": "18091",
+      "cinny_port": "6168",
+      "tmux_session": "hctl2-services"
+    },
+    "macos_deployment_target": "15.0",
+    "source_date_epoch": "946684800"
+  },
   "common": {
     "tuwunel_source": {
       "filename": "tuwunel-5b3669144219d5d4c0774743c84191b476f1b54f-source.tar.gz",
@@ -44,7 +90,11 @@
   "targets": {
     "linux_x86_64": {
       "package_target": "linux-x86_64",
-      "bootstrap": "bootstrap-linux-x86_64.sh",
+      "os": "linux",
+      "arch": "x86_64",
+      "uname_s": "Linux",
+      "uname_m": "x86_64",
+      "rust_target": "x86_64-unknown-linux-gnu",
       "assets": {
         "tuwunel": {
           "filename": "tuwunel-v1.9.0-linux-amd64.deb",
@@ -75,7 +125,11 @@
     },
     "macos_x86_64": {
       "package_target": "macos-x86_64",
-      "bootstrap": "bootstrap-macos-x86_64.sh",
+      "os": "macos",
+      "arch": "x86_64",
+      "uname_s": "Darwin",
+      "uname_m": "x86_64",
+      "rust_target": "x86_64-apple-darwin",
       "assets": {
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
@@ -101,7 +155,11 @@
     },
     "macos_arm64": {
       "package_target": "macos-aarch64",
-      "bootstrap": "bootstrap-macos-aarch64.sh",
+      "os": "macos",
+      "arch": "aarch64",
+      "uname_s": "Darwin",
+      "uname_m": "arm64",
+      "rust_target": "aarch64-apple-darwin",
       "assets": {
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-arm64-full.zip",

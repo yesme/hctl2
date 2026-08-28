@@ -3,15 +3,11 @@
 
 set -euo pipefail
 
-if [[ -n "${HCTL2_RUNTIME_SOURCE_ROOT:-}" ]]; then
-    P0_SCRIPT_DIR="$HCTL2_RUNTIME_SOURCE_ROOT"
-else
-    P0_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-fi
+P0_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly P0_SCRIPT_DIR
 
-P0_VERSIONS_FILE="${HCTL2_RUNTIME_VERSIONS_FILE:-$P0_SCRIPT_DIR/versions.sh}"
-P0_PLATFORM_FILE="${HCTL2_RUNTIME_PLATFORM_FILE:-$P0_SCRIPT_DIR/platform.sh}"
+P0_VERSIONS_FILE="$P0_SCRIPT_DIR/versions.sh"
+P0_PLATFORM_FILE="$P0_SCRIPT_DIR/platform.sh"
 readonly P0_VERSIONS_FILE P0_PLATFORM_FILE
 [[ -f "$P0_VERSIONS_FILE" ]] || {
     printf 'error: runtime versions file is missing: %s\n' "$P0_VERSIONS_FILE" >&2
@@ -24,61 +20,35 @@ readonly P0_VERSIONS_FILE P0_PLATFORM_FILE
 source "$P0_VERSIONS_FILE"
 source "$P0_PLATFORM_FILE"
 
-if [[ -n "${HCTL2_INSTALL_ROOT:-}" ]]; then
-    [[ "$HCTL2_INSTALL_ROOT" == /* && "$HCTL2_INSTALL_ROOT" != "/" ]] || {
-        printf 'error: HCTL2_INSTALL_ROOT must be an absolute, non-root path\n' >&2
-        exit 2
-    }
-    readonly P0_INSTALL_ROOT="$HCTL2_INSTALL_ROOT"
-else
-    readonly P0_INSTALL_ROOT=""
-fi
+: "${HCTL2_INSTALL_ROOT:?hctl2-services must provide HCTL2_INSTALL_ROOT}"
+[[ "$HCTL2_INSTALL_ROOT" == /* && "$HCTL2_INSTALL_ROOT" != "/" ]] || {
+    printf 'error: HCTL2_INSTALL_ROOT must be an absolute, non-root path\n' >&2
+    exit 2
+}
+readonly P0_INSTALL_ROOT="$HCTL2_INSTALL_ROOT"
 
-if [[ -n "$P0_INSTALL_ROOT" ]]; then
-    if [[ -n "${HCTL2_STATE_ROOT:-}" ]]; then
-        P0_ROOT="$HCTL2_STATE_ROOT"
-    elif [[ -n "${XDG_STATE_HOME:-}" ]]; then
-        P0_ROOT="$XDG_STATE_HOME/hctl2"
-    else
-        P0_ROOT="${HOME:?HOME must be set}/.local/state/hctl2"
-    fi
+if [[ -n "${HCTL2_STATE_ROOT:-}" ]]; then
+    P0_ROOT="$HCTL2_STATE_ROOT"
+elif [[ -n "${XDG_STATE_HOME:-}" ]]; then
+    P0_ROOT="$XDG_STATE_HOME/hctl2"
 else
-    if [[ -n "${HCTL2_BUILD_CACHE:-}" ]]; then
-        P0_ROOT="$HCTL2_BUILD_CACHE"
-    elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then
-        P0_ROOT="$XDG_CACHE_HOME/hctl2/dependencies"
-    else
-        P0_ROOT="${HOME:?HOME must be set}/.cache/hctl2/dependencies"
-    fi
+    P0_ROOT="${HOME:?HOME must be set}/.local/state/hctl2"
 fi
 
 [[ "$P0_ROOT" == /* && "$P0_ROOT" != "/" ]] || {
-    printf 'error: HCTL2_STATE_ROOT/HCTL2_BUILD_CACHE must be an absolute, non-root path\n' >&2
+    printf 'error: HCTL2_STATE_ROOT must be an absolute, non-root path\n' >&2
     exit 2
 }
 
 readonly P0_ROOT
-if [[ -n "$P0_INSTALL_ROOT" ]]; then
-    readonly P0_BIN_DIR="$P0_INSTALL_ROOT/libexec/hctl2"
-else
-    readonly P0_BIN_DIR="$P0_ROOT/bin"
-fi
+readonly P0_BIN_DIR="$P0_INSTALL_ROOT/libexec/hctl2"
 readonly P0_CONFIG_DIR="$P0_ROOT/config"
 readonly P0_DATA_DIR="$P0_ROOT/data"
-readonly P0_DOWNLOAD_DIR="$P0_ROOT/downloads"
 readonly P0_LOG_DIR="$P0_ROOT/logs"
-readonly P0_MANIFEST_DIR="$P0_ROOT/manifests"
 readonly P0_PID_DIR="$P0_ROOT/pids"
 readonly P0_RUNTIME_DIR="$P0_ROOT/runtime"
-readonly P0_TMP_DIR="$P0_ROOT/tmp"
-readonly P0_VENDOR_DIR="$P0_ROOT/vendor"
-if [[ -n "$P0_INSTALL_ROOT" ]]; then
-    readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_INSTALL_ROOT/lib/hctl2/vendor"
-    readonly P0_CINNY_ROOT="$P0_INSTALL_ROOT/share/hctl2/chatroom/cinny"
-else
-    readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_VENDOR_DIR"
-    readonly P0_CINNY_ROOT="$P0_VENDOR_DIR/cinny-$CINNY_VERSION"
-fi
+readonly P0_DEPENDENCY_LIBRARY_DIR="$P0_INSTALL_ROOT/lib/hctl2/vendor"
+readonly P0_CINNY_ROOT="$P0_INSTALL_ROOT/share/hctl2/chatroom/cinny"
 
 die() {
     printf 'error: %s\n' "$*" >&2
@@ -91,11 +61,7 @@ note() {
 
 ensure_layout() {
     mkdir -p "$P0_CONFIG_DIR" "$P0_DATA_DIR" "$P0_LOG_DIR" "$P0_PID_DIR" "$P0_RUNTIME_DIR"
-    if [[ -n "$P0_INSTALL_ROOT" ]]; then
-        [[ -d "$P0_BIN_DIR" ]] || die "installed dependency directory is missing: $P0_BIN_DIR"
-    else
-        mkdir -p "$P0_BIN_DIR" "$P0_DOWNLOAD_DIR" "$P0_MANIFEST_DIR" "$P0_TMP_DIR" "$P0_VENDOR_DIR"
-    fi
+    [[ -d "$P0_BIN_DIR" ]] || die "installed dependency directory is missing: $P0_BIN_DIR"
     chmod 700 "$P0_ROOT" "$P0_CONFIG_DIR" "$P0_DATA_DIR" "$P0_PID_DIR" "$P0_RUNTIME_DIR"
 }
 

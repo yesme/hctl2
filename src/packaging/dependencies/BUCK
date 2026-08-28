@@ -6,18 +6,40 @@ declare_external_dependencies(
     build_sources = {
         source: source
         for source in glob([
-            "bootstrap-linux-x86_64.sh",
-            "bootstrap-macos-aarch64.sh",
-            "bootstrap-macos-x86_64.sh",
             "cinny-config.json",
             "common/build.sh",
-            "common/versions.sh",
             "platforms/linux/bootstrap.sh",
             "platforms/macos/bootstrap.sh",
-            "platforms/macos/versions.sh",
-            "targets/linux-x86_64.sh",
-            "targets/macos-aarch64.sh",
-            "targets/macos-x86_64.sh",
+        ])
+    },
+    package_sources = {
+        source: source
+        for source in glob([
+            "PACKAGE-README.md",
+            "SOURCE-INFO.md.in",
+            "SOURCE-PACKAGE-README.md.in",
+            "common/build.sh",
+            "common/package.sh",
+            "common/runtime.sh",
+            "hctl2-services",
+            "install-package.sh",
+            "platforms/linux/bootstrap.sh",
+            "platforms/linux/package.sh",
+            "platforms/linux/runtime.sh",
+            "platforms/macos/bootstrap.sh",
+            "platforms/macos/package.sh",
+            "platforms/macos/runtime.sh",
+            "smoke.sh",
+            "start.sh",
+            "status.sh",
+            "stop.sh",
+        ])
+    },
+    test_sources = {
+        source: source
+        for source in glob([
+            "common/build.sh",
+            "common/test-package.sh",
         ])
     },
 )

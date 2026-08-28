@@ -15,8 +15,10 @@ write_checksum_manifest() {
 }
 
 assemble_dependency_package() {
-    local repository_root
     local source_root
+    local license_file
+    local usage_file
+    local build_metadata
     local hctl2_version
     local package_id
     local source_package_id
@@ -38,14 +40,20 @@ assemble_dependency_package() {
     require_command sed
     require_command tar
 
-    repository_root="$(cd -- "$P0_DEPENDENCY_SOURCE_ROOT/../../.." && pwd -P)"
-    source_root="$repository_root/src"
+    source_root="${HCTL2_PRODUCT_ROOT:?Buck must declare the product root}"
+    license_file="${HCTL2_LICENSE_FILE:?Buck must declare the HCTL2 license}"
+    usage_file="${HCTL2_USAGE_FILE:?Buck must declare the usage guide}"
+    build_metadata="${HCTL2_BUILD_METADATA:?Buck must declare generated build metadata}"
+    [[ -f "$source_root/Cargo.toml" ]] || die "Buck product root is missing Cargo.toml"
+    [[ -f "$license_file" ]] || die "Buck HCTL2 license input is missing"
+    [[ -f "$usage_file" ]] || die "Buck usage guide input is missing"
+    [[ -f "$build_metadata" ]] || die "Buck build metadata input is missing"
     hctl2_version="$(read_hctl2_version "$source_root/Cargo.toml")"
     [[ -n "$hctl2_version" ]] || die "could not read workspace package version"
 
     package_id="hctl2-$hctl2_version-$HCTL2_TARGET_ID"
     source_package_id="$package_id-sources"
-    dist_dir="${HCTL2_DIST_DIR:-$source_root/dist}"
+    dist_dir="${HCTL2_DIST_DIR:?Buck must declare the package output directory}"
     archive="$dist_dir/$package_id.tar.gz"
     source_archive="$dist_dir/$source_package_id.tar.gz"
     build_dir="$(mktemp -d "$P0_TMP_DIR/package.XXXXXX")"
@@ -68,14 +76,11 @@ assemble_dependency_package() {
     readonly PACKAGE_BUILD_DIR_TO_CLEAN
     trap 'find "${PACKAGE_BUILD_DIR_TO_CLEAN:?}" -depth -delete' EXIT
 
-    if [[ "${HCTL2_SKIP_BOOTSTRAP:-0}" != "1" ]]; then
-        bootstrap_dependencies
-    fi
     for component in tuwunel vikunja dagu tmux static-web-server; do
-        [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing after bootstrap"
+        [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from the prepared action"
     done
     [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
-        die "Cinny is missing after bootstrap"
+        die "Cinny is missing from the prepared action"
 
     mkdir -p \
         "$payload_root/bin" \
@@ -98,14 +103,14 @@ assemble_dependency_package() {
         install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/$script" "$payload_root/lib/hctl2/services/$script"
     done
     install -m 0644 "$P0_COMMON_DIR/runtime.sh" "$payload_root/lib/hctl2/services/lib.sh"
-    install -m 0644 "$P0_COMMON_DIR/versions.sh" "$payload_root/lib/hctl2/services/versions.sh"
+    install -m 0644 "$build_metadata" "$payload_root/lib/hctl2/services/versions.sh"
     install -m 0644 \
         "$P0_DEPENDENCY_SOURCE_ROOT/platforms/$HCTL2_TARGET_OS/runtime.sh" \
         "$payload_root/lib/hctl2/services/platform.sh"
 
     platform_stage_payload
 
-    install -m 0644 "$repository_root/LICENSE" \
+    install -m 0644 "$license_file" \
         "$payload_root/share/hctl2/licenses/HCTL2-Apache-2.0.txt"
     tar -xOf "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
         "cinny-$CINNY_SOURCE_COMMIT/LICENSE" \
@@ -166,7 +171,7 @@ assemble_dependency_package() {
 
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/install-package.sh" "$package_root/install.sh"
     install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/PACKAGE-README.md" "$package_root/README.md"
-    install -m 0644 "$repository_root/docs/usage.md" "$package_root/USAGE.md"
+    install -m 0644 "$usage_file" "$package_root/USAGE.md"
     sed "s/@SOURCE_PACKAGE_ID@/$source_package_id/g" \
         "$P0_DEPENDENCY_SOURCE_ROOT/SOURCE-INFO.md.in" >"$package_root/SOURCES.md"
     write_checksum_manifest "$package_root" MANIFEST.sha256 \
@@ -218,7 +223,8 @@ assemble_dependency_package() {
         README.md sources.tsv target.tsv sources
 
     mkdir -p "$dist_dir"
-    source_date_epoch="${SOURCE_DATE_EPOCH:-$(git -C "$repository_root" log -1 --format=%ct)}"
+    source_date_epoch="${SOURCE_DATE_EPOCH:?Buck must declare SOURCE_DATE_EPOCH}"
+    [[ "$source_date_epoch" =~ ^[0-9]+$ ]] || die "SOURCE_DATE_EPOCH must be an integer"
     platform_create_archive "$build_dir" "$package_id" "$archive" "$source_date_epoch"
     platform_create_archive \
         "$build_dir" "$source_package_id" "$source_archive" "$source_date_epoch"

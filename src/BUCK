@@ -1,5 +1,11 @@
 oncall("hctl2")
 
+export_file(
+    name = "Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
 filegroup(
     name = "clippy",
     srcs = {

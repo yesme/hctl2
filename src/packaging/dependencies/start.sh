@@ -17,7 +17,7 @@ start_tuwunel() {
     local registration_token_file="$P0_CONFIG_DIR/tuwunel-registration-token"
     local registration_token
 
-    [[ -x "$binary" ]] || die "Tuwunel is not installed; run bootstrap.sh"
+    [[ -x "$binary" ]] || die "Tuwunel is missing; reinstall the HCTL2 package"
     if component_running tuwunel "$binary"; then
         note "tuwunel already running"
         return
@@ -90,7 +90,7 @@ start_vikunja() {
     local secret_file="$P0_CONFIG_DIR/vikunja-secret"
     local secret
 
-    [[ -x "$binary" ]] || die "Vikunja is not installed; run bootstrap.sh"
+    [[ -x "$binary" ]] || die "Vikunja is missing; reinstall the HCTL2 package"
     if component_running vikunja "$binary"; then
         note "vikunja already running"
         return
@@ -118,7 +118,7 @@ start_dagu() {
     local binary="$P0_BIN_DIR/dagu"
     local data="$P0_DATA_DIR/dagu"
 
-    [[ -x "$binary" ]] || die "Dagu is not installed; run bootstrap.sh"
+    [[ -x "$binary" ]] || die "Dagu is missing; reinstall the HCTL2 package"
     if component_running dagu "$binary"; then
         note "dagu already running"
         return
@@ -149,7 +149,7 @@ start_tmux() {
     local socket
     local pid
 
-    [[ -x "$binary" ]] || die "tmux is not installed; run bootstrap.sh"
+    [[ -x "$binary" ]] || die "tmux is missing; reinstall the HCTL2 package"
     mkdir -p "$runtime"
     chmod 700 "$runtime"
     socket="$(tmux_socket_path)"

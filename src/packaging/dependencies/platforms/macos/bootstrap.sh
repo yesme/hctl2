@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # macOS dependency acquisition and Tuwunel native compilation.
 
-P0_MACOS_PLATFORM_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly P0_MACOS_PLATFORM_DIR
-source "$P0_MACOS_PLATFORM_DIR/versions.sh"
-
 readonly TUWUNEL_MACOS_FEATURES="brotli_compression,direct_tls,element_hacks,gzip_compression,media_thumbnail,release_max_log_level,url_preview,zstd_compression"
 
 macos_libclang_path() {
@@ -101,21 +97,13 @@ install_tuwunel_macos() {
 }
 
 tuwunel_toolchain_bin() {
-    local toolchain_root
+    local toolchain_root="${HCTL2_TUWUNEL_TOOLCHAIN_ROOT:-}"
 
-    if [[ -n "${HCTL2_TUWUNEL_TOOLCHAIN_ROOT:-}" ]]; then
-        toolchain_root="$HCTL2_TUWUNEL_TOOLCHAIN_ROOT"
-        [[ "$toolchain_root" == /* ]] || \
-            die "HCTL2_TUWUNEL_TOOLCHAIN_ROOT must be an absolute path"
-        [[ -x "$toolchain_root/bin/cargo" && -x "$toolchain_root/bin/rustc" ]] || \
-            die "Tuwunel Rust toolchain is incomplete: $toolchain_root"
-        printf '%s\n' "$toolchain_root/bin"
-        return
-    fi
-
-    rustup toolchain install "$TUWUNEL_RUST_TOOLCHAIN" --profile minimal
-    rustup target add --toolchain "$TUWUNEL_RUST_TOOLCHAIN" "$HCTL2_RUST_TARGET"
-    dirname -- "$(rustup which --toolchain "$TUWUNEL_RUST_TOOLCHAIN" rustc)"
+    [[ "$toolchain_root" == /* ]] || \
+        die "Buck did not provide an absolute Tuwunel Rust toolchain"
+    [[ -x "$toolchain_root/bin/cargo" && -x "$toolchain_root/bin/rustc" ]] || \
+        die "Tuwunel Rust toolchain is incomplete: $toolchain_root"
+    printf '%s\n' "$toolchain_root/bin"
 }
 
 install_vikunja_macos() {
@@ -164,16 +152,12 @@ bootstrap_dependencies() {
     require_command lipo
     require_command make
     require_command otool
-    if [[ -z "${HCTL2_TUWUNEL_TOOLCHAIN_ROOT:-}" ]]; then
-        require_command rustup
-    fi
     require_command sysctl
     require_command tar
     require_command unzip
     require_command vtool
     require_command xcrun
 
-    download_locked_inputs
     install_tuwunel_macos
     install_vikunja_macos
     install_dagu_macos

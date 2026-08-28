@@ -3,49 +3,43 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly SCRIPT_DIR
-DEPENDENCY_ROOT="$(cd -- "$SCRIPT_DIR/../dependencies" && pwd -P)"
-readonly DEPENDENCY_ROOT
-
 usage() {
-    printf 'usage: test-package.sh RUNTIME_ARCHIVE SOURCE_ARCHIVE\n'
+    printf 'usage: test-package.sh RELEASE_OUTPUT_DIRECTORY\n'
 }
 
-if [[ "$#" -ne 2 ]]; then
+if [[ "$#" -ne 1 ]]; then
     usage >&2
     exit 2
 fi
 
-ARCHIVE="$(cd -- "$(dirname -- "$1")" && pwd -P)/$(basename -- "$1")"
-SOURCE_ARCHIVE="$(cd -- "$(dirname -- "$2")" && pwd -P)/$(basename -- "$2")"
-readonly ARCHIVE SOURCE_ARCHIVE
+: "${HCTL2_BUILD_METADATA:?Buck must provide HCTL2_BUILD_METADATA}"
+: "${HCTL2_DEPENDENCY_SOURCE_ROOT:?Buck must provide HCTL2_DEPENDENCY_SOURCE_ROOT}"
+readonly RELEASE_OUTPUT_DIRECTORY="$1"
+[[ -d "$RELEASE_OUTPUT_DIRECTORY" ]] || {
+    printf 'release output directory is missing: %s\n' "$RELEASE_OUTPUT_DIRECTORY" >&2
+    exit 1
+}
+[[ -f "$HCTL2_BUILD_METADATA" ]] || {
+    printf 'build metadata is missing: %s\n' "$HCTL2_BUILD_METADATA" >&2
+    exit 1
+}
 
+# shellcheck source=/dev/null
+source "$HCTL2_BUILD_METADATA"
 # shellcheck source=../dependencies/common/build.sh
-source "$DEPENDENCY_ROOT/common/build.sh"
+source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 
-archive_name="$(basename -- "$ARCHIVE")"
-PACKAGE_ID="${archive_name%.tar.gz}"
+archives=("$RELEASE_OUTPUT_DIRECTORY"/hctl2-*-"$HCTL2_TARGET_ID".tar.gz)
+if [[ "${#archives[@]}" -ne 1 || ! -f "${archives[0]}" ]]; then
+    die "expected exactly one complete release archive for $HCTL2_TARGET_ID"
+fi
+ARCHIVE="${archives[0]}"
+PACKAGE_ID="$(basename -- "$ARCHIVE" .tar.gz)"
 SOURCE_PACKAGE_ID="$PACKAGE_ID-sources"
-case "$PACKAGE_ID" in
-    *-linux-x86_64)
-        # shellcheck source=../dependencies/targets/linux-x86_64.sh
-        source "$DEPENDENCY_ROOT/targets/linux-x86_64.sh"
-        ;;
-    *-macos-x86_64)
-        # shellcheck source=../dependencies/targets/macos-x86_64.sh
-        source "$DEPENDENCY_ROOT/targets/macos-x86_64.sh"
-        ;;
-    *-macos-aarch64)
-        # shellcheck source=../dependencies/targets/macos-aarch64.sh
-        source "$DEPENDENCY_ROOT/targets/macos-aarch64.sh"
-        ;;
-    *) die "unsupported release package: $PACKAGE_ID" ;;
-esac
-readonly PACKAGE_ID SOURCE_PACKAGE_ID
+SOURCE_ARCHIVE="$RELEASE_OUTPUT_DIRECTORY/$SOURCE_PACKAGE_ID.tar.gz"
+readonly ARCHIVE PACKAGE_ID SOURCE_ARCHIVE SOURCE_PACKAGE_ID
 
-[[ "$(basename -- "$SOURCE_ARCHIVE")" == "$SOURCE_PACKAGE_ID.tar.gz" ]] || \
-    die "source package does not match runtime package"
+[[ -f "$SOURCE_ARCHIVE" ]] || die "source package is missing: $SOURCE_ARCHIVE"
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-release-contract.XXXXXX")"
 case "$test_root" in
@@ -83,7 +77,7 @@ trap - EXIT
 # the assembled archive proves that the final user package preserves that
 # contract rather than merely testing the intermediate dependency package.
 # shellcheck source=../dependencies/common/test-package.sh
-source "$DEPENDENCY_ROOT/common/test-package.sh"
+source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/test-package.sh"
 test_dependency_package
 
 note "$HCTL2_TARGET_ID complete release passed first-party and service lifecycle tests"

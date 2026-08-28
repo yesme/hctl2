@@ -44,6 +44,5 @@
 | `design/control-storage-20260821.md` | 五储对照总表是否成文进 `spec/system.md` |
 | `design/context-feeding-20260826.md` §8 | 执行中产生的经验（lesson）是否作为 Result Proposal 可选输出项自动提案；晋升仍走 Memo/Skill |
 | `design/hctl2-agentd-prd-20260826.md` | 讨论稿 → 合同或交付文档 |
-| `design/grok-shell-scripts-buck2-20260828a.md` | 已拍板并施工：payload/源码组包、完整发行和测试目标原生化后核销 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `notes/doc-cleanup-backlog-20260825.md` | 13 条过强断言逐条裁决（零散进行，不整份等） |

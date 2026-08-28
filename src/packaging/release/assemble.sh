@@ -5,11 +5,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_DIR
-PRODUCT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
-readonly PRODUCT_ROOT
+: "${HCTL2_PRODUCT_ROOT:?Buck must provide HCTL2_PRODUCT_ROOT}"
+: "${HCTL2_DEPENDENCY_SOURCE_ROOT:?Buck must provide HCTL2_DEPENDENCY_SOURCE_ROOT}"
+readonly HCTL2_PRODUCT_ROOT HCTL2_DEPENDENCY_SOURCE_ROOT
+[[ -f "$HCTL2_PRODUCT_ROOT/Cargo.toml" ]] || \
+    { printf 'error: product Cargo.toml is missing\n' >&2; exit 1; }
 
 # shellcheck source=../dependencies/common/build.sh
-source "$SCRIPT_DIR/../dependencies/common/build.sh"
+source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 
 usage() {
     printf '%s\n' \
@@ -237,7 +240,7 @@ case "$target" in
     linux-x86_64 | macos-x86_64 | macos-aarch64) ;;
     *) die "unsupported first-party release target: $target" ;;
 esac
-hctl2_version="$(read_hctl2_version "$PRODUCT_ROOT/Cargo.toml")"
+hctl2_version="$(read_hctl2_version "$HCTL2_PRODUCT_ROOT/Cargo.toml")"
 [[ -n "$hctl2_version" ]] || die "could not read HCTL2 workspace version"
 package_id="hctl2-$hctl2_version-$target"
 source_package_id="$package_id-sources"
@@ -287,7 +290,8 @@ install -m 0644 "$first_party/binaries.tsv" "$payload_root/share/hctl2/first-par
 install -m 0755 "$SCRIPT_DIR/install.sh" "$package_root/install.sh"
 install -m 0644 "$SCRIPT_DIR/PACKAGE-README.md" "$package_root/README.md"
 
-source_date_epoch="${SOURCE_DATE_EPOCH:-$(git -C "$PRODUCT_ROOT" log -1 --format=%ct)}"
+: "${SOURCE_DATE_EPOCH:?Buck must provide SOURCE_DATE_EPOCH}"
+source_date_epoch="$SOURCE_DATE_EPOCH"
 [[ "$source_date_epoch" =~ ^[0-9]+$ ]] || die "SOURCE_DATE_EPOCH must be an integer"
 sbom_name="$package_id.spdx"
 write_spdx_sbom \

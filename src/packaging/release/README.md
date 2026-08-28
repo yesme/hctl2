@@ -1,6 +1,6 @@
 # HCTL2 完整发行组装
 
-这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。`root//packaging/release:inputs` 在 Buck action graph 中同时依赖第一方产物和粗粒度外部子系统产物；它不进入 Tuwunel、Vikunja、Dagu、tmux、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物合同。
+这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。`root//packaging/release:complete` 在 Buck action graph 中同时依赖第一方产物和粗粒度外部子系统包；它不进入 Tuwunel、Vikunja、Dagu、tmux、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物合同。
 
 ## 产物
 
@@ -20,46 +20,19 @@ hctl2-<version>-<target>.SHA256SUMS
 
 ## 本地构建
 
-先在 `src/` 请求完整发行输入。这个目标建立“发行依赖外部构建”的真实图边，不产生另一份 fingerprint 或复制产物：
+在 `src/` 用一个目标产出完整发行目录：
 
 ```bash
-./buck2 build root//packaging/release:inputs \
+./buck2 build root//packaging/release:complete \
+  --target-platforms root//build/platforms:linux_x86_64_gnu \
+  --out /absolute/path/release
+```
+
+完整用户包验收也是 Buck 测试目标：
+
+```bash
+./buck2 test root//packaging/release:complete-test \
   --target-platforms root//build/platforms:linux_x86_64_gnu
 ```
 
-然后把已经构建的两侧产物导出到组装工作目录：
-
-```bash
-./buck2 build root//packaging/release:first-party \
-  --target-platforms root//build/platforms:linux_x86_64_gnu \
-  --out /absolute/path/first-party
-
-./buck2 build root//packaging/dependencies:prepared \
-  --target-platforms root//build/platforms:linux_x86_64_gnu \
-  --out /absolute/path/hctl2-build-cache
-```
-
-随后只做外部运行包与源码包的确定性组装，不再重复 bootstrap，再组装完整发行：
-
-```bash
-HCTL2_BUILD_CACHE=/absolute/path/hctl2-build-cache \
-HCTL2_SKIP_BOOTSTRAP=1 \
-HCTL2_DIST_DIR=/absolute/path/dependencies \
-  packaging/dependencies/build-package-linux-x86_64.sh
-
-packaging/release/assemble.sh \
-  --first-party /absolute/path/first-party \
-  --dependencies /absolute/path/dependencies/hctl2-<version>-linux-x86_64.tar.gz \
-  --sources /absolute/path/dependencies/hctl2-<version>-linux-x86_64-sources.tar.gz \
-  --output /absolute/path/release
-```
-
-最终验收必须针对完整用户包，而不是中间依赖包：
-
-```bash
-packaging/release/test-package.sh \
-  /absolute/path/release/hctl2-<version>-linux-x86_64.tar.gz \
-  /absolute/path/release/hctl2-<version>-linux-x86_64-sources.tar.gz
-```
-
-macOS Intel 与 Apple Silicon 必须在对应架构的 GitHub-hosted Mac 上分别执行同一流程。组装阶段对自建 Mach-O 做 ad-hoc 签名；公开发布所需的 Developer ID 签名和 notarization 属于凭证受控的 CD 阶段，不混入确定性构建输入。
+`complete` 声明第一方导出、外部运行/源码包、许可证、用户文档和组装器为输入；`complete-test` 声明最终目录、生成的目标 metadata 和生命周期测试体为输入。workflow 只负责选择平台、调用这两个目标、上传、证明和发布，不再编码组包步骤。macOS Intel 与 Apple Silicon 必须在对应架构的 GitHub-hosted Mac 上分别执行同一流程。组装阶段对自建 Mach-O 做 ad-hoc 签名；公开发布所需的 Developer ID 签名和 notarization 属于凭证受控的 CD 阶段，不混入确定性构建输入。

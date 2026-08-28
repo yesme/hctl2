@@ -6,10 +6,20 @@ on:
       - main
     paths:
       - ".github/workflows/dependencies.yml"
+      - ".buckconfig"
+      - ".buckroot"
+      - "BUCK"
+      - "LICENSE"
+      - "docs/usage.md"
       - "src/packaging/dependencies/**"
   pull_request:
     paths:
       - ".github/workflows/dependencies.yml"
+      - ".buckconfig"
+      - ".buckroot"
+      - "BUCK"
+      - "LICENSE"
+      - "docs/usage.md"
       - "src/packaging/dependencies/**"
   workflow_dispatch:
 
@@ -52,15 +62,12 @@ jobs:
         include:
           - platform: Linux x86_64
             runner: ubuntu-26.04
-            target: linux-x86_64
             buck_target: linux_x86_64_gnu
           - platform: macOS x86_64
             runner: macos-15-intel
-            target: macos-x86_64
             buck_target: macos_x86_64
           - platform: macOS arm64
             runner: macos-15
-            target: macos-aarch64
             buck_target: macos_arm64
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -78,14 +85,7 @@ jobs:
           build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
 
-      - name: Build external subsystems with Buck2
+      - name: Test external package and offline lifecycle with Buck2
         run: >-
-          ./buck2 build root//packaging/dependencies:prepared
+          ./buck2 test root//packaging/dependencies:package-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
-          --out "$RUNNER_TEMP/hctl2-build-cache"
-
-      - name: Test offline install and lifecycle
-        env:
-          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
-          HCTL2_SKIP_BOOTSTRAP: "1"
-        run: packaging/dependencies/test-package-${{ matrix.target }}.sh
