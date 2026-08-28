@@ -39,7 +39,7 @@ jobs:
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
           if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/|\.github/workflows/release\.yml$)'; then
+            '^(src/|\.buckconfig$|\.buckroot$|BUCK$|LICENSE$|docs/usage\.md$|\.github/workflows/release\.yml$)'; then
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -103,57 +103,16 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: test "$GITHUB_REF_NAME" = "v${{ steps.metadata.outputs.version }}"
 
-      - name: Build complete release inputs with Buck2
+      - name: Build complete release with Buck2
         run: >-
-          ./buck2 build root//packaging/release:inputs
+          ./buck2 build root//packaging/release:complete
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
-
-      - name: Export first-party binaries
-        run: >-
-          ./buck2 build root//packaging/release:first-party
-          --target-platforms root//build/platforms:${{ matrix.buck_target }}
-          --out "$RUNNER_TEMP/hctl2-first-party"
-
-      - name: Export prepared external subsystems
-        run: >-
-          ./buck2 build root//packaging/dependencies:prepared
-          --target-platforms root//build/platforms:${{ matrix.buck_target }}
-          --out "$RUNNER_TEMP/hctl2-build-cache"
-
-      - name: Package external subsystems
-        env:
-          HCTL2_BUILD_CACHE: ${{ runner.temp }}/hctl2-build-cache
-          HCTL2_DIST_DIR: ${{ runner.temp }}/hctl2-dependencies
-          HCTL2_SKIP_BOOTSTRAP: "1"
-        run: packaging/dependencies/build-package-${{ matrix.package_target }}.sh
-
-      - name: Assemble complete release
-        run: >-
-          packaging/release/assemble.sh
-          --first-party "$RUNNER_TEMP/hctl2-first-party"
-          --dependencies "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
-          --sources "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz"
-          --output "$RUNNER_TEMP/hctl2-release"
-
-      - name: Verify deterministic assembly
-        run: |
-          packaging/release/assemble.sh \
-            --first-party "$RUNNER_TEMP/hctl2-first-party" \
-            --dependencies "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz" \
-            --sources "$RUNNER_TEMP/hctl2-dependencies/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz" \
-            --output "$RUNNER_TEMP/hctl2-release-repeat"
-          cmp \
-            "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz" \
-            "$RUNNER_TEMP/hctl2-release-repeat/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
-          cmp \
-            "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.spdx" \
-            "$RUNNER_TEMP/hctl2-release-repeat/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.spdx"
+          --out "$RUNNER_TEMP/hctl2-release"
 
       - name: Test complete offline install and lifecycle
         run: >-
-          packaging/release/test-package.sh
-          "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}.tar.gz"
-          "$RUNNER_TEMP/hctl2-release/hctl2-${{ steps.metadata.outputs.version }}-${{ matrix.package_target }}-sources.tar.gz"
+          ./buck2 test root//packaging/release:complete-test
+          --target-platforms root//build/platforms:${{ matrix.buck_target }}
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

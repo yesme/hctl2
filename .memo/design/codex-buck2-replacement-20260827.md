@@ -1,7 +1,7 @@
 # Buck2 替换方案：第一方构建图与外部子系统边界
 
-> 状态：已落地 · 主构建图完成，shell-as-Make 原生化收口继续施工<br>
-> 基线：main @ c99114d（决定基线）；实现从 PR #15 起逐批合入<br>
+> 状态：已落地 · 第一方、外部组包、完整发行与测试均进入 Buck action graph<br>
+> 基线：main @ f6c025e；实现从 PR #15 起逐批合入<br>
 > 去向：已进入 src/ 第一方构建、CI 与发行组装；后续按显式工具链升级维护<br>
 > 日期：2026-08-27  
 > 说明：Accepted · 作为后续四批实现 PR 的施工依据  
@@ -88,21 +88,20 @@ external subsystem builds
 
 ## 仓库形状
 
-Buck2 启动所需的 `.buckconfig`、`.buckroot` 与 DotSlash launcher 和其他产品构建代码一并位于 `src/`。仓库根保持文档层，不属于 Buck cell：
+Buck workspace 位于仓库根，产品源码继续作为名为 `root` 的独立 cell。这样 `LICENSE` 与 `docs/usage.md` 能成为发行 action 的声明输入，又不改变既有 `root//...` 标签和从 `src/` 调用 `./buck2` 的入口：
 
 ```text
-src/                         # Buck project/cell root
+repository/                  # Buck workspace / repository cell
 ├── .buckconfig
 ├── .buckroot
-├── buck2
-├── build/
-│   ├── platforms/
-│   ├── toolchains/
-│   └── rules/
-├── apps/*/BUCK
-├── crates/*/BUCK
-├── third-party/rust/
-└── packaging/dependencies/    # 外部子系统，保留原生构建
+├── BUCK                    # 导出许可证与用户文档
+└── src/                    # root cell
+    ├── buck2
+    ├── build/{platforms,toolchains,rules}/
+    ├── apps/*/BUCK
+    ├── crates/*/BUCK
+    ├── third-party/rust/
+    └── packaging/          # 外部粗粒度 action 与完整发行目标
 ```
 
 目录随首个真实使用场景创建，不提前铺 Workbench、Node 或未来语言的空壳。
@@ -181,7 +180,7 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 - PR #16 建立 Buck2、DotSlash、Prelude、三平台定义和 Rust 1.98.0 工具链；
 - PR #17 迁移 protocol、agentd、tool、单元测试、smoke 与 Clippy，并钉 Reindeer；
 - PR #18 把 Linux、macOS Intel、macOS Apple Silicon 的主检查切到 Buck2，独立跑通三平台外部整包生命周期；
-- 最后一批把 Buck project root、`.buckconfig`、`.buckroot` 与 launcher 收进 `src/`，导出第一方二进制合同，加入确定性完整发行组装、SPDX、checksums、artifact attestation 与 tag 发布流水线。
+- 后续批次导出第一方二进制合同，加入确定性完整发行组装、SPDX、checksums、artifact attestation 与 tag 发布流水线；最终把 workspace 提到仓库根、保留 `src` 为 `root` cell，使根目录发行资料也进入声明输入。
 
 第 3 批远端冷构建实测：Linux 外部整包 1 分 58 秒，Apple Silicon 26 分 35 秒，Intel Mac 37 分 9 秒；三者都完成离线安装、四执行面启动、状态、smoke 和停止。Intel 链接器可能产生旧式 `LC_VERSION_MIN_MACOSX`，校验器因此同时识别它与现代 `LC_BUILD_VERSION`；当时两种形式共同受 macOS 13 deployment target 上限约束。2026-08-28 改用最低系统为 15 的官方 `tmux-builds` Darwin 二进制后，产品基线升为 macOS 15，自主 tmux/libevent/ncurses/utf8proc 构建链一并删除。
 
@@ -198,24 +197,24 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 - `packaging/dependencies/lock.json` 声明外部发行物、源码和 macOS Tuwunel Rust 组件的 URL 与 SHA-256；
 - Buck `http_file`/`http_archive` 负责下载与摘要验证，只把当前 target 所需资产放进执行闭包；
 - Linux 外部 action 解包官方二进制；macOS 外部 action 使用 Buck 声明的 Rust 1.95.0 工具链调用 Tuwunel 的 Cargo 构建，其余组件消费官方二进制；
-- `packaging/release:inputs` 同时依赖第一方导出和外部子系统准备目标，因此一条 Buck 请求覆盖完整发行输入；
-- 包组装仍消费仓库根的许可证和中文使用说明，属于 Buck cell 外的发行封装阶段；它设置 `HCTL2_SKIP_BOOTSTRAP=1`，不会重复外部构建。
+- `packaging/dependencies:package` 把准备结果组装成运行包、源码包和 sidecar；`packaging/release:complete` 同时依赖该目录与第一方导出，因此一条 Buck 请求直接产出完整发行；
+- 仓库根是 workspace，许可证和中文使用说明由 `repository` cell 导出并成为组包 action 的声明输入；没有 Buck cell 外的发行封装阶段。
 - Code workflow 的 target pattern 明确限定在第一方应用、crate 与工具链探针；外部子系统只由 Release workflow 构建一次。依赖 workflow 在 PR 中只跑静态合同，main push 或手动触发时才独立复验三平台生命周期。
 
-本机相同 `buckd` 下，连续第二次构建 `packaging/release:inputs` 为零下载、零 action。GitHub-hosted runner 每个 job 是临时机器；在没有 REAPI 服务的现状下，跨 job 构建保持冷启动。这个事实写进 CI 边界，不用独立成品缓存掩盖。将来若采购标准 REAPI，现有 target/action key 可直接复用，不需要再次改写外部目标。
+本机相同 `buckd` 下，未变化的 `packaging/release:complete` 直接复用 action 结果。GitHub-hosted runner 每个 job 是临时机器；在没有 REAPI 服务的现状下，跨 job 构建保持冷启动。这个事实写进 CI 边界，不用独立成品缓存掩盖。将来若采购标准 REAPI，现有 target/action key 可直接复用，不需要再次改写外部目标。
 
 ## 后续收口：消除 shell-as-Make
 
-2026-08-28 再次核对后确认：第一方构建、外部制品下载、macOS Tuwunel 工具链和完整发行输入已经进入 Buck action graph；但外部 payload 组包、完整发行组装与生命周期测试仍由 workflow 顺序调用 shell。当前 `prepared` 也是 Buck 管理的粗粒度 action，而不是已经把内部组包逻辑改写成声明式 Buck 输出。
+2026-08-28 再次核对后发现的 shell-as-Make 已收口：第一方构建、外部制品下载、macOS Tuwunel 工具链、payload/源码组包、完整发行组装与生命周期测试都位于 Buck action graph。
 
-后续按以下边界继续施工：
+落地后的边界：
 
-- 外部运行包与源码包成为按 platform 选择的 Buck 输出，不再要求 workflow 先导出 build cache、再调用 `build-package-<target>.sh`；
-- 完整运行包、源码包、SBOM、release manifest 和 checksums 成为一个 Buck 发行目标的声明输出，不再由 workflow 直接调用 `assemble.sh`；
-- 包合同与离线生命周期成为 Buck 测试目标；测试体可以继续使用 shell，但输入、平台和被测产物必须由 Buck 声明；
-- 删除只负责 `uname` 或 target 分发的兼容入口，平台选择统一由 Buck configuration 与 `select` 完成；
+- 外部运行包与源码包是 `packaging/dependencies:package` 的按平台目录输出；
+- 完整运行包、源码包、SBOM、release manifest 和 checksums 是 `packaging/release:complete` 的目录输出；
+- 包合同与离线生命周期由 `package-test` / `complete-test` 的 `sh_test` 执行；测试体保留 shell，输入、平台和被测产物由 Buck 声明；
+- 只负责 `uname`、target 分发和重复版本配置的入口已删除；平台选择统一由 Buck configuration 与 `select` 完成，`lock.json` 是唯一外部构建 metadata 事实源；
 - 继续保留用户安装后需要的 `install/start/stop/status/smoke`、平台 runtime hook，以及一次性 DotSlash/Reindeer 引导工具；这些不是构建编排重复实现；
 - macOS Tuwunel 继续由粗粒度 action 调上游 Cargo，不把上游 crate 图复制成 HCTL2 rules；
 - 不新增自制下载器、fingerprint、缓存协议或 workflow 产物接力。Buck 的下载规则、action key、声明输出和测试规则是唯一构建机制。
 
-收口完成的判据是：一条按平台配置的 Buck 请求能产出最终发行文件；workflow 只负责选择平台、调用 Buck、上传/证明产物和发布，不再理解组包步骤；仓库中剩余脚本均能归入“上游原生构建动作”“随包运行期代码”“测试体”或“构建工具引导”，不再存在 shell 充当第二套构建图。
+收口判据已经满足：一条按平台配置的 Buck 请求能产出最终发行文件；workflow 只负责选择平台、调用 Buck、上传/证明产物和发布，不再理解组包步骤。仓库中剩余脚本均归入“上游原生构建 action body”“随包运行期代码”“测试体”或“构建工具引导”，不再存在 shell 充当第二套构建图。

@@ -9,7 +9,7 @@ build/tools/install-dotslash /path/to/tools
 export PATH=/path/to/tools:$PATH
 ```
 
-随后在 `src/` 内直接使用 `./buck2` 入口；同目录的 `.buckroot` 与 `.buckconfig` 把构建图限制在产品工作区。Buck2 和匹配的 Prelude 会按清单自动下载并校验，第一次执行还会下载当前平台的 Rust 官方工具链归档。
+随后在 `src/` 内直接使用 `./buck2` 入口。仓库根的 `.buckroot` 与 `.buckconfig` 定义 Buck workspace；`src/` 仍是名为 `root` 的产品 cell，因此既能保持既有 `root//...` 标签，又能把根目录的许可证和用户文档作为发行目标的声明输入。Buck2 和匹配的 Prelude 会按清单自动下载并校验，第一次执行还会下载当前平台的 Rust 官方工具链归档。
 
 验证构建基础设施：
 

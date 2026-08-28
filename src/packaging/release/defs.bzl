@@ -1,26 +1,5 @@
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 
-def _release_inputs_impl(ctx):
-    first_party = ctx.attrs.first_party[DefaultInfo].default_outputs
-    dependencies = ctx.attrs.dependencies[DefaultInfo].default_outputs
-    return [
-        DefaultInfo(
-            other_outputs = first_party + dependencies,
-            sub_targets = {
-                "first-party": [DefaultInfo(other_outputs = first_party)],
-                "dependencies": [DefaultInfo(other_outputs = dependencies)],
-            },
-        ),
-    ]
-
-_release_inputs = rule(
-    impl = _release_inputs_impl,
-    attrs = {
-        "dependencies": attrs.dep(),
-        "first_party": attrs.dep(),
-    },
-)
-
 def _export_command(target: str) -> str:
     return " ".join([
         "bash $(location :export-first-party.sh)",
@@ -47,10 +26,74 @@ def first_party_release(name: str):
         visibility = ["PUBLIC"],
     )
 
-def complete_release_inputs(name: str):
-    _release_inputs(
+def _complete_release_command(target: str) -> str:
+    package_id = "hctl2-{}-{}".format(HCTL2_VERSION, target)
+    return """
+set -euo pipefail
+source_root="$PWD/$SRCDIR"
+output_root="$PWD/$OUT"
+mkdir -p "$output_root"
+
+source "$source_root/build-metadata.sh"
+export HCTL2_PRODUCT_ROOT="$source_root/product"
+export HCTL2_DEPENDENCY_SOURCE_ROOT="$source_root/packaging/dependencies"
+export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
+
+bash "$source_root/packaging/release/assemble.sh" \
+  --first-party "$source_root/first-party" \
+  --dependencies "$source_root/dependencies/{package_id}.tar.gz" \
+  --sources "$source_root/dependencies/{package_id}-sources.tar.gz" \
+  --output "$output_root"
+""".format(package_id = package_id)
+
+def _platform_select(values: dict):
+    return select({
+        "prelude//os:linux": select({
+            "prelude//cpu:x86_64": values["linux-x86_64"],
+        }),
+        "prelude//os:macos": select({
+            "prelude//cpu:arm64": values["macos-aarch64"],
+            "prelude//cpu:x86_64": values["macos-x86_64"],
+        }),
+    })
+
+def complete_release(name: str):
+    native.genrule(
         name = name,
-        dependencies = "root//packaging/dependencies:prepared",
-        first_party = ":first-party",
+        srcs = {
+            "build-metadata.sh": "root//packaging/dependencies:metadata",
+            "dependencies": "root//packaging/dependencies:package",
+            "first-party": ":first-party",
+            "packaging/dependencies": "root//packaging/dependencies:test-support",
+            "packaging/release/PACKAGE-README.md": "PACKAGE-README.md",
+            "packaging/release/assemble.sh": "assemble.sh",
+            "packaging/release/install.sh": "install.sh",
+            "product/Cargo.toml": "root//:Cargo.toml",
+        },
+        bash = _platform_select({
+            target: _complete_release_command(target)
+            for target in ["linux-x86_64", "macos-aarch64", "macos-x86_64"]
+        }),
+        out = "release",
+        cacheable = True,
+        tests = [":{}-test".format(name)],
+        visibility = ["PUBLIC"],
+    )
+
+    native.sh_test(
+        name = "{}-test".format(name),
+        test = "test-package.sh",
+        args = ["$(location :{})".format(name)],
+        env = {
+            "HCTL2_BUILD_METADATA": "$(location root//packaging/dependencies:metadata)",
+            "HCTL2_DEPENDENCY_SOURCE_ROOT": "$(location root//packaging/dependencies:test-support)",
+        },
+        resources = [
+            ":{}".format(name),
+            "root//packaging/dependencies:metadata",
+            "root//packaging/dependencies:test-support",
+        ],
+        run_test_separately = True,
+        test_rule_timeout_ms = 600000,
         visibility = ["PUBLIC"],
     )
