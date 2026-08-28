@@ -74,9 +74,10 @@ for component in cargo rustc rust-std; do
 done
 "$output_root/bin/cargo" --version
 "$output_root/bin/rustc" --version
-""",
+        """,
         out = "tuwunel-rust-toolchain",
         cacheable = True,
+        labels = ["large_copy"],
         target_compatible_with = ["prelude//os/constraints:os[macos]"],
         visibility = ["PUBLIC"],
     )
@@ -225,8 +226,8 @@ def _package_sources(package_sources: dict) -> dict:
         "build-metadata.sh": ":metadata",
         "prepared": ":prepared",
         "product/Cargo.toml": "root//:Cargo.toml",
-        "repository/LICENSE": "repository//:license",
-        "repository/docs/usage.md": "repository//:usage",
+        "release/LICENSE": "root//packaging/release:license",
+        "release/USAGE.md": "root//packaging/release:usage",
     })
     return sources
 
@@ -248,8 +249,8 @@ export HCTL2_BUILD_METADATA="$source_root/build-metadata.sh"
 export HCTL2_BUILD_CACHE="$source_root/prepared"
 export HCTL2_DIST_DIR="$output_root"
 export HCTL2_PRODUCT_ROOT="$source_root/product"
-export HCTL2_LICENSE_FILE="$source_root/repository/LICENSE"
-export HCTL2_USAGE_FILE="$source_root/repository/docs/usage.md"
+export HCTL2_LICENSE_FILE="$source_root/release/LICENSE"
+export HCTL2_USAGE_FILE="$source_root/release/USAGE.md"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 init_build_environment
@@ -288,6 +289,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         }),
         out = "hctl2-build-cache",
         cacheable = True,
+        labels = ["network_access"],
         visibility = ["PUBLIC"],
     )
 
@@ -300,6 +302,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         }),
         out = "dependency-packages",
         cacheable = True,
+        labels = ["large_copy"],
         tests = [":package-test"],
         visibility = ["PUBLIC"],
     )
@@ -310,6 +313,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         bash = "mkdir -p \"$OUT\" && cp -aL \"$SRCDIR/.\" \"$OUT/\"",
         out = "dependency-test-support",
         cacheable = True,
+        labels = ["large_copy"],
         visibility = ["PUBLIC"],
     )
 

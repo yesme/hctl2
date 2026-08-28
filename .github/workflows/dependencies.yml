@@ -6,21 +6,29 @@ on:
       - main
     paths:
       - ".github/workflows/dependencies.yml"
-      - ".buckconfig"
-      - ".buckroot"
-      - "BUCK"
       - "LICENSE"
       - "docs/usage.md"
+      - "src/.buckconfig"
+      - "src/.buckroot"
+      - "src/buck2"
+      - "src/build/execution/**"
+      - "src/build/tools/bazel-remote-bin"
+      - "src/build/tools/buck2-bin"
       - "src/packaging/dependencies/**"
+      - "src/packaging/release/assets/**"
   pull_request:
     paths:
       - ".github/workflows/dependencies.yml"
-      - ".buckconfig"
-      - ".buckroot"
-      - "BUCK"
       - "LICENSE"
       - "docs/usage.md"
+      - "src/.buckconfig"
+      - "src/.buckroot"
+      - "src/buck2"
+      - "src/build/execution/**"
+      - "src/build/tools/bazel-remote-bin"
+      - "src/build/tools/buck2-bin"
       - "src/packaging/dependencies/**"
+      - "src/packaging/release/assets/**"
   workflow_dispatch:
 
 permissions:
@@ -45,6 +53,11 @@ jobs:
           \( -name '*.sh' -o -name hctl2-services \) -print0
           | xargs -0 bash -n
 
+      - name: Check release document snapshots
+        run: |
+          cmp LICENSE src/packaging/release/assets/LICENSE
+          cmp docs/usage.md src/packaging/release/assets/USAGE.md
+
       - name: Check service command contract
         run: |
           src/packaging/dependencies/hctl2-services --help | grep -F 'Usage:'
@@ -63,22 +76,39 @@ jobs:
           - platform: Linux x86_64
             runner: ubuntu-26.04
             buck_target: linux_x86_64_gnu
+            cache_enabled: "0"
           - platform: macOS x86_64
             runner: macos-15-intel
             buck_target: macos_x86_64
+            cache_enabled: "1"
           - platform: macOS arm64
             runner: macos-15
             buck_target: macos_arm64
+            cache_enabled: "1"
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
         working-directory: src
     env:
       BUCK_CONSOLE: simple
+      HCTL2_BUCK2_CACHE: ${{ matrix.cache_enabled }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Configure Buck2 dependency action cache
+        if: matrix.cache_enabled == '1'
+        run: echo "HCTL2_BUCK2_CACHE_DIR=$RUNNER_TEMP/hctl2-buck2-reapi" >> "$GITHUB_ENV"
+
+      - name: Restore Buck2 dependency action cache
+        if: matrix.cache_enabled == '1'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/hctl2-buck2-reapi/data
+          key: buck2-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-${{ hashFiles('src/build/tools/buck2-bin', 'src/build/tools/bazel-remote-bin', 'src/.buckconfig', 'src/build/execution/**', 'src/build/toolchains/**', 'src/packaging/dependencies/defs.bzl', 'src/packaging/dependencies/lock.json', 'src/packaging/dependencies/common/build.sh', 'src/packaging/dependencies/platforms/macos/bootstrap.sh') }}
+          restore-keys: |
+            buck2-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-
 
       - name: Install pinned DotSlash
         run: |
@@ -89,3 +119,7 @@ jobs:
         run: >-
           ./buck2 test root//packaging/dependencies:package-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
+
+      - name: Stop Buck2 dependency action cache
+        if: ${{ always() && matrix.cache_enabled == '1' }}
+        run: build/tools/buck2-cache stop

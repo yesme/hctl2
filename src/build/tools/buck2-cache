@@ -1,0 +1,128 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    cat <<'EOF'
+Control the HCTL2 local Buck2 REAPI action cache.
+
+Usage:
+  buck2-cache start
+  buck2-cache stop
+  buck2-cache status
+EOF
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cache_root=${HCTL2_BUCK2_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi}
+data_dir=$cache_root/data
+state_dir=$cache_root/state
+pid_file=$state_dir/server.pid
+log_file=$state_dir/server.log
+lock_dir=$state_dir/start.lock
+max_size=${HCTL2_BUCK2_CACHE_MAX_GIB:-10}
+server=$script_dir/bazel-remote-bin
+
+running_pid() {
+    if [ ! -f "$pid_file" ]; then
+        return 1
+    fi
+    pid=$(sed -n '1p' "$pid_file")
+    case "$pid" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    if ! kill -0 "$pid" 2>/dev/null; then
+        return 1
+    fi
+    command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+    case "$command" in
+        *bazel-remote*"$data_dir"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+start_cache() {
+    mkdir -p "$data_dir" "$state_dir"
+    if running_pid; then
+        return 0
+    fi
+
+    attempts=0
+    until mkdir "$lock_dir" 2>/dev/null; do
+        if running_pid; then
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        if [ "$attempts" -ge 50 ]; then
+            rmdir "$lock_dir" 2>/dev/null || true
+            attempts=0
+        fi
+        sleep 0.1
+    done
+    trap 'rmdir "$lock_dir" 2>/dev/null || true' 0 1 2 15
+
+    if running_pid; then
+        return 0
+    fi
+    nohup "$server" \
+        --dir "$data_dir" \
+        --max_size "$max_size" \
+        --http_address 127.0.0.1:19090 \
+        --grpc_address 127.0.0.1:19092 \
+        </dev/null >>"$log_file" 2>&1 &
+    pid=$!
+    printf '%s\n' "$pid" >"$pid_file"
+
+    attempts=0
+    while [ "$attempts" -lt 50 ]; do
+        if running_pid; then
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 0.1
+    done
+    printf '%s\n' 'error: Buck2 action cache failed to start' >&2
+    tail -20 "$log_file" >&2 || true
+    return 1
+}
+
+stop_cache() {
+    if ! running_pid; then
+        rm -f "$pid_file"
+        return 0
+    fi
+    kill "$pid"
+    attempts=0
+    while kill -0 "$pid" 2>/dev/null && [ "$attempts" -lt 100 ]; do
+        attempts=$((attempts + 1))
+        sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        printf 'error: Buck2 action cache process %s did not stop\n' "$pid" >&2
+        return 1
+    fi
+    rm -f "$pid_file"
+}
+
+case "${1:-}" in
+    start)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        start_cache
+        ;;
+    stop)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        stop_cache
+        ;;
+    status)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        if running_pid; then
+            printf 'running pid=%s cache=%s\n' "$pid" "$data_dir"
+        else
+            printf 'stopped cache=%s\n' "$data_dir"
+            exit 1
+        fi
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac

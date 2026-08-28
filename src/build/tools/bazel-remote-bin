@@ -1,0 +1,28 @@
+#!/usr/bin/env dotslash
+
+{
+  "name": "bazel-remote-2.6.2",
+  "platforms": {
+    "linux-x86_64": {
+      "size": 24034107,
+      "hash": "sha256",
+      "digest": "62e236bf8396e69396928e0d0c32062fbd5575f20fe55dc10a82eb791297e1a0",
+      "path": "bazel-remote",
+      "providers": [{"url": "https://github.com/buchgr/bazel-remote/releases/download/v2.6.2/bazel-remote-2.6.2-linux-amd64"}]
+    },
+    "macos-x86_64": {
+      "size": 23802352,
+      "hash": "sha256",
+      "digest": "fc3b8f5d8edcf94f578cf6ffa8071d8859f5f02a38c14ae00cd3d22aa44974b6",
+      "path": "bazel-remote",
+      "providers": [{"url": "https://github.com/buchgr/bazel-remote/releases/download/v2.6.2/bazel-remote-2.6.2-darwin-amd64"}]
+    },
+    "macos-aarch64": {
+      "size": 21901522,
+      "hash": "sha256",
+      "digest": "1d6bc5fe5be7a66c7aeea6723280402414e280ae579016d3b5e6e5c77278ad04",
+      "path": "bazel-remote",
+      "providers": [{"url": "https://github.com/buchgr/bazel-remote/releases/download/v2.6.2/bazel-remote-2.6.2-darwin-arm64"}]
+    }
+  }
+}

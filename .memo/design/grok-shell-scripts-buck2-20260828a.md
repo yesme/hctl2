@@ -36,7 +36,8 @@
 
 | 文件 | 为何存在 | Native 替代 |
 | --- | --- | --- |
-| `src/buck2` | DotSlash 清单，按平台拉钉死的 buck2 | **已经是 native**（`#!/usr/bin/env dotslash`，不是 shell） |
+| `src/buck2` + `build/tools/buck2-bin` | 薄启动器自动确保共享 REAPI cache 存活；DotSlash 清单按平台拉钉死的 buck2 | 留作构建引导；不承担 target 分发或组包 |
+| `build/tools/bazel-remote-bin` + `buck2-cache` | 钉定单二进制 REAPI cache，并以 loopback 服务让多 worktree 共用 Buck action results | 标准 Buck cache 边界；不是自制 fingerprint/Cargo cache |
 | `src/build/tools/install-dotslash` + `dotslash.env` | 开发机还没有 DotSlash 时按 SHA 装一份 | 留作一次性引导 |
 | `src/build/tools/reindeer` + `reindeer.env` | 下载钉死 Reindeer，从 Cargo.lock 生成 `third-party/rust/BUCK` | 生成物已进 Git。日常 `buck2 build` 不跑它；更新 lock 时用人跑 |
 | `src/build/toolchains/rust/merge_sysroot.sh` | 拼 rustc 归档 + std 归档 | **已是 Buck genrule 动作**，范本 |
