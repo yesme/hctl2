@@ -1,28 +1,34 @@
 # 仓库 shell 脚本盘点：为何存在、哪些该进 Buck2
 
-> 状态：待拍板<br>
-> 基线：main @ ad90c01<br>
-> 去向：`src/packaging/` Buck 目标与删除 uname 分发器；不进合同层。运行期脚本等 P2 CLI 另议。<br>
+> 状态：已拍板 · 下载与外部准备已进图，组包、发行和测试目标继续施工<br>
+> 基线：main @ 9f46d94<br>
+> 去向：`src/packaging/` Buck 原生输出与测试目标、删除 uname 分发器；运行期脚本等 P2 CLI 另议。<br>
 > 日期：2026-08-28<br>
 > 说明：Grok 按职责自分类的施工备忘，不改规范。边界与 [Buck2 替换方案](./codex-buck2-replacement-20260827.md) 一致：不进入上游内部构建图。确定性诉求见 [构建确定性备忘](./grok-20260827a.md)。<br>
 > 范围：仓库内带 shebang 的脚本与 DotSlash 入口；不含 GitHub Actions YAML 里的 inline shell。
 
 ## 怎么来的
 
-第一方已进 Buck2 图。仓库里仍有约 3300 行 shell。所有者问：每份为什么存在，能不能用 Buck2 native 换掉。本文按**职责**分成六类，不按目录堆文件名。
+第一方已进 Buck2 图。当前 `src/` 仍有约 3070 行 shell 与可执行入口。所有者问：每份为什么存在，能不能用 Buck2 native 换掉。本文按**职责**分成六类，不按目录堆文件名。
 
 ## 总判
 
 | 类 | 体积（约） | Buck2 native？ |
 | --- | --- | --- |
 | A 构建引导 | 160 行 | 鸡生蛋，留薄引导；`merge_sysroot.sh` 已是 genrule |
-| B `uname` 分发器 | 220 行 | **该删**，换成 `--target-platforms` / `select` |
-| C 锁、下载、组包（shell 当 Make） | 2000 行 | **该进图**：`http_file` / `http_archive` + genrule；上游 cargo 不拆 |
+| B `uname` 分发器 | 220 行 | **待删除**，换成 `--target-platforms` / `select` |
+| C 锁、下载、组包（shell 当 Make） | 2000 行 | 下载与外部准备已进图；payload/源码组包仍待成为声明输出 |
 | D 装到用户机器上的启停 | 800 行 | **不该当构建问题**；`export_file` 打进包，消灭要等 P2 CLI |
-| E 发行组装 | 600 行 | 半截已是 genrule；`assemble.sh` 是下一刀 |
+| E 发行组装 | 600 行 | 第一方导出与总输入已进图；`assemble.sh` 仍待成为发行目标 |
 | F 与产品构建无关 | `run` 222 行 | 不进 `src/` 图 |
 
 该用 Buck2 换掉的是「shell 当 Make」。不该换的是用户机器上的启停，以及 Tuwunel/Vikunja 自己怎么编。
+
+## 2026-08-28 实施更新
+
+`5d4297f` 已完成第一步：`lock.json` 成为 Buck 的下载事实源，官方 blob 和 macOS Tuwunel Rust 组件由 `http_file`/`http_archive` 获取与校验；平台 `select` 选择一个 `prepared` action；`packaging/release:inputs` 对第一方与外部准备建立真实依赖边。平行 fingerprint 和最终依赖包 cache 已删除。
+
+这并不等于本表全部完成。`prepared` 仍调用 target bootstrap shell；workflow 仍直接调用 `build-package-<target>.sh`、`assemble.sh` 和 `test-package.sh`。因此 B、C 的组包部分和 E 仍是后续施工范围。当前 README 把 `uname` 入口称为兼容入口，只代表过渡期可用，不把它们提升为长期构建合同。
 
 ## A · 构建引导
 
@@ -45,7 +51,7 @@ shell 只能看本机 `uname`，所以每个 target 复制一份 13–17 行入�
 | `bootstrap-<target>.sh`、`build-package-<target>.sh`、`test-package-<target>.sh`（各三平台） |
 | `versions.sh`、`lib.sh` |
 
-第一方发行已经用 `--target-platforms root//build/platforms:…`（见 `packaging/release:first-party`）。外部组包一旦变成 Buck 目标，本类全部可删。
+第一方发行和外部准备已经使用 `--target-platforms root//build/platforms:…`。外部组包与测试成为 Buck 目标后，本类全部删除。
 
 ## C · 锁、下载、组包（shell 当 Make）
 
@@ -59,11 +65,16 @@ shell 只能看本机 `uname`，所以每个 target 复制一份 13–17 行入�
 | `platforms/*/package.sh`、`common/package.sh` | 组 tar、许可证、manifest |
 | `common/test-package.sh` | 离线安装再启停 smoke |
 
-**该变成：**
+**已完成：**
 
-- 官方 blob（Vikunja、Dagu、Linux Tuwunel、官方 tmux、Cinny、Static Web Server）→ Starlark 里的 `http_file` / `http_archive`（URL + SHA）
-- 组 payload、写 SHA 清单 → `genrule`
-- 生命周期测试 → `buck2 test` 调现有 smoke（测试体仍是 shell）
+- 官方 blob（Vikunja、Dagu、Linux Tuwunel、官方 tmux、Cinny、Static Web Server）已由 Starlark `http_file` / `http_archive` 以 URL + SHA 声明；
+- Darwin Tuwunel 由 Buck 声明 Rust 组件和输入，再用粗粒度 action 调上游 Cargo。
+
+**仍待完成：**
+
+- 组 payload、源码伴随包与 SHA 清单 → Buck 声明输出；
+- 生命周期测试 → `buck2 test` 调现有 smoke，测试体仍可用 shell；
+- 删除非 Buck 兼容路径中的自制下载/cache 机制，不维护第二套输入身份。
 
 **不该变成** Tuwunel 的 `rust_library` 图。Darwin 现场 cargo 最多外套一层 `genrule`，内部 crate 不进 HCTL2 图——替换方案备忘已立法。
 
@@ -94,16 +105,17 @@ Buck2 只 `export_file` 打进包。消灭这些是 P2 公共 CLI，不是 Starl
 
 `run`：本设计仓库开 Claude / Codex / Grok 等 session。不进 `src/` 的 Buck 图。
 
-## 建议落地顺序
+## 落地顺序
 
-1. 官方 blob → `http_file`，删 `download_verified` 和本机手搓 cache。
-2. 组包 + `assemble` → Buck 目标，`select` 换掉 B 类分发器。
-3. `sh_test` 跑 D 类 smoke；安装器仍打进包。
-4. Darwin Tuwunel 继续上游 cargo，外套 `genrule`。
-5. D 类等 P2 CLI。
+1. ~~官方 blob → `http_file`；Darwin Tuwunel 外套粗粒度 action。~~ 已完成。
+2. 组 payload 与源码伴随包 → Buck 输出，消除 workflow 对 `build-package-<target>.sh` 的调用。
+3. `assemble` → Buck 发行目标，workflow 只上传和发布声明输出。
+4. Buck 测试目标运行现有合同与生命周期测试体。
+5. 删除 B 类分发器与不再被 action/测试/运行包引用的构建 helper。
+6. D 类等 P2 CLI，不在本轮为追求零 shell 而重写。
 
-## 待拍板
+## 拍板结果
 
-1. 六类划分与上表「该删 / 该进图 / 留引导 / 留运行期」是否按此施工。
-2. C 类官方 blob 是否第一批就全部 `http_file`，还是先 Tuwunel/tmux 以外、已有官方包的那几个。
-3. Darwin Tuwunel 的 `genrule` 是否与「跨平台同一 rustc 版本」（确定性备忘第 3 条）绑在同一批：Linux 若仍吃官方 deb，则不是「我们编的两个 target」。
+1. 六类划分按“删分发器、构建编排进图、保留引导/上游原生入口/运行期代码”施工。
+2. 所有官方 blob 已一次性进入 Buck 下载规则，不分批维护两套下载事实。
+3. Darwin Tuwunel 保持上游 Rust 1.95.0 的粗粒度 Cargo action；Linux 官方包是摘要锁定 blob，不声称两者来自同一构建。
