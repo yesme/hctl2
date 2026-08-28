@@ -76,11 +76,13 @@ assemble_dependency_package() {
     readonly PACKAGE_BUILD_DIR_TO_CLEAN
     trap 'find "${PACKAGE_BUILD_DIR_TO_CLEAN:?}" -depth -delete' EXIT
 
-    for component in tuwunel vikunja dagu tmux static-web-server; do
-        [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from the prepared action"
+    [[ -x "$P0_TUWUNEL_BIN_DIR/tuwunel" ]] || \
+        die "tuwunel is missing from the Tuwunel action"
+    for component in vikunja dagu tmux static-web-server; do
+        [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from its component action"
     done
     [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
-        die "Cinny is missing from the prepared action"
+        die "Cinny is missing from its component action"
 
     mkdir -p \
         "$payload_root/bin" \
@@ -91,13 +93,12 @@ assemble_dependency_package() {
         "$payload_root/share/hctl2/licenses" \
         "$source_files_root"
 
-    for component in tuwunel vikunja dagu tmux static-web-server; do
+    install -m 0755 "$P0_TUWUNEL_BIN_DIR/tuwunel" "$payload_root/libexec/hctl2/tuwunel"
+    for component in vikunja dagu tmux static-web-server; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
     cp -a "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/." \
         "$payload_root/share/hctl2/chatroom/cinny/"
-    find "$payload_root/share/hctl2/chatroom/cinny" \
-        -name .hctl2-source-sha256 -delete
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/hctl2-services" "$payload_root/bin/hctl2-services"
     for script in smoke.sh start.sh status.sh stop.sh; do
         install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/$script" "$payload_root/lib/hctl2/services/$script"

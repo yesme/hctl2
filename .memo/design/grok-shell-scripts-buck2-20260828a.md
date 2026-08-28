@@ -26,9 +26,9 @@
 
 ## 2026-08-28 实施更新
 
-`5d4297f` 完成第一步：`lock.json` 成为 Buck 的下载事实源，官方 blob 和 macOS Tuwunel Rust 组件由 `http_file`/`http_archive` 获取与校验；平台 `select` 选择一个 `prepared` action；平行 fingerprint 和最终依赖包 cache 被删除。
+`5d4297f` 完成第一步：`lock.json` 成为 Buck 的下载事实源，官方 blob 和 macOS Tuwunel Rust 组件由 `http_file`/`http_archive` 获取与校验；平台 `select` 选择对应 action；平行 fingerprint 和最终依赖包 cache 被删除。后续又把单一 `prepared` 拆成六个组件 action，组件与配置变化不再相互失效，更不会连带触发 Tuwunel Cargo，并删除不可变 action 内无效的 `.hctl2-*-sha256` marker。
 
-第二步完成全部收口：`lock.json` 还成为版本、target identity、运行端口和确定性时间的唯一 metadata 事实源；Buck 生成每个平台的 `build-metadata.sh`，`prepared` 直接调用选定 platform 的上游 bootstrap action body，`package` 和 `complete` 分别声明依赖包与最终发行目录，两个 `sh_test` 验证中间包和最终用户包。workflow 不再调用组包脚本，所有 `uname`/target wrapper 和重复 versions 文件均已删除。
+第二步完成全部收口：`lock.json` 还成为版本、target identity、运行端口和确定性时间的唯一 metadata 事实源；Buck 生成每个平台的 `build-metadata.sh`，六个组件 action 分别调用选定 platform 的上游 bootstrap action body，`package` 和 `complete` 分别声明依赖包与最终发行目录，两个 `sh_test` 验证中间包和最终用户包。workflow 不再调用组包脚本，所有 `uname`/target wrapper 和重复 versions 文件均已删除。
 
 ## A · 构建引导
 

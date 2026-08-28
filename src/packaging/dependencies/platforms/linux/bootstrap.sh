@@ -9,6 +9,8 @@ install_tuwunel_linux() {
     dpkg-deb --extract "$P0_DOWNLOAD_DIR/$TUWUNEL_ASSET" "$destination"
     [[ -x "$binary" ]] || die "Tuwunel package did not contain usr/sbin/tuwunel"
     install -m 0755 "$binary" "$P0_BIN_DIR/tuwunel"
+    install -m 0644 "$destination/usr/share/doc/tuwunel/copyright" \
+        "$P0_MANIFEST_DIR/tuwunel-license"
 }
 
 install_vikunja_linux() {
@@ -33,28 +35,63 @@ install_dagu_linux() {
     install -m 0755 "$binary" "$P0_BIN_DIR/dagu"
 }
 
-bootstrap_dependencies() {
+prepare_tuwunel_dependency() {
     require_target_host
     require_command dpkg-deb
-    require_command readelf
-    require_command tar
-    require_command unzip
 
     install_tuwunel_linux
+
+    note "installed Tuwunel for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/tuwunel" --version
+    find "$P0_VENDOR_DIR" -depth -delete
+}
+
+prepare_vikunja_dependency() {
+    require_target_host
+    require_command unzip
+
     install_vikunja_linux
+    find "$P0_VENDOR_DIR/vikunja-$VIKUNJA_VERSION" \
+        -type f -name 'vikunja-v*-linux-amd64' -delete
+
+    note "prepared Vikunja for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/vikunja" version
+}
+
+prepare_dagu_dependency() {
+    require_target_host
+    require_command tar
+
     install_dagu_linux
+    find "$P0_VENDOR_DIR/dagu-$DAGU_VERSION" -type f -name dagu -delete
+
+    note "prepared Dagu for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/dagu" version
+}
+
+prepare_tmux_dependency() {
+    require_target_host
+    require_command readelf
+    require_command tar
+
     install_tmux_release
     if readelf -d "$P0_BIN_DIR/tmux" 2>/dev/null | grep -F '(NEEDED)' >/dev/null; then
         die "official Linux tmux binary unexpectedly has dynamic dependencies"
     fi
-    prepare_cinny
-    install_static_web_server
-    write_installed_manifest
+    find "$P0_VENDOR_DIR" -depth -delete
 
-    note "installed $HCTL2_TARGET_ID binaries in $P0_BIN_DIR"
-    "$P0_BIN_DIR/tuwunel" --version
-    "$P0_BIN_DIR/vikunja" version
-    "$P0_BIN_DIR/dagu" version
+    note "prepared tmux for $HCTL2_TARGET_ID"
     "$P0_BIN_DIR/tmux" -V
+}
+
+prepare_static_web_server_dependency() {
+    require_target_host
+    require_command tar
+
+    install_static_web_server
+    find "$P0_VENDOR_DIR/static-web-server-$STATIC_WEB_SERVER_VERSION" \
+        -type f -name static-web-server -delete
+
+    note "prepared Static Web Server for $HCTL2_TARGET_ID"
     "$P0_BIN_DIR/static-web-server" --version
 }

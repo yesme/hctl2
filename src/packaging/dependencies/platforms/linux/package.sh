@@ -9,7 +9,7 @@ platform_stage_payload() {
 }
 
 platform_stage_licenses() {
-    install -m 0644 "$P0_VENDOR_DIR/tuwunel-$TUWUNEL_VERSION/usr/share/doc/tuwunel/copyright" \
+    install -m 0644 "$P0_TUWUNEL_MANIFEST_DIR/tuwunel-license" \
         "$PAYLOAD_ROOT/share/hctl2/licenses/Tuwunel-copyright.txt"
     install -m 0644 "$P0_VENDOR_DIR/vikunja-$VIKUNJA_VERSION/LICENSE" \
         "$PAYLOAD_ROOT/share/hctl2/licenses/Vikunja-AGPL-3.0.txt"

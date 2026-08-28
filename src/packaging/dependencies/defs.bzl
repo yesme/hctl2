@@ -1,5 +1,9 @@
 load(":lock.json", LOCK = "value")
 
+_MACOS_SDK_VERSION = read_config("hctl2", "macos_sdk_version", "unavailable")
+_MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
+_MACOS_XCODE_VERSION = read_config("hctl2", "macos_xcode_version", "unavailable")
+
 _COMPONENT_PREFIXES = {
     "cinny": "CINNY",
     "dagu": "DAGU",
@@ -102,6 +106,9 @@ def _metadata_lines(target: str) -> list[str]:
         _readonly("HCTL2_RUST_TARGET", target_spec["rust_target"]),
         _readonly("TUWUNEL_RUST_TOOLCHAIN", LOCK["tuwunel_rust"]["version"]),
         _readonly("MACOS_DEPLOYMENT_TARGET", metadata["macos_deployment_target"]),
+        _readonly("HCTL2_MACOS_SDK_VERSION", _MACOS_SDK_VERSION),
+        _readonly("HCTL2_MACOS_XCODE_BUILD", _MACOS_XCODE_BUILD),
+        _readonly("HCTL2_MACOS_XCODE_VERSION", _MACOS_XCODE_VERSION),
         _readonly("HCTL2_SOURCE_DATE_EPOCH", metadata["source_date_epoch"]),
         "",
     ]
@@ -165,22 +172,55 @@ def _platform_select(values: dict):
         }),
     })
 
-def _asset_sources(target: str, build_sources: dict) -> dict:
-    sources = dict(build_sources)
-    sources["build-metadata.sh"] = ":metadata"
-    for name, asset in LOCK["common"].items():
-        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
-            _asset_target_name("common", name),
-        )
-    for name, asset in LOCK["targets"][target]["assets"].items():
-        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
-            _asset_target_name(target, name),
-        )
-    if target.startswith("macos_"):
-        sources["tuwunel-rust-toolchain"] = ":tuwunel-rust-toolchain"
+def _component_load_paths(target: str, component: str) -> list[str]:
+    platform = LOCK["targets"][target]["os"]
+    paths = ["common/action.sh"] if component == "tuwunel" else ["common/build.sh"]
+    if platform == "macos":
+        paths.append("platforms/macos/common.sh")
+        if component == "tuwunel":
+            paths.append("platforms/macos/tuwunel.sh")
+        else:
+            paths.append("platforms/macos/bootstrap.sh")
+    else:
+        paths.append("platforms/linux/bootstrap.sh")
+    return paths
+
+def _action_script_sources(target: str, component: str, build_sources: dict) -> dict:
+    sources = {"build-metadata.sh": ":metadata"}
+    paths = _component_load_paths(target, component)
+    if component != "tuwunel":
+        paths.append("common/action.sh")
+    for path in paths:
+        sources[path] = build_sources[path]
     return sources
 
-def _prepared_command(target: str) -> str:
+def _component_target_name(component: str) -> str:
+    return component.replace("_", "-")
+
+def _component_sources(target: str, component: str, build_sources: dict) -> dict:
+    sources = _action_script_sources(target, component, build_sources)
+    spec = LOCK["targets"][target]
+    if component == "cinny":
+        sources["cinny-config.json"] = build_sources["cinny-config.json"]
+        asset = LOCK["common"]["cinny"]
+        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
+            _asset_target_name("common", "cinny"),
+        )
+    elif component == "tuwunel" and spec["os"] == "macos":
+        source_name = LOCK["metadata"]["components"]["tuwunel"]["source_asset"]
+        asset = LOCK["common"][source_name]
+        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
+            _asset_target_name("common", source_name),
+        )
+        sources["tuwunel-rust-toolchain"] = ":tuwunel-rust-toolchain"
+    else:
+        asset = spec["assets"][component]
+        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
+            _asset_target_name(target, component),
+        )
+    return sources
+
+def _build_action_command(target: str, component: str) -> str:
     spec = LOCK["targets"][target]
     platform = spec["os"]
     return """
@@ -191,8 +231,7 @@ scratch_root="$TMP"
 mkdir -p "$output_root"
 
 source "$source_root/build-metadata.sh"
-source "$source_root/common/build.sh"
-source "$source_root/platforms/{platform}/bootstrap.sh"
+{source_scripts}
 
 export HCTL2_BUILD_CACHE="$output_root"
 export HCTL2_DOWNLOAD_ROOT="$source_root/downloads"
@@ -202,33 +241,44 @@ if [[ -d "$source_root/tuwunel-rust-toolchain" ]]; then
 fi
 
 init_build_environment
-bootstrap_dependencies
+prepare_{component}_dependency
 
 target_root="$output_root/{package_target}"
-mkdir -p "$target_root/downloads"
-cp -aL "$source_root/downloads/." "$target_root/downloads/"
 if [[ -d "$target_root/tmp" ]]; then
   find "$target_root/tmp" -mindepth 1 -depth -delete
 fi
-for cargo_target in "$target_root"/vendor/tuwunel-target-*; do
-  if [[ -d "$cargo_target" ]]; then
-    find "$cargo_target" -depth -delete
-  fi
-done
 """.format(
+        component = component,
         package_target = spec["package_target"],
         platform = platform,
+        source_scripts = "\n".join([
+            "source \"$source_root/{}\"".format(path)
+            for path in _component_load_paths(target, component)
+        ]),
     )
 
 def _package_sources(package_sources: dict) -> dict:
     sources = dict(package_sources)
     sources.update({
         "build-metadata.sh": ":metadata",
-        "prepared": ":prepared",
         "product/Cargo.toml": "root//:Cargo.toml",
         "release/LICENSE": "root//packaging/release:license",
         "release/USAGE.md": "root//packaging/release:usage",
     })
+    for component in _COMPONENT_PREFIXES:
+        target_name = _component_target_name(component)
+        sources["components/{}".format(target_name)] = ":{}".format(target_name)
+    common_assets = LOCK["common"]
+    for component_metadata in LOCK["metadata"]["components"].values():
+        name = component_metadata["source_asset"]
+        asset = common_assets[name]
+        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
+            _asset_target_name("common", name),
+        )
+    tmux_licenses = common_assets["tmux_licenses"]
+    sources["downloads/{}".format(tmux_licenses["filename"])] = ":{}".format(
+        _asset_target_name("common", "tmux_licenses"),
+    )
     return sources
 
 def _package_command(target: str) -> str:
@@ -237,16 +287,26 @@ def _package_command(target: str) -> str:
 set -euo pipefail
 source_root="$PWD/$SRCDIR"
 output_root="$PWD/$OUT"
+combined_root="$TMP/combined"
 mkdir -p "$output_root"
+
+mkdir -p "$combined_root/{package_target}"
+for component_root in "$source_root"/components/*; do
+  cp -aL "$component_root/{package_target}/." "$combined_root/{package_target}/"
+done
 
 source "$source_root/build-metadata.sh"
 source "$source_root/common/build.sh"
+if [[ -f "$source_root/platforms/{platform}/common.sh" ]]; then
+  source "$source_root/platforms/{platform}/common.sh"
+fi
 source "$source_root/platforms/{platform}/bootstrap.sh"
 source "$source_root/platforms/{platform}/package.sh"
 source "$source_root/common/package.sh"
 
 export HCTL2_BUILD_METADATA="$source_root/build-metadata.sh"
-export HCTL2_BUILD_CACHE="$source_root/prepared"
+export HCTL2_BUILD_CACHE="$combined_root"
+export HCTL2_DOWNLOAD_ROOT="$source_root/downloads"
 export HCTL2_DIST_DIR="$output_root"
 export HCTL2_PRODUCT_ROOT="$source_root/product"
 export HCTL2_LICENSE_FILE="$source_root/release/LICENSE"
@@ -255,7 +315,10 @@ export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 init_build_environment
 assemble_dependency_package
-""".format(platform = spec["os"])
+""".format(
+        package_target = spec["package_target"],
+        platform = spec["os"],
+    )
 
 def declare_external_dependencies(build_sources: dict, package_sources: dict, test_sources: dict):
     for name, asset in LOCK["common"].items():
@@ -277,21 +340,23 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         visibility = ["PUBLIC"],
     )
 
-    native.genrule(
-        name = "prepared",
-        srcs = _platform_select({
-            target: _asset_sources(target, build_sources)
-            for target in LOCK["targets"]
-        }),
-        bash = _platform_select({
-            target: _prepared_command(target)
-            for target in LOCK["targets"]
-        }),
-        out = "hctl2-build-cache",
-        cacheable = True,
-        labels = ["network_access"],
-        visibility = ["PUBLIC"],
-    )
+    for component in _COMPONENT_PREFIXES:
+        target_name = _component_target_name(component)
+        native.genrule(
+            name = target_name,
+            srcs = _platform_select({
+                target: _component_sources(target, component, build_sources)
+                for target in LOCK["targets"]
+            }),
+            bash = _platform_select({
+                target: _build_action_command(target, component)
+                for target in LOCK["targets"]
+            }),
+            out = "hctl2-{}-cache".format(target_name),
+            cacheable = True,
+            labels = ["network_access"] if component == "tuwunel" else ["large_copy"],
+            visibility = ["PUBLIC"],
+        )
 
     native.genrule(
         name = "package",

@@ -1,0 +1,7 @@
+paths:
+  .github/workflows/dependencies.yml:
+    ignore:
+      - 'label "ubuntu-26\.04" is unknown'
+  .github/workflows/release.yml:
+    ignore:
+      - 'label "ubuntu-26\.04" is unknown'

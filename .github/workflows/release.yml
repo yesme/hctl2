@@ -88,6 +88,13 @@ jobs:
         if: matrix.cache_enabled == '1'
         run: echo "HCTL2_BUCK2_CACHE_DIR=$RUNNER_TEMP/hctl2-buck2-reapi" >> "$GITHUB_ENV"
 
+      - name: Identify runner toolchain image
+        if: matrix.cache_enabled == '1'
+        id: cache-platform
+        run: |
+          test -n "${ImageOS:-}" && test -n "${ImageVersion:-}"
+          echo "runner-image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
       - name: Read workspace release version
         id: metadata
         run: |
@@ -95,21 +102,15 @@ jobs:
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Restore release build cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            ~/.cache/dotslash
-          key: dotslash-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/build/tools/buck2-bin', 'src/build/tools/bazel-remote-bin') }}
-
       - name: Restore Buck2 dependency action cache
         if: matrix.cache_enabled == '1'
+        id: dependency-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ${{ runner.temp }}/hctl2-buck2-reapi/data
-          key: buck2-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-${{ hashFiles('src/build/tools/buck2-bin', 'src/build/tools/bazel-remote-bin', 'src/.buckconfig', 'src/build/execution/**', 'src/build/toolchains/**', 'src/packaging/dependencies/defs.bzl', 'src/packaging/dependencies/lock.json', 'src/packaging/dependencies/common/build.sh', 'src/packaging/dependencies/platforms/macos/bootstrap.sh') }}
+          key: buck2-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-${{ steps.cache-platform.outputs.runner-image }}-${{ hashFiles('src/buck2', 'src/build/tools/buck2-bin', 'src/build/tools/bazel-remote-bin', 'src/build/tools/buck2-cache', 'src/.buckconfig', 'src/build/execution/**', 'src/build/toolchains/**', 'src/packaging/dependencies/defs.bzl', 'src/packaging/dependencies/lock.json', 'src/packaging/dependencies/common/action.sh', 'src/packaging/dependencies/platforms/macos/common.sh', 'src/packaging/dependencies/platforms/macos/tuwunel.sh') }}
           restore-keys: |
-            buck2-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-
+            buck2-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-${{ matrix.buck_target }}-
 
       - name: Install pinned DotSlash
         run: |
@@ -125,6 +126,18 @@ jobs:
           ./buck2 build root//packaging/release:complete
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
           --out "$RUNNER_TEMP/hctl2-release"
+
+      - name: Verify exact cache restored Tuwunel
+        if: matrix.cache_enabled == '1' && steps.dependency-cache.outputs.cache-hit == 'true'
+        run: |
+          ./build/tools/buck2-bin log show | jq -e '
+            any(
+              .Event.data.SpanEnd.data.ActionExecution? as $action
+              | select($action.owner.label.name == "tuwunel")
+              | $action.commands[]?.details.command_kind.command.RemoteCommand.cache_hit?;
+              . == true
+            )
+          '
 
       - name: Test complete offline install and lifecycle
         run: >-

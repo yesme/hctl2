@@ -1,37 +1,32 @@
 #!/usr/bin/env bash
 # macOS payload staging, Mach-O dependency relocation, and archive hooks.
 
-macos_dependency_paths() {
-    otool -L "$1" | sed -n '2,$p' | awk '{print $1}'
-}
-
-macos_dependency_is_system() {
-    case "$1" in
-        /System/* | /usr/lib/* | @loader_path/*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 relocate_macos_consumer() {
     local consumer="$1"
     local consumer_kind="$2"
+    local staged_dependencies="${3:-}"
     local dependency
     local dependency_name
     local destination
     local replacement
+    local source
 
     while IFS= read -r dependency; do
         macos_dependency_is_system "$dependency" && continue
         [[ "$dependency" == /* ]] || die "unsupported Mach-O dependency in $consumer: $dependency"
-        [[ -f "$dependency" ]] || die "Mach-O dependency is missing on the build host: $dependency"
 
         dependency_name="$(basename -- "$dependency")"
+        source="$dependency"
+        if [[ -n "$staged_dependencies" && -f "$staged_dependencies/$dependency_name" ]]; then
+            source="$staged_dependencies/$dependency_name"
+        fi
+        [[ -f "$source" ]] || die "Mach-O dependency is missing from declared inputs: $dependency"
         destination="$PAYLOAD_ROOT/lib/hctl2/vendor/$dependency_name"
         if [[ -f "$destination" ]]; then
-            [[ "$(hash_file "$destination")" == "$(hash_file "$dependency")" ]] || \
+            [[ "$(hash_file "$destination")" == "$(hash_file "$source")" ]] || \
                 die "different Mach-O dependencies share the filename $dependency_name"
         else
-            install -m 0755 "$dependency" "$destination"
+            install -m 0755 "$source" "$destination"
         fi
 
         if [[ "$consumer_kind" == "binary" ]]; then
@@ -65,14 +60,16 @@ platform_stage_payload() {
     require_command otool
     require_command vtool
 
-    for component in tuwunel vikunja dagu tmux static-web-server; do
+    relocate_macos_consumer \
+        "$PAYLOAD_ROOT/libexec/hctl2/tuwunel" binary "$P0_TUWUNEL_LIBRARY_DIR"
+    for component in vikunja dagu tmux static-web-server; do
         relocate_macos_consumer "$PAYLOAD_ROOT/libexec/hctl2/$component" binary
     done
 
     for pass in 1 2 3 4 5 6 7 8; do
         before="$(find "$PAYLOAD_ROOT/lib/hctl2/vendor" -type f | wc -l | tr -d ' ')"
         while IFS= read -r library; do
-            relocate_macos_consumer "$library" library
+            relocate_macos_consumer "$library" library "$P0_TUWUNEL_LIBRARY_DIR"
             install_name_tool -id "@loader_path/$(basename -- "$library")" "$library"
         done < <(find "$PAYLOAD_ROOT/lib/hctl2/vendor" -type f -print | LC_ALL=C sort)
         after="$(find "$PAYLOAD_ROOT/lib/hctl2/vendor" -type f | wc -l | tr -d ' ')"
@@ -108,8 +105,8 @@ install_named_license() {
 }
 
 platform_stage_licenses() {
-    install_named_license "$P0_VENDOR_DIR/tuwunel-source-$TUWUNEL_SOURCE_COMMIT" \
-        Tuwunel-Apache-2.0.txt
+    install -m 0644 "$P0_TUWUNEL_MANIFEST_DIR/tuwunel-license" \
+        "$PAYLOAD_ROOT/share/hctl2/licenses/Tuwunel-Apache-2.0.txt"
     install_named_license "$P0_VENDOR_DIR/vikunja-$VIKUNJA_VERSION" \
         Vikunja-AGPL-3.0.txt
     install_named_license "$P0_VENDOR_DIR/dagu-$DAGU_VERSION" \
@@ -117,9 +114,9 @@ platform_stage_licenses() {
 }
 
 platform_stage_build_metadata() {
-    install -m 0644 "$P0_MANIFEST_DIR/macos-build-environment.tsv" \
+    install -m 0644 "$P0_TUWUNEL_MANIFEST_DIR/macos-build-environment.tsv" \
         "$PAYLOAD_ROOT/share/hctl2/build-environment.tsv"
-    install -m 0644 "$P0_MANIFEST_DIR/tuwunel-features.txt" \
+    install -m 0644 "$P0_TUWUNEL_MANIFEST_DIR/tuwunel-features.txt" \
         "$PAYLOAD_ROOT/share/hctl2/tuwunel-features.txt"
 }
 
