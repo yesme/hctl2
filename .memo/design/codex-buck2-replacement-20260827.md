@@ -1,6 +1,6 @@
 # Buck2 替换方案：第一方构建图与外部子系统边界
 
-> 状态：已落地 · 四批实现完成后由本文保留决定、边界与验收记录<br>
+> 状态：已落地 · 主构建图完成，shell-as-Make 原生化收口继续施工<br>
 > 基线：main @ c99114d（决定基线）；实现从 PR #15 起逐批合入<br>
 > 去向：已进入 src/ 第一方构建、CI 与发行组装；后续按显式工具链升级维护<br>
 > 日期：2026-08-27  
@@ -203,3 +203,19 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 - Code workflow 的 target pattern 明确限定在第一方应用、crate 与工具链探针；外部子系统只由 Release workflow 构建一次。依赖 workflow 在 PR 中只跑静态合同，main push 或手动触发时才独立复验三平台生命周期。
 
 本机相同 `buckd` 下，连续第二次构建 `packaging/release:inputs` 为零下载、零 action。GitHub-hosted runner 每个 job 是临时机器；在没有 REAPI 服务的现状下，跨 job 构建保持冷启动。这个事实写进 CI 边界，不用独立成品缓存掩盖。将来若采购标准 REAPI，现有 target/action key 可直接复用，不需要再次改写外部目标。
+
+## 后续收口：消除 shell-as-Make
+
+2026-08-28 再次核对后确认：第一方构建、外部制品下载、macOS Tuwunel 工具链和完整发行输入已经进入 Buck action graph；但外部 payload 组包、完整发行组装与生命周期测试仍由 workflow 顺序调用 shell。当前 `prepared` 也是 Buck 管理的粗粒度 action，而不是已经把内部组包逻辑改写成声明式 Buck 输出。
+
+后续按以下边界继续施工：
+
+- 外部运行包与源码包成为按 platform 选择的 Buck 输出，不再要求 workflow 先导出 build cache、再调用 `build-package-<target>.sh`；
+- 完整运行包、源码包、SBOM、release manifest 和 checksums 成为一个 Buck 发行目标的声明输出，不再由 workflow 直接调用 `assemble.sh`；
+- 包合同与离线生命周期成为 Buck 测试目标；测试体可以继续使用 shell，但输入、平台和被测产物必须由 Buck 声明；
+- 删除只负责 `uname` 或 target 分发的兼容入口，平台选择统一由 Buck configuration 与 `select` 完成；
+- 继续保留用户安装后需要的 `install/start/stop/status/smoke`、平台 runtime hook，以及一次性 DotSlash/Reindeer 引导工具；这些不是构建编排重复实现；
+- macOS Tuwunel 继续由粗粒度 action 调上游 Cargo，不把上游 crate 图复制成 HCTL2 rules；
+- 不新增自制下载器、fingerprint、缓存协议或 workflow 产物接力。Buck 的下载规则、action key、声明输出和测试规则是唯一构建机制。
+
+收口完成的判据是：一条按平台配置的 Buck 请求能产出最终发行文件；workflow 只负责选择平台、调用 Buck、上传/证明产物和发布，不再理解组包步骤；仓库中剩余脚本均能归入“上游原生构建动作”“随包运行期代码”“测试体”或“构建工具引导”，不再存在 shell 充当第二套构建图。

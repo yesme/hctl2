@@ -1,6 +1,6 @@
 # CI 墙钟：慢在发行整包，不在日常 Buck2
 
-> 状态：待拍板<br>
+> 状态：待拍板 · C 已落地，A/B/D 仍未决定<br>
 > 基线：main @ 9f7f552<br>
 > 去向：`.github/workflows/{code,release,dependencies}.yml` 与 `main` 分支保护 required checks；不进合同层。<br>
 > 日期：2026-08-28<br>
@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `code.yml` | path 命中 `src/` 或 `code.yml` → 三平台 Buck2 + Cargo parity | 是（CI gate） |
 | `release.yml` | path 命中整个 `src/` 或 `release.yml` → 三平台 Complete package（Buck 第一方 + 外部组包 + 装两遍拼包 + 离线生命周期） | 是（Release gate） |
-| `dependencies.yml` | path 命中 `src/packaging/dependencies/**` → 另打一轮 Package lifecycle | 否（未进保护） |
+| `dependencies.yml` | PR 只跑静态合同；main push 或手动触发再跑三平台 Package lifecycle | 否（未进保护） |
 
 文档 / `.memo` PR（如 #27）：两 gate 均 skip 重活，约十几秒。这部分已经解决。
 
@@ -45,7 +45,7 @@ Linux Complete package 约 2–3 分钟。Intel Mac 贵在起 `macos-15-intel` +
 1. **该挡合入、也很快**：`src/` 上的 Buck2 三平台 + Cargo parity（CI gate）。
 2. **该在 tag/`main` 跑、不该挡日常 PR**：Darwin Complete package / Package lifecycle。
 3. **path 过宽导致误跑**：Release 把整个 `src/` 当发行路径，改 `agentd` 一行也打完整离线包。
-4. **重复劳动**：packaging PR 上 `dependencies.yml` 与 `release.yml` 各编一轮 Darwin Tuwunel。
+4. **已消除的重复劳动**：packaging PR 上不再由 `dependencies.yml` 与 `release.yml` 各编一轮 Darwin Tuwunel；前者在 PR 只跑静态合同。
 
 ## 可选办法（未改仓库）
 
@@ -55,14 +55,15 @@ Linux Complete package 约 2–3 分钟。Intel Mac 贵在起 `macos-15-intel` +
 **B. PR 上不跑 Darwin 整包。**  
 PR 只打 Linux Complete package（2–3 分钟）；`macos-x86_64` / `macos-arm64` 放到 push `main` 或 `v*` tag。Darwin 回归晚一个合入。
 
-**C. PR 上不要打两遍依赖包。**  
-`dependencies.yml` 的 Package lifecycle 在 PR 只留静态合同（`bash -n`）；整包生命周期只走 Release 或 tag。
+**C. PR 上不要打两遍依赖包。——已落地**
+
+`dependencies.yml` 的 Package lifecycle 在 PR 只留静态合同（`bash -n`）；整包生命周期只走 Release，main push 或手动触发再独立复验依赖包。
 
 **D. 保护里拿掉 Release gate。**  
 只 required `CI gate`。发行 workflow 照跑、失败可见，不挡合入。合得最快，发行问题可能进 `main`。
 
-建议组合 **A+B+C**（日常约 2 分钟；动 packaging 才打 Linux 整包；Darwin 整包在 tag/`main`）。D 更激进。
+原建议组合为 **A+B+C**；其中 C 已完成。A/B 仍决定日常 PR 是否继续等待 Darwin 整包，D 更激进。
 
 ## 待拍板
 
-选 A/B/C/D 的哪些条再改 workflow 与分支保护。未拍板前不改 `.github/`。
+只需继续决定 A/B/D。C 已随外部子系统进入 Buck action graph 的实现落地。
