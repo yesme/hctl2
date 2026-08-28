@@ -5,6 +5,25 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 buck2_bin=$project_root/build/tools/buck2-bin
 cache_control=$project_root/build/tools/buck2-cache
 
+if [ "$(uname -s)" = Darwin ]; then
+    xcode_version=$(xcodebuild -version | awk 'NR == 1 { print $2 }')
+    xcode_build=$(xcodebuild -version | awk 'NR == 2 { print $3 }')
+    macos_sdk_version=$(xcrun --sdk macosx --show-sdk-version)
+    test -n "$xcode_version" && test -n "$xcode_build" && test -n "$macos_sdk_version"
+    case "${1:-}" in
+        aquery | build | cquery | query | run | targets | test | uquery)
+            buck_command=$1
+            shift
+            set -- \
+                "$buck_command" \
+                --config "hctl2.macos_xcode_version=$xcode_version" \
+                --config "hctl2.macos_xcode_build=$xcode_build" \
+                --config "hctl2.macos_sdk_version=$macos_sdk_version" \
+                "$@"
+            ;;
+    esac
+fi
+
 case "${HCTL2_BUCK2_CACHE:-1}" in
     0 | false | no)
         BUCK_OFFLINE_BUILD=true exec "$buck2_bin" "$@"

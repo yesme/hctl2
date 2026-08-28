@@ -67,3 +67,9 @@ PR 只打 Linux Complete package（2–3 分钟）；`macos-x86_64` / `macos-arm
 ## 待拍板
 
 只需继续决定 A/B/D。C 已随外部子系统进入 Buck action graph 的实现落地。
+
+## 2026-08-29 缓存实测更新
+
+上述 25–56 分钟是没有跨 runner action cache 时的冷种子数据，不再代表每次正常构建。PR #31 合并后的第二次 main 手动复验中，macOS arm64 完整依赖生命周期为 36 秒，Intel 为 1 分 15 秒；两个 job 都精确恢复 REAPI 数据，Buck 汇总 88% cache hit、7 个 cached action 和 1 个本地测试 action。后续又把 Tuwunel 拆成独立 action，并要求精确外层 cache 命中时在 event log 中确认该 action 确实 remote-hit。
+
+这改善了 B/D 的等待成本，但不改变职责判断：发行门禁是否阻塞普通第一方 PR 仍应按风险策略单独拍板，不能以“已经有 cache”假定永远不会冷建。

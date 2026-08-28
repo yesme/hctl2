@@ -1,3 +1,5 @@
+load("//build/rules:rust.bzl", "HCTL2_VERSION")
+
 oncall("hctl2")
 
 rust_binary(
@@ -12,4 +14,14 @@ rust_test(
     srcs = ["rust_toolchain_test.rs"],
     crate_root = "rust_toolchain_test.rs",
     edition = "2024",
+)
+
+sh_test(
+    name = "version_contract_test",
+    test = "version_contract.sh",
+    args = [
+        HCTL2_VERSION,
+        "$(location root//:Cargo.toml)",
+    ],
+    resources = ["root//:Cargo.toml"],
 )

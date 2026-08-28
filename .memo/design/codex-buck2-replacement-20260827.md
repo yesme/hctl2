@@ -1,7 +1,7 @@
 # Buck2 替换方案：第一方构建图与外部子系统边界
 
 > 状态：已落地 · 第一方、外部组包、完整发行与测试均进入 Buck action graph<br>
-> 基线：main @ f6c025e；实现从 PR #15 起逐批合入<br>
+> 基线：main @ 376cb7f；实现从 PR #15 起逐批合入<br>
 > 去向：已进入 src/ 第一方构建、CI 与发行组装；后续按显式工具链升级维护<br>
 > 日期：2026-08-27  
 > 说明：Accepted · 作为后续四批实现 PR 的施工依据  
@@ -205,7 +205,7 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 
 早期实现只在相同 `buckd` 下复用 `packaging/release:complete`，导致每个 worktree 和临时 GitHub runner 重编 macOS Tuwunel，已判定不可接受。现在由钉定的 `bazel-remote` 在本机 loopback 提供标准 REAPI CAS/action cache：各 worktree 保持独立 daemon 与 `buck-out`，只共享内容寻址结果；macOS CI 用 `actions/cache` 持久化同一 REAPI 数据目录，cache key 随 Buck、工具链和外部准备输入换代，并用前缀恢复上一代 CAS。Linux 只消费官方二进制，不承担这份缓存开销。这里没有恢复自制 fingerprint、Cargo 目录 cache 或最终依赖包 artifact 接力；将来若采购托管 REAPI，只需更换 endpoint 和凭证。
 
-实现验收还发现，OSS Prelude 的 genrule 会把 `cacheable = True` 与本地执行 label 联合判断；只设置前者时 `prepared` 仍显示 `allows_cache_upload: false`。最终为会联网调用上游 Cargo 的 Tuwunel 准备 action 标注 `network_access`，为工具链拼装和大目录组包 action 标注 `large_copy`，使它们保持本地执行并允许把确定性结果上传到标准 action cache。
+实现验收还发现，OSS Prelude 的 genrule 会把 `cacheable = True` 与本地执行 label 联合判断；只设置前者时准备 action 仍显示 `allows_cache_upload: false`。最终为会联网调用上游 Cargo 的独立 `tuwunel` action 标注 `network_access`，为预编译组件准备、工具链拼装和大目录组包 action 标注 `large_copy`，使它们保持本地执行并允许把确定性结果上传到标准 action cache。
 
 ## 后续收口：消除 shell-as-Make
 
@@ -226,3 +226,13 @@ AI 化开发不再用传统人日作为主要估算单位。后续采用三项�
 ## 后续修正：恢复 `src/` 构建边界
 
 最后一批曾为了直接读取仓库根 `LICENSE` 与 `docs/usage.md`，把 `.buckconfig`、`.buckroot` 和一个导出文件的 `BUCK` 提到仓库根。这是边界回归，不是 Buck2 原生机制的要求。2026-08-29 已撤销：Buck workspace 与所有 targets 回到 `src/`；发行资料使用 `src/packaging/release/assets/` 中由 Buck 声明的快照；CI 用 `cmp` 校验快照和仓库文档事实源。完整发行仍由单个 Buck 请求生成，没有恢复 Buck 外的组包阶段。
+
+## 后续优化：隔离昂贵 action 与校验缓存合同
+
+2026-08-29 进一步把原先单一 `prepared` 拆成六个组件 action。macOS `tuwunel` 只声明锁定源码、Rust 工具链、最小公共 action helper、Mach-O helper、独立原生构建体与由 `./buck2` 注入的 Xcode/SDK identity；输出只保留可执行文件、许可证、构建环境和非系统 dylib 闭包。其他五项各自只声明对应官方制品与必要配置，任一组件的制品、配置或专属脚本变化不再使其他组件失效。源码伴随归档由最终 `package` 直接引用 Buck 下载目标。不可变 action 内原先模拟增量目录的 marker 同时删除。
+
+Apple Silicon 本机最终实测：`tuwunel` action 输出 77 MiB；Vikunja、Dagu、tmux、Cinny、Static Web Server 分别约 107、148、1.6、59、6 MiB，均不再保留同一大二进制的解压副本；依赖归档目录 176 MiB，完整发行目录 192 MiB。原单体准备输出约 855 MiB，其中包含完整 Cargo target/source tree 与全部下载；这些内容现已退出 action output。
+
+最终提交的干净 detached worktree 验收在 4 秒内完成 Tuwunel 请求，Buck 汇总 83% cache hit（5 cached、1 local）；event log 中 `tuwunel` 的 `RemoteCommand.cache_hit` 为 `true`，materialized output 为 80,880,970 字节。CI 使用同一条 slurp 后的 jq 断言，避免对 JSON event stream 逐条输出布尔值而误判退出码。
+
+CI 不再保存第一方 `buck-out` 或 DotSlash 下载目录。前者实测恢复 300–570 MiB 后仍有 0% Buck action hit，而三平台第一方冷构建只需约半分钟到两分钟。仅 macOS 外部构建保留标准 REAPI 数据目录：外层 key 包含 runner image 与昂贵 action 的受控输入；精确 key 恢复后必须从 Buck event log 机械确认 `tuwunel` 是 remote cache hit，否则 workflow 失败。Actionlint 与 ShellCheck 使用摘要锁定的官方单文件发行物，版本字段由 Buck test 校验 Cargo 与 Starlark 事实一致。
