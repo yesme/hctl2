@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.14.1<br>
+> 状态：规范性合同 · 草案 v0.15.0<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -11,7 +11,7 @@
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
 | Participant / Project Role Binding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
-| Chat 端口绑定 | Room 到 chat server 房间的 Resolved Port Binding，及外部 account/room stable IDs 与获准身份映射策略（含经 homeserver 桥接接入的外部平台用户）；Room 的 content 家由它指认。被指认的房间对 control 明文可读——不启用端到端加密（Matrix `m.room.encryption`），这是绑定的准入前置 |
+| Chat 端口绑定 | Room 到 chat server 房间的 Resolved Port Binding，外部 account/room stable IDs、获准身份映射与可选结构化 human 动作 allowlist（含经 homeserver 桥接接入的外部平台用户）；Room 的 content 家由它指认。被指认的房间对 control 明文可读——不启用端到端加密（Matrix `m.room.encryption`），这是绑定的准入前置 |
 | Context Manifest / Context Bundle | 一次授权的根来源清单，以及为某个消费执行实际物化并交付的内容包 |
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
@@ -26,7 +26,7 @@
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Participant / Project Role Binding | Participant immutable revision + current pointer；binding version | control 处理「创建/更新 Participant」与「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的 Participant/binding revision |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
-| Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以 fresh 房间状态回读证明目标房间未启用端到端加密 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略与降级能力；health、成员现状、同步 cursor 与加密状态观测是另行版本化的运行投影——绑定后房间被开启加密不改写历史 binding，只把该 Room 的聊天入口标为需要关注 |
+| Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以 fresh 房间状态回读证明目标房间未启用端到端加密 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略、结构化 human 动作 allowlist 与降级能力；health、成员现状、同步 cursor 与加密状态观测是另行版本化的运行投影——绑定后房间被开启加密不改写历史 binding，只把该 Room 的聊天入口标为需要关注 |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
 | Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，Agency 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
@@ -92,11 +92,11 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；需
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由经过认证的 human actor 在 Trigger Preview 后提交；human 来自经认证的场景客户端会话——Workbench、CLI 或按公开合同适配的第三方场景客户端；chat server 里的消息本身不是入口。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的 direct client connection，也可以来自 Chat 端口绑定明确允许的 provider 结构化事件；两者都归一为同一 command draft，按[系统合同](./system.md#客户端动作与-provider-事件)保留 actor mapping、source event、目标版本和幂等依据。chat server 里的普通消息本身不是入口。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
 
 mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 
-命令走 HCTL，记录落平台：类型化命令的预览、准入与判决都在控制面执行；结果可以作为结构化事件写回 chat server 供时间线展示，但平台里的记录只是记录——chat server 中的任何消息、反应、成员动作或自动化都不是命令，不能触发派发、解决 Request 或改变治理事实。
+命令走 HCTL，记录落平台：类型化命令的预览、准入与判决都在控制面执行；结果可以作为结构化事件写回 chat server 供时间线展示。普通消息、反应、成员变化和自动化只是 content，不能触发派发、解决 Request 或改变治理事实。唯一可提升为 human 命令请求的是 Chat binding 预先列明的显式结构化动作：它必须绑定精确 source event、映射到 owner human、携带稳定 action/target/version，并能生成幂等键；由 HCTL service account、bridge bot、模型或无法映射账号产生的同形事件只作记录。第一阶段未交付这种 Matrix 适配，实际入口仍是 Workbench/CLI。
 
 ## 外部概念对齐
 

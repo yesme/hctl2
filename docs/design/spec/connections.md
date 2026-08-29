@@ -1,6 +1,6 @@
 # 四模块的端到端连接
 
-> 状态：规范性合同 · 草案 v0.14.1<br>
+> 状态：规范性合同 · 草案 v0.15.0<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -80,6 +80,7 @@ execution owner stable ref + invocation_version | attempt_generation
 + required/optional Skill refs + digests
 + Worker Profile revision
 + Harness/Runtime Resolved Port Binding + 接入方式与降级能力
++ terminal input policy（managed_single_writer | native_interactive_allowed；无 Terminal 时省略）
 + repo_id/base + 可选 selected Repo Instance ref / placement constraints
 + 能力与权限摘要
 + 预算与截止
@@ -168,6 +169,6 @@ Task 路径的验收证据 → Task Completion Receipt
 
 ## 场景与第三方适配器
 
-Workbench 可以在一个界面编排上述连接，第三方 Chat/Kanban/Workflow/Terminal 平台也可以按能力提交同一目标命令、查询同一投影并订阅同一事件。适配器没有跨模块捷径：外部 Issue 不能直接提交「启动 Run」命令，Engine task 不能直接启动 Harness，终端或外部 thread 也不能直接 Complete Task。能力不足时隐藏动作或安全暂停，而不是建立平台专属的平行连接。
+Workbench 可以在一个界面编排上述连接，第三方 Chat/Kanban/Workflow/Terminal 平台也可以按能力提交同一目标命令、查询同一投影并订阅同一事件。适配器没有跨模块捷径：Task binding 明确接纳的 provider Done 只能请求同一个「完成 Task」命令，不能顺带「启动 Run」；Engine task 不能直接启动 Harness，终端或外部 thread 也不能直接 Complete Task。能力不足时隐藏动作、保留待处理请求或安全拒绝，而不是建立平台专属的平行连接。
 
 Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Chat Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。

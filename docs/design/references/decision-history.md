@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.14.2 · 2026-08-30<br>
+> 状态：Informative · 对应草案 v0.15.0 · 2026-08-30<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -114,7 +114,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#31-小修订台账)。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#32-小修订台账)。
 
 ## 15. 四段施工序与组件正名（v0.12.0）
 
@@ -170,7 +170,7 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#31-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#32-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
@@ -252,7 +252,22 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 正式选型改为 **Tauri 2 + TypeScript/React 主选，GPUI 原生备选，Electron 安全网**。React 场景代码保持普通浏览器可运行、壳专有代码限制在薄壳与打包层的既有约束不变，四场景不随壳切换重写；已选 UI 轮子（Tiptap、React Aria、React Flow、xterm.js）全部保留。原 E-WORKBENCH-SHELL 的探针、产物抽样与权限边界证据继续有效，原“重开门槛”转化为反向回退条件：Tauri 整窗 P0（WKWebView 与承诺的 Linux WebKitGTK 基线、CJK/IME、一窗十终端、`.deb`/`.rpm` 与升级路径）失败即回退 Electron，不下沉 Wry 自研。为复用 GPUI 生态代码而将 `hctl2-workbench` 改为 GPL 的议题随之搁置。合同层同步：[系统边界](../spec/system.md#安全边界)的桌面壳安全条款改为壳中立——Tauri 的 capability/permission/scope 声明与 Electron 安全网的 sandbox 配置并列为两种发行形态各自的固定要求。证据见[桌面壳证据](../../research/workbench-shell.md#e-workbench-shell)与[重开调研](../../research/workbench-shell-reopen-20260826/README.md)。
 
-## 31. 小修订台账
+## 31. 客户端没有等级，动作合同成为真正边界（v0.15.0）
+
+2026-08-30 所有者拍板。此前把界面分成“治理客户端、content 客户端、诊断界面、带外终端”虽然守住了账本权威，却错误地让客户端产品类别承担了权限语义：Workbench 看起来比四个原生客户端更高一等，Vikunja/Herdr 的正常用户动作也被一概降成只读或带外。新的裁决是：**Workbench、CLI 与 provider 原生客户端没有等级；动作落到哪个端点、携带什么来源/目标/版本/幂等依据，才决定它按哪份合同处理。** Workbench 可以理解为把四类客户端、联合投影、跨模块导航和 HCTL 公共命令入口装进同一个桌面，它不是内核；关闭或不安装 Workbench，control、CLI、provider 和已启动执行都继续工作。
+
+系统合同据此把动作分为 content 写入与观测、human 命令请求、运行时输入、Result Proposal 和不支持的 provider mutation。provider event 可以在模块明确允许时表达 human 命令请求，但必须归一到与 Workbench/CLI 相同的 command draft 和 reducer；这不是让 provider 数据库获得治理权，也不是建立一套通用 CRUD/shim。第一阶段单用户只需把 direct connection 或 provider account 稳定映射到 owner human，不建设组织/RBAC；仍必须保留来源类别、目标、expected version/generation、幂等键、cursor/gap 和 fresh readback，HCTL service、模型与未知 actor 不能自报为 human。
+
+四个模块按实际用户路径分别裁决：
+
+- Chat：Matrix 客户端和 Workbench 都可正常写消息 content；普通消息、反应、mention 和模型建议不含完整命令语义，不能自动派发。将来只有 Chat binding 明确列明、绑定精确 source event 且能映射 human 的结构化动作，才可请求同一 HCTL 命令；第一阶段实际入口仍是 Workbench/CLI。
+- Task：Vikunja 原生 UI 把卡拖入 Done 会在后端真实修改 `done`，并发出包含 `doer` 的 `task.updated` webhook；因此对已绑定卡片，这个明确动作在 remote revision/updated version、fresh readback 和规范幂等 tuple 齐全时可以请求同一个「完成 Task」命令。它仍不能直接写 lifecycle/Receipt，无契约、活动 Run、证据不足或漂移时保留“provider Done、HCTL 开放”的双重状态。
+- Run：Dagu 的 UI 是完整管理界面，Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 会先改变定义或机械执行，无法让 control 在副作用前持久化 intent、撤销 Attempt/租约并安排停止。因此用户意图本身没有问题，但该接口顺序不适合作为普通 Run 入口；对已绑定 execution 的直接 mutation 只标记分歧，不能事后补造 Run 命令或 Receipt。
+- Agent：Workbench Terminal 与 Herdr TUI 都是 Terminal 客户端。原生输入是有效的用户运行时输入，不是 Task/Run 结果；Execution Spec 必须在“全部输入受 descriptor/lease 管理”和“允许原生交互、接受 provenance/单写者保证不完整”之间冻结选择。Herdr v0.8.2 缺统一 writer gate 与逐次输入事件，所以前者关闭原生写入，后者如实降级，不再把所有原生输入笼统说成 drift。
+
+这次变化同时移动 Workbench 定位、human 命令入口和 Task/Agent 的可接受行为，故从 v0.14.2 升为 v0.15.0，而不是补丁修订。实现证据分别见 [Vikunja 复核](../../research/task-backends.md#2026-08-30-provider-动作复核)、[Dagu 复核](../../research/workflow-engines.md#2026-08-30-provider-管理动作复核)与 [Herdr 验证](../../research/runtime/agency-runtime-validation-20260829.md#2026-08-30-原生客户端定位复核)。
+
+## 32. 小修订台账
 
 本文件只为重要设计变更单列章节，例如核心边界、实现选型或权威归属发生变化。词汇、词形与概念清理类修订各记一行，细节放在合同层清理表，不再单独成章：
 
@@ -262,6 +277,6 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 | v0.11.1 | 2026-08-21 | 词形收敛：25 个驼峰名改带空格专名、16 个 `*Intent` 命令名改动宾语义名、状态值改中文语义名；“不含任何代码标识符”的绝对化后被 v0.12.0 复审收窄（协议/schema 字段与外部原名保留原形） | [词形表](../spec/README.md#v0111-词形收敛) |
 | v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、无法证明执行身份时统一标为“丢失” | [清扫表](../spec/README.md#v0122-清扫) |
 
-## 32. 当前设计
+## 33. 当前设计
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

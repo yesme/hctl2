@@ -1,13 +1,13 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.14.2<br>
+> 状态：规范性合同 · 草案 v0.15.0<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
 
 | 组件 | 职责 |
 | --- | --- |
-| `hctl2-workbench` | 四个场景的集成客户端；提交命令、查询投影、显示事件 |
+| `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
 | `hctl2-tool` | 机械工具箱：Git/SCM 操作与事实校验、Revision/digest、合并核验、lint、PR/memo 的机械拼装、有效变化侦测。独立可用（standalone 时只做普通本地操作、不产生治理宣称）；被 control 编排时执行已持久化的意图并回读 |
 | Herdr | 第一阶段选定的 Agency：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
@@ -16,7 +16,7 @@
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
-Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、任务源、workflow engine、harness 和 Agency 是由内核调用的五类受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。第一阶段由 Herdr 实现 Agency 端口；Herdr 和工具箱都不是 Agent 模块本身。
+Workbench 不是特殊内核。Workbench、CLI 和 provider 原生 UI 都只是用户可以操作的客户端；同一个 Workbench 窗口既可以通过 Query/Preview/Submit/Subscribe 调用 HCTL，也可以通过 Matrix、task backend 或 Herdr 通道操作对应 content/运行时。客户端名称不赋予权限，动作落到哪个端点、携带什么来源与版本，才决定它按哪份合同处理。外部 Chat、任务源、workflow engine、harness 和 Agency 是 control 使用的五类受控端口；同一产品可以同时提供客户端与端口，但连接、binding 和事实权威必须分开。第一阶段由 Herdr 实现 Agency 端口；Herdr 和工具箱都不是 Agent 模块本身。
 
 ## 固定内核与受控端口
 
@@ -35,9 +35,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 
 这些端口就是供应端替换边界，不另部署一套跨模块的通用 shim。每个 Resolved Port Binding 必须固定 provider 制品、模块专用 adapter 版本、配置摘要、实测能力与降级方式；adapter 只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新 provider 通过对应模块合同测试后只影响新 binding；活动工作仍使用原 binding，已有 content 的迁移是另一个需要预览、导出、导入和回读校验的显式动作。
 
-Workbench 依赖 HCTL Query/Preview/Submit/Subscribe 和模块投影，不依赖 Vikunja、Dagu 或 Herdr 的 UI 对象。Terminal 的观察流可以由 Workbench 客户端侧 transport adapter 直读 Herdr，以免 control 代理全部 PTY 字节；连接前仍由 control 签发精确 descriptor。Herdr v0.8.2 不能给该连接限定 HCTL 权限，因此要求输入租约保证时，写入只能经 control 的 Herdr adapter；直接写 Herdr 的客户端通道按低信任处理。未来官方远程 Agent 直接实现 Agency 合同，或由专用 Agency adapter 接入。Chat Room 另有明确例外：飞书、Slack、Discord 等平台互通由 Matrix homeserver/bridge 生态提供，HCTL 只消费 Matrix 端口并维护桥接身份映射，不逐个平台实现聊天 adapter。
+Workbench 的 HCTL 功能只依赖 Query/Preview/Submit/Subscribe 和模块投影，不依赖 Vikunja、Dagu 或 Herdr 的 UI 对象；它的 provider 客户端功能则使用 provider 的公开协议或客户端侧 transport adapter，语义与独立原生客户端相同。Terminal 的观察流和普通交互输入可以由 Workbench 直连精确 Herdr terminal，以免 control 代理全部 PTY 字节；连接前能否取得 control descriptor、写入能否受 Terminal Input Lease 约束，由 binding 能力如实声明。Herdr v0.8.2 不能让所有原生写入经过统一 writer gate，因此要求单一输入者保证时只能开放 control 可校验的路径；允许原生交互时记录为低保证的运行时输入，而不是伪装成 HCTL 命令或结果。未来官方远程 Agent 直接实现 Agency 合同，或由专用 Agency adapter 接入。Chat Room 另有明确例外：飞书、Slack、Discord 等平台互通由 Matrix homeserver/bridge 生态提供，HCTL 只消费 Matrix 端口并维护桥接身份映射，不逐个平台实现聊天 adapter。
 
-第一阶段全部执行面服务（chat server、本地任务服务器、Workflow Engine、Herdr）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；治理变更仍只能由 control 经对应受控端口发起，不能把服务器 mutation 暴露给场景客户端或其他本地进程。chat server 与任务后端的 content 读写不在此限——那是场景内容，不是治理。受 HCTL 管理的 Terminal 输入必须先由 Herdr 适配代码校验精确票据、租约和当前代次，再调用 Herdr API。Herdr TUI 的原生输入目前会绕过这些检查，因此开放写入时必须标为“原生输入无法完全证明”，也不能准入 HCTL 结果。
+第一阶段全部执行面服务（chat server、本地任务服务器、Workflow Engine、Herdr）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；需要 HCTL 先记账、撤权或核验前置的 provider mutation 仍只能由 control 经对应受控端口发起。chat server 与任务后端的 content 读写不在此限；Herdr 的普通交互输入也不等于治理命令。受 HCTL 单输入租约管理的 Terminal 输入必须先由 Herdr 适配代码校验精确票据、租约和当前代次，再调用 Herdr API；允许 Herdr TUI 原生输入时必须标明它没有这项保证，也不能据此准入 HCTL 结果。
 
 hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，启动顺序、健康检查、备份与升级由 control 统一编排。托管不授予 content 之外的任何权威；服务器进程的死活只影响对应场景的可用性，不改变治理事实。
 
@@ -60,7 +60,7 @@ hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，
 
 ## 场景端口
 
-所有场景客户端共享四类操作：
+所有 HCTL 命令客户端共享四类操作：
 
 ```text
 Query(filters, cursor) -> Projection
@@ -69,9 +69,27 @@ Submit(typed command) -> accepted result or typed rejection
 Subscribe(cursor) -> ordered events or resync snapshot
 ```
 
-场景客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台可以拥有其场景 content 的 ground truth，以及明确授权的字段；但它不拥有治理——其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 的身份、授权或判决来源。
+HCTL 命令客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台可以拥有其场景 content 的 ground truth，以及明确授权的字段；但它不拥有治理——其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 的身份、授权或判决来源。
 
-渲染器、拖放、按钮和终端输入都只是 command client。未能提供等价预览、版本或权限信息时，动作必须禁用或安全暂停。
+界面控件本身没有固定语义：同一个拖放可以只是 task content 移动，也可以在进入 Done 时产生一个 human 完成请求；终端输入推动精确运行时，不是领域命令。具体分类见下一节。需要提交 HCTL 命令却无法提供等价预览、版本或权限信息时，动作必须禁用、保留为待处理请求或安全拒绝。
+
+## 客户端动作与 provider 事件
+
+Workbench 不比四个原生客户端加在一起更高贵，CLI 也不更低。control 不根据“来自哪个产品”判定动作，而根据动作落点和可验证信封分成以下几类：
+
+| 类别 | 例子 | control 怎样处理 |
+| --- | --- | --- |
+| content 写入与观测 | Matrix 消息；Vikunja 创建、编辑、排序、非终态移动 | provider 先拥有该 content；control 按 cursor/Snapshot 对账，按模块合同更新投影或建立无契约身份，不把 content 直接当治理事实 |
+| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，先跑同一 Preview/准入；只有无需临场选择且 binding 明确允许自动提交时才继续 Submit，否则保留为待处理或返回类型化拒绝 |
+| 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按 descriptor/lease/generation 能力记录保证等级，但不因此产生 Task/Run/Project 结果 |
+| 执行结果提议 | harness/Agency 的结构化终局事件与证据 | 只能进入 Result Proposal；owner 模块按版本、代次和证据准入，不能冒充 human 命令 |
+| 不支持的 provider mutation | 直接在 Dagu UI Start/Stop/Retry/Approve，或改写已绑定 execution | 记录当前机械事实并标记 binding 分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
+
+一个 provider 事件可以同时具有 content 含义和命令请求含义。例如把已绑定 Vikunja 卡片拖入 Done 已经改变了 provider content；若事件还能证明是配置中映射的 human 所做，并携带稳定外部实体、前后 revision/updated version 和可重复计算的幂等依据，Task adapter 可以再把它归一为「完成 Task」请求。这个请求仍会因无契约、活动 Run、证据不足或版本漂移而被拒绝；拒绝后 provider Done 与 HCTL 开放状态并列显示，而不是回写一份伪造的完成事实。缺少 actor、目标、版本或幂等依据时，它只是一条 Snapshot。由 HCTL service account 回写造成的事件、模型/Harness 事件和无法映射的 actor 永远不能取得 human provenance，防止回写循环和身份混淆。
+
+第一阶段是单用户模型，因此这里只要求把 direct client connection 或 provider account 稳定映射到 owner human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉 target、expected version/generation、幂等键和事件顺序。webhook/通知只负责唤醒：接纳前仍以 provider current readback、cursor/gap 和模块 Snapshot 为准，重复、迟到或乱序投递必须得到相同结果。
+
+各模块必须分别列出可接受的 provider 动作；本节不定义通用 CRUD，也不要求四个 provider 伪装成同一种状态机。当前四条实际路径是：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足上述信封的 Done 产生完成请求；Run 的用户输入和 Agent 结果先进入 control，持久化后再由 outbox 推动 Dagu，而 Dagu 原生 mutation 不被接纳；Agent 允许按 Execution Spec 声明的保证等级使用原生终端输入。
 
 ## 命令与跨服务正确性
 
@@ -79,16 +97,16 @@ Subscribe(cursor) -> ordered events or resync snapshot
 
 ```text
 command_id / idempotency_key
-authenticated actor principal + actor kind/provenance + permission scope
+actor principal + actor source/provenance + permission scope
 target stable ID
 expected revision or state version
 frozen adapter binding
 canonical input digest
 ```
 
-actor kind/provenance 由认证场景入口或 control 内部 reducer 赋予，调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 完成只接受有权 human actor 或 task-bound Workflow 的正常完成 reducer，Task 已取消只接受有权 human actor；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。
+actor source/provenance 由 direct client connection、provider binding 的账号映射或 control 内部 reducer 赋予，调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 完成只接受有权 human actor 或 task-bound Workflow 的正常完成 reducer，Task 已取消只接受有权 human actor；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。
 
-治理命令只有两类入口：经认证的场景客户端会话（赋予 human provenance；第一阶段交付 Workbench 与 CLI 两个客户端，按公开合同适配的第三方场景客户端同规则），以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。Harness 适配器与受控端口只有 Result Proposal 通道，产出经 owner 准入进入账本，不是命令入口。只验入口，不判断客户端是被人还是子进程启动，也不设额外的用户在场证明；所有场景客户端使用同一验证规则，这是 actor 认证而非界面隐藏特权。
+治理命令只有两类 actor 来源：可稳定归属到 owner human 的动作，以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。human 动作既可以来自 Workbench/CLI 的 direct client connection，也可以来自模块 binding 明确接纳的 provider event；两者生成同一 command envelope、使用同一验证规则，没有界面隐藏特权。第一阶段不设额外的用户在场证明，也不判断客户端进程是否由另一个程序启动。Harness、模型与 execution principal 只有 Result Proposal 通道，不能借 provider service account 或 payload 自报为 human。
 
 control 在用户级 metadata 账本的一个 SQLite 事务中写领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界，不能由两个模块或两个 clone 事后拼接。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。
 
@@ -104,7 +122,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影可�
 
 adapter 只投递并回读；只有在它确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 第一阶段以窄 execution principal 运行：HCTL 不向它交付 control 客户端凭据、OS secret store、SSH agent 或未授权 provider 配置中的密钥；集成与外部写凭据只在校验当前 control writer 及适用 site/backend generation 的工具箱/adapter 网关内使用，不注入 Harness 环境。Harness 可读所属 Repo Instance 的 Git common-dir 与 refs 并在本 ChangeSet 分支提交；对目标 ref 或其他 ChangeSet 现场的直接写入不取得集成权，只回读为 drift。OS 沙箱、网络白名单等执行加固由 Worker Profile 声明、Execution Spec 冻结并记录为运行时事实；未声明不是受治理执行的启动前置，已声明而宿主施加不了则该次执行不激活。
 
-第一阶段不承诺自动发现或补偿任意带外写：Harness 不获得可绕过受控端口的外部写凭据；provider 被人在 HCTL 外修改，或本地目标 ref 被 Harness/人在「合入 ChangeSet」命令之外直接改写时，只由对应端口或工具箱回读为 Snapshot/drift（后者表现为 expected target head 不匹配），并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。带外观测不能成为 Result Proposal、Artifact、Verdict 或 Receipt。
+第一阶段不承诺自动补偿任意外部写：provider 事件只有在对应模块明确列为 content、human 命令请求或运行时输入时才按该路径处理；其余修改由对应端口或工具箱回读为 Snapshot/drift，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。Harness 不获得可绕过受控端口的外部写凭据；本地目标 ref 被 Harness/人在「合入 ChangeSet」命令之外直接改写时，只表现为 expected target head 不匹配的 drift。外部观测本身不能成为 Artifact、Verdict 或 Receipt，执行结果仍必须使用 Result Proposal。
 
 ## 事实与存储
 

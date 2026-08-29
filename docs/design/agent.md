@@ -43,13 +43,13 @@ Terminal 是 Agent 模块的操作场景，用于观察、诊断和接管一次�
 
 semantic resume 不必依赖厂商保留的会话文件：自有观测留痕（转录与结构化事件）足够时可以重建等价的最小续跑输入；重建物只是投影，不改变任何权威记录。
 
-Workbench 就位之前（P2），观察与接管经 `hctl2 terminal` 命令、凭 control 签发的短期票据进行。Herdr TUI 是 Terminal 的原生客户端；它的直接输入目前不校验 HCTL 票据或输入租约，因此不能声称该通道受 HCTL 输入权限控制（见[Agency 与 Herdr](#agency-与-herdr)）。
+Workbench 就位之前（P2），观察与接管可以经 `hctl2 terminal` 命令取得 control 为精确目标签发的短期票据，也可以在执行规格允许普通交互时直接使用 Herdr TUI。两者都是 Terminal 客户端，没有权限等级差异；区别是当前 Herdr TUI 不能证明每次输入经过 HCTL 票据、代次和输入租约检查，所以只适合明确允许这种较低保证的执行（见[Agency 与 Herdr](#agency-与-herdr)）。
 
 Execution Chat 是绑定一次精确执行的结构化观察与控制视图：它不是 Room，没有独立的会话身份；里面的输入和事件也不会自动进入 Room，只有显式的 Share to Room 动作经 Project 准入后才能发布。观察、输入、执行控制和安全输入是分开授权的四种权限，接管会原子撤销旧输入者。
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |
-| 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room |
+| 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明；按 binding 选择受租约或原生交互输入 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room；它没有 Herdr TUI 之外的隐藏运行时权限 |
 | 场景客端：CLI / WezTerm | 使用短期连接票据观察或接管精确目标 | 提交任意 argv/cwd/Herdr terminal ID 绕过 HCTL 适配代码 |
 | 受控端口：harness 适配器 | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
 | 受控端口：Agency（第一阶段为 Herdr） | 启动 Harness，持有进程、PTY 和终端会话 | 决定领域权限、评审或完成 |
@@ -66,16 +66,16 @@ Herdr 提供三类接口：
 | --- | --- | --- |
 | Herdr API | `hctl2-control` 的 Herdr 适配代码 | 启动、获准输入、打断和停止都经 HCTL 验证后调用 Herdr；HCTL 不重新实现终端服务 |
 | 终端连接 | Workbench / CLI 凭 control 票据连接精确 Herdr terminal ID | HCTL 验证票据与当前代次；Herdr 负责观察流、终端状态和输入执行 |
-| Herdr TUI | 用户直接观察或操作 Herdr | 它是 Terminal 的原生客户端，不能提交 HCTL 治理命令；直接输入的可信程度按下述限制处理 |
+| Herdr TUI | 用户直接观察或操作 Herdr | 它是正常的 Terminal 客户端；输入会推动精确运行时，但不是 HCTL 治理命令或 Result Proposal，保证等级按下述限制处理 |
 
 Herdr v0.8.2 的已知限制必须如实反映到功能声明：
 
-- Herdr TUI 的直接输入不经 HCTL Terminal Input Lease，当前也没有可供 HCTL 可靠记录每次输入的事件。开放该写入时，整个执行必须标为“原生输入无法完全证明”，不能声称所有输入都受 HCTL 租约控制。需要强输入保证时，暂时关闭原生写入，或先在 Herdr 上游统一所有写入路径并增加输入记录。
+- Herdr TUI 的直接输入不经 HCTL Terminal Input Lease，当前也没有可供 HCTL 可靠记录每次输入的事件。执行规格允许原生交互时，这仍是有效的用户运行时输入，但必须标明输入历史与单输入者保证不完整，不能声称所有输入都受 HCTL 租约控制；这本身不会把随后独立提交的 Result Proposal 自动判为无效。需要强输入保证时关闭原生写入，或先在 Herdr 上游统一所有写入路径并增加输入记录。
 - Herdr API 与原生 controller 目前可以交错写入。在 Herdr 提供统一写入权之前，要求 HCTL 单一输入者保证的执行不得同时开放两条写入路径。
 - Herdr 的 API 事件环是内存中最近 512 条，没有对外 sequence 或 gap 通知；它可以支持 UI 观察，不能被当成完整持久 trace。
 - 退出码、停止后残留进程和普通 server 重启后的会话恢复必须按实际能力报告。只有证明是同一进程和 PTY 时才能报 exact attach；其他情况分别报 semantic resume、replay 或丢失。
 
-这些限制不会导出一套 HCTL 自建终端服务。能由 Herdr 适配代码处理的留在 HCTL；需要运行服务支持的优先修改 Herdr 上游；暂时不支持的就在产品中明确说明。
+Workbench 的终端部件走直连 Herdr transport 时也受同一限制，不因装在 Workbench 中就升格。上述限制不会导出一套 HCTL 自建终端服务：能由 Herdr 适配代码处理的留在 HCTL，需要运行服务支持的优先修改 Herdr 上游，暂时不支持的就在产品中明确说明。
 
 ## 原生会话导入
 

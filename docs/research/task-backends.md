@@ -25,3 +25,14 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 [git-bug](https://github.com/git-bug/git-bug)：分布式、离线优先的任务追踪，任务以 git 对象存于 refs、随 push/pull 同步；Go 实现，CLI/TUI/Web UI 与 GraphQL API，带 GitHub/GitLab/Jira 桥接；GPL-3.0-or-later。
 
 角色：与 Vikunja 并列的对照候选，代表“零服务器、随仓库分布式”的另一条路。已知冲突：看板语义弱（排序/泳道需另行承载）、无 webhook（观测靠 refs 轮询）、任务 content 进 git refs 与“content 归第三方服务器”的统一律相悖。若验证胜出，须显式接受模型例外并记入[来时路](../design/references/decision-history.md)。采用边界同上：独立进程/CLI 调用，不 vendor（GPL 义务隔离）。
+
+## 2026-08-30 provider 动作复核
+
+本次为 v0.15.0 的客户端动作合同复核固定 Vikunja 实际行为，不从 README 推断：
+
+- v2.5.0 的 task-bucket API 明确说明，移入 Done bucket 会把 task 标为 done，移出会取消 done；重复移到同一 bucket 是 no-op（[`task_bucket.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/task_bucket.go#L38-L46)）。
+- 实际 model 代码在 bucket move 事务中比较旧/新 bucket，修改 `task.Done`/`DoneAt`，随后发出 `TaskUpdatedEvent`（[`kanban_task_bucket.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/kanban_task_bucket.go#L87-L231)、[事件派发](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/kanban_task_bucket.go#L248-L259)）。这证明“拖入 Done”不是纯 UI 排序，而是 provider 内一项真实状态变化。
+- `TaskUpdatedEvent` 被注册为 webhook event，payload 重载完整 task 与 doer；更新事件的 doer 来自实际认证主体（[listener 注册](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/listeners.go#L60-L69)、[doer 派发](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/tasks.go#L1599-L1613)、[webhook 数据重载](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/listeners.go#L1402-L1430)）。
+- outbound webhook 只有 payload HMAC、可选 Basic Auth、User-Agent 与 Content-Type，没有单独 delivery ID header（[`webhooks.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/webhooks.go#L345-L371)）。因此 HCTL 不能用“收到第几次 HTTP POST”作动作身份；幂等依据应由 binding revision、external task ID、updated/remote revision、Done transition 和映射后的 actor 组成，并在接纳前回读 current task。
+
+结论：Vikunja 原生 Done 可以表达 owner human 的完成请求，但不能直接证明 HCTL Task 完成。缺 doer、明确前后变化、版本或 fresh readback 时只作 Snapshot；满足条件时归一到与 CLI/Workbench 相同的「完成 Task」命令，仍由 Task reducer 独立验收。普通创建、编辑和非终态移动继续按 backend-authoritative content 处理。
