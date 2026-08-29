@@ -56,7 +56,9 @@ Execution Chat 是绑定一次精确执行的结构化观察与控制视图：�
 
 ## 运行时 provider
 
-Terminal 场景的 content 系统是**运行时 provider**——承载真实进程与终端会话的可插拔后端，与 chat server 之于 Chat Room 同构。HCTL 拥有的是 provider 合同的定义与桥接：agentd 是治理桥，租约、代次、审计和恢复等级的裁决都在这里，不与任何一家 provider 绑死。tmux 是内置的最简 provider；herdr 这类自带状态检测与远程接入的一体化 provider 经限时验证后可作为第二实现；将来远程数字员工的执行端点也是一种 provider。provider 只回答"在哪跑、怎么够得着"；谁在工作仍由 Participant 与执行规格回答，两者保持正交。
+Terminal 场景的 content 系统是**运行时 provider**——承载真实进程与终端会话的可插拔执行服务，与 chat server 之于 Chat Room 同构。HCTL 拥有的是 provider 合同的定义与桥接：agentd 是治理桥，租约、代次、审计和恢复等级的裁决都在这里，不与任何一家 provider 绑死。
+
+**刀口切在 agent 管理层，不切在 mux 上**：provider 必须是执行服务——受理获准的执行请求、常驻持有现场、报告存活与恢复等级；tmux/Zellij 这类 mux 太瘦不成 provider，只是原语。内置 provider 由 agentd 承载、以 tmux 为原语，按同一份合同接入——agentd 由此有两个逻辑身份：治理桥（面向所有 provider，唯一份）与内置 provider 的宿主（N 个 provider 之一），两个身份在合同上分开，替换任何 provider 都不动桥。herdr 这类自带状态检测与远程接入的一体化执行服务经限时验证后可作为首个外部 provider；将来远程数字员工的执行端点也是一种 provider。provider 只回答"在哪跑、怎么够得着"；谁在工作仍由 Participant 与执行规格回答，两者保持正交。
 
 一个 provider 由三个面描述，逐项能力声明、准确降级，与 Harness 能力探测同一套纪律：
 

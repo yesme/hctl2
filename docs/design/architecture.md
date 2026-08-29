@@ -1,6 +1,6 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.13.3<br>
+> 状态：规范性（架构层）· 草案 v0.13.4<br>
 > 日期：2026-08-25<br>
 > 定位：本文回答部署与数据视角——系统由哪三个面组成，每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[合同层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
@@ -31,7 +31,7 @@
 | Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端即互操作面；HCTL 房间不开端到端加密，控制面按消息 ID 读正文 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
-| Terminal | harness（编码代理工具）与运行时 provider | 会话转录、PTY 流 | 会话由运行时 provider 承载、agentd（HCTL 的本机执行守护进程）桥接与观测——provider 之于 Terminal，如同 chat server 之于 Chat Room；tmux 为内置实现，herdr 限时验证为第二候选 |
+| Terminal | harness（编码代理工具）与运行时 provider | 会话转录、PTY 流 | 会话由运行时 provider（执行服务层）承载、agentd（HCTL 的本机执行守护进程）桥接与观测——provider 之于 Terminal，如同 chat server 之于 Chat Room。刀口在 agent 管理层而非 mux：内置 provider 由 agentd 承载、以 tmux 为原语，herdr 限时验证为首个外部 provider |
 
 ## 4×3 归属矩阵
 

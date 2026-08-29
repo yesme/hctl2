@@ -1,6 +1,6 @@
 # 四模块连接与端到端闭环
 
-> 状态：规范性合同 · 草案 v0.13.3<br>
+> 状态：规范性合同 · 草案 v0.13.4<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -160,7 +160,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | 已绑定房间被开启端到端加密 | 同上一行的可继续/拒绝规则；聊天入口显示需要关注，已冻结引用与 digest 不受影响，由有权 human actor 换绑到未加密房间恢复 |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账 |
-| harness / 运行时后端不可用 | 执行安全暂停或按代次收口，不冒充成功 |
+| harness / 运行时 provider 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 
