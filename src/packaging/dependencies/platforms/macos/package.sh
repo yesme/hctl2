@@ -62,7 +62,7 @@ platform_stage_payload() {
 
     relocate_macos_consumer \
         "$PAYLOAD_ROOT/libexec/hctl2/tuwunel" binary "$P0_TUWUNEL_LIBRARY_DIR"
-    for component in vikunja dagu tmux static-web-server; do
+    for component in vikunja dagu herdr static-web-server; do
         relocate_macos_consumer "$PAYLOAD_ROOT/libexec/hctl2/$component" binary
     done
 
@@ -82,7 +82,7 @@ platform_stage_payload() {
         verify_macos_binary_compatibility "$(basename -- "$library")" "$library"
         codesign --force --sign - "$library"
     done < <(find "$PAYLOAD_ROOT/lib/hctl2/vendor" -type f -print | LC_ALL=C sort)
-    for component in tuwunel vikunja dagu tmux static-web-server; do
+    for component in tuwunel vikunja dagu herdr static-web-server; do
         assert_macos_dependencies_relocatable "$PAYLOAD_ROOT/libexec/hctl2/$component"
         verify_macos_binary_compatibility "$component" "$PAYLOAD_ROOT/libexec/hctl2/$component"
         codesign --force --sign - "$PAYLOAD_ROOT/libexec/hctl2/$component"

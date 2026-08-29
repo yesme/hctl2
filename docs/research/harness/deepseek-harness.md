@@ -2,7 +2,7 @@
 
 > 类别：① Coding Harness · 证据编号：E-L1-DEEPSEEK-HARNESS<br>
 > 状态：证据审计 · 钉定版本与许可见文内「审计基线」；发布后正文不改，只在文末追加复核记录<br>
-> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](./README.md)。
+> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](../README.md)。
 
 <a id="e-l1-deepseek-harness"></a>
 ## E-L1-DEEPSEEK-HARNESS · DeepSeek Harness / Cordis
@@ -35,7 +35,7 @@ DeepSeek Harness 在 L1 和跨层架构上都有独特价值。它没有把模�
 
 ### HCTL 的取舍
 
-HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../design/spec/system.md#固定内核与受控端口)：
+HCTL 不采用“Everything is a Plugin”，而采用[固定内核与受控端口](../../design/spec/system.md#固定内核与受控端口)：
 
 - Repo/Project/Task/Run 身份、命令准入、权限、版本与证据、领域归约器、持久账本、隔离栅栏和 Receipt 固定在内核中；
 - harness、运行时后端、任务源、workflow engine、Chat 端口和渲染组件通过类型化端口进行替换；

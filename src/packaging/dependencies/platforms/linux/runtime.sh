@@ -17,6 +17,6 @@ platform_file_mode() {
     stat -c '%a' "$1"
 }
 
-platform_tmux_socket_path() {
-    printf '%s/tmux/tmux.sock\n' "$P0_RUNTIME_DIR"
+platform_herdr_socket_path() {
+    printf '%s/herdr/herdr.sock\n' "$P0_RUNTIME_DIR"
 }

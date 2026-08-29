@@ -50,22 +50,22 @@ trap 'find "${test_root:?}" -depth -delete' EXIT
 tar -xzf "$ARCHIVE" -C "$test_root"
 release_root="$test_root/$PACKAGE_ID"
 
-[[ -x "$release_root/payload/bin/hctl2-agentd" ]] || die "release is missing hctl2-agentd"
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"
+[[ -x "$release_root/payload/libexec/hctl2/herdr" ]] || die "release is missing Herdr"
+[[ ! -e "$release_root/payload/bin/hctl2-agentd" ]] || die "release still contains hctl2-agentd"
 [[ -f "$release_root/payload/share/hctl2/first-party.tsv" ]] || \
     die "release is missing the first-party manifest"
 [[ -f "$release_root/payload/share/hctl2/SBOM.spdx" ]] || die "release is missing its SBOM"
 grep -F 'SPDXVersion: SPDX-2.3' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
-grep -F 'PackageName: hctl2-agentd' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'PackageName: herdr' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 grep -F 'PackageName: tuwunel' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
-"$release_root/payload/bin/hctl2-agentd" --version | grep -F 'hctl2-agentd ' >/dev/null
+"$release_root/payload/libexec/hctl2/herdr" --version | grep -F 'herdr ' >/dev/null
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"
 "$release_root/install.sh" --prefix "$contract_prefix"
-for command in hctl2-agentd hctl2-tool hctl2-services; do
+for command in hctl2-tool hctl2-services; do
     [[ -L "$contract_prefix/bin/$command" ]] || die "installer did not link $command"
 done
-"$contract_prefix/bin/hctl2-agentd" --version | grep -F 'hctl2-agentd ' >/dev/null
 "$contract_prefix/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 
 find "$test_root" -depth -delete

@@ -16,10 +16,10 @@
         "source_commit": "532c512944b2e5eb8991b5bc7cbeafa74fd5b47a",
         "source_asset": "dagu_source"
       },
-      "tmux": {
-        "version": "3.7c",
-        "source_commit": "e476c1230b958df0cb12977517d24b3dc931375b",
-        "source_asset": "tmux_source"
+      "herdr": {
+        "version": "0.8.2",
+        "source_commit": "9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c",
+        "source_asset": "herdr_source"
       },
       "cinny": {
         "version": "4.12.6",
@@ -40,7 +40,7 @@
       "dagu_coordinator_port": "15055",
       "dagu_coordinator_health_port": "18091",
       "cinny_port": "6168",
-      "tmux_session": "hctl2-services"
+      "herdr_protocol": "20"
     },
     "macos_deployment_target": "15.0",
     "source_date_epoch": "946684800"
@@ -61,15 +61,10 @@
       "url": "https://github.com/dagucloud/dagu/archive/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a.tar.gz",
       "sha256": "9f6e4a4e5e2cb63e0c46e9b5e7b4d4a4a1c3edc452433dbd60cb83e75538ce0a"
     },
-    "tmux_source": {
-      "filename": "tmux-3.7c-source.tar.gz",
-      "url": "https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz",
-      "sha256": "7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf"
-    },
-    "tmux_licenses": {
-      "filename": "tmux-builds-3.7c-LICENSES.tar.gz",
-      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/LICENSES.tar.gz",
-      "sha256": "094905d3ba42397c65fecd817dc29736dd14bd35e75600441403a365125f47d1"
+    "herdr_source": {
+      "filename": "herdr-9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c-source.tar.gz",
+      "url": "https://github.com/herdrdev/herdr/archive/9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c.tar.gz",
+      "sha256": "0797b440181e1da1f43a32c4cfb2c8e11a4398b8c1f392ab5a43b0e748ab7577"
     },
     "cinny": {
       "filename": "cinny-v4.12.6.tar.gz",
@@ -111,10 +106,10 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_linux_amd64.tar.gz",
           "sha256": "cfadd9606af9ff74d0ea8aef91fd89a831b3c63cf99a95c456fe2fcb3bb0471e"
         },
-        "tmux": {
-          "filename": "tmux-3.7c-linux-x86_64.tar.gz",
-          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-linux-x86_64.tar.gz",
-          "sha256": "cc56bd1cc873eb6089c615f0496b072385bda8a6d944069f38564a5d49c128aa"
+        "herdr": {
+          "filename": "herdr-linux-x86_64",
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-linux-x86_64",
+          "sha256": "976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
@@ -131,6 +126,11 @@
       "uname_m": "x86_64",
       "rust_target": "x86_64-apple-darwin",
       "assets": {
+        "tuwunel": {
+          "filename": "tuwunel-v1.9.0-macos-x86_64-hctl2.1.tar.gz",
+          "url": "https://github.com/yesme/hctl2/releases/download/tuwunel-macos-v1.9.0-hctl2.1/tuwunel-v1.9.0-macos-x86_64-hctl2.1.tar.gz",
+          "sha256": "56a82516f9939abfc1a9c101bc8b3edcb8590d84156216d712793839f0512415"
+        },
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
           "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
@@ -141,10 +141,10 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_amd64.tar.gz",
           "sha256": "a7fbed8e194668b9ede73de486f06f706574731ccf58fba1cffa86a1ffe84c18"
         },
-        "tmux": {
-          "filename": "tmux-3.7c-macos-x86_64.tar.gz",
-          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-x86_64.tar.gz",
-          "sha256": "1c21f9ade964e4a539be05ffe3a4e95854ab76a0a9c4c05d0ffbe7fc6c4d783f"
+        "herdr": {
+          "filename": "herdr-macos-x86_64",
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-x86_64",
+          "sha256": "ab50262c8190cd7aa9056d249d255c08c328c3e8716de9cfa29db4f131b8e2c1"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
@@ -161,6 +161,11 @@
       "uname_m": "arm64",
       "rust_target": "aarch64-apple-darwin",
       "assets": {
+        "tuwunel": {
+          "filename": "tuwunel-v1.9.0-macos-aarch64-hctl2.1.tar.gz",
+          "url": "https://github.com/yesme/hctl2/releases/download/tuwunel-macos-v1.9.0-hctl2.1/tuwunel-v1.9.0-macos-aarch64-hctl2.1.tar.gz",
+          "sha256": "1dbfb672a2acc0bfcdaca208f92ab25ba419aa8af99052dedb416ee4b56202b1"
+        },
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-arm64-full.zip",
           "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-arm64-full.zip",
@@ -171,10 +176,10 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_arm64.tar.gz",
           "sha256": "e7343a08bfb42091c2a177cc1a75f7df5a4fc9c256735dfc769b3bed18f2a319"
         },
-        "tmux": {
-          "filename": "tmux-3.7c-macos-arm64.tar.gz",
-          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-arm64.tar.gz",
-          "sha256": "0a763dd0380aa980d239509654da1bc7455843706a3c050f6709c8cd2e13d12d"
+        "herdr": {
+          "filename": "herdr-macos-aarch64",
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-aarch64",
+          "sha256": "a5d4f4d504d8b309c91f811050559300faba31258425f53c50852fc96f6ae574"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",

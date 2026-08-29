@@ -2,7 +2,7 @@
 
 > 类别：② Agent 协作平台 · 证据编号：E-L4-CLAUDE-TAG<br>
 > 状态：证据审计 · 钉定版本与许可见文内「审计基线」；发布后正文不改，只在文末追加复核记录<br>
-> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](./README.md)。
+> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](../README.md)。
 
 <a id="e-l4-claude-tag"></a>
 ## E-L4-CLAUDE-TAG · Claude Tag

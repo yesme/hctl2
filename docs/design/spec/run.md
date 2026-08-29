@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.14.0<br>
+> 状态：规范性合同 · 草案 v0.14.1<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -28,11 +28,11 @@
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；Agency 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
-Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能被取消、失败或替代路径收口，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 与 Engine 回读都不直接写状态：Run 状态只由 control 按账本事实推进，Engine 位置只是路标，用于关联与分歧检测。
+Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能通过取消、失败或替代进入终态，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 与 Engine 回读都不直接写状态：Run 状态只由 control 按账本事实推进，Engine 位置只是路标，用于关联与分歧检测。
 
-`运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并以被替代/已取消收口；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine Execution Binding 的账本记录和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
+`运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并标为被替代/已取消；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine Execution Binding 的账本记录和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
 
-任何失败、取消或替代终态在释放 Task Run claim 前，也必须在同一收口事务撤销旧 dispatch、输入/写租约与外部副作用资格，并提交 runtime stop/fence；若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 worktree/ChangeSet，后续执行按 Agent 合同使用新 worktree **和**新 ChangeSet。不能证明旧执行被限制在该隔离边界内时，Run 保持取消中/需要关注且 claim 不释放，不能以“失败了”为由并发启动第二个 writer。
+任何失败、取消或替代终态在释放 Task Run claim 前，也必须在同一事务撤销旧 dispatch、输入/写租约与外部副作用资格，并提交 runtime stop/fence；若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 worktree/ChangeSet，后续执行按 Agent 合同使用新 worktree **和**新 ChangeSet。不能证明旧执行被限制在该隔离边界内时，Run 保持取消中/需要关注且 claim 不释放，不能以“失败了”为由并发启动第二个 writer。
 
 Workflow Node、Engine 检查点、Obligation、Seat 和 Attempt 是不同身份。Obligation 由 control 按 Run、节点与该节点的观察序号铸造，身份、deadline 与租约都是账本事实；Engine 侧的 DAG run ID 与不可变 step name 只作关联键记入 Engine Execution Binding，代次不在 Engine。超时与备用候选准入只依据账本自己的 Obligation deadline。Engine 重试只是路标再次进入等待态：control 先在同一领域事务把旧 Obligation 及其未终态 Seat/Attempt 置为被替代，令其派发、写入与输入授权失效并提交物理隔离 outbox，再按新的观察序号创建新 Obligation；旧执行的心跳、投票和迟到结果此后只留审计。技术性候选切换只在同一 Seat 下创建新 Attempt，不增加票数或更换逻辑裁判。
 
@@ -78,7 +78,7 @@ Attempt 的 Context Bundle 按 [Project 合同](./project.md#context-memo-artifa
 
 ## Request、重试与 Gate
 
-Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request lifecycle。Request 冻结 deadline 与 `fail | cancel` 默认策略；Resolve/Expire 的跨模块事务都 CAS 精确 Request 与 blocker version，只有 Resolve 可以写答案 delivery，Expire 不能猜测答案而是按冻结策略收口对应 Attempt/Seat/Obligation。Run 只在匹配 ACK/观测后恢复绑定执行；节点仍通过正常 Result Proposal/Receipt 路径完成。Dagu `human.task` 只是每个 HCTL 外部节点的机械暂停原语，不构成第二条人类输入或完成路径。
+Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request lifecycle。Request 冻结 deadline 与 `fail | cancel` 默认策略；Resolve/Expire 的跨模块事务都 CAS 精确 Request 与 blocker version，只有 Resolve 可以写答案 delivery，Expire 不能猜测答案而是按冻结策略结束对应 Attempt/Seat/Obligation。Run 只在匹配 ACK/观测后恢复绑定执行；节点仍通过正常 Result Proposal/Receipt 路径完成。Dagu `human.task` 只是每个 HCTL 外部节点的机械暂停原语，不构成第二条人类输入或完成路径。
 
 “重试”不是一个概念，而是五种身份不同的路径；混用它们会复制票数、绕过验收或复活旧执行：
 
@@ -90,7 +90,7 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 | 语义返工 | changes_requested 汇总 | 新 ChangeSet Revision/Artifact Revision，旧票失效并完整 regate | Run、Task Revision（通常） |
 | 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 Task Revision | Project、Task 身份 |
 
-只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 收口为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
+只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
 
 Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、根 Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结精确 Participant revision 与 Project Role Binding。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 绑定互不相同的 Participant revision，备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control 与工具箱在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。
 
@@ -98,7 +98,7 @@ Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规
 
 ## Run → Task
 
-Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)。绑定精确 Task Revision 的 Run 只有满足上述正常完成谓词后，完成事务才把该 Task 的 claim 从 `active` CAS 为 `completion_pending(run_ref)`，并以 Run/Task 派生的稳定幂等键写内部「完成 Task」command outbox；pending 阻止新 Run 插入。随后 Task 按同一个用户级账本中的当前 Revision、来源 freshness/drift 和逐项证据独立校验，并在成功 Receipt 或持久拒绝结果的事务清除该 claim。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只有满足上一段隔离前置，其收口事务才释放旧 active claim；它们只形成需要关注/历史，不提交完成或取消 Task。Engine 检查点结束、进程退出或模型自述均不能触发该 handoff。完成谓词只依据账本事实与外部证据的 fresh readback；Engine 路标不可读只把 Engine Execution Binding 标为分歧，不阻止 Run 完成。
+Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)。绑定精确 Task Revision 的 Run 只有满足上述正常完成谓词后，完成事务才把该 Task 的 claim 从 `active` CAS 为 `completion_pending(run_ref)`，并以 Run/Task 派生的稳定幂等键写内部「完成 Task」command outbox；pending 阻止新 Run 插入。随后 Task 按同一个用户级账本中的当前 Revision、来源 freshness/drift 和逐项证据独立校验，并在成功 Receipt 或持久拒绝结果的事务清除该 claim。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只有满足上一段隔离前置，其终态事务才释放旧 active claim；它们只形成需要关注/历史，不提交完成或取消 Task。Engine 检查点结束、进程退出或模型自述均不能触发该 handoff。完成谓词只依据账本事实与外部证据的 fresh readback；Engine 路标不可读只把 Engine Execution Binding 标为分歧，不阻止 Run 完成。
 
 ## 外部概念对齐
 

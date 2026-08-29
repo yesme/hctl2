@@ -2,7 +2,7 @@
 
 > 类别：⑥ 机械后端与基础设施 · 证据编号：E-L1-HERDR、E-L2-HERDR-BOUNDARY<br>
 > 状态：证据审计 · 钉定版本与许可见文内「审计基线」；发布后正文不改，只在文末追加复核记录<br>
-> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](./README.md)。
+> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](../README.md)。
 
 <a id="e-l1-herdr"></a>
 ## E-L1-HERDR · Herdr
@@ -46,5 +46,5 @@ Herdr 不提供持久 Workflow，但它对“谁可以写 Agent 状态”处理�
 ## 复核记录
 
 - **2026-08-24**：主干已到 v0.8.2，并出现 plugins/marketplace 与 skills 方向的新投入（属 terminal 场景内扩展）。提交直方图证实产品代码几乎 100% 落在 terminal 场景（含 vendored 终端仿真），无任何 room/kanban/workflow 目录——它是 tmux 一类加了 harness 状态检测的机械运行时，不是协作平台。
-- **2026-08-29（provider 候选复核）**：稳定版 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（2026-08-19；双周稳定版 + 每日 preview channel），社区 33.3k star / 2.4k fork。发布物为各平台官方单静态二进制加 SHA-256 与 release attestation，免编译消费；Linux x86_64 为 static-pie ELF **21.7 MiB**。Linux x86_64 容器探针（可丢弃）：headless server 空载 **13.7 MiB RSS**；一个 workspace 十个 pane（各 idle bash）**19.9 MiB**；每 pane 灌 200 KB 输出后 **112 MiB**（scrollback 默认每 pane 10 MB 字节上限，内存表示对原始字节放大约 45 倍）；同负载 tmux 3.7c 全保留对照为 21.9 MiB（见 [tmux 条目](./tmux-runtime.md)）。对外驱动面显著强于固定基线时的评估：headless server 与 `--remote` 是一等公民，socket API 带版本协商（`protocol: 20` + compatible 回读）与 `api schema` 导出，pane run/read/send-keys/wait-output、workspace/tab/pane 管理、`report-agent`/`release-agent` 生命周期写权面全部 JSON 化。定位更新：随 v0.13.2 的运行时 provider 裁决（[decision-history §27](../design/references/decision-history.md)），herdr 由"仅参考行为"升为**运行时 provider 第二实现候选（限时验证）**，验证接缝清单见[交付文档](../design/delivery.md#开工前限时验证)第 6 项；其控制方记录仍无租约/代次/持久确认游标的结论不变，治理层仍由 agentd 承担。
-- **2026-08-29（生态位对位补记）**：提交直方图口径下 herdr 是 Agent 模块 / Terminal 场景生态位的**纯居民**——100% 投入在此格，其他三景零足迹。纯居民是供应商而非竞品，与 Superset/Multica/Codeg 等跨格产品的定位判据相反；四场景由此对称：每景 content 系统都采用该生态位纯居民（chat/Tuwunel、kanban/Vikunja、workflow/Dagu、terminal/tmux+herdr）。它占的是本格的 content 半格；治理半格（租约、代次、冻结规格、审计、恢复裁决）经横评在整个市场无主，是 HCTL 的差异化落点。三面对位：herdr server = 运行时 provider（content 系统）、herdr client = 内容原生界面（Matrix 客户端的对位物，非合规场景客户端）、socket API = agentd 桥接的可编程控制面——单产品占满 provider 合同三个面，是其作为首个外部 provider 走限时验证的结构理由。
+- **2026-08-29（Agency 选型复核）**：稳定版 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（2026-08-19；双周稳定版 + 每日 preview channel）。HCTL 当前消费 macOS/Linux × arm64/x86_64 官方单二进制，带 SHA-256 与 release attestation，免编译消费；上游也提供 Windows x86_64 zip，但不在 HCTL 第一阶段验证矩阵。Linux x86_64 为 static-pie ELF **21.7 MiB**。Linux x86_64 容器探针（可丢弃）：headless server 空载 **13.7 MiB RSS**；一个 workspace 十个 pane（各 idle bash）**19.9 MiB**；每 pane 灌 200 KB 输出后 **112 MiB**（scrollback 默认每 pane 10 MB 字节上限，内存表示对原始字节放大约 45 倍）；同负载 tmux 3.7c 全保留对照为 21.9 MiB（见 [tmux 条目](../tmux-runtime.md)）。headless server、`--remote` 和 socket API 足以直接承担 Agent / Terminal 运行服务：API 带版本协商（`protocol: 20` + compatible 回读）与 `api schema` 导出，pane run/read/send-keys/wait-output、workspace/tab/pane 管理和状态报告均已 JSON 化。v0.14.1 已选定 Herdr 直接实现 Agency，不再建设 `hctl2-agentd` / `hctl2-agency` 或分发 tmux；HCTL 只保留模块适配代码与自己的治理合同。输入所有权、原生输入记录、事件 sequence/gap、fence echo 和退出/停止回读的限制见[专项验证](./agency-runtime-validation-20260829.md)，缺项按适配、上游修改或暂不支持处理。
+- **2026-08-29（生态位置补记）**：提交直方图口径下 Herdr 的投入几乎全部落在 Agent / Terminal，其他三个场景没有实现。它是该场景的供应端，不是 HCTL 的完整竞品；四个场景由此各有默认二进制（Chat/Tuwunel、Kanban/Vikunja、Workflow/Dagu、Terminal/Herdr）。Herdr server 持有运行 content，Herdr TUI 是原生客户端，socket API 供 HCTL 的 Agency adapter 调用；租约、代次、冻结规格、审计、结果准入和恢复裁决仍在 HCTL。默认实现通过模块受控端口隔离，不能把 Herdr 的 workspace/pane/agent 私有对象提升为 HCTL 合同。

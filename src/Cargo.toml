@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "apps/hctl2-agentd",
     "apps/hctl2-tool",
     "crates/hctl2-protocol",
 ]

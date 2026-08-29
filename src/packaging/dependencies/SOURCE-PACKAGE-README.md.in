@@ -8,4 +8,4 @@
 
 `sources/` 保存该目标平台发行物对应的锁定上游源码；`sources.tsv` 记录组件、版本、commit、归档名、SHA-256 与纳入原因；`target.tsv` 标识对应平台；`SOURCE-MANIFEST.sha256` 校验本归档的全部文件。
 
-其中 Dagu、Vikunja 与 Cinny 是 GPL/AGPL 对应源码，其余源码用于复现构建和审计。本归档不需要安装，也不包含 HCTL2 运行入口。
+其中 Dagu、Vikunja 与 Cinny 是 GPL/AGPL 对应源码，其余源码（包括 Herdr）用于复现构建和审计。本归档不需要安装，也不包含 HCTL2 运行入口。

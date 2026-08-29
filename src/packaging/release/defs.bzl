@@ -6,7 +6,6 @@ def _export_command(target: str) -> str:
         '"$OUT"',
         HCTL2_VERSION,
         target,
-        "$(location root//apps/hctl2-agentd:hctl2-agentd)",
         "$(location root//apps/hctl2-tool:hctl2-tool)",
     ])
 

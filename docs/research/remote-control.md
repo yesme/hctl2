@@ -11,7 +11,7 @@
 
 Codex Remote Feishu 没有权威 Project Room；它最有价值的设计，是把外部系统的工作区/讨论串接入兼容的托管会话，并将接入/脱离、路由冻结、输入排队与调整指令、审批卡片、重启与重连、传输降级和连接代次做成显式执行控制状态机。Feishu 是这个运行环境的远程控制与状态投影客户端，不是 L4 的事实源。
 
-HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 不能映射为 Room，外部系统的工作区/讨论串不能映射为 Project/Task/Run，`command_ack` 不是语义 Receipt，而且该项目也没有精确的 PTY 契约。普通入站消息进入网关本地 FIFO 后即可收到 ACK，不必等待权威持久化提交；未投递消息的重放仍依赖进程内状态，因此不能据此认定持久 Room 桥接已经闭环。
+HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 不能映射为 Room，外部系统的工作区/讨论串不能映射为 Project/Task/Run，`command_ack` 不是语义 Receipt，而且该项目也没有精确的 PTY 契约。普通入站消息进入网关本地 FIFO 后即可收到 ACK，不必等待权威持久化提交；未投递消息的重放仍依赖进程内状态，因此不能据此认定持久 Room 桥接已经完整实现。
 
 固定发布版为 [`v2.0.0 / b2091ffe`](https://github.com/kxn/codex-remote-feishu/tree/b2091ffee3330a94703b78a8a6b7b1876e667c65)（2026-08-10）。该基线没有 `LICENSE`、`COPYING` 或 `NOTICE`，GitHub API 也未识别仓库许可证；在获得明确授权前，只能**参考行为、吸收思路**，不得移植源码或文档文本。
 
@@ -25,7 +25,7 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 | 项目 | 只保留的独特证据 | 复用边界 |
 | --- | --- | --- |
 | [MindFS](https://github.com/a9gent/mindfs) | 仓库本地 Session、外部 Session 导入与同步 | AGPL；只参考协议与行为，Task Board 不定义 L3 |
-| [Paseo](https://github.com/getpaseo/paseo) | 守护进程/客户端/执行提供方适配器、公开 SDK、多设备接缝 | AGPL；作为第二阶段架构参考 |
+| [Paseo](https://github.com/getpaseo/paseo) | 守护进程、客户端、执行提供方适配器、公开 SDK 和多设备连接 | AGPL；作为第二阶段架构参考 |
 | [HAPI](https://github.com/tiann/hapi) | 原生本地 Agent 与远程端之间的结构化交接 | AGPL；不提供精确 PTY，也不是 Task/Workflow 后端 |
 | [Happy](https://github.com/slopus/happy) | 守护进程、端到端加密同步、远程启动、多设备 | MIT；列入第二阶段观察，不作为第一阶段事实源 |
 | [Moshi](https://getmoshi.app/docs/introduction) | 移动终端、钩子与注意力提醒、TUI Chat 投影 | 闭源；只参考用户体验和互操作行为 |
@@ -33,3 +33,7 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 | [ServerCC](https://servercc.app/docs/sessions) | 外部接管、厂商会话恢复、移动端控制 | 闭源；作为身份与交接的产品行为证据 |
 | [QuickTUI](https://quicktui.ai/) | 自托管 tmux 加移动端或浏览器终端 | 应用闭源；公开仓库只能证明分发方式 |
 | [Redock](https://redock.dev/) | 分阶段输入、CJK 与语音、Activity 深链 | 闭源；只参考用户体验 |
+
+### 2026-08-29 Agent 运行服务复核
+
+本表原先对 HAPI 的“不给精确 PTY”判断已被当前源码推翻：[`bc9df82`](https://github.com/tiann/hapi/tree/bc9df82dc6e24140a4c76dfd6a86c0e53df9f8d2) 已有通用 `AgentPtyManager`、Bun terminal、远程观察/输入与恢复。它仍不适合作为 HCTL 的运行服务：v0.29.0 macOS arm64 binary 109.1 MB，`runner --help` 峰值约 133 MiB，且会连同整个 hub、Web 和多 Harness 业务一起引入，增加权限管理和升级工作。Paseo、MindFS、Happy、Remux 与闭源观察项也已逐源码或按公开资料重新分类；完整证据与资源占用见 [Agent 运行服务候选复审](./agentd-runtime-candidates-20260829.md)。本复核不删除旧快照，明确覆盖其中关于 HAPI PTY 能力的事实判断。

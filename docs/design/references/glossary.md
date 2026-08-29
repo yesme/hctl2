@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.14.0<br>
+> 状态：非规范对照 · 草案 v0.14.1<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、命令、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | Agent | 执行治理模块 | 第四个领域模块：执行授权、写入边界、物理运行时观测与结果证据。与 Harness（工具）、Agency（派出方）不同物 | [Agent](../agent.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类可以执行编码工作的工具；Terminal 场景的系统角色 | [三面架构](../architecture.md#场景与系统) |
-| Agency | 派出方 | agents 的派出方：按冻结规格派出执行体的供给侧受控端口；内置（`hctl2-agency`）与远程同合同 | [spec/agent](../spec/agent.md#运行时与观测) |
+| Agency | 派出方 | Terminal 场景按冻结规格派出执行体、持有进程/PTY/会话的供给侧受控端口；第一阶段由 Herdr 实现，未来官方远程 Agent 走同一合同 | [spec/agent](../spec/agent.md#运行时与观测) |
 | Repo | 仓库 | Git 仓库的逻辑身份；共享配置与结晶随它走 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间；分 Repo Room、Project Room、Scoped Room | [Project](../project.md) |
@@ -52,9 +52,9 @@
 | Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
-| Terminal | harness（编码代理工具）/ Agency（派出方；mux 等运行时后端是其内部原语） | 会话转录、PTY 流 |
+| Terminal | harness（编码代理工具）/ Agency（派出方；第一阶段为 Herdr） | 会话转录、PTY 流 |
 
-权威定义见[三面架构](../architecture.md#场景与系统)。同根词辨析：Agent（模块）≠ Agency（派出方）≠ agent（执行体的口语说法）；`hctl2-agency` 是内置 Agency 的组件实现名（由 hctl2-agentd 改名），agentd 已随 v0.14.0 退场。
+权威定义见[三面架构](../architecture.md#场景与系统)。同根词辨析：Agent（模块）≠ Agency（派出方）≠ agent（执行体的口语说法）。第一阶段由 Herdr 直接实现 Agency，不另设第一方终端运行服务；`provider` 只泛指四个模块的供应端，不是一个跨模块对象或统一接口。
 
 ## Revision 族（不可变版本）
 

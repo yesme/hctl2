@@ -1,7 +1,7 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.14.0<br>
-> 日期：2026-08-25<br>
+> 状态：规范性（架构层）· 草案 v0.14.1<br>
+> 日期：2026-08-29<br>
 > 定位：本文回答部署与数据视角——系统由哪三个面组成，每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[合同层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
 ## 三个面
@@ -12,11 +12,11 @@
 | --- | --- | --- |
 | 展示面 | Workbench、CLI 与第三方场景客户端 | 不拥有事实；只查询投影、预览与提交类型化命令、订阅事件 |
 | 控制面 | HCTL 自己的命令服务与账本（合同层组件 `hctl2-control` / `hctl2-tool`） | 全部 metadata：身份、绑定、授权、判决 |
-| 执行面 | 四个场景的 content 系统与物理执行（各 Agency 承载） | 全部 content；只按控制面获准的命令执行物理动作 |
+| 执行面 | 四个场景的 content 系统与物理执行；Agent / Terminal 第一阶段由 Herdr 承载 | 全部 content；只按控制面获准的命令执行物理动作 |
 
 控制面归**用户级**：一人多机连的是同一个控制面，仓库 clone 只是代码侧的物理现场。第一阶段单机部署时三个面同装一台机器——这是 local-first 的默认部署形态，不改变 client-server 实质。
 
-展示面与控制面之间是网络边界，Workbench 的首要身份是**控制面的前端**：执行面各系统可以有自己的原生 content 客户端或诊断控制台，但唯独 metadata 与治理只经 Workbench、CLI 或适配后的第三方场景客户端走控制面操作。Matrix / 任务后端 / Agency 原生界面只直接操作各自 content（ Agency 原生客户端的终端输入按带外输入入账）；引擎控制台是诊断面，都不因此成为合规 HCTL 场景客户端。因此 Workbench 天然可以连接远程控制面——它打开的是“某个控制面上的仓库与项目”，不要求本机有 clone；只有执行需要本地 clone 与现场机制（工具箱与内置 Agency，在同一控制面下注册为另一个物理现场）。一人两机的连续工作由此成立：一套控制面、多个客户端、按需多个执行现场，而不是两套配置加同步。第一阶段只交付本机连接；远程连接的认证与传输见[系统边界](./spec/system.md)的端点约束与未决问题。
+展示面与控制面之间是网络边界，Workbench 的首要身份是**控制面的前端**：执行面各系统可以有自己的原生 content 客户端或诊断控制台，但 metadata 与治理只经 Workbench、CLI 或适配后的第三方场景客户端走控制面操作。Matrix 客户端、任务后端界面和 Herdr TUI 只直接操作各自 content；Herdr TUI 的直接输入当前按带外输入记录。引擎控制台只用于诊断。因此 Workbench 可以连接远程控制面——它打开的是“某个控制面上的仓库与项目”，不要求本机有 clone；只有执行需要可达的 Repo 现场、工具箱和 Herdr 服务。一人两机的连续工作由此成立：一套控制面、多个客户端、按需多个执行现场，而不是两套配置加同步。第一阶段只交付本机连接；远程连接的认证与传输见[系统边界](./spec/system.md)的端点约束与未决问题。
 
 产品表达就是普通的打开体验：用户按 repo 选择——“打开本地 repo”即连接（必要时拉起）本机控制面并定位到该仓库；“打开远端 repo”即连接远程控制面，再选它名下的仓库。观察与接管同样不依赖本机 clone：终端连接凭控制面签发的短期票据抵达执行现场，观看者在哪台机器与执行在哪台机器无关。
 
@@ -28,10 +28,25 @@
 
 | 场景 | 系统角色 | 系统拥有的 content | 备注 |
 | --- | --- | --- | --- |
-| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端即互操作面；HCTL 房间不开端到端加密，控制面按消息 ID 读正文 |
+| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端可直接访问；HCTL 房间不开端到端加密，控制面按消息 ID 读正文 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
-| Terminal | harness（编码代理工具）与 Agency | 会话转录、PTY 流 | 会话由 Agency（派出方）承载，control 经同一份 Agency 合同驱动本地与远程派出方——Agency 之于 Terminal，如同 chat server 之于 Chat Room。刀口在 agent 管理层而非 mux：内置 Agency（`hctl2-agency`）以 tmux 为原语，herdr 限时验证为首个外部 Agency |
+| Terminal | harness（编码代理工具）与 Agency | 会话转录、PTY 流 | Agency 之于 Terminal，如同 chat server 之于 Chat Room。第一阶段直接采用 Herdr：它按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再提供另一套第一方终端运行服务 |
+
+## 避免供应商锁定
+
+Tuwunel、Vikunja、Dagu 和 Herdr 是第一阶段默认实现，不是 HCTL 的产品合同。HCTL 不再增加一个通吃四个模块的独立 shim 服务；四个模块的语义不同，把它们压进同一套通用接口只会形成新的私有协议。稳定边界放在每个模块自己的受控端口，具体产品由薄适配代码接入：
+
+| 场景 | 稳定边界 | 第一阶段默认实现 | 后续替换方式 |
+| --- | --- | --- | --- |
+| Chat Room | Matrix 协议 + HCTL 的 Chat 端口绑定 | Tuwunel | 可换其他 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
+| Kanban | HCTL task backend 端口 | Vikunja | GitHub、Linear 等各写一个 task backend 适配器，共用 Task 身份、字段权威、Snapshot 与命令合同 |
+| Workflow | HCTL 的 Workflow Revision 中间表示 + workflow engine 编译/回读端口 | Dagu | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
+| Terminal | HCTL Agency 端口 + 客户端侧终端 transport adapter | Herdr | 官方远程 Agent 可以直接实现 Agency 合同，或由专用适配器接入；执行授权、身份、租约、证据与恢复等级不随 Agency 改变 |
+
+Workbench 是四个场景的稳定产品界面，只读取 HCTL 投影并提交 HCTL 命令。第三方原生界面是可选的 content 客户端或诊断工具，不定义 HCTL 功能；Dagu 页面、Vikunja 页面或 Herdr TUI 的对象模型不得进入模块合同。Terminal 的字节流和绘制性能敏感，因此 Workbench 可以通过客户端侧 transport adapter 直接读取 Herdr 观察流，不要求 control 代理全部 PTY 字节。要求 HCTL 输入租约保证时，输入仍经 control 的 Herdr adapter；直接写 Herdr 的 transport 只能标为低信任。Herdr 将来若提供可限定权限的连接凭据，再把对应能力纳入 binding 并通过合同测试。
+
+“可替换”分三档承诺，不能混为一谈：新工作可以在通过合同测试后选择另一 provider；活动执行继续使用冻结的 binding，不热切换；既有 content 能否迁移取决于两端导入导出能力，需要单独预览和校验。HCTL 自己的 metadata、不可变引用和 Git 结晶不依赖默认实现，但这不等于所有第三方 content 都能无损搬家。
 
 ## 4×3 归属矩阵
 
@@ -50,7 +65,7 @@
 
 content 容器的层级随场景各得其所：聊天两级——一个 Repo 一个 Repo Room，一个 Project 一个 Project Room；看板一级——一个 Repo 一个 Board，Project 是板上的分组，Task 是卡片，子任务归后端原生能力；机械执行历史与执行会话随各自的 Run 与执行归属。容器归属 Repo/Project 身份，不归属某个 clone 或客户端。
 
-## 模块咬合点
+## 模块交接
 
 模块之间的每次交接都交付一个**冻结的、带摘要的不可变对象**；下表是[连接合同](./spec/connections.md)总表的产品语言投影，精确字段以合同为准。
 

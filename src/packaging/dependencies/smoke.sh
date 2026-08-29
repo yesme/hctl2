@@ -29,12 +29,19 @@ http_status_ok 127.0.0.1 "$VIKUNJA_PORT" /api/v1/info
 note "checking Dagu health API"
 http_status_ok 127.0.0.1 "$DAGU_PORT" /api/v1/health
 
-note "checking tmux headless query, stable IDs, and owner-only socket"
-readonly TMUX_SOCKET="$(tmux_socket_path)"
-TMUX_MODE="$(file_mode "$TMUX_SOCKET")"
-readonly TMUX_MODE
-((10#$TMUX_MODE % 100 == 0)) || die "tmux socket exposes group/other permissions: $TMUX_MODE"
-"$P0_BIN_DIR/tmux" -S "$TMUX_SOCKET" list-panes -t "$TMUX_SESSION" -F '#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}' |
-    grep -E '^\$[0-9]+\|@[0-9]+\|%[0-9]+\|[0-9]+$' >/dev/null
+note "checking Herdr protocol readback and owner-only socket"
+readonly HERDR_SOCKET="$(herdr_socket_path)"
+HERDR_MODE="$(file_mode "$HERDR_SOCKET")"
+readonly HERDR_MODE
+((10#$HERDR_MODE % 100 == 0)) || die "Herdr socket exposes group/other permissions: $HERDR_MODE"
+HERDR_STATUS="$(run_herdr "$P0_BIN_DIR/herdr" status server)"
+readonly HERDR_STATUS
+grep -Fx "version: $HERDR_VERSION" <<<"$HERDR_STATUS" >/dev/null
+grep -Fx "protocol: $HERDR_PROTOCOL" <<<"$HERDR_STATUS" >/dev/null
+grep -Fx 'compatible: yes' <<<"$HERDR_STATUS" >/dev/null
+HERDR_SNAPSHOT="$(run_herdr "$P0_BIN_DIR/herdr" api snapshot)"
+readonly HERDR_SNAPSHOT
+grep -F "\"protocol\":$HERDR_PROTOCOL" <<<"$HERDR_SNAPSHOT" >/dev/null
+grep -F "\"version\":\"$HERDR_VERSION\"" <<<"$HERDR_SNAPSHOT" >/dev/null
 
 note "all four local dependency seams and the bundled Chatroom client are alive"

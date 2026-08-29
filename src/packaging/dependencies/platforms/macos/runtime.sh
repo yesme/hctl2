@@ -13,15 +13,15 @@ platform_file_mode() {
     stat -f '%Lp' "$1"
 }
 
-platform_tmux_socket_path() {
-    local socket_directory="/tmp/hctl2-tmux-$(id -u)"
+platform_herdr_socket_path() {
+    local socket_directory="/tmp/hctl2-herdr-$(id -u)"
     local state_key
 
     if [[ -e "$socket_directory" ]]; then
         [[ -d "$socket_directory" && ! -L "$socket_directory" ]] || \
-            die "unsafe tmux socket directory: $socket_directory"
+            die "unsafe Herdr socket directory: $socket_directory"
         [[ "$(stat -f '%u' "$socket_directory")" == "$(id -u)" ]] || \
-            die "tmux socket directory has the wrong owner: $socket_directory"
+            die "Herdr socket directory has the wrong owner: $socket_directory"
     else
         mkdir -m 0700 "$socket_directory"
     fi

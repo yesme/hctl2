@@ -2,7 +2,7 @@
 
 > 类别：③ 独立 Agent 产品 · 证据编号：E-L2-ZEROCLAW<br>
 > 状态：证据审计 · 钉定版本与许可见文内「审计基线」；发布后正文不改，只在文末追加复核记录<br>
-> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](./README.md)。
+> 总览、引用准入与五种复用决策用语见 [docs/research/README.md](../README.md)。
 
 <a id="e-l2-zeroclaw"></a>
 ## E-L2-ZEROCLAW · ZeroClaw SOP

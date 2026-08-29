@@ -43,37 +43,39 @@ Terminal 是 Agent 模块的操作场景，用于观察、诊断和接管一次�
 
 semantic resume 不必依赖厂商保留的会话文件：自有观测留痕（转录与结构化事件）足够时可以重建等价的最小续跑输入；重建物只是投影，不改变任何权威记录。
 
-Workbench 就位之前（P2），观察与接管经 `hctl2 terminal` 命令、凭 control 签发的短期票据进行；裸 `tmux attach` 等 Agency 原生客户端入口不校验票据、不是合规客户端，其输入按带外输入入账（见[Agency](#agency)）。
+Workbench 就位之前（P2），观察与接管经 `hctl2 terminal` 命令、凭 control 签发的短期票据进行。Herdr TUI 是 Terminal 的原生客户端；它的直接输入目前不校验 HCTL 票据或输入租约，因此不能声称该通道受 HCTL 输入权限控制（见[Agency 与 Herdr](#agency-与-herdr)）。
 
 Execution Chat 是绑定一次精确执行的结构化观察与控制视图：它不是 Room，没有独立的会话身份；里面的输入和事件也不会自动进入 Room，只有显式的 Share to Room 动作经 Project 准入后才能发布。观察、输入、执行控制和安全输入是分开授权的四种权限，接管会原子撤销旧输入者。
 
 | 角色 | 可以做什么 | 不能做什么 |
 | --- | --- | --- |
 | 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room |
-| 场景客户端：CLI / WezTerm | 使用短期连接票据观察或接管精确目标 | 提交任意 argv/cwd/pane ID 绕过控制面网关 |
+| 场景客端：CLI / WezTerm | 使用短期连接票据观察或接管精确目标 | 提交任意 argv/cwd/Herdr terminal ID 绕过 HCTL 适配代码 |
 | 受控端口：harness 适配器 | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
-| 受控端口：Agency | 持有进程/PTY/容器/mux 资源 | 决定领域权限、评审或完成 |
+| 受控端口：Agency（第一阶段为 Herdr） | 启动 Harness，持有进程、PTY 和终端会话 | 决定领域权限、评审或完成 |
 
-## Agency
+## Agency 与 Herdr
 
-Terminal 场景的 content 系统是**Agency（派出方）**——agents 的团队、外包的供给侧：HCTL 向它下派工单（"按此规格给我一个 harness"），它交付执行体及其运行现场与访问通道，来充当 participant 的执行体。承载会话是交付方式，不是它的本质；content 归属上它与 chat server 之于 Chat Room 仍然同构。HCTL 拥有的是 Agency 合同的定义与治理：control 是所有 Agency 的唯一控制者——租约、代次、审计、恢复等级的裁决全在控制面，经同一份合同面驱动本地与远程派出方，不与任何一家 Agency 绑死。
+Terminal 场景的运行服务角色叫 **Agency（派出方）**：HCTL 给它一份冻结的执行规格，它启动对应 Harness，持有进程、PTY 和终端会话，并提供观察和输入通道。Agency 只回答“派谁来、在哪跑、怎样连接”；Participant 身份、授权、租约、代次、审计和结果验收仍由 HCTL 拥有。
 
-**刀口切在 agent 管理层，不切在 mux 上**：Agency 必须能受理派工、交付执行体；tmux/Zellij 这类 mux 派不出执行体，只是原语——这才是它们不成 Agency 的真正理由，不是"瘦"这种程度问题。内置 Agency 是独立组件（`hctl2-agency`，由 hctl2-agentd 改名）：从本机 Harness 目录按规格派出、以 tmux 为原语交付现场，与 herdr、远程数字员工端点按同一份合同接入。旧 agentd 由此退场——它曾混装的两个身份拆开：派遣归内置 Agency；治理与终端网关归 control。现场保管（worktree 保全、失权物理执行、site 代次）归工具箱——那是"我们的现场"的属性，不是控制 agent 的属性；本地第一方观测与最后手段停止是主场证据加成，建模为一路高证据级观测来源加运维兜底，多机时作为 control 在自有现场的部署形态出现。herdr 这类自带状态检测与远程接入的一体化执行服务经限时验证后可作为首个外部 Agency；将来远程数字员工的执行端点也是一种 Agency。Agency 只回答"派谁来、在哪跑、怎么够得着"；谁在工作——参与者身份——仍由 Participant 与执行规格回答：派出不转移身份，派来的工人干活，工牌是我们发的。
+第一阶段只采用 **Herdr** 作为 Agency。Herdr 直接负责 Harness 启动、PTY、终端会话、多观察者、会话恢复和原生 TUI。HCTL 不再提供另一套第一方终端运行服务，也不自己实现 PTY 持有、终端模拟、观察者转发或重放。`hctl2-control` 内的 Herdr 适配代码负责把 Execution Spec、权限和精确身份翻译成 Herdr API 请求，记录实际交付结果；`hctl2-tool` 仍负责 worktree 保全、Git 事实和现场清理。
 
-一个 Agency 由三个面描述，逐项能力声明、准确降级，与 Harness 能力探测同一套纪律：
+Herdr 提供三类接口：
 
-| 面 | 谁用 | 规则 |
+| 接口 | 谁使用 | 规则 |
 | --- | --- | --- |
-| 可编程控制面（API/CLI） | control 驱动，headless 派工与控制 | 治理动作的唯一路径：派工、获准输入、打断、停止都从这里走 |
-| 终端接入面 | Workbench/CLI 凭 control 票据观察或接管 | 观察扇出点按 Agency 能力声明：声明了多观察者与缺口披露的 Agency 自己扇出，否则控制面网关兜底转发 |
-| 原生客户端面 | Agency 自家 UI（herdr TUI、裸 tmux attach） | 执行面的内容原生界面：观察不设限；输入不经输入租约，一律记为带外输入并入账，不产生可准入结果 |
+| Herdr API | `hctl2-control` 的 Herdr 适配代码 | 启动、获准输入、打断和停止都经 HCTL 验证后调用 Herdr；HCTL 不重新实现终端服务 |
+| 终端连接 | Workbench / CLI 凭 control 票据连接精确 Herdr terminal ID | HCTL 验证票据与当前代次；Herdr 负责观察流、终端状态和输入执行 |
+| Herdr TUI | 用户直接观察或操作 Herdr | 它是 Terminal 的原生客户端，不能提交 HCTL 治理命令；直接输入的可信程度按下述限制处理 |
 
-三个面可以由一家占满：herdr 的 server / TUI client / socket API 恰好对应 Agency、内容原生界面、可编程控制面；tmux 的 server / attach / control mode 同构。原生客户端面与**合规第三方场景客户端**是两个格子，不要混：前者只操作 content、输入带外入账、提交不了治理命令（Matrix 客户端之于 Chat 的同一格）；后者走公开的 Query/Preview/Submit/Subscribe 与 control 签发的票据，可携带 human provenance。Agency 原生客户端要升格为后者，须改造为走命令面与票据——那是 Agency 侧的适配选择，不是 HCTL 的义务。
+Herdr v0.8.2 的已知限制必须如实反映到功能声明：
 
-- Agency 的状态检测（working/idle/blocked 之类）只是观测来源之一：按其自述机制归入既有仲裁序（hook 级或屏幕推断级），带来源与置信度入账，不因经 Agency 转手而升级，也不获得生命周期写入权。
-- Agency 报告的"会话还在/恢复了"必须翻译成四级恢复词汇（exact attach / semantic resume / replay / 丢失）才可用于恢复决策；翻译不出来按丢失处理。
-- **治理永不下放**：租约、代次、冻结规格、审计、四级恢复裁决只在控制面，跨所有 Agency 一份。Agency 自带的接管、单写者这类机制是桥接可以利用的物理杠杆，不是权威——"代次不在 Dagu、Dagu 只当路标"的同一条规则。
-- **栅栏回显是能力声明项**：声明它的 Agency 原样携带并回显请求所附的代次与租约引用、按合同拒绝不匹配项——回显与拒绝是物理执行点，不是权威。没有它的 Agency 整通道按低信任降级：输入全记带外、结果只按弱证据类提案进来。控制面网关够不着的远程 Agency（数字员工的执行端点），执行点就落在这个合同面上。
+- Herdr TUI 的直接输入不经 HCTL Terminal Input Lease，当前也没有可供 HCTL 可靠记录每次输入的事件。开放该写入时，整个执行必须标为“原生输入无法完全证明”，不能声称所有输入都受 HCTL 租约控制。需要强输入保证时，暂时关闭原生写入，或先在 Herdr 上游统一所有写入路径并增加输入记录。
+- Herdr API 与原生 controller 目前可以交错写入。在 Herdr 提供统一写入权之前，要求 HCTL 单一输入者保证的执行不得同时开放两条写入路径。
+- Herdr 的 API 事件环是内存中最近 512 条，没有对外 sequence 或 gap 通知；它可以支持 UI 观察，不能被当成完整持久 trace。
+- 退出码、停止后残留进程和普通 server 重启后的会话恢复必须按实际能力报告。只有证明是同一进程和 PTY 时才能报 exact attach；其他情况分别报 semantic resume、replay 或丢失。
+
+这些限制不会导出一套 HCTL 自建终端服务。能由 Herdr 适配代码处理的留在 HCTL；需要运行服务支持的优先修改 Herdr 上游；暂时不支持的就在产品中明确说明。
 
 ## 原生会话导入
 

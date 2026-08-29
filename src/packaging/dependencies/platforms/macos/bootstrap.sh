@@ -55,19 +55,18 @@ prepare_dagu_dependency() {
     "$P0_BIN_DIR/dagu" version
 }
 
-prepare_tmux_dependency() {
+prepare_herdr_dependency() {
     require_target_host
     require_command lipo
     require_command otool
-    require_command tar
     require_command vtool
 
-    install_tmux_release
-    verify_macos_binary_compatibility tmux "$P0_BIN_DIR/tmux"
+    install_herdr_release
+    verify_macos_binary_compatibility Herdr "$P0_BIN_DIR/herdr"
 
     find "$P0_VENDOR_DIR" -depth -delete
-    note "prepared tmux for $HCTL2_TARGET_ID"
-    "$P0_BIN_DIR/tmux" -V
+    note "prepared Herdr for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/herdr" --version
 }
 
 prepare_static_web_server_dependency() {
