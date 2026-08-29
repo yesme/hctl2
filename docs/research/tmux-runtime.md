@@ -35,12 +35,12 @@ tmux 支持 `extended-keys` 的 CSI-u/modifyOtherKeys 形态，但[没有完整 
 
 ### 2026-08-29 P0 接缝验证
 
-P0 已通过，P1 的 `hctl2-agentd` 实现不再被 tmux 选型假设阻塞。可丢弃探针 [`p0_control_mode.py`](../../src/testing/tmux/p0_control_mode.py) 和 [`p0_fixture.py`](../../src/testing/tmux/p0_fixture.py) 只使用临时目录与 Python 标准库，直接测试 Buck 按摘要组装出的 `tmux 3.7c` 分发二进制，不进入产品生命周期，也不建立长期的 Harness 兼容矩阵。[三目标远端复核](https://github.com/yesme/hctl2/actions/runs/33228808882)连同既有依赖生命周期与精确缓存断言全部通过：
+P0 已通过，P1 的 `hctl2-agentd` 实现不再被 tmux 选型假设阻塞。可丢弃探针 [`p0_control_mode.py`](../../src/testing/tmux/p0_control_mode.py) 和 [`p0_fixture.py`](../../src/testing/tmux/p0_fixture.py) 只使用临时目录与 Python 标准库，直接测试 Buck 按摘要组装出的 `tmux 3.7c` 分发二进制，不进入产品生命周期，也不建立长期的 Harness 兼容矩阵。[三目标远端复核](https://github.com/yesme/hctl2/actions/runs/33229161287)连同既有依赖生命周期与精确缓存断言全部通过：
 
 | 实际目标 | 用时 | control output | 慢观察者有界队列丢弃 |
 | --- | ---: | ---: | ---: |
-| Linux x86_64 | 1.447 s | 1,416,999 bytes | 2,117 chunks |
-| macOS arm64 | 2.134 s | 1,416,999 bytes | 1,752 chunks |
-| macOS x86_64 | 3.097 s | 1,416,999 bytes | 1,779 chunks |
+| Linux x86_64 | 1.442 s | 1,416,999 bytes | 2,115 chunks |
+| macOS arm64 | 1.980 s | 1,416,999 bytes | 1,677 chunks |
+| macOS x86_64 | 3.667 s | 1,416,999 bytes | 2,040 chunks |
 
 三者都验证了临时根目录 `0700`、socket `0600`、恰好一个非只读 control client；输入与 `111 × 37` resize 可下发；快速观察者完整收到 12,000 条 burst，慢观察者队列满时只丢自己的 chunk，压力后 server 与输入仍可用；control client 断开重连前后 session/window/pane ID 与 pane PID 稳定；进程以 `17` 退出后无残留，`remain-on-exit` pane 仍可读回同一 ID 和退出码。没有 attach 的 fixture 也分别收到 DSR `ESC[0n`、DA `ESC[?1;2c` 与 DECRQM `ESC[?2004;2$y`。同一 macOS arm64 分发二进制本机连续运行十次也全部通过。这里证明的是 agentd 所需 control-mode 接缝可实现，不宣称 tmux 已替 agentd 完成租约、持久化或任意 Harness 的 TUI 兼容。
