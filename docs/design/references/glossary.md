@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.13.4<br>
+> 状态：非规范对照 · 草案 v0.13.5<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、命令、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -51,7 +51,7 @@
 | Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
-| Terminal | harness（编码代理工具）/ 运行时 provider（agent 执行服务；mux 等运行时后端是其内部原语） | 会话转录、PTY 流 |
+| Terminal | harness（编码代理工具）/ 运行时 provider（执行者派出方；mux 等运行时后端是其内部原语） | 会话转录、PTY 流 |
 
 权威定义见[三面架构](../architecture.md#场景与系统)。agentd 是组件实现名（Agent 模块的本机执行守护进程），与 Agent 模块、harness 系统角色都不同物。
 
