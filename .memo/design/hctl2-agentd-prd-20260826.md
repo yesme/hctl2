@@ -3,6 +3,7 @@
 > 状态：讨论中<br>
 > 基线：main @ 84424cd（草案 v0.13.1）<br>
 > 去向：待定：docs/design/delivery.md 的 agentd 交付合同，或独立的 agentd 交付文档<br>
+> 追记（2026-08-29，v0.14.0）：agentd 已退场——本 PRD 的 AGD 条款待按 内置 Agency（hctl2-agency）/ 控制面网关 / 现场保管（工具箱） 三类重新归类，见 `.memo/design/provider-20260829.md`。<br>
 > 说明：讨论稿 · 2026-08-26
 > 范围：定义 `hctl2-agentd` 要交付的产品能力，不定义进程结构、通信协议、存储布局、代码模块或具体实现方法。
 > 上位约束：以 `docs/design/agent.md`、`docs/design/spec/agent.md`、`docs/design/delivery.md` 为准；本文不新增治理对象或改写权威边界。

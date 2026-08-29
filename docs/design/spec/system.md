@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.13.5<br>
+> 状态：规范性合同 · 草案 v0.14.0<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -10,13 +10,13 @@
 | `hctl2-workbench` | 四个场景的集成客户端；提交命令、查询投影、显示事件 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账 |
 | `hctl2-tool` | 机械工具箱：Git/SCM 操作与事实校验、Revision/digest、合并核验、lint、PR/memo 的机械拼装、有效变化侦测。独立可用（standalone 时只做普通本地操作、不产生治理宣称）；被 control 编排时执行已持久化的意图并回读 |
-| `hctl2-agentd` | Harness 发现、物理运行时、PTY、终端网关、按声明施加的执行加固与主机观测（散文简称 agentd） |
+| `hctl2-agency` | 内置 Agency（派出方）：Harness 目录、按规格派出、会话持有与运行观测（由 `hctl2-agentd` 改名，代码树跟进）；控制面终端网关归 `hctl2-control` |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
 | 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
 
-Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、任务源、workflow engine、harness 和运行时 provider 是由内核调用的五类受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。agentd 是组件实现名（Agent 模块的本机执行守护进程），不是 Agent 模块本身。
+Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端，使用 Query/Preview/Submit/Subscribe；外部 Chat、任务源、workflow engine、harness 和 Agency 是由内核调用的五类受控端口。同一产品可以同时提供客户端与端口，但两者的 binding、权限和事实权威必须分开。内置 Agency（组件 `hctl2-agency`）与工具箱是组件实现名，不是 Agent 模块本身。
 
 ## 固定内核与受控端口
 
@@ -31,9 +31,9 @@ Workbench 不是特殊内核。Workbench、CLI 和外部 UI 是场景客户端�
 | Chat Room | chat server 连接：消息/附件读写、账号与房间管理、身份映射（非 Matrix 平台经 homeserver 侧 Matrix 桥接接入，不是 HCTL 端口） |
 | Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | Workflow Engine 编译、注册、执行和回读 |
-| Terminal | harness、运行时 provider、终端网关与 attach provider |
+| Terminal | harness、Agency、终端网关与 attach provider |
 
-第一阶段全部执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；治理变更仍只能由 control 经对应受控端口发起，不能把服务器 mutation 暴露给场景客户端或其他本地进程。chat server 与任务后端的 content 读写不在此限——那是场景内容，不是治理。Terminal 的写输入例外不成立：受治理的 attach/input 必须经 agentd 网关校验精确票据和当前代次，直连运行时 provider 只能作为明确标注的带外诊断，不得写回 HCTL 结果。
+第一阶段全部执行面 content 服务器（chat server、本地任务服务器、Workflow Engine）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；治理变更仍只能由 control 经对应受控端口发起，不能把服务器 mutation 暴露给场景客户端或其他本地进程。chat server 与任务后端的 content 读写不在此限——那是场景内容，不是治理。Terminal 的写输入例外不成立：受治理的 attach/input 必须经控制面网关校验精确票据和当前代次，直连 Agency 只能作为明确标注的带外诊断，不得写回 HCTL 结果。
 
 hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，启动顺序、健康检查、备份与升级由 control 统一编排。托管不授予 content 之外的任何权威；服务器进程的死活只影响对应场景的可用性，不改变治理事实。
 
@@ -150,15 +150,15 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖 fresh 消息/成员/cursor 的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖 fresh placement/drift/head/cursor 的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
 | Workflow 机械位置（路标） | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，路标停更只让 Engine Execution Binding 待对账 | 路标丢失不丢任何判决：Run 按账本继续收口或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
-| Harness 进程、PTY、容器、主机与原始流 | agentd / 运行时 provider 仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
+| Harness 进程、PTY、容器、主机与原始流 | Agency 与控制面网关仅提供物理观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次收口，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
 
 用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 `control_writer_generation`；writer 可以搬迁（换机器、上服务器），账本身份不变。不存在 Repo 级或 Project 级的第二个 control writer。
 
-每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。agentd 对该现场启动、输入或清理时还必须校验同一 site generation 与自己的资源 lease。失败的第二工具箱/agentd 只能只读诊断；所有改变现场事实的下游 envelope 同时携带当前 control writer generation 与适用的 site/backend generation，任一旧代次都被执行端拒绝。
+每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。内置 Agency 对该现场启动、输入或清理时还必须校验同一 site generation 与自己的资源 lease。失败的第二工具箱/Agency 只能只读诊断；所有改变现场事实的下游 envelope 同时携带当前 control writer generation 与适用的 site/backend generation，任一旧代次都被执行端拒绝。
 
-每个运行时后端（内置 provider 的原语资源）ownership scope 同时只有一个 agentd owner lease 和单调 generation，租约与代次记在账本；scope 至少覆盖相同资源 broker/socket/host namespace。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权。后端自身的排他原语（OS lock、broker token）有则由 agentd 取得作为加固，没有也不改变租约的权威。
+每个运行时后端（内置 Agency 的原语资源）ownership scope 同时只有一个内置 Agency owner lease 和单调 generation，租约与代次记在账本；scope 至少覆盖相同资源 broker/socket/host namespace。新 owner 必须先对账，旧 generation 的输入、停止、接管和结果一律失权。后端自身的排他原语（OS lock、broker token）有则由内置 Agency 取得作为加固，没有也不改变租约的权威。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 
@@ -166,10 +166,10 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 恢复顺序固定为：
 
-1. 取得用户级 control 锁，并经工具箱/agentd 取得适用现场与 backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
+1. 取得用户级 control 锁，并经工具箱/内置 Agency 取得适用现场与 backend 的 OS/资源侧排他权，禁止旧 owner 继续执行动作；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 backend generation；
 3. 回读全部已绑定 content 系统的游标（chat server、任务后端、Workflow Engine、runtime）和未确认副作用；
-4. 查询 Workflow Engine、agentd runtime 和工具箱 Git/SCM；
+4. 查询 Workflow Engine、Agency runtime 和工具箱 Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
@@ -186,7 +186,7 @@ metadata 备份必须是由唯一 writer 协调的一致备份集：完整账本
 
 - Electron renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
 - 打包后的 Electron 固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true；narrow preload 只暴露具名 typed command，不暴露 raw ipcRenderer。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
-- 文件、Git、网络、凭据和进程能力由 control、工具箱和 agentd 授权，不交给渲染器。
+- 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
 - 第一阶段是单用户授权模型，不提供多租户隔离，也不声称在任意同 OS 用户恶意进程已经取得账户权限后仍能保护整个账户。HCTL 自己启动的 Harness 仍以窄 execution principal 运行、不获交付集成与外部写凭据、只凭有效 Write Lease 写入独立 worktree 与本 ChangeSet 分支并受 site/backend fence 约束；OS 执行沙箱、凭据网关代用范围与网络白名单是 Worker Profile 可声明的加固，未启用时 Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺上述三条底线在治理面成立，不承诺宿主文件系统层面的隔离。

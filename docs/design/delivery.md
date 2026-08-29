@@ -4,7 +4,7 @@
 
 ## 第一阶段范围
 
-第一阶段面向单用户、单机、单 Repo Instance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/agentd/Workflow Engine/chat server/本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+第一阶段面向单用户、单机、单 Repo Instance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench/control/内置 Agency/Workflow Engine/chat server/本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 范围按施工序两段陈列（见「实现阶段」）：P2 出门条件经公共 CLI 与各 content 系统原生界面即可达、可测，不等 Workbench；P3 出门条件是 Workbench 场景本身。
 
@@ -13,11 +13,11 @@
 | [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端即互操作面；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以本地任务服务器为默认 content 后端、CLI 完整 Task 管理与完成预览 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接缝测试 |
-| [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay 凭精确票据 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个运行时 provider 通过完整契约测试；WezTerm 可选 |
+| [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay 凭精确票据 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器和一个 Agency 通过完整契约测试；WezTerm 可选 |
 
 P3 的 Workbench 把四个场景集成到一个客户端，但不引入任何 CLI 不可达的命令：同一 command service 供 CLI、Workbench 与外部适配器使用。
 
-第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 等运行时 provider 原生客户端是执行面的内容原生界面——不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端，其终端输入由 agentd 按带外输入入账。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
+第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 等 Agency 原生客户端是执行面的内容原生界面——不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端，其终端输入由 control 按带外输入入账。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、控制面网关校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
 
 ## 公共 CLI
 
@@ -33,7 +33,7 @@ P3 的 Workbench 把四个场景集成到一个客户端，但不引入任何 CL
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
 | Agent / Integration / Terminal | `changeset show\|diff`、`integration preview\|submit\|show`、`terminal inspect\|attach\|replay`；Terminal 命令必须指向精确 descriptor |
 
-CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或运行时 provider。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象；Run 的语义恢复 / 替换使用 `run resume|replace`，Room Invocation 的再次施工使用创建新 Invocation 与新 generation 的 `invocation retry`，不能用终端重连偷渡 lifecycle 推进。
+CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或 Agency。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象；Run 的语义恢复 / 替换使用 `run resume|replace`，Room Invocation 的再次施工使用创建新 Invocation 与新 generation 的 `invocation retry`，不能用终端重连偷渡 lifecycle 推进。
 
 ## 明确不做
 
@@ -53,8 +53,8 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
 | P0 · 探路 | 只对 HCTL 与已选实现之间的接缝做限时、可丢弃的协议探针并记录实现证据，不替第三方验其自身功能；探针脚本、临时数据与拼装环境不进入产品生命周期。失败则重开并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四服务器已可运维 |
-| P1 · 备装 | `hctl2-agentd`（会话持有、观测、租约原语）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测）。两者不依赖 control，standalone 可辅助开发；此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | 物理工具链就位，未切换治理事实 |
-| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw tmux attach 只作 break-glass；合规第三方客户端必须走公开命令或 agentd 网关。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
+| P1 · 备装 | `hctl2-agency`（内置 Agency：Harness 目录、按规格派出、会话持有与观测；由 hctl2-agentd 改名，代码树跟进）与 `hctl2-tool`（机械工具箱：commit 署名、lint、PR 正文机械拼装、memo 写入、git 有效变化侦测、现场保全与失权执行）。两者不依赖 control，standalone 可辅助开发；此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | 物理工具链就位，未切换治理事实 |
+| P2 · 接钥匙 | `hctl2-control`（账本+命令服务）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次消费 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/任务后端原生界面只验证 content，Engine console 只诊断，raw tmux attach 只作 break-glass；合规第三方客户端必须走公开命令或控制面网关。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 切片 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
 ## 纵向切片 A：无 Run 自举
@@ -65,7 +65,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 4. Project 场景展示精确 diff；评审绑定 ReviewSubjectRef。
 5. 有权 human actor 提交固定 ChangeSet Revision、target ref、expected target head 与证据的 integration intent；control 先持久化，`hctl2-tool` 执行本地 Git 集成并 readback，确认后写唯一 Integration Receipt。
 6. 有权 human actor 从 Kanban 完成预览提交「完成 Task」命令，Task 准入校验精确 Integration Receipt 后写 Task Completion Receipt；Harness 不能代为提交。
-7. 重启 control/agentd 与已消费的 content 后端后，账本、worktree 归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
+7. 重启 control/内置 Agency 与已消费的 content 后端后，账本、worktree 归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
 
 这是 B2 的第一次真正自举；它不等待 Workflow Engine 或 quorum。
 
@@ -170,12 +170,12 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
-- provider 原生客户端输入缺带外入账记录，或被赋予输入租约语义时无效
-- 未声明观察扇出能力的 provider 直连观察者拒绝；已声明的 provider 缺缺口披露时该通道降级为带外诊断
-- provider 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；provider 恢复报告无法翻译为四级恢复词汇时按丢失处理
-- provider 自带的接管/单写者/"会话有效"记录被当作账本事实或替代租约/代次时拒绝
-- 未声明栅栏回显的 provider 通道未按低信任降级（输入未带外入账或结果按高证据类准入）时拒绝；已声明栅栏回显的 provider 放行不匹配代次时该绑定标记失信并需要关注
-- control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离
+- Agency 原生客户端输入缺带外入账记录，或被赋予输入租约语义时无效
+- 未声明观察扇出能力的 Agency 直连观察者拒绝；已声明的 Agency 缺缺口披露时该通道降级为带外诊断
+- Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝； Agency 恢复报告无法翻译为四级恢复词汇时按丢失处理
+- Agency 自带的接管/单写者/"会话有效"记录被当作账本事实或替代租约/代次时拒绝
+- 未声明栅栏回显的 Agency 通道未按低信任降级（输入未带外入账或结果按高证据类准入）时拒绝；已声明栅栏回显的 Agency 放行不匹配代次时该绑定标记失信并需要关注
+- control 签发 descriptor、控制面网关校验，观察、输入、Attempt 控制与安全输入权限分离
 - attach 只接通道，不能恢复 Run/Invocation 语义
 - attach/replay、IME/背压/慢客户端隔离
 
@@ -193,7 +193,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 ### `CT-SYSTEM` · 系统
 
 - 同一用户级账本只能有一个 control writer，第二 writer 拒绝
-- 多个 agentd 可以登记为不同 execution site，但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限
+- 多个执行现场可以登记（各有工具箱与内置 Agency），但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限
 - 命令幂等
 - commit/ACK 各崩溃点回读
 - schema migration、投影重建
@@ -241,27 +241,27 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 
 ## 开工前限时验证
 
-P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”；关键假设只指 HCTL 与该系统的**接缝**——我们的适配器、受控端口或 agentd 实际调用的那几个 API 与行为。第三方自身的功能（它自己的备份恢复、重启、渲染、内存配置、发布物形态）不在 P0：要么是选型时的资料判断，要么在首次消费时产品化。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
+P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”变为“关键假设能否落地”；关键假设只指 HCTL 与该系统的**接缝**——我们的适配器、受控端口或内置 Agency 实际调用的那几个 API 与行为。第三方自身的功能（它自己的备份恢复、重启、渲染、内存配置、发布物形态）不在 P0：要么是选型时的资料判断，要么在首次消费时产品化。每项探针使用可删除的数据、脚本和拼装环境，只产出实现证据、固定版本与产品化约束；通过不代表已经具备 HCTL 一键生命周期、备份恢复或升级。真正的托管由 control 出现后在对应场景首次被消费前完成。各依赖的 P0 探针也不是全局 barrier：chat 与 task 探针在 B1 首次消费前完成，运行时探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2；失败就重开并修订对应选型决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：固定基线为 [`v2.15.1 / 532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)。采用单进程 `start-all`、文件系统持久化和声明式 YAML；Workflow Revision 仍以 HCTL 规范化 JSON 为事实源，由固定编译器生成 Dagu DAG。生成物只用依赖/条件/等待等机械结构与无进程的 `human.task` 作为 HCTL 外部执行检查点，不允许 Dagu 自行运行 command/script/action/HTTP/Harness。P0 只验接缝：DAG 提交与启动/暂停/恢复/取消 API 的应答与状态回读，`human.task` 检查点的等待态观察、完成与回读，以及路标被 Engine 自行推进或重试时能否回读为分歧。代次不在 Dagu：Obligation 的身份与隔离由 HCTL 账本承担，Dagu 只当路标，"完成 API 的代次隔离"不再是 B4 阻断项。
-2. **内置 provider 原语（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。agentd 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费 agentd 的转发，不直连 tmux。P0 只验 agentd 依赖的 control mode 接缝够不够用：能建 owner-only socket 并持有唯一可写 control client、观察者能经 agentd 扇出、输入与 resize 能下发、session/pane ID 稳定可持久化、退出码与残留进程能回读、无人 attach 时能查询应答。键盘协议子集、慢观察者背压、各 Harness 的 TUI 兼容与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 之类是 tmux 自己的轮子：选型时作资料判断，使用中不够用就按选型三件套升 commit 或换家，不为它们维护验证矩阵。2026-08-29，三个实际分发目标的上述接缝 [P0 均已通过](../research/tmux-runtime.md#2026-08-29-p0-接缝验证)；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](../research/tmux-runtime.md#e-l1-tmux-runtime)。v0.13.4 刀口修正后，tmux 定位为内置 provider 的物理原语（太瘦不独立成 provider），本项探针即内置 provider 的原语接缝验证，选型与结论不变。
+2. **内置 Agency 原语（tmux，已拍板）**：源码审阅基线为 [`3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b)。内置 Agency 为每个 runtime 建 owner-only socket/server，以 control mode 持有唯一可写客户端，并持久化 session/window/pane ID 与 generation；Workbench/CLI 观察者只消费网关的转发，不直连 tmux。P0 只验内置 Agency 依赖的 control mode 接缝够不够用：能建 owner-only socket 并持有唯一可写 control client、观察者能经网关扇出、输入与 resize 能下发、session/pane ID 稳定可持久化、退出码与残留进程能回读、无人 attach 时能查询应答。键盘协议子集、慢观察者背压、各 Harness 的 TUI 兼容与 [`#5510`](https://github.com/tmux/tmux/issues/5510) 之类是 tmux 自己的轮子：选型时作资料判断，使用中不够用就按选型三件套升 commit 或换家，不为它们维护验证矩阵。2026-08-29，三个实际分发目标的上述接缝 [P0 均已通过](../research/tmux-runtime.md#2026-08-29-p0-接缝验证)；完整取舍、实测 footprint 与 shpool/Zellij 对照见[实现证据](../research/tmux-runtime.md#e-l1-tmux-runtime)。v0.13.4 刀口修正后，tmux 定位为内置 Agency 的物理原语（太瘦不独立成 Agency），本项探针即内置 Agency 的原语接缝验证，选型与结论不变。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝够不够用：账号与房间管理 API、AppService 注册与事件投递、按事件 ID 读取正文、房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。事务 ID 幂等、事件顺序、重同步是 homeserver 自己的合同，HCTL 拿来用、不替它验。Chatroom 发行形态同时固定 Cinny `v4.12.6` 官方 Web 发行包为随包互操作/查看客户端；它不是 Workbench，也不拥有治理权威。Tuwunel 官方发布物虽只有 Linux，锁定源码已在 Apple Silicon 原生构建；含 Cinny 的 Linux 包已通过完整生命周期，两个 macOS target 仍须分别原生重建验证。低内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
 4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝够不够用：卡片与分组的读写 API、按分组稳定回读归属、条件写入是否可用、webhook 或轮询能否观测变化、实体 ID 稳定；排序算法与看板语义是它自己的轮子；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
-6. **运行时 provider 第二实现（herdr，限时验证）**：执行者供给在合同层收口为可插拔的运行时 provider（执行者派出方，合同见 [Agent 合同](./spec/agent.md#运行时与观测)）；内置 provider 由 agentd 承载、以 tmux 为原语，选型不变。herdr 固定基线 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0，官方单静态二进制 + SHA-256/attestation，免编译）作为第二实现候选走限时验证，探针只验 provider 合同的接缝：headless server 与 socket API 的版本协商回读、pane 创建/输入/读取/wait-output、多观察者与单写者接管的能力声明回读、跨重启会话保持到四级恢复词汇的翻译、状态检测事件的来源与置信度标注、原生客户端（TUI/`--remote`）输入可被带外入账观测。2026-08-29 的容器探针已给出 footprint 与 API 形态证据（见[实现证据](../research/herdr.md)：重输出下 RSS 约为 tmux 同负载的 5 倍）。通过则 herdr 作为可选 provider 进入交付面，按打包策略补许可证与摘要锁定；失败则维持 tmux 单 provider 并修订本决定与 decision-history。
+6. **Agency 第二实现（herdr，限时验证）**：执行者供给在合同层收口为可插拔的 Agency（派出方，合同见 [Agent 合同](./spec/agent.md#运行时与观测)）；内置 Agency（hctl2-agency）以 tmux 为原语，选型不变。herdr 固定基线 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0，官方单静态二进制 + SHA-256/attestation，免编译）作为第二实现候选走限时验证，探针只验 Agency 合同的接缝：headless server 与 socket API 的版本协商回读、pane 创建/输入/读取/wait-output、多观察者与单写者接管的能力声明回读、跨重启会话保持到四级恢复词汇的翻译、状态检测事件的来源与置信度标注、原生客户端（TUI/`--remote`）输入可被带外入账观测。2026-08-29 的容器探针已给出 footprint 与 API 形态证据（见[实现证据](../research/herdr.md)：重输出下 RSS 约为 tmux 同负载的 5 倍）。通过则 herdr 作为可选 Agency 进入交付面，按打包策略补许可证与摘要锁定；失败则维持内置 Agency 单实现 并修订本决定与 decision-history。
 
 ## 打包策略（选型判断，首次消费时产品化）
 
 分界线是**碰不碰宿主机现场**：
 
-- **必须原生**：tmux、harness、`hctl2-agentd`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 直接消费摘要锁定的官方 `tmux-builds` 单二进制：Linux 制品静态链接，macOS 制品只链接系统 dylib；随包保留上游许可证集合，不再维护自主 C 构建链。
+- **必须原生**：tmux、harness、`hctl2-agency`、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。tmux 直接消费摘要锁定的官方 `tmux-builds` 单二进制：Linux 制品静态链接，macOS 制品只链接系统 dylib；随包保留上游许可证集合，不再维护自主 C 构建链。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行 target。Linux x86_64、macOS arm64 与 macOS x86_64 分别构建；macOS 最低基线为 15。Dagu、Vikunja、tmux 使用官方原生发布物，Tuwunel 因上游没有 Darwin 二进制而从锁定源码原生构建；各 target 共用锁定的 Cinny 官方 Web 发行包。不同 OS/CPU 不混用缓存、动态库闭包或生命周期验证。
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。第一阶段的 Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
 - Windows 不在第一阶段范围；tmux 没有原生 Windows 后端，未来 Windows 版本须在同一运行时合同下另选实现并重新过兼容矩阵，当前选型不宣称跨平台。Dagu/Vikunja 有 Windows 发布物，Tuwunel 未见官方包。
 
 ## 技术基线
 
-Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时 provider（内置 provider 以 tmux 为原语；herdr 限时验证为首个外部 provider）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agency；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、Agency（内置 Agency 以 tmux 为原语；herdr 限时验证为首个外部 Agency）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 

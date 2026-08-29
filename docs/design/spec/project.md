@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.5<br>
+> 状态：规范性合同 · 草案 v0.14.0<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -29,7 +29,7 @@
 | Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以 fresh 房间状态回读证明目标房间未启用端到端加密 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略与降级能力；health、成员现状、同步 cursor 与加密状态观测是另行版本化的运行投影——绑定后房间被开启加密不改写历史 binding，只把该 Room 的聊天入口标为需要关注 |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
-| Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，agentd 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
+| Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，Agency 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
 | Memo | 发布 revision 只追加 | control 与工具箱处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
 | Artifact | `artifact_version`、current revision、活跃 / 已归档 | control 与工具箱处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
 
@@ -60,7 +60,7 @@ Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 
 
 Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。Bundle 的每个条目按投喂档记录为 inline / pointer / recall 之一。inline 物化原文，只用于执行体自己拿不到或不该自己翻的部分——从聊天史与绑定 Task 的任务后端评论线萃取的相关讨论、契约与范围说明、用户显式引用的原文，以及冻结策略列为必用的同 Run 前序节点结果（Gate Seat 的 ReviewSubjectRef diff、返工 Seat 的 Verdict 正文，见 [Run 模块合同](./run.md#request重试与-gate)）；必用条目超预算时改为 pointer 并附分片建议，不得静默丢弃。pointer 只记精确 ref+digest 与一句摘要，且只能指向执行体在获准范围内以自身工具可打开的位置——Git 对象与 worktree 路径：Repo/Git 内容、ChangeSet Revision、Artifact、Memo、Skill 与 Verdict/Receipt 的 Git 结晶副本；指向账本或任务后端的引用不得作为 pointer 交付。recall 是运行中经 recall policy 追加的子包条目。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Verdict-Receipt 结晶副本指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
 
-每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，agentd 在启动前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
+每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，control 在派工交付前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
 萃取与相关性判定全部本地，不消耗大模型 token：第一级是显式引用与当前讨论窗口，绑定 Task 的任务后端评论线整条属于这一级——以当前 Task Source Snapshot 的 ref+digest 冻结进 Manifest，不经检索；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流、task_source Snapshot 与账本增量维护，不进权威账本，删除后可完整重建。相关性门只以账本事实（提及、认领、Request 关联、游标）为判定输入，不以消息措辞正文做路由；每次判定连同输入事实引用与结论记为可审计观测，观测不改写任何事实。
 

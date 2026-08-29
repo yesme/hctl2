@@ -1,6 +1,6 @@
 # 四模块连接与端到端闭环
 
-> 状态：规范性合同 · 草案 v0.13.5<br>
+> 状态：规范性合同 · 草案 v0.14.0<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -11,7 +11,7 @@
 2. 目标模块在自己的命令准入中校验来源引用、当前版本、actor、权限和幂等键，并拥有新产生的状态。
 3. 目标状态、来源关联、幂等结果和必要 outbox 由唯一 control 在同一本用户级 metadata 账本的一个事务中提交；跨 Project、Repo Instance 或模块都不得拆成 clone 本地事务再拼接。
 4. 目标只以稳定引用和有序事件返回结果；来源和场景可以投影它们，但不能复制一套状态机。
-5. 涉及 Engine、agentd、Git/SCM 或第三方平台时，提交本地意图先于外部动作；ACK 不确定时按稳定关联键回读。
+5. 涉及 Engine、Agency、Git/SCM 或第三方平台时，提交本地意图先于外部动作；ACK 不确定时按稳定关联键回读。
 
 连接中的引用至少包含 kind + stable_id + revision_digest 或 state_version，并携带所属 Repo/Project、producer 和适用的绑定版本。`current`、显示名、外部 ID、文件路径或界面选择不能替代精确引用。这是字段约束，不是新的持久领域对象。
 
@@ -93,9 +93,9 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 外部运行时的启动顺序固定为：
 
 1. owner 模块提交 Execution Spec 与 dispatch outbox；此时只有 `invocation_version | attempt_generation`，不得预填 runtime identity；
-2. agentd 在选定 Repo Instance 上进行无副作用预留，校验当前 control/site/backend fence，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；
+2. 选定的 Agency 在该 Repo Instance 上进行无副作用预留，校验当前 control/site/backend fence，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；
 3. control 在用户级账本事务记录 owner 到 Execution Runtime 的精确映射、适用的 Write Lease 和 activate outbox；
-4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 backend/agentd owner generation 激活，并按完整 tuple 回读；任一旧代次、旧租约和重复激活都被拒绝。
+4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 backend/Agency owner generation 激活，并按完整 tuple 回读；任一旧代次、旧租约和重复激活都被拒绝。
 
 前三类含义不可混写：Invocation/Attempt version/generation 是语义 owner 身份，runtime generation 是一次物理执行身份，control/site/backend generations 是防旧进程写入的基础设施 fence。Participant revision、binding revision、producer sequence 和 content cursor 都不是这三类中的任一种。
 
@@ -143,7 +143,7 @@ Task 路径的验收证据 → Task Completion Receipt
 
 每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结合同继续收口，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
 
-权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ Execution Spec → agentd/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
+权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
 
 ## 失败与恢复
 
@@ -160,7 +160,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | 已绑定房间被开启端到端加密 | 同上一行的可继续/拒绝规则；聊天入口显示需要关注，已冻结引用与 digest 不受影响，由有权 human actor 换绑到未加密房间恢复 |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账 |
-| harness / 运行时 provider 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
+| harness / Agency 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 
