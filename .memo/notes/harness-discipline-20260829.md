@@ -2,7 +2,7 @@
 
 > 说明：所有者观察到各 harness 的三类共性工作方法病，本文记录溯源与"不依赖阅读理解"的机制化解法；短版纪律在根目录 `AGENTS.md`。<br>
 > 基线：main @ 6dfc0a8（草案 v0.13.1）<br>
-> 去向：`AGENTS.md`、`CONSTRAINTS.md`、`CLAUDE.md`、`.github/pull_request_template.md`、`.github/workflows/pr-contract.yml`（已落地）
+> 去向：`AGENTS.md`、`CONSTRAINTS.md`、`CLAUDE.md`、`.github/pull_request_template.md`、`.github/workflows/code.yml` 的 `PR contract` job（已落地）
 
 ## 三个病（所有者原述）
 
@@ -34,5 +34,5 @@
 ## 诚实的边界
 
 - 机制保证"填了"，不保证"填得好"——字段可以被填进垃圾。human 的角色不消失，只是杠杆变了。
-- `PR contract` 要真正挡合入，需在 branch protection 里加为 required check（repo 设置，需所有者操作）。
+- `PR contract` 是 `code.yml` 里的一个 job，被已 required 的 `CI gate` 聚合，所以**不需要**另改 branch protection。代价：`pull_request` 触发加了 `edited` 类型，代码 PR 修改描述会整体重跑构建——改描述低频，接受这个代价换取"修完描述关卡自动转绿"。
 - 新组件信号的模式（`*.sh` 等）是保守启发式，会漏不会误伤；宁可漏，避免为关卡本身叠床架屋（病 2 的教训适用于关卡自己）。

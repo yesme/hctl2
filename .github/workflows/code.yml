@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -66,6 +67,57 @@ jobs:
             src/build/tools/install-dotslash \
             src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
+
+  pr-contract:
+    name: PR contract
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+
+      - name: Check required PR sections
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          stripped=$(printf '%s' "$PR_BODY" | perl -0777 -pe 's/<!--.*?-->//gs; s/\r//g')
+
+          section() {
+            printf '%s\n' "$stripped" | awk -v h="## $1" '
+              index($0, h) == 1 {found=1; next}
+              /^## / {if (found) exit}
+              found {print}
+            '
+          }
+
+          fail=0
+          for h in 定位与重述 当前生效约束集 业界方案调研; do
+            if ! printf '%s\n' "$stripped" | grep -q "^## $h"; then
+              echo "::error::PR 描述缺少必填节 '## $h'（模板见 .github/pull_request_template.md）"
+              fail=1
+            elif [ -z "$(section "$h" | tr -d '[:space:]')" ]; then
+              echo "::error::必填节 '## $h' 是空的——填上内容，不要删掉注释了事"
+              fail=1
+            fi
+          done
+
+          git fetch --no-tags --prune origin "$BASE_REF"
+          new_components=$(git diff --name-only --diff-filter=A "origin/${BASE_REF}...HEAD" \
+            | grep -E '(\.sh$|^src/build/tools/|^src/third-party/)' || true)
+          research_compact=$(section 业界方案调研 | tr -d '[:space:]')
+          if [ -n "$new_components" ] && [ "$research_compact" = "不适用" ]; then
+            echo "::error::本 PR 新增了脚本/工具/三方组件，但'业界方案调研'节写着'不适用'："
+            printf '%s\n' "$new_components"
+            echo "::error::先查业界方案与平台 native 机制，落 docs/research/ 或在该节说明为何自建。"
+            fail=1
+          fi
+
+          exit "$fail"
 
   buck:
     name: Buck2 / ${{ matrix.platform }}
@@ -167,20 +219,25 @@ jobs:
 
   ci-gate:
     name: CI gate
-    needs: [changes, buck, cargo-parity]
+    needs: [changes, pr-contract, buck, cargo-parity]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Aggregate required jobs
         env:
+          EVENT_NAME: ${{ github.event_name }}
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
+          CONTRACT: ${{ needs.pr-contract.result }}
           BUCK: ${{ needs.buck.result }}
           CARGO: ${{ needs.cargo-parity.result }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES code=$CODE buck=$BUCK cargo=$CARGO"
+          echo "changes=$CHANGES code=$CODE contract=$CONTRACT buck=$BUCK cargo=$CARGO"
           test "$CHANGES" = success
+          if [ "$EVENT_NAME" = pull_request ]; then
+            test "$CONTRACT" = success
+          fi
           if [ "$CODE" != true ]; then
             echo "No first-party or CI paths; skip Buck2 and Cargo."
             exit 0
