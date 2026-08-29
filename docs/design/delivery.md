@@ -17,7 +17,7 @@
 
 P3 的 Workbench 把四个场景集成到一个客户端，但不引入任何 CLI 不可达的命令：同一 command service 供 CLI、Workbench 与外部适配器使用。
 
-第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 是带外诊断 / break-glass，不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
+第一阶段区分三类外部界面：Matrix/Vikunja 等原生界面是对应系统的 **content 客户端**，可以读写该系统拥有的消息或卡片，但不能提交 HCTL 治理命令；Engine console 是 provider 诊断面；裸 `tmux attach-session` 等运行时 provider 原生客户端是执行面的内容原生界面——不校验 control descriptor 与 input lease，因此不是合规 Terminal 客户端，其终端输入由 agentd 按带外输入入账。合规的第三方场景客户端必须使用公开的 Query/Preview/Submit/Subscribe，Terminal 通道则使用 control 签发、agentd 校验的 descriptor。P2 用公共 CLI 承载 B0–B5 所需的治理面，原生界面只验证 content 互操作，不把 provider 控制台冒充成 HCTL 客户端。
 
 ## 公共 CLI
 
@@ -170,6 +170,9 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人在 HCTL 外直接改 provider 只形成 drift，不能冒充结果
+- provider 原生客户端输入缺带外入账记录，或被赋予输入租约语义时无效
+- 未声明观察扇出能力的 provider 直连观察者拒绝；已声明的 provider 缺缺口披露时该通道降级为带外诊断
+- provider 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；provider 恢复报告无法翻译为四级恢复词汇时按丢失处理
 - control 签发 descriptor、agentd 终端网关校验，观察、输入、Attempt 控制与安全输入权限分离
 - attach 只接通道，不能恢复 Run/Invocation 语义
 - attach/replay、IME/背压/慢客户端隔离
@@ -243,6 +246,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 3. **chat server（Tuwunel，已拍板；Continuwuity 为记录在案的备选）**：Rust 单二进制、采用 RocksDB 系嵌入式存储的 Matrix homeserver。固定基线为 [`v1.9.0 / 5b366914`](https://github.com/matrix-construct/tuwunel/tree/5b3669144219d5d4c0774743c84191b476f1b54f)。拍板理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化，不靠房间内发命令。P0 只验 Chat 端口依赖的接缝够不够用：账号与房间管理 API、AppService 注册与事件投递、按事件 ID 读取正文、房间加密状态可回读（自建房间不带 `m.room.encryption`、绑定前能读到该状态、事后开启能被观测）。事务 ID 幂等、事件顺序、重同步是 homeserver 自己的合同，HCTL 拿来用、不替它验。Chatroom 发行形态同时固定 Cinny `v4.12.6` 官方 Web 发行包为随包互操作/查看客户端；它不是 Workbench，也不拥有治理权威。Tuwunel 官方发布物虽只有 Linux，锁定源码已在 Apple Silicon 原生构建；含 Cinny 的 Linux 包已通过完整生命周期，两个 macOS target 仍须分别原生重建验证。低内存配置与 RocksDB/media 一致性备份不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。
 4. **task server（Vikunja，已拍板）**：固定基线为 [`v2.5.0 / ef2200e9`](https://github.com/go-vikunja/vikunja/tree/ef2200e9429c5cc42f5c1811433418bfcc72b3aa)，Go 单二进制、SQLite、REST API + webhooks，并有官方 macOS/Linux 发布物。探针只验 Task 端口依赖的接缝够不够用：卡片与分组的读写 API、按分组稳定回读归属、条件写入是否可用、webhook 或轮询能否观测变化、实体 ID 稳定；排序算法与看板语义是它自己的轮子；备份恢复不在 P0，连同由 control 托管的一键启停和恢复演练一起，到 B1 首次消费前产品化。git-bug（零服务器、任务存于 git refs）降为记录在案的对照——仅在验证失败、重开并修订 task server 选型决定与 decision-history 时再取，且须显式接受“任务 content 也在 Git”的模型例外并记入决策历史。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
+6. **运行时 provider 第二实现（herdr，限时验证）**：运行时后端在合同层收口为可插拔的运行时 provider（合同见 [Agent 合同](./spec/agent.md#运行时与观测)），tmux 是内置最简实现、选型不变。herdr 固定基线 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0，官方单静态二进制 + SHA-256/attestation，免编译）作为第二实现候选走限时验证，探针只验 provider 合同的接缝：headless server 与 socket API 的版本协商回读、pane 创建/输入/读取/wait-output、多观察者与单写者接管的能力声明回读、跨重启会话保持到四级恢复词汇的翻译、状态检测事件的来源与置信度标注、原生客户端（TUI/`--remote`）输入可被带外入账观测。2026-08-29 的容器探针已给出 footprint 与 API 形态证据（见[实现证据](../research/herdr.md)：重输出下 RSS 约为 tmux 同负载的 5 倍）。通过则 herdr 作为可选 provider 进入交付面，按打包策略补许可证与摘要锁定；失败则维持 tmux 单 provider 并修订本决定与 decision-history。
 
 ## 打包策略（选型判断，首次消费时产品化）
 
@@ -255,7 +259,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 ## 技术基线
 
-Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时后端（tmux）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool/agentd；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、运行时 provider（tmux 内置；herdr 限时验证为第二实现候选）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#执行面已选依赖的运维与-footprint)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
