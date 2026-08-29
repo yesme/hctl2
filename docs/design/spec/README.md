@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.14.1<br>
+> 状态：规范性 · 草案 v0.15.0<br>
 > 日期：2026-08-29<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -35,7 +35,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | Binding | 把两个身份连起来的冻结解析；活动执行永远引用准入时的版本，换绑不改写历史 |
 | Receipt | control 与工具箱校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
-| 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor、目标版本与幂等键，重复提交返回原结果 |
+| 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor 来源、目标版本与幂等键，重复提交返回原结果；请求可来自 direct client 或模块明确接纳的 provider event |
 | Snapshot | 先观测后准入的只追加外部观测；观测无论置信度多高都不直接改写事实 |
 
 ## 三类数据
@@ -52,9 +52,9 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 三条法贯穿全部模块合同，各处引用，不再各写一套：
 
-1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：平台消息不能触发派发，拖卡不能完成 Task，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
+1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：普通消息不能触发派发，provider Done 最多请求同一 Task 验收，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
 2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
-3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；结果可以作为记录写回 content 系统，但平台里的记录只是记录，不是命令。
+3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；human 请求可以来自 Workbench/CLI，也可以来自模块 binding 明确接纳的 provider 动作，但必须归一到同一命令。结果可以作为记录写回 content 系统，回写本身不得再取得 human provenance。
 
 ## 词汇索引（v0.9.1 归并后）
 
@@ -118,7 +118,7 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 
 | 旧名 / 旧词 | 现状 |
 | --- | --- |
-| 用户在场证明 | 撤销：治理命令只有两类入口——经认证的场景客户端会话（Workbench、CLI、适配的第三方客户端）与施工图走完的 reducer，只验入口，不判断客户端是被人还是子进程启动 |
+| 用户在场证明 | 撤销：治理命令只有两类 actor 来源——可映射到 owner human 的 direct client/provider event 与施工图走完的 reducer；只验来源信封，不判断客户端是被人还是子进程启动，不引入复杂 RBAC |
 | OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、Agency 报告为事实，已声明而宿主施加不了则该次执行不激活；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
 | “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
 | Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |

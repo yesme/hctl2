@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.14.1<br>
+> 状态：非规范对照 · 草案 v0.15.0<br>
 > 本表只提供中英对照和一句话含义，方便快速查阅；完整语义以[合同层](../spec/README.md)为准，六族（Revision、Binding、Receipt、Lease、命令、Snapshot）的共同性质在[总则](../spec/README.md#六族规则)只定义一次，本表不重复。
 
 ## 核心产品词
@@ -33,7 +33,7 @@
 | Terminal | 终端场景 | Agent 模块的观察、诊断和接管场景 | [Agent](../agent.md) |
 | ChangeSet | 变更集 | 一次获准写入边界；快照见 Revision 族 | [spec/agent](../spec/agent.md) |
 | Evidence | 证据 | diff、测试输出、SCM 状态等可核验的观测 | [spec/agent](../spec/agent.md) |
-| Workbench | 工作台 | 集成四个场景的桌面客户端；只是客户端，没有额外权限 | [spec/system](../spec/system.md) |
+| Workbench | 工作台 | 把四类 provider 客户端、联合投影和 HCTL 公共命令入口组合起来的桌面；没有额外权限，关闭后服务与执行继续 | [spec/system](../spec/system.md) |
 
 ## 三类数据（数据类别，不是对象）
 
@@ -44,6 +44,18 @@
 | artifact | 结晶 | content 提炼出的不可变产物；进 Git。与领域对象 Artifact（工件）不同物 |
 
 权威定义见[合同层总则](../spec/README.md#三类数据)。
+
+## 客户端动作分类（不是对象）
+
+| 类别 | 一句话含义 |
+| --- | --- |
+| content 写入与观测 | 客户端正常改变 provider 拥有的消息、卡片等 content，control 按 Snapshot/cursor 对账 |
+| human 命令请求 | direct client 或模块明确接纳的 provider event 归一到同一个 HCTL command draft；仍须 Preview/准入 |
+| 运行时输入 | 向精确 Execution Runtime 输入，按 descriptor/lease/generation 能力记录保证等级；不是领域结果 |
+| Result Proposal | Harness/Agency 提交给 owner 校验的结果与证据，不是 human 命令 |
+| 不支持的 provider mutation | 无法保持 HCTL 先记账、撤权再执行顺序的 provider 管理动作；只回读为分歧，不倒推命令 |
+
+这些类别由动作落点与信封决定，不由 Workbench、CLI 或原生客户端的产品名称决定；权威规则见[系统合同](../spec/system.md#客户端动作与-provider-事件)。
 
 ## 场景-系统对照
 

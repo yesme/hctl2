@@ -97,3 +97,14 @@ tmux 3.7c 的三目标 P0 已验证 owner-only socket、唯一可写 control cli
 - `agent.start` 的 shell-input 启动路径：[`src/app/agents.rs`](https://github.com/herdrdev/herdr/blob/9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c/src/app/agents.rs)
 - PTY/runtime 与 stop policy：[`src/pane.rs`](https://github.com/herdrdev/herdr/blob/9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c/src/pane.rs)
 - 恢复等级说明：[`session-state.mdx`](https://github.com/herdrdev/herdr/blob/9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c/docs/next/website/src/content/docs/session-state.mdx)
+
+## 2026-08-30 原生客户端定位复核
+
+v0.15.0 改变的是产品解释，不是上面的源码事实。旧结论把“不能证明所有输入经过 HCTL lease”推得过远，容易把 Herdr TUI 只当诊断工具；真实用户路径里，人在精确终端继续对 Harness 输入，本来就是 Terminal 场景的正常交互。Workbench 的 xterm 若直连 Herdr transport，也不会因为装在 HCTL 窗口里就自动获得更强保证。
+
+因此 Execution Spec 分两种要求：
+
+- `managed_single_writer`：需要证明所有输入经过 descriptor/generation/Terminal Input Lease。v0.8.2 必须关闭原生 controller 写入，只开放 Herdr adapter 可校验的路径；writer bypass、无 fence echo 和无 input event 仍是阻断事实。
+- `native_interactive_allowed`：允许 Workbench 直连、Herdr TUI 等原生客户端向已映射的精确 terminal 输入。输入立即影响运行时，属于有效的用户运行时输入；但逐次 actor、generation、单写者和完整 replay 无法证明，必须如实标注。终端文字不因此成为 Result Proposal、Task 完成或 Run 裁决，后续结构化结果和 Git/SCM/Test evidence 仍各自按原合同验收。
+
+这不是为 Herdr 缺口找借口，也不要求 HCTL 自建 writer proxy：一项执行选择自己需要的保证，当前 provider 做不到的强保证就关闭对应入口；普通交互所需的较弱保证则可以直接复用 Herdr 已有 TUI/transport。将来 Herdr 增加统一 writer gate、输入 provenance 事件和 fence echo 后，两种路径可以在新 binding revision 下使用同一物理入口。

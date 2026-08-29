@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.14.2**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.15.0**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；macOS arm64 已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -92,7 +92,8 @@ flowchart LR
 
 - Project、Task、Run 和 Agent 模块的对象都有稳定身份，不能由聊天串、外部 Issue、工作流任务、worktree 或终端面板反向定义；
 - Chat Room、Kanban、Workflow 和 Terminal 是操作场景，不是第二份领域事实；
-- Workbench 是四个场景的集成客户端；第三方界面分两类——content 客户端（任意 Matrix 客户端、任务后端原生界面）直接读写场景内容但不能提交治理命令，治理客户端走同一命令服务；引擎控制台与裸终端 attach 分别是诊断面与带外接管面，同样不产生治理事实，也不因此成为合规场景客户端；谁都不整体替代领域模块；
+- Workbench 是把四个场景客户端和 HCTL 命令入口组合在一起的产品外壳，不是特殊内核；Workbench、CLI 与第三方原生客户端没有等级或隐藏权限，同一动作无论从哪里发起都走同一份合同；
+- 客户端名称不决定动作含义：消息和卡片操作写入对应 content 系统，类型化命令请求进入 control，终端输入进入精确运行时，无法满足先记账再执行顺序的 provider 管理动作只作管理/诊断并在越界时标记分歧；
 - 所有适配器都使用同一命令、查询、事件和能力边界，没有隐藏写权限；
 - Revision、Verdict、Receipt 和可核验证据高于进度、自述、屏幕状态和外部已关闭；
 - 模型只能建议结果与下一位协作者。Task 完成只接受有权人类命令，或绑定该 Task 的 Run 正常完成后的确定性归约命令；Task 已取消只接受有权人类命令。普通 Room 的临场执行边只由人类创建，Workflow 的归约器只能实例化冻结图中的边。
@@ -101,10 +102,11 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    subgraph Gov["治理客户端 · 同一命令服务，无隐藏特权"]
+    subgraph Clients["客户端 · 没有等级，动作按目标合同处理"]
         CLI["hctl2 CLI\n（P2 起承载全部治理命令）"]
-        Bench["hctl2-workbench（P3）\nRoom · Kanban · Workflow · Terminal"]
-        Third["适配后的第三方场景客户端"]
+        Bench["hctl2-workbench（P3）\n四类客户端 + HCTL 命令入口"]
+        Native["Matrix / Vikunja / Herdr\n原生客户端"]
+        Admin["Dagu 管理界面\n管理 / 诊断"]
     end
 
     subgraph Control["控制面 · hctl2-control 四个领域模块"]
@@ -122,32 +124,30 @@ flowchart LR
         runtime["harness 进程 / PTY"]
     end
 
-    subgraph ContentClients["content 客户端与带外界面 · 不产生治理事实"]
-        matrix_client["任意 Matrix 客户端\n（content 客户端）"]
-        task_ui["任务后端原生界面\n（content 客户端）"]
-        engine_console["workflow engine 控制台\n（诊断面）"]
-        term_attach["裸终端 attach\n（带外接管面）"]
-    end
-
     CLI --> Control
     Bench --> Control
-    Third --> Control
+    Native -.->|显式且可归属的动作请求| Control
     P -->|Chat 端口| chat_srv
     T -->|任务源端口| task_backend
     R -->|workflow engine 端口| engine
     H --> agency
     agency --> runtime
-    matrix_client --> chat_srv
-    task_ui --> task_backend
-    engine_console --> engine
-    term_attach --> agency
+    Bench -->|消息 / 卡片 / 终端通道| chat_srv
+    Bench --> task_backend
+    Bench --> agency
+    Native --> chat_srv
+    Native --> task_backend
+    Native --> agency
+    Admin -->|直接 mutation 仅供管理；越界即分歧| engine
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Tool["hctl2-tool · Git/SCM 工具箱"]
 ```
 
-部署视角上，系统分三个面：展示面（治理客户端与 content 客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统，Agent / Terminal 由 Herdr 负责运行），详见[三面架构](./docs/design/architecture.md)。
+部署视角上，系统分三个面：展示面（Workbench、CLI 与 provider 原生客户端；客户端没有等级）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统，Agent / Terminal 由 Herdr 负责运行），详见[三面架构](./docs/design/architecture.md)。
 
-第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用（HCTL 的房间不开端到端加密，控制面要按消息 ID 读正文），非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。workflow engine 的控制台只用于诊断；Herdr TUI 是 Terminal 的原生客户端，可以观察会话，但它的直接输入当前不经 HCTL 输入租约，必须如实记录为带外输入，不能用来产生 HCTL 的治理结果（见[三面架构](./docs/design/architecture.md)与[系统边界](./docs/design/spec/system.md)）。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面一起完成日常工作。
+Workbench 可以理解为把四类场景客户端和 HCTL 命令入口装进同一个桌面的组合客户端；它不会因为“集成”就获得更高权限。发送 Matrix 消息时，它与任意 Matrix 客户端一样写聊天 content；整理任务卡时，它与 Vikunja 原生界面一样写看板 content；向精确 Herdr 终端输入时，它与 Herdr TUI 一样是在推动运行时；预览或提交 HCTL 命令时，它与 CLI 使用同一套 Query/Preview/Submit/Subscribe。Workbench 关闭或没有安装，都不妨碍 control、CLI 和原生客户端继续工作。
+
+动作是否可用取决于模块合同和 provider 的实际能力，而不是客户端名称。Vikunja 中明确把已绑定卡片移入 Done 可以在保留操作者、版本和幂等依据时转成同一个「完成 Task」请求，但仍由 Task 独立验收；普通 Matrix 消息仍只是消息，只有显式且已配置的结构化动作才可转成命令请求；Herdr 原生输入是有效的运行时输入，但 v0.8.2 不能证明它经过 HCTL 输入租约；Dagu 的 Start/Stop/Retry 等界面动作会先改变引擎，无法满足 HCTL 先持久化、撤权再执行的顺序，因此只用于管理/诊断，直接改动已绑定执行时标记分歧。详细分类见[系统边界](./docs/design/spec/system.md#客户端动作与-provider-事件)。HCTL2 自建 Workbench，是为了提供跨 Repo/Project/Room/Task/Run 的统一导航、联合投影和公共命令入口，不是重写 provider，也不是另造一套权限体系。
 
 受控端口（图中控制面到执行面的连线）提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实与现场保全，Herdr 直接持有 Harness 进程、PTY 和终端会话，外部 Workflow Engine 只维护机械执行位置。HCTL 通过 Herdr 适配代码传入已获准参数并记录结果，不另外实现一套终端会话服务。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复规则也必须原样保留——项目不随工具更换而丢失。
 

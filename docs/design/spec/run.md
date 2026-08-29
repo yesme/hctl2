@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.14.1<br>
+> 状态：规范性合同 · 草案 v0.15.0<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -29,6 +29,10 @@
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
 Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；运行中 → 暂停中/取消中/完成/失败/被替代；暂停中 → 已暂停/取消中/失败/被替代；已暂停 → 运行中/取消中/失败/被替代；取消中 → 已取消/失败/被替代。每个过渡态都必须能通过取消、失败或替代进入终态，不能因 Engine 失联永久阻塞绑定 Task。外部 ACK 与 Engine 回读都不直接写状态：Run 状态只由 control 按账本事实推进，Engine 位置只是路标，用于关联与分歧检测。
+
+Run 是反应式状态机，但所有输入不共用一条无类型事件通道。human 的 Start/Pause/Resume/Cancel/Request answer 先进入公共 command service；Agent 的结果先进入 Result Proposal；timer 与 Engine 位置先成为带版本观测。control 归约并持久化领域结果、撤权与 outbox 后，adapter 才推动 Dagu。这个先后次序是 Run 正确性的一部分，Workbench、CLI 或 provider UI 都不能绕过。
+
+Dagu 原生 UI/API 的 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 会直接改变定义或机械执行，不能在副作用前携带 HCTL command envelope、Run expected version、Attempt/lease 撤权和同一账本事务。因此这些动作不是可接纳的 provider-origin human 命令请求：对未绑定的 Dagu 对象可作实例管理，对已绑定 Engine Deployment/Execution 的任何直接 mutation 只追加回读观测并把 Engine Execution Binding 标为分歧；control 不根据事后相似状态补造 Run 命令、Verdict 或 Receipt。将来只有 provider 支持 mutation 前拦截，并能让 control 完成同一 Preview/Submit/outbox 顺序后再执行，才可在新 binding revision 中声明相应能力。
 
 `运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并标为被替代/已取消；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine Execution Binding 的账本记录和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
 
@@ -70,7 +74,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
 3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
 4. control 与工具箱校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
-5. 领域结果与 Engine completion outbox 先持久提交，再经 Dagu `human.task` API 把路标推过该检查点；ACK 未知时先回读再重投。路标与账本不一致（检查点已被 Engine 自行推进或重试）只把 Engine Execution Binding 标为分歧并对账，不改写任何 HCTL 结果。
+5. 领域结果与 Engine completion outbox 先持久提交，再经 Dagu `human.task` API 把路标推过该检查点；ACK 未知时先回读再重投。路标与账本不一致（检查点已被 Engine 自行推进、从 UI 完成或重试）只把 Engine Execution Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
 Attempt 的派发在 Execution Spec 中至少冻结 attempt/seat/run ref + `attempt_generation`、精确 Participant revision/Project Role Binding、Worker Profile、接入方式与降级能力、Agency binding、可选 ChangeSet/Write Lease、根 Context Manifest ref+digest、该 Attempt 的 Context Bundle ref+digest、实际 Skill refs+digests、能力/权限和截止时间。`attempt_generation` 是语义 owner 代次；它既不是后续激活时分配的 `runtime_generation`，也不是 control/site/backend 的基础设施 fence generation，所有层都必须分别携带并逐项校验。Attempt lifecycle 为待启动 | 运行中 | 等待输入 | 已交提案 | 失败 | 丢失 | 已取消 | 被替代：待启动可进入运行中/失败/丢失/已取消；运行中与等待输入可互转并进入已交提案/失败/丢失/已取消；任一尚未提交 Proposal 的非终态可进入被替代。已交提案是“该 Attempt 已提交不可变 Proposal”的终态，不表示 Seat、Gate、Run 或 Task 成功；owner 对 Proposal 的准入或拒绝推进 Seat/Obligation，修正或重新施工创建新 Attempt/Proposal，而不复活旧 Attempt。状态只由 control 根据 Agency 观测与网关第一方观测推进，全部终态不可复活。
 
