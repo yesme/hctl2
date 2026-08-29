@@ -37,3 +37,7 @@ HCTL 只借鉴托管会话接管与恢复的行为和故障矩阵：Feishu Chat 
 ### 2026-08-29 Agent 运行服务复核
 
 本表原先对 HAPI 的“不给精确 PTY”判断已被当前源码推翻：[`bc9df82`](https://github.com/tiann/hapi/tree/bc9df82dc6e24140a4c76dfd6a86c0e53df9f8d2) 已有通用 `AgentPtyManager`、Bun terminal、远程观察/输入与恢复。它仍不适合作为 HCTL 的运行服务：v0.29.0 macOS arm64 binary 109.1 MB，`runner --help` 峰值约 133 MiB，且会连同整个 hub、Web 和多 Harness 业务一起引入，增加权限管理和升级工作。Paseo、MindFS、Happy、Remux 与闭源观察项也已逐源码或按公开资料重新分类；完整证据与资源占用见 [Agent 运行服务候选复审](./agentd-runtime-candidates-20260829.md)。本复核不删除旧快照，明确覆盖其中关于 HAPI PTY 能力的事实判断。
+
+### 2026-08-30 逐对象补全审计
+
+观察清单九项全部升格为一对象一文件的完整审计（代码与 changelog 级，逐项钉定 commit/版本与许可），入 [`remote-control/`](./remote-control/README.md) 子目录；上表保留为历史快照，现行结论以各对象文件为准。主要修正：Paseo 许可已于 2026-08-27 由 AGPL 改为 Apache-2.0，复用决策升为**适配协议**；QuickTUI 的公开仓库不止证明分发（安装验证器钉出 server v2 API 面与 E2E 配对协议名），Windows 默认后端为其开源 qscreen，「公开证据仍指向 tmux」不再成立；Moshi 五个接口面的线协议公开成文，且与 Herdr 深度耦合（hooks 是 Herdr 上唯一 prompt 来源）；Happy 默认不依赖 tmux，远程观察是结构化事件投影，端到端加密核实到代码；HAPI 的 PTY 通路完整但已无现役 flavor 使用，另已长出 A2A work-graph 轻量账本；ServerCC 无浏览器端，「接管」为 tmux/herdr 共享 attach、无控制权与交还语义；Redock 的「Activity 深链」降级为未核实，2.0 起有状态通知但机制未公开。其余判断确认。
