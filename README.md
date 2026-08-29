@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.14.0**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.14.1**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；macOS arm64 已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -118,8 +118,8 @@ flowchart LR
         chat_srv["chat server\n（Matrix 协议）"]
         task_backend["任务后端\n（本地任务服务器 / Linear、GitHub）"]
         engine["workflow engine"]
-        agency["Agency（派出方）\n内置 hctl2-agency / herdr"]
-        runtime["harness 进程 / 运行时后端原语"]
+        agency["Herdr\nAgent / Terminal 运行服务"]
+        runtime["harness 进程 / PTY"]
     end
 
     subgraph ContentClients["content 客户端与带外界面 · 不产生治理事实"]
@@ -140,16 +140,18 @@ flowchart LR
     matrix_client --> chat_srv
     task_ui --> task_backend
     engine_console --> engine
-    term_attach --> runtime
+    term_attach --> agency
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Tool["hctl2-tool · Git/SCM 工具箱"]
 ```
 
-部署视角上，系统分三个面：展示面（治理客户端与 content 客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统与各 Agency 的物理执行），详见[三面架构](./docs/design/architecture.md)。
+部署视角上，系统分三个面：展示面（治理客户端与 content 客户端）、控制面（`hctl2-control`/`hctl2-tool` 与治理账本）、执行面（各场景的 content 系统，Agent / Terminal 由 Herdr 负责运行），详见[三面架构](./docs/design/architecture.md)。
 
-第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用（HCTL 的房间不开端到端加密，控制面要按消息 ID 读正文），非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。另两个执行面系统也各有原生界面，但分级不同：workflow engine 的控制台是**诊断面**，绕过控制面网关直连 Agency 的裸终端 attach 是**带外接管面**——它们的写操作带物理副作用，不算日常 content 客户端，同样产生不了治理事实（分级合同见[三面架构](./docs/design/architecture.md)与[系统边界](./docs/design/spec/system.md)）。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面并肩构成完整的日常操作面。
+第三方界面分两类，走两条不同的路。**content 客户端**直接连各场景的 content 系统：聊天采用 Matrix 协议，任何 Matrix 客户端开箱即用（HCTL 的房间不开端到端加密，控制面要按消息 ID 读正文），非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入，HCTL 不自建桥接；任务后端的原生界面可以直接增删拖动卡片。它们读写的是内容，改变不了任何治理事实——记录不是命令。workflow engine 的控制台只用于诊断；Herdr TUI 是 Terminal 的原生客户端，可以观察会话，但它的直接输入当前不经 HCTL 输入租约，必须如实记录为带外输入，不能用来产生 HCTL 的治理结果（见[三面架构](./docs/design/architecture.md)与[系统边界](./docs/design/spec/system.md)）。**治理客户端**（Workbench、CLI、适配后的第三方场景客户端）走同一套 Query/Preview/Submit/Subscribe 命令服务，不获得跨模块捷径。HCTL2 自建 Workbench，不是为了重写通用 UI，而是因为 Repo/Project/Room/Task/Run 的导航无法无损套入任何现成工具的会话、终端或工作树主导航；在 Workbench 就位（P3）之前，公共 `hctl2` CLI 承载全部治理动作，与各 content 原生界面一起完成日常工作。
 
-受控端口（图中控制面到执行面的连线）提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实与现场保全，Agency 持有物理运行时，外部 Workflow Engine 只维护机械执行位置。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复边界也必须原样保留——项目不随工具更换而丢失。
+受控端口（图中控制面到执行面的连线）提供底层能力，不等于场景客户端。同一平台可以兼任两者，但 client binding 与 authority binding 必须分开。`hctl2-control` 拥有领域命令与用户级 metadata 账本，`hctl2-tool` 校验 Git/SCM 事实与现场保全，Herdr 直接持有 Harness 进程、PTY 和终端会话，外部 Workflow Engine 只维护机械执行位置。HCTL 通过 Herdr 适配代码传入已获准参数并记录结果，不另外实现一套终端会话服务。即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，这套身份、权限、版本证据与恢复规则也必须原样保留——项目不随工具更换而丢失。
+
+第一阶段的 Tuwunel、Vikunja、Dagu、Herdr 都通过各模块自己的受控端口接入，Workbench 不依赖它们的私有对象模型。未来 GitHub/Linear 通过 task backend adapter 接入，官方远程 Agent 通过 Agency adapter 接入；飞书、Slack、Discord 的聊天互通则由 Matrix homeserver/bridge 生态负责，不由 HCTL 逐个平台适配。具体替换边界见[三面架构](./docs/design/architecture.md#避免供应商锁定)。
 
 ## 设计文档
 
@@ -166,7 +168,7 @@ flowchart LR
 - [Context 与可解释上下文](./docs/design/context.md)（横切设计正文）
 - [第一阶段、验证与自举](./docs/design/delivery.md)
 - [合同层总则](./docs/design/spec/README.md)（词汇分类、六族规则、归并对照）
-- [四模块连接与端到端闭环](./docs/design/spec/connections.md)
+- [四模块的端到端连接](./docs/design/spec/connections.md)
 - [系统边界与适配器合同](./docs/design/spec/system.md)
 - [术语对照表](./docs/design/references/glossary.md)
 - [从 HCTL 到 HCTL2 的来时路](./docs/design/references/decision-history.md)

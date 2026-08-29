@@ -31,24 +31,12 @@ install_static_web_server() {
     install -m 0755 "$binary" "$P0_BIN_DIR/static-web-server"
 }
 
-install_tmux_release() {
-    local destination="$P0_VENDOR_DIR/tmux-release-$TMUX_VERSION-$HCTL2_TARGET_ID"
-    local archive="$P0_DOWNLOAD_DIR/$TMUX_ASSET"
-    local entry
+install_herdr_release() {
+    local source="$P0_DOWNLOAD_DIR/$HERDR_ASSET"
 
-    while IFS= read -r entry; do
-        entry="${entry#./}"
-        entry="${entry%/}"
-        [[ -z "$entry" || "$entry" == "tmux" ]] || \
-            die "unexpected path in official tmux archive: $entry"
-    done < <(tar -tzf "$archive")
-
-    mkdir -p "$destination"
-    tar -xzf "$archive" -C "$destination"
-
-    [[ -f "$destination/tmux" && ! -L "$destination/tmux" && -x "$destination/tmux" ]] || \
-        die "official tmux archive did not contain an executable named tmux"
-    install -m 0755 "$destination/tmux" "$P0_BIN_DIR/tmux"
+    [[ -f "$source" ]] || die "official Herdr release is missing"
+    verify_sha256 "$source" "$HERDR_SHA256"
+    install -m 0755 "$source" "$P0_BIN_DIR/herdr"
 }
 
 read_hctl2_version() {

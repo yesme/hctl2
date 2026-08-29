@@ -1,7 +1,7 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.14.0<br>
-> 日期：2026-08-25<br>
+> 状态：规范性 · 草案 v0.14.1<br>
+> 日期：2026-08-29<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
 ## 词汇分类法
@@ -21,7 +21,7 @@
 
 Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
 
-另设四个**系统角色名**，指各场景 content 的承载系统，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。
+另设五个**系统角色名**，指各场景 content 或物理执行的供应端，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（Terminal 场景的派出方）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。`provider` 只作四类供应端的泛称，不是领域对象或统一接口；必须由所在模块的受控端口限定其含义。
 
 另有六个高频合同词可在设计正文携中文对照使用：Task Revision（契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提议）、Run Manifest（施工清单）。[交付文档](../delivery.md)（工程选型、里程碑与契约测试）与合同层同侧，可直接使用合同层词汇；设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
 
@@ -83,7 +83,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | EngineDeploymentRevision | Engine Deployment |
 | ChangeSetWriteLease | Write Lease |
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
-| TerminalGateway / WorkflowEngineAdapter | 描述性说法：控制面终端网关 / workflow engine 端口适配器 |
+| TerminalGateway / WorkflowEngineAdapter | 描述性说法：Agency 客户端适配代码 / workflow engine 端口适配器；不形成独立服务或领域对象 |
 
 ## v0.10.3 清扫
 
@@ -112,7 +112,7 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 | --- | --- |
 | Room Event | 除名：消息 content 本体就是 chat server 的 Matrix event；HCTL 侧只有账本内只追加的"治理事件"（以事件 ID 精确引用消息），两者都不占领域对象名额 |
 | Task Operational State | 降级为 Task Binding 的字段组"操作投影"（后端操作字段的回读投影、同步账与派生健康状态）；ground truth 在 content 后端 |
-| 状态值"中断"（Room Invocation） | 统一为"丢失"：执行身份无法证明时 Room Invocation 与 Attempt 进入同一状态；收口规则只在[连接合同](./connections.md#失败与恢复)定义一次 |
+| 状态值"中断"（Room Invocation） | 统一为"丢失"：执行身份无法证明时 Room Invocation 与 Attempt 进入同一状态；结束规则只在[连接合同](./connections.md#失败与恢复)定义一次 |
 
 ## v0.13.0 收窄
 
@@ -123,18 +123,20 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 | “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
 | Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |
 | Room 的“加密/降级”状态 | 不设：房间端到端加密状态是 Chat 端口绑定的 health 投影，不进不可变 binding，也不是 Room 的 lifecycle 值；可观察结果只在[连接合同失败表](./connections.md#失败与恢复)登记一行，恢复动作是既有的「换绑」命令 |
-| P0 中的第三方自身功能项 | 移出 P0：属选型资料判断或首次消费前的产品化；P0 只验 HCTL 与该系统的接缝 |
+| P0 中的第三方自身功能项 | 移出 P0：属选型资料判断或首次消费前的产品化；P0 只验 HCTL 实际使用的 API 与行为 |
 | “后端无并发令牌则降级只读”“不能强制排他的 backend 只可观察” | 归还给依赖：任务后端的并发控制归后端，adapter 按能力用其前置、以回读为准；运行时租约与代次只在账本，后端排他原语是加固 |
 
 ## 外部对齐原则
 
 每个模块合同带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、Write Lease）。对齐表中的「无对应」只是引入差异化语义的强信号，不是控制面账本的完整存储清单；是否进入账本仍取决于它是否有独立生命周期、恢复或权限边界，以及 HCTL 是否拥有该事实。外部系统原生承载的可变 content 与内部拓扑不在账本复制，但 HCTL 自己的稳定身份、领域关系、授权、判决及必要绑定与摘要仍由控制面保存。
 
+每个模块还必须用自己的受控端口隔离默认实现：适配代码只覆盖 HCTL 实际使用的最小能力，固定实现版本、adapter 版本、配置摘要与实测能力；未知能力安全拒绝。不得把 Dagu、Vikunja 或 Herdr 的私有对象直接提升为 HCTL 对象，也不得为四个模块另造一套通用 provider 协议。新 provider 先通过对应合同测试，再产生新的 Resolved Port Binding；活动工作继续使用原 binding，既有 content 迁移另走显式预览和校验。Chat Room 的非 Matrix 平台互通由 Matrix homeserver/bridge 生态负责，不在 HCTL 内增加飞书、Slack 或 Discord 的逐平台适配器。
+
 ## 文件
 
 - [project.md](./project.md)：Project 模块合同 + Chat 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块合同 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块合同 + Dagu / BPMN 对齐
-- [agent.md](./agent.md)：Agent 模块合同 + PTY / tmux / ACP 对齐
+- [agent.md](./agent.md)：Agent 模块合同 + PTY / Herdr / ACP 对齐
 - [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复

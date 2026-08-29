@@ -1,6 +1,6 @@
 # HCTL2 构建环境
 
-这个目录描述 HCTL2 自己的构建环境。第一方代码使用 Buck2 原生目标；Tuwunel、Vikunja、Dagu、tmux、Cinny 和 Static Web Server 以粗粒度外部子系统目标接入同一 action graph，但不把它们内部的 Cargo、Go 或 C 构建图改写成 Buck rules。Buck2 决定何时获取或构建，真正的子系统编译仍调用上游原生构建系统。
+这个目录描述 HCTL2 自己的构建环境。第一方代码使用 Buck2 原生目标；Tuwunel、Vikunja、Dagu、Herdr、Cinny 和 Static Web Server 以粗粒度外部子系统目标接入同一 action graph，但不把它们内部的 Cargo、Go 或 C 构建图改写成 Buck rules。Buck2 决定何时获取或构建，真正的子系统编译仍调用上游原生构建系统。
 
 `src/build/tools/buck2-bin` 是 Buck2 官方发行的 DotSlash 清单；`src/buck2` 是保持命令入口不变的薄启动器。Actionlint 1.7.12 与 ShellCheck 0.11.0 也用同一种官方 release + SHA-256 清单钉定，CI 用它们检查 workflow 和 shell action body。开发机可以安装 [DotSlash](https://dotslash-cli.com/)，也可以在 `src/` 产品工作区用固定版本和 SHA-256 的安装器准备它：
 

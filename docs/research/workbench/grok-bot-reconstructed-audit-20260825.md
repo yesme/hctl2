@@ -1,7 +1,7 @@
 # Grok Bot 0.18 重建源码审计：对 E-GROK-BOT 条目的复核与借鉴决策
 
 > 日期：2026-08-25<br>
-> 状态：Informative 研究备忘录，不定义 HCTL2 语义；复用判断以 [实现证据](./README.md) 的五种复用决策用语为准。<br>
+> 状态：Informative 研究备忘录，不定义 HCTL2 语义；复用判断以 [实现证据](../README.md) 的五种复用决策用语为准。<br>
 > 对象：[b-nnett/grok-bot-0.18-reconstructed](https://github.com/b-nnett/grok-bot-0.18-reconstructed)，pin `a9f633e`（2026-08-23，仓库仅两个提交 `bf66838`/`a9f633e`）。<br>
 > 方法：10 个子系统并行读源码（每条结论带 file:line 锚点）→ 56 条关键说法逐条对抗核验（3 条推翻/修正为反、6 条确认、其余"部分正确"并给出修正表述）→ 完整性批评 → 3 个补漏读者。凡是被核验修正过的说法，本文采用修正后的表述；只读 README 得出的结论一律不采信。
 

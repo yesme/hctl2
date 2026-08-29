@@ -1,24 +1,23 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖及两个 Rust 骨架程序，但公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖及一个 Rust 骨架程序，但公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
 
 ## 当前入口一览
 
 | 名称 | 当前状态 | 面向谁 | 现在能做什么 |
 | --- | --- | --- | --- |
-| `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 tmux |
-| `hctl2-agentd` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能创建 Harness 会话或持有 PTY |
+| `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
 | `hctl2-tool` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能执行 Git/SCM 操作 |
 | `hctl2-protocol` | Rust 库，不是命令 | HCTL2 开发者 | 为进程间通信提供共享 envelope 类型 |
 | `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-目前只有 `hctl2-services` 是可执行真实操作的用户命令。`hctl2-agentd` 和 `hctl2-tool` 暂时用于验证代码树、构建链和命令边界，不应作为后台服务部署。
+目前只有 `hctl2-services` 是可执行真实操作的用户命令。`hctl2-tool` 暂时用于验证代码树、构建链和命令边界，不应作为后台服务部署。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 最低版本为 15。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、tmux、内部静态文件服务、许可证及 `hctl2-services`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具；当前包尚未纳入 `hctl2-agentd` 和 `hctl2-tool`。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 最低版本为 15。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 每个 target 同时发布两份归档：
 
@@ -49,7 +48,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ./install.sh --prefix /absolute/path/to/hctl2
 ```
 
-安装器会校验整个运行归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2-services` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。运行包根目录的 `SOURCES.md` 会明确指出与它对应的源码伴随包名。
+安装器会校验整个运行归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2-services` 与 `$PREFIX/bin/hctl2-tool` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。运行包根目录的 `SOURCES.md` 会明确指出与它对应的源码伴随包名。
 
 查看安装器的英文命令帮助：
 
@@ -81,7 +80,7 @@ hctl2-services start vikunja dagu
 hctl2-services start cinny
 ```
 
-可用组件名固定为 `tuwunel`、`cinny`、`vikunja`、`dagu` 和 `tmux`。其中 Tuwunel 与 Cinny 共同构成 Chatroom，后者不是第五类执行依赖。不指定组件时依次启动 Tuwunel、Cinny、Vikunja、Dagu、tmux，并打印 Chatroom、Kanban、Workflow 三个浏览器地址；单独启动 `cinny` 也会先确保 Tuwunel 已启动。重复执行 `start` 不会重复启动已经由 HCTL2 管理的进程。
+可用组件名固定为 `tuwunel`、`cinny`、`vikunja`、`dagu` 和 `herdr`。其中 Tuwunel 与 Cinny 共同构成 Chatroom，后者不是第五类执行依赖。不指定组件时依次启动 Tuwunel、Cinny、Vikunja、Dagu、Herdr，并打印 Chatroom、Kanban、Workflow 三个浏览器地址；单独启动 `cinny` 也会先确保 Tuwunel 已启动。重复执行 `start` 不会重复启动已经由 HCTL2 管理的进程。
 
 ### 查看状态
 
@@ -99,7 +98,7 @@ hctl2-services status
 hctl2-services smoke
 ```
 
-`smoke` 不只检查进程是否存在，还会检查四个 HTTP 端点、Cinny 是否只指向随包 Tuwunel 并启用 hash router、Tuwunel 的非加密房间策略，以及 tmux 的无界面查询、稳定 ID 格式和 socket 权限。全部检查通过时返回退出码 `0`。
+`smoke` 不只检查进程是否存在，还会检查四个 HTTP 端点、Cinny 是否只指向随包 Tuwunel 并启用 hash router、Tuwunel 的非加密房间策略，以及 Herdr 的协议回读、API snapshot 和 socket 权限。全部检查通过时返回退出码 `0`。
 
 ### 重启或停止
 
@@ -124,7 +123,7 @@ hctl2-services stop
 只停止指定组件：
 
 ```bash
-hctl2-services stop tmux
+hctl2-services stop herdr
 ```
 
 不指定组件时，停止顺序与启动顺序相反。停止未运行的受管组件是安全的。为了避免误伤复用 PID 的其他进程，脚本会在发送信号前核对 PID 对应的实际可执行文件；核对失败时会拒绝停止并报告错误。
@@ -137,7 +136,7 @@ hctl2-services stop tmux
 | Cinny | Chatroom 随包浏览器客户端 | `http://127.0.0.1:6168/` |
 | Vikunja | Kanban 浏览器客户端与本地任务后端 | `http://127.0.0.1:3456/` |
 | Dagu | Workflow 浏览器客户端与本地工作流引擎 | `http://127.0.0.1:18080/` |
-| tmux | 无界面终端会话承载 | Linux 位于状态目录；macOS 位于 owner-only 的短 `/tmp` 目录 |
+| Herdr | Agent / Terminal 运行服务 | owner-only Unix socket；Linux 位于状态目录，macOS 位于短 `/tmp/hctl2-herdr-<uid>/` 目录 |
 
 这些网络服务只监听 loopback，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的官方 `static-web-server` 单二进制提供；其 Homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。它主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
 
@@ -161,10 +160,10 @@ hctl2-services start
 | 路径 | 内容 |
 | --- | --- |
 | `config/` | 自动生成的配置与本地 secret |
-| `data/` | 三个服务的持久数据 |
-| `logs/` | `tuwunel.log`、`cinny.log`、`vikunja.log`、`dagu.log` |
+| `data/` | Tuwunel、Vikunja、Dagu 与 Herdr 的持久数据 |
+| `logs/` | `tuwunel.log`、`cinny.log`、`vikunja.log`、`dagu.log`、`herdr.log` |
 | `pids/` | 受管进程的 PID 文件 |
-| `runtime/` | Linux 的 tmux socket 等运行时文件；macOS socket 因路径上限放在 `/tmp/hctl2-tmux-<uid>/`，以状态根哈希命名 |
+| `runtime/` | Linux 的 Herdr socket 等运行时文件；macOS socket 因路径上限放在 `/tmp/hctl2-herdr-<uid>/`，以状态根哈希命名 |
 
 状态目录与安装目录相互独立，升级或重装同一发行包不会主动删除用户数据。
 
@@ -175,30 +174,6 @@ hctl2-services start
 - 如果停止时报告 foreign PID、stale PID 或 unmanaged socket，不要直接向该 PID 发信号；先确认当前使用的 `HCTL2_STATE_ROOT` 是否与启动时一致，再检查 PID 文件和实际进程。
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
-
-## 使用 `hctl2-agentd`
-
-从源码构建：
-
-```bash
-cd src
-cargo build --locked -p hctl2-agentd
-```
-
-查看英文帮助或版本：
-
-```bash
-./target/debug/hctl2-agentd --help
-./target/debug/hctl2-agentd --version
-```
-
-也可以不保留构建产物而直接运行：
-
-```bash
-cargo run --locked -p hctl2-agentd -- --help
-```
-
-当前无参数调用等同于 `--help`。除此之外的参数会返回结构化错误码 `HCTL2_AGENTD_UNSUPPORTED_ARGUMENT`。Harness 发现、进程持有、PTY、流与主机观测尚未落地。
 
 ## 使用 `hctl2-tool`
 
@@ -234,7 +209,7 @@ cd hctl2-<version>-<target>
 ./install.sh
 ```
 
-默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-agentd`、`hctl2-tool`、`hctl2-services` 三个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端。
+默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端；Herdr 由该服务命令管理，不安装成 HCTL2 自建的 `hctl2-agentd`。
 
 ## 从源码制作外部子系统包
 

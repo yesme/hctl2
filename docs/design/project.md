@@ -6,7 +6,7 @@
 
 Harness 的会话、终端和 worktree（Git 工作树）都会结束或被替换；Project 的目标、论证、Participant（参与者）关系、来源和未决问题却必须继续存在。Project 模块保存的正是这份长期事实，Chat Room 则是所有 Harness 都消失之后仍然可以恢复的协作现场——它回答“我们要解决什么、为什么、依据是什么，以及哪些讨论已经足够稳定，可以成为承诺”。
 
-以 Room 为中心不等于所有工作都必须聊天：Kanban、Workflow 图和 Terminal 各有自己的操作面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
+以 Room 为中心不等于所有工作都必须聊天：Kanban、Workflow 图和 Terminal 各有自己的场景界面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
 
 Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。Participant 的完整设计（七层拆分、专业化与评审方法论）见[横切正文](./participant.md)；Context 的完整设计（冻结、传承与成本纪律）见[横切正文](./context.md)。
 

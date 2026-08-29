@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.14.0<br>
+> 状态：规范性合同 · 草案 v0.14.1<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -76,7 +76,7 @@ Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通
 
 Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时应创建 [Run](./run.md)。
 
-Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失，收口动作（撤销租约、stop/fence outbox、迟到结果只留审计）由[连接合同的统一收口规则](./connections.md#失败与恢复)定义一次，本模块不复述；其迟到流或 Result Proposal 不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
+Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交 stop/fence outbox、迟到结果只留审计等动作由[连接合同的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。迟到流或 Result Proposal 不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
 Room Invocation 的 Execution Spec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（repo_scope | project_scope）与 human 批准 Agent 建议时的 lineage 字段：精确 source_suggestion_ref = 消息事件（chat server 事件 ID）| Result Proposal、建议摘要、可选 parent_execution_ref = Room Invocation | Attempt 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；Result Proposal 分支还要逐项匹配其 owner invocation_version、control writer generation、spec/binding/Context Bundle digests，以及物理执行时的 Execution Runtime/runtime_generation 与 site/backend fence generations。`in_process` 只能使用连接合同明确的缩减 tuple。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
 

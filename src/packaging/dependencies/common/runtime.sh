@@ -240,8 +240,20 @@ file_mode() {
     platform_file_mode "$1"
 }
 
-tmux_socket_path() {
-    platform_tmux_socket_path
+herdr_socket_path() {
+    platform_herdr_socket_path
+}
+
+run_herdr() {
+    local binary="$1"
+    shift
+
+    env \
+        HERDR_CONFIG_PATH="$P0_CONFIG_DIR/herdr/config.toml" \
+        HERDR_SOCKET_PATH="$(herdr_socket_path)" \
+        XDG_CONFIG_HOME="$P0_CONFIG_DIR" \
+        XDG_STATE_HOME="$P0_DATA_DIR/herdr" \
+        "$binary" "$@"
 }
 
 platform_configure_runtime

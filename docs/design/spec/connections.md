@@ -1,6 +1,6 @@
-# 四模块连接与端到端闭环
+# 四模块的端到端连接
 
-> 状态：规范性合同 · 草案 v0.14.0<br>
+> 状态：规范性合同 · 草案 v0.14.1<br>
 > 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -93,9 +93,9 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 外部运行时的启动顺序固定为：
 
 1. owner 模块提交 Execution Spec 与 dispatch outbox；此时只有 `invocation_version | attempt_generation`，不得预填 runtime identity；
-2. 选定的 Agency 在该 Repo Instance 上进行无副作用预留，校验当前 control/site/backend fence，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；
+2. Agency adapter 校验当前 control/site/binding generation，再请求选定的 Agency 进行无副作用预留，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；Agency 本身不能回显的 fence 必须记录为未生效；
 3. control 在用户级账本事务记录 owner 到 Execution Runtime 的精确映射、适用的 Write Lease 和 activate outbox；
-4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 backend/Agency owner generation 激活，并按完整 tuple 回读；任一旧代次、旧租约和重复激活都被拒绝。
+4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 Agency binding owner generation；adapter 按完整 tuple 再校验后调用 Agency 并回读。声明 fence echo 的 Agency 必须拒绝旧代次、旧租约和重复激活；Herdr v0.8.2 不支持该能力，因此只在 HCTL 入口拒绝，绕过入口的动作按低信任处理。
 
 前三类含义不可混写：Invocation/Attempt version/generation 是语义 owner 身份，runtime generation 是一次物理执行身份，control/site/backend generations 是防旧进程写入的基础设施 fence。Participant revision、binding revision、producer sequence 和 content cursor 都不是这三类中的任一种。
 
@@ -125,7 +125,7 @@ Request 由 Project 模块保存，但可以阻塞 Task 待办、Run 中的 Atte
 
 「解决 Request」命令固定 request/expected version、resolution digest、actor/delegation 和 idempotency key。对需要恢复执行的 Request，control 在同一用户级 metadata 账本事务 CAS Project Request 与来源 blocker 的精确版本，并提交解决结果及唯一 signal/delivery outbox；Project 或来源模块都不能在事务外再次 signal。接收方只接受匹配 owner state version、适用 Attempt/runtime/fence generations 和 binding 的投递，ACK/观测后才由来源模块推进 blocker。普通 Room 回复不能解决 Request，也不能直接完成 Engine 节点。目标已失效时安全拒绝或保留为过期历史。
 
-Deadline 到达以同样的版本 CAS 写已过期，但不伪造答案，也不产生 Task terminal 命令。它只把冻结动作投回精确 owner：Task/Project 的待办动作失败或放弃并保留 Task lifecycle；Run owner 按 [Attempt/Seat/Obligation 的 fail/cancel 规则](./run.md#request重试与-gate)收口；直接 Room Invocation 的 `fail|cancel` 分别进入失败|已取消，并撤销其输入/写租约；Agent 模块本身没有独立语义终态，只执行所属 Attempt/Room Invocation 的收口。任何分支都不得投给替代 execution 或留下活动 Seat/Attempt。
+Deadline 到达以同样的版本 CAS 写已过期，但不伪造答案，也不产生 Task terminal 命令。它只把冻结动作投回精确 owner：Task/Project 的待办动作失败或放弃并保留 Task lifecycle；Run owner 按 [Attempt/Seat/Obligation 的 fail/cancel 规则](./run.md#request重试与-gate)结束；直接 Room Invocation 的 `fail|cancel` 分别进入失败|已取消，并撤销其输入/写租约；Agent 模块本身没有独立语义终态，只执行所属 Attempt/Room Invocation 的结束动作。任何分支都不得投给替代 execution 或留下活动 Seat/Attempt。
 
 ## 版本、权限与替代
 
@@ -141,7 +141,7 @@ Repo sources    → repo_scope Execution Spec（只读）→ Result Proposal
 Task 路径的验收证据 → Task Completion Receipt
 ```
 
-每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结合同继续收口，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
+每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结合同继续执行到终态，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
 
 权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
 
@@ -154,13 +154,13 @@ Task 路径的验收证据 → Task Completion Receipt
 | 目标事务提交前来源已变化 | CAS 拒绝，不创建下游事实 |
 | 目标已提交、调用方未收到结果 | 恢复后返回同一目标引用，不出现第二个下游对象 |
 | owner 身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接 |
-| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一收口事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份收口规则的唯一定义，模块合同引用而不复述 |
+| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份丢失处理规则的唯一定义，模块合同引用而不复述 |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要 fresh chat readback 的准入拒绝，聊天入口显示重同步中 |
 | 已绑定房间被开启端到端加密 | 同上一行的可继续/拒绝规则；聊天入口显示需要关注，已冻结引用与 digest 不受影响，由有权 human actor 换绑到未加密房间恢复 |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账 |
-| harness / Agency 不可用 | 执行安全暂停或按代次收口，不冒充成功 |
+| harness / Agency 不可用 | 执行安全暂停或按代次结束，不冒充成功 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 

@@ -9,10 +9,6 @@ export_file(
 filegroup(
     name = "clippy",
     srcs = {
-        "hctl2-agentd": "root//apps/hctl2-agentd:hctl2-agentd[clippy.txt]",
-        "hctl2-agentd-lib": "root//apps/hctl2-agentd:hctl2_agentd[clippy.txt]",
-        "hctl2-agentd-smoke": "root//apps/hctl2-agentd:smoke_test[clippy.txt]",
-        "hctl2-agentd-unit": "root//apps/hctl2-agentd:unit_test[clippy.txt]",
         "hctl2-protocol": "root//crates/hctl2-protocol:hctl2_protocol[clippy.txt]",
         "hctl2-protocol-unit": "root//crates/hctl2-protocol:hctl2_protocol_unit_test[clippy.txt]",
         "hctl2-tool": "root//apps/hctl2-tool:hctl2-tool[clippy.txt]",

@@ -143,28 +143,37 @@ start_dagu() {
     wait_http dagu 127.0.0.1 "$DAGU_PORT" /api/v1/health
 }
 
-start_tmux() {
-    local binary="$P0_BIN_DIR/tmux"
-    local runtime="$P0_RUNTIME_DIR/tmux"
+start_herdr() {
+    local binary="$P0_BIN_DIR/herdr"
     local socket
-    local pid
 
-    [[ -x "$binary" ]] || die "tmux is missing; reinstall the HCTL2 package"
-    mkdir -p "$runtime"
-    chmod 700 "$runtime"
-    socket="$(tmux_socket_path)"
-    if "$binary" -S "$socket" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        note "tmux already running"
+    [[ -x "$binary" ]] || die "Herdr is missing; reinstall the HCTL2 package"
+    mkdir -p "$P0_CONFIG_DIR/herdr" "$P0_DATA_DIR/herdr" "$P0_RUNTIME_DIR/herdr"
+    chmod 700 "$P0_CONFIG_DIR/herdr" "$P0_DATA_DIR/herdr" "$P0_RUNTIME_DIR/herdr"
+    socket="$(herdr_socket_path)"
+    if component_running herdr "$binary"; then
+        run_herdr "$binary" status server >/dev/null || \
+            die "managed Herdr process is running but its API is unavailable"
+        note "herdr already running"
         return
     fi
+    [[ ! -e "$socket" ]] || die "refusing to replace an unmanaged Herdr socket: $socket"
 
-    umask 077
-    "$binary" -S "$socket" -f /dev/null new-session -d -s "$TMUX_SESSION" -n runtime \
-        "exec sh -c 'while :; do sleep 3600; done'"
-    pid="$("$binary" -S "$socket" display-message -p '#{pid}')"
-    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || die "tmux did not report a server pid"
-    printf '%s\n' "$pid" >"$(pid_file tmux)"
-    note "tmux started with pid $pid and socket $socket"
+    start_background herdr "$binary" env \
+        HERDR_CONFIG_PATH="$P0_CONFIG_DIR/herdr/config.toml" \
+        HERDR_SOCKET_PATH="$socket" \
+        XDG_CONFIG_HOME="$P0_CONFIG_DIR" \
+        XDG_STATE_HOME="$P0_DATA_DIR/herdr" \
+        "$binary" server
+    for _ in {1..100}; do
+        if [[ -S "$socket" ]] && run_herdr "$binary" status server >/dev/null 2>&1; then
+            note "herdr API is ready at $socket"
+            return
+        fi
+        sleep 0.1
+    done
+    tail -n 60 "$P0_LOG_DIR/herdr.log" >&2 || true
+    die "herdr API did not become ready at $socket"
 }
 
 start_component() {
@@ -173,14 +182,14 @@ start_component() {
         cinny) start_cinny ;;
         vikunja) start_vikunja ;;
         dagu) start_dagu ;;
-        tmux) start_tmux ;;
+        herdr) start_herdr ;;
         *) die "unknown component: $1" ;;
     esac
 }
 
 if (($# == 0)); then
     start_all=1
-    set -- tuwunel cinny vikunja dagu tmux
+    set -- tuwunel cinny vikunja dagu herdr
 else
     start_all=0
 fi

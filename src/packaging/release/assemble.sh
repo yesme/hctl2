@@ -88,10 +88,9 @@ validate_archive_layout() {
 
 spdx_license_for() {
     case "$1" in
-        hctl2 | hctl2-agentd | hctl2-tool | tuwunel) printf 'Apache-2.0\n' ;;
+        hctl2 | hctl2-tool | herdr | tuwunel) printf 'Apache-2.0\n' ;;
         vikunja | cinny) printf 'AGPL-3.0-only\n' ;;
         dagu) printf 'GPL-3.0-only\n' ;;
-        tmux) printf 'ISC\n' ;;
         static-web-server) printf '(Apache-2.0 OR MIT)\n' ;;
         *) printf 'NOASSERTION\n' ;;
     esac
@@ -268,12 +267,10 @@ verify_tree_manifest "$payload_root" share/hctl2/PAYLOAD.sha256
 [[ "$(awk -F '\t' 'NR == 2 { print $1; exit }' "$payload_root/share/hctl2/target.tsv")" == "$target" ]] || \
     die "dependency payload has the wrong target"
 
-agentd_seen=0
 tool_seen=0
 while IFS=$'\t' read -r component version component_target binary_sha256; do
     [[ "$component" == "component" ]] && continue
     case "$component" in
-        hctl2-agentd) agentd_seen=$((agentd_seen + 1)) ;;
         hctl2-tool) tool_seen=$((tool_seen + 1)) ;;
         *) die "unexpected first-party component: $component" ;;
     esac
@@ -284,7 +281,7 @@ while IFS=$'\t' read -r component version component_target binary_sha256; do
     verify_sha256 "$first_party/bin/$component" "$binary_sha256"
     install -m 0755 "$first_party/bin/$component" "$payload_root/bin/$component"
 done <"$first_party/binaries.tsv"
-[[ "$agentd_seen" -eq 1 && "$tool_seen" -eq 1 ]] || die "first-party export is incomplete"
+[[ "$tool_seen" -eq 1 ]] || die "first-party export is incomplete"
 
 install -m 0644 "$first_party/binaries.tsv" "$payload_root/share/hctl2/first-party.tsv"
 install -m 0755 "$SCRIPT_DIR/install.sh" "$package_root/install.sh"

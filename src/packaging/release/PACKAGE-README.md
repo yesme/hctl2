@@ -10,7 +10,7 @@ cd hctl2-<version>-<target>
 ./install.sh
 ```
 
-默认安装到 `~/.local`；可以用 `./install.sh --prefix /absolute/path` 指定其他绝对路径。安装器会先验证完整 payload，再以版本目录原子落盘，并只维护 `hctl2-agentd`、`hctl2-tool` 与 `hctl2-services` 三个命令链接。
+默认安装到 `~/.local`；可以用 `./install.sh --prefix /absolute/path` 指定其他绝对路径。安装器会先验证完整 payload，再以版本目录原子落盘，并只维护 `hctl2-tool` 与 `hctl2-services` 两个命令链接。Herdr 由 `hctl2-services` 管理，不作为 HCTL2 自建命令安装。
 
 `USAGE.md` 是完整中文使用说明；`SOURCES.md` 指向同版本、同目标平台的源码伴随包。`payload/share/hctl2/SBOM.spdx`、`first-party.tsv`、`dependencies.tsv` 与 `PAYLOAD.sha256` 可用于审计实际交付内容。
 

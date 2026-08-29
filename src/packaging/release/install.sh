@@ -110,7 +110,7 @@ link_command() {
     ln -sfn "$target" "$command_link"
 }
 
-for command in hctl2-agentd hctl2-tool hctl2-services; do
+for command in hctl2-tool hctl2-services; do
     link_command "$command"
 done
 

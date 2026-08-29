@@ -34,27 +34,28 @@ check_process() {
     fi
 }
 
-check_tmux() {
-    local binary="$P0_BIN_DIR/tmux"
+check_herdr() {
+    local binary="$P0_BIN_DIR/herdr"
     local socket
     local pid
 
-    socket="$(tmux_socket_path)"
+    socket="$(herdr_socket_path)"
 
     if [[ ! -x "$binary" || ! -S "$socket" ]]; then
-        printf '%-12s stopped\n' tmux
+        printf '%-12s stopped\n' herdr
         failures=$((failures + 1))
         return
     fi
-    pid="$(read_component_pid tmux)" || {
-        printf '%-12s unmanaged-socket\n' tmux
+    pid="$(read_component_pid herdr)" || {
+        printf '%-12s unmanaged-socket\n' herdr
         failures=$((failures + 1))
         return
     }
-    if pid_matches_executable "$pid" "$binary" && "$binary" -S "$socket" has-session -t "$TMUX_SESSION" 2>/dev/null; then
-        printf '%-12s ready   pid=%s  socket=%s\n' tmux "$pid" "$socket"
+    if pid_matches_executable "$pid" "$binary" && \
+        run_herdr "$binary" status server >/dev/null 2>&1; then
+        printf '%-12s ready   pid=%s  socket=%s\n' herdr "$pid" "$socket"
     else
-        printf '%-12s unhealthy\n' tmux
+        printf '%-12s unhealthy\n' herdr
         failures=$((failures + 1))
     fi
 }
@@ -63,6 +64,6 @@ check_process tuwunel "$P0_BIN_DIR/tuwunel" "$TUWUNEL_PORT" /_tuwunel/server_ver
 check_process cinny "$P0_BIN_DIR/static-web-server" "$CINNY_PORT" /config.json
 check_process vikunja "$P0_BIN_DIR/vikunja" "$VIKUNJA_PORT" /api/v1/info
 check_process dagu "$P0_BIN_DIR/dagu" "$DAGU_PORT" /api/v1/health
-check_tmux
+check_herdr
 
 exit "$failures"

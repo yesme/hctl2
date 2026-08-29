@@ -69,19 +69,18 @@ prepare_dagu_dependency() {
     "$P0_BIN_DIR/dagu" version
 }
 
-prepare_tmux_dependency() {
+prepare_herdr_dependency() {
     require_target_host
     require_command readelf
-    require_command tar
 
-    install_tmux_release
-    if readelf -d "$P0_BIN_DIR/tmux" 2>/dev/null | grep -F '(NEEDED)' >/dev/null; then
-        die "official Linux tmux binary unexpectedly has dynamic dependencies"
+    install_herdr_release
+    if readelf -d "$P0_BIN_DIR/herdr" 2>/dev/null | grep -F '(NEEDED)' >/dev/null; then
+        die "official Linux Herdr binary unexpectedly has dynamic dependencies"
     fi
     find "$P0_VENDOR_DIR" -depth -delete
 
-    note "prepared tmux for $HCTL2_TARGET_ID"
-    "$P0_BIN_DIR/tmux" -V
+    note "prepared Herdr for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/herdr" --version
 }
 
 prepare_static_web_server_dependency() {

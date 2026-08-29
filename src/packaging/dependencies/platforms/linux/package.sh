@@ -2,9 +2,9 @@
 # Linux payload staging and archive hooks.
 
 platform_stage_payload() {
-    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/tmux" 2>/dev/null | \
+    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/herdr" 2>/dev/null | \
         grep -F '(NEEDED)' >/dev/null; then
-        die "official Linux tmux binary unexpectedly has dynamic dependencies"
+        die "official Linux Herdr binary unexpectedly has dynamic dependencies"
     fi
 }
 
