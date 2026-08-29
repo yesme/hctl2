@@ -66,6 +66,8 @@ Terminal 场景的 content 系统是**运行时 provider**——承载真实进�
 | 终端接入面 | Workbench/CLI 凭 control 票据观察或接管 | 观察扇出点按 provider 能力声明：声明了多观察者与缺口披露的 provider 自己扇出，否则 agentd 网关兜底转发 |
 | 原生客户端面 | provider 自家 UI（herdr TUI、裸 tmux attach） | 执行面的内容原生界面：观察不设限；输入不经输入租约，一律记为带外输入并入账，不产生可准入结果 |
 
+三个面可以由一家占满：herdr 的 server / TUI client / socket API 恰好对应 provider、内容原生界面、可编程控制面；tmux 的 server / attach / control mode 同构。原生客户端面与**合规第三方场景客户端**是两个格子，不要混：前者只操作 content、输入带外入账、提交不了治理命令（Matrix 客户端之于 Chat 的同一格）；后者走公开的 Query/Preview/Submit/Subscribe 与 control 签发的票据，可携带 human provenance。provider 原生客户端要升格为后者，须改造为走命令面与票据——那是 provider 侧的适配选择，不是 HCTL 的义务。
+
 - provider 的状态检测（working/idle/blocked 之类）只是观测来源之一：按其自述机制归入既有仲裁序（hook 级或屏幕推断级），带来源与置信度入账，不因经 provider 转手而升级，也不获得生命周期写入权。
 - provider 报告的"会话还在/恢复了"必须翻译成四级恢复词汇（exact attach / semantic resume / replay / 丢失）才可用于恢复决策；翻译不出来按丢失处理。
 - **治理永不下放**：租约、代次、冻结规格、审计、四级恢复裁决只在 control 与 agentd 桥，跨所有 provider 一份。provider 自带的接管、单写者这类机制是桥接可以利用的物理杠杆，不是权威——"代次不在 Dagu、Dagu 只当路标"的同一条规则。
