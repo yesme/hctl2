@@ -1,11 +1,11 @@
 # docs/research · 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-24（来时路归类补于 2026-08-26，2026-08-27 由单文件拆为一个对象一个文件，2026-08-29 将单个案例按同层同类归入子目录）<br>
+> 状态：信息性文档 · 研究快照 2026-08-24（来时路归类补于 2026-08-26，2026-08-27 由单文件拆为一个对象一个文件，2026-08-29 将单个案例按同层同类归入子目录，2026-08-30 远程操控观察清单升格为逐对象审计）<br>
 > 上级文档：[HCTL2 设计规范](../design/README.md)<br>
 > 规则：本目录只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。条目是产物（Task 交付的 Artifact）：钉定 commit / 版本与许可，发布后正文不改，只在文末追加复核记录；中间过程与备忘在 `.memo/`。<br>
 > 组织方式：本文按**产品类别**给总览（回答"它是什么"）；各条目文件内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。这两个分类维度互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
 
-目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md) 和 [`lineage/`](./lineage/README.md)。
+目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md) 和 [`lineage/`](./lineage/README.md)。
 
 ## 引用准入
 
@@ -80,12 +80,20 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbenc
 
 ### ⑤ 远程操控与会话同步
 
-把本机 Harness 会话远程化/多端化的一族；与协作平台的区别是不拥有任务语义。全部只作行为证据或观察清单。
+把本机 Harness 会话远程化/多端化的一族；与协作平台的区别是不拥有任务语义。全部只作行为或协议证据；九个产品的逐对象审计（代码与 changelog 级）在 [`remote-control/`](./remote-control/README.md)。
 
 | 项目 | 复用决策 | 只保留的独特价值 |
 | --- | --- | --- |
 | [Codex Remote Feishu](./remote-control.md#e-l1-codex-remote-feishu) | 仅参考行为（无许可证，不得移植） | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
-| MindFS / Paseo / Happy / HAPI / Moshi / Remux / ServerCC / QuickTUI / Redock | 暂缓（[观察清单](./remote-control.md#观察清单远程操控与会话同步)） | 见观察清单表 |
+| [Paseo](./remote-control/paseo.md#e-l1-paseo) | 适配协议（Apache-2.0） | 时间线 epoch+seq 游标与 staleCursor/gap 语义、跨厂商结构化审批消息、steer/interrupt 输入二分、注意力在场路由、adapter 契约（厂商会话为持久层） |
+| [MindFS](./remote-control/mindfs.md#e-l1-mindfs) | 仅参考行为（AGPL-3.0） | 外部会话导入与「路径/大小/mtime」游标增量同步、双游标断点重放；工具审批全自动放行的反面证据 |
+| [HAPI](./remote-control/hapi.md#e-l1-hapi) | 仅参考行为（AGPL-3.0-only） | 结构化/字节流双投影与「无观众不上传」门控、本地/远程互斥交接、SSE 代次化事件 id 与重放环 |
+| [Happy](./remote-control/happy.md#e-l1-happy) | 仅参考行为（MIT） | 端到端加密核实到代码、配对即授钥、seq+localId 幂等与版本 CAS 同步、审批落加密状态断线不丢 |
+| [Remux](./remote-control/remux.md#e-l1-remux) | 仅参考行为（MIT） | 移动客户端附着即定位、tmux 原生 ID 为唯一路由身份、前台探活一次性重连、粘贴/提交两段式确认 |
+| [Moshi](./remote-control/moshi.md#e-l1-moshi) | 仅参考行为（闭源；线协议公开成文） | 注入前屏幕校验的 verified TUI bridge、摘要/全量数据分通道、在场感知提醒抑制；与 Herdr 深度耦合 |
+| [ServerCC](./remote-control/servercc.md#e-l1-servercc) | 仅参考行为（闭源） | 按 sessionId 精确恢复与 session store 反向索引、外部会话收养与离场 keep/stop、每后台期一次的提醒节流 |
+| [QuickTUI](./remote-control/quicktui.md#e-l1-quicktui) | 仅参考行为（server/app 闭源；qscreen 为 MIT） | 公开安装验证器 CI 门、能力自描述端点、结构化屏幕帧 attach；隐式尺寸所有权为输入租约反面样本 |
+| [Redock](./remote-control/redock.md#e-l1-redock) | 仅参考行为（闭源，无公开代码） | 分阶段输入暂存区、BYO 语音引擎与 CJK、tmux/Herdr/psmux 可插拔持久层 |
 
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
@@ -182,6 +190,15 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbenc
 | [zeroclaw.md](./workbench/zeroclaw.md) | ZeroClaw SOP | E-L2-ZEROCLAW | ③ 独立 Agent 产品 |
 | [mycontext.md](./context/mycontext.md) | MyContext | E-MYCONTEXT | ④ Context 管理 |
 | [remote-control.md](./remote-control.md) | Codex Remote Feishu | E-L1-CODEX-REMOTE-FEISHU | ⑤ 远程操控与会话同步 |
+| [remote-control/mindfs.md](./remote-control/mindfs.md) | MindFS | E-L1-MINDFS | ⑤ 远程操控与会话同步 |
+| [remote-control/paseo.md](./remote-control/paseo.md) | Paseo | E-L1-PASEO | ⑤ 远程操控与会话同步 |
+| [remote-control/hapi.md](./remote-control/hapi.md) | HAPI | E-L1-HAPI | ⑤ 远程操控与会话同步 |
+| [remote-control/happy.md](./remote-control/happy.md) | Happy | E-L1-HAPPY | ⑤ 远程操控与会话同步 |
+| [remote-control/remux.md](./remote-control/remux.md) | Remux | E-L1-REMUX | ⑤ 远程操控与会话同步 |
+| [remote-control/moshi.md](./remote-control/moshi.md) | Moshi | E-L1-MOSHI | ⑤ 远程操控与会话同步 |
+| [remote-control/servercc.md](./remote-control/servercc.md) | ServerCC | E-L1-SERVERCC | ⑤ 远程操控与会话同步 |
+| [remote-control/quicktui.md](./remote-control/quicktui.md) | QuickTUI | E-L1-QUICKTUI | ⑤ 远程操控与会话同步 |
+| [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 |
 | [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 |
