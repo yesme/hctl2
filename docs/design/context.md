@@ -1,6 +1,6 @@
 # Context 与可解释上下文
 
-> 状态：规范性（横切设计正文）· 草案 v0.13.5<br>
+> 状态：规范性（横切设计正文）· 草案 v0.14.0<br>
 > 日期：2026-08-26<br>
 > 定位：本文回答"每次执行看到了什么、为什么是这些、漏了什么"。它是横切设计正文，不是第五个模块：上下文清单与内容包的合同在 [Project 模块合同](./spec/project.md)，随执行规格冻结与交付核验在[连接合同](./spec/connections.md)与 [Agent 模块合同](./spec/agent.md)。合同级细节的完整底稿与逐条裁决来源见 `.memo/design/context-design-20260819.md`；生态四族地图与快省准横评见 `docs/research/context-landscape-20260824.md`；投喂三档、Run 内接力与任务评论线来源的讨论记录见 `.memo/design/context-feeding-20260826.md`。
 

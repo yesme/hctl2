@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.13.5<br>
+> 状态：规范性索引 · 草案 v0.14.0<br>
 > 日期：2026-08-25
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
@@ -10,7 +10,7 @@ HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命�
 | [Project](./project.md) | Chat Room | chat server（聊天服务器） | 目标与范围、协作现场的身份与升格记录、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
 | [Task](./task.md) | Kanban | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、后端映射与字段权威、操作态投影、完成证明 | Workbench Board / Linear、GitHub 任务源端口 |
 | [Run](./run.md) | Workflow | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / workflow engine 端口 |
-| [Agent](./agent.md) | Terminal | harness 与运行时 provider | 执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench xterm、CLI / ACP、harness、运行时 provider |
+| [Agent](./agent.md) | Terminal | harness 与 Agency | 执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench xterm、CLI / ACP、harness、Agency |
 
 每场景三类数据的完整归属、系统角色与丢失恢复见[三面架构](./architecture.md)。场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact 投影。跨模块引用不转移事实所有权。
 
@@ -43,9 +43,9 @@ Workbench、CLI 与适配后的第三方 UI 作为场景客户端，只使用四
 3. 提交类型化命令；
 4. 订阅带序号的领域事件或重同步快照。
 
-Workbench 把四个场景集成在一个客户端中，但没有额外权限。第三方平台可以实现部分场景客户端，也可以通过 Chat、任务源、workflow engine、harness、运行时 provider 这五类受控端口提供底层能力；受控端口只报告读写能力和降级方式，字段权威由对应模块的权威绑定（authority binding）授予。同一产品兼任两者时，客户端绑定与权威绑定仍须分开。未实现或无权执行的动作必须隐藏或安全拒绝。平台可以拥有本场景 content（场景内容）的 ground truth（事实源头），但不能拥有治理：它自己的 Session、Issue、Workflow Task、pane 或数据库不能成为 HCTL 身份、授权或判决的来源。
+Workbench 把四个场景集成在一个客户端中，但没有额外权限。第三方平台可以实现部分场景客户端，也可以通过 Chat、任务源、workflow engine、harness、Agency 这五类受控端口提供底层能力；受控端口只报告读写能力和降级方式，字段权威由对应模块的权威绑定（authority binding）授予。同一产品兼任两者时，客户端绑定与权威绑定仍须分开。未实现或无权执行的动作必须隐藏或安全拒绝。平台可以拥有本场景 content（场景内容）的 ground truth（事实源头），但不能拥有治理：它自己的 Session、Issue、Workflow Task、pane 或数据库不能成为 HCTL 身份、授权或判决的来源。
 
-施工顺序决定了第一阶段有两种并存的操作形态（见[交付文档](./delivery.md#实现阶段)）。Workbench 就位（P3）之前，日常工作由两只手承载：**治理动作走公共 `hctl2` CLI**（预览、提交、订阅，命令以稳定引用指认聊天消息、卡片与执行现场），**场景内容走各 content 系统的原生界面**（Matrix 客户端聊天、任务后端界面理卡、经 agentd 票据观察终端）。这是正面设计，不是降级。聊天消息不是命令、聊天平台也不是能证明“这是人在提交”的入口，因此 mention 触发与 Trigger Preview 是治理客户端的能力：P2 阶段从讨论走向一次调用的动线，是在 CLI 中引用消息事件完成预览与提交。
+施工顺序决定了第一阶段有两种并存的操作形态（见[交付文档](./delivery.md#实现阶段)）。Workbench 就位（P3）之前，日常工作由两只手承载：**治理动作走公共 `hctl2` CLI**（预览、提交、订阅，命令以稳定引用指认聊天消息、卡片与执行现场），**场景内容走各 content 系统的原生界面**（Matrix 客户端聊天、任务后端界面理卡、经 control 票据观察终端）。这是正面设计，不是降级。聊天消息不是命令、聊天平台也不是能证明“这是人在提交”的入口，因此 mention 触发与 Trigger Preview 是治理客户端的能力：P2 阶段从讨论走向一次调用的动线，是在 CLI 中引用消息事件完成预览与提交。
 
 ## 共同规则
 
@@ -56,7 +56,7 @@ Workbench 把四个场景集成在一个客户端中，但没有额外权限。�
 - 普通 Room 的临场执行边只由人提交；模型 Participant 可以建议下一位协作者，但不能自行点名执行者、扩大群发范围或递归委派。预授权的自动边只由确定性规则按冻结的施工图创建。
 - 运行中的绑定被冻结；能力、权限、候选或验收条件变化时创建新版本或替代执行。
 - Workbench 关闭不改变领域事实；缺少等价适配能力时安全暂停，而不是绕过命令服务。
-- 用户级治理账本只有一个 control 写入者（可搬迁，账本身份不变）；每个 Repo 执行现场只有一个持有当前 site fence 的工具箱/agentd mutation owner，每个运行时后端（内置 provider 原语）范围只有一个 agentd 持有者；旧代次一律失权。
+- 用户级治理账本只有一个 control 写入者（可搬迁，账本身份不变）；每个 Repo 执行现场只有一个持有当前 site fence 的工具箱 mutation owner，每个运行时后端（内置 Agency 原语）范围只有一个内置 Agency 持有者；旧代次一律失权。
 
 以上是概括；精确措辞以[连接合同](./spec/connections.md)与[系统边界](./spec/system.md)为准。
 

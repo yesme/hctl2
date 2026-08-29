@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.13.5<br>
+> 状态：规范性 · 草案 v0.14.0<br>
 > 日期：2026-08-25<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -61,7 +61,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
 - **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
-- **Lease 族**：Write Lease、Terminal Input Lease；control writer 与 agentd owner 的排他权同族（以 generation 表达）
+- **Lease 族**：Write Lease、Terminal Input Lease；control writer 与 Agency owner 的排他权同族（以 generation 表达）
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
 - **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
@@ -83,7 +83,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | EngineDeploymentRevision | Engine Deployment |
 | ChangeSetWriteLease | Write Lease |
 | HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
-| TerminalGateway / WorkflowEngineAdapter | 描述性说法：agentd 的终端网关 / workflow engine 端口适配器 |
+| TerminalGateway / WorkflowEngineAdapter | 描述性说法：控制面终端网关 / workflow engine 端口适配器 |
 
 ## v0.10.3 清扫
 
@@ -119,7 +119,7 @@ ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名�
 | 旧名 / 旧词 | 现状 |
 | --- | --- |
 | 用户在场证明 | 撤销：治理命令只有两类入口——经认证的场景客户端会话（Workbench、CLI、适配的第三方客户端）与施工图走完的 reducer，只验入口，不判断客户端是被人还是子进程启动 |
-| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、agentd 记录为事实，已声明而宿主施加不了则该次执行不激活；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
+| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、Agency 报告为事实，已声明而宿主施加不了则该次执行不激活；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
 | “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
 | Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |
 | Room 的“加密/降级”状态 | 不设：房间端到端加密状态是 Chat 端口绑定的 health 投影，不进不可变 binding，也不是 Room 的 lifecycle 值；可观察结果只在[连接合同失败表](./connections.md#失败与恢复)登记一行，恢复动作是既有的「换绑」命令 |
