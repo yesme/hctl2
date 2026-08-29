@@ -3,6 +3,7 @@ load(":lock.json", LOCK = "value")
 _MACOS_SDK_VERSION = read_config("hctl2", "macos_sdk_version", "unavailable")
 _MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
 _MACOS_XCODE_VERSION = read_config("hctl2", "macos_xcode_version", "unavailable")
+_TUWUNEL_NATIVE_BUILD = read_config("hctl2", "tuwunel_native_build", "0")
 
 _COMPONENT_PREFIXES = {
     "cinny": "CINNY",
@@ -33,6 +34,11 @@ def _rust_component_url(component: str, triple: str) -> str:
         triple,
     )
 
+def _tuwunel_native_compatibility() -> list[str]:
+    if _TUWUNEL_NATIVE_BUILD == "1":
+        return ["prelude//os/constraints:os[macos]"]
+    return ["prelude//os/constraints:os[windows]"]
+
 def _declare_tuwunel_rust_components():
     rust = LOCK["tuwunel_rust"]
     for target, spec in rust["targets"].items():
@@ -48,6 +54,7 @@ def _declare_tuwunel_rust_components():
                 sha256 = spec[hash_key],
                 strip_prefix = "{}-{}-{}".format(component, rust["version"], triple),
                 type = "tar.xz",
+                target_compatible_with = _tuwunel_native_compatibility(),
             )
 
     native.genrule(
@@ -82,7 +89,7 @@ done
         out = "tuwunel-rust-toolchain",
         cacheable = True,
         labels = ["large_copy"],
-        target_compatible_with = ["prelude//os/constraints:os[macos]"],
+        target_compatible_with = _tuwunel_native_compatibility(),
         visibility = ["PUBLIC"],
     )
 
@@ -179,13 +186,31 @@ def _platform_select(values: dict):
         }),
     })
 
+def _macos_select(values: dict):
+    return select({
+        "prelude//os:macos": select({
+            "prelude//cpu:arm64": values["macos_arm64"],
+            "prelude//cpu:x86_64": values["macos_x86_64"],
+        }),
+        "DEFAULT": {},
+    })
+
+def _macos_command_select(values: dict):
+    return select({
+        "prelude//os:macos": select({
+            "prelude//cpu:arm64": values["macos_arm64"],
+            "prelude//cpu:x86_64": values["macos_x86_64"],
+        }),
+        "DEFAULT": "exit 1",
+    })
+
 def _component_load_paths(target: str, component: str) -> list[str]:
     platform = LOCK["targets"][target]["os"]
     paths = ["common/action.sh"] if component == "tuwunel" else ["common/build.sh"]
     if platform == "macos":
         paths.append("platforms/macos/common.sh")
         if component == "tuwunel":
-            paths.append("platforms/macos/tuwunel.sh")
+            paths.append("platforms/macos/tuwunel-prebuilt.sh")
         else:
             paths.append("platforms/macos/bootstrap.sh")
     else:
@@ -213,13 +238,6 @@ def _component_sources(target: str, component: str, build_sources: dict) -> dict
         sources["downloads/{}".format(asset["filename"])] = ":{}".format(
             _asset_target_name("common", "cinny"),
         )
-    elif component == "tuwunel" and spec["os"] == "macos":
-        source_name = LOCK["metadata"]["components"]["tuwunel"]["source_asset"]
-        asset = LOCK["common"][source_name]
-        sources["downloads/{}".format(asset["filename"])] = ":{}".format(
-            _asset_target_name("common", source_name),
-        )
-        sources["tuwunel-rust-toolchain"] = ":tuwunel-rust-toolchain"
     else:
         asset = spec["assets"][component]
         sources["downloads/{}".format(asset["filename"])] = ":{}".format(
@@ -234,7 +252,6 @@ def _build_action_command(target: str, component: str) -> str:
 set -euo pipefail
 output_root="$PWD/$OUT"
 source_root="$PWD/$SRCDIR"
-scratch_root="$TMP"
 mkdir -p "$output_root"
 
 source "$source_root/build-metadata.sh"
@@ -242,10 +259,6 @@ source "$source_root/build-metadata.sh"
 
 export HCTL2_BUILD_CACHE="$output_root"
 export HCTL2_DOWNLOAD_ROOT="$source_root/downloads"
-if [[ -d "$source_root/tuwunel-rust-toolchain" ]]; then
-  export HCTL2_TUWUNEL_TOOLCHAIN_ROOT="$source_root/tuwunel-rust-toolchain"
-  export HCTL2_CARGO_HOME="$scratch_root/cargo-home"
-fi
 
 init_build_environment
 prepare_{component}_dependency
@@ -262,6 +275,85 @@ fi
             "source \"$source_root/{}\"".format(path)
             for path in _component_load_paths(target, component)
         ]),
+    )
+
+def _tuwunel_native_sources(target: str, build_sources: dict) -> dict:
+    source_name = LOCK["metadata"]["components"]["tuwunel"]["source_asset"]
+    asset = LOCK["common"][source_name]
+    return {
+        "build-metadata.sh": ":metadata-tuwunel",
+        "common/action.sh": build_sources["common/action.sh"],
+        "downloads/{}".format(asset["filename"]): ":{}".format(
+            _asset_target_name("common", source_name),
+        ),
+        "platforms/macos/common.sh": build_sources["platforms/macos/common.sh"],
+        "platforms/macos/tuwunel.sh": build_sources["platforms/macos/tuwunel.sh"],
+        "tuwunel-rust-toolchain": ":tuwunel-rust-toolchain",
+    }
+
+def _tuwunel_native_command(target: str) -> str:
+    spec = LOCK["targets"][target]
+    return """
+set -euo pipefail
+output_root="$PWD/$OUT"
+source_root="$PWD/$SRCDIR"
+mkdir -p "$output_root"
+
+source "$source_root/build-metadata.sh"
+source "$source_root/common/action.sh"
+source "$source_root/platforms/macos/common.sh"
+source "$source_root/platforms/macos/tuwunel.sh"
+
+export HCTL2_BUILD_CACHE="$output_root"
+export HCTL2_DOWNLOAD_ROOT="$source_root/downloads"
+export HCTL2_TUWUNEL_TOOLCHAIN_ROOT="$source_root/tuwunel-rust-toolchain"
+export HCTL2_CARGO_HOME="$TMP/cargo-home"
+
+init_build_environment
+prepare_tuwunel_dependency
+
+target_root="$output_root/{package_target}"
+if [[ -d "$target_root/tmp" ]]; then
+  find "$target_root/tmp" -mindepth 1 -depth -delete
+fi
+""".format(package_target = spec["package_target"])
+
+def _tuwunel_native_archive_command(target: str) -> str:
+    spec = LOCK["targets"][target]
+    asset = spec["assets"]["tuwunel"]
+    return """
+set -euo pipefail
+source_root="$PWD/$SRCDIR"
+output_root="$PWD/$OUT"
+component_root="$source_root/component/{package_target}"
+stage_root="$TMP/stage"
+file_list="$TMP/archive-files"
+archive="$output_root/{filename}"
+
+source "$source_root/common/action.sh"
+mkdir -p "$output_root" "$stage_root/bin" "$stage_root/manifests"
+install -m 0755 "$component_root/bin/tuwunel" "$stage_root/bin/tuwunel"
+for manifest in tuwunel-license tuwunel-features.txt macos-build-environment.tsv; do
+  install -m 0644 "$component_root/manifests/$manifest" "$stage_root/manifests/$manifest"
+done
+if [[ -d "$component_root/lib/tuwunel" ]]; then
+  mkdir -p "$stage_root/lib/tuwunel"
+  cp -aL "$component_root/lib/tuwunel/." "$stage_root/lib/tuwunel/"
+fi
+
+find "$stage_root" -exec touch -h -t 200001010000.00 {{}} +
+(
+  cd "$stage_root"
+  find . -mindepth 1 -print | sed 's#^./##' | LC_ALL=C sort >"$file_list"
+  COPYFILE_DISABLE=1 tar \
+    --no-recursion \
+    --uid 0 --gid 0 --uname root --gname wheel --numeric-owner \
+    -cf - -T "$file_list"
+) | gzip -n >"$archive"
+printf '%s  %s\n' "$$(hash_file "$archive")" "{filename}" >"$archive.sha256"
+""".format(
+        filename = asset["filename"],
+        package_target = spec["package_target"],
     )
 
 def _package_sources(package_sources: dict) -> dict:
@@ -356,6 +448,40 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
             visibility = ["PUBLIC"],
         )
 
+    native.genrule(
+        name = "tuwunel-native-build",
+        srcs = _macos_select({
+            target: _tuwunel_native_sources(target, build_sources)
+            for target in ["macos_arm64", "macos_x86_64"]
+        }),
+        bash = _macos_command_select({
+            target: _tuwunel_native_command(target)
+            for target in ["macos_arm64", "macos_x86_64"]
+        }),
+        out = "hctl2-tuwunel-native-build",
+        cacheable = True,
+        labels = ["network_access"],
+        target_compatible_with = _tuwunel_native_compatibility(),
+        visibility = ["PUBLIC"],
+    )
+
+    native.genrule(
+        name = "tuwunel-native-archive",
+        srcs = {
+            "common/action.sh": build_sources["common/action.sh"],
+            "component": ":tuwunel-native-build",
+        },
+        bash = _macos_command_select({
+            target: _tuwunel_native_archive_command(target)
+            for target in ["macos_arm64", "macos_x86_64"]
+        }),
+        out = "tuwunel-native-archive",
+        cacheable = True,
+        labels = ["large_copy"],
+        target_compatible_with = _tuwunel_native_compatibility(),
+        visibility = ["PUBLIC"],
+    )
+
     for component in _COMPONENT_PREFIXES:
         target_name = _component_target_name(component)
         native.genrule(
@@ -370,7 +496,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
             }),
             out = "hctl2-{}-cache".format(target_name),
             cacheable = True,
-            labels = ["network_access"] if component == "tuwunel" else ["large_copy"],
+            labels = ["large_copy"],
             visibility = ["PUBLIC"],
         )
 

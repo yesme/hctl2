@@ -1,0 +1,67 @@
+name: Tuwunel macOS assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tuwunel-macos-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Native build / ${{ matrix.platform }}
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS x86_64
+            runner: macos-15-intel
+            buck_target: macos_x86_64
+            package_target: macos-x86_64
+          - platform: macOS arm64
+            runner: macos-15
+            buck_target: macos_arm64
+            package_target: macos-aarch64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: src
+    env:
+      BUCK_CONSOLE: simple
+      HCTL2_BUCK2_CACHE: "0"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install pinned DotSlash
+        run: |
+          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Build Tuwunel asset with Buck2
+        run: >-
+          ./buck2 build root//packaging/dependencies:tuwunel-native-archive
+          --config hctl2.tuwunel_native_build=1
+          --target-platforms root//build/platforms:${{ matrix.buck_target }}
+          --out "$RUNNER_TEMP/tuwunel-asset"
+
+      - name: Upload Tuwunel asset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tuwunel-${{ matrix.package_target }}
+          path: ${{ runner.temp }}/tuwunel-asset/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attest Tuwunel asset provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-path: ${{ runner.temp }}/tuwunel-asset/*

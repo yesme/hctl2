@@ -12,6 +12,7 @@ declare_external_dependencies(
             "platforms/linux/bootstrap.sh",
             "platforms/macos/bootstrap.sh",
             "platforms/macos/common.sh",
+            "platforms/macos/tuwunel-prebuilt.sh",
             "platforms/macos/tuwunel.sh",
         ])
     },

@@ -126,6 +126,11 @@
       "uname_m": "x86_64",
       "rust_target": "x86_64-apple-darwin",
       "assets": {
+        "tuwunel": {
+          "filename": "tuwunel-v1.9.0-macos-x86_64-hctl2.1.tar.gz",
+          "url": "https://github.com/yesme/hctl2/releases/download/tuwunel-macos-v1.9.0-hctl2.1/tuwunel-v1.9.0-macos-x86_64-hctl2.1.tar.gz",
+          "sha256": "56a82516f9939abfc1a9c101bc8b3edcb8590d84156216d712793839f0512415"
+        },
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
           "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-amd64-full.zip",
@@ -156,6 +161,11 @@
       "uname_m": "arm64",
       "rust_target": "aarch64-apple-darwin",
       "assets": {
+        "tuwunel": {
+          "filename": "tuwunel-v1.9.0-macos-aarch64-hctl2.1.tar.gz",
+          "url": "https://github.com/yesme/hctl2/releases/download/tuwunel-macos-v1.9.0-hctl2.1/tuwunel-v1.9.0-macos-aarch64-hctl2.1.tar.gz",
+          "sha256": "1dbfb672a2acc0bfcdaca208f92ab25ba419aa8af99052dedb416ee4b56202b1"
+        },
         "vikunja": {
           "filename": "vikunja-v2.5.0-darwin-10.15-arm64-full.zip",
           "url": "https://github.com/go-vikunja/vikunja/releases/download/v2.5.0/vikunja-v2.5.0-darwin-10.15-arm64-full.zip",

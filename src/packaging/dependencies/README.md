@@ -1,6 +1,6 @@
 # 依赖打包
 
-这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）。联网下载、必要的源码编译、动态库收集、签名和许可证归档都发生在发布构建机；最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）。正常发布只下载锁定制品，再完成动态库检查、签名和许可证归档；源码编译只发生在更新 HCTL2 托管的 macOS Tuwunel 制品时。最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 ## 代码树边界
 
@@ -26,7 +26,7 @@ Buck 从 `lock.json` 为选定平台生成只读的 `build-metadata.sh`；脚本
 | `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server 官方包；Tuwunel 锁定源码 |
 | `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server 官方包；Tuwunel 锁定源码 |
 
-Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Rosetta 或临时 `--target x86_64-apple-darwin` 不能替代它，因为 Tuwunel 原生构建、Mach-O 闭包和最终生命周期都要按真实目标验证。
+Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构建只能生成候选，该候选必须由 Intel runner 对同一 SHA-256 完成 Mach-O 检查和完整生命周期后才能采用。
 
 ## 构建与验证
 
@@ -41,9 +41,9 @@ Intel 发布包必须在 Intel Mac runner 上产出；Apple Silicon 上的 Roset
   --target-platforms root//build/platforms:linux_x86_64_gnu
 ```
 
-`metadata`、六个组件 action、`package` 和 `package-test` 是同一张 action graph 上的连续合同。`tuwunel` 只声明 Tuwunel 源码或官方包、固定 Rust 工具链、最小公共 helper、macOS Mach-O helper 和独立原生构建体；`vikunja`、`dagu`、`herdr`、`cinny` 与 `static-web-server` 各自只声明对应官方制品和必要配置。源码伴随包所需归档由 `package` 直接消费 Buck 下载目标，不再复制进组件 action。任一预编译组件的制品、配置或专属脚本变化因而不会使其他组件失效，更不会让 macOS Tuwunel 重新编译。workflow 不理解这些 action 内部的下载、编译和组包顺序。测试会校验运行包与源码包、离线安装、幂等重装、完整启动、smoke 和停止。
+`metadata`、六个组件 action、`package` 和 `package-test` 是同一张 action graph 上的连续合同。正常的 `tuwunel` 只声明 Linux 官方包或 HCTL2 托管的 macOS 原生包、最小公共 helper 和 Mach-O 校验；`vikunja`、`dagu`、`herdr`、`cinny` 与 `static-web-server` 各自只声明对应官方制品和必要配置。`tuwunel-native-build` 才声明源码、固定 Rust 工具链与原生编译逻辑，正常组包不会依赖它。源码伴随包所需归档由 `package` 直接消费 Buck 下载目标。workflow 不理解 action 内部顺序。测试会校验运行包与源码包、离线安装、幂等重装、完整启动、smoke 和停止。
 
-开发机由 loopback `bazel-remote` 在各 worktree 之间共享标准 REAPI CAS/action results；macOS CI 用 `actions/cache` 持久化同一服务的数据目录。外层 key 包含 runner image、Buck/cache 工具、执行配置、Rust 工具链以及 Tuwunel action 的全部受控输入，精确恢复时 CI 还会机械断言 `tuwunel` 来自 REAPI cache。第一方 Code workflow 不缓存 `buck-out`，也不另建平行 fingerprint、Cargo cache 或最终依赖包缓存。导出的目录包含：
+开发机由 loopback `bazel-remote` 在各 worktree 之间共享标准 REAPI CAS/action results。CI 不持久化本地 REAPI 数据或 `buck-out`；macOS 正常发布直接下载约 33–36 MiB 的 Tuwunel 压缩包并由 Buck 校验 SHA-256，不再用约 0.5–1 GiB 的 cache 掩盖源码编译。导出的目录包含：
 
 ```text
 hctl2-<version>-<target>.tar.gz
@@ -54,7 +54,7 @@ hctl2-<version>-<target>-sources.tar.gz.sha256
 
 Linux 构建只需基本归档工具和用于解开 Tuwunel 官方包的 `dpkg-deb`，不需要 Rust 或 C toolchain，也不调用 `apt-get`。Static Web Server 和 Herdr 都使用上游静态二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
-macOS 构建需要 Xcode Command Line Tools。`./buck2` 会把当前 Xcode version/build 与 macOS SDK version 注入 Buck 配置，因此工具链升级会改变 Tuwunel action key；action 开始时再次核对身份，并把它写入构建环境 manifest。Buck 直接下载并校验 Tuwunel 要求的 Rust 1.95.0 官方组件，把该工具链交给 Cargo。Tuwunel 编译 action 同时收集其非系统 dylib 闭包作为声明输出，最终组包不再从另一个 action 的宿主绝对路径偷读库文件。Herdr 与 Static Web Server 直接使用上游目标架构二进制，不参与本地构建。产品最低基线为 **macOS 15**；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把其他组件可能存在的非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
+macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必要的动态库路径并做 ad-hoc 签名。Tuwunel 的 HCTL2 托管包同时携带原生构建环境、feature 集和许可证；Buck 固定下载地址与 SHA-256，并验证目标架构和最低系统版本。需要更新该制品时，显式配置 `hctl2.tuwunel_native_build=1` 才会启用 `tuwunel-native-build`，下载 Rust 1.95.0 官方组件、调用 Cargo，并记录 Xcode/SDK 身份和非系统 dylib；`tuwunel-native-archive` 把声明输出制作成待发布压缩包，手动触发的 `Tuwunel macOS assets` workflow 会在两种原生 runner 上执行这两个目标。默认配置下这些目标不兼容，不会被 `root//...` 请求。Herdr 与 Static Web Server 直接使用上游目标架构二进制。产品最低基线为 **macOS 15**；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
 ## 供应链内容
 
