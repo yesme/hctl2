@@ -100,7 +100,7 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbenc
 | [Herdr](./runtime/herdr.md#e-l1-herdr) / [运行服务验证](./runtime/agency-runtime-validation-20260829.md) | 采用为依赖 | Agent 模块 / Terminal 场景的运行服务；验证记录要适配、修改上游或暂不支持的功能 |
 | [tmux](./tmux-runtime.md#e-l1-tmux-runtime) | 历史选型，不再采用 | 保留 P0 功能、Harness 兼容性和资源占用数据，作为 Herdr 的对照 |
 | [运行服务候选全量复审](./agentd-runtime-candidates-20260829.md) | 旧选型结论已废止；源码与实测证据继续有效 | Termio、cmux、tty7、Pilotty、完整 Agent 产品及产品内 PTY daemon 的发行、协议、测试与 footprint |
-| [Electron](./workbench-shell.md#e-workbench-shell) | 采用为依赖（Tauri 2 有条件重开） | Workbench 桌面壳 |
+| [Tauri 2](./workbench-shell.md#e-workbench-shell) | 采用为依赖（GPUI 原生备选；Electron 安全网） | Workbench 桌面壳 |
 | Linear / GitHub | 外部字段权威（[适配协议](./task-backends.md#l3-外部系统与观察清单)） | Task 外部来源系统 |
 | xterm.js / virtua / assistant-ui / Tiptap / React Aria / React Flow | 采用为依赖 | UI 基础组件（详见各补充证据表） |
 
@@ -243,7 +243,7 @@ Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考�
 - [Agent Skills](https://agentskills.io/specification)：用于 L4 的 Expertise 选择，以及 L1 的交付与绑定；Skill 只提供指导，不是 Gate。
 - [MCP Resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources) / [Prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts)：传输 Context 和工具信息，不定义 Project/Task 的决定权。
 - [React Flow](https://reactflow.dev/) / [Dagre](https://github.com/dagrejs/dagre)：用于 L2 的只读可视化与布局。
-- [Electron 安全指南](https://www.electronjs.org/docs/latest/tutorial/security) / [MessagePorts](https://www.electronjs.org/docs/latest/tutorial/message-ports)：用于跨层可信 UI 与数据传输。
+- [Tauri 2 capability/permission/scope](https://v2.tauri.app/security/capabilities/) / [IPC](https://v2.tauri.app/concept/inter-process-communication/)：桌面壳权限与跨层数据传输的机械声明；[Electron 安全指南](https://www.electronjs.org/docs/latest/tutorial/security) / [MessagePorts](https://www.electronjs.org/docs/latest/tutorial/message-ports)保留用于安全网发行形态。
 
 ## 复用决策用语
 

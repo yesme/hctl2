@@ -4,6 +4,8 @@
 > 状态：证据审计 · 钉定版本与许可见文内「审计基线」；发布后正文不改，只在文末追加复核记录<br>
 > 总览、引用准入与五种复用决策用语见 [docs/research/README.md](./README.md)。
 
+> **v0.14.2 重解释**：本条目正文是 2026-08-23 Electron 决定的证据快照，探针、抽样与权限边界数据继续有效。2026-08-30 所有者依据[重开调研与 Ubuntu 实机探针](./workbench-shell-reopen-20260826/README.md)拍板：主选改为 **Tauri 2 + TS/React**，GPUI 原生备选，Electron 降为安全网；见文末 2026-08-30 复核记录与 [decision-history §30](../design/references/decision-history.md#30-workbench-桌面壳改选-tauri-2v0142)。
+
 <a id="e-workbench-shell"></a>
 ## E-WORKBENCH-SHELL · Workbench 桌面壳：Electron 与 Tauri 2
 
@@ -65,3 +67,4 @@ Electron 的成本属于一个 Workbench，而不随 Harness session 数线性�
 ## 复核记录
 
 - **2026-08-26**：所有者判断 Electron 体积与启动成本过高、Tauri 2 的 Linux 支持不足，重开桌面壳调研（GPUI / Iced / Flutter / Web 壳，含 macOS 与 Ubuntu NVIDIA/Wayland 实机探针），见 [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md)；该调研拍板前本条目的现行决定不变。
+- **2026-08-30**：重开调研回填 Ubuntu 实机探针（所有者主开发机 Ubuntu 26.04 / GNOME 50.1 / Wayland / NVIDIA Quadro P620，附录 A7）：Tauri 2.11.5 全项通过（含 10 个 xterm.js WebGL 终端与中文 IME；候选窗定位由应用侧 caret 修正解决，已反馈 tauri#11412），正文引用的 AppImage/强制 X11 未结报告未打中该环境的 `.deb` 发行；GPUI + gpui-component 同机通过；Flutter 因最大化稳定 SIGSEGV（flutter#191775）暂时淘汰；Electron 44 原生 Wayland 有顶边 1 px 闪动，此类环境须默认 `--ozone-platform=x11`。所有者拍板改选 **Tauri 2 + TS/React 主选，GPUI 原生备选，Electron 安全网**（v0.14.2，[decision-history §30](../design/references/decision-history.md#30-workbench-桌面壳改选-tauri-2v0142)）。「采用约束」按壳中立迁移：单主窗口承载多场景多终端、React 场景代码保持浏览器可运行、类型化窄 IPC 面不变；权限边界改由 Tauri capability/permission/scope 按窗口声明；整窗 P0 清单移植到 Tauri（WKWebView 与承诺的 Linux WebKitGTK 基线、`.deb`/`.rpm` 与升级路径、CJK/IME、一窗十终端），探针失败即回退 Electron 安全网，不下沉 Wry 自研；「重开门槛」一节自此了结。

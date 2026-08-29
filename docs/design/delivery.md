@@ -266,7 +266,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 ## 技术基线
 
-Rust control/tool 与 Herdr 适配代码；Electron + React 19 Workbench；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、Herdr（Agency）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#已选外部服务的运维与资源占用)，Workbench 的 Electron/Tauri 2 取舍、竞品产物抽样与重开门槛见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
+Rust control/tool 与 Herdr 适配代码；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；Tiptap、React Aria、React Flow + Dagre、xterm.js。执行面服务器经受控端口接入、由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、Herdr（Agency）；Chatroom 另随包提供 Cinny 内容客户端。精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#已选外部服务的运维与资源占用)，Workbench 桌面壳的选型证据、实机探针与安全网回退条件见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)与[重开调研](../research/workbench-shell-reopen-20260826/README.md)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
