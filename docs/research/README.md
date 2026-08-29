@@ -85,15 +85,15 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbenc
 | 项目 | 复用决策 | 只保留的独特价值 |
 | --- | --- | --- |
 | [Codex Remote Feishu](./remote-control.md#e-l1-codex-remote-feishu) | 仅参考行为（无许可证，不得移植） | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
-| [Paseo](./remote-control/paseo.md#e-l1-paseo) | 适配协议（Apache-2.0） | 时间线 epoch+seq 游标与 staleCursor/gap 语义、跨厂商结构化审批消息、steer/interrupt 输入二分、注意力在场路由、adapter 契约（厂商会话为持久层） |
-| [MindFS](./remote-control/mindfs.md#e-l1-mindfs) | 仅参考行为（AGPL-3.0） | 外部会话导入与「路径/大小/mtime」游标增量同步、双游标断点重放；工具审批全自动放行的反面证据 |
-| [HAPI](./remote-control/hapi.md#e-l1-hapi) | 仅参考行为（AGPL-3.0-only） | 结构化/字节流双投影与「无观众不上传」门控、本地/远程互斥交接、SSE 代次化事件 id 与重放环 |
-| [Happy](./remote-control/happy.md#e-l1-happy) | 仅参考行为（MIT） | 端到端加密核实到代码、配对即授钥、seq+localId 幂等与版本 CAS 同步、审批落加密状态断线不丢 |
-| [Remux](./remote-control/remux.md#e-l1-remux) | 仅参考行为（MIT） | 移动客户端附着即定位、tmux 原生 ID 为唯一路由身份、前台探活一次性重连、粘贴/提交两段式确认 |
-| [Moshi](./remote-control/moshi.md#e-l1-moshi) | 仅参考行为（闭源；线协议公开成文） | 注入前屏幕校验的 verified TUI bridge、摘要/全量数据分通道、在场感知提醒抑制；与 Herdr 深度耦合 |
-| [ServerCC](./remote-control/servercc.md#e-l1-servercc) | 仅参考行为（闭源） | 按 sessionId 精确恢复与 session store 反向索引、外部会话收养与离场 keep/stop、每后台期一次的提醒节流 |
-| [QuickTUI](./remote-control/quicktui.md#e-l1-quicktui) | 仅参考行为（server/app 闭源；qscreen 为 MIT） | 公开安装验证器 CI 门、能力自描述端点、结构化屏幕帧 attach；隐式尺寸所有权为输入租约反面样本 |
-| [Redock](./remote-control/redock.md#e-l1-redock) | 仅参考行为（闭源，无公开代码） | 分阶段输入暂存区、BYO 语音引擎与 CJK、tmux/Herdr/psmux 可插拔持久层 |
+| [Paseo](./remote-control/paseo.md#e-l1-paseo) | 适配协议（Apache-2.0） | 会话时间线带「代次+序号」游标，断线后能判断落后与缺口再续传；把各家代理的审批统一成结构化消息；新输入可打断、也可中途转向正在跑的回合；提醒按人在不在场决定推不推；适配器契约把转录持久化留给厂商会话 |
+| [MindFS](./remote-control/mindfs.md#e-l1-mindfs) | 仅参考行为（AGPL-3.0） | 从各代理的本地存档导入既有会话，按「文件路径/大小/修改时间」判断有没有增量；断线后按游标续传、不重灌全量；工具审批三条协议全部自动放行——反面证据 |
+| [HAPI](./remote-control/hapi.md#e-l1-hapi) | 仅参考行为（AGPL-3.0-only） | 结构化消息与终端字节两种投影并存，没人看就不上传字节流；本地终端与远程端互斥交接——远程一输入就接管，本地按双空格取回；事件编号带服务代次，断线可从缓冲重放 |
+| [Happy](./remote-control/happy.md#e-l1-happy) | 仅参考行为（MIT） | 端到端加密核实到代码，服务器只存密文；扫码配对即交出密钥；消息带序号与本地 id、重发不重复，状态更新先比对版本号再写；审批请求存进加密状态，断线不丢 |
+| [Remux](./remote-control/remux.md#e-l1-remux) | 仅参考行为（MIT） | 一条命令完成「有则接上、无则新建」并带上手机视口；定位只认 tmux 自己的窗格/窗口 id；回到前台先探测连接、每种断因只自动重连一次；先粘贴并确认落地、再单独发回车，防半截误执行 |
+| [Moshi](./remote-control/moshi.md#e-l1-moshi) | 仅参考行为（闭源；线协议公开成文） | 远程回答在注入按键前先核对屏幕上的问题与选项，对不上就拒绝；云端只过字符级摘要、全量转录走 SSH 隧道；电脑解锁在用时推送转静默；与 Herdr 深度耦合 |
+| [ServerCC](./remote-control/servercc.md#e-l1-servercc) | 仅参考行为（闭源） | 从代理自己的会话存档反向索引历史，严格按会话 id 恢复、不是「恢复最近一个」；能把外部启动的会话收进来管，离场时强制选「继续跑/停掉」；每个后台期每会话至多提醒一次 |
+| [QuickTUI](./remote-control/quicktui.md#e-l1-quicktui) | 仅参考行为（server/app 闭源；qscreen 为 MIT） | 每日 CI 用用户同款安装命令验证安装、健康与配对可用；服务器在固定地址自报能力清单供握手前探测；接入时下发解析好的屏幕帧、不重放原始字节；「谁最近操作，终端尺寸就跟谁」的隐式抢占，作输入租约的反面样本 |
+| [Redock](./remote-control/redock.md#e-l1-redock) | 仅参考行为（闭源，无公开代码） | 把「组稿—审阅—发送」从终端敲字里拆出来的输入暂存区，草稿在切换连接后仍在；语音转写先进暂存区改好再发，引擎可自带（含豆包中英混合识别）；tmux/Herdr/psmux 可替换的会话持久层 |
 
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
