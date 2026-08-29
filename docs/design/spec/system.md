@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.14.1<br>
+> 状态：规范性合同 · 草案 v0.14.2<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -188,8 +188,8 @@ metadata 备份必须是由唯一 writer 协调的一致备份集：完整账本
 
 ## 安全边界
 
-- Electron renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
-- 打包后的 Electron 固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true；narrow preload 只暴露具名 typed command，不暴露 raw ipcRenderer。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
+- 桌面壳 WebView/renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
+- 打包后的桌面壳固定最小权限面，WebView 只暴露具名 typed command：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
 - 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。

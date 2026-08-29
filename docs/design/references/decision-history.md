@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.14.1 · 2026-08-29<br>
+> 状态：Informative · 对应草案 v0.14.2 · 2026-08-30<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -114,7 +114,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#30-小修订台账)。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#31-小修订台账)。
 
 ## 15. 四段施工序与组件正名（v0.12.0）
 
@@ -170,7 +170,7 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#30-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#31-小修订台账)与[合同层清扫表](../spec/README.md#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
@@ -246,7 +246,13 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 此前对 tmux、Zellij、shpool、Termio、tty7、cmux、Pilotty 与 Herdr 的源码、发布物、资源占用和行为验证继续作为选型证据、容量基线与回归用例，不再代表产品同时维护多个终端实现。当前决定见 [Agent 设计正文](../agent.md#agency-与-herdr)、[Agent 合同](../spec/agent.md#运行时与观测)、[三面架构](../architecture.md#避免供应商锁定)和[交付文档](../delivery.md#开工前限时验证)。
 
-## 30. 小修订台账
+## 30. Workbench 桌面壳改选 Tauri 2（v0.14.2）
+
+2026-08-30 所有者拍板。依据是桌面壳重开调研与所有者主开发机（Ubuntu 26.04 / GNOME 50.1 / Wayland / NVIDIA Quadro P620）的实机探针：Tauri 2.11.5 全项通过——Canvas/WebGL、10 个 xterm.js WebGL 终端、长列表滚动、最大化与中文 IME 均可用，候选窗定位由应用侧 caret 修正解决并已反馈上游——“WebKitGTK + NVIDIA + Wayland 在主开发机可判死”的文献推断被实测证伪；GPUI + gpui-component 同机通过；Flutter 因默认应用最大化稳定 SIGSEGV 暂时淘汰，等上游修复；Electron 44 可用但原生 Wayland 有顶边闪动，此类环境须回退 X11。
+
+正式选型改为 **Tauri 2 + TypeScript/React 主选，GPUI 原生备选，Electron 安全网**。React 场景代码保持普通浏览器可运行、壳专有代码限制在薄壳与打包层的既有约束不变，四场景不随壳切换重写；已选 UI 轮子（Tiptap、React Aria、React Flow、xterm.js）全部保留。原 E-WORKBENCH-SHELL 的探针、产物抽样与权限边界证据继续有效，原“重开门槛”转化为反向回退条件：Tauri 整窗 P0（WKWebView 与承诺的 Linux WebKitGTK 基线、CJK/IME、一窗十终端、`.deb`/`.rpm` 与升级路径）失败即回退 Electron，不下沉 Wry 自研。为复用 GPUI 生态代码而将 `hctl2-workbench` 改为 GPL 的议题随之搁置。合同层同步：[系统边界](../spec/system.md#安全边界)的桌面壳安全条款改为壳中立——Tauri 的 capability/permission/scope 声明与 Electron 安全网的 sandbox 配置并列为两种发行形态各自的固定要求。证据见[桌面壳证据](../../research/workbench-shell.md#e-workbench-shell)与[重开调研](../../research/workbench-shell-reopen-20260826/README.md)。
+
+## 31. 小修订台账
 
 本文件只为重要设计变更单列章节，例如核心边界、实现选型或权威归属发生变化。词汇、词形与概念清理类修订各记一行，细节放在合同层清理表，不再单独成章：
 
@@ -256,6 +262,6 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 | v0.11.1 | 2026-08-21 | 词形收敛：25 个驼峰名改带空格专名、16 个 `*Intent` 命令名改动宾语义名、状态值改中文语义名；“不含任何代码标识符”的绝对化后被 v0.12.0 复审收窄（协议/schema 字段与外部原名保留原形） | [词形表](../spec/README.md#v0111-词形收敛) |
 | v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、无法证明执行身份时统一标为“丢失” | [清扫表](../spec/README.md#v0122-清扫) |
 
-## 31. 当前设计
+## 32. 当前设计
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。
