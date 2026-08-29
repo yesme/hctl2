@@ -132,6 +132,16 @@ jobs:
           ./buck2 test root//packaging/dependencies:package-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
 
+      - name: Probe tmux P0 control-mode seam
+        run: |
+          output="$(./buck2 build root//packaging/dependencies:tmux \
+            --target-platforms root//build/platforms:${{ matrix.buck_target }} \
+            --show-output | awk '$1 == "root//packaging/dependencies:tmux" { print $2 }')"
+          test -n "$output"
+          binary="$(find "$output" -type f -path '*/bin/tmux' -print -quit)"
+          test -x "$binary"
+          python3 testing/tmux/p0_control_mode.py --tmux "$binary"
+
       - name: Verify exact cache restored Tuwunel
         if: matrix.cache_enabled == '1' && steps.dependency-cache.outputs.cache-hit == 'true'
         run: |
