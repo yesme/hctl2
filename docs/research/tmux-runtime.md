@@ -44,3 +44,7 @@ P0 已通过，P1 的 `hctl2-agentd` 实现不再被 tmux 选型假设阻塞。�
 | macOS x86_64 | 3.667 s | 1,416,999 bytes | 2,040 chunks |
 
 三者都验证了临时根目录 `0700`、socket `0600`、恰好一个非只读 control client；输入与 `111 × 37` resize 可下发；快速观察者完整收到 12,000 条 burst，慢观察者队列满时只丢自己的 chunk，压力后 server 与输入仍可用；control client 断开重连前后 session/window/pane ID 与 pane PID 稳定；进程以 `17` 退出后无残留，`remain-on-exit` pane 仍可读回同一 ID 和退出码。没有 attach 的 fixture 也分别收到 DSR `ESC[0n`、DA `ESC[?1;2c` 与 DECRQM `ESC[?2004;2$y`。同一 macOS arm64 分发二进制本机连续运行十次也全部通过。这里证明的是 agentd 所需 control-mode 接缝可实现，不宣称 tmux 已替 agentd 完成租约、持久化或任意 Harness 的 TUI 兼容。
+
+### 2026-08-29 provider 对照复核
+
+随 v0.13.2 运行时 provider 裁决（[decision-history §27](../design/references/decision-history.md)），tmux 定位为 provider 合同的**内置最简实现**，选型不变。Linux x86_64 容器对照探针（可丢弃；与 [herdr 条目](./herdr.md)同负载）：官方 `tmux-builds` 静态二进制 2.2 MiB；单 server 承载 10 个 detached session（各 idle bash）**1.95 MiB RSS**；10 个隔离 server（默认拓扑）合计 **19.3 MiB**；每 session 灌 200 KB 输出后，默认 history-limit 2000 截断 **8.6 MiB**、调高 history 全保留 **21.9 MiB**。同负载 herdr v0.8.2 为 112 MiB，重输出下约 5 倍差距。

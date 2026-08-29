@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.13.1 · 2026-08-26<br>
+> 状态：Informative · 对应草案 v0.13.2 · 2026-08-26<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -216,7 +216,13 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 
 落点：[Context 横切正文](../context.md)新增投喂三档与 Run 内接力两节；[Project 合同](../spec/project.md#context-memo-artifact)记录投喂档、指针可达范围与评论线来源；[Run 合同](../spec/run.md#request重试与-gate)记录 Seat Bundle 的接力内容；[Task 合同](../spec/task.md#契约与来源)记录评论线快照冻结。
 
-## 27. 小修订台账
+## 27. 运行时 provider：Terminal 场景同构化（v0.13.2）
+
+2026-08-29 所有者裁决。四个场景中三个的 content 系统早已可插拔（chat server、任务后端、workflow engine），Terminal 是最后一个第一方特例。本轮把运行时后端收口为**运行时 provider**受控端口：HCTL 拥有 provider 合同的定义与桥接（agentd 是治理桥，租约、代次、审计、恢复等级裁决都在这里），不拥有终端持有的唯一实现。三条裁决：provider 原生客户端的输入记为带外并入账；观察扇出点按 provider 能力声明；provider 状态检测只作观测来源、按机制归级不升权。tmux 定位为内置最简 provider（P0 接缝验证结论不变），herdr `v0.8.2` 作为第二实现候选走限时验证（Apache-2.0、官方单静态二进制、带版本协商的 socket API；容器实测重输出下 RSS 约为 tmux 同负载 5 倍，见实现证据）。provider 同时是将来远程数字员工的执行端点形态；provider 不是 participant——"在哪跑"与"谁在工作"保持正交。讨论底稿见 `.memo/design/provider-20260829.md`。
+
+落点：[Agent 设计正文](../agent.md#运行时-provider)、[Agent 合同](../spec/agent.md#运行时与观测)、[交付文档](../delivery.md#开工前限时验证)第 6 项与 CT-AGENT 新增失败用例。
+
+## 28. 小修订台账
 
 来时路只收转向：承重墙移动、实现选型更换、权威归属变化各自成章。词汇、词形与概念清扫类修订各记一行，细节在合同层清扫表，不再单独成章：
 
@@ -226,6 +232,6 @@ tmux 也不是无条件通过：它支持 CSI-u/modifyOtherKeys 子集，不实�
 | v0.11.1 | 2026-08-21 | 词形收敛：25 个驼峰名改带空格专名、16 个 `*Intent` 命令名改动宾语义名、状态值改中文语义名；“不含任何代码标识符”的绝对化后被 v0.12.0 复审收窄（协议/schema 字段与外部原名保留原形） | [词形表](../spec/README.md#v0111-词形收敛) |
 | v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、收口状态统一为“丢失” | [清扫表](../spec/README.md#v0122-清扫) |
 
-## 28. 当前落点
+## 29. 当前落点
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

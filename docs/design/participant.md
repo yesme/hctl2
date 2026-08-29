@@ -1,6 +1,6 @@
 # Participant 与数字参与者
 
-> 状态：规范性（横切设计正文）· 草案 v0.13.1<br>
+> 状态：规范性（横切设计正文）· 草案 v0.13.2<br>
 > 日期：2026-08-25<br>
 > 定位：本文回答"谁在参与、按什么方法工作、结果归于谁"。它是横切设计正文，不是第五个模块：Participant 身份与角色绑定的合同在 [Project 模块合同](./spec/project.md)，执行者配置在 [Agent 模块合同](./spec/agent.md)，评审席位独立性在 [Run 模块合同](./spec/run.md)，冻结链在[连接合同](./spec/connections.md)。合同级细节的完整底稿与逐条裁决来源见 `.memo/design/participant-design-20260819.md`。
 

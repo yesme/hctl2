@@ -43,7 +43,7 @@ Terminal 是 Agent 模块的操作场景，用于观察、诊断和接管一次�
 
 semantic resume 不必依赖厂商保留的会话文件：自有观测留痕（转录与结构化事件）足够时可以重建等价的最小续跑输入；重建物只是投影，不改变任何权威记录。
 
-Workbench 就位之前（P2），观察与接管经 `hctl2 terminal` 命令、凭 control 签发的短期票据进行；裸 `tmux attach` 只是明确标注的带外逃生口，不校验票据也不是合规客户端。
+Workbench 就位之前（P2），观察与接管经 `hctl2 terminal` 命令、凭 control 签发的短期票据进行；裸 `tmux attach` 等 provider 原生客户端入口不校验票据、不是合规客户端，其输入按带外输入入账（见[运行时 provider](#运行时-provider)）。
 
 Execution Chat 是绑定一次精确执行的结构化观察与控制视图：它不是 Room，没有独立的会话身份；里面的输入和事件也不会自动进入 Room，只有显式的 Share to Room 动作经 Project 准入后才能发布。观察、输入、执行控制和安全输入是分开授权的四种权限，接管会原子撤销旧输入者。
 
@@ -52,7 +52,22 @@ Execution Chat 是绑定一次精确执行的结构化观察与控制视图：�
 | 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明 | 用 UI 状态推进 Task/Run，或把执行投影当作 Room |
 | 场景客户端：CLI / WezTerm | 使用短期连接票据观察或接管精确目标 | 提交任意 argv/cwd/pane ID 绕过 agentd |
 | 受控端口：harness 适配器 | ACP、原生服务端、SDK、PTY 或钩子能力 | 把厂商 Session 当成 HCTL 身份 |
-| 受控端口：运行时后端 | 持有进程/PTY/容器/mux 资源 | 决定领域权限、评审或完成 |
+| 受控端口：运行时 provider | 持有进程/PTY/容器/mux 资源 | 决定领域权限、评审或完成 |
+
+## 运行时 provider
+
+Terminal 场景的 content 系统是**运行时 provider**——承载真实进程与终端会话的可插拔后端，与 chat server 之于 Chat Room 同构。HCTL 拥有的是 provider 合同的定义与桥接：agentd 是治理桥，租约、代次、审计和恢复等级的裁决都在这里，不与任何一家 provider 绑死。tmux 是内置的最简 provider；herdr 这类自带状态检测与远程接入的一体化 provider 经限时验证后可作为第二实现；将来远程数字员工的执行端点也是一种 provider。provider 只回答"在哪跑、怎么够得着"；谁在工作仍由 Participant 与执行规格回答，两者保持正交。
+
+一个 provider 由三个面描述，逐项能力声明、准确降级，与 Harness 能力探测同一套纪律：
+
+| 面 | 谁用 | 规则 |
+| --- | --- | --- |
+| 可编程控制面（API/CLI） | agentd 桥接，headless 驱动执行 | 治理动作的唯一路径：启动、获准输入、打断、停止都从这里走 |
+| 终端接入面 | Workbench/CLI 凭 control 票据观察或接管 | 观察扇出点按 provider 能力声明：声明了多观察者与缺口披露的 provider 自己扇出，否则 agentd 网关兜底转发 |
+| 原生客户端面 | provider 自家 UI（herdr TUI、裸 tmux attach） | 执行面的内容原生界面：观察不设限；输入不经输入租约，一律记为带外输入并入账，不产生可准入结果 |
+
+- provider 的状态检测（working/idle/blocked 之类）只是观测来源之一：按其自述机制归入既有仲裁序（hook 级或屏幕推断级），带来源与置信度入账，不因经 provider 转手而升级，也不获得生命周期写入权。
+- provider 报告的"会话还在/恢复了"必须翻译成四级恢复词汇（exact attach / semantic resume / replay / 丢失）才可用于恢复决策；翻译不出来按丢失处理。
 
 ## 原生会话导入
 

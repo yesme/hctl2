@@ -1,6 +1,6 @@
 # Agent 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.1<br>
+> 状态：规范性合同 · 草案 v0.13.2<br>
 > 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
@@ -63,6 +63,8 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录而不能共用一个模糊 `generation`：语义 owner 是 Room Invocation 的 `invocation_version` 或 Attempt 的 `attempt_generation`；物理 Execution Runtime 在激活映射时取得独立 `runtime_generation`；基础设施 envelope 另带 `control_writer_generation`、Repo Instance 的 `site_generation` 与运行时 backend/agentd owner generation。Participant revision、Project Role Binding version 与 producer sequence 都不是 generation。替代任一层只使引用该层旧值的动作失效，不得顺带把别层 identity 改写成新值。
 
+Execution Runtime 由**运行时 provider**（运行时后端受控端口）承载；tmux 为内置实现，其他实现按同一合同接入。provider 按绑定逐项声明能力并准确降级，声明维度至少包括：可编程控制面（agentd 桥接与驱动执行的唯一路径）、终端接入面的多观察者扇出与缺口披露（已声明则观察者可由 provider 直接扇出，未声明则观察者只消费 agentd 网关转发）、会话保持等级、状态检测机制与远程接入。provider 原生客户端是执行面的内容原生界面：其观察不受 HCTL 限制；其输入不经 Terminal Input Lease，agentd 必须把该通道的输入按带外输入入账（source 标注为 provider native client），带外输入不推进任何领域结果。provider 报告的执行体状态是观测来源之一，按其自述机制归入下述仲裁序的对应层级，不因经 provider 转手而升级置信度，也不取得生命周期写入权；provider 报告的恢复能力必须翻译为 exact attach / semantic resume / replay / 丢失四级之一方可用于恢复决策，无法翻译时按丢失处理。
+
 agentd 拥有进程、PTY、原始流、心跳和主机观测，并执行 control 已获准的 start/input/cancel/stop；Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按运行时后端/进程/租约 > 结构化 lifecycle 事件或 hook > title/screen 仲裁，语义观测按结构化提供方协议或原生 hook > 转录推断 > title/screen 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
 
 结构化事件统一归一为生命周期提示、工具调用、权限请求、文件变化、测试、用量和原始输出。未知事件保留原文并安全降级，不得凭渲染器猜测完成。
@@ -75,7 +77,7 @@ Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 
 
 ## 终端通道、连接与租约
 
-Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding 与全部适用代次签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；写输入、接管和安全输入只接受认证入口赋予 human provenance 的请求。agentd 只接受由当前 control writer 签发且仍匹配 owner/runtime/site/backend generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、各层代次、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。绕过 agentd 直连 backend 只能标为带外诊断，该通道产生的输入、输出或“完成”不能准入 HCTL 结果。
+Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；agentd 实现物理终端网关。认证场景客户端请求连接时，control 按当前 owner/binding 与全部适用代次签发短期 Attach Descriptor，并为写输入另行 CAS Terminal Input Lease；写输入、接管和安全输入只接受认证入口赋予 human provenance 的请求。agentd 只接受由当前 control writer 签发且仍匹配 owner/runtime/site/backend generation 的 descriptor/lease。Attach Descriptor 固定逻辑 owner、后端目标、host、各层代次、能力、权限和过期时间；观察 trace/结构化流、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约，安全输入不得进入普通 trace、Room 或 replay。绕过 agentd 直连 provider（含 provider 原生客户端）只能标为带外通道：其输入必须由 agentd 按带外输入入账，该通道产生的输入、输出或“完成”不能准入 HCTL 结果。
 
 Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 Room Invocation/invocation_version 或 Attempt/attempt_generation、对应 Execution Runtime/runtime_generation 与适用 fence 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 
