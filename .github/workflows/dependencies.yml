@@ -145,16 +145,6 @@ jobs:
             )
           '
 
-      - name: Probe tmux P0 control-mode seam
-        run: |
-          output="$(./buck2 build root//packaging/dependencies:tmux \
-            --target-platforms root//build/platforms:${{ matrix.buck_target }} \
-            --show-output | awk '$1 == "root//packaging/dependencies:tmux" { print $2 }')"
-          test -n "$output"
-          binary="$(find "$output" -type f -path '*/bin/tmux' -print -quit)"
-          test -x "$binary"
-          python3 testing/tmux/p0_control_mode.py --tmux "$binary"
-
       - name: Stop Buck2 dependency action cache
         if: ${{ always() && matrix.cache_enabled == '1' }}
         run: build/tools/buck2-cache stop

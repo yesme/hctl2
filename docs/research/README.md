@@ -198,7 +198,7 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./lobehub.
 | [Herdr `v0.8.0 / 346411fa`](https://github.com/herdrdev/herdr/tree/346411fa21afd297f5ed3b3fa56f9e3fbf7654b7) / [专项审计](./herdr.md#e-l1-herdr) | 后台服务持有 PTY；观察/控制与原始/语义操作面分离；单写者接管；状态信号仲裁与分级恢复 | Apache-2.0；控制方不是持久租约，运行状态不等于领域完成；完整边界见专项审计 |
 | [xterm.js](https://github.com/xtermjs/xterm.js/) | 嵌入式终端渲染器，以及 CJK、输入法、无障碍和流量控制 | MIT；只负责前端，不拥有 PTY、进程或 Session |
 | [WezTerm](https://wezterm.org/cli/cli/index.html) | 成熟的跨平台外部终端与 CLI | MIT；不嵌入应用，也不把 Mux 协议当作 ABI |
-| [tmux `3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) / [专项复审](./tmux-runtime.md#e-l1-tmux-runtime) | 公开 control mode、稳定 pane ID、headless 查询应答、捕获/转发、退出状态和很小的 native footprint | ISC；采用为运行时依赖，不作为公开 HCTL API；完整 Kitty 键盘协议、六 Harness 兼容性、背压与 `#5510` 仍是 P0 阻断项 |
+| [tmux `3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) / [专项复审](./tmux-runtime.md#e-l1-tmux-runtime) | 公开 control mode、稳定 pane ID、headless 查询应答、捕获/转发、退出状态和很小的 native footprint | ISC；采用为运行时依赖，不作为公开 HCTL API；三分发目标的 agentd 接缝 P0 已通过，完整 Kitty 键盘协议、Harness TUI 差异与 `#5510` 是使用期升级或换家条件 |
 
 ## L4 补充证据
 

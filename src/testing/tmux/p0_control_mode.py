@@ -64,6 +64,8 @@ class ControlClient:
         self._output_lock = threading.Lock()
         self._fast_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=4096)
         self._slow_queue: queue.Queue[bytes] = queue.Queue(maxsize=2)
+        self._results: queue.Queue[tuple[bool, list[bytes]]] = queue.Queue()
+        self._command_lock = threading.Lock()
         self.slow_drops = 0
         self.protocol_lines = 0
         self.fast_output = bytearray()
@@ -71,22 +73,39 @@ class ControlClient:
         self._fast_observer = threading.Thread(target=self._consume_fast, daemon=True)
         self._reader.start()
         self._fast_observer.start()
+        succeeded, output = self._results.get(timeout=5)
+        if not succeeded:
+            raise RuntimeError(f"initial control attach failed: {output!r}")
 
     def _read(self) -> None:
         assert self.process.stdout is not None
+        command_output: list[bytes] | None = None
         for line in iter(self.process.stdout.readline, b""):
             self.protocol_lines += 1
-            match = CONTROL_OUTPUT.match(line)
-            if match is None:
+            if line.startswith(b"%begin "):
+                if command_output is not None:
+                    raise RuntimeError("nested tmux control response")
+                command_output = []
                 continue
-            payload = decode_control_output(match.group("data"))
-            with self._output_lock:
-                self._output.extend(payload)
-            self._fast_queue.put(payload)
-            try:
-                self._slow_queue.put_nowait(payload)
-            except queue.Full:
-                self.slow_drops += 1
+            if line.startswith((b"%end ", b"%error ")):
+                if command_output is None:
+                    raise RuntimeError(f"tmux control response ended without beginning: {line!r}")
+                self._results.put((line.startswith(b"%end "), command_output))
+                command_output = None
+                continue
+            match = CONTROL_OUTPUT.match(line)
+            if match is not None:
+                payload = decode_control_output(match.group("data"))
+                with self._output_lock:
+                    self._output.extend(payload)
+                self._fast_queue.put(payload)
+                try:
+                    self._slow_queue.put_nowait(payload)
+                except queue.Full:
+                    self.slow_drops += 1
+                continue
+            if command_output is not None and not line.startswith(b"%"):
+                command_output.append(line.rstrip(b"\n"))
         self._fast_queue.put(None)
 
     def _consume_fast(self) -> None:
@@ -96,11 +115,23 @@ class ControlClient:
                 return
             self.fast_output.extend(payload)
 
-    def command(self, command: str) -> None:
+    def _write_command(self, command: str) -> None:
         if self.process.stdin is None:
             raise RuntimeError("tmux control client stdin is closed")
         self.process.stdin.write(command.encode() + b"\n")
         self.process.stdin.flush()
+
+    def command(self, command: str) -> list[str]:
+        with self._command_lock:
+            self._write_command(command)
+            try:
+                succeeded, output = self._results.get(timeout=8)
+            except queue.Empty as error:
+                raise TimeoutError(f"tmux control command timed out: {command}") from error
+        decoded = [line.decode(errors="replace") for line in output]
+        if not succeeded:
+            raise RuntimeError(f"tmux control command failed: {command}: {decoded!r}")
+        return decoded
 
     def send_fixture_command(self, pane_id: str, command: str) -> None:
         self.command(f"send-keys -t {pane_id} -l -- {shlex.quote(command)}")
@@ -112,7 +143,7 @@ class ControlClient:
 
     def close(self) -> None:
         if self.process.poll() is None:
-            self.command("detach-client")
+            self._write_command("detach-client")
         self.process.wait(timeout=5)
         self._reader.join(timeout=5)
         self._fast_observer.join(timeout=5)
@@ -189,10 +220,6 @@ def main() -> int:
             "#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}|"
             "#{pane_width}|#{pane_height}|#{pane_dead}"
         )
-        identity_before = parse_identity(
-            run_tmux(tmux, socket, "list-panes", "-t", session, "-F", identity_format)
-        )
-
         wait_until(query_result.exists, "detached terminal query responses")
         queries = json.loads(query_result.read_text(encoding="utf-8"))
         decoded_queries = {name: bytes.fromhex(value) for name, value in queries.items()}
@@ -204,11 +231,14 @@ def main() -> int:
             raise AssertionError(f"unexpected DECRQM response: {decoded_queries['decrqm']!r}")
 
         control = ControlClient(tmux, socket, session)
+        identity_before = parse_identity(
+            "\n".join(control.command(f"list-panes -t {session} -F {shlex.quote(identity_format)}"))
+        )
         wait_until(
-            lambda: len(run_tmux(tmux, socket, "list-clients", "-F", "#{client_flags}")) > 0,
+            lambda: len(control.command("list-clients -F '#{client_flags}'")) > 0,
             "writable control client",
         )
-        client_flags = run_tmux(tmux, socket, "list-clients", "-F", "#{client_flags}")
+        client_flags = "\n".join(control.command("list-clients -F '#{client_flags}'"))
         if len(client_flags.splitlines()) != 1:
             raise AssertionError(f"expected exactly one owner control client: {client_flags!r}")
         if "read-only" in client_flags:
@@ -218,7 +248,7 @@ def main() -> int:
         control.send_fixture_command(identity_before["pane"], f"INPUT:{token}")
         wait_until(lambda: control is not None and control.contains(token.encode()), "control output")
 
-        run_tmux(tmux, socket, "resize-window", "-t", identity_before["window"], "-x", "111", "-y", "37")
+        control.command(f"resize-window -t {identity_before['window']} -x 111 -y 37")
         control.send_fixture_command(identity_before["pane"], "SIZE")
         wait_until(lambda: control is not None and control.contains(b"HCTL2-P0 SIZE 37x111"), "PTY resize")
 
@@ -233,7 +263,7 @@ def main() -> int:
             raise AssertionError("fast observer burst boundaries are incomplete")
         control.send_fixture_command(identity_before["pane"], "INPUT:after-burst")
         wait_until(lambda: control is not None and control.contains(b"INPUT-SEEN after-burst"), "post-burst input")
-        if run_tmux(tmux, socket, "display-message", "-p", "PONG") != "PONG":
+        if control.command("display-message -p PONG") != ["PONG"]:
             raise AssertionError("tmux server stopped answering during slow-observer pressure")
 
         first_control_bytes = len(control.fast_output)
@@ -242,31 +272,35 @@ def main() -> int:
         control.close()
         control = None
 
+        control = ControlClient(tmux, socket, session)
         identity_after_reconnect = parse_identity(
-            run_tmux(tmux, socket, "list-panes", "-t", session, "-F", identity_format)
+            "\n".join(control.command(f"list-panes -t {session} -F {shlex.quote(identity_format)}"))
         )
         for field in ("session", "window", "pane", "pid"):
             if identity_after_reconnect[field] != identity_before[field]:
                 raise AssertionError(f"{field} changed after control reconnect")
 
-        control = ControlClient(tmux, socket, session)
         control.send_fixture_command(identity_before["pane"], "EXIT17")
 
         def pane_exited() -> bool:
             current = parse_identity(
-                run_tmux(tmux, socket, "list-panes", "-t", session, "-F", identity_format)
+                "\n".join(
+                    control.command(f"list-panes -t {session} -F {shlex.quote(identity_format)}")
+                )
             )
             return current["dead"] == "1"
 
         wait_until(pane_exited, "pane exit")
         exit_identity = parse_identity(
-            run_tmux(tmux, socket, "list-panes", "-t", session, "-F", identity_format)
+            "\n".join(control.command(f"list-panes -t {session} -F {shlex.quote(identity_format)}"))
         )
         for field in ("session", "window", "pane"):
             if exit_identity[field] != identity_before[field]:
                 raise AssertionError(f"{field} changed when the pane exited")
-        exit_status = run_tmux(
-            tmux, socket, "display-message", "-p", "-t", identity_before["pane"], "#{pane_dead_status}"
+        exit_status = "\n".join(
+            control.command(
+                f"display-message -p -t {identity_before['pane']} '#{{pane_dead_status}}'"
+            )
         )
         if exit_status != "17":
             raise AssertionError(f"unexpected pane exit status: {exit_status!r}")
