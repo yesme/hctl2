@@ -1,6 +1,6 @@
 # Agent 模块合同
 
-> 状态：规范性合同 · 草案 v0.13.4<br>
+> 状态：规范性合同 · 草案 v0.13.5<br>
 > 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
@@ -63,7 +63,7 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录而不能共用一个模糊 `generation`：语义 owner 是 Room Invocation 的 `invocation_version` 或 Attempt 的 `attempt_generation`；物理 Execution Runtime 在激活映射时取得独立 `runtime_generation`；基础设施 envelope 另带 `control_writer_generation`、Repo Instance 的 `site_generation` 与运行时 backend/agentd owner generation。Participant revision、Project Role Binding version 与 producer sequence 都不是 generation。替代任一层只使引用该层旧值的动作失效，不得顺带把别层 identity 改写成新值。
 
-Execution Runtime 由**运行时 provider**承载。provider 是执行服务受控端口：受理获准的执行请求、常驻持有现场、报告存活与恢复等级；mux 一类运行时后端只是 provider 的内部物理原语，不直接承担本合同。内置 provider 由 agentd 进程承载、以 tmux 为原语，并按本合同接入，与 agentd 的治理桥身份逻辑分离——替换任一 provider 不改变桥。provider 按绑定逐项声明能力并准确降级，声明维度至少包括：可编程控制面（agentd 桥接与驱动执行的唯一路径）、终端接入面的多观察者扇出与缺口披露（已声明则观察者可由 provider 直接扇出，未声明则观察者只消费 agentd 网关转发）、会话保持等级、状态检测机制与远程接入。provider 原生客户端是执行面的内容原生界面：其观察不受 HCTL 限制；其输入不经 Terminal Input Lease，agentd 必须把该通道的输入按带外输入入账（source 标注为 provider native client），带外输入不推进任何领域结果。provider 报告的执行体状态是观测来源之一，按其自述机制归入下述仲裁序的对应层级，不因经 provider 转手而升级置信度，也不取得生命周期写入权；provider 报告的恢复能力必须翻译为 exact attach / semantic resume / replay / 丢失四级之一方可用于恢复决策，无法翻译时按丢失处理。
+Execution Runtime 由**运行时 provider**（执行者派出方）承载。provider 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体及其运行现场与访问通道，常驻持有现场并报告存活与恢复等级——承载现场是交付义务，不是本合同的定义；mux 一类运行时后端派不出执行体，只是 provider 的内部物理原语，不直接承担本合同。内置 provider 由 agentd 进程承载——从本机 Harness 目录按规格派出、以 tmux 为原语交付现场——并按本合同接入，与 agentd 的治理桥身份逻辑分离，替换任一 provider 不改变桥。派出交付物必须按冻结规格逐项核验后方可激活（能力广告不是能力证明，缺项列出且不激活）；派出不转移参与者身份：provider 供给的是七层身份链的下层（模型、执行者配置、一次物理执行），Participant 身份与席位仍由账本拥有并绑定。provider 按绑定逐项声明能力并准确降级，声明维度至少包括：可编程控制面（agentd 桥接与驱动执行的唯一路径）、终端接入面的多观察者扇出与缺口披露（已声明则观察者可由 provider 直接扇出，未声明则观察者只消费 agentd 网关转发）、会话保持等级、状态检测机制与远程接入。provider 原生客户端是执行面的内容原生界面：其观察不受 HCTL 限制；其输入不经 Terminal Input Lease，agentd 必须把该通道的输入按带外输入入账（source 标注为 provider native client），带外输入不推进任何领域结果。provider 报告的执行体状态是观测来源之一，按其自述机制归入下述仲裁序的对应层级，不因经 provider 转手而升级置信度，也不取得生命周期写入权；provider 报告的恢复能力必须翻译为 exact attach / semantic resume / replay / 丢失四级之一方可用于恢复决策，无法翻译时按丢失处理。
 
 provider 合同**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本与 agentd 桥，跨所有 provider 统一提供；provider 自带的接管、单写者或"会话有效"记录一律只作执行协助与观测证据，不得写入或替代账本事实。**栅栏回显**是能力声明项：声明它的 provider 必须原样携带并回显请求所附的代次与租约引用，并按合同拒绝不匹配项——回显与拒绝是物理执行点，不是权威。未声明栅栏回显的 provider 整通道按低信任接入：输入一律按带外输入入账，结果只能以低证据类的 Result Proposal 进入准入，不得承载要求栅栏的动作。agentd 不可达的远程 provider（如远程数字员工的执行端点）的执行点即退到该合同面，其余规则不变。
 
