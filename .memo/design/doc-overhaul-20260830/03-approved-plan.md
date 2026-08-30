@@ -26,6 +26,8 @@
 | 位置 | 改动 | 依据 |
 | --- | --- | --- |
 | §3.4 architecture「数据丢了怎么办」 | 删去「补『路标停更时新义务铸造暂停』半句」的要求;该行只剩「留产品叙述、细则改引用」 | Grok 三问 ③ → parking-lot #4 |
+| §3.12 spec/README 五张历史表 | fold-to-history 的**执行时点**从 C3 移到 C5,与 decision-history 同一 PR 完成;处置不变 | 来时路小修订台账三行直接链到这些表的锚点,C3 先删会使 C5 之前的 main 断链(docs-check 红) |
+| §3.10/§3.11 participant/context 版本戳 | 「改 v0.15.1」在 C5 全库一次升版时兑现,C2 保持 v0.15.0 | `check_version_stamps` 要求与根 README 基线一致 |
 
 ## 3. 施工入口(GPT 按此顺序开簇,每簇引用总图章节)
 
