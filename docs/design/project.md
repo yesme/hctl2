@@ -16,17 +16,17 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 ## 关键规则
 
-- 普通聊天内容只能形成提案；正式变化必须走带预览的类型化命令。一个明确配置、可归属到 human 且绑定精确消息事件的结构化动作可以成为命令请求，但消息正文、反应和模型建议不能靠内容推断成命令；Room 仍不能签发 Verdict、Receipt 或完成 Task。
-- 普通 Room 中只有 human actor 能提交临场执行边；模型 Participant 只能建议下一条边。
-- Participant、角色、Room 和 Project 都不是 Harness 进程或外部账号；换人、换工具不改写已授权的执行。
-- 上下文必须能解释它当时看到了什么；模型自由总结不能替代来源和版本。
+- 普通聊天形成提案；正式变化走带预览的类型化命令，结构化 human 动作的准入见[场景合同](./spec/project.md#场景合同)。
+- 普通 Room 的临场执行边由 human actor 提交；模型 Participant 只建议下一条边。
+- Participant、角色、Room 和 Project 使用独立于 Harness 进程与外部账号的稳定身份，换工具不改写已授权执行。
+- 上下文保留来源和版本，使每次执行看到的内容可解释。
 - Request 只能由获准动作解决，只解锁它声明的阻塞范围；应答面按需升级——默认在卡片或详情里回答，需要多轮论述、多人参与或共同编辑才开临时讨论空间，敏感输入走安全通道，只有诊断或接管才连接终端。无论升到哪一级，都还是同一个请求、同一个阻塞范围。
-- 消息只追加；修正、删除和外部编辑留痕，不能抹掉已被引用的历史。
-- HCTL 的房间对控制面明文可读，不开端到端加密；已加密的房间不绑定，事后被加密的 Room 标为需要关注、换绑恢复。
-- 原始消息和执行日志不会自动变成长期知识；Memo 必须显式提炼、预览并发布。
+- 消息只追加，修正、删除和外部编辑保留已被引用的历史。
+- HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 合同](./spec/project.md#room-与消息)。
+- Memo 经显式提炼、预览并发布后成为长期知识。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时应创建 [Run](./run.md)。
 - 从 Repo Room 提升 Project 时只带显式选中的来源，可删减、补充、去敏；之后的聊天不会偷偷改变既有 Project。
-- Project/Room 历史不因客户端关闭、外部编辑或运行时崩溃而丢失。
+- Project/Room 历史独立于客户端与运行时存活。
 
 ## Room 类型
 
@@ -55,15 +55,15 @@ Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和�
 
 普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开合同适配的 provider 结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker 或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
 
-| 角色 | 可以做什么 | 不能做什么 |
-| --- | --- | --- |
-| 场景客户端：Workbench Room | 通过 Matrix 写消息 content；提供完整时间线、Composer（输入区）、预览和公共命令入口 | 绕过命令服务直接写治理账本，或把消息/渲染动作当成领域结果 |
-| 场景客户端：CLI | P2 起承载全部治理命令：调用、Request、升格、Memo/Artifact 的预览与提交，以 chat server 消息事件 ID 引用讨论内容；聊天读写走 Matrix 客户端 | 绕过预览、版本或权限检查 |
-| content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth；Workbench 与 Matrix 生态客户端可直接读写聊天 | 从普通消息、反应或自动化自行推断派发/Request；只有另行配置的显式结构化 human 动作可提交命令请求 |
+| 角色 | 可以做什么 |
+| --- | --- |
+| 场景客户端：Workbench Room | 通过 Matrix 写消息 content；提供完整时间线、Composer（输入区）、预览和公共命令入口 |
+| 场景客户端：CLI | P2 起承载治理命令：调用、Request、升格、Memo/Artifact 的预览与提交，以 chat server 消息事件 ID 引用讨论内容；聊天读写走 Matrix 客户端 |
+| content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth；Workbench 与 Matrix 生态客户端可直接读写聊天 |
 
-chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用。非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态接入——桥接是 content 层的事，聊天里永远不跑治理，因此 HCTL 不自建聊天桥接；HCTL 侧只需身份映射策略覆盖桥接来的外部用户（映射为可寻址 Participant，或保持只读旁观），并且外部 thread/message ID 永远不取代 Project/Room 身份。
+chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用；非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 只处理身份映射。职责边界见[三面架构](./architecture.md#避免供应商锁定)。
 
-HCTL 创建或绑定的房间不开端到端加密。原因很直接：冻结讨论摘要、萃取上下文、让桥接和 AppService 读得到消息，都要求控制面能按消息 ID 读到正文；端到端加密把正文锁在客户端设备里，这些能力就都失效。所以绑定房间时先检查，已加密的房间不接；绑定之后有人把加密打开，这个 Room 的聊天入口标为需要关注，依赖新消息正文的预览与命令安全暂停，直到换绑到未加密的房间。保密需求不靠给房间加密解决——敏感输入走安全通道，仓库级隐私靠 homeserver 的访问控制与保留策略。
+HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Context 萃取和桥接都要求 control 能按消息 ID 读取正文。绑定校验、事后加密的降级与换绑恢复由[Project 合同](./spec/project.md#room-与消息)定义。
 
 ## 模块交接
 
@@ -71,5 +71,5 @@ HCTL 创建或绑定的房间不开端到端加密。原因很直接：冻结讨
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
 - Project 可以通过 [Agent](./agent.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
-- Task、Run 和 Agent 模块的状态只以投影或引用回到 Chat Room；普通聊天 content 不能反向改写，显式 human 动作只能经对应模块的公共命令合同请求变化。
+- Task、Run 和 Agent 模块的状态以投影或引用回到 Chat Room；显式 human 动作经对应模块的公共命令合同请求变化。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流。
