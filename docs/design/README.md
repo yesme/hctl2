@@ -88,8 +88,8 @@ Workbench 把四个场景客户端和 HCTL 命令入口组合成一个产品桌�
 - [合同层总则](./spec/README.md)：词汇分类法、六族规则、命名门槛、归并对照与外部对齐原则。
 - [系统边界与适配器合同](./spec/system.md)：组件、事实源、命令、单写者与恢复。
 - [四模块的端到端连接](./spec/connections.md)：类型化交接、事务边界、版本链和跨模块恢复。
-- [第一阶段、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、契约测试和未决项。
-- [契约测试矩阵](./delivery.md#契约测试矩阵)：CT 各族与产品验收用例。
+- [第一阶段、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、自举、选型验证和未决项。
+- [契约测试矩阵](./contract-tests.md)：CT 各族与产品验收用例。
 - [术语对照表](./references/glossary.md)：中英对照与一句话含义；语义以模块文档为准。
 - [从 HCTL 到 HCTL2 的来时路](./references/decision-history.md)：关键决策转折的非规范说明；它不形成第二套合同。
 

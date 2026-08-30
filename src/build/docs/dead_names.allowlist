@@ -11,5 +11,6 @@ docs/design/agent.md	WezTerm
 docs/design/delivery.md	WezTerm
 
 # 合法提法：Electron 仅以「安全网」身份出现（decision-history §30）
+docs/design/contract-tests.md	Electron 安全网
 docs/design/delivery.md	Electron 安全网
 docs/design/spec/system.md	Electron 安全网
