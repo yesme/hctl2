@@ -1,6 +1,6 @@
 # 全库文档大修:结构总图(S2 初稿)
 
-> 状态:讨论稿 · 已按 S1 三份清单核对(GPT 权威表 / Grok 死文普查 / GLM 不一致账本);待 K3 禁令盘点;待 GPT 保真通过与 Grok 三问<br>
+> 状态:**已冻结**(2026-08-31,见 [`03-approved-plan.md`](./03-approved-plan.md));GPT 保真通过与 Grok 三问已过;此后只随 03 的「拍板后修订」节改动<br>
 > 基线:main @ `4f9e06d`(草案 v0.15.0;正文与 `37805fa` 相同)<br>
 > 核对记录:2026-08-31 依 `01-authority-map.md` 逐一核对 194 节(根 README 漏列的「四个阶段与四个模块」「许可证」已并入原有分组处置)、`01-inventory-dead-text.md`(A1–A31、B1–B3、C1–C10)、`01-inventory-inconsistency.md`(#1–#16)逐条并入;新增第四组同构(§4.4)、断链/过时指针行、`.memo` 核销节(§3.24)、Manifest 清单并集核对项;计数按 GPT 保真通过修正<br>
 > 去向:拍板后冻结为 `03-approved-plan.md`<br>
