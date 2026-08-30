@@ -1,7 +1,8 @@
 # 全库文档大修:结构总图(S2 初稿)
 
-> 状态:讨论稿 · 待 S1 四张清单核对 · 待 GPT 保真通过与 Grok 三问<br>
-> 基线:main @ `37805fa`(草案 v0.15.0)<br>
+> 状态:讨论稿 · 已按 S1 三份清单核对(GPT 权威表 / Grok 死文普查 / GLM 不一致账本);待 K3 禁令盘点;待 GPT 保真通过与 Grok 三问<br>
+> 基线:main @ `4f9e06d`(草案 v0.15.0;正文与 `37805fa` 相同)<br>
+> 核对记录:2026-08-31 依 `01-authority-map.md`(194 节无结构级分歧)、`01-inventory-dead-text.md`(A1–A31、B1–B3、C1–C10)、`01-inventory-inconsistency.md`(#1–#16)逐条并入;新增第四组同构(§4.4)、断链/过时指针行、`.memo` 核销节(§3.24)、Manifest 清单并集核对项;计数按 GPT 保真通过修正<br>
 > 去向:拍板后冻结为 `03-approved-plan.md`<br>
 > 作者:Fable(施工图 S2);只出树、表、提纲,不写正文。判据编号:D1–D4 = 施工图 §7.1 死文四判据(D1 被转向取代 / D2 无权威对应 / D3 重复权威 / D4 无入口且非历史);N = §7.2 负例三留;G4 = 红线 4 删除护栏;S = 结构收束(§8.3)。凡标「待 S1 核对」的,以 S1 清单为准,本图不猜。
 
@@ -92,7 +93,9 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 
 | 章节 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
-| 含 agentd 的段落(待 S1 定位) | rewrite | — | agentd 已退场,改为 Herdr/control 现行形态 | D1 | |
+| :212「不安装成 HCTL2 自建的 hctl2-agentd」 | rewrite | — | 对已退场组件的否定对比,改为「Herdr 由 hctl2-services 管理」(Grok A2、GLM #4) | D1 | |
+| 「从源码制作外部子系统包」节(:216–233) | rewrite | — | 把逐 target Tuwunel 源码构建写成常规打包路径,与 delivery:262「消费托管制品、源码构建只用于更新托管制品」限定不同(GLM #2 ⚠) | D1 | |
+| :20「macOS 最低版本为 15」 | rewrite | — | 随 delivery 打包策略一处定义,此处改引用(GLM #3) | D3 | |
 | 其余操作说明 | keep | — | 使用说明不适用精简判据 | — | |
 
 ### 3.3 docs/design/vision.md(171 → ≤180)
@@ -109,12 +112,13 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 设计原则(15 条) | rewrite | — | 第 14 条「客户端没有等级」保留;检查各条是否与共同规则重复,重复者留标题一句 | D3 | |
 | 要解决什么,不解决什么 | keep | — | 与 delivery「明确不做」分工:这里是产品层,那里是第一阶段范围 | G4 | |
 | 从这里读下去 | merge | 根 README 三条阅读路径 | 入口只在门户一处 | D3 | |
+| 头部日期 2026-08-29 | rewrite | — | 与 v0.15.0 拍板日不符,随收口统一(Grok A11) | — | |
 
 ### 3.4 docs/design/architecture.md(99 → ≤100)
 
 | 章节 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
-| 三个面(含表与 Workbench 段) | rewrite | — | 第三段(Workbench 非特权前端、原生客户端不统一称只读)与 system.md「客户端动作与 provider 事件」重复,缩为一段 + 引用 | D3 | |
+| 三个面(含表与 Workbench 段) | rewrite | — | 第三段(Workbench 非特权前端、原生客户端不统一称只读)与 system.md「客户端动作与 provider 事件」重复,缩为一段 + 引用;:21「见 spec/system.md 的端点约束与未决问题」指向不存在的节,改指 delivery.md 未决问题(Grok C1);:49「Herdr TUI…v0.8.2 无法提供」改「按 binding 声明的能力如实标注」 | D3 / D2 | |
 | 场景与系统 | keep | — | 系统角色名的权威定义 | — | |
 | 避免供应商锁定 | keep | — | 替换边界唯一权威(spec/README 外部对齐原则末段改引用) | D3 | |
 | 4×3 归属矩阵 | keep | — | | — | |
@@ -172,7 +176,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 为什么存在 | keep | — | | G4 | |
 | 模块拥有什么 | keep | — | | — | |
 | 关键规则 | rewrite | — | 三条底线一条改为人话一句 + 引用 spec/agent;否定句按 N | D3 / N | |
-| Terminal 场景(能力表、P2 段、Execution Chat 段、角色表) | rewrite | — | 角色表「场景客端」错字;WezTerm 一行按 S1 裁决;「不能做什么」列按 N | N / D1 | |
+| Terminal 场景(能力表、P2 段、Execution Chat 段、角色表) | rewrite | — | 角色表「场景客端」错字;WezTerm 在 agent.md:53 与 CLI 并列为一等客户端、delivery:16 写「可选」、根 README 未列——三处口径不一(GLM #16 ⚠、Grok A6/A8):去留需拍板,留则降为「可选外部终端」并三处统一;「不能做什么」列按 N | N / D1 | 是(WezTerm 去留) |
 | Agency 与 Herdr(接口表、v0.8.2 限制清单) | rewrite | — | 限制清单四条整段移除,改为「能力按 binding 声明,当前缺项见 delivery P0」一句 | D3 | 是(拍板点 11) |
 | 原生会话导入 | keep | — | | — | |
 | 模块交接 | keep | — | | — | |
@@ -184,7 +188,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 为什么存在 | keep | — | | G4 | |
 | 七件事分层 | keep | — | | — | |
 | 关键规则 | rewrite | — | 五条改为引用各 spec 落点,只留一句主旨 | D3 | |
-| 专业化 Participant | keep | — | 解释层 | G4 | |
+| 专业化 Participant | rewrite | — | 解释层保留;:45 链到 `agent.md#agency`,现行锚点是 `#agency-与-herdr`(Grok C2) | G4 / D2 | |
 | 模块交接与合同落点 | keep | — | | — | |
 | 版本戳 v0.14.1 | rewrite | — | 改 v0.15.1 | D1 | |
 
@@ -219,6 +223,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | v0.13.0 收窄 | fold-to-history | decision-history §22 尾部 | 同上;含「用户在场证明」「沙箱入场券」两行 | D1 | 是(9) |
 | 外部对齐原则 | rewrite | — | 末段(受控端口隔离默认实现)与 architecture「避免供应商锁定」重复,缩为引用 | D3 | |
 | 文件 | rewrite | — | 加 contract-tests 不在此(它归 delivery 侧),保持只列 spec | S | |
+| 头部日期 2026-08-29 | rewrite | — | 随收口统一(Grok A12) | — | |
 
 ### 3.13 docs/design/spec/project.md(113 → ≤120)
 
@@ -277,7 +282,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | --- | --- | --- | --- | --- | --- |
 | 连接模型 / 连接图 / 总表 | keep | — | | — | |
 | Project → Task | keep | — | | — | |
-| Project / Task → Run | keep | — | | — | |
+| Project / Task → Run | rewrite | — | :61 散文版 Run Manifest 冻结清单与 spec/run.md:49–55 的清单**细目互有缺项**(connections 有端口绑定、网络/secret 范围,run 有放置规则;GLM #11 ⚠):先并集核对补齐 spec/run.md 清单,再把此处改为引用 | D3 | |
 | Project / Run → Agent(启动顺序四步) | rewrite | — | 第 4 步「Herdr v0.8.2 不支持该能力」改为「未声明栅栏回显的 Agency…」 | D3 | 是(11) |
 | Agent → Project / Run | keep | — | | — | |
 | 验收与回流 | keep | — | | — | |
@@ -330,12 +335,13 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 章节 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
 | §1–§5、§7–§12 | keep | — | 转折记录 | — | |
-| §6 Conductor 边界 | fold-to-history | 缩为「当时为何、被 §18 取代」一段 | 被取代 | D1 | 是(3) |
+| §6 Conductor 边界 | fold-to-history | 缩为「当时为何、被 §18 取代」一段;:54「在 §19 换成 Dagu」是笔误(Dagu 是 §18),折叠时改正(Grok A13) | 被取代 | D1 | 是(3) |
 | §13 P/B 双表与 P0 选型 | fold-to-history | 双表部分留一句;选型段折叠 | 选型已全部改判 | D1 | 是(3) |
-| §14、§15、§16、§17 | keep | — | | — | |
-| §18 Dagu、§19 tmux | fold-to-history | 各缩为一段;tmux 官方二进制与 macOS 15 一段随 delivery 修正同步 | tmux 已退场 | D1 | 是(3) |
+| §14、§15、§16、§17 | keep | — | :155 锚点「#执行面已选依赖的运维与-footprint」已改名,改为「#已选外部服务的运维与资源占用」(Grok C4) | D2 | |
+| §18 Dagu | rewrite | — | 选型理由与边界仍有效,**只折叠**「B4 完成 API 代次隔离阻断」一段(已被 §23 撤销),不折整节(Grok A15) | D1 | 是(3) |
+| §19 tmux | fold-to-history | 缩为一段;tmux 官方二进制与 macOS 15 一段随 delivery 修正同步 | tmux 已退场 | D1 | 是(3) |
 | §20–§26 | keep | — | | — | |
-| §27 运行时 provider 三轮 | fold-to-history | 缩为一段,指向 §29 | 被 §28/§29 取代 | D1 | 是(3) |
+| §27 运行时 provider 三轮 | fold-to-history | 缩为一段,指向 §29;:223 的 `agent.md#agency` 锚点与「交付文档第 6 项」(现行 P0 只有 5 项,Herdr 是第 2 项)一并改正(Grok C3) | 被 §28/§29 取代 | D1 | 是(3) |
 | §28 中间方案 | fold-to-history | 缩为两句 | 明标已取代 | D1 | 是(3) |
 | §29–§31 | keep | — | | — | |
 | §32 小修订台账 | rewrite | — | 加 v0.15.1 大修一行;若拍板点 9 选「并入」,五张历史表挂到对应章节尾 | S | 是(9) |
@@ -354,9 +360,20 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | README 头部重组史括号 | rewrite | — | 缩为一句 | D4 | |
 | README 五张表(①–⑧ 类别、L1 精选、L4 补充、运维表、条目索引) | rewrite | — | 条目索引为主索引,类别表缩为一句话导读;运维表留(唯一 footprint 权威) | D3 | |
 | remote-control.md(Codex Remote Feishu + 观察清单) | split | remote-control/codex-remote-feishu.md + remote-control/README 观察清单 | 根目录只放跨候选归纳 | S | |
-| tmux-runtime.md / agentd-runtime-candidates-20260829.md / workbench-shell.md | rewrite | — | 文首加「结论已被 §N 取代,证据继续有效」标注(部分已有) | D1 | |
+| tmux-runtime.md / agentd-runtime-candidates-20260829.md | keep | — | 文首已有「已被取代」标注(Grok A25/A26),不动 | — | |
+| workbench-shell.md「### 当前决定」小节(:12–14) | rewrite | — | 仍以现在时写「保持 Electron + React 19」,与同文件 :7 重解释冲突;改为历史快照口吻(Grok C5) | D1 | |
+| workbench-shell-reopen-20260826/README.md:4、…-a6-local-probes.md:3、…-a3-linux-web-routes.md:87 | rewrite | — | 三处仍链 `implementation-evidence.md#…`(stub 无该锚点);改指 `docs/research/workbench-shell.md#e-workbench-shell` 与 Helio 条目实际文件(Grok C6–C8,后者待核文件名) | D2 | |
+| methodology-landscape-20260824.md:58 | rewrite | — | 「implementation-evidence 全部钉 commit」口吻过时,改为 `docs/research/`(Grok C9) | D1 | |
 
-## 4. 三组跨域同构合并映射
+### 3.24 `.memo` 状态核销(C5 簇)
+
+| 对象 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
+| --- | --- | --- | --- | --- | --- |
+| `design/hctl2-agentd-prd-20260826.md` 文件头 | rewrite | — | 标头改「已废弃组件 · 条款待按 Herdr / control / tool 三类重归」;不重写 83 条 AGD(Grok A28) | D1 | |
+| `notes/doc-cleanup-backlog-20260825.md` 的「agentd-only terminal」「打包与 tmux 拓扑写死」两条 | rewrite | — | 标过时(Grok A29/A30);其余 11 条随 K3 禁令盘点与停车位第 3 项处理 | D1 | |
+| `README.md` 待拍板表 | rewrite | — | 刷新:agentd-prd 标废弃;其余四项是否仍待拍板由所有者核(Grok A31) | — | 是 |
+
+## 4. 四组跨域同构合并映射
 
 ### 4.1 Chat 房间不启用端到端加密的前置与降级(权威:spec/project.md「Room 与消息」)
 
@@ -371,6 +388,10 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | architecture.md 场景与系统表 Chat Room 备注 | 保留半句「不开端到端加密」+ 引用 |
 | connections.md 失败与恢复表「已绑定房间被开启端到端加密」行 | 保留(可观察结果唯一登记处),措辞指向权威 |
 | contract-tests.md CT-PROJECT 两条 | 保留(失败用例是机械覆盖,不是复述) |
+| glossary.md:87 Chat 端口绑定行 | 保留(非规范短释,回链权威) |
+| usage.md:141 Tuwunel 配置禁用房间加密 | 保留(运行证据,不是规则复述) |
+
+(以上共 11 处,按 GLM #7 / GPT 保真通过口径;施工图原写「七处」系漏计测试、术语与运行证据三类。)
 
 ### 4.2 三条底线(权威:spec/agent.md 写入合同段)
 
@@ -383,6 +404,10 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | agent.md 关键规则「三条底线」一条 | 人话一句 + 引用 |
 | decision-history §22 | 保留(转折记录) |
 | contract-tests.md CT-AGENT 两条、B2 验收 | 保留(机械覆盖) |
+| spec/task.md:68「Task 终结两来源」、connections.md:45 连接表行 | 这两处是「工具不是人」在 Task 侧与连接侧的落点,属 §4.4 群,不在此并 |
+| 根 README:99 设计基线 bullet | 随门户收束删,只留指向 |
+
+(以上共 10 处,按 GLM #8 口径。**spec/agent.md 的权威定义不可删**——只留人话或只留 CT 负例,实现者会把底线读成原则而不是写入合同;Grok「最危险三条」之二。)
 
 ### 4.3 Herdr v0.8.2 能力限制(权威:能力条件句在 spec/agent.md「运行时与观测」;缺项清单只在 delivery.md P0 第 2 项与 binding 声明)【拍板点 11】
 
@@ -400,7 +425,28 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | agent.md「Agency 与 Herdr」限制清单四条 | 删整段,改一句「当前缺项见 delivery P0」 |
 | delivery.md P0 第 2 项 | **保留缺项清单**(唯一家) |
 | contract-tests.md CT-AGENT 相关条 | 保留,措辞从「Herdr 不能…」改为「Agency 未声明…时」 |
-| architecture.md 三个面第三段「Herdr TUI…v0.8.2 无法提供…」 | 缩为「按 binding 声明的能力如实标注」 |
+| architecture.md 三个面第三段「Herdr TUI…v0.8.2 无法提供…」与 :49 | 缩为「按 binding 声明的能力如实标注」 |
+| spec/system.md:40「受租约管理的输入先经适配代码校验」 | 保留(这是 HCTL 侧规则,不是 Herdr 限制) |
+| delivery.md:16 P3 出门列「v0.8.2 不能声称 lease/provenance」 | 改为「按 binding 声明」,缺项清单指向 P0 第 2 项 |
+| 根 README:150「不能证明经过输入租约」 | 随门户收束缩为一句 |
+
+(以上共 13 处,按 GLM #9 口径。**不可把 spec/agent 里「无则降级」的能力条件句当成与 P0 重复而删**——那会把 §29「按实测降级、禁止另写终端服务」从合同里拿掉;Grok「最危险三条」之三。)
+
+### 4.4 Task 完成只有两个获准来源(权威:spec/task.md 写入合同「Task 终结只有两个获准 actor 来源」段)【GLM #10 新发现的第四群】
+
+| 现行位置 | 收束后 |
+| --- | --- |
+| spec/task.md:68 | **权威定义**(有权 human 的 Task 命令请求 / task-bound Run 正常完成后的 reducer;human 请求来源不分客户端) |
+| spec/task.md:76「Run 的裸终态、Harness 自述、Git commit、CI 绿色…都不是命令」 | 典型 N 候选:正确道路已写清,改为正面句或删 |
+| spec/run.md:105「Run → Task」 | 保留 Run 侧的 completion_pending 机制(那是 Run 的权威),终结来源句改引用 |
+| spec/connections.md:45 连接表行、:119 验收与回流 | 连接表行保留(字段),:119 的来源复述改引用 |
+| spec/system.md:107「Task 完成只接受…」 | 一句引用(system 保留的是「两类 actor 来源」总则) |
+| task.md:25 关键规则、run.md:43 关键规则 | 各留人话一句 + 引用 |
+| design/README.md:59 共同规则 | 留一句(承重,见 3.5) |
+| 根 README:99 | 随门户收束 |
+| contract-tests.md CT-TASK | 保留(机械覆盖) |
+
+(共 10 处。)
 
 ## 5. 必须继续留在各模块内的差异(合并不得吃掉)
 
@@ -418,6 +464,10 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 - 「chat server 不可用」与「房间事后加密」走同一 fail-closed 规则,但可观察结果不同(重同步中 vs 需要关注)——connections 失败表两行都留。
 - 「Dagu 直接 mutation 只标分歧」(Run)vs「Vikunja Done 可成为完成请求」(Task)——同是 provider 动作,裁决相反,原因(副作用顺序)必须在各自模块说清,不能抽成一条通用规则。
 - 「Harness 可读 common-dir 与 refs」与「Harness 不获交付集成凭据」——一条是允许、一条是禁止,合并成一段时两句都要在。
+- Run Manifest 的两份冻结清单(spec/run.md:49–55 与 connections.md:61)各有对方没有的条目——不是「留一份删一份」,是先并集补齐权威清单再让另一处引用(GLM #11)。
+- usage.md 的「逐 target 源码构建」与 delivery 的「源码构建只用于更新托管制品」——同一件事在两处的限定条件相反,改写 usage 时不能只删句子,要把例外条件写进去(GLM #2)。
+- spec/system.md:109「第一阶段不设额外的用户在场证明」——该删的只是这半句,同段「治理命令只有两类 actor 来源」是 §22 的入口规则,整段当死文删会把「工具不是人」的合同入口一起拆掉(Grok A5,「最危险三条」之一)。
+- delivery.md 打包策略节——把整节当「tmux 时代残留」删会丢掉仍生效的「必须原生、不进 Docker、按 target 分发」;只改 Tuwunel 与 macOS 15 两句(Grok A3/A4)。
 
 ## 6. 每文件提纲与行数上限
 
