@@ -84,7 +84,7 @@ Flutter 3.44 (2026-05-20) announced Canonical as "lead maintainer and Strategic 
 | Codeg | Tauri 2 (`src-tauri`), Apache-2.0 | v0.28.1 (2026-08-24): AppImage amd64, .deb amd64/arm64, .rpm | xintaofei/codeg/releases |
 | first-tree | No desktop shell (`cli`, `doc-website`) | n/a | first-tree-ai/first-tree |
 | Orca ADE | Electron `^43.1.0` + `@xterm/xterm 6.1.0-beta.287`; MIT; 53,469 stars, created 2026-03-17 | AppImage + AUR | stablyai/orca |
-| Helio | not found by this line (documented separately in implementation-evidence.md E-HELIO) | — | |
+| Helio | not found by this line (documented separately in [E-HELIO](../workbench/helio.md#e-helio)) | — | |
 
 ## Claims not verified
 

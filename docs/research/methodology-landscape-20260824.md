@@ -44,7 +44,7 @@
 > | "agent"是什么 | 真进程：spawn/监控/回收 tmux 里的外部 harness | 同一运行时内的一批 LLM 调用，共享内存 | 提示词角色（BMAD v6 明说角色是"可选交互皮肤"） |
 > | 完成怎么判、人在哪 | 机械关单：gates 过 + 推送验证后由 Go 代码带 commit SHA 关闭；人在门上 | consensus 投票，仍是自述；人不在回路 | 人批阶段门 + 模型自勾 done；MetaGPT 没有人类否决位 |
 >
-> 角色模拟这一族正在塌缩：MetaGPT 默认路径把 SOP 瀑布换成 TeamLeader 单点 LLM 路由（往 swarm 塌），BMAD 砍到只剩四阶段文档链加确定性脚本（往 spec 驱动塌）。稳得住的只有两头——拓扑在代码里、进程是真的（编排器），和拓扑在模型里、进程是假的（swarm）。对 HCTL2 的用法因此不同：编排器是 Run/Workflow + agentd + tmux 的同问题域亲戚，机械关单、convoy 归约、Witness 是正面证据；swarm 暂缓；角色模拟不是拓扑问题而是 Worker Profile 问题——角色是提示词层的东西，HCTL2 托管它但不拥有它，其阶段门可借给 Workflow Revision 当 Gate 形状。产品侧的来时路归类见[实现证据 ⑧ 来时路与场景落点](./README.md#lineage-scene-map)。
+> 角色模拟这一族正在塌缩：MetaGPT 默认路径把 SOP 瀑布换成 TeamLeader 单点 LLM 路由（往 swarm 塌），BMAD 砍到只剩四阶段文档链加确定性脚本（往 spec 驱动塌）。稳得住的只有两头——拓扑在代码里、进程是真的（编排器），和拓扑在模型里、进程是假的（swarm）。对 HCTL2 当时的用法因此不同：编排器是 Run/Workflow + agentd + tmux 方案的同问题域亲戚，机械关单、convoy 归约、Witness 是正面证据；该运行时组合后来由 Herdr 取代。swarm 暂缓；角色模拟不是拓扑问题而是 Worker Profile 问题——角色是提示词层的东西，HCTL2 托管它但不拥有它，其阶段门可借给 Workflow Revision 当 Gate 形状。产品侧的来时路归类见[实现证据 ⑧ 来时路与场景落点](./README.md#lineage-scene-map)。
 
 ## 二、我们属于哪种实践
 
@@ -53,9 +53,9 @@
 - Project/Chat Room ≈ spec 驱动的塑形段（Kiro 的阶段门、spec-kit 的 constitution、agent-os 的标准挖掘）+ 上下文工程家族（依据的策展与注入）；
 - Task/Kanban ≈ 任务图驱动（beads 的依赖边与 readiness 归约、Taskmaster 的任务 schema），**加上全生态都没有的契约冻结**——被审计工具的"任务"全部是可随时改写的活文件/活行，没有一家有不可变 Task Revision；
 - Run/Workflow ≈ 编排器的治理段（Gas Town 的机械关单与 convoy 归约）+ TDD/eval 家族的确定性归约立场；
-- Agent/Terminal ≈ 会话多路复用家族（claude-squad/crystal 的问题域，HCTL2 用 agentd+tmux 自answer）。
+- Agent/Terminal ≈ 会话多路复用家族（claude-squad/crystal 的问题域；HCTL2 当时采用 agentd+tmux，后来由 Herdr 取代）。
 
-**研发实践层面**（HCTL2 项目怎么开发自己）：spec 驱动（设计层+合同层双层文档为权威，草案版本化，决策进 decision-history）+ 证据纪律（implementation-evidence 全部钉 commit）+ 多路评审与对抗核验（多个 harness worktree 并行出评审/P0 提案，人裁决）+ 限时验证（选型先跑可丢弃探针）。我们自己的工作方式恰是我们要造的产品的手工版。
+**研发实践层面**（HCTL2 项目怎么开发自己）：spec 驱动（设计层+合同层双层文档为权威，草案版本化，决策进 decision-history）+ 证据纪律（`docs/research/` 条目钉定版本、commit 与来源）+ 多路评审与对抗核验（多个 harness worktree 并行出评审/P0 提案，人裁决）+ 限时验证（选型先跑可丢弃探针）。我们自己的工作方式恰是我们要造的产品的手工版。
 
 ## 三、完成判定权横评（本次审计最硬的一张表）
 
@@ -108,7 +108,7 @@ HCTL2 立场：Task 完成只接受有权人类命令，或绑定 Task 的 Run �
 | 来源 | 组件 | 理由 |
 | --- | --- | --- |
 | vibe-kanban | **executors crate 整体**（10 个 harness 的 spawn/续跑 session-id 语义/日志流解析/审批桥） | 全场最有价值且边界最清晰的资产；项目已 sunset 不能当依赖，Apache-2.0 移植安全——Agent/Run 模块正需要这层 |
-| Gas Town | `internal/tmux` Go 封装（NewSessionWithCommand 避 send-keys 竞态、WaitForRuntimeReady 按 runtime 探测就绪、每镇独立 socket） | HCTL2 已拍板 tmux 运行时后端，这是被 98 个文件实战锤过的封装（MIT）；若不用 Go 则降级为仅参考行为 |
+| Gas Town | `internal/tmux` Go 封装（NewSessionWithCommand 避 send-keys 竞态、WaitForRuntimeReady 按 runtime 探测就绪、每镇独立 socket） | HCTL2 当时拍板 tmux 运行时后端后将它列为可移植组件；该方案后来由 Herdr 取代，本行只保留历史证据 |
 | BMAD | `git_evidence.py`（只度量不裁判，JSON-only，stdlib 无依赖带单测）、`memlog.py`（追加式盲写原子决策日志） | 与"证据/裁决分离"立场完全一致的最小确定性件，可直接抄 |
 | tdd-guard | hook 拦截实现（在 harness 侧强制外部纪律、采集违规证据） | Run 的 Verdict/证据链参考，候选 |
 

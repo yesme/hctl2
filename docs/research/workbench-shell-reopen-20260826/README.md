@@ -1,7 +1,7 @@
 # Workbench 桌面壳重开调研:GPUI / Iced / Flutter / Web 壳(讨论备忘)
 
 > 日期:2026-08-26<br>
-> 对象:main @ `12c9b44`(草案 v0.13.0);现行决定见 `implementation-evidence.md#e-workbench-shell`(Electron + React 19,Tauri 2 有条件重开)。<br>
+> 对象:main @ `12c9b44`(草案 v0.13.0);当时的决定见 [`E-WORKBENCH-SHELL`](../workbench-shell.md#e-workbench-shell)(Electron + React 19,Tauri 2 有条件重开)。<br>
 > 触发:所有者判断 Electron 太肥太慢、Tauri 2 的 Linux 支持太差,提出考察 GPUI(Zed)、Iced 与 Flutter;并把第 4 条诉求从"必须 React"改为"复用现成 UI 轮子、用公共的前端方法论,事件循环这类东西不自己造"。<br>
 > 目标环境:macOS Apple Silicon;**Ubuntu 物理机、NVIDIA 显卡、Wayland(GNOME)**(所有者主开发机);Windows。<br>
 > 模式:六条调研线(GPUI 本体、GPUI 控件生态、Iced、Flutter、Linux 上的 Web 路线、本机同口径探针 ×3)+ 主线复核(gpuix、libghostty、awesome-gpui、tty7/gpui_xterm、Zed GPL crate 依赖扇出)。每条事实附来源;未核实项单列。<br>
