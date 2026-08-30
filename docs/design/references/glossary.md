@@ -7,7 +7,7 @@
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
 | --- | --- | --- | --- |
-| Agent | 执行实现模块 | 第四个领域模块：把上层授权落实为 ChangeSet、运行时、终端、结果提案与证据 | [Agent](../agent.md) |
+| Agent | 执行治理模块 | 第四个领域模块：把上层授权落实为 ChangeSet、运行时、终端、结果提案与证据 | [Agent](../agent.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类执行编码工作的工具 | [三面架构](../architecture.md#场景与系统) |
 | Agency | 派出方 | 按冻结规格派出执行体并持有进程、PTY 与会话的 Terminal 受控端口；第一阶段由 Herdr 实现 | [spec/agent](../spec/agent.md#运行时与观测) |
 | Repo | 仓库 | Git 仓库的逻辑身份；共享配置与结晶随它走 | [spec/project](../spec/project.md) |
