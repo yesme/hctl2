@@ -2,9 +2,9 @@
 
 > 状态：待拍板<br>
 > 基线：main @ fdde842（草案 v0.15.0）<br>
-> 去向：拍板后按本文施工；改动进 `docs/design/` 与必要的 `.memo` 归档，不预先承诺 bump 版本。合同语义以冻结宪法为准，本备忘不改规范。<br>
+> 去向：无（过程记录，不进合同）；拍板后按本文施工<br>
 > 日期：2026-08-30<br>
-> 说明：Informative · 过程提案。来自 log：所有者提出四项大修目标，并问 gpt-5.6-sol (xhigh) 与 fable-5 (xhigh) 如何安排；Grok 给出分工与开工步骤。关联 [v0.15.0 评述](../review/20260830-v0.15.0/grok-20260830a.md)、[设计文档写作方法](../notes/design-doc-method-20260819.md)、[清扫待办](../notes/doc-cleanup-backlog-20260825.md)。
+> 说明：Informative · 过程提案。来自 log：所有者提出四项大修目标，并问 gpt-5.6-sol (xhigh) 与 fable-5 (xhigh) 如何安排；Grok 给出分工与开工步骤。关联 [v0.15.0 评述](../review/20260830-v0.15.0/grok-20260830a.md)、[设计文档写作方法](./design-doc-method-20260819.md)、[清扫待办](./doc-cleanup-backlog-20260825.md)。
 
 ## 这件事是什么、不是什么
 
@@ -96,7 +96,7 @@ Grok-4.6 (xhigh)、K3 (high)、GLM-5.3 (max) 不当第三套主笔。各有一�
 - Electron 当作现行 Workbench 壳（现行是 Tauri 2，Electron 只是安全网）
 - `participant.md` / `context.md` 仍盖 v0.14.1 这类版本戳漂移
 - `architecture.md` 指向 `spec/system.md` 不存在的「端点约束与未决问题」
-- [doc-cleanup-backlog](../notes/doc-cleanup-backlog-20260825.md) 里已过时的 `agentd-only terminal`、`打包与 tmux 拓扑写死`
+- [doc-cleanup-backlog](./doc-cleanup-backlog-20260825.md) 里已过时的 `agentd-only terminal`、`打包与 tmux 拓扑写死`
 
 GLM 复扫：断链、版本戳、设计层泄漏的实现名。**这一步不改正文。** 先把尸体抬出结构讨论，否则 Fable 会把过时段落也「整合」进新目录。
 
@@ -150,7 +150,7 @@ Grok 只审三个问题，不审文笔：
 
 Grok 抽检分类，不重写。然后 GPT 按表改文。Fable 可以读改完的设计层，看「正确道路是否还读得见」，但**不要让它把删掉的不得再写回来。**
 
-[doc-cleanup-backlog](../notes/doc-cleanup-backlog-20260825.md) 的 13 条过强 MUST 并进这张分类表处理，不另开一轮「逐条改合同」。已过时的两条先按第 0 步标过时。
+[doc-cleanup-backlog](./doc-cleanup-backlog-20260825.md) 的 13 条过强 MUST 并进这张分类表处理，不另开一轮「逐条改合同」。已过时的两条先按第 0 步标过时。
 
 ### 第 4 步 · 严丝合缝（GPT，一遍，带预算）
 

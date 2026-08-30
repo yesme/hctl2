@@ -45,5 +45,4 @@
 | `design/context-feeding-20260826.md` §8 | 执行中产生的经验（lesson）是否作为 Result Proposal 可选输出项自动提案；晋升仍走 Memo/Skill |
 | `design/hctl2-agentd-prd-20260826.md` | 讨论稿 → 合同或交付文档 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
-| `design/grok-doc-overhaul-20260830a.md` | 全库文档大修的分工与开工步骤：Fable 目录+设计层初稿，GPT 改事实并主笔 spec，Grok 当闸，K3 抬尸体；施工宪法硬禁令 |
 | `notes/doc-cleanup-backlog-20260825.md` | 13 条过强断言逐条裁决（零散进行，不整份等） |
