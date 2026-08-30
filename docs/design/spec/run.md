@@ -32,7 +32,7 @@ Run 合法边固定为：启动中 → 运行中/失败/已取消/被替代；�
 
 Run 是反应式状态机，但所有输入不共用一条无类型事件通道。human 的 Start/Pause/Resume/Cancel/Request answer 先进入公共 command service；Agent 的结果先进入 Result Proposal；timer 与 Engine 位置先成为带版本观测。control 归约并持久化领域结果、撤权与 outbox 后，adapter 才推动 Dagu。这个先后次序是 Run 正确性的一部分，Workbench、CLI 或 provider UI 都不能绕过。
 
-Dagu 原生 UI/API 的 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 会直接改变定义或机械执行，不能在副作用前携带 HCTL command envelope、Run expected version、Attempt/lease 撤权和同一账本事务。因此这些动作不是可接纳的 provider-origin human 命令请求：对未绑定的 Dagu 对象可作实例管理，对已绑定 Engine Deployment/Execution 的任何直接 mutation 只追加回读观测并把 Engine Execution Binding 标为分歧；control 不根据事后相似状态补造 Run 命令、Verdict 或 Receipt。将来只有 provider 支持 mutation 前拦截，并能让 control 完成同一 Preview/Submit/outbox 顺序后再执行，才可在新 binding revision 中声明相应能力。
+Dagu 原生 UI/API 对已绑定 Engine Deployment/Execution 的直接 mutation 只追加回读观测并把 Engine Execution Binding 标为分歧；只有 provider 支持 mutation 前拦截，并能让 control 完成同一 Preview/Submit/outbox 顺序后再执行，新的 binding revision 才可声明相应 human 命令能力。
 
 `运行中 → 完成` 不是通用写入口，只能由确定性 reducer 在同一预览版本上证明以下正常完成谓词后执行：冻结 Workflow Revision 的全部 required Obligation、Seat、Gate 与声明输出均已在账本中以精确 subject 和 Evidence/Verdict/Receipt 达成；所有 Attempt 已终态，或已先撤销其 runtime、输入/写租约并标为被替代/已取消；不存在仍会影响 required output 的待处理/结果未知外部副作用；Run/Manifest、Engine Execution Binding 的账本记录和全部结果引用仍匹配当前账本版本。任一项未知都只能保持运行/暂停/需要关注或走类型化失败、取消、替代，Engine 检查点结束、进程退出、Harness/LLM 自述和单个 Proposal 都不能补足谓词；Engine 路标此时应停在 success terminal，路标不可读或与账本不一致只把 Engine Execution Binding 标为分歧待对账，既不补足也不阻止谓词。
 
@@ -51,7 +51,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 - Project、0..1 个 Task Revision（第一阶段）、Workflow Revision 与 Engine Deployment；
 - repo/base revision、根 Context Manifest ref+digest、角色与逻辑 Seat；
 - 每个角色/Seat 的精确 Participant revision、Project Role Binding version/digest、required/optional Skill refs+digests；
-- 获准 Worker Profile 候选、切换规则、能力和权限；
+- 受控端口绑定、获准 Worker Profile 候选、切换规则、能力、权限与网络/secret 范围；
 - Gate、预算、放置和截止规则。
 
 第一阶段，绑定 Task Revision 的 Run 表示对该完整 Task 验收合同的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
@@ -102,7 +102,7 @@ Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规
 
 ## Run → Task
 
-Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)。绑定精确 Task Revision 的 Run 只有满足上述正常完成谓词后，完成事务才把该 Task 的 claim 从 `active` CAS 为 `completion_pending(run_ref)`，并以 Run/Task 派生的稳定幂等键写内部「完成 Task」command outbox；pending 阻止新 Run 插入。随后 Task 按同一个用户级账本中的当前 Revision、来源 freshness/drift 和逐项证据独立校验，并在成功 Receipt 或持久拒绝结果的事务清除该 claim。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只有满足上一段隔离前置，其终态事务才释放旧 active claim；它们只形成需要关注/历史，不提交完成或取消 Task。Engine 检查点结束、进程退出或模型自述均不能触发该 handoff。完成谓词只依据账本事实与外部证据的 fresh readback；Engine 路标不可读只把 Engine Execution Binding 标为分歧，不阻止 Run 完成。
+Run 终态只说明 Workflow 到达经 HCTL reducer 确认的终点，不直接改写 [Task](./task.md)；Task 终结的获准来源见[Task 写入合同](./task.md#写入合同)。绑定精确 Task Revision 的 Run 只有满足上述正常完成谓词后，完成事务才把该 Task 的 claim 从 `active` CAS 为 `completion_pending(run_ref)`，并以 Run/Task 派生的稳定幂等键写内部「完成 Task」command outbox；pending 阻止新 Run 插入。随后 Task 按同一个用户级账本中的当前 Revision、来源 freshness/drift 和逐项证据独立校验，并在成功 Receipt 或持久拒绝结果的事务清除该 claim。Task 拒绝不回滚 Run。失败 / 已取消 / 被替代 Run 只有满足上一段隔离前置，其终态事务才释放旧 active claim；它们只形成需要关注/历史，不提交完成或取消 Task。完成谓词只依据账本事实与外部证据的 fresh readback；Engine 路标不可读只把 Engine Execution Binding 标为分歧，不阻止 Run 完成。
 
 ## 外部概念对齐
 
