@@ -123,7 +123,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 避免供应商锁定 | keep | — | 替换边界唯一权威(spec/README 外部对齐原则末段改引用) | D3 | |
 | 4×3 归属矩阵 | keep | — | | — | |
 | 模块交接 | keep | — | connections 总表的产品投影,已声明 | — | |
-| 数据丢了怎么办 | rewrite | — | 与 system.md「全系统事实权威地图」与 connections「失败与恢复」三处;本节留产品叙述,细则改引用;补「路标停更时新义务铸造暂停」半句(事实修正,不改语义) | D3 | |
+| 数据丢了怎么办 | rewrite | — | 与 system.md「全系统事实权威地图」与 connections「失败与恢复」三处;本节留产品叙述,细则改引用。(原拟补「路标停更时新义务铸造暂停」半句,经 Grok 三问 ③ 判为语义项,移入 parking-lot #4,本轮不写) | D3 | |
 
 ### 3.5 docs/design/README.md(设计地图,100 → ≤100)
 
