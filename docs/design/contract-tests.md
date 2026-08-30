@@ -1,7 +1,7 @@
 # 契约测试矩阵
 
 > 状态：验证文档 · 草案 v0.15.1<br>
-> 本文列出八族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
+> 本文列出十族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
 
@@ -69,11 +69,11 @@
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/外部写凭据，凭据只由工具箱/adapter 网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因 expected target head 不匹配显示 drift
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人直接修改 Herdr workspace/pane 归属或已冻结派工结果只形成 drift，不能冒充结果；对精确 terminal 的输入则按 Execution Spec 输入策略处理
-- `native_interactive_allowed` 下原生 TUI/Workbench 直连输入是有效运行时输入,该输入不能直接产生领域结果;Agency 未声明逐次输入记录能力时,还必须标明逐次 provenance、generation 和物理单写者保证不完整
+- `native_interactive_allowed` 下原生 TUI/Workbench 直连输入是有效运行时输入，该输入不能直接产生领域结果；Agency 未声明逐次输入记录能力时，还必须标明逐次 provenance、generation 和物理单写者保证不完整
 - `managed_single_writer` 下不得同时开放 Herdr API 写入与原生 controller 写入，尝试原生写入时执行不得继续声称策略成立
 - Agency 未声明事件游标能力时，不得把事件流当作完整持久 trace；重连后只能按可证明范围恢复观察
-- Agency 未声明退出与停止回读能力,或不能证明同一进程和 PTY 仍存活时,不得声称 exact attach;缺失 exit/stop 回执的执行不得报告为成功停止
-- Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝； Agency 恢复报告无法翻译为四级恢复词汇时按丢失处理
+- Agency 未声明退出与停止回读能力，或不能证明同一进程和 PTY 仍存活时，不得声称 exact attach；缺失 exit/stop 回执的执行不得报告为成功停止
+- Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；Agency 恢复报告无法翻译为四级恢复词汇时按丢失处理
 - Agency 自带的接管/单写者/"会话有效"记录被当作账本事实或替代租约/代次时拒绝
 - 未声明栅栏回显的 Agency 通道未按实际能力降级（原生输入仍宣称逐次受租约管理，或结果按高证据类准入）时拒绝；已声明栅栏回显的 Agency 放行不匹配代次时该绑定标记失信并需要关注
 - control 签发 descriptor、Herdr 适配代码校验 HCTL 授权，观察、输入、Attempt 控制与安全输入权限分离；Agency 未声明栅栏回显能力时，无法执行的 fence 不得被记录为已生效

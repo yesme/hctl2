@@ -56,7 +56,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
 3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；human 请求可以来自 Workbench/CLI，也可以来自模块 binding 明确接纳的 provider 动作，但必须归一到同一命令。结果可以作为记录写回 content 系统，回写本身不得再取得 human provenance。
 
-## 词汇索引（v0.9.1 归并后）
+## 词汇索引
 
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
 - **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding

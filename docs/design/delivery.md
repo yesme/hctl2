@@ -38,7 +38,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 ## 明确不做
 
 - 多用户组织/RBAC、云队列、多主机调度和 Dagu coordinator/worker 集群；
-- 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md)），不是待补功能；
+- 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md#12-场景数据的三分metadata--content--artifact)），不是待补功能；
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
 - 自建聊天桥接（永久不做，不只是第一阶段：非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入，HCTL 只保留桥接用户的身份映射）、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
@@ -115,7 +115,7 @@ B5 是第一阶段功能成熟度目标；正式发布、升级与回滚仍必�
 1. **接口公开干净**：优先公开协议与文档化 API，保证第三方 UI 与场景客户端互操作——chat 场景直接采用 Matrix 协议；任务场景没有同级的开放协议，选择 API 完整、支持条件写入的实现并以受控端口隔离。
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
 3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
-4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证，且只验 HCTL 实际依赖的 API 与行为（第 2、3 条是选型时的资料判断，在首次消费时产品化，不进 P0）；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
+4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证，且只验 HCTL 实际依赖的 API 与行为（边界见「开工前限时验证」）；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
 
 ## 开工前限时验证
 
@@ -126,6 +126,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读均按 Chat 端口调用面核对；事务 ID、事件顺序与重同步沿用 Matrix homeserver 合同，低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化，结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
 4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja，备份恢复和托管生命周期留到 B1 产品化，git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
+
 ## 打包策略（选型判断，首次消费时产品化）
 
 分界线是**碰不碰宿主机现场**：

@@ -55,7 +55,7 @@ Workbench 随后被明确为四个 Scene 的集成客户端，而不是新的领
 
 早期实践曾试图通过 prompt 要求 Harness 在“确实完成”时才报告完成，并期待模型自行维持 Task、Run 与执行结果之间的边界。实际使用表明，这种约束不能稳定提供终结权：模型输出仍是受上下文影响的建议，Harness 也只能观察本次执行，无法替 Task 的冻结验收合同作出权威裁决。由此形成一条更一般的教训：凡是能够由身份、版本、状态与证据机械判断的事项，就不再交给 LLM 灵活解释。
 
-当前合同因而把 Task 完成收窄为两条可审计路径。其一是有权 human actor 从 Kanban Scene 提交「完成 Task」命令；其二是绑定该 Task Revision 的 Workflow 正常完成后，由 reducer 按冻结规则提交同一个「完成 Task」命令。第二条路径不是让 Run 的完成态静默传染给 Task：Task 仍须重新校验版本、证据和来源状态，校验失败便保持开放；Workflow 的失败、取消或替代终态也不会终结 Task。Task 的取消则仍由有权 human actor 显式决定。
+这轮改判把 Task 完成收窄为两条可审计路径：有权 human actor 提交「完成 Task」命令，或绑定 Workflow 正常完成后由 reducer 提交同一命令；同时拒绝让 Run 终态直接改写 Task。现行验收、取消与失败处理见 [Task 合同的写入合同](../spec/task.md#写入合同)。
 
 Harness、Participant、模型输出和 runtime signal 可以提供 Result Proposal、Artifact 与 Evidence，却不成为 terminal actor。这个 pivot 把过去依赖提示词维持的行为期望，下沉为工具箱与 control 可以拒绝的 actor provenance、命令与 reducer 规则。
 
@@ -63,7 +63,7 @@ Harness、Participant、模型输出和 runtime signal 可以提供 Result Propo
 
 First Tree 证明了持久 Chat、稳定且显式的 recipient，以及发生在共享对话中的可见 handoff，能够维持多 Agent 协作连续性；这些优点被保留。它也允许 Agent 在运行中 `invite + send`，并由接收者继续寻址第三个 Agent，使协作图临场生长。HCTL2 没有把这后一项作为普通 Room 的默认能力，因为创建下一条执行边同时改变参与者、Context 披露、权限、预算与终止条件。
 
-因此当前设计只承认两类边：普通 Chat Room 的临场协作边由有权 human actor 创建，Workflow 的执行边由 reducer 按冻结的 Workflow Revision 创建。Agent-authored message、Result Proposal 或模型总结可以建议下一位 Participant，却不能自行 cue 新 worker、扩大 fan-out 或递归委派。在 Chat Room 中，人本来就处于讨论焦点；系统应把建议变成可一键批准、自动携带引用与 Context 的 handoff，而不是让人重新复制和转述内容。
+这轮改判把协作边收窄为两类：有权 human actor 创建普通 Chat Room 的临场边，reducer 按冻结的 Workflow Revision 创建执行边；Agent 只建议下一位 Participant。现行预览、授权与执行边规则见 [Project 合同的场景合同](../spec/project.md#场景合同)。
 
 这不是否定多 Agent 协作，也不是宣称 Agent-to-Agent 永远无效；它把开放的临场 mesh 换成“人拥有即时星形拓扑、状态机拥有预授权有界图”的当前产品选择。First Tree 的具体采用与拒绝证据见 [`E-L4-FIRST-TREE`](../../research/workbench/first-tree.md#e-l4-first-tree)。
 
@@ -98,7 +98,7 @@ v0.9.1 处理概念层面的同类问题。全量清点暴露出 75 个以上具
 
 ### v0.9.1 归并对照
 
-核销记录(自 spec/README 迁入)
+核销记录（自 spec/README 迁入）
 
 | 旧名 | 现状 |
 | --- | --- |
@@ -127,7 +127,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ### v0.10.3 清扫
 
-核销记录(自 spec/README 迁入)
+核销记录（自 spec/README 迁入）
 
 | 旧名 | 现状 |
 | --- | --- |
@@ -146,7 +146,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ### v0.11.1 词形收敛
 
-核销记录(自 spec/README 迁入)
+核销记录（自 spec/README 迁入）
 
 | 旧形 | 新形 |
 | --- | --- |
@@ -204,14 +204,14 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#32-小修订台账)与[合同层清扫表](#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#32-小修订台账)与[核销表](#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
 
 ### v0.12.2 清扫
 
-核销记录(自 spec/README 迁入)
+核销记录（自 spec/README 迁入）
 
 三类数据切分落地后按概念门槛复查的降级与统一：
 
@@ -236,13 +236,13 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 复审 v0.12.0 §16 引入的两项机制后改判。当时把 OS 强制沙箱写成受治理执行的入场券、把“一次性用户在场证明”当作防止执行体冒充人的机制，两者都把治理面必须成立的底线和宿主机层面的加固绑在了一起：前者让第一阶段在 macOS 上启动不了多数真实 Harness，并把容器反向推成事实上的桌面沙箱；后者让 CLI 变成需要二次交互的入口，与“Workbench 与 CLI 同一验证规则、CLI 是 P2 正面形态”相抵。
 
-正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（治理命令只有两类入口：经认证的场景客户端会话——Workbench、CLI 或按公开合同适配的第三方客户端——以及施工图走完后 reducer 提交的同一「完成 Task」命令；Harness 的产出只经 Result Proposal 通道进来，不是入口——只验入口，不判断客户端是被人还是子进程启动）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结、agentd 按声明施加并记录为运行时事实；未声明不拦启动、也不得记录为已生效；已声明项是该次执行的要求，宿主施加不了则不激活并列出缺项——不声明即可启动，所以不是入场券回潮，只是不让下游把 Execution Spec 冻结的范围悄悄放宽。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
+正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（治理命令只有两类入口：经认证的场景客户端会话——Workbench、CLI 或按公开合同适配的第三方客户端——以及施工图走完后 reducer 提交的同一「完成 Task」命令；Harness 的产出只经 Result Proposal 通道进来，不是入口——只验入口，不判断客户端是被人还是子进程启动）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结；该轮的实现安排由 agentd 按声明施加并记录为运行时事实，后来由 §29 取代。未声明不拦启动、也不得记录为已生效；已声明项是该次执行的要求，宿主施加不了则不激活并列出缺项——不声明即可启动，所以不是入场券回潮，只是不让下游把 Execution Spec 冻结的范围悄悄放宽。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，合同只承诺三条底线在治理面成立。
 
 本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应合同句在 [Agent 模块合同](../spec/agent.md)的写入合同与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
 
 ### v0.13.0 收窄
 
-核销记录(自 spec/README 迁入)
+核销记录（自 spec/README 迁入）
 
 | 旧名 / 旧词 | 现状 |
 | --- | --- |

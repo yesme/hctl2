@@ -31,7 +31,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
 
-第一阶段 HCTL 启动的每个 Harness 都以窄 execution principal 运行，三条底线不可声明关闭：**工具不是人**——Harness、runtime hook 与模型只有 Result Proposal 通道，不是治理命令入口（两类入口见[系统边界](./system.md#命令与跨服务正确性)）；**合入钥匙不进工具**——HCTL 不向 Harness 交付集成与外部写凭据（目标 ref、远端 SCM、任务后端、chat 写入），这些凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用，Harness 也不获交付 control 客户端凭据与 human principal credential；**隔离工作树**——写入只及于该 ChangeSet 的独立 worktree 与本 ChangeSet 分支，以有效 Write Lease 为前提。在此之内 Harness 是普通的 Git 用户：可读所属 Repo Instance 的 Git common-dir 与 refs（log、fetch、比对目标分支）并在本 ChangeSet 分支上提交；绕过「合入 ChangeSet」命令直接改写目标 ref 或其他 ChangeSet 现场不取得集成 authority，只回读为 drift。OS 强制的执行沙箱、凭据代用范围、网络目的地与工具接口白名单是可选执行加固：由 Worker Profile 声明、随 Execution Spec 冻结，并在启动前按所选 Agency 与宿主实际能力核验；未声明则不施加、不拦启动、也不得记录为已生效；已声明而当前实现不能可靠施加时，control 不激活并列出缺项。安全输入只有在所选接入方式声明并实现不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay 的保证时才能启用；未声明该保证的接入方式不启用安全输入。control 在派工交付前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部可验证 fence。
+第一阶段 HCTL 启动的每个 Harness 都以窄 execution principal 运行，三条底线不可声明关闭：**工具不是人**——Harness、runtime hook 与模型只有 Result Proposal 通道，不是治理命令入口（两类入口见[系统边界](./system.md#命令与跨服务正确性)）；**合入钥匙不进工具**——HCTL 不向 Harness 交付集成与外部写凭据（目标 ref、远端 SCM、任务后端、chat 写入），这些凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用，Harness 也不获交付 control 客户端凭据与 human principal credential；**隔离工作树**——写入只及于该 ChangeSet 的独立 worktree 与本 ChangeSet 分支，以有效 Write Lease 为前提。在此之内 Harness 是普通的 Git 用户：可读所属 Repo Instance 的 Git common-dir 与 refs（log、fetch、比对目标分支）并在本 ChangeSet 分支上提交；绕过「合入 ChangeSet」命令直接改写目标 ref 或其他 ChangeSet 现场不取得集成 authority，只回读为 drift。OS 强制的执行沙箱、凭据代用范围、网络目的地与工具接口白名单是可选执行加固：由 Worker Profile 声明、随 Execution Spec 冻结，并在启动前按所选 Agency 与宿主实际能力核验；未声明则不施加、不拦启动、也不得记录为已生效；已声明而当前实现不能可靠施加时，control 不激活并列出缺项。安全输入只有在所选接入方式声明并实现不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay 的保证时才能启用。control 在派工交付前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部可验证 fence。
 
 ## ChangeSet 与 Git 事实
 
@@ -65,7 +65,7 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 Execution Runtime 由**Agency**（派出方）承载。Agency 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体及其运行现场与访问通道，常驻持有现场并报告存活与恢复等级。第一阶段只采用 **Herdr**：它直接从已配置的 Harness 启动执行体，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再放置独立 Agency 组件或下一层终端运行服务。control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账；替换未来的 Agency 不改变治理合同。派出交付物必须按冻结规格逐项核验后方可激活，缺项列出且不激活；派出不转移参与者身份：Agency 供给的是七层身份链的下层（模型、执行者配置、一次物理执行），Participant 身份与席位仍由账本拥有并绑定。
 
-Agency 合同**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本；Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。Agency 若声明栅栏回显能力，必须原样携带并回显请求所附的代次与租约引用，并拒绝不匹配项；未声明栅栏回显的 Agency，第一阶段只在 HCTL 入口校验。原生输入可以按下文输入策略成为正常的用户运行时输入，但不能承载要求物理 fence 的动作，也不能作为高证据类结果直接准入；绕过适配代码提交结构化结果仍不被接受。
+Agency 合同**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本；Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。原生输入可以按下文输入策略成为正常的用户运行时输入，但不能承载要求物理 fence 的动作，也不能作为高证据类结果直接准入；绕过适配代码提交结构化结果仍不被接受。
 
 进程、PTY、原始流与心跳由 Herdr 持有；control 经 Herdr 适配代码执行已获准的 start/input/cancel/stop，Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按 Herdr API/进程 > 结构化 lifecycle 事件或 hook > title/screen 仲裁，语义观测按结构化提供方协议或原生 hook > 转录推断 > title/screen 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
 

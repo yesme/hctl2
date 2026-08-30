@@ -166,7 +166,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 `control_writer_generation`；writer 可以搬迁（换机器、上服务器），账本身份不变。不存在 Repo 级或 Project 级的第二个 control writer。
 
-每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。不接收也不回显 HCTL generation 的 Agency，其 terminal 动作按未取得物理 fence 的低信任观测记录。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
+每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 
