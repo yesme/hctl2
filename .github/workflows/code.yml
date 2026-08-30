@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       code: ${{ steps.paths.outputs.code }}
+      docs: ${{ steps.paths.outputs.docs }}
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -36,14 +37,25 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
-          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.github/workflows/code\.yml$)'; then
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          # src/build/docs/ is doc-lint tooling: it triggers the docs checks,
+          # not the three-platform build matrix.
+          if printf '%s\n' "$changed" | grep -E \
+            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.github/workflows/code\.yml$)' \
+            | grep -qv '^src/build/docs/'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$changed" | grep -qE \
+            '^(docs/|\.memo/|README\.md$|AGENTS\.md$|CLAUDE\.md$|CONSTRAINTS\.md$|src/build/docs/|\.github/workflows/code\.yml$)'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install pinned build linters
@@ -217,9 +229,39 @@ jobs:
       - name: Test workspace
         run: cargo +1.98.0 test --locked --workspace --all-targets
 
+  docs-check:
+    name: Docs checks
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      BUCK_CONSOLE: simple
+      HCTL2_BUCK2_CACHE: 0
+    defaults:
+      run:
+        working-directory: src
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install pinned DotSlash
+        run: |
+          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
+          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Materialize doc lint inputs
+        run: build/docs/materialize_repo_tree.sh
+
+      - name: Run doc checks
+        run: ./buck2 test root//build/docs/...
+
+      - name: Prohibition density report (report-only)
+        run: build/docs/report_prohibition_density.sh build/docs/repo_tree
+
   ci-gate:
     name: CI gate
-    needs: [changes, pr-contract, buck, cargo-parity]
+    needs: [changes, pr-contract, buck, cargo-parity, docs-check]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -228,15 +270,20 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
+          DOCS: ${{ needs.changes.outputs.docs }}
           CONTRACT: ${{ needs.pr-contract.result }}
           BUCK: ${{ needs.buck.result }}
           CARGO: ${{ needs.cargo-parity.result }}
+          DOCSCHECK: ${{ needs.docs-check.result }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES code=$CODE contract=$CONTRACT buck=$BUCK cargo=$CARGO"
+          echo "changes=$CHANGES code=$CODE docs=$DOCS contract=$CONTRACT buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
           test "$CHANGES" = success
           if [ "$EVENT_NAME" = pull_request ]; then
             test "$CONTRACT" = success
+          fi
+          if [ "$DOCS" = true ]; then
+            test "$DOCSCHECK" = success
           fi
           if [ "$CODE" != true ]; then
             echo "No first-party or CI paths; skip Buck2 and Cargo."

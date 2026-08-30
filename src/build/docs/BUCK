@@ -1,0 +1,56 @@
+# Doc lint checks for the repo-wide documentation overhaul (S1).
+# The linted files live at the repo root, outside the Buck2 cell (src/).
+# materialize_repo_tree.sh copies them into repo_tree/ (gitignored); tests below
+# consume only that copy so Buck2 caching tracks the actual doc contents.
+# Run `src/build/docs/materialize_repo_tree.sh` before `buck2 test`.
+
+oncall("hctl2")
+
+filegroup(
+    name = "repo_tree",
+    srcs = glob(["repo_tree/**"]),
+)
+
+filegroup(
+    name = "configs",
+    srcs = glob(["*.txt", "*.allowlist"]),
+)
+
+sh_test(
+    name = "check_links",
+    test = "check_links.pl",
+    args = ["build/docs/repo_tree", "build/docs/links.allowlist"],
+    resources = [":repo_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_version_stamps",
+    test = "check_version_stamps.sh",
+    args = ["build/docs/repo_tree", "build/docs/version_stamps.allowlist"],
+    resources = [":repo_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_dead_names",
+    test = "check_dead_names.sh",
+    args = [
+        "build/docs/repo_tree",
+        "build/docs/dead_names.txt",
+        "build/docs/dead_names.allowlist",
+    ],
+    resources = [":repo_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_memo_review_baseline",
+    test = "check_memo_review_baseline.sh",
+    args = ["build/docs/repo_tree", "build/docs/memo_review_baseline.allowlist"],
+    resources = [":repo_tree", ":configs"],
+)
+
+sh_test(
+    name = "report_prohibition_density",
+    test = "report_prohibition_density.sh",
+    args = ["build/docs/repo_tree"],
+    resources = [":repo_tree"],
+)

@@ -1,0 +1,6 @@
+# links.allowlist — 已知的断链/断锚，大修期间由对应簇修复后逐条移除
+# 格式：repo 相对路径<TAB>链接目标子串
+# 全部三条为真断锚；S0 未拍板前不得改 docs/**（施工图 §S0），故先豁免并如实上报
+docs/design/participant.md	./agent.md#agency
+docs/design/references/decision-history.md	../agent.md#agency
+docs/design/references/decision-history.md	#执行面已选依赖的运维与-footprint
