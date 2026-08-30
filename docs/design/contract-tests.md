@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.15.3<br>
+> 状态：验证文档 · 草案 v0.15.4<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -49,6 +49,7 @@
 - 编译/Profile 拒绝、0..1 Task 绑定、已绑定 Engine mutation 只有 control
 - Dagu UI/API 直接 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 时只标记 Engine Execution Binding 分歧，不倒推 Run 命令、Verdict 或 Receipt；停止路径若未先持久化 intent 与撤权则不能冒充 HCTL Cancel 成功
 - 超时与候选切换只依据账本自己的 Obligation deadline
+- 路标停更（binding 分歧待对账）期间或依据缓存/迟到/旧 cursor 观察铸造新 Obligation 时拒绝；已铸造义务照常验收与判决
 - dispatch ACK 丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功
 - retry 只产生一个新 Obligation 并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 产生明确的失败类型，所有 Run 过渡态可失败/替代
 - dynamic fork 超出冻结 Seat 模板/recipient/基数/预算时拒绝
