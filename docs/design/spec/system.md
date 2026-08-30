@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.15.1<br>
+> 状态：规范性合同 · 草案 v0.15.2<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -39,7 +39,7 @@ hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，
 
 每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别；活动执行固定使用准入时的 binding。提供方消失时安全暂停、失败或创建替代执行。
 
-`trust_level` 只由 control policy 根据允许的 trusted source 与精确 artifact digest 授予，扩展或 registry 的自我声明保持未授信。discovery 限于读取已配置 definition、本地安装和执行无副作用探测；install/upgrade 是用户显式提交的类型化动作，产生新 Extension Revision，后续解析再产生新 Resolved Port Binding，活动执行继续使用原绑定。
+`trust_level` 只由 control policy 根据允许的 trusted source 与精确 artifact digest 授予，扩展或 registry 的自我声明保持未授信。discovery 默认只读取已配置 definition、本地安装并执行无副作用探测，联网探测可由用户显式配置启用；discovery 不静默安装组件或修改配置，install/upgrade 是用户显式提交的类型化动作，产生新 Extension Revision，后续解析再产生新 Resolved Port Binding，活动执行继续使用原绑定。
 
 跨模块可引用的扩展信息只有两个最小概念：
 
@@ -76,7 +76,7 @@ Workbench 不比四个原生客户端加在一起更高贵，CLI 也不更低。
 | 类别 | 例子 | control 怎样处理 |
 | --- | --- | --- |
 | content 写入与观测 | Matrix 消息；Vikunja 创建、编辑、排序、非终态移动 | provider 先拥有该 content；control 按 cursor/Snapshot 对账，按模块合同更新投影或建立无契约身份，不把 content 直接当治理事实 |
-| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，先跑同一 Preview/准入；只有无需临场选择且 binding 明确允许自动提交时才继续 Submit，否则保留为待处理或返回类型化拒绝 |
+| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；需要临场选择、危险动作未经确认或 binding 未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
 | 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按 descriptor/lease/generation 能力记录保证等级，但不因此产生 Task/Run/Project 结果 |
 | 执行结果提议 | harness/Agency 的结构化终局事件与证据 | 只进入 Result Proposal；owner 模块按版本、代次和证据准入 |
 | 不支持的 provider mutation | 直接在 Dagu UI Start/Stop/Retry/Approve，或改写已绑定 execution | 记录当前机械事实并标记 binding 分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
@@ -118,7 +118,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 Repo 是四模块可归属的逻辑仓库，由 [Project 模块](./project.md#repo-注册与-project-归档)注册；Repo Instance 是本系统拥有的物理执行现场，不属于任何 Project。一个 Repo 可以显式挂接多个 Repo Instance，每个现场固定稳定 `repo_instance_id`、精确 `repo_id`、host/site identity、Git common-dir identity 与首次校验的 Git 证据；worktree、ChangeSet 物化、工具箱锁与本机 runtime 都通过该现场引用。
 
-「挂接 Repo Instance」命令先由工具箱无副作用读取 Git identity，再由 control 预览并写入账本。相同 Git common-dir 重试返回原现场；不同现场只有在 Git 中的稳定 Repo identity 与命令指定的 `repo_id` 一致时才能挂接。身份由稳定 Git identity 证明，remote URL、目录名或碰巧相同的 HEAD 只作辅助证据；缺失 identity、fork 语义不明、一个 common-dir 已归属另一 Repo 或证据相互冲突时必须类型化拒绝并要求用户选择注册新 Repo 或修复来源。移除现场只撤销其新执行资格，不删除 Repo、Project、历史 Run 或已封存 ChangeSet。
+「挂接 Repo Instance」命令先由工具箱无副作用读取 Git identity，再由 control 预览并写入账本。相同 Git common-dir 重试返回原现场；不同现场只有在 Git 中的稳定 Repo identity 与命令指定的 `repo_id` 一致时才能挂接。身份由稳定 Git identity 证明，remote URL、目录名或碰巧相同的 HEAD 只作辅助证据；缺失 identity、fork 语义不明、一个 common-dir 已归属另一 Repo 或证据相互冲突时不静默挂接：展示全部证据，由用户显式确认归属（挂接到指定 Repo、注册新 Repo 或修复来源）后按确认结果继续。移除现场只撤销其新执行资格，不删除 Repo、Project、历史 Run 或已封存 ChangeSet。
 
 ### 控制面自己的存储
 
@@ -128,7 +128,7 @@ control 也会把结果写到自己的库以外，但那些是外部副作用的
 
 账本只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/runtime 身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账需要治理的那部分外部关系。账本与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级账本、权威归属和备份传承”由架构合同固定，独立于实现选择。
 
-存储拓扑固定为：
+存储拓扑默认为（路径与布局是实现选择，三类存储的职责边界才是合同）：
 
 ```text
 ~/.hctl2/                      # 用户级配置、Harness/Profile/Skill/Runtime 定义
@@ -138,7 +138,7 @@ control 也会把结果写到自己的库以外，但那些是外部副作用的
 <git-common-dir>/hctl2/       # untracked · lock、traces/、cache/ —— 仅 OS 锁与可丢弃缓存
 ```
 
-HCTL 不写 Git 内部命名空间；密钥使用系统 secret store，不进入 Git、Room 或 Context。用户级 Profile/Skill/Runtime 定义以不可变 revision/digest 被引用；更新 current pointer 必须经唯一 control writer 做 expected-version CAS。某个 Repo Instance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
+是否使用 Git 内部命名空间（refs/notes）是实现选择，默认不写；使用时它们同样只是缓存或审计影子，不构成第二本账。密钥使用系统 secret store，不进入 Git、Room 或 Context。用户级 Profile/Skill/Runtime 定义以不可变 revision/digest 被引用；更新 current pointer 必须经唯一 control writer 做 expected-version CAS。某个 Repo Instance 的活动执行只读已冻结 revision，不因另一个实例更新用户级 current pointer 而漂移。
 
 ### Git 的双重角色
 
@@ -164,9 +164,9 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 ## 单写者
 
-用户级 metadata 账本同时只有一个 control writer：先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 `control_writer_generation`；writer 可以搬迁（换机器、上服务器），账本身份不变。不存在 Repo 级或 Project 级的第二个 control writer。
+用户级 metadata 账本的单写者合同只有三条底线：同时只有一个逻辑 control writer、已确认副作用不重复执行、旧结果不覆盖新结果。当前实现先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 `control_writer_generation`——锁路径与推进机制是实现细节，不构成对外合同。writer 可以搬迁（换机器、上服务器），账本身份不变。不存在 Repo 级或 Project 级的第二个 control writer。
 
-每个 Repo Instance 的 Git/worktree 资源由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
+每个 Repo Instance 的 Git/worktree 资源互斥当前由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁实现，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
 

@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.15.1<br>
+> 状态：验证文档 · 草案 v0.15.2<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -9,10 +9,10 @@
 
 - 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认
 - Project 分组与 Room anchor 可重建
-- 有活动 Invocation/Run 或开放 Request 时归档 Project 拒绝
+- 有非终态 Run、写入型 Invocation、活动租约或未决外部写副作用时归档 Project 拒绝；仅开放 Task/Request 或未归档 Scoped Room 随归档转入只读，不被隐式终结
 - CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结
 - Repo Room 只把显式选中的来源链带入新 Project
-- Scoped Room 回填和同根因 Request 去重
+- Scoped Room 回填和同根因 Request 去重；未回填且无显式结案（abandoned/no-decision/superseded 及理由）的 Scoped Room 归档拒绝
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
 - chat server 不可用时，依赖 fresh Room 来源、身份或 Context 的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
 - Chat 端口绑定只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
@@ -24,7 +24,7 @@
 - 原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo
 - 治理引用指向滚动纪要而非精确消息事件时拒绝
 - Bundle 压缩条目缺 compressor/原文 digest 记录，或压缩了证据类内容时拒绝交付
-- 萃取索引与纪要缓存删除后可完整重建且不丢事实；相关性门判定缺可审计记录时无效
+- 萃取索引与纪要缓存删除后可完整重建且不丢事实；相关性门判定缺可审计记录时无效，未配置 small-brain 时以消息正文做路由拒绝
 - 过期或被取代的 Memo 不进指针清单，显式引用除外
 
 ### `CT-TASK` · Task / Kanban
@@ -34,7 +34,7 @@
 - local state version 与 remote revision 不混用，过期邻项移动重算
 - 本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝
 - 未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效
-- active Run 尚未结束时 terminal intent 拒绝
+- active Run 尚未结束时 terminal intent 拒绝；活动 Run 期间采纳契约推进 current 后，Run reducer 的「完成 Task」按契约分歧拒绝，不静默完成新 Revision
 - Workbench/CLI human 完成、满足 binding 的 Vikunja Done event 与正常 Run reducer handoff 都走同一「完成 Task」命令；Result Proposal 与单独观察到的外部关闭态提交不了它
 - Vikunja Done event 缺 doer 映射、前后变化、remote revision/updated version、fresh readback 或规范幂等 tuple 时只追加 Snapshot；重复/迟到 webhook 不重复完成
 - provider Done 请求遇到无契约、活动 Run、证据不足或新 drift 时保持外部 Done + HCTL 开放并返回类型化结果，不回滚 provider、不伪造 Receipt
@@ -61,7 +61,7 @@
 ### `CT-AGENT` · Agent / Terminal
 
 - 能力探测、ChangeSet 单 writer、精确 Revision/digest、runtime generation
-- 无法证明旧 writer 已 fence 时隔离旧 worktree 且不得重授租约，失败清理不丢唯一未封存/未跟踪修改
+- 无法证明旧 writer 已 fence 时默认隔离旧 worktree 不自动重授租约，接管、采用或丢弃缺少有权 human 显式确认时拒绝，失败清理不丢唯一未封存/未跟踪修改
 - 本地/远端 SCM 集成都先持久 integration intent，由 tool/adapter 执行并 readback，target-head 竞争或 ACK 未知时不得签成功 Integration Receipt
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误 owner/generation 输入和无 provenance Share 均拒绝
@@ -100,8 +100,9 @@
 ### `CT-SYSTEM` · 系统
 
 - 同一用户级账本只能有一个 control writer，第二 writer 拒绝
-- 多个执行现场可以登记（各有工具箱与 Herdr 绑定），但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时不得重授写权限
+- 多个执行现场可以登记（各有工具箱与 Herdr 绑定），但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时默认不重授写权限，重授只能来自有权 human 预览证据后的显式确认
 - 命令幂等
+- 危险动作（不可逆、产生外部权威副作用或扩大权限）未经确认的直接 Submit 拒绝；普通命令直接 Submit 与经 Preview 提交结果一致
 - 同一 human action 经 Workbench、CLI 或 provider adapter 进入时使用同一准入规则；重复、迟到和乱序 provider event 不产生第二份领域效果
 - commit/ACK 各崩溃点回读
 - schema migration、投影重建
@@ -116,7 +117,7 @@
 
 ### `CT-PACKAGING` · 扩展 / 打包
 
-- 自声明 trust、有副作用的 discovery、静默 install/upgrade、非本地未认证 Dagu、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝
+- 自声明 trust、有副作用的 discovery、未经用户配置的联网探测、静默 install/upgrade、非本地未认证 Dagu、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝
 - 未声明的 capability/permission/scope、未声明的 IPC 或插件能力、remote runtime script/CDN 时拒绝；Electron 安全网形态下 renderer Node/raw IPC 同样拒绝
 
 ### `CT-WORKBENCH-IA` · Workbench 信息架构

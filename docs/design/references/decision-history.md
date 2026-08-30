@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.15.1 · 2026-08-31<br>
+> 状态：Informative · 对应草案 v0.15.2 · 2026-08-31<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前合同以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -142,7 +142,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#32-小修订台账)。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#33-小修订台账)。
 
 ### v0.11.1 词形收敛
 
@@ -204,7 +204,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块合同——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#32-小修订台账)与[核销表](#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接合同的失败表）；裁决与去向见[小修订台账](#33-小修订台账)与[核销表](#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统合同的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
@@ -314,7 +314,15 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 这次变化同时移动 Workbench 定位、human 命令入口和 Task/Agent 的可接受行为，故从 v0.14.2 升为 v0.15.0，而不是补丁修订。实现证据分别见 [Vikunja 复核](../../research/task-backends.md#2026-08-30-provider-动作复核)、[Dagu 复核](../../research/workflow-engines.md#2026-08-30-provider-管理动作复核)与 [Herdr 验证](../../research/runtime/agency-runtime-validation-20260829.md#2026-08-30-原生客户端定位复核)。
 
-## 32. 小修订台账
+## 32. 过强断言放宽：十一条边界回到用户确认（v0.15.2）
+
+2026-08-31 所有者拍板。v0.12.3 评审沉淀的 13 条过强断言（[清扫待办](../../../.memo/notes/doc-cleanup-backlog-20260825.md)）中，两条已随组件退场核销，其余 11 条一次放宽。共同方向：把「绝不 / 永久 / 全部」形态的硬性禁令改回「默认安全 + 有权 human 显式确认后可越过」，或「底线保留、机制降为实现细节」——正确的路写清之后，错误 case 不必逐条堵死。
+
+逐条落点：discovery 默认本地，联网探测可配置且不静默安装改配（系统边界）；危险动作默认 Preview 确认，普通命令可直接 Submit（系统边界）；不可证静默的旧 worktree/ChangeSet 默认隔离，human 确认后可接管、封存、采用或丢弃（Agent 合同）；清理默认保全，确认后可丢弃（Agent 合同）；单写者只保留三条底线——一个逻辑 writer、已确认副作用不重复、旧结果不覆盖新结果，锁路径与推进机制降为实现细节（系统边界）；存储拓扑与 Git 内部命名空间用法降为实现选择（系统边界）；Repo 挂接证据缺失或冲突时展示证据、由用户确认归属（系统边界）；Project 归档只被非终态 Run/写入型 Invocation、活动租约与未决外部写副作用阻塞，开放 Task/Request/Scoped Room 随归档转只读（Project 合同）；Scoped Room 可显式以 abandoned/no-decision/superseded 结案归档（Project 合同）；Context 萃取与相关性门缺省全本地零模型，配置 small-brain 后可模型辅助（Project 合同与横切正文）；活动 Run 期间可采纳新 Task Revision，Run 只按冻结 Revision 完成、current 前移时按分歧拒绝（Task 合同）。
+
+各族新增失败用例见[契约测试矩阵](../contract-tests.md)。
+
+## 33. 小修订台账
 
 本文件只为重要设计变更单列章节，例如核心边界、实现选型或权威归属发生变化。词汇、词形与概念清理类修订各记一行，细节放在合同层清理表，不再单独成章：
 
@@ -325,6 +333,6 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 | v0.12.2 | 2026-08-24 | 概念清扫：Room Event 除名、Task Operational State 降级为操作投影、无法证明执行身份时统一标为“丢失” | [清扫表](#v0122-清扫) |
 | v0.15.1 | 2026-08-31 | 全库文档大修：门户收束、设计层与合同层同构合并、禁令按白名单三分、CT 矩阵拆出 contract-tests.md、来时路折叠与历史表迁入；不改合同语义 | [大修施工图](../../../.memo/design/doc-overhaul-20260830/README.md) |
 
-## 33. 当前设计
+## 34. 当前设计
 
 这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接合同](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

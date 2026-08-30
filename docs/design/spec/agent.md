@@ -1,6 +1,6 @@
 # Agent 模块合同
 
-> 状态：规范性合同 · 草案 v0.15.1<br>
+> 状态：规范性合同 · 草案 v0.15.2<br>
 > 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
 
 ## 对象
@@ -35,7 +35,7 @@ Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑
 
 ## ChangeSet 与 Git 事实
 
-Worktree（Git 工作树）是 ChangeSet 的可替换物理资源，不永久属于 Project、Task、Room 或 Harness。一个 ChangeSet 同时最多一个有效写入租约；候选切换、接管或取消必须先让旧 writer 失权。恢复时若无法证明旧 writer 已经静默并被 fence，原 worktree **和原 ChangeSet identity** 都不得授予新写租约，只能保全并隔离；新的执行必须从获准 baseline 创建新物理 worktree 与新 ChangeSet，再取得新 lease。显式人工恢复可以在预览旧残留后把其封存为原 producer 的 Revision，或通过新命令采用到另一 ChangeSet；不能把未知来源的未封存字节、旧 lease 或旧 producer identity 自动洗入新执行。
+Worktree（Git 工作树）是 ChangeSet 的可替换物理资源，不永久属于 Project、Task、Room 或 Harness。一个 ChangeSet 同时最多一个有效写入租约；候选切换、接管或取消必须先让旧 writer 失权。恢复时若无法证明旧 writer 已经静默并被 fence，默认不授予新写租约：原 worktree **和原 ChangeSet identity** 先保全、隔离并提示。有权 human actor 预览证据与残留后，可以显式选择接管（对原 worktree 与原 ChangeSet 推进代次并授予新 lease）、把残留封存为原 producer 的 Revision、采用到另一 ChangeSet，或显式丢弃。自动恢复路径必须从获准 baseline 创建新物理 worktree 与新 ChangeSet 再取得新 lease；不能把未知来源的未封存字节、旧 lease 或旧 producer identity 自动洗入新执行。
 
 ChangeSet Revision 在有效租约下封存，至少固定：
 
@@ -53,7 +53,7 @@ change_set_revision_id
 
 模型自述“已合并”不可信。本地「合入 ChangeSet」命令至少固定 ChangeSet Revision、source/base、target ref、expected target head、策略、适用 Verdict/evidence、actor/permission、binding 和幂等键；有权 human actor 或冻结 Workflow reducer 提交后，control 先持久化 intent/outbox，工具箱才执行并回读 Git，成功时写唯一 Integration Receipt。远端 push/PR/merge 是同族外部副作用命令（executor = adapter），字段与本地「合入 ChangeSet」命令等价。Harness/model 可以在 worktree 内做普通 Git 操作，但不能取得集成 authority：绕过该命令直接改写目标 ref 不产生 Integration Receipt，只在下一次预览或回读时表现为 expected target head 不匹配的 drift，由有权 actor 对账处理。工具箱校验 Git base/HEAD/tree、祖先关系、PR、检查、评审和目标分支头。SCM 变更中断或结果未知时，该命令保持结果未知，工具箱必须回读 HEAD、index、worktree/merge 状态、PR head 和目标分支头，返回类型化恢复动作；收敛前不得签发成功 Receipt 或清理所需现场。
 
-失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理前，工具箱必须确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，现场资源只有得到该确认才可拆除；保全或封存失败时保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
+失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理默认保全：工具箱先确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，现场资源得到该确认才可拆除；有权 human actor 在预览残留后显式确认丢弃时，可以不留副本直接拆除。保全或封存失败且未获显式丢弃确认时，保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
 
 ## 运行时与观测
 

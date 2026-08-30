@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.15.1<br>
+> 状态：非规范对照 · 草案 v0.15.2<br>
 > 本表只提供中英对照与一句话释义；完整语义以[合同层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[合同总则](../spec/README.md#六族规则)定义。
 
 ## 核心产品词

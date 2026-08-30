@@ -1,6 +1,6 @@
 # Project 模块合同
 
-> 状态：规范性合同 · 草案 v0.15.1<br>
+> 状态：规范性合同 · 草案 v0.15.2<br>
 > 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
 
 ## 对象
@@ -39,7 +39,7 @@ Repo 不等于外部组织、工作区或某个 clone。「注册 Repo」命令�
 
 「创建 Project」命令在同一账本事务创建该 Project 的唯一 Project Room：一个 Project 一个 Room，Room 身份与治理账本在用户级控制面，任何已挂接现场打开的都是同一个 Room；clone 只持有投影与现场操作态（草稿、未读、本地租约）。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局需要关注。
 
-「归档 Project」是 quiescent transition，预览与提交都必须确认：不存在开放 Task、非终态 Run/Room Invocation、未归档 Scoped Room、开放 Request、活动输入/写租约，或该 Project 所有且仍为待投递/结果未知的外部副作用。归档不隐式完成或取消这些对象；前置不满足就列出 blocker 并拒绝。成功事务把 Project 与 Project Room 置为只读，并拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation。Restore 只恢复 Project 与 Project Room 的接收新命令资格，不复活历史 Task、Run、Invocation、Request、Scoped Room、租约或外部副作用。
+「归档 Project」是 quiescent transition，预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入/写租约，或该 Project 所有且仍为待投递/结果未知的外部副作用。开放 Task、开放 Request 与未归档 Scoped Room 不阻止归档：它们随 Project 一并转为只读，不被隐式完成或取消，Restore 后保持原状态；仍在运行的只读 Invocation 也不阻止归档，其迟到结果按既有规则只留审计。前置不满足就列出 blocker 并拒绝。成功事务把 Project 与 Project Room 置为只读，并拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation。Restore 只恢复 Project 与 Project Room 的接收新命令资格，不复活历史 Task、Run、Invocation、Request、Scoped Room、租约或外部副作用。
 
 Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
 
@@ -49,7 +49,7 @@ Participant 使用稳定 `participant_id` 与不可变配置 revision；该 revi
 
 ## Room 与消息
 
-Scoped Room 创建时必须冻结 parent Room、精确讨论目标（Request 或待提交的类型化动作）、完成条件和结论回填动作。达到讨论完成条件本身不修改目标；只有获准的回填动作成功后才能归档，失败时保留可恢复的讨论和目标引用。
+Scoped Room 创建时必须冻结 parent Room、精确讨论目标（Request 或待提交的类型化动作）、完成条件和结论回填动作。达到讨论完成条件本身不修改目标。归档有两条路：获准的回填动作成功；或有权 human actor 显式以 abandoned/no-decision/superseded 结案，记录结案理由、不产生回填。回填失败时保留可恢复的讨论和目标引用。
 
 Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。
 
@@ -62,7 +62,7 @@ Context 交付的是调用开工时给执行体的 prompt，不代管执行体�
 
 每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，control 在派工交付前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
-萃取与相关性判定全部本地，不消耗大模型 token：第一级是显式引用与当前讨论窗口，绑定 Task 的任务后端评论线整条属于这一级——以当前 Task Source Snapshot 的 ref+digest 冻结进 Manifest，不经检索；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流、task_source Snapshot 与账本增量维护，不进权威账本，删除后可完整重建。相关性门只以账本事实（提及、认领、Request 关联、游标）为判定输入，不以消息措辞正文做路由；每次判定连同输入事实引用与结论记为可审计观测，观测不改写任何事实。
+萃取与相关性判定默认全部本地、不消耗大模型 token：第一级是显式引用与当前讨论窗口，绑定 Task 的任务后端评论线整条属于这一级——以当前 Task Source Snapshot 的 ref+digest 冻结进 Manifest，不经检索；第二级的全文索引与第三级的可选相关性门都是可重建派生投影——从 chat server 事件流、task_source Snapshot 与账本增量维护，不进权威账本，删除后可完整重建。相关性门默认只以账本事实（提及、认领、Request 关联、游标）为判定输入；用户配置了 small-brain 时，相关性门可启用模型辅助判定并读取消息正文。无论哪种形态，每次判定连同输入事实引用（模型判定另附所用模型 ref+digest）与结论记为可审计观测，观测不改写任何事实。
 
 压缩缺省关闭。仅当用户配置了专用压缩模型（small-brain——经用户级定义机制固定 revision/digest 的模型引用，不是新对象）时，Bundle 物化才可压缩。每个被压缩条目必须记录 compressor ref+digest、压缩率与原文 ref+digest，且压缩产物的每个片段可回源到原文位置。证据类内容——digest、Receipt、验收标准原文与被治理引用冻结的消息原文——永不压缩；压缩条目缺来源记录或压缩了证据类内容的 Bundle 拒绝交付。萃取与压缩产物可作为以（room、cursor 区间、消费者范围）为键的派生缓存跨调用复用；复用时 Bundle 记录所引产物的 ref+digest，缓存可丢弃重建。
 
