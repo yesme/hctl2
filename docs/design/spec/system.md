@@ -98,7 +98,7 @@ frozen adapter binding
 canonical input digest
 ```
 
-actor source/provenance 只由 direct client connection、provider binding 的账号映射或 control 内部 reducer 赋予；调用 payload、Room 消息、Harness 进程和 adapter 保留实际来源。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 终结的 actor 来源见[Task 写入合同](./task.md#写入合同)；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。治理命令只有两类 actor 来源：可稳定归属到 owner human 的动作，以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。human 动作既可以来自 Workbench/CLI 的 direct client connection，也可以来自模块 binding 明确接纳的 provider event；两者生成同一 command envelope、使用同一验证规则，没有界面隐藏特权。
+actor source/provenance 只由 direct client connection、provider binding 的账号映射或 control 内部 reducer 赋予；调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 终结的 actor 来源见[Task 写入合同](./task.md#写入合同)；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。治理命令只有两类 actor 来源：可稳定归属到 owner human 的动作，以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。human 动作既可以来自 Workbench/CLI 的 direct client connection，也可以来自模块 binding 明确接纳的 provider event；两者生成同一 command envelope、使用同一验证规则，没有界面隐藏特权。Harness、模型与 execution principal 只有 Result Proposal 通道，不能借 provider service account 或 payload 自报为 human。
 
 control 在用户级 metadata 账本的一个 SQLite 事务中写领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界，不能由两个模块或两个 clone 事后拼接。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。组件或 content 系统不可用时，命令前置保持不变：与该系统无关、且所需引用已冻结的 metadata 命令可继续；验收策略、字段权威或冲突前置要求 fresh readback 时，不可用或 cursor gap 必须返回类型化拒绝。只有冻结策略明确允许 cached/stale 证据，命令才可携带其精确版本、观测时间和已知 gap 继续。
 
