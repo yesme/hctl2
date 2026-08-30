@@ -23,24 +23,24 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 ```mermaid
 flowchart LR
     subgraph Clients["客户端 · 没有等级，动作按目标合同处理"]
-        CLI["hctl2 CLI\n（P2 起承载全部治理命令）"]
-        Bench["hctl2-workbench（P3）\n四类客户端 + HCTL 命令入口"]
-        Native["Matrix / Vikunja / Herdr\n原生客户端"]
-        Admin["Dagu 管理界面\n管理 / 诊断"]
+        CLI["hctl2 CLI<br/>（P2 起承载全部治理命令）"]
+        Bench["hctl2-workbench（P3）<br/>四类客户端 + HCTL 命令入口"]
+        Native["Matrix / Vikunja / Herdr<br/>原生客户端"]
+        Admin["Dagu 管理界面<br/>管理 / 诊断"]
     end
 
     subgraph Control["控制面 · hctl2-control 四个领域模块"]
-        P["Project\nChat Room"]
-        T["Task\nKanban"]
-        R["Run\nWorkflow"]
-        H["Agent\nTerminal"]
+        P["Project<br/>Chat Room"]
+        T["Task<br/>Kanban"]
+        R["Run<br/>Workflow"]
+        H["Agent<br/>Terminal"]
     end
 
     subgraph Exec["执行面 · content 系统与物理执行"]
-        chat_srv["chat server\n（Matrix 协议）"]
-        task_backend["任务后端\n（本地任务服务器 / Linear、GitHub）"]
+        chat_srv["chat server<br/>（Matrix 协议）"]
+        task_backend["任务后端<br/>（本地任务服务器 / Linear、GitHub）"]
         engine["workflow engine"]
-        agency["Herdr\nAgent / Terminal 运行服务"]
+        agency["Herdr<br/>Agent / Terminal 运行服务"]
         runtime["harness 进程 / PTY"]
     end
 

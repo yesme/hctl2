@@ -19,10 +19,10 @@
 
 ```mermaid
 flowchart LR
-    P["Project\nChat Room"] -->|采纳 Task 契约| T["Task\nKanban"]
-    T -->|「启动 Run」命令 + Run Manifest| R["Run\nWorkflow"]
+    P["Project<br/>Chat Room"] -->|采纳 Task 契约| T["Task<br/>Kanban"]
+    T -->|「启动 Run」命令 + Run Manifest| R["Run<br/>Workflow"]
     P -->|无 Task 的「启动 Run」命令| R
-    P -->|Room Invocation + Execution Spec| H["Agent\nTerminal"]
+    P -->|Room Invocation + Execution Spec| H["Agent<br/>Terminal"]
     R -->|Attempt + Execution Spec| H
     H -->|Result Proposal + Revision / Evidence| P
     H -->|Result Proposal + Revision / Evidence| R
