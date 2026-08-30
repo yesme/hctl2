@@ -31,10 +31,10 @@
 
 | 簇 | 总图依据 | 前置 | 闸门 |
 | --- | --- | --- | --- |
-| C1 根层门面 | §3.1 根 README、§3.2 usage、§3.22 stub 删除、§3.23 research 断链行(C6–C9) | 本文件状态「已拍板」;K3 机械检查合入 CI(合入前必需) | K3 机械 + 所有者目检 |
+| C1 根层门面 | §3.1 根 README、§3.2 usage、§3.22 stub 删除、§3.23 research 断链行(C6–C9) | 本文件状态「已拍板」;K3 机械检查合入 CI(合入前必需) | CI docs-check(自动)+ 所有者目检 |
 | C2 设计层 | §3.3–§3.11、§3.20 glossary、§4.1/§4.2/§4.4 的设计层落点、§5、§6 提纲;vision.md 以 Fable 初稿为底 | 拍板点 7 禁令白名单(角色表「不能做什么」列要用) | Fable 通读 + Grok 抽审 |
-| C3 合同层 | §3.12–§3.18、§4 四组全部合同层落点、§5 差异清单、Manifest 清单并集核对(§3.17) | 拍板点 7、11 | Grok 删除安全审计 + K3 机械 |
-| C4 交付与研究索引 | §3.19 delivery(含 contract-tests 拆出、CT-PACKAGING Tauri 用例、Tuwunel/macOS 15 事实修正)、§3.23 research 索引与搬移 | 拍板点 10 | Grok 删除安全审计 + K3 机械 |
+| C3 合同层 | §3.12–§3.18、§4 四组全部合同层落点、§5 差异清单、Manifest 清单并集核对(§3.17) | 拍板点 7、11 | Grok 删除安全审计 + CI docs-check(自动)|
+| C4 交付与研究索引 | §3.19 delivery(含 contract-tests 拆出、CT-PACKAGING Tauri 用例、Tuwunel/macOS 15 事实修正)、§3.23 research 索引与搬移 | 拍板点 10 | Grok 删除安全审计 + CI docs-check(自动)|
 | C5 历史与档案 | §3.21 decision-history 折叠、§3.24 `.memo` 核销、全库版本戳 v0.15.1 | C1–C4 合入 | 所有者 |
 
 vision.md 初稿由 Fable 在 C2 开工前交付(唯一例外,GPT 就地改事实后接管):已交付为 [`05-vision-draft.md`](./05-vision-draft.md)(162 行;相对现行删三处——三类数据缩为三句 + 指向总则、原则 6/10 缩为标题句、「从这里读下去」节删;补一段承接 run.md「两种控制制度」并入;4 处 `<!-- GPT 核 -->` 由 GPT 在 C2 判定并去标)。GPT 在 C2 以此为底写入 `docs/design/vision.md`,之后 Fable 不再改此稿。
