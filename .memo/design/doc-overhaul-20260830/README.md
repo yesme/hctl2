@@ -3,12 +3,12 @@
 > 状态:待拍板 · 所有者作为 bus/coordinator 执行;本图含 12 个拍板点(§12)<br>
 > 基线:main @ `192e7b6`(草案 v0.15.0)<br>
 > 去向:`docs/**` 大修产物 + decision-history 小修订台账一行(v0.15.1);本图与各阶段产物留在本目录作底稿<br>
-> 输入:`.memo/notes/doc-overhaul-20260830/` 六份分工建议(claude/codex/glm/grok/kimi×2)与四份「方案由谁起草」裁决(gemini-a/glm-b/grok-b/kimi-c,四家一致:Fable 起草方案、GPT 写正文),`notes/doc-cleanup-backlog-20260825.md`,`notes/design-doc-method-20260819.md`,`review/20260830-v0.15.0/*` 评审;Claude 于 2026-08-30 综合并逐条核实种子事实<br>
+> 输入:`.memo/notes/doc-overhaul-20260830/` 六份分工建议(claude/codex/glm/grok/kimi×2)与四份「方案由谁起草」裁决(gemini-a/glm-b/grok-b/kimi-c,四家一致:Fable 起草方案、GPT 写正文),`.memo/notes/doc-cleanup-backlog-20260825.md`,`.memo/notes/design-doc-method-20260819.md`,`.memo/review/20260830-v0.15.0/*` 评审;Claude 于 2026-08-30 综合并逐条核实种子事实<br>
 > 本目录后续产物:`01-inventory-*.md`(普查)、`02-target-map.md`(总图)、`03-approved-plan.md`(冻结方案)、`parking-lot.md`(停车位)、`review-<簇>-<harness>.md`(闸门报告)
 
 ## 1. 一句话
 
-**六个 harness 各司一段、换手不换题:Fable 画总图、GPT 一支笔、Grok 当闸、K3/GLM 当扫描仪、所有者只在四个拍板点出手;整修不改任何合同语义,五簇串行、每簇一个 PR、机械检查先于人眼、审计两轮封顶。**
+**六份建议由五个 harness 分工、换手不换题:Fable 画总图、GPT 一支笔、Grok 当闸、K3/GLM 当扫描仪、所有者只在四次拍板(共 12 项)时出手;整修不改任何合同语义,五簇串行、每簇一个 PR、机械检查先于人眼、审计两轮封顶。**
 
 ## 2. 目标、范围与红线
 
@@ -18,8 +18,8 @@
 
 | 层 | 本轮动作 | 不做 |
 | --- | --- | --- |
-| `docs/design/**`(设计 10 + 合同 6 + references 3,约 2400 行) | 主战场:删、合、拆、改写、负例清扫 | 不改合同语义,不新增具名概念 |
-| 根 `README.md`、`docs/usage.md` | 门面收束、死名清理(usage.md 仍写 agentd) | — |
+| `docs/design/**`(设计 10 + 合同总则 1 + 合同 6 + references 3,共 2520 行) | 主战场:删、合、拆、改写、负例清扫 | 不改合同语义,不新增具名概念 |
+| 根 `README.md`、`docs/usage.md` | 门面收束;`usage.md:212` 保留了一处退场名称的否定说明,是否保留由普查裁决 | — |
 | `docs/research/**` | 只做索引收束、「已被取代」标注、单案入子目录 | 不删任何证据文件 |
 | `.memo/**` | 状态核销:待拍板表刷新、backlog 13 条逐条裁决、agentd PRD 降级 | 不重写任何过程稿 |
 | `AGENTS.md`、`CONSTRAINTS.md` | 所有者自持;GPT 只提修改建议进停车位 | 不在 GPT 笔下 |
@@ -59,7 +59,7 @@
 
 | harness | 角色 | 有权 | 无权 |
 | --- | --- | --- | --- |
-| 所有者 | bus/coordinator | 四个拍板点(§12)、终审、AGENTS/CONSTRAINTS | — |
+| 所有者 | bus/coordinator | 四次拍板(共 12 项,§12)、终审、AGENTS/CONSTRAINTS | — |
 | GPT-5.6-sol(xhigh) | 唯一写手 + 唯一修复者;施工前的事实供应商 | 按冻结总图与迁移表施工;应用一切被接受的核验发现;S1 只读产出权威表与一页架构摘要;对本图与总图做保真通过(只修事实/出处/断链) | 改目录、加概念、加禁令、改语义;在保真通过里增删条目或动结构 |
 | Fable-5(xhigh) | 总图作者 + 整体复审 | 目标文件树、每文件职责与提纲、迁移表、合并映射;vision.md 初稿;结构级复审报告 | 写其他正文;按 nit 改 spec;把删掉的禁令写回 |
 | Grok-4.6(xhigh) | 普查 + 闸 | 死文普查(带行号与核销依据);总图三问闸;删除安全审计 | 重写、提新架构、自由文风评审 |
@@ -76,7 +76,7 @@
 - **验收**:拍板点无一悬置;停车位文件建立;保真通过的发现已处置。
 - **注意**:未拍板前任何 harness 不得改 `docs/**`。
 
-### S1 · 基建与普查(一天,四线并行)
+### S1 · 基建与普查(一天,五线并行)
 
 | 线 | 施工员 | 产出 | 验收 |
 | --- | --- | --- | --- |
@@ -86,12 +86,12 @@
 | 不一致账本 | GLM | `01-inventory-inconsistency.md`:同一事实跨层不同表述(含 delivery.md:262 vs 270 的 Tuwunel 矛盾这类) | 每条给两处位置与差异一句话 |
 | 权威表与架构摘要 | GPT(只读) | `01-authority-map.md`:逐文件逐章节一行——来源 / 层 / 当前唯一职责 / 是否有权定义该事实 / 状态(current · duplicated · superseded · contradictory · historical-only)/ 证据;`01-architecture-one-page.md`:一页当前架构主线,只写现状不写方案 | 表格化,不提结构方案、不提新对象;一页摘要不超过一页 |
 
-- **闸门**:所有者拍板四张清单的 删/转/留 与**禁令保留白名单**(拍板点 6、7)。拍板后清单冻结,成为 Fable 总图与 GPT 施工的输入。
+- **闸门**:所有者逐项裁决四张清单:`01-inventory-dead-text.md` 的删/转历史/改写、`01-inventory-prohibitions.md` 的保留白名单与机械覆盖去向、`01-inventory-inconsistency.md` 的权威位置与事实修正、`01-authority-map.md` 的职责与状态;架构摘要作现状核对,机械报告作闸门证据(拍板点 6、7)。拍板后清单冻结,成为 Fable 总图与 GPT 施工的输入。
 
 ### S2 · 结构总图(一天)
 
 - **施工员**:Fable(只读,不改 `docs/**`)。
-- **输入**:S1 三张清单、四份种子台账、当前全文。事实冲突以 GLM/Grok 的证据为准,Fable 不自行猜实现细节。
+- **输入**:S1 三张清单、四份种子台账(`.memo/notes/doc-cleanup-backlog-20260825.md`;`.memo/review/20260830-v0.15.0/glm-20260830a.md` §三 A;`.memo/review/20260830-v0.15.0/grok-20260830a.md`;`.memo/review/20260821-v0.10.2/v07-v012-retrospective-and-architecture-audit-20260821.md`)、当前全文。事实冲突以 GLM/Grok 的证据为准,Fable 不自行猜实现细节。
 - **产出** `02-target-map.md`,必须包含:
   1. 目标文件树,以及每个文件一句话职责与「明确不负责什么」;
   2. 面向新读者、实现者、provider adapter 开发者的三条阅读路径;
@@ -110,9 +110,9 @@
 
 | 簇 | 范围 | 主要动作 | 闸门 | 注意事项 |
 | --- | --- | --- | --- | --- |
-| C1 根层门面 | 根 README、docs/usage.md、references/implementation-evidence.md | README 收束为门户(定位、目标架构图、阅读入口),叙述归 vision;usage.md 死名清理;3 行 stub 删除(已核实零引用) | K3 机械 + 所有者目检 | 不在 README 里复述设计基线细节 |
+| C1 根层门面 | 根 README、docs/usage.md、references/implementation-evidence.md | README 收束为门户(定位、目标架构图、阅读入口),叙述归 vision;usage.md:212 的退场名称否定说明按普查裁决改写;3 行 stub 删除(已核实零个精确路径入链) | K3 机械 + 所有者目检 | 不在 README 里复述设计基线细节 |
 | C2 设计层 | vision、architecture、设计地图、四模块设计正文、participant、context、glossary | 收束集群主战场:按总图合并/拆分;四张角色表的「不能做什么」列按 §7.2 处理;横切正文规则列表改引用;vision 以 Fable 初稿为底、GPT 改事实 | Fable 通读(结构级)+ Grok 抽审 | 「为什么存在」与体验叙事不删;GPT 不得把 Fable 稿的架构判断改成细节堆叠 |
-| C3 合同层 | spec/ 六件 | **最危险簇**:三组同构合并落地;禁令按白名单删留、改正面句或指向 CT;spec/README 五张历史表按拍板去向处理;Herdr v0.8.2 细节按拍板点 11 处理 | Grok 删除安全审计(重点:清扫是否误删护栏、合并是否丢模块差异)+ K3 机械 | 一字不改语义;每条删除能指认判据编号 |
+| C3 合同层 | `spec/README.md` + 六份合同 | **最危险簇**:三组同构合并落地;禁令按白名单删留、改正面句或指向 CT;spec/README 五张历史表按拍板去向处理;Herdr v0.8.2 细节按拍板点 11 处理 | Grok 删除安全审计(重点:清扫是否误删护栏、合并是否丢模块差异)+ K3 机械 | 一字不改语义;每条删除能指认判据编号 |
 | C4 交付与研究索引 | delivery.md(含 CT 矩阵)、docs/research/README.md 及标注 | delivery 按拍板拆分或瘦身:已完成 P0 核销为一行 + 链接;Tuwunel 矛盾与 macOS 15 论证按事实修正;CT-PACKAGING 补 Tauri 壳中立用例(合同已改、测试未跟);research README 五张表收束为索引 + 导读,tmux/agentd 候选/Electron 快照三份标「已被取代」,remote-control.md 单案入子目录 | Grok 删除安全审计 + K3 机械 | CT 矩阵是验收不是第二份合同;research 证据一条不删 |
 | C5 历史与档案 | decision-history、.memo 状态核销、版本戳 | 来时路已取代章节折叠;小修订台账加大修一行;`.memo/README` 待拍板表刷新、backlog 13 条标裁决、agentd PRD 降级标头;全库版本戳 v0.15.1 | 所有者 | 来时路只增不改写论证;现在时与过去时分开 |
 
@@ -163,8 +163,8 @@
 
 ### 8.1 死文与事实错误
 
-- `docs/design/references/implementation-evidence.md`:3 行转发 stub,**零引用**,直接删。
-- `docs/usage.md`:仍以现在时写 agentd(设计/合同层已无残留)。
+- `docs/design/references/implementation-evidence.md`:3 行转发 stub,没有指向该精确文件的入链;research 内另有 3 处裸写 `implementation-evidence.md` 的旧称待死名/断链扫描处理,stub 直接删。
+- `docs/usage.md:212`:保留了一处退场名称的否定说明,是否保留由普查裁决;设计/合同层已无现役 agentd。
 - `delivery.md:270` 打包策略「Tuwunel 因上游没有 Darwin 二进制而从锁定源码原生构建」与 `:262`「HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包」矛盾;research 总表已记 2026-08-30 换用托管制品 → 以后者为准修正。
 - `delivery.md:270`「macOS 最低基线为 15」:出处是 tmux 官方二进制(来时路 §19),tmux 已退场;须按 Tuwunel/Herdr/Tauri 2 与随包 Mach-O 重新论证或调整(事实修正,不是架构议题)。
 - `spec/system.md:109`「第一阶段不设额外的用户在场证明」:对已撤销机制的负述;`spec/README.md` 清扫表中的同名行是核销记录,合法。
@@ -180,13 +180,13 @@
 
 | 规则 | 目前复述处 | 收束到 |
 | --- | --- | --- |
-| Chat 房间不启用端到端加密的前置与降级 | project.md 关键规则与场景段、spec/project.md 对象表/写入合同/Room 与消息/对齐表、connections.md 失败表、architecture.md 场景表、delivery CT-PROJECT(七处) | spec/project.md 一处定义;其余一句引用 |
+| Chat 房间不启用端到端加密的前置与降级 | project.md 关键规则与场景段、spec/project.md 对象表/写入合同/Room 与消息/对齐表、connections.md 失败表、architecture.md 场景表、delivery CT-PROJECT、glossary Chat 端口绑定、usage Tuwunel 配置(现行解释/合同/测试/术语/运行证据共 11 处) | spec/project.md 一处定义;其余一句引用,测试/术语/运行证据保留其本层职责 |
 | 三条底线(工具不是人 / 合入钥匙不进工具 / 隔离工作树) | agent.md 关键规则、spec/agent.md 写入合同、system.md 三节、decision-history §22、delivery CT-AGENT 与 B2 验收(六处以上) | spec/agent.md 一处定义;system.md 引用;设计正文一句人话 |
-| Herdr v0.8.2 的能力限制 | agent.md 清单、spec/agent.md 两处、system.md 两处、connections.md 启动顺序、delivery P0 第 2 项、CT-AGENT(七处) | 合同层改能力条件句(栅栏回显/输入记录/事件游标/退出回读四项「有则如何、无则降级」);v0.8.2 缺项清单只在 delivery P0 与 binding 声明(拍板点 11) |
+| Herdr v0.8.2 的能力限制 | agent.md 清单、spec/agent.md 两处、system.md 两处、connections.md 启动顺序、delivery P0 第 2 项、CT-AGENT | 合同层改能力条件句(栅栏回显/输入记录/事件游标/退出回读四项「有则如何、无则降级」);v0.8.2 缺项清单只在 delivery P0 与 binding 声明(拍板点 11) |
 
 ### 8.3 结构候选(供 S2 总图,需拍板)
 
-- `delivery.md` 一文十一职(范围、CLI、阶段、切片、自举、CT 矩阵、选型判据、P0、打包、技术基线、未决),290 行、禁令密度全库第一(41)。候选:拆 `delivery.md`(范围/阶段/切片/自举/未决)+ `contract-tests.md`(CT 矩阵)+ 选型与 P0 并入 research 或 `selection.md`;或不拆只瘦身(kimi:290 → 220)。
+- `delivery.md` 有 14 个二级章节,把三个纵向切片合为一职、把「明确不做」并入范围后按职责计为 11 组(范围、CLI、阶段、切片、自举、CT 矩阵、选型判据、P0、打包、技术基线、未决),290 行、禁令密度全库第一(41)。候选:拆 `delivery.md`(范围/阶段/切片/自举/未决)+ `contract-tests.md`(CT 矩阵)+ 选型与 P0 并入 research 或 `selection.md`;或不拆只瘦身(kimi:290 → 220)。
 - 根 README 与 vision.md 重叠(设计基线 bullets、六个问题、目标体验)→ README 收束为门户。
 - 横切正文(participant/context)保留独立(各家一致:边界干净,不动)。
 - `docs/design/` 顶层是否新增子目录:默认不新增(kimi);Fable 总图若提出须单独论证。
@@ -194,7 +194,7 @@
 
 ### 8.4 数字基线(施工前)
 
-全库规范与解释层 2936 行(不含 research);禁令计数:delivery 41、spec/agent 39、spec/system 32、spec/connections 29、spec/task 26、spec/project 26、spec/run 24、设计地图 12,合同层合计约 185、全库约 270。大修后按 §10 上限与「禁令净减」验收。
+全库规范与解释层 2936 行(不含 research);按「不得/不能/禁止/不允许/永不/必须拒绝」逐次计数:delivery 41、spec/agent 39、spec/system 32、spec/connections 29、spec/task 26、spec/project 26、spec/run 24、设计地图 12,合同层合计 185、`docs/design/**` 合计 315、加根 README 与 usage 后合计 320。大修后按 §10 上限与「禁令净减」验收。
 
 ## 9. 停车位(本轮不做,记录去向)
 
@@ -295,5 +295,5 @@
 **GLM · S4 中文二读**
 > 重复、病句、指代不清、英文夹杂失控;不改含义,不补规则。清单交 GPT。
 
-**所有者 · 四个拍板点 + 终审**
+**所有者 · 四次拍板(共 12 项)+ 终审**
 > S0 章程;S1 末三清单与禁令白名单;S2 末总图冻结;S4 末三份核验清单逐项裁决。裁决只发给 GPT 应用。
