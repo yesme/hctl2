@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.15.2**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.15.3**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；三个目标均已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -60,7 +60,7 @@ flowchart LR
     Native --> agency
     Admin -->|直接 mutation 仅供管理；越界即分歧| engine
     Control --> DB["用户级 metadata 账本（SQLite）"]
-    Control --> Tool["hctl2-tool · Git/SCM 工具箱"]
+    Control --> Tool["hctl2-tool · 现场执行者"]
 ```
 
 图中的 Chat Room、Kanban、Workflow 和 Terminal 是四个模块对应的场景；Workbench、CLI 与 provider（供应端）原生客户端没有等级。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)。

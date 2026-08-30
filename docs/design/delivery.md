@@ -53,7 +53,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
 | P0 · 探路 | 只对 HCTL 与已选实现实际使用的 API 和行为做限时、可丢弃的协议验证并记录实现证据，不替第三方验其自身功能；临时数据与拼装环境不进入产品生命周期。失败则重新评估并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四个外部服务已可运维 |
-| P1 · 备装 | 固定并打包 Herdr 官方二进制，实现 `hctl2-tool`（commit 署名、lint、PR 正文组装、memo 写入、Git 有效变化侦测、worktree 保全与失权执行）；用 Herdr 原生 API/CLI 完成不带 HCTL 治理语义的启动、观察和停止验证。此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | Herdr 与本地工具箱就位，未切换治理事实 |
+| P1 · 备装 | 固定并打包 Herdr 官方二进制，实现 `hctl2-tool`（worktree/ChangeSet 物化与隔离、意图执行与回读、现场 OS 锁与失权执行、封存保全、结晶副本与 memo 正文写入、Git 有效变化侦测）；代码检查用仓库声明式配置（pre-commit 一类）由 harness 本地执行、CI 强制，不进第一方组件；用 Herdr 原生 API/CLI 完成不带 HCTL 治理语义的启动、观察和停止验证。此时尚无 HCTL metadata、公开治理入口或 Receipt，因此明确不称真正自举 | Herdr 与本地工具箱就位，未切换治理事实 |
 | P2 · 接钥匙 | `hctl2-control`（账本+命令服务 + Herdr 适配代码）与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；按 B 阶梯首次使用 chat/task/runtime/workflow 时，分别完成对应系统的产品打包、备份恢复和一键生命周期。Matrix/Vikunja 原生界面承担 content，Vikunja Done 映射按 binding 能力验证；Herdr TUI 按 Execution Spec 输入策略使用；Dagu console 只管理/诊断。Dagu 到 B4 才是必需项，不阻塞 B2 无 Run 阶段 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 

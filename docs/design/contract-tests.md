@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.15.2<br>
+> 状态：验证文档 · 草案 v0.15.3<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -103,6 +103,7 @@
 - 多个执行现场可以登记（各有工具箱与 Herdr 绑定），但同一 site/repo mutation lease 的旧 generation 必须被 fence，无法证明 fence 时默认不重授写权限，重授只能来自有权 human 预览证据后的显式确认
 - 命令幂等
 - 危险动作（不可逆、产生外部权威副作用或扩大权限）未经确认的直接 Submit 拒绝；普通命令直接 Submit 与经 Preview 提交结果一致
+- executor 越界拒绝：远端 SCM 投递只归 adapter，lint/检查不经工具箱 intent 回路；工具箱只受理现场 Git 职责内的已持久化意图
 - 同一 human action 经 Workbench、CLI 或 provider adapter 进入时使用同一准入规则；重复、迟到和乱序 provider event 不产生第二份领域效果
 - commit/ACK 各崩溃点回读
 - schema migration、投影重建

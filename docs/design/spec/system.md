@@ -1,6 +1,6 @@
 # 系统边界与适配器合同
 
-> 状态：规范性合同 · 草案 v0.15.2<br>
+> 状态：规范性合同 · 草案 v0.15.3<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -9,7 +9,7 @@
 | --- | --- |
 | `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
 | `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
-| `hctl2-tool` | 机械工具箱：Git/SCM 操作与事实校验、Revision/digest、合并核验、lint、PR/memo 的机械拼装、有效变化侦测。独立可用（standalone 时只做普通本地操作、不产生治理宣称）；被 control 编排时执行已持久化的意图并回读 |
+| `hctl2-tool` | 现场执行者：worktree/ChangeSet 物化与隔离、已持久化意图的执行与回读、现场 OS 锁与 fence、封存保全、判决结晶副本写入，及所需的 Git 事实校验、Revision/digest 与有效变化侦测；进程级动作转调业界工具（git 等），零重实现。独立可用（standalone 时只做普通本地操作、不产生治理宣称）。lint 与代码检查不在其职责——仓库声明式配置由 harness 本地执行、CI 强制；远端 SCM 副作用归 adapter |
 | Herdr | 第一阶段实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
 | Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
