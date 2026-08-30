@@ -1,0 +1,55 @@
+# dead_names.txt — 退休词表
+# 由 docs/design/spec/README.md 的五张归并/清扫表与 decision-history §27–§29 导出
+# （2026-08-31，kimi）。表中含模式类条目（如「25 个驼峰名」），无法纯机械导出，
+# 故为人工导出的固化清单；大修收尾（S5）时应复核一遍。
+#
+# 格式：名称<TAB>出处。ASCII 名按整词匹配（边界 [^A-Za-z0-9_]），CJK 名按子串匹配。
+# 扫描范围之外（不算命中）：docs/design/references/decision-history.md、.memo/、
+# docs/research/ —— 历史记录与证据里出现旧名是合法的。
+#
+# 刻意不收的条目：
+# - 「中断」（v0.12.2 由状态值降级）：普通中文词汇，prose 合法使用太多，机械扫描无法
+#   区分状态值与日常用法，留给措辞评审。
+# - v0.11.1 的 25 个驼峰对象名：逐个列入会与现行保留原形（ChangeSet、ReviewSubjectRef
+#   等）碰撞；驼峰残留由代码评审与大修 C2/C3 簇覆盖。
+
+# --- spec/README.md「v0.9.1 归并对照」---
+InvocationBinding	spec/README.md v0.9.1 归并表
+AttemptSpec	spec/README.md v0.9.1 归并表
+RuntimeShard	spec/README.md v0.9.1 归并表
+InvocationRuntime	spec/README.md v0.9.1 归并表
+TerminalBundle	spec/README.md v0.9.1 归并表
+HarnessAdapterBinding	spec/README.md v0.9.1 归并表
+IntegrationIntent	spec/README.md v0.9.1 归并表
+ExternalEffectIntent	spec/README.md v0.9.1 归并表
+TaskSourceConnection	spec/README.md v0.9.1 归并表
+ChatSurfaceBindingRevision	spec/README.md v0.9.1 归并表
+TaskSourceBindingRevision	spec/README.md v0.9.1 归并表
+EngineDeploymentRevision	spec/README.md v0.9.1 归并表
+ChangeSetWriteLease	spec/README.md v0.9.1 归并表
+HarnessDefinition	spec/README.md v0.9.1 归并表
+TerminalGateway	spec/README.md v0.9.1 归并表
+WorkflowEngineAdapter	spec/README.md v0.9.1 归并表
+
+# --- spec/README.md「v0.10.3 清扫」---
+RuntimeBackend	spec/README.md v0.10.3 清扫表
+TaskSource	spec/README.md v0.10.3 清扫表（驼峰形；现行 task_source 为蛇形，不碰撞）
+WorkflowEngine	spec/README.md v0.10.3 清扫表（驼峰形；现行 workflow engine 为小写带空格）
+HarnessAdapter	spec/README.md v0.10.3 清扫表
+
+# --- spec/README.md「v0.12.2 清扫」---
+Room Event	spec/README.md v0.12.2 清扫表（已除名）
+Task Operational State	spec/README.md v0.12.2 清扫表（已降级为字段组）
+
+# --- spec/README.md「v0.13.0 收窄」---
+用户在场证明	spec/README.md v0.13.0 收窄表（机制已撤销）
+沙箱入场券	spec/README.md v0.13.0 收窄表（已降为可选加固）
+
+# --- 组件退场（decision-history §18/§19/§27–§29）---
+agentd	decision-history §28：agentd 退场（小写；同时覆盖 hctl2-agentd）
+hctl2-agency	decision-history §29：中间方案已取消，不建设
+Conductor	decision-history §18：workflow engine 已改选 Dagu
+Zellij	decision-history §19：运行时后端已改 tmux 再退场（§29）
+tmux	decision-history §29：tmux 随 agentd 方案一并退场
+Electron	decision-history §30：Workbench 壳改选 Tauri 2，Electron 仅为安全网（合法提法经 dead_names.allowlist 豁免）
+WezTerm	decision-history §29 后：一等原生 Terminal 客户端是 Herdr TUI，WezTerm 只可作可选提及（豁免须逐条注明）

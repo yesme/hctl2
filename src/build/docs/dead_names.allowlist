@@ -1,0 +1,15 @@
+# dead_names.allowlist — 死名扫描豁免（文件<TAB>子串；无子串则整文件豁免）
+# 格式之外的每一行都应有理由；大修各簇修复后移除对应条目
+
+# spec/README.md 的归并/清扫表按定义罗列旧名（它是退休词表的来源），整文件豁免
+docs/design/spec/README.md
+
+# 已知问题，大修期间处理（S0 未拍板前不得改 docs/**）：
+docs/usage.md	hctl2-agentd
+docs/design/spec/system.md	用户在场证明
+docs/design/agent.md	WezTerm
+docs/design/delivery.md	WezTerm
+
+# 合法提法：Electron 仅以「安全网」身份出现（decision-history §30）
+docs/design/delivery.md	Electron 安全网
+docs/design/spec/system.md	Electron 安全网

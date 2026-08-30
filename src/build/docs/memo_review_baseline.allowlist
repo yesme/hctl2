@@ -1,0 +1,3 @@
+# memo_review_baseline.allowlist — .memo/review 基线检查豁免（每行一个 repo 相对路径）
+# fable 的 v0.8.0 轮跟进核销记录写于 v0.9.1 基线，按轮归档在 v0.8.0 目录属合法例外
+.memo/review/20260815-v0.8.0/fable-followup-20260819.md
