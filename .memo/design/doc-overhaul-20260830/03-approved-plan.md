@@ -37,4 +37,4 @@
 | C4 交付与研究索引 | §3.19 delivery(含 contract-tests 拆出、CT-PACKAGING Tauri 用例、Tuwunel/macOS 15 事实修正)、§3.23 research 索引与搬移 | 拍板点 10 | Grok 删除安全审计 + K3 机械 |
 | C5 历史与档案 | §3.21 decision-history 折叠、§3.24 `.memo` 核销、全库版本戳 v0.15.1 | C1–C4 合入 | 所有者 |
 
-vision.md 初稿由 Fable 在 C2 开工前交付(唯一例外,GPT 就地改事实后接管)。
+vision.md 初稿由 Fable 在 C2 开工前交付(唯一例外,GPT 就地改事实后接管):已交付为 [`05-vision-draft.md`](./05-vision-draft.md)(162 行;相对现行删三处——三类数据缩为三句 + 指向总则、原则 6/10 缩为标题句、「从这里读下去」节删;补一段承接 run.md「两种控制制度」并入;4 处 `<!-- GPT 核 -->` 由 GPT 在 C2 判定并去标)。GPT 在 C2 以此为底写入 `docs/design/vision.md`,之后 Fable 不再改此稿。
