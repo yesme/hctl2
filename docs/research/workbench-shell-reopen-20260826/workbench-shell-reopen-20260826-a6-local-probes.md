@@ -1,6 +1,6 @@
 # 附录 A6 · 本机同口径探针原始记录(2026-08-26)
 
-> 主备忘:`README.md`。两位探针代理的原始报告合并;GPUI/Iced 探针在无 Xcode(仅 Command Line Tools)时完成,Flutter 探针在所有者装好 Xcode 26.6 后完成。Electron 基线取自 `implementation-evidence.md#e-workbench-shell` 的既有探针(2026-08-23)。所有源码与日志留在会话 scratchpad `gpui-probe/`、`flutter-probe/`,不入库。
+> 主备忘:`README.md`。两位探针代理的原始报告合并;GPUI/Iced 探针在无 Xcode(仅 Command Line Tools)时完成,Flutter 探针在所有者装好 Xcode 26.6 后完成。Electron 基线取自 [`E-WORKBENCH-SHELL`](../workbench-shell.md#e-workbench-shell) 的既有探针(2026-08-23)。所有源码与日志留在会话 scratchpad `gpui-probe/`、`flutter-probe/`,不入库。
 
 ## 环境
 

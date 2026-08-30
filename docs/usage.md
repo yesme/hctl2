@@ -17,7 +17,7 @@
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 最低版本为 15。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 系统要求以[交付文档的打包策略](./design/delivery.md#打包策略选型判断首次消费时产品化)为准。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 每个 target 同时发布两份归档：
 
@@ -209,19 +209,17 @@ cd hctl2-<version>-<target>
 ./install.sh
 ```
 
-默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端；Herdr 由该服务命令管理，不安装成 HCTL2 自建的 `hctl2-agentd`。
+默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端；Herdr 由 `hctl2-services` 管理。
 
-## 从源码制作外部子系统包
+## 制作外部子系统包
 
-这一节面向发布与打包开发者，产物是完整发行组装器的中间输入，不是最终用户安装步骤。在支持的原生构建宿主上进入 `src/`，显式选择平台并运行 Buck：
+这一节面向发布与打包开发者，不是最终用户安装步骤。日常组包消费上游官方制品和 HCTL2 托管的 macOS Tuwunel 预编译制品；版本、URL、SHA-256 和 target identity 统一由 `packaging/dependencies/lock.json` 锁定。进入 `src/`，显式选择平台并运行 Buck：
 
 ```bash
 ./buck2 build root//packaging/dependencies:package \
   --target-platforms root//build/platforms:macos_arm64 \
   --out /absolute/path/dependency-packages
 ```
-
-macOS arm64 与 Intel 必须分别在对应架构的 macOS 15+ Mac 上原生构建和测试；不能只在 Apple Silicon 上交叉编译 Intel 包，因为 Tuwunel 原生构建、架构专属官方二进制、Mach-O 闭包和运行验证都属于目标合同。
 
 完整验证两份归档的内容与校验清单，以及运行包的离线安装、幂等重装、启动、冒烟检查和停止：
 
@@ -230,6 +228,8 @@ macOS arm64 与 Intel 必须分别在对应架构的 macOS 15+ Mac 上原生构�
   --target-platforms root//build/platforms:macos_arm64
 ```
 
-外部运行包、源码伴随包及各自的 `.sha256` 位于导出的 Buck 目录，不会提交到 Git。版本、URL、SHA-256 和 target identity 统一来自 `packaging/dependencies/lock.json`；不存在另一套脚本缓存或目标分发表。
+源码构建只用于更新 HCTL2 托管的 macOS Tuwunel 预编译制品，不进入日常组包依赖。更新时由 `Tuwunel macOS assets` workflow 在对应架构的原生 macOS runner 上构建并测试 arm64 与 x86_64 制品，再把发布地址和摘要写回 lock；普通安装、组包和完整包验证继续消费锁定的预编译制品。
+
+外部运行包、源码伴随包及各自的 `.sha256` 位于导出的 Buck 目录，不会提交到 Git。
 
 在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`；Buck2 第一方导出、确定性组装和完整包验收记录在 `src/packaging/release/README.md`。

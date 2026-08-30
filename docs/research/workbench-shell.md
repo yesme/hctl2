@@ -9,11 +9,11 @@
 <a id="e-workbench-shell"></a>
 ## E-WORKBENCH-SHELL · Workbench 桌面壳：Electron 与 Tauri 2
 
-### 当前决定
+### 2026-08-23 决定快照
 
-第一阶段保持 **Electron + React 19**，不改用 Tauri 2，也不直接基于 Wry 自搭桌面壳。这个决定不是声称 Electron 的启动或空载资源更优；它是在 Workbench 同时承载 xterm、富文本、DAG 图、CJK/IME、键盘和无障碍交互，并须交付 macOS/Linux 的条件下，以一次性的 Chromium 体积换取固定渲染器、较一致的平台行为和更直接的自动化测试。Workbench 仍只是控制面的薄客户端：Electron main/preload 不获得领域权威，也不得直接操作 tmux、PTY、Git、数据库或执行面服务器。
+2026-08-23 的第一阶段方案选择了 **Electron + React 19**，当时没有采用 Tauri 2，也没有直接基于 Wry 自搭桌面壳。这个决定不是声称 Electron 的启动或空载资源更优；它是在 Workbench 同时承载 xterm、富文本、DAG 图、CJK/IME、键盘和无障碍交互，并须交付 macOS/Linux 的条件下，以一次性的 Chromium 体积换取固定渲染器、较一致的平台行为和更直接的自动化测试。Workbench 当时仍被限定为控制面的薄客户端：Electron main/preload 不获得领域权威，也不直接操作 tmux、PTY、Git、数据库或执行面服务器。
 
-Tauri 2 保留为有明确重开条件的对照：若发布物体积成为产品硬门槛，或第一阶段收窄到可以固定 WebKitGTK 基线的少数发行版，则重开本决定并先做可丢弃探针；不能仅因“Rust”或官方最小示例很小而切换。直接 Wry 只提供 WebView 抽象，窗口生命周期、IPC 权限、更新、签名、打包和跨平台测试仍要自行补齐，不符合“不重造桌面框架”的取舍。
+Tauri 2 当时保留为有明确重开条件的对照：若发布物体积成为产品硬门槛，或第一阶段收窄到可以固定 WebKitGTK 基线的少数发行版，则重开决定并先做可丢弃探针；不会仅因“Rust”或官方最小示例很小而切换。直接 Wry 只提供 WebView 抽象，窗口生命周期、IPC 权限、更新、签名、打包和跨平台测试仍要自行补齐，因此不符合当时“不重造桌面框架”的取舍。
 
 ### 同口径 footprint 探针
 
