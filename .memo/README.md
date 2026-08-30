@@ -45,4 +45,5 @@
 | `design/context-feeding-20260826.md` §8 | 执行中产生的经验（lesson）是否作为 Result Proposal 可选输出项自动提案；晋升仍走 Memo/Skill |
 | `design/hctl2-agentd-prd-20260826.md` | 讨论稿 → 合同或交付文档 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
-| `notes/doc-cleanup-backlog-20260825.md` | 13 条过强断言逐条裁决（零散进行，不整份等） |
+| `notes/doc-cleanup-backlog-20260825.md` | 13 条过强断言逐条裁决（零散进行，不整份等）；已并入下项 S1 禁令盘点 |
+| `design/doc-overhaul-20260830/README.md` | 全库文档大修施工图：§12 十二个拍板点（S0 一次过，S1/S2/S4 末各一次） |
