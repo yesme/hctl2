@@ -21,7 +21,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 ## 目标架构
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Clients["客户端 · 没有等级，动作按目标合同处理"]
         CLI["hctl2 CLI<br/>（P2 起承载全部治理命令）"]
         Bench["hctl2-workbench（P3）<br/>四类客户端 + HCTL 命令入口"]
@@ -37,28 +37,26 @@ flowchart LR
     end
 
     subgraph Exec["执行面 · content 系统与物理执行"]
-        chat_srv["chat server<br/>（Matrix 协议）"]
-        task_backend["任务后端<br/>（本地任务服务器 / Linear、GitHub）"]
+        subgraph Direct["provider 服务（原生客户端与 Workbench 可直连）"]
+            chat_srv["chat server<br/>（Matrix 协议）"]
+            task_backend["任务后端<br/>（本地任务服务器 / Linear、GitHub）"]
+            agency["Herdr<br/>Agent / Terminal 运行服务"]
+        end
         engine["workflow engine"]
-        agency["Herdr<br/>Agent / Terminal 运行服务"]
         runtime["harness 进程 / PTY"]
     end
 
     CLI --> Control
     Bench --> Control
     Native -.->|显式且可归属的动作请求| Control
+    Bench -->|消息 / 卡片 / 终端通道| Direct
+    Native --> Direct
+    Admin -->|直接 mutation 仅供管理；越界即分歧| engine
     P -->|Chat 端口| chat_srv
     T -->|任务源端口| task_backend
     R -->|workflow engine 端口| engine
     H --> agency
     agency --> runtime
-    Bench -->|消息 / 卡片 / 终端通道| chat_srv
-    Bench --> task_backend
-    Bench --> agency
-    Native --> chat_srv
-    Native --> task_backend
-    Native --> agency
-    Admin -->|直接 mutation 仅供管理；越界即分歧| engine
     Control --> DB["用户级 metadata 账本（SQLite）"]
     Control --> Tool["hctl2-tool · 现场执行者"]
 ```
