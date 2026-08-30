@@ -60,6 +60,55 @@ Agent 之间只传两张表:
 
 沿用 AGENTS.md 与 design/README.md 文档纪律:memo 先行、拍板才落盘、一轮一个 PR、真语义变更单独立项标注、四视角核验(覆盖度/合同漂移/语言/结构一致性)。本方法论只补一件事:**把核验与修改的方向固定为单向**——核验者报告,执行者修改,大局者不执行。
 
+## 详细开工建议
+
+以下是 Claude 在 2026-08-30 通读全库(设计正文、合同层、交付、来时路、研究总表)后的初筛,是阶段 0 方案的种子,不是方案本身:每条都要在阶段 0 逐文件核实后才进方案表。
+
+### 死文与归档候选
+
+- **来时路(decision-history)33 节里已被取代的中间方案**:§6(Conductor 边界)、§13(P0 选型 conductor-oss/Zellij)、§18/§19(Dagu 与 tmux 改判——tmux 现已整体退役)、§27(运行时 provider 三轮)、§28(明标"已由 §29 取代")。来时路「只记转折」,被取代的转折仍是历史,不建议删;建议**折叠不删**——每个已废止的选型段落缩成一段"当时为何、后来被谁取代"加指向研究记录的链接,细节移入 `references/decision-history-archive.md`。是否折叠、折叠到哪一层,需拍板。
+- **研究目录里"结论已废、证据仍有效"的三份**:`tmux-runtime.md`(历史选型)、`agentd-runtime-candidates-20260829.md`(结论废止,footprint 与测试证据保留)、`workbench-shell.md` 正文(Electron 决定快照)。候选做法:建 `docs/research/archive/`,或原地保留但在研究总表单列"历史证据"一节。
+- **研究总表(docs/research/README.md)自身**:①–⑧ 类别表、L1 精选、L4 补充、运维表、条目索引互相重叠——同一文件在类别表和条目索引各列一次,头部还挂着四个重组日期的括号。可收束为"一张条目索引 + 按类别的一句话导读",历史括号删成一句。
+- **`.memo` 待拍板表的 4+1 项**(control-storage、context-feeding §8、agentd-prd、grok-ci-cadence、doc-cleanup-backlog):大修时逐项核销或归档;其中 agentd PRD 随 agentd 退场大概率整份归档。
+- **participant.md / context.md 横切正文里的「关键规则」列表**:与 spec/project.md 的 Context 节、spec/run.md 的接力节已逐条对应,横切正文保留"为什么"与分工表,规则列表改为引用。
+
+### 跨域同构、可合并的三组(收束集群的最大头)
+
+按"一个概念只在拥有它的模块定义一次,其余引用"的既有纪律,以下三组规则目前各在 6–7 处复述,是合并的首选:
+
+1. **Chat 房间不启用端到端加密的前置与降级**:project.md 关键规则与场景段、spec/project.md 对象表/写入合同/Room 与消息/对齐表、connections.md 失败表、architecture.md 场景表、delivery CT-PROJECT——七处。合同定义一处(spec/project.md),其余一句引用。
+2. **三条底线(工具不是人 / 合入钥匙不进工具 / 隔离工作树)**:agent.md 关键规则、spec/agent.md 写入合同、system.md 命令与跨服务正确性、外部权威副作用、安全边界、decision-history §22、delivery CT-AGENT 与 B2 验收——至少六处。
+3. **Herdr v0.8.2 的能力限制**:agent.md 设计正文清单、spec/agent.md 两处、system.md 两处、connections.md 启动顺序、delivery P0 第 2 项、CT-AGENT——七处,且与"合同层应只写能力条件句、版本缺项下沉到 binding/delivery"的审议结论(`review/20260830-v0.15.0/claude-20260830a.md` 瑕疵一)同一件事。
+
+### 文件结构候选
+
+- `delivery.md` 一份文件承担范围、CLI、阶段、切片、自举、CT 矩阵、选型判据、P0、打包、技术基线、未决十一件事,近 300 行。候选拆分:`delivery.md`(范围、阶段、切片、自举、未决)/ `contract-tests.md`(CT 矩阵)/ 选型判据与 P0 并入研究总表或单独 `selection.md`。需拍板。
+- `docs/research/remote-control.md`(Codex Remote Feishu 单案 + 观察清单)移入 `remote-control/`,使"根目录只放跨候选归纳"的规则无例外。
+- 根 README 与 vision.md 重叠(设计基线 bullets、六个问题、目标体验):README 收束为门户(一句话定位、目标架构图、阅读入口),叙述全部归 vision。
+- 横切正文(participant/context)是否并入 project.md/agent.md:倾向**保留独立**——它们回答的是"谁在参与""看到什么",天然跨模块;需拍板。
+
+### 「一定不要」清单的处理
+
+设计正文四张角色表的"不能做什么"列、关键规则里的否定句、delivery CT 矩阵——三层表达同一批禁令。按前文判据:CT 是机械覆盖,所以设计正文只留"能做什么",禁令归 CT;承重不变量(三条底线、Task 只有两个终结来源、普通 Room 临场边只由人创建、Room 不签发 Verdict/Receipt)留合同一处。system.md 安全边界与 connections.md 失败表是承重的,保留。delivery「明确不做」保留但可缩。每条的最终去留逐条过所有者,执行者只按判据初分。
+
+### 机械核验脚本(阶段 2a 要建的,按 CONSTRAINTS 走 Buck2 test 目标;先在 docs/research/ 落 lint 工具选型再写)
+
+1. Markdown 链接与锚点:相对路径存在;`#anchor` 在目标文件可解析(含中文标题的 GitHub anchor 规则)。
+2. 版本戳一致:所有「草案 vX.Y.Z」头部与根 README 基线相符,或在允许滞后的白名单里。
+3. 禁用词与词形:「张力」、执行身份不可证场景的「中断」、驼峰对象名残留、`*Intent` 命令名。
+4. 孤儿文件:`docs/` 下未被任何索引(design/README、research/README、子目录 README)引用的文件。
+5. 概念单点定义(弱检查,只报告不阻断):核心产品词与合同词的定义句只在 owner 文件出现。
+6. 合同变更配 CT:decision-history 新增带「(vX.Y.Z)」的章节时,同一 PR 的 delivery CT 矩阵必须有新增行。
+7. `.memo/review/` 子目录名与文件头基线一致。
+
+### 批次顺序与版本
+
+批 1 结构(目录移动与拆分,纯搬家不改语义,链接脚本护航)→ 批 2 死文(删/归档)→ 批 3 三组同构合并 → 批 4 删繁(禁令按判据处理,配 CT)→ 批 5 门户收束(README/vision)。每批一个 PR,机械核验绿了才进人眼核验(2b/2c)。基线冻结在 v0.15.0,大修完成一次性升 v0.16.0(结构变动算 minor)——需拍板。规模估计:阶段 0 方案约一天(Fable);五批各半天到一天(GPT);每批核验半天。
+
+### 与工程开工的关系
+
+文档大修与工程的 B0 底座(通用冻结记录/digest/CAS/租约库、账本 schema、command envelope)可以并行——B0 只依赖合同语义,不依赖文件结构;但大修应**先于 B2 纵向切片开工**,否则实现按旧文档走、回头又要对账。工程侧的详细开工顺序(B0 → P0 补 Tuwunel/Vikunja 两针 → hctl2-tool 最小集 → B2 切片,同步给 Herdr 提栅栏回显/输入记录/事件 sequence/退出回读四个 issue)见 `review/20260830-v0.15.0/claude-20260830a.md` 第三节,不在此复述。
+
 ## 下一步
 
-所有者认可本分工后,由 Fable 写阶段 0 方案 memo(`design/doc-overhaul-plan-<日期>.md`,讨论稿,不落盘),逐条拍板后 GPT 开工。
+所有者认可本分工后,由 Fable 写阶段 0 方案 memo(`design/doc-overhaul-plan-<日期>.md`,讨论稿,不落盘),以上述初筛为种子逐文件核实成方案表,逐条拍板后 GPT 开工。
