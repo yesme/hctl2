@@ -53,13 +53,13 @@ Chat Room 是 Project 的主要操作场景，提供：
 
 Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和讨论；`hctl2` CLI 提供 Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。这是第一阶段没有实现 Matrix 结构化命令适配器的产品路径，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，它也必须归一到同一 Preview/Submit 合同。
 
-普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开合同适配的 provider 结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker 或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
+普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开合同适配的 provider（供应端）结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker（执行体）或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
 
 | 角色 | 可以做什么 |
 | --- | --- |
 | 场景客户端：Workbench Room | 通过 Matrix 写消息 content；提供完整时间线、Composer（输入区）、预览和公共命令入口 |
 | 场景客户端：CLI | P2 起承载治理命令：调用、Request、升格、Memo/Artifact 的预览与提交，以 chat server 消息事件 ID 引用讨论内容；聊天读写走 Matrix 客户端 |
-| content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth；Workbench 与 Matrix 生态客户端可直接读写聊天 |
+| content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth（事实源头）；Workbench 与 Matrix 生态客户端可直接读写聊天 |
 
 chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用；非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 只处理身份映射。职责边界见[三面架构](./architecture.md#避免供应商锁定)。
 

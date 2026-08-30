@@ -201,15 +201,9 @@ cargo run --locked -p hctl2-tool -- --help
 
 ## 安装完整离线包
 
-最终用户下载同一版本和目标平台的运行包、源码伴随包及 SHA-256 文件后，先校验 sidecar，再解压运行包：
+完整离线包的下载、校验、解压和安装步骤见[安装当前离线包](#安装当前离线包)。最终用户只需下载同一版本和目标平台的运行包及其 `.sha256` 文件；源码伴随包与它的校验文件在同一 Release 提供，供源码与供应链审计按需下载，不参与安装。
 
-```bash
-tar -xzf hctl2-<version>-<target>.tar.gz
-cd hctl2-<version>-<target>
-./install.sh
-```
-
-默认安装到 `~/.local`，也可以传入 `--prefix /absolute/path`。安装器先验证完整归档和 payload，再安装版本目录，并提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端；Herdr 由 `hctl2-services` 管理。
+安装后提供 `hctl2-tool` 与 `hctl2-services` 两个命令；运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端，Herdr 由 `hctl2-services` 管理。
 
 ## 制作外部子系统包
 
