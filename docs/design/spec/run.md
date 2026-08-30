@@ -1,6 +1,6 @@
 # Run 模块合同
 
-> 状态：规范性合同 · 草案 v0.15.3<br>
+> 状态：规范性合同 · 草案 v0.15.4<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -24,7 +24,7 @@
 | Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Engine Execution Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
-| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时铸造，此后按账本内的 Attempt 结果与 Gate 策略推进 | 终态不可复活；Engine 重试只是路标再次进入等待态，由 control 按新观察序号铸造新 Obligation |
+| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时铸造（只认 fresh 观察，见「从节点到结果」），此后按账本内的 Attempt 结果与 Gate 策略推进 | 终态不可复活；Engine 重试只是路标再次进入等待态，由 control 按新观察序号铸造新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；Agency 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
@@ -70,7 +70,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 本节定义 Run 内部归约；对 Agent 模块的派发、结果信封和故障恢复见[连接合同](./connections.md)。
 
-1. control 观察到 Engine 路标在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的 dependency/condition/wait 等机械节点不创建 Obligation。
+1. control 观察到 Engine 路标在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的 dependency/condition/wait 等机械节点不创建 Obligation。铸造只依据当前有效 Engine Execution Binding 的 fresh 观察：binding 分歧待对账（路标停更）期间，以及来自缓存、迟到事件或旧 cursor 的观察，不铸造新 Obligation；已铸造的义务照常验收与判决。
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
 3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
 4. control 与工具箱校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
