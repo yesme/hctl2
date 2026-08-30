@@ -2,7 +2,7 @@
 
 > 状态:讨论稿 · 已按 S1 三份清单核对(GPT 权威表 / Grok 死文普查 / GLM 不一致账本);待 K3 禁令盘点;待 GPT 保真通过与 Grok 三问<br>
 > 基线:main @ `4f9e06d`(草案 v0.15.0;正文与 `37805fa` 相同)<br>
-> 核对记录:2026-08-31 依 `01-authority-map.md`(194 节无结构级分歧)、`01-inventory-dead-text.md`(A1–A31、B1–B3、C1–C10)、`01-inventory-inconsistency.md`(#1–#16)逐条并入;新增第四组同构(§4.4)、断链/过时指针行、`.memo` 核销节(§3.24)、Manifest 清单并集核对项;计数按 GPT 保真通过修正<br>
+> 核对记录:2026-08-31 依 `01-authority-map.md` 逐一核对 194 节(根 README 漏列的「四个阶段与四个模块」「许可证」已并入原有分组处置)、`01-inventory-dead-text.md`(A1–A31、B1–B3、C1–C10)、`01-inventory-inconsistency.md`(#1–#16)逐条并入;新增第四组同构(§4.4)、断链/过时指针行、`.memo` 核销节(§3.24)、Manifest 清单并集核对项;计数按 GPT 保真通过修正<br>
 > 去向:拍板后冻结为 `03-approved-plan.md`<br>
 > 作者:Fable(施工图 S2);只出树、表、提纲,不写正文。判据编号:D1–D4 = 施工图 §7.1 死文四判据(D1 被转向取代 / D2 无权威对应 / D3 重复权威 / D4 无入口且非历史);N = §7.2 负例三留;G4 = 红线 4 删除护栏;S = 结构收束(§8.3)。凡标「待 S1 核对」的,以 S1 清单为准,本图不猜。
 
@@ -33,12 +33,12 @@ docs/design/
   references/
     glossary.md                   术语对照
     decision-history.md           来时路:只记转折;被取代章节折叠为一段
-    (implementation-evidence.md   删除:3 行转发 stub,零引用 · D4)
+    (implementation-evidence.md   删除:3 行转发 stub;精确路径零入链,3 处旧称在 §3.23 修正 · D4)
 docs/research/
   README.md                       收束:一张条目索引 + 按类别一句话导读;头部重组史缩为一句
   remote-control/                 新收 codex-remote-feishu.md(从根 remote-control.md 搬入)+ 观察清单并入本目录 README
   tmux-runtime.md / agentd-runtime-candidates-20260829.md / workbench-shell.md
-                                  文首加「结论已被 §N 取代,证据继续有效」标注;不删不搬
+                                  保留已有重解释标注;workbench-shell 的旧「当前决定」段按 §3.23 改为历史口吻;不删不搬
 ```
 
 每个文件一句话职责与「明确不负责什么」:
@@ -81,11 +81,11 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 
 | 章节(待 S1 核对标题) | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
-| 文首 IMPORTANT 基线说明 | keep | — | 当前到哪,门户必需 | — | |
+| 文首 IMPORTANT 基线说明 / 许可证 | keep | — | 当前到哪与许可证声明,门户必需 | — | |
 | 一句话定位 / 问题陈述 | keep | — | 门户核心 | G4 | |
 | 目标架构图 | keep | — | 唯一的全图;v0.15.0 已按无等级重画 | — | |
 | 设计基线 bullets | merge | vision.md 设计原则 / design/README 共同规则 | 与两处逐条重复,门户只留链接 | D3 | 是(S 门户收束) |
-| 六个问题 / 目标体验段 | merge | vision.md 目标体验 | vision 已有同段 | D3 | |
+| 四个阶段与四个模块 / 六个问题 / 目标体验段 | merge | vision.md 对应同名节 | vision 已有对应两节 | D3 | |
 | 场景与客户端说明段 | rewrite | — | 缩为架构图注 + 指向 architecture | D3 | |
 | 阅读入口 | rewrite | — | 改为三条阅读路径(§2) | S | |
 
@@ -94,7 +94,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | 章节 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
 | :212「不安装成 HCTL2 自建的 hctl2-agentd」 | rewrite | — | 对已退场组件的否定对比,改为「Herdr 由 hctl2-services 管理」(Grok A2、GLM #4) | D1 | |
-| 「从源码制作外部子系统包」节(:216–233) | rewrite | — | 把逐 target Tuwunel 源码构建写成常规打包路径,与 delivery:262「消费托管制品、源码构建只用于更新托管制品」限定不同(GLM #2 ⚠) | D1 | |
+| 「从源码制作外部子系统包」节(:214–233) | rewrite | — | 把逐 target Tuwunel 源码构建写成常规打包路径,与 delivery:262「消费托管制品、源码构建只用于更新托管制品」限定不同(GLM #2 ⚠) | D1 | |
 | :20「macOS 最低版本为 15」 | rewrite | — | 随 delivery 打包策略一处定义,此处改引用(GLM #3) | D3 | |
 | 其余操作说明 | keep | — | 使用说明不适用精简判据 | — | |
 
@@ -339,7 +339,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | §13 P/B 双表与 P0 选型 | fold-to-history | 双表部分留一句;选型段折叠 | 选型已全部改判 | D1 | 是(3) |
 | §14、§15、§16、§17 | keep | — | :155 锚点「#执行面已选依赖的运维与-footprint」已改名,改为「#已选外部服务的运维与资源占用」(Grok C4) | D2 | |
 | §18 Dagu | rewrite | — | 选型理由与边界仍有效,**只折叠**「B4 完成 API 代次隔离阻断」一段(已被 §23 撤销),不折整节(Grok A15) | D1 | 是(3) |
-| §19 tmux | fold-to-history | 缩为一段;tmux 官方二进制与 macOS 15 一段随 delivery 修正同步 | tmux 已退场 | D1 | 是(3) |
+| §19 tmux | fold-to-history | 缩为一段,保留「当时因 tmux 官方二进制把 macOS 基线升到 15」及其后被 §29 取代的时间关系;当前基线只指向 delivery,不反改历史 | tmux 已退场 | D1 | 是(3) |
 | §20–§26 | keep | — | | — | |
 | §27 运行时 provider 三轮 | fold-to-history | 缩为一段,指向 §29;:223 的 `agent.md#agency` 锚点与「交付文档第 6 项」(现行 P0 只有 5 项,Herdr 是第 2 项)一并改正(Grok C3) | 被 §28/§29 取代 | D1 | 是(3) |
 | §28 中间方案 | fold-to-history | 缩为两句 | 明标已取代 | D1 | 是(3) |
@@ -351,7 +351,7 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 
 | 章节 | 处置 | 去向 | 理由 | 判据 | 需拍板 |
 | --- | --- | --- | --- | --- | --- |
-| 整文件(3 行 stub) | delete | — | 零引用 | D4 | |
+| 整文件(3 行 stub) | delete | — | 没有指向该精确文件的入链;3 处裸写旧称在 §3.23 同步修正 | D4 | |
 
 ### 3.23 docs/research(只动索引与位置)
 
@@ -362,8 +362,8 @@ architecture.md「场景与系统」「避免供应商锁定」→ spec/system.m
 | remote-control.md(Codex Remote Feishu + 观察清单) | split | remote-control/codex-remote-feishu.md + remote-control/README 观察清单 | 根目录只放跨候选归纳 | S | |
 | tmux-runtime.md / agentd-runtime-candidates-20260829.md | keep | — | 文首已有「已被取代」标注(Grok A25/A26),不动 | — | |
 | workbench-shell.md「### 当前决定」小节(:12–14) | rewrite | — | 仍以现在时写「保持 Electron + React 19」,与同文件 :7 重解释冲突;改为历史快照口吻(Grok C5) | D1 | |
-| workbench-shell-reopen-20260826/README.md:4、…-a6-local-probes.md:3、…-a3-linux-web-routes.md:87 | rewrite | — | 三处仍链 `implementation-evidence.md#…`(stub 无该锚点);改指 `docs/research/workbench-shell.md#e-workbench-shell` 与 Helio 条目实际文件(Grok C6–C8,后者待核文件名) | D2 | |
-| methodology-landscape-20260824.md:58 | rewrite | — | 「implementation-evidence 全部钉 commit」口吻过时,改为 `docs/research/`(Grok C9) | D1 | |
+| workbench-shell-reopen-20260826/README.md:4、…-a6-local-probes.md:3、…-a3-linux-web-routes.md:87 | rewrite | — | 前两处的旧 E-WORKBENCH-SHELL 指针改为 `../workbench-shell.md#e-workbench-shell`;Helio 指针改为 `../workbench/helio.md#e-helio`(Grok C6–C8;精确文件已核实) | D2 | |
+| methodology-landscape-20260824.md:47、:56、:58、:111 | rewrite | — | :47/:56/:111 仍以现在时写 agentd+tmux 或 tmux 已拍板,:58 仍写 `implementation-evidence`;统一改为当时方案/已由 Herdr 取代及当前 `docs/research/` 证据纪律(Grok C9 补全同文件漏项) | D1 | |
 
 ### 3.24 `.memo` 状态核销(C5 簇)
 
