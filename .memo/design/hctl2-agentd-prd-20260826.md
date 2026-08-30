@@ -1,6 +1,6 @@
 # hctl2-agentd 产品需求
 
-> 状态：讨论中<br>
+> 状态：已废弃 · 组件已由 §29 退场;条款待按 Herdr / control / tool 三类重归<br>
 > 基线：main @ 84424cd（草案 v0.13.1）<br>
 > 去向：待定：docs/design/delivery.md 的 agentd 交付合同，或独立的 agentd 交付文档<br>
 > 追记（2026-08-29，v0.14.0）：agentd 已退场——本 PRD 的 AGD 条款待按 内置 Agency（hctl2-agency）/ 控制面网关 / 现场保管（工具箱） 三类重新归类，见 `.memo/design/provider-20260829.md`。<br>

@@ -2,6 +2,7 @@
 
 > 日期：2026-08-25<br>
 > 状态：Informative · 待办清单，不改规范。<br>
+> 其余 11 条:措辞形态已随大修按白名单处理,语义改判见 parking-lot #3。<br>
 > 来源：[grok-20260824a](./grok-20260824a.md) §4 与 [codex-design-review-20260825a](../review/20260825-v0.12.3/codex-design-review-20260825a.md) §三，经所有者裁决"记下来，先不改"。
 
 ## 1. 禁令清单清扫（正确道路只有一条，反例写不完）
@@ -12,7 +13,7 @@ v0.13.0 只在改到的段落写了正面陈述；其余仍有成串的"不是 /
 
 | 条款 | 位置 | 建议方向 |
 | --- | --- | --- |
-| agentd-only terminal | `spec/system.md` 端口一节、`spec/agent.md` 终端一节、`delivery.md` | agentd 提供受管 attach；direct attach 的产出可扫描、封存、采纳 |
+| agentd-only terminal | `spec/system.md` 端口一节、`spec/agent.md` 终端一节、`delivery.md` | 已过时,随大修核销 |
 | discovery 绝不联网 | `spec/system.md` 扩展绑定 | 不静默安装/改配置；联网探测可配置 |
 | 所有动作都必须 Preview | `spec/system.md` 场景端口、`spec/project.md` 场景合同 | 危险动作默认确认；普通命令可直接 submit |
 | writer 不可证明静默就永久弃用 worktree/ChangeSet | `spec/agent.md` ChangeSet 一节 | 默认隔离并提示；允许用户确认后接管/采纳/封存/丢弃 |
@@ -24,6 +25,6 @@ v0.13.0 只在改到的段落写了正面陈述；其余仍有成串的"不是 /
 | Scoped Room 只有成功回填才能归档 | `spec/project.md` | 允许以 abandoned / no-decision / superseded 归档 |
 | Context 必须毫秒级、全本地、零模型 | `context.md`、`spec/project.md` | 默认本地规则；模型辅助可配置 |
 | 活动 Run 时禁止采纳新 Task Revision | `spec/task.md` | 允许采纳；旧 Run 不得静默完成新 Revision |
-| 打包与 tmux 拓扑写死 | `delivery.md` | 默认方案 + 能力矩阵 |
+| 打包与 tmux 拓扑写死 | `delivery.md` | 已过时,随大修核销 |
 
 与第 1 项合并成一轮处理；每条若改合同，按转向立项。已在 v0.13.0 处理掉的不列（沙箱入场券、凭据网关、Git common-dir、在场证明、E2EE、Dagu 代次、P0 只验接缝、后端并发令牌与运行时排他）。

@@ -1,4 +1,1 @@
 # version_stamps.allowlist — 允许滞后于根 README 基线的版本戳（文件\t允许的戳）
-# 已知滞后，大修 C5 簇统一 bump 到 v0.15.1 后移除本表条目
-docs/design/context.md	v0.14.1
-docs/design/participant.md	v0.14.1

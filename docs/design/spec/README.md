@@ -1,6 +1,6 @@
 # 合同层总则
 
-> 状态：规范性 · 草案 v0.15.0<br>
+> 状态：规范性 · 草案 v0.15.1<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的合同层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以合同层为准，但合同层不得引入设计层没有的产品行为。
 
@@ -67,64 +67,6 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
 - **独立对象**（核心产品词之外的合同层领域对象）：Repo Instance、Room Invocation、Execution Runtime、Worker Profile
-
-## v0.9.1 归并对照
-
-| 旧名 | 现状 |
-| --- | --- |
-| InvocationBinding / AttemptSpec | 合并为 Execution Spec（owner = Room Invocation \| Attempt） |
-| RuntimeShard / InvocationRuntime | 合并为 Execution Runtime（owner 字段） |
-| TerminalBundle | Execution Runtime 的终端通道字段组 |
-| HarnessAdapterBinding | Execution Spec 冻结的接入方式字段组 |
-| IntegrationIntent / ExternalEffectIntent | 合并为外部副作用命令（executor = tool 本地 Git \| adapter 远端） |
-| TaskSourceConnection / TaskSourceConnectionRevision | 由 Resolved Port Binding（port_kind = task_source）承载 |
-| ChatSurfaceBindingRevision | Room 的 Chat 端口绑定字段组（引用 Resolved Port Binding） |
-| TaskSourceBindingRevision（及裸用 BindingRevision） | Task Binding |
-| EngineDeploymentRevision | Engine Deployment |
-| ChangeSetWriteLease | Write Lease |
-| HarnessDefinition / Installation / Capability | “Harness 目录”的三类探测事实，无类名 |
-| TerminalGateway / WorkflowEngineAdapter | 描述性说法：Agency 客户端适配代码 / workflow engine 端口适配器；不形成独立服务或领域对象 |
-
-## v0.10.3 清扫
-
-| 旧名 | 现状 |
-| --- | --- |
-| RuntimeBackend | 描述性说法：运行时后端（受控端口与物理资源持有者，无对象名） |
-| TaskSource | 端口种类 `port_kind = task_source`；散文写「任务源端口」 |
-| WorkflowEngine | 系统角色小写 workflow engine；端口写「workflow engine 端口」 |
-| HarnessAdapter | 描述性说法：harness 适配器 |
-
-## v0.11.1 词形收敛
-
-| 旧形 | 新形 |
-| --- | --- |
-| 驼峰对象/票据名（TaskRevision 等 25 个） | 带空格专名（Task Revision 等），对齐 Run Manifest / Gate Receipt 先例 |
-| `*Intent` 命令名（16 个） | 动宾语义名（「完成 Task」命令等）；代码标识符由实现仓库定，实现时附对照表 |
-| 状态值枚举拼写 | 中文语义名（待采纳、结果未知、等待输入等） |
-
-ChangeSet 保留原形（核心产品词、业界成词）；字段与格式名（`port_kind`、`review_subject_digest`、ReviewSubjectRef 等）在合同需要逐字指认时保留原形，不受自造语义名的词形规则约束。
-
-## v0.12.2 清扫
-
-三类数据切分落地后按概念门槛复查的降级与统一：
-
-| 旧名 / 旧词 | 现状 |
-| --- | --- |
-| Room Event | 除名：消息 content 本体就是 chat server 的 Matrix event；HCTL 侧只有账本内只追加的"治理事件"（以事件 ID 精确引用消息），两者都不占领域对象名额 |
-| Task Operational State | 降级为 Task Binding 的字段组"操作投影"（后端操作字段的回读投影、同步账与派生健康状态）；ground truth 在 content 后端 |
-| 状态值"中断"（Room Invocation） | 统一为"丢失"：执行身份无法证明时 Room Invocation 与 Attempt 进入同一状态；结束规则只在[连接合同](./connections.md#失败与恢复)定义一次 |
-
-## v0.13.0 收窄
-
-| 旧名 / 旧词 | 现状 |
-| --- | --- |
-| 用户在场证明 | 撤销：治理命令只有两类 actor 来源——可映射到 owner human 的 direct client/provider event 与施工图走完的 reducer；只验来源信封，不判断客户端是被人还是子进程启动，不引入复杂 RBAC |
-| OS 沙箱入场券 | 降为可选执行加固：由 Worker Profile 声明、Execution Spec 冻结、Agency 报告为事实，已声明而宿主施加不了则该次执行不激活；三条底线（工具不是人 / 合入钥匙不进工具 / 隔离工作树）单独保留 |
-| “不得读取目标 ref/common-dir” | 删：Harness 可读 common-dir/refs 并在本 ChangeSet 分支提交；直写目标 ref 不取得集成 authority，只回读为 drift |
-| Engine 检查点 execution identity / engine attempt generation | 退出 Obligation 身份：Obligation 按 Run、节点与观察序号铸造，Engine 的 run ID/step 名只作关联键；代次、deadline、完成谓词只在账本 |
-| Room 的“加密/降级”状态 | 不设：房间端到端加密状态是 Chat 端口绑定的 health 投影，不进不可变 binding，也不是 Room 的 lifecycle 值；可观察结果只在[连接合同失败表](./connections.md#失败与恢复)登记一行，恢复动作是既有的「换绑」命令 |
-| P0 中的第三方自身功能项 | 移出 P0：属选型资料判断或首次消费前的产品化；P0 只验 HCTL 实际使用的 API 与行为 |
-| “后端无并发令牌则降级只读”“不能强制排他的 backend 只可观察” | 归还给依赖：任务后端的并发控制归后端，adapter 按能力用其前置、以回读为准；运行时租约与代次只在账本，后端排他原语是加固 |
 
 ## 外部对齐原则
 
