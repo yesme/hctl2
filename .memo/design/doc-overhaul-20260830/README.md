@@ -1,6 +1,6 @@
 # 全库文档大修施工图
 
-> 状态:已拍板 · S0 十二项按默认生效(2026-08-30「可以开始了」),S2 末八项按建议接受(2026-08-31,见 `03-approved-plan.md`);S1 五线全部到齐;S3 施工中<br>
+> 状态:已拍板 · C1–C5 施工完成,待 S4 收口<br>
 > 基线:main @ `192e7b6`(草案 v0.15.0)<br>
 > 去向:`docs/**` 大修产物 + decision-history 小修订台账一行(v0.15.1);本图与各阶段产物留在本目录作底稿<br>
 > 输入:`.memo/notes/doc-overhaul-20260830/` 六份分工建议(claude/codex/glm/grok/kimi×2)与四份「方案由谁起草」裁决(gemini-a/glm-b/grok-b/kimi-c,四家一致:Fable 起草方案、GPT 写正文),`.memo/notes/doc-cleanup-backlog-20260825.md`,`.memo/notes/design-doc-method-20260819.md`,`.memo/review/20260830-v0.15.0/*` 评审;Claude 于 2026-08-30 综合并逐条核实种子事实<br>
