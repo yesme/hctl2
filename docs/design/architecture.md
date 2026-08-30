@@ -16,11 +16,9 @@
 
 控制面归**用户级**：一人多机连的是同一个控制面，仓库 clone 只是代码侧的物理现场。第一阶段单机部署时三个面同装一台机器——这是 local-first 的默认部署形态，不改变 client-server 实质。
 
-展示面与控制面之间是网络边界，但 Workbench 不是控制面的特权前端。它更像一个把四类 provider 客户端、跨模块导航、联合投影和 HCTL 公共命令入口装在一起的产品桌面：发送消息、整理卡片或输入终端时，和对应原生客户端走同一类 provider 合同；预览、提交命令时，和 CLI 走同一个 command service。动作是否合法取决于目标、操作者映射、版本、幂等依据和 provider 能力，不取决于它来自 Workbench、CLI 还是原生界面。Workbench 关闭或未安装不会停止领域服务和执行。
+Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 公共命令入口组合成一个产品桌面，但没有额外权限。消息、卡片和终端输入走各模块的 provider 合同，治理命令与 CLI 共用 command service；动作分类与接纳规则见[系统边界](./spec/system.md#客户端动作与-provider-事件)。Workbench 关闭后，领域服务和执行照常继续。
 
-因此不能把所有原生客户端统一称为“只读”或“带外”：Matrix 与 Vikunja 原生界面本来就是 content 的正常写入者；Herdr TUI 可以是正常的人机输入通道，只是 v0.8.2 无法提供 HCTL 单输入租约的证明；Dagu 管理界面会先改变机械执行，无法满足 HCTL 所需的副作用顺序，所以不作为普通 Run 入口。具体动作分类和四模块接纳规则见[系统边界](./spec/system.md#客户端动作与-provider-事件)。Workbench 仍可连接远程控制面——它打开的是“某个控制面上的仓库与项目”，不要求本机有 clone；只有执行需要可达的 Repo 现场、工具箱和 Herdr 服务。一人两机的连续工作由此成立：一套控制面、多个客户端、按需多个执行现场，而不是两套配置加同步。第一阶段只交付本机连接；远程连接的认证与传输见[系统边界](./spec/system.md)的端点约束与未决问题。
-
-产品表达就是普通的打开体验：用户按 repo 选择——“打开本地 repo”即连接（必要时拉起）本机控制面并定位到该仓库；“打开远端 repo”即连接远程控制面，再选它名下的仓库。观察与接管同样不依赖本机 clone：终端连接凭控制面签发的短期票据抵达执行现场，观看者在哪台机器与执行在哪台机器无关。
+产品仍是普通的“打开仓库”：打开本地 repo 会连接本机控制面，打开远端 repo 会连接远程控制面并选择其名下仓库；终端票据也可以把观察者带到另一个执行现场。一套控制面因此可以服务多个客户端和执行现场。第一阶段只交付本机连接，远程认证与传输仍属[交付文档的未决问题](./delivery.md#未决问题)。
 
 执行面的各系统是独立进程或服务器，不内嵌进控制面。“轻量”指轻量的实现选择、低资源占用，以及随 HCTL 一键启停的生命周期托管，不是把服务塞进控制面进程。
 
@@ -30,7 +28,7 @@
 
 | 场景 | 系统角色 | 系统拥有的 content | 备注 |
 | --- | --- | --- | --- |
-| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端可直接访问；HCTL 房间不开端到端加密，控制面按消息 ID 读正文 |
+| Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端可直接访问；HCTL 房间不开端到端加密，准入与降级见[Project 合同](./spec/project.md#room-与消息) |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
 | Terminal | harness（编码代理工具）与 Agency | 会话转录、PTY 流 | Agency 之于 Terminal，如同 chat server 之于 Chat Room。第一阶段直接采用 Herdr：它按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再提供另一套第一方终端运行服务 |
@@ -46,7 +44,7 @@ Tuwunel、Vikunja、Dagu 和 Herdr 是第一阶段默认实现，不是 HCTL 的
 | Workflow | HCTL 的 Workflow Revision 中间表示 + workflow engine 编译/回读端口 | Dagu | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
 | Terminal | HCTL Agency 端口 + 客户端侧终端 transport adapter | Herdr | 官方远程 Agent 可以直接实现 Agency 合同，或由专用适配器接入；执行授权、身份、租约、证据与恢复等级不随 Agency 改变 |
 
-Workbench 是四个场景的稳定组合界面，但只使用公开合同：HCTL 命令与 CLI 同路，content 和运行时动作与对应原生客户端同路。第三方原生界面不定义 HCTL 功能；Dagu 页面、Vikunja 页面或 Herdr TUI 的私有对象模型不得进入模块合同。Terminal 的字节流和绘制性能敏感，因此 Workbench 可以通过客户端侧 transport adapter 直读 Herdr 观察流并向精确目标输入，不要求 control 代理全部 PTY 字节；该通道能否声称 HCTL 输入租约生效，仍按 Herdr binding 的能力如实标注。Herdr 将来若提供统一 writer gate、输入事件和可限定权限的连接凭据，再把对应能力纳入 binding 并通过合同测试。
+Workbench 是四个场景的稳定组合界面，但只使用公开合同：HCTL 命令与 CLI 同路，content 和运行时动作与对应原生客户端同路。第三方私有对象模型不进入模块合同。Terminal 的字节流和绘制性能敏感，Workbench 可以通过客户端侧 transport adapter 直连精确目标；输入租约、记录与恢复保证按 binding 声明的能力如实标注。
 
 “可替换”分三档承诺，不能混为一谈：新工作可以在通过合同测试后选择另一 provider；活动执行继续使用冻结的 binding，不热切换；既有 content 能否迁移取决于两端导入导出能力，需要单独预览和校验。HCTL 自己的 metadata、不可变引用和 Git 结晶不依赖默认实现，但这不等于所有第三方 content 都能无损搬家。
 
@@ -73,14 +71,14 @@ content 容器的层级随场景各得其所：聊天两级——一个 Repo 一
 
 | 交接 | 交付物 | 一句话 |
 | --- | --- | --- |
-| Project → Task | 冻结的任务契约（Task Revision）+ 来源回链 | 讨论升格为承诺；普通消息、总结和拖放都不能创建 Task |
+| Project → Task | 冻结的任务契约（Task Revision）+ 来源回链 | 讨论经采纳命令升格为承诺 |
 | Task / Project → Run | 冻结契约 + 施工图，由施工清单（Run Manifest）冻结引用 | 承诺进入治理；批准施工图与开工是两个动作 |
 | Run / Project → Harness | 派发规格（Execution Spec） | 治理派发执行；执行侧照单干活，不做语义判断 |
 | 执行回程 | 结果提议（Result Proposal）→ 裁决与凭证 | 执行只能提议；owner 模块机械校验身份、代次、权限与证据后才算数 |
 
 ## 数据丢了怎么办
 
-两种情形分开立约：**不可用**（进程或服务暂时失联）走降级合同，**永久丢失**（数据没了）走重建合同。合同细节见[系统边界](./spec/system.md)。
+两种情形分开立约：**不可用**（进程或服务暂时失联）保住已接纳事实并标明新鲜度，**永久丢失**（数据没了）按三类数据重建。精确降级与恢复见[系统边界](./spec/system.md)和[连接合同](./spec/connections.md#失败与恢复)。
 
 **不可用——保住已接纳事实，不伪造新鲜度：**
 
@@ -94,6 +92,6 @@ content 容器的层级随场景各得其所：聊天两级——一个 Repo 一
 **永久丢失——按三类数据分别回答：**
 
 - **metadata**：控制面账本是唯一不可再生的权威，必须有备份；判决的结晶副本进 Git 后可以部分回灌，但回灌不能伪造未结晶的判决。
-- **content**：丢失不会抹掉已经接纳的治理事实——已结晶的部分（决议、契约、凭证、代码）存活于 Git，有桥接来源的部分可以重放，丢掉的是尚未结晶的记忆；但需要核对 provider 当前事实或重建来源链的命令仍须 fail closed，不能拿旧结晶冒充 fresh readback。
+- **content**：丢失不会抹掉已经接纳的治理事实——已结晶的部分（决议、契约、凭证、代码）存活于 Git，有桥接来源的部分可以重放，丢掉的是尚未结晶的记忆；需要核对 provider 当前事实或重建来源链的命令仍须 fail closed，旧结晶不充当 fresh readback。
 - **artifact**：靠 Git 分布式冗余，每个 clone 与 remote 都是备份。
 - 物理观测（进程、心跳、屏幕）本就可丢弃重建，不入此列。
