@@ -4,7 +4,7 @@
 
 - [Agent 运行服务候选复审](../agentd-runtime-candidates-20260829.md)：Termio、tty7、cmux、Pilotty、tmux 库和相邻产品的统一比较；
 - [tmux 与候选对照](../tmux-runtime.md)：历史 tmux 方案以及 Zellij、shpool 对照；
-- [远程操控与会话同步](../remote-control.md)：远程客户端与会话同步产品的横向清单。
+- [远程操控与会话同步](../remote-control/README.md)：远程客户端与会话同步产品的横向清单。
 
 单案：
 

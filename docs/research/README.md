@@ -1,6 +1,6 @@
 # docs/research · 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-24（来时路归类补于 2026-08-26，2026-08-27 由单文件拆为一个对象一个文件，2026-08-29 将单个案例按同层同类归入子目录，2026-08-30 远程操控观察清单升格为逐对象审计）<br>
+> 状态：信息性文档 · 研究快照 2026-08-24；按产品类别组织，单案入同层子目录<br>
 > 上级文档：[HCTL2 设计规范](../design/README.md)<br>
 > 规则：本目录只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。条目是产物（Task 交付的 Artifact）：钉定 commit / 版本与许可，发布后正文不改，只在文末追加复核记录；中间过程与备忘在 `.memo/`。<br>
 > 组织方式：本文按**产品类别**给总览（回答"它是什么"）；各条目文件内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。这两个分类维度互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
@@ -31,131 +31,37 @@
 
 ### ① Coding Harness · 编码代理本体
 
-HCTL2 驱动的对象；借的是接入协议与架构边界，不是产品模型。
-
-| 项目 | 复用决策 | 证据层级 | 只保留的独特价值 |
-| --- | --- | --- | --- |
-| [OpenCode](./harness-access.md#e-l1-harness-access) | 适配协议（第一阶段目标 harness） | L1 专项 | OpenAPI + SSE + 类型化 SDK 的服务端优先、多客户端 Harness 控制接口 |
-| [Pi](./harness-access.md#e-l1-harness-access) | 适配协议 | L1 专项 | 内嵌 SDK + 严格 JSONL RPC，以及 `steer`/`follow_up` 队列契约 |
-| [Kimi Code](./harness-access.md#e-l1-harness-access) | 适配协议 | L1 专项 | ACP/原生能力矩阵和可以验证的降级行为 |
-| [DeepSeek Harness](./harness/deepseek-harness.md#e-l1-deepseek-harness) | 仅参考行为 | L1；横切架构边界 | 能力端口、类型化事件和可撤销注册、模型可见只追加日志，以及插件组合的收益与风险 |
-| [Grok Build](./workbench/grok-bot.md#e-grok-bot) | 仅参考行为 | L1 | 开源 Rust CLI；作为 ACP agent 可被任何应用托管编排的单向开放（详见 Grok Bot 条目） |
+HCTL2 驱动 Coding Harness，借 OpenCode、Pi、Kimi Code 的接入协议以及 DeepSeek Harness、Grok Build 的架构边界，不借其产品模型；文件、证据编号与复用决策见[条目索引](#条目索引)。
 
 ### ② Agent 协作平台 · 人机混合协作系统
 
-与 HCTL2 同赛道的产品。产品重心一列回答"它把工程投入花在哪个场景"。
-
-| 项目 | 产品重心（直方图口径） | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
-| --- | --- | --- | --- | --- |
-| [First Tree](./workbench/first-tree.md#e-l4-first-tree) | 多中心：terminal 50 / context 25 / room 20（叙事在 Chat/Context，工程在受管运行时） | L4 核心；L2/L1 专项 | 移植有边界的组件（选择性移植，Apache-2.0） | 持久 Chat、显式寻址与可见 handoff、Context 筛选与治理、Need You、可靠 Inbox、跨渠道协作和托管运行时连续性 |
-| [Claude Tag](./workbench/claude-tag.md#e-l4-claude-tag) | room（闭源，行为口径） | L4 行为参考 | 仅参考行为 | 共享且可继续引导的讨论串、按作用域拥有的身份和记忆、持久协作与临时运行时分离 |
-| [Grok Bot](./workbench/grok-bot.md#e-grok-bot) | room + terminal（闭源；客户端源码经非授权重建印证，服务端不可见） | L4 行为；L3/L2/L1 边界 | 仅参考行为 | Bot 作为应用原生一等参与者与 handoff 可见性原则、审批对象绑定执行指纹与用户消息代际、"审批不可逆已完成工作"的显式声明、观察-接管-交还回路、动作审计事件 schema；账号级共享云机与凭证、模型分类器当 Gate 且默认只影子运行的反面证据 |
-| [Cumora](./workbench/cumora.md#e-cumora) | room 主导（场景内归一化 room 67 / terminal 21 / kanban 7 / workflow 5） | L4/L3/L1 专项；L2 边界 | 移植有边界的组件（选择性移植，MIT） | 唤醒 triage 门与协同门（seen 游标/HELD/hold-token）、Shipping 验收覆盖矩阵与 builder/verifier 分离、BYOA 引擎适配矩阵与保守会话重置、设备配对与不可伪造身份；自由文本证据与全权引擎派发的反面实证 |
-| [LobeHub](./workbench/lobehub.md#e-lobehub) | 多中心 room 为主（场景内 room 54 / workflow 16 / terminal 16 / kanban 14；task/验收面增速最快） | L4/L1 专项；L2 边界 | 仅参考行为（非 OSI 许可，只作设计研究） | Context 组装的纯机械处理器管道与增量持久化压缩；外部 Harness 子进程适配器的终局结果契约、状态提取与会话重建；supervisor LLM 路由和默认工具 token 重量的反面实证 |
-| [Multica](./workbench/multica.md#e-multica) | 多中心（terminal 37 / kanban 29 / room 13 / workflow 12） | L4/L3/L2/L1 专项 | 仅参考行为（自定义许可排除移植；协议与测试形状可仿） | L4 的 Project/Issue/私聊发布边界；L3 的 Issue 与单次运行分离；L2 的领取、租约、重试、恢复与归属；L1 的多 Harness 能力矩阵和无损 worktree |
-| [Helio](./workbench/helio.md#e-helio) | 文档面 workflow 35 / kanban 25 / room 25 / terminal 15；开源外围投入压倒性在工具集成与 workflow 治理 | L4/L2/L1 专项；L3 边界 | 核心仅参考行为；开源外围（anycli/ship）移植有边界的组件 + 适配协议 | 消息面 CAS/cede/receipts/turn 级出处与人批 charter、三元归约与未收尾看门狗、机械 stop-gate 与证据分级、side_effect 安全默认与临时凭证注入；"关单人类专属"营销与实现落差、agent 自行关单的反面证据 |
-| [Codeg](./workbench/codeg.md#e-l3-codeg) | terminal 70 / 远程操控 15 / kanban 8 / workflow 4（L3 亮点是其产品的次要模块） | L3 核心；L1/L2 专项 | 仅参考行为为主（Apache-2.0，可按需移植） | 独立异步 `WorkTask`、评审/合并/恢复、ACP/worktree/差异集成，以及自动化与固定流程的边界 |
-| [Stably Orca](./workbench/stably-orca.md#e-l1-stably-orca) | terminal 47 / kanban 39 / 交付评审 6 / workflow 4 / room 4 | L1 核心；L2 专项 | 仅参考行为为主（MIT，可按需移植） | L1 的 PTY 所有权、冷热恢复、代际隔离和 worktree/差异/远程/交付；L2 的持久 Run 收件箱、Dispatch 权威、可靠交付、幂等收据和执行者资源生命周期 |
-| [Superset](./workbench/superset.md#e-superset) | terminal 60-70 / 远程操控 20 / kanban 5 / workflow 3 | L1 核心；L2 边界 | 仅参考行为（ELv2 排除移植） | L1 的 PTY 守护进程、断线重连与重放、Agent 会话恢复和 worktree 分阶段清理；L2 证明分派与会话传输不等于执行结果或 Workflow 事实 |
-| [Termio](#l1-selected-evidence) | 桌面 ADE：terminal 65 / worktree 组织 20 / 移动伴侣 15 | L1 专项 | 适配协议 | Harness Manifest、会话 URI，以及监听/心跳/信号契约 |
+Agent 协作平台与 HCTL2 同赛道，重点比较持久协作、任务承诺、受管运行时和完成判定边界；First Tree、Cumora 的有边界移植，其他平台的行为或协议参考，以及 Termio 的 Manifest/Session URI/监听协议均在[条目索引](#条目索引)及对应单案中记录。
 
 ### ③ 独立 Agent 产品 · 单助理 / bot 平台
 
-自己驱动模型循环的助理产品；HCTL2 借它们的治理与适配机制，不借产品形态。
-
-| 项目 | 产品重心 | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
-| --- | --- | --- | --- | --- |
-| [OpenClaw](./workbench/openclaw.md#e-l4-openclaw) | 个人助理网关（自驱运行时 + 多渠道接入为主；2026-07 起出现编码代理监督面，约 2-3%） | L4 专项 | 仅参考行为 + 适配协议（MIT） | 确定性的多渠道身份与路由、配对/白名单和按渠道降级投递 |
-| [Hermes Agent](./workbench/hermes-agent.md#e-l3-hermes-agent) | 自驱 agent 为核；场景内 room 52 / terminal 42 / kanban 3（Kanban 仅占其 2026 投入约 1.5%） | L3 专项 | 仅参考行为（MIT） | 持久 Task/Attempt、原子领取、心跳/回收、依赖推进和多客户端共用内核 |
-| [Rakazo](./workbench/rakazo.md#e-rakazo) | 执行运行时 35 / room 27 / 机械后端 24（治理工程严谨度超过产品成熟度） | L2/L1 专项；L4 专项 | 仅参考行为为主（Apache-2.0，可按需移植） | 三层带隔离栅栏的租约与幂等效果账本、挂起前强制 checkpoint 的等人状态、供应商中立的可移植工作区、人/机双租约接管；记忆修订携带 run 级出处；提示词代替策略引擎的反面实证 |
-| [ZeroClaw](./workbench/zeroclaw.md#e-l2-zeroclaw) | 自驱运行时为主（SOP 子系统占全史提交路径不足 1%） | L2 相邻实现参考 | 仅参考行为 | SOP 准入、按版本审批与法定票数、恢复和失败时默认拒绝的规则测试 |
+独立 Agent 产品自己驱动模型循环，HCTL2 只借 OpenClaw、Hermes Agent、Rakazo 与 ZeroClaw 的治理、领取、恢复和适配机制，不借产品形态；详见[条目索引](#条目索引)。
 
 ### ④ Context 管理
 
-| 项目 | 证据层级 · 参考角色 | 复用决策 | 只保留的独特价值 |
-| --- | --- | --- | --- |
-| [MyContext](./context/mycontext.md#e-mycontext) | Context 成本纪律对照样本 | 仅参考行为（Elastic 2.0） | 多来源增量采集、零费用常驻检索、RRF 机械融合、三级可见降级；"能用规则就不用模型"的执行实例 |
-
-Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbench/lobehub.md#e-lobehub)（纯机械组装管道）与 [First Tree 的 Context Tree](./workbench/first-tree.md#e-l4-first-tree)（有来源支撑的知识晋升）在各自条目内，是同一关切的平台内实现。
+Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、First Tree 的有来源知识晋升及横向生态审计为行为证据；详见[条目索引](#条目索引)。
 
 ### ⑤ 远程操控与会话同步
 
-把本机 Harness 会话远程化/多端化的一族；与协作平台的区别是不拥有任务语义。全部只作行为或协议证据；九个产品的逐对象审计（代码与 changelog 级）在 [`remote-control/`](./remote-control/README.md)。
+远程操控把本机 Harness 会话远程化或多端化而不拥有任务语义，Codex Remote Feishu 与九个观察对象只作行为或协议证据；逐对象审计及横向清单见 [`remote-control/`](./remote-control/README.md)，文件与决策见[条目索引](#条目索引)。
 
-| 项目 | 复用决策 | 只保留的独特价值 |
-| --- | --- | --- |
-| [Codex Remote Feishu](./remote-control.md#e-l1-codex-remote-feishu) | 仅参考行为（无许可证，不得移植） | 托管会话的连接与路由、输入排队与引导、Request 和重连状态机 |
-| [Paseo](./remote-control/paseo.md#e-l1-paseo) | 适配协议（Apache-2.0） | 会话时间线带「代次+序号」游标，断线后能判断落后与缺口再续传；把各家代理的审批统一成结构化消息；新输入可打断、也可中途转向正在跑的回合；提醒按人在不在场决定推不推；适配器契约把转录持久化留给厂商会话 |
-| [MindFS](./remote-control/mindfs.md#e-l1-mindfs) | 仅参考行为（AGPL-3.0） | 从各代理的本地存档导入既有会话，按「文件路径/大小/修改时间」判断有没有增量；断线后按游标续传、不重灌全量；工具审批三条协议全部自动放行——反面证据 |
-| [HAPI](./remote-control/hapi.md#e-l1-hapi) | 仅参考行为（AGPL-3.0-only） | 结构化消息与终端字节两种投影并存，没人看就不上传字节流；本地终端与远程端互斥交接——远程一输入就接管，本地按双空格取回；事件编号带服务代次，断线可从缓冲重放 |
-| [Happy](./remote-control/happy.md#e-l1-happy) | 仅参考行为（MIT） | 端到端加密核实到代码，服务器只存密文；扫码配对即交出密钥；消息带序号与本地 id、重发不重复，状态更新先比对版本号再写；审批请求存进加密状态，断线不丢 |
-| [Remux](./remote-control/remux.md#e-l1-remux) | 仅参考行为（MIT） | 一条命令完成「有则接上、无则新建」并带上手机视口；定位只认 tmux 自己的窗格/窗口 id；回到前台先探测连接、每种断因只自动重连一次；先粘贴并确认落地、再单独发回车，防半截误执行 |
-| [Moshi](./remote-control/moshi.md#e-l1-moshi) | 仅参考行为（闭源；线协议公开成文） | 远程回答在注入按键前先核对屏幕上的问题与选项，对不上就拒绝；云端只过字符级摘要、全量转录走 SSH 隧道；电脑解锁在用时推送转静默；与 Herdr 深度耦合 |
-| [ServerCC](./remote-control/servercc.md#e-l1-servercc) | 仅参考行为（闭源） | 从代理自己的会话存档反向索引历史，严格按会话 id 恢复、不是「恢复最近一个」；能把外部启动的会话收进来管，离场时强制选「继续跑/停掉」；每个后台期每会话至多提醒一次 |
-| [QuickTUI](./remote-control/quicktui.md#e-l1-quicktui) | 仅参考行为（server/app 闭源；qscreen 为 MIT） | 每日 CI 用用户同款安装命令验证安装、健康与配对可用；服务器在固定地址自报能力清单供握手前探测；接入时下发解析好的屏幕帧、不重放原始字节；「谁最近操作，终端尺寸就跟谁」的隐式抢占，作输入租约的反面样本 |
-| [Redock](./remote-control/redock.md#e-l1-redock) | 仅参考行为（闭源，无公开代码） | 把「组稿—审阅—发送」从终端敲字里拆出来的输入暂存区，草稿在切换连接后仍在；语音转写先进暂存区改好再发，引擎可自带（含豆包中英混合识别）；tmux/Herdr/psmux 可替换的会话持久层 |
-
+<a id="l1-selected-evidence"></a>
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
-不拥有 HCTL 业务决定权的执行部件。已选外部系统为 Dagu、Tuwunel、Vikunja、Herdr 四项；Chatroom 解决方案另随包提供 Cinny 互操作客户端。再加桌面壳与 UI 基础组件。
-
-| 部件 | 复用决策 | 角色 |
-| --- | --- | --- |
-| [Dagu](./workflow-engines.md#e-l2-dagu) | 采用为依赖 | L2 机械状态后端（Conductor 等七个候选为已评估对照/暂缓） |
-| [Tuwunel](./matrix-homeserver.md#e-l4-matrix-homeserver) | 采用为依赖（Continuwuity 备选暂缓） | Chat Room 的 content 系统（Matrix 协议） |
-| [Cinny](https://github.com/cinnyapp/cinny/releases/tag/v4.12.6) | 采用官方 Web 发行包作为随包客户端 | Chatroom 的 Matrix 互操作与人工查看界面；不是 Workbench，不拥有治理权威 |
-| [Vikunja](./task-backends.md#e-l3-vikunja) | 采用为依赖（限时验证中；[git-bug](./task-backends.md#e-l3-git-bug) 为对照） | Kanban 场景本地 content 后端 |
-| [Herdr](./runtime/herdr.md#e-l1-herdr) / [运行服务验证](./runtime/agency-runtime-validation-20260829.md) | 采用为依赖 | Agent 模块 / Terminal 场景的运行服务；验证记录要适配、修改上游或暂不支持的功能 |
-| [tmux](./tmux-runtime.md#e-l1-tmux-runtime) | 历史选型，不再采用 | 保留 P0 功能、Harness 兼容性和资源占用数据，作为 Herdr 的对照 |
-| [运行服务候选全量复审](./agentd-runtime-candidates-20260829.md) | 旧选型结论已废止；源码与实测证据继续有效 | Termio、cmux、tty7、Pilotty、完整 Agent 产品及产品内 PTY daemon 的发行、协议、测试与 footprint |
-| [Tauri 2](./workbench-shell.md#e-workbench-shell) | 采用为依赖（GPUI 原生备选；Electron 安全网） | Workbench 桌面壳 |
-| Linear / GitHub | 外部字段权威（[适配协议](./task-backends.md#l3-外部系统与观察清单)） | Task 外部来源系统 |
-| xterm.js / virtua / assistant-ui / Tiptap / React Aria / React Flow | 采用为依赖 | UI 基础组件（详见各补充证据表） |
+不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Herdr、Cinny、Tauri 2 与 UI 通用库采用为依赖，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
 
 ### ⑦ 直接谱系
 
-| 项目 | 证据层级 | 角色 | 只保留的独特价值 |
-| --- | --- | --- | --- |
-| [HCTL1 / yesme/hctl](./lineage/hctl1.md#e-l2-hctl1) | L2 | 直接谱系证据 | Git 原生 Seat 领取与隔离栅栏、精确 Verdict 与法定票数、可重放 Receipt 和失败时默认拒绝的测试集 |
-| [HCTL2 Run 语义内核](../design/run.md) | L2 | 原生语义核心 | 与版本和证据绑定的 Run、Seat 候选切换、法定票数、重新过 Gate 和 Receipt |
-
-这个归类按产品类别分组、按"设计亮点"取证据，不按产品名排他。Codeg 可以同时贡献 L3 的独立 Task 生命周期和 L1 的集成边界；Stably Orca 同时贡献 L1 的执行连续性与 L2 的持久监督协议；Herdr 的主要实现价值在 L1，其状态仲裁还为 L2 提供"运行信号不等于语义完成"的边界证据。任何项目若只顺带拥有 Project、Agent 或 Board 概念，仍不会因此进入对应层。
-
-方法论工具生态（spec 驱动、任务图驱动、流程/角色模拟、轻量纪律、编排器等家族：openspec、spec-kit、Kiro、beads、Taskmaster、vibe-kanban、BMAD、MetaGPT、agent-os、GSD、Gas Town）的逐仓库源码审计与借鉴决策记录在 [方法论生态审计备忘录](methodology-landscape-20260824.md)；其结论（不采用为依赖、重借 schema、少量移植、大量借阶段）与本文准入相互独立，未立正式条目。
+直接谱系只取 HCTL1 的 Git 原生 Seat、隔离栅栏、Verdict、法定票数、Receipt 与失败时默认拒绝测试来解释 [HCTL2 Run 语义内核](../design/run.md)的继承边界；详见[条目索引](#条目索引)。
 
 <a id="lineage-scene-map"></a>
 ### ⑧ 来时路与场景落点
 
-同赛道产品的产品重心不是随机分布的：一个产品从哪条路走来，决定它把界面和叙事放在四个场景（Chat Room / Kanban / Workflow / Terminal）的哪一个；而提交直方图显示的工程投入又常常落在另一个场景。下表把这两件事分开写。百分比沿用上文"产品重心（直方图口径）"一列，闭源产品按行为口径。
-
-| 来时路 | 产品 | 叙事中心 | 工程中心（直方图） | 后来长出的第二场景 |
-| --- | --- | --- | --- | --- |
-| 聊天客户端 / 助理网关 | [LobeHub](./workbench/lobehub.md#e-lobehub)（LobeChat 原地演化） | Room | room 54 / workflow 16 / terminal 16 / kanban 14 | task/验收 workbench 是增速最快的面 |
-| | [Cumora](./workbench/cumora.md#e-cumora)（agent 当一等队友的团队聊天） | Room | room 67 / terminal 21 / kanban 7 / workflow 5 | Shipping 八态状态机往 Kanban 长 |
-| | [Hermes Agent](./workbench/hermes-agent.md#e-l3-hermes-agent) | Room | room 52 / terminal 42 / kanban 3 | Kanban 占 1.5%，2026-04 才出现 |
-| | [OpenClaw](./workbench/openclaw.md#e-l4-openclaw) / [ZeroClaw](./workbench/zeroclaw.md#e-l2-zeroclaw) | Room（多渠道） | 自驱运行时 | OpenClaw 2026-07 起出现 workboard/worktrees 页，约 2-3% |
-| | [Claude Tag](./workbench/claude-tag.md#e-l4-claude-tag)（寄生 Slack） | Room | 闭源，行为口径 | Checklist/Routine 只是投影 |
-| 带电脑的 Bot（IDE 厂商的云 agent 转助理） | [Grok Bot](./workbench/grok-bot.md#e-grok-bot)（Cursor 栈） | Room + Terminal（Agent Computer 视图） | 闭源；客户端源码印证 | 没有任务对象，L3 只有隐藏的 TodoWrite |
-| | [Rakazo](./workbench/rakazo.md#e-rakazo)（Grok Bot 自托管替代） | Room（一 bot 一线程） | 执行运行时 35 / room 27 / 机械后端 24 | 没有 L3 |
-| 工单 / Issue 跟踪器 | [Multica](./workbench/multica.md#e-multica) | Kanban（Project/Issue） | terminal 37 / kanban 29 / room 13 / workflow 12 | 四场景全触及且无一超四成，唯一的均衡样本 |
-| | [Helio](./workbench/helio.md#e-helio)（票据 + 审批 + Vault） | Kanban + 审批收件箱 | 文档面 workflow 35 / kanban 25 / room 25 / terminal 15；开源外围集中在工具集成与 workflow 治理 | ship 插件的 stop-gate 与证据分级是 TDD/eval 那条路在协作平台里的落点 |
-| 终端复用 / 并行 worktree | [Superset](./workbench/superset.md#e-superset) | Terminal | terminal 60-70 / 远程 20 / kanban 5 / workflow 3 | Board 分栏从 PR 与运行信号派生 |
-| | [Herdr](./runtime/herdr.md#e-l1-herdr) | Terminal | ≈100% terminal | 无 room/kanban/workflow 目录 |
-| | [Termio](#l1-selected-evidence) | Terminal（桌面 ADE） | terminal 65 / worktree 20 / 移动 15 | — |
-| | [Codeg](./workbench/codeg.md#e-l3-codeg) | Terminal（多 Agent 会话工作台） | ACP/会话面约 70 / WorkTask 看板 8 | 本文借的 L3 是它的次要模块 |
-| | [Stably Orca](./workbench/stably-orca.md#e-l1-stably-orca) | Terminal + worktree Board | terminal 47 / kanban 39 | 看板卡片身份仍是 worktree；有 Decision Gate |
-| 上下文 / 知识工程 | [First Tree](./workbench/first-tree.md#e-l4-first-tree)（Context Tree） | Room + Context | terminal 50 / context 25 / room 20；kanban≈0 | 叙事在 Chat/Context，工程在受管运行时 |
-| 远程操控 | [Codex Remote Feishu](./remote-control.md#e-l1-codex-remote-feishu) 及[观察清单](./remote-control.md#观察清单远程操控与会话同步) | Terminal（Room 只是投影） | 会话与中继 | 刻意不拥有任务语义 |
-
-方法论工具没有产品形态，但来时路最清楚，落点按驱动机制归：spec 驱动（Kiro、spec-kit、OpenSpec）落 Kanban，只是"文件里的任务清单"而没有板；任务图驱动（beads、Taskmaster）落 Kanban；编排器（Gas Town、vibe-kanban）落 Workflow + Terminal；群体自治（ruflo）与流程/角色模拟（BMAD、MetaGPT）落 Workflow；TDD/eval（tdd-guard）落 Workflow 的门但活在 harness hook 里；会话复用（claude-squad、crystal）落 Terminal。三个 Workflow 落点的家族表面相似、内里不同，辨析见[方法论生态审计备忘录](methodology-landscape-20260824.md)的 2026-08-26 补记。
-
-从表里读出三条规律：
-
-1. **来时路决定叙事中心，几乎不决定工程中心。** 工程重心不约而同漂向 Terminal：First Tree 讲 Chat/Context 但一半提交在受管运行时，Multica 讲 Issue 但 terminal 高于 kanban，Codeg 七成在会话面，LobeHub 与 Cumora 都是聊天出身却各自长出 harness 适配层与 BYOA 守护进程。把 harness 真跑起来、跑得住是最难的工程，谁都绕不过。
-2. **Workflow 场景没有产品主人。** 每家都有一个 routine/automation/autopilot，投入都不超过 16%，而且都是"定时触发 + 至少一次投递"的薄层，没有版本、没有 Gate。真正把 Workflow 当中心的全是方法论工具，它们又没有产品面。这与方法论备忘录的完成判定权横评是同一事实的两面。
-3. **Kanban 是最晚长出、也最容易长歪的场景。** 聊天出身的最后才补看板；终端出身的看板卡片身份是 worktree；工单出身的两家看板是叙事中心，但任务是可随时改写的活行，没有冻结契约。
-
-对 HCTL2 的含义：没有一家的四个场景是同时有主人的，四场景齐备本身就是空位；HCTL2 押的差异（Kanban 的契约冻结、Workflow 的完成判定权）恰好落在两个没人做主的场景上。这一节只回答"它们从哪来、落在哪"，不改变各条目的复用决策。
+同赛道产品的来时路决定叙事中心却很少决定工程中心，工程投入普遍漂向 Terminal，Workflow 没有稳定的产品主人，Kanban 往往最晚出现且容易与 worktree 或活工单混同；各对象的来源与场景证据见[条目索引](#条目索引)，方法论工具的落点见[方法论生态审计](./methodology-landscape-20260824.md)。
 
 ## 四层如何组合这些亮点
 
@@ -170,71 +76,48 @@ Context 管理不止一个专门产品：[LobeHub 的 context-engine](./workbenc
 
 ## 条目索引
 
-| 文件 | 对象 | 证据编号 | 类别 |
-| --- | --- | --- | --- |
-| [harness-access.md](./harness-access.md) | OpenCode、Pi 与 Kimi Code | E-L1-HARNESS-ACCESS | ① Coding Harness |
-| [deepseek-harness.md](./harness/deepseek-harness.md) | DeepSeek Harness / Cordis | E-L1-DEEPSEEK-HARNESS | ① Coding Harness |
-| [first-tree.md](./workbench/first-tree.md) | First Tree | E-L4-FIRST-TREE | ② Agent 协作平台 |
-| [claude-tag.md](./workbench/claude-tag.md) | Claude Tag | E-L4-CLAUDE-TAG | ② Agent 协作平台 |
-| [grok-bot.md](./workbench/grok-bot.md) | Grok Bot 与 Grok Build | E-GROK-BOT | ② Agent 协作平台 |
-| [cumora.md](./workbench/cumora.md) | Cumora | E-CUMORA | ② Agent 协作平台 |
-| [lobehub.md](./workbench/lobehub.md) | LobeHub | E-LOBEHUB | ② Agent 协作平台 |
-| [multica.md](./workbench/multica.md) | Multica | E-MULTICA | ② Agent 协作平台 |
-| [helio.md](./workbench/helio.md) | Helio | E-HELIO | ② Agent 协作平台 |
-| [codeg.md](./workbench/codeg.md) | Codeg | E-L3-CODEG | ② Agent 协作平台 |
-| [stably-orca.md](./workbench/stably-orca.md) | Stably Orca | E-L1-STABLY-ORCA、E-L2-STABLY-ORCA | ② Agent 协作平台 |
-| [superset.md](./workbench/superset.md) | Superset | E-SUPERSET | ② Agent 协作平台 |
-| [openclaw.md](./workbench/openclaw.md) | OpenClaw | E-L4-OPENCLAW | ③ 独立 Agent 产品 |
-| [hermes-agent.md](./workbench/hermes-agent.md) | Hermes Agent | E-L3-HERMES-AGENT | ③ 独立 Agent 产品 |
-| [rakazo.md](./workbench/rakazo.md) | Rakazo | E-RAKAZO | ③ 独立 Agent 产品 |
-| [zeroclaw.md](./workbench/zeroclaw.md) | ZeroClaw SOP | E-L2-ZEROCLAW | ③ 独立 Agent 产品 |
-| [mycontext.md](./context/mycontext.md) | MyContext | E-MYCONTEXT | ④ Context 管理 |
-| [remote-control.md](./remote-control.md) | Codex Remote Feishu | E-L1-CODEX-REMOTE-FEISHU | ⑤ 远程操控与会话同步 |
-| [remote-control/mindfs.md](./remote-control/mindfs.md) | MindFS | E-L1-MINDFS | ⑤ 远程操控与会话同步 |
-| [remote-control/paseo.md](./remote-control/paseo.md) | Paseo | E-L1-PASEO | ⑤ 远程操控与会话同步 |
-| [remote-control/hapi.md](./remote-control/hapi.md) | HAPI | E-L1-HAPI | ⑤ 远程操控与会话同步 |
-| [remote-control/happy.md](./remote-control/happy.md) | Happy | E-L1-HAPPY | ⑤ 远程操控与会话同步 |
-| [remote-control/remux.md](./remote-control/remux.md) | Remux | E-L1-REMUX | ⑤ 远程操控与会话同步 |
-| [remote-control/moshi.md](./remote-control/moshi.md) | Moshi | E-L1-MOSHI | ⑤ 远程操控与会话同步 |
-| [remote-control/servercc.md](./remote-control/servercc.md) | ServerCC | E-L1-SERVERCC | ⑤ 远程操控与会话同步 |
-| [remote-control/quicktui.md](./remote-control/quicktui.md) | QuickTUI | E-L1-QUICKTUI | ⑤ 远程操控与会话同步 |
-| [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 |
-| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 |
-| [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 |
-| [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 |
-| [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 |
-| [tmux-runtime.md](./tmux-runtime.md) | 运行时后端复审 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 |
-| [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 |
-| [agentd-runtime-candidates-20260829.md](./agentd-runtime-candidates-20260829.md) | Agent 运行服务候选的源码复审：Termio、tty7、cmux、Pilotty 及相邻候选 | — | ⑥ 外部运行服务与基础设施 · 补充审计 |
-| [workbench-shell.md](./workbench-shell.md) | Workbench 桌面壳：Electron 与 Tauri 2 | E-WORKBENCH-SHELL | ⑥ 机械后端与基础设施 |
-| [hctl1.md](./lineage/hctl1.md) | HCTL1 / yesme/hctl | E-L2-HCTL1 | ⑦ 直接谱系 |
-| [methodology-landscape-20260824.md](./methodology-landscape-20260824.md) | 方法论工具十二族与完成判定权横评（11 个仓库各钉 commit） | — | 方法论生态 |
-| [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 |
-| [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 |
-| [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 |
-
-<a id="l1-selected-evidence"></a>
-## L1 精选实现证据
-
-| 证据 | 独特价值 | 边界 |
-| --- | --- | --- |
-| [Herdr 运行服务验证](./runtime/agency-runtime-validation-20260829.md) | 记录派工、身份、观察、输入、栅栏、停止、恢复和 footprint 测试；补齐 Herdr Apple Silicon 10-pane 与重输出数据 | Herdr 已确定采用；缺失能力必须由 HCTL 适配、明确标为不支持或推动 Herdr 补充，不能另写一套终端服务 |
-| [Agent 运行服务候选复审](./agentd-runtime-candidates-20260829.md) | 逐源码核对 Termio、tty7-server、cmuxd-remote、Pilotty、tmux client 库、产品内 daemon 与远程控制候选；统一发行物、RSS、协议和所需修改的统计口径 | 选型结论是 PR #36—#42 前的快照；v0.14.1 后只沿用机制、测试与资源占用证据，当前 Herdr 验证要求见上项 |
-| [Termio `d1fdac8…`](https://github.com/termio-sh/termio/tree/d1fdac84046805d4056e082f982e6beb6072b61c) / [ATP](https://www.termio.sh/docs/atp) / [会话控制](https://www.termio.sh/docs/session-control) | Manifest、稳定的 Session URI、监听/心跳/信号，以及带数据结构版本的控制协议 | MIT；ATP 不是 HCTL 或行业通用的传输标准，也不作为跨平台 Backend 的权威实现。2026-08-24 复核：其产品形态实为桌面 ADE（并行 worktree 侧栏 + harness hooks 状态），归 Agent 协作平台类，仍按 L1 专项引用 |
-| [Herdr `v0.8.0 / 346411fa`](https://github.com/herdrdev/herdr/tree/346411fa21afd297f5ed3b3fa56f9e3fbf7654b7) / [专项审计](./runtime/herdr.md#e-l1-herdr) | 后台服务持有 PTY；观察与控制、原始输入与 Agent 命令彼此分开；单写者接管；状态信号仲裁与分级恢复 | Apache-2.0；控制方不是持久租约，运行状态不等于领域完成；完整边界见专项审计 |
-| [xterm.js](https://github.com/xtermjs/xterm.js/) | 嵌入式终端渲染器，以及 CJK、输入法、无障碍和流量控制 | MIT；只负责前端，不拥有 PTY、进程或 Session |
-| [WezTerm](https://wezterm.org/cli/cli/index.html) | 成熟的跨平台外部终端与 CLI | MIT；不嵌入应用，也不把 Mux 协议当作 ABI |
-| [tmux `3.7c / e476c123`](https://github.com/tmux/tmux/tree/e476c1230b958df0cb12977517d24b3dc931375b) / [专项复审](./tmux-runtime.md#e-l1-tmux-runtime) | 公开 control mode、稳定 pane ID、headless 查询应答、捕获/转发、退出状态和很小的 native footprint | ISC；历史选型已由 Herdr 取代；三分发目标测试与资源数据继续作为 Herdr 的行为和容量对照 |
-
-## L4 补充证据
-
-| 证据 | 独特价值 | 边界 |
-| --- | --- | --- |
-| [assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) | 有明确作用域的 Message/`MessagePart`/Action 渲染器 | 不采用 Thread、运行时、Store、Composer、Cloud 或 Queue |
-| [virtua](https://github.com/inokawa/virtua) | 支持动态高度的 React 视口 | 不负责 Room 的顺序、游标或跟随策略 |
-| [Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)、[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)、[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) | 前插消息、定位到指定消息、未读状态、动态高度和无障碍测试 | 合并为行为证据；不采用其后端或领域模型 |
-
-Tiptap/ProseMirror 是 L4 精选的 Composer 基础组件，不是产品参考项目：[自定义扩展](https://tiptap.dev/docs/editor/extensions/custom-extensions)、[React 节点视图](https://tiptap.dev/docs/editor/extensions/custom-extensions/node-views/react)。
+| 文件 | 对象 | 证据编号 | 类别 | 复用决策 |
+| --- | --- | --- | --- | --- |
+| [harness-access.md](./harness-access.md) | OpenCode、Pi 与 Kimi Code | E-L1-HARNESS-ACCESS | ① Coding Harness | 适配协议 |
+| [deepseek-harness.md](./harness/deepseek-harness.md) | DeepSeek Harness / Cordis | E-L1-DEEPSEEK-HARNESS | ① Coding Harness | 仅参考行为 |
+| [first-tree.md](./workbench/first-tree.md) | First Tree | E-L4-FIRST-TREE | ② Agent 协作平台 | 移植有边界的组件 |
+| [claude-tag.md](./workbench/claude-tag.md) | Claude Tag | E-L4-CLAUDE-TAG | ② Agent 协作平台 | 仅参考行为 |
+| [grok-bot.md](./workbench/grok-bot.md) | Grok Bot 与 Grok Build | E-GROK-BOT | ② Agent 协作平台 | 仅参考行为 |
+| [cumora.md](./workbench/cumora.md) | Cumora | E-CUMORA | ② Agent 协作平台 | 移植有边界的组件 |
+| [lobehub.md](./workbench/lobehub.md) | LobeHub | E-LOBEHUB | ② Agent 协作平台 | 仅参考行为 |
+| [multica.md](./workbench/multica.md) | Multica | E-MULTICA | ② Agent 协作平台 | 仅参考行为 |
+| [helio.md](./workbench/helio.md) | Helio | E-HELIO | ② Agent 协作平台 | 核心仅参考行为；开源外围有边界移植并适配协议 |
+| [codeg.md](./workbench/codeg.md) | Codeg | E-L3-CODEG | ② Agent 协作平台 | 仅参考行为为主，可按需移植 |
+| [stably-orca.md](./workbench/stably-orca.md) | Stably Orca | E-L1-STABLY-ORCA、E-L2-STABLY-ORCA | ② Agent 协作平台 | 仅参考行为为主，可按需移植 |
+| [superset.md](./workbench/superset.md) | Superset | E-SUPERSET | ② Agent 协作平台 | 仅参考行为 |
+| [openclaw.md](./workbench/openclaw.md) | OpenClaw | E-L4-OPENCLAW | ③ 独立 Agent 产品 | 仅参考行为并适配协议 |
+| [hermes-agent.md](./workbench/hermes-agent.md) | Hermes Agent | E-L3-HERMES-AGENT | ③ 独立 Agent 产品 | 仅参考行为 |
+| [rakazo.md](./workbench/rakazo.md) | Rakazo | E-RAKAZO | ③ 独立 Agent 产品 | 仅参考行为为主，可按需移植 |
+| [zeroclaw.md](./workbench/zeroclaw.md) | ZeroClaw SOP | E-L2-ZEROCLAW | ③ 独立 Agent 产品 | 仅参考行为 |
+| [mycontext.md](./context/mycontext.md) | MyContext | E-MYCONTEXT | ④ Context 管理 | 仅参考行为 |
+| [codex-remote-feishu.md](./remote-control/codex-remote-feishu.md) | Codex Remote Feishu | E-L1-CODEX-REMOTE-FEISHU | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/mindfs.md](./remote-control/mindfs.md) | MindFS | E-L1-MINDFS | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/paseo.md](./remote-control/paseo.md) | Paseo | E-L1-PASEO | ⑤ 远程操控与会话同步 | 适配协议 |
+| [remote-control/hapi.md](./remote-control/hapi.md) | HAPI | E-L1-HAPI | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/happy.md](./remote-control/happy.md) | Happy | E-L1-HAPPY | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/remux.md](./remote-control/remux.md) | Remux | E-L1-REMUX | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/moshi.md](./remote-control/moshi.md) | Moshi | E-L1-MOSHI | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/servercc.md](./remote-control/servercc.md) | ServerCC | E-L1-SERVERCC | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/quicktui.md](./remote-control/quicktui.md) | QuickTUI | E-L1-QUICKTUI | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 | 仅参考行为 |
+| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用为依赖 |
+| [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
+| [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
+| [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
+| [tmux-runtime.md](./tmux-runtime.md) | 运行时后端复审 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 | 历史选型，不再采用 |
+| [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 采用 Herdr 的验证证据 |
+| [agentd-runtime-candidates-20260829.md](./agentd-runtime-candidates-20260829.md) | Agent 运行服务候选的源码复审：Termio、tty7、cmux、Pilotty 及相邻候选 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 旧结论废止，源码与实测证据保留 |
+| [workbench-shell.md](./workbench-shell.md) | Workbench 桌面壳：Electron 与 Tauri 2 | E-WORKBENCH-SHELL | ⑥ 机械后端与基础设施 | 采用 Tauri 2，Electron 为安全网 |
+| [hctl1.md](./lineage/hctl1.md) | HCTL1 / yesme/hctl | E-L2-HCTL1 | ⑦ 直接谱系 | 仅参考行为（直接谱系证据） |
+| [methodology-landscape-20260824.md](./methodology-landscape-20260824.md) | 方法论工具十二族与完成判定权横评（11 个仓库各钉 commit） | — | 方法论生态 | 逐项适配协议、有边界移植或仅参考行为 |
+| [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 | 仅参考行为 |
+| [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 | 仅参考行为的补充证据 |
+| [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 | 采用 Tauri 2 的选型证据 |
 
 ## 已选外部服务的运维与资源占用
 
