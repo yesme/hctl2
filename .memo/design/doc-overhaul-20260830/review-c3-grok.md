@@ -79,3 +79,9 @@
 5. Harness 可读 common-dir/refs vs 不获集成凭据——两句都在 agent 新 :34(普通 Git 用户可读 common-dir/refs 并在本 ChangeSet 分支提交;不向 Harness 交付集成与外部写凭据)。
 
 **结论:通过。**
+
+## 所有者裁决(2026-08-31,「按此修」)
+
+1. 接受 ② 的回滚:`spec/system.md` 恢复「调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer」;前半「只由…赋予」保留。
+2. 追加(Fable 核 diff 发现):恢复同段被顺带删除的「Harness、模型与 execution principal 只有 Result Proposal 通道,不能借 provider service account 或 payload 自报为 human」——命令入口处「工具不是人」的正面锚,删除超出白名单授权。
+3. 其余 ①③④⑤ 通过,无修改。GPT 在 PR #88 上一次修正后合入;本簇第二轮即最后一轮。
