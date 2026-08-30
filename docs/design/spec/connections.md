@@ -58,7 +58,7 @@ Task 模块以 CAS 校验活跃 Project 和可选当前 Task Revision。「创�
 
 ## Project / Task → Run：授权自动施工
 
-批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是第一阶段 0..1 个可选绑定。不可变 Run Manifest 固定 Project/version、可选 Task Revision ID+digest、Workflow Revision、Engine Deployment、repo/base、根 Context Manifest ref+digest、角色/Seat 的精确 Participant revision + Project Role Binding、Skill refs、候选及切换规则、端口绑定、能力、权限、网络/secret 范围、预算、Gate 和截止时间。
+批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是第一阶段 0..1 个可选绑定；Run Manifest 的冻结清单见[Run 合同](./run.md#workflow-与-run-授权)。
 
 control 在一个用户级账本事务中写 Run、Manifest、幂等结果、可选 Task Run claim 和 Engine start outbox。外部执行实例用 `run_id + manifest_digest` 作为关联键；commit 后崩溃或 ACK 丢失时先回读，不能再启动第二个 execution。若 Project/Task/Workflow 在提交前已不匹配预期版本、Project 已归档或 Task 已有 `active | completion_pending` claim，命令拒绝；提交后发生的上游更新不改写活动 Run，只能影响新 Run 或触发显式替代。
 
@@ -96,7 +96,7 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 1. owner 模块提交 Execution Spec 与 dispatch outbox；此时只有 `invocation_version | attempt_generation`，不得预填 runtime identity；
 2. Agency adapter 校验当前 control/site/binding generation，再请求选定的 Agency 进行无副作用预留，并返回实际能力、物理目标、Execution Runtime ID 与新的 `runtime_generation`；实际能力缺任一 Execution Spec 声明的加固项时，control 不进入下一步，以 typed rejection 列出缺项；Agency 本身不能回显的 fence 必须记录为未生效；
 3. control 在用户级账本事务记录 owner 到 Execution Runtime 的精确映射、适用的 Write Lease 和 activate outbox；
-4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 Agency binding owner generation；adapter 按完整 tuple 再校验后调用 Agency 并回读。声明 fence echo 的 Agency 必须拒绝旧代次、旧租约和重复激活；Herdr v0.8.2 不支持该能力，因此只在 HCTL 入口拒绝，绕过入口的动作按低信任处理。
+4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 Agency binding owner generation；adapter 按完整 tuple 再校验后调用 Agency 并回读。声明栅栏回显的 Agency 拒绝旧代次、旧租约和重复激活；未声明栅栏回显的 Agency 只在 HCTL 入口校验，绕过入口的动作按低信任处理。
 
 前三类含义不可混写：Invocation/Attempt version/generation 是语义 owner 身份，runtime generation 是一次物理执行身份，control/site/backend generations 是防旧进程写入的基础设施 fence。Participant revision、binding revision、producer sequence 和 content cursor 都不是这三类中的任一种。
 
@@ -116,7 +116,7 @@ control inbox 先按 proposal ID + producer sequence + owner 去重，再逐输�
 
 ## Human Kanban / Run reducer → Task → Project：验收与回流
 
-无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef 和测试/SCM 证据后提交「完成 Task」命令；它不伪造只能由 Run 产生的 Gate Receipt。验收合同若要求内部独立 Gate，Task 必须先授权 Run。有 Run 路径中，Run 返回其冻结的 Task Revision、终止原因及 Verdict/Receipt/subject refs；只有正常完成的 task-bound Run 才由 reducer 使用稳定幂等键提交同一个「完成 Task」命令。两条路径最终都由 Task 模块按当前 Task Revision、来源 head、Artifact/SCM/CI、drift 和权限独立验收。裸 Run 终态不是 Task 命令，失败类 Run 也不能取消 Task；Task 拒绝自动命令时 Run 保持完成、Task 保持开放并显示需要关注。
+无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef 和测试/SCM 证据后提交「完成 Task」命令，不生成 Run 专属的 Gate Receipt；验收合同要求内部独立 Gate 时，Task 先授权 Run。有 Run 路径中，Run 返回冻结的 Task Revision、终止原因及 Verdict/Receipt/subject refs，并按 completion_pending 机制提交同一命令。两条获准来源与 Task 独立验收规则见[Task 写入合同](./task.md#写入合同)；Task 拒绝自动命令时 Run 保持完成，Task 保持开放并显示需要关注。
 
 Task、Run 和 Agent 以有序领域事件向 Project 返回里程碑。事件携带 source module、稳定引用、event ID/sequence、版本和敏感级别；Project Room 只显示 Request、失败、已验证 Task、Artifact 就绪等低噪声投影。发布 Memo/Artifact 或归档 Project 仍需 Project 自己的类型化命令，不能由投影反向触发。
 
@@ -158,7 +158,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份丢失处理规则的唯一定义，模块合同引用而不复述 |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要 fresh chat readback 的准入拒绝，聊天入口显示重同步中 |
-| 已绑定房间被开启端到端加密 | 同上一行的可继续/拒绝规则；聊天入口显示需要关注，已冻结引用与 digest 不受影响，由有权 human actor 换绑到未加密房间恢复 |
+| 已绑定房间被开启端到端加密 | 聊天入口显示需要关注，已冻结引用与 digest 不受影响；可继续/拒绝与换绑恢复规则见[Room 与消息](./project.md#room-与消息) |
 | 任务后端不可用 | 已冻结且策略不要求 fresh source 的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | Workflow Engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账 |
 | harness / Agency 不可用 | 执行安全暂停或按代次结束，不冒充成功 |
@@ -169,6 +169,6 @@ Task 路径的验收证据 → Task Completion Receipt
 
 ## 场景与第三方适配器
 
-Workbench 可以在一个界面编排上述连接，第三方 Chat/Kanban/Workflow/Terminal 平台也可以按能力提交同一目标命令、查询同一投影并订阅同一事件。适配器没有跨模块捷径：Task binding 明确接纳的 provider Done 只能请求同一个「完成 Task」命令，不能顺带「启动 Run」；Engine task 不能直接启动 Harness，终端或外部 thread 也不能直接 Complete Task。能力不足时隐藏动作、保留待处理请求或安全拒绝，而不是建立平台专属的平行连接。
+Workbench 与第三方 Chat/Kanban/Workflow/Terminal 平台都通过上述目标命令、投影和事件编排连接；适配器只使用目标模块已有的连接。各模块分别声明可接受的 provider 动作：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足来源信封的 Done 产生完成请求；Run 的用户输入和 Agent 结果先进入 control，持久化后再由 outbox 推动 Dagu，Dagu 原生 mutation 只形成分歧；Agent 按 Execution Spec 声明的保证等级接纳原生终端输入。能力不足时隐藏动作、保留待处理请求或安全拒绝。动作分类见[系统合同](./system.md#客户端动作与-provider-事件)。
 
 Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Chat Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。

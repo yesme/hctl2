@@ -73,8 +73,6 @@ Task Completion Receipt 至少固定 Task、「完成 Task」命令、Task Revis
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 
-Run 的裸终态、Harness 自述、Git commit、CI 绿色或单独观察到的外部已关闭都不是「完成 Task」命令；只有满足上文信封的 human Done event，或 task-bound Run 正常完成后的 reducer，可以提交上述同一个 Task 命令。
-
 ## 启动 Run 的前置与排序令牌
 
 「启动 Run」命令预览必须列出会影响当前 Task Revision 的全部待采纳，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 Task Revision，再以新 Revision 重做「启动 Run」命令预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 Task Revision、Run Manifest、Context Manifest 或 Execution Spec。存在未处理的待采纳时不得启动 Run，control 也不得自动采纳或静默越过；只有「采纳契约」命令能让外部契约内容进入施工合同。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
