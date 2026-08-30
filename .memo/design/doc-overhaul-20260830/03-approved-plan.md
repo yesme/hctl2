@@ -1,6 +1,6 @@
 # 冻结方案:S2 拍板记录与施工入口
 
-> 状态:已拍板 · 2026-08-31 所有者裁决「8 项都按建议来」;总图自此冻结,S3 可开工<br>
+> 状态:已收口 · 2026-08-31 终审通过;拍板与冻结记录保留于下<br>
 > 基线:main @ `6dd7665`(草案 v0.15.0)<br>
 > 冻结对象:[`02-target-map.md`](./02-target-map.md) @ `6dd7665`;此后总图只随本文件的「拍板后修订」节改动,施工 harness 发现结构问题一律进 [`parking-lot.md`](./parking-lot.md)<br>
 > S1 基建就位:K3 的五项文档检查已做成 Buck2 `sh_test`(`root//build/docs/...`),CI `docs-check` job 挂进 CI gate(PR #75);禁令盘点 `01-inventory-prohibitions.md` 已到,拍板点 7 见 §1 末<br>
