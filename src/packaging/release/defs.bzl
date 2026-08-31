@@ -1,3 +1,4 @@
+load("//build/rules:ci.bzl", "CI_INTEGRATION", "CI_PLATFORM", "CI_RELEASE")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 
 def _export_command(target: str) -> str:
@@ -24,7 +25,7 @@ def first_party_release(name: str):
         }),
         visibility = ["PUBLIC"],
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_PLATFORM,
     )
 
 def _complete_release_command(target: str) -> str:
@@ -77,7 +78,7 @@ def complete_release(name: str):
         }),
         out = "release",
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_RELEASE,
         tests = [":{}-test".format(name)],
         visibility = ["PUBLIC"],
     )
@@ -95,6 +96,7 @@ def complete_release(name: str):
             "root//packaging/dependencies:metadata",
             "root//packaging/dependencies:test-support",
         ],
+        labels = CI_INTEGRATION,
         run_test_separately = True,
         test_rule_timeout_ms = 600000,
         visibility = ["PUBLIC"],

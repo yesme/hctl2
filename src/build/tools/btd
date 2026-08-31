@@ -1,0 +1,55 @@
+#!/usr/bin/env dotslash
+
+{
+  "name": "btd.dotslash",
+  "platforms": {
+    "linux-x86_64": {
+      "size": 2179317,
+      "hash": "blake3",
+      "digest": "64552059a41dcdd7685727e26f778914897f3deb12791a0952e229ded2765f32",
+      "format": "tar.gz",
+      "path": "btd",
+      "providers": [
+        {
+          "url": "https://github.com/facebookincubator/buck2-change-detector/releases/download/2026-08-20/btd-x86_64-unknown-linux-musl.tar.gz"
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "size": 1666871,
+      "hash": "blake3",
+      "digest": "c1e1aeefcb66afe684979ad14e0820f87f8059d9d3d962464576cb20949cabed",
+      "format": "tar.gz",
+      "path": "btd",
+      "providers": [
+        {
+          "url": "https://github.com/facebookincubator/buck2-change-detector/releases/download/2026-08-20/btd-aarch64-apple-darwin.tar.gz"
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "size": 1841435,
+      "hash": "blake3",
+      "digest": "906b41522c773c739bdbc98213a4ecd2756e7277cbeff77966e42fa0056c1723",
+      "format": "tar.gz",
+      "path": "btd",
+      "providers": [
+        {
+          "url": "https://github.com/facebookincubator/buck2-change-detector/releases/download/2026-08-20/btd-x86_64-apple-darwin.tar.gz"
+        }
+      ]
+    },
+    "windows-x86_64": {
+      "size": 1522710,
+      "hash": "blake3",
+      "digest": "0177530b9433a810cb5bd129f608e569f84f8cda61911ac92fdd0e8cbe7b5fb1",
+      "format": "zip",
+      "path": "btd.exe",
+      "providers": [
+        {
+          "url": "https://github.com/facebookincubator/buck2-change-detector/releases/download/2026-08-20/btd-x86_64-pc-windows-msvc.zip"
+        }
+      ]
+    }
+  }
+}

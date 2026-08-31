@@ -20,7 +20,12 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       code: ${{ steps.paths.outputs.code }}
+      buck: ${{ steps.targets.outputs.buck }}
+      cargo: ${{ steps.paths.outputs.cargo }}
       docs: ${{ steps.paths.outputs.docs }}
+      targets: ${{ steps.targets.outputs.targets }}
+      target_mode: ${{ steps.targets.outputs.mode }}
+      doc_targets: ${{ steps.paths.outputs.doc_targets }}
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -36,7 +41,10 @@ jobs:
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "cargo=true" >> "$GITHUB_OUTPUT"
             echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "select_all=true" >> "$GITHUB_OUTPUT"
+            echo "doc_targets=root//build/docs:profile-all" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
@@ -50,12 +58,37 @@ jobs:
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
+
           if printf '%s\n' "$changed" | grep -qE \
-            '^(docs/|\.memo/review/|README\.md$|AGENTS\.md$|CLAUDE\.md$|CONSTRAINTS\.md$|src/build/docs/|\.github/workflows/code\.yml$)'; then
+            '^(src/(apps|crates)/.*(\.rs|Cargo\.toml)$|src/(Cargo\.lock|Cargo\.toml|reindeer\.toml|rustfmt\.toml|rust-toolchain\.toml)$|src/third-party/rust/BUCK$|\.github/workflows/code\.yml$)'; then
+            echo "cargo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cargo=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if printf '%s\n' "$changed" | grep -qE \
+            '^(\.github/workflows/code\.yml$|src/build/tools/btd$)'; then
+            echo "select_all=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "select_all=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if printf '%s\n' "$changed" | grep -qE \
+            '^(\.gitattributes$|\.github/workflows/code\.yml$|src/build/docs/)'; then
+            doc_targets="root//build/docs:profile-all"
+          else
+            doc_targets=$(printf '%s\n' "$changed" \
+              | git check-attr --stdin hctl-doc \
+              | awk -F ': ' '$3 != "unspecified" && $3 != "memo" {print "root//build/docs:profile-" $3}' \
+              | sort -u \
+              | xargs)
+          fi
+          if [ -n "$doc_targets" ]; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "doc_targets=$doc_targets" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned build linters
         run: |
@@ -92,10 +125,104 @@ jobs:
             exit 1
           fi
 
+      - name: Select impacted Buck targets with BTD
+        id: btd
+        if: steps.paths.outputs.code == 'true' && steps.paths.outputs.select_all != 'true'
+        continue-on-error: true
+        working-directory: src
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BUCK_CONSOLE: simple
+          HCTL2_BUCK2_CACHE: 0
+        run: |
+          set -euo pipefail
+          base_tree="$RUNNER_TEMP/hctl2-btd-base"
+          graph_dir="$RUNNER_TEMP/hctl2-btd"
+          mkdir -p "$graph_dir"
+          git worktree add --detach "$base_tree" "origin/${BASE_REF}"
+
+          target_args=(
+            targets
+            --streaming
+            --keep-going
+            --no-cache
+            --show-unconfigured-target-hash
+            --json-lines
+            '--output-attribute=^buck\.|^name$|^labels$|^ci_srcs$|^ci_srcs_must_match$|^ci_deps$|^remote_execution$|^tests$'
+            --imports
+            '--package-values-regex=^citadel\.labels$|^test_config_unification\.rollout$'
+            --config=cache.schedule_type=
+            --config=user.sandcastle_alias=
+            --config=cache.http_mode=
+            --config=user.schedule_type=
+            --config=user.sandcastle=
+          )
+
+          (
+            cd "$base_tree/src"
+            ./buck2 "${target_args[@]}" \
+              --output "$graph_dir/base.jsonl" root//...
+          )
+          ./buck2 "${target_args[@]}" \
+            --output "$graph_dir/diff.jsonl" root//...
+          git diff --relative --name-status "origin/${BASE_REF}...HEAD" -- . \
+            > "$graph_dir/changes.txt"
+
+          build/tools/btd \
+            --vcs git \
+            --buck "$PWD/buck2" \
+            --changes "$graph_dir/changes.txt" \
+            --base "$graph_dir/base.jsonl" \
+            --diff "$graph_dir/diff.jsonl" \
+            --check-dangling \
+            --buckconfig-select-all \
+            --json-lines \
+            root//... \
+            > "$graph_dir/affected.jsonl"
+
+          jq -r \
+            'select(any(.labels[]?; . == "ci:fast" or . == "ci:platform")) | .target' \
+            "$graph_dir/affected.jsonl" \
+            | sort -u > "$graph_dir/selected.txt"
+          echo "BTD selected $(wc -l < "$graph_dir/selected.txt" | tr -d ' ') first-party targets."
+
+      - name: Resolve Buck target selection
+        id: targets
+        if: steps.paths.outputs.code == 'true'
+        env:
+          BTD_OUTCOME: ${{ steps.btd.outcome }}
+          SELECT_ALL: ${{ steps.paths.outputs.select_all }}
+        run: |
+          set -euo pipefail
+          full_targets='root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party'
+          selected_file="$RUNNER_TEMP/hctl2-btd/selected.txt"
+
+          if [ "$SELECT_ALL" = true ]; then
+            mode=full-policy-change
+            targets=$full_targets
+          elif [ "$BTD_OUTCOME" != success ]; then
+            echo "::warning::BTD failed; falling back to the full first-party target set."
+            mode=full-btd-fallback
+            targets=$full_targets
+          else
+            mode=affected
+            targets=$(xargs < "$selected_file")
+          fi
+
+          if [ -n "$targets" ]; then
+            echo "buck=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "buck=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          echo "Buck selection mode: $mode"
+          echo "Buck targets: ${targets:-<none>}"
+
   buck:
     name: Buck2 / ${{ matrix.platform }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.buck == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -140,15 +267,17 @@ jobs:
           ./buck2 --version
 
       - name: Verify first-party targets
-        run: >-
-          ./buck2 test --build-default-info
-          root//apps/... root//crates/... root//build/tests/... root//:clippy
-          --target-platforms root//build/platforms:${{ matrix.target }}
+        env:
+          TARGETS: ${{ needs.changes.outputs.targets }}
+        run: |
+          read -r -a selected_targets <<< "$TARGETS"
+          ./buck2 test --build-default-info "${selected_targets[@]}" \
+            --target-platforms root//build/platforms:${{ matrix.target }}
 
   cargo-parity:
-    name: Cargo parity / Linux x86_64
+    name: Cargo hygiene / Linux x86_64
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -159,7 +288,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       - name: Install parity toolchain
-        run: rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
+        run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt
 
       - name: Verify toolchain
         run: rustc +1.98.0 --version | grep -F 'rustc 1.98.0'
@@ -167,14 +296,8 @@ jobs:
       - name: Check formatting
         run: cargo +1.98.0 fmt --all --check
 
-      - name: Run Clippy
-        run: cargo +1.98.0 clippy --locked --workspace --all-targets --all-features -- -D warnings
-
-      - name: Build workspace
-        run: cargo +1.98.0 build --locked --workspace --all-targets
-
-      - name: Test workspace
-        run: cargo +1.98.0 test --locked --workspace --all-targets
+      - name: Check locked workspace metadata
+        run: cargo +1.98.0 metadata --locked --no-deps --format-version 1 >/dev/null
 
   docs-check:
     name: Docs checks
@@ -201,10 +324,11 @@ jobs:
         run: build/docs/materialize_repo_tree.sh
 
       - name: Run doc checks
-        run: ./buck2 test root//build/docs/...
-
-      - name: Prohibition density report (report-only)
-        run: build/docs/report_prohibition_density.sh build/docs/repo_tree
+        env:
+          DOC_TARGETS: ${{ needs.changes.outputs.doc_targets }}
+        run: |
+          read -r -a selected_targets <<< "$DOC_TARGETS"
+          ./buck2 test "${selected_targets[@]}"
 
   ci-gate:
     name: CI gate
@@ -216,20 +340,26 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
+          BUCK_REQUIRED: ${{ needs.changes.outputs.buck }}
+          CARGO_REQUIRED: ${{ needs.changes.outputs.cargo }}
           DOCS: ${{ needs.changes.outputs.docs }}
+          TARGET_MODE: ${{ needs.changes.outputs.target_mode }}
           BUCK: ${{ needs.buck.result }}
           CARGO: ${{ needs.cargo-parity.result }}
           DOCSCHECK: ${{ needs.docs-check.result }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES code=$CODE docs=$DOCS buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
+          echo "changes=$CHANGES code=$CODE buck-required=$BUCK_REQUIRED cargo-required=$CARGO_REQUIRED docs=$DOCS target-mode=$TARGET_MODE buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
           test "$CHANGES" = success
           if [ "$DOCS" = true ]; then
             test "$DOCSCHECK" = success
           fi
-          if [ "$CODE" != true ]; then
-            echo "No first-party or CI paths; skip Buck2 and Cargo."
-            exit 0
+          if [ "$BUCK_REQUIRED" = true ]; then
+            test "$BUCK" = success
           fi
-          test "$BUCK" = success
-          test "$CARGO" = success
+          if [ "$CARGO_REQUIRED" = true ]; then
+            test "$CARGO" = success
+          fi
+          if [ "$CODE" != true ]; then
+            echo "No first-party or CI paths; skip target selection."
+          fi

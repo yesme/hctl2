@@ -1,3 +1,4 @@
+load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 
 oncall("hctl2")
@@ -7,6 +8,8 @@ rust_binary(
     srcs = ["rust_toolchain_probe.rs"],
     crate_root = "rust_toolchain_probe.rs",
     edition = "2024",
+    labels = CI_FAST,
+    tests = [":rust_toolchain_test"],
 )
 
 rust_test(
@@ -14,6 +17,7 @@ rust_test(
     srcs = ["rust_toolchain_test.rs"],
     crate_root = "rust_toolchain_test.rs",
     edition = "2024",
+    labels = CI_FAST,
 )
 
 sh_test(
@@ -23,5 +27,6 @@ sh_test(
         HCTL2_VERSION,
         "$(location root//:Cargo.toml)",
     ],
+    labels = CI_FAST,
     resources = ["root//:Cargo.toml"],
 )

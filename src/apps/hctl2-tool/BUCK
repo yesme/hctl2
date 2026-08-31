@@ -1,3 +1,4 @@
+load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
 
 oncall("hctl2")
@@ -9,7 +10,9 @@ rust_library(
     deps = ["root//crates/hctl2-protocol:hctl2_protocol"],
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env(),
+    labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":unit_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -19,7 +22,9 @@ rust_binary(
     crate_root = "src/main.rs",
     deps = [":hctl2_tool"],
     edition = HCTL2_RUST_EDITION,
+    labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":smoke_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -30,6 +35,7 @@ rust_test(
     deps = ["root//crates/hctl2-protocol:hctl2_protocol"],
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env(),
+    labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )
@@ -42,6 +48,19 @@ rust_test(
     env = hctl2_cargo_env() | {
         "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
     },
+    labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "binary": ":hctl2-tool[clippy.txt]",
+        "library": ":hctl2_tool[clippy.txt]",
+        "smoke": ":smoke_test[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
+    },
+    labels = CI_FAST,
     visibility = ["PUBLIC"],
 )

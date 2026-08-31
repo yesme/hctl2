@@ -41,7 +41,7 @@ jobs:
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
           if git diff --no-renames --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/(apps|crates|third-party|packaging)/|src/build/(empty_cell|execution|platforms|rules|toolchains)/|src/build/tools/(bazel-remote-bin|buck2-bin|buck2-cache|dotslash\.env|install-dotslash)$|src/(\.buckconfig|\.buckroot|BUCK|Cargo\.lock|Cargo\.toml|buck2|rust-toolchain\.toml)$|\.github/workflows/release\.yml$)'; then
+            '^(src/(third-party|packaging)/|src/build/(empty_cell|execution|platforms|rules|toolchains)/|src/build/tools/(bazel-remote-bin|buck2-bin|buck2-cache|dotslash\.env|install-dotslash)$|src/(\.buckconfig|\.buckroot|BUCK|Cargo\.lock|Cargo\.toml|buck2|rust-toolchain\.toml)$|\.github/workflows/release\.yml$)'; then
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
             echo "release=false" >> "$GITHUB_OUTPUT"

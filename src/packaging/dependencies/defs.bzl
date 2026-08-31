@@ -1,4 +1,5 @@
 load(":lock.json", LOCK = "value")
+load("//build/rules:ci.bzl", "CI_INTEGRATION")
 
 _MACOS_SDK_VERSION = read_config("hctl2", "macos_sdk_version", "unavailable")
 _MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
@@ -88,7 +89,7 @@ done
         """,
         out = "tuwunel-rust-toolchain",
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_INTEGRATION,
         target_compatible_with = _tuwunel_native_compatibility(),
         visibility = ["PUBLIC"],
     )
@@ -460,7 +461,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         }),
         out = "hctl2-tuwunel-native-build",
         cacheable = True,
-        labels = ["network_access"],
+        labels = ["network_access"] + CI_INTEGRATION,
         target_compatible_with = _tuwunel_native_compatibility(),
         visibility = ["PUBLIC"],
     )
@@ -477,7 +478,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         }),
         out = "tuwunel-native-archive",
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_INTEGRATION,
         target_compatible_with = _tuwunel_native_compatibility(),
         visibility = ["PUBLIC"],
     )
@@ -496,7 +497,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
             }),
             out = "hctl2-{}-cache".format(target_name),
             cacheable = True,
-            labels = ["large_copy"],
+            labels = ["large_copy"] + CI_INTEGRATION,
             visibility = ["PUBLIC"],
         )
 
@@ -509,7 +510,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         }),
         out = "dependency-packages",
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_INTEGRATION,
         tests = [":package-test"],
         visibility = ["PUBLIC"],
     )
@@ -520,7 +521,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         bash = "mkdir -p \"$OUT\" && cp -aL \"$SRCDIR/.\" \"$OUT/\"",
         out = "dependency-test-support",
         cacheable = True,
-        labels = ["large_copy"],
+        labels = ["large_copy"] + CI_INTEGRATION,
         visibility = ["PUBLIC"],
     )
 
@@ -537,6 +538,7 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
             ":package",
             ":test-support",
         ],
+        labels = CI_INTEGRATION,
         run_test_separately = True,
         test_rule_timeout_ms = 600000,
         visibility = ["PUBLIC"],
