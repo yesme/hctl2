@@ -18,6 +18,7 @@
 ## Repo 地图
 
 - 设计正文与合同：`docs/design/`（合同在 `spec/`；当前基线版本见根 README）
+- 文档怎么写：[WRITING-GUIDE.md](./WRITING-GUIDE.md)（文风与结构；内容与权威纪律在设计地图的「文档纪律」）
 - 调研与证据：`docs/research/`
 - 中间过程与备忘：`.memo/`（放什么去哪见 `.memo/README.md`）
 - 代码：`src/`，Buck2 驱动（`cd src && ./buck2 build root//...`）；打包与发行在 `src/packaging/`
