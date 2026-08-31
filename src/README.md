@@ -20,20 +20,18 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 在 `src/` 产品工作区运行第一方 Buck2 检查：
 
 ```bash
-./buck2 build root//...
-./buck2 test root//...
-./buck2 build root//:clippy
+./buck2 test --build-default-info \
+  root//apps/... root//crates/... root//build/tests/... \
+  root//:clippy root//packaging/release:first-party
 ```
 
 迁移期间仍在 `src/` 目录运行 Cargo 一致性检查：
 
 ```bash
 cargo fmt --all --check
-cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
-cargo build --locked --workspace --all-targets
-cargo test --locked --workspace --all-targets
+cargo metadata --locked --no-deps --format-version 1
 ```
 
-Buck2 构建环境、平台和工具链的验证入口见[构建环境说明](build/README.md)，完整用户包的构建与验收见[发行组装说明](packaging/release/README.md)。Cargo 在迁移期间继续作为行为一致性检查，但不再单独定义另一份依赖版本。
+Buck2 构建环境、平台、BTD 影响范围选择和工具链的验证入口见[构建环境说明](build/README.md)，完整用户包的构建与验收见[发行组装说明](packaging/release/README.md)。Cargo 只保留格式与 locked manifest 检查，不再平行执行 Buck 已覆盖的编译、测试和 Clippy。
 
 当前各命令的构建与操作方法见[HCTL2 使用说明](../docs/usage.md)。
