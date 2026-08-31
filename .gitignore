@@ -1,3 +1,4 @@
 # Local scratch; evidence audits are curated under docs/research/, design under docs/design/.
 .tmp/
 buck-out/
+src/.buckconfig.local

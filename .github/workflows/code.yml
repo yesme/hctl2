@@ -43,7 +43,6 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "cargo=true" >> "$GITHUB_OUTPUT"
             echo "docs=true" >> "$GITHUB_OUTPUT"
-            echo "select_all=true" >> "$GITHUB_OUTPUT"
             echo "doc_targets=root//build/docs:profile-all" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -67,13 +66,6 @@ jobs:
           fi
 
           if printf '%s\n' "$changed" | grep -qE \
-            '^(\.github/workflows/code\.yml$|src/build/tools/btd$)'; then
-            echo "select_all=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "select_all=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if printf '%s\n' "$changed" | grep -qE \
             '^(\.gitattributes$|\.github/workflows/code\.yml$|src/build/docs/)'; then
             doc_targets="root//build/docs:profile-all"
           else
@@ -90,10 +82,14 @@ jobs:
           fi
           echo "doc_targets=$doc_targets" >> "$GITHUB_OUTPUT"
 
-      - name: Install pinned build linters
+      - name: Install DotSlash
+        uses: facebook/install-dotslash@0971fd2071b83392cf02706266fee3877e3bcaf3
+
+      - name: Verify pinned build linters
         run: |
-          src/build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
-          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+          . src/build/tools/dotslash.env
+          test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
+          src/build/tools/jq-bin --version | grep -Fx 'jq-1.8.2'
 
       - name: Lint workflows
         run: >-
@@ -107,7 +103,12 @@ jobs:
             | xargs -0 src/build/tools/shellcheck-bin --severity=error -x
           src/build/tools/shellcheck-bin --severity=error -x \
             src/buck2 \
+            src/build/ci/affected-targets \
+            src/build/ci/verify-affected \
+            src/build/hooks/pre-commit \
+            src/build/hooks/pre-push \
             src/build/tools/buck2-cache \
+            src/build/tools/git-hooks \
             src/build/tools/install-dotslash \
             src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
@@ -127,63 +128,21 @@ jobs:
 
       - name: Select impacted Buck targets with BTD
         id: btd
-        if: steps.paths.outputs.code == 'true' && steps.paths.outputs.select_all != 'true'
+        if: steps.paths.outputs.code == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
-        working-directory: src
         env:
           BASE_REF: ${{ github.base_ref }}
           BUCK_CONSOLE: simple
           HCTL2_BUCK2_CACHE: 0
         run: |
           set -euo pipefail
-          base_tree="$RUNNER_TEMP/hctl2-btd-base"
           graph_dir="$RUNNER_TEMP/hctl2-btd"
           mkdir -p "$graph_dir"
-          git worktree add --detach "$base_tree" "origin/${BASE_REF}"
-
-          target_args=(
-            targets
-            --streaming
-            --keep-going
-            --no-cache
-            --show-unconfigured-target-hash
-            --json-lines
-            '--output-attribute=^buck\.|^name$|^labels$|^ci_srcs$|^ci_srcs_must_match$|^ci_deps$|^remote_execution$|^tests$'
-            --imports
-            '--package-values-regex=^citadel\.labels$|^test_config_unification\.rollout$'
-            --config=cache.schedule_type=
-            --config=user.sandcastle_alias=
-            --config=cache.http_mode=
-            --config=user.schedule_type=
-            --config=user.sandcastle=
-          )
-
-          (
-            cd "$base_tree/src"
-            ./buck2 "${target_args[@]}" \
-              --output "$graph_dir/base.jsonl" root//...
-          )
-          ./buck2 "${target_args[@]}" \
-            --output "$graph_dir/diff.jsonl" root//...
-          git diff --relative --name-status "origin/${BASE_REF}...HEAD" -- . \
-            > "$graph_dir/changes.txt"
-
-          build/tools/btd \
-            --vcs git \
-            --buck "$PWD/buck2" \
-            --changes "$graph_dir/changes.txt" \
-            --base "$graph_dir/base.jsonl" \
-            --diff "$graph_dir/diff.jsonl" \
-            --check-dangling \
-            --buckconfig-select-all \
-            --json-lines \
-            root//... \
-            > "$graph_dir/affected.jsonl"
-
-          jq -r \
-            'select(any(.labels[]?; . == "ci:fast" or . == "ci:platform")) | .target' \
-            "$graph_dir/affected.jsonl" \
-            | sort -u > "$graph_dir/selected.txt"
+          src/build/ci/affected-targets \
+            --base "origin/${BASE_REF}" \
+            --head HEAD \
+            --output "$graph_dir/selected.txt" \
+            --mode-output "$graph_dir/mode.txt"
           echo "BTD selected $(wc -l < "$graph_dir/selected.txt" | tr -d ' ') first-party targets."
 
       - name: Resolve Buck target selection
@@ -191,21 +150,21 @@ jobs:
         if: steps.paths.outputs.code == 'true'
         env:
           BTD_OUTCOME: ${{ steps.btd.outcome }}
-          SELECT_ALL: ${{ steps.paths.outputs.select_all }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           full_targets='root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party'
           selected_file="$RUNNER_TEMP/hctl2-btd/selected.txt"
 
-          if [ "$SELECT_ALL" = true ]; then
-            mode=full-policy-change
+          if [ "$EVENT_NAME" != pull_request ]; then
+            mode=full-periodic
             targets=$full_targets
           elif [ "$BTD_OUTCOME" != success ]; then
             echo "::warning::BTD failed; falling back to the full first-party target set."
             mode=full-btd-fallback
             targets=$full_targets
           else
-            mode=affected
+            mode=$(cat "$RUNNER_TEMP/hctl2-btd/mode.txt")
             targets=$(xargs < "$selected_file")
           fi
 
@@ -254,16 +213,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Install pinned DotSlash
+      - name: Install DotSlash on Linux
+        if: runner.os == 'Linux'
+        uses: facebook/install-dotslash@0971fd2071b83392cf02706266fee3877e3bcaf3
+
+      - name: Install pinned DotSlash on macOS
+        if: runner.os == 'macOS'
         run: |
           build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
 
       - name: Verify runner and tools
         run: |
+          . build/tools/dotslash.env
           test "$(uname -s)" = "${{ matrix.uname_s }}"
           test "$(uname -m)" = "${{ matrix.uname_m }}"
-          dotslash --version
+          test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
+          build/tools/jq-bin --version | grep -Fx 'jq-1.8.2'
           ./buck2 --version
 
       - name: Verify first-party targets
@@ -315,10 +281,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Install pinned DotSlash
+      - name: Install DotSlash
+        uses: facebook/install-dotslash@0971fd2071b83392cf02706266fee3877e3bcaf3
+
+      - name: Verify pinned DotSlash
         run: |
-          build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
-          echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+          . build/tools/dotslash.env
+          test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
 
       - name: Materialize doc lint inputs
         run: build/docs/materialize_repo_tree.sh

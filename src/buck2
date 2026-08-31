@@ -24,9 +24,24 @@ if [ "$(uname -s)" = Darwin ]; then
     esac
 fi
 
-case "${HCTL2_BUCK2_CACHE:-1}" in
+case "${HCTL2_BUCK2_CACHE:-local}" in
     0 | false | no)
         BUCK_OFFLINE_BUILD=true exec "$buck2_bin" "$@"
+        ;;
+    remote)
+        if [ ! -f "$project_root/.buckconfig.local" ]; then
+            printf '%s\n' \
+                'error: HCTL2_BUCK2_CACHE=remote requires src/.buckconfig.local' >&2
+            exit 1
+        fi
+        exec "$buck2_bin" "$@"
+        ;;
+    1 | true | yes | local)
+        ;;
+    *)
+        printf 'error: unsupported HCTL2_BUCK2_CACHE mode: %s\n' \
+            "$HCTL2_BUCK2_CACHE" >&2
+        exit 2
         ;;
 esac
 

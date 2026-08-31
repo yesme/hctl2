@@ -90,10 +90,20 @@ jobs:
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Install pinned DotSlash
+      - name: Install DotSlash on Linux
+        if: runner.os == 'Linux'
+        uses: facebook/install-dotslash@0971fd2071b83392cf02706266fee3877e3bcaf3
+
+      - name: Install pinned DotSlash on macOS
+        if: runner.os == 'macOS'
         run: |
           build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
+
+      - name: Verify pinned DotSlash
+        run: |
+          . build/tools/dotslash.env
+          test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
 
       - name: Verify release tag matches workspace version
         if: ${{ startsWith(github.ref, 'refs/tags/') }}

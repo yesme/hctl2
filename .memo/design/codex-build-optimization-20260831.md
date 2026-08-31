@@ -1,6 +1,6 @@
 # 构建系统优化：三批实施方法
 
-> 状态：已拍板 · 第一、二批已落地，第三批待开始
+> 状态：已拍板 · 三批仓库内实施均已落地；持久远端端点未采购或部署
 > 基线：main @ 4efe0d3（草案 v0.15.4）
 > 去向：`.github/workflows/**`、`src/**/BUCK` 与 `src/build/**`
 
@@ -98,6 +98,18 @@ BTD 输出的是“受影响范围”，不是“必须运行所有下游昂贵�
 3. GitHub-hosted 只是默认执行器之一；其他 CI 可运行相同 Buck targets，再通过 GitHub App/commit status 报告给 branch protection；
 4. 个人日用 Mac 不直接暴露给 public repo 的自动 PR。确需替代 hosted macOS arm64 时，使用专用、隔离、最好一次性的受信 runner；macOS x86_64 继续由对应平台证据提供；
 5. 共享 cache 先用 `remote_cache_hits`、传输字节和 wall time 做试验，只有稳定快于冷构建才长期启用。
+
+第三批落地结果：
+
+- `src/build/hooks/` 提供可选 `pre-commit` 与 `pre-push`，由 `src/build/tools/git-hooks` 显式安装或移除；不在克隆、提交或合并后自动开启。前者只调用 `git diff --cached --check`，后者验证 Git 即将推送的精确提交。
+- `src/build/ci/affected-targets` 把原先写在 GitHub Actions 里的 Buck 导图、BTD 与标签筛选提成可移植入口；`verify-affected` 在当前宿主平台执行结果，选择失败时回退到全量检查。GitHub Actions 与其他 CI 不再需要各写一份选择算法。
+- BTD JSON Lines 由摘要锁定的 jq 官方单文件制品解析，不要求开发者预装 jq，也不以 `grep`/`sed` 解析 JSON。
+- Linux CI 的 DotSlash 引导改用锁定到不可变提交的 Meta 官方 GitHub Action，并在安装后核对仓库固定的 `v0.5.9`；macOS CI 与开发机继续用同一版本和三平台 SHA-256 的最小安装器。官方 Action 当前只支持最新 Release，且在 macOS 15 会误用 BSD `sha256sum --check`，所以版本核对采用失败关闭、macOS 保留已验证的摘要安装路径，避免工具静默漂移或为套用 Action 而降级校验。
+- `src/buck2` 增加 `local / 0 / remote` 三种缓存模式；`remote` 模式只消费 Buck 原生 `.buckconfig.local` 覆盖和 mTLS 证书路径，不把端点、私钥或另一份指纹写入动作图。Buck2 上游 #1445 尚未解决 `http_headers` 可能进入事件日志的问题，因而模板明确不用持有者令牌。来自分叉仓库的 PR 当前不配置凭据，也不会取得写证书。
+- `buck2-cache benchmark` 在相同隔离目录依次执行冷构建、写入缓存和缓存复用。每轮之间由 Buck 原生 `clean` 删除隔离 `buck-out`，再由 Buck 事件日志报告命中、传输与时间。本机 Ubuntu 26.04 的 Rust 工具链探针实测依次为 **3:09.2**、**3:10.3** 和 **1.6 秒**；复用轮的 **5 个动作全部命中缓存**，HTTP 下载从 **105 MiB** 降为 **0**，RE 下载 **1.9 MiB**。这证明现有 REAPI 动作缓存能脱离 Buck 守护进程与 `buck-out` 复用；第一次写入仍要下载工具链并上传 CAS，不能伪装成免费加速。
+- 本轮还修正了 `bazel-remote` 第一次下载时的启动竞态：启动器现在等 HTTP 健康检查端点可用后才让 Buck 连接。
+
+仓库没有凭空部署“共享远端主机”。目前跨工作树的回环缓存已经验证；跨机器缓存的代码接口、凭据边界和测量入口也已齐备。真正启用还要提供持久 REAPI 端点、CA 和受信客户端证书，再通过真实网络运行同一基准。如果缓存复用不能稳定快于冷构建，就维持本机模式。额外执行器同理：任意受信执行器都可运行 `verify-affected` 并回报提交状态，但个人日用 Mac 不注册为公开仓库的自动执行器。
 
 ## 时间目标
 
