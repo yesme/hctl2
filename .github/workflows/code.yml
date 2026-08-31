@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -26,17 +27,78 @@ jobs:
       targets: ${{ steps.targets.outputs.targets }}
       target_mode: ${{ steps.targets.outputs.mode }}
       doc_targets: ${{ steps.paths.outputs.doc_targets }}
+      validation_base: ${{ steps.validation.outputs.base }}
+      validation_head: ${{ steps.validation.outputs.head }}
+      validation_mode: ${{ steps.validation.outputs.mode }}
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
+      - name: Resolve validation range
+        id: validation
+        env:
+          BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          CURRENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_HEAD: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != pull_request ]; then
+            echo "base=HEAD" >> "$GITHUB_OUTPUT"
+            echo "head=HEAD" >> "$GITHUB_OUTPUT"
+            echo "mode=full-periodic" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          test -n "$BASE_COMMIT"
+          test -n "$CURRENT_HEAD"
+          candidate=$(git rev-parse --verify 'HEAD^{commit}')
+          base=$BASE_COMMIT
+          mode=full-pr
+
+          if [ "$EVENT_ACTION" = synchronize ] && [ -n "$PREVIOUS_HEAD" ]; then
+            if ! git merge-base --is-ancestor "$PREVIOUS_HEAD" "$CURRENT_HEAD"; then
+              echo "::notice::The PR history was rewritten; validate the complete PR diff."
+              mode=full-pr-rewritten
+            elif workflow_runs=$(gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/code.yml/runs" \
+              -f head_sha="$PREVIOUS_HEAD" \
+              -f event=pull_request \
+              -f status=completed \
+              -f per_page=100); then
+              if printf '%s' "$workflow_runs" | src/build/tools/jq-bin -e \
+                --arg head "$PREVIOUS_HEAD" \
+                'any(.workflow_runs[]; .head_sha == $head and .conclusion == "success")' \
+                >/dev/null; then
+                base=$PREVIOUS_HEAD
+                mode=incremental-validated-head
+              else
+                echo "::notice::The previous PR head has no successful Code run; validate the complete PR diff."
+                mode=full-pr-no-prior-success
+              fi
+            else
+              echo "::warning::Could not query the previous Code run; validate the complete PR diff."
+              mode=full-pr-query-fallback
+            fi
+          fi
+
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "head=$candidate" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Validation mode: $mode"
+          echo "Validation range: $base...$candidate"
+
       - name: Detect first-party / CI paths
         id: paths
         env:
-          EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_COMMIT: ${{ steps.validation.outputs.head }}
+          VALIDATION_BASE: ${{ steps.validation.outputs.base }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
@@ -47,7 +109,7 @@ jobs:
             exit 0
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
-          changed=$(git diff --no-renames --name-only "origin/${BASE_REF}...HEAD")
+          changed=$(git diff --no-renames --name-only "$VALIDATION_BASE...$HEAD_COMMIT")
           # src/build/docs/ is doc-lint tooling: it triggers the docs checks,
           # not the three-platform build matrix.
           if printf '%s\n' "$changed" | grep -E \
@@ -131,16 +193,17 @@ jobs:
         if: steps.paths.outputs.code == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
         env:
-          BASE_REF: ${{ github.base_ref }}
           BUCK_CONSOLE: simple
+          HEAD_COMMIT: ${{ steps.validation.outputs.head }}
           HCTL2_BUCK2_CACHE: 0
+          VALIDATION_BASE: ${{ steps.validation.outputs.base }}
         run: |
           set -euo pipefail
           graph_dir="$RUNNER_TEMP/hctl2-btd"
           mkdir -p "$graph_dir"
           src/build/ci/affected-targets \
-            --base "origin/${BASE_REF}" \
-            --head HEAD \
+            --base "$VALIDATION_BASE" \
+            --head "$HEAD_COMMIT" \
             --output "$graph_dir/selected.txt" \
             --mode-output "$graph_dir/mode.txt"
           echo "BTD selected $(wc -l < "$graph_dir/selected.txt" | tr -d ' ') first-party targets."
@@ -313,12 +376,15 @@ jobs:
           CARGO_REQUIRED: ${{ needs.changes.outputs.cargo }}
           DOCS: ${{ needs.changes.outputs.docs }}
           TARGET_MODE: ${{ needs.changes.outputs.target_mode }}
+          VALIDATION_BASE: ${{ needs.changes.outputs.validation_base }}
+          VALIDATION_HEAD: ${{ needs.changes.outputs.validation_head }}
+          VALIDATION_MODE: ${{ needs.changes.outputs.validation_mode }}
           BUCK: ${{ needs.buck.result }}
           CARGO: ${{ needs.cargo-parity.result }}
           DOCSCHECK: ${{ needs.docs-check.result }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES code=$CODE buck-required=$BUCK_REQUIRED cargo-required=$CARGO_REQUIRED docs=$DOCS target-mode=$TARGET_MODE buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
+          echo "changes=$CHANGES code=$CODE buck-required=$BUCK_REQUIRED cargo-required=$CARGO_REQUIRED docs=$DOCS target-mode=$TARGET_MODE validation-mode=$VALIDATION_MODE validation-range=$VALIDATION_BASE...$VALIDATION_HEAD buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
           test "$CHANGES" = success
           if [ "$DOCS" = true ]; then
             test "$DOCSCHECK" = success
