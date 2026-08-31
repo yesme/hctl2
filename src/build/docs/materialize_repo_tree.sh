@@ -14,7 +14,7 @@ rm -rf "$dest"
 mkdir -p "$dest"
 cd "$repo_root"
 
-paths="README.md AGENTS.md CLAUDE.md CONSTRAINTS.md LICENSE docs .memo"
+paths="README.md AGENTS.md CLAUDE.md CONSTRAINTS.md WRITING-GUIDE.md LICENSE docs .memo"
 count=0
 while IFS= read -r -d '' f; do
     mkdir -p "$dest/$(dirname -- "$f")"
