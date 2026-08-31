@@ -12,7 +12,9 @@
 
 ## 机械关卡（不要绕过）
 
-- PR 描述必须按模板填三个节：**定位与重述**、**当前生效约束集**、**业界方案调研**。CI 检查 `PR contract`（挂在 required 的 `CI gate` 下）会拒绝空节，并在 PR 新增脚本/工具/三方组件而调研节只写"不适用"时拒绝。
+- PR 描述必须按模板填三个节：**定位与重述**、**当前生效约束集**、**业界方案调研**。CI 检查 `PR contract`（挂在 required 的 `CI gate` 下）拒绝空节，另有两条按 diff 触发：
+  - PR **新增脚本或第一方工具**（`.sh/.bash/.py/.pl/.rb/.js/.mjs/.cjs/.ts` 新文件，或 `src/build/tools/` 下的新文件）时，调研节不得以「不适用」开头——你选了自建，说明这个问题恰恰适用，写清查过什么、为何仍要自建；
+  - PR **改动三方依赖**（`src/third-party/`、`Cargo.lock`、`package.json`/各类 lockfile）时，调研节必须引用 `docs/research/` 下的对象文件，对应纪律三的"先落 `docs/research/`，再写代码"。
 - 这三个字段是给 human 审的杠杆：human 靠它们抓方向，不必通读整个 diff。填敷衍等于把病藏起来，迟早在评审里爆掉。
 
 ## Repo 地图
