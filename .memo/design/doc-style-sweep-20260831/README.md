@@ -25,11 +25,11 @@
 | 改编指南、判断哪些归并会改变含义、汇总、组材料 | Fable | 本目录 `0x` 系列 + `20-verdict-packet.md` |
 | 裁决后落地 PR | GPT | — |
 
-任务书见 [`03-briefs.md`](./03-briefs.md)，一家一节，可以整节贴给对应的 harness。校准样本见 [`04-calibration.md`](./04-calibration.md)。
+任务书见 [`03-briefs.md`](./03-briefs.md)：**整份发给四家，各做各的那一节**（共同前提与松紧基准两节四家都要读，没有内嵌进各节）。校准样本与所有者裁决见 [`04-calibration.md`](./04-calibration.md)。
 
 ## 范围
 
-**进**：根 `README.md`、`docs/usage.md`、`docs/design/` 全部正文与合同、`contract-tests.md`、`delivery.md`、`references/glossary.md`。约 21 个文件、2600–2800 行。
+**进**：根 `README.md`、`docs/usage.md`、`docs/design/` 全部正文与约束、`contract-tests.md`、`delivery.md`、`references/glossary.md`。约 21 个文件、2600–2800 行。
 
 **不进**：`references/decision-history.md` 的历史条目（史料冻结，只看导言与台账格式）、`docs/research/` 正文（证据按当时原样保留，只看索引页）、`.memo/`（中间过程记录）。
 
