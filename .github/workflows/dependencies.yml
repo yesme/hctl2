@@ -1,46 +1,14 @@
 name: External dependencies
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/*.yml"
-      - "LICENSE"
-      - "docs/usage.md"
-      - "src/.buckconfig"
-      - "src/.buckroot"
-      - "src/buck2"
-      - "src/Cargo.toml"
-      - "src/build/execution/**"
-      - "src/build/tools/bazel-remote-bin"
-      - "src/build/tools/buck2-cache"
-      - "src/build/tools/buck2-bin"
-      - "src/packaging/dependencies/**"
-      - "src/packaging/release/assets/**"
-  pull_request:
-    paths:
-      - ".github/workflows/*.yml"
-      - "LICENSE"
-      - "docs/usage.md"
-      - "src/.buckconfig"
-      - "src/.buckroot"
-      - "src/buck2"
-      - "src/Cargo.toml"
-      - "src/build/execution/**"
-      - "src/build/tools/bazel-remote-bin"
-      - "src/build/tools/buck2-cache"
-      - "src/build/tools/buck2-bin"
-      - "src/packaging/dependencies/**"
-      - "src/packaging/release/assets/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: dependencies-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: dependencies-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   contract:
@@ -72,7 +40,7 @@ jobs:
 
   package-lifecycle:
     name: Package lifecycle / ${{ matrix.platform }}
-    if: github.event_name != 'pull_request'
+    needs: contract
     strategy:
       fail-fast: false
       matrix:

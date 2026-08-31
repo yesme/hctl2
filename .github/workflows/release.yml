@@ -5,6 +5,8 @@ on:
   push:
     tags:
       - "v*"
+  schedule:
+    - cron: "0 20 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -38,8 +40,8 @@ jobs:
             exit 0
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
-          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
-            '^(src/|LICENSE$|docs/usage\.md$|\.github/workflows/release\.yml$)'; then
+          if git diff --no-renames --name-only "origin/${BASE_REF}...HEAD" | grep -Eq \
+            '^(src/(apps|crates|third-party|packaging)/|src/build/(empty_cell|execution|platforms|rules|toolchains)/|src/build/tools/(bazel-remote-bin|buck2-bin|buck2-cache|dotslash\.env|install-dotslash)$|src/(\.buckconfig|\.buckroot|BUCK|Cargo\.lock|Cargo\.toml|buck2|rust-toolchain\.toml)$|\.github/workflows/release\.yml$)'; then
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -98,6 +100,7 @@ jobs:
         run: test "$GITHUB_REF_NAME" = "v${{ steps.metadata.outputs.version }}"
 
       - name: Build complete release with Buck2
+        if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
         run: >-
           ./buck2 build root//packaging/release:complete
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
@@ -109,6 +112,7 @@ jobs:
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
 
       - name: Upload release artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hctl2-release-${{ matrix.package_target }}
@@ -117,7 +121,7 @@ jobs:
           retention-days: 14
 
       - name: Attest release provenance
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
           subject-path: ${{ runner.temp }}/hctl2-release/*
