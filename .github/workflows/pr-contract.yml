@@ -50,13 +50,37 @@ jobs:
           done
 
           git fetch --no-tags --prune origin "$BASE_REF"
-          new_components=$(git diff --name-only --diff-filter=A "origin/${BASE_REF}...HEAD" \
-            | grep -E '(\.sh$|^src/build/tools/|^src/third-party/)' || true)
-          research_compact=$(section 业界方案调研 | tr -d '[:space:]')
-          if [ -n "$new_components" ] && [ "$research_compact" = "不适用" ]; then
-            echo "::error::本 PR 新增了脚本/工具/三方组件，但'业界方案调研'节写着'不适用'："
-            printf '%s\n' "$new_components"
-            echo "::error::先查业界方案与平台 native 机制，落 docs/research/ 或在该节说明为何自建。"
+          range="origin/${BASE_REF}...HEAD"
+
+          # 自建信号：新增的脚本或第一方工具。只看新增文件，改已有脚本不算。
+          new_scripts=$(git diff --name-only --diff-filter=A "$range" \
+            | grep -E '(\.(sh|bash|py|pl|rb|js|mjs|cjs|ts)$|^src/build/tools/)' || true)
+
+          # 三方信号：依赖锁与 vendored 目录。改动也算，因为加一个 crate 是改
+          # Cargo.lock、不是新增文件；reindeer 重新生成 BUCK 同理。
+          new_deps=$(git diff --name-only "$range" \
+            | grep -E '(^src/third-party/|(^|/)Cargo\.lock$|(^|/)package(-lock)?\.json$|(^|/)pnpm-lock\.yaml$|(^|/)yarn\.lock$)' || true)
+
+          research=$(section 业界方案调研)
+
+          # 自建时「不适用」不是回答：问题恰恰适用，你只是选了自建。
+          # 判前缀而不判全等，因为加一个句号就能绕过全等。
+          case "$(printf '%s' "$research" | tr -d '[:space:]')" in
+            不适用*)
+              if [ -n "$new_scripts" ]; then
+                echo "::error::本 PR 新增了脚本或第一方工具，'业界方案调研'节却以「不适用」开头："
+                printf '%s\n' "$new_scripts"
+                echo "::error::写清查过哪些业界方案与平台 native 机制、为何仍要自建。"
+                fail=1
+              fi
+              ;;
+          esac
+
+          # 引入三方依赖必须先有 docs/research/ 的对象文件（AGENTS.md 纪律三）。
+          if [ -n "$new_deps" ] && ! printf '%s' "$research" | grep -q 'docs/research/'; then
+            echo "::error::本 PR 改动了三方依赖或依赖锁，'业界方案调研'节必须引用 docs/research/ 下的对象文件："
+            printf '%s\n' "$new_deps"
+            echo "::error::纪律见 AGENTS.md 第三条：新组件、新依赖先落 docs/research/（一对象一文件），再写代码。"
             fail=1
           fi
 
