@@ -1,7 +1,7 @@
-# Project 模块合同
+# Project 模块约束
 
-> 状态：规范性合同 · 草案 v0.15.4<br>
-> 本文是 Project 模块的合同附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接合同](./connections.md)。
+> 状态：规范性约束 · 草案 v0.15.4<br>
+> 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
 
@@ -18,7 +18,7 @@
 | Artifact / Artifact Revision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
 | Room Invocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [Execution Spec](./connections.md#project--run--agent从授权到物理执行) 承载 |
 
-## 写入合同
+## 写入约束
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
@@ -35,13 +35,13 @@
 
 ## Repo 注册与 Project 归档
 
-Repo 不等于外部组织、工作区或某个 clone。「注册 Repo」命令固定新 `repo_id`、预期 Git identity、repo 配置正文 digest 与幂等键；control 先在账本持久化待确认注册与工具箱 outbox，工具箱再把稳定 identity 写入受跟踪的 Repo 配置并按关联键回读。写入或 ACK 结果未知时 Repo 保持待确认，恢复只能按 identity/digest 回读并完成同一注册，不能再生成一个 Repo 或 Repo Room；Git 已存在获准 identity 时，命令校验后复用它。缺失、冲突或仅有 remote URL 相似都不得静默合并。注册确认事务激活唯一 Repo 身份并创建其唯一 Repo Room；待确认 Repo 不接受 Project/Task/Run。不同 clone 通过[系统合同的显式现场挂接](./system.md#repo-与执行现场)连接同一 Repo，而不成为 Project 的子对象。
+Repo 不等于外部组织、工作区或某个 clone。「注册 Repo」命令固定新 `repo_id`、预期 Git identity、repo 配置正文 digest 与幂等键；control 先在账本持久化待确认注册与工具箱 outbox，工具箱再把稳定 identity 写入受跟踪的 Repo 配置并按关联键回读。写入或 ACK 结果未知时 Repo 保持待确认，恢复只能按 identity/digest 回读并完成同一注册，不能再生成一个 Repo 或 Repo Room；Git 已存在获准 identity 时，命令校验后复用它。缺失、冲突或仅有 remote URL 相似都不得静默合并。注册确认事务激活唯一 Repo 身份并创建其唯一 Repo Room；待确认 Repo 不接受 Project/Task/Run。不同 clone 通过[系统约束的显式现场挂接](./system.md#repo-与执行现场)连接同一 Repo，而不成为 Project 的子对象。
 
 「创建 Project」命令在同一账本事务创建该 Project 的唯一 Project Room：一个 Project 一个 Room，Room 身份与治理账本在用户级控制面，任何已挂接现场打开的都是同一个 Room；clone 只持有投影与现场操作态（草稿、未读、本地租约）。进入 Project 默认打开该 Project Room。Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态；Workbench 可以另行把同源 Request/health 投影聚合为全局需要关注。
 
 「归档 Project」是 quiescent transition，预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入/写租约，或该 Project 所有且仍为待投递/结果未知的外部副作用。开放 Task、开放 Request 与未归档 Scoped Room 不阻止归档：它们随 Project 一并转为只读，不被隐式完成或取消，Restore 后保持原状态；仍在运行的只读 Invocation 也不阻止归档，其迟到结果按既有规则只留审计。前置不满足就列出 blocker 并拒绝。成功事务把 Project 与 Project Room 置为只读，并拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation。Restore 只恢复 Project 与 Project Room 的接收新命令资格，不复活历史 Task、Run、Invocation、Request、Scoped Room、租约或外部副作用。
 
-Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游合同。
+Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游约束。
 
 Participant 使用稳定 `participant_id` 与不可变配置 revision；该 revision 描述逻辑身份、persona/沟通约束、可选 post-train 或模型资格约束、默认 Skill refs 和 Worker Profile 候选约束，但不携带 secret、Project 权限或运行时身份。Project Role Binding 再把 Project/role 固定到精确 Participant revision，并保存职责、候选约束及权限/预算上限；Skill revision 只是另行冻结的方法包，Worker Profile 则只是物理 Harness/model/runtime 候选。四者不能互相替代：显示名、外部账号、persona、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。换版或换绑不改写活动 Invocation、Seat 或 Run；每次 Execution Spec 必须同时固定实际 Participant revision、Project Role Binding version/digest（repo_scope 可无）与实际 Skill refs/digests。
 
@@ -53,12 +53,12 @@ Scoped Room 创建时必须冻结 parent Room、精确讨论目标（Request 或
 
 Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。
 
-时间线顺序由 chat server 的线性事件顺序给出（单 homeserver 合同前提，写入以事务 ID 幂等）；稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 Chat 端口绑定 + chat server 事件 ID 精确引用消息；被治理引用的消息（升格来源、Context 锚点）在引用时冻结事件 ID 与内容 digest，此后 content 漂移不改写已冻结引用。冻结 digest、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密（第二个合同前提，与单 homeserver 并列）。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新 cursor 的 metadata 命令可以继续；需要 fresh message body、成员身份或完整 cursor 才能准入的命令类型化拒绝，聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实；加密情形由有权 human actor 「换绑」到未加密房间恢复，已冻结的引用与 digest 不受影响。
+时间线顺序由 chat server 的线性事件顺序给出（单 homeserver 约束前提，写入以事务 ID 幂等）；稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 Chat 端口绑定 + chat server 事件 ID 精确引用消息；被治理引用的消息（升格来源、Context 锚点）在引用时冻结事件 ID 与内容 digest，此后 content 漂移不改写已冻结引用。冻结 digest、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密（第二个约束前提，与单 homeserver 并列）。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新 cursor 的 metadata 命令可以继续；需要 fresh message body、成员身份或完整 cursor 才能准入的命令类型化拒绝，聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实；加密情形由有权 human actor 「换绑」到未加密房间恢复，已冻结的引用与 digest 不受影响。
 
 <a id="context-memo-artifact"></a>
 ## Context、Memo 与 Artifact
 
-Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。Bundle 的每个条目按投喂档记录为 inline / pointer / recall 之一。inline 物化原文，只用于执行体自己拿不到或不该自己翻的部分——从聊天史与绑定 Task 的任务后端评论线萃取的相关讨论、契约与范围说明、用户显式引用的原文，以及冻结策略列为必用的同 Run 前序节点结果（Gate Seat 的 ReviewSubjectRef diff、返工 Seat 的 Verdict 正文，见 [Run 模块合同](./run.md#request重试与-gate)）；必用条目超预算时改为 pointer 并附分片建议，不得静默丢弃。pointer 只记精确 ref+digest 与一句摘要，且只能指向执行体在获准范围内以自身工具可打开的位置——Git 对象与 worktree 路径：Repo/Git 内容、ChangeSet Revision、Artifact、Memo、Skill 与 Verdict/Receipt 的 Git 结晶副本；指向账本或任务后端的引用不得作为 pointer 交付。recall 是运行中经 recall policy 追加的子包条目。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Verdict-Receipt 结晶副本指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
+Context 交付的是调用开工时给执行体的 prompt，不代管执行体在会话内自行组装的工作上下文。Bundle 的每个条目按投喂档记录为 inline / pointer / recall 之一。inline 物化原文，只用于执行体自己拿不到或不该自己翻的部分——从聊天史与绑定 Task 的任务后端评论线萃取的相关讨论、契约与范围说明、用户显式引用的原文，以及冻结策略列为必用的同 Run 前序节点结果（Gate Seat 的 ReviewSubjectRef diff、返工 Seat 的 Verdict 正文，见 [Run 模块约束](./run.md#request重试与-gate)）；必用条目超预算时改为 pointer 并附分片建议，不得静默丢弃。pointer 只记精确 ref+digest 与一句摘要，且只能指向执行体在获准范围内以自身工具可打开的位置——Git 对象与 worktree 路径：Repo/Git 内容、ChangeSet Revision、Artifact、Memo、Skill 与 Verdict/Receipt 的 Git 结晶副本；指向账本或任务后端的引用不得作为 pointer 交付。recall 是运行中经 recall policy 追加的子包条目。选择优先级固定为：显式引用 → 当前讨论窗口 → Repo/Project/Task/Run/Request 引用 → Git/Artifact/Verdict-Receipt 结晶副本指针 → 必需 Skill 指针 → 相关 Memo 指针；序列化以稳定内容在前、高频变动在后。一次顶层授权先冻结一个根 Context Manifest，至少包含 `context_manifest_id`、purpose/scope、可选 parent manifest refs、每个实际来源的 stable ref + version/digest、selection-policy version、freshness/coverage/known gaps、required Skill refs/digests、permission/redaction/budget 约束和 `manifest_digest`。Repo Room → Project Room → Run 的传承只能通过这些显式 parent/source 引用发生；搜索索引、`current` 指针或“最近消息”不能替代它们。
 
 每个 Room Invocation 或 Attempt 消费者再从根 Manifest 物化自己的 Context Bundle；Bundle 至少固定 `context_bundle_id`、Manifest ref+digest、consumer owner ref + 精确 owner version/attempt generation、按序 materialized item refs/digests、renderer/tokenizer/redaction versions、逐项压缩记录（若压缩：compressor 模型 ref+revision/digest、压缩率与原文 ref+digest）、选材计量（候选/实选/实际交付 token 估算量）、实际交付 bytes digest、已应用的权限/预算、retention-policy ref/version 与 `bundle_digest`。Execution Spec 同时冻结根 Manifest 与该消费者 Bundle，control 在派工交付前核对实际交付 digest。Bundle 内容至少保留到 owner 终态且该 retention policy 定义的 Result Proposal 准入窗口关闭；之后允许丢弃明文，但必须保留 locator/digest、来源链、policy version 和丢弃事实，不得声称仍可 replay。后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
@@ -76,23 +76,23 @@ Artifact 是 Project/Repo 中可引用、评审和交付的稳定身份；普通
 
 Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时应创建 [Run](./run.md)。
 
-Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交 stop/fence outbox、迟到结果只留审计等动作由[连接合同的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。迟到流或 Result Proposal 不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
+Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交 stop/fence outbox、迟到结果只留审计等动作由[连接约束的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。迟到流或 Result Proposal 不能准入语义结果或附着到新调用。用户 Retry 必须在旧授权失效后创建新的 Room Invocation、Execution Spec、runtime generation 和必要的 ChangeSet，并保留原调用引用，不能重放或复活旧调用。
 
-Room Invocation 的 Execution Spec 除[连接合同定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（repo_scope | project_scope）与 human 批准 Agent 建议时的 lineage 字段：精确 source_suggestion_ref = 消息事件（chat server 事件 ID）| Result Proposal、建议摘要、可选 parent_execution_ref = Room Invocation | Attempt 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；Result Proposal 分支还要逐项匹配其 owner invocation_version、control writer generation、spec/binding/Context Bundle digests，以及物理执行时的 Execution Runtime/runtime_generation 与 site/backend fence generations。`in_process` 只能使用连接合同明确的缩减 tuple。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
+Room Invocation 的 Execution Spec 除[连接约束定义的共同字段](./connections.md#project--run--agent从授权到物理执行)外，还固定 scope（repo_scope | project_scope）与 human 批准 Agent 建议时的 lineage 字段：精确 source_suggestion_ref = 消息事件（chat server 事件 ID）| Result Proposal、建议摘要、可选 parent_execution_ref = Room Invocation | Attempt 与获准 fan-out 位置，并以预期 Room/Project version 和通用幂等键提交；Result Proposal 分支还要逐项匹配其 owner invocation_version、control writer generation、spec/binding/Context Bundle digests，以及物理执行时的 Execution Runtime/runtime_generation 与 site/backend fence generations。`in_process` 只能使用连接约束明确的缩减 tuple。这些 lineage 字段不能由新 worker 的 payload 改写。scope 中 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project-scoped 权限必须选择精确 Project/version，且只有 project_scope 可以携带 ChangeSet 规则。
 
 ## Request
 
 当执行需要输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中 CAS Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配 ACK/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
 
-Request 的完整跨模块字段合同只在[连接合同](./connections.md#跨模块-request-回路)定义；本模块不另建一套同义字段。活动 Request 的问题、目标人或角色、`owner_ref + affected_revision_ref + blocked_scope + owner state_version`（Attempt 另带 attempt_generation，Room Invocation 使用 invocation_version）、dedupe root 和获准解决动作不得原地修改。上述阻塞身份相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；任一 owner/version/scope 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
+Request 的完整跨模块字段约束只在[连接约束](./connections.md#跨模块-request-回路)定义；本模块不另建一套同义字段。活动 Request 的问题、目标人或角色、`owner_ref + affected_revision_ref + blocked_scope + owner state_version`（Attempt 另带 attempt_generation，Room Invocation 使用 invocation_version）、dedupe root 和获准解决动作不得原地修改。上述阻塞身份相同的重复创建必须去重到现有活动 Request，可以追加提醒事件；任一 owner/version/scope 或所需动作变化时必须创建新 Request 并 Supersede 旧 Request，旧解决结果不得推进新 blocker。
 
 Request 的应答面按需升级：默认在卡片或详情中直接回答；需要多轮论述、多位 Participant 或共同编辑时才升级为 Scoped Room；涉及密钥等敏感内容时走安全输入通道，不进入普通消息、trace 或回放；只有诊断或接管精确执行时才连接终端。每一级应答面都绑定同一个 Request 与其阻塞范围，不创建平行事实。
 
-## 场景合同
+## 场景约束
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的 direct client connection，也可以来自 Chat 端口绑定明确允许的 provider 结构化事件；两者都归一为同一 command draft，按[系统合同](./system.md#客户端动作与-provider-事件)保留 actor mapping、source event、目标版本和幂等依据。chat server 里的普通消息本身不是入口。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
+普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的 direct client connection，也可以来自 Chat 端口绑定明确允许的 provider 结构化事件；两者都归一为同一 command draft，按[系统约束](./system.md#客户端动作与-provider-事件)保留 actor mapping、source event、目标版本和幂等依据。chat server 里的普通消息本身不是入口。模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只可形成下一位 Participant/Role 与 fan-out 建议，不能自行创建 Room Invocation、唤醒 worker 或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览，不能要求人复制粘贴 Context。
 
 mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 

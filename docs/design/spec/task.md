@@ -1,7 +1,7 @@
-# Task 模块合同
+# Task 模块约束
 
-> 状态：规范性合同 · 草案 v0.15.4<br>
-> 本文是 Task 模块对象、状态机与写入合同的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[合同层总则](./README.md)，模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)。
+> 状态：规范性约束 · 草案 v0.15.4<br>
+> 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
 
@@ -15,9 +15,9 @@
 
 Repo 到外部 provider/account/scope 的连接由 Resolved Port Binding（port_kind = task_source）承载；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个 active binding。
 
-Task lifecycle 只有开放 | 完成 | 已取消。第一阶段 `project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 合同](./project.md#repo-注册与-project-归档)。
+Task lifecycle 只有开放 | 完成 | 已取消。第一阶段 `project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 约束](./project.md#repo-注册与-project-归档)。
 
-Backlog | Ready | In Progress | Review 是操作投影中的本地非终态 stage，不是 Task lifecycle。Blocked 与需要关注是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；完成/已取消由 lifecycle 决定，外部 Done/Closed 或拖卡不能直接写成该终态。满足本合同后文要求的 human Done 事件可以请求「完成 Task」，但只有命令成功才改变 lifecycle。
+Backlog | Ready | In Progress | Review 是操作投影中的本地非终态 stage，不是 Task lifecycle。Blocked 与需要关注是从 blocker、Request、Run、来源同步和验证事实派生的正交 health，不能覆盖 stage 或成为另一条 lifecycle。Kanban lane 由 local stage、lifecycle 与外部来源投影共同派生；完成/已取消由 lifecycle 决定，外部 Done/Closed 或拖卡不能直接写成该终态。满足本约束后文要求的 human Done 事件可以请求「完成 Task」，但只有命令成功才改变 lifecycle。
 
 ## 契约与来源
 
@@ -27,7 +27,7 @@ Board 与 Project 分组不是新聚合；其稳定锚定保存在 Repo 的 task
 
 看板卡片是 content，粒度由后端自由承载（子任务、清单、微卡不受 HCTL 约束）。只有稳定落在恰好一个已准入 Project group anchor 下的规范卡片，才可 claim 一个 HCTL Task 身份；未分组、同时落入多个 Project group 或 anchor 不可稳定回读的卡片只形成未认领 Snapshot/需要关注，不得猜 Project 或先造 Task。Task Revision 契约按需创建（契约惰性），但只能由显式「采纳契约」或带已预览契约的「创建 Task」产生；无契约的「启动 Run」或「完成 Task」必须先要求该独立动作。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影。「完成 Task」不得在同一命令中隐式生成契约：预览必须要求先执行可审阅的「采纳契约」，再针对返回的精确 Revision 重新预览完成。
 
-Task Revision 冻结验收合同，不冻结施工步骤；其不可变正文与 locator/digest 在 Git，账本保存稳定 identity、准入与 current pointer。后端与关联来源的变化都先成为 Snapshot；其中会改变 Task Revision 契约的内容才形成待采纳，用户采纳并由工具箱回读正文后才准入新 Task Revision。由 content 后端拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。存在绑定该 Task 的非终态 Run 时仍可「采纳契约」推进 current Task Revision；活动 Run 已冻结的 Revision 不因此改写，Run 继续按冻结 Revision 执行。Run 正常完成路径只针对其冻结的 Revision：current 已前移时，Run reducer 的「完成 Task」按契约分歧拒绝，Task 保持开放并显示需要关注，不得静默按新 Revision 完成。绑定 Task 的后端评论线是 Context 的萃取来源：组装器按当前 Snapshot 的 ref+digest 把评论线冻结进 Context Manifest 并物化（投喂档见 [Project 合同](./project.md#context-memo-artifact)）；它进入 Task Revision 仍只经「采纳契约」，物化不改变契约。
+Task Revision 冻结验收约束，不冻结施工步骤；其不可变正文与 locator/digest 在 Git，账本保存稳定 identity、准入与 current pointer。后端与关联来源的变化都先成为 Snapshot；其中会改变 Task Revision 契约的内容才形成待采纳，用户采纳并由工具箱回读正文后才准入新 Task Revision。由 content 后端拥有的操作字段按 binding 与 Snapshot 投影，不经过 adoption。存在绑定该 Task 的非终态 Run 时仍可「采纳契约」推进 current Task Revision；活动 Run 已冻结的 Revision 不因此改写，Run 继续按冻结 Revision 执行。Run 正常完成路径只针对其冻结的 Revision：current 已前移时，Run reducer 的「完成 Task」按契约分歧拒绝，Task 保持开放并显示需要关注，不得静默按新 Revision 完成。绑定 Task 的后端评论线是 Context 的萃取来源：组装器按当前 Snapshot 的 ref+digest 把评论线冻结进 Context Manifest 并物化（投喂档见 [Project 约束](./project.md#context-memo-artifact)）；它进入 Task Revision 仍只经「采纳契约」，物化不改变契约。
 
 每个外部规范实体在用户级控制面账本内使用 (provider, account_stable_id, external_entity_kind, immutable_external_entity_id) 持久映射到一个 HCTL Task；该唯一键不含端口绑定、scope 或 placement，Disable/Rebind 端口绑定或 placement 也不释放或重定向这份映射。Task Binding 另行冻结可选的 placement identity（placement_scope_stable_id + external_board_item_id）及其写入权；移动 board placement 或更换 board-item binding 不会产生第二个 Task，也不能改写规范实体身份。
 
@@ -51,7 +51,7 @@ task_source 端口绑定与 Task Binding 的本地 current projection 使用 con
 
 control 对该 draft 执行与 Workbench/CLI 相同的 Preview 和准入。只有 preview 不要求采纳契约、选择分歧、停止活动 Run 等临场决定，且 binding 已明确授权这个 provider 动作表达“请求提交”时，adapter 才可继续 Submit；否则保留外部 Done + HCTL 开放的双重状态，并显示类型化拒绝或待用户处理。成功仍只由同一个「完成 Task」事务写 Task Completion Receipt。Reopen、Cancel、跨 Project 移动和契约采纳第一阶段没有 provider 动作映射，必须使用公共命令入口。
 
-## 写入合同
+## 写入约束
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 不可变结果或边界 |
 | --- | --- | --- | --- |
@@ -61,7 +61,7 @@ control 对该 draft 执行与 Workbench/CLI 相同的 Preview 和准入。只�
 | Task Source Snapshot | append-only sequence + remote revision/digest/cursor；可产生待采纳 | control 持久化 refresh/reconcile 观测；「采纳契约」命令才消费契约变化；同一 provider event 若满足上文条件，adapter 另行归一出完成 command draft | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | Task Completion Receipt | immutable | 只有成功的「完成 Task」命令事务可写 | 精确绑定该次 `task_lifecycle_version`、Task Revision 与证据 |
 
-每个 Task 在账本中至多有一个 task-bound Run claim，状态为 `active | completion_pending`。「启动 Run」必须在创建 Run/Manifest 的同一用户级账本事务把空 claim CAS 为 active；已有任一 claim 时，同一 idempotency key 返回原 Run，其他 Start 拒绝。替代只能走 [Run 合同](./run.md#启动与-manifest)规定的原子撤权/换代路径，不能先清空 claim 再留下两个可写执行。`completion_pending` 期间也拒绝另一 Start 与来自 human 的 Task 完成/取消命令，只接受匹配 Run reducer 的内部完成命令；该命令成功或被 Task 持久拒绝时，在同一结果事务清除 claim。
+每个 Task 在账本中至多有一个 task-bound Run claim，状态为 `active | completion_pending`。「启动 Run」必须在创建 Run/Manifest 的同一用户级账本事务把空 claim CAS 为 active；已有任一 claim 时，同一 idempotency key 返回原 Run，其他 Start 拒绝。替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权/换代路径，不能先清空 claim 再留下两个可写执行。`completion_pending` 期间也拒绝另一 Start 与来自 human 的 Task 完成/取消命令，只接受匹配 Run reducer 的内部完成命令；该命令成功或被 Task 持久拒绝时，在同一结果事务清除 claim。
 
 「完成 Task」命令校验当前 Revision、验收规则、候选、Artifact/SCM/CI 和必需 Receipt，并对影响契约的待采纳默认拒绝（fail-closed）：actor 必须先采纳并按新 Revision 重新验收，或显式选择“按当前冻结 Revision 完成”；后者必须冻结并 CAS 当前 Task Binding/state version、source head 和全部未采纳的契约 Snapshot refs/digests，预览后新增或变化的 drift 一律使命令失效。「启动 Run」命令预览时的拒绝或延期不能代替这次选择。「完成 Task」命令与「取消 Task」命令在任何绑定该 Task 的非终态 Run 存在时都拒绝；必须先显式结束该 Run 并等到旧执行撤权、隔离，Task 命令不会隐式停止 Run。Reopen/Cancel 保留旧 Receipt 和历史。
 
@@ -69,13 +69,13 @@ Task 终结只有两个获准 actor 来源：owner human 的 Task 命令请求�
 
 Task Completion Receipt 至少固定 Task、「完成 Task」命令、Task Revision ref+digest、验收策略，以及每一条验收项各自的 pass/fail、Evidence/Verdict/Receipt ref+digest、来源 snapshot/head/version 与适用的 producer/执行代次；不能用一个总括“tests passed”替代逐项绑定。若存在契约分歧，还必须固定显式 divergence choice、精确的未采纳 Snapshot refs/digests、Task Binding revision/state version 与 authority-policy digest。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` claim 清除与需要的外部写回 outbox 在同一事务提交；Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一 claim。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
-冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储合同](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Chat Room 场景，其对象与写入者归 [Run 模块合同](./run.md)。
+冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Chat Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 
 ## 启动 Run 的前置与排序令牌
 
-「启动 Run」命令预览必须列出会影响当前 Task Revision 的全部待采纳，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 Task Revision，再以新 Revision 重做「启动 Run」命令预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 Task Revision、Run Manifest、Context Manifest 或 Execution Spec。存在未处理的待采纳时不得启动 Run，control 也不得自动采纳或静默越过；只有「采纳契约」命令能让外部契约内容进入施工合同。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
+「启动 Run」命令预览必须列出会影响当前 Task Revision 的全部待采纳，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 Task Revision，再以新 Revision 重做「启动 Run」命令预览；拒绝或延期必须随准入冻结当前 Revision 和精确来源快照，但未采纳的契约内容只作准入审计，不得进入 Task Revision、Run Manifest、Context Manifest 或 Execution Spec。存在未处理的待采纳时不得启动 Run，control 也不得自动采纳或静默越过；只有「采纳契约」命令能让外部契约内容进入施工约束。backend_authoritative 操作字段仍以当前 Snapshot 值和 binding version 作为 Start 的 CAS 前置，不能被 reject/defer 改写。
 
 Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当前 placement、remote revision、source head 或完整 cursor，必须先完成 fresh readback；后端不可用、cursor 有 gap 或 readback 超出冻结 freshness 上限时类型化拒绝。只有验收策略明确允许某项 cached evidence 时，命令才可固定其观测版本、时间和已知 gap 继续；“后端离线”本身不放宽 Project group、drift 或 CAS 前置。
 

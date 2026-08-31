@@ -2,7 +2,7 @@
 
 > 状态：规范性（横切设计正文）· 草案 v0.15.4<br>
 > 日期：2026-08-31<br>
-> 定位：本文回答“每次执行看到了什么、为什么是这些、漏了什么”。它是横切设计正文，不是第五个模块：上下文清单与内容包的合同在 [Project 模块合同](./spec/project.md)，随执行规格冻结与交付核验在[连接合同](./spec/connections.md)与 [Agent 模块合同](./spec/agent.md)。合同级细节的完整底稿与逐条裁决来源见 `.memo/design/context-design-20260819.md`；生态四族地图与快省准横评见 `docs/research/context-landscape-20260824.md`；投喂三档、Run 内接力与任务评论线来源的讨论记录见 `.memo/design/context-feeding-20260826.md`。
+> 定位：本文回答“每次执行看到了什么、为什么是这些、漏了什么”。它是横切设计正文，不是第五个模块：上下文清单与内容包的约束在 [Project 模块约束](./spec/project.md)，随执行规格冻结与交付核验在[连接约束](./spec/connections.md)与 [Agent 模块约束](./spec/agent.md)。约束级细节的完整底稿与逐条裁决来源见 `.memo/design/context-design-20260819.md`；生态四族地图与快省准横评见 `docs/research/context-landscape-20260824.md`；投喂三档、Run 内接力与任务评论线来源的讨论记录见 `.memo/design/context-feeding-20260826.md`。
 
 ## 为什么存在
 
@@ -89,25 +89,25 @@ Terminal 场景的分工由此定下：harness 之间只有结晶过的东西能
 
 ## 关键规则
 
-- **可解释**：清单记录来源、筛选依据、新鲜度、覆盖面和已知缺口，权威字段见[Project 合同](./spec/project.md#context-memo-artifact)。
-- **冻结**：执行规格冻结清单与消费包，并按[连接合同](./spec/connections.md)核对交付字节。
+- **可解释**：清单记录来源、筛选依据、新鲜度、覆盖面和已知缺口，权威字段见[Project 约束](./spec/project.md#context-memo-artifact)。
+- **冻结**：执行规格冻结清单与消费包，并按[连接约束](./spec/connections.md)核对交付字节。
 - **传承有链**：Repo Room → Project → Task/Run → 消费包只通过显式来源引用传承。
-- **投喂三档**：必用内容内联，可达材料给精确指针，不可达材料由组装器代取；范围见[Project 合同](./spec/project.md#context-memo-artifact)。
-- **接力只经结晶**：Run 内以变更集/Artifact 版本、裁决与证据的精确引用接力，见[Run 合同](./spec/run.md#request重试与-gate)。
+- **投喂三档**：必用内容内联，可达材料给精确指针，不可达材料由组装器代取；范围见[Project 约束](./spec/project.md#context-memo-artifact)。
+- **接力只经结晶**：Run 内以变更集/Artifact 版本、裁决与证据的精确引用接力，见[Run 约束](./spec/run.md#request重试与-gate)。
 - **运行中召回受原授权约束**：追加检索按冻结的范围、权限与审计规则形成子包。
 - **晋升有门槛**：Memo 经显式提炼、预览、去敏和发布，保留来源、适用范围与有效期。
 - **成本纪律**：采集、规范化、检索、融合和排序机械化；可选压缩记录模型、预算、结果和原文指纹。
-- **降级显式**：来源不可用时标出新鲜度与缺口，按[Project 合同](./spec/project.md#context-memo-artifact)保留可回源性。
+- **降级显式**：来源不可用时标出新鲜度与缺口，按[Project 约束](./spec/project.md#context-memo-artifact)保留可回源性。
 
 ## 场景
 
 Trigger Preview 在提交前展示本次调用的上下文构成与 token 估算；升格 Project 时的提升预览允许删减、补充和去敏，只带显式选中的来源链。这两处是用户直接触摸 Context 的地方——其余时间它应该安静地正确。
 
-## 模块交接与合同落点
+## 模块交接与约束落点
 
-- 清单与内容包的对象、组装顺序、投喂档、指针可达范围、评论线来源、保留与丢弃合同：[Project 模块合同](./spec/project.md#context-memo-artifact)；
-- 施工清单冻结根清单、执行规格冻结执行者内容包、交付核验：[连接合同](./spec/connections.md)与 [Agent 模块合同](./spec/agent.md)；
-- 同一 Run 内席位包的接力内容：[Run 模块合同](./spec/run.md#request重试与-gate)；
-- 契约版本冻结来源引用、评论线快照冻结：[Task 模块合同](./spec/task.md#契约与来源)。
+- 清单与内容包的对象、组装顺序、投喂档、指针可达范围、评论线来源、保留与丢弃约束：[Project 模块约束](./spec/project.md#context-memo-artifact)；
+- 施工清单冻结根清单、执行规格冻结执行者内容包、交付核验：[连接约束](./spec/connections.md)与 [Agent 模块约束](./spec/agent.md)；
+- 同一 Run 内席位包的接力内容：[Run 模块约束](./spec/run.md#request重试与-gate)；
+- 契约版本冻结来源引用、评论线快照冻结：[Task 模块约束](./spec/task.md#契约与来源)。
 
-萃取阶梯、压缩记录、前情提要与省的计量已随 Context 合同裁决轮进入 [Project 模块合同](./spec/project.md)；尚未进入合同的部分（派生索引的具体形态、检索融合策略、跨 Repo 传承）留在专题 memo，按“逐条裁决、不整篇升格”进入规范。
+萃取阶梯、压缩记录、前情提要与省的计量已随 Context 约束裁决轮进入 [Project 模块约束](./spec/project.md)；尚未进入约束的部分（派生索引的具体形态、检索融合策略、跨 Repo 传承）留在专题 memo，按“逐条裁决、不整篇升格”进入规范。

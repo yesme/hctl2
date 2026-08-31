@@ -33,14 +33,14 @@ Electron 的成本属于一个 Workbench，而不随 Harness session 数线性�
 | 维度 | Electron | Tauri 2 | 对 HCTL 的含义 |
 | --- | --- | --- | --- |
 | **启动与空载** | 自带 Chromium/Node，固定成本较高 | 复用系统 WebView，通常有更小的启动与空载基线 | Tauri 胜在壳；持续输入、滚动和图渲染仍主要由 WebView、React 和组件实现决定，不能笼统宣称“Rust UI 更快” |
-| **渲染一致性** | macOS/Linux/Windows 随应用携带同版 Chromium | Windows 为 WebView2、macOS 为 WKWebView、Linux 为 WebKitGTK | xterm/IME/快捷键是发布合同，固定 Chromium 能减少平台变量；[xterm.js](https://github.com/xtermjs/xterm.js/) 官方同时支持现代 Safari 和 Electron，所以 Tauri 并非不可行，但仍须重新跑完整矩阵 |
+| **渲染一致性** | macOS/Linux/Windows 随应用携带同版 Chromium | Windows 为 WebView2、macOS 为 WKWebView、Linux 为 WebKitGTK | xterm/IME/快捷键是发布约束，固定 Chromium 能减少平台变量；[xterm.js](https://github.com/xtermjs/xterm.js/) 官方同时支持现代 Safari 和 Electron，所以 Tauri 并非不可行，但仍须重新跑完整矩阵 |
 | **分发与运维** | 包大且要随应用更新 Chromium 安全修复；运行时更自包含 | 包小且 WebView 多随 OS 更新；Linux 还要管理 GTK/WebKit 依赖和发行版差异 | Tauri 官方也说明 [Linux WebKitGTK 版本很难完整映射](https://v2.tauri.app/reference/webview-versions/)；当前 2.11 还有默认 AppImage 在新 Mesa/WebKit 组合下[窗口不起](https://github.com/tauri-apps/tauri/issues/15665)及[强制 X11](https://github.com/tauri-apps/tauri/issues/15781)的未结用户报告，足以要求发行版实机门禁，但不能外推为所有 Tauri 应用必然失败 |
 | **自动化与 AI 开发** | 主路径可保持 TypeScript/React；[WebdriverIO 与 Playwright](https://www.electronjs.org/docs/latest/tutorial/automated-testing)可直接启动桌面应用，Chromium 调试面固定 | 前端同样是 React；Rust command、`Send`/`Sync`、插件与 capability 增加跨语言面，但编译器和 schema 能机械拒绝一部分错误；新版 [WebdriverIO Tauri service](https://v2.tauri.app/develop/tests/webdriver/) 已覆盖 macOS/Linux/Windows | Electron 对生成、调试和视觉回归更直接；Tauri 对权限配置更具机械约束。若重开 Tauri，必须固定 v2 文档/schema/Cargo.lock，拒绝混入 v1 allowlist 用法 |
 | **权限边界** | 必须自行把 preload/IPC 收窄；`nodeIntegration: true` 会破坏 renderer sandbox，[Electron 20 起 renderer 默认 sandbox](https://www.electronjs.org/docs/latest/tutorial/sandbox/) | [capability/permission/scope](https://v2.tauri.app/security/capabilities/) 可按 window/webview 声明并生成 schema | HCTL 无论使用哪种壳，都只允许类型化 Query/Preview/Submit/Subscribe；Tauri capability 不能替代 control 准入，Electron main 也不能成为第二控制面 |
 
 “单二进制”不能直接套到桌面壳：macOS 两者都要形成 `.app`，Electron 带 Framework/Helpers 而更自包含，Tauri 核心可很小但 Linux 依赖系统 GTK/WebKit。前者把运维成本装进发布物，后者把一部分兼容性成本留给目标 OS。
 
-从 AI 编码角度，Electron 的优势是端到端 TypeScript、公开样本多、构建反馈短；风险则是模型很容易生成宽泛 preload、raw IPC、`shell`/`fs` 暴露或关闭 sandbox。Tauri 的 React 层同样容易生成，Rust 编译和 capability schema 更适合机械检查，但跨语言 glue、插件版本与系统 WebView 差异增加了诊断成本。对当前 HCTL，后端和领域权威本来就在 Rust control/agentd，桌面壳中再加入有权限的 Rust Core 没有架构收益；因此先选择更可预测的渲染与测试面，并用静态检查和合同测试锁死 Electron 权限。
+从 AI 编码角度，Electron 的优势是端到端 TypeScript、公开样本多、构建反馈短；风险则是模型很容易生成宽泛 preload、raw IPC、`shell`/`fs` 暴露或关闭 sandbox。Tauri 的 React 层同样容易生成，Rust 编译和 capability schema 更适合机械检查，但跨语言 glue、插件版本与系统 WebView 差异增加了诊断成本。对当前 HCTL，后端和领域权威本来就在 Rust control/agentd，桌面壳中再加入有权限的 Rust Core 没有架构收益；因此先选择更可预测的渲染与测试面，并用静态检查和约束测试锁死 Electron 权限。
 
 ### 本机 AI 工具形态抽样
 
@@ -54,7 +54,7 @@ Electron 的成本属于一个 Workbench，而不随 Harness session 数线性�
 | **Antigravity `agy` / Antigravity IDE 2.1.1** | `agy` 的 Go build metadata 可直接读取；[VS Code 扩展会安装本地 `agy` 后端](https://antigravity.google/docs/ide/extensions/vscode/)；独立 IDE 的主程序名为 `Electron` 并链接 Electron Framework | `agy` **169.67 MiB**；IDE **697.49 MiB** | 后端/CLI 原生，富 IDE 使用 Electron/VS Code 系壳 |
 | **Grok Build 1.0.5 / Grok.app 1.0** | [Grok Build](https://github.com/xai-org/grok-build) 是 Rust CLI/TUI；本机消费级 Grok.app 是 Safari Web App wrapper | CLI **128.13 MiB**；PWA 壳 **0.20 MiB** | coding Harness 不需要桌面 WebView；消费级 PWA 也不是 HCTL 富客户端的同类样本 |
 
-抽样中没有一个已检查产物使用 Tauri：终端 Harness 多为 Rust、Go、Node/Bun CLI，复杂 coding 桌面端则明显偏 Electron，另有 Gemini 的原生 SwiftUI/WebKit 路线。这只能证明行业交付形态和成熟路径，不能代替 HCTL 自己的合同；大厂愿意承担数百 MiB 包体，也不能反向证明 footprint 不重要。
+抽样中没有一个已检查产物使用 Tauri：终端 Harness 多为 Rust、Go、Node/Bun CLI，复杂 coding 桌面端则明显偏 Electron，另有 Gemini 的原生 SwiftUI/WebKit 路线。这只能证明行业交付形态和成熟路径，不能代替 HCTL 自己的约束；大厂愿意承担数百 MiB 包体，也不能反向证明 footprint 不重要。
 
 ### 采用约束与重开门槛
 

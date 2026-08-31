@@ -97,7 +97,7 @@ tmux 的完整 P0 与 footprint 见[运行时后端复审](./tmux-runtime.md#e-l
 | 库 | 源码结论 | 决定 |
 | --- | --- | --- |
 | [`ace-rs/tmuxctl` `c43b793`](https://github.com/ace-rs/tmuxctl/tree/c43b7930cbbc8ec8f38bccdd80f8647e17f1dd08)（MIT OR Apache-2.0） | 约 2.9k Rust 行；按 bytes 解析、reply 关联、unknown notification 容忍、layout parser，blocking/Tokio/smol 三种 transport；57 个 unit/transcript test 通过 | 历史 agentd 已直接依赖它；改用 Herdr 后不再进入正式产品 |
-| [`tmux-cmc` `f256230`](https://github.com/ArcavenAE/tmux-cmc/tree/f2562306469db18bd9b7dcce4423817efc949538)（MIT） | 约 1.8k 行、测试通过，但基于 `BufRead::lines()` 与 `String`，不能无损保留任意非 UTF-8 PTY bytes；命令和重连覆盖也较窄 | 不切换；代码更少不是优点，原始字节合同不成立是硬缺口 |
+| [`tmux-cmc` `f256230`](https://github.com/ArcavenAE/tmux-cmc/tree/f2562306469db18bd9b7dcce4423817efc949538)（MIT） | 约 1.8k 行、测试通过，但基于 `BufRead::lines()` 与 `String`，不能无损保留任意非 UTF-8 PTY bytes；命令和重连覆盖也较窄 | 不切换；代码更少不是优点，原始字节约束不成立是硬缺口 |
 
 tmux 本身不提供 HCTL 所需的输入租约或观察 API，所以历史方案还需要 HCTL 自己补上这些功能。它的发行与故障行为很成熟，资源占用也很低，因此相关测试仍作为 Herdr 的对照；它不再是产品实现计划。
 
@@ -105,7 +105,7 @@ tmux 本身不提供 HCTL 所需的输入租约或观察 API，所以历史方�
 
 | 项目 | 源码审计后的真实形态 | 发行 / footprint | 决定 |
 | --- | --- | --- | --- |
-| **shpool v0.11.4** | daemon 持有 PTY，但一次仍只允许一个 attach client；事件无足够 payload，多客户端/旁观/慢客户端修复没有形成发布合同；可靠 vt100 restore 在有输出时内存昂贵 | arm64 mac archive 1.60 MB；十会话 23.1 MiB，输出后的 restore 可远高于此；无 mac x86_64 asset | 不采用；会迫使 HCTL 自写终端模拟、多观察者转发和慢客户端处理，正是要避免的重复工作 |
+| **shpool v0.11.4** | daemon 持有 PTY，但一次仍只允许一个 attach client；事件无足够 payload，多客户端/旁观/慢客户端修复没有形成发布约束；可靠 vt100 restore 在有输出时内存昂贵 | arm64 mac archive 1.60 MB；十会话 23.1 MiB，输出后的 restore 可远高于此；无 mac x86_64 asset | 不采用；会迫使 HCTL 自写终端模拟、多观察者转发和慢客户端处理，正是要避免的重复工作 |
 | **Herdr `c2637dc` / v0.8.2** | daemon 持有 PTY，支持 observe/controller takeover、事件和 agent 状态判定；同时提供完整 TUI/server/API/plugins/worktree，live handoff 仍实验性 | mac arm binary 18.97 MB；空 headless 约 18–20 MiB，10 个空闲 workspace 约 26 MiB | **已选定**；多余功能和资源占用可以接受，缺少的输入权、记录和事件游标等功能逐项适配、修改上游或明确为暂不支持 |
 | **Zellij v0.45.1** | 完整 terminal workspace 与 WASM plugin runtime；不是窄 session host | no-web archive 11.90 MB、binary 约 32.4 MB；十 session 841.6 MiB | 排除；多 Harness 日常使用时的内存远高于其他候选 |
 | **WezTerm `wezterm-mux-server`** | 有真实 mux server、版本化 PDU、spawn/write/kill/get-lines/render-changes；但与 WezTerm config/Lua/VT crate 图紧耦合 | 无 standalone server；完整 mac zip 102.97 MB；最新 stable 为 2024-02-03 | 机制参考；拆包维护成本高于收益 |

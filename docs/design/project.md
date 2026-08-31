@@ -1,6 +1,6 @@
 # Project 与 Chat Room
 
-> 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入合同见[合同附录](./spec/project.md)；模块交接见[连接合同](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
+> 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
 
 ## 为什么存在
 
@@ -16,13 +16,13 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 ## 关键规则
 
-- 普通聊天形成提案；正式变化走带预览的类型化命令，结构化 human 动作的准入见[场景合同](./spec/project.md#场景合同)。
+- 普通聊天形成提案；正式变化走带预览的类型化命令，结构化 human 动作的准入见[场景约束](./spec/project.md#场景约束)。
 - 普通 Room 的临场执行边由 human actor 提交；模型 Participant 只建议下一条边。
 - Participant、角色、Room 和 Project 使用独立于 Harness 进程与外部账号的稳定身份，换工具不改写已授权执行。
 - 上下文保留来源和版本，使每次执行看到的内容可解释。
 - Request 只能由获准动作解决，只解锁它声明的阻塞范围；应答面按需升级——默认在卡片或详情里回答，需要多轮论述、多人参与或共同编辑才开临时讨论空间，敏感输入走安全通道，只有诊断或接管才连接终端。无论升到哪一级，都还是同一个请求、同一个阻塞范围。
 - 消息只追加，修正、删除和外部编辑保留已被引用的历史。
-- HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 合同](./spec/project.md#room-与消息)。
+- HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 约束](./spec/project.md#room-与消息)。
 - Memo 经显式提炼、预览并发布后成为长期知识。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时应创建 [Run](./run.md)。
 - 从 Repo Room 提升 Project 时只带显式选中的来源，可删减、补充、去敏；之后的聊天不会偷偷改变既有 Project。
@@ -51,9 +51,9 @@ Chat Room 是 Project 的主要操作场景，提供：
 
 在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
-Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和讨论；`hctl2` CLI 提供 Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。这是第一阶段没有实现 Matrix 结构化命令适配器的产品路径，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，它也必须归一到同一 Preview/Submit 合同。
+Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和讨论；`hctl2` CLI 提供 Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。这是第一阶段没有实现 Matrix 结构化命令适配器的产品路径，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，它也必须归一到同一 Preview/Submit 约束。
 
-普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开合同适配的 provider（供应端）结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker（执行体）或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[合同附录](./spec/project.md#场景合同)。
+普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开约束适配的 provider（供应端）结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker（执行体）或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[约束附录](./spec/project.md#场景约束)。
 
 | 角色 | 可以做什么 |
 | --- | --- |
@@ -63,13 +63,13 @@ Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和�
 
 chat server 是第一阶段组件（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用；非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 只处理身份映射。职责边界见[三面架构](./architecture.md#避免供应商锁定)。
 
-HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Context 萃取和桥接都要求 control 能按消息 ID 读取正文。绑定校验、事后加密的降级与换绑恢复由[Project 合同](./spec/project.md#room-与消息)定义。
+HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Context 萃取和桥接都要求 control 能按消息 ID 读取正文。绑定校验、事后加密的降级与换绑恢复由[Project 约束](./spec/project.md#room-与消息)定义。
 
 ## 模块交接
 
-以下只列所有权方向；字段、事务与故障语义由[连接合同](./spec/connections.md)统一定义。
+以下只列所有权方向；字段、事务与故障语义由[连接约束](./spec/connections.md)统一定义。
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
 - Project 可以通过 [Agent](./agent.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
-- Task、Run 和 Agent 模块的状态以投影或引用回到 Chat Room；显式 human 动作经对应模块的公共命令合同请求变化。
+- Task、Run 和 Agent 模块的状态以投影或引用回到 Chat Room；显式 human 动作经对应模块的公共命令约束请求变化。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流。

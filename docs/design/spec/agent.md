@@ -1,11 +1,11 @@
-# Agent 模块合同
+# Agent 模块约束
 
-> 状态：规范性合同 · 草案 v0.15.4<br>
-> 本文是 Agent 模块对象、状态机与写入合同的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接合同](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[合同层总则](./README.md)。
+> 状态：规范性约束 · 草案 v0.15.4<br>
+> 本文是 Agent 模块对象、状态机与写入约束的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 Execution Spec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 Execution Spec 冻结，不是独立对象；Execution Spec 由 Project 与 Run 各自作为 owner 定义。所选 Repo Instance 只是[系统合同](./system.md#repo-与执行现场)中的物理执行现场引用，不由 Project 或 Agent 聚合拥有。
+Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./run.md) 拥有的 Attempt 所携带的 Execution Spec 变成可观察、可隔离、可恢复的物理执行。它不决定 Project 目标、Task 完成、Run Gate、下一条 Room 协作边或领域权限。每次执行的接入方式（ACP/app-server/SDK/PTY（伪终端）/钩子及其降级能力）由该次 Execution Spec 冻结，不是独立对象；Execution Spec 由 Project 与 Run 各自作为 owner 定义。所选 Repo Instance 只是[系统约束](./system.md#repo-与执行现场)中的物理执行现场引用，不由 Project 或 Agent 聚合拥有。
 
 | 对象 | 含义 |
 | --- | --- |
@@ -18,7 +18,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
 | Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt |
 
-## 写入合同
+## 写入约束
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
@@ -63,9 +63,9 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录而不能共用一个模糊 `generation`：语义 owner 是 Room Invocation 的 `invocation_version` 或 Attempt 的 `attempt_generation`；物理 Execution Runtime 在激活映射时取得独立 `runtime_generation`；基础设施 envelope 另带 `control_writer_generation`、Repo Instance 的 `site_generation` 与 Agency binding owner generation。Participant revision、Project Role Binding version 与 producer sequence 都不是 generation。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带把别层 identity 改写成新值；Agency 不能执行的物理 fence 必须明确标为未生效。
 
-Execution Runtime 由**Agency**（派出方）承载。Agency 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体及其运行现场与访问通道，常驻持有现场并报告存活与恢复等级。第一阶段只采用 **Herdr**：它直接从已配置的 Harness 启动执行体，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再放置独立 Agency 组件或下一层终端运行服务。control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账；替换未来的 Agency 不改变治理合同。派出交付物必须按冻结规格逐项核验后方可激活，缺项列出且不激活；派出不转移参与者身份：Agency 供给的是七层身份链的下层（模型、执行者配置、一次物理执行），Participant 身份与席位仍由账本拥有并绑定。
+Execution Runtime 由**Agency**（派出方）承载。Agency 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体及其运行现场与访问通道，常驻持有现场并报告存活与恢复等级。第一阶段只采用 **Herdr**：它直接从已配置的 Harness 启动执行体，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再放置独立 Agency 组件或下一层终端运行服务。control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账；替换未来的 Agency 不改变治理约束。派出交付物必须按冻结规格逐项核验后方可激活，缺项列出且不激活；派出不转移参与者身份：Agency 供给的是七层身份链的下层（模型、执行者配置、一次物理执行），Participant 身份与席位仍由账本拥有并绑定。
 
-Agency 合同**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本；Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。原生输入可以按下文输入策略成为正常的用户运行时输入，但不能承载要求物理 fence 的动作，也不能作为高证据类结果直接准入；绕过适配代码提交结构化结果仍不被接受。
+Agency 约束**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本；Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。原生输入可以按下文输入策略成为正常的用户运行时输入，但不能承载要求物理 fence 的动作，也不能作为高证据类结果直接准入；绕过适配代码提交结构化结果仍不被接受。
 
 进程、PTY、原始流与心跳由 Herdr 持有；control 经 Herdr 适配代码执行已获准的 start/input/cancel/stop，Attempt/Invocation 的领域 lifecycle 仍由 control 推进。存活与所有权观测按 Herdr API/进程 > 结构化 lifecycle 事件或 hook > title/screen 仲裁，语义观测按结构化提供方协议或原生 hook > 转录推断 > title/screen 仲裁；低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录 source、confidence、evidence 与 observed_at，且无论置信度多高都不能自行推进领域结果。
 

@@ -1,7 +1,7 @@
 # 术语对照表
 
 > 状态：非规范对照 · 草案 v0.15.4<br>
-> 本表只提供中英对照与一句话释义；完整语义以[合同层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[合同总则](../spec/README.md#六族规则)定义。
+> 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 核心产品词
 
@@ -43,7 +43,7 @@
 | content | 场景内容 | 协作与执行记忆，住在对应场景系统 |
 | artifact | 结晶 | 从 content 提炼出的不可变产物，进入 Git；与领域对象 Artifact 不同物 |
 
-权威定义见[合同层总则](../spec/README.md#三类数据)。
+权威定义见[约束层总则](../spec/README.md#三类数据)。
 
 ## 客户端动作分类（不是对象）
 
@@ -55,7 +55,7 @@
 | Result Proposal | Harness/Agency 交给 owner 校验的结果与证据 |
 | 不支持的 provider mutation | 先改变外部机械状态、无法保持 HCTL 副作用顺序的管理动作，只回读为分歧 |
 
-分类取决于动作落点与信封，权威规则见[系统合同](../spec/system.md#客户端动作与-provider-事件)。
+分类取决于动作落点与信封，权威规则见[系统约束](../spec/system.md#客户端动作与-provider-事件)。
 
 ## 场景与系统
 
@@ -84,7 +84,7 @@
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
 | Resolved Port Binding | 端口解析绑定 | 受控端口 ↔ 具体 provider 及实测能力 |
-| Chat 端口绑定 | 聊天端口绑定 | Room ↔ chat server 房间；加密准入见 [Project 合同](../spec/project.md#room-与消息) |
+| Chat 端口绑定 | 聊天端口绑定 | Room ↔ chat server 房间；加密准入见 [Project 约束](../spec/project.md#room-与消息) |
 | Task Binding | 任务来源绑定 | Task ↔ 外部实体、字段写入权与 adapter 版本 |
 | Project Role Binding | 角色绑定 | Project 角色 ↔ 精确 Participant 版本 |
 | Engine Execution Binding | 引擎执行绑定 | Run ↔ 外部引擎执行实例与关联键 |
@@ -139,4 +139,4 @@ control writer、Repo Instance site、Agency/backend owner、Attempt owner 与 E
 
 ## 引用格式（不是对象）
 
-ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest` 与 `review_subject_digest` 含义不同，分别按拥有它们的合同使用。
+ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest` 与 `review_subject_digest` 含义不同，分别按拥有它们的约束使用。

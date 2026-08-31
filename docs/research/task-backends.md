@@ -28,7 +28,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 
 ## 2026-08-30 provider 动作复核
 
-本次为 v0.15.0 的客户端动作合同复核固定 Vikunja 实际行为，不从 README 推断：
+本次为 v0.15.0 的客户端动作约束复核固定 Vikunja 实际行为，不从 README 推断：
 
 - v2.5.0 的 task-bucket API 明确说明，移入 Done bucket 会把 task 标为 done，移出会取消 done；重复移到同一 bucket 是 no-op（[`task_bucket.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/task_bucket.go#L38-L46)）。
 - 实际 model 代码在 bucket move 事务中比较旧/新 bucket，修改 `task.Done`/`DoneAt`，随后发出 `TaskUpdatedEvent`（[`kanban_task_bucket.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/kanban_task_bucket.go#L87-L231)、[事件派发](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/kanban_task_bucket.go#L248-L259)）。这证明“拖入 Done”不是纯 UI 排序，而是 provider 内一项真实状态变化。

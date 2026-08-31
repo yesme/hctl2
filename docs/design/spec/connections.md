@@ -1,7 +1,7 @@
 # 四模块的端到端连接
 
-> 状态：规范性合同 · 草案 v0.15.4<br>
-> 本文是 Project、Task、Run、Agent 之间连接合同的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块合同（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
+> 状态：规范性约束 · 草案 v0.15.4<br>
+> 本文是 Project、Task、Run、Agent 之间连接约束的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
 
@@ -32,7 +32,7 @@ flowchart LR
 
 Project → Agent 是无 Run 的显式短路；Agent → Task 不存在原始状态通道，只有经过校验的 Revision、Evidence、Verdict 或 Receipt 才能进入 Task 验收。
 
-## 连接合同总表
+## 连接约束总表
 
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ Project → Agent 是无 Run 的显式短路；Agent → Task 不存在原始状
 | Run → Agent | Attempt + Execution Spec | Run 先持久化派发授权，Agent 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
 | Agent → Project/Run | Result Proposal、逐输出的 owner/runtime/site/backend generations、Revision/Evidence refs | owner 模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | proposal id + producer sequence + owner/spec digest；迟到结果只留历史 |
 | Human scene / Run reducer → Agent | 「合入 ChangeSet」命令、精确 ChangeSet Revision/target/evidence refs | Agent 模块准入授权并持久化 intent/outbox，工具箱执行与回读；Integration Receipt 返回发起模块作证据 | intent id + expected target head → 唯一 Receipt；结果未知不重投 |
-| Human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收合同独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
+| Human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
 | Task/Run/Agent → Project | source ref、event id/sequence、版本、敏感级别 | Project 只建低噪声投影；Memo/Artifact 仍需 Project 命令发布 | source event cursor，可从源账本重建 |
 
 ## Project → Task：从讨论到承诺
@@ -51,14 +51,14 @@ Chat Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Tas
 
 - `project_id` 与预期 Project version；
 - 来源 Message、Artifact、Memo、Request 的精确引用；
-- 标题、预期结果、验收合同、角色/能力和可选外部来源绑定；
+- 标题、预期结果、验收约束、角色/能力和可选外部来源绑定；
 - 规范化 proposal digest、actor/permission 与 idempotency key。
 
-Task 模块以 CAS 校验活跃 Project 和可选当前 Task Revision。「创建 Task」固定 immutable project_id 与该 Project 的 Board group anchor，先提交 Task identity、必需的后端 outbox 和稳定 correlation key；只有携带已预览初始契约时才同时写 Revision admission intent 与 Git 正文 outbox。ACK 未知按同一 key 分别回读适用的正文和外部卡，不能重试成第二个 Task/卡片。「采纳契约」在工具箱回读 Git 正文后准入不可变 Task Revision 并返回精确引用。反向的 content-first 卡片只有在唯一 Project group 下才由 reconcile 原子 claim 为无契约 Task，完整恢复合同见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision；普通消息、总结、父分组实体和拖放都不能创建或 reparent Task。
+Task 模块以 CAS 校验活跃 Project 和可选当前 Task Revision。「创建 Task」固定 immutable project_id 与该 Project 的 Board group anchor，先提交 Task identity、必需的后端 outbox 和稳定 correlation key；只有携带已预览初始契约时才同时写 Revision admission intent 与 Git 正文 outbox。ACK 未知按同一 key 分别回读适用的正文和外部卡，不能重试成第二个 Task/卡片。「采纳契约」在工具箱回读 Git 正文后准入不可变 Task Revision 并返回精确引用。反向的 content-first 卡片只有在唯一 Project group 下才由 reconcile 原子 claim 为无契约 Task，完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision；普通消息、总结、父分组实体和拖放都不能创建或 reparent Task。
 
 ## Project / Task → Run：授权自动施工
 
-批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是第一阶段 0..1 个可选绑定；Run Manifest 的冻结清单见[Run 合同](./run.md#workflow-与-run-授权)。
+批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是第一阶段 0..1 个可选绑定；Run Manifest 的冻结清单见[Run 约束](./run.md#workflow-与-run-授权)。
 
 control 在一个用户级账本事务中写 Run、Manifest、幂等结果、可选 Task Run claim 和 Engine start outbox。外部执行实例用 `run_id + manifest_digest` 作为关联键；commit 后崩溃或 ACK 丢失时先回读，不能再启动第二个 execution。若 Project/Task/Workflow 在提交前已不匹配预期版本、Project 已归档或 Task 已有 `active | completion_pending` claim，命令拒绝；提交后发生的上游更新不改写活动 Run，只能影响新 Run 或触发显式替代。
 
@@ -104,7 +104,7 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 
 ## Agent → Project / Run：结果准入
 
-Result Proposal 使用 [Agent 模块定义的字段合同](./agent.md#运行时与观测)，并精确引用本次连接的 Execution Spec；连接本身不再维护一份可变结果状态。
+Result Proposal 使用 [Agent 模块定义的字段约束](./agent.md#运行时与观测)，并精确引用本次连接的 Execution Spec；连接本身不再维护一份可变结果状态。
 
 control inbox 先按 proposal ID + producer sequence + owner 去重，再逐输出校验：owner 仍接受结果，`invocation_version | attempt_generation`、control writer generation 与适用的 runtime/site/backend fence、spec/bundle/binding digest 和 lease 全部一致，写入来自获准 ChangeSet，输出属于声明范围，证据可回读且权限没有扩大。每项都携带自己的完整 producer tuple；`in_process` 只能使用上段的缩减 tuple，不能把一个合格项的代次套给另一个旧项。通过后：
 
@@ -116,7 +116,7 @@ control inbox 先按 proposal ID + producer sequence + owner 去重，再逐输�
 
 ## Human Kanban / Run reducer → Task → Project：验收与回流
 
-无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef 和测试/SCM 证据后提交「完成 Task」命令，不生成 Run 专属的 Gate Receipt；验收合同要求内部独立 Gate 时，Task 先授权 Run。有 Run 路径中，Run 返回冻结的 Task Revision、终止原因及 Verdict/Receipt/subject refs，并按 completion_pending 机制提交同一命令。两条获准来源与 Task 独立验收规则见[Task 写入合同](./task.md#写入合同)；Task 拒绝自动命令时 Run 保持完成，Task 保持开放并显示需要关注。
+无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef 和测试/SCM 证据后提交「完成 Task」命令，不生成 Run 专属的 Gate Receipt；验收约束要求内部独立 Gate 时，Task 先授权 Run。有 Run 路径中，Run 返回冻结的 Task Revision、终止原因及 Verdict/Receipt/subject refs，并按 completion_pending 机制提交同一命令。两条获准来源与 Task 独立验收规则见[Task 写入约束](./task.md#写入约束)；Task 拒绝自动命令时 Run 保持完成，Task 保持开放并显示需要关注。
 
 Task、Run 和 Agent 以有序领域事件向 Project 返回里程碑。事件携带 source module、稳定引用、event ID/sequence、版本和敏感级别；Project Room 只显示 Request、失败、已验证 Task、Artifact 就绪等低噪声投影。发布 Memo/Artifact 或归档 Project 仍需 Project 自己的类型化命令，不能由投影反向触发。
 
@@ -142,7 +142,7 @@ Repo sources    → repo_scope Execution Spec（只读）→ Result Proposal
 Task 路径的验收证据 → Task Completion Receipt
 ```
 
-每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结合同继续执行到终态，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
+每一步保存上一步的 ID + digest/version；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前漂移则 CAS 拒绝，提交后由冻结约束继续执行到终态，新的顶层授权使用新版本；范围、权限、候选或验收含义变化需要显式替代，而不是原地修补。
 
 权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、Engine 或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
 
@@ -155,7 +155,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | 目标事务提交前来源已变化 | CAS 拒绝，不创建下游事实 |
 | 目标已提交、调用方未收到结果 | 恢复后返回同一目标引用，不出现第二个下游对象 |
 | owner 身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接 |
-| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份丢失处理规则的唯一定义，模块合同引用而不复述 |
+| owner/runtime identity、lease 或任一适用 fence generation 无法证明 | Attempt 与 Room Invocation 都进入丢失；同一事务撤销输入/写租约并提交旧 runtime 的 stop/fence outbox，迟到流与结果只留审计，Retry 使用新 owner、Execution Spec 与 runtime generation。此行是执行身份丢失处理规则的唯一定义，模块约束引用而不复述 |
 | owner 取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要 fresh chat readback 的准入拒绝，聊天入口显示重同步中 |
 | 已绑定房间被开启端到端加密 | 聊天入口显示需要关注，已冻结引用与 digest 不受影响；可继续/拒绝与换绑恢复规则见[Room 与消息](./project.md#room-与消息) |
@@ -169,6 +169,6 @@ Task 路径的验收证据 → Task Completion Receipt
 
 ## 场景与第三方适配器
 
-Workbench 与第三方 Chat/Kanban/Workflow/Terminal 平台都通过上述目标命令、投影和事件编排连接；适配器只使用目标模块已有的连接。各模块分别声明可接受的 provider 动作：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足来源信封的 Done 产生完成请求；Run 的用户输入和 Agent 结果先进入 control，持久化后再由 outbox 推动 Dagu，Dagu 原生 mutation 只形成分歧；Agent 按 Execution Spec 声明的保证等级接纳原生终端输入。能力不足时隐藏动作、保留待处理请求或安全拒绝。动作分类见[系统合同](./system.md#客户端动作与-provider-事件)。
+Workbench 与第三方 Chat/Kanban/Workflow/Terminal 平台都通过上述目标命令、投影和事件编排连接；适配器只使用目标模块已有的连接。各模块分别声明可接受的 provider 动作：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足来源信封的 Done 产生完成请求；Run 的用户输入和 Agent 结果先进入 control，持久化后再由 outbox 推动 Dagu，Dagu 原生 mutation 只形成分歧；Agent 按 Execution Spec 声明的保证等级接纳原生终端输入。能力不足时隐藏动作、保留待处理请求或安全拒绝。动作分类见[系统约束](./system.md#客户端动作与-provider-事件)。
 
 Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Chat Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。

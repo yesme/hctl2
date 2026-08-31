@@ -6,7 +6,7 @@
 
 ## 设计位置
 
-PR #36—#42 重新划分了合同与职责：
+PR #36—#42 重新划分了约束与职责：
 
 - Herdr 对应 Agent 模块 / Terminal 场景，关系类似 Vikunja 对应 Task / Kanban、Dagu 对应 Run / Workflow、Tuwunel 对应 Project / Chat Room。
 - HCTL 通过 Herdr 创建并持有 Harness、PTY 和终端会话；Herdr 自带的 TUI 是这个场景的原生客户端。
@@ -34,7 +34,7 @@ Herdr 不需要实现 HCTL 的领域治理，但它提供的功能必须如实�
 
 ## Herdr v0.8.2 源码核对
 
-稳定版以 tag peeled commit `9eb5214` 为准；另对照了 2026-08-29 upstream HEAD `c2637dc`。与下表相关的 request envelope、event ring、pane API 与退出 event 没有出现能关闭这些缺口的新合同，因此不拿未发布 HEAD 冒充稳定版能力。
+稳定版以 tag peeled commit `9eb5214` 为准；另对照了 2026-08-29 upstream HEAD `c2637dc`。与下表相关的 request envelope、event ring、pane API 与退出 event 没有出现能关闭这些缺口的新约束，因此不拿未发布 HEAD 冒充稳定版能力。
 
 ### 已经可以直接复用的能力
 
@@ -105,6 +105,6 @@ v0.15.0 改变的是产品解释，不是上面的源码事实。旧结论把“
 因此 Execution Spec 分两种要求：
 
 - `managed_single_writer`：需要证明所有输入经过 descriptor/generation/Terminal Input Lease。v0.8.2 必须关闭原生 controller 写入，只开放 Herdr adapter 可校验的路径；writer bypass、无 fence echo 和无 input event 仍是阻断事实。
-- `native_interactive_allowed`：允许 Workbench 直连、Herdr TUI 等原生客户端向已映射的精确 terminal 输入。输入立即影响运行时，属于有效的用户运行时输入；但逐次 actor、generation、单写者和完整 replay 无法证明，必须如实标注。终端文字不因此成为 Result Proposal、Task 完成或 Run 裁决，后续结构化结果和 Git/SCM/Test evidence 仍各自按原合同验收。
+- `native_interactive_allowed`：允许 Workbench 直连、Herdr TUI 等原生客户端向已映射的精确 terminal 输入。输入立即影响运行时，属于有效的用户运行时输入；但逐次 actor、generation、单写者和完整 replay 无法证明，必须如实标注。终端文字不因此成为 Result Proposal、Task 完成或 Run 裁决，后续结构化结果和 Git/SCM/Test evidence 仍各自按原约束验收。
 
 这不是为 Herdr 缺口找借口，也不要求 HCTL 自建 writer proxy：一项执行选择自己需要的保证，当前 provider 做不到的强保证就关闭对应入口；普通交互所需的较弱保证则可以直接复用 Herdr 已有 TUI/transport。将来 Herdr 增加统一 writer gate、输入 provenance 事件和 fence echo 后，两种路径可以在新 binding revision 下使用同一物理入口。
