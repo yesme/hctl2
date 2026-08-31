@@ -121,6 +121,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [install-dotslash.md](./build-tools/install-dotslash.md) | DotSlash 官方 GitHub Action 与本地引导安装审计 | E-TOOL-DOTSLASH | ⑥ 机械后端与基础设施 | Linux CI 锁 Action 提交；macOS CI 与开发机使用摘要锁定安装器 |
 | [buck2-change-detector.md](./build-tools/buck2-change-detector.md) | Buck2 Change Detector 的源码、官方制品与失败回退审计 | E-TOOL-BTD | ⑥ 机械后端与基础设施 | 采用官方 `btd` 二进制；不自行构建 `supertd` |
 | [jq.md](./build-tools/jq.md) | BTD JSON Lines 解析工具与官方制品审计 | E-TOOL-JQ | ⑥ 机械后端与基础设施 | 采用摘要锁定的官方单文件制品；不依赖宿主预装 jq |
+| [github-actions-incremental-validation.md](./build-tools/github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | E-TOOL-GHA-REVALIDATION | ⑥ 机械后端与基础设施 | 采用平台原生 workflow 证据；快进更新增量验证，失败时全量回退 |
 
 ## 已选外部服务的运维与资源占用
 

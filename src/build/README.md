@@ -71,6 +71,8 @@ src/build/ci/verify-affected --base <base-commit> --head <head-commit>
 
 该命令在分离头工作树中验证精确的 `head`，不会把工作区未提交内容混入结果；目标选择失败时，自动扩大为全量第一方目标。GitHub Actions 直接调用它的下层 `affected-targets`，再把同一组目标送到三个原生平台执行器。其他 CI 只需执行这个入口，并把结果作为 GitHub 提交状态报回现有分支保护规则。仓库不绑定执行器厂商，也不把三平台证据折叠成单平台。
 
+PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、新 head。旧 head 是新 head 的祖先，且旧 head 上对应 workflow 已成功时，本轮只把旧 head 到 GitHub 当前 test merge 的变化交给路径分类和 BTD；这样仍覆盖最新 base 的兼容性。没有受影响 target 或发行输入时，当前 head 的 required gate 仍成功出现，但不启动三平台重构建。旧结果缺失、API 查询失败、rebase 或强推造成历史改写时，回退到 base 到当前 test merge 的完整 PR diff。strict branch protection 继续生效；更新落后分支时应使用 GitHub 的 merge 形式 `Update branch`，保留可验证的提交链。
+
 ## 可选 Git 钩子
 
 钩子默认不启用，也不会在克隆、提交或合并后暗中启动任务。需要时在任一工作树执行：

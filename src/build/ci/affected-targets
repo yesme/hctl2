@@ -11,7 +11,8 @@ Usage:
 
 The output contains one Buck target pattern per line. Buck2 Change Detector
 failures are reported to the caller; callers must fail closed or run the full
-first-party target set.
+first-party target set. The base may be the PR base for complete validation or
+a previously validated ancestor for incremental revalidation.
 EOF
 }
 
