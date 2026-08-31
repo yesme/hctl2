@@ -46,6 +46,11 @@ jobs:
           build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
 
+      - name: Verify pinned DotSlash
+        run: |
+          . build/tools/dotslash.env
+          test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
+
       - name: Build Tuwunel asset with Buck2
         run: >-
           ./buck2 build root//packaging/dependencies:tuwunel-native-archive

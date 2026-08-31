@@ -1,0 +1,105 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    cat <<'EOF'
+Run the affected first-party Buck gate on the current host platform.
+
+Usage:
+  verify-affected --base <commit> --head <commit>
+  verify-affected --help
+
+Target selection failures fall back to the full first-party target set.
+The build is executed from an exact detached worktree of <head>.
+EOF
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+repo_root=$(CDPATH= cd -- "$project_root/.." && pwd)
+base=
+head=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --base)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            base=$2
+            shift 2
+            ;;
+        --head)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            head=$2
+            shift 2
+            ;;
+        --help | -h)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'error: unknown argument: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+[ -n "$base" ] && [ -n "$head" ] || { usage >&2; exit 2; }
+base_commit=$(git -C "$repo_root" rev-parse --verify "$base^{commit}")
+head_commit=$(git -C "$repo_root" rev-parse --verify "$head^{commit}")
+
+case "$(uname -s):$(uname -m)" in
+    Linux:x86_64) platform=linux_x86_64_gnu ;;
+    Darwin:x86_64) platform=macos_x86_64 ;;
+    Darwin:arm64) platform=macos_arm64 ;;
+    *)
+        printf 'error: unsupported HCTL2 build host: %s %s\n' "$(uname -s)" "$(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-verify.XXXXXX")
+targets=$work_dir/targets.txt
+mode=$work_dir/mode.txt
+head_tree=$work_dir/head
+cleanup() {
+    git -C "$repo_root" worktree remove --force "$head_tree" >/dev/null 2>&1 || true
+    rm -rf -- "$work_dir"
+}
+trap cleanup 0 1 2 15
+
+if ! "$script_dir/affected-targets" \
+    --base "$base_commit" \
+    --head "$head_commit" \
+    --output "$targets" \
+    --mode-output "$mode"; then
+    printf '%s\n' 'warning: target selection failed; running the full first-party gate.' >&2
+    cat >"$targets" <<'EOF'
+root//apps/...
+root//crates/...
+root//build/tests/...
+root//:clippy
+root//packaging/release:first-party
+EOF
+    printf '%s\n' full-btd-fallback >"$mode"
+fi
+
+if [ ! -s "$targets" ]; then
+    printf 'No affected first-party Buck targets between %s and %s.\n' \
+        "$base_commit" "$head_commit"
+    exit 0
+fi
+
+printf 'Buck selection mode: %s\n' "$(sed -n '1p' "$mode")"
+printf '%s\n' 'Buck targets:'
+sed 's/^/  /' "$targets"
+
+git -C "$repo_root" worktree add --quiet --detach "$head_tree" "$head_commit"
+set --
+while IFS= read -r target; do
+    [ -n "$target" ] && set -- "$@" "$target"
+done <"$targets"
+
+cd "$head_tree/src"
+./buck2 test --build-default-info "$@" \
+    --target-platforms "root//build/platforms:$platform"

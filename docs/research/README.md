@@ -118,7 +118,9 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 | 仅参考行为 |
 | [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 | 仅参考行为的补充证据 |
 | [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 | 采用 Tauri 2 的选型证据 |
+| [install-dotslash.md](./build-tools/install-dotslash.md) | DotSlash 官方 GitHub Action 与本地引导安装审计 | E-TOOL-DOTSLASH | ⑥ 机械后端与基础设施 | Linux CI 锁 Action 提交；macOS CI 与开发机使用摘要锁定安装器 |
 | [buck2-change-detector.md](./build-tools/buck2-change-detector.md) | Buck2 Change Detector 的源码、官方制品与失败回退审计 | E-TOOL-BTD | ⑥ 机械后端与基础设施 | 采用官方 `btd` 二进制；不自行构建 `supertd` |
+| [jq.md](./build-tools/jq.md) | BTD JSON Lines 解析工具与官方制品审计 | E-TOOL-JQ | ⑥ 机械后端与基础设施 | 采用摘要锁定的官方单文件制品；不依赖宿主预装 jq |
 
 ## 已选外部服务的运维与资源占用
 
