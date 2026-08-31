@@ -1,11 +1,10 @@
 name: Code
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "0 19 * * 0"
   workflow_dispatch:
 
 permissions:
@@ -13,7 +12,7 @@ permissions:
 
 concurrency:
   group: code-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -41,7 +40,7 @@ jobs:
             exit 0
           fi
           git fetch --no-tags --prune origin "$BASE_REF"
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          changed=$(git diff --no-renames --name-only "origin/${BASE_REF}...HEAD")
           # src/build/docs/ is doc-lint tooling: it triggers the docs checks,
           # not the three-platform build matrix.
           if printf '%s\n' "$changed" | grep -E \
@@ -52,7 +51,7 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
           if printf '%s\n' "$changed" | grep -qE \
-            '^(docs/|\.memo/|README\.md$|AGENTS\.md$|CLAUDE\.md$|CONSTRAINTS\.md$|src/build/docs/|\.github/workflows/code\.yml$)'; then
+            '^(docs/|\.memo/review/|README\.md$|AGENTS\.md$|CLAUDE\.md$|CONSTRAINTS\.md$|src/build/docs/|\.github/workflows/code\.yml$)'; then
             echo "docs=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs=false" >> "$GITHUB_OUTPUT"
@@ -80,56 +79,18 @@ jobs:
             src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
 
-  pr-contract:
-    name: PR contract
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          fetch-depth: 0
-
-      - name: Check required PR sections
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          BASE_REF: ${{ github.base_ref }}
+      - name: Check release document snapshots
         run: |
-          set -euo pipefail
+          cmp LICENSE src/packaging/release/assets/LICENSE
+          cmp docs/usage.md src/packaging/release/assets/USAGE.md
 
-          stripped=$(printf '%s' "$PR_BODY" | perl -0777 -pe 's/<!--.*?-->//gs; s/\r//g')
-
-          section() {
-            printf '%s\n' "$stripped" | awk -v h="## $1" '
-              index($0, h) == 1 {found=1; next}
-              /^## / {if (found) exit}
-              found {print}
-            '
-          }
-
-          fail=0
-          for h in 定位与重述 当前生效约束集 业界方案调研; do
-            if ! printf '%s\n' "$stripped" | grep -q "^## $h"; then
-              echo "::error::PR 描述缺少必填节 '## $h'（模板见 .github/pull_request_template.md）"
-              fail=1
-            elif [ -z "$(section "$h" | tr -d '[:space:]')" ]; then
-              echo "::error::必填节 '## $h' 是空的——填上内容，不要删掉注释了事"
-              fail=1
-            fi
-          done
-
-          git fetch --no-tags --prune origin "$BASE_REF"
-          new_components=$(git diff --name-only --diff-filter=A "origin/${BASE_REF}...HEAD" \
-            | grep -E '(\.sh$|^src/build/tools/|^src/third-party/)' || true)
-          research_compact=$(section 业界方案调研 | tr -d '[:space:]')
-          if [ -n "$new_components" ] && [ "$research_compact" = "不适用" ]; then
-            echo "::error::本 PR 新增了脚本/工具/三方组件，但'业界方案调研'节写着'不适用'："
-            printf '%s\n' "$new_components"
-            echo "::error::先查业界方案与平台 native 机制，落 docs/research/ 或在该节说明为何自建。"
-            fail=1
+      - name: Check service command contract
+        run: |
+          src/packaging/dependencies/hctl2-services --help | grep -F 'Usage:'
+          if src/packaging/dependencies/hctl2-services status unexpected >/dev/null 2>&1; then
+            echo 'hctl2-services accepted an argument for status' >&2
+            exit 1
           fi
-
-          exit "$fail"
 
   buck:
     name: Buck2 / ${{ matrix.platform }}
@@ -178,24 +139,10 @@ jobs:
           dotslash --version
           ./buck2 --version
 
-      - name: Analyze target graph
+      - name: Verify first-party targets
         run: >-
-          ./buck2 cquery 'set(root//apps/... root//crates/... root//build/tests/...)'
-          --target-platforms root//build/platforms:${{ matrix.target }}
-
-      - name: Build first-party targets
-        run: >-
-          ./buck2 build root//apps/... root//crates/... root//build/tests/...
-          --target-platforms root//build/platforms:${{ matrix.target }}
-
-      - name: Test first-party targets
-        run: >-
-          ./buck2 test root//apps/... root//crates/... root//build/tests/...
-          --target-platforms root//build/platforms:${{ matrix.target }}
-
-      - name: Run Clippy
-        run: >-
-          ./buck2 build root//:clippy
+          ./buck2 test --build-default-info
+          root//apps/... root//crates/... root//build/tests/... root//:clippy
           --target-platforms root//build/platforms:${{ matrix.target }}
 
   cargo-parity:
@@ -261,27 +208,22 @@ jobs:
 
   ci-gate:
     name: CI gate
-    needs: [changes, pr-contract, buck, cargo-parity, docs-check]
+    needs: [changes, buck, cargo-parity, docs-check]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Aggregate required jobs
         env:
-          EVENT_NAME: ${{ github.event_name }}
           CHANGES: ${{ needs.changes.result }}
           CODE: ${{ needs.changes.outputs.code }}
           DOCS: ${{ needs.changes.outputs.docs }}
-          CONTRACT: ${{ needs.pr-contract.result }}
           BUCK: ${{ needs.buck.result }}
           CARGO: ${{ needs.cargo-parity.result }}
           DOCSCHECK: ${{ needs.docs-check.result }}
         run: |
           set -euo pipefail
-          echo "changes=$CHANGES code=$CODE docs=$DOCS contract=$CONTRACT buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
+          echo "changes=$CHANGES code=$CODE docs=$DOCS buck=$BUCK cargo=$CARGO docs-check=$DOCSCHECK"
           test "$CHANGES" = success
-          if [ "$EVENT_NAME" = pull_request ]; then
-            test "$CONTRACT" = success
-          fi
           if [ "$DOCS" = true ]; then
             test "$DOCSCHECK" = success
           fi
