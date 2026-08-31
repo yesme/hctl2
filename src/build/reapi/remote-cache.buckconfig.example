@@ -1,0 +1,13 @@
+# Copy this file to src/.buckconfig.local and replace the endpoint values.
+# Keep certificate paths in the environment; never write private key material
+# or bearer-token headers into this file.
+
+[buck2_re_client]
+action_cache_address = cache.example.com:443
+cas_address = cache.example.com:443
+engine_address = cache.example.com:443
+instance_name = hctl2
+capabilities = true
+tls = true
+tls_ca_certs = $HCTL2_REAPI_CA_CERTS
+tls_client_cert = $HCTL2_REAPI_CLIENT_CERT

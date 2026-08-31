@@ -1,0 +1,159 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    cat <<'EOF'
+Select first-party Buck targets affected between two Git commits.
+
+Usage:
+  affected-targets --base <commit> --head <commit> --output <path> [--mode-output <path>]
+  affected-targets --help
+
+The output contains one Buck target pattern per line. Buck2 Change Detector
+failures are reported to the caller; callers must fail closed or run the full
+first-party target set.
+EOF
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+repo_root=$(CDPATH= cd -- "$project_root/.." && pwd)
+base=
+head=
+output=
+mode_output=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --base)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            base=$2
+            shift 2
+            ;;
+        --head)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            head=$2
+            shift 2
+            ;;
+        --output)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            output=$2
+            shift 2
+            ;;
+        --mode-output)
+            [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+            mode_output=$2
+            shift 2
+            ;;
+        --help | -h)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'error: unknown argument: %s\n' "$1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+[ -n "$base" ] && [ -n "$head" ] && [ -n "$output" ] || {
+    usage >&2
+    exit 2
+}
+
+base_commit=$(git -C "$repo_root" rev-parse --verify "$base^{commit}")
+head_commit=$(git -C "$repo_root" rev-parse --verify "$head^{commit}")
+mkdir -p "$(dirname -- "$output")"
+if [ -n "$mode_output" ]; then
+    mkdir -p "$(dirname -- "$mode_output")"
+fi
+
+write_mode() {
+    if [ -n "$mode_output" ]; then
+        printf '%s\n' "$1" >"$mode_output"
+    fi
+}
+
+write_full_targets() {
+    cat >"$output" <<'EOF'
+root//apps/...
+root//crates/...
+root//build/tests/...
+root//:clippy
+root//packaging/release:first-party
+EOF
+}
+
+changed_files=$(git -C "$repo_root" diff --no-renames --name-only "$base_commit...$head_commit")
+if printf '%s\n' "$changed_files" | grep -qE \
+    '^(\.github/workflows/code\.yml|src/build/ci/affected-targets|src/build/tools/(btd|jq-bin))$'; then
+    write_full_targets
+    write_mode full-policy-change
+    exit 0
+fi
+
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-affected.XXXXXX")
+base_tree=$work_dir/base
+head_tree=$work_dir/head
+cleanup() {
+    git -C "$repo_root" worktree remove --force "$base_tree" >/dev/null 2>&1 || true
+    git -C "$repo_root" worktree remove --force "$head_tree" >/dev/null 2>&1 || true
+    rm -rf -- "$work_dir"
+}
+trap cleanup 0 1 2 15
+
+git -C "$repo_root" worktree add --quiet --detach "$base_tree" "$base_commit"
+git -C "$repo_root" worktree add --quiet --detach "$head_tree" "$head_commit"
+graph_dir=$work_dir/graph
+mkdir -p "$graph_dir"
+
+generate_graph() {
+    tree=$1
+    graph=$2
+    (
+        cd "$tree/src"
+        HCTL2_BUCK2_CACHE=0 BUCK_CONSOLE=simple ./buck2 targets \
+            --streaming \
+            --keep-going \
+            --no-cache \
+            --show-unconfigured-target-hash \
+            --json-lines \
+            '--output-attribute=^buck\.|^name$|^labels$|^ci_srcs$|^ci_srcs_must_match$|^ci_deps$|^remote_execution$|^tests$' \
+            --imports \
+            '--package-values-regex=^citadel\.labels$|^test_config_unification\.rollout$' \
+            --config=cache.schedule_type= \
+            --config=user.sandcastle_alias= \
+            --config=cache.http_mode= \
+            --config=user.schedule_type= \
+            --config=user.sandcastle= \
+            --output "$graph" \
+            root//...
+    )
+}
+
+generate_graph "$base_tree" "$graph_dir/base.jsonl"
+generate_graph "$head_tree" "$graph_dir/head.jsonl"
+(
+    cd "$head_tree/src"
+    git diff --relative --name-status "$base_commit...$head_commit" -- . \
+        >"$graph_dir/changes.txt"
+
+    build/tools/btd \
+        --vcs git \
+        --buck "$PWD/buck2" \
+        --changes "$graph_dir/changes.txt" \
+        --base "$graph_dir/base.jsonl" \
+        --diff "$graph_dir/head.jsonl" \
+        --check-dangling \
+        --buckconfig-select-all \
+        --json-lines \
+        root//... \
+        >"$graph_dir/affected.jsonl"
+)
+
+"$head_tree/src/build/tools/jq-bin" -r \
+    'select(any(.labels[]?; . == "ci:fast" or . == "ci:platform")) | .target' \
+    "$graph_dir/affected.jsonl" \
+    | sort -u >"$output"
+write_mode affected
