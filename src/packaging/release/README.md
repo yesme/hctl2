@@ -1,6 +1,6 @@
 # HCTL2 完整发行组装
 
-这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。`root//packaging/release:complete` 在 Buck action graph 中同时依赖第一方产物和粗粒度外部子系统包；它不进入 Tuwunel、Vikunja、Dagu、Herdr、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物合同。
+这个目录是第一方 Buck2 构建与外部子系统原生构建之间唯一的发行边界。`root//packaging/release:complete` 在 Buck action graph 中同时依赖第一方产物和粗粒度外部子系统包；它不进入 Tuwunel、Vikunja、Dagu、Herdr、Cinny 或 Static Web Server 的内部构建图，只消费两侧已经声明并校验的产物约束。
 
 ## 产物
 

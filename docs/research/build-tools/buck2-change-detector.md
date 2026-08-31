@@ -35,11 +35,11 @@
 4. CI 只把属于当前验证类别的 target 交给 `buck2 test --build-default-info`；
 5. 任一步失败，选择结果改为本批次定义的全量 first-party targets，不允许空结果放行。
 
-2026-08-31 本地实测：`main` 图为 581 行、156,788 bytes，本次增加测试关系和 labels 后为 590 行、166,387 bytes；BTD 处理约 0.32 秒。对本次 BUCK/BZL 变更，39 个受影响 target 中只有 12 个进入 first-party 验证；合成的单个 `hctl2-tool` Rust 文件变更影响 9 个 target，其中 6 个进入验证（本模块 build/test/Clippy 加 first-party release）。空 diff 正确输出零 target；删除、改名与 selector 失败回退继续由 CI 合同覆盖。
+2026-08-31 本地实测：`main` 图为 581 行、156,788 bytes，本次增加测试关系和 labels 后为 590 行、166,387 bytes；BTD 处理约 0.32 秒。对本次 BUCK/BZL 变更，39 个受影响 target 中只有 12 个进入 first-party 验证；合成的单个 `hctl2-tool` Rust 文件变更影响 9 个 target，其中 6 个进入验证（本模块 build/test/Clippy 加 first-party release）。空 diff 正确输出零 target；删除、改名与 selector 失败回退继续由 CI 约束覆盖。
 
 ## 不采用与升级边界
 
 - 不采用 `supertd`：它是同仓库的便利总入口，但上游没有发布对应官方二进制；为它自行编译会增加 Rust 供应链和维护面，且 `btd` 已覆盖本库需要的判定功能。
 - 不用 BTD 选择根目录文档：Buck cell 位于 `src/`，文档类别继续由 Git attribute 判定。
 - 不按 `depth` 截断反向依赖：当前图很小，截断会用正确性换时间而没有实际收益。
-- 升级日期 tag 时必须复核导图参数、Git parser、buckconfig 行为、官方 DotSlash digest，并重跑本库的 selector 失败回退合同。
+- 升级日期 tag 时必须复核导图参数、Git parser、buckconfig 行为、官方 DotSlash digest，并重跑本库的 selector 失败回退约束。

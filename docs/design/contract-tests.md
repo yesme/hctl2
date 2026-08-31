@@ -1,9 +1,9 @@
 # 契约测试矩阵
 
 > 状态：验证文档 · 草案 v0.15.4<br>
-> 本文列出十族可观察行为的失败用例，不描述状态机、不新增合同；合同变更须先改 spec 再加用例。
+> 本文列出十族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
-交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增合同必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
+交付测试检查可观察行为，不复述模块状态机。每族一个稳定 family ID；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
 
 ### `CT-PROJECT` · Project / Chat Room
 
@@ -92,7 +92,7 @@
 - provider 离线时，不要求 fresh readback 的查询/命令可继续，要求 current head/revision/lease/readback 的准入统一 fail closed
 - Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
 - Dagu、Vikunja、Herdr 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
-- 新 provider/adapter 未通过对应模块合同测试时不得产生 Resolved Port Binding；换绑不能改写活动 Run、Task、Room 或 Execution Runtime 的冻结 binding
+- 新 provider/adapter 未通过对应模块约束测试时不得产生 Resolved Port Binding；换绑不能改写活动 Run、Task、Room 或 Execution Runtime 的冻结 binding
 - 既有 content 迁移必须显式预览、导出、导入并回读校验；普通换绑不得冒充无损迁移或热切换
 - 客户端无等级：Workbench 通过 provider 通道执行的消息/卡片/终端动作与原生客户端同语义，通过 command service 的动作与 CLI 同语义；Workbench 不得依赖 provider 私有导航或对象模型获得隐藏权限
 - provider event 只有模块 binding 明确列出且 actor/target/version/idempotency/freshness 齐全时可成为 human command request；否则只能成为 content/Snapshot/runtime observation
@@ -130,7 +130,7 @@
 - 同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态
 - 「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链
 - Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out
-- Workbench 不运行时，CLI、Matrix/Vikunja/Herdr 原生客户端、control 和已启动 Run 仍可独立工作；安装 Workbench 不增加任何公共合同之外的 HCTL 命令
+- Workbench 不运行时，CLI、Matrix/Vikunja/Herdr 原生客户端、control 和已启动 Run 仍可独立工作；安装 Workbench 不增加任何公共约束之外的 HCTL 命令
 
 ### `CT-WORKBENCH-INPUT` · Workbench 输入与无障碍
 

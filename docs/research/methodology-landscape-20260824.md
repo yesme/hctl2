@@ -55,7 +55,7 @@
 - Run/Workflow ≈ 编排器的治理段（Gas Town 的机械关单与 convoy 归约）+ TDD/eval 家族的确定性归约立场；
 - Agent/Terminal ≈ 会话多路复用家族（claude-squad/crystal 的问题域；HCTL2 当时采用 agentd+tmux，后来由 Herdr 取代）。
 
-**研发实践层面**（HCTL2 项目怎么开发自己）：spec 驱动（设计层+合同层双层文档为权威，草案版本化，决策进 decision-history）+ 证据纪律（`docs/research/` 条目钉定版本、commit 与来源）+ 多路评审与对抗核验（多个 harness worktree 并行出评审/P0 提案，人裁决）+ 限时验证（选型先跑可丢弃探针）。我们自己的工作方式恰是我们要造的产品的手工版。
+**研发实践层面**（HCTL2 项目怎么开发自己）：spec 驱动（设计层+约束层双层文档为权威，草案版本化，决策进 decision-history）+ 证据纪律（`docs/research/` 条目钉定版本、commit 与来源）+ 多路评审与对抗核验（多个 harness worktree 并行出评审/P0 提案，人裁决）+ 限时验证（选型先跑可丢弃探针）。我们自己的工作方式恰是我们要造的产品的手工版。
 
 ## 三、完成判定权横评（本次审计最硬的一张表）
 

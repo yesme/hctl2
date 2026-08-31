@@ -47,7 +47,7 @@
 
 | 方案 | 代表 | 与 HCTL2 的关系 |
 | --- | --- | --- |
-| 子代理上下文隔离 | [Claude Code subagents](https://www.tembo.io/blog/claude-code-subagents)：每个子代理独立上下文窗口，只回传摘要；生态实测省 40–70%；GSD"计划即给全新上下文子代理的 prompt"（methodology-landscape 已录） | HCTL 的 Run/Invocation 天然就是这个形状：每个执行者拿自己的内容包，主上下文从不被污染——**结构性省 token，已在合同里** |
+| 子代理上下文隔离 | [Claude Code subagents](https://www.tembo.io/blog/claude-code-subagents)：每个子代理独立上下文窗口，只回传摘要；生态实测省 40–70%；GSD"计划即给全新上下文子代理的 prompt"（methodology-landscape 已录） | HCTL 的 Run/Invocation 天然就是这个形状：每个执行者拿自己的内容包，主上下文从不被污染——**结构性省 token，已在约束里** |
 | 知识树 | First Tree Context Tree：Decision Test + Durability Test 准入、有来源支撑的写入（已深审） | 已改编为 Memo 晋升门槛 |
 | 检索树 | [RAPTOR](https://arxiv.org/pdf/2401.18059)：递归嵌入-聚类-摘要自底向上建树，细节与概览两级可检索；QuALITY 绝对精度 +20% | 派生索引候选，后置；建树也要跑模型 |
 | 层级记忆 | Letta 三层（见 C） | 词汇对照用 |
@@ -70,7 +70,7 @@
 
 **① 识别——三级阶梯，全本地、零 API token：**
 
-1. 结构化引用（合同已有组装顺序的第一级：显式引用 → 讨论窗口 → 对象引用链）；
+1. 结构化引用（约束已有组装顺序的第一级：显式引用 → 讨论窗口 → 对象引用链）；
 2. 本地词法索引（MyContext 形状：FTS5 bigram + RRF，从 chat server 事件流增量维护，可随时重建的派生投影，不是权威）；
 3. 可选小模型相关性门（Cumora 形状：判定输入用账本事实——谁被提及、谁认领了什么、游标位置——而不是消息措辞；判定本身入账可审计）。
 
@@ -78,7 +78,7 @@
 
 - 缺省：原文直给，预算内按组装顺序裁剪；
 - 用户配置专用小模型（small-brain）后启用压缩，两条技术路线都留：**摘要式**（小模型生成，采 LobeHub 的持久化 + 增量折叠 + 用量入账形状）与 **token 级**（LLMLingua-2 形状，2–5x 安全区）；
-- 合同要求：压缩是清单里显式记录的一步——压缩模型 ref + 版本、压缩率、原文 digest 全部冻结，可解释性不因压缩打折；证据类内容（digest、凭证、验收标准原文）永不压缩；
+- 约束要求：压缩是清单里显式记录的一步——压缩模型 ref + 版本、压缩率、原文 digest 全部冻结，可解释性不因压缩打折；证据类内容（digest、凭证、验收标准原文）永不压缩；
 - small-brain 在 Participant 七层里就是一个执行者配置里的模型 ref，不是新对象。
 
 **不做的：** 不建第五套记忆库（Letta/mem0 式）；时序图谱与检索树降为派生索引候选、暂缓；不采用 agent 自编辑记忆（记什么靠自述，与证据立场冲突）；不依赖 harness 原生 compaction（不可控不入账，只作兜底）。

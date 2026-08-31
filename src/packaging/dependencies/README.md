@@ -41,7 +41,7 @@ Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构
   --target-platforms root//build/platforms:linux_x86_64_gnu
 ```
 
-`metadata`、六个组件 action、`package` 和 `package-test` 是同一张 action graph 上的连续合同。正常的 `tuwunel` 只声明 Linux 官方包或 HCTL2 托管的 macOS 原生包、最小公共 helper 和 Mach-O 校验；`vikunja`、`dagu`、`herdr`、`cinny` 与 `static-web-server` 各自只声明对应官方制品和必要配置。`tuwunel-native-build` 才声明源码、固定 Rust 工具链与原生编译逻辑，正常组包不会依赖它。源码伴随包所需归档由 `package` 直接消费 Buck 下载目标。workflow 不理解 action 内部顺序。测试会校验运行包与源码包、离线安装、幂等重装、完整启动、smoke 和停止。
+`metadata`、六个组件 action、`package` 和 `package-test` 是同一张 action graph 上的连续约束。正常的 `tuwunel` 只声明 Linux 官方包或 HCTL2 托管的 macOS 原生包、最小公共 helper 和 Mach-O 校验；`vikunja`、`dagu`、`herdr`、`cinny` 与 `static-web-server` 各自只声明对应官方制品和必要配置。`tuwunel-native-build` 才声明源码、固定 Rust 工具链与原生编译逻辑，正常组包不会依赖它。源码伴随包所需归档由 `package` 直接消费 Buck 下载目标。workflow 不理解 action 内部顺序。测试会校验运行包与源码包、离线安装、幂等重装、完整启动、smoke 和停止。
 
 开发机由 loopback `bazel-remote` 在各 worktree 之间共享标准 REAPI CAS/action results。CI 不持久化本地 REAPI 数据或 `buck-out`；macOS 正常发布直接下载约 33–36 MiB 的 Tuwunel 压缩包并由 Buck 校验 SHA-256，不再用约 0.5–1 GiB 的 cache 掩盖源码编译。导出的目录包含：
 

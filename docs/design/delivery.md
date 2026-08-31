@@ -1,6 +1,6 @@
 # 第一阶段、验证与自举
 
-> 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[合同层](./spec/README.md)的四个模块合同为准，端到端步骤按[连接合同](./spec/connections.md)验收。本文属验证文档：可引用合同层词汇以指认被测合同，但不重定义它们。
+> 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被测约束，但不重定义它们。
 
 ## 第一阶段范围
 
@@ -15,9 +15,9 @@
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
 | [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种保证 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过第一阶段契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
 
-P3 的 Workbench 把四类 provider 客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令：同一 command service 供 CLI、Workbench 与外部适配器使用。消息、卡片与终端输入仍按各 provider 公共合同处理，Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
+P3 的 Workbench 把四类 provider 客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令：同一 command service 供 CLI、Workbench 与外部适配器使用。消息、卡片与终端输入仍按各 provider 公共约束处理，Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
 
-客户端动作与 provider 事件的分类及准入以[系统合同](./spec/system.md#客户端动作与-provider-事件)为准；P2 用 CLI 提供全部 HCTL 命令，不把 Workbench 设成必需组件。
+客户端动作与 provider 事件的分类及准入以[系统约束](./spec/system.md#客户端动作与-provider-事件)为准；P2 用 CLI 提供全部 HCTL 命令，不把 Workbench 设成必需组件。
 
 ## 公共 CLI
 
@@ -79,7 +79,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 6. `changes_requested` 产生新 ChangeSet Revision，旧票失效并完整 regate。
 7. 达到法定票数后写 Gate Receipt；有权 human actor 或冻结 reducer 再提交固定 ChangeSet Revision、target、expected head 与 Gate evidence 的 integration intent。
 8. control 先持久化 intent/outbox，`hctl2-tool`（本地）或 adapter（远端）执行并 readback；只有确认目标事实后才写唯一 Integration Receipt，结果未知时不得签成功或盲重投。
-9. task-bound Run 按合同正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入并校验精确 Integration Receipt，失败类 Run 不终结 Task。
+9. task-bound Run 按约束正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入并校验精确 Integration Receipt，失败类 Run 不终结 Task。
 10. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
 
 ## Kanban content 后端切片
@@ -123,9 +123,9 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 
 1. **workflow engine（Dagu，已拍板）**：DAG 提交与启动/暂停/恢复/取消回读、`human.task` 等待/完成/回读和 Engine 自行推进或重试的分歧检查均按 HCTL 实际调用面核对；生成物只用机械结构与无进程的 `human.task`，Obligation 身份与隔离仍由 HCTL 账本承担，结论与固定源码证据见 [Dagu 与候选复审](../research/workflow-engines.md#e-l2-dagu)。
 2. **Agency（Herdr，已拍板）**：固定基线为 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0；HCTL 当前消费 macOS/Linux × arm64/x86_64 官方单二进制）。Herdr 直接按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI；HCTL 只实现适配代码，不再放置独立 Agency 组件或下一层终端运行服务。P0 验证实际使用的 Herdr API 和行为：版本协商、workspace/tab/pane/terminal 创建与定位、输入和 resize、观察与断线重连、停止与退出状态，以及恢复等级能否如实翻译。已确认的限制是原生输入不经 HCTL 输入租约、API 与原生 controller 可交错写入、事件 ring 没有公开 sequence/gap、退出和停止回读不足；这些功能在补齐前按低信任或不支持处理，不在 HCTL 内另写终端服务。源码、API、macOS RSS 与历史运行时对照数据见 [Herdr 运行服务验证记录](../research/runtime/agency-runtime-validation-20260829.md)。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读均按 Chat 端口调用面核对；事务 ID、事件顺序与重同步沿用 Matrix homeserver 合同，低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化，结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读均按 Chat 端口调用面核对；事务 ID、事件顺序与重同步沿用 Matrix homeserver 约束，低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化，结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
 4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja，备份恢复和托管生命周期留到 B1 产品化，git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
-5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——合同未押注它，双向适配是五项中最贵的一项。
+5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——约束未押注它，双向适配是五项中最贵的一项。
 
 ## 打包策略（选型判断，首次消费时产品化）
 
@@ -134,7 +134,7 @@ P0 的内容就是本节。各项选型已拍板，验证因此从“选谁”�
 - **必须原生**：Herdr、harness、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 worktree、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。Herdr 直接消费摘要锁定的官方单二进制并随包保留上游许可证，不维护另一套终端运行服务或自主构建链。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行 target。Linux x86_64、Linux arm64、macOS arm64 与 macOS x86_64 分别构建；macOS 最低基线为 15（依据：`lock.json` 固定 15.0，托管 Tuwunel 的两种架构 Mach-O 均声明 `minos 15.0`，macOS 依赖与 release CI 均在 macOS 15 arm64/Intel runner 验证；Herdr 官方制品声明 11.0，尚未落入源码树的 Tauri 2 Workbench 没有更高的制品要求）。Dagu、Vikunja、Herdr 使用官方原生发布物；Tuwunel 上游无 Darwin 制品，HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包，日常打包消费托管制品；源码构建只用于更新托管制品。各 target 共用锁定的 Cinny 官方 Web 发行包，不混用缓存、动态库闭包或生命周期验证。
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。第一阶段的 Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
-- Windows 不在第一阶段范围。Herdr v0.8.2 已提供官方 Windows x86_64 发行物，但 HCTL 当前的构建与生命周期验证矩阵只有 Linux/macOS，Tuwunel 也未见官方 Windows 包；未来须让完整 Windows 包重新通过同一合同与兼容矩阵，当前不宣称支持 Windows。
+- Windows 不在第一阶段范围。Herdr v0.8.2 已提供官方 Windows x86_64 发行物，但 HCTL 当前的构建与生命周期验证矩阵只有 Linux/macOS，Tuwunel 也未见官方 Windows 包；未来须让完整 Windows 包重新通过同一约束与兼容矩阵，当前不宣称支持 Windows。
 
 ## 技术基线
 
