@@ -1,1 +1,16 @@
 src/third-party/rust/BUCK whitespace=-blank-at-eof
+
+# Documentation review profiles. Later rules override earlier ones.
+/README.md hctl-doc=design
+/AGENTS.md hctl-doc=design
+/CLAUDE.md hctl-doc=design
+/CONSTRAINTS.md hctl-doc=design
+/WRITING-GUIDE.md hctl-doc=design
+/docs/design/** hctl-doc=design
+/docs/design/spec/** hctl-doc=spec
+/docs/design/contract-tests.md hctl-doc=spec
+/docs/design/delivery.md hctl-doc=delivery
+/docs/usage.md hctl-doc=delivery
+/docs/research/** hctl-doc=research
+/.memo/** hctl-doc=memo
+/.memo/review/** hctl-doc=memo-review

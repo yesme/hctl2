@@ -1,7 +1,7 @@
 # 构建系统优化：三批实施方法
 
-> 状态：已拍板 · 分三批落地中
-> 基线：main @ 4bf8e81（草案 v0.15.4）
+> 状态：已拍板 · 第一、二批已落地，第三批待开始
+> 基线：main @ 4efe0d3（草案 v0.15.4）
 > 去向：`.github/workflows/**`、`src/**/BUCK` 与 `src/build/**`
 
 ## 定位与目标
@@ -82,6 +82,8 @@ commit status → branch protection
 6. Cargo parity 先保留其独有的 lint/manifest 价值；Buck 等价覆盖后缩为工具链或定期基线检查，不并行维护第二份构建定义。
 
 BTD 输出的是“受影响范围”，不是“必须运行所有下游昂贵目标”。普通 Rust 变更默认三平台验证受影响的第一方 target、test、Clippy 与 first-party release；完整三平台生命周期只在 packaging、dependency、toolchain 或 tag 变化时运行。是否为普通 Rust 变更额外保留一次 Linux complete-package smoke，可在第二批实施前用实际失败样本再定。
+
+第二批落地时没有增加 Linux complete-package smoke：first-party release 已进入普通 Rust 变更的三平台受影响目标集，完整生命周期继续由 packaging、dependency、toolchain、构建规则与 tag 变化触发。production target 的 `tests`、模块级 Clippy 和验证类别均在 Buck 图中声明；BTD 使用官方制品并在失败时回退全量 first-party 集合；文档 profile 由 `.gitattributes` 分类；Cargo 只保留格式与 locked metadata。
 
 ## 第三批：执行器与共享 cache
 

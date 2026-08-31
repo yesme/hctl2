@@ -4,6 +4,8 @@
 # consume only that copy so Buck2 caching tracks the actual doc contents.
 # Run `src/build/docs/materialize_repo_tree.sh` before `buck2 test`.
 
+load("//build/rules:ci.bzl", "CI_DOCS")
+
 oncall("hctl2")
 
 filegroup(
@@ -20,6 +22,7 @@ sh_test(
     name = "check_links",
     test = "check_links.pl",
     args = ["build/docs/repo_tree", "build/docs/links.allowlist"],
+    labels = CI_DOCS,
     resources = [":repo_tree", ":configs"],
 )
 
@@ -27,6 +30,7 @@ sh_test(
     name = "check_version_stamps",
     test = "check_version_stamps.sh",
     args = ["build/docs/repo_tree", "build/docs/version_stamps.allowlist"],
+    labels = CI_DOCS,
     resources = [":repo_tree", ":configs"],
 )
 
@@ -38,6 +42,7 @@ sh_test(
         "build/docs/dead_names.txt",
         "build/docs/dead_names.allowlist",
     ],
+    labels = CI_DOCS,
     resources = [":repo_tree", ":configs"],
 )
 
@@ -45,6 +50,7 @@ sh_test(
     name = "check_memo_review_baseline",
     test = "check_memo_review_baseline.sh",
     args = ["build/docs/repo_tree", "build/docs/memo_review_baseline.allowlist"],
+    labels = CI_DOCS,
     resources = [":repo_tree", ":configs"],
 )
 
@@ -52,5 +58,63 @@ sh_test(
     name = "report_prohibition_density",
     test = "report_prohibition_density.sh",
     args = ["build/docs/repo_tree"],
+    labels = CI_DOCS,
     resources = [":repo_tree"],
+)
+
+test_suite(
+    name = "profile-design",
+    labels = CI_DOCS,
+    tests = [
+        ":check_links",
+        ":check_version_stamps",
+        ":check_dead_names",
+        ":report_prohibition_density",
+    ],
+)
+
+test_suite(
+    name = "profile-spec",
+    labels = CI_DOCS,
+    tests = [
+        ":check_links",
+        ":check_version_stamps",
+        ":check_dead_names",
+        ":report_prohibition_density",
+    ],
+)
+
+test_suite(
+    name = "profile-delivery",
+    labels = CI_DOCS,
+    tests = [
+        ":check_links",
+        ":check_version_stamps",
+        ":check_dead_names",
+        ":report_prohibition_density",
+    ],
+)
+
+test_suite(
+    name = "profile-research",
+    labels = CI_DOCS,
+    tests = [":check_links"],
+)
+
+test_suite(
+    name = "profile-memo-review",
+    labels = CI_DOCS,
+    tests = [":check_memo_review_baseline"],
+)
+
+test_suite(
+    name = "profile-all",
+    labels = CI_DOCS,
+    tests = [
+        ":check_links",
+        ":check_version_stamps",
+        ":check_dead_names",
+        ":check_memo_review_baseline",
+        ":report_prohibition_density",
+    ],
 )

@@ -1,11 +1,11 @@
 # docs/research · 实现证据与精选参考组合
 
-> 状态：信息性文档 · 研究快照 2026-08-30；按产品类别组织，单案入同层子目录<br>
+> 状态：信息性文档 · 研究快照 2026-08-31；按产品类别组织，单案入同层子目录<br>
 > 上级文档：[HCTL2 设计规范](../design/README.md)<br>
 > 规则：本目录只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。条目是产物（Task 交付的 Artifact）：钉定 commit / 版本与许可，发布后正文不改，只在文末追加复核记录；中间过程与备忘在 `.memo/`。<br>
 > 组织方式：本文按**产品类别**给总览（回答"它是什么"）；各条目文件内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。这两个分类维度互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
 
-目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md) 和 [`lineage/`](./lineage/README.md)。
+目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md)、[`build-tools/`](./build-tools/README.md) 和 [`lineage/`](./lineage/README.md)。
 
 ## 引用准入
 
@@ -118,6 +118,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 | 仅参考行为 |
 | [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 | 仅参考行为的补充证据 |
 | [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 | 采用 Tauri 2 的选型证据 |
+| [buck2-change-detector.md](./build-tools/buck2-change-detector.md) | Buck2 Change Detector 的源码、官方制品与失败回退审计 | E-TOOL-BTD | ⑥ 机械后端与基础设施 | 采用官方 `btd` 二进制；不自行构建 `supertd` |
 
 ## 已选外部服务的运维与资源占用
 
