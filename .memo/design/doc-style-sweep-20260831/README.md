@@ -27,6 +27,8 @@
 
 任务书见 [`03-briefs.md`](./03-briefs.md)：**整份发给四家，各做各的那一节**（共同前提与松紧基准两节四家都要读，没有内嵌进各节）。校准样本与所有者裁决见 [`04-calibration.md`](./04-calibration.md)。
 
+进度（2026-09-02）：四份清单已齐并汇总（[`20-verdict-packet.md`](./20-verdict-packet.md)），所有者十条裁决闭合（同文件文末），结构批已落（PR #132，v0.15.5）。剩语言批：任务书在 [`21-language-brief.md`](./21-language-brief.md)，待所有者贴给 GPT。
+
 ## 范围
 
 **进**：根 `README.md`、`docs/usage.md`、`docs/design/` 全部正文与约束、`contract-tests.md`、`delivery.md`、`references/glossary.md`。约 21 个文件、2600–2800 行。
