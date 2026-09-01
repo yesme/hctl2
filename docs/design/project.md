@@ -1,5 +1,8 @@
 # Project 与 Chat Room
 
+> 状态：规范性（架构层） · 草案 v0.15.5<br>
+> 日期：2026-09-02
+
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
 
 ## 为什么存在
@@ -34,9 +37,9 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 | --- | --- | --- |
 | Repo Room | 无固定主题的研究、发现和 Project 入口 | 与 Repo 注册同寿命；身份在用户级控制面 |
 | Project Room | 围绕一个 Project 的长期协作和里程碑 | Project 归档后只读 |
-| Scoped Room | 为复杂 Request 或决定临时建立的讨论空间 | 结论回填类型化动作后归档 |
+| Scoped Room | 为复杂 Request 或决定临时建立的讨论空间 | 结论回填或显式结案后归档 |
 
-临时讨论空间必须先说清目标与完成后回填什么；只有回填动作成功才能归档。
+临时讨论空间创建时必须先说清目标与完成后回填什么；结束时把结论回填，或由有权的人显式结案，然后归档。归档的前置条件只在[约束附录](./spec/project.md#room-与消息)定义。
 
 ## Chat Room 场景
 
@@ -51,7 +54,7 @@ Chat Room 是 Project 的主要操作场景，提供：
 
 在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
-Workbench 就位之前（P2），Matrix 客户端负责读写消息、引用和讨论；`hctl2` CLI 提供 Trigger Preview、发起调用、解决 Request、升格 Project 与 Memo，命令以 chat server 消息事件 ID 引用讨论内容。这是第一阶段没有实现 Matrix 结构化命令适配器的产品路径，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，它也必须归一到同一 Preview/Submit 约束。
+Workbench 就位之前，Matrix 客户端负责读写消息、引用和讨论，治理命令走公共命令入口；先后路径见[交付文档的实现阶段](./delivery.md#实现阶段)。这是产品路径的先后，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，也必须归一到同一 Preview/Submit 入口。
 
 普通 Room 里的临场执行边只能来自可稳定归属到 human 的动作，并且必须先经过 Trigger Preview；动作可以由 Workbench/CLI 直接提交，也可以由按公开约束适配的 provider（供应端）结构化事件提交，客户端名称不改变规则。聊天消息本身不是入口。模型 Participant 的消息、结果提议和总结（包括正文里的 `@`）只能形成“下一位协作者”的建议，不能自行发起调用、唤醒 worker（执行体）或层层转包；用户批准建议后，系统自动把原消息、引用、上下文、权限、预算和上一次调用的关系带进新预览，不要求人复制粘贴。重复且无需临场判断的协作应进入 [Workflow](./run.md)，由确定性规则按冻结的施工图创建。精确规则见[约束附录](./spec/project.md#场景约束)。
 

@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.15.4<br>
+> 状态：规范性约束 · 草案 v0.15.5<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -20,7 +20,7 @@
 
 固定内核是一个用户级 command service；它对每个 Repo 保持独立的语义范围，而不是在每个 clone 各起一套控制面。固定内核实现四模块定义的稳定身份、Revision 准入、权限、字段权威、领域归约与 Receipt；本文件只拥有共享 command envelope、扩展绑定、outbox/inbox、单写者和恢复机制。
 
-即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，内核所守的身份、权限、版本证据、治理与恢复边界也必须原样保留——这是[愿景文档](../vision.md#产品原生核心与架构最小内核)中“产品原生核心与架构最小内核”在系统层的落点。
+换掉全部界面与供应端之后内核必须保留什么，[愿景文档](../vision.md#产品原生核心与架构最小内核)已经回答；本文只立它在系统层的精确约束。
 
 可以替换的端口包括：
 
@@ -71,7 +71,7 @@ HCTL 命令客户端只声明交互能力与降级行为；受控端口报告 pr
 
 ## 客户端动作与 provider 事件
 
-Workbench 不比四个原生客户端加在一起更高贵，CLI 也不更低。control 不根据“来自哪个产品”判定动作，而根据动作落点和可验证信封分成以下几类：
+control 不根据“来自哪个产品”判定动作——客户端没有等级是愿景层的产品承诺（见[设计原则](../vision.md#设计原则)）——而根据动作落点和可验证信封分成以下几类：
 
 | 类别 | 例子 | control 怎样处理 |
 | --- | --- | --- |
@@ -159,7 +159,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/Skill/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖 fresh 消息/成员/cursor 的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖 fresh placement/drift/head/cursor 的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
-| Workflow 机械位置（路标） | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，路标停更只让 Engine Execution Binding 待对账 | 路标丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
+| Workflow 引擎报告的执行进度 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Engine Execution Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
 | Harness 进程、PTY、主机与原始流 | Herdr 持有物理资源并提供观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次结束，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
@@ -169,6 +169,23 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 每个 Repo Instance 的 Git/worktree 资源互斥当前由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁实现，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
 
 SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
+
+单写者、CAS 与 current pointer 是三件事，不互相替代：单写者回答此刻谁有权写账本（本节）；expected-version CAS 回答一条命令对哪个版本生效（见[命令与跨服务正确性](#命令与跨服务正确性)）；current pointer 回答界面此刻读哪个不可变版本（推进规则由各模块写入约束定义）。ChangeSet 的单 writer 是 Agent 模块的写权（见[Agent 约束](./agent.md#写入约束)），不属于 control 单写者。
+
+### 代次家族
+
+全系统共有六个代次（generation）：同族——都单调递增、旧值失权——但不同槽，各管一块资源，不得共用一个字段，也不得从彼此推导。
+
+| 成员 | 管哪块资源 | 权威定义 | 何时产生或推进 |
+| --- | --- | --- | --- |
+| `attempt_generation` ／ `invocation_version` | 这一次逻辑执行归谁（语义 owner） | [Run 约束](./run.md#对象)、[Project 约束](./project.md#room-invocation) | 派发时已有；不得预填运行时身份 |
+| `runtime_generation` | 这一次物理进程／PTY | [Agent 约束](./agent.md#运行时与观测) | 激活映射时由 Agency 预留返回 |
+| `control_writer_generation` | 用户级账本此刻的逻辑写入者 | 本节 | 取得账本写权时 CAS 推进 |
+| `site_generation` | 某个 Repo Instance 的 Git/worktree 现场 | 本节 | 同一本账对本现场 CAS 推进；现场 OS 锁是它的物理伴生，不是它 |
+| Agency binding owner generation | 某个 Agency 绑定范围（同一 server/socket/host namespace） | 本节 | 新 owner 对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
+| `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进 Agent 出站元组 |
+
+`runtime_generation` 不能从 `attempt_generation` 推导（派发时还没有物理身份）；`site_generation` 不能从 `control_writer_generation` 推导（写入者可搬家，现场钉在仓库实例上）；Agency binding owner generation 不能从 `site_generation` 推导（Git 锁管不了另一台机器上的 PTY）；`engine_binding_generation` 不能从 `attempt_generation` 推导（引擎重试与候选切换是两条独立的换代路径）。Agent 出站结果必带哪些代次、`in_process` 何时可缩减，见[连接约束](./connections.md#project--run--agent从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
 
 ## 启动与恢复
 

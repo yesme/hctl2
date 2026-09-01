@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.15.4**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.15.5**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；三个目标均已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -22,14 +22,11 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 
 ```mermaid
 flowchart TB
-    subgraph Clients["客户端 · 没有等级，动作按目标约束处理"]
-        CLI["hctl2 CLI<br/>（P2 起承载全部治理命令）"]
-        Bench["hctl2-workbench（P3）<br/>四类客户端 + HCTL 命令入口"]
-        Native["Matrix / Vikunja / Herdr<br/>原生客户端"]
-        Admin["Dagu 管理界面<br/>管理 / 诊断"]
+    subgraph Present["展示面 · 客户端没有等级"]
+        Clients["Workbench / CLI / 各场景原生客户端"]
     end
 
-    subgraph Control["控制面 · hctl2-control 四个领域模块"]
+    subgraph Control["控制面 · 四个领域模块"]
         P["Project<br/>Chat Room"]
         T["Task<br/>Kanban"]
         R["Run<br/>Workflow"]
@@ -37,31 +34,21 @@ flowchart TB
     end
 
     subgraph Exec["执行面 · content 系统与物理执行"]
-        subgraph Direct["provider 服务（原生客户端与 Workbench 可直连）"]
-            chat_srv["chat server<br/>（Matrix 协议）"]
-            task_backend["任务后端<br/>（本地任务服务器 / Linear、GitHub）"]
-            agency["Herdr<br/>Agent / Terminal 运行服务"]
-        end
-        engine["workflow engine"]
-        runtime["harness 进程 / PTY"]
+        chat_srv["聊天服务"]
+        task_backend["任务后端"]
+        engine["工作流引擎"]
+        agency["执行者派出与终端"]
     end
 
-    CLI --> Control
-    Bench --> Control
-    Native -.->|显式且可归属的动作请求| Control
-    Bench -->|消息 / 卡片 / 终端通道| Direct
-    Native --> Direct
-    Admin -->|直接 mutation 仅供管理；越界即分歧| engine
-    P -->|Chat 端口| chat_srv
-    T -->|任务源端口| task_backend
-    R -->|workflow engine 端口| engine
+    Clients -->|治理命令| Control
+    Clients -->|消息 / 卡片 / 终端通道| Exec
+    P --> chat_srv
+    T --> task_backend
+    R --> engine
     H --> agency
-    agency --> runtime
-    Control --> DB["用户级 metadata 账本（SQLite）"]
-    Control --> Tool["hctl2-tool · 现场执行者"]
 ```
 
-图中的 Chat Room、Kanban、Workflow 和 Terminal 是四个模块对应的场景；Workbench、CLI 与 provider（供应端）原生客户端没有等级。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)。
+图中的 Chat Room、Kanban、Workflow 和 Terminal 是四个模块对应的场景；Workbench、CLI 与 provider（供应端）原生客户端没有等级，动作按它落在哪个模块、带什么信封处理，分类规则见[系统约束](./docs/design/spec/system.md#客户端动作与-provider-事件)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)；第一阶段各面选用的具体产品与阶段代号见[交付文档](./docs/design/delivery.md#实现阶段)。
 
 ## 阅读入口
 

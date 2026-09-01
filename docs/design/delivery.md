@@ -1,5 +1,8 @@
 # 第一阶段、验证与自举
 
+> 状态：交付文档（非规范） · 草案 v0.15.5<br>
+> 日期：2026-09-02
+
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被测约束，但不重定义它们。
 
 ## 第一阶段范围
@@ -80,7 +83,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 7. 达到法定票数后写 Gate Receipt；有权 human actor 或冻结 reducer 再提交固定 ChangeSet Revision、target、expected head 与 Gate evidence 的 integration intent。
 8. control 先持久化 intent/outbox，`hctl2-tool`（本地）或 adapter（远端）执行并 readback；只有确认目标事实后才写唯一 Integration Receipt，结果未知时不得签成功或盲重投。
 9. task-bound Run 按约束正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入并校验精确 Integration Receipt，失败类 Run 不终结 Task。
-10. 任意步骤崩溃后通过 generation、outbox 和 readback 恢复，不重复外部效果。
+10. 任意步骤崩溃后按[连接约束的失败与恢复](./spec/connections.md#失败与恢复)对账恢复，不重复外部效果；本文不另写一份恢复算法。
 
 ## Kanban content 后端切片
 
