@@ -8,16 +8,20 @@
 | --- | --- | --- | --- |
 | `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
 | `hctl2-tool` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能执行 Git/SCM 操作 |
-| `hctl2-protocol` | Rust 库，不是命令 | HCTL2 开发者 | 为进程间通信提供共享 envelope 类型 |
+| `hctl2-protocol` | Rust 库，不是命令 | HCTL2 开发者 | 为进程间通信提供共享信封类型 |
 | `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-目前只有 `hctl2-services` 是可执行真实操作的用户命令。`hctl2-tool` 暂时用于验证代码树、构建链和命令边界，不应作为后台服务部署。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
+目前只有 `hctl2-services` 是可执行真实操作的用户命令。`hctl2-tool` 暂时用于验证代码树、构建链和命令边界，不是后台服务。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 
-当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 系统要求以[交付文档的打包策略](./design/delivery.md#打包策略选型判断首次消费时产品化)为准。运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`；锁定的上游源码位于同一 Release 中单独发布的源码伴随包。安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 系统要求以[交付文档的打包策略](./design/delivery.md#打包策略选型判断首次消费时产品化)为准。
+
+运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`。锁定的上游源码位于同一 Release 中单独发布的源码伴随包。
+
+安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 每个 target 同时发布两份归档：
 
@@ -136,9 +140,11 @@ hctl2-services stop herdr
 | Cinny | Chatroom 随包浏览器客户端 | `http://127.0.0.1:6168/` |
 | Vikunja | Kanban 浏览器客户端与本地任务后端 | `http://127.0.0.1:3456/` |
 | Dagu | Workflow 浏览器客户端与本地工作流引擎 | `http://127.0.0.1:18080/` |
-| Herdr | Agent / Terminal 运行服务 | owner-only Unix socket；Linux 位于状态目录，macOS 位于短 `/tmp/hctl2-herdr-<uid>/` 目录 |
+| Herdr | Agent / Terminal 运行服务 | 仅归属者可访问的 Unix socket；Linux 位于状态目录，macOS 位于短 `/tmp/hctl2-herdr-<uid>/` 目录 |
 
-这些网络服务只监听 loopback，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的官方 `static-web-server` 单二进制提供；其 Homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。它主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用 federation 和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在 loopback 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+这些网络服务只监听本机回环地址，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的官方 `static-web-server` 单二进制提供；它的 homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。Cinny 主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。
+
+Dagu 还会占用内部端口 `18090`、`15055` 和 `18091`。当前 Tuwunel 配置禁用联邦互通和房间加密，以便 HCTL2 控制面将来可以按消息 ID 读取 HCTL Room 正文；Dagu 仅在本机回环地址上关闭认证；Vikunja 首次启动时生成随机本地密钥。
 
 ### 状态、日志和数据
 
@@ -203,7 +209,7 @@ cargo run --locked -p hctl2-tool -- --help
 
 完整离线包的下载、校验、解压和安装步骤见[安装当前离线包](#安装当前离线包)。最终用户只需下载同一版本和目标平台的运行包及其 `.sha256` 文件；源码伴随包与它的校验文件在同一 Release 提供，供源码与供应链审计按需下载，不参与安装。
 
-安装后提供 `hctl2-tool` 与 `hctl2-services` 两个命令；运行 `hctl2-services start` 即可启动四个本地执行面及 Cinny 浏览器客户端，Herdr 由 `hctl2-services` 管理。
+安装后提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 会启动 Tuwunel、Cinny、Vikunja、Dagu 和 Herdr；Tuwunel 与 Cinny 共同组成 Chatroom，Herdr 由 `hctl2-services` 管理。
 
 ## 制作外部子系统包
 
