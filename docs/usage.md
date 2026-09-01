@@ -140,7 +140,7 @@ hctl2-services stop herdr
 | Cinny | Chatroom 随包浏览器客户端 | `http://127.0.0.1:6168/` |
 | Vikunja | Kanban 浏览器客户端与本地任务后端 | `http://127.0.0.1:3456/` |
 | Dagu | Workflow 浏览器客户端与本地工作流引擎 | `http://127.0.0.1:18080/` |
-| Herdr | Agent / Terminal 运行服务 | owner-only Unix socket；Linux 位于状态目录，macOS 位于短 `/tmp/hctl2-herdr-<uid>/` 目录 |
+| Herdr | Agent / Terminal 运行服务 | 仅归属者可访问的 Unix socket；Linux 位于状态目录，macOS 位于短 `/tmp/hctl2-herdr-<uid>/` 目录 |
 
 这些网络服务只监听本机回环地址，不对局域网或公网开放。Cinny 是官方 Web 发行包的静态内容，由随包的官方 `static-web-server` 单二进制提供；它的 homeserver 固定为 `http://127.0.0.1:6167`，不能改连任意服务器。Cinny 主要用于 Matrix 互操作和人工查看，不是 HCTL2 Workbench，也没有 HCTL2 治理权限。
 

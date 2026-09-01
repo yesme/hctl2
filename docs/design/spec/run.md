@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.5<br>
+> 状态：规范性约束 · 草案 v0.15.6<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -104,10 +104,10 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 1. control 观察到 Engine 检查点在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的依赖、条件和等待等机械节点不创建 Obligation。control 只依据当前有效 Engine Execution Binding 的当前观察创建义务。绑定分歧待对账、引擎停报进度，或观察来自缓存、迟到事件或旧游标时，control 不创建新 Obligation；已经创建的义务照常验收与判决。
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
 3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
-4. control 与工具箱校验精确 binding、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
+4. control 与工具箱校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与账本不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Engine Execution Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
-Execution Spec 必须固定 Attempt、Seat、Run、Participant、Role Binding、Worker Profile、Agency binding、Context、Skill、权限、预算和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency generations 排除旧基础设施动作；三组代次必须分别校验。
+Execution Spec 必须固定 Attempt、Seat、Run、Participant、Role Binding、Worker Profile、Agency 绑定、Context、Skill、权限、预算和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
 
 Attempt 的状态与合法转移如下。未列出的状态转换必须返回类型化拒绝。
 
@@ -125,7 +125,9 @@ Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifa
 
 ## Request、重试与 Gate
 
-Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request lifecycle。Request 冻结 deadline 与 `fail | cancel` 默认策略；Resolve/Expire 的跨模块事务都 CAS 精确 Request 与 blocker version，只有 Resolve 可以写答案 delivery，Expire 不能猜测答案而是按冻结策略结束对应 Attempt/Seat/Obligation。Run 只在匹配 ACK/观测后恢复绑定执行；节点仍通过正常 Result Proposal/Receipt 路径完成。Dagu `human.task` 只是每个 HCTL 外部节点的机械暂停原语，不构成第二条人类输入或完成路径。
+Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request 生命周期。Request 冻结截止时间与 `fail | cancel` 默认策略。解决与过期的跨模块事务都以比较并交换校验精确 Request 和阻塞项版本；只有解决可以写答案投递，过期不能猜测答案，而要按冻结策略结束对应 Attempt、Seat 或 Obligation。
+
+Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正常 Result Proposal/Receipt 路径完成。Dagu `human.task` 只是每个 HCTL 外部节点的机械暂停原语，不构成第二条人类输入或完成路径。
 
 “重试”不是一个概念，而是五种身份不同的路径；混用它们会复制票数、绕过验收或复活旧执行：
 
@@ -137,9 +139,15 @@ Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命
 | 语义返工 | changes_requested 汇总 | 新 ChangeSet Revision/Artifact Revision，旧票失效并完整 regate | Run、Task Revision（通常） |
 | 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 Task Revision | Project、Task 身份 |
 
-只有冻结策略列明的类型化技术故障，例如候选特有的认证/配额/网络故障、进程或运行时丢失、租约超时，才可以切换 Attempt。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时于同一 Seat 创建新 Attempt；候选耗尽后，需要额外输入或授权则创建 Request，否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是 reducer 输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
+只有冻结策略列明的类型化技术故障才可以切换 Attempt，例如候选特有的认证、配额或网络故障，进程或运行时丢失，以及租约超时。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时，于同一 Seat 创建新 Attempt。
 
-Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点/规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、review-policy ref+digest、根 Context Manifest ref+digest、required Skill refs+digests 和 capability/permission-policy ref+digest，并各自冻结精确 Participant revision 与 Project Role Binding。被评审 Revision 的作者或 subject producer 不得占用必需 reviewer Seat；必需 reviewer Seat 绑定互不相同的 Participant revision，备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。control 与工具箱在计票时同时校验 producer、Participant、角色和权限；重复、越权、过期、身份冲突或 digest 不匹配的票不计数。同一 Seat 的备用 Attempt 不增加票。
+候选耗尽后，需要额外输入或授权时创建 Request；否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是归约器输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。
+
+Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、必需 Skill 引用与摘要和能力与权限策略引用与摘要，并各自冻结精确 Participant revision 与 Project Role Binding。
+
+被评审 Revision 的作者或生产者不得占用必需评审 Seat；必需评审 Seat 绑定互不相同的 Participant revision。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。
+
+control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 
 第一阶段只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按 `known/unknown` 展示；Participant、Harness 或模型自报不能把 unknown 变成 known。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回 unsupported。
 
@@ -162,7 +170,7 @@ Run 终态只说明 Workflow 到达经 HCTL 归约器确认的终点，不直接
 | Workflow Revision | Dagu 的 YAML DAG definition / BPMN 的 process definition | 引擎产物不能反向定义它；它先于任何引擎存在 |
 | Engine Deployment | 引擎里注册的 definition 版本 | 额外固定编译器与 Profile，供分歧检测 |
 | Run | workflow execution / process instance | Run 还冻结授权、候选、权限与预算，不只是一次实例 |
-| Engine 外部检查点 | Dagu 的 processless `human.task` / Camunda 的 external task 模式 | Dagu 名称虽含 human，在 HCTL 中只是引擎报告的进度点：control 观察其等待态后创建 Obligation，账本结果落定后再推进检查点；场景客户端不得直接操作 |
+| 引擎外部检查点 | Dagu 的 processless `human.task` / Camunda 的 external task 模式 | Dagu 名称虽含 human，在 HCTL 中只是引擎报告的进度点：control 观察其等待态后创建 Obligation，账本结果落定后再推进检查点；场景客户端不得直接操作 |
 | Engine Execution Binding | execution id + correlation key | 只作绑定与恢复关联，不成为 Run 身份 |
 | 引擎 retry / timer | 引擎原生能力 | 只改变引擎报告的进度，不产生 HCTL 语义结果 |
 | Obligation / Seat / Verdict / Gate Receipt | 无对应 | 差异化核心：Dagu `human.task` 只有等待、参数与引擎侧进度，不提供 HCTL 的身份、候选、法定票数或 Receipt；“谁有资格、结果是否有效、凭什么算完成”只在 HCTL 侧 |

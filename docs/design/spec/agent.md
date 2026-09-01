@@ -1,6 +1,6 @@
 # Agent 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.5<br>
+> 状态：规范性约束 · 草案 v0.15.6<br>
 > 本文是 Agent 模块对象、状态机与写入约束的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -16,7 +16,7 @@ Agent 模块只负责把获准的 Execution Spec 变成物理执行，并提供�
 | ChangeSet / ChangeSet Revision | 一次获准写入边界及其不可变 Git 快照 |
 | Write Lease | ChangeSet 的独占写入权与失权拦截（Lease 族） |
 | 外部副作用命令（executor = tool）/ Integration Receipt | 把精确 ChangeSet Revision 集成到目标 ref 的持久授权及回读证明 |
-| Execution Runtime | 一次执行的主机、隔离域和代次（owner = Attempt \| Room Invocation）；终端通道是其字段组 |
+| Execution Runtime | 一次执行的主机、隔离域和代次（归属者 = Attempt \| Room Invocation）；终端通道是其字段组 |
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
 | Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt |
 
@@ -25,10 +25,10 @@ Agent 模块只负责把获准的 Execution Spec 变成物理执行，并提供�
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
-| ChangeSet / Write Lease | change_set_version、current revision；lease 为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃 lease；ChangeSet Revision 只追加 |
+| ChangeSet / Write Lease | change_set_version、current revision；租约为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃租约；ChangeSet Revision 只追加 |
 | 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
-| Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录 binding 并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测账 | 已停止/丢失不复活；恢复或接管使用新 runtime generation |
-| Terminal Input Lease | lease generation；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
+| Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测账 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
+| Terminal Input Lease | 租约代次；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
@@ -71,7 +71,11 @@ change_set_revision_id
 + revision_digest
 ```
 
-评审 subject 对 {change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不是完整 ChangeSet Revision 的 revision_digest。`result_commit_sha` 只存在于后续 Integration/SCM evidence，不属于 ChangeSet Revision；因此给同一 Revision 增加不同 commit 包装不会改变其评审身份。返工或 result tree 变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review subject digest，但 author/reviewer separation 必须沿它解析并校验当前逻辑身份。
+评审对象对 {change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不是完整 ChangeSet Revision 的 revision_digest。
+
+`result_commit_sha` 只存在于后续 Integration/SCM 证据，不属于 ChangeSet Revision，因此给同一 Revision 增加不同提交包装不会改变其评审身份。
+
+返工或结果树变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review_subject_digest，但作者与评审者分离必须沿它解析并校验当前逻辑身份。
 
 模型自述不能证明集成成功。control 先持久化“合入 ChangeSet”意图和 outbox，工具箱再执行本地 Git 集成并回读；远端 push、PR 和 merge 走同族适配器命令。命令必须固定 ChangeSet Revision、来源与基线、目标引用、预期目标头、策略、适用 Verdict 和证据、actor 与权限、绑定和幂等键。成功回读后，control 才写唯一 Integration Receipt。
 
@@ -79,13 +83,13 @@ Harness 可以操作自己的 Git 工作树，但改写目标引用不产生 Rec
 
 结果未知时，工具箱回读 Git 与 PR 状态；收敛前不得签发成功 Receipt 或清理现场。SCM 变更被中断时同样按结果未知处理，并返回类型化恢复动作。
 
-失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理默认保全：工具箱先确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，现场资源得到该确认才可拆除；有权 human actor 在预览残留后显式确认丢弃时，可以不留副本直接拆除。保全或封存失败且未获显式丢弃确认时，保留精确 worktree 路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 worktree 也不删除领域历史。
+失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理默认保全：工具箱先确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，现场资源得到该确认才可拆除；有权 human actor 在预览残留后显式确认丢弃时，可以不留副本直接拆除。保全或封存失败且未获显式丢弃确认时，保留精确 Git 工作树路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 Git 工作树也不删除领域历史。
 
 ## 运行时与观测
 
 Run 经其 Attempt 可以有多个 Execution Runtime；Room Invocation 至多一个。Attempt 与 Room Invocation 各至多一组终端通道。Execution Runtime 可以是容器、隔离作用域或结构化会话，不以 TTY 存在为前提。
 
-Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、Execution Runtime、binding、各层代次、权限和适用 fence；已知运行时不能被降级成无主进程或模糊仓库活动。
+Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、Execution Runtime、绑定、各层代次、权限和适用的代次栅栏；已知运行时不能被降级成无主进程或模糊仓库活动。
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
@@ -122,7 +126,7 @@ Proposal 头必须固定 proposal ID、归属者、运行时、适用的代次�
 
 每个输出项必须另带 schema key、content digest、候选产物引用和自己的代次字段组。只有 output schema 明确允许逐项准入时，归属者才能单独接受合格项；否则任一必需项不匹配都拒绝整组。任一代次、绑定、Bundle、租约或输出范围不匹配的项只能留作审计，不能让其他合格项替它背书。修正必须创建新 Proposal 和新的生产者序号，不得改写原项。
 
-Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant；建议经 Result Proposal 通道由 owner 准入，不是命令。
+Harness、运行时钩子与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant；建议经 Result Proposal 通道由归属模块准入，不是命令。
 
 ## 终端通道、连接与租约
 
@@ -138,7 +142,7 @@ Execution Chat 投影是 Terminal 中绑定且只绑定一个精确 Room Invocat
 
 Execution Chat 中的输入和事件不会自动成为 Room 内容。只有显式 Share to Room 动作经 Project 命令准入后才能发布，并携带来源事件、执行归属者版本或代次、运行时代次，以及转录与证据来源。该投影消失或运行时被替代都不改变 Room 身份。
 
-Workbench 或终端客户端退出不停止执行。断流按 runtime generation、来源流 sequence 和快照恢复；无法证明是同一进程时只能 semantic resume、replay 或新建执行，不能声称 exact attach。semantic resume 可以用自有观测留痕重建续跑输入；重建物按投影处理，不进入权威记录。
+Workbench 或终端客户端退出不停止执行。断流按运行时代次、来源流 sequence 和快照恢复；无法证明是同一进程时只能 semantic resume、replay 或新建执行，不能声称 exact attach。semantic resume 可以用自有观测留痕重建续跑输入；重建物按投影处理，不进入权威记录。
 
 ## 外部概念对齐
 

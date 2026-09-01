@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.15.5<br>
+> 状态：规范性 · 草案 v0.15.6<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -56,14 +56,14 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：普通消息不能触发派发，provider Done 最多请求同一 Task 验收，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
 2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
-3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；human 请求可以来自 Workbench/CLI，也可以来自模块 binding 明确接纳的 provider 动作，但必须归一到同一命令。结果可以作为记录写回 content 系统，回写本身不得再取得 human provenance。
+3. **命令走 HCTL，记录落平台。** 类型化命令的预览、准入与判决在 metadata 层执行；human 请求可以来自 Workbench/CLI，也可以来自模块绑定明确接纳的 provider 动作，但必须归一到同一命令。结果可以作为记录写回 content 系统，回写本身不得再取得 human provenance。
 
 ## 词汇索引
 
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
 - **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
-- **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency owner 虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
+- **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency 归属者虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
 - **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
@@ -72,7 +72,9 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 ## 外部对齐原则
 
-每个模块约束带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威——外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义（如 Obligation、Verdict/Receipt、Write Lease）。对齐表中的「无对应」只是引入差异化语义的强信号，不是控制面账本的完整存储清单；是否进入账本仍取决于它是否有独立生命周期、恢复或权限边界，以及 HCTL 是否拥有该事实。外部系统原生承载的可变 content 与内部拓扑不在账本复制，但 HCTL 自己的稳定身份、领域关系、授权、判决及必要绑定与摘要仍由控制面保存。
+每个模块约束带一张“外部概念对齐表”：HCTL 词 ↔ 外部体系词 ↔ 一句话差异。对齐用于翻译与第三方接入，不转移权威；外部对象不因概念对应而获得 HCTL 字段的写权。能直接用外部词说清的场合直接用外部词；自造词只保留外部体系没有的差异化语义，如 Obligation、Verdict/Receipt 和 Write Lease。
+
+对齐表中的“无对应”只是引入差异化语义的强信号，不是控制面账本的完整存储清单。事实是否进入账本仍取决于它是否有独立生命周期、恢复或权限边界，以及 HCTL 是否拥有该事实。外部系统原生承载的可变 content 与内部拓扑不在账本复制；HCTL 自己的稳定身份、领域关系、授权、判决及必要绑定与摘要仍由控制面保存。
 
 各模块受控端口的默认实现隔离、能力声明与替换边界见[避免供应商锁定](../architecture.md#避免供应商锁定)。
 

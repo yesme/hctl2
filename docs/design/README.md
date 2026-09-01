@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.15.5<br>
+> 状态：规范性索引 · 草案 v0.15.6<br>
 > 日期：2026-08-31
 
 HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
@@ -45,7 +45,7 @@ Workbench、CLI 与适配后的第三方 UI 调用 HCTL 时使用四类公共操
 
 Workbench 把四个场景客户端和 HCTL 命令入口组合成一个产品桌面，但没有额外权限：操作 content 或精确运行时时与原生客户端同路，提交 HCTL 命令时与 CLI 同路。动作的目标和信封决定语义；分类与接纳规则只在[系统约束](./spec/system.md#客户端动作与-provider-事件)定义。
 
-第一阶段的 Tuwunel、Vikunja、Dagu、Herdr 都经各模块自己的受控端口和版本化 binding 接入；替换边界与聊天桥接职责见[三面架构](./architecture.md#避免供应商锁定)。Workbench 就位前，公共 `hctl2` CLI 承载 HCTL 命令，各 provider（供应端）原生界面处理消息、卡片和终端输入；具体阶段见[交付文档](./delivery.md#实现阶段)。
+第一阶段的 Tuwunel、Vikunja、Dagu、Herdr 都经各模块自己的受控端口和版本化绑定接入；替换边界与聊天桥接职责见[三面架构](./architecture.md#避免供应商锁定)。Workbench 就位前，公共 `hctl2` CLI 承载 HCTL 命令，各 provider（供应端）原生界面处理消息、卡片和终端输入；具体阶段见[交付文档](./delivery.md#实现阶段)。
 
 ## 共同规则
 
@@ -56,7 +56,7 @@ Workbench 把四个场景客户端和 HCTL 命令入口组合成一个产品桌�
 - 普通 Room 的临场执行边由 human 提交；模型 Participant 只建议下一位协作者，预授权自动边由确定性规则按冻结施工图创建。
 - 运行中的绑定被冻结；能力、权限、候选或验收条件变化时创建新版本或替代执行。
 - Workbench 的存活不改变领域事实；缺少等价适配能力时安全暂停。
-- control、Repo 执行现场和 Agency binding scope 各自保持一个带代次的当前写入者，精确范围见[系统边界](./spec/system.md#单写者)。
+- control、Repo 执行现场和 Agency 绑定范围各自保持一个带代次的当前写入者，精确范围见[系统边界](./spec/system.md#单写者)。
 
 以上是概括；精确措辞以[连接约束](./spec/connections.md)与[系统边界](./spec/system.md)为准。
 

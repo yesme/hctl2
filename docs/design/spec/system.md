@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.15.5<br>
+> 状态：规范性约束 · 草案 v0.15.6<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
 
 ## 组件
@@ -9,7 +9,7 @@
 | --- | --- |
 | `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
 | `hctl2-control` | 唯一领域命令服务，负责路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
-| `hctl2-tool` | 执行现场操作：物化和隔离 worktree/ChangeSet，执行已持久化的意图，回读结果，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
+| `hctl2-tool` | 执行现场操作：物化和隔离 Git 工作树/ChangeSet，执行已持久化的意图，回读结果，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
 | Herdr | 第一阶段实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
 | workflow engine | 通过适配器保存 Run 的引擎执行令牌、引擎步骤、定时器、重试次数和执行历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
@@ -85,7 +85,7 @@ control 不根据“来自哪个产品”判定动作——客户端没有等级
 | 类别 | 例子 | control 怎样处理 |
 | --- | --- | --- |
 | content 写入与观测 | Matrix 消息；Vikunja 创建、编辑、排序、非终态移动 | provider 先拥有该 content；control 按 cursor/Snapshot 对账，按模块约束更新投影或建立无契约身份，不把 content 直接当治理事实 |
-| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；需要临场选择、危险动作未经确认或 binding 未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
+| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；需要临场选择、危险动作未经确认或绑定未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
 | 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按连接票据、租约和代次能力记录恢复等级，但不因此产生 Task/Run/Project 结果 |
 | 执行结果提案 | harness/Agency 的结构化终局事件与证据 | 只进入 Result Proposal；归属模块按版本、代次和证据准入 |
 | 不支持的供应端修改 | 直接在 Dagu UI 启动、停止、重试、批准，或改写已绑定执行 | 记录当前机械事实并标记绑定分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
@@ -147,7 +147,7 @@ hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是�
 
 control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份 metadata 账本：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
-账本只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/runtime 身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账需要治理的那部分外部关系。账本与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级账本、权威归属和备份传承”由架构约束固定，独立于实现选择。
+账本只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/运行时身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账需要治理的那部分外部关系。账本与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级账本、权威归属和备份传承”由架构约束固定，独立于实现选择。
 
 存储拓扑默认为（路径与布局是实现选择，三类存储的职责边界才是约束）：
 
@@ -210,13 +210,20 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 | Agency binding owner generation | 某个 Agency 绑定范围（同一服务器、套接字或主机命名空间） | 本节 | 新归属者对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
 | `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进 Agent 出站元组 |
 
-`runtime_generation` 不能从 `attempt_generation` 推导（派发时还没有物理身份）；`site_generation` 不能从 `control_writer_generation` 推导（写入者可搬家，现场钉在仓库实例上）；Agency binding owner generation 不能从 `site_generation` 推导（Git 锁管不了另一台机器上的 PTY）；`engine_binding_generation` 不能从 `attempt_generation` 推导（引擎重试与候选切换是两条独立的换代路径）。Agent 出站结果必带哪些代次、`in_process` 何时可缩减，见[连接约束](./connections.md#project--run--agent从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
+四条推导规则彼此独立：
+
+- `runtime_generation` 不能从 `attempt_generation` 推导，因为派发时还没有物理身份；
+- `site_generation` 不能从 `control_writer_generation` 推导，因为写入者可以搬家，而现场固定在仓库实例上；
+- Agency binding owner generation 不能从 `site_generation` 推导，因为 Git 锁管不了另一台机器上的 PTY；
+- `engine_binding_generation` 不能从 `attempt_generation` 推导，因为引擎重试与候选切换是两条独立的换代路径。
+
+Agent 出站结果必带哪些代次、`in_process` 何时可以缩减，见[连接约束](./connections.md#project--run--agent从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
 
 ## 启动与恢复
 
 恢复顺序固定为：
 
-1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理 fence 时明确记录该限制；
+1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理代次栅栏时明确记录该限制；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 Agency binding generation；
 3. 回读全部已绑定 content 系统的游标（chat server、任务后端、workflow engine）以及 Herdr 运行状态和未确认副作用；
 4. 查询 workflow engine、Herdr API 和工具箱 Git/SCM；
@@ -239,7 +246,7 @@ metadata 备份必须是由唯一写入者协调的一致备份集：完整账�
 ## 安全边界
 
 - 桌面壳 WebView/renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
-- 打包后的桌面壳固定最小权限面，WebView 只暴露具名 typed command：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer。禁止 remote runtime script/CDN，CSP 拒绝远程或未声明的可执行来源。
+- 打包后的桌面壳固定最小权限面，WebView 只暴露具名 typed command：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer。禁止远程运行时脚本/CDN，CSP 拒绝远程或未声明的可执行来源。
 - 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。

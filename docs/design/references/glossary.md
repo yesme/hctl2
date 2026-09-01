@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.15.5<br>
+> 状态：非规范对照 · 草案 v0.15.6<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -125,7 +125,7 @@
 | --- | --- | --- |
 | Write Lease | 写入租约 | 一个 ChangeSet 的当前写权 |
 | Terminal Input Lease | 终端输入租约 | 一个受 HCTL 管理的终端目标输入权 |
-| Agency binding owner lease | 派出方绑定的 owner 租约 | 一个 Agency 绑定范围同时只有一个 owner，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
+| Agency binding owner lease | 派出方绑定的归属者租约 | 一个 Agency 绑定范围同时只有一个归属者，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
 
 control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
 
@@ -147,7 +147,7 @@ control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者�
 
 | 名字 | 中文对照 | 哪个步骤的产物 |
 | --- | --- | --- |
-| Execution Spec | 派发规格 | 派发执行时冻结 owner、Context、Participant、Skill、Profile 与权限 |
+| Execution Spec | 派发规格 | 派发执行时冻结归属者、Context、Participant、Skill、Profile 与权限 |
 | Run Manifest | 施工清单 | 启动 Run 时冻结 Project/Task/Workflow、候选、规则与预算 |
 | Attach Descriptor | 连接票据 | 连接精确终端目标的短期凭据 |
 | Context Manifest | 根上下文清单 | 顶层授权冻结的目的、来源、新鲜度、缺口与边界 |
