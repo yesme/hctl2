@@ -9,7 +9,7 @@
 
 进程、PTY（伪终端）、worktree（Git 工作树）和终端连接都是可替换的物理资源：它们可以丢失、重建和接管，但不能反过来定义 Project、Task 或 Run 的事实。Agent 模块的职责，是把上层的一次授权变成可观察、可隔离、可恢复的物理执行，并诚实上报发生了什么——执行结束了不等于上层成功了。
 
-正常路径上用户不需要进入终端：状态、diff、证据和 Request（请求卡）应该先把事情说清楚（默认无界面，headless by default）。观察手段是一道阶梯——结构化执行流是默认视图，PTY 转录是二级诊断，终端接管是最后一级。如果日常了解进度要靠开终端，说明上层投影失职。
+正常路径上用户不需要进入终端：状态、差异、证据和 Request（请求卡）先把事情说清楚（默认无界面，headless by default）。观察手段是一道阶梯——结构化执行流是默认视图，PTY 转录是二级诊断，终端接管是最后一级。如果日常了解进度要靠开终端，说明上层投影失职。
 
 ## 模块拥有什么
 
@@ -36,7 +36,9 @@ Agent 模块把上层的一次授权——Project 的单次调用或 Run 的一�
 
 Terminal 是 Agent 模块的操作场景，用于观察、诊断和接管一次具体的 harness 执行；它可以渲染结构化执行流或真实 PTY，不要求每次执行都有 shell。
 
-| 能力 | 含义 |
+下表定义五个恢复等级；一次绑定可以声明其中多项，但每项都按自己的证据要求成立或降级。
+
+| 恢复等级 | 含义 |
 | --- | --- |
 | exact attach | 连接仍存活的精确 PTY/进程 |
 | native handoff | 交接同一个外部 Harness 会话 |
@@ -46,13 +48,13 @@ Terminal 是 Agent 模块的操作场景，用于观察、诊断和接管一次�
 
 semantic resume 不必依赖厂商保留的会话文件：自有观测留痕（转录与结构化事件）足够时可以重建等价的最小续跑输入；重建物只是投影，不改变任何权威记录。
 
-Workbench 就位之前，观察与接管可以经公共命令入口取得为精确目标签发的短期票据，也可以在执行规格允许原生交互时使用 Agency 的原生界面；先后路径见[交付文档的实现阶段](./delivery.md#实现阶段)。两者都是 Terminal 客户端，保证等级按 binding 声明的能力和输入策略标注（见[Agency 与 Herdr](#agency-与-herdr)）。
+Workbench 就位之前，观察与接管可以经公共命令入口取得为精确目标签发的短期票据，也可以在执行规格允许原生交互时使用 Agency 的原生界面；先后路径见[交付文档的实现阶段](./delivery.md#实现阶段)。两者都是 Terminal 客户端，恢复等级按绑定声明的能力和输入策略标注（见[Agency 与 Herdr](#agency-与-herdr)）。
 
 Execution Chat 是绑定一次精确执行的结构化观察与控制视图：它不是 Room，没有独立的会话身份；里面的输入和事件也不会自动进入 Room，只有显式的 Share to Room 动作经 Project 准入后才能发布。观察、输入、执行控制和安全输入是分开授权的四种权限，接管会原子撤销旧输入者。
 
 | 角色 | 可以做什么 |
 | --- | --- |
-| 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确 attach、能力说明；按 binding 选择受租约或原生交互输入 |
+| 场景客户端：Workbench Terminal | xterm、Execution Chat/结构化检查、精确连接、能力说明；按绑定选择受租约或原生交互输入 |
 | 场景客户端：CLI / 其他终端客户端 | 凭短期连接票据观察或接管精确目标 |
 | 受控端口：harness 适配器 | ACP、原生服务端、SDK、PTY 或钩子能力 |
 | 受控端口：Agency（第一阶段为 Herdr） | 启动 Harness，持有进程、PTY 和终端会话 |
@@ -69,9 +71,9 @@ Herdr 提供三类接口：
 | --- | --- | --- |
 | Herdr API | 控制面的 Herdr 适配代码 | 启动、获准输入、打断和停止都经 HCTL 验证后调用 Herdr；HCTL 不重新实现终端服务 |
 | 终端连接 | Workbench / CLI 凭票据连接精确终端目标（票据字段见[Agent 约束](./spec/agent.md#终端通道连接与租约)） | HCTL 验证票据与当前代次；Herdr 负责观察流、终端状态和输入执行 |
-| Herdr TUI | 用户直接观察或操作 Herdr | 它是正常的 Terminal 客户端；输入会推动精确运行时，但不是 HCTL 治理命令或 Result Proposal，保证等级按下述限制处理 |
+| Herdr TUI | 用户直接观察或操作 Herdr | 它是正常的 Terminal 客户端；输入会推动精确运行时，但不是 HCTL 治理命令或 Result Proposal，恢复等级按下述限制处理 |
 
-Agency 能力按 binding 声明；当前 Herdr 缺项与验证边界见[交付文档 P0 第 2 项](./delivery.md#开工前限时验证)。Workbench 直连 Herdr transport 使用同一份能力声明。
+Agency 能力按绑定声明；当前 Herdr 缺项与验证边界见[交付文档 P0 第 2 项](./delivery.md#开工前限时验证)。Workbench 直连 Herdr 的传输适配器使用同一份能力声明。
 
 ## 原生会话导入
 

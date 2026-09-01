@@ -11,19 +11,21 @@
 | 类别 | 判据 | 例子 |
 | --- | --- | --- |
 | 领域对象 | 独立生命周期、恢复边界或权限边界至少居其一 | Task、Run、Seat、ChangeSet、Request |
-| 票据与记录 | 某个步骤的产物：只追加、短期或一次性，但需要被精确引用 | Execution Spec、Attach Descriptor、Receipt、外部副作用命令、Snapshot |
+| 票据与记录 | 某个步骤产生的只追加、短期或一次性记录，而且后续规则可以精确引用它 | Execution Spec、Attach Descriptor、Receipt、外部副作用命令、Snapshot |
 | 状态值 | lifecycle 枚举，不是对象 | 开放、待采纳、结果未知 |
 | 引用格式 | 指认他物的结构化引用，不是对象 | ReviewSubjectRef、digest |
 
-新名字的引入门槛：不满足前两类判据的不得命名；能用日常语言或外部标准词说清的不另造词。自造语义名不冻结代码词形：具名对象与票据写成带空格的专名（如 Task Revision、Gate Receipt），命令写动宾语义名（如「完成 Task」命令），状态值写中文语义名；实现时附「语义名 ↔ 标识符」对照表回溯约束。约束需要逐字指认的协议或 schema 字段、序列化格式标识，以及外部标准、产品或源码中的原名，可以保留原形并用代码格式标示；它们不因此成为新的领域概念。设计层正文不使用约束层词汇，只使用下列核心产品词。
+只有领域对象、票据和记录可以引入新名字；能用日常语言或外部标准词说清的，不另造词。具名对象和票据使用带空格的专名，命令使用动宾语义名，状态值使用中文语义名。实现标识符另建“语义名 ↔ 标识符”对照表，以便回溯约束。
+
+协议或 schema 字段、序列化格式标识，以及外部标准、产品或源码中的原名需要逐字指认时，可以保留原形并用代码格式标示；它们不因此成为新的领域概念。设计层正文只使用下节列出的核心产品词。
 
 ## 核心产品词
 
 Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
 
-另设五个**系统角色名**，指各场景 content 或物理执行的供应端，可在设计正文直接使用：harness（编码代理工具，如 Codex、Claude Code、OpenCode）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（Terminal 场景的派出方）；权威定义见[三面架构](../architecture.md#场景与系统)。“Agent”一词专属第四模块；散文中的 AI 协作者用 Participant 表述，需要区分人与模型时加“模型”限定词。`provider` 只作四类供应端的泛称，不是领域对象或统一接口；必须由所在模块的受控端口限定其含义。
+设计正文还可以使用五个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）和 Agency（Terminal 场景的派出方）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 专指第四模块；描述 AI 协作者时使用 Participant，需要区分人与模型时加“模型”限定词。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
 
-另有六个高频约束词可在设计正文携中文对照使用：Task Revision（契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提议）、Run Manifest（施工清单）。[交付文档](../delivery.md)（工程选型、里程碑与契约测试）与约束层同侧，可直接使用约束层词汇；设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
+另有六个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
 
 ## 六族规则
 
@@ -48,7 +50,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
 | artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
 
-统一律：**每个场景的 artifact 是该场景 content 的结晶**——讨论结晶为决议、Memo 与施工图（“干什么的计划”从塑形讨论中长出），任务流转结晶为冻结契约，机械执行结晶为凭证链，会话字节流结晶为代码变更。归属以事实为准绳：结晶从哪个场景长出来就归哪个场景，不为对称硬填。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Chat Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
 
 三条法贯穿全部模块约束，各处引用，不再各写一套：
 
@@ -61,7 +63,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
 - **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
-- **Lease 族**：Write Lease、Terminal Input Lease；control writer 与 Agency owner 的排他权同族（以 generation 表达）
+- **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency owner 虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
 - **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）

@@ -3,6 +3,14 @@
 > 状态：非规范对照 · 草案 v0.15.5<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
+## 约束、契约与清单
+
+| 词 | 偏离后果 | 使用范围 |
+| --- | --- | --- |
+| 约束 | 遵守或违反；违反表示实现有缺陷，契约测试失败 | 规范对实现提出的单向规则；constraint 一律译作“约束” |
+| 契约 | 采纳或产生分歧；偏离成为等待裁决或重新采纳的领域事实 | Task Revision 承载的验收约定；“契约测试”沿用业界通称 |
+| 清单 | 冻结后逐项核对 | 单侧声明的逐项要求，如施工清单、根上下文清单和终局结果清单 |
+
 ## 核心产品词
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
@@ -35,6 +43,20 @@
 | Evidence | 证据 | diff、测试输出、SCM 状态等可核验观测 | [spec/agent](../spec/agent.md) |
 | Workbench | 工作台 | 组合四类 provider 客户端、联合投影和 HCTL 公共命令入口的桌面 | [spec/system](../spec/system.md) |
 
+## 系统组件与常用技术词
+
+| 写法 | 中文对照或用法 |
+| --- | --- |
+| `hctl2-tool` | 工具箱；两者始终指同一个现场执行组件 |
+| owner | 归属者；在精确对象或字段名中保留 `owner` |
+| fence | 代次栅栏；在字段名或能力名中保留 `fence` |
+| worktree | Git 工作树；命令与路径中保留 `worktree` |
+| ID | 标识符；字段名中保留 `id` |
+| claim | 认领；字段名或外部 API 名中保留原形 |
+| CAS | 比较并交换；字段名和实现机制名中保留 `CAS` |
+| fresh readback | 当前回读；精确策略名或字段名中保留原形 |
+| ACK | 确认回执；协议状态名中保留 `ACK` |
+
 ## 三类数据（数据类别，不是对象）
 
 | 类别 | 中文对照 | 一句话含义 |
@@ -51,8 +73,8 @@
 | --- | --- |
 | content 写入与观测 | 客户端改变 provider 拥有的消息、卡片等 content，control 按 Snapshot/cursor 对账 |
 | human 命令请求 | direct client 或模块接纳的 provider event 形成同一个 HCTL command draft，并经过 Preview 与准入 |
-| 运行时输入 | 向精确 Execution Runtime 输入，并按 descriptor、lease、generation 能力记录保证等级 |
-| Result Proposal | Harness/Agency 交给 owner 校验的结果与证据 |
+| 运行时输入 | 向精确 Execution Runtime 输入，并按连接票据、租约与代次能力记录恢复等级 |
+| Result Proposal | Harness/Agency 交给归属者校验的结果与证据 |
 | 不支持的 provider mutation | 先改变外部机械状态、无法保持 HCTL 副作用顺序的管理动作，只回读为分歧 |
 
 分类取决于动作落点与信封，权威规则见[系统约束](../spec/system.md#客户端动作与-provider-事件)。
@@ -107,7 +129,7 @@
 
 control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
 
-代次共六个：control writer、Repo Instance site、Agency binding owner、语义 owner（Attempt／Room Invocation）、Execution Runtime 与 Engine Execution Binding 各用自己范围内的一个，总表见[系统边界的代次家族](../spec/system.md#代次家族)；Participant/Binding revision、producer sequence 与 cursor 属于别的版本或顺序概念，不是代次。
+全系统共用六种彼此独立的代次：账本写入者、仓库现场、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Engine Execution Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
 
 ## 命令族（持久命令与副作用）
 
@@ -118,7 +140,7 @@ control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者�
 | 成员 | 中文对照 | 观测什么 |
 | --- | --- | --- |
 | Task Source Snapshot | 来源快照 | 外部任务系统的一次只追加观测 |
-| Result Proposal | 结果提案 | Harness 提交、等待 owner 校验的结果 |
+| Result Proposal | 结果提案 | Harness 提交、等待归属者校验的结果 |
 | 运行时观测 | — | 进程、心跳、屏幕等按证据分级的物理观测 |
 
 ## 票据与规格（步骤产物，不是领域对象）

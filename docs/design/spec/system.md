@@ -8,17 +8,17 @@
 | 组件 | 职责 |
 | --- | --- |
 | `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
-| `hctl2-control` | 唯一领域 command service、路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
-| `hctl2-tool` | 现场执行者：worktree/ChangeSet 物化与隔离、已持久化意图的执行与回读、现场 OS 锁与 fence、封存保全、判决结晶副本写入，及所需的 Git 事实校验、Revision/digest 与有效变化侦测；进程级动作转调业界工具（git 等），零重实现。独立可用（standalone 时只做普通本地操作、不产生治理宣称）。lint 与代码检查不在其职责——仓库声明式配置由 harness 本地执行、CI 强制；远端 SCM 副作用归 adapter |
+| `hctl2-control` | 唯一领域命令服务，负责路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
+| `hctl2-tool` | 执行现场操作：物化和隔离 worktree/ChangeSet，执行已持久化的意图，回读结果，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
 | Herdr | 第一阶段实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
-| Workflow Engine | 通过适配器保存 Run 的机械 token、task、timer、retry 和历史 |
+| workflow engine | 通过适配器保存 Run 的引擎执行令牌、引擎步骤、定时器、重试次数和执行历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
-| 第三方场景平台 | 提供部分场景客户端、受控端口或两者；两种 binding 与权威分离 |
+| 第三方场景平台 | 可以同时提供场景客户端和受控端口；这两种接入分别绑定，任何一种都不会因此取得 HCTL 治理权威 |
 
 ## 固定内核与受控端口
 
-固定内核是一个用户级 command service；它对每个 Repo 保持独立的语义范围，而不是在每个 clone 各起一套控制面。固定内核实现四模块定义的稳定身份、Revision 准入、权限、字段权威、领域归约与 Receipt；本文件只拥有共享 command envelope、扩展绑定、outbox/inbox、单写者和恢复机制。
+固定内核是一个用户级命令服务；它对每个 Repo 保持独立的语义范围，而不是在每个仓库副本各起一套控制面。固定内核实现四模块定义的稳定身份、Revision 准入、权限、字段权威、领域归约与 Receipt；本文件只拥有共享命令信封、扩展绑定、outbox/inbox、单写者和恢复机制。
 
 换掉全部界面与供应端之后内核必须保留什么，[愿景文档](../vision.md#产品原生核心与架构最小内核)已经回答；本文只立它在系统层的精确约束。
 
@@ -28,31 +28,40 @@
 | --- | --- |
 | Chat Room | chat server 连接：消息/附件读写、账号与房间管理、身份映射（非 Matrix 平台经 homeserver 侧 Matrix 桥接接入，不是 HCTL 端口） |
 | Kanban | 任务源端口读取、字段写回与快照 |
-| Workflow | Workflow Engine 编译、注册、执行和回读 |
+| Workflow | workflow engine 编译、注册、执行和回读 |
 | Terminal | harness、Agency，以及终端连接与输入能力 |
 
-这些端口就是供应端替换边界，不另部署一套跨模块的通用 shim。每个 Resolved Port Binding 必须固定 provider 制品、模块专用 adapter 版本、配置摘要、实测能力与降级方式；adapter 只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新 provider 通过对应模块约束测试后只影响新 binding；活动工作仍使用原 binding，已有 content 的迁移是另一个需要预览、导出、导入和回读校验的显式动作。
+受控端口是替换供应端的唯一边界，不再增加跨模块通用适配层。每个 Resolved Port Binding 固定供应端制品、模块适配器、配置摘要、实测能力和降级方式。适配器只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新供应端通过本模块的契约测试后，只能用于新绑定；已有执行继续使用原绑定。迁移既有 content 必须另走显式的预览、导出、导入和回读校验。
 
-Workbench 的 HCTL 功能只依赖 Query/Preview/Submit/Subscribe 和模块投影；provider 客户端功能使用 provider 的公开协议或客户端侧 transport adapter。Terminal 的观察流和普通交互输入可以由 Workbench 直连精确 terminal；binding 声明栅栏回显与逐次输入记录时，按声明能力落实 descriptor、generation 与 Terminal Input Lease，未声明时原生交互按低信任运行时输入记录。未来官方远程 Agent 可以直接实现 Agency 约束，或由专用 Agency adapter 接入。Chat Room 的非 Matrix 平台互通仍由 Matrix homeserver/bridge 生态提供。第一阶段全部执行面服务（chat server、本地任务服务器、Workflow Engine、Herdr）的管理/API 端点只绑定 loopback 或 owner-restricted local socket。未来非本地 transport 必须认证客户端；需要 HCTL 先记账、撤权或核验前置的 provider mutation 仍只能由 control 经对应受控端口发起。chat server 与任务后端的 content 读写不在此限；Herdr 的普通交互输入也不等于治理命令。受 HCTL 单输入租约管理的 Terminal 输入必须先由 Herdr 适配代码校验精确票据、租约和当前代次，再调用 Herdr API；允许 Herdr TUI 原生输入时把缺少单输入租约保证写入 binding，HCTL 结果仍只从 Result Proposal 准入。
+### 客户端使用的公开面
+
+Workbench 的 HCTL 功能只调用 Query、Preview、Submit、Subscribe 和各模块投影。供应端客户端功能使用供应端的公开协议或客户端传输适配器。Workbench 可以直连精确终端的观察流和普通交互输入。未来的官方远程 Agent 必须直接实现 Agency 约束，或通过专用 Agency 适配器接入；非 Matrix 聊天平台仍通过 Matrix homeserver 的桥接生态接入。
+
+### 端点与输入的信任边界
+
+1. 第一阶段的 chat server、本地任务服务器、workflow engine 和 Herdr 管理/API 端点只能绑定本机回环地址或仅归属者可访问的本地套接字。未来的非本地传输必须认证客户端。
+2. 若某个供应端修改必须先由 HCTL 记账、撤权或校验，只有 control 可以通过对应受控端口发起它。chat server 与任务后端的 content 读写不受这条限制；Herdr 的普通交互输入也不是治理命令。
+3. 当绑定声明支持代次栅栏回显和逐次输入记录时，Herdr 适配代码必须在每次输入前校验 Attach Descriptor、Terminal Input Lease 和当前代次。绑定未声明这些能力时，原生交互只能按来源不完整的运行时输入记录。
+4. 若允许 Herdr TUI 原生输入，绑定必须明确记录它不提供 HCTL 单输入租约保证。无论采用哪种输入模式，HCTL 结果都只能从 Result Proposal 准入。
 
 hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，启动顺序、健康检查、备份与升级由 control 统一编排。托管不授予 content 之外的任何权威；服务器进程的死活只影响对应场景的可用性，不改变治理事实。
 
-每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别；活动执行固定使用准入时的 binding。提供方消失时安全暂停、失败或创建替代执行。
+每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别；活动执行固定使用准入时的绑定。绑定的供应端不可用时，control 必须按该绑定冻结的降级策略暂停或终结活动执行。只有归属者提交显式替代命令后，control 才能创建替代执行。
 
-`trust_level` 只由 control policy 根据允许的 trusted source 与精确 artifact digest 授予，扩展或 registry 的自我声明保持未授信。discovery 默认只读取已配置 definition、本地安装并执行无副作用探测，联网探测可由用户显式配置启用；discovery 不静默安装组件或修改配置，install/upgrade 是用户显式提交的类型化动作，产生新 Extension Revision，后续解析再产生新 Resolved Port Binding，活动执行继续使用原绑定。
+control policy 只信任来自允许来源且摘要匹配的扩展制品。扩展或注册表的自我声明不授予信任。发现操作默认只读取已配置定义、本地安装和无副作用探测；联网探测只能由用户显式启用。安装与升级必须由用户显式提交，并产生新的 Extension Revision；后续解析再产生新的 Resolved Port Binding，活动执行继续使用原绑定。
 
 跨模块可引用的扩展信息只有两个最小概念：
 
 - `Extension Revision`：扩展稳定身份的一份不可变版本，固定代码/制品摘要、接口与 schema、依赖、声明能力和信任级别；
-- Resolved Port Binding：一次已解析端口选择，固定 binding_revision_id、Extension Revision、provider/installation、配置摘要、credential reference、实测能力、权限作用域和降级策略。
+- Resolved Port Binding：一次已解析端口选择，固定 binding_revision_id、Extension Revision、供应端与安装实例、配置摘要、凭据引用、实测能力、权限作用域和降级策略。
 
-同一 `(port_kind, scope_id)` 的一次准入只解析出一个 binding revision，结果独立于提供方加载顺序、hook 优先级和 UI 选择顺序。Room 的 Chat 端口绑定、Task Binding、Engine Deployment、Engine Execution Binding 和 Execution Spec（含其接入方式字段组）都引用精确 Resolved Port Binding；历史执行继续使用原 binding。credential reference 只定位 secret store 条目，不包含密钥。
+同一端口种类和作用域在一次准入中只能解析出一个绑定版本，结果不得受加载顺序或界面选择顺序影响。Room、Task、Run 和 Execution Spec 都必须引用精确绑定版本。历史执行继续使用原绑定。凭据引用只指向 secret store 条目，不得包含密钥。
 
-当前 health、重同步 cursor、成员现状与类似运行数据是带来源、版本/序号与观测时间的可变投影，不进入不可变 binding digest。它们可以阻止新准入或驱动对账，但不会改写历史 binding；只有 endpoint、配置、能力、信任、权限或降级约束变化才产生新 binding revision。
+健康状态、重同步游标和当前成员列表属于运行时投影。每份投影必须记录来源、版本或序号以及观测时间，但不参与不可变绑定的摘要计算。它们可以阻止新准入或驱动对账，但不会改写历史绑定。只有端点、配置、能力、信任、权限或降级规则变化时，control 才创建新的绑定版本。
 
 跨 Project 使用的 Skill 是带稳定 ID、revision 和 digest 的共享定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择，Execution Spec 与 Run Manifest 必须冻结精确 ref+digest。Skill 提供方法并请求能力；权限、票权、委派与 Task 完成权仍由对应领域约束授予。
 
-进程内扩展等同受信任代码。普通独立进程只隔离崩溃；不可信扩展需要操作系统强制隔离和能力削减的代理接口。
+进程内扩展等同受信任代码。普通独立进程只隔离崩溃；不可信扩展必须使用操作系统强制隔离和能力削减的代理接口。
 
 ## 场景端口
 
@@ -65,9 +74,9 @@ Submit(typed command) -> accepted result or typed rejection
 Subscribe(cursor) -> ordered events or resync snapshot
 ```
 
-HCTL 命令客户端只声明交互能力与降级行为；受控端口报告 provider 支持的读写能力，实际字段权威只能由对应模块的 authority binding 授予。外部平台可以拥有其场景 content 的 ground truth，以及明确授权的字段；但它不拥有治理——其数据库、thread、Issue、workflow task、Session 或 pane 不成为 HCTL 的身份、授权或判决来源。
+客户端只能声明自己的交互能力和降级方式，受控端口只能报告供应端能力。字段写入权由对应模块的绑定授予。外部平台可以拥有场景 content 和明确授权的字段，但其 thread、Issue、workflow task、Session 或 pane 都不能成为 HCTL 的身份、授权或判决来源。
 
-界面控件本身没有固定语义：同一个拖放可以只是 task content 移动，也可以在进入 Done 时产生一个 human 完成请求；终端输入推动精确运行时，不是领域命令。具体分类见下一节。需要提交 HCTL 命令却无法提供等价预览、版本或权限信息时，动作必须禁用、保留为待处理请求或安全拒绝。
+界面控件本身没有固定语义：同一个拖放可以只是 Task content 移动，也可以在进入 Done 时产生一个 human 完成请求；终端输入推动精确运行时，不是领域命令。具体分类见下一节。若某个动作必须提交 HCTL 命令，而客户端无法提供等价的预览、版本或权限信息，客户端必须禁用该动作、保留待处理请求或返回安全拒绝。
 
 ## 客户端动作与 provider 事件
 
@@ -77,13 +86,15 @@ control 不根据“来自哪个产品”判定动作——客户端没有等级
 | --- | --- | --- |
 | content 写入与观测 | Matrix 消息；Vikunja 创建、编辑、排序、非终态移动 | provider 先拥有该 content；control 按 cursor/Snapshot 对账，按模块约束更新投影或建立无契约身份，不把 content 直接当治理事实 |
 | human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；需要临场选择、危险动作未经确认或 binding 未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
-| 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按 descriptor/lease/generation 能力记录保证等级，但不因此产生 Task/Run/Project 结果 |
-| 执行结果提议 | harness/Agency 的结构化终局事件与证据 | 只进入 Result Proposal；owner 模块按版本、代次和证据准入 |
-| 不支持的 provider mutation | 直接在 Dagu UI Start/Stop/Retry/Approve，或改写已绑定 execution | 记录当前机械事实并标记 binding 分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
+| 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按连接票据、租约和代次能力记录恢复等级，但不因此产生 Task/Run/Project 结果 |
+| 执行结果提案 | harness/Agency 的结构化终局事件与证据 | 只进入 Result Proposal；归属模块按版本、代次和证据准入 |
+| 不支持的供应端修改 | 直接在 Dagu UI 启动、停止、重试、批准，或改写已绑定执行 | 记录当前机械事实并标记绑定分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
 
-一个 provider 事件可以同时具有 content 含义和命令请求含义。例如把已绑定 Vikunja 卡片拖入 Done 已经改变了 provider content；若事件还能证明是配置中映射的 human 所做，并携带稳定外部实体、前后 revision/updated version 和可重复计算的幂等依据，Task adapter 可以再把它归一为「完成 Task」请求。这个请求仍会因无契约、活动 Run、证据不足或版本漂移而被拒绝；拒绝后 provider Done 与 HCTL 开放状态并列显示，而不是回写一份伪造的完成事实。缺少 actor、目标、版本或幂等依据时，它只是一条 Snapshot。由 HCTL service account 回写造成的事件、模型/Harness 事件和无法映射的 actor 记为 service/execution/unknown 来源，只形成 Snapshot，防止回写循环和身份混淆。
+供应端事件先按 content 事实入账。只有事件能证明 actor、目标、前后版本和幂等依据时，Task 适配器才可以另行生成“完成 Task”请求。请求被拒绝时，界面同时保留供应端 Done 与 HCTL 开放状态。由 HCTL 回写产生、actor 无法映射或字段不全的事件只能形成 Snapshot。
 
-第一阶段是单用户模型，因此这里只要求把 direct client connection 或 provider account 稳定映射到 owner human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉 target、expected version/generation、幂等键和事件顺序。webhook/通知只负责唤醒：接纳前仍以 provider current readback、cursor/gap 和模块 Snapshot 为准，重复、迟到或乱序投递必须得到相同结果。各模块可接受的 provider 动作见[场景与第三方适配器](./connections.md#场景与第三方适配器)。
+第一阶段是单用户模型，只要求把直接客户端连接或供应端账号稳定映射到归属 human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉目标、预期版本或代次、幂等键和事件顺序。
+
+webhook 和通知只负责唤醒。接纳前仍以供应端当前回读、游标及其缺口和模块 Snapshot 为准；重复、迟到或乱序投递必须得到相同结果。各模块可接受的供应端动作见[场景与第三方适配器](./connections.md#场景与第三方适配器)。
 
 ## 命令与跨服务正确性
 
@@ -98,31 +109,41 @@ frozen adapter binding
 canonical input digest
 ```
 
-actor source/provenance 只由 direct client connection、provider binding 的账号映射或 control 内部 reducer 赋予；调用 payload、Room 消息、Harness 进程和 adapter 都不能自报为 human 或 workflow reducer。execution principal 只获得 Invocation/Attempt 冻结的窄能力。Task 终结的 actor 来源见[Task 写入约束](./task.md#写入约束)；普通 Room 临场 fan-out 只接受有权 human actor，Workflow reducer 只能实例化 Workflow Revision 已冻结的边。治理命令只有两类 actor 来源：可稳定归属到 owner human 的动作，以及 task-bound Run 正常完成后由 control 内部 reducer 提交的「完成 Task」命令。human 动作既可以来自 Workbench/CLI 的 direct client connection，也可以来自模块 binding 明确接纳的 provider event；两者生成同一 command envelope、使用同一验证规则，没有界面隐藏特权。Harness、模型与 execution principal 只有 Result Proposal 通道，不能借 provider service account 或 payload 自报为 human。
+actor 来源只能由直接客户端连接、绑定中的账号映射或 control 内部归约器赋予。治理命令只接受两类来源：可映射到归属 human 的动作，以及绑定 Task 的 Run 正常完成后由 control 归约器发出的内部命令。普通 Room 的临场扇出只接受有权的 human actor；workflow 归约器只能实例化 Workflow Revision 已冻结的边。Harness、模型和执行主体只能提交 Result Proposal，不能自报为 human。
 
-control 在用户级 metadata 账本的一个 SQLite 事务中写领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界，不能由两个模块或两个 clone 事后拼接。外部适配器按同一 key 投递并回读；超时或 ACK 丢失保持“结果未知”，不能盲目重做。重复命令返回原结果，异载荷复用同一 key 被拒绝。组件或 content 系统不可用时，命令前置保持不变：与该系统无关、且所需引用已冻结的 metadata 命令可继续；验收策略、字段权威或冲突前置要求 fresh readback 时，不可用或 cursor gap 必须返回类型化拒绝。只有冻结策略明确允许 cached/stale 证据，命令才可携带其精确版本、观测时间和已知 gap 继续。
+control 必须在同一个 SQLite 事务中写入领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界。外部适配器使用同一幂等键投递并回读；结果未知时不得盲目重做。重复命令返回原结果，异载荷复用同一幂等键时必须拒绝。
+
+组件不可用不会改变命令前置条件：不依赖该组件当前事实的命令可以继续，依赖当前回读的命令必须拒绝。只有冻结策略明确允许陈旧证据时，命令才能携带证据版本、观测时间和已知缺口继续。
 
 Receipt 证明的是已经校验的结果，不是另一个 writer。投影从事件重建；缓存和界面状态保持为派生数据。
 
-跨模块引用的规范摘要统一使用 RFC 8785 JCS 规范对象的 SHA-256，摘要字段自身不参与计算；每个领域 owner 只定义自己规范对象包含哪些字段。完整 Revision 的 revision_digest 与为评审选取字段生成的 review_subject_digest 是不同语义，分别按各自语义使用，与某次字节是否相同无关。
+跨模块引用的规范摘要统一使用 RFC 8785 JCS 规范对象的 SHA-256，摘要字段自身不参与计算。每个领域归属者只定义自己规范对象包含哪些字段。完整 Revision 的 revision_digest 与为评审选取字段生成的 review_subject_digest 是不同语义，分别按各自语义使用，与某次字节是否相同无关。
 
 ## 外部权威副作用
 
-包括远端 SCM 在内、会改变第三方权威事实的动作统一写成持久外部副作用命令/outbox 记录（executor = adapter），固定 owner ref、Resolved Port Binding、operation、target、adapter 声明的 conflict scope、权限、规范输入摘要和幂等键。`conflict_scope` 表示同一远端资源的互斥域，同一资源的 close/reopen/update 等 operation 共用该互斥域。本地 Git 变更是同族外部副作用命令（executor = tool）：先由 control 持久化 intent/outbox，再由工具箱执行和回读；Harness/model 不直接取得集成权。adapter 只投递并回读；只有在它确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或 ACK 丢失保持结果未知，并占用 conflict scope，阻止同一资源上的重叠写。Harness 的窄 principal、凭据与独立 worktree 边界见[Agent 写入约束](./agent.md#写入约束)。
+包括远端 SCM 在内，会改变第三方权威事实的动作统一写成持久外部副作用命令和 outbox 记录。记录固定归属者引用、Resolved Port Binding、操作、目标、适配器声明的冲突范围、权限、规范输入摘要和幂等键。同一远端资源的关闭、重开、更新等操作共用一个冲突范围。
 
-第一阶段不承诺自动补偿任意外部写：provider 事件只有在对应模块明确列为 content、human 命令请求或运行时输入时才按该路径处理；其余修改由对应端口或工具箱回读为 Snapshot/drift，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。Harness 不获得可绕过受控端口的外部写凭据；本地目标 ref 被 Harness/人在「合入 ChangeSet」命令之外直接改写时，只表现为 expected target head 不匹配的 drift。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应 owner 按约束产生。
+本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Agent 写入约束](./agent.md#写入约束)。
+
+第一阶段不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
+
+Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被 Harness 或用户在“合入 ChangeSet”命令之外直接改写时，只表现为预期目标头不匹配的分歧。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应归属者按约束产生。
 
 ## 事实与存储
 
 ### Repo 与执行现场
 
-Repo 是四模块可归属的逻辑仓库，由 [Project 模块](./project.md#repo-注册与-project-归档)注册；Repo Instance 是本系统拥有的物理执行现场，不属于任何 Project。一个 Repo 可以显式挂接多个 Repo Instance，每个现场固定稳定 `repo_instance_id`、精确 `repo_id`、host/site identity、Git common-dir identity 与首次校验的 Git 证据；worktree、ChangeSet 物化、工具箱锁与本机 runtime 都通过该现场引用。
+Repo 是四模块可归属的逻辑仓库，由 [Project 模块](./project.md#repo-注册与-project-归档)注册；Repo Instance 是本系统拥有的物理执行现场，不属于任何 Project。一个 Repo 可以显式挂接多个 Repo Instance。每个现场固定稳定 `repo_instance_id`、精确 `repo_id`、主机与站点身份、Git 公共目录身份，以及首次校验的 Git 证据；Git 工作树、ChangeSet 物化、工具箱锁与本机运行时都通过该现场引用。
 
-「挂接 Repo Instance」命令先由工具箱无副作用读取 Git identity，再由 control 预览并写入账本。相同 Git common-dir 重试返回原现场；不同现场只有在 Git 中的稳定 Repo identity 与命令指定的 `repo_id` 一致时才能挂接。身份由稳定 Git identity 证明，remote URL、目录名或碰巧相同的 HEAD 只作辅助证据；缺失 identity、fork 语义不明、一个 common-dir 已归属另一 Repo 或证据相互冲突时不静默挂接：展示全部证据，由用户显式确认归属（挂接到指定 Repo、注册新 Repo 或修复来源）后按确认结果继续。移除现场只撤销其新执行资格，不删除 Repo、Project、历史 Run 或已封存 ChangeSet。
+“挂接 Repo Instance”命令先由工具箱无副作用读取 Git 身份，再由 control 预览并写入账本。相同 Git 公共目录的重试返回原现场；不同现场只有在 Git 中的稳定 Repo 身份与命令指定的 `repo_id` 一致时才能挂接。远端 URL、目录名或碰巧相同的 HEAD 只作辅助证据。
+
+身份缺失、分支来源语义不明、一个公共目录已归属另一 Repo，或证据互相冲突时，系统不得静默挂接。界面展示全部证据；用户明确选择挂接到指定 Repo、注册新 Repo 或修复来源后，系统才按该选择继续。移除现场只撤销其新执行资格，不删除 Repo、Project、历史 Run 或已封存 ChangeSet。
 
 ### 控制面自己的存储
 
-hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata（稳定身份、Revision 准入与 current、绑定、授权、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入、Verdict/Receipt）的唯一权威，一人多机连同一本，必须备份。仓库 clone 本地的 `<git-common-dir>/hctl2/`（当前 Repo Instance 及其 linked worktree 的共享运行目录）只有 OS 锁、traces 与可丢弃缓存——**不是账本，也不是事实源**：现场状态永远可以从 metadata 账本、Git 与运行时观测对账重建，删除该目录不丢失任何事实（无法证明身份的旧执行标为丢失并撤权）。
+hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是全部 metadata 的唯一权威，包括稳定身份、Revision 准入与 current、绑定、授权、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入，以及 Verdict/Receipt。一人多机连接同一本账本，账本必须备份。
+
+仓库副本本地的 `<git-common-dir>/hctl2/` 是当前 Repo Instance 及其关联 Git 工作树的共享运行目录，只保存 OS 锁、跟踪记录与可丢弃缓存。它**不是账本，也不是事实源**。现场状态始终可以从 metadata 账本、Git 与运行时观测对账重建；删除该目录不丢失事实，无法证明身份的旧执行会被标为丢失并撤权。
 
 control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份 metadata 账本：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
@@ -151,24 +172,28 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 ### 全系统事实权威地图
 
-下表回答“哪类事实由谁拥有”，覆盖控制面、Git 与执行面 content 系统——它是系统地图，不是任何单一组件的存储清单。每类事实的不可用与永久丢失分开立约：不可用走降级约束（待处理 / 需要关注 / 安全暂停，不绕过命令服务），永久丢失走重建约束；产品层叙述见[三面架构](../architecture.md#数据丢了怎么办)，逐场景降级的可观察结果见[连接约束](./connections.md#失败与恢复)。
+下表回答“哪类事实由谁拥有”，覆盖控制面、Git 与执行面 content 系统；它是系统地图，不是任何单一组件的存储清单。每类事实都要分别说明两种故障：暂时不可用时如何降级，永久丢失后如何重建。产品层叙述见[三面架构](../architecture.md#数据丢了怎么办)，逐场景降级的可观察结果见[连接约束](./connections.md#失败与恢复)。
 
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
 | 四模块 metadata：稳定身份、准入/current、Room/Request、Participant/角色绑定、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
 | Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/Skill/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
-| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖 fresh 消息/成员/cursor 的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
-| 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖 fresh placement/drift/head/cursor 的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
-| Workflow 引擎报告的执行进度 | 通过绑定访问的 Workflow Engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Engine Execution Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
+| Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
+| 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
+| workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Engine Execution Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
 | Harness 进程、PTY、主机与原始流 | Herdr 持有物理资源并提供观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次结束，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
 
 用户级 metadata 账本「只允许唯一写者」的约束只有三条底线：同时只有一个逻辑 control writer、已确认副作用不重复执行、旧结果不覆盖新结果。当前实现先取得 `~/.hctl2/control.lock` 排他锁，再以 CAS 推进其 `control_writer_generation`——锁路径与推进机制是实现细节，不构成对外约束。writer 可以搬迁（换机器、上服务器），账本身份不变。不存在 Repo 级或 Project 级的第二个 control writer。
 
-每个 Repo Instance 的 Git/worktree 资源互斥当前由 `hctl2-tool` 取得 `<git-common-dir>/hctl2/` 下的 OS 排他锁实现，并由唯一 control 在账本 CAS 推进该现场的 `site_generation`；这是外部资源 fence，不是本地 control 服务或第二本账。每个 Agency binding scope 在账本中同时只有一个 owner lease 和单调 generation；scope 至少覆盖同一 server/socket/host namespace。新 owner 必须先对账，HCTL 不再向旧 generation 签发输入、停止、接管或结果准入。Agency 适配代码在启动、输入或停止前校验账本中的当前 site/runtime generation；只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。Agency 接收并回显 generation 时可把规则落实到物理执行点；不接收也不回显 generation 时，第一阶段只在 HCTL 入口强制，绕过入口的动作按未被物理 fence 的低信任观测记录。
+Git 工作树的现场互斥由 `hctl2-tool` 的 OS 锁保证，control 只在账本中以比较并交换推进该现场的 `site_generation`。该代次栅栏不是本地 control 服务或第二本账。
 
-SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox 和 readback 必须共同工作。
+Agency 绑定另有自己的归属者租约和代次；范围至少覆盖同一服务器、套接字或主机命名空间。新的归属者必须先对账，HCTL 不再向旧代次签发输入、停止、接管或结果准入。
+
+适配器在启动、输入和停止前必须校验适用的现场与运行时代次。只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。供应端不能接收或回显代次时，只能声明 HCTL 入口已校验，不能声明物理执行点已经隔离旧动作。
+
+SQLite 事务只保证账本内部一致，而事务提交与外部投递不在同一原子域。因此，外部副作用还必须由幂等键、代次、租约、outbox 和回读共同隔离。
 
 单写者、CAS 与 current pointer 是三件事，不互相替代：单写者回答此刻谁有权写账本（本节）；expected-version CAS 回答一条命令对哪个版本生效（见[命令与跨服务正确性](#命令与跨服务正确性)）；current pointer 回答界面此刻读哪个不可变版本（推进规则由各模块写入约束定义）。ChangeSet 的单 writer 是 Agent 模块的写权（见[Agent 约束](./agent.md#写入约束)），不属于 control 单写者。
 
@@ -178,11 +203,11 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 | 成员 | 管哪块资源 | 权威定义 | 何时产生或推进 |
 | --- | --- | --- | --- |
-| `attempt_generation` ／ `invocation_version` | 这一次逻辑执行归谁（语义 owner） | [Run 约束](./run.md#对象)、[Project 约束](./project.md#room-invocation) | 派发时已有；不得预填运行时身份 |
+| `attempt_generation` ／ `invocation_version` | 这一次逻辑执行归谁（语义归属者） | [Run 约束](./run.md#对象)、[Project 约束](./project.md#room-invocation) | 派发时已有；不得预填运行时身份 |
 | `runtime_generation` | 这一次物理进程／PTY | [Agent 约束](./agent.md#运行时与观测) | 激活映射时由 Agency 预留返回 |
 | `control_writer_generation` | 用户级账本此刻的逻辑写入者 | 本节 | 取得账本写权时 CAS 推进 |
-| `site_generation` | 某个 Repo Instance 的 Git/worktree 现场 | 本节 | 同一本账对本现场 CAS 推进；现场 OS 锁是它的物理伴生，不是它 |
-| Agency binding owner generation | 某个 Agency 绑定范围（同一 server/socket/host namespace） | 本节 | 新 owner 对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
+| `site_generation` | 某个 Repo Instance 的 Git 工作树现场 | 本节 | 同一本账对本现场以比较并交换推进；现场 OS 锁是它的物理伴生，不是它 |
+| Agency binding owner generation | 某个 Agency 绑定范围（同一服务器、套接字或主机命名空间） | 本节 | 新归属者对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
 | `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进 Agent 出站元组 |
 
 `runtime_generation` 不能从 `attempt_generation` 推导（派发时还没有物理身份）；`site_generation` 不能从 `control_writer_generation` 推导（写入者可搬家，现场钉在仓库实例上）；Agency binding owner generation 不能从 `site_generation` 推导（Git 锁管不了另一台机器上的 PTY）；`engine_binding_generation` 不能从 `attempt_generation` 推导（引擎重试与候选切换是两条独立的换代路径）。Agent 出站结果必带哪些代次、`in_process` 何时可缩减，见[连接约束](./connections.md#project--run--agent从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
@@ -193,8 +218,8 @@ SQLite 锁不是外部副作用隔离。幂等键、generation、租约、outbox
 
 1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理 fence 时明确记录该限制；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 Agency binding generation；
-3. 回读全部已绑定 content 系统的游标（chat server、任务后端、Workflow Engine）以及 Herdr 运行状态和未确认副作用；
-4. 查询 Workflow Engine、Herdr API 和工具箱 Git/SCM；
+3. 回读全部已绑定 content 系统的游标（chat server、任务后端、workflow engine）以及 Herdr 运行状态和未确认副作用；
+4. 查询 workflow engine、Herdr API 和工具箱 Git/SCM；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
@@ -203,9 +228,13 @@ UI 重载只重建投影。无法证明同一执行身份时，系统标记丢�
 
 ### 备份与恢复
 
-metadata 备份必须是由唯一 writer 协调的一致备份集：完整账本快照，连同账本引用的精确用户级 Profile/Skill/Runtime 不可变定义字节与 digest——后者存放在账本之外，单备份账本文件会漏掉它们。secret value、可丢弃 cache、PTY 原始流和场景 content 正文不进入该备份集。备份完成前验证快照边界、所有定义引用/校验和与 schema 可读性；Repo Git、content 系统与 secret store 按各自约束另行备份，缺少其中之一不能用伪造 Receipt 补齐。
+metadata 备份必须是由唯一写入者协调的一致备份集：完整账本快照，连同账本引用的精确用户级 Profile/Skill/Runtime 不可变定义字节与摘要。后者存放在账本之外，单备份账本文件会漏掉它们。密钥值、可丢弃缓存、PTY 原始流和场景 content 正文不进入该备份集。
 
-恢复只能在旧 writer 已停止且取得用户级排他锁后进行；不得合并两份分叉账本或把备份恢复成新的账本身份。恢复保留原 ledger identity，推进 control writer 及所有可能仍存活的 site/backend generation，令旧 descriptor、lease、outbox 执行权和 Result Proposal 失效，再按上述顺序回读结果未知的外部副作用。secret reference 仍在但值缺失时，对应 binding 标为不可用并阻止依赖命令，不能把空值当凭据或静默降权。
+备份流程必须在完成前验证快照边界、全部定义引用与校验和，以及 schema 的可读性。Repo Git、content 系统与 secret store 按各自约束另行备份；缺少其中之一时，系统不得用伪造 Receipt 补齐。
+
+恢复只能在旧写入者已经停止且取得用户级排他锁后进行；不得合并两份分叉账本，也不得把备份恢复成新的账本身份。恢复保留原账本身份，推进 control writer、site 与所有可能仍存活的 Agency binding owner generation，使旧连接票据、租约、outbox 执行权和 Result Proposal 失效，再按上述顺序回读结果未知的外部副作用。
+
+密钥引用仍在但值缺失时，对应绑定标为不可用并阻止依赖命令；系统不得把空值当凭据或静默降权。
 
 ## 安全边界
 
