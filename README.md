@@ -23,10 +23,10 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 ```mermaid
 flowchart TB
     subgraph Present["展示面 · 客户端没有等级"]
-        Clients["Workbench / CLI / 各场景原生客户端"]
+        Clients["hctl2-workbench / hctl2 CLI<br/>各场景原生客户端"]
     end
 
-    subgraph Control["控制面 · 四个领域模块"]
+    subgraph Control["控制面 · hctl2-control（四个领域模块）"]
         P["Project<br/>Chat Room"]
         T["Task<br/>Kanban"]
         R["Run<br/>Workflow"]
@@ -40,8 +40,11 @@ flowchart TB
         agency["执行者派出与终端"]
     end
 
+    Tool["hctl2-tool · 现场执行者"]
+
     Clients -->|治理命令| Control
     Clients -->|消息 / 卡片 / 终端通道| Exec
+    Control --> Tool
     P --> chat_srv
     T --> task_backend
     R --> engine
@@ -50,7 +53,7 @@ flowchart TB
 
 图中的 Chat Room、Kanban、Workflow 和 Terminal 是四个模块对应的场景。Workbench、CLI 与 provider（供应端）原生客户端没有等级；动作按它落在哪个模块、带什么信封处理，分类规则见[系统约束](./docs/design/spec/system.md#客户端动作与-provider-事件)。
 
-三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)；第一阶段各面选用的具体产品与阶段代号见[交付文档](./docs/design/delivery.md#实现阶段)。
+图里带 `hctl2-` 前缀的是本仓库交付的第一方组件；执行面的四类系统由外部供应端承担，第一阶段选了谁、到什么阶段见[交付文档](./docs/design/delivery.md#实现阶段)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件职责与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)。
 
 ## 阅读入口
 
