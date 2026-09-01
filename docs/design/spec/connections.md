@@ -1,6 +1,6 @@
 # 四模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.15.4<br>
+> 状态：规范性约束 · 草案 v0.15.5<br>
 > 本文是 Project、Task、Run、Agent 之间连接约束的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -98,7 +98,7 @@ owner 特有字段各自补充：Room Invocation 侧固定 scope（`repo_scope |
 3. control 在用户级账本事务记录 owner 到 Execution Runtime 的精确映射、适用的 Write Lease 和 activate outbox；
 4. outbox 同时携带 owner version/generation、runtime generation、control writer generation、site generation 与 Agency binding owner generation；adapter 按完整 tuple 再校验后调用 Agency 并回读。声明栅栏回显的 Agency 拒绝旧代次、旧租约和重复激活；未声明栅栏回显的 Agency 只在 HCTL 入口校验，绕过入口的动作按低信任处理。
 
-前三类含义不可混写：Invocation/Attempt version/generation 是语义 owner 身份，runtime generation 是一次物理执行身份，control/site/backend generations 是防旧进程写入的基础设施 fence。Participant revision、binding revision、producer sequence 和 content cursor 都不是这三类中的任一种。
+前三类含义不可混写：Invocation/Attempt version/generation 是语义 owner 身份，runtime generation 是一次物理执行身份，control/site/backend generations 是防旧进程写入的基础设施 fence。Participant revision、binding revision、producer sequence 和 content cursor 都不是这三类中的任一种。六个代次的成员、权威落点与推导禁令见[代次家族总表](./system.md#代次家族)。
 
 如果冻结的端口明确是受信任的纯进程内同步调用，Execution Spec 必须写 `execution_mode = in_process`，可以没有 Repo Instance、Runtime/Terminal、runtime/site/backend generations 或 lease；其 Result Proposal 改为固定 owner version/generation、control writer generation、Extension/Resolved Port Binding、spec/bundle digest 和 producer sequence，且不能提交 ChangeSet 或声称物理隔离/attach。除此之外不得省略物理 tuple。dispatch/activate ACK 只证明执行已被接受，不证明产生了语义结果。
 

@@ -1,6 +1,6 @@
 # Agent 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.4<br>
+> 状态：规范性约束 · 草案 v0.15.5<br>
 > 本文是 Agent 模块对象、状态机与写入约束的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -31,7 +31,7 @@ Agent 模块把 [Project](./project.md) 拥有的 Room Invocation 或 [Run](./ru
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
 
-第一阶段 HCTL 启动的每个 Harness 都以窄 execution principal 运行，三条底线不可声明关闭：**工具不是人**——Harness、runtime hook 与模型只有 Result Proposal 通道，不是治理命令入口（两类入口见[系统边界](./system.md#命令与跨服务正确性)）；**合入钥匙不进工具**——HCTL 不向 Harness 交付集成与外部写凭据（目标 ref、远端 SCM、任务后端、chat 写入），这些凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用，Harness 也不获交付 control 客户端凭据与 human principal credential；**隔离工作树**——写入只及于该 ChangeSet 的独立 worktree 与本 ChangeSet 分支，以有效 Write Lease 为前提。在此之内 Harness 是普通的 Git 用户：可读所属 Repo Instance 的 Git common-dir 与 refs（log、fetch、比对目标分支）并在本 ChangeSet 分支上提交；绕过「合入 ChangeSet」命令直接改写目标 ref 或其他 ChangeSet 现场不取得集成 authority，只回读为 drift。OS 强制的执行沙箱、凭据代用范围、网络目的地与工具接口白名单是可选执行加固：由 Worker Profile 声明、随 Execution Spec 冻结，并在启动前按所选 Agency 与宿主实际能力核验；未声明则不施加、不拦启动、也不得记录为已生效；已声明而当前实现不能可靠施加时，control 不激活并列出缺项。安全输入只有在所选接入方式声明并实现不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay 的保证时才能启用。control 在派工交付前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部可验证 fence。
+第一阶段 HCTL 启动的每个 Harness 都以窄 execution principal 运行，Harness 治理的三条底线不可声明关闭（账本单写者另有自己的三条底线，见[系统边界](./system.md#单写者)，两组互不顶替）：**工具不是人**——Harness、runtime hook 与模型只有 Result Proposal 通道，不是治理命令入口（两类入口见[系统边界](./system.md#命令与跨服务正确性)）；**合入钥匙不进工具**——HCTL 不向 Harness 交付集成与外部写凭据（目标 ref、远端 SCM、任务后端、chat 写入），这些凭据只由持有当前 control/site/backend fence 的工具箱或 adapter 网关代用，Harness 也不获交付 control 客户端凭据与 human principal credential；**隔离工作树**——写入只及于该 ChangeSet 的独立 worktree 与本 ChangeSet 分支，以有效 Write Lease 为前提。在此之内 Harness 是普通的 Git 用户：可读所属 Repo Instance 的 Git common-dir 与 refs（log、fetch、比对目标分支）并在本 ChangeSet 分支上提交；绕过「合入 ChangeSet」命令直接改写目标 ref 或其他 ChangeSet 现场不取得集成 authority，只回读为 drift。OS 强制的执行沙箱、凭据代用范围、网络目的地与工具接口白名单是可选执行加固：由 Worker Profile 声明、随 Execution Spec 冻结，并在启动前按所选 Agency 与宿主实际能力核验；未声明则不施加、不拦启动、也不得记录为已生效；已声明而当前实现不能可靠施加时，control 不激活并列出缺项。安全输入只有在所选接入方式声明并实现不进入环境变量、普通 stdin 历史、Room、Context、trace 或 replay 的保证时才能启用。control 在派工交付前必须核对 Context Bundle 的交付 bytes digest、spec digest 和全部可验证 fence。
 
 ## ChangeSet 与 Git 事实
 
@@ -61,7 +61,7 @@ Run 经其 Attempt 可以有多个 Execution Runtime；Room Invocation 至多一
 
 Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 拥有的运行时的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、Execution Runtime、binding、各层代次、权限和适用 fence；已知运行时不能被降级成无主进程或模糊仓库活动。
 
-代次必须分层记录而不能共用一个模糊 `generation`：语义 owner 是 Room Invocation 的 `invocation_version` 或 Attempt 的 `attempt_generation`；物理 Execution Runtime 在激活映射时取得独立 `runtime_generation`；基础设施 envelope 另带 `control_writer_generation`、Repo Instance 的 `site_generation` 与 Agency binding owner generation。Participant revision、Project Role Binding version 与 producer sequence 都不是 generation。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带把别层 identity 改写成新值；Agency 不能执行的物理 fence 必须明确标为未生效。
+代次必须分层记录而不能共用一个模糊 `generation`：语义 owner（`invocation_version`／`attempt_generation`）、物理执行（`runtime_generation`）与基础设施 fence（control／site／Agency binding）是三层不同的身份，成员与推导禁令见[代次家族总表](./system.md#代次家族)。本模块的义务是：替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带把别层 identity 改写成新值；Agency 不能执行的物理 fence 必须明确标为未生效。
 
 Execution Runtime 由**Agency**（派出方）承载。Agency 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体及其运行现场与访问通道，常驻持有现场并报告存活与恢复等级。第一阶段只采用 **Herdr**：它直接从已配置的 Harness 启动执行体，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再放置独立 Agency 组件或下一层终端运行服务。control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账；替换未来的 Agency 不改变治理约束。派出交付物必须按冻结规格逐项核验后方可激活，缺项列出且不激活；派出不转移参与者身份：Agency 供给的是七层身份链的下层（模型、执行者配置、一次物理执行），Participant 身份与席位仍由账本拥有并绑定。
 
@@ -83,7 +83,7 @@ Harness、runtime hook 与模型只获得当前 Invocation/Attempt 所需的窄 
 
 ## 终端通道、连接与租约
 
-Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存但不能互相冒充。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；物理通道、观察流与终端状态由 Agency 提供，HCTL 不转发或重放另一份 PTY 流。direct client 按当前 owner/binding 与全部适用代次请求连接时，control 可以签发短期 Attach Descriptor，并为受管理写输入另行 CAS Terminal Input Lease；Agency 适配代码只把仍匹配 owner/runtime/site/binding generation 的获准动作送入 API。Attach Descriptor 固定逻辑 owner、provider terminal ID、host、各层代次、能力、权限和过期时间；观察、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，HCTL 管理的输入默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约。binding 声明 `native_interactive_allowed` 时，provider 原生客户端或 Workbench 直连 transport 可以不经该租约输入；control 把它记录为允许但无法逐次证明来源的运行时交互，该通道中的文字或所谓“完成”不能直接准入 HCTL 结果。
+Terminal 各能力（exact attach、native handoff、structured inspect、semantic resume、replay，见[设计正文](../agent.md#terminal-场景)）可以并存；每项能力按自己的证据要求分别声明与降级（见[运行时与观测](#运行时与观测)），不能用一项的证据顶替另一项。运行时绑定提交后，control 为 Execution Runtime 建终端通道账目；物理通道、观察流与终端状态由 Agency 提供，HCTL 不转发或重放另一份 PTY 流。direct client 按当前 owner/binding 与全部适用代次请求连接时，control 可以签发短期 Attach Descriptor，并为受管理写输入另行 CAS Terminal Input Lease；Agency 适配代码只把仍匹配 owner/runtime/site/binding generation 的获准动作送入 API。Attach Descriptor 固定逻辑 owner、provider terminal ID、host、各层代次、能力、权限和过期时间；观察、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者，HCTL 管理的输入默认最多一个 Terminal Input Lease 持有者；接管原子撤销旧租约。binding 声明 `native_interactive_allowed` 时，provider 原生客户端或 Workbench 直连 transport 可以不经该租约输入；control 把它记录为允许但无法逐次证明来源的运行时交互，该通道中的文字或所谓“完成”不能直接准入 HCTL 结果。
 
 Execution Chat projection 是 Terminal 中绑定且只绑定一个精确 Room Invocation/invocation_version 或 Attempt/attempt_generation、对应 Execution Runtime/runtime_generation 与适用 fence 的结构化观察与控制视图，不是 Room，也没有独立 conversation identity。adapter 支持时，输入作为携带这些精确引用的获准 control action 写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 

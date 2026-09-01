@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.15.4<br>
+> 状态：非规范对照 · 草案 v0.15.5<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 核心产品词
@@ -103,8 +103,11 @@
 | --- | --- | --- |
 | Write Lease | 写入租约 | 一个 ChangeSet 的当前写权 |
 | Terminal Input Lease | 终端输入租约 | 一个受 HCTL 管理的终端目标输入权 |
+| Agency binding owner lease | 派出方绑定的 owner 租约 | 一个 Agency 绑定范围同时只有一个 owner，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
 
-control writer、Repo Instance site、Agency/backend owner、Attempt owner 与 Execution Runtime 各用自己范围内的 generation；Participant/Binding revision、producer sequence 与 cursor 属于别的版本或顺序概念。
+control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
+
+代次共六个：control writer、Repo Instance site、Agency binding owner、语义 owner（Attempt／Room Invocation）、Execution Runtime 与 Engine Execution Binding 各用自己范围内的一个，总表见[系统边界的代次家族](../spec/system.md#代次家族)；Participant/Binding revision、producer sequence 与 cursor 属于别的版本或顺序概念，不是代次。
 
 ## 命令族（持久命令与副作用）
 
