@@ -23,4 +23,4 @@
 - 文档怎么写：[WRITING-GUIDE.md](./WRITING-GUIDE.md)（文风与结构）；内容与权威纪律在 [docs/design/doc-discipline.md](./docs/design/doc-discipline.md)
 - 调研与证据：`docs/research/`
 - 中间过程与备忘：`.memo/`（放什么去哪见 `.memo/README.md`）
-- 代码：`src/`，Buck2 驱动（`cd src && ./buck2 build root//...`）；打包与发行在 `src/packaging/`
+- 代码：`src/`，Buck2 驱动（`cd src && ./buck2 build root//...`）；打包与发行在 `src/packaging/`；本地 Agency 参考实现（技能目录）在 `src/agency/`

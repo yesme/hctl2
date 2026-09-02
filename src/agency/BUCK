@@ -1,0 +1,9 @@
+oncall("hctl2")
+
+# 本地 Agency 参考实现的技能目录。harness 原生格式，随发布包分发；
+# 进包的复制目标待与发布资产快照一并决定，见 README.md。
+filegroup(
+    name = "skills",
+    srcs = glob(["skills/**"]),
+    visibility = ["PUBLIC"],
+)
