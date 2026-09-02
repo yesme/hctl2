@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "apps/hctl2-tool",
-    "crates/hctl2-protocol",
 ]
 resolver = "3"
 
@@ -12,9 +11,6 @@ rust-version = "1.98"
 license = "Apache-2.0"
 repository = "https://github.com/yesme/hctl2"
 publish = false
-
-[workspace.dependencies]
-hctl2-protocol = { path = "crates/hctl2-protocol" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

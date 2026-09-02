@@ -5,9 +5,45 @@
 
 #![forbid(unsafe_code)]
 
+use std::error::Error;
 use std::ffi::{OsStr, OsString};
+use std::fmt::{self, Display, Formatter};
 
-use hctl2_protocol::ErrorEnvelope;
+/// Stable tool-local error code plus a human-readable explanation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ToolError {
+    code: &'static str,
+    message: String,
+}
+
+impl ToolError {
+    fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// Returns the stable machine-readable error code.
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        self.code
+    }
+
+    /// Returns the human-readable explanation.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl Display for ToolError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl Error for ToolError {}
 
 /// Installed executable name.
 pub const PROGRAM_NAME: &str = "hctl2-tool";
@@ -21,13 +57,13 @@ const UNSUPPORTED_ARGUMENT: &str = "HCTL2_TOOL_UNSUPPORTED_ARGUMENT";
 ///
 /// # Errors
 ///
-/// Returns a stable [`ErrorEnvelope`] when the argument count or argument value is unsupported.
-pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<String, ErrorEnvelope> {
+/// Returns a stable [`ToolError`] when the argument count or argument value is unsupported.
+pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<String, ToolError> {
     let mut arguments = arguments.into_iter();
     let first = arguments.next();
 
     if arguments.next().is_some() {
-        return Err(ErrorEnvelope::new(
+        return Err(ToolError::new(
             UNSUPPORTED_ARGUMENT,
             "expected at most one argument; use --help",
         ));
@@ -39,7 +75,7 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<String, Erro
         Some(value) if value == OsStr::new("--version") || value == OsStr::new("-V") => {
             Ok(version())
         }
-        Some(value) => Err(ErrorEnvelope::new(
+        Some(value) => Err(ToolError::new(
             UNSUPPORTED_ARGUMENT,
             format!(
                 "unsupported argument {:?}; use --help",
