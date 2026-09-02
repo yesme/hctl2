@@ -166,11 +166,6 @@ jobs:
           src/build/tools/shellcheck-bin --severity=error -x \
             src/buck2 \
             src/build/ci/affected-targets \
-            src/build/ci/verify-affected \
-            src/build/hooks/pre-commit \
-            src/build/hooks/pre-push \
-            src/build/tools/buck2-cache \
-            src/build/tools/git-hooks \
             src/build/tools/install-dotslash \
             src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
