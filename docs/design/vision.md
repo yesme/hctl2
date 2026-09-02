@@ -1,6 +1,6 @@
 # 愿景与设计原则
 
-> 状态：规范性（愿景与原则层）· 草案 v0.15.6<br>
+> 状态：规范性（愿景与原则层）· 草案 v0.16.0<br>
 > 日期：2026-08-31<br>
 > 定位：本文回答“HCTL2 为什么存在、想给用户什么体验、按什么原则做取舍”。对象、状态、命令和不变量的权威定义在[约束层](./spec/README.md)；两者冲突时以约束为准，本文用于裁决约束尚未覆盖的新问题。阅读入口见[设计地图](./README.md)。
 
@@ -49,7 +49,7 @@ HCTL2 把项目生命周期理解为一条从意图到运行的链，四个领�
 
 ```text
 意图 Intent      ──提炼──▶  承诺 Commitment  ──授权──▶  治理 Governance  ──分派──▶  运行 Runtime
-Project · Chat Room        Task · Kanban              Run · Workflow             Agent · Terminal
+Project · Chat Room        Task · Kanban              Run · Workflow             Participant · Terminal
 ```
 
 - **意图**：我们要解决什么、为什么、依据是什么；哪些讨论已经足够稳定，可以成为承诺。
@@ -62,7 +62,7 @@ Project · Chat Room        Task · Kanban              Run · Workflow         
 两点必须同时成立：
 
 1. **这是心智模型，不是流水线。** 一件事不必完整经历四个阶段：简单 Task 可以不创建 Run；Project 可以直接发起一次边界明确的 Harness 调用；纯研究或文档的 Project 可以从未施工。短路是显式设计，不改变事实所有权。
-2. **这是语义责任的梯度，不是部署层级——部署由正交的[三面架构](./architecture.md)回答。** 从 Project 到 Agent，越靠前越接近人的意图，越靠后越是可替换的执行资源。上端的事实必须在工具更换后继续存在；下端的资源可以丢失、重建和接管。
+2. **这是语义责任的梯度，不是部署层级——部署由正交的[三面架构](./architecture.md)回答。** 从 Project 到 Participant，越靠前越接近人的意图，越靠后它的执行面越是可替换的资源。上端的事实必须在工具更换后继续存在；下端的进程、会话和工作树可以丢失、重建和接管，而参与者身份不随它们丢失。
 
 ## 目标体验
 

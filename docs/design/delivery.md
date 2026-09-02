@@ -1,13 +1,13 @@
 # 第一阶段、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.15.6<br>
+> 状态：交付文档（非规范） · 草案 v0.16.0<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
 
 ## 第一阶段范围
 
-第一阶段面向单用户、单机、单 Repo Instance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench、control、Herdr、workflow engine、chat server 和本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+第一阶段面向单用户、单机、单 Repo Instance 下的多个 Project，并交付 macOS/Linux 打包后的 Workbench、control、本地 Agency 参考实现（含技能目录，运行时为 Herdr）、workflow engine、chat server 和本地任务服务器生命周期。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 范围按实现阶段分两组：P2 的验收条件可通过公共 CLI 和各 content 系统原生界面完成；P3 的验收条件覆盖 Workbench 场景。
 
@@ -16,7 +16,7 @@
 | [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为第一阶段组件交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以本地任务服务器为默认 content 后端、CLI 完整 Task 管理与完成预览；Vikunja 原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为默认后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、三选二 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
-| [Agent](./agent.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过第一阶段契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
+| [Participant](./participant.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过第一阶段契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
 
 P3 的 Workbench 把四类供应端客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令；同一命令服务供 CLI、Workbench 与外部适配器使用。消息、卡片和终端输入仍按各供应端的公开协议及其绑定中声明的能力处理。Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
 
@@ -34,7 +34,7 @@ P3 的 Workbench 把四类供应端客户端与 HCTL 命令入口组合到一个
 | Project / Chat Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
-| Agent / Integration / Terminal | `changeset show\|diff`、`integration preview\|submit\|show`、`terminal inspect\|attach\|replay`；Terminal 命令必须指向精确连接票据 |
+| Participant / Integration / Terminal | `changeset show\|diff`、`integration preview\|submit\|show`、`terminal inspect\|attach\|replay`；Terminal 命令必须指向精确连接票据 |
 
 CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或 Agency。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象。Run 的语义恢复或替换使用 `run resume|replace`；Room Invocation 的再次施工使用创建新 Invocation 与新代次的 `invocation retry`。终端重连只恢复观察或输入通道，不得改变 Run 或 Room Invocation 的生命周期状态。
 
@@ -58,7 +58,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
 | P0 · 探路 | 只对 HCTL 与已选实现实际使用的 API 和行为做限时、可丢弃的协议验证并记录实现证据，不替第三方验其自身功能；临时数据与拼装环境不进入产品生命周期。失败则重新评估并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四个外部服务已可运维 |
-| P1 · 备装 | 固定并打包 Herdr，并实现 `hctl2-tool` 的现场 Git 职责。Harness 仍按仓库配置运行代码检查，CI 负责强制；这些检查不进入工具箱意图回路。P1 只验证 Herdr 的启动、观察和停止，不产生 HCTL metadata 或 Receipt，因此不得称为自举 | Herdr 与本地工具箱就位，未切换治理事实 |
+| P1 · 备装 | 打包本地 Agency 参考实现（运行时为 Herdr），并实现 `hctl2-tool` 的现场 Git 职责。Harness 仍按仓库配置运行代码检查，CI 负责强制；这些检查不进入工具箱意图回路。P1 只验证本地 Agency 的启动、观察和停止，不产生 HCTL metadata 或 Receipt，因此不得称为自举 | Herdr 与本地工具箱就位，未切换治理事实 |
 | P2 · 接钥匙 | `hctl2-control` 与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；各系统首次使用时完成打包、备份恢复和一键生命周期。Matrix/Vikunja 原生界面承担 content；Herdr TUI 按 Execution Spec 输入策略使用；Dagu console 只用于管理和诊断，且到 B4 才是必需项 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
@@ -165,6 +165,6 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 - Repo Room 的隐私与保留期限——端到端加密不是答案（HCTL 房间对 control 明文可读），只能由 homeserver 侧访问控制、传输/存储加密与保留策略回答；
 - Project 拆分/合并和 Task 依赖的产品表达；
 - Scoped Room 自动归档策略；
-- 首批原生会话导入的范围与长期维护预算（能力定义见 [Agent 设计正文](./agent.md#原生会话导入)）；
+- 首批原生会话导入的范围与长期维护预算（能力定义见 [Participant 设计正文](./participant.md#原生会话导入)）；
 - 多主机与远程的实施：架构方向已定（Workbench 连接本机或远程控制面，见[三面架构](./architecture.md#三个面)），未决的是远程连接的认证与传输、多主机执行现场的编排、Windows 与多用户权限；
 - 成本/预算硬上限及运行中耗尽的交互；

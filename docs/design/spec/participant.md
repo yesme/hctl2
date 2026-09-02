@@ -1,16 +1,20 @@
-# Agent 模块约束
+# Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.6<br>
-> 本文是 Agent 模块对象、状态机与写入约束的唯一权威。设计正文见 [Agent 与 Terminal](../agent.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
+> 状态：规范性约束 · 草案 v0.16.0<br>
+> 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Agent 模块只负责把获准的 Execution Spec 变成物理执行，并提供观察、隔离和恢复。Project 拥有 Room Invocation，Run 拥有 Attempt；两者各自拥有对应的 Execution Spec。Agent 不决定 Project、Task 或 Run 的领域结果，Repo Instance 也仍归系统层所有。
+Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Project Role Binding，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果，Repo Instance 也仍归系统层所有。
+
+人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令、名册和裁决里，不进入本模块的对象表。
 
 每次执行的接入方式——ACP、app-server、SDK、PTY（伪终端）、钩子及其降级能力——由该次 Execution Spec 冻结，不是独立对象。
 
 | 对象 | 含义 |
 | --- | --- |
+| Participant | 数字参与者的稳定身份与不可变配置 revision：逻辑身份、人设引用、默认 Skill 声明与 Worker Profile 候选约束；不含密钥、Project 权限或运行时身份 |
+| Skill | 带 revision 与 digest 的共享方法定义；三态与申报见[Skill 与申报](#skill-与申报) |
 | Worker Profile | Harness、模型、模式、权限、环境与可选执行加固声明的可复用配置 |
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
 | ChangeSet / ChangeSet Revision | 一次获准写入边界及其不可变 Git 快照 |
@@ -20,10 +24,19 @@ Agent 模块只负责把获准的 Execution Spec 变成物理执行，并提供�
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
 | Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt |
 
+显示名、外部账号、人设、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。Participant revision 换版不改写活动 Invocation、Seat 或 Run。
+
+## Skill 与申报
+
+Skill 是带稳定 ID、revision 和 digest 的共享方法定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择。Skill 提供方法并请求能力；权限、票权、委派与 Task 完成权仍由对应领域约束授予。Skill 的内容不归 HCTL 存放：由 Agency 安装并申报，由执行体装载；账本只保存引用与 digest。
+
+Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、**available**（Agency 申报精确 revision 已安装、可回读、依赖满足）、**activated**（本次 Execution Spec 已冻结并装载）。Execution Spec 与 Run Manifest 必须冻结精确 ref+digest，并为每个 Skill 记录可核验性：工具箱能回读到同一 digest 的记 known，只有 Agency 申报的记 unknown；不得把 unknown 记为 known。required Skill 缺失，或申报的 digest 与工具箱回读不一致时，解析失败、不激活；optional Skill 缺失显示降级。含脚本的 Skill 是代码供应链输入。
+
 ## 写入约束
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
+| Participant | immutable revision + current pointer | control 处理「创建/更新 Participant」命令；Agency 申报 Skill 与候选的可用性 | 活动 Invocation/Run/Seat 永久引用准入时的 Participant revision |
 | Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | ChangeSet / Write Lease | change_set_version、current revision；租约为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃租约；ChangeSet Revision 只追加 |
 | 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
@@ -93,9 +106,9 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
-Execution Runtime 由**Agency**（派出方）承载。Agency 是执行者供给受控端口：按冻结的 Execution Spec 受理派工，交付执行体、运行现场和访问通道，常驻持有现场并报告存活与恢复等级。第一阶段只采用 **Herdr**：它直接从已配置的 Harness 启动执行体，持有进程、PTY 和终端会话，并提供 API 与原生 TUI。HCTL 不再放置独立 Agency 组件或下一层终端运行服务。
+Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。第一阶段的 Agency 是发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
-control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中只提供模型、Worker Profile 和 Execution Runtime 这三类物理执行信息；Participant 身份和 Seat 仍由 control 账本拥有。
+control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；Participant 身份、角色绑定、人设和 Seat 仍由 control 账本拥有。
 
 Agency 的接口约定**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本。Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。
 
@@ -130,7 +143,7 @@ Harness、运行时钩子与模型只获得当前 Invocation/Attempt 所需的�
 
 ## 终端通道、连接与租约
 
-恢复等级包括 exact attach、native handoff、structured inspect、semantic resume 和 replay，定义见[设计正文](../agent.md#terminal-场景)。这些能力可以并存；每项能力按自己的证据要求分别声明与降级，不能用一项的证据顶替另一项。
+恢复等级包括 exact attach、native handoff、structured inspect、semantic resume 和 replay，定义见[设计正文](../participant.md#terminal-场景)。这些能力可以并存；每项能力按自己的证据要求分别声明与降级，不能用一项的证据顶替另一项。
 
 运行时绑定提交后，control 为 Execution Runtime 建立终端通道账目；物理通道、观察流与终端状态由 Agency 提供，HCTL 不转发或重放另一份 PTY 流。直接客户端按当前归属者、绑定与全部适用代次请求连接时，control 可以签发短期 Attach Descriptor，并为受管理写输入另行以比较并交换授予 Terminal Input Lease。Agency 适配代码只把仍匹配归属者、运行时、现场和绑定代次的获准动作送入 API。
 

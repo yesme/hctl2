@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.15.6<br>
+> 状态：验证文档 · 草案 v0.16.0<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -62,9 +62,11 @@
 - Run 正常完成只由账本谓词决定；引擎报告的进度与账本不一致时标为分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
 
-### `CT-AGENT` · Agent / Terminal
+### `CT-PARTICIPANT` · Participant / Terminal
 
 - 未探测到声明能力时，绑定必须拒绝或降级
+- Agency 申报的 Skill 引用与 digest 无法由工具箱回读核验时，Execution Spec 只能记 unknown，不得记 known；required Skill 缺失时解析失败
+- 本地 Agency 参考实现申报的 Skill digest 与工具箱回读不一致时不激活，拒绝结果列出不一致项
 - 第二个写入者请求同一 ChangeSet 的活动租约时必须拒绝
 - Revision 或 digest 不匹配的 Result Proposal 必须拒绝
 - 旧 `runtime_generation` 的输入和结果必须拒绝
@@ -80,7 +82,7 @@
 - `managed_single_writer` 下不得同时开放 Herdr API 写入与原生 controller 写入，尝试原生写入时执行不得继续声称策略成立
 - Agency 未声明事件游标能力时，不得把事件流当作完整持久 trace；重连后只能按可证明范围恢复观察
 - Agency 未声明退出与停止回读能力，或不能证明同一进程和 PTY 仍存活时，不得声称 exact attach；缺失 exit/stop 回执的执行不得报告为成功停止
-- Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；Agency 恢复报告无法翻译为[恢复等级](./agent.md#terminal-场景)时按丢失处理
+- Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；Agency 恢复报告无法翻译为[恢复等级](./participant.md#terminal-场景)时按丢失处理
 - Agency 自带的接管/单写者/"会话有效"记录被当作账本事实或替代租约/代次时拒绝
 - 未声明栅栏回显的 Agency 通道未按实际能力降级（原生输入仍宣称逐次受租约管理，或结果按高证据类准入）时拒绝；已声明栅栏回显的 Agency 放行不匹配代次时该绑定标记失信并需要关注
 - control 签发连接票据、Herdr 适配代码校验 HCTL 授权，观察、输入、Attempt 控制与安全输入权限分离；Agency 未声明栅栏回显能力时，无法执行的代次栅栏不得被记录为已生效

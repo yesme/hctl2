@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.6<br>
+> 状态：规范性约束 · 草案 v0.16.0<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -9,14 +9,14 @@
 | --- | --- |
 | Repo | Git 内容与共享配置的逻辑仓库 |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
-| Participant / Project Role Binding | 可寻址的逻辑参与者，以及 Project 角色到 Participant/Harness 候选的冻结绑定 |
+| Project Role Binding | Project 角色到 Participant 候选的冻结绑定；Participant 本身由 [Participant 模块约束](./participant.md)定义 |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
 | Chat 端口绑定 | Room 到 chat server 房间的 Resolved Port Binding。它固定外部账号与房间的稳定 ID、获准身份映射，以及可选的结构化 human 动作清单，并指明 Room content 的事实源。准入前置见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | 一次授权的根上下文清单，以及为某个消费执行实际物化并交付的消费上下文包 |
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
 | Artifact / Artifact Revision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
-| Room Invocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [Execution Spec](./connections.md#project--run--agent从授权到物理执行) 承载 |
+| Room Invocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [Execution Spec](./connections.md#project--run--participant从授权到物理执行) 承载 |
 
 ## 写入约束
 
@@ -24,7 +24,7 @@
 | --- | --- | --- | --- |
 | Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；工具箱只写入/回读 Git identity | 一个 Repo identity 只有一个 Repo 与 Repo Room；待确认的外部写入按关联键恢复，不重复注册 |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
-| Participant / Project Role Binding | Participant immutable revision + current pointer；绑定版本 | control 处理「创建/更新 Participant」与「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的 Participant/绑定版本 |
+| Project Role Binding | 绑定版本 | control 处理「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的绑定版本与 Participant revision |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
 | Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略、结构化 human 动作 allowlist 与降级能力；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
@@ -51,9 +51,9 @@ Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度
 
 Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游约束。
 
-Participant revision 描述逻辑身份及其默认方法和执行候选限制，不包含密钥、Project 权限或运行时身份。Project Role Binding 再授予当前 Project 中的职责、权限和预算上限。Skill 只提供方法，Worker Profile 只选择物理执行配置。Execution Spec 必须分别冻结四者的精确引用。
+Project Role Binding 授予某个 Participant 在当前 Project 中的职责、权限和预算上限；Participant revision、Skill 与 Worker Profile 的定义见 [Participant 模块约束](./participant.md)。Execution Spec 必须分别冻结四者的精确引用。人不是 Participant：人的角色与权限由 human actor 的命令权限表达，不经角色绑定。
 
-显示名、外部账号、人设、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。换版或换绑不改写活动 Invocation、Seat 或 Run；`repo_scope` 可以没有 Project Role Binding。
+换绑不改写活动 Invocation、Seat 或 Run；`repo_scope` 可以没有 Project Role Binding。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
@@ -137,7 +137,7 @@ Room Invocation 的 Execution Spec 先固定范围：`repo_scope` 只读，`proj
 
 若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和物理执行代次；`in_process` 仅使用连接约束定义的缩减字段组。
 
-上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--agent从授权到物理执行)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新执行体的载荷不能改写这些来源链字段。
+上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--participant从授权到物理执行)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新执行体的载荷不能改写这些来源链字段。
 
 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project 范围权限必须选择精确 Project 与版本。
 

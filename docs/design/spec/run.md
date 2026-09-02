@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.15.6<br>
+> 状态：规范性约束 · 草案 v0.16.0<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -40,7 +40,7 @@ Run 状态只由 control 根据获准命令和账本事实推进，workflow engi
 
 启动中、暂停中和取消中都必须能通过取消、失败或替代进入终态，不能因 workflow engine 失联永久阻塞绑定 Task。外部确认回执与引擎回读都不直接写状态；引擎报告的进度只用于关联与分歧检测。
 
-Run 是反应式状态机，但所有输入不共用一条无类型事件通道。人的启动、暂停、恢复、取消和 Request 回答先进入公共命令服务。Agent 结果先进入 Result Proposal，定时器与引擎报告的进度先成为带版本观测。control 持久化归约结果、撤权和 outbox 后，适配器才推动 Dagu。这个先后次序是 Run 正确性的一部分，Workbench、CLI 或供应端界面都不能绕过。
+Run 是反应式状态机，但所有输入不共用一条无类型事件通道。人的启动、暂停、恢复、取消和 Request 回答先进入公共命令服务。执行体的结果先进入 Result Proposal，定时器与引擎报告的进度先成为带版本观测。control 持久化归约结果、撤权和 outbox 后，适配器才推动 Dagu。这个先后次序是 Run 正确性的一部分，Workbench、CLI 或供应端界面都不能绕过。
 
 Dagu 原生 UI/API 对已绑定 Engine Deployment/Execution 的直接修改只追加回读观测，并把 Engine Execution Binding 标为分歧。只有供应端支持修改前拦截，并能让 control 完成同一预览、提交和 outbox 顺序后再执行，新的绑定版本才可以声明相应 human 命令能力。
 
@@ -53,7 +53,7 @@ Run 进入完成前，control 必须逐项证明：
 
 任何一项未知都不得完成 Run。Engine 检查点、进程退出、Harness 或模型自述和单个 Result Proposal 都不能补足上述谓词。引擎报告的进度只用于分歧检测；该进度不可读或与账本不一致时，control 只把 Engine Execution Binding 标为分歧待对账，既不补足也不否定上述谓词。
 
-任何失败、取消或替代终态在释放 Task Run 占用标记前，都必须在同一事务中撤销旧派发、输入与写租约和外部副作用资格，并提交运行时停止与隔离 outbox。若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 Git 工作树和 ChangeSet；后续执行按 Agent 约束使用新的 Git 工作树和新的 ChangeSet。
+任何失败、取消或替代终态在释放 Task Run 占用标记前，都必须在同一事务中撤销旧派发、输入与写租约和外部副作用资格，并提交运行时停止与隔离 outbox。若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 Git 工作树和 ChangeSet；后续执行按 Participant 约束使用新的 Git 工作树和新的 ChangeSet。
 
 不能证明旧执行被限制在该隔离边界内时，Run 保持取消中或需要关注，并保留占用标记。系统不能以“失败了”为由并发启动第二个写入者。
 
@@ -85,7 +85,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 “替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧运行时、输入与写租约和归属者专用的代次栅栏，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。系统不得为了替代一个 Run 任意推进共享 site generation，进而误伤其他执行。
 
-新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Agent 约束](./agent.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
+新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Participant 约束](./participant.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
 
 运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
 
@@ -99,11 +99,11 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 ## 从节点到结果
 
-本节定义 Run 内部归约；对 Agent 模块的派发、结果信封和故障恢复见[连接约束](./connections.md)。
+本节定义 Run 内部归约；对 Participant 模块的派发、结果信封和故障恢复见[连接约束](./connections.md)。
 
 1. control 观察到 Engine 检查点在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的依赖、条件和等待等机械节点不创建 Obligation。control 只依据当前有效 Engine Execution Binding 的当前观察创建义务。绑定分歧待对账、引擎停报进度，或观察来自缓存、迟到事件或旧游标时，control 不创建新 Obligation；已经创建的义务照常验收与判决。
 2. control 按规则创建 Seat，并为候选产生 Execution Spec。
-3. [Agent](./agent.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
+3. [Participant](./participant.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
 4. control 与工具箱校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与账本不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Engine Execution Binding 标为分歧并对账，不改写任何 HCTL 结果。
 

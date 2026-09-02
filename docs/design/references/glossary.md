@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.15.6<br>
+> 状态：非规范对照 · 草案 v0.16.0<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -15,19 +15,20 @@
 
 | 术语 | 中文对照 | 一句话含义 | 权威定义 |
 | --- | --- | --- | --- |
-| Agent | 执行治理模块 | 第四个领域模块：把上层授权落实为 ChangeSet、运行时、终端、结果提案与证据 | [Agent](../agent.md) |
+| Agent | 编码代理（泛称） | 泛指 Codex、Claude Code 这类 AI 编码代理，不是模块名；第四个模块见 Participant | [Participant](../participant.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类执行编码工作的工具 | [三面架构](../architecture.md#场景与系统) |
-| Agency | 派出方 | 按冻结规格派出执行体并持有进程、PTY 与会话的 Terminal 受控端口；第一阶段由 Herdr 实现 | [spec/agent](../spec/agent.md#运行时与观测) |
+| Agency | 派出方 | 参与者的供给方：维护可派出的名册与条款，按冻结规格交付执行体端点；第一阶段为发布包自带的本地参考实现，运行时用 Herdr | [spec/participant](../spec/participant.md#运行时与观测) |
+| worker | 执行体 | Agency 供给的一次具体运行：Harness 进程、装载的 Skill、PTY 与 TUI；接受派工、报告观测与结果提案 | [spec/participant](../spec/participant.md#运行时与观测) |
 | Repo | 仓库 | Git 仓库的逻辑身份；共享配置与结晶随它走 | [spec/project](../spec/project.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 协作聊天室 | 持久的多参与者协作空间，分 Repo Room、Project Room、Scoped Room | [Project](../project.md#room-类型) |
 | Chat Room | 聊天室场景 | Project 模块的主场景，也是 Room 的交互视图 | [Project](../project.md#chat-room-场景) |
-| Participant | 参与者 | 可寻址的逻辑协作者档案，独立于进程和外部账号 | [spec/project](../spec/project.md) |
+| Participant | 参与者 | 第四个领域模块：数字参与者的稳定身份、人设、Skill 申报、执行者配置与一次物理执行；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
 | Artifact | 工件 | 登记后可稳定引用的交付物；发布版本属于 Revision 族 | [Project](../project.md) |
 | Context | 上下文 | 顶层授权采用哪些来源，以及每个执行实际收到哪些字节 | [spec/project](../spec/project.md#context-memo-artifact) |
-| Skill | 技能包 | 带版本与摘要的共享方法定义 | [spec/system](../spec/system.md) |
+| Skill | 技能包 | 带版本与摘要的共享方法定义；由 Agency 安装并申报，账本只记引用、摘要与可核验性 | [spec/participant](../spec/participant.md#skill-与申报) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
 | Kanban | 看板 | Task 的主场景；一个 Repo 一个 Board，Project 是分组，Task 是卡片 | [Task](../task.md#kanban-场景) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选与权限的一次授权执行 | [Run](../run.md) |
@@ -38,9 +39,9 @@
 | Gate | 评审关卡 | 冻结在施工图中、决定结果如何通过的治理节点 | [spec/run](../spec/run.md) |
 | Verdict | 裁决 | 对精确版本作出的语义评审结论 | [spec/run](../spec/run.md) |
 | Receipt | 凭证 | 校验通过后签发的不可变证明 | [spec/README](../spec/README.md#六族规则) |
-| Terminal | 终端场景 | Agent 模块用于观察、诊断和接管精确执行的场景 | [Agent](../agent.md#terminal-场景) |
-| ChangeSet | 变更集 | 一次获准的代码写入边界 | [spec/agent](../spec/agent.md) |
-| Evidence | 证据 | diff、测试输出、SCM 状态等可核验观测 | [spec/agent](../spec/agent.md) |
+| Terminal | 终端场景 | Participant 模块的场景：观察、诊断和接管精确执行体，也是执行体暴露给 Workbench 的 TUI 接口（participant.tui） | [Participant](../participant.md#terminal-场景) |
+| ChangeSet | 变更集 | 一次获准的代码写入边界 | [spec/agent](../spec/participant.md) |
+| Evidence | 证据 | diff、测试输出、SCM 状态等可核验观测 | [spec/agent](../spec/participant.md) |
 | Workbench | 工作台 | 组合四类 provider 客户端、联合投影和 HCTL 公共命令入口的桌面 | [spec/system](../spec/system.md) |
 
 ## 系统组件与常用技术词
@@ -86,9 +87,9 @@
 | Chat Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
-| Terminal | harness / Agency（第一阶段为 Herdr） | 会话转录、PTY 流 |
+| Terminal | Agency 供给的执行体（第一阶段：本地参考实现，运行时 Herdr） | 会话转录、PTY 流 |
 
-权威对照见[三面架构](../architecture.md#场景与系统)。Agent（模块）、Agency（派出方）与 agent（执行体的口语说法）是三个不同词；`provider` 泛指模块供应端，并非跨模块对象。
+权威对照见[三面架构](../architecture.md#场景与系统)。Participant（模块）、Agency（派出方）、worker（执行体）与 Agent（编码代理的泛称）是四个不同词；`provider` 泛指模块供应端，并非跨模块对象。
 
 ## Revision 族（不可变版本）
 

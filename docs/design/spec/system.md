@@ -1,7 +1,7 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.15.6<br>
-> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Agent 的领域状态。
+> 状态：规范性约束 · 草案 v0.16.0<br>
+> 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Participant 的领域状态。
 
 ## 组件
 
@@ -35,7 +35,7 @@
 
 ### 客户端使用的公开面
 
-Workbench 的 HCTL 功能只调用 Query、Preview、Submit、Subscribe 和各模块投影。供应端客户端功能使用供应端的公开协议或客户端传输适配器。Workbench 可以直连精确终端的观察流和普通交互输入。未来的官方远程 Agent 必须直接实现 Agency 约束，或通过专用 Agency 适配器接入；非 Matrix 聊天平台仍通过 Matrix homeserver 的桥接生态接入。
+Workbench 的 HCTL 功能只调用 Query、Preview、Submit、Subscribe 和各模块投影。供应端客户端功能使用供应端的公开协议或客户端传输适配器。Workbench 可以直连精确终端的观察流和普通交互输入。未来的远程 Agency 必须直接实现 Agency 约束，或通过专用适配器接入；非 Matrix 聊天平台仍通过 Matrix homeserver 的桥接生态接入。
 
 ### 端点与输入的信任边界
 
@@ -59,7 +59,7 @@ control policy 只信任来自允许来源且摘要匹配的扩展制品。扩�
 
 健康状态、重同步游标和当前成员列表属于运行时投影。每份投影必须记录来源、版本或序号以及观测时间，但不参与不可变绑定的摘要计算。它们可以阻止新准入或驱动对账，但不会改写历史绑定。只有端点、配置、能力、信任、权限或降级规则变化时，control 才创建新的绑定版本。
 
-跨 Project 使用的 Skill 是带稳定 ID、revision 和 digest 的共享定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择，Execution Spec 与 Run Manifest 必须冻结精确 ref+digest。Skill 提供方法并请求能力；权限、票权、委派与 Task 完成权仍由对应领域约束授予。
+Skill 的定义、三态与申报规则见 [Participant 模块约束](./participant.md#skill-与申报)：Skill 的内容由 Agency 安装并申报，Execution Spec 与 Run Manifest 冻结的是申报的精确 ref+digest 及其可核验性。
 
 进程内扩展等同受信任代码。普通独立进程只隔离崩溃；不可信扩展必须使用操作系统强制隔离和能力削减的代理接口。
 
@@ -123,7 +123,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 包括远端 SCM 在内，会改变第三方权威事实的动作统一写成持久外部副作用命令和 outbox 记录。记录固定归属者引用、Resolved Port Binding、操作、目标、适配器声明的冲突范围、权限、规范输入摘要和幂等键。同一远端资源的关闭、重开、更新等操作共用一个冲突范围。
 
-本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Agent 写入约束](./agent.md#写入约束)。
+本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Participant 写入约束](./participant.md#写入约束)。
 
 第一阶段不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
 
@@ -155,7 +155,7 @@ control 也会把结果写到自己的库以外，但那些是外部副作用的
 ~/.hctl2/                      # 用户级配置、Harness/Profile/Skill/Runtime 定义
                                # control.sqlite、control.lock —— 用户级 metadata 账本与写锁
 <repo>/.hctl2/                # Git tracked · repo.toml、projects/、workflows/
-                               # memos/、policies/、skills/、schemas/
+                               # memos/、policies/、schemas/
 <git-common-dir>/hctl2/       # untracked · lock、traces/、cache/ —— 仅 OS 锁与可丢弃缓存
 ```
 
@@ -165,7 +165,7 @@ control 也会把结果写到自己的库以外，但那些是外部副作用的
 
 Git 里与 HCTL 相关的持久内容分两种；混淆“正文”和“准入”，或把审计影子当判决，会把 Git 误读成控制面的第二本账：
 
-- **不可变正文**（家在 Repo）：Task Revision、Workflow Revision、Memo、Artifact/ChangeSet Revision 的正文，以及 Repo 共享 policy/Skill/schema revision。工具箱按已持久化 intent 写入并回读其 immutable locator 与 digest；control 账本独占稳定身份、准入决定、规范摘要、current pointer 和 lifecycle。Git 中出现一份正文不表示已被 HCTL 准入，账本也不复制一份可漂移正文。
+- **不可变正文**（家在 Repo）：Task Revision、Workflow Revision、Memo、Artifact/ChangeSet Revision 的正文，以及 Repo 共享 policy/schema revision。工具箱按已持久化 intent 写入并回读其 immutable locator 与 digest；control 账本独占稳定身份、准入决定、规范摘要、current pointer 和 lifecycle。Git 中出现一份正文不表示已被 HCTL 准入，账本也不复制一份可漂移正文。
 - **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 的权威在用户级 metadata 账本产生并保存；副本由工具箱写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只恢复可验证、已结晶的判决候选，仍须显式恢复流程确认；未结晶的判决和现存账本保持原权威。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要。
 
 Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准入是执行授权记录，不因“不可变”就自动成为 Git 正文；它们的权威只在账本。反过来，Git 正文的字节权威也不会因为账本保存了 digest 就转移到账本。
@@ -177,7 +177,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
 | 四模块 metadata：稳定身份、准入/current、Room/Request、Participant/角色绑定、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
-| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/Skill/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
+| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
 | workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Engine Execution Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
@@ -195,7 +195,7 @@ Agency 绑定另有自己的归属者租约和代次；范围至少覆盖同一�
 
 SQLite 事务只保证账本内部一致，而事务提交与外部投递不在同一原子域。因此，外部副作用还必须由幂等键、代次、租约、outbox 和回读共同隔离。
 
-单写者、CAS 与 current pointer 是三件事，不互相替代：单写者回答此刻谁有权写账本（本节）；expected-version CAS 回答一条命令对哪个版本生效（见[命令与跨服务正确性](#命令与跨服务正确性)）；current pointer 回答界面此刻读哪个不可变版本（推进规则由各模块写入约束定义）。ChangeSet 的单 writer 是 Agent 模块的写权（见[Agent 约束](./agent.md#写入约束)），不属于 control 单写者。
+单写者、CAS 与 current pointer 是三件事，不互相替代：单写者回答此刻谁有权写账本（本节）；expected-version CAS 回答一条命令对哪个版本生效（见[命令与跨服务正确性](#命令与跨服务正确性)）；current pointer 回答界面此刻读哪个不可变版本（推进规则由各模块写入约束定义）。ChangeSet 的单 writer 是 Participant 模块的写权（见[Participant 约束](./participant.md#写入约束)），不属于 control 单写者。
 
 ### 代次家族
 
@@ -204,11 +204,11 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 | 成员 | 管哪块资源 | 权威定义 | 何时产生或推进 |
 | --- | --- | --- | --- |
 | `attempt_generation` ／ `invocation_version` | 这一次逻辑执行归谁（语义归属者） | [Run 约束](./run.md#对象)、[Project 约束](./project.md#room-invocation) | 派发时已有；不得预填运行时身份 |
-| `runtime_generation` | 这一次物理进程／PTY | [Agent 约束](./agent.md#运行时与观测) | 激活映射时由 Agency 预留返回 |
+| `runtime_generation` | 这一次物理进程／PTY | [Participant 约束](./participant.md#运行时与观测) | 激活映射时由 Agency 预留返回 |
 | `control_writer_generation` | 用户级账本此刻的逻辑写入者 | 本节 | 取得账本写权时 CAS 推进 |
 | `site_generation` | 某个 Repo Instance 的 Git 工作树现场 | 本节 | 同一本账对本现场以比较并交换推进；现场 OS 锁是它的物理伴生，不是它 |
 | Agency binding owner generation | 某个 Agency 绑定范围（同一服务器、套接字或主机命名空间） | 本节 | 新归属者对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
-| `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进 Agent 出站元组 |
+| `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进执行体出站元组 |
 
 四条推导规则彼此独立：
 
@@ -217,7 +217,7 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 - Agency binding owner generation 不能从 `site_generation` 推导，因为 Git 锁管不了另一台机器上的 PTY；
 - `engine_binding_generation` 不能从 `attempt_generation` 推导，因为引擎重试与候选切换是两条独立的换代路径。
 
-Agent 出站结果必带哪些代次、`in_process` 何时可以缩减，见[连接约束](./connections.md#project--run--agent从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
+执行体出站结果必带哪些代次、`in_process` 何时可以缩减，见[连接约束](./connections.md#project--run--participant从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
 
 ## 启动与恢复
 
@@ -250,4 +250,4 @@ metadata 备份必须是由唯一写入者协调的一致备份集：完整账�
 - 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
-- 第一阶段是单用户授权模型，不提供多租户隔离；Harness 的三条底线与可选执行加固见[Agent 写入约束](./agent.md#写入约束)。未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域。
+- 第一阶段是单用户授权模型，不提供多租户隔离；Harness 的三条底线与可选执行加固见[Participant 写入约束](./participant.md#写入约束)。未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域。
