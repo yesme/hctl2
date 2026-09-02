@@ -1,6 +1,6 @@
 # 裁决包：设计文档四轴评审
 
-> 状态：第一轮生成中（等三轴对抗核验与三份调研回填）<br>
+> 状态：第一轮生成中——第二至五组已填（A、I、W 三轴经核验），第一组与「待核」行等 R1 与 M 轴核验<br>
 > 基线：main @ `6850f18`（草案 v0.16.0）；发现与核验在分支 `claude/review-r1`<br>
 > 来源：[`13-findings.md`](./13-findings.md)（经核验的发现）、[`docs/research/methodology-boundaries-20260902.md`](../../../docs/research/methodology-boundaries-20260902.md)、[`docs/research/component-matrix-20260902.md`](../../../docs/research/component-matrix-20260902.md)<br>
 > 去向：所有者填「同意 / 否 / 改为」后改状态为「已裁决」，第三轮按此落地
@@ -21,21 +21,41 @@
 
 | 编号 | 档 | 位置 | 发现 | 建议 | 核验 | 你的裁决 |
 | --- | --- | --- | --- | --- | --- | --- |
+| A-06 + A-26 | A | `vision.md` §设计原则；`context.md` §为什么存在 | 快、好、省三个尺度散在三处，没有立成一条取舍原则；Context 有自己的「快、省、准」，只差一字易被读成矛盾 | 设计原则加一条：「取舍看三个尺度：快——有进展、本地完成、不让人干等；好——方案对、实现对；省——不在上下文上浪费 token。冲突时先保好，再保快，最后保省。」顺序由你定。`context.md` 加一句「准就是这里的好」，名字不改。推进版本号 | 修正后维持 | |
+| A-22 | A | `spec/README.md` §核心产品词、写作指南 0.4 路由表 | 你 09-02 裁定 23 个核心产品词一律可进愿景层，但愿景第 2 条原则自己分了两档（五个用户核心对象；Obligation/Seat/Attempt 按需展开）。**这是对该裁定的复议**：要不要把两档写进路由表，愿景层只用第一档 | 若分档：用户核心词含 Repo、Project、Room、Task、Run、Participant、Request、Workflow、Memo、Artifact 与四个场景名；治理词为 Obligation、Seat、Attempt、Gate、Verdict、Receipt、ChangeSet、Evidence、Context、Skill。不分档则愿景层的「最小内核」表照旧 | 修正后维持 | |
+| A-52 | B | 词汇表 vs 总则 | Chat Room 是四个场景名里唯一不在核心产品词内的（Kanban、Workflow、Terminal 都在，Room 在而 Chat Room 不在） | Chat Room 进核心产品词，与另三个场景名同等 | 核验补 | |
+| A-17 + A-44 | B | 架构层散落的「第一阶段」限制 | 架构层多处写「第一阶段……」，读者分不清设计与暂未做；权威在约束层，`delivery.md` §明确不做 只是非规范复述 | 架构层引用一律指向约束条款；另在 `delivery.md` 做一张「第一阶段限制」汇总表，每行指回约束条款 | 修正后维持 | |
+| A-31 + A-38 | B | `spec/README.md` 承诺的字段名对照表；约束层英文枚举值 | 承诺的「语义名 ↔ 标识符」表没有；生命周期状态用中文而其余枚举用英文，两口径并存 | 在词汇表补字段名对照表（可机械生成）；裸英文「quorum-unreachable」「unsupported」改代码体或中文；Gate 票值、写入权模式保留代码体并登记进表 | 修正后维持 | |
+| A-37 | B | `spec/run.md` Run 状态表 | 启动中／暂停中／取消中没有自动超时，靠人取消或替代；这是隐含设计 | 二选一：写明「无墙钟超时，由人或替代结束」；或加一个可配置的过渡态超时进入需要关注 | 修正后维持 | |
+| W-16 | B | 「Chat 端口绑定」 | 它在 Binding 族（全英文专名）与端口名（全中文）两族里都是孤例；总则词汇索引 Binding 族不含它、词汇表含；是字段组还是对象未定 | 定为 Binding 族对象则改「Chat Port Binding（聊天端口绑定）」；定为字段组则改「聊天端口绑定」并从 Binding 族撤出 | 修正后维持 | |
+| A-48 | B | 可核验性 known/unknown | 相邻元层（better-harness）用四态：观测到／缺失／未观测／不适用；我们两态把「不适用」混进 unknown | 至少把「不适用」分出来（没有 Terminal 的执行不该记 unknown） | **待核** | |
 
 ## 第三组 · 机制改造（B 档）
 
 | 编号 | 位置 | 发现 | 建议 | 核验 | 你的裁决 |
 | --- | --- | --- | --- | --- | --- |
+| I-03 | `spec/project.md` §根 Context Manifest 压缩片段与滚动纪要 | 回源指针只有「有没有来源记录」的存在性检查，指得对不对留白——若由 small-brain 在输出里给，正确性就靠模型 | 补一句：「压缩与纪要的回源指针由组装器按来源分块赋予并随片段冻结，不由模型输出」；配 CT 用例。推进版本号 | 修正后维持 | |
+| I-04 + W-20 | 写作规则的强制方式 | 路由表越层词、产品名越层、驼峰名、首现对照四项可机械检查；「需要」当规范词的卡定为「spec 内只许出现在『需要关注』」；「同层同表中英夹杂」只能窄版报告制 | 每项一个 `sh_test` 进对应 profile（三个 profile 第一次真正分开）；写作指南 L3/L4 补两条规则 | 修正后维持 | |
+| I-17 | `pr-contract.yml` 自建信号 | 只看新增脚本，改已有脚本不算；675 行运行时监督器就是在旧脚本上长出来的 | 触发条件加「已有脚本净增行数超过阈值（如 +100 行）也算自建信号」 | 核验补 | |
+| I-13 | 本地 Agency 参考实现 | 第十二族「机械守卫」的 harness 侧钩子（PreToolUse deny 越界写、Stop 钩子核对终局清单）是账本门之外的另一层机械门 | 参考实现带一份 harness 钩子作可声明的执行加固项；`ControlEvent v1` 列适配协议候选、unlazy `gate-check.mjs` 列移植候选 | **待核** | |
 
 ## 第四组 · 部件替换（B 档）
 
 | 编号 | 位置 | 发现 | 建议 | 核验 | 你的裁决 |
 | --- | --- | --- | --- | --- | --- |
+| I-05 | `spec/system.md` 表 D 通用机制 | outbox、租约、代次是有理由的自研；JCS 摘要、现场锁、备份快照、密钥、全文索引五处不该手写 | 技术基线写明五处 SDK：`serde_jcs`、`fd-lock`、SQLite Online Backup API、`keyring`、FTS5；CT 为 JCS 钉 RFC 8785 向量 | 修正后维持 | |
+| I-07 | 五种复用决策用语、`delivery.md` §选型判据 | SDK 并入了「采用为依赖」，抹掉了你四级尺子里前两级的区别；没有写出偏好顺序 | 「采用为依赖」拆成「采用二进制」「采用 SDK」；README 与选型判据写一句偏好顺序 | 修正后维持 | |
+| I-09 | `src/build/tools/reindeer` | 从源码编译，上游每个 release 带八个官方二进制 | 换 DotSlash 官方二进制，删启动器 | **待核** | |
+| I-10 | `hctl2-services` 与 `runtime.sh` 系列（675 行） | 自己写了进程监督器；开发侧已拍板 Process Compose 管 cache | **候选，R3 建议你拍板**：control 经 Process Compose API 托管四个执行面服务，P2 首次消费前限时验证；代价用户包 +15–16 MB | **待核** | |
+| I-11 | `hctl2-control` 六个 provider 客户端 | 各 provider 有 OpenAPI/schema 或类型库，不该手写 HTTP 客户端 | 技术基线写明「从 schema 生成或用类型库」 | **待核** | |
 
 ## 第五组 · 写作规则（B 档）
 
 | 编号 | 位置 | 发现 | 建议 | 核验 | 你的裁决 |
 | --- | --- | --- | --- | --- | --- |
+| W-04 | 全库 `ChangeSet`（67）与 `ReviewSubjectRef`（12） | 仅剩的两个活驼峰名；ChangeSet 是核心产品词、合成才成一个概念 | `ChangeSet` 保留并在词汇表注明理由；或改 `Changeset` 求零例外（按 0.9 扫 67 处）。`ReviewSubjectRef` 散文改「评审对象引用」、字段位 `review_subject_ref` | 修正后维持 | |
+| W-08 | 愿景层与架构层裸用「human」 | 总则规定写 human actor，但架构层大量裸用「human」与「有权的人」并存，三种形态 | 二选一：统一 `human actor`（从总则）；或改「人／有权的人」（从 L4，同批改总则）。词汇表补词条 | 修正后维持 | |
+| W-25 | `context.md` §与相邻概念的分工 表 | 同列「Memo」（英）与「根上下文清单」（中）并列，是路由表六词白名单与「同表同一写法」的规则冲突 | 二选一：Context Manifest／Context Bundle 加进高频约束词（架构层可写英文带对照）；或接受表内对照混排为例外 | 核验补 | |
 
 ## 不进包但值得你知道的
 
