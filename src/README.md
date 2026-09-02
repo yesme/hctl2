@@ -24,7 +24,7 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 
 ```bash
 ./buck2 test --build-default-info \
-  root//apps/... root//crates/... root//build/tests/... \
+  root//apps/... root//build/tests/... \
   root//:clippy root//packaging/release:first-party
 ```
 

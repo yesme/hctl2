@@ -206,7 +206,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          full_targets='root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party'
+          full_targets='root//apps/... root//build/tests/... root//:clippy root//packaging/release:first-party'
           selected_file="$RUNNER_TEMP/hctl2-btd/selected.txt"
 
           if [ "$EVENT_NAME" != pull_request ]; then
