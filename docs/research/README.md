@@ -116,6 +116,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [hctl1.md](./lineage/hctl1.md) | HCTL1 / yesme/hctl | E-L2-HCTL1 | ⑦ 直接谱系 | 仅参考行为（直接谱系证据） |
 | [methodology-landscape-20260824.md](./methodology-landscape-20260824.md) | 方法论工具十二族与完成判定权横评（11 个仓库各钉 commit） | — | 方法论生态 | 逐项适配协议、有边界移植或仅参考行为 |
 | [methodology-mattpocock-skills-20260902.md](./methodology-mattpocock-skills-20260902.md) | mattpocock/skills（Skills for Real Engineers）：wayfinder 与 grill 系逐源码审计、完成判定权专项、方法 / 对象 / 机制的分界原则 | — | 方法论生态 · 单对象补充审计 | 仅参考行为；采用为依赖、适配协议、移植组件均为零 |
+| [component-matrix-20260902.md](./component-matrix-20260902.md) | 部件矩阵：content 系统、第一方组件、构建与发行工具、约束层通用机制的目的 / 现选择 / 业界最佳实践 / 借用等级 / 建议（40 行，全部钉版本） | — | 选型汇总 | 维持为主；Reindeer 换官方二进制、运行时生命周期改 Process Compose（候选）、六项机制由手写改 SDK |
 | [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 | 仅参考行为 |
 | [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 | 仅参考行为的补充证据 |
 | [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 | 采用 Tauri 2 的选型证据 |
