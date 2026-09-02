@@ -272,3 +272,20 @@
 | I-13 | 本地 Agency 参考实现（`src/agency/`）与 `spec/participant.md` 三条底线 | 第十二族的机制是「harness 侧机械拒绝 + 可执行验收账本」：stop-that-shit 用五家 harness 的 PreToolUse 钩子按声明约束 deny，unlazy 用机器校验的 CHECK/EXPECT/EVIDENCE 账本判「勾了框但证据 pending 仍算未完成」。HCTL2 的三条底线靠不给凭据与只有提案通道，是账本侧的门；harness 侧的钩子是另一层机械门，两层不冲突 | I2、I4 | 本地 Agency 参考实现除技能目录外，可以带一份 harness 钩子（PreToolUse deny 越界写、Stop 钩子核对终局结果清单），作为执行加固的一种可声明项。适配协议候选：`ControlEvent v1`；有边界移植候选：unlazy `gate-check.mjs`。进裁决包 B 档（部件与机制） | 含义 |
 | M-29 | 第十二族改名 | 「机械守卫与验收账本」正是 HCTL2 完成判定权的同路人，且全部在 harness 侧或提交侧，没有一家有不可变 Task。方法论生态审计的第十二族一行与横评应更新 | M4 | 第三轮把 `methodology-landscape-20260824.md` 文末追加复核记录：第十二族改名、补四样本、软件工厂亚种。研究层只追加 | 写法（研究层追加） |
 | A-48 | 相邻元层：better-harness 的证据状态词表 | Observed / Missing / Unobserved / Not applicable 四态，加「配置了不等于用过了」。HCTL2 的 known/unknown 是两态；四态区分了「没观测到」与「不适用」 | A3、I1 | 评估是否把 known/unknown 扩成四态：至少把「不适用」从 unknown 里分出来（例如没有 Terminal 的执行不该记 unknown）。进裁决包 B 档 | 含义 |
+
+## R1 边界抽取回填（第一轴）
+
+来源：[`docs/research/methodology-boundaries-20260902.md`](../../../docs/research/methodology-boundaries-20260902.md)（19 家逐边抽表，对照 HCTL2 八条连接，三类归纳逐条裁决）。R1 的总判断：**别家的边共同的形状是「门后没有冻结」**——阶段产物里不可变的只有 git commit 与 issue 号，其余全是可就地改写的文件；HCTL2 八条边的交付物全部带摘要或代次。这不是「我们更严」，是递的东西不同：别家递当前状态的副本，我们递对精确版本的引用。第二个总判断：别家的散文门集中在计划段、机械门集中在集成段；HCTL2 反过来——计划段只有一道门（采纳契约）但它是机械准入，集成段两道（合入、完成）机械且逐项绑定证据。19 家里没有一家这么投。
+
+| 编号 | 位置 | 发现 | 判据 | 建议 | 类别 |
+| --- | --- | --- | --- | --- | --- |
+| M-01（回填） | Project / Task → Run 两道门 | R1：批准与启动分两步不是我们独有（GSD、Kiro、spec-kit 都分），四家记了 baseline sha 但没长出预算、权限、Gate。「多一个来回」的担忧不成立：别家也是两次动作 | M4、M5 | **维持两道门**；不改约束。可选写法：连接约束加一句「同一次预览可同时批准并启动，账本仍记两个事实」——只是产品交互，不动边 | 维持（原「含义」降为可选写法） |
+| M-02（回填） | 承诺是不是独立阶段 | R1：19 家的任务列表全是可就地改写的文件，没有一家有不可变 Task Revision；用户在替我们要这条边——Kiro #5019「Treat Completed Task as Immutable」被以无跟进关闭，#6826 说 `tasks.md`「drifting from actual implementation state」。加上 task.md 的契约惰性（卡片自由、只有升格的才治理），Kanban 这一票不是过早，是别家缺的 | M8、M1 | **维持**；把 Kiro 两个 issue 写进 task.md 的「为什么存在」当反例证据（写法） | 维持 |
+| M-13（回填） | Workflow 作为独立专职系统 | R1：需要持久状态机被别家验证（spec-kit、Taskmaster 都长出了），需要外部引擎没有——是交付选型问题不是边界问题。R3：Dagu 与两个候选对照后维持。合起来：边（Run/Workflow 阶段）成立，引擎是借用等级的问题 | M8、I4 | **维持**边；引擎选型维持 Dagu。愿景「不重新实现通用工作流引擎」与之一致 | 维持 |
+| M-30 | Workflow Profile 的节点类型 | 别家有、我们没有的六条边里唯一要改写的：**等待外部机械事实的节点**。beads 把 gate 做成一等 issue 五型（human / timer / gh:run / gh:pr / bead），vibe-kanban 用 PR 事实驱动看板，Gas Town 用 merge proof 关单。HCTL2 的 Profile 只有 timer wait 与被动检查点；要在 Run 里「等 CI 绿」只能派一个 Participant 去查，把机械事实伪装成执行体提案 | M4、A6、I1 | 补一种 `executor = tool` 的 Obligation：由工具箱或适配器回读外部事实（CI 状态、PR 状态、外部系统状态）并产出 Evidence，**不占席位、不投票**；外部不可读时类型化拒绝（对照 beads 在 gh 不可用时放行的反例）。不新增对象，只扩 Obligation 的执行者种类。进裁决包 A 档：它回答「边界有没有遗漏」 | 含义 |
+| M-31 | `spec/run.md` Verdict `changes_requested` 的去向 | BMAD 用 `intent_gap` / `bad_spec` 让评审者按根因把回环分流到冻结块内外；HCTL2 有语义返工与替代执行两条路，但**谁判走哪条**没写 | M3 | Verdict 的 `changes_requested` 加一个「分歧落点」字段：施工侧（返工）还是契约侧（要改验收约束 → 替代执行或新 Task Revision）；由评审席位填、归约器据此走边。不新增对象。进裁决包 B 档 | 含义 |
+| M-32 | `spec/task.md` 验收约束的形状 | GSD `must_haves` 把验收项分成真值 / 工件 / 连线三类，核验分 exists → substantive → wired 三级，前两级代码判、后一级模型判；HCTL2 说了 Receipt 绑什么，没说一条验收项长什么样 | M2、I1 | Task Revision 的验收约束采用三类，每项声明校验等级；Receipt 逐项绑定时按等级记「谁判的」。不新增对象。进裁决包 B 档 | 含义 |
+| M-33 | Evidence 的生产者 | tdd-guard 的 `test.json` 由 reporter 在测试进程内写、不经模型转述；HCTL2 的 Evidence 没有生产者字段区分「工具箱直接产生」与「harness 事件转述」 | I1、M3 | Evidence 加生产者字段（工具箱 / 适配器 / harness 转述），验收策略可要求某类证据必须是前两者。不新增对象。进裁决包 B 档 | 含义 |
+| M-34 | `methodology-landscape-20260824.md` 横评两处校准 | R1：Gas Town 的「机械关单」只覆盖关单那一步，合并决策是 Claude 按清单手打 `git merge`，Go 合并管道在 HEAD 无调用方；Witness 是 restart-first 不是 reset-first | — | 研究层文末追加复核记录，两处校准；与 M-29 一并 | 写法（研究层追加） |
+| M-35 | 九条只有 HCTL2 有的边 | R1 逐条问「市场未收敛、我们先钉死？」：九条全部能在别家找到 prompt 写的同向碎片、自己长出的半成品或用户要它的事故记录；没有一条过早 | M8 | 维持；第一轴对「过早投票」的总结论：**没有** | 维持 |
+| M-36 | 「谁判完成」总账 | 15 家有任务完成这条边，14 家让模型在主路径或侧门自标；全场由代码判且输入不由施工模型写的只有四处，且都是「合并即完成」或「文件齐即完成」，没有一处按验收约束逐项校验 | M3 | 维持；这是 HCTL2 差异化的最硬证据，愿景层「为什么需要」可引用 | 维持 |
