@@ -8,7 +8,6 @@
 | --- | --- | --- | --- |
 | `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
 | `hctl2-tool` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能执行 Git/SCM 操作 |
-| `hctl2-protocol` | Rust 库，不是命令 | HCTL2 开发者 | 为进程间通信提供共享信封类型 |
 | `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |

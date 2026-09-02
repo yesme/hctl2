@@ -4,8 +4,9 @@
 
 P1 工作区只包含 HCTL2 自己需要实现的机械组件：
 
-- `hctl2-tool`：Git/SCM 与仓库机械操作；
-- `hctl2-protocol`：HCTL2 进程共享的传输 envelope。
+- `hctl2-tool`：Git/SCM 与仓库机械操作。
+
+当前没有真实的 HCTL2 进程间 API，因此不预建公共 protocol crate。`hctl2-control` 开工并形成多客户端边界时，再根据实际兼容与多语言需求调研 schema-first RPC；协议生成代码不能反向成为 Git 领域正文的事实源。
 
 Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 Herdr；本代码树不再实现或打包 `hctl2-agentd`。`hctl2-control`、公共 `hctl2` CLI 与 Workbench 将在 P2/P3 进入代码树。`hctl2-tool` 目前不是治理命令入口。
 
