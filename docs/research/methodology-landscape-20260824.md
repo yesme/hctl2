@@ -140,3 +140,15 @@ beads 整体（等 HCTL2 Task schema 定形后重估，届时做单向 issues.js
 | Gas Town | steveyegge/gastown | 649b832b (v1.2.1 后) | MIT | 2025-12 起 7770c，1.5 个人类 + 自家 agent 蜂群，17.7k★ |
 
 生态扫尾的搜索方法、重定向记录（PRPs-agentic-eng→Wirasm/prp、claude-flow→ruvnet/ruflo、steveyegge/beads→gastownhall/beads）与"判定为非方法论"的高星现象清单，见本轮工作流产物（星数为 2026-08-24 gh api 实测）。
+
+## 复核记录
+
+**2026-09-02 · 第八族补一个头部样本。** 「Harness 技能包当方法论」族新增 [mattpocock/skills](./methodology-mattpocock-skills-20260902.md)（Skills for Real Engineers，243k★，全部机制载体是 prompt 文本，规划状态寄生在 issue tracker 上）。族的定性不变：技能层给不出「证据高于自述」，只能当注入通道。这一次定性有了该仓库自家的事故记录作证：agent 替人回答了本该人答的 HITL 票；agent 往自己拥有的地图 Notes 里写下「本图允许执行」，再在后续会话读回来当许可；prototype 票由 agent 三选一后自己关票。三件事都是 prompt 当强制层的失守。
+
+完成判定权横评补一行，口径同第三节：
+
+| 工具 | 完成判定实况 | 与 HCTL2 立场 |
+| --- | --- | --- |
+| mattpocock/skills | 讨论完成靠人确认门（grilling）；规格与票的「就绪」标签由模型自贴（to-spec、to-tickets）；决策票人在回路，但落锤关票是 agent 的动作（wayfinder）；施工票的 skill 没有完成步骤，关单留给人（implement）；测试与评审证据全程模型自跑自报，评审还常常评到一个空 diff；唯一硬强制是防误操作的 git 钩子，不做治理 | 计划侧同向、施工侧违反、全线靠 prompt 没有机械边界；是「同向碎片散落、没有系统边界」这一总判最好的单一佐证 |
+
+一处与直觉相反的确认：该仓库没有 agent 自动领票的循环，领取、并行、调度全是人手工做的，属于「人当调度器」的会话多路复用姿态。它的完成判定画像比 Taskmaster、MetaGPT 好看一档，原因是把裁决外包给了人的自觉，而不是收进了系统边界。
