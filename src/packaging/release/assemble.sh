@@ -16,7 +16,7 @@ source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 
 usage() {
     printf '%s\n' \
-        'usage: assemble.sh --first-party DIR --dependencies ARCHIVE --sources ARCHIVE --output DIR'
+        'usage: assemble.sh --first-party DIR --agency-skills DIR --dependencies ARCHIVE --sources ARCHIVE --output DIR'
 }
 
 verify_archive_sidecar() {
@@ -147,12 +147,14 @@ create_archive() {
 }
 
 first_party=""
+agency_skills=""
 dependencies_archive=""
 sources_archive=""
 output_dir=""
 while (($# > 0)); do
     case "$1" in
         --first-party) first_party="${2:-}"; shift 2 ;;
+        --agency-skills) agency_skills="${2:-}"; shift 2 ;;
         --dependencies) dependencies_archive="${2:-}"; shift 2 ;;
         --sources) sources_archive="${2:-}"; shift 2 ;;
         --output) output_dir="${2:-}"; shift 2 ;;
@@ -161,10 +163,11 @@ while (($# > 0)); do
     esac
 done
 
-for required in "$first_party" "$dependencies_archive" "$sources_archive" "$output_dir"; do
+for required in "$first_party" "$agency_skills" "$dependencies_archive" "$sources_archive" "$output_dir"; do
     [[ -n "$required" ]] || { usage >&2; exit 2; }
 done
 [[ -d "$first_party" ]] || die "first-party export is missing: $first_party"
+[[ -d "$agency_skills" ]] || die "local Agency skills directory is missing: $agency_skills"
 [[ -f "$dependencies_archive" ]] || die "dependency archive is missing: $dependencies_archive"
 [[ -f "$sources_archive" ]] || die "source archive is missing: $sources_archive"
 mkdir -p "$output_dir"
@@ -224,6 +227,19 @@ done <"$first_party/binaries.tsv"
 [[ "$tool_seen" -eq 1 ]] || die "first-party export is incomplete"
 
 install -m 0644 "$first_party/binaries.tsv" "$payload_root/share/hctl2/first-party.tsv"
+
+# Local Agency reference implementation: ship its skill directory as data under
+# share/hctl2/agency/skills. The payload checksum manifest and the SBOM cover it
+# like every other payload file; harnesses load the skills from the seeded copy.
+skills_seen=0
+while IFS= read -r -d '' skill_file; do
+    relative="${skill_file#"$agency_skills"/}"
+    safe_relative_path "$relative" || die "unsafe skill path: $relative"
+    mkdir -p "$payload_root/share/hctl2/agency/skills/$(dirname -- "$relative")"
+    install -m 0644 "$skill_file" "$payload_root/share/hctl2/agency/skills/$relative"
+    skills_seen=$((skills_seen + 1))
+done < <(find "$agency_skills" -type f -print0 | sort -z)
+[[ "$skills_seen" -gt 0 ]] || die "local Agency skills directory is empty: $agency_skills"
 install -m 0755 "$SCRIPT_DIR/install.sh" "$package_root/install.sh"
 install -m 0644 "$SCRIPT_DIR/PACKAGE-README.md" "$package_root/README.md"
 
