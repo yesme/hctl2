@@ -1,0 +1,5 @@
+interface:
+  display_name: "HCTL2 塑形"
+  short_description: "把一个还说不清的目标审问成可拍板的决定、可指派的问题和可承诺的 Task；只提建议，不做动作"
+policy:
+  allow_implicit_invocation: false

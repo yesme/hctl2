@@ -13,6 +13,8 @@ Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 H
 
 `packaging/release` 由 Buck2 导出第一方二进制和 manifest，校验并消费外部运行包与源码包，确定性地生成三平台完整用户安装包、checksums、SPDX SBOM 与 release manifest。它只在子系统边界组装，不改写外部项目的原生构建方式。
 
+`agency` 是发布包自带的本地 Agency 参考实现：参与者供给方的第一方实现，目前只有 harness 原生格式的技能目录（`root//agency:skills`），可用性申报与 control 适配器待建；进程、PTY、终端会话与 TUI 由 Herdr 提供。设计见 [Participant 与 Terminal](../docs/design/participant.md#agency-与执行体)。
+
 Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二进制提供，并由 `hctl2-services` 直接启停；HCTL2 不实现 HTTP 服务器，也不要求最终用户安装 Python 或 Node.js。`testing/cinny` 记录这个 Chatroom 浏览器客户端的人工验收边界；Cinny 不是 HCTL2 Workbench，也不是第五个执行面依赖。
 
 面向人的 README、使用说明和其他产品文档使用中文；源码、配置和脚本使用英文；命令行 `--help` 内容使用英文。
