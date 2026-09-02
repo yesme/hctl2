@@ -20,4 +20,4 @@ Skill 分两种触发方式，沿用上游的约定：**人发起**的 Skill 是
 
 ## 进包
 
-`root//agency:skills` 把技能目录声明为 Buck2 文件组。复制进发布包的 Buck 目标尚未接入，与发布资产快照的处理一并决定。
+`root//agency:skills` 把技能目录声明为 Buck2 文件组；`root//packaging/release:complete` 把它作为输入交给 `assemble.sh --agency-skills`，安装到发布包的 `payload/share/hctl2/agency/skills/`，与其余 payload 文件一样进入 `PAYLOAD.sha256` 与 SBOM。`test-package.sh` 断言 Skill 与许可证文件在包内。

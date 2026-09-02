@@ -12,6 +12,6 @@ cd hctl2-<version>-<target>
 
 默认安装到 `~/.local`；可以用 `./install.sh --prefix /absolute/path` 指定其他绝对路径。安装器会先验证完整 payload，再以版本目录原子落盘，并只维护 `hctl2-tool` 与 `hctl2-services` 两个命令链接。Herdr 由 `hctl2-services` 管理，不作为 HCTL2 自建命令安装。
 
-`USAGE.md` 是完整中文使用说明；`SOURCES.md` 指向同版本、同目标平台的源码伴随包。`payload/share/hctl2/SBOM.spdx`、`first-party.tsv`、`dependencies.tsv` 与 `PAYLOAD.sha256` 可用于审计实际交付内容。
+`USAGE.md` 是完整中文使用说明；`SOURCES.md` 指向同版本、同目标平台的源码伴随包。`payload/share/hctl2/SBOM.spdx`、`first-party.tsv`、`dependencies.tsv` 与 `PAYLOAD.sha256` 可用于审计实际交付内容。`payload/share/hctl2/agency/skills/` 是本地 Agency 参考实现随包分发的技能目录（harness 原生格式，每个子目录一个 Skill，第三方来源的许可证随目录）。
 
 macOS 自动构建产物使用 ad-hoc 签名保证本地内容闭包可执行；面向公开下载的 Developer ID 签名与 notarization 必须在确定性组装完成后的发布环境执行。

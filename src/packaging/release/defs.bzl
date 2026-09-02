@@ -60,6 +60,7 @@ export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 bash "$source_root/packaging/release/assemble.sh" \
   --first-party "$source_root/first-party" \
+  --agency-skills "$source_root/agency/skills" \
   --dependencies "$source_root/dependencies/{package_id}.tar.gz" \
   --sources "$source_root/dependencies/{package_id}-sources.tar.gz" \
   --output "$output_root"
@@ -100,6 +101,7 @@ def complete_release(name: str):
             "build-metadata.sh": "root//packaging/dependencies:metadata",
             "dependencies": "root//packaging/dependencies:package",
             "first-party": ":first-party",
+            "agency": "root//agency:skills",
             "packaging/dependencies": "root//packaging/dependencies:test-support",
             "packaging/release/PACKAGE-README.md": "PACKAGE-README.md",
             "packaging/release/assemble.sh": "assemble.sh",

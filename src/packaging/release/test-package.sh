@@ -56,6 +56,12 @@ release_root="$test_root/$PACKAGE_ID"
 [[ -f "$release_root/payload/share/hctl2/first-party.tsv" ]] || \
     die "release is missing the first-party manifest"
 [[ -f "$release_root/payload/share/hctl2/SBOM.spdx" ]] || die "release is missing its SBOM"
+[[ -f "$release_root/payload/share/hctl2/agency/skills/hctl2-shaping/SKILL.md" ]] || \
+    die "release is missing the local Agency skills"
+[[ -f "$release_root/payload/share/hctl2/agency/skills/hctl2-shaping/LICENSE-mattpocock-skills" ]] || \
+    die "release is missing the skill license notice"
+grep -F "  share/hctl2/agency/skills/hctl2-shaping/SKILL.md" "$release_root/payload/share/hctl2/PAYLOAD.sha256" >/dev/null || \
+    die "payload manifest does not cover the local Agency skills"
 grep -F 'SPDXVersion: SPDX-2.3' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 grep -F 'Creator: Tool: syft-1.51.1' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 grep -F "PackageName: $PACKAGE_ID" "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
