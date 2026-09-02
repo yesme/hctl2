@@ -112,3 +112,26 @@ test_suite(
         ":report_prohibition_density",
     ],
 )
+
+# Four-axis review: mechanical inventories over the doc tree. Extraction and
+# counting only; judgement stays with the reviewer. Not part of any check profile.
+filegroup(
+    name = "inventory_scripts",
+    srcs = glob(["inventory_*.pl"]),
+)
+
+genrule(
+    name = "inventory",
+    srcs = {
+        "scripts": ":inventory_scripts",
+        "tree": "repo//:docs_tree",
+    },
+    out = "inventory",
+    cmd = " && ".join([
+        "mkdir -p $OUT",
+        "perl $SRCDIR/scripts/inventory_concepts.pl $SRCDIR/tree > $OUT/concepts.md",
+        "perl $SRCDIR/scripts/inventory_edges.pl $SRCDIR/tree > $OUT/edges.md",
+        "perl $SRCDIR/scripts/inventory_enforcement.pl $SRCDIR/tree > $OUT/enforcement.md",
+        "perl $SRCDIR/scripts/inventory_components.pl $SRCDIR/tree > $OUT/components.md",
+    ]),
+)
