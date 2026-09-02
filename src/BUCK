@@ -11,7 +11,6 @@ export_file(
 filegroup(
     name = "clippy",
     srcs = {
-        "hctl2-protocol": "root//crates/hctl2-protocol:clippy",
         "hctl2-tool": "root//apps/hctl2-tool:clippy",
     },
     labels = CI_FULL,
