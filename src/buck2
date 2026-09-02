@@ -3,7 +3,8 @@ set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 buck2_bin=$project_root/build/tools/buck2-bin
-cache_control=$project_root/build/tools/buck2-cache
+process_compose=$project_root/build/tools/process-compose-bin
+cache_config=$project_root/build/reapi/local-cache.yaml
 
 if [ "$(uname -s)" = Darwin ]; then
     xcode_version=$(xcodebuild -version | awk 'NR == 1 { print $2 }')
@@ -45,5 +46,39 @@ case "${HCTL2_BUCK2_CACHE:-local}" in
         ;;
 esac
 
-"$cache_control" start
+cache_root=${HCTL2_BUCK2_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi}
+cache_data_dir=$cache_root/data
+cache_state_dir=$cache_root/state
+cache_socket=$cache_state_dir/process-compose.sock
+process_compose_log=$cache_state_dir/process-compose.log
+bazel_remote_log=$cache_state_dir/bazel-remote.log
+process_compose_config_home=$cache_state_dir/config
+mkdir -p "$cache_data_dir" "$process_compose_config_home/process-compose"
+
+if ! XDG_CONFIG_HOME=$process_compose_config_home \
+    "$process_compose" --use-uds --unix-socket "$cache_socket" \
+    process list >/dev/null 2>&1 && \
+    ! curl --fail --silent --max-time 1 http://127.0.0.1:19090/status \
+        >/dev/null 2>&1; then
+    HCTL2_BAZEL_REMOTE_BIN=$project_root/build/tools/bazel-remote-bin \
+    HCTL2_BUCK2_CACHE_DATA_DIR=$cache_data_dir \
+    HCTL2_BUCK2_CACHE_HTTP_ADDRESS=127.0.0.1:19090 \
+    HCTL2_BUCK2_CACHE_HTTP_PORT=19090 \
+    HCTL2_BUCK2_CACHE_GRPC_ADDRESS=127.0.0.1:19092 \
+    HCTL2_BUCK2_CACHE_LOG=$bazel_remote_log \
+    HCTL2_BUCK2_CACHE_MAX_GIB=${HCTL2_BUCK2_CACHE_MAX_GIB:-10} \
+    XDG_CONFIG_HOME=$process_compose_config_home \
+        "$process_compose" \
+        --use-uds \
+        --unix-socket "$cache_socket" \
+        --log-file "$process_compose_log" \
+        up \
+        --config "$cache_config" \
+        --disable-dotenv \
+        --detached ||
+        XDG_CONFIG_HOME=$process_compose_config_home \
+            "$process_compose" --use-uds --unix-socket "$cache_socket" \
+            process list >/dev/null
+fi
+
 exec "$buck2_bin" "$@"

@@ -57,8 +57,10 @@ release_root="$test_root/$PACKAGE_ID"
     die "release is missing the first-party manifest"
 [[ -f "$release_root/payload/share/hctl2/SBOM.spdx" ]] || die "release is missing its SBOM"
 grep -F 'SPDXVersion: SPDX-2.3' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
-grep -F 'PackageName: herdr' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
-grep -F 'PackageName: tuwunel' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'Creator: Tool: syft-1.51.1' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F "PackageName: $PACKAGE_ID" "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'FileName: libexec/hctl2/herdr' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'FileName: libexec/hctl2/tuwunel' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 "$release_root/payload/libexec/hctl2/herdr" --version | grep -F 'herdr ' >/dev/null
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"

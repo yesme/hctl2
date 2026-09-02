@@ -12,6 +12,91 @@ macos_dependency_is_system() {
     esac
 }
 
+stage_macos_dependency_closure() {
+    local destination_dir="$1"
+    local staged_dependencies="$2"
+    shift 2
+    local -a root_consumers=("$@")
+    local before
+    local after
+    local consumer
+    local dependency
+    local dependency_name
+    local destination
+    local pass
+    local source
+
+    mkdir -p "$destination_dir"
+    for pass in 1 2 3 4 5 6 7 8; do
+        before="$(find "$destination_dir" -type f | wc -l | tr -d ' ')"
+        while IFS= read -r consumer; do
+            while IFS= read -r dependency; do
+                macos_dependency_is_system "$dependency" && continue
+                [[ "$dependency" == /* ]] || \
+                    die "unsupported Mach-O dependency in $consumer: $dependency"
+
+                dependency_name="$(basename -- "$dependency")"
+                source="$dependency"
+                if [[ -n "$staged_dependencies" && \
+                    -f "$staged_dependencies/$dependency_name" ]]; then
+                    source="$staged_dependencies/$dependency_name"
+                fi
+                [[ -f "$source" ]] || \
+                    die "Mach-O dependency is missing from declared inputs: $dependency"
+                destination="$destination_dir/$dependency_name"
+                if [[ -f "$destination" ]]; then
+                    [[ "$(hash_file "$destination")" == "$(hash_file "$source")" ]] || \
+                        die "different Mach-O dependencies share the filename $dependency_name"
+                else
+                    install -m 0755 "$source" "$destination"
+                fi
+            done < <(macos_dependency_paths "$consumer")
+        done < <(
+            printf '%s\n' "${root_consumers[@]}"
+            find "$destination_dir" -type f -print | LC_ALL=C sort
+        )
+        after="$(find "$destination_dir" -type f | wc -l | tr -d ' ')"
+        [[ "$before" == "$after" ]] && break
+    done
+    [[ "$pass" -lt 8 || "$before" == "$after" ]] || \
+        die "Mach-O dependency closure did not converge"
+}
+
+relocate_macos_consumer() {
+    local consumer="$1"
+    local consumer_kind="$2"
+    local dependency_dir="$3"
+    local dependency
+    local dependency_name
+    local replacement
+
+    while IFS= read -r dependency; do
+        macos_dependency_is_system "$dependency" && continue
+        [[ "$dependency" == /* ]] || \
+            die "unsupported Mach-O dependency in $consumer: $dependency"
+        dependency_name="$(basename -- "$dependency")"
+        [[ -f "$dependency_dir/$dependency_name" ]] || \
+            die "bundled Mach-O dependency is missing: $dependency_name"
+
+        if [[ "$consumer_kind" == "binary" ]]; then
+            replacement="@loader_path/../../lib/hctl2/vendor/$dependency_name"
+        else
+            replacement="@loader_path/$dependency_name"
+        fi
+        install_name_tool -change "$dependency" "$replacement" "$consumer"
+    done < <(macos_dependency_paths "$consumer")
+}
+
+assert_macos_dependencies_relocatable() {
+    local consumer="$1"
+    local dependency
+
+    while IFS= read -r dependency; do
+        macos_dependency_is_system "$dependency" || \
+            die "unbundled Mach-O dependency remains in $consumer: $dependency"
+    done < <(macos_dependency_paths "$consumer")
+}
+
 verify_macos_binary_arch() {
     local name="$1"
     local binary="$2"
