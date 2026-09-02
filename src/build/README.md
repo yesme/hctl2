@@ -13,7 +13,7 @@ dotslash --version
 
 如果该目录尚未加入 `PATH`，由开发者按所用 shell 的正常方式加入一次。安装器不修改 shell 配置；它按 `dotslash.env` 选择宿主平台官方包并校验 SHA-256。此后 Buck2、BTD、jq、Actionlint、ShellCheck 和 cache server 均由各自 DotSlash 清单准备，不再分别安装。更新 Action 提交或 DotSlash 版本属于构建供应链变更，应连同三平台验证一起审阅。
 
-随后在 `src/` 内直接使用 `./buck2` 入口。启动器会按 `src/build/tools/bazel-remote-bin` 中固定的官方二进制和 SHA-256，自动启动只监听 loopback 的标准 REAPI action cache；在 macOS 上还会把 Xcode version/build 与 SDK version 注入 Buck 配置，使宿主工具链升级参与 action key。缓存数据默认位于 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi`，最多 10 GiB，所有本机 hctl2 workplaces 共用；它只缓存 Buck 声明的 CAS/action results，不共享 daemon 或 `buck-out`。可用 `HCTL2_BUCK2_CACHE=0` 临时禁用，或用 `HCTL2_BUCK2_CACHE_DIR`、`HCTL2_BUCK2_CACHE_MAX_GIB` 调整位置和上限。
+随后在 `src/` 内直接使用 `./buck2` 入口。启动器通过固定版本的 Process Compose 和声明式 [`reapi/local-cache.yaml`](./reapi/local-cache.yaml) 启动只监听 loopback 的标准 REAPI action cache；进程的后台化、PID、健康检查、重启、日志和关闭全部由 Process Compose 管理，cache server 仍是 `src/build/tools/bazel-remote-bin` 固定的官方 `bazel-remote`。在 macOS 上，启动器还会把 Xcode version/build 与 SDK version 注入 Buck 配置，使宿主工具链升级参与 action key。缓存数据默认位于 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi`，最多 10 GiB，所有本机 hctl2 worktree 共用；它只缓存 Buck 声明的 CAS/action results，不共享 daemon 或 `buck-out`。可用 `HCTL2_BUCK2_CACHE=0` 临时禁用，或用 `HCTL2_BUCK2_CACHE_DIR`、`HCTL2_BUCK2_CACHE_MAX_GIB` 调整位置和上限。
 
 `HCTL2_BUCK2_CACHE` 有三种模式：默认 `local` 使用上述本机缓存，`0` 关闭 REAPI 并进入离线构建，`remote` 使用外部缓存且不启动本机服务。外部缓存采用 Buck2 原生 `.buckconfig.local` 覆盖：
 
@@ -63,38 +63,22 @@ Rust 版本、三个目标平台的官方归档地址与 SHA-256 都在 `toolcha
 
 CI 在 Linux x86_64 导出 base/diff 两份 Buck 图，用 BTD 保守选择带 `ci:fast` 或 `ci:platform` 的受影响 target，再分别到 Linux x86_64、macOS x86_64 和 macOS arm64 原生 runner 显式验证对应 Buck platform。BTD 或导图失败时回退到上面的全量入口。Cargo 只在 Rust/Cargo 输入变化及定期基线中保留 `fmt` 与 locked metadata 检查；编译、测试和 Clippy 不再平行执行第二遍。外部依赖与完整离线安装生命周期位于 Release workflow，不用第一方绿色检查代替发行健康状态。
 
-同一套选择和验证入口不依赖 GitHub Actions。任意受信 CI 或开发机都可对两个提交运行当前宿主平台的检查：
-
-```bash
-src/build/ci/verify-affected --base <base-commit> --head <head-commit>
-```
-
-该命令在分离头工作树中验证精确的 `head`，不会把工作区未提交内容混入结果；目标选择失败时，自动扩大为全量第一方目标。GitHub Actions 直接调用它的下层 `affected-targets`，再把同一组目标送到三个原生平台执行器。其他 CI 只需执行这个入口，并把结果作为 GitHub 提交状态报回现有分支保护规则。仓库不绑定执行器厂商，也不把三平台证据折叠成单平台。
+同一套目标选择不依赖 GitHub Actions。`src/build/ci/affected-targets` 对两个提交生成 Buck 图并调用 BTD；GitHub Actions 把输出的同一组目标送到三个原生平台执行器，选择失败时扩大为全量第一方目标。其他 CI 可以复用该入口和同一组 Buck targets，并把结果作为 GitHub 提交状态报回现有分支保护规则。仓库不绑定执行器厂商，也不把三平台证据折叠成单平台。
 
 PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、新 head。旧 head 是新 head 的祖先，且旧 head 上对应 workflow 已成功时，本轮只把旧 head 到 GitHub 当前 test merge 的变化交给路径分类和 BTD；这样仍覆盖最新 base 的兼容性。没有受影响 target 或发行输入时，当前 head 的 required gate 仍成功出现，但不启动三平台重构建。旧结果缺失、API 查询失败、rebase 或强推造成历史改写时，回退到 base 到当前 test merge 的完整 PR diff。strict branch protection 继续生效；更新落后分支时应使用 GitHub 的 merge 形式 `Update branch`，保留可验证的提交链。
 
-## 可选 Git 钩子
+## 本机 cache 运维
 
-钩子默认不启用，也不会在克隆、提交或合并后暗中启动任务。需要时在任一工作树执行：
-
-```bash
-src/build/tools/git-hooks install
-src/build/tools/git-hooks status
-```
-
-`pre-commit` 只运行 Git 原生的暂存区空白字符错误检查，通常为亚秒级；`pre-push` 读取 Git 提供的待推送引用，并对精确提交运行当前宿主平台的 Buck 检查。`core.hooksPath` 使用仓库相对路径，因此共享同一份 Git 元数据的各工作树都会从自己的 `src/build/hooks` 执行相同版本。移除方法为 `src/build/tools/git-hooks uninstall`；若用户已有其他 `core.hooksPath`，安装程序会拒绝覆盖，用户应先整合两套钩子。
-
-## 缓存基准
-
-用 Buck 自己的事件日志比较冷构建、写入缓存和删除隔离 `buck-out` 后的复用：
+`./buck2` 会按需启动 Process Compose 项目；如果同一 loopback endpoint 已经有旧版或用户自行管理的 `bazel-remote`，则直接复用而不争夺端口。平时不需要单独管理。需要检查日志或主动停止由 Process Compose 启动的实例时，直接使用它的原生命令，不再经过仓库自建的同义 CLI：
 
 ```bash
-build/tools/buck2-cache benchmark -- \
-  test root//build/tests:rust_toolchain_test \
-  --target-platforms root//build/platforms:linux_x86_64_gnu
+cache_root="${HCTL2_BUCK2_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi}"
+XDG_CONFIG_HOME="$cache_root/state/config" build/tools/process-compose-bin --use-uds --unix-socket "$cache_root/state/process-compose.sock" process list
+XDG_CONFIG_HOME="$cache_root/state/config" build/tools/process-compose-bin --use-uds --unix-socket "$cache_root/state/process-compose.sock" process logs buck2-reapi-cache
+XDG_CONFIG_HOME="$cache_root/state/config" build/tools/process-compose-bin --use-uds --unix-socket "$cache_root/state/process-compose.sock" down
 ```
 
-命令对三轮使用相同隔离目录，每轮之间执行 Buck 原生 `clean`，最后用 `buck2 log summary` 与 `buck2 log what-uploaded` 报告总耗时、缓存命中的动作数、HTTP/REAPI 传输量和上传量。它不删除或伪造 CAS，也不以恢复 `buck-out` 代替动作缓存。只有远端缓存通过真实网络复用时仍稳定快于冷构建，才值得把 `remote` 模式接入受信执行器。
+之前的冷构建、写入缓存和复用测量属于一次性选型证据，结果保留在 memo；仓库不长期维护一套 benchmark 生命周期框架。未来接入真正的远端 cache 时，再用 Buck 事件日志针对真实网络测量。
 
 根目录文档在 Buck cell 之外，由 `.gitattributes` 的 `hctl-doc` 属性分为 design、spec、delivery、research、memo 和 memo-review。CI 将非 memo profile 映射到 `root//build/docs:profile-*` test suite；普通 memo 不启动文档 runner，`.memo/review` 只运行基线检查。语气、架构重复和术语必要性仍由 human/LLM 按对应层审阅，不伪装成确定性 lint。
 

@@ -1,0 +1,29 @@
+version: "0.5"
+
+processes:
+  buck2-reapi-cache:
+    description: Local HCTL2 Buck2 REAPI cache
+    command: >-
+      "${HCTL2_BAZEL_REMOTE_BIN}"
+      --dir "${HCTL2_BUCK2_CACHE_DATA_DIR}"
+      --max_size "${HCTL2_BUCK2_CACHE_MAX_GIB}"
+      --http_address "${HCTL2_BUCK2_CACHE_HTTP_ADDRESS}"
+      --grpc_address "${HCTL2_BUCK2_CACHE_GRPC_ADDRESS}"
+    log_location: "${HCTL2_BUCK2_CACHE_LOG}"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: /status
+        port: "${HCTL2_BUCK2_CACHE_HTTP_PORT}"
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 1
+      success_threshold: 1
+      failure_threshold: 30
+    shutdown:
+      signal: 15
+      timeout_seconds: 10

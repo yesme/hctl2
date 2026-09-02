@@ -86,42 +86,6 @@ validate_archive_layout() {
     done < <(tar -tzf "$archive")
 }
 
-spdx_license_for() {
-    case "$1" in
-        hctl2 | hctl2-tool | herdr | tuwunel) printf 'Apache-2.0\n' ;;
-        vikunja | cinny) printf 'AGPL-3.0-only\n' ;;
-        dagu) printf 'GPL-3.0-only\n' ;;
-        static-web-server) printf '(Apache-2.0 OR MIT)\n' ;;
-        *) printf 'NOASSERTION\n' ;;
-    esac
-}
-
-spdx_id_for() {
-    printf '%s' "$1" | tr -c 'A-Za-z0-9.-' '-'
-}
-
-write_spdx_package() {
-    local output="$1"
-    local component="$2"
-    local version="$3"
-    local checksum="$4"
-    local spdx_id
-
-    spdx_id="$(spdx_id_for "$component")"
-    {
-        printf '\nPackageName: %s\n' "$component"
-        printf 'SPDXID: SPDXRef-Package-%s\n' "$spdx_id"
-        printf 'PackageVersion: %s\n' "$version"
-        printf 'PackageDownloadLocation: NOASSERTION\n'
-        printf 'FilesAnalyzed: false\n'
-        [[ -z "$checksum" ]] || printf 'PackageChecksum: SHA256: %s\n' "$checksum"
-        printf 'PackageLicenseConcluded: NOASSERTION\n'
-        printf 'PackageLicenseDeclared: %s\n' "$(spdx_license_for "$component")"
-        printf 'PackageCopyrightText: NOASSERTION\n'
-        printf 'Relationship: SPDXRef-Package-hctl2 DEPENDS_ON SPDXRef-Package-%s\n' "$spdx_id"
-    } >>"$output"
-}
-
 format_spdx_time() {
     local epoch="$1"
 
@@ -132,50 +96,26 @@ format_spdx_time() {
     fi
 }
 
-write_spdx_sbom() {
+generate_spdx_sbom() {
     local output="$1"
-    local package_id="$2"
-    local version="$3"
-    local created="$4"
-    local dependencies="$5"
-    local first_party="$6"
-    local component
-    local component_version
-    local commit
-    local build_input_sha256
-    local source_sha256
-    local binary_sha256
-    local target
+    local payload="$2"
+    local package_id="$3"
+    local version="$4"
+    local created="$5"
+    local raw_output="$output.raw"
 
-    {
-        printf 'SPDXVersion: SPDX-2.3\n'
-        printf 'DataLicense: CC0-1.0\n'
-        printf 'SPDXID: SPDXRef-DOCUMENT\n'
-        printf 'DocumentName: %s\n' "$package_id"
-        printf 'DocumentNamespace: https://github.com/yesme/hctl2/releases/%s\n' "$package_id"
-        printf 'Creator: Tool: hctl2-release-assembler\n'
-        printf 'Created: %s\n' "$created"
-        printf '\nPackageName: hctl2\n'
-        printf 'SPDXID: SPDXRef-Package-hctl2\n'
-        printf 'PackageVersion: %s\n' "$version"
-        printf 'PackageDownloadLocation: NOASSERTION\n'
-        printf 'FilesAnalyzed: false\n'
-        printf 'PackageLicenseConcluded: NOASSERTION\n'
-        printf 'PackageLicenseDeclared: Apache-2.0\n'
-        printf 'PackageCopyrightText: NOASSERTION\n'
-        printf 'Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-Package-hctl2\n'
-    } >"$output"
+    : "${HCTL2_SYFT:?Buck must declare the Syft tool input}"
+    [[ -x "$HCTL2_SYFT" ]] || die "Syft tool input is not executable: $HCTL2_SYFT"
+    SYFT_FILE_METADATA_SELECTION=all "$HCTL2_SYFT" scan "dir:$payload" \
+        --source-name "$package_id" \
+        --source-version "$version" \
+        --quiet \
+        --output "spdx-tag-value=$raw_output"
 
-    while IFS=$'\t' read -r component component_version commit build_input_sha256 \
-        source_sha256 binary_sha256; do
-        [[ "$component" == "component" ]] && continue
-        write_spdx_package "$output" "$component" "$component_version" "$binary_sha256"
-    done <"$dependencies"
-
-    while IFS=$'\t' read -r component component_version target binary_sha256; do
-        [[ "$component" == "component" ]] && continue
-        write_spdx_package "$output" "$component" "$component_version" "$binary_sha256"
-    done <"$first_party"
+    sed \
+        -e "s#^DocumentNamespace: .*#DocumentNamespace: https://github.com/yesme/hctl2/releases/$package_id#" \
+        -e "s/^Created: .*/Created: $created/" \
+        "$raw_output" >"$output"
 }
 
 create_archive() {
@@ -291,13 +231,14 @@ install -m 0644 "$SCRIPT_DIR/PACKAGE-README.md" "$package_root/README.md"
 source_date_epoch="$SOURCE_DATE_EPOCH"
 [[ "$source_date_epoch" =~ ^[0-9]+$ ]] || die "SOURCE_DATE_EPOCH must be an integer"
 sbom_name="$package_id.spdx"
-write_spdx_sbom \
-    "$payload_root/share/hctl2/SBOM.spdx" \
+sbom_staging="$build_dir/$sbom_name"
+generate_spdx_sbom \
+    "$sbom_staging" \
+    "$payload_root" \
     "$package_id" \
     "$hctl2_version" \
-    "$(format_spdx_time "$source_date_epoch")" \
-    "$payload_root/share/hctl2/dependencies.tsv" \
-    "$payload_root/share/hctl2/first-party.tsv"
+    "$(format_spdx_time "$source_date_epoch")"
+install -m 0644 "$sbom_staging" "$payload_root/share/hctl2/SBOM.spdx"
 
 write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share
 write_checksum_manifest "$package_root" MANIFEST.sha256 \

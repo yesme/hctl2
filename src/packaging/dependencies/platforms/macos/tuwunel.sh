@@ -23,38 +23,8 @@ verify_macos_toolchain_identity() {
 
 stage_tuwunel_macos_dependency_closure() {
     local destination_dir="$P0_ROOT/lib/tuwunel"
-    local consumer
-    local dependency
-    local destination
-    local before
-    local after
-    local pass
 
-    mkdir -p "$destination_dir"
-    for pass in 1 2 3 4 5 6 7 8; do
-        before="$(find "$destination_dir" -type f | wc -l | tr -d ' ')"
-        while IFS= read -r consumer; do
-            while IFS= read -r dependency; do
-                macos_dependency_is_system "$dependency" && continue
-                [[ "$dependency" == /* && -f "$dependency" ]] || \
-                    die "unsupported Tuwunel Mach-O dependency: $dependency"
-                destination="$destination_dir/$(basename -- "$dependency")"
-                if [[ -f "$destination" ]]; then
-                    [[ "$(hash_file "$destination")" == "$(hash_file "$dependency")" ]] || \
-                        die "different Tuwunel dependencies share the filename $(basename -- "$dependency")"
-                else
-                    install -m 0755 "$dependency" "$destination"
-                fi
-            done < <(macos_dependency_paths "$consumer")
-        done < <(
-            printf '%s\n' "$P0_BIN_DIR/tuwunel"
-            find "$destination_dir" -type f -print | LC_ALL=C sort
-        )
-        after="$(find "$destination_dir" -type f | wc -l | tr -d ' ')"
-        [[ "$before" == "$after" ]] && break
-    done
-    [[ "$pass" -lt 8 || "$before" == "$after" ]] || \
-        die "Tuwunel Mach-O dependency closure did not converge"
+    stage_macos_dependency_closure "$destination_dir" "" "$P0_BIN_DIR/tuwunel"
 }
 
 macos_libclang_path() {
