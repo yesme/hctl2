@@ -1,8 +1,15 @@
+# Buck2 project root is the repository root: docs, LICENSE and .memo are ordinary
+# inputs of the `repo` cell; the product workspace stays the `root` cell at src/
+# so every existing root//... label is unchanged.
 [cells]
-root = .
-prelude = prelude
-toolchains = build/toolchains
-none = build/empty_cell
+repo = .
+root = src
+prelude = src/prelude
+toolchains = src/build/toolchains
+none = src/build/empty_cell
+
+[project]
+ignore = .git
 
 [cell_aliases]
 config = prelude
@@ -31,5 +38,6 @@ execution_platforms = root//build/execution:platforms
 
 [parser]
 target_platform_detector_spec = target:root//...->prelude//platforms:default \
+  target:repo//...->prelude//platforms:default \
   target:prelude//...->prelude//platforms:default \
   target:toolchains//...->prelude//platforms:default

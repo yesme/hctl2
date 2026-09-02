@@ -40,6 +40,6 @@
 ## 不采用与升级边界
 
 - 不采用 `supertd`：它是同仓库的便利总入口，但上游没有发布对应官方二进制；为它自行编译会增加 Rust 供应链和维护面，且 `btd` 已覆盖本库需要的判定功能。
-- 不用 BTD 选择根目录文档：Buck cell 位于 `src/`，文档类别继续由 Git attribute 判定。
+- 不用 BTD 选择根目录文档：Buck cell 位于 `src/`，文档类别继续由 Git attribute 判定。（2026-09-02 复核：项目根已挪到仓库根，文档成为 `repo//:docs_tree` 的输入；文档 profile 的选择仍由 `.gitattributes` 判定，未改用 BTD。见[Buck2 项目根](./buck2-project-root.md)。）
 - 不按 `depth` 截断反向依赖：当前图很小，截断会用正确性换时间而没有实际收益。
 - 升级日期 tag 时必须复核导图参数、Git parser、buckconfig 行为、官方 DotSlash digest，并重跑本库的 selector 失败回退约束。

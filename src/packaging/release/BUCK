@@ -7,18 +7,6 @@ export_file(
     src = "export-first-party.sh",
 )
 
-export_file(
-    name = "license",
-    src = "assets/LICENSE",
-    visibility = ["PUBLIC"],
-)
-
-export_file(
-    name = "usage",
-    src = "assets/USAGE.md",
-    visibility = ["PUBLIC"],
-)
-
 first_party_release(name = "first-party")
 
 complete_release(name = "complete")

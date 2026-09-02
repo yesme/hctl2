@@ -14,15 +14,8 @@ use File::Find;
 
 my ($root, $allowlist) = @ARGV;
 die "usage: check_links.pl <repo_tree_root> [allowlist]\n" unless defined $root;
-unless (-e "$root/README.md") {
-    if (-x "build/docs/materialize_repo_tree.sh") {
-        print STDERR "note: $root missing; auto-running build/docs/materialize_repo_tree.sh\n";
-        system("build/docs/materialize_repo_tree.sh") == 0
-            or die "materialize_repo_tree.sh failed\n";
-    }
-}
 unless (-d $root && -e "$root/README.md") {
-    die "repo tree not found at $root — run src/build/docs/materialize_repo_tree.sh first\n";
+    die "doc tree not found at $root — pass the repo//:docs_tree output\n";
 }
 
 my %allow;
@@ -64,8 +57,13 @@ my %src_manifest;
 my $src_manifest_loaded = 0;
 sub src_tracked {
     my ($abs) = @_;
-    # $abs is "$root/src/..."; the src tree itself is not copied, only its
-    # tracked-file manifest at $root/src.manifest.
+    # $abs is "$root/src/...". The doc tree (repo//:docs_tree) does not contain
+    # the product workspace, so a link into src/ is checked against the working
+    # tree: Buck2 runs this test with the project root (repository root) as cwd,
+    # and the src/-relative path resolves directly. An optional
+    # $root/src.manifest (one tracked path per line) takes precedence.
+    my ($rel) = $abs =~ m{^\Q$root\E/(.+)$};
+    return 0 unless defined $rel;
     unless ($src_manifest_loaded) {
         if (open my $mf, '<', "$root/src.manifest") {
             while (my $l = <$mf>) { chomp $l; $src_manifest{$l} = 1; }
@@ -73,8 +71,16 @@ sub src_tracked {
         }
         $src_manifest_loaded = 1;
     }
-    my ($rel) = $abs =~ m{^\Q$root\E/(.+)$};
-    return defined $rel && exists $src_manifest{$rel};
+    return 1 if exists $src_manifest{$rel};
+    return 0 if %src_manifest;
+    # Buck2 runs the test with the test target's cell root (src/) as cwd, while
+    # $root is a buck-out path under the project root; try both vantage points.
+    my @candidates = ($rel, "../$rel");
+    if ($root =~ m{^(.*?)/?buck-out/}) {
+        my $project_root = $1 eq '' ? '.' : $1;
+        push @candidates, "$project_root/$rel";
+    }
+    return (grep { -e $_ } @candidates) ? 1 : 0;
 }
 
 sub anchors_of {

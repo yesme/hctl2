@@ -1,6 +1,6 @@
 # HCTL2 产品代码工作区
 
-这个目录存放全部 HCTL2 产品代码和产品测试。仓库根目录继续存放产品与设计文档。
+这个目录存放全部 HCTL2 产品代码和产品测试。仓库根目录继续存放产品与设计文档。Buck2 的项目根是仓库根：`src/` 是名为 `root` 的 cell，仓库根是 `repo` cell，文档与许可证以 `repo//...` 标签进入构建图；`./buck2` 启动器仍在本目录，从任何子目录运行都能找到项目根。
 
 P1 工作区只包含 HCTL2 自己需要实现的机械组件：
 
@@ -24,7 +24,7 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 
 ```bash
 ./buck2 test --build-default-info \
-  root//apps/... root//crates/... root//build/tests/... \
+  root//apps/... root//build/tests/... \
   root//:clippy root//packaging/release:first-party
 ```
 

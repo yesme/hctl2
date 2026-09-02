@@ -11,3 +11,4 @@
 | [`syft.md`](./syft.md) | Syft | 采用官方三平台二进制生成 SPDX 2.3；Buck 固定版本、摘要、输入和输出 |
 | [`process-compose.md`](./process-compose.md) | Process Compose | 采用官方三平台二进制管理本机 REAPI cache 生命周期；不再自建 PID/锁/健康检查 |
 | [`macdylibbundler.md`](./macdylibbundler.md) | macdylibbundler | 不采用；布局与冲突语义不符，且无上游发行制品；继续只在产物外层调用 Apple 原生工具 |
+| [`buck2-project-root.md`](./buck2-project-root.md) | Buck2 项目根与 cell 布局 | 项目根挪到仓库根，`src/` 仍为 `root` cell；文档与许可证以 `repo//...` 直接进图，发行快照与 materialize 桥退役 |

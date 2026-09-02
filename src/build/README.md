@@ -27,7 +27,7 @@ HCTL2_BUCK2_CACHE=remote ./buck2 test root//build/tests:rust_toolchain_test
 
 `.buckconfig.local` 已排除版本控制；示例使用 Buck2 官方的 `action_cache_address`、`cas_address`、TLS CA 和 mTLS 客户端证书，不在启动器参数或动作图中复制端点、凭据或另一份指纹。当前 Buck2 有一个[公开问题](https://github.com/facebook/buck2/issues/1445)：`http_headers` 可能进入事件日志，因此 HCTL2 模板不接受持有者令牌（bearer token）；只有在固定版本确认修复后才能改判。仓库当前没有持久远端端点，所以 GitHub 托管的 PR 执行器默认不配置凭据，并继续显式关闭缓存。将来只有受信开发机、`main` 或标签执行器取得写证书后才启用。来自分叉仓库的 PR 不接收写凭据，个人日用 Mac 也不注册为公开仓库的自动执行器。
 
-`src/.buckroot` 与 `src/.buckconfig` 定义完整的产品 workspace，仓库根不放置 Buck 配置或 target。发行所需的许可证和用户文档以显式快照放在 `src/packaging/release/assets/`，CI 机械校验它们与仓库文档事实源一致。Buck2、REAPI cache server 和匹配的 Prelude 都按清单自动下载并校验；第一方 Rust 构建及显式的 Tuwunel 原生构建目标使用锁定的 Rust 官方工具链。这些都是开发/CI 构建工具，不进入 HCTL2 最终用户运行包。
+仓库根的 `.buckroot` 与 `.buckconfig` 定义 Buck2 项目：仓库根是 `repo` cell（根文档、`docs/`、`.memo/` 与 `LICENSE`），`src/` 是名为 `root` 的产品 workspace cell，所有 `root//...` 标签不变。发行所需的许可证与用户文档由 `repo//:LICENSE`、`repo//:usage` 直接从仓库文档事实源导出，不再保存快照副本；决定过程见[Buck2 项目根调研](../../docs/research/build-tools/buck2-project-root.md)。Buck2、REAPI cache server 和匹配的 Prelude 都按清单自动下载并校验；第一方 Rust 构建及显式的 Tuwunel 原生构建目标使用锁定的 Rust 官方工具链。这些都是开发/CI 构建工具，不进入 HCTL2 最终用户运行包。
 
 验证构建基础设施：
 
@@ -43,7 +43,7 @@ HCTL2_BUCK2_CACHE=remote ./buck2 test root//build/tests:rust_toolchain_test
 
 ```bash
 ./buck2 test --build-default-info \
-  root//apps/... root//crates/... root//build/tests/... \
+  root//apps/... root//build/tests/... \
   root//:clippy root//packaging/release:first-party
 ```
 
@@ -80,7 +80,7 @@ XDG_CONFIG_HOME="$cache_root/state/config" build/tools/process-compose-bin --use
 
 之前的冷构建、写入缓存和复用测量属于一次性选型证据，结果保留在 memo；仓库不长期维护一套 benchmark 生命周期框架。未来接入真正的远端 cache 时，再用 Buck 事件日志针对真实网络测量。
 
-根目录文档在 Buck cell 之外，由 `.gitattributes` 的 `hctl-doc` 属性分为 design、spec、delivery、research、memo 和 memo-review。CI 将非 memo profile 映射到 `root//build/docs:profile-*` test suite；普通 memo 不启动文档 runner，`.memo/review` 只运行基线检查。语气、架构重复和术语必要性仍由 human/LLM 按对应层审阅，不伪装成确定性 lint。
+根目录文档是 `repo` cell 的普通输入（`repo//:docs_tree`），由 `.gitattributes` 的 `hctl-doc` 属性分为 design、spec、delivery、research、memo 和 memo-review。CI 将非 memo profile 映射到 `root//build/docs:profile-*` test suite；普通 memo 不启动文档 runner，`.memo/review` 只运行基线检查。语气、架构重复和术语必要性仍由 human/LLM 按对应层审阅，不伪装成确定性 lint。
 
 当前没有采购或部署远端执行（Remote Execution），也没有持久远端缓存。开发机由回环地址上的 `bazel-remote` 提供标准 REAPI CAS 与动作缓存，供多个工作树复用第一方构建结果，也可复用显式请求的 Tuwunel 原生重建。CI 不保存 `buck-out` 或本地 REAPI 数据：日常 macOS 发布从 HCTL2 的 GitHub Release 下载约 33–36 MiB、按 SHA-256 固定的 Tuwunel 原生包，不再恢复 0.5–1 GiB 缓存或执行 24 分钟以上的源码编译。未来接入持久 REAPI 时，只配置 `.buckconfig.local`、mTLS 证书路径和 `HCTL2_BUCK2_CACHE=remote`，不改目标定义。
 
