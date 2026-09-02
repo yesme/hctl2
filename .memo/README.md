@@ -46,3 +46,4 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
+| `design/design-review-20260902/00-brief.md` | 设计文档四轴评审的执行方式：范围、分派、先手工还是先抽 Skill（原则在 `notes/review-four-axes-20260902.md`） |
