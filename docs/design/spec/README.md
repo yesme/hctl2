@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.15.6<br>
+> 状态：规范性 · 草案 v0.16.0<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -21,9 +21,9 @@
 
 ## 核心产品词
 
-Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Agent、Terminal、ChangeSet、Evidence、Workbench。
+Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Terminal、ChangeSet、Evidence、Workbench。
 
-设计正文还可以使用五个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）和 Agency（Terminal 场景的派出方）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 专指第四模块；描述 AI 协作者时使用 Participant，需要区分人与模型时加“模型”限定词。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+设计正文还可以使用六个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant，写 human actor。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
 
 另有六个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
 
@@ -83,6 +83,6 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 - [project.md](./project.md)：Project 模块约束 + Chat 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块约束 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块约束 + Dagu / BPMN 对齐
-- [agent.md](./agent.md)：Agent 模块约束 + PTY / Herdr / ACP 对齐
+- [participant.md](./participant.md)：Participant 模块约束 + Skill 申报 + PTY / Herdr / ACP 对齐
 - [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复

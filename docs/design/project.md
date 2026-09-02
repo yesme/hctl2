@@ -1,6 +1,6 @@
 # Project 与 Chat Room
 
-> 状态：规范性（架构层） · 草案 v0.15.6<br>
+> 状态：规范性（架构层） · 草案 v0.16.0<br>
 > 日期：2026-09-02
 
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
@@ -79,6 +79,6 @@ HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Contex
 以下只列所有权方向；字段、事务与故障语义由[连接约束](./spec/connections.md)统一定义。
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
-- Project 可以通过 [Agent](./agent.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
-- Task、Run 和 Agent 模块的状态以投影或引用回到 Chat Room；显式 human 动作经对应模块的公共命令入口请求变化。
+- Project 可以通过 [Participant](./participant.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
+- Task、Run 和 Participant 模块的状态以投影或引用回到 Chat Room；显式 human 动作经对应模块的公共命令入口请求变化。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流。

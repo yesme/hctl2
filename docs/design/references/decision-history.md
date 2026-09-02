@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.15.6 · 2026-09-02<br>
+> 状态：Informative · 对应草案 v0.16.0 · 2026-09-02<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前约束以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -142,7 +142,7 @@ v0.9.1 之前，四模块操作账本整体放在 Repo Instance SQLite 里（第
 
 ## 14. chat server 定夺 Tuwunel（v0.11.1）
 
-同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#34-小修订台账)。
+同轮拍板 chat server 产品方向为 Tuwunel（接口更 API 化、与 Synapse 参考实现兼容性更强；单二进制预编译包、运维压力低；AppService 注册程序化），Continuwuity 记录在案备选；精确发布版本、存储后端与 build features 仍由 P0 验证后固定。该轮同时完成的词形收敛（驼峰名、`*Intent` 命令名与状态值拼写）见[小修订台账](#35-小修订台账)。
 
 ### v0.11.1 词形收敛
 
@@ -184,7 +184,7 @@ Agent 模块的观测约束原本回答的是“信号如何仲裁”（优先�
 - **观测流完整性**：观测上报通道失败时，只能显式标记该执行的观测截断并终结事件流；有缺口的事件流不得冒充完整历史。
 - **派生谱系保留**：harness 内部再派生的子执行体事件必须携带稳定的派生谱系引用，不摊平进主执行流。
 
-同轮补一句能力边界：semantic resume 可以用自有观测留痕重建续跑输入，重建物按投影处理，不进入权威记录——恢复能力不再依赖厂商保留会话文件。术语取“终局”而非“终端”，避免与 Terminal 通道词族冲突。权威文本在 [Agent 模块约束](../spec/agent.md)的「运行时与观测」与「终端通道」。本条按 §16 的方法论教训单独立项提交并当轮补记决策。
+同轮补一句能力边界：semantic resume 可以用自有观测留痕重建续跑输入，重建物按投影处理，不进入权威记录——恢复能力不再依赖厂商保留会话文件。术语取“终局”而非“终端”，避免与 Terminal 通道词族冲突。权威文本在 [Agent 模块约束](../spec/participant.md)的「运行时与观测」与「终端通道」。本条按 §16 的方法论教训单独立项提交并当轮补记决策。
 
 ## 18. workflow engine 从 Conductor 改为 Dagu（v0.12.1）
 
@@ -204,7 +204,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 - **自建聊天桥接退役（永久，不只是第一阶段后置）**：非 Matrix 平台（飞书、Slack、Discord 等）经 homeserver 侧的 Matrix 桥接生态在 content 层接入。依据是三条法的直接推论——聊天里不跑治理、记录不是命令，所以桥接纯属 content 层，而 Matrix 生态已有成熟桥接体系；HCTL 只保留 Chat 端口绑定中对桥接用户的身份映射策略。原“非 Matrix 完整聊天桥接”工作线与对应未决问题删除。
 - **施工图结晶归位 Chat Room**：施工图（“干什么的计划”）从 Room 的塑形讨论中长出，不是任务流转的结晶；4×3 矩阵与统一律相应改判，并明确结晶归属以事实为准绳、不为对称硬填。施工图的对象与写入者仍归 Run 模块约束——结晶归属不随对象所有权走。
-- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接约束的失败表）；裁决与去向见[小修订台账](#34-小修订台账)与[核销表](#v0122-清扫)。
+- **概念清扫**：Room Event 除名、Task Operational State 降级为操作投影、执行身份无法证明的终态统一为“丢失”（处理规则唯一定义在连接约束的失败表）；裁决与去向见[小修订台账](#35-小修订台账)与[核销表](#v0122-清扫)。
 - **content 客户端与治理客户端在 README 分离**：架构图改为 content 客户端（任意 Matrix 客户端、任务后端原生界面）直连 content 系统、治理客户端连命令服务；“任意 Matrix 客户端开箱即用、桥接交给 Matrix 生态”上升为正面能力表述。
 - **P2 双手模式立为正面形态**：Workbench（P3）之前，治理动作走公共 CLI、场景内容走各 content 原生界面；mention 触发与 Trigger Preview 是治理客户端的能力——聊天文字不是命令，也不是能赋予 human provenance 的认证入口。交付范围表按 P2/P3 出门条件重切。
 - **措辞修正**：产品原生核心从“以仓库为边界的控制面”改为“随用户走、按仓库划分语义范围的控制面”，与系统约束的用户级 command service 一致（§16 已修系统层，本次补愿景层残句）。
@@ -238,7 +238,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 正确道路只有一条：**三条底线**在治理面成立且不可声明关闭——工具不是人（治理命令只有两类入口：经认证的场景客户端会话——Workbench、CLI 或按公开约束适配的第三方客户端——以及施工图走完后 reducer 提交的同一「完成 Task」命令；Harness 的产出只经 Result Proposal 通道进来，不是入口——只验入口，不判断客户端是被人还是子进程启动）；合入钥匙不进工具（HCTL 不向 Harness 交付集成与外部写凭据，合入目标 ref 的权威只在「合入 ChangeSet」命令与 Integration Receipt，Harness 绕过命令直接改写目标 ref 只回读为 expected target head 不匹配的 drift）；隔离工作树（每个 ChangeSet 独立 worktree 与单一 Write Lease）。在此之内 Harness 是普通的 Git 用户：可读 Git common-dir 与 refs，可 fetch、比对目标分支、在本 ChangeSet 分支提交——linked worktree 本就共享 common-dir，refs/对象层面原来也藏不住。**外层笼子是加固**：OS 沙箱、凭据网关代用范围、网络与工具接口白名单由 Worker Profile 声明、随 Execution Spec 冻结；该轮的实现安排由 agentd 按声明施加并记录为运行时事实，后来由 §29 取代。未声明不拦启动、也不得记录为已生效；已声明项是该次执行的要求，宿主施加不了则不激活并列出缺项——不声明即可启动，所以不是入场券回潮，只是不让下游把 Execution Spec 冻结的范围悄悄放宽。Docker 不作为第一阶段桌面部署或沙箱形态。威胁模型据此诚实收窄：未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域，约束只承诺三条底线在治理面成立。
 
-本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应约束句在 [Agent 模块约束](../spec/agent.md)的写入约束与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
+本条撤销 §16 的“用户在场证明”与“OS 沙箱入场券”两项，并把 CT-AGENT 里按沙箱写的一串负例改成三条底线的正面陈述；对应约束句在 [Agent 模块约束](../spec/participant.md)的写入约束与运行时两节、[系统边界](../spec/system.md)的命令与跨服务正确性、外部权威副作用与安全边界三节，以及交付验证 B2/CT-AGENT。
 
 ### v0.13.0 收窄
 
@@ -278,7 +278,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 ## 27. 运行时 provider：Terminal 场景同构化（v0.13.2）
 
-2026-08-29 的四轮裁决先把 Terminal 从第一方特例改为运行时 provider 受控端口，由 agentd 拉齐治理、tmux 作为内置原语、Herdr 作为候选；随后明确 provider 不含治理权威，栅栏回显只是能力声明，并把边界从 mux 上移到能够派出执行体、持有现场和报告恢复等级的执行服务，中文对照定为“派出方”。这条演进保持“供应端与 Participant 身份正交”，其实现安排后来由 §29 的 Herdr 方案取代；现行落点见 [Agent 设计正文](../agent.md#agency-与-herdr)、[Agent 约束](../spec/agent.md#运行时与观测)和[交付文档 P0 第 2 项](../delivery.md#开工前限时验证)。细节见本仓库 Git 历史。
+2026-08-29 的四轮裁决先把 Terminal 从第一方特例改为运行时 provider 受控端口，由 agentd 拉齐治理、tmux 作为内置原语、Herdr 作为候选；随后明确 provider 不含治理权威，栅栏回显只是能力声明，并把边界从 mux 上移到能够派出执行体、持有现场和报告恢复等级的执行服务，中文对照定为“派出方”。这条演进保持“供应端与 Participant 身份正交”，其实现安排后来由 §29 的 Herdr 方案取代；现行落点见 [Agent 设计正文](../participant.md#agency-与执行体)、[Agent 约束](../spec/participant.md#运行时与观测)和[交付文档 P0 第 2 项](../delivery.md#开工前限时验证)。细节见本仓库 Git 历史。
 
 ## 28. 中间方案：Agency 定名并拆分 agentd（v0.14.0；已由 §29 取代）
 
@@ -291,7 +291,7 @@ Dagu 也不是天然的 external-worker engine：普通 step 会自行执行。�
 
 同一轮明确了四个默认二进制都不能成为产品承诺。HCTL 不增加一个跨模块的通用 shim 服务，而由每个模块自己的受控端口和薄 adapter 隔离实现：Chat Room 使用 Matrix 协议，Tuwunel 可换成其他 Matrix homeserver；Kanban 通过 task backend adapter 接 Vikunja、GitHub 或 Linear；Workflow 以 HCTL 的 Workflow Revision 中间表示接 Dagu 或其他引擎；Terminal 通过 Agency adapter 接 Herdr 或未来官方远程 Agent。Workbench 只依赖 HCTL 场景约束，供应端原生 UI 只是可选 content 客户端或诊断工具。飞书、Slack、Discord 等聊天平台的互通属于 Matrix homeserver/bridge 生态，HCTL 只维护桥接身份映射，不逐个平台实现聊天 adapter；这与 HCTL 自己需要实现 GitHub/Linear task adapter 和未来远程 Agency adapter 是两类责任。
 
-此前对 tmux、Zellij、shpool、Termio、tty7、cmux、Pilotty 与 Herdr 的源码、发布物、资源占用和行为验证继续作为选型证据、容量基线与回归用例，不再代表产品同时维护多个终端实现。当前决定见 [Agent 设计正文](../agent.md#agency-与-herdr)、[Agent 约束](../spec/agent.md#运行时与观测)、[三面架构](../architecture.md#避免供应商锁定)和[交付文档](../delivery.md#开工前限时验证)。
+此前对 tmux、Zellij、shpool、Termio、tty7、cmux、Pilotty 与 Herdr 的源码、发布物、资源占用和行为验证继续作为选型证据、容量基线与回归用例，不再代表产品同时维护多个终端实现。当前决定见 [Agent 设计正文](../participant.md#agency-与执行体)、[Agent 约束](../spec/participant.md#运行时与观测)、[三面架构](../architecture.md#避免供应商锁定)和[交付文档](../delivery.md#开工前限时验证)。
 
 ## 30. Workbench 桌面壳改选 Tauri 2（v0.14.2）
 
@@ -330,7 +330,15 @@ hctl2-tool 收束为**现场执行者**五项：worktree/ChangeSet 物化与隔�
 
 同轮显式拒绝停车位 #1：Herdr 无统一 writer gate 不再作为缺口立项。用户绕过 HCTL 直改任何 provider（原生终端输入、看板拖卡、聊天直发）是同一类外部事实，一律按对账与能力条件句降级处理，不建隔离机制；约束自 v0.15.0 起已如实覆盖，无需改动。
 
-## 34. 小修订台账
+## 34. Participant 立为第四模块，Agent 模块名退役；Skill 归 Agency 申报（v0.16.0）
+
+2026-09-02 所有者拍板。起因是对 mattpocock/skills 的调研（见[研究条目](../../research/methodology-mattpocock-skills-20260902.md)）逼出的一个问题：Skill 放哪里。追问下去发现，Skill、Harness、终端、执行这些概念散在三个模块的约束里，而把它们串起来的「参与者」只是一份横切正文，不拥有任何对象。
+
+三条裁决。第一，Participant 取代 Agent 成为第四个模块，Terminal 仍是它的场景，也是执行体暴露给 Workbench 的 TUI 接口（participant.tui）。第四个模块从一开始就是「干活的那一方」，只是名字取错了；Agent 退为编码代理的泛称。第二，人不是 Participant：人不干活，人拍板，人以 human actor 出现在命令、名册和裁决里。第三，Skill 的装载、版本与指纹申报是 Agency 的事，HCTL 只记录申报值并标注能否核验（本地参考实现 known、远程 unknown）；发布包自带一份本地 Agency 参考实现，装了 HCTL 就有参与者可派。
+
+Agency 定为参与者的供给方（provider），不是工厂：挑人是 control 在 Trigger Preview 里按策略做的选择，Agency 只报名册与条款并交付执行体端点；派工与观测直接发给执行体，Agency 不在派工路径上。Herdr 从「第一阶段的 Agency」下移为本地参考实现的运行时组件。愿景里「越靠后越是可替换的执行资源」改为「越靠后，它的执行面越是可替换的资源」：参与者身份不随进程丢失。
+
+## 35. 小修订台账
 
 本文件只为重要设计变更单列章节，例如核心边界、实现选型或权威归属发生变化。词汇、词形与概念清理类修订各记一行，细节放在约束层清理表，不再单独成章：
 
@@ -344,6 +352,6 @@ hctl2-tool 收束为**现场执行者**五项：worktree/ChangeSet 物化与隔�
 | v0.15.5 | 2026-09-02 | 文风与分层复审的结构批：文档纪律独立成篇、根 README 定为首页并瘦身、设计正文越层细节改引用、代次家族总表立于系统边界、五份设计正文补文档头、写作指南按十条裁决修订（愿景层词汇、T1 两档、契约/约束/清单分工、S1 判例累积）；不改约束语义 | [裁决材料](../../../.memo/design/doc-style-sweep-20260831/20-verdict-packet.md) |
 | v0.15.6 | 2026-09-02 | 全库语言收口：按已裁决清单改写生硬复述、统一术语与大小写、补全契约测试谓词并拆分超长句；不改约束语义 | [语言 PR 任务书](../../../.memo/design/doc-style-sweep-20260831/21-language-brief.md) |
 
-## 35. 当前设计
+## 36. 当前设计
 
-这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Agent](../agent.md)，再查看[连接约束](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。
+这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Participant](../participant.md)，再查看[连接约束](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

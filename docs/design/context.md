@@ -1,9 +1,9 @@
 # Context 与可解释上下文
 
-> 状态：规范性（横切设计正文）· 草案 v0.15.6<br>
+> 状态：规范性（横切设计正文）· 草案 v0.16.0<br>
 > 日期：2026-08-31<br>
 > 定位：本文回答“每次执行看到了什么、为什么是这些、漏了什么”。它是横切设计正文，不是第五个模块。<br>
-> 根上下文清单与消费上下文包的约束在 [Project 模块约束](./spec/project.md)，随执行规格冻结与交付核验在[连接约束](./spec/connections.md)与 [Agent 模块约束](./spec/agent.md)。<br>
+> 根上下文清单与消费上下文包的约束在 [Project 模块约束](./spec/project.md)，随执行规格冻结与交付核验在[连接约束](./spec/connections.md)与 [Participant 模块约束](./spec/participant.md)。<br>
 > 约束级细节的底稿与逐条裁决来源见 `.memo/design/context-design-20260819.md`；生态四族地图与快省准横评见 `docs/research/context-landscape-20260824.md`；交付三档、Run 内接力与任务评论线来源的讨论记录见 `.memo/design/context-feeding-20260826.md`。
 
 ## 为什么存在
@@ -106,7 +106,7 @@ Trigger Preview 在提交前展示本次调用的上下文构成与 token 估算
 ## 模块交接与约束落点
 
 - 根上下文清单与消费上下文包的对象、组装顺序、投喂档、指针可达范围、评论线来源、保留与丢弃约束：[Project 模块约束](./spec/project.md#context-memo-artifact)；
-- 施工清单冻结根上下文清单、执行规格冻结消费上下文包、交付核验：[连接约束](./spec/connections.md)与 [Agent 模块约束](./spec/agent.md)；
+- 施工清单冻结根上下文清单、执行规格冻结消费上下文包、交付核验：[连接约束](./spec/connections.md)与 [Participant 模块约束](./spec/participant.md)；
 - 同一 Run 内席位包的接力内容：[Run 模块约束](./spec/run.md#request重试与-gate)；
 - 契约版本冻结来源引用、评论线快照冻结：[Task 模块约束](./spec/task.md#契约与来源)。
 
