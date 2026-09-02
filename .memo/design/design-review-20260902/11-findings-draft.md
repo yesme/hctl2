@@ -247,3 +247,17 @@
 ---
 
 **1.4 通读完成。** 24 个文件全部读过（词汇表按行、来时路按当前设计一节与标题）。待 R1/R3 证据的条目：M-01、M-02、M-13、I-05（I5 部分）、I-07。
+
+## R3 部件矩阵回填（第三轴 b）
+
+来源：[`docs/research/component-matrix-20260902.md`](../../../docs/research/component-matrix-20260902.md)（40 行，全部钉版本）。
+
+| 编号 | 位置 | 发现 | 判据 | 建议 | 类别 |
+| --- | --- | --- | --- | --- | --- |
+| I-05（回填） | `spec/system.md` 表 D 十三项通用机制 | R3 逐项对照 durable execution 引擎（Restate、DBOS、Temporal）后结论：没有一项能整块换成二进制或 SDK——Restate 服务端是 BSL 1.1、DBOS 无 Rust、Temporal 要独立服务加数据库。语义部分维持自研，但六项应由「可能手写」改为「拿 SDK 自己开发」：JCS 摘要（`serde_jcs`）、备份快照（SQLite Online Backup API）、全文索引（FTS5）、现场锁（`fd-lock`）、密钥（`keyring`）、provider 客户端从 schema 生成 | I4、I5 | 交付文档「技术基线」加一句：这六项的 SDK 选定；契约测试为 JCS 钉 RFC 8785 附录向量。进裁决包 B 档（部件替换） | 含义 |
+| I-09 | `src/build/tools/reindeer`（构建工具） | Reindeer 启动器用 Cargo 从源码编译，上游每个 release 带八个官方二进制；这是「业界有二进制、我们在自己编」 | I4 | 换成 DotSlash 官方二进制，删启动器，去掉对宿主 Cargo 的隐含依赖。进裁决包 B 档 | 含义 |
+| I-10 | `src/packaging/dependencies/hctl2-services` 与 `runtime.sh` 系列（约 675 行 shell） | 用 PID 文件、`kill -0`、`sleep` 轮询自己写了一个进程监督器，而开发侧已经拍板用 Process Compose 管本机 cache。R3 标为方向问题：control 经 Process Compose API 托管四个执行面服务，代价是用户包多 15–16 MB | I4、I5 | 候选：P2 首次消费前做限时验证再定。**R3 建议所有者拍板**，故放 B 档但请务必看这一行 | 含义 |
+| I-11 | `hctl2-control` 的六个 provider 适配客户端 | 预防性发现：Dagu 钉定 commit 带 OpenAPI 3.0.0、Herdr 可导出 schema、GitHub 有 `octocrab`、Linear 有 `graphql_client`、Matrix 有 `ruma`；Vikunja 是 Swagger 2.0 要先转 3.0。不该手写 HTTP 客户端 | I4 | 交付文档技术基线写明「provider 客户端从 schema 生成或用类型库，不手写」。进裁决包 B 档 | 含义 |
+| M-13（回填） | `run.md` §模块拥有什么 | 部件侧：R3 把 Dagu 与另两个候选对照后维持，且认为控制面自己写状态机不如借引擎。边界侧（Workflow 作为独立阶段是否别家都有）仍待 R1 | M8、I4 | 部件侧维持；边界侧待 R1 后合并结论 | 含义（待 R1） |
+| I-07（回填） | 五种复用决策用语 | R3 按四级尺子给 40 行分类：二进制 17、SDK 12、借鉴想法 4、自研 7——SDK 是第二大类，而现有用语没有这一级 | I4 | 维持 I-07 的建议，证据更强 | 含义 |
+| I-12 | `hctl2-control` 十八条、`hctl2-tool` 五项（R3 第二节） | 「自研是不是胶水」逐条问过：hctl2-tool 五项全是 git 命令的胶水；hctl2-control 十八条里九条胶水、两条薄自研、一条可改借用、一条待定、五条非胶水——五条非胶水正好落在愿景层「最小内核」的五行上。也就是说自研的部分与愿景说「换掉一切后必须留下的」一致 | I5、A5 | 维持；这是第三轴给愿景层「最小内核」表的一次证明 | 维持 |
