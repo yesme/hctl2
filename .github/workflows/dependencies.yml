@@ -25,11 +25,6 @@ jobs:
           \( -name '*.sh' -o -name hctl2-services \) -print0
           | xargs -0 bash -n
 
-      - name: Check release document snapshots
-        run: |
-          cmp LICENSE src/packaging/release/assets/LICENSE
-          cmp docs/usage.md src/packaging/release/assets/USAGE.md
-
       - name: Check service command contract
         run: |
           src/packaging/dependencies/hctl2-services --help | grep -F 'Usage:'

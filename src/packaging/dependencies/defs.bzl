@@ -362,8 +362,8 @@ def _package_sources(package_sources: dict) -> dict:
     sources.update({
         "build-metadata.sh": ":metadata",
         "product/Cargo.toml": "root//:Cargo.toml",
-        "release/LICENSE": "root//packaging/release:license",
-        "release/USAGE.md": "root//packaging/release:usage",
+        "release/LICENSE": "repo//:LICENSE",
+        "release/USAGE.md": "repo//:usage",
     })
     for component in _COMPONENT_PREFIXES:
         target_name = _component_target_name(component)

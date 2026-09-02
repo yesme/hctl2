@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+# This launcher lives in src/ (the `root` cell); the Buck2 project root is the
+# repository root, which the binary finds via .buckroot. $project_root here only
+# locates the pinned tools next to the launcher.
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 buck2_bin=$project_root/build/tools/buck2-bin
 process_compose=$project_root/build/tools/process-compose-bin
@@ -30,9 +33,9 @@ case "${HCTL2_BUCK2_CACHE:-local}" in
         BUCK_OFFLINE_BUILD=true exec "$buck2_bin" "$@"
         ;;
     remote)
-        if [ ! -f "$project_root/.buckconfig.local" ]; then
+        if [ ! -f "$project_root/../.buckconfig.local" ]; then
             printf '%s\n' \
-                'error: HCTL2_BUCK2_CACHE=remote requires src/.buckconfig.local' >&2
+                'error: HCTL2_BUCK2_CACHE=remote requires .buckconfig.local at the repository root' >&2
             exit 1
         fi
         exec "$buck2_bin" "$@"

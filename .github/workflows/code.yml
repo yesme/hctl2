@@ -113,7 +113,7 @@ jobs:
           # src/build/docs/ is doc-lint tooling: it triggers the docs checks,
           # not the three-platform build matrix.
           if printf '%s\n' "$changed" | grep -E \
-            '^(src/(apps|build|crates|third-party)/|src/[^/]+$|\.github/workflows/code\.yml$)' \
+            '^(src/(agency|apps|build|crates|third-party)/|src/[^/]+$|\.buckconfig$|\.buckroot$|BUCK$|\.github/workflows/code\.yml$)' \
             | grep -qv '^src/build/docs/'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
@@ -128,7 +128,7 @@ jobs:
           fi
 
           if printf '%s\n' "$changed" | grep -qE \
-            '^(\.gitattributes$|\.github/workflows/code\.yml$|src/build/docs/)'; then
+            '^(\.gitattributes$|\.github/workflows/code\.yml$|BUCK$|src/build/docs/)'; then
             doc_targets="root//build/docs:profile-all"
           else
             doc_targets=$(printf '%s\n' "$changed" \
@@ -169,11 +169,6 @@ jobs:
             src/build/tools/install-dotslash \
             src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
-
-      - name: Check release document snapshots
-        run: |
-          cmp LICENSE src/packaging/release/assets/LICENSE
-          cmp docs/usage.md src/packaging/release/assets/USAGE.md
 
       - name: Check service command contract
         run: |
@@ -346,9 +341,6 @@ jobs:
         run: |
           . build/tools/dotslash.env
           test "$(dotslash --version)" = "DotSlash ${DOTSLASH_VERSION#v}"
-
-      - name: Materialize doc lint inputs
-        run: build/docs/materialize_repo_tree.sh
 
       - name: Run doc checks
         env:

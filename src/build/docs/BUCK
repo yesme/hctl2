@@ -1,17 +1,11 @@
-# Doc lint checks for the repo-wide documentation overhaul (S1).
-# The linted files live at the repo root, outside the Buck2 cell (src/).
-# materialize_repo_tree.sh copies them into repo_tree/ (gitignored); tests below
-# consume only that copy so Buck2 caching tracks the actual doc contents.
-# Run `src/build/docs/materialize_repo_tree.sh` before `buck2 test`.
+# Doc lint checks. The linted documents live in the `repo` cell (repository
+# root): repo//:docs_tree is the root-level documents plus docs/ and .memo/.
+# Links from documents into src/ are checked against the working tree by the
+# link checker itself (the tests run with the project root as cwd).
 
 load("//build/rules:ci.bzl", "CI_DOCS")
 
 oncall("hctl2")
-
-filegroup(
-    name = "repo_tree",
-    srcs = glob(["repo_tree/**"]),
-)
 
 filegroup(
     name = "configs",
@@ -21,45 +15,45 @@ filegroup(
 sh_test(
     name = "check_links",
     test = "check_links.pl",
-    args = ["build/docs/repo_tree", "build/docs/links.allowlist"],
+    args = ["$(location repo//:docs_tree)", "$(location :configs)/links.allowlist"],
     labels = CI_DOCS,
-    resources = [":repo_tree", ":configs"],
+    resources = ["repo//:docs_tree", ":configs"],
 )
 
 sh_test(
     name = "check_version_stamps",
     test = "check_version_stamps.sh",
-    args = ["build/docs/repo_tree", "build/docs/version_stamps.allowlist"],
+    args = ["$(location repo//:docs_tree)", "$(location :configs)/version_stamps.allowlist"],
     labels = CI_DOCS,
-    resources = [":repo_tree", ":configs"],
+    resources = ["repo//:docs_tree", ":configs"],
 )
 
 sh_test(
     name = "check_dead_names",
     test = "check_dead_names.sh",
     args = [
-        "build/docs/repo_tree",
-        "build/docs/dead_names.txt",
-        "build/docs/dead_names.allowlist",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/dead_names.txt",
+        "$(location :configs)/dead_names.allowlist",
     ],
     labels = CI_DOCS,
-    resources = [":repo_tree", ":configs"],
+    resources = ["repo//:docs_tree", ":configs"],
 )
 
 sh_test(
     name = "check_memo_review_baseline",
     test = "check_memo_review_baseline.sh",
-    args = ["build/docs/repo_tree", "build/docs/memo_review_baseline.allowlist"],
+    args = ["$(location repo//:docs_tree)", "$(location :configs)/memo_review_baseline.allowlist"],
     labels = CI_DOCS,
-    resources = [":repo_tree", ":configs"],
+    resources = ["repo//:docs_tree", ":configs"],
 )
 
 sh_test(
     name = "report_prohibition_density",
     test = "report_prohibition_density.sh",
-    args = ["build/docs/repo_tree"],
+    args = ["$(location repo//:docs_tree)"],
     labels = CI_DOCS,
-    resources = [":repo_tree"],
+    resources = ["repo//:docs_tree"],
 )
 
 test_suite(

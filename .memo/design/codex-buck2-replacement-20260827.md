@@ -236,3 +236,7 @@ Apple Silicon 本机最终实测：`tuwunel` action 输出 77 MiB；Vikunja、Da
 最终提交的干净 detached worktree 验收在 4 秒内完成 Tuwunel 请求，Buck 汇总 83% cache hit（5 cached、1 local）；event log 中 `tuwunel` 的 `RemoteCommand.cache_hit` 为 `true`，materialized output 为 80,880,970 字节。CI 使用同一条 slurp 后的 jq 断言，避免对 JSON event stream 逐条输出布尔值而误判退出码。
 
 CI 不再保存第一方 `buck-out` 或 DotSlash 下载目录。前者实测恢复 300–570 MiB 后仍有 0% Buck action hit，而三平台第一方冷构建只需约半分钟到两分钟。仅 macOS 外部构建保留标准 REAPI 数据目录：外层 key 包含 runner image 与昂贵 action 的受控输入；精确 key 恢复后必须从 Buck event log 机械确认 `tuwunel` 是 remote cache hit，否则 workflow 失败。Actionlint 与 ShellCheck 使用摘要锁定的官方单文件发行物，版本字段由 Buck test 校验 Cargo 与 Starlark 事实一致。
+
+## 再修正（2026-09-02）：项目根挪到仓库根，`src/` 仍为 `root` cell
+
+所有者裁决。上一节把「构建根放在 `src/`」当作边界，代价是 `docs/usage.md` 与 `LICENSE` 要在 `src/packaging/release/assets/` 保存字节级快照并由 CI `cmp` 校验，文档检查也要靠 `materialize_repo_tree.sh` 把根目录文档复制进 cell。对照业界（Bazel/Buck2 单体仓库的构建根就是仓库根；rules_pkg、GoReleaser 都把文档当打包输入而不提交副本），这两座桥是把兜底当主路。改法：`.buckconfig`/`.buckroot` 移到仓库根，`[cells]` 里 `repo = .`、`root = src`，所有 `root//...` 标签不变；发行文档改吃 `repo//:usage`、`repo//:LICENSE`，文档检查改吃 `repo//:docs_tree`，快照目录与 materialize 脚本删除。研究条目见 `docs/research/build-tools/buck2-project-root.md`。

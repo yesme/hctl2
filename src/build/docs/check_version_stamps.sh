@@ -14,13 +14,7 @@ tree="${1:?usage: check_version_stamps.sh <repo_tree_root> [allowlist]}"
 allowlist="${2:-}"
 
 if [ ! -e "$tree/README.md" ]; then
-    if [ -x "build/docs/materialize_repo_tree.sh" ]; then
-        echo "note: $tree missing; auto-running build/docs/materialize_repo_tree.sh" >&2
-        build/docs/materialize_repo_tree.sh >&2
-    fi
-fi
-if [ ! -e "$tree/README.md" ]; then
-    echo "repo tree not found at $tree — run src/build/docs/materialize_repo_tree.sh first" >&2
+    echo "repo tree not found at $tree — pass the repo//:docs_tree output" >&2
     exit 1
 fi
 

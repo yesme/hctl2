@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check_dead_names.sh — retired names must not appear in current docs.
-# Scope: all *.md in the materialized tree EXCEPT
+# Scope: all *.md in the doc tree (repo//:docs_tree) EXCEPT
 #   docs/design/references/decision-history.md, .memo/**, docs/research/**
 # (historical records and evidence may legally mention retired names).
 # ASCII names match on token boundaries ([^A-Za-z0-9_]); CJK names match as

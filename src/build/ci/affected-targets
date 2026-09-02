@@ -136,13 +136,15 @@ generate_graph() {
 generate_graph "$base_tree" "$graph_dir/base.jsonl"
 generate_graph "$head_tree" "$graph_dir/head.jsonl"
 (
-    cd "$head_tree/src"
-    git diff --relative --name-status "$base_commit...$head_commit" -- . \
+    # The Buck2 project root is the repository root, so BTD wants changes as
+    # repository-relative paths and the Buck launcher from src/.
+    cd "$head_tree"
+    git diff --name-status "$base_commit...$head_commit" -- . \
         >"$graph_dir/changes.txt"
 
-    build/tools/btd \
+    src/build/tools/btd \
         --vcs git \
-        --buck "$PWD/buck2" \
+        --buck "$PWD/src/buck2" \
         --changes "$graph_dir/changes.txt" \
         --base "$graph_dir/base.jsonl" \
         --diff "$graph_dir/head.jsonl" \
