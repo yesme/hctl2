@@ -9,8 +9,8 @@
 | 1.1 定标与脚手架 | 完成 | `02-checklists.md`、`src/build/docs/inventory_*.pl`、`root//build/docs:inventory` | 见分支 |
 | 1.2 机械清点 | 完成 | `10-inventory.md`（四张表） | 见分支 |
 | 1.3 业界调研 | 进行中（三个子代理：边界抽取、下半年扫尾、部件矩阵） | `docs/research/methodology-boundaries-20260902.md`、`methodology-sweep-2026h2-20260902.md`、`component-matrix-20260902.md` | — |
-| 1.4 通读与发现 | 进行中：愿景层、架构层已读完（9 个文件）；约束层、交付与参考层待读 | `11-findings-draft.md` | 见分支 |
-| 1.5 对抗核验 | 待开始 | `12-adversarial.md`、`13-findings.md` | — |
+| 1.4 通读与发现 | 完成（24 个文件；M-01/M-02/M-13/I-07 等五条待 R1、R3 证据回填） | `11-findings-draft.md` | 见分支 |
+| 1.5 对抗核验 | 进行中：A、I、W 三轴先核，M 轴等 R1 到后核 | `12-adversarial-*.md`、`13-findings.md` | — |
 | 1.6 裁决包 | 待开始 | `20-verdict-packet.md` | — |
 | 2 拍板 | 待第一轮 | 裁决回填 | — |
 | 3.1–3.5 落地 | 待第二轮 | 五个 PR、评审 Skill、收口 | — |
