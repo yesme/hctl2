@@ -7,8 +7,25 @@ load("//rust:defs.bzl", "declare_rust_toolchains", "host_rustc", "host_rustfmt")
 
 oncall("hctl2")
 
+# The prelude's Cargo build-script C/C++ shim (from_any_dir) re-execs the
+# compiler via os.execl, which does not search PATH; the bare compiler names
+# from the prelude defaults therefore fail inside build scripts. src/buck2
+# resolves absolute paths on the host and injects them as hctl2.* config.
 system_cxx_toolchain(
     name = "cxx",
+    compiler = read_config("hctl2", "cc", None),
+    cxx_compiler = read_config("hctl2", "cxx", None),
+    archiver = read_config("hctl2", "ar", None),
+    visibility = ["PUBLIC"],
+)
+
+# Actions run without PATH, so the default bare `python3` resolves to the
+# system interpreter (3.9 on macOS, too old for the prelude's build-script
+# shim). src/buck2 resolves the pinned interpreter's absolute path and passes
+# it here; without the config the previous `python3` default is kept.
+system_python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    interpreter = read_config("hctl2", "python", "python3"),
     visibility = ["PUBLIC"],
 )
 
@@ -19,11 +36,6 @@ system_genrule_toolchain(
 
 system_python_toolchain(
     name = "python",
-    visibility = ["PUBLIC"],
-)
-
-system_python_bootstrap_toolchain(
-    name = "python_bootstrap",
     visibility = ["PUBLIC"],
 )
 
