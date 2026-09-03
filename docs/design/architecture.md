@@ -1,12 +1,12 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.16.4<br>
+> 状态：规范性（架构层）· 草案 v0.16.5<br>
 > 日期：2026-08-31<br>
 > 定位：本文回答部署与数据视角——系统由哪三个面组成，每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[约束层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
 ## 三个面
 
-四个领域模块（Project、Task、Run、Participant）是**语义分责**；部署视角上，系统由三个面组成。两者正交：每个模块的 metadata（治理元数据）都在控制面，content（场景内容）都在执行面的对应系统，场景都由展示面呈现。
+Project、Task、Run、Participant（参与者）四个领域模块是**语义分责**；部署视角上，系统由三个面组成。两者正交：每个模块的 metadata（治理元数据）都在控制面，content（场景内容）都在执行面的对应系统，场景都由展示面呈现。
 
 | 面 | 组成 | 拥有什么 |
 | --- | --- | --- |
@@ -29,8 +29,8 @@ Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 
 | 场景 | 系统角色 | 系统拥有的 content | 备注 |
 | --- | --- | --- | --- |
 | Room（聊天室） | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端可直接访问；HCTL 房间不开端到端加密，准入与降级见[Project 约束](./spec/project.md#room-与消息) |
-| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
-| Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
+| Kanban（看板） | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库（Repo）时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
+| Workflow（施工图） | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
 | Terminal | Agency（派出方）与其供给的 worker（执行体） | 会话转录、PTY 流 | 这一行有两个对话方，其他三行只有一个：control 向 Agency 要人，向执行体派工与观测。没有接入外部 Agency 时，默认使用发布包自带的本地参考实现，进程、PTY、终端会话与 TUI 由所选运行时提供；HCTL 不提供另一套第一方终端运行服务 |
 
 ## 避免供应商锁定
@@ -41,7 +41,7 @@ Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 
 | --- | --- | --- |
 | Room | Matrix 协议 + HCTL 的聊天端口绑定与 Room 到服务器房间的绑定 | 可换任何 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
 | Kanban | HCTL task backend 端口 | GitHub、Linear 等各写一个 task backend 适配器，共用 Task 身份、字段权威、Snapshot 与同一套命令准入 |
-| Workflow | HCTL 的 Workflow Revision 中间表示 + workflow engine 编译/回读端口 | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
+| Workflow | HCTL 的施工图版本（Workflow Revision）中间表示 + workflow engine 编译/回读端口 | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
 | Terminal | HCTL Agency 端口 + 客户端侧终端传输适配器 | 远程 Agency 可以直接提供受控端口，或由专用适配器接入；执行授权、身份、租约、证据与恢复等级不随 Agency 改变 |
 
 Workbench 是四个场景的稳定组合界面，但只使用公开的命令与查询入口：HCTL 命令与 CLI 同路，场景内容和运行时动作与对应原生客户端同路。第三方私有对象模型不进入模块约束。Terminal 的字节流和绘制性能敏感，Workbench 可以通过客户端侧传输适配器直连精确目标；输入租约、记录与恢复等级按绑定声明的能力如实标注。
@@ -54,10 +54,10 @@ Workbench 是四个场景的稳定组合界面，但只使用公开的命令与�
 
 | 场景 | metadata（控制面账本） | content（执行面系统） | artifact（Git 结晶） |
 | --- | --- | --- | --- |
-| Room | Room 身份、归属 Project、参与者授权、身份映射配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo、施工图 |
+| Room | Room 身份、归属 Project、参与者授权、身份映射配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo（备忘）、施工图 |
 | Kanban | Task 身份映射、字段权威绑定、冻结契约及其摘要、完成凭证 | 任务卡、流转、排序、评论（所选任务后端） | 冻结的任务契约版本 |
 | Workflow | Run 授权、引擎绑定、代次、Gate 规则、裁决 | 令牌位置、重试、定时器、机械执行历史（workflow engine） | 凭证链 |
-| Terminal | 执行授权与派发规格、写租约、输入租约、代次、观测账 | 会话转录、PTY 流（执行体，由 Agency 供给） | ChangeSet 与合入的代码变更 |
+| Terminal | 执行授权与执行规格、写租约、输入租约、代次、观测账 | 会话转录、PTY 流（执行体，由 Agency 供给） | ChangeSet 与合入的代码变更 |
 
 矩阵里的 artifact 是一种**解释性结晶规律**：重要结果通常会形成可审阅、可分发的 Git 工件；它不是把 metadata 或 content 逐字节变换成 Git 文件的存储定律。结晶从哪个场景产生，就归哪个场景。例如施工图从 Room 的塑形讨论中产生，因此归 Room；没有产物的场景不必为了形式对称而补造一种结晶。
 
@@ -75,7 +75,7 @@ content 容器的层级随场景各得其所：聊天两级——一个 Repo 一
 | --- | --- | --- |
 | Project → Task | 冻结的任务契约版本（Task Revision）+ 来源回链 | 讨论经采纳命令升格为承诺 |
 | Task / Project → Run | 冻结契约 + 施工图，由施工清单（Run Manifest）冻结引用 | 承诺进入治理；批准施工图与开工是两件账本事实，可在一次预览里提交 |
-| Run / Project → Participant | 派发规格（Execution Spec） | 治理派发给执行体；执行侧照单干活，不做语义判断 |
+| Run / Project → Participant | 执行规格（Execution Spec） | 治理派发给执行体；执行侧照单干活，不做语义判断 |
 | 执行回程 | 结果提案 → 裁决与凭证 | 执行只能提议；归属模块校验身份、代次、权限与证据后才算数 |
 
 ## 数据丢了怎么办

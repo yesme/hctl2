@@ -390,45 +390,21 @@ else
     note "PASS table-language-mix ignores Term（对照） in a table"
 fi
 
-# --- live first-use allowlist is exactly the current empty-allowlist hits --
-note "auditing live first-use allowlist against an empty-allowlist run"
+# --- live first-use passes with no exemptions at all --------------------------
+# The 46 baseline exemptions Grok audited in R3 were all rule exemptions; Fable
+# wrote the counterparts back into the design layer, so the live tree must pass
+# against an empty allowlist and the checked-in allowlist must stay comment-only.
+note "auditing live first-use against an empty allowlist"
 live_out="$(perl "$lint" first-use "$docs_tree" "$empty_allow" 2>&1)" && live_rc=0 || live_rc=$?
-if [ "$live_rc" -eq 0 ]; then
-    fail "live first-use with an empty allowlist unexpectedly passed"
-    printf '%s\n' "$live_out" >&2
+if [ "$live_rc" -ne 0 ]; then
+    fail "live first-use needs exemptions again; write the counterpart into the text instead:"
+    printf '%s\n' "$live_out" | grep '^FAIL ' >&2 || printf '%s\n' "$live_out" >&2
 else
-    hits="$work/live-first-use.hits"
-    expected="$work/allowlist-pairs"
-    printf '%s\n' "$live_out" | awk '
-        /^FAIL / {
-            split($2, loc, ":")
-            path = loc[1]
-            term = $0
-            sub(/^FAIL [^:]+:[0-9]+: first use lacks Chinese counterpart '\''/, "", term)
-            sub(/'\''$/, "", term)
-            print path "\t" term
-        }
-    ' | LC_ALL=C sort -u >"$hits"
-    awk '
-        BEGIN { FS = "\t" }
-        /^[ \t]*#/ || NF == 0 { next }
-        { print $1 "\t" $2 }
-    ' "$allowlist_dir/first_use_terms.allowlist" | LC_ALL=C sort -u >"$expected"
-    if ! cmp -s "$hits" "$expected"; then
-        fail "first-use allowlist is not exactly the live empty-allowlist hits"
-        diff -u "$expected" "$hits" >&2 || true
-    else
-        count="$(wc -l <"$expected" | tr -d ' ')"
-        if [ "$count" -ne 46 ]; then
-            fail "first-use allowlist count is $count, expected 46"
-        else
-            note "PASS first-use allowlist is exactly the 46 live exemptions"
-        fi
-    fi
+    note "PASS live first-use passes with an empty allowlist"
 fi
 
 # Empty allowlists stay empty (comment-only).
-for name in layer_terms.allowlist implementation_names.allowlist spec_need.allowlist table_language_mix.allowlist; do
+for name in layer_terms.allowlist implementation_names.allowlist spec_need.allowlist table_language_mix.allowlist first_use_terms.allowlist; do
     extra="$(awk '/^[ \t]*#/ || NF == 0 { next } { print }' "$allowlist_dir/$name")"
     if [ -n "$extra" ]; then
         fail "$name should remain empty of exemptions; found:"$'\n'"$extra"
