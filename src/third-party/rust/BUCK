@@ -3989,6 +3989,9 @@ cargo.rust_library(
     crate = "zbus_secret_service_keyring_store",
     crate_root = "zbus-secret-service-keyring-store-1.0.1.crate/src/lib.rs",
     edition = "2024",
+    env = {
+        "CARGO_PKG_VERSION": "1.0.1",
+    },
     features = ["crypto-rust"],
     visibility = [],
     deps = [
