@@ -12,9 +12,20 @@ cache_config=$project_root/build/reapi/local-cache.yaml
 # The Buck2 prelude's Cargo build-script C/C++ shim requires Python >= 3.12,
 # but actions run in a hermetic environment without PATH: the bare `python3`
 # from the default python_bootstrap toolchain resolves to /usr/bin/python3
-# (3.9.6 on macOS). Resolve the pinned interpreter's real binary path and
-# inject it as config; build/toolchains/BUCK wires it into the toolchain.
-py_bin=$("$project_root/build/tools/host-bin/python3" -c 'import sys; print(sys.executable)' 2>/dev/null || true)
+# (3.9.6 on macOS). Resolve the pinned interpreter and inject it as config;
+# build/toolchains/BUCK wires it into the toolchain. A broken pin must fail
+# here rather than silently falling back to the host interpreter.
+py_bin=$("$project_root/build/tools/host-bin/python3" -c 'import sys; print(sys.executable)') || {
+    printf 'error: pinned host Python at build/tools/host-bin/python3 is unusable\n' >&2
+    exit 1
+}
+case "$py_bin" in
+    /*) ;;
+    *)
+        printf 'error: pinned host Python path is not absolute: %s\n' "$py_bin" >&2
+        exit 1
+        ;;
+esac
 
 # The prelude's build-script C/C++ shim re-execs the compiler via os.execl,
 # which does not search PATH; bare compiler names from the default system
@@ -42,9 +53,7 @@ case "${1:-}" in
     aquery | build | cquery | query | run | targets | test | uquery)
         buck_command=$1
         shift
-        if [ -n "$py_bin" ]; then
-            set -- "--config" "hctl2.python=$py_bin" "$@"
-        fi
+        set -- "--config" "hctl2.python=$py_bin" "$@"
         if [ -n "$ar_bin" ]; then
             set -- "--config" "hctl2.ar=$ar_bin" "$@"
         fi
