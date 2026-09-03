@@ -562,12 +562,15 @@ fn lower_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Fact, Observation, Outcome, ReaderContext, evaluate_commit_ci, observe_path,
-        observe_process, validate, wait_until,
+        Fact, Observation, Outcome, ReadResult, ReaderContext, evaluate_commit_ci, observe_path,
+        observe_process, read_once, validate, wait_until,
     };
     use serde_json::json;
     use sha2::{Digest, Sha256};
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::thread;
     use std::time::{Duration, SystemTime};
 
     fn temporary_directory(name: &str) -> std::path::PathBuf {
@@ -681,6 +684,322 @@ mod tests {
         );
 
         assert_eq!(record.schema, "hctl2.external-fact.v1");
+        assert_eq!(record.evidence_level, "toolbox_readback");
+    }
+
+    fn write_executable(directory: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+        let path = directory.join(name);
+        fs::write(&path, body).expect("fixture program must be written");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("fixture program must be executable");
+        path
+    }
+
+    fn assert_closed_fact_set(fact: &Fact) {
+        match fact {
+            Fact::CommitCi { .. }
+            | Fact::PullRequestMerged { .. }
+            | Fact::RefAdvanced { .. }
+            | Fact::PathDigest { .. }
+            | Fact::ProcessExited { .. } => {}
+        }
+    }
+
+    #[test]
+    fn fact_set_is_closed_and_has_no_restatement_kind() {
+        let facts = [
+            Fact::CommitCi {
+                repo: "yesme/hctl2".to_owned(),
+                commit: "abc".to_owned(),
+            },
+            Fact::PullRequestMerged {
+                repo: "yesme/hctl2".to_owned(),
+                number: 1,
+            },
+            Fact::RefAdvanced {
+                repo: "yesme/hctl2".to_owned(),
+                reference: "main".to_owned(),
+                from: "abc".to_owned(),
+            },
+            Fact::PathDigest {
+                path: "missing".into(),
+                sha256: "00".repeat(32),
+            },
+            Fact::ProcessExited { pid: 1 },
+        ];
+        for fact in &facts {
+            assert_closed_fact_set(fact);
+        }
+        assert_eq!(facts.len(), 5);
+    }
+
+    #[test]
+    fn pull_request_outcomes_distinguish_established_not_established_and_unreadable() {
+        let directory = temporary_directory("pr");
+        let established = write_executable(
+            &directory,
+            "gh-merged",
+            r#"#!/bin/sh
+echo '{"mergedAt":"2026-01-01T00:00:00Z","state":"MERGED","url":"u","headRefOid":"abc"}'
+"#,
+        );
+        let closed = write_executable(
+            &directory,
+            "gh-closed",
+            r#"#!/bin/sh
+echo '{"mergedAt":null,"state":"CLOSED","url":"u","headRefOid":"abc"}'
+"#,
+        );
+        let broken = write_executable(
+            &directory,
+            "gh-broken",
+            r#"#!/bin/sh
+echo 'not json from a model restatement' >&2
+exit 1
+"#,
+        );
+        let fact = Fact::PullRequestMerged {
+            repo: "yesme/hctl2".to_owned(),
+            number: 82,
+        };
+
+        let merged = read_once(&fact, &ReaderContext::new(established.into_os_string()));
+        let ReadResult::Answer(merged) = merged else {
+            panic!("merged pull request must be terminal");
+        };
+        assert_eq!(merged.outcome, Outcome::Established);
+        assert_eq!(merged.evidence_level, "toolbox_readback");
+
+        let rejected = read_once(&fact, &ReaderContext::new(closed.into_os_string()));
+        let ReadResult::Answer(rejected) = rejected else {
+            panic!("closed pull request must be terminal");
+        };
+        assert_eq!(rejected.outcome, Outcome::NotEstablished);
+
+        let unreadable = read_once(&fact, &ReaderContext::new(broken.into_os_string()));
+        let ReadResult::Answer(unreadable) = unreadable else {
+            panic!("broken gh must be terminal");
+        };
+        assert_eq!(unreadable.outcome, Outcome::Unreadable);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn restatement_text_in_github_payload_does_not_establish_a_pull_request() {
+        let directory = temporary_directory("restatement");
+        let gh = write_executable(
+            &directory,
+            "gh",
+            r#"#!/bin/sh
+echo '{"mergedAt":null,"state":"OPEN","url":"u","headRefOid":"abc","body":"the model reports this PR is merged"}'
+"#,
+        );
+        let fact = Fact::PullRequestMerged {
+            repo: "yesme/hctl2".to_owned(),
+            number: 82,
+        };
+        let result = read_once(&fact, &ReaderContext::new(gh.into_os_string()));
+        assert!(
+            matches!(result, ReadResult::Pending(_)),
+            "unstructured restatement must not satisfy the merge fact: {result:?}"
+        );
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn commit_ci_success_failure_and_unreadable_go_through_gh() {
+        let directory = temporary_directory("ci");
+        let passing = write_executable(
+            &directory,
+            "gh-pass",
+            r#"#!/bin/sh
+if printf '%s' "$*" | grep check-runs >/dev/null; then
+  echo '{"check_runs":[{"status":"completed","conclusion":"success"}]}'
+else
+  echo '{"state":"success","statuses":[{"state":"success"}]}'
+fi
+"#,
+        );
+        let failing = write_executable(
+            &directory,
+            "gh-fail",
+            r#"#!/bin/sh
+if printf '%s' "$*" | grep check-runs >/dev/null; then
+  echo '{"check_runs":[{"status":"completed","conclusion":"failure"}]}'
+else
+  echo '{"state":"pending","statuses":[]}'
+fi
+"#,
+        );
+        let fact = Fact::CommitCi {
+            repo: "yesme/hctl2".to_owned(),
+            commit: "abc".to_owned(),
+        };
+        let ok = read_once(&fact, &ReaderContext::new(passing.into_os_string()));
+        let ReadResult::Answer(ok) = ok else {
+            panic!("successful checks must be terminal");
+        };
+        assert_eq!(ok.outcome, Outcome::Established);
+
+        let bad = read_once(&fact, &ReaderContext::new(failing.into_os_string()));
+        let ReadResult::Answer(bad) = bad else {
+            panic!("failed checks must be terminal");
+        };
+        assert_eq!(bad.outcome, Outcome::NotEstablished);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn ref_advance_establishes_only_when_github_compare_status_is_ahead() {
+        let directory = temporary_directory("ref");
+        let ahead = write_executable(
+            &directory,
+            "gh-ahead",
+            r#"#!/bin/sh
+if printf '%s' "$*" | grep '/git/ref/' >/dev/null; then
+  echo '{"object":{"sha":"def"}}'
+else
+  echo '{"status":"ahead"}'
+fi
+"#,
+        );
+        let diverged = write_executable(
+            &directory,
+            "gh-diverged",
+            r#"#!/bin/sh
+if printf '%s' "$*" | grep '/git/ref/' >/dev/null; then
+  echo '{"object":{"sha":"def"}}'
+else
+  echo '{"status":"diverged"}'
+fi
+"#,
+        );
+        let fact = Fact::RefAdvanced {
+            repo: "yesme/hctl2".to_owned(),
+            reference: "heads/main".to_owned(),
+            from: "abc".to_owned(),
+        };
+        let ok = read_once(&fact, &ReaderContext::new(ahead.into_os_string()));
+        let ReadResult::Answer(ok) = ok else {
+            panic!("ahead ref must be terminal");
+        };
+        assert_eq!(ok.outcome, Outcome::Established);
+
+        let bad = read_once(&fact, &ReaderContext::new(diverged.into_os_string()));
+        let ReadResult::Answer(bad) = bad else {
+            panic!("diverged ref must be terminal");
+        };
+        assert_eq!(bad.outcome, Outcome::NotEstablished);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn missing_path_times_out_wrong_digest_stays_pending_directory_is_unreadable() {
+        let directory = temporary_directory("path-outcomes");
+        let missing = directory.join("missing");
+        let file = directory.join("artifact");
+        fs::write(&file, b"hctl2").expect("fixture must be written");
+        let digest = super::lower_hex(&Sha256::digest(b"hctl2"));
+        let context = ReaderContext::new("gh");
+
+        let timeout = wait_until(
+            Fact::PathDigest {
+                path: missing,
+                sha256: digest.clone(),
+            },
+            SystemTime::now(),
+            &context,
+        );
+        assert_eq!(timeout.outcome, Outcome::Timeout);
+
+        let established = read_once(
+            &Fact::PathDigest {
+                path: file.clone(),
+                sha256: digest,
+            },
+            &context,
+        );
+        let ReadResult::Answer(established) = established else {
+            panic!("matching digest must be terminal");
+        };
+        assert_eq!(established.outcome, Outcome::Established);
+
+        let unreadable = read_once(
+            &Fact::PathDigest {
+                path: directory.clone(),
+                sha256: "00".repeat(32),
+            },
+            &context,
+        );
+        let ReadResult::Answer(unreadable) = unreadable else {
+            panic!("opening a directory must be terminal");
+        };
+        assert_eq!(unreadable.outcome, Outcome::Unreadable);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn invalid_arguments_are_unreadable_not_not_established() {
+        let record = read_once(
+            &Fact::PullRequestMerged {
+                repo: "not-a-repo".to_owned(),
+                number: 0,
+            },
+            &ReaderContext::new("gh"),
+        );
+        let ReadResult::Answer(record) = record else {
+            panic!("invalid arguments must be terminal");
+        };
+        assert_eq!(record.outcome, Outcome::Unreadable);
+        assert_eq!(record.evidence_level, "toolbox_readback");
+    }
+
+    #[test]
+    fn concurrent_waiters_see_the_same_path_digest() {
+        let directory = temporary_directory("concurrent");
+        let path = directory.join("artifact");
+        let digest = super::lower_hex(&Sha256::digest(b"hctl2"));
+        let fact = Fact::PathDigest {
+            path: path.clone(),
+            sha256: digest,
+        };
+        let deadline = SystemTime::now() + Duration::from_secs(5);
+        let first_fact = fact.clone();
+        let first =
+            thread::spawn(move || wait_until(first_fact, deadline, &ReaderContext::new("gh")));
+        let second = thread::spawn(move || wait_until(fact, deadline, &ReaderContext::new("gh")));
+        thread::sleep(Duration::from_millis(50));
+        fs::write(&path, b"hctl2").expect("artifact must appear for both waiters");
+        let first = first.join().expect("first waiter must finish");
+        let second = second.join().expect("second waiter must finish");
+        assert_eq!(first.outcome, Outcome::Established);
+        assert_eq!(second.outcome, Outcome::Established);
+        assert_eq!(first.evidence_level, "toolbox_readback");
+        assert_eq!(second.evidence_level, "toolbox_readback");
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn process_exit_uses_real_ps_for_an_unused_pid() {
+        let unused = (10_000..50_000)
+            .find(|pid| {
+                Command::new("ps")
+                    .args(["-p", &pid.to_string(), "-o", "pid="])
+                    .output()
+                    .map(|output| {
+                        !output.status.success()
+                            && output.stdout.is_empty()
+                            && output.stderr.is_empty()
+                    })
+                    .unwrap_or(false)
+            })
+            .expect("an unused pid must exist");
+        let record = wait_until(
+            Fact::ProcessExited { pid: unused },
+            SystemTime::now() + Duration::from_secs(1),
+            &ReaderContext::new("gh"),
+        );
+        assert_eq!(record.outcome, Outcome::Established);
         assert_eq!(record.evidence_level, "toolbox_readback");
     }
 }

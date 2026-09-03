@@ -2,6 +2,19 @@ load(":defs.bzl", "declare_external_dependencies")
 
 oncall("hctl2")
 
+filegroup(
+    name = "service_lifecycle_sources",
+    srcs = glob([
+        "hctl2-services",
+        "common/*.sh",
+        "process-compose/*.yaml",
+        "platforms/**/*.sh",
+        "smoke.sh",
+        "test-package.sh",
+    ]),
+    visibility = ["PUBLIC"],
+)
+
 declare_external_dependencies(
     build_sources = {
         source: source

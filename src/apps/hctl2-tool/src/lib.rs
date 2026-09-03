@@ -279,4 +279,122 @@ mod tests {
         assert_eq!(record["outcome"], "timeout");
         assert_eq!(record["evidence_level"], "toolbox_readback");
     }
+
+    fn unix_deadline_secs_from_now(seconds: u64) -> OsString {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        OsString::from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock must follow the epoch")
+                .as_secs()
+                .saturating_add(seconds)
+                .to_string(),
+        )
+    }
+
+    #[test]
+    fn wait_exit_codes_cover_all_four_outcomes() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock must follow the epoch")
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("hctl2-tool-wait-{}-{nanos}", std::process::id()));
+        fs::create_dir(&directory).expect("fixture directory");
+        let artifact = directory.join("artifact");
+        fs::write(&artifact, b"hctl2").expect("artifact");
+        let digest = "84afea2356518c906764be570e37420d2c9fa9ab3cab9f2ef801149822298f25";
+
+        let established = run([
+            OsString::from("wait"),
+            OsString::from("--deadline"),
+            unix_deadline_secs_from_now(5),
+            OsString::from("path-digest"),
+            OsString::from("--path"),
+            artifact.into_os_string(),
+            OsString::from("--sha256"),
+            OsString::from(digest),
+        ])
+        .expect("established wait");
+        assert_eq!(established.exit_code(), 0);
+        let record: serde_json::Value = serde_json::from_str(established.body()).expect("json");
+        assert_eq!(record["outcome"], "established");
+
+        let gh_closed = directory.join("gh-closed");
+        fs::write(
+            &gh_closed,
+            "#!/bin/sh\necho '{\"mergedAt\":null,\"state\":\"CLOSED\",\"url\":\"u\",\"headRefOid\":\"abc\"}'\n",
+        )
+        .expect("gh fixture");
+        fs::set_permissions(&gh_closed, fs::Permissions::from_mode(0o755)).expect("chmod");
+        let not_established = run([
+            OsString::from("wait"),
+            OsString::from("--deadline"),
+            unix_deadline_secs_from_now(5),
+            OsString::from("--gh"),
+            gh_closed.into_os_string(),
+            OsString::from("pr-merged"),
+            OsString::from("--repo"),
+            OsString::from("yesme/hctl2"),
+            OsString::from("--number"),
+            OsString::from("82"),
+        ])
+        .expect("not-established wait");
+        assert_eq!(not_established.exit_code(), 3);
+
+        let gh_broken = directory.join("gh-broken");
+        fs::write(&gh_broken, "#!/bin/sh\necho broken >&2\nexit 1\n").expect("gh fixture");
+        fs::set_permissions(&gh_broken, fs::Permissions::from_mode(0o755)).expect("chmod");
+        let unreadable = run([
+            OsString::from("wait"),
+            OsString::from("--deadline"),
+            unix_deadline_secs_from_now(5),
+            OsString::from("--gh"),
+            gh_broken.into_os_string(),
+            OsString::from("pr-merged"),
+            OsString::from("--repo"),
+            OsString::from("yesme/hctl2"),
+            OsString::from("--number"),
+            OsString::from("82"),
+        ])
+        .expect("unreadable wait");
+        assert_eq!(unreadable.exit_code(), 4);
+
+        let timeout = run([
+            OsString::from("wait"),
+            OsString::from("--deadline"),
+            OsString::from("0"),
+            OsString::from("path-digest"),
+            OsString::from("--path"),
+            OsString::from("missing"),
+            OsString::from("--sha256"),
+            OsString::from("00".repeat(32)),
+        ])
+        .expect("timeout wait");
+        assert_eq!(timeout.exit_code(), 5);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn wait_has_no_flag_to_force_an_outcome_from_restatement() {
+        let error = run([
+            OsString::from("wait"),
+            OsString::from("--deadline"),
+            OsString::from("0"),
+            OsString::from("--outcome"),
+            OsString::from("established"),
+            OsString::from("pr-merged"),
+            OsString::from("--repo"),
+            OsString::from("yesme/hctl2"),
+            OsString::from("--number"),
+            OsString::from("1"),
+        ])
+        .expect_err("restatement override must not parse");
+        assert_eq!(error.code(), "HCTL2_TOOL_INVALID_ARGUMENT");
+    }
 }

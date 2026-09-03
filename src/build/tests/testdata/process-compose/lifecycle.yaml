@@ -1,0 +1,69 @@
+version: "0.5"
+
+# Fixture project for pull-up / ready / restart / shutdown and failure cases.
+# It does not start tuwunel/cinny/vikunja/dagu/herdr; those stay in the
+# packaging lifecycle test. Commands are POSIX sh so the same file runs on
+# Linux x86_64, macOS arm64 and macOS x86_64.
+
+processes:
+  ready-ok:
+    command: '/bin/sh -c "touch ready-ok.flag; exec sleep 60"'
+    working_dir: "${HCTL2_PC_WORK}"
+    availability:
+      restart: "no"
+    readiness_probe:
+      exec:
+        command: '/bin/sh -c "test -f ready-ok.flag"'
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 20
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
+
+  never-ready:
+    command: '/bin/sh -c "exec sleep 60"'
+    working_dir: "${HCTL2_PC_WORK}"
+    availability:
+      restart: "no"
+    readiness_probe:
+      exec:
+        command: /bin/false
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 1
+      failure_threshold: 3
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
+
+  crash:
+    command: /bin/false
+    working_dir: "${HCTL2_PC_WORK}"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 2
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
+
+  dependent:
+    command: '/bin/sh -c "touch dependent.flag; exec sleep 60"'
+    working_dir: "${HCTL2_PC_WORK}"
+    depends_on:
+      ready-ok:
+        condition: process_healthy
+    availability:
+      restart: "no"
+    readiness_probe:
+      exec:
+        command: '/bin/sh -c "test -f dependent.flag"'
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 20
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
