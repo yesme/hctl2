@@ -1,6 +1,21 @@
 # path<TAB>term<TAB>required substring on the pre-existing line
 # Baseline exceptions are tied to the current first-use line. Moving or editing
 # that line makes the checker require an explicit Chinese counterpart.
+#
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04):
+# All 46 entries are rule exemptions, not cases where the body should skip 对照.
+# Classification:
+#   title — H1 already names the term next to Chinese, but not as `Term（对照）`
+#           (context.md Context, participant.md Participant, run.md Workflow,
+#           task.md Kanban). Strongest format argument; the checker still has
+#           no heading exception, so these are exempted rather than specified.
+#   gloss — the first-use line has some Chinese parenthetical, but not the
+#           vocabulary-table 对照 (e.g. Artifact（登记过的交付物） vs 工件;
+#           派发规格（Execution Spec） vs 执行规格).
+#   none  — first prose use has no counterpart at all.
+# None of the 46 are "the body truly should not carry 对照". Shrinking this
+# list is a writing change (Fable), not a checker change. The fixture test
+# checks that an empty allowlist still reports exactly these (path, term) pairs.
 docs/design/vision.md	Artifact	用户进入 Repo Room
 docs/design/vision.md	Repo	用户进入 Repo Room
 docs/design/vision.md	Context	以 Context 为例

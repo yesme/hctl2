@@ -31,3 +31,9 @@ filegroup(
     ]),
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "pr_contract_yml",
+    src = ".github/workflows/pr-contract.yml",
+    visibility = ["PUBLIC"],
+)

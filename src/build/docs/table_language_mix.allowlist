@@ -1,1 +1,4 @@
 # path<TAB>term<TAB>required substring on the pre-existing table
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04): empty is correct. The
+# live report-only checker may still print findings; they are not exemptions
+# and must not be used to silence a mix that should stay visible.

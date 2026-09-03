@@ -1,1 +1,4 @@
 # path<TAB>term<TAB>required substring on the pre-existing line
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04): empty is correct. Live
+# design-layer files currently have no governance-internal / constraint-only
+# hits that need a line exemption.

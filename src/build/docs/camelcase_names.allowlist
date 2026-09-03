@@ -1,4 +1,8 @@
 # path<TAB>term<TAB>required substring on the pre-existing line
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04): every entry is an external
+# proper name (GitHub, OpenCode, SemVer, AppService, RocksDB, WezTerm, WebView,
+# ProjectV2, SaaS). These are genuine exceptions: the checker keeps ChangeSet
+# and ReviewSubjectRef in code, and these names are not HCTL2 coinages.
 README.md	OpenCode	OpenCode
 WRITING-GUIDE.md	GitHub	GitHub
 WRITING-GUIDE.md	SemVer	SemVer
