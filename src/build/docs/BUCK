@@ -12,6 +12,11 @@ filegroup(
     srcs = glob(["*.txt", "*.allowlist"]),
 )
 
+filegroup(
+    name = "fixture_inputs",
+    srcs = glob(["testdata/**", "doc_style_lint.pl", "implementation_names.txt", "*.allowlist"]),
+)
+
 sh_test(
     name = "check_links",
     test = "check_links.pl",
@@ -137,6 +142,25 @@ sh_test(
     resources = ["repo//:docs_tree"],
 )
 
+sh_test(
+    name = "check_docs_toolchain_fixtures",
+    test = "check_docs_toolchain_fixtures.sh",
+    env = {
+        "DOC_STYLE_LINT": "$(location :fixture_inputs)/doc_style_lint.pl",
+        "SPEC_VOCABULARY": "$(location :fixture_inputs)/testdata/spec-vocabulary.md",
+        "IMPLEMENTATION_NAMES": "$(location :fixture_inputs)/implementation_names.txt",
+        "DOCS_TREE": "$(location repo//:docs_tree)",
+        "PR_CONTRACT_YML": "$(location repo//:pr_contract_yml)",
+        "ALLOWLIST_DIR": "$(location :fixture_inputs)",
+    },
+    labels = CI_DOCS,
+    resources = [
+        ":fixture_inputs",
+        "repo//:docs_tree",
+        "repo//:pr_contract_yml",
+    ],
+)
+
 test_suite(
     name = "profile-design",
     labels = CI_DOCS,
@@ -149,6 +173,7 @@ test_suite(
         ":check_camelcase_names",
         ":check_first_use_terms",
         ":check_identifier_glossary",
+        ":check_docs_toolchain_fixtures",
         ":report_prohibition_density",
         ":report_table_language_mix",
     ],
@@ -205,6 +230,7 @@ test_suite(
         ":check_camelcase_names",
         ":check_first_use_terms",
         ":check_identifier_glossary",
+        ":check_docs_toolchain_fixtures",
         ":check_spec_need",
         ":report_prohibition_density",
         ":report_table_language_mix",

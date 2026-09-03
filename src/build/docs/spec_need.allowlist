@@ -1,1 +1,5 @@
 # path<TAB>term<TAB>required substring on the pre-existing line
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04): empty is correct. Live
+# constraint-layer files only use 需要 inside 需要关注. The checker matches
+# the substring 需要, so 不需要 would still fail; that strictness is locked
+# by a fixture rather than exempted here.

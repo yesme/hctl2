@@ -1,1 +1,5 @@
 # path<TAB>term<TAB>required substring on the pre-existing line
+# Grok R3 allowlist audit (任务书三 §1, 2026-09-04): empty is correct. The
+# whole-file participant.md Herdr exemption was a temporary gate until Fable
+# converged that file; the live checker now scans it and finds no product-name
+# hits in design-layer prose.
