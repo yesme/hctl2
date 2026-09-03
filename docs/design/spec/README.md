@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.16.0<br>
+> 状态：规范性 · 草案 v0.16.1<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -21,11 +21,37 @@
 
 ## 核心产品词
 
-Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skill、Task、Kanban、Run、Workflow、Obligation、Seat、Attempt、Gate、Verdict、Receipt、Terminal、ChangeSet、Evidence、Workbench。
+| 词 | 中文对照 | 类别 | 可见性 |
+| --- | --- | --- | --- |
+| Repo | 仓库 | 对象 | 用户可见 |
+| Project | 项目 | 对象 | 用户可见 |
+| Room | 聊天室 | 对象，也是 Project 模块的场景名 | 用户可见 |
+| Participant | 参与者 | 对象 | 用户可见 |
+| Request | 请求卡 | 对象 | 用户可见 |
+| Memo | 备忘 | 对象 | 用户可见 |
+| Artifact | 工件 | 对象 | 用户可见 |
+| Context | 上下文 | 横切概念；其清单与包是票据 | 用户可见 |
+| Skill | 技能包 | 对象 | 用户可见 |
+| Task | 任务 | 对象 | 用户可见 |
+| Kanban | 看板 | Task 模块的场景名 | 用户可见 |
+| Run | 一次受治理施工 | 对象 | 用户可见 |
+| Workflow | 施工图 | 对象，也是 Run 模块的场景名 | 用户可见 |
+| Terminal | 终端 | Participant 模块的场景名 | 用户可见 |
+| Workbench | 工作台 | 客户端产品 | 用户可见 |
+| Receipt | 凭证 | 票据 | 用户可见——「完成不能自述」靠它，愿景层要讲 |
+| Gate | 评审关卡 | 节点类型 | 治理内部；愿景层只以中文「评审关卡」出现 |
+| Obligation | 交付义务 | 对象 | 治理内部 |
+| Seat | 席位 | 对象 | 治理内部 |
+| Attempt | 尝试 | 对象 | 治理内部 |
+| ChangeSet | 变更集 | 对象 | 治理内部 |
+| Verdict | 裁决 | 票据 | 治理内部 |
+| Evidence | 证据 | 票据 | 治理内部 |
 
-设计正文还可以使用六个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant，写 human actor。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+「类别」回答它是什么东西：对象有独立生命周期、恢复边界或权限边界；票据是步骤产物，只被引用不被改写；节点类型和场景名不是对象。「可见性」回答它能出现在哪一层：愿景层只用标「用户可见」的词（含 Receipt），治理内部的词从架构层起可用。愿景层讲执行内部时用日常语言——「一步要交出什么是固定的，谁来做可以换，做坏了从这一次重来」——不点治理词。
 
-另有六个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述六词。
+设计正文还可以使用六个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+
+另有八个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）、Context Manifest（根上下文清单）、Context Bundle（消费上下文包）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述八词。
 
 ## 六族规则
 
@@ -50,7 +76,7 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 | content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
 | artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
 
-统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Chat Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
 
 三条法贯穿全部模块约束，各处引用，不再各写一套：
 
@@ -76,11 +102,11 @@ Repo、Project、Room、Participant、Request、Memo、Artifact、Context、Skil
 
 对齐表中的“无对应”只是引入差异化语义的强信号，不是控制面账本的完整存储清单。事实是否进入账本仍取决于它是否有独立生命周期、恢复或权限边界，以及 HCTL 是否拥有该事实。外部系统原生承载的可变 content 与内部拓扑不在账本复制；HCTL 自己的稳定身份、领域关系、授权、判决及必要绑定与摘要仍由控制面保存。
 
-各模块受控端口的默认实现隔离、能力声明与替换边界见[避免供应商锁定](../architecture.md#避免供应商锁定)。
+各模块受控端口的选型隔离、能力声明与替换边界见[避免供应商锁定](../architecture.md#避免供应商锁定)。
 
 ## 文件
 
-- [project.md](./project.md)：Project 模块约束 + Chat 场景对齐（Matrix / Slack 系）
+- [project.md](./project.md)：Project 模块约束 + Room 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块约束 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块约束 + Dagu / BPMN 对齐
 - [participant.md](./participant.md)：Participant 模块约束 + Skill 申报 + PTY / Herdr / ACP 对齐

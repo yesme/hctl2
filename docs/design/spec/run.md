@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
+> 状态：规范性约束 · 草案 v0.16.1<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -69,13 +69,13 @@ Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和�
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
-- Project、0..1 个 Task Revision（第一阶段）、Workflow Revision 与 Engine Deployment；
+- Project、0..1 个 Task Revision、Workflow Revision 与 Engine Deployment；
 - repo/base revision、根 Context Manifest ref+digest、角色与逻辑 Seat；
 - 每个角色/Seat 的精确 Participant revision、Project Role Binding version/digest、required/optional Skill refs+digests；
 - 受控端口绑定、获准 Worker Profile 候选、切换规则、能力、权限与网络/secret 范围；
 - Gate、预算、放置和截止规则。
 
-第一阶段，绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
+绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
 
 ### 启动与 Manifest
 
@@ -89,7 +89,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
 
-第一阶段 HCTL Profile 的规则分三组：
+HCTL Profile 的规则分三组：
 
 1. 允许的图结构：外部执行、fork/join、switch、loop、dynamic fork、timer wait、noop 和纯数据转换。
 2. 编译器拒绝的副作用：子 DAG、默认 command/script、HTTP/action/agent/Harness；Dagu `human.task` 仅作被动检查点。
@@ -149,7 +149,7 @@ Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和�
 
 control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 
-第一阶段只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按 `known/unknown` 展示；Participant、Harness 或模型自报不能把 unknown 变成 known。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回 unsupported。
+Gate 只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按 `known/unknown` 展示；Participant、Harness 或模型自报不能把 unknown 变成 known。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回 unsupported。
 
 达到法定票数后，control 撤销剩余 Attempt 并提交汇总 Verdict/Receipt，再完成 Engine 检查点。剩余票已不可能达到门槛时，Gate 返回 quorum-unreachable，使 Obligation 失败并沿 Workflow Revision 的失败边推进。返工产生新 Revision 后，旧票失效，新的 Revision 必须重新通过完整 Gate；Task Revision 只有在验收契约变化时才更新。
 

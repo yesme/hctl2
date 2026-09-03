@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.16.0 · 2026-09-02<br>
+> 状态：Informative · 对应草案 v0.16.1 · 2026-09-02<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前约束以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -350,8 +350,9 @@ Agency 定为参与者的供给方（provider），不是工厂：挑人是 cont
 | v0.15.1 | 2026-08-31 | 全库文档大修：门户收束、设计层与约束层同构合并、禁令按白名单三分、CT 矩阵拆出 contract-tests.md、来时路折叠与历史表迁入；不改约束语义 | [大修施工图](../../../.memo/design/doc-overhaul-20260830/README.md) |
 | v0.15.4 | 2026-08-31 | 路标停更与迟到观察不铸新 Obligation：把隐含边界写成明文（spec/run 铸造条件、连接约束失败表、architecture 半句），已铸义务照常判决 | [大修停车位 #4](../../../.memo/design/doc-overhaul-20260830/parking-lot.md) |
 | v0.15.5 | 2026-09-02 | 文风与分层复审的结构批：文档纪律独立成篇、根 README 定为首页并瘦身、设计正文越层细节改引用、代次家族总表立于系统边界、五份设计正文补文档头、写作指南按十条裁决修订（愿景层词汇、T1 两档、契约/约束/清单分工、S1 判例累积）；不改约束语义 | [裁决材料](../../../.memo/design/doc-style-sweep-20260831/20-verdict-packet.md) |
+| v0.16.1 | 2026-09-03 | 四轴评审第三轮写法批：Chat Room 并入 Room；「第一阶段」提法退出，约束直接写规则、交付文档改「当前范围」；外部系统称「选型」、只有本地 Agency 称「默认」；核心产品词表加中文与类别两列，愿景层只用用户可见词；高频约束词加 Context Manifest / Context Bundle；设计层「人」的写法统一；Seat / Attempt 中文改「席位 / 尝试」；「三选二」改「多票评审」；不改约束语义 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
 | v0.15.6 | 2026-09-02 | 全库语言收口：按已裁决清单改写生硬复述、统一术语与大小写、补全契约测试谓词并拆分超长句；不改约束语义 | [语言 PR 任务书](../../../.memo/design/doc-style-sweep-20260831/21-language-brief.md) |
 
 ## 36. 当前设计
 
-这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Participant](../participant.md)，再查看[连接约束](../spec/connections.md)、[系统边界](../spec/system.md)和[第一阶段交付](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。
+这条来时路最终收敛为四个权威模块、四个对仗 Scene、共享但受控的连接与执行机制。阅读当前设计时，应从[愿景](../vision.md)开始，再读 [Project](../project.md)、[Task](../task.md)、[Run](../run.md)、[Participant](../participant.md)，再查看[连接约束](../spec/connections.md)、[系统边界](../spec/system.md)和[交付文档](../delivery.md)。本文用于解释这些边界为什么存在；发生冲突时，它不覆盖任何当前规范。

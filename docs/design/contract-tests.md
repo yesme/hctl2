@@ -1,11 +1,11 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.16.0<br>
+> 状态：验证文档 · 草案 v0.16.1<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
 
-### `CT-PROJECT` · Project / Chat Room
+### `CT-PROJECT` · Project / Room
 
 - 首次注册生成稳定 Repo 身份，同一 Repo 的新 clone 只新增 Repo Instance，fork/身份碰撞明确拒绝或要求确认
 - Project 分组与 Room anchor 可重建
@@ -133,7 +133,7 @@
 ### `CT-WORKBENCH-IA` · Workbench 信息架构
 
 - 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生第五场景或写状态
-- 打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；第一阶段远程入口隐藏或安全拒绝）
+- 打开入口按 repo 选择并统一映射到控制面连接（打开本地 repo = 连接或拉起本机控制面再定位仓库；远程入口隐藏或安全拒绝）
 - 进入 Project 默认打开 Project Room，deep link 保留返回路径
 - 同一 Request ID 跨 Room/Task/Run 聚合且不能从聚合面直接改状态
 - 「创建 Project」命令提升预览允许删减、补充、去敏并显示来源回链
