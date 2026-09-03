@@ -1,6 +1,6 @@
 # Project 与 Room
 
-> 状态：规范性（架构层） · 草案 v0.16.1<br>
+> 状态：规范性（架构层） · 草案 v0.16.2<br>
 > 日期：2026-09-02
 
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
@@ -15,7 +15,7 @@ Project 也不是施工管线：研究、规格说明、ADR（架构决策记录
 
 ## 模块拥有什么
 
-Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，Participant 与角色，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（Room Invocation）。
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，参与者及其授权，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（Room Invocation）。
 
 消息本体是场景内容（content），住在 chat server。讨论产生的决议、Memo 和施工图进入 Git。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 Git 工作树。
 
@@ -54,7 +54,7 @@ Room 是 Project 的主要操作场景——它就是聊天室，提供：
 - mention 提交前的 Trigger Preview：发出前先看清楚谁来执行、带什么上下文、有什么权限和预算、会创建什么；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
 
-在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与角色绑定仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
+在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：Participant 与参与者授权仍在本 Project 内重新准入，权限、预算和绑定不跨仓库继承；将来若要沉淀为可共享的一等对象，再另行设计。
 
 Workbench 就位之前，Matrix 客户端负责读写消息、引用和讨论，治理命令走公共命令入口；先后路径见[交付文档的实现阶段](./delivery.md#实现阶段)。这是产品路径的先后，不是说 Matrix 客户端低一等。聊天文字本身不包含命令类型、目标版本和预览选择，所以 mention 不会自动触发；将来若 Matrix widget/AppService 能提交显式结构化动作，也必须归一到同一 Preview/Submit 入口。
 

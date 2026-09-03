@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.16.1<br>
+> 状态：规范性 · 草案 v0.16.2<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -60,7 +60,7 @@
 | 族 | 共同语义 |
 | --- | --- |
 | Revision | 只追加的不可变版本；以 digest 精确引用；current pointer 只由类型化命令推进，界面只读取 |
-| Binding | 把两个身份连起来的冻结解析；活动执行永远引用准入时的版本，换绑不改写历史 |
+| Binding | 把 HCTL 里的一个东西和外部系统里对应的东西钉在一起，钉的那一刻冻结成版本；正在跑的工作永远引用它准入时的版本，换绑不改历史。族里只有外部连接：HCTL 内部的授权（如 Project 的参与者授权）不是 Binding |
 | Receipt | control 与工具箱校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
 | 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor 来源、目标版本与幂等键，重复提交返回原结果；请求可来自 direct client 或模块明确接纳的 provider event |
@@ -87,11 +87,11 @@
 ## 词汇索引
 
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
-- **Binding 族**：Resolved Port Binding、Task Binding、Project Role Binding、Engine Execution Binding
+- **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、Participant–Agency Binding（Participant ↔ 派出方名册项）
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
 - **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency 归属者虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
-- **Snapshot/观测族**：Task Source Snapshot、Result Proposal、运行时观测
+- **Snapshot/观测族**：Task Backend Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
 - **独立对象**（核心产品词之外的约束层领域对象）：Repo Instance、Room Invocation、Execution Runtime、Worker Profile

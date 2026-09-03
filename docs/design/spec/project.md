@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.1<br>
+> 状态：规范性约束 · 草案 v0.16.2<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -9,9 +9,10 @@
 | --- | --- |
 | Repo | Git 内容与共享配置的逻辑仓库 |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
-| Project Role Binding | Project 角色到 Participant 候选的冻结绑定；Participant 本身由 [Participant 模块约束](./participant.md)定义 |
+| 参与者授权 | Project 版本化设置的一部分：哪些 Participant 可在本 Project 出场，各自的职责、权限与预算上限；每条授权冻结精确 Participant revision。两端都在 HCTL 内部，不属 Binding 族；Participant 本身由 [Participant 模块约束](./participant.md)定义 |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
-| Chat 端口绑定 | Room 到 chat server 房间的 Resolved Port Binding。它固定外部账号与房间的稳定 ID、获准身份映射，以及可选的结构化 human 动作清单，并指明 Room content 的事实源。准入前置见[Room 与消息](#room-与消息) |
+| Room–Server Binding | Room 到 chat server 房间的绑定（Binding 族）：固定房间稳定 ID、所用聊天端口与 content 事实源；房间升级换 ID 是显式换绑，Room 身份不变。准入前置见[Room 与消息](#room-与消息) |
+| 聊天端口的 Port–Provider Binding | chat server 连接：外部账号、获准身份映射策略、可选的结构化 human 动作清单与实测能力；族定义见[系统边界](./system.md#固定内核与受控端口) |
 | Context Manifest / Context Bundle | 一次授权的根上下文清单，以及为某个消费执行实际物化并交付的消费上下文包 |
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
@@ -24,9 +25,9 @@
 | --- | --- | --- | --- |
 | Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；工具箱只写入/回读 Git identity | 一个 Repo identity 只有一个 Repo 与 Repo Room；待确认的外部写入按关联键恢复，不重复注册 |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
-| Project Role Binding | 绑定版本 | control 处理「绑定/换绑角色」命令 | 活动 Invocation/Run 永久引用准入时的绑定版本与 Participant revision |
+| 参与者授权（Project 设置） | `project_version` | control 处理「授权/换人/撤销参与者」命令并推进 Project version | 活动 Invocation/Run 永久引用准入时的 Project version 与 Participant revision |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
-| Chat 端口绑定 | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理 Chat 端口绑定的「绑定/换绑/停用」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定 Resolved Port Binding、外部 account/room stable IDs、身份映射策略、结构化 human 动作 allowlist 与降级能力；事后降级见[Room 与消息](#room-与消息) |
+| Room–Server Binding | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理「绑定/换绑/停用房间」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定所用聊天端口的 Port–Provider Binding、外部 room stable ID 与降级能力；账号、身份映射策略与结构化 human 动作 allowlist 归聊天端口的 Port–Provider Binding；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
 | Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，Agency 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
@@ -51,9 +52,10 @@ Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度
 
 Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游约束。
 
-Project Role Binding 授予某个 Participant 在当前 Project 中的职责、权限和预算上限；Participant revision、Skill 与 Worker Profile 的定义见 [Participant 模块约束](./participant.md)。Execution Spec 必须分别冻结四者的精确引用。人不是 Participant：人的角色与权限由 human actor 的命令权限表达，不经角色绑定。
+<a id="参与者授权"></a>
+参与者授权是 Project 版本化设置的一部分：它列出哪些 Participant 可在当前 Project 出场，并给每个 Participant 定职责、权限和预算上限；「角色」只是职责标签字段，不是对象。授权条目冻结精确 Participant revision；Participant revision、Skill 与 Worker Profile 的定义见 [Participant 模块约束](./participant.md)。Execution Spec 必须分别冻结 Project version、授权条目、Participant revision、Skill 与 Worker Profile 的精确引用。授权只在 Project 一级：Task 不持有参与者，看板卡片上的负责人是后端字段的投影。人不是 Participant：人的权限由 human actor 的命令权限表达，不经参与者授权。
 
-换绑不改写活动 Invocation、Seat 或 Run；`repo_scope` 可以没有 Project Role Binding。
+换人或撤销授权推进 Project version，不改写活动 Invocation、Seat 或 Run；`repo_scope` 调用可以没有参与者授权。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
@@ -63,7 +65,7 @@ Project Role Binding 授予某个 Participant 在当前 Project 中的职责、�
 
 Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。
 
-时间线顺序由 chat server 的线性事件顺序给出；这是单 homeserver 的约束前提，写入以事务 ID 保持幂等。稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 Chat 端口绑定和 chat server 事件 ID 精确引用消息。被治理引用的消息在引用时冻结事件 ID 与内容摘要，此后 content 分歧不改写已冻结引用。
+时间线顺序由 chat server 的线性事件顺序给出；这是单 homeserver 的约束前提，写入以事务 ID 保持幂等。稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面账本只追加，以 Room–Server Binding 和 chat server 事件 ID 精确引用消息。被治理引用的消息在引用时冻结事件 ID 与内容摘要，此后 content 分歧不改写已冻结引用。
 
 冻结摘要、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新游标的 metadata 命令可以继续；依赖当前消息正文、成员身份或完整游标的命令必须类型化拒绝。聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实。加密情形由有权 human actor 换绑到未加密房间恢复；已冻结的引用与摘要不受影响。
 
@@ -82,7 +84,7 @@ Gate Seat 的 ReviewSubjectRef diff 与返工 Seat 的 Verdict 正文属于必�
 
 ### 选材与排序
 
-来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Source Snapshot 的引用与摘要冻结进 Manifest，不经检索。序列化时，稳定内容排在前面，高频变化内容排在后面。
+来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Backend Snapshot 的引用与摘要冻结进 Manifest，不经检索。序列化时，稳定内容排在前面，高频变化内容排在后面。
 
 ### 根 Context Manifest
 
@@ -107,17 +109,17 @@ Execution Spec 同时冻结根 Manifest 与该消费者的 Bundle，control 在�
 
 后续 Room 消息、索引变化、Harness 自行召回或另一消费者的 Bundle 都不能改写已冻结记录。
 
-萃取与相关性判定默认全部在本地完成，不消耗大模型 token。全文索引与可选相关性门都是可重建的派生投影，由 chat server 事件流、Task Source Snapshot 与账本增量维护，不进入权威账本；删除后可以完整重建。相关性门默认只以账本事实——提及、认领、Request 关联和游标——作为判定输入。
+萃取与相关性判定默认全部在本地完成，不消耗大模型 token。全文索引与可选相关性门都是可重建的派生投影，由 chat server 事件流、Task Backend Snapshot 与账本增量维护，不进入权威账本；删除后可以完整重建。相关性门默认只以账本事实——提及、认领、Request 关联和游标——作为判定输入。
 
 用户配置专用的小模型（small-brain）后，相关性门才可以读取消息正文并使用模型辅助判定；该模型必须引用用户级定义机制中的精确 revision 和 digest。无论采用哪种方式，每次判定都必须把输入事实引用与结论记为可审计观测；模型判定还要记录模型引用与摘要。观测不改写任何事实。
 
-压缩缺省关闭。仅当用户配置了专用压缩模型时，Bundle 物化才可压缩；该模型不是新对象，而是经用户级定义机制固定 revision/digest 的 small-brain 引用。每个被压缩条目必须记录压缩模型引用与摘要、压缩率和原文引用与摘要；压缩产物的每个片段都必须能回到原文位置。
+压缩缺省关闭。仅当用户配置了专用压缩模型时，Bundle 物化才可压缩；该模型不是新对象，而是经用户级定义机制固定 revision/digest 的 small-brain 引用。每个被压缩条目必须记录压缩模型引用与摘要、压缩率和原文引用与摘要；压缩产物的每个片段都必须能回到原文位置；回源指针由组装器在切块时按来源赋予并随片段冻结，不由压缩模型输出。
 
 摘要、Receipt、验收标准原文和被治理引用冻结的消息原文属于证据类内容，永不压缩。压缩条目缺少来源记录，或压缩了证据类内容时，Bundle 必须拒绝交付。萃取与压缩产物可以作为以（Room、游标区间、消费者范围）为键的派生缓存跨调用复用；Bundle 记录所引用产物的引用与摘要，缓存可丢弃重建。
 
 房间可以维护一份滚动纪要（前情提要）：它挂在 Room 与游标上，由组装器机械触发，并经 small-brain 增量折叠成派生缓存。未配置 small-brain 时不生成纪要；物化端改用近详远略裁剪，近期消息保留全文，更早消息降为标题加事件指针。
 
-纪要逐条携带消息事件回源指针。它不是权威：治理引用不得指向纪要，只能指向精确事件；纪要不进权威账本，被使用时 Bundle 只记其引用与摘要，也不由房间内模型 Participant 书写或改写。
+纪要逐条携带消息事件回源指针，指针由组装器按折叠输入赋予，不由 small-brain 输出。它不是权威：治理引用不得指向纪要，只能指向精确事件；纪要不进权威账本，被使用时 Bundle 只记其引用与摘要，也不由房间内模型 Participant 书写或改写。
 
 Memo 只由用户明确发布，至少固定 `memo_id`、来源 Message/Artifact refs、适用范围、作者、内容 digest/Git locator、取代关系和有效期。原始消息、执行日志和自动总结不会自动进入长期知识。组装的指针清单机械过滤已过有效期或已被取代的 Memo；显式引用不受此过滤。
 
@@ -155,11 +157,11 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；需
 
 mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
 
-普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的直接客户端连接，也可以来自 Chat 端口绑定明确允许的供应端结构化事件；两者都归一为同一命令草稿。系统按[系统约束](./system.md#客户端动作与-provider-事件)保留 actor 映射、来源事件、目标版本和幂等依据。chat server 里的普通消息本身不是入口。
+普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的直接客户端连接，也可以来自聊天端口的 Port–Provider Binding 明确允许的供应端结构化事件；两者都归一为同一命令草稿。系统按[系统约束](./system.md#客户端动作与-provider-事件)保留 actor 映射、来源事件、目标版本和幂等依据。chat server 里的普通消息本身不是入口。
 
-模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只能形成下一位 Participant/Role 与扇出建议，不能自行创建 Room Invocation、唤醒执行体或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览；系统不能要求用户复制粘贴 Context。
+模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只能形成下一位 Participant 或职责与扇出建议，不能自行创建 Room Invocation、唤醒执行体或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览；系统不能要求用户复制粘贴 Context。
 
-mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role 绑定精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
+mention 的解析必须确定性：`@` 目标只按 Project 参与者授权里的 Participant 或职责精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 
 类型化命令的预览、准入与判决在控制面执行，结果可作为结构化事件写回 chat server；Chat provider 动作成为 human 命令请求的条件见[客户端动作与 provider 事件](./system.md#客户端动作与-provider-事件)。
 
@@ -173,6 +175,6 @@ mention 的解析必须确定性：`@` 目标只按获准的 Participant/Role �
 | 消息 | Matrix event | 消息 content 本体就是 chat server 上的 Matrix event（编辑/撤回是新事件；非 Matrix 平台的消息经 homeserver 桥接生态落为 Matrix event）；HCTL 治理事件只在控制面账本追加，以事件 ID 精确引用消息，不占领域对象名额 |
 | mention | @mention | HCTL 的 `@` 解析目标是逻辑 Participant/Role 而非平台账号，且必须经 Trigger Preview 准入 |
 | Scoped Room | thread / 子频道 | 差异：有冻结的讨论目标与结论回填动作，不是自由分叉 |
-| Chat 端口绑定 | AppService 注册 / homeserver 配置 | 差异：绑定指认 Room 的 content 家；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
+| Room–Server Binding 与聊天端口的 Port–Provider Binding | Matrix 房间 ID / AppService 注册与 homeserver 配置 | 差异：前者指认一个 Room 的 content 家在哪个房间，后者指认 chat server 连接；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
 | Request | 无直接对应 | 差异化语义：向指定人/角色索取输入的一级对象，只能由获准动作解决 |

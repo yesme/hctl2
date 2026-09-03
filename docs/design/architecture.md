@@ -1,6 +1,6 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.16.1<br>
+> 状态：规范性（架构层）· 草案 v0.16.2<br>
 > 日期：2026-08-31<br>
 > 定位：本文回答部署与数据视角——系统由哪三个面组成，每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[约束层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
@@ -39,7 +39,7 @@ Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 
 
 | 场景 | 稳定边界 | 后续替换方式 |
 | --- | --- | --- |
-| Room | Matrix 协议 + HCTL 的聊天端口绑定 | 可换任何 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
+| Room | Matrix 协议 + HCTL 的聊天端口（Port–Provider Binding）与 Room–Server Binding | 可换任何 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
 | Kanban | HCTL task backend 端口 | GitHub、Linear 等各写一个 task backend 适配器，共用 Task 身份、字段权威、Snapshot 与同一套命令准入 |
 | Workflow | HCTL 的 Workflow Revision 中间表示 + workflow engine 编译/回读端口 | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
 | Terminal | HCTL Agency 端口 + 客户端侧终端传输适配器 | 远程 Agency 可以直接提供受控端口，或由专用适配器接入；执行授权、身份、租约、证据与恢复等级不随 Agency 改变 |
@@ -54,7 +54,7 @@ Workbench 是四个场景的稳定组合界面，但只使用公开的命令与�
 
 | 场景 | metadata（控制面账本） | content（执行面系统） | artifact（Git 结晶） |
 | --- | --- | --- | --- |
-| Room | Room 身份、归属 Project、Participant 名册与角色绑定、身份映射配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo、施工图 |
+| Room | Room 身份、归属 Project、参与者授权、身份映射配置、消息升格记录 | 聊天记录、调用过程与结果卡（chat server） | 决议、Memo、施工图 |
 | Kanban | Task 身份映射、字段权威绑定、冻结契约及其摘要、完成凭证 | 任务卡、流转、排序、评论（所选任务后端） | 冻结的任务契约版本 |
 | Workflow | Run 授权、引擎绑定、代次、Gate 规则、裁决 | 令牌位置、重试、定时器、机械执行历史（workflow engine） | 凭证链 |
 | Terminal | 执行授权与派发规格、写租约、输入租约、代次、观测账 | 会话转录、PTY 流（执行体，由 Agency 供给） | ChangeSet 与合入的代码变更 |

@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.16.1<br>
+> 状态：非规范对照 · 草案 v0.16.2<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -36,11 +36,11 @@
 | Seat | 席位 | 交付义务中稳定的执行或评审位置 | [spec/run](../spec/run.md) |
 | Attempt | 尝试 | 某个候选对一个席位的一次执行 | [spec/run](../spec/run.md) |
 | Gate | 评审关卡 | 冻结在施工图中、决定结果如何通过的治理节点 | [spec/run](../spec/run.md) |
-| Verdict | 裁决 | 对精确版本作出的语义评审结论 | [spec/run](../spec/run.md) |
-| Receipt | 凭证 | 校验通过后签发的不可变证明 | [spec/README](../spec/README.md#六族规则) |
+| Verdict | 裁决 | 评审席位对精确版本投的一票：通过、要改、拒绝，可带分歧落点 | [spec/run](../spec/run.md) |
+| Receipt | 凭证 | 控制面校验后开出的不可变证明：结论、依据的规则、指向哪几条证据 | [spec/README](../spec/README.md#六族规则) |
 | Terminal | 终端场景 | Participant 模块的场景：观察、诊断和接管精确执行体，也是执行体暴露给 Workbench 的 TUI 接口（participant.tui） | [Participant](../participant.md#terminal-场景) |
-| ChangeSet | 变更集 | 一次获准的代码写入边界 | [spec/agent](../spec/participant.md) |
-| Evidence | 证据 | diff、测试输出、SCM 状态等可核验观测 | [spec/agent](../spec/participant.md) |
+| ChangeSet | 变更集 | 一次获准的代码写入边界 | [spec/participant](../spec/participant.md) |
+| Evidence | 证据 | 被判定的事实记录（diff、测试输出、CI 状态、工具箱回读），本身不下结论；按证据通道分三级 | [spec/participant](../spec/participant.md#证据通道) |
 | Workbench | 工作台 | 组合四类 provider 客户端、联合投影和 HCTL 公共命令入口的桌面 | [spec/system](../spec/system.md) |
 
 ## 系统组件与常用技术词
@@ -102,15 +102,17 @@
 | Extension Revision | 扩展版本 | 扩展的代码、接口、能力与信任级别 |
 | Engine Deployment | 引擎部署版本 | 施工图为特定引擎编译出的产物 |
 
-## Binding 族（冻结的身份连接）
+## Binding 族（HCTL 的东西 ↔ 外部系统里对应的东西）
 
 | 成员 | 中文对照 | 连接的两端 |
 | --- | --- | --- |
-| Resolved Port Binding | 端口解析绑定 | 受控端口 ↔ 具体 provider 及实测能力 |
-| Chat 端口绑定 | 聊天端口绑定 | Room ↔ chat server 房间；加密准入见 [Project 约束](../spec/project.md#room-与消息) |
-| Task Binding | 任务来源绑定 | Task ↔ 外部实体、字段写入权与 adapter 版本 |
-| Project Role Binding | 角色绑定 | Project 角色 ↔ 精确 Participant 版本 |
-| Engine Execution Binding | 引擎执行绑定 | Run ↔ 外部引擎执行实例与关联键 |
+| Port–Provider Binding | 端口与供应端的绑定 | 模块的受控端口 ↔ 具体供应端的制品、适配器、配置摘要与实测能力 |
+| Room–Server Binding | Room 与聊天服务器房间的绑定 | Room ↔ chat server 上房间的稳定 ID；房间升级换 ID 是换绑，Room 身份不变；加密准入见 [Project 约束](../spec/project.md#room-与消息) |
+| Task–Backend Binding | Task 与任务后端卡片的绑定 | Task ↔ 后端那张卡的外部身份、字段写入权、可接纳的人为动作与适配器版本 |
+| Run–Engine Binding | Run 与工作流引擎执行的绑定 | Run ↔ 引擎里那次执行的部署、执行 ID、关联键与代次 |
+| Participant–Agency Binding | Participant 与派出方名册项的绑定 | Participant ↔ 供给它的 Agency 名册项与条款；换派出方是换绑，身份不变 |
+
+Project 的**参与者授权**（哪些 Participant 可在本 Project 出场、职责、权限与预算上限）不是 Binding：两端都在 HCTL 内部，它是 Project 版本化设置的一部分，「角色」只是其中的职责标签字段；权威见 [Project 约束](../spec/project.md#参与者授权)。
 
 ## Receipt 族（校验后的证明）
 
@@ -126,11 +128,11 @@
 | --- | --- | --- |
 | Write Lease | 写入租约 | 一个 ChangeSet 的当前写权 |
 | Terminal Input Lease | 终端输入租约 | 一个受 HCTL 管理的终端目标输入权 |
-| Agency binding owner lease | 派出方绑定的归属者租约 | 一个 Agency 绑定范围同时只有一个归属者，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
+| Agency binding owner lease | 派出方端口的归属者租约 | 一个 Agency 端口 Port–Provider Binding 的范围（同一服务器、套接字或主机命名空间）同时只有一个归属者，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
 
 control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
 
-全系统共用六种彼此独立的代次：账本写入者、仓库现场、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Engine Execution Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
+全系统共用六种彼此独立的代次：账本写入者、仓库现场、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Run–Engine Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
 
 ## 命令族（持久命令与副作用）
 
@@ -140,7 +142,7 @@ control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者�
 
 | 成员 | 中文对照 | 观测什么 |
 | --- | --- | --- |
-| Task Source Snapshot | 来源快照 | 外部任务系统的一次只追加观测 |
+| Task Backend Snapshot | 任务后端快照 | 任务后端的一次只追加观测 |
 | Result Proposal | 结果提案 | Harness 提交、等待归属者校验的结果 |
 | 运行时观测 | — | 进程、心跳、屏幕等按证据分级的物理观测 |
 

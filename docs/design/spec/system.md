@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.16.1<br>
+> 状态：规范性约束 · 草案 v0.16.2<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Participant 的领域状态。
 
 ## 组件
@@ -9,7 +9,7 @@
 | --- | --- |
 | `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
 | `hctl2-control` | 唯一领域命令服务，负责路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
-| `hctl2-tool` | 执行现场操作：物化和隔离 Git 工作树/ChangeSet，执行已持久化的意图，回读结果，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
+| `hctl2-tool` | 执行现场操作：物化和隔离 Git 工作树/ChangeSet，执行已持久化的意图，回读结果，回读外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）供节点准入与证据使用，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
 | Herdr | 本地 Agency 参考实现的运行时，实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
 | workflow engine | 通过适配器保存 Run 的引擎执行令牌、引擎步骤、定时器、重试次数和执行历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
@@ -31,7 +31,7 @@
 | Workflow | workflow engine 编译、注册、执行和回读 |
 | Terminal | harness、Agency，以及终端连接与输入能力 |
 
-受控端口是替换供应端的唯一边界，不再增加跨模块通用适配层。每个 Resolved Port Binding 固定供应端制品、模块适配器、配置摘要、实测能力和降级方式。适配器只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新供应端通过本模块的契约测试后，只能用于新绑定；已有执行继续使用原绑定。迁移既有 content 必须另走显式的预览、导出、导入和回读校验。
+受控端口是替换供应端的唯一边界，不再增加跨模块通用适配层。每个 Port–Provider Binding 固定供应端制品、模块适配器、配置摘要、实测能力和降级方式。适配器只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新供应端通过本模块的契约测试后，只能用于新绑定；已有执行继续使用原绑定。迁移既有 content 必须另走显式的预览、导出、导入和回读校验。
 
 ### 客户端使用的公开面
 
@@ -48,12 +48,12 @@ hctl2-control 托管执行面服务器的生命周期：随 HCTL 一键启停，
 
 每个扩展绑定都冻结代码版本、接口/schema、配置摘要、依赖、能力和信任级别；活动执行固定使用准入时的绑定。绑定的供应端不可用时，control 必须按该绑定冻结的降级策略暂停或终结活动执行。只有归属者提交显式替代命令后，control 才能创建替代执行。
 
-control policy 只信任来自允许来源且摘要匹配的扩展制品。扩展或注册表的自我声明不授予信任。发现操作默认只读取已配置定义、本地安装和无副作用探测；联网探测只能由用户显式启用。安装与升级必须由用户显式提交，并产生新的 Extension Revision；后续解析再产生新的 Resolved Port Binding，活动执行继续使用原绑定。
+control policy 只信任来自允许来源且摘要匹配的扩展制品。扩展或注册表的自我声明不授予信任。发现操作默认只读取已配置定义、本地安装和无副作用探测；联网探测只能由用户显式启用。安装与升级必须由用户显式提交，并产生新的 Extension Revision；后续解析再产生新的 Port–Provider Binding，活动执行继续使用原绑定。
 
 跨模块可引用的扩展信息只有两个最小概念：
 
 - `Extension Revision`：扩展稳定身份的一份不可变版本，固定代码/制品摘要、接口与 schema、依赖、声明能力和信任级别；
-- Resolved Port Binding：一次已解析端口选择，固定 binding_revision_id、Extension Revision、供应端与安装实例、配置摘要、凭据引用、实测能力、权限作用域和降级策略。
+- Port–Provider Binding：一次已解析端口选择，固定 binding_revision_id、Extension Revision、供应端与安装实例、配置摘要、凭据引用、实测能力、权限作用域和降级策略。
 
 同一端口种类和作用域在一次准入中只能解析出一个绑定版本，结果不得受加载顺序或界面选择顺序影响。Room、Task、Run 和 Execution Spec 都必须引用精确绑定版本。历史执行继续使用原绑定。凭据引用只指向 secret store 条目，不得包含密钥。
 
@@ -121,7 +121,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 ## 外部权威副作用
 
-包括远端 SCM 在内，会改变第三方权威事实的动作统一写成持久外部副作用命令和 outbox 记录。记录固定归属者引用、Resolved Port Binding、操作、目标、适配器声明的冲突范围、权限、规范输入摘要和幂等键。同一远端资源的关闭、重开、更新等操作共用一个冲突范围。
+包括远端 SCM 在内，会改变第三方权威事实的动作统一写成持久外部副作用命令和 outbox 记录。记录固定归属者引用、Port–Provider Binding、操作、目标、适配器声明的冲突范围、权限、规范输入摘要和幂等键。同一远端资源的关闭、重开、更新等操作共用一个冲突范围。
 
 本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Participant 写入约束](./participant.md#写入约束)。
 
@@ -176,11 +176,11 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
-| 四模块 metadata：稳定身份、准入/current、Room/Request、Participant/角色绑定、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
+| 四模块 metadata：稳定身份、准入/current、Room/Request、参与者授权、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
 | Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
-| workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Engine Execution Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
+| workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Run–Engine Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
 | Harness 进程、PTY、主机与原始流 | Herdr 持有物理资源并提供观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次结束，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
 
 ## 单写者
@@ -189,7 +189,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 Git 工作树的现场互斥由 `hctl2-tool` 的 OS 锁保证，control 只在账本中以比较并交换推进该现场的 `site_generation`。该代次栅栏不是本地 control 服务或第二本账。
 
-Agency 绑定另有自己的归属者租约和代次；范围至少覆盖同一服务器、套接字或主机命名空间。新的归属者必须先对账，HCTL 不再向旧代次签发输入、停止、接管或结果准入。
+Agency 端口的 Port–Provider Binding 另有自己的归属者租约和代次；范围至少覆盖同一服务器、套接字或主机命名空间。新的归属者必须先对账，HCTL 不再向旧代次签发输入、停止、接管或结果准入。
 
 适配器在启动、输入和停止前必须校验适用的现场与运行时代次。只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。供应端不能接收或回显代次时，只能声明 HCTL 入口已校验，不能声明物理执行点已经隔离旧动作。
 
@@ -207,7 +207,7 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 | `runtime_generation` | 这一次物理进程／PTY | [Participant 约束](./participant.md#运行时与观测) | 激活映射时由 Agency 预留返回 |
 | `control_writer_generation` | 用户级账本此刻的逻辑写入者 | 本节 | 取得账本写权时 CAS 推进 |
 | `site_generation` | 某个 Repo Instance 的 Git 工作树现场 | 本节 | 同一本账对本现场以比较并交换推进；现场 OS 锁是它的物理伴生，不是它 |
-| Agency binding owner generation | 某个 Agency 绑定范围（同一服务器、套接字或主机命名空间） | 本节 | 新归属者对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
+| Agency binding owner generation | 某个 Agency 端口 Port–Provider Binding 的范围（同一服务器、套接字或主机命名空间） | 本节 | 新归属者对账后推进；旧代次不再获签发输入、停止、接管或结果准入 |
 | `engine_binding_generation` | 某次 Run 与引擎 execution 的绑定 | [Run 约束](./run.md#从节点到结果) | 启动、关闭或标记分歧时推进；走 Run↔引擎连接，不进执行体出站元组 |
 
 四条推导规则彼此独立：

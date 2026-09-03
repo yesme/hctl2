@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.16.1<br>
+> 状态：验证文档 · 草案 v0.16.2<br>
 > 本文列出十族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -15,7 +15,7 @@
 - Scoped Room 回填和同根因 Request 去重；未回填且无显式结案（abandoned/no-decision/superseded 及理由）的 Scoped Room 归档拒绝
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
 - chat server 不可用时，依赖 Room 来源、身份或 Context 当前回读的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
-- Chat 端口绑定只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
+- Room–Server Binding 只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
 - chat server 中的普通消息、反应或自动化不能成为命令；绑定未列明、actor 无法映射、source event/target/version 缺失的结构化动作同样拒绝
 - 同一个 Matrix 用户动作分别从 Workbench 直连适配器和供应端事件适配器提交时，两条路径必须生成相同的命令摘要和结果。由 HCTL 服务或 bridge bot 发出的同形事件必须拒绝为 human 来源
 - 模型 Participant 的 `@`/建议不能创建 Invocation 或 fan-out，human 批准后自动携带来源/Context
@@ -26,13 +26,16 @@
 - Bundle 压缩条目缺 compressor/原文 digest 记录，或压缩了证据类内容时拒绝交付
 - 萃取索引与纪要缓存删除后可完整重建且不丢事实；相关性门判定缺可审计记录时无效，未配置 small-brain 时以消息正文做路由拒绝
 - 过期或被取代的 Memo 不进指针清单，显式引用除外
+- 压缩片段或纪要条目的回源指针不是组装器赋予（例如由压缩模型输出）时，Bundle 拒绝交付
+- Matrix 房间升级换 ID 后，换绑 Room–Server Binding 不改 Room 身份，旧事件引用与冻结 digest 仍可校验
+- 参与者授权换人后，活动 Invocation 仍引用准入时的 Project version 与 Participant revision；Task 或卡片上不存在独立的参与者授权
 
 ### `CT-TASK` · Task / Kanban
 
 - 外部卡片只改变 stage 或 health 时，Task lifecycle 和当前 Task Revision 必须保持不变；Kanban lane 只重新计算投影
 - 非法 move/complete 拒绝
 - local state version 与 remote revision 不混用，过期邻项移动重算
-- 本地 adoption 不要求伪造 Task Binding，外部 adoption 混用 Task Binding 版本时拒绝
+- 本地 adoption 不要求伪造 Task–Backend Binding，外部 adoption 混用 Task–Backend Binding 版本时拒绝
 - 未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效
 - active Run 尚未结束时 terminal intent 拒绝；活动 Run 期间采纳契约推进 current 后，Run reducer 的「完成 Task」按契约分歧拒绝，不静默完成新 Revision
 - Workbench、CLI、已获准的 Vikunja Done 和正常完成 Run reducer 必须生成同一种“完成 Task”命令，并经过相同准入
@@ -44,13 +47,15 @@
 - Project 分组 anchor 在删除、重绑和重建后保持稳定；原生 UI 把卡片移到另一 Project 分组时，HCTL 必须保留原 `project_id`，把来源归属标为需要关注，并拒绝依赖原归属的新命令
 - Project 分组映射（父任务/milestone/标签降级）有测试
 - 无契约 Task 的看板终态只是 content 投影，完成命令仍需先升格契约
+- 验收项缺校验等级时「采纳契约」预览失效
+- `mechanical` 验收项只以转述证据提交，或证据通道低于验收策略要求时，「完成 Task」拒绝；Receipt 逐项记录校验等级与实际判定者
 
 ### `CT-RUN` · Run / Workflow
 
 - Workflow Revision 不通过 schema、Profile 或图结构校验时，编译必须拒绝
 - Run 绑定超过一个 Task Revision 时，启动必须拒绝
 - 已绑定 workflow engine 执行的状态只能由 control 命令推进
-- Dagu UI/API 直接 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 时只标记 Engine Execution Binding 分歧，不倒推 Run 命令、Verdict 或 Receipt；停止路径若未先持久化 intent 与撤权则不能冒充 HCTL Cancel 成功
+- Dagu UI/API 直接 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 时只标记 Run–Engine Binding 分歧，不倒推 Run 命令、Verdict 或 Receipt；停止路径若未先持久化 intent 与撤权则不能冒充 HCTL Cancel 成功
 - 超时与候选切换只依据账本自己的 Obligation deadline
 - 引擎停报进度（绑定分歧待对账）期间，或依据缓存、迟到事件和旧游标观察创建新 Obligation 时，创建必须拒绝；已经创建的义务照常验收与判决
 - 派发确认回执丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功
@@ -61,6 +66,11 @@
 - quorum-unreachable 沿冻结失败边推进
 - Run 正常完成只由账本谓词决定；引擎报告的进度与账本不一致时标为分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
+- 启动中 / 暂停中 / 取消中到达默认或声明的超时后进入需要关注并保留状态，不自动取消或替代
+- 节点声明的外部机械事实前置：工具箱读不到时不派发并标需要关注；执行体或模型转述的事实不满足前置；前置不创建 Obligation、不占席位
+- 返工达到声明的轮数上限后按 quorum-unreachable 同路推进或创建 Request，不进入下一轮
+- 未声明增量评审时新 Revision 全量重评；声明时评审包带与上一版的差异指针
+- `changes_requested` 分歧落点为契约时不进入语义返工、不自动替代，Task 标需要关注并给出采纳建议
 
 ### `CT-PARTICIPANT` · Participant / Terminal
 
@@ -88,6 +98,8 @@
 - control 签发连接票据、Herdr 适配代码校验 HCTL 授权，观察、输入、Attempt 控制与安全输入权限分离；Agency 未声明栅栏回显能力时，无法执行的代次栅栏不得被记录为已生效
 - attach 只接通道，不能恢复 Run/Invocation 语义
 - attach/replay、IME/背压/慢客户端隔离
+- 未标注证据通道的 Evidence 按转述处理；转述不能通过重新标注升级为高证据类
+- Participant 换绑到另一个 Agency 后身份不变，活动执行仍引用原 Participant–Agency Binding 版本
 
 ### `CT-CONNECTION` · 连接 / 端口
 
@@ -100,7 +112,7 @@
 - provider 离线时，不要求当前回读的查询/命令可继续，要求当前 head/revision/租约/回读的准入统一 fail closed
 - Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
 - Dagu、Vikunja、Herdr 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
-- 新 provider/adapter 未通过对应模块契约测试时不得产生 Resolved Port Binding；换绑不能改写活动 Run、Task、Room 或 Execution Runtime 的冻结绑定
+- 新 provider/adapter 未通过对应模块契约测试时不得产生 Port–Provider Binding；换绑不能改写活动 Run、Task、Room 或 Execution Runtime 的冻结绑定
 - 既有 content 迁移必须显式预览、导出、导入并回读校验；普通换绑不得冒充无损迁移或热切换
 - 客户端无等级：Workbench 通过 provider 通道执行的消息/卡片/终端动作与原生客户端同语义，通过 command service 的动作与 CLI 同语义；Workbench 不得依赖 provider 私有导航或对象模型获得隐藏权限
 - provider event 只有模块绑定明确列出且 actor/target/version/idempotency/freshness 齐全时可成为 human command request；否则只能成为 content/Snapshot/运行时观测
@@ -150,3 +162,4 @@
 - 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本
 - 正常成功保持安静
 - HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实
+- 无 Run 路径、有契约的 Task：从 ChangeSet 封存到完成凭证，人的预览不超过两次（合入、完成）；无契约卡只多一步采纳
