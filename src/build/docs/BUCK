@@ -56,6 +56,87 @@ sh_test(
     resources = ["repo//:docs_tree"],
 )
 
+sh_test(
+    name = "check_layer_terms",
+    test = "doc_style_lint.pl",
+    args = [
+        "layer-terms",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/layer_terms.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_implementation_names",
+    test = "doc_style_lint.pl",
+    args = [
+        "implementation-names",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/implementation_names.allowlist",
+        "$(location :configs)/implementation_names.txt",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_camelcase_names",
+    test = "doc_style_lint.pl",
+    args = [
+        "camelcase",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/camelcase_names.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_first_use_terms",
+    test = "doc_style_lint.pl",
+    args = [
+        "first-use",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/first_use_terms.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_spec_need",
+    test = "doc_style_lint.pl",
+    args = [
+        "spec-need",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/spec_need.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "report_table_language_mix",
+    test = "doc_style_lint.pl",
+    args = [
+        "table-language-mix",
+        "$(location repo//:docs_tree)",
+        "$(location :configs)/table_language_mix.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree", ":configs"],
+)
+
+sh_test(
+    name = "check_identifier_glossary",
+    test = "generate_identifier_glossary.pl",
+    args = ["--check", "$(location repo//:docs_tree)"],
+    labels = CI_DOCS,
+    resources = ["repo//:docs_tree"],
+)
+
 test_suite(
     name = "profile-design",
     labels = CI_DOCS,
@@ -63,7 +144,13 @@ test_suite(
         ":check_links",
         ":check_version_stamps",
         ":check_dead_names",
+        ":check_layer_terms",
+        ":check_implementation_names",
+        ":check_camelcase_names",
+        ":check_first_use_terms",
+        ":check_identifier_glossary",
         ":report_prohibition_density",
+        ":report_table_language_mix",
     ],
 )
 
@@ -74,6 +161,9 @@ test_suite(
         ":check_links",
         ":check_version_stamps",
         ":check_dead_names",
+        ":check_camelcase_names",
+        ":check_identifier_glossary",
+        ":check_spec_need",
         ":report_prohibition_density",
     ],
 )
@@ -85,6 +175,7 @@ test_suite(
         ":check_links",
         ":check_version_stamps",
         ":check_dead_names",
+        ":check_camelcase_names",
         ":report_prohibition_density",
     ],
 )
@@ -109,7 +200,14 @@ test_suite(
         ":check_version_stamps",
         ":check_dead_names",
         ":check_memo_review_baseline",
+        ":check_layer_terms",
+        ":check_implementation_names",
+        ":check_camelcase_names",
+        ":check_first_use_terms",
+        ":check_identifier_glossary",
+        ":check_spec_need",
         ":report_prohibition_density",
+        ":report_table_language_mix",
     ],
 )
 

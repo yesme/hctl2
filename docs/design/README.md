@@ -10,7 +10,7 @@ HCTL2 只有四个领域模块。每个模块拥有稳定身份、状态、命�
 | [Project](./project.md) | Room（聊天室） | chat server（聊天服务器） | 目标与范围、协作现场的身份与升格记录、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
 | [Task](./task.md) | Kanban | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、后端映射与字段权威、操作态投影、完成证明 | Workbench Board / Linear、GitHub 任务源端口 |
 | [Run](./run.md) | Workflow | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / workflow engine 端口 |
-| [Participant](./participant.md) | Terminal | Agency（派出方）供给的执行体；默认为本地参考实现，运行时 Herdr | 参与者身份与人设、Skill 申报、执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench Terminal（participant.tui）、CLI / ACP、harness、Herdr API / TUI |
+| [Participant](./participant.md) | Terminal | Agency（派出方）供给的执行体；默认为本地参考实现 | 参与者身份与人设、Skill 申报、执行者配置与目录、写入边界与快照、物理运行时、终端、结果与证据 | Workbench Terminal（participant.tui）、CLI / ACP、harness、运行时 API / TUI |
 
 每场景三类数据的完整归属、系统角色与丢失恢复见[三面架构](./architecture.md)。场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact 投影。跨模块引用不转移事实所有权。
 
@@ -45,7 +45,7 @@ Workbench、CLI 与适配后的第三方 UI 调用 HCTL 时使用四类公共操
 
 Workbench 把四个场景客户端和 HCTL 命令入口组合成一个产品桌面，但没有额外权限：操作 content 或精确运行时时与原生客户端同路，提交 HCTL 命令时与 CLI 同路。动作的目标和信封决定语义；分类与接纳规则只在[系统约束](./spec/system.md#客户端动作与-provider-事件)定义。
 
-选定的 Tuwunel、Vikunja、Dagu、Herdr 都经各模块自己的受控端口和版本化绑定接入；替换边界与聊天桥接职责见[三面架构](./architecture.md#避免供应商锁定)。Workbench 就位前，公共 `hctl2` CLI 承载 HCTL 命令，各 provider（供应端）原生界面处理消息、卡片和终端输入；具体阶段见[交付文档](./delivery.md#实现阶段)。
+四个场景选定的外部实现都经各模块自己的受控端口和版本化绑定接入；具体选型见[交付文档](./delivery.md#选型判据)，替换边界与聊天桥接职责见[三面架构](./architecture.md#避免供应商锁定)。Workbench 就位前，公共 `hctl2` CLI 承载 HCTL 命令，各 provider（供应端）原生界面处理消息、卡片和终端输入；具体阶段见[交付文档](./delivery.md#实现阶段)。
 
 ## 共同规则
 

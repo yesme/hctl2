@@ -5,7 +5,7 @@
 
 ## 连接模型
 
-连接不是一份可独立漂移的共享状态，也不需要 `Handoff` 聚合。每条连接都由“目标模块的类型化命令 + 来源模块的不可变引用”组成：
+连接不是一份可独立漂移的共享状态，也无需 `Handoff` 聚合。每条连接都由“目标模块的类型化命令 + 来源模块的不可变引用”组成：
 
 1. 来源模块只能提供稳定 ID、Revision digest、状态版本、来源和已获授权的范围；不能直接写目标模块。
 2. 目标模块在自己的命令准入中校验来源引用、当前版本、actor、权限和幂等键，并拥有新产生的状态。
@@ -119,7 +119,7 @@ Result Proposal 使用 [Participant 模块定义的字段约束](./participant.m
 
 control inbox 先按提案标识符、producer sequence 和归属者去重。随后逐项校验归属者状态、归属者代次、适用的代次栅栏、spec/bundle/绑定摘要、租约、ChangeSet、输出范围、证据和权限。
 
-每个输出都必须携带自己的生产者字段组；`in_process` 输出只能使用上节定义的缩减字段组，不能把一个合格项的代次套给另一个旧项。通过后：
+每个输出都必须携带自己的生产者字段组；进程内（`in_process`）输出只能使用上节定义的缩减字段组，不能把一个合格项的代次套给另一个旧项。通过后：
 
 - Room Invocation 的结果由 Project 记录并投影到 Room；
 - Attempt 的结果由 Run 归约为 Seat 结果、Verdict 或 Receipt；
@@ -165,7 +165,7 @@ Task 路径的验收证据 → Task Completion Receipt
 
 每一步保存上一步的 ID 与摘要或版本；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前发生分歧时，比较并交换必须拒绝；提交后由冻结约束继续执行到终态，新的顶层授权使用新版本。范围、权限、候选或验收含义变化时必须显式替代，而不是原地修补；Run 的替代特例清单见[启动与 Manifest](./run.md#启动与-manifest)。
 
-权限只能逐级缩小：actor / Project 参与者授权 → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
+权限只能逐级缩小：actor / Project 参与者授权 → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎或终端输入范围；扩权时回到拥有该权限的上游重新预览和授权。
 
 ## 失败与恢复
 
@@ -178,16 +178,16 @@ Task 路径的验收证据 → Task Completion Receipt
 | 归属者身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接 |
 | 归属者、运行时、租约或任一适用的代次栅栏无法证明 | Attempt 或 Room Invocation 必须进入丢失。control 在同一事务中撤销输入/写租约，并提交旧运行时的停止与隔离 outbox。迟到流和结果只留审计；Retry 必须创建新的归属者、Execution Spec 和运行时代次。此行是执行身份丢失处理规则的唯一定义，模块约束引用而不复述 |
 | 归属者取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
-| chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要聊天当前回读的准入拒绝，聊天入口显示重同步中 |
+| chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；依赖聊天当前回读的准入拒绝，聊天入口显示重同步中 |
 | 已绑定房间被开启端到端加密 | 聊天入口显示需要关注，已冻结引用与 digest 不受影响；可继续/拒绝与换绑恢复规则见[Room 与消息](./project.md#room-与消息) |
-| 任务后端不可用 | 已冻结且策略不要求来源当前回读的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
+| 任务后端不可用 | 已冻结且策略不要求来源当前回读的 metadata 命令可继续；依赖 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | workflow engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Run–Engine Binding 标为分歧待对账，对账期间 control 不创建新 Obligation |
 | harness / Agency 不可用 | 执行安全暂停或按代次结束，不冒充成功 |
 | 节点的外部机械事实前置读不到 | 该节点不派发并标需要关注；已派发的执行不受影响；事实可读后按当前观察重新判定 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 
-系统对账完成前，各模块都不得表现为已完成交接。连接需要的新尝试或替代执行必须拥有新的归属者版本或代次、Execution Spec 与运行时代次；不能复活旧归属者。
+系统对账完成前，各模块都不得表现为已完成交接。连接产生的新尝试或替代执行必须拥有新的归属者版本或代次、Execution Spec 与运行时代次；不能复活旧归属者。
 
 ## 场景与第三方适配器
 

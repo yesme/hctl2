@@ -168,3 +168,83 @@ control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者�
 ## 引用格式（不是对象）
 
 ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest` 与 `review_subject_digest` 含义不同，分别按拥有它们的约束使用。
+
+<!-- BEGIN GENERATED IDENTIFIER GLOSSARY -->
+## 语义名与标识符
+
+> 本节由 `src/build/docs/generate_identifier_glossary.pl` 从约束层正文的代码体字段与枚举值生成；请修改约束层来源或生成器映射，不要手改本表。
+
+| 语义名 | 标识符 | 约束层出处 |
+| --- | --- | --- |
+| Run 引用 | `run_ref` | [run.md](../spec/run.md) |
+| Run 标识符 | `run_id` | [connections.md](../spec/connections.md) |
+| Run 状态版本 | `run_version` | [run.md](../spec/run.md) |
+| 上下文包摘要 | `bundle_digest` | [project.md](../spec/project.md) |
+| 不可变外部实体标识符 | `immutable_external_entity_id` | [task.md](../spec/task.md) |
+| 不支持 | `unsupported` | [run.md](../spec/run.md) |
+| 仓库实例标识符 | `repo_instance_id` | [system.md](../spec/system.md) |
+| 仓库标识符 | `repo_id` | [project.md](../spec/project.md)、[system.md](../spec/system.md)、[task.md](../spec/task.md) |
+| 仓库版本 | `repo_version` | [project.md](../spec/project.md) |
+| 仓库范围 | `repo_scope` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md) |
+| 代次 | `generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md) |
+| 任务来源 | `task_source` | [task.md](../spec/task.md) |
+| 任务生命周期版本 | `task_lifecycle_version` | [task.md](../spec/task.md) |
+| 供应端事件 | `provider_event` | [system.md](../spec/system.md) |
+| 允许原生交互 | `native_interactive_allowed` | [participant.md](../spec/participant.md) |
+| 内联 | `inline` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
+| 内部归约器 | `internal_reducer` | [system.md](../spec/system.md) |
+| 分组类型 | `group_kind` | [task.md](../spec/task.md) |
+| 分组锚点稳定标识符 | `group_anchor_stable_id` | [task.md](../spec/task.md) |
+| 单次调用版本 | `invocation_version` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md)、[system.md](../spec/system.md) |
+| 受管单写者 | `managed_single_writer` | [participant.md](../spec/participant.md) |
+| 只读关联 | `linked_readonly` | [task.md](../spec/task.md) |
+| 后端权威 | `backend_authoritative` | [task.md](../spec/task.md) |
+| 回忆 | `recall` | [project.md](../spec/project.md) |
+| 备忘标识符 | `memo_id` | [project.md](../spec/project.md) |
+| 外部实体类型 | `external_entity_kind` | [task.md](../spec/task.md) |
+| 外部看板项标识符 | `external_board_item_id` | [task.md](../spec/task.md) |
+| 契约内 | `contract` | [run.md](../spec/run.md) |
+| 实现内 | `implementation` | [run.md](../spec/run.md) |
+| 尝试代次 | `attempt_generation` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 工件版本标识符 | `artifact_revision_id` | [project.md](../spec/project.md) |
+| 工件状态版本 | `artifact_version` | [project.md](../spec/project.md) |
+| 工具箱直接回读 | `toolbox_readback` | [participant.md](../spec/participant.md) |
+| 已知 | `known` | [run.md](../spec/run.md) |
+| 引擎绑定代次 | `engine_binding_generation` | [run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 当前 | `current` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md) |
+| 执行主体 | `execution_principal` | [system.md](../spec/system.md) |
+| 执行模式 | `execution_mode` | [connections.md](../spec/connections.md) |
+| 指针 | `pointer` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
+| 接受 | `accepted` | [run.md](../spec/run.md) |
+| 控制面写入者代次 | `control_writer_generation` | [system.md](../spec/system.md) |
+| 控制面权威 | `hctl_authoritative` | [task.md](../spec/task.md) |
+| 放置范围稳定标识符 | `placement_scope_stable_id` | [task.md](../spec/task.md) |
+| 未知 | `unknown` | [run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 机械可判 | `mechanical` | [task.md](../spec/task.md) |
+| 根上下文清单摘要 | `manifest_digest` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md) |
+| 根上下文清单标识符 | `context_manifest_id` | [project.md](../spec/project.md) |
+| 法定票数不可达 | `quorum-unreachable` | [run.md](../spec/run.md) |
+| 活动 | `active` | [connections.md](../spec/connections.md)、[run.md](../spec/run.md)、[task.md](../spec/task.md) |
+| 状态版本 | `state_version` | [task.md](../spec/task.md) |
+| 现场代次 | `site_generation` | [system.md](../spec/system.md) |
+| 直接客户端 | `direct_client` | [system.md](../spec/system.md) |
+| 看板范围稳定标识符 | `board_scope_stable_id` | [task.md](../spec/task.md) |
+| 端口类型 | `port_kind` | [task.md](../spec/task.md) |
+| 等待完成 | `completion_pending` | [connections.md](../spec/connections.md)、[run.md](../spec/run.md)、[task.md](../spec/task.md) |
+| 绑定版本 | `binding_revision` | [task.md](../spec/task.md) |
+| 结果提交 SHA | `result_commit_sha` | [participant.md](../spec/participant.md) |
+| 范围稳定标识符 | `scope_stable_id` | [task.md](../spec/task.md) |
+| 要求修改 | `changes_requested` | [run.md](../spec/run.md) |
+| 评审关卡 | `gate` | [task.md](../spec/task.md) |
+| 请求卡标识符 | `request_id` | [connections.md](../spec/connections.md) |
+| 请求卡版本 | `request_version` | [project.md](../spec/project.md) |
+| 账号稳定标识符 | `account_stable_id` | [task.md](../spec/task.md) |
+| 转述 | `narrated` | [participant.md](../spec/participant.md) |
+| 运行时代次 | `runtime_generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 进程内 | `in_process` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md)、[system.md](../spec/system.md) |
+| 适配器事件 | `adapter_event` | [participant.md](../spec/participant.md) |
+| 项目标识符 | `project_id` | [connections.md](../spec/connections.md)、[task.md](../spec/task.md) |
+| 项目版本 | `project_version` | [project.md](../spec/project.md) |
+| 项目范围 | `project_scope` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md) |
+| 驳回 | `rejected` | [run.md](../spec/run.md) |
+<!-- END GENERATED IDENTIFIER GLOSSARY -->

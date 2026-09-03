@@ -56,7 +56,7 @@ Task 有两条可恢复的创建路径：
 
 外部卡随后移到另一 Project 分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot，并把原 Task 标为需要关注。在恢复原位置或建立新 Task 前，系统必须阻止采纳、启动、完成和后端操作字段写入。
 
-系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只能在原 Project 锚点内改变阶段和排序；跨 Project 分组的预览必须拒绝。需要改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。
+系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只能在原 Project 锚点内改变阶段和排序；跨 Project 分组的预览必须拒绝。改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。
 
 task_source 端口绑定与 Task–Backend Binding 的本地 current 投影使用 control 维护的单调 `state_version` 做比较并交换；Task Backend Snapshot 另行保存供应端的远端 revision、摘要和游标。采用外部来源内容的“采纳契约”命令必须让 Snapshot、字段权威策略与新 Task Revision 引用同一个 Task–Backend Binding，并把绑定版本、Snapshot、契约投影摘要和权威策略摘要一并写入 Task Revision。
 
@@ -66,9 +66,9 @@ task_source 端口绑定与 Task–Backend Binding 的本地 current 投影使�
 
 | 模式 | 规则 |
 | --- | --- |
-| backend_authoritative | 所选 content 后端拥有该字段（卡片、流转、排序、评论等操作字段默认如此），外部变化按 Snapshot 投影 |
-| hctl_authoritative | 控制面拥有该字段（契约、判决与验收类字段），后端只接收写回 |
-| linked_readonly | 非后端的关联来源只形成快照、提案或需要关注 |
+| 后端权威（`backend_authoritative`） | 所选 content 后端拥有该字段（卡片、流转、排序、评论等操作字段默认如此），外部变化按 Snapshot 投影 |
+| 控制面权威（`hctl_authoritative`） | 控制面拥有该字段（契约、判决与验收类字段），后端只接收写回 |
+| 只读关联（`linked_readonly`） | 非后端的关联来源只形成快照、提案或需要关注 |
 
 后端或关联来源的 Done/已关闭/Reopen/Deleted 是 content 事实，不会自动完成、重开、取消 HCTL Task，也不会停止 Run。删除只写 tombstone。
 
@@ -116,7 +116,7 @@ Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revis
 
 “启动 Run”命令预览必须列出会影响当前 Task Revision 的全部待采纳，并要求 actor 明确采纳、拒绝或延期。采纳会先产生新 Task Revision，再以新 Revision 重做“启动 Run”命令预览。拒绝或延期必须随准入冻结当前 Revision 和精确来源快照；未采纳的契约内容只作准入审计，不得进入 Task Revision、Run Manifest、Context Manifest 或 Execution Spec。
 
-存在未处理的待采纳时不得启动 Run，control 也不得自动采纳或静默越过。只有“采纳契约”命令能让外部契约内容进入施工约束。`backend_authoritative` 操作字段仍以当前 Snapshot 值和绑定版本作为启动的比较并交换前置，不能被拒绝或延期动作改写。
+存在未处理的待采纳时不得启动 Run，control 也不得自动采纳或静默越过。只有“采纳契约”命令能让外部契约内容进入施工约束。后端权威（`backend_authoritative`）操作字段仍以当前 Snapshot 值和绑定版本作为启动的比较并交换前置，不能被拒绝或延期动作改写。
 
 Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当前 placement、remote revision、source head 或完整 cursor，必须先完成当前回读；后端不可用、cursor 有 gap 或 readback 超出冻结 freshness 上限时类型化拒绝。只有验收策略明确允许某项已缓存证据时，命令才可固定其观测版本、时间和已知 gap 继续；“后端离线”本身不放宽 Project group、drift 或 CAS 前置。
 

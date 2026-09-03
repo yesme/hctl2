@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 展示面 | Workbench、CLI 与第三方场景客户端 | 不因客户端身份拥有事实或特权；按动作目标查询/提交 HCTL 命令，或读写 provider content 与精确运行时 |
 | 控制面 | HCTL 自己的命令服务、账本与现场执行者（组件划分见[系统边界](./spec/system.md#组件)） | 全部 metadata：身份、绑定、授权、判决 |
-| 执行面 | 四个场景的 content 系统与物理执行；Participant / Terminal 默认由发布包自带的本地 Agency 参考实现承载，运行时为 Herdr | 全部 content 与机械状态；接收 provider 自有内容/运行时动作，也执行控制面按顺序发出的副作用 |
+| 执行面 | 四个场景的 content 系统与物理执行；Participant / Terminal 默认由发布包自带的本地 Agency 参考实现承载，运行时选型见交付文档 | 全部 content 与机械状态；接收 provider 自有内容/运行时动作，也执行控制面按顺序发出的副作用 |
 
 控制面归**用户级**：一人多机连的是同一个控制面，仓库克隆只是代码侧的物理现场。单机部署时三个面同装一台机器——这是本地优先（local-first）的默认部署形态，不改变客户端—服务端结构。
 
@@ -31,7 +31,7 @@ Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 
 | Room（聊天室） | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 | 采用 Matrix 协议；Matrix 生态客户端可直接访问；HCTL 房间不开端到端加密，准入与降级见[Project 约束](./spec/project.md#room-与消息) |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 | 注册仓库时选择：本地任务服务器，或 GitHub/Linear 这类远端平台直访；一个 Repo 一个 Board |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 | 引擎只拥有机械状态，不拥有语义 |
-| Terminal | Agency（派出方）与其供给的 worker（执行体） | 会话转录、PTY 流 | 这一行有两个对话方，其他三行只有一个：control 向 Agency 要人，向执行体派工与观测。没有接入外部 Agency 时，默认使用发布包自带的本地参考实现，进程、PTY、终端会话与 TUI 采用 Herdr；HCTL 不提供另一套第一方终端运行服务 |
+| Terminal | Agency（派出方）与其供给的 worker（执行体） | 会话转录、PTY 流 | 这一行有两个对话方，其他三行只有一个：control 向 Agency 要人，向执行体派工与观测。没有接入外部 Agency 时，默认使用发布包自带的本地参考实现，进程、PTY、终端会话与 TUI 由所选运行时提供；HCTL 不提供另一套第一方终端运行服务 |
 
 ## 避免供应商锁定
 
@@ -39,7 +39,7 @@ Workbench 把四类 provider 客户端、跨模块导航、联合投影和 HCTL 
 
 | 场景 | 稳定边界 | 后续替换方式 |
 | --- | --- | --- |
-| Room | Matrix 协议 + HCTL 的聊天端口（Port–Provider Binding）与 Room–Server Binding | 可换任何 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
+| Room | Matrix 协议 + HCTL 的聊天端口绑定与 Room 到服务器房间的绑定 | 可换任何 Matrix homeserver；飞书、Slack、Discord 等非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 不逐个平台写聊天适配器 |
 | Kanban | HCTL task backend 端口 | GitHub、Linear 等各写一个 task backend 适配器，共用 Task 身份、字段权威、Snapshot 与同一套命令准入 |
 | Workflow | HCTL 的 Workflow Revision 中间表示 + workflow engine 编译/回读端口 | 为新引擎增加编译器和回读适配器；Run、Gate、Obligation 与完成判定不随引擎改变 |
 | Terminal | HCTL Agency 端口 + 客户端侧终端传输适配器 | 远程 Agency 可以直接提供受控端口，或由专用适配器接入；执行授权、身份、租约、证据与恢复等级不随 Agency 改变 |
@@ -76,7 +76,7 @@ content 容器的层级随场景各得其所：聊天两级——一个 Repo 一
 | Project → Task | 冻结的任务契约版本（Task Revision）+ 来源回链 | 讨论经采纳命令升格为承诺 |
 | Task / Project → Run | 冻结契约 + 施工图，由施工清单（Run Manifest）冻结引用 | 承诺进入治理；批准施工图与开工是两件账本事实，可在一次预览里提交 |
 | Run / Project → Participant | 派发规格（Execution Spec） | 治理派发给执行体；执行侧照单干活，不做语义判断 |
-| 执行回程 | 结果提案（Result Proposal）→ 裁决与凭证 | 执行只能提议；归属模块校验身份、代次、权限与证据后才算数 |
+| 执行回程 | 结果提案 → 裁决与凭证 | 执行只能提议；归属模块校验身份、代次、权限与证据后才算数 |
 
 ## 数据丢了怎么办
 

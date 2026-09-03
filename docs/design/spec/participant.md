@@ -119,7 +119,7 @@ Agency 的接口约定**永不包含治理权威**：租约、代次、冻结规
 
 判断进程是否存活及归谁所有时，优先采用 Herdr API 或进程证据；其次采用结构化生命周期事件或钩子；最后才参考标题和屏幕内容。判断语义状态时，优先采用结构化协议或原生钩子；其次采用转录推断；最后才参考标题和屏幕内容。低优先级信号不能覆盖仍有效的高优先级证据。每条观测记录来源、置信度、证据和观测时间，而且无论置信度多高都不能自行推进领域结果。
 
-Execution Spec 必须冻结终端输入策略。`managed_single_writer` 要求所有输入经过当前连接票据、代次和 Terminal Input Lease 校验；供应端不能统一拦截全部写入时，系统必须关闭原生控制器。`native_interactive_allowed` 允许 Workbench 直连传输、Herdr TUI 或其他原生客户端向已映射的精确终端输入，并明确接受供应端无法逐次证明 actor、租约和代次。
+Execution Spec 必须冻结终端输入策略。受管单写者（`managed_single_writer`）要求所有输入经过当前连接票据、代次和 Terminal Input Lease 校验；供应端不能统一拦截全部写入时，系统必须关闭原生控制器。允许原生交互（`native_interactive_allowed`）允许 Workbench 直连传输、Herdr TUI 或其他原生客户端向已映射的精确终端输入，并明确接受供应端无法逐次证明 actor、租约和代次。
 
 后一模式中的输入是有效运行时输入，不是分歧，也不自动污染独立的 Git、SCM 或测试证据。执行记录必须标明输入来源不完整；不得声称物理单写者、完整回放，或由该输入产生 HCTL 命令或结果。切换策略必须创建新 Execution Spec 或替代执行，不能在活动执行背后静默放宽。
 
@@ -136,7 +136,7 @@ Agency 声明事件游标时，必须报告序号和缺口；未声明时，事�
 - 观测上报通道失败时，只能显式标记该执行的观测截断并终结事件流，不得交付有缺口的事件流冒充完整历史。
 - harness 内部派生的子执行体事件必须携带稳定的派生谱系引用，不得摊平进主执行流。
 
-Proposal 头必须固定 proposal ID、归属者、运行时、适用的代次栅栏、Execution Spec、Context Bundle、绑定、生产者序号和幂等键。受信任的 `in_process` Proposal 使用缩减头，而且不得提交 ChangeSet。
+Proposal 头必须固定 proposal ID、归属者、运行时、适用的代次栅栏、Execution Spec、Context Bundle、绑定、生产者序号和幂等键。受信任的进程内（`in_process`）Proposal 使用缩减头，而且不得提交 ChangeSet。
 
 每个输出项必须另带 schema key、content digest、候选产物引用和自己的代次字段组。只有 output schema 明确允许逐项准入时，归属者才能单独接受合格项；否则任一必需项不匹配都拒绝整组。任一代次、绑定、Bundle、租约或输出范围不匹配的项只能留作审计，不能让其他合格项替它背书。修正必须创建新 Proposal 和新的生产者序号，不得改写原项。
 
@@ -163,7 +163,7 @@ Evidence 是被判定的事实记录，本身不下结论。每条 Evidence 必�
 
 Attach Descriptor 固定逻辑归属者、供应端终端 ID、主机、各层代次、能力、权限和过期时间。观察、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者；HCTL 管理的输入默认最多一个 Terminal Input Lease 持有者，接管必须原子撤销旧租约。
 
-绑定声明 `native_interactive_allowed` 时，供应端原生客户端或 Workbench 直连传输可以不经该租约输入。control 把它记录为允许但无法逐次证明来源的运行时交互；该通道中的文字或所谓“完成”不能直接准入 HCTL 结果。
+绑定声明允许原生交互（`native_interactive_allowed`）时，供应端原生客户端或 Workbench 直连传输可以不经该租约输入。control 把它记录为允许但无法逐次证明来源的运行时交互；该通道中的文字或所谓“完成”不能直接准入 HCTL 结果。
 
 Execution Chat 投影是 Terminal 中绑定且只绑定一个精确 Room Invocation/invocation_version 或 Attempt/attempt_generation、对应 Execution Runtime/runtime_generation 与适用代次栅栏的结构化观察与控制视图。它不是 Room，也没有独立会话身份。适配器支持时，输入作为携带这些精确引用的获准 control 动作写回同一执行体；能力不足时准确降级为 structured inspect 或 terminal，不得改投另一个会话。
 

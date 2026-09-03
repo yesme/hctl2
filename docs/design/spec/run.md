@@ -125,7 +125,7 @@ Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifa
 
 ## Request、重试与 Gate
 
-Run 需要输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request 生命周期。Request 冻结截止时间与 `fail | cancel` 默认策略。解决与过期的跨模块事务都以比较并交换校验精确 Request 和阻塞项版本；只有解决可以写答案投递，过期不能猜测答案，而要按冻结策略结束对应 Attempt、Seat 或 Obligation。
+Run 缺少输入时向 Project 提交类型化 [Request](./project.md) 创建命令，只阻塞声明的范围；Project 独占 Request 生命周期。Request 冻结截止时间与 `fail | cancel` 默认策略。解决与过期的跨模块事务都以比较并交换校验精确 Request 和阻塞项版本；只有解决可以写答案投递，过期不能猜测答案，而要按冻结策略结束对应 Attempt、Seat 或 Obligation。
 
 Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正常 Result Proposal/Receipt 路径完成。Dagu `human.task` 只是每个 HCTL 外部节点的机械暂停原语，不构成第二条人类输入或完成路径。
 
@@ -141,7 +141,7 @@ Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正�
 
 只有冻结策略列明的类型化技术故障才可以切换 Attempt，例如候选特有的认证、配额或网络故障，进程或运行时丢失，以及租约超时。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时，于同一 Seat 创建新 Attempt。
 
-候选耗尽后，需要额外输入或授权时创建 Request；否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的 `accepted/rejected/changes_requested` 只是归约器输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。`changes_requested` 可携带分歧落点 `implementation | contract`：落在实现时按语义返工路径处理；落在契约时，归约器不进入返工也不自动替代，只把 Task 标为需要关注并建议采纳新 Task Revision，替代与否归人。
+候选耗尽且必须取得额外输入或授权时创建 Request；否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的接受（`accepted`）、驳回（`rejected`）或要求修改（`changes_requested`）只是归约器输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。要求修改（`changes_requested`）可携带分歧落点实现内（`implementation`）或契约内（`contract`）：落在实现时按语义返工路径处理；落在契约时，归约器不进入返工也不自动替代，只把 Task 标为需要关注并建议采纳新 Task Revision，替代与否归人。
 
 Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、必需 Skill 引用与摘要和能力与权限策略引用与摘要，并各自冻结精确 Participant revision 与 Project 参与者授权条目。
 
@@ -149,9 +149,9 @@ Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和�
 
 control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 
-Gate 只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按 `known/unknown` 展示；Participant、Harness 或模型自报不能把 unknown 变成 known。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回 unsupported。
+Gate 只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按已知（`known`）或未知（`unknown`）展示；Participant、Harness 或模型自报不能把未知变成已知。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回不支持（`unsupported`）。
 
-达到法定票数后，control 撤销剩余 Attempt 并提交汇总 Verdict/Receipt，再完成 Engine 检查点。剩余票已不可能达到门槛时，Gate 返回 quorum-unreachable，使 Obligation 失败并沿 Workflow Revision 的失败边推进。返工产生新 Revision 后，旧票失效，新的 Revision 必须重新通过 Gate。Gate 策略可声明**返工轮数上限**（默认值见[交付文档](../delivery.md#运行默认值)）：达到上限后按 quorum-unreachable 同路处理——Obligation 失败并沿失败边推进，或按策略创建 Request 找人；不得无上限返工。Gate 策略还可声明**增量评审**：新 Revision 的评审包附带与上一版的差异指针，席位可只读差异；未声明时每轮全量重评。Task Revision 只有在验收契约变化时才更新。
+达到法定票数后，control 撤销剩余 Attempt 并提交汇总 Verdict/Receipt，再完成 Engine 检查点。剩余票已不可能达到门槛时，Gate 返回法定票数不可达（`quorum-unreachable`），使 Obligation 失败并沿 Workflow Revision 的失败边推进。返工产生新 Revision 后，旧票失效，新的 Revision 必须重新通过 Gate。Gate 策略可声明**返工轮数上限**（默认值见[交付文档](../delivery.md#运行默认值)）：达到上限后按法定票数不可达同路处理——Obligation 失败并沿失败边推进，或按策略创建 Request 找人；不得无上限返工。Gate 策略还可声明**增量评审**：新 Revision 的评审包附带与上一版的差异指针，席位可只读差异；未声明时每轮全量重评。Task Revision 只有在验收契约变化时才更新。
 
 ## Run → Task
 

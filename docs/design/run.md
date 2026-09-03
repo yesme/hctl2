@@ -68,7 +68,7 @@ Workflow 场景提供施工清单预览、只读图、节点/席位/尝试的渐
 | 场景客户端：CLI | show/preview/start/pause/cancel；写操作先预览确认 |
 | 受控端口：workflow engine | 保存令牌、机械任务、定时器、重试和历史 |
 
-Workbench 关闭不停止 Run。Workbench 就位前由 `hctl2` CLI 调用公共命令服务，就位后仍调用同一服务。Dagu 控制台保留为供应端管理与诊断界面；其直接动作按[Run 约束](./spec/run.md#写入约束)回读为机械事实与分歧。
+Workbench 关闭不停止 Run。Workbench 就位前由 `hctl2` CLI 调用公共命令服务，就位后仍调用同一服务。工作流引擎控制台保留为供应端管理与诊断界面；其直接动作按[Run 约束](./spec/run.md#写入约束)回读为机械事实与分歧。
 
 ## 模块交接
 
