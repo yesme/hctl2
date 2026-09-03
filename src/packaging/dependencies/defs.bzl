@@ -9,7 +9,9 @@ _TUWUNEL_NATIVE_BUILD = read_config("hctl2", "tuwunel_native_build", "0")
 _COMPONENT_PREFIXES = {
     "cinny": "CINNY",
     "dagu": "DAGU",
+    "gh": "GH",
     "herdr": "HERDR",
+    "process_compose": "PROCESS_COMPOSE",
     "static_web_server": "STATIC_WEB_SERVER",
     "tuwunel": "TUWUNEL",
     "vikunja": "VIKUNJA",
@@ -143,7 +145,7 @@ def _metadata_lines(target: str, component = None) -> list[str]:
             "",
         ])
 
-    target_components = ["tuwunel", "vikunja", "dagu", "herdr", "static_web_server"]
+    target_components = ["tuwunel", "vikunja", "dagu", "gh", "herdr", "static_web_server", "process_compose"]
     selected_target_components = target_components if component == None else [component]
     for selected_component in selected_target_components:
         if selected_component == "cinny":

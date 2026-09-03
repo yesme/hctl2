@@ -69,6 +69,21 @@ prepare_herdr_dependency() {
     "$P0_BIN_DIR/herdr" --version
 }
 
+prepare_gh_dependency() {
+    require_target_host
+    require_command lipo
+    require_command otool
+    require_command unzip
+    require_command vtool
+
+    install_gh_release
+    verify_macos_binary_compatibility gh "$P0_BIN_DIR/gh"
+    find "$P0_VENDOR_DIR/gh-$GH_VERSION" -type f -path '*/bin/gh' -delete
+
+    note "prepared GitHub CLI for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/gh" --version
+}
+
 prepare_static_web_server_dependency() {
     require_target_host
     require_command lipo
@@ -83,4 +98,20 @@ prepare_static_web_server_dependency() {
 
     note "prepared Static Web Server for $HCTL2_TARGET_ID"
     "$P0_BIN_DIR/static-web-server" --version
+}
+
+prepare_process_compose_dependency() {
+    require_target_host
+    require_command lipo
+    require_command otool
+    require_command tar
+    require_command vtool
+
+    install_process_compose
+    verify_macos_binary_compatibility Process-Compose "$P0_BIN_DIR/process-compose"
+    find "$P0_VENDOR_DIR/process-compose-$PROCESS_COMPOSE_VERSION" \
+        -type f -name process-compose -delete
+
+    note "prepared Process Compose for $HCTL2_TARGET_ID"
+    "$P0_BIN_DIR/process-compose" version
 }

@@ -73,3 +73,7 @@
 - GitHub 文档：[REST 限额](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) · [REST 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)（304 不计限额、用 webhook 不轮询）· [Checks runs](https://docs.github.com/en/rest/checks/runs) · [Commit statuses](https://docs.github.com/en/rest/commits/statuses) · [Pulls](https://docs.github.com/en/rest/pulls/pulls) · [Git refs](https://docs.github.com/en/rest/git/refs) · [Webhook 事件](https://docs.github.com/en/webhooks/webhook-events-and-payloads) · [OpenAPI 描述仓库](https://github.com/github/rest-api-description)
 - 生成路径对照：[octorust crates.io](https://crates.io/crates/octorust)（0.10.0，2025-03-12）
 - 本仓库：[Participant 约束](../../design/spec/participant.md) · [jq 的 DotSlash 钉定先例](../build-tools/jq.md) · [任务后端条目（GitHub 外部来源）](../task-backends.md) · [部件矩阵](../component-matrix-20260902.md)
+
+## 复核记录
+
+- 2026-09-04：`hctl2-tool wait` 已采用 `gh v2.99.0`，通过 DotSlash 固定 Linux x86_64、macOS arm64/x86_64、Windows x86_64 官方制品，并把当前三个发行平台的 `gh` 放入离线包。GitHub 事实的字段映射位于共享 `hctl2-facts` crate，未来 control 可以复用同一事实形状；control 自身的 GitHub provider 尚未开工，因此不提前加入未被调用的 octocrab 依赖。

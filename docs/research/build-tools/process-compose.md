@@ -57,3 +57,7 @@ systemd user service 能覆盖 Linux，launchd 能覆盖 macOS，但会产生两
 对 HCTL2 发行包，最贴合的形状是「一个基座文件定义公共环境与 `depends_on` 骨架 + 每个服务一个片段文件，由 control 以固定顺序传 `-f`」；`.env` 只从当前目录读，路径都以基座文件为准。布尔字段 `disabled` 在 override 里不能可靠地由 `true` 改回 `false`，上游为此加了字符串型 `is_disabled: "false"`，分文件时要用后者。
 
 **未由上游提供、仍属 control 的部分**：服务的备份与恢复编排、升级顺序、Herdr 适配代码、以及「哪个服务算健康」的产品判定——Process Compose 只回答进程活着、探针通过、退出码几何。
+
+## 复核记录
+
+- 2026-09-04：所有者接受发行侧接管。运行包固定 `v1.122.0` 官方二进制；五个服务各有一个 YAML，基座文件与五个服务文件以固定顺序传给 Process Compose。`hctl2-services` 只负责准备产品配置、调用 Process Compose 客户端并等待其就绪读数；旧 `start.sh`、`stop.sh`、`status.sh` 与 PID 监督代码删除。DotSlash 清单补入 Windows amd64 官方 zip。macOS arm64 离线包已实测完整启动、就绪回读、单服务重启、单服务停启、smoke 与反序关停。

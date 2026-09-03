@@ -3,28 +3,6 @@
 
 set -euo pipefail
 
-resolve_executable_path() {
-    local path="$1"
-    local link
-    local directory
-
-    while [[ -L "$path" ]]; do
-        link="$(readlink "$path")"
-        case "$link" in
-            /*) path="$link" ;;
-            *) path="$(dirname -- "$path")/$link" ;;
-        esac
-    done
-    directory="$(cd -- "$(dirname -- "$path")" && pwd -P)"
-    printf '%s/%s\n' "$directory" "$(basename -- "$path")"
-}
-
-EXECUTABLE_PATH="$(resolve_executable_path "${BASH_SOURCE[0]}")"
-readonly EXECUTABLE_PATH
-HCTL2_INSTALL_ROOT="$(cd -- "$(dirname -- "$EXECUTABLE_PATH")/.." && pwd -P)"
-readonly HCTL2_INSTALL_ROOT
-export HCTL2_INSTALL_ROOT
-
 print_help() {
     printf '%s\n' \
         'hctl2-services manages the dependency services bundled with HCTL2.' \
@@ -60,17 +38,136 @@ case "$COMMAND" in
     --help | -h)
         (($# == 0)) || usage_error "--help does not accept arguments"
         print_help
+        exit 0
         ;;
-    start | stop)
-        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/$COMMAND.sh" "$@"
-        ;;
-    restart)
-        "$HCTL2_INSTALL_ROOT/lib/hctl2/services/stop.sh" "$@"
-        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/start.sh" "$@"
-        ;;
+    start | stop | restart) ;;
     status | smoke)
         (($# == 0)) || usage_error "$COMMAND does not accept arguments"
-        exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/$COMMAND.sh"
         ;;
     *) usage_error "unknown command: $COMMAND" ;;
+esac
+
+resolve_executable_path() {
+    local path="$1"
+    local link
+    local directory
+
+    while [[ -L "$path" ]]; do
+        link="$(readlink "$path")"
+        case "$link" in
+            /*) path="$link" ;;
+            *) path="$(dirname -- "$path")/$link" ;;
+        esac
+    done
+    directory="$(cd -- "$(dirname -- "$path")" && pwd -P)"
+    printf '%s/%s\n' "$directory" "$(basename -- "$path")"
+}
+
+EXECUTABLE_PATH="$(resolve_executable_path "${BASH_SOURCE[0]}")"
+readonly EXECUTABLE_PATH
+HCTL2_INSTALL_ROOT="$(cd -- "$(dirname -- "$EXECUTABLE_PATH")/.." && pwd -P)"
+readonly HCTL2_INSTALL_ROOT
+export HCTL2_INSTALL_ROOT
+
+# shellcheck source=common/runtime.sh
+source "$HCTL2_INSTALL_ROOT/lib/hctl2/services/lib.sh"
+
+start_services() {
+    local component
+    local -a components=("$@")
+
+    if ((${#components[@]} == 0)); then
+        components=("${P0_COMPONENTS[@]}")
+    fi
+    validate_components "${components[@]}"
+
+    if process_compose_alive; then
+        ensure_selected_dependencies "${components[@]}"
+        for component in "${components[@]}"; do
+            component_running "$component" || process_compose process start "$component"
+        done
+    else
+        process_compose_project --dry-run
+        process_compose_project up \
+            --detached \
+            --tui=false \
+            --keep-project \
+            "${components[@]}"
+    fi
+
+    wait_components_ready "${components[@]}"
+
+    note "service state: hctl2-services status"
+    if [[ " ${components[*]} " == *" cinny "* ]]; then
+        note "Chatroom client: http://127.0.0.1:$CINNY_PORT/"
+        note "Tuwunel registration token: $(<"$P0_CONFIG_DIR/tuwunel-registration-token")"
+    fi
+}
+
+stop_services() {
+    validate_components "$@"
+    if ! process_compose_alive; then
+        note "services are not running"
+        return
+    fi
+    if (($# == 0)); then
+        process_compose down
+    else
+        process_compose process stop "$@"
+    fi
+}
+
+restart_services() {
+    local component
+    local -a components=("$@")
+
+    if ((${#components[@]} == 0)); then
+        components=("${P0_COMPONENTS[@]}")
+    fi
+    validate_components "${components[@]}"
+    if ! process_compose_alive; then
+        start_services "${components[@]}"
+        return
+    fi
+    ensure_selected_dependencies "${components[@]}"
+    for component in "${components[@]}"; do
+        process_compose process restart "$component"
+    done
+    wait_components_ready "${components[@]}"
+}
+
+status_services() {
+    local component
+    local failures=0
+
+    if ! process_compose_alive; then
+        printf 'HCTL2 services are not running.\n'
+        return 1
+    fi
+    process_compose process list --output wide
+    for component in "${P0_COMPONENTS[@]}"; do
+        component_ready "$component" || failures=$((failures + 1))
+    done
+    return "$failures"
+}
+
+ensure_selected_dependencies() {
+    local component
+
+    for component in "$@"; do
+        if [[ "$component" == "cinny" ]] && ! component_ready tuwunel; then
+            component_running tuwunel || process_compose process start tuwunel
+            wait_components_ready tuwunel
+        fi
+    done
+}
+
+prepare_runtime
+
+case "$COMMAND" in
+    start) start_services "$@" ;;
+    stop) stop_services "$@" ;;
+    restart) restart_services "$@" ;;
+    status) status_services ;;
+    smoke) exec "$HCTL2_INSTALL_ROOT/lib/hctl2/services/smoke.sh" ;;
 esac

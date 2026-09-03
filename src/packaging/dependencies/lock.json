@@ -16,6 +16,11 @@
         "source_commit": "532c512944b2e5eb8991b5bc7cbeafa74fd5b47a",
         "source_asset": "dagu_source"
       },
+      "gh": {
+        "version": "2.99.0",
+        "source_commit": "d528f20f2ee02f6703773e9f56c90e3c3f5d46b0",
+        "source_asset": "gh_source"
+      },
       "herdr": {
         "version": "0.8.2",
         "source_commit": "9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c",
@@ -30,6 +35,11 @@
         "version": "2.44.0",
         "source_commit": "27aa3450b6bf70bd1fa553b2197b53032affcba1",
         "source_asset": "static_web_server_source"
+      },
+      "process_compose": {
+        "version": "1.122.0",
+        "source_commit": "23b0acacc937d745279fb1551337f4031c4fc865",
+        "source_asset": "process_compose_source"
       }
     },
     "runtime": {
@@ -80,6 +90,16 @@
       "filename": "static-web-server-27aa3450b6bf70bd1fa553b2197b53032affcba1-source.tar.gz",
       "url": "https://github.com/static-web-server/static-web-server/archive/27aa3450b6bf70bd1fa553b2197b53032affcba1.tar.gz",
       "sha256": "fa04fc2ed8d8ff6cce6e1001cb80746bc7f0b9dc635324fb5b72d87ed4b9603f"
+    },
+    "gh_source": {
+      "filename": "gh-d528f20f2ee02f6703773e9f56c90e3c3f5d46b0-source.tar.gz",
+      "url": "https://github.com/cli/cli/archive/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0.tar.gz",
+      "sha256": "6c1b21a849182dd95d41ba9e6e034f78e1d58bd5ebaf6a2bab37861331c1d3a9"
+    },
+    "process_compose_source": {
+      "filename": "process-compose-23b0acacc937d745279fb1551337f4031c4fc865-source.tar.gz",
+      "url": "https://github.com/F1bonacc1/process-compose/archive/23b0acacc937d745279fb1551337f4031c4fc865.tar.gz",
+      "sha256": "554f27b57adb6435b91ff49ba4a3ab50b33668edbb65c25b181af5d195c91739"
     }
   },
   "targets": {
@@ -106,6 +126,11 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_linux_amd64.tar.gz",
           "sha256": "cfadd9606af9ff74d0ea8aef91fd89a831b3c63cf99a95c456fe2fcb3bb0471e"
         },
+        "gh": {
+          "filename": "gh_2.99.0_linux_amd64.tar.gz",
+          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_linux_amd64.tar.gz",
+          "sha256": "ed4960225d2833e04a61590d9fa2b5773d147f3aa375459e5466a40c102f3832"
+        },
         "herdr": {
           "filename": "herdr-linux-x86_64",
           "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-linux-x86_64",
@@ -115,6 +140,11 @@
           "filename": "static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
           "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
           "sha256": "804bc0c31c78385ac04e9a36f3c2aa3d3170eb77d66807c2a1660c56b2026bb1"
+        },
+        "process_compose": {
+          "filename": "process-compose-v1.122.0-linux-amd64.tar.gz",
+          "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_amd64.tar.gz",
+          "sha256": "9b6dbc38324c0b0481f1cd1dd828ffdc78117129ec797678f4bf8c4023311281"
         }
       }
     },
@@ -141,6 +171,11 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_amd64.tar.gz",
           "sha256": "a7fbed8e194668b9ede73de486f06f706574731ccf58fba1cffa86a1ffe84c18"
         },
+        "gh": {
+          "filename": "gh_2.99.0_macOS_amd64.zip",
+          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_amd64.zip",
+          "sha256": "70c05750c75df9465bc73b994e8bc379243bb494271f1b51f54ead2e19e45471"
+        },
         "herdr": {
           "filename": "herdr-macos-x86_64",
           "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-x86_64",
@@ -150,6 +185,11 @@
           "filename": "static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
           "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
           "sha256": "484708863fa0fa39fbfe1a46d99c3671f46c72862dff724da2b480cdc79ced1b"
+        },
+        "process_compose": {
+          "filename": "process-compose-v1.122.0-darwin-amd64.tar.gz",
+          "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_amd64.tar.gz",
+          "sha256": "b4f76e881759e13f7913a5b2fed16a0e75275c04d3a61e656d40448921f1c3ec"
         }
       }
     },
@@ -176,6 +216,11 @@
           "url": "https://github.com/dagucloud/dagu/releases/download/v2.15.1/dagu_2.15.1_darwin_arm64.tar.gz",
           "sha256": "e7343a08bfb42091c2a177cc1a75f7df5a4fc9c256735dfc769b3bed18f2a319"
         },
+        "gh": {
+          "filename": "gh_2.99.0_macOS_arm64.zip",
+          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_arm64.zip",
+          "sha256": "94d4bd7e88563a9cb414e651e88acc4f1728a87476752460906d824230748d37"
+        },
         "herdr": {
           "filename": "herdr-macos-aarch64",
           "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-aarch64",
@@ -185,6 +230,11 @@
           "filename": "static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",
           "url": "https://github.com/static-web-server/static-web-server/releases/download/v2.44.0/static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",
           "sha256": "5f22e1d0072a0f5bf8bb32468885d6ba7bc9df470d37f16bdd71f9697832964f"
+        },
+        "process_compose": {
+          "filename": "process-compose-v1.122.0-darwin-arm64.tar.gz",
+          "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_arm64.tar.gz",
+          "sha256": "eaa1238a1d6c300e928ef855d36a3d95aab8da64997104d74ea73d91d3cb6c60"
         }
       }
     }

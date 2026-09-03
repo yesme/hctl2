@@ -52,6 +52,9 @@ release_root="$test_root/$PACKAGE_ID"
 
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"
 [[ -x "$release_root/payload/libexec/hctl2/herdr" ]] || die "release is missing Herdr"
+[[ -x "$release_root/payload/libexec/hctl2/process-compose" ]] || \
+    die "release is missing Process Compose"
+[[ -x "$release_root/payload/libexec/hctl2/gh" ]] || die "release is missing GitHub CLI"
 [[ ! -e "$release_root/payload/bin/hctl2-agentd" ]] || die "release still contains hctl2-agentd"
 [[ -f "$release_root/payload/share/hctl2/first-party.tsv" ]] || \
     die "release is missing the first-party manifest"
@@ -67,7 +70,12 @@ grep -F 'Creator: Tool: syft-1.51.1' "$release_root/payload/share/hctl2/SBOM.spd
 grep -F "PackageName: $PACKAGE_ID" "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 grep -F 'FileName: libexec/hctl2/herdr' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 grep -F 'FileName: libexec/hctl2/tuwunel' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'FileName: libexec/hctl2/process-compose' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
+grep -F 'FileName: libexec/hctl2/gh' "$release_root/payload/share/hctl2/SBOM.spdx" >/dev/null
 "$release_root/payload/libexec/hctl2/herdr" --version | grep -F 'herdr ' >/dev/null
+"$release_root/payload/libexec/hctl2/process-compose" version | \
+    grep -F 'v1.122.0' >/dev/null
+"$release_root/payload/libexec/hctl2/gh" --version | grep -F 'gh version 2.99.0' >/dev/null
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"
 "$release_root/install.sh" --prefix "$contract_prefix"

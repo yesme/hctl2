@@ -1,0 +1,18 @@
+[package]
+name = "hctl2-facts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Shared readers for HCTL2 external mechanical facts"
+
+[dependencies]
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

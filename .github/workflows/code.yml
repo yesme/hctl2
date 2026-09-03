@@ -167,7 +167,6 @@ jobs:
             src/buck2 \
             src/build/ci/affected-targets \
             src/build/tools/install-dotslash \
-            src/build/tools/reindeer \
             src/packaging/dependencies/hctl2-services
 
       - name: Check service command contract

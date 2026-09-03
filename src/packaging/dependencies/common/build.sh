@@ -39,6 +39,27 @@ install_herdr_release() {
     install -m 0755 "$source" "$P0_BIN_DIR/herdr"
 }
 
+install_gh_release() {
+    local destination="$P0_VENDOR_DIR/gh-$GH_VERSION"
+    local binary
+
+    prepare_source_tree "$P0_DOWNLOAD_DIR/$GH_ASSET" "$GH_SHA256" "$destination"
+    binary="$(find "$destination" -type f -path '*/bin/gh' -print -quit)"
+    [[ -n "$binary" ]] || die "GitHub CLI archive did not contain bin/gh"
+    install -m 0755 "$binary" "$P0_BIN_DIR/gh"
+}
+
+install_process_compose() {
+    local destination="$P0_VENDOR_DIR/process-compose-$PROCESS_COMPOSE_VERSION"
+    local binary="$destination/process-compose"
+
+    mkdir -p "$destination"
+    tar -xf "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_ASSET" -C "$destination"
+    [[ -x "$binary" ]] || \
+        die "Process Compose archive did not contain an executable named process-compose"
+    install -m 0755 "$binary" "$P0_BIN_DIR/process-compose"
+}
+
 read_hctl2_version() {
     local cargo_toml="$1"
 

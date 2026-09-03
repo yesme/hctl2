@@ -1,0 +1,35 @@
+version: "0.5"
+
+processes:
+  cinny:
+    description: HCTL2 bundled Cinny client
+    command: >-
+      "${HCTL2_BIN_DIR}/static-web-server"
+      --host 127.0.0.1
+      --port "${CINNY_PORT}"
+      --root "${HCTL2_CINNY_ROOT}"
+      --compression false
+      --directory-listing false
+      --cache-control-headers false
+      --log-level error
+    log_location: "${HCTL2_LOG_DIR}/cinny.log"
+    depends_on:
+      tuwunel:
+        condition: process_healthy
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: /config.json
+        port: "${CINNY_PORT}"
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 30
+    shutdown:
+      signal: 15
+      timeout_seconds: 10

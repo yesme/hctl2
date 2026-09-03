@@ -1,0 +1,39 @@
+version: "0.5"
+
+processes:
+  herdr:
+    description: HCTL2 local Agency runtime
+    command: '"${HCTL2_BIN_DIR}/herdr" server'
+    environment:
+      - "HERDR_CONFIG_PATH=${HCTL2_HERDR_CONFIG}"
+      - "HERDR_SOCKET_PATH=${HCTL2_HERDR_SOCKET}"
+      - "XDG_CONFIG_HOME=${HCTL2_CONFIG_DIR}"
+      - "XDG_STATE_HOME=${HCTL2_HERDR_DATA}"
+    log_location: "${HCTL2_LOG_DIR}/herdr.log"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 5
+    readiness_probe:
+      exec:
+        command: >-
+          env
+          HERDR_CONFIG_PATH="${HCTL2_HERDR_CONFIG}"
+          HERDR_SOCKET_PATH="${HCTL2_HERDR_SOCKET}"
+          XDG_CONFIG_HOME="${HCTL2_CONFIG_DIR}"
+          XDG_STATE_HOME="${HCTL2_HERDR_DATA}"
+          "${HCTL2_BIN_DIR}/herdr" status server
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 30
+    shutdown:
+      command: >-
+        env
+        HERDR_CONFIG_PATH="${HCTL2_HERDR_CONFIG}"
+        HERDR_SOCKET_PATH="${HCTL2_HERDR_SOCKET}"
+        XDG_CONFIG_HOME="${HCTL2_CONFIG_DIR}"
+        XDG_STATE_HOME="${HCTL2_HERDR_DATA}"
+        "${HCTL2_BIN_DIR}/herdr" server stop
+      signal: 15
+      timeout_seconds: 15
