@@ -67,3 +67,7 @@ Workflow 场景的机械引擎。HCTL 把 Workflow Revision 编译成受限的 D
 - 源码：[`internal/service/frontend/sse/app_stream.go`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/sse/app_stream.go)（UI 失效流，非公开契约）· [`internal/service/frontend/api/v1/humantasks.go`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/humantasks.go) · [`npm/`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/npm)（二进制包装）
 - 生成器：[progenitor](https://crates.io/crates/progenitor) · [openapi-generator rust](https://openapi-generator.tech/docs/generators/rust/)
 - 本仓库：[workflow engine 条目](../workflow-engines.md) · [Run 约束 §外部概念对齐](../../design/spec/run.md) · [部件矩阵](../component-matrix-20260902.md)
+
+## 复核记录
+
+- 2026-09-04 所有者裁决：从 GPL 许可的接口描述文件生成或重写的客户端代码**不算衍生作品，可以入库**。生成物按普通源码入库并随构建复现；不需要另做「构建期产物不入库」的绕法。
