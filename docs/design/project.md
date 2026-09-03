@@ -1,6 +1,6 @@
 # Project 与 Room
 
-> 状态：规范性（架构层） · 草案 v0.16.4<br>
+> 状态：规范性（架构层） · 草案 v0.16.5<br>
 > 日期：2026-09-02
 
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
@@ -9,9 +9,9 @@
 
 Harness 的会话、终端和 worktree（Git 工作树）都会结束或被替换；Project 的目标、论证、Participant（参与者）关系、来源和未决问题却必须继续存在。Project 模块保存的正是这份长期事实，Room（聊天室）则是所有 Harness 都消失之后仍然可以恢复的协作现场——它回答“我们要解决什么、为什么、依据是什么，以及哪些讨论已经足够稳定，可以成为承诺”。
 
-以 Room 为中心不等于所有工作都必须聊天：Kanban、Workflow 图和 Terminal 各有自己的场景界面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
+以 Room 为中心不等于所有工作都必须聊天：Kanban（看板）、Workflow（施工图）和 Terminal 各有自己的场景界面。Room 的特殊地位在于承载目标塑形的连续性（shaping continuity），而不是承载所有机械执行事件。
 
-Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。Participant 的完整设计（[七件事分层](./participant.md#七件事分层)、专业化与评审方法论）见[横切正文](./participant.md)；Context 的完整设计（冻结、传承与成本纪律）见[横切正文](./context.md)。
+Project 也不是施工管线：研究、规格说明、ADR（架构决策记录）和纯文档的 Project 可以从未创建 Run。Project 不预配常驻的“包工头”；Participant 是可寻址的逻辑档案，只有显式调用才产生有边界的执行。Participant 的完整设计（[七件事分层](./participant.md#七件事分层)、专业化与评审方法论）见[横切正文](./participant.md)；Context（上下文）的完整设计（冻结、传承与成本纪律）见[横切正文](./context.md)。
 
 ## 模块拥有什么
 
@@ -31,7 +31,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 - HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 约束](./spec/project.md#room-与消息)。
 - Memo 经显式提炼、预览并发布后成为长期知识。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时则创建 [Run](./run.md)。
-- 从 Repo Room 提升 Project 时只带显式选中的来源，可删减、补充、去敏；之后的聊天不会偷偷改变既有 Project。
+- 从仓库（Repo）的 Repo Room 提升 Project 时只带显式选中的来源，可删减、补充、去敏；之后的聊天不会偷偷改变既有 Project。
 - Project/Room 历史独立于客户端与运行时存活。
 
 ## Room 类型
@@ -49,7 +49,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 Room 是 Project 的主要操作场景——它就是聊天室，提供：
 
 - 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
-- `@` Participant/Role、/ 类型化动作、$ Skill、`#` 文件/Artifact/消息引用；
+- `@` Participant/Role、/ 类型化动作、$ Skill（技能包）、`#` 文件/Artifact/消息引用；
 - 并发单次调用的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和需要关注投影；
 - mention 提交前的 Trigger Preview：发出前先看清楚谁来执行、带什么上下文、有什么权限和预算、会创建什么；
