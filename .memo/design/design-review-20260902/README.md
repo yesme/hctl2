@@ -1,6 +1,6 @@
 # 设计文档四轴评审 · 状态板
 
-> 状态：第三轮已收口（2026-09-04，基线 v0.16.5）——写法（#148）、约束（#149）、愿景与架构（#150）、Fable 写作与调研（#153）、Codex 文档工具链（#156）与运行时及部件（#159）、Grok 测试与对抗核验（#161、#162）已合入 main；Grok 对 #156 的修正结论（首现对照豁免表 46 条全为规则豁免）由 Fable 写回正文并清零（v0.16.5）。第三轮补充裁决四条记入 `21-r2-rulings.md`（GPL 生成物、钥匙串回退、五家 SDK 延到 P2、I-03 不做全量加词，均已所有者同意）。遗留只剩跟踪 issue #157 / #158 与表下「延后与遗留」<br>
+> 状态：第三轮已收口（2026-09-04，基线 v0.16.5）——写法（#148）、约束（#149）、愿景与架构（#150）、Fable 写作与调研（#153）、Codex 文档工具链（#156）与运行时及部件（#159）、Grok 测试与对抗核验（#161、#162）已合入 main；Grok 对 #156 的修正结论（首现对照豁免表 46 条全为规则豁免）由 Fable 写回正文并清零（v0.16.5）。第三轮补充裁决四条记入 `21-r2-rulings.md`（GPL 生成物、钥匙串回退、五家 SDK 延到 P2、I-03 不做全量加词，均已所有者同意）。跟踪 issue #157 / #158 已由 GLM 关闭（#164、#165），Grok 对 #165 的核验待开（3.8）；其余见表下「延后与遗留」<br>
 > 基线：main @ `99b0bfb`（草案 v0.16.0）<br>
 > 计划：[`01-plan.md`](./01-plan.md)；原则：[`../../notes/review-four-axes-20260902.md`](../../notes/review-four-axes-20260902.md)；状态与方法：[`00-brief.md`](./00-brief.md)
 
@@ -20,11 +20,13 @@
 | 3.5 代码：文档工具链 PR 甲、运行时与部件 PR 乙（Codex + GPT，任务书二） | 完成；延后与遗留见表下 | PR #156、#159 | 2026-09-04 |
 | 3.6 测试计划与对抗核验（Grok，任务书三） | 完成（文档工具链夹具 + Process Compose / wait / 五处库；结论在 #156 评论「修正」、#159 评论「维持」） | PR #161、#162 | 2026-09-04 |
 | 3.7 首现对照豁免表清零（Fable，承接 #156 的修正结论） | 完成 | v0.16.5：46 处对照写回九份设计层文档、词汇表 Execution Spec 对齐为「执行规格」、夹具改为空豁免表必须通过且豁免表保持只有注释 | 2026-09-04 |
+| 3.8 #165 构建改动核验（Grok，任务书三追加段：钉定解释器反例、供应链锁、缓存代价） | 待开工 | `30-r3-remaining-brief.md` §任务书三 追加 | — |
 
 **延后与遗留**（2026-09-04，不阻塞第三轮收口，P2 开工前先看这里）：
 
 - 任务书二第 5 项「供应端客户端」只接入了 `wait` 实际调用的 GitHub CLI；其余五家（Dagu、Herdr、Linear、Matrix、Vikunja）延到 P2 出现首个 adapter 调用方时按 `docs/research/sdk/` 各文件结论接入。Codex 的理由是不加没有调用方的 SDK；这是对任务书字面的缩范围，所有者已同意（2026-09-04，记入 `21-r2-rulings.md` 第三轮补充裁决）。
-- PR #159 带出两个跟踪 issue：#157 Buck2 的 Cargo build-script 需钉 Python 3.12（`libsqlite3-sys` 暂用手工 `cxx_library` 绕过）；#158 复核 SQLite bundled 与预编译库替代方案。
+- PR #159 带出两个跟踪 issue：#157 Buck2 的 Cargo build-script 需钉 Python 3.12（`libsqlite3-sys` 暂用手工 `cxx_library` 绕过）；#158 复核 SQLite bundled 与预编译库替代方案。→ 已由 GLM 关闭：#164 裁定维持 bundled 为终态（`docs/research/libs/sqlite-online-backup.md` 复核记录，否决预编译、系统库与换 RocksDB）；#165 钉定 python-build-standalone 3.12.14、启动器注入解释器与编译器绝对路径、`libsqlite3-sys` 翻回上游 build script（三平台 CI 绿，对象文件 `docs/research/build-tools/python-build-standalone.md`）。
+- 待报 buck2-prelude 上游 issue 两个（GLM 留，不阻塞，谁方便谁报）：① `from_any_dir.py` 用 3.12 的 `walk_up` 但未声明最低 Python 版本；② `os.execl` 不搜 PATH，与 system_cxx_toolchain 的裸名编译器组合必然失败。报告要点在 `docs/research/build-tools/python-build-standalone.md` §上游报告项；报完把 issue 链接回填到该文件文末复核记录。上游修复前本仓库以 config 注入绝对路径为既定机制。
 - 五处库里两处与任务书字面不同、与研究文件结论一致：JCS 用 `serde_json_canonicalizer`（`serde-jcs.md` 首选），文件锁用标准库 `File::lock`（`fd-lock.md` 首选，fd-lock 作者已提弃用）。不是偏离，记在这里免得复核时再查一遍。
 - Grok 豁免表核验（任务书三）：`first_use_terms.allowlist` 46 条全部是规则豁免，不是「正文不该带对照」；其余五个检查器空表或专有名例外成立。结论写在 #156 评论，收缩豁免表是写作改动，不在本测试 PR。→ 已由 Fable 在 v0.16.5 批写回正文并清零（阶段 3.7）。
 

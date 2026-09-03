@@ -51,3 +51,13 @@
 3. wait 命令：四种返回各造用例，含超时边界、读不到与不成立的区分、并发调用；对抗核验「模型转述不能满足前置」在代码层是否真的堵住。
 4. 五处库：JCS 官方测试向量全过；备份快照在写入进行中的一致性；文件锁在进程被杀后的释放。
 5. 对每个 PR 出一份「维持 / 修正 / 推翻」结论，放进对应 PR 的评论，不另开文档。
+
+### 追加 · #165 核验（2026-09-04，所有者说「开」）
+
+对象：GLM 的 PR #165（#157：python-build-standalone 3.12.14 三平台 DotSlash 清单进供应链；`src/buck2` 启动器把钉定解释器与 cc/cxx/ar 的绝对路径注入 Buck config；`libsqlite3-sys` 翻回上游 build script，手工复刻全删）。三平台 Buck2 与完整包 CI 已绿，所以只核 CI 证明不了的三件事，结论照旧写进 #165 评论：
+
+1. **钉定解释器真的在用。** 反例两头造：PATH 前面塞一个 `exit 1` 的假 `python3`（或把宿主 `python3` 指到 3.9），构建必须照样过；把钉定清单弄坏（改摘要或删文件），构建必须失败在解释器上，不能悄悄回落到宿主 Python。这是 #157 的核心主张，CI 只证明了在 GitHub runner 上能过。
+2. **供应链锁。** `src/build/tools/host-bin/python3` 清单里的 SHA-256 逐平台核对 python-build-standalone 20260901 官方 release 资产的 digest；cc/cxx/ar 注入在 macOS x86_64 与 arm64 上解析到的路径是否一致（xcrun shim 而不是 Xcode.app 内裸二进制）。
+3. **PR 自己承认的代价。** 研究文件写「解释器绝对路径含 dotslash 缓存哈希，buildscript 相关 action 跨机不命中，但 C 编译/链接 action key 仍稳定」。验：第二个 worktree 或清 `buck-out` 后重建，C 编译动作应命中 REAPI 缓存，只有 buildscript 动作重跑。不成立就推翻——#158「一次 C 编译由缓存摊薄」的前提跟着塌。
+
+不用另测：翻回上游 build script 后 FTS5 与 Online Backup 是否还开着——#162 的 foundation 测试已在三平台跑过。#164 只是研究文件复核记录，不核。
