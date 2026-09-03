@@ -1,11 +1,11 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.1<br>
+> 状态：规范性约束 · 草案 v0.16.2<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Project Role Binding，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果，Repo Instance 也仍归系统层所有。
+Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与参与者授权，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果，Repo Instance 也仍归系统层所有。
 
 人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令、名册和裁决里，不进入本模块的对象表。
 
@@ -22,7 +22,8 @@ Participant 模块拥有数字参与者的身份与配置，并负责把获准�
 | 外部副作用命令（executor = tool）/ Integration Receipt | 把精确 ChangeSet Revision 集成到目标 ref 的持久授权及回读证明 |
 | Execution Runtime | 一次执行的主机、隔离域和代次（归属者 = Attempt \| Room Invocation）；终端通道是其字段组 |
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
-| Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt |
+| Participant–Agency Binding | Participant 到供给它的 Agency 名册项与条款的绑定（Binding 族）：换派出方是显式换绑，Participant 身份不变；活动执行引用准入时的版本 |
+| Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt；每条 Evidence 标注证据通道等级（见[证据通道](#证据通道)） |
 
 显示名、外部账号、人设、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。Participant revision 换版不改写活动 Invocation、Seat 或 Run。
 
@@ -37,7 +38,7 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Participant | immutable revision + current pointer | control 处理「创建/更新 Participant」命令；Agency 申报 Skill 与候选的可用性 | 活动 Invocation/Run/Seat 永久引用准入时的 Participant revision |
-| Worker Profile / Harness 绑定 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
+| Worker Profile / Participant–Agency Binding | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | ChangeSet / Write Lease | change_set_version、current revision；租约为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃租约；ChangeSet Revision 只追加 |
 | 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
 | Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测账 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
@@ -106,9 +107,9 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
-Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
+Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；Participant 与供给它的名册项之间由 Participant–Agency Binding 连接——先用本地参考实现、后接外部 Agency，是同一个 Participant 换绑，不是新身份；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
-control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；Participant 身份、角色绑定、人设和 Seat 仍由 control 账本拥有。
+control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；Participant 身份、参与者授权、人设和 Seat 仍由 control 账本拥有。
 
 Agency 的接口约定**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本。Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。
 
@@ -140,6 +141,19 @@ Proposal 头必须固定 proposal ID、归属者、运行时、适用的代次�
 每个输出项必须另带 schema key、content digest、候选产物引用和自己的代次字段组。只有 output schema 明确允许逐项准入时，归属者才能单独接受合格项；否则任一必需项不匹配都拒绝整组。任一代次、绑定、Bundle、租约或输出范围不匹配的项只能留作审计，不能让其他合格项替它背书。修正必须创建新 Proposal 和新的生产者序号，不得改写原项。
 
 Harness、运行时钩子与模型只获得当前 Invocation/Attempt 所需的窄 execution principal，不能持有通用 command Submit credential、human principal credential、Task lifecycle 或 Room dispatch 权限。它们可以建议完成或建议下一位 Participant；建议经 Result Proposal 通道由归属模块准入，不是命令。
+
+<a id="证据通道"></a>
+### 证据通道
+
+Evidence 是被判定的事实记录，本身不下结论。每条 Evidence 必须标注证据通道，分三级：
+
+| 等级 | 通道 | 例子 |
+| --- | --- | --- |
+| `toolbox_readback` | 工具箱直接回读 | Git 基线与 HEAD、PR 与检查状态、CI 结果、路径与摘要、测试命令的退出码与输出 |
+| `adapter_event` | 适配器结构化事件 | harness 适配器归一的工具调用、测试、文件变化事件 |
+| `narrated` | 转述 | 执行体或模型在输出里说「我跑了测试，过了」 |
+
+「高证据类」指前两级。未标注通道的 Evidence 按 `narrated` 处理；转述不能通过重新标注升级。Task 验收策略可要求某验收项的证据不低于某一级，Gate 策略可要求 Verdict 引用的证据不低于某一级。工具箱回读也是 Run 节点外部机械事实前置的唯一来源（见 [Run 约束](./run.md#从节点到结果)）。
 
 ## 终端通道、连接与租约
 

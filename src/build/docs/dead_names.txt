@@ -53,3 +53,11 @@ Zellij	decision-history §19：运行时后端已改 tmux 再退场（§29）
 tmux	decision-history §29：tmux 随 agentd 方案一并退场
 Electron	decision-history §30：Workbench 壳改选 Tauri 2，Electron 仅为安全网（合法提法经 dead_names.allowlist 豁免）
 WezTerm	decision-history §29 后：一等原生 Terminal 客户端是 Herdr TUI，WezTerm 只可作可选提及（豁免须逐条注明）
+
+# --- v0.16.2 Binding 族重构（decision-history §35 台账 v0.16.2）---
+Resolved Port Binding	v0.16.2：改名 Port–Provider Binding
+Task Binding	v0.16.2：改名 Task–Backend Binding
+Engine Execution Binding	v0.16.2：改名 Run–Engine Binding
+Project Role Binding	v0.16.2：退出 Binding 族，改为 Project 的参与者授权
+Chat 端口绑定	v0.16.2：拆为 Room–Server Binding 与聊天端口的 Port–Provider Binding
+Task Source Snapshot	v0.16.2：改名 Task Backend Snapshot

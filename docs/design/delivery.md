@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.16.1<br>
+> 状态：交付文档（非规范） · 草案 v0.16.2<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -30,7 +30,7 @@ P3 的 Workbench 把四类供应端客户端与 HCTL 命令入口组合到一个
 | --- | --- |
 | 运维 | `init`、`start`、`status`、`doctor`、`export`、`backup create\|verify`、`restore preview\|apply` |
 | Repo / Project | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`project create\|list\|show\|update\|archive\|restore` |
-| Participant / Context | `participant create\|update\|list\|show`、`role bind\|unbind\|list`、`context show\|preview` |
+| Participant / Context | `participant create\|update\|list\|show\|authorize\|revoke`、`context show\|preview` |
 | Project / Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
@@ -148,6 +148,11 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
   Dagu、Vikunja、Herdr 使用官方原生发布物。Tuwunel 上游无 Darwin 制品，HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包；日常打包消费托管制品，源码构建只用于更新托管制品。各发行目标共用锁定的 Cinny 官方 Web 发行包，不混用缓存、动态库闭包或生命周期验证。
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
 - Windows 不在当前范围。Herdr v0.8.2 已提供官方 Windows x86_64 发行物，但 HCTL 当前的构建与生命周期验证矩阵只有 Linux/macOS，Tuwunel 也未见官方 Windows 包；未来须让完整 Windows 包重新通过同一约束与兼容矩阵，当前不宣称支持 Windows。
+
+<a id="运行默认值"></a>
+## 运行默认值
+
+约束层留给施工图或施工清单声明、但要有缺省值的几项，缺省值定在这里，不进约束：Gate 返工轮数上限默认 3 轮；Run 过渡态（启动中、暂停中、取消中）墙钟超时默认 15 分钟；增量评审默认关闭（全量重评）。改缺省值只改本节。
 
 ## 技术基线
 

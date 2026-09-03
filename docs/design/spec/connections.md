@@ -1,6 +1,6 @@
 # 四模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.16.1<br>
+> 状态：规范性约束 · 草案 v0.16.2<br>
 > 本文是 Project、Task、Run、Participant 之间连接约束的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -37,9 +37,9 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
 | Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；只有携带初始契约时才写正文 outbox，后续由“采纳契约”准入 Task Revision | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
-| Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、Participant/Role/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 账本和引擎启动 outbox | run ID + manifest digest → Engine Execution Binding/readback |
+| Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、Participant/参与者授权/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 账本和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再预留、绑定和激活运行时 | invocation id + invocation_version + Execution Spec digest |
-| Run → Participant | Attempt + Execution Spec | Run 先持久化派发授权，Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
+| Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由工具箱回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
 | Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/现场/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
 | human scene / Run reducer → Participant | 「合入 ChangeSet」命令、精确 ChangeSet Revision/target/证据引用 | Participant 模块准入授权并持久化 intent/outbox，工具箱执行与回读；Integration Receipt 返回发起模块作证据 | intent id + expected target head → 唯一 Receipt；结果未知不重投 |
 | human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
@@ -80,10 +80,11 @@ execution owner stable ref + invocation_version | attempt_generation
 + root Context Manifest ref + digest
 + consumer Context Bundle ref + digest
 + exact Participant revision
-+ Project Role Binding ref + version + digest（repo_scope 可无）
++ Project version + 参与者授权条目 digest（repo_scope 可无）
 + required/optional Skill refs + digests（Agency 申报，逐个附 known | unknown）
 + Worker Profile revision
-+ Harness/Runtime Resolved Port Binding + 接入方式与降级能力
++ Harness/Runtime Port–Provider Binding + 接入方式与降级能力
++ Participant–Agency Binding ref + version
 + terminal input policy（managed_single_writer | native_interactive_allowed；无 Terminal 时省略）
 + repo_id/base + 可选 selected Repo Instance ref / placement constraints
 + 能力与权限摘要
@@ -95,7 +96,7 @@ execution owner stable ref + invocation_version | attempt_generation
 
 归属者特有字段各自补充：Room Invocation 侧固定范围（`repo_scope | project_scope`）、`invocation_version`，以及 human 批准建议时的来源链字段；Attempt 侧固定 attempt、seat、run 身份与 `attempt_generation`。
 
-Participant 确定逻辑身份；Project Role Binding 确定该身份在当前 Project 中的职责和权限上限；Skill 提供方法；Worker Profile 选择物理执行配置。Execution Spec 必须分别引用它们，任何一个都不能代替另一个。两侧不各建一份“执行规格”。
+Participant 确定逻辑身份；Project 的参与者授权确定该身份在当前 Project 中的职责和权限上限；Participant–Agency Binding 确定谁供给它的执行体；Skill 提供方法；Worker Profile 选择物理执行配置。Execution Spec 必须分别引用它们，任何一个都不能代替另一个。两侧不各建一份“执行规格”。
 
 外部运行时的启动顺序固定为：
 
@@ -108,7 +109,7 @@ Participant 确定逻辑身份；Project Role Binding 确定该身份在当前 P
 
 如果冻结的端口明确是受信任的纯进程内同步调用，Execution Spec 必须写 `execution_mode = in_process`，可以没有 Repo Instance、Runtime/Terminal、运行时/现场/Agency 绑定代次或租约。
 
-它的 Result Proposal 改为固定归属者版本或代次、control writer generation、Extension/Resolved Port Binding、spec/bundle digest 和 producer sequence，且不能提交 ChangeSet 或声称物理隔离与连接能力。
+它的 Result Proposal 改为固定归属者版本或代次、control writer generation、Extension/Port–Provider Binding、spec/bundle digest 和 producer sequence，且不能提交 ChangeSet 或声称物理隔离与连接能力。
 
 除此之外不得省略物理字段组。派发或激活的确认回执只证明执行已被接受，不证明产生了语义结果。
 
@@ -164,7 +165,7 @@ Task 路径的验收证据 → Task Completion Receipt
 
 每一步保存上一步的 ID 与摘要或版本；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前发生分歧时，比较并交换必须拒绝；提交后由冻结约束继续执行到终态，新的顶层授权使用新版本。范围、权限、候选或验收含义变化时必须显式替代，而不是原地修补；Run 的替代特例清单见[启动与 Manifest](./run.md#启动与-manifest)。
 
-权限只能逐级缩小：actor/Project role → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
+权限只能逐级缩小：actor / Project 参与者授权 → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎或终端输入范围；需要扩权时回到拥有该权限的上游重新预览和授权。
 
 ## 失败与恢复
 
@@ -180,8 +181,9 @@ Task 路径的验收证据 → Task Completion Receipt
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；需要聊天当前回读的准入拒绝，聊天入口显示重同步中 |
 | 已绑定房间被开启端到端加密 | 聊天入口显示需要关注，已冻结引用与 digest 不受影响；可继续/拒绝与换绑恢复规则见[Room 与消息](./project.md#room-与消息) |
 | 任务后端不可用 | 已冻结且策略不要求来源当前回读的 metadata 命令可继续；需要 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
-| workflow engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Engine Execution Binding 标为分歧待对账，对账期间 control 不创建新 Obligation |
+| workflow engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Run–Engine Binding 标为分歧待对账，对账期间 control 不创建新 Obligation |
 | harness / Agency 不可用 | 执行安全暂停或按代次结束，不冒充成功 |
+| 节点的外部机械事实前置读不到 | 该节点不派发并标需要关注；已派发的执行不受影响；事实可读后按当前观察重新判定 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
 | 场景投影丢失 | 从四模块账本和 source event cursor 重建，不从外部界面反推事实 |
 
