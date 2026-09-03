@@ -1,0 +1,12 @@
+# Implementation products selected or evaluated by the delivery layer.  They
+# may appear in delivery, validation, research and history, but not in the
+# vision/architecture prose without a line-specific allowlist entry.
+Tuwunel
+Cinny
+Vikunja
+Dagu
+Herdr
+Tauri
+Electron
+Reindeer
+Process Compose

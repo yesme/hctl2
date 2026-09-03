@@ -85,14 +85,14 @@ control 不根据“来自哪个产品”判定动作——客户端没有等级
 | 类别 | 例子 | control 怎样处理 |
 | --- | --- | --- |
 | content 写入与观测 | Matrix 消息；Vikunja 创建、编辑、排序、非终态移动 | provider 先拥有该 content；control 按 cursor/Snapshot 对账，按模块约束更新投影或建立无契约身份，不把 content 直接当治理事实 |
-| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；需要临场选择、危险动作未经确认或绑定未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
+| human 命令请求 | Workbench/CLI 的类型化提交；已配置的 Matrix 结构化动作；绑定卡片进入 Vikunja Done | 归一到同一个 HCTL command draft，按同一准入规则处理；危险动作（不可逆、产生外部权威副作用或扩大权限）默认先经 Preview 确认，普通命令可直接 Submit；须临场选择、危险动作未经确认或绑定未允许该来源自动提交时，保留为待处理或返回类型化拒绝 |
 | 运行时输入 | Workbench Terminal、Herdr TUI 或其他终端客户端向精确 Execution Runtime 输入 | 立即推动该运行时；按连接票据、租约和代次能力记录恢复等级，但不因此产生 Task/Run/Project 结果 |
 | 执行结果提案 | harness/Agency 的结构化终局事件与证据 | 只进入 Result Proposal；归属模块按版本、代次和证据准入 |
 | 不支持的供应端修改 | 直接在 Dagu UI 启动、停止、重试、批准，或改写已绑定执行 | 记录当前机械事实并标记绑定分歧；不倒推一条 HCTL 命令，也不补签 Receipt |
 
 供应端事件先按 content 事实入账。只有事件能证明 actor、目标、前后版本和幂等依据时，Task 适配器才可以另行生成“完成 Task”请求。请求被拒绝时，界面同时保留供应端 Done 与 HCTL 开放状态。由 HCTL 回写产生、actor 无法映射或字段不全的事件只能形成 Snapshot。
 
-授权模型是单用户的：只要求把直接客户端连接或供应端账号稳定映射到归属 human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉目标、预期版本或代次、幂等键和事件顺序。
+授权模型是单用户的：只要求把直接客户端连接或供应端账号稳定映射到归属 human，并保留直接客户端（`direct_client`）、供应端事件（`provider_event`）、内部归约器（`internal_reducer`）、执行主体（`execution_principal`）或未知（`unknown`）来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉目标、预期版本或代次、幂等键和事件顺序。
 
 webhook 和通知只负责唤醒。接纳前仍以供应端当前回读、游标及其缺口和模块 Snapshot 为准；重复、迟到或乱序投递必须得到相同结果。各模块可接受的供应端动作见[场景与第三方适配器](./connections.md#场景与第三方适配器)。
 
@@ -147,7 +147,7 @@ hctl2-control 的存储只有一本库：**用户级 metadata 账本**。它是�
 
 control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份 metadata 账本：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
-账本只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/运行时身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账需要治理的那部分外部关系。账本与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级账本、权威归属和备份传承”由架构约束固定，独立于实现选择。
+账本只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/运行时身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账受治理的那部分外部关系。账本与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级账本、权威归属和备份传承”由架构约束固定，独立于实现选择。
 
 存储拓扑默认为（路径与布局是实现选择，三类存储的职责边界才是约束）：
 
@@ -177,7 +177,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
 | 四模块 metadata：稳定身份、准入/current、Room/Request、参与者授权、权限、租约、代次、现场记账、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级 metadata 账本 + control；一人多机连同一控制面账本 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
-| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 需要新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
+| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；账本保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
 | workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Run–Engine Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
@@ -217,7 +217,7 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 - Agency binding owner generation 不能从 `site_generation` 推导，因为 Git 锁管不了另一台机器上的 PTY；
 - `engine_binding_generation` 不能从 `attempt_generation` 推导，因为引擎重试与候选切换是两条独立的换代路径。
 
-执行体出站结果必带哪些代次、`in_process` 何时可以缩减，见[连接约束](./connections.md#project--run--participant从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
+执行体出站结果必带哪些代次、进程内（`in_process`）模式何时可以缩减，见[连接约束](./connections.md#project--run--participant从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
 
 ## 启动与恢复
 

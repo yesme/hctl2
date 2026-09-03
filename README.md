@@ -57,7 +57,7 @@ flowchart TB
 
 图中的 Room（聊天室）、Kanban、Workflow 和 Terminal 是四个模块对应的场景。Workbench、CLI 与 provider（供应端）原生客户端没有等级；动作按它落在哪个模块、带什么信封处理，分类规则见[系统约束](./docs/design/spec/system.md#客户端动作与-provider-事件)。
 
-图里带 `hctl2-` 前缀的是本仓库交付的第一方组件；执行面的聊天、任务、工作流三类系统由外部供应端承担，Agency 是参与者的供给方而不是第五个模块，没有接入外部 Agency 时默认由发布包自带的本地参考实现承担（运行时为 Herdr）；三类外部系统各选了谁、实现到什么阶段见[交付文档](./docs/design/delivery.md#实现阶段)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件职责与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)。
+图里带 `hctl2-` 前缀的是本仓库交付的第一方组件；执行面的聊天、任务、工作流三类系统由外部供应端承担，Agency 是参与者的供给方而不是第五个模块，没有接入外部 Agency 时默认由发布包自带的本地参考实现承担；三类外部系统与本地运行时各选了谁、实现到什么阶段见[交付文档](./docs/design/delivery.md#实现阶段)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件职责与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)。
 
 ## 阅读入口
 

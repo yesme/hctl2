@@ -129,7 +129,7 @@ Artifact 的评审对象对 {artifact_revision_id, artifact_id, immutable_conten
 
 ## Room Invocation
 
-Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；需要这些能力时则创建 [Run](./run.md)。
+Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；依赖这些能力时则创建 [Run](./run.md)。
 
 Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交停止与隔离 outbox、迟到结果只留审计等动作由[连接约束的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。
 
@@ -137,7 +137,7 @@ Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢�
 
 Room Invocation 的 Execution Spec 先固定范围：`repo_scope` 只读，`project_scope` 才能携带写入与 ChangeSet 规则。human 批准建议时，Spec 还必须固定来源建议、建议摘要、可选父执行、扇出位置和预期 Room/Project version。
 
-若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和物理执行代次；`in_process` 仅使用连接约束定义的缩减字段组。
+若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和物理执行代次；进程内（`in_process`）模式仅使用连接约束定义的缩减字段组。
 
 上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--participant从授权到物理执行)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新执行体的载荷不能改写这些来源链字段。
 
@@ -145,13 +145,13 @@ Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project
 
 ## Request
 
-当执行需要输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中以比较并交换校验 Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配确认回执/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
+当执行缺少输入时，拥有该阻塞事实的模块向 Project 提交类型化 Request 创建命令；Project 独占 Request lifecycle。解决 Request 必须经过预览和类型化动作；control 在一个事务中以比较并交换校验 Request 与来源 blocker，并写唯一 delivery outbox，来源模块只在匹配确认回执/观测后推进精确阻塞范围。开放式商议可以升级为 Scoped Room，但讨论结论仍需由有权 actor 提交原动作。
 
 Request 的完整跨模块字段约束只在[连接约束](./connections.md#跨模块-request-回路)定义；本模块不另建一套同义字段。活动 Request 的问题、目标人或角色、归属者与受影响 revision、阻塞范围和归属者状态版本、去重根和获准解决动作不得原地修改。Attempt 另带 `attempt_generation`，Room Invocation 使用 `invocation_version`。
 
 上述阻塞身份相同的重复创建必须去重到现有活动 Request，可以追加提醒事件。任一归属者、版本、范围或所需动作变化时，control 必须创建新 Request 并取代旧 Request；旧解决结果不得推进新阻塞项。
 
-Request 的应答面按需升级：默认在卡片或详情中直接回答；需要多轮论述、多位 Participant 或共同编辑时才升级为 Scoped Room；涉及密钥等敏感内容时走安全输入通道，不进入普通消息、trace 或回放；只有诊断或接管精确执行时才连接终端。每一级应答面都绑定同一个 Request 与其阻塞范围，不创建平行事实。
+Request 的应答面按需升级：默认在卡片或详情中直接回答；涉及多轮论述、多位 Participant 或共同编辑时才升级为 Scoped Room；涉及密钥等敏感内容时走安全输入通道，不进入普通消息、trace 或回放；只有诊断或接管精确执行时才连接终端。每一级应答面都绑定同一个 Request 与其阻塞范围，不创建平行事实。
 
 ## 场景约束
 

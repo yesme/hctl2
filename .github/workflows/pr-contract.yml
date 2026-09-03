@@ -52,9 +52,20 @@ jobs:
           git fetch --no-tags --prune origin "$BASE_REF"
           range="origin/${BASE_REF}...HEAD"
 
-          # 自建信号：新增的脚本或第一方工具。只看新增文件，改已有脚本不算。
+          # 自建信号：新增脚本/第一方工具，或任一已有脚本在本 PR 净增超过
+          # 100 行。后者按文件判，避免用另一文件的删除抵消大段自建代码；
+          # --find-renames 让纯移动保持 0/0，不把移动误判成新增。
           new_scripts=$(git diff --name-only --diff-filter=A "$range" \
             | grep -E '(\.(sh|bash|py|pl|rb|js|mjs|cjs|ts)$|^src/build/tools/)' || true)
+          grown_scripts=$(git diff --numstat --find-renames --diff-filter=MR "$range" \
+            | awk -F '\t' '
+                $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {
+                  path = $3
+                  if (path ~ /(\.(sh|bash|py|pl|rb|js|mjs|cjs|ts)(}|$)|^src\/build\/tools\/)/ && ($1 - $2) > 100) {
+                    printf "%s\t+%d net lines\n", path, $1 - $2
+                  }
+                }
+              ')
 
           # 三方信号：依赖锁与 vendored 目录。改动也算，因为加一个 crate 是改
           # Cargo.lock、不是新增文件；reindeer 重新生成 BUCK 同理。
@@ -67,9 +78,10 @@ jobs:
           # 判前缀而不判全等，因为加一个句号就能绕过全等。
           case "$(printf '%s' "$research" | tr -d '[:space:]')" in
             不适用*)
-              if [ -n "$new_scripts" ]; then
-                echo "::error::本 PR 新增了脚本或第一方工具，'业界方案调研'节却以「不适用」开头："
+              if [ -n "$new_scripts" ] || [ -n "$grown_scripts" ]; then
+                echo "::error::本 PR 新增了脚本/第一方工具，或已有脚本净增超过 100 行，'业界方案调研'节却以「不适用」开头："
                 printf '%s\n' "$new_scripts"
+                printf '%s\n' "$grown_scripts"
                 echo "::error::写清查过哪些业界方案与平台 native 机制、为何仍要自建。"
                 fail=1
               fi

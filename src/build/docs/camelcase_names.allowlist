@@ -1,0 +1,21 @@
+# path<TAB>term<TAB>required substring on the pre-existing line
+README.md	OpenCode	OpenCode
+WRITING-GUIDE.md	GitHub	GitHub
+WRITING-GUIDE.md	SemVer	SemVer
+docs/design/README.md	GitHub	GitHub
+docs/design/architecture.md	GitHub	GitHub
+docs/design/delivery.md	AppService	AppService
+docs/design/delivery.md	GitHub	GitHub
+docs/design/delivery.md	OpenCode	OpenCode
+docs/design/delivery.md	RocksDB	RocksDB
+docs/design/delivery.md	WezTerm	WezTerm
+docs/design/project.md	AppService	AppService
+docs/design/spec/README.md	GitHub	GitHub
+docs/design/spec/project.md	AppService	AppService
+docs/design/spec/system.md	GitHub	GitHub
+docs/design/spec/system.md	WebView	WebView
+docs/design/spec/task.md	GitHub	GitHub
+docs/design/spec/task.md	ProjectV2	ProjectV2
+docs/design/task.md	GitHub	GitHub
+docs/design/vision.md	OpenCode	OpenCode
+docs/design/vision.md	SaaS	SaaS

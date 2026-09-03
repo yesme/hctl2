@@ -15,7 +15,7 @@ Project 也不是施工管线：研究、规格说明、ADR（架构决策记录
 
 ## 模块拥有什么
 
-Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，参与者及其授权，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用（Room Invocation）。
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册与升格记录，参与者及其授权，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用。
 
 消息本体是场景内容（content），住在 chat server。讨论产生的决议、Memo 和施工图进入 Git。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 Git 工作树。
 
@@ -50,7 +50,7 @@ Room 是 Project 的主要操作场景——它就是聊天室，提供：
 
 - 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
 - `@` Participant/Role、/ 类型化动作、$ Skill、`#` 文件/Artifact/消息引用；
-- 并发 Room Invocation 的独立流、取消和结果卡；
+- 并发单次调用的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和需要关注投影；
 - mention 提交前的 Trigger Preview：发出前先看清楚谁来执行、带什么上下文、有什么权限和预算、会创建什么；
 - Context 预览、Memo/Artifact 发布预览和权限说明。
@@ -80,6 +80,6 @@ HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Contex
 以下只列所有权方向；字段、事务与故障语义由[连接约束](./spec/connections.md)统一定义。
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
-- Project 可以通过 [Participant](./participant.md) 模块发起一次 Room Invocation；持久自动施工必须显式创建 [Run](./run.md)。
+- Project 可以通过 [Participant](./participant.md) 模块发起一次调用；持久自动施工必须显式创建 [Run](./run.md)。
 - Task、Run 和 Participant 模块的状态以投影或引用回到 Room；人的显式动作经对应模块的公共命令入口请求变化。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流。
