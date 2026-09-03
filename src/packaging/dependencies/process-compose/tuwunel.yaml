@@ -1,0 +1,26 @@
+version: "0.5"
+
+processes:
+  tuwunel:
+    description: HCTL2 local Matrix homeserver
+    command: '"${HCTL2_BIN_DIR}/tuwunel"'
+    environment:
+      - "TUWUNEL_CONFIG=${HCTL2_TUWUNEL_CONFIG}"
+    log_location: "${HCTL2_LOG_DIR}/tuwunel.log"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: /_tuwunel/server_version
+        port: "${TUWUNEL_PORT}"
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 60
+    shutdown:
+      signal: 15
+      timeout_seconds: 15

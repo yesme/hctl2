@@ -42,6 +42,7 @@ test_dependency_package() {
     local source_role
     local cinny_headers
     local cinny_range_status
+    local retired_script
 
     [[ -n "${PACKAGE_ID:-}" && -n "${ARCHIVE:-}" && \
         -n "${SOURCE_PACKAGE_ID:-}" && -n "${SOURCE_ARCHIVE:-}" ]] || \
@@ -86,13 +87,24 @@ test_dependency_package() {
         die "runtime package does not contain Cinny"
     [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/static-web-server" ]] || \
         die "runtime package does not contain static-web-server"
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/process-compose" ]] || \
+        die "runtime package does not contain Process Compose"
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/gh" ]] || \
+        die "runtime package does not contain GitHub CLI"
     [[ ! -e "$test_root/$PACKAGE_ID/payload/libexec/hctl2/hctl2-web-server" ]] || \
         die "runtime package still contains hctl2-web-server"
+    for retired_script in start.sh stop.sh status.sh; do
+        [[ ! -e "$test_root/$PACKAGE_ID/payload/lib/hctl2/services/$retired_script" ]] || \
+            die "runtime package still contains retired lifecycle script $retired_script"
+    done
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/element-web" ]] || \
         die "runtime package still contains Element Web"
     grep -F $'cinny\t' "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     grep -F $'static-web-server\t' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
+    grep -F $'process-compose\t' \
+        "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
+    grep -F $'gh\t' "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     awk -F '\t' \
         -v build_input="$HERDR_BUILD_INPUT_SHA256" \
         -v source="$HERDR_SOURCE_SHA256" \
@@ -101,6 +113,8 @@ test_dependency_package() {
         die "runtime package records the wrong Herdr build input or source digest"
     [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Herdr-Apache-2.0.txt" ]] || \
         die "runtime package is missing the Herdr license"
+    [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Process-Compose-Apache-2.0.txt" ]] || \
+        die "runtime package is missing the Process Compose license"
     ! grep -F $'element-web\t' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" >/dev/null
     [[ ! -e "$test_root/$PACKAGE_ID/payload/share/hctl2/sources" ]] || \
@@ -111,6 +125,8 @@ test_dependency_package() {
     grep -F "$HCTL2_TARGET_ID" "$test_root/$SOURCE_PACKAGE_ID/target.tsv" >/dev/null
     grep -F $'cinny\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     grep -F $'static-web-server\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
+    grep -F $'process-compose\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
+    grep -F $'gh\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     grep -F $'herdr\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
         grep -F "$HERDR_SOURCE_ASSET" >/dev/null || \
         die "source package does not contain the locked Herdr source"
@@ -128,6 +144,17 @@ test_dependency_package() {
         die "hctl2-services accepted an argument for status"
     fi
     HCTL2_STATE_ROOT="$state_root" "$services" start
+    HCTL2_STATE_ROOT="$state_root" "$services" start
+    HCTL2_STATE_ROOT="$state_root" "$services" status
+    HCTL2_STATE_ROOT="$state_root" "$services" stop tuwunel
+    HCTL2_STATE_ROOT="$state_root" "$services" start cinny
+    HCTL2_STATE_ROOT="$state_root" "$services" status
+    HCTL2_STATE_ROOT="$state_root" "$services" restart herdr
+    HCTL2_STATE_ROOT="$state_root" "$services" stop herdr
+    if HCTL2_STATE_ROOT="$state_root" "$services" status >/dev/null 2>&1; then
+        die "hctl2-services status accepted a stopped component as ready"
+    fi
+    HCTL2_STATE_ROOT="$state_root" "$services" start herdr
     HCTL2_STATE_ROOT="$state_root" "$services" smoke
     cinny_headers="$(curl --fail --silent --show-error --head \
         http://127.0.0.1:$CINNY_PORT/config.json | tr -d '\r')"

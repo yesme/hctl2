@@ -1,24 +1,24 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖及一个 Rust 骨架程序，但公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool wait` 回读闭集外部事实；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
 
 ## 当前入口一览
 
 | 名称 | 当前状态 | 面向谁 | 现在能做什么 |
 | --- | --- | --- | --- |
-| `hctl2-services` | 可用 | 安装包用户、开发者 | 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
-| `hctl2-tool` | P1 骨架 | HCTL2 开发者 | 显示英文帮助和版本；尚不能执行 Git/SCM 操作 |
+| `hctl2-services` | 可用 | 安装包用户、开发者 | 通过 Process Compose 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
+| `hctl2-tool` | P1 可用子集 | HCTL2 开发者、Harness | `wait` 回读 CI、PR、引用、文件摘要与进程退出事实 |
 | `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-目前只有 `hctl2-services` 是可执行真实操作的用户命令。`hctl2-tool` 暂时用于验证代码树、构建链和命令边界，不是后台服务。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
+`hctl2-tool` 不是后台服务，也不是治理命令入口；它只读外部事实并输出结构化结果。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 
 当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 系统要求以[交付文档的打包策略](./design/delivery.md#打包策略选型判断首次消费时产品化)为准。
 
-运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、内部静态文件服务、许可证、`hctl2-services` 与 `hctl2-tool`。锁定的上游源码位于同一 Release 中单独发布的源码伴随包。
+运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、Static Web Server、Process Compose、供 `hctl2-tool` 使用的 GitHub CLI、许可证、`hctl2-services` 与 `hctl2-tool`。锁定的上游源码位于同一 Release 中单独发布的源码伴随包。
 
 安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
@@ -83,7 +83,7 @@ hctl2-services start vikunja dagu
 hctl2-services start cinny
 ```
 
-可用组件名固定为 `tuwunel`、`cinny`、`vikunja`、`dagu` 和 `herdr`。其中 Tuwunel 与 Cinny 共同构成 Chatroom，后者不是第五类执行依赖。不指定组件时依次启动 Tuwunel、Cinny、Vikunja、Dagu、Herdr，并打印 Chatroom、Kanban、Workflow 三个浏览器地址；单独启动 `cinny` 也会先确保 Tuwunel 已启动。重复执行 `start` 不会重复启动已经由 HCTL2 管理的进程。
+可用组件名固定为 `tuwunel`、`cinny`、`vikunja`、`dagu` 和 `herdr`。其中 Tuwunel 与 Cinny 共同构成 Chatroom，后者不是第五类执行依赖。不指定组件时由 Process Compose 启动全部五个组件；单独启动 `cinny` 也会按声明依赖启动 Tuwunel。命令在所选组件的声明式就绪探针通过后返回；重复执行 `start` 不会产生第二组进程。
 
 ### 查看状态
 
@@ -91,7 +91,7 @@ hctl2-services start cinny
 hctl2-services status
 ```
 
-`status` 总是检查五个受管组件。每行会显示 `ready`、`running`、`stopped`、`unhealthy` 或非托管 socket 等状态，并在可用时显示 PID、端点或 socket。
+`status` 显示 Process Compose 对五个受管组件的进程状态、就绪状态、PID、运行时长、重启次数和退出码。
 
 只有五个受管组件全部就绪时，`status` 才返回退出码 `0`；任一组件未就绪都会返回非零退出码。因此它可以直接用于脚本、健康检查和 CI，但在启用了 `set -e` 的 shell 中也会使脚本立即退出。
 
@@ -101,7 +101,7 @@ hctl2-services status
 hctl2-services smoke
 ```
 
-`smoke` 不只检查进程是否存在，还会检查四个 HTTP 端点、Cinny 是否只指向随包 Tuwunel 并启用 hash router、Tuwunel 的非加密房间策略，以及 Herdr 的协议回读、API snapshot 和 socket 权限。全部检查通过时返回退出码 `0`。
+`smoke` 要求五个 Process Compose 就绪探针已经通过，再检查 Cinny 是否只指向随包 Tuwunel 并启用 hash router、Tuwunel 的非加密房间策略，以及 Herdr 的协议回读、API snapshot 和 socket 权限。全部检查通过时返回退出码 `0`。
 
 ### 重启或停止
 
@@ -129,7 +129,7 @@ hctl2-services stop
 hctl2-services stop herdr
 ```
 
-不指定组件时，停止顺序与启动顺序相反。停止未运行的受管组件是安全的。为了避免误伤复用 PID 的其他进程，脚本会在发送信号前核对 PID 对应的实际可执行文件；核对失败时会拒绝停止并报告错误。
+不指定组件时，Process Compose 按声明的依赖反序停止并退出；停止未运行的受管组件是安全的。进程身份、重启、就绪与关停全部由 Process Compose 管理，HCTL2 不再维护 PID 文件或自行发送信号。
 
 ### 本地端点
 
@@ -166,17 +166,16 @@ hctl2-services start
 | --- | --- |
 | `config/` | 自动生成的配置与本地 secret |
 | `data/` | Tuwunel、Vikunja、Dagu 与 Herdr 的持久数据 |
-| `logs/` | `tuwunel.log`、`cinny.log`、`vikunja.log`、`dagu.log`、`herdr.log` |
-| `pids/` | 受管进程的 PID 文件 |
-| `runtime/` | Linux 的 Herdr socket 等运行时文件；macOS socket 因路径上限放在 `/tmp/hctl2-herdr-<uid>/`，以状态根哈希命名 |
+| `logs/` | 各服务日志与 `process-compose.log` |
+| `runtime/` | Linux 的 Herdr socket 等运行时文件；macOS Herdr 与 Process Compose socket 因路径上限放在 owner-only 的短 `/tmp` 目录，以状态根哈希命名 |
 
 状态目录与安装目录相互独立，升级或重装同一发行包不会主动删除用户数据。
 
 ### 常见故障
 
-- 如果启动报告端口被占用，先用 `hctl2-services status` 判断是否已有本安装管理的实例；若不是，应先处理占用对应端口的其他程序。
-- 如果 HTTP 服务未能就绪，查看状态根目录下 `logs/<component>.log` 的末尾信息。
-- 如果停止时报告 foreign PID、stale PID 或 unmanaged socket，不要直接向该 PID 发信号；先确认当前使用的 `HCTL2_STATE_ROOT` 是否与启动时一致，再检查 PID 文件和实际进程。
+- 如果组件未能就绪，先看 `hctl2-services status`，再查看状态根目录下 `logs/<component>.log` 与 `logs/process-compose.log`。
+- 如果另一组进程占用了固定端口，Process Compose 会把对应组件标成失败；停止或重新配置冲突的实例后再重启。
+- 如果命令找不到 Process Compose 实例，先确认当前使用的 `HCTL2_STATE_ROOT` 是否与启动时一致；不同状态根使用不同的控制 socket。
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
@@ -189,7 +188,7 @@ cd src
 cargo build --locked -p hctl2-tool
 ```
 
-查看英文帮助或版本：
+查看英文帮助、版本和事实词表：
 
 ```bash
 ./target/debug/hctl2-tool --help
@@ -202,7 +201,21 @@ cargo build --locked -p hctl2-tool
 cargo run --locked -p hctl2-tool -- --help
 ```
 
-当前无参数调用等同于 `--help`。除此之外的参数会返回结构化错误码 `HCTL2_TOOL_UNSUPPORTED_ARGUMENT`。Git/SCM 操作、事实回读和其他机械能力尚未落地。
+当前无参数调用等同于 `--help`。`wait` 接受绝对 Unix 秒截止时间与一个事实；一次调用只在标准输出写一条 JSON 事实记录：
+
+```bash
+hctl2-tool wait --deadline 1788451200 commit-ci \
+  --repo yesme/hctl2 --commit <commit-sha>
+hctl2-tool wait --deadline 1788451200 pr-merged \
+  --repo yesme/hctl2 --number 82
+hctl2-tool wait --deadline 1788451200 ref-advanced \
+  --repo yesme/hctl2 --ref heads/main --from <old-sha>
+hctl2-tool wait --deadline 1788451200 path-digest \
+  --path /absolute/path/to/artifact --sha256 <lowercase-sha256>
+hctl2-tool wait --deadline 1788451200 process-exited --pid 12345
+```
+
+记录的 `outcome` 固定为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（截止前没有结论），`evidence_level` 固定为 `toolbox_readback`。对应退出码依次为 `0`、`3`、`4`、`5`；参数或启动错误返回 `1` 并在标准错误输出稳定错误码。GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录；它不会发起交互登录，使用前可由用户运行 `gh auth login` 建立凭据，或按 GitHub CLI 支持的环境变量提供令牌。
 
 ## 安装完整离线包
 

@@ -1,0 +1,4 @@
+version: "0.5"
+
+# Process Compose owns process identity, readiness, restart and shutdown. HCTL2
+# supplies only service-specific configuration and a private control socket.

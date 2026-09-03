@@ -169,3 +169,4 @@
 
 - 2026-09-02 首发。
 - 2026-09-03 对抗核验校准（`.memo/design/design-review-20260902/12-adversarial-M.md`）：§二 末段「非胶水部分逐行落在愿景层最小内核五行上」过头——七项自研（五非胶水加两薄自研）中六项落在五行上，Context 选材策略没有对应行；这既是对最小内核表的证明，也暴露该表缺「可解释上下文」一行，已转四轴评审裁决包。
+- 2026-09-04 实现复核：I-09 已改为 Reindeer 官方二进制；I-10 已由 Process Compose 接管发行包服务生命周期；I-05 的 JCS、标准库文件锁、SQLite Online Backup、keyring 与 FTS5 已进入共享基础 crate；M-30 的闭集事实读取已进入 `hctl2-tool wait` 与共享事实 crate。六家 provider 的客户端选择保持有效，但 control 尚未进入代码树，除 `wait` 所需的 `gh` 外不提前加入没有调用方的 SDK；各适配器在 P2 首次实现时按对应研究文件接入。

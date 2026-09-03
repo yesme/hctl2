@@ -1,0 +1,34 @@
+version: "0.5"
+
+processes:
+  vikunja:
+    description: HCTL2 local task backend
+    command: '"${HCTL2_BIN_DIR}/vikunja" web'
+    environment:
+      - "VIKUNJA_SERVICE_ROOTPATH=${HCTL2_VIKUNJA_DATA}"
+      - "VIKUNJA_SERVICE_INTERFACE=127.0.0.1:${VIKUNJA_PORT}"
+      - "VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:${VIKUNJA_PORT}/"
+      - "VIKUNJA_SERVICE_SECRET=${HCTL2_VIKUNJA_SECRET}"
+      - "VIKUNJA_DATABASE_TYPE=sqlite"
+      - "VIKUNJA_DATABASE_PATH=${HCTL2_VIKUNJA_DATA}/vikunja.db"
+      - "VIKUNJA_CORS_ENABLE=false"
+      - "VIKUNJA_LOG_STANDARD=stdout"
+      - "VIKUNJA_LOG_HTTP=stdout"
+    log_location: "${HCTL2_LOG_DIR}/vikunja.log"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: /api/v1/info
+        port: "${VIKUNJA_PORT}"
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 60
+    shutdown:
+      signal: 15
+      timeout_seconds: 15

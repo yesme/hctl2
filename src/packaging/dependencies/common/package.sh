@@ -78,7 +78,7 @@ assemble_dependency_package() {
 
     [[ -x "$P0_TUWUNEL_BIN_DIR/tuwunel" ]] || \
         die "tuwunel is missing from the Tuwunel action"
-    for component in vikunja dagu herdr static-web-server; do
+    for component in vikunja dagu gh herdr static-web-server process-compose; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from its component action"
     done
     [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
@@ -87,6 +87,7 @@ assemble_dependency_package() {
     mkdir -p \
         "$payload_root/bin" \
         "$payload_root/lib/hctl2/services" \
+        "$payload_root/lib/hctl2/services/process-compose" \
         "$payload_root/lib/hctl2/vendor" \
         "$payload_root/libexec/hctl2" \
         "$payload_root/share/hctl2/chatroom/cinny" \
@@ -94,16 +95,19 @@ assemble_dependency_package() {
         "$source_files_root"
 
     install -m 0755 "$P0_TUWUNEL_BIN_DIR/tuwunel" "$payload_root/libexec/hctl2/tuwunel"
-    for component in vikunja dagu herdr static-web-server; do
+    for component in vikunja dagu gh herdr static-web-server process-compose; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
     cp -a "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/." \
         "$payload_root/share/hctl2/chatroom/cinny/"
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/hctl2-services" "$payload_root/bin/hctl2-services"
-    for script in smoke.sh start.sh status.sh stop.sh; do
-        install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/$script" "$payload_root/lib/hctl2/services/$script"
-    done
+    install -m 0755 \
+        "$P0_DEPENDENCY_SOURCE_ROOT/smoke.sh" \
+        "$payload_root/lib/hctl2/services/smoke.sh"
     install -m 0644 "$P0_COMMON_DIR/runtime.sh" "$payload_root/lib/hctl2/services/lib.sh"
+    for script in "$P0_DEPENDENCY_SOURCE_ROOT"/process-compose/*.yaml; do
+        install -m 0644 "$script" "$payload_root/lib/hctl2/services/process-compose/"
+    done
     install -m 0644 "$build_metadata" "$payload_root/lib/hctl2/services/versions.sh"
     install -m 0644 \
         "$P0_DEPENDENCY_SOURCE_ROOT/platforms/$HCTL2_TARGET_OS/runtime.sh" \
@@ -125,6 +129,9 @@ assemble_dependency_package() {
     tar -xOf "$P0_DOWNLOAD_DIR/$HERDR_SOURCE_ASSET" \
         "herdr-$HERDR_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Herdr-Apache-2.0.txt"
+    tar -xOf "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
+        "process-compose-$PROCESS_COMPOSE_SOURCE_COMMIT/LICENSE" \
+        >"$payload_root/share/hctl2/licenses/Process-Compose-Apache-2.0.txt"
     platform_stage_licenses
 
     platform_stage_build_metadata
@@ -146,6 +153,9 @@ assemble_dependency_package() {
         printf 'dagu\t%s\t%s\t%s\t%s\t%s\n' \
             "$DAGU_VERSION" "$DAGU_SOURCE_COMMIT" "$DAGU_BUILD_INPUT_SHA256" \
             "$DAGU_SOURCE_SHA256" "$(hash_file "$payload_root/libexec/hctl2/dagu")"
+        printf 'gh\t%s\t%s\t%s\t%s\t%s\n' \
+            "$GH_VERSION" "$GH_SOURCE_COMMIT" "$GH_BUILD_INPUT_SHA256" \
+            "$GH_SOURCE_SHA256" "$(hash_file "$payload_root/libexec/hctl2/gh")"
         printf 'herdr\t%s\t%s\t%s\t%s\t%s\n' \
             "$HERDR_VERSION" "$HERDR_SOURCE_COMMIT" "$HERDR_BUILD_INPUT_SHA256" \
             "$HERDR_SOURCE_SHA256" \
@@ -157,6 +167,10 @@ assemble_dependency_package() {
             "$STATIC_WEB_SERVER_VERSION" "$STATIC_WEB_SERVER_SOURCE_COMMIT" \
             "$STATIC_WEB_SERVER_BUILD_INPUT_SHA256" "$STATIC_WEB_SERVER_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/static-web-server")"
+        printf 'process-compose\t%s\t%s\t%s\t%s\t%s\n' \
+            "$PROCESS_COMPOSE_VERSION" "$PROCESS_COMPOSE_SOURCE_COMMIT" \
+            "$PROCESS_COMPOSE_BUILD_INPUT_SHA256" "$PROCESS_COMPOSE_SOURCE_SHA256" \
+            "$(hash_file "$payload_root/libexec/hctl2/process-compose")"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
     write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share
@@ -173,6 +187,8 @@ assemble_dependency_package() {
         "$source_files_root/$VIKUNJA_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$DAGU_SOURCE_ASSET" \
         "$source_files_root/$DAGU_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$GH_SOURCE_ASSET" \
+        "$source_files_root/$GH_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$TUWUNEL_SOURCE_ASSET" \
         "$source_files_root/$TUWUNEL_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$HERDR_SOURCE_ASSET" \
@@ -181,6 +197,8 @@ assemble_dependency_package() {
         "$source_files_root/$CINNY_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_SOURCE_ASSET" \
         "$source_files_root/$STATIC_WEB_SERVER_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
+        "$source_files_root/$PROCESS_COMPOSE_SOURCE_ASSET"
     {
         printf 'component\tversion\tcommit\tarchive\tsha256\trole\n'
         printf 'tuwunel\t%s\t%s\t%s\t%s\treproducibility\n' \
@@ -192,6 +210,9 @@ assemble_dependency_package() {
         printf 'dagu\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
             "$DAGU_VERSION" "$DAGU_SOURCE_COMMIT" \
             "$DAGU_SOURCE_ASSET" "$DAGU_SOURCE_SHA256"
+        printf 'gh\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$GH_VERSION" "$GH_SOURCE_COMMIT" \
+            "$GH_SOURCE_ASSET" "$GH_SOURCE_SHA256"
         printf 'herdr\t%s\t%s\t%s\t%s\treproducibility\n' \
             "$HERDR_VERSION" "$HERDR_SOURCE_COMMIT" \
             "$HERDR_SOURCE_ASSET" "$HERDR_SOURCE_SHA256"
@@ -201,6 +222,9 @@ assemble_dependency_package() {
         printf 'static-web-server\t%s\t%s\t%s\t%s\treproducibility\n' \
             "$STATIC_WEB_SERVER_VERSION" "$STATIC_WEB_SERVER_SOURCE_COMMIT" \
             "$STATIC_WEB_SERVER_SOURCE_ASSET" "$STATIC_WEB_SERVER_SOURCE_SHA256"
+        printf 'process-compose\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$PROCESS_COMPOSE_VERSION" "$PROCESS_COMPOSE_SOURCE_COMMIT" \
+            "$PROCESS_COMPOSE_SOURCE_ASSET" "$PROCESS_COMPOSE_SOURCE_SHA256"
     } >"$source_package_root/sources.tsv"
     platform_stage_sources "$source_files_root" "$source_package_root/sources.tsv"
     {

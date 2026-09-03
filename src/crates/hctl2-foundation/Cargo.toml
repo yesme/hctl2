@@ -1,0 +1,19 @@
+[package]
+name = "hctl2-foundation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Mechanically tested storage and identity foundations for HCTL2 control"
+
+[dependencies]
+keyring.workspace = true
+rusqlite.workspace = true
+serde_json.workspace = true
+serde_json_canonicalizer.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

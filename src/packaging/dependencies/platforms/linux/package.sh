@@ -6,6 +6,14 @@ platform_stage_payload() {
         grep -F '(NEEDED)' >/dev/null; then
         die "official Linux Herdr binary unexpectedly has dynamic dependencies"
     fi
+    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/process-compose" 2>/dev/null | \
+        grep -F '(NEEDED)' >/dev/null; then
+        die "official Linux Process Compose binary unexpectedly has dynamic dependencies"
+    fi
+    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/gh" 2>/dev/null | \
+        grep -F '(NEEDED)' | grep -vF 'libc.so.6' >/dev/null; then
+        die "official Linux GitHub CLI binary has unexpected dynamic dependencies"
+    fi
 }
 
 platform_stage_licenses() {
@@ -15,6 +23,8 @@ platform_stage_licenses() {
         "$PAYLOAD_ROOT/share/hctl2/licenses/Vikunja-AGPL-3.0.txt"
     install -m 0644 "$P0_VENDOR_DIR/dagu-$DAGU_VERSION/LICENSE" \
         "$PAYLOAD_ROOT/share/hctl2/licenses/Dagu-GPL-3.0.txt"
+    install -m 0644 "$P0_VENDOR_DIR/gh-$GH_VERSION/LICENSE" \
+        "$PAYLOAD_ROOT/share/hctl2/licenses/GitHub-CLI-MIT.txt"
 }
 
 platform_stage_build_metadata() {

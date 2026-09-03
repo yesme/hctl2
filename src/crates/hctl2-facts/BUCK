@@ -1,0 +1,49 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+rust_library(
+    name = "hctl2_facts",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    deps = [
+        "root//third-party/rust:notify",
+        "root//third-party/rust:serde",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:sha2",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":unit_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "unit_test",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    deps = [
+        "root//third-party/rust:notify",
+        "root//third-party/rust:serde",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:sha2",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "library": ":hctl2_facts[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

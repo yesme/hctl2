@@ -1,6 +1,6 @@
 # HCTL2 离线安装包
 
-这个归档是面向最终用户的完整 HCTL2 安装包，包含 Buck2 构建的第一方命令、四个执行面依赖、Cinny 浏览器客户端、Static Web Server、运行脚本、许可证、校验清单和 SPDX SBOM。
+这个归档是面向最终用户的完整 HCTL2 安装包，包含 Buck2 构建的第一方命令、四个执行面依赖、Cinny 浏览器客户端、Static Web Server、Process Compose、GitHub CLI、声明式服务配置、许可证、校验清单和 SPDX SBOM。
 
 先校验下载目录中的 SHA-256 sidecar，再解压并安装：
 

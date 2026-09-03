@@ -1,0 +1,13 @@
+# The upstream build script cannot currently run through Buck2's Cargo shim on
+# the macOS system Python 3.9. Keep SQLite compilation inside Buck's native C/C++
+# action until the repository pins Python 3.12 or newer.
+
+genrule(
+    name = "out_dir",
+    srcs = {
+        "crate": "//third-party/rust:libsqlite3-sys-0.38-bindings",
+    },
+    bash = "mkdir -p $OUT && cp $SRCDIR/crate/libsqlite3-sys-0.38.2.crate/sqlite3/bindgen_bundled_version.rs $OUT/bindgen.rs",
+    out = "out_dir",
+    visibility = ["//third-party/rust/..."],
+)

@@ -35,10 +35,8 @@ declare_external_dependencies(
             "platforms/macos/common.sh",
             "platforms/macos/package.sh",
             "platforms/macos/runtime.sh",
+            "process-compose/*.yaml",
             "smoke.sh",
-            "start.sh",
-            "status.sh",
-            "stop.sh",
         ])
     },
     test_sources = {

@@ -1,0 +1,34 @@
+version: "0.5"
+
+processes:
+  dagu:
+    description: HCTL2 local workflow engine
+    command: '"${HCTL2_BIN_DIR}/dagu" start-all'
+    environment:
+      - "DAGU_HOME=${HCTL2_DAGU_DATA}"
+      - "DAGU_HOST=127.0.0.1"
+      - "DAGU_PORT=${DAGU_PORT}"
+      - "DAGU_SCHEDULER_PORT=${DAGU_SCHEDULER_PORT}"
+      - "DAGU_COORDINATOR_HOST=127.0.0.1"
+      - "DAGU_COORDINATOR_PORT=${DAGU_COORDINATOR_PORT}"
+      - "DAGU_COORDINATOR_HEALTH_PORT=${DAGU_COORDINATOR_HEALTH_PORT}"
+      - "DAGU_AUTH_MODE=none"
+      - "DAGU_TERMINAL_ENABLED=false"
+    log_location: "${HCTL2_LOG_DIR}/dagu.log"
+    availability:
+      restart: on_failure
+      backoff_seconds: 1
+      max_restarts: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        scheme: http
+        path: /api/v1/health
+        port: "${DAGU_PORT}"
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 60
+    shutdown:
+      signal: 15
+      timeout_seconds: 20
