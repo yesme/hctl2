@@ -2,63 +2,8 @@
 # Baseline exceptions are tied to the current first-use line. Moving or editing
 # that line makes the checker require an explicit Chinese counterpart.
 #
-# Grok R3 allowlist audit (任务书三 §1, 2026-09-04):
-# All 46 entries are rule exemptions, not cases where the body should skip 对照.
-# Classification:
-#   title — H1 already names the term next to Chinese, but not as `Term（对照）`
-#           (context.md Context, participant.md Participant, run.md Workflow,
-#           task.md Kanban). Strongest format argument; the checker still has
-#           no heading exception, so these are exempted rather than specified.
-#   gloss — the first-use line has some Chinese parenthetical, but not the
-#           vocabulary-table 对照 (e.g. Artifact（登记过的交付物） vs 工件;
-#           派发规格（Execution Spec） vs 执行规格).
-#   none  — first prose use has no counterpart at all.
-# None of the 46 are "the body truly should not carry 对照". Shrinking this
-# list is a writing change (Fable), not a checker change. The fixture test
-# checks that an empty allowlist still reports exactly these (path, term) pairs.
-docs/design/vision.md	Artifact	用户进入 Repo Room
-docs/design/vision.md	Repo	用户进入 Repo Room
-docs/design/vision.md	Context	以 Context 为例
-docs/design/vision.md	Skill	Context 必须可解释
-docs/design/README.md	Kanban	任务后端（本地任务服务器或远端平台）
-docs/design/README.md	Workflow	workflow engine（工作流引擎）
-docs/design/README.md	Participant	Agency（派出方）供给的执行体
-docs/design/README.md	Skill	Agency（派出方）供给的执行体
-docs/design/README.md	Artifact	Kanban 可以显示 Run 和 Artifact 投影
-docs/design/README.md	Repo	control、Repo 执行现场
-docs/design/README.md	Context	Context 与可解释上下文
-docs/design/architecture.md	Participant	四个领域模块
-docs/design/architecture.md	Kanban	注册仓库时选择
-docs/design/architecture.md	Repo	注册仓库时选择
-docs/design/architecture.md	Workflow	引擎只拥有机械状态
-docs/design/architecture.md	Workflow Revision	中间表示
-docs/design/architecture.md	Memo	决议、Memo、施工图
-docs/design/architecture.md	Execution Spec	派发规格（Execution Spec）
-docs/design/context.md	Context	# Context 与可解释上下文
-docs/design/context.md	Participant	根上下文清单与消费上下文包
-docs/design/context.md	Skill	先划清管辖
-docs/design/context.md	Memo	显式提炼、预览、去敏
-docs/design/context.md	Task Revision	任务评论线
-docs/design/context.md	Artifact	可能用、执行体用自己的工具够得着的
-docs/design/context.md	Repo	前情提要
-docs/design/context.md	Verdict	返工席位拿裁决
-docs/design/participant.md	Participant	# Participant 与 Terminal
-docs/design/participant.md	Memo	执行体之间只有结晶过的东西能过去
-docs/design/participant.md	Context	原生会话导入
-docs/design/participant.md	Receipt	control 与工具箱校验后
-docs/design/project.md	Workflow	以 Room 为中心
-docs/design/project.md	Kanban	以 Room 为中心
-docs/design/project.md	Context	Project 也不是施工管线
-docs/design/project.md	Repo	从 Repo Room 提升 Project
-docs/design/project.md	Skill	Participant/Role
-docs/design/run.md	Workflow	# Run 与 Workflow
-docs/design/run.md	Verdict	HCTL2 说
-docs/design/run.md	Workflow Revision	施工图及其批准
-docs/design/run.md	Participant	某个具体的 Participant
-docs/design/task.md	Kanban	# Task 与 Kanban
-docs/design/task.md	Task Revision	Task 模块拥有的是治理事实
-docs/design/task.md	Skill	验收项用哪种写法
-docs/design/task.md	Workflow	简单工作不需要先画 Workflow
-docs/design/task.md	Artifact	Kanban 是 Task 的主要操作场景
-docs/design/task.md	Repo	Kanban 是 Task 的主要操作场景
-docs/design/task.md	Participant	模块封存为精确版本与证据
+# Empty on purpose. Grok's R3 audit (任务书三 §1, 2026-09-04) found all 46
+# baseline entries were rule exemptions rather than places the body should
+# skip 对照; the counterparts were written back into the design layer instead.
+# check_docs_toolchain_fixtures.sh keeps this file comment-only: a term that
+# lacks its counterpart is fixed in the text, not exempted here.
