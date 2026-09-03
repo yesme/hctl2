@@ -1901,11 +1901,6 @@ http_archive(
     name = "libsqlite3-sys-0.38.2.crate",
     sha256 = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8",
     strip_prefix = "libsqlite3-sys-0.38.2",
-    sub_targets = [
-        "sqlite3/sqlite3.c",
-        "sqlite3/sqlite3.h",
-        "sqlite3/sqlite3ext.h",
-    ],
     urls = ["https://static.crates.io/crates/libsqlite3-sys/0.38.2/download"],
     visibility = [],
 )
@@ -1917,7 +1912,30 @@ cargo.rust_library(
     crate_root = "libsqlite3-sys-0.38.2.crate/src/lib.rs",
     edition = "2021",
     env = {
-        "OUT_DIR": "$(location //third-party/rust/fixups/libsqlite3-sys:out_dir)",
+        "CARGO_MANIFEST_DIR": "libsqlite3-sys-0.38.2.crate",
+        "OUT_DIR": "$(location :libsqlite3-sys-0.38-build-script-run[out_dir])",
+    },
+    features = [
+        "bundled",
+        "bundled_bindings",
+        "cc",
+        "default",
+        "min_sqlite_version_3_34_1",
+        "pkg-config",
+        "vcpkg",
+    ],
+    rustc_flags = ["@$(location :libsqlite3-sys-0.38-build-script-run[rustc_flags])"],
+    visibility = [],
+)
+
+cargo.rust_binary(
+    name = "libsqlite3-sys-0.38-build-script-build",
+    srcs = [":libsqlite3-sys-0.38.2.crate"],
+    crate = "build_script_build",
+    crate_root = "libsqlite3-sys-0.38.2.crate/build.rs",
+    edition = "2021",
+    env = {
+        "CARGO_MANIFEST_DIR": "libsqlite3-sys-0.38.2.crate",
     },
     features = [
         "bundled",
@@ -1929,46 +1947,32 @@ cargo.rust_library(
         "vcpkg",
     ],
     visibility = [],
-    deps = [":libsqlite3-sys-0.38-sqlite3"],
+    deps = [
+        ":cc-1",
+        ":pkg-config-0.3",
+        ":vcpkg-0.2",
+    ],
 )
 
-filegroup(
-    name = "libsqlite3-sys-0.38-bindings",
-    srcs = {
-        "libsqlite3-sys-0.38.2.crate": ":libsqlite3-sys-0.38.2.crate",
+buildscript_run(
+    name = "libsqlite3-sys-0.38-build-script-run",
+    package_name = "libsqlite3-sys",
+    buildscript_rule = ":libsqlite3-sys-0.38-build-script-build",
+    env = {
+        "OPT_LEVEL": "2",
     },
-    visibility = ["//third-party/rust/fixups/libsqlite3-sys:out_dir"],
-)
-
-cxx_library(
-    name = "libsqlite3-sys-0.38-sqlite3",
-    srcs = [":libsqlite3-sys-0.38.2.crate[sqlite3/sqlite3.c]"],
-    headers = [
-        ":libsqlite3-sys-0.38.2.crate[sqlite3/sqlite3.h]",
-        ":libsqlite3-sys-0.38.2.crate[sqlite3/sqlite3ext.h]",
+    features = [
+        "bundled",
+        "bundled_bindings",
+        "cc",
+        "default",
+        "min_sqlite_version_3_34_1",
+        "pkg-config",
+        "vcpkg",
     ],
-    preprocessor_flags = [
-        "-DSQLITE_CORE",
-        "-DSQLITE_DEFAULT_FOREIGN_KEYS=1",
-        "-DSQLITE_ENABLE_API_ARMOR",
-        "-DSQLITE_ENABLE_COLUMN_METADATA",
-        "-DSQLITE_ENABLE_DBSTAT_VTAB",
-        "-DSQLITE_ENABLE_FTS3",
-        "-DSQLITE_ENABLE_FTS3_PARENTHESIS",
-        "-DSQLITE_ENABLE_FTS5",
-        "-DSQLITE_ENABLE_JSON1",
-        "-DSQLITE_ENABLE_LOAD_EXTENSION=1",
-        "-DSQLITE_ENABLE_MEMORY_MANAGEMENT",
-        "-DSQLITE_ENABLE_RTREE",
-        "-DSQLITE_ENABLE_STAT4",
-        "-DSQLITE_SOUNDEX",
-        "-DSQLITE_THREADSAFE=1",
-        "-DSQLITE_USE_URI",
-        "-DHAVE_USLEEP=1",
-        "-DHAVE_ISNAN",
-        "-D_POSIX_THREAD_SAFE_FUNCTIONS",
-    ],
-    visibility = [],
+    rustc_link_lib = True,
+    rustc_link_search = True,
+    version = "0.38.2",
 )
 
 http_archive(

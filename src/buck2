@@ -9,6 +9,55 @@ buck2_bin=$project_root/build/tools/buck2-bin
 process_compose=$project_root/build/tools/process-compose-bin
 cache_config=$project_root/build/reapi/local-cache.yaml
 
+# The Buck2 prelude's Cargo build-script C/C++ shim requires Python >= 3.12,
+# but actions run in a hermetic environment without PATH: the bare `python3`
+# from the default python_bootstrap toolchain resolves to /usr/bin/python3
+# (3.9.6 on macOS). Resolve the pinned interpreter's real binary path and
+# inject it as config; build/toolchains/BUCK wires it into the toolchain.
+py_bin=$("$project_root/build/tools/host-bin/python3" -c 'import sys; print(sys.executable)' 2>/dev/null || true)
+
+# The prelude's build-script C/C++ shim re-execs the compiler via os.execl,
+# which does not search PATH; bare compiler names from the default system
+# toolchain fail with ENOENT. Resolve absolute paths here and feed them to the
+# cxx toolchain through config (see build/toolchains/BUCK). Prefer the
+# /usr/bin xcrun shims on macOS: they inject the active SDK, which the raw
+# toolchain binaries inside Xcode.app do not do without -isysroot.
+if [ "$(uname -s)" = Darwin ]; then
+    if [ -x /usr/bin/clang ]; then
+        cc_bin=/usr/bin/clang
+        cxx_bin=/usr/bin/clang++
+        ar_bin=/usr/bin/ar
+    else
+        cc_bin=$(xcrun --find clang)
+        cxx_bin=$(xcrun --find clang++)
+        ar_bin=$(xcrun --find ar)
+    fi
+else
+    cc_bin=$(command -v clang || command -v cc || true)
+    cxx_bin=$(command -v clang++ || command -v c++ || true)
+    ar_bin=$(command -v ar || true)
+fi
+
+case "${1:-}" in
+    aquery | build | cquery | query | run | targets | test | uquery)
+        buck_command=$1
+        shift
+        if [ -n "$py_bin" ]; then
+            set -- "--config" "hctl2.python=$py_bin" "$@"
+        fi
+        if [ -n "$ar_bin" ]; then
+            set -- "--config" "hctl2.ar=$ar_bin" "$@"
+        fi
+        if [ -n "$cxx_bin" ]; then
+            set -- "--config" "hctl2.cxx=$cxx_bin" "$@"
+        fi
+        if [ -n "$cc_bin" ]; then
+            set -- "--config" "hctl2.cc=$cc_bin" "$@"
+        fi
+        set -- "$buck_command" "$@"
+        ;;
+esac
+
 if [ "$(uname -s)" = Darwin ]; then
     xcode_version=$(xcodebuild -version | awk 'NR == 1 { print $2 }')
     xcode_build=$(xcodebuild -version | awk 'NR == 2 { print $3 }')
