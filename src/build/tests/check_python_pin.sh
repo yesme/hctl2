@@ -22,6 +22,17 @@ note() { printf '%s\n' "$*"; }
 [[ -f "$python_pin" ]] || { echo "missing pinned python: $python_pin" >&2; exit 1; }
 [[ -f "$launcher" ]] || { echo "missing launcher: $launcher" >&2; exit 1; }
 
+# Helper scripts must not use PATH `python3`: CI poisons PATH to prove the pin,
+# and this test also puts a fake python3 first.
+if [ -x /usr/bin/python3 ]; then
+    helper_python=/usr/bin/python3
+elif [ -x /usr/local/bin/python3 ]; then
+    helper_python=/usr/local/bin/python3
+else
+    echo "missing helper python3 at /usr/bin/python3" >&2
+    exit 1
+fi
+
 # --- 1. pinned interpreter is the one that runs ---------------------------
 version="$("$python_pin" -c 'import sys; print(sys.version.split()[0])')"
 if [ "$version" = "3.12.14" ]; then
@@ -67,7 +78,7 @@ fi
 
 # --- broken pin: current-platform digest must fail closed -----------------
 broken="$fake/broken-python3"
-python3 - "$python_pin" "$broken" <<'PY'
+"$helper_python" - "$python_pin" "$broken" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -115,7 +126,7 @@ expected_macos_arm=81a359f1cfadd4da11766534c5913791cea55f26e1bb902cacd2a531bb1e4
 expected_macos_x86=65b195c9cedc1fef6767f044f9822069adbd1bd9204d424ece4628776fdc04bb
 
 digest_of() {
-    python3 - "$python_pin" "$1" <<'PY'
+    "$helper_python" - "$python_pin" "$1" <<'PY'
 from pathlib import Path
 import json, sys
 text = Path(sys.argv[1]).read_text()
@@ -140,7 +151,7 @@ official_json="$fake/release.json"
 if command -v gh >/dev/null 2>&1 &&
     gh release view 20260901 --repo astral-sh/python-build-standalone --json assets >"$official_json" 2>/dev/null
 then
-    python3 - "$official_json" "$expected_linux" "$expected_macos_arm" "$expected_macos_x86" <<'PY'
+    "$helper_python" - "$official_json" "$expected_linux" "$expected_macos_arm" "$expected_macos_x86" <<'PY'
 import json
 import sys
 from pathlib import Path
