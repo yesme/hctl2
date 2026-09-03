@@ -368,8 +368,14 @@ impl SearchIndex {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::io::Read;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::thread;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     use rusqlite::Connection;
     use serde_json::json;
@@ -385,8 +391,9 @@ mod tests {
             .expect("clock must follow the epoch")
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "hctl2-foundation-{name}-{}-{nanos}",
-            std::process::id()
+            "hctl2-foundation-{name}-{}-{nanos}-{}",
+            std::process::id(),
+            TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path).expect("temporary directory must be created");
         path
@@ -454,7 +461,50 @@ mod tests {
         let first = ExclusiveFileLock::try_acquire(&path).expect("first lock must succeed");
         assert!(ExclusiveFileLock::try_acquire(&path).is_err());
         drop(first);
-        ExclusiveFileLock::try_acquire(&path).expect("dropped lock must be released");
+        let mut released = false;
+        for _ in 0..50 {
+            if ExclusiveFileLock::try_acquire(&path).is_ok() {
+                released = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(released, "dropped lock must be released");
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn os_lock_is_released_when_the_holder_process_is_killed() {
+        let directory = temporary_directory("lock-kill");
+        let path = directory.join("control.lock");
+        let mut holder = Command::new("perl")
+            .args([
+                "-e",
+                "$| = 1; open my $fh, '>>', $ARGV[0] or die $!; flock($fh, 6) or die $!; print \"locked\\n\"; sleep 60",
+                path.to_str().expect("lock path must be utf-8"),
+            ])
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("perl lock holder must start");
+        let mut stdout = holder.stdout.take().expect("holder stdout");
+        let mut ready = [0_u8; 7];
+        stdout.read_exact(&mut ready).expect("holder must lock");
+        assert_eq!(&ready, b"locked\n");
+        assert!(
+            ExclusiveFileLock::try_acquire(&path).is_err(),
+            "live holder must own the advisory lock"
+        );
+        holder.kill().expect("holder must be killable");
+        holder.wait().expect("holder must exit");
+        let mut released = false;
+        for _ in 0..50 {
+            if ExclusiveFileLock::try_acquire(&path).is_ok() {
+                released = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(released, "killing the holder must release the OS lock");
         fs::remove_dir_all(directory).expect("fixture must be removed");
     }
 
@@ -480,6 +530,52 @@ mod tests {
         assert_eq!(body, "persisted");
         drop(restored);
         drop(connection);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn online_backup_is_consistent_while_the_source_is_being_written() {
+        let directory = temporary_directory("backup-write");
+        let source = directory.join("ledger.sqlite");
+        let destination = directory.join("backup.sqlite");
+        let connection = Connection::open(&source).expect("source must open");
+        connection
+            .execute_batch(
+                "PRAGMA journal_mode=WAL;\
+                 CREATE TABLE event(sequence INTEGER PRIMARY KEY, body TEXT NOT NULL);",
+            )
+            .expect("fixture must initialize");
+        drop(connection);
+
+        let writer_source = source.clone();
+        let writer = thread::spawn(move || {
+            let connection = Connection::open(&writer_source).expect("writer must open");
+            for index in 0..200 {
+                connection
+                    .execute("INSERT INTO event(body) VALUES (?1)", [index.to_string()])
+                    .expect("writer must commit");
+            }
+        });
+        thread::sleep(Duration::from_millis(5));
+        backup_sqlite(&source, &destination).expect("backup during writes must succeed");
+        writer.join().expect("writer must finish");
+
+        let restored = Connection::open(&destination).expect("backup must open");
+        let integrity: String = restored
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .expect("integrity check must run");
+        assert_eq!(integrity, "ok");
+        let count: i64 = restored
+            .query_row("SELECT COUNT(*) FROM event", [], |row| row.get(0))
+            .expect("count must run");
+        assert!((0..=200).contains(&count), "snapshot count was {count}");
+        let distinct: i64 = restored
+            .query_row("SELECT COUNT(DISTINCT body) FROM event", [], |row| {
+                row.get(0)
+            })
+            .expect("distinct count must run");
+        assert_eq!(distinct, count, "backup must not contain torn rows");
+        drop(restored);
         fs::remove_dir_all(directory).expect("fixture must be removed");
     }
 

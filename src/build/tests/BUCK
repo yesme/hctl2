@@ -3,6 +3,11 @@ load("//build/rules:rust.bzl", "HCTL2_VERSION")
 
 oncall("hctl2")
 
+filegroup(
+    name = "process_compose_fixtures",
+    srcs = glob(["testdata/process-compose/**"]),
+)
+
 rust_binary(
     name = "rust_toolchain_probe",
     srcs = ["rust_toolchain_probe.rs"],
@@ -29,4 +34,22 @@ sh_test(
     ],
     labels = CI_FAST,
     resources = ["root//:Cargo.toml"],
+)
+
+sh_test(
+    name = "process_compose_contract_test",
+    test = "check_process_compose_contract.sh",
+    env = {
+        "PACKAGING_ROOT": "$(location root//packaging/dependencies:service_lifecycle_sources)",
+        "PROCESS_COMPOSE_BIN": "$(location root//build/tools:process-compose-bin)",
+        "LIFECYCLE_YAML": "$(location :process_compose_fixtures)/testdata/process-compose/lifecycle.yaml",
+    },
+    labels = CI_FAST,
+    resources = [
+        "root//build/tools:process-compose-bin",
+        ":process_compose_fixtures",
+        "root//packaging/dependencies:service_lifecycle_sources",
+    ],
+    run_test_separately = True,
+    test_rule_timeout_ms = 120000,
 )
