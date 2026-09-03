@@ -17,7 +17,13 @@
 | 3.2 约束含义（Binding 族重构、六项机制、CT 用例） | 完成 | PR #149（v0.16.2） | 见 main |
 | 3.3 愿景与架构层改写（Fable） | 完成 | PR #150（v0.16.3） | 见 main |
 | 3.4 写作与调研（Fable，任务书一：研究对象文件、写法遗留、研究层追加、评审 Skill、Foreman 备忘） | 完成 | PR #153（v0.16.4）；补充裁决 GPL 生成物入库、钥匙串回退 PR #154 | 见 main |
-| 3.5 代码：文档工具链 PR 甲、运行时与部件 PR 乙（Codex + GPT，任务书二） | 完成 | PR #156、#159 | 2026-09-04 |
-| 3.6 测试计划与对抗核验（Grok，任务书三） | 待开工（跟在每个 Codex PR 合入之后） | `30-r3-remaining-brief.md` §任务书三 | — |
+| 3.5 代码：文档工具链 PR 甲、运行时与部件 PR 乙（Codex + GPT，任务书二） | 完成；延后与遗留见表下 | PR #156、#159 | 2026-09-04 |
+| 3.6 测试计划与对抗核验（Grok，任务书三） | 待开工（两个 Codex PR 均已合入，可以开） | `30-r3-remaining-brief.md` §任务书三 | — |
+
+**延后与遗留**（2026-09-04，不阻塞第三轮收口，P2 开工前先看这里）：
+
+- 任务书二第 5 项「供应端客户端」只接入了 `wait` 实际调用的 GitHub CLI；其余五家（Dagu、Herdr、Linear、Matrix、Vikunja）延到 P2 出现首个 adapter 调用方时按 `docs/research/sdk/` 各文件结论接入。Codex 的理由是不加没有调用方的 SDK；这是对任务书字面的缩范围，待所有者点头。
+- PR #159 带出两个跟踪 issue：#157 Buck2 的 Cargo build-script 需钉 Python 3.12（`libsqlite3-sys` 暂用手工 `cxx_library` 绕过）；#158 复核 SQLite bundled 与预编译库替代方案。
+- 五处库里两处与任务书字面不同、与研究文件结论一致：JCS 用 `serde_json_canonicalizer`（`serde-jcs.md` 首选），文件锁用标准库 `File::lock`（`fd-lock.md` 首选，fd-lock 作者已提弃用）。不是偏离，记在这里免得复核时再查一遍。
 
 接手的会话：先读三个链接，再看这张表，从第一个「待开始」或「进行中」的阶段接着做；每完成一个阶段改这张表并提交。
