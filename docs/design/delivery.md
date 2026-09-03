@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.16.3<br>
+> 状态：交付文档（非规范） · 草案 v0.16.4<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -124,6 +124,7 @@ B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍�
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
 3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
 4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证，且只验 HCTL 实际依赖的 API 与行为（边界见「开工前限时验证」）；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
+5. **借用偏好顺序**：跨平台二进制 > SDK > 复制代码 > 借鉴想法。能借二进制的不借库，能借库的不抄代码；越靠后自己维护的越多。研究层的复用决策按这四级记（见[复用决策用语](../research/README.md#复用决策用语)）；供应端客户端另有三级顺序：官方 SDK > 从接口描述生成 > 手写。
 
 ## 开工前限时验证
 
@@ -158,6 +159,8 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 ## 技术基线
 
 技术栈包括 Rust control/tool 与 Herdr 适配代码；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；以及 Tiptap、React Aria、React Flow + Dagre、xterm.js。
+
+五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、现场锁用标准库文件锁、账本备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按三级顺序接入：官方 SDK > 从接口描述生成 > 手写，六家逐个的判定见[供应端客户端层](../research/sdk/README.md)。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作工具箱回读级证据。
 
 执行面服务器经受控端口接入，由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）和 Herdr（Agency）。Room 场景另随包提供 Cinny 聊天客户端。
 

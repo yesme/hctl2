@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.16.3 · 2026-09-02<br>
+> 状态：Informative · 对应草案 v0.16.4 · 2026-09-02<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前约束以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -350,6 +350,7 @@ Agency 定为参与者的供给方（provider），不是工厂：挑人是 cont
 | v0.15.1 | 2026-08-31 | 全库文档大修：门户收束、设计层与约束层同构合并、禁令按白名单三分、CT 矩阵拆出 contract-tests.md、来时路折叠与历史表迁入；不改约束语义 | [大修施工图](../../../.memo/design/doc-overhaul-20260830/README.md) |
 | v0.15.4 | 2026-08-31 | 路标停更与迟到观察不铸新 Obligation：把隐含边界写成明文（spec/run 铸造条件、连接约束失败表、architecture 半句），已铸义务照常判决 | [大修停车位 #4](../../../.memo/design/doc-overhaul-20260830/parking-lot.md) |
 | v0.15.5 | 2026-09-02 | 文风与分层复审的结构批：文档纪律独立成篇、根 README 定为首页并瘦身、设计正文越层细节改引用、代次家族总表立于系统边界、五份设计正文补文档头、写作指南按十条裁决修订（愿景层词汇、T1 两档、契约/约束/清单分工、S1 判例累积）；不改约束语义 | [裁决材料](../../../.memo/design/doc-style-sweep-20260831/20-verdict-packet.md) |
+| v0.16.4 | 2026-09-03 | 四轴评审第三轮写作与调研批（Fable 任务书）：participant.md 收敛运行时实现名、关键规则分四组；借用等级用语改六种并写明偏好顺序；技术基线写五处库、供应端客户端三级顺序与 wait 命令；研究层新增 harness 钩子审计、六个库与六家供应端客户端层对象文件（`libs/`、`sdk/`）、方法论地图三处复核；评审方法抽成 Skill `hctl2-design-review`；不改约束语义 | [任务书](../../../.memo/design/design-review-20260902/30-r3-remaining-brief.md) |
 | v0.16.3 | 2026-09-03 | 四轴评审第三轮愿景与架构批（第二轮裁决 A-06+A-26 / A-22 / A-57 / M-01 / M-02 / M-13 / M-27 / M-28 / M-35 / I-12 / I-13 / M-10 / M-11）：愿景加「取舍看快、好、省」原则并展开举例，原则「领域对象少而稳定」改写、愿景层不再点治理词，最小内核表加「可解释的上下文装配」并写明 Context 只是给 LLM 的精简 prompt 材料；批准与开工改写为「两件账本事实、可一次预览提交」；Run 正文加「一次评审合入走一遍」讲八个治理词、评审独立性三来源与多票评审的说明、分歧落点与返工上限、外部机械事实前置、引擎选型指引；Project 正文写明分诊在 Room 里完成；Task 正文写明契约须在启动或完成前显式采纳、轻量路径两次预览、验收项由谁判；Participant 正文加证据三级与白名单实现候选；Context 的「快省准」指回愿景原则；交付切片补 Memo 回流与 content-first 正向用例；不改约束语义 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
 | v0.16.2 | 2026-09-03 | 四轴评审第三轮约束批（第二轮裁决 M-30 / M-31 / M-32 / M-33 / M-38 / M-43 / A-37 / I-03 / W-16 与 Binding 族重构）：Binding 族只留外部连接并双端命名——Resolved Port Binding → Port–Provider Binding、Task Binding → Task–Backend Binding、Engine Execution Binding → Run–Engine Binding，新命名 Room–Server Binding（原 Chat 端口绑定的房间半边）与 Participant–Agency Binding（原 Execution Spec 里的「Agency 绑定」），Project Role Binding 退出族改为 Project 的参与者授权、Role 降为职责字段，Task Source Snapshot → Task Backend Snapshot；节点可声明外部机械事实前置、只由工具箱回读；证据通道三级并定义「高证据类」；验收项声明校验等级、Receipt 记判定者；Verdict 分歧落点；返工轮数上限与增量评审策略；Run 过渡态默认超时进需要关注；回源指针由组装器赋予；CT 各族补失败用例 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
 | v0.16.1 | 2026-09-03 | 四轴评审第三轮写法批：Chat Room 并入 Room；「第一阶段」提法退出，约束直接写规则、交付文档改「当前范围」；外部系统称「选型」、只有本地 Agency 称「默认」；核心产品词表加中文与类别两列，愿景层只用用户可见词；高频约束词加 Context Manifest / Context Bundle；设计层「人」的写法统一；Seat / Attempt 中文改「席位 / 尝试」；「三选二」改「多票评审」；不改约束语义 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
