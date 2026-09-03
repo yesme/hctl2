@@ -27,7 +27,7 @@
 
 完整的协作工作台与相邻 Agent 产品统一归档在 [`workbench/`](./workbench/README.md)；本页保留跨类别总表。协议、后端、运行服务、桌面壳和 Context 等专题的跨候选比较留在研究根目录，其中的单个案例归入对应类别子目录。
 
-"怎么借"只有五种决策（定义见文末[复用决策用语](#复用决策用语)）。与常见问法的对应：直接用它的 CLI/服务＝**采用为依赖**；借它的 schema/协议形状＝**适配协议**；抄它的代码＝**移植有边界的组件**；借它的思想/阶段/交互＝**仅参考行为**。
+"怎么借"只有六种决策（定义与偏好顺序见文末[复用决策用语](#复用决策用语)）。与常见问法的对应：直接用它的二进制或服务＝**采用二进制**；用它的库＝**采用 SDK**；借它的 schema/协议形状＝**适配协议**；抄它的代码＝**移植有边界的组件**；借它的思想/阶段/交互＝**仅参考行为**。
 
 ### ① Coding Harness · 编码代理本体
 
@@ -52,7 +52,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 <a id="l1-selected-evidence"></a>
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
-不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Herdr、Cinny、Tauri 2 与 UI 通用库采用为依赖，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
+不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Herdr、Cinny 采用二进制，Tauri 2 与 UI 通用库采用 SDK，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
 
 ### ⑦ 直接谱系
 
@@ -105,7 +105,10 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [remote-control/servercc.md](./remote-control/servercc.md) | ServerCC | E-L1-SERVERCC | ⑤ 远程操控与会话同步 | 仅参考行为 |
 | [remote-control/quicktui.md](./remote-control/quicktui.md) | QuickTUI | E-L1-QUICKTUI | ⑤ 远程操控与会话同步 | 仅参考行为 |
 | [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 | 仅参考行为 |
-| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用为依赖 |
+| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用二进制 |
+| [harness-hooks-20260903.md](./harness-hooks-20260903.md) | 八家编码 Harness 的「工具调用前」钩子与 ACP 权限请求 | E-L1-HARNESS-HOOKS | ① Coding Harness | 适配协议：PTY 模式用各家原生钩子、ACP 模式用协议权限请求；白名单与检查入口与 harness 无关 |
+| [sdk/README.md](./sdk/README.md) | 六家供应端客户端层（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
+| [libs/README.md](./libs/README.md) | 五处通用机制的现成库加文件监听（JCS、文件锁、SQLite 备份、钥匙串、FTS5、notify） | E-LIB-* | ⑥ 机械后端与基础设施 | 采用 SDK，逐项见子目录；outbox / 租约 / 代次维持自研 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
@@ -155,6 +158,6 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 
 ## 复用决策用语
 
-所有证据最终只归入五种复用决策：**采用为依赖（Adopt dependency）**、**移植有边界的组件（Port bounded component）**、**适配协议（Adapt protocol）**、**仅参考行为（Behavior reference）**、**暂缓（Defer）**。不得给整个产品一个“取代 HCTL”的总分，也不得把参考项目中的 Session、Conversation、Project、Task、Run 名称或内部数据库带入 HCTL 的公开数据结构。
+所有证据最终只归入六种复用决策：**采用二进制（Adopt binary）**、**采用 SDK（Adopt SDK）**、**移植有边界的组件（Port bounded component）**、**适配协议（Adapt protocol）**、**仅参考行为（Behavior reference）**、**暂缓（Defer）**。前四种有偏好顺序：**跨平台二进制 > SDK > 复制代码 > 借鉴想法**——能借二进制的不借库，能借库的不抄代码，能抄代码的不只借想法；越靠后我们要自己维护的越多。「采用为依赖」是 2026-09-03 前的旧写法，等于前两种的合称。不得给整个产品一个“取代 HCTL”的总分，也不得把参考项目中的 Session、Conversation、Project、Task、Run 名称或内部数据库带入 HCTL 的公开数据结构。
 
-与常见问法的对应关系：直接用它的 CLI/服务＝采用为依赖；借它的 schema/协议形状＝适配协议；抄它的代码＝移植有边界的组件；借它的思想/阶段/交互＝仅参考行为。许可证只决定上限（闭源/无许可证/非 OSI 的最多到仅参考行为），不决定选择：许可宽松也可以只借行为。
+与常见问法的对应关系：直接用它的二进制或服务＝采用二进制；用它的库＝采用 SDK；借它的 schema/协议形状＝适配协议；抄它的代码＝移植有边界的组件；借它的思想/阶段/交互＝仅参考行为。许可证只决定上限（闭源/无许可证/非 OSI 的最多到仅参考行为），不决定选择：许可宽松也可以只借行为。

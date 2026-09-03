@@ -8,6 +8,8 @@
 
 ## 任务书一 · Fable：写作与调研（一个 PR，或研究先行拆两个）
 
+> 进度（2026-09-03）：一个 PR 落完。已完成：研究对象文件（钩子、六个库、六家 SDK）、participant.md 的 Herdr 收敛与规则分组、借用等级用语与偏好顺序、技术基线、方法论地图追加、评审 Skill、Foreman 备忘。**I-03 其余 112 句的判断**：逐句核查后，绝大多数是启发式误报——机制在邻句或在它所属的对象定义里（如「Execution Spec 必须冻结已声明项」的机制就是 Execution Spec 冻结本身）；逐句加机制词会把约束层写成叠句，违反「警惕零碎纪律」与「写正面陈述」两条原则，因此**不做全量加词**，只在第二批已把真正缺机制的几处（外部事实前置、证据通道、校验等级、回源指针）补成机制。若所有者不同意，可回到清单逐句再议。
+
 1. **研究对象文件**（Codex 的前置，先做）：
    - `docs/research/harness-hooks-<日期>.md`：一 harness 一行——有无钩子、事件名、配置位置（用户级 / 项目级 / 环境变量）、能否在执行前硬拒绝、决策格式、能否按会话配置而不污染 worktree、钉版本；覆盖 Claude Code、Codex、Gemini CLI、OpenCode、Cursor CLI、Kimi Code、Qwen Code、Copilot CLI；另列 ACP `session/request_permission` 作结构化接入模式的等价物。与 Herdr 兼容要验证三点：环境变量与配置目录透传、钩子回调能找到 hctl-tool、钩子 stderr 不干扰 Herdr 的 agent 状态判定。
    - wait 命令所需的跨平台文件监听与 PR / CI 状态读取库；`serde_jcs`、`fd-lock`、SQLite Online Backup、`keyring`、FTS5 五个对象文件；Process Compose 对象文件补「发行侧用法」一段（含 Windows amd64 制品）。

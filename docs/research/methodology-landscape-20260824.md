@@ -152,3 +152,10 @@ beads 整体（等 HCTL2 Task schema 定形后重估，届时做单向 issues.js
 | mattpocock/skills | 讨论完成靠人确认门（grilling）；规格与票的「就绪」标签由模型自贴（to-spec、to-tickets）；决策票人在回路，但落锤关票是 agent 的动作（wayfinder）；施工票的 skill 没有完成步骤，关单留给人（implement）；测试与评审证据全程模型自跑自报，评审还常常评到一个空 diff；唯一硬强制是防误操作的 git 钩子，不做治理 | 计划侧同向、施工侧违反、全线靠 prompt 没有机械边界；是「同向碎片散落、没有系统边界」这一总判最好的单一佐证 |
 
 一处与直觉相反的确认：该仓库没有 agent 自动领票的循环，领取、并行、调度全是人手工做的，属于「人当调度器」的会话多路复用姿态。它的完成判定画像比 Taskmaster、MetaGPT 好看一档，原因是把裁决外包给了人的自觉，而不是收进了系统边界。
+
+**2026-09-03 · 四轴评审第三轮的三处复核（依据 [`methodology-sweep-2026h2-20260902.md`](./methodology-sweep-2026h2-20260902.md)、[`methodology-boundaries-20260902.md`](./methodology-boundaries-20260902.md) 与评审第二轮裁决）。**
+
+1. **第十二族改名扩容。** 原「TDD/eval 驱动（弱家族）」改名为**「机械守卫与验收账本」**，并且不再弱：两个月里冒出四个同机制样本——unlazy（可执行的 `GATES.md` 完成账本加 Stop 钩子）、stop-that-shit（五家 harness 的 PreToolUse 钩子按声明约束拒绝越界动作）、old-coder（人批测试计划、审证据报告、不读 diff）、procoder（Go 二进制提交闸门，「未检查计作失败」）。共同点是把门放在 harness 或提交路径上、由代码判，而不是让模型自觉。另记一个值得单列的新亚种**软件工厂**（super-simple-software-factory、Vercel Labs 的 Foreman）：代码持有控制面，agent 是无状态工位，交接靠类型化信封，验收靠代码事后核对自述，人在最后一道；它落在多 agent 拓扑家族的三个亚种之外。
+2. **完成判定权横评两处校准。** Gas Town 一行里的「机械关单」只覆盖关单那一步：门通过加推送验证后由代码带提交 SHA 关闭，但模型对子 issue 仍有直接 `bd close` 权；Witness 的「无证据即重置」是先重启再问的姿态（restart-first），不是验收。第三节的读法句「同向的碎片散落在各产品里」维持。
+3. **「谁判完成」的计数校准。** 按 19 家边界审计的口径：15 家有完成边，其中 13 家让施工模型在主路径或侧门自标完成（ccpm 与 mattpocock/skills 同口径——靠人宣告但没有机制阻止 agent 关单）；由代码判完成的四处里 GSD 的输入可被模型改写，严格满足「代码判且输入非模型写」的只有 Gas Town、vibe-kanban、BMAD retro 三处，且都是「合并即完成」或「文件齐即完成」，没有一家按验收约束逐项校验。这是 HCTL2「完成凭证逐项绑证据」仍属独有的证据。
+
