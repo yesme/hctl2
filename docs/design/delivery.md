@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.16.2<br>
+> 状态：交付文档（非规范） · 草案 v0.16.3<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -70,7 +70,8 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 4. Project 场景展示精确 diff；评审绑定精确的评审对象引用。
 5. 有权 human actor 提交固定 ChangeSet Revision、target ref、expected target head 与证据的 integration intent；control 先持久化，`hctl2-tool` 执行本地 Git 集成并 readback，确认后写唯一 Integration Receipt。
 6. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验精确 Integration Receipt 后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
-7. 重启 control、Herdr 与已使用的 content 后端后，账本、Git 工作树归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
+7. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
+8. 重启 control、Herdr 与已使用的 content 后端后，账本、Git 工作树归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
 
 这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。
 
@@ -91,7 +92,7 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 
 Kanban 切片依次完成后端选择、Project 分组映射、Snapshot 导入、按需采纳契约、字段写回和结果回读。本地任务服务器与一个远端后端各走通一次主线，并支持显式刷新与定期对账，不依赖公网 webhook。
 
-另用独立失败用例覆盖结果未知、限流、外部修改、tombstone、重新绑定、无 Workbench 操作、无契约卡和 Done 请求拒绝。外部终态永远不直接写 HCTL 完成；Vikunja 明确的 Done 变化只有在操作者、版本、幂等依据和当前回读齐全时，才能请求同一完成命令。
+正向用例另覆盖 content-first 卡：先由原生界面建卡，认领为无契约 Task，再采纳契约并完成，凭证逐项绑定证据。另用独立失败用例覆盖结果未知、限流、外部修改、tombstone、重新绑定、无 Workbench 操作、无契约卡和 Done 请求拒绝。外部终态永远不直接写 HCTL 完成；Vikunja 明确的 Done 变化只有在操作者、版本、幂等依据和当前回读齐全时，才能请求同一完成命令。
 
 ## 自举阶段
 
