@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
+> 状态：规范性约束 · 草案 v0.16.1<br>
 > 本文只定义四个模块共享的运行机制，不拥有 Project、Task、Run 或 Participant 的领域状态。
 
 ## 组件
@@ -10,7 +10,7 @@
 | `hctl2-workbench` | 无特权的组合客户端；承载四个场景的 provider 交互、HCTL 公共命令入口、联合投影与导航 |
 | `hctl2-control` | 唯一领域命令服务，负责路由、权限、账本、outbox 和对账；内含 Herdr 适配代码，但不实现终端会话服务 |
 | `hctl2-tool` | 执行现场操作：物化和隔离 Git 工作树/ChangeSet，执行已持久化的意图，回读结果，并管理现场锁、封存和 Git 事实校验。它不负责 lint 或代码检查，也不执行远端 SCM 副作用。独立运行时，它只提供普通本地操作，不签发 HCTL 治理结果 |
-| Herdr | 第一阶段实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
+| Herdr | 本地 Agency 参考实现的运行时，实现 Agency 端口：按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI |
 | workflow engine | 通过适配器保存 Run 的引擎执行令牌、引擎步骤、定时器、重试次数和执行历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
@@ -26,7 +26,7 @@
 
 | 场景 | 端口 |
 | --- | --- |
-| Chat Room | chat server 连接：消息/附件读写、账号与房间管理、身份映射（非 Matrix 平台经 homeserver 侧 Matrix 桥接接入，不是 HCTL 端口） |
+| Room | chat server 连接：消息/附件读写、账号与房间管理、身份映射（非 Matrix 平台经 homeserver 侧 Matrix 桥接接入，不是 HCTL 端口） |
 | Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | workflow engine 编译、注册、执行和回读 |
 | Terminal | harness、Agency，以及终端连接与输入能力 |
@@ -39,7 +39,7 @@ Workbench 的 HCTL 功能只调用 Query、Preview、Submit、Subscribe 和各�
 
 ### 端点与输入的信任边界
 
-1. 第一阶段的 chat server、本地任务服务器、workflow engine 和 Herdr 管理/API 端点只能绑定本机回环地址或仅归属者可访问的本地套接字。未来的非本地传输必须认证客户端。
+1. chat server、本地任务服务器、workflow engine 和 Herdr 管理/API 端点只能绑定本机回环地址或仅归属者可访问的本地套接字；非本地传输必须认证客户端。
 2. 若某个供应端修改必须先由 HCTL 记账、撤权或校验，只有 control 可以通过对应受控端口发起它。chat server 与任务后端的 content 读写不受这条限制；Herdr 的普通交互输入也不是治理命令。
 3. 当绑定声明支持代次栅栏回显和逐次输入记录时，Herdr 适配代码必须在每次输入前校验 Attach Descriptor、Terminal Input Lease 和当前代次。绑定未声明这些能力时，原生交互只能按来源不完整的运行时输入记录。
 4. 若允许 Herdr TUI 原生输入，绑定必须明确记录它不提供 HCTL 单输入租约保证。无论采用哪种输入模式，HCTL 结果都只能从 Result Proposal 准入。
@@ -92,7 +92,7 @@ control 不根据“来自哪个产品”判定动作——客户端没有等级
 
 供应端事件先按 content 事实入账。只有事件能证明 actor、目标、前后版本和幂等依据时，Task 适配器才可以另行生成“完成 Task”请求。请求被拒绝时，界面同时保留供应端 Done 与 HCTL 开放状态。由 HCTL 回写产生、actor 无法映射或字段不全的事件只能形成 Snapshot。
 
-第一阶段是单用户模型，只要求把直接客户端连接或供应端账号稳定映射到归属 human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉目标、预期版本或代次、幂等键和事件顺序。
+授权模型是单用户的：只要求把直接客户端连接或供应端账号稳定映射到归属 human，并保留 `direct_client | provider_event | internal_reducer | execution_principal | unknown` 来源；不引入组织、角色层级或复杂 RBAC。来源简化不等于可以丢掉目标、预期版本或代次、幂等键和事件顺序。
 
 webhook 和通知只负责唤醒。接纳前仍以供应端当前回读、游标及其缺口和模块 Snapshot 为准；重复、迟到或乱序投递必须得到相同结果。各模块可接受的供应端动作见[场景与第三方适配器](./connections.md#场景与第三方适配器)。
 
@@ -125,7 +125,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Participant 写入约束](./participant.md#写入约束)。
 
-第一阶段不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
+系统不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
 
 Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被 Harness 或用户在“合入 ChangeSet”命令之外直接改写时，只表现为预期目标头不匹配的分歧。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应归属者按约束产生。
 
@@ -250,4 +250,4 @@ metadata 备份必须是由唯一写入者协调的一致备份集：完整账�
 - 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
-- 第一阶段是单用户授权模型，不提供多租户隔离；Harness 的三条底线与可选执行加固见[Participant 写入约束](./participant.md#写入约束)。未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域。
+- 授权模型是单用户的，不提供多租户隔离；Harness 的三条底线与可选执行加固见[Participant 写入约束](./participant.md#写入约束)。未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域。

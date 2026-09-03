@@ -1,6 +1,6 @@
 # 四模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
+> 状态：规范性约束 · 草案 v0.16.1<br>
 > 本文是 Project、Task、Run、Participant 之间连接约束的唯一权威。它不是第五个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -19,7 +19,7 @@
 
 ```mermaid
 flowchart LR
-    P["Project<br/>Chat Room"] -->|采纳 Task 契约| T["Task<br/>Kanban"]
+    P["Project<br/>Room"] -->|采纳 Task 契约| T["Task<br/>Kanban"]
     T -->|「启动 Run」命令 + Run Manifest| R["Run<br/>Workflow"]
     P -->|无 Task 的「启动 Run」命令| R
     P -->|Room Invocation + Execution Spec| H["Participant<br/>Terminal"]
@@ -47,7 +47,7 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 
 ## Project → Task：从讨论到承诺
 
-Chat Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。确认时，「创建 Task」命令或「采纳契约」命令必须冻结：
+Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。确认时，「创建 Task」命令或「采纳契约」命令必须冻结：
 
 - `project_id` 与预期 Project version；
 - 来源 Message、Artifact、Memo、Request 的精确引用；
@@ -60,7 +60,7 @@ Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。�
 
 ## Project / Task → Run：授权自动施工
 
-批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是第一阶段 0..1 个可选绑定；Run Manifest 的冻结清单见[Run 约束](./run.md#workflow-与-run-授权)。
+批准 Workflow 只确认施工图；「启动 Run」命令才建立自动施工连接。Project 是必需且活跃的授权来源，Task Revision 是 0..1 个可选绑定；Run Manifest 的冻结清单见[Run 约束](./run.md#workflow-与-run-授权)。
 
 control 在一个用户级账本事务中写 Run、Manifest、幂等结果、可选 Task Run 占用标记和引擎启动 outbox。外部执行实例用 `run_id + manifest_digest` 作为关联键；事务提交后崩溃或确认回执丢失时必须先回读，不能再启动第二个执行实例。
 
@@ -120,7 +120,7 @@ control inbox 先按提案标识符、producer sequence 和归属者去重。随
 
 每个输出都必须携带自己的生产者字段组；`in_process` 输出只能使用上节定义的缩减字段组，不能把一个合格项的代次套给另一个旧项。通过后：
 
-- Room Invocation 的结果由 Project 记录并投影到 Chat Room；
+- Room Invocation 的结果由 Project 记录并投影到 Room；
 - Attempt 的结果由 Run 归约为 Seat 结果、Verdict 或 Receipt；
 - Task 不消费 Harness 的进程状态、自述、终端屏幕或未经准入的 Proposal。
 
@@ -189,8 +189,8 @@ Task 路径的验收证据 → Task Completion Receipt
 
 ## 场景与第三方适配器
 
-Workbench 与第三方 Chat/Kanban/Workflow/Terminal 平台都通过上述目标命令、投影和事件编排连接；适配器只使用目标模块已有的连接。各模块分别声明可接受的供应端动作：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足来源信封的 Done 产生完成请求。
+Workbench 与第三方聊天/Kanban/Workflow/Terminal 平台都通过上述目标命令、投影和事件编排连接；适配器只使用目标模块已有的连接。各模块分别声明可接受的供应端动作：Chat 的普通消息只作 content，显式结构化动作才可能成为命令请求；Task 允许满足来源信封的 Done 产生完成请求。
 
 Run 的用户输入和执行体的结果先进入 control，持久化后再由 outbox 推动 Dagu；Dagu 原生修改只形成分歧。执行体按 Execution Spec 声明的[恢复等级](../participant.md#terminal-场景)接纳原生终端输入。能力不足时隐藏动作、保留待处理请求或安全拒绝。动作分类见[系统约束](./system.md#客户端动作与-provider-事件)。
 
-Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Chat Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。
+Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。

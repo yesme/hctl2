@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
+> 状态：规范性约束 · 草案 v0.16.1<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -15,7 +15,7 @@
 
 Repo 到外部 provider/account/scope 的连接由 Resolved Port Binding（port_kind = task_source）承载；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个活跃绑定。
 
-Task lifecycle 只有开放 | 完成 | 已取消。第一阶段 `project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 约束](./project.md#repo-注册与-project-归档)。
+Task lifecycle 只有开放 | 完成 | 已取消。`project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 约束](./project.md#repo-注册与-project-归档)。
 
 Backlog、Ready、In Progress 和 Review 是本地阶段，不是 Task 生命周期。Blocked 和“需要关注”是独立于阶段的健康状态，由阻塞项、Request、Run、来源同步和验证事实派生。Kanban 泳道由本地阶段、Task 生命周期和外部来源投影共同计算。
 
@@ -54,7 +54,7 @@ Task 有两条可恢复的创建路径：
 
 外部卡随后移到另一 Project 分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot，并把原 Task 标为需要关注。在恢复原位置或建立新 Task 前，系统必须阻止采纳、启动、完成和后端操作字段写入。
 
-第一阶段不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只能在原 Project 锚点内改变阶段和排序；跨 Project 分组的预览必须拒绝。需要改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。
+系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只能在原 Project 锚点内改变阶段和排序；跨 Project 分组的预览必须拒绝。需要改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。
 
 task_source 端口绑定与 Task Binding 的本地 current 投影使用 control 维护的单调 `state_version` 做比较并交换；Task Source Snapshot 另行保存供应端的远端 revision、摘要和游标。采用外部来源内容的“采纳契约”命令必须让 Snapshot、字段权威策略与新 Task Revision 引用同一个 Task Binding，并把绑定版本、Snapshot、契约投影摘要和权威策略摘要一并写入 Task Revision。
 
@@ -70,7 +70,7 @@ task_source 端口绑定与 Task Binding 的本地 current 投影使用 control 
 
 后端或关联来源的 Done/已关闭/Reopen/Deleted 是 content 事实，不会自动完成、重开、取消 HCTL Task，也不会停止 Run。删除只写 tombstone。
 
-所选 task backend 的事件还可以承载 human 命令请求，但只对 Task Binding 明确列明的动作生效。第一阶段只允许一种动作归一为“完成 Task”命令草稿：已绑定的规范卡片由映射到归属 human 的账号从非终态进入 Done。
+所选 task backend 的事件还可以承载 human 命令请求，但只对 Task Binding 明确列明的动作生效。只允许一种动作归一为“完成 Task”命令草稿：已绑定的规范卡片由映射到归属 human 的账号从非终态进入 Done。
 
 适配器必须固定绑定版本、规范外部实体 ID、Task ID、供应端 actor、变化前后值、远端 revision 或更新时间，以及可重复计算的幂等键，并在接纳前完成当前回读。Vikunja webhook 没有独立投递 ID 时，幂等键使用上述规范字段组，不把投递次数当身份。
 
@@ -78,7 +78,7 @@ HCTL 服务账号的写回、模型或 Harness、未知 actor、只看到当前 
 
 control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只有预览不要求临场选择，而且绑定明确允许该供应端动作自动提交时，适配器才可以提交请求。否则，系统保留供应端 Done 与 HCTL 开放状态，并等待用户处理或返回类型化拒绝。
 
-成功仍只由同一个“完成 Task”事务写 Task Completion Receipt。重开、取消、跨 Project 移动和契约采纳第一阶段没有供应端动作映射，必须使用公共命令入口。
+成功仍只由同一个“完成 Task”事务写 Task Completion Receipt。重开、取消、跨 Project 移动和契约采纳没有供应端动作映射，必须使用公共命令入口。
 
 ## 写入约束
 
@@ -106,7 +106,7 @@ Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revis
 
 若存在契约分歧，Receipt 还必须固定显式分歧选择、精确的未采纳 Snapshot 引用与摘要、Task Binding 版本与状态版本和权威策略摘要。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交。Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一标记。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
-冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Chat Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
+冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 

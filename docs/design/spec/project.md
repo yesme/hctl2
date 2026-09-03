@@ -1,7 +1,7 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
-> 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Chat Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
+> 状态：规范性约束 · 草案 v0.16.1<br>
+> 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
 

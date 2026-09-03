@@ -1,6 +1,6 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.0<br>
+> 状态：规范性约束 · 草案 v0.16.1<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -46,7 +46,7 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 
 Worker Profile、Harness 名称或“支持 ACP”都不隐含能力。每次绑定都必须从实际探测结果中选择精确端口和降级方式，并冻结版本、配置、能力、信任级别和权限。
 
-第一阶段，HCTL 启动的每个 Harness 都使用窄执行主体。以下三条底线不可关闭；账本单写者另有自己的[三条底线](./system.md#单写者)，两组互不替代。
+HCTL 启动的每个 Harness 都使用窄执行主体。以下三条底线不可关闭；账本单写者另有自己的[三条底线](./system.md#单写者)，两组互不替代。
 
 ### 不可关闭的三条底线
 
@@ -106,7 +106,7 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
-Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。第一阶段的 Agency 是发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
+Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
 control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；Participant 身份、角色绑定、人设和 Seat 仍由 control 账本拥有。
 
