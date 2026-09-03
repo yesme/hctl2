@@ -63,3 +63,7 @@
 - 仓库：[keyring-rs README 与 Cargo.toml（v4 架构、feature 定义）](https://github.com/open-source-cooperative/keyring-rs)、[Keyring 生态 wiki](https://github.com/open-source-cooperative/keyring-rs/wiki/Keyring)、[db-keystore README](https://github.com/stevelr/db-keystore)
 - 规范：[freedesktop Secret Service](https://specifications.freedesktop.org/secret-service/latest/description.html)、[systemd 凭据](https://systemd.io/CREDENTIALS/)
 - 本库：[系统边界 §控制面自己的存储](../../design/spec/system.md#控制面自己的存储)、[部件矩阵表 D Secret store 一行](../component-matrix-20260902.md#d--约束层里靠第一方代码实现的通用机制)
+
+## 复核记录
+
+- 2026-09-04 所有者裁决：**照 gh CLI 的做法**——探测到系统钥匙串就用钥匙串（macOS Keychain、Windows 凭据管理器、Linux Secret Service）；探测不到（无桌面会话的 Linux 等）就退到用户目录下 0600 权限的文件，`hctl2 doctor` 提示当前用的是哪一种。systemd 凭据留作可选加固，不当入场券；内核 keyutils 只作会话缓存，不当持久后端。安全边界退到「同一 OS 用户」，与约束层「未启用加固时 Harness 与同 OS 用户其他进程同一信任域」一致。
