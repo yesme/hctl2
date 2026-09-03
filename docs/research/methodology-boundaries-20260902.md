@@ -488,3 +488,4 @@ HCTL2 侧核对于 main @ `6850f18`（草案 v0.16.0，2026-09-02）。下表逐
 ## 复核记录
 
 （发布后追加。）
+- 2026-09-03 对抗核验校准（`.memo/design/design-review-20260902/12-adversarial-M.md`）：（一）结论 2 与 §3.3 #3 的「独有形状」措辞过头——计划段少门、集成段重门的分布 vibe-kanban 与 Gas Town 同样如此，HCTL2 独有的是计划段那道门冻结契约、集成段那道门逐项绑定证据，不是门的分布；（二）结论 6 与 §4.2 #3 的计数：ccpm 与 mattpocock 同口径（靠人宣告但无机制阻止 agent 关单），故「模型可自标」应为 13 家而非 14；四处代码判里 GSD `phase.complete` 的输入可被工作流改写，严格满足「代码判且输入非模型写」的只有 Gas Town、vibe-kanban、BMAD retro 三处。
