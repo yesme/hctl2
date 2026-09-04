@@ -11,6 +11,7 @@ description = "Standalone mechanical Git and SCM toolbox for HCTL2"
 [dependencies]
 clap.workspace = true
 hctl2-facts = { path = "../../crates/hctl2-facts" }
+hctl2-foundation = { path = "../../crates/hctl2-foundation" }
 serde_json.workspace = true
 
 [lints]

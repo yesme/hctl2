@@ -7,7 +7,7 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags, backup::Backup, params};
@@ -23,7 +23,7 @@ pub enum FoundationError {
     Json(serde_json::Error),
     CanonicalJson(String),
     UnsafeCanonicalNumber(String),
-    Lock(String),
+    Lock(std::fs::TryLockError),
     Sqlite(rusqlite::Error),
     Secret(String),
 }
@@ -118,7 +118,7 @@ fn validate_canonical_numbers(value: &Value) -> Result<(), FoundationError> {
 
 /// An OS-owned exclusive file lock that is released automatically when dropped or killed.
 pub struct ExclusiveFileLock {
-    _file: File,
+    file: File,
 }
 
 impl ExclusiveFileLock {
@@ -137,9 +137,32 @@ impl ExclusiveFileLock {
             .write(true)
             .truncate(false)
             .open(path)?;
-        file.try_lock()
-            .map_err(|error| FoundationError::Lock(error.to_string()))?;
-        Ok(Self { _file: file })
+        file.try_lock().map_err(FoundationError::Lock)?;
+        Ok(Self { file })
+    }
+
+    /// Replaces the advisory holder information stored in the lock file.
+    ///
+    /// This metadata is diagnostic only; possession of the file descriptor is
+    /// the lock authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the held file cannot be truncated, written, or synced.
+    pub fn write_holder_info(&mut self, bytes: &[u8]) -> Result<(), FoundationError> {
+        self.file.set_len(0)?;
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.write_all(bytes)?;
+        self.file.sync_data()?;
+        Ok(())
+    }
+}
+
+impl FoundationError {
+    /// Reports whether this error means that another process owns the advisory lock.
+    #[must_use]
+    pub fn is_lock_contended(&self) -> bool {
+        matches!(self, Self::Lock(std::fs::TryLockError::WouldBlock))
     }
 }
 

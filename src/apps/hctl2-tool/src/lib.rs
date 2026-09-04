@@ -13,6 +13,12 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use hctl2_facts::{Fact, Outcome, ReaderContext, wait_until};
+use serde_json::Value;
+
+mod git;
+mod repository;
+pub mod site_lock;
+mod worktree;
 
 /// Stable tool-local error code plus a human-readable explanation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,7 +28,7 @@ pub struct ToolError {
 }
 
 impl ToolError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -58,6 +64,13 @@ pub struct ToolOutput {
 }
 
 impl ToolOutput {
+    pub(crate) fn json(value: Value, exit_code: u8) -> Self {
+        Self {
+            body: value.to_string(),
+            exit_code,
+        }
+    }
+
     /// Returns stdout without a trailing newline.
     #[must_use]
     pub fn body(&self) -> &str {
@@ -93,6 +106,68 @@ struct Cli {
 enum ToolCommand {
     /// Wait for one external mechanical fact and print one JSON fact record.
     Wait(WaitArguments),
+    /// Inspect a local Git repository without changing it.
+    Repo(RepoArguments),
+    /// Materialize or verify an isolated ChangeSet worktree.
+    Worktree(WorktreeArguments),
+}
+
+#[derive(Debug, clap::Args)]
+struct RepoArguments {
+    #[command(subcommand)]
+    command: RepoCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RepoCommand {
+    /// Read repository identities, worktrees, HEAD, a ref, and remotes.
+    Inspect {
+        /// Any directory in the repository to inspect.
+        #[arg(long)]
+        path: PathBuf,
+
+        /// Optional Git ref or commit to resolve alongside HEAD.
+        #[arg(long = "ref")]
+        reference: Option<String>,
+    },
+}
+
+#[derive(Debug, clap::Args)]
+struct WorktreeArguments {
+    #[command(subcommand)]
+    command: WorktreeCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorktreeCommand {
+    /// Materialize one ChangeSet as an isolated worktree and branch.
+    Materialize {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Directory below which the new worktree is placed.
+        #[arg(long)]
+        root: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+
+        /// Git commit from which the ChangeSet starts.
+        #[arg(long)]
+        baseline: String,
+    },
+    /// Verify the current worktree, branch, baseline ancestry, and dirtiness.
+    Verify {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+    },
 }
 
 #[derive(Debug, clap::Args)]
@@ -185,6 +260,21 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, 
 
     match command {
         ToolCommand::Wait(arguments) => run_wait(arguments),
+        ToolCommand::Repo(arguments) => match arguments.command {
+            RepoCommand::Inspect { path, reference } => repository::inspect(path, reference),
+        },
+        ToolCommand::Worktree(arguments) => match arguments.command {
+            WorktreeCommand::Materialize {
+                repo,
+                root,
+                change_set_ref,
+                baseline,
+            } => worktree::materialize(repo, root, change_set_ref, baseline),
+            WorktreeCommand::Verify {
+                repo,
+                change_set_ref,
+            } => worktree::verify(repo, change_set_ref),
+        },
     }
 }
 
@@ -233,6 +323,12 @@ fn resolve_gh() -> PathBuf {
         }
     }
     PathBuf::from("gh")
+}
+
+pub(crate) fn observed_at_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
 }
 
 #[cfg(test)]
