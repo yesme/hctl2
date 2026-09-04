@@ -55,3 +55,5 @@ Buck2 action 环境是封闭的：**不含 PATH**，prelude 默认 `python_boots
 ## 复核记录
 
 - 2026-09-04 上游报告项已提交（以所有者身份，发前核对 `main` 两处代码未动、无既有 issue）：① `walk_up` 未声明最低 Python 版本 → [facebook/buck2#1490](https://github.com/facebook/buck2/issues/1490)，建议改用 `os.path.relpath` 一行去掉 3.12 依赖；② `os.execl` 不搜 PATH 与 `path_clang_tools` 裸名错配 → [facebook/buck2#1491](https://github.com/facebook/buck2/issues/1491)，建议 `shutil.which` 或 `os.execvp`。两条互相引用，都表示可提 PR。上游修复合入并升级 prelude 之后，再评估是否撤掉启动器的绝对路径注入（撤掉即消除「buildscript action 跨机缓存不命中」这项已知代价）。
+
+- 2026-09-04 Grok 任务书三追加 · #165 核验：钉定解释器在用——PATH 前置 `exit 1` 的假 `python3` 后 `host-bin/python3` 仍报 3.12.14，`./buck2 test` 仍注入 trampoline 路径；弄坏当前平台 digest，DotSlash 以 `incorrect digest` 失败。启动器原文 `2>/dev/null || true` 会在钉失效时静默回落宿主 Python，已改为解析失败即退出。清单三平台 SHA-256 与官方 `20260901` 资产 digest 一致；本机 macOS arm64 注入 `/usr/bin/clang`（xcrun shim），不是 `Xcode.app` 内裸二进制。缓存代价与正文「已知代价」两处不符：注入的是 trampoline 的 `sys.executable`（worktree 绝对路径），不是 `sys.prefix` 下带缓存哈希的 `python3.12`；SQLite 的 C 编译没有独立 Buck C 动作，发生在 `libsqlite3-sys-0.38-build-script-run` 内部。清 `buck-out` 后同 worktree 重建 100% cache hit；第二个 worktree 的该 buildscript-run 为 Local，C 编译随它重跑。#158「一次 C 编译由缓存摊薄」在同机同树成立，跨 worktree 不成立。

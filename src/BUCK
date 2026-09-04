@@ -8,6 +8,12 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+export_file(
+    name = "buck2_launcher",
+    src = "buck2",
+    visibility = ["PUBLIC"],
+)
+
 filegroup(
     name = "clippy",
     srcs = {

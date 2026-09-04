@@ -288,6 +288,11 @@ jobs:
         env:
           TARGETS: ${{ needs.changes.outputs.targets }}
         run: |
+          fake=$(mktemp -d "$RUNNER_TEMP/hctl2-poison-python.XXXXXX")
+          printf '%s\n' '#!/bin/sh' 'echo POISONED_PYTHON >&2' 'exit 1' >"$fake/python3"
+          chmod +x "$fake/python3"
+          export PATH="$fake:$PATH"
+          command -v python3 | grep -F "$fake/python3"
           read -r -a selected_targets <<< "$TARGETS"
           ./buck2 test --build-default-info "${selected_targets[@]}" \
             --target-platforms root//build/platforms:${{ matrix.target }}

@@ -5,3 +5,9 @@ export_file(
     src = "process-compose-bin",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "host-python3",
+    src = "host-bin/python3",
+    visibility = ["PUBLIC"],
+)
