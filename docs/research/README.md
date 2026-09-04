@@ -107,7 +107,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 | 仅参考行为 |
 | [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用二进制 |
 | [harness-hooks-20260903.md](./harness-hooks-20260903.md) | 八家编码 Harness 的「工具调用前」钩子与 ACP 权限请求 | E-L1-HARNESS-HOOKS | ① Coding Harness | 适配协议：PTY 模式用各家原生钩子、ACP 模式用协议权限请求；白名单与检查入口与 harness 无关 |
-| [sdk/README.md](./sdk/README.md) | 六家供应端客户端层（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
+| [sdk/README.md](./sdk/README.md) | 七个供应端客户端层对象（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear，以及作工具箱现场引擎的 Git） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
 | [libs/README.md](./libs/README.md) | 五处通用机制的现成库加文件监听（JCS、文件锁、SQLite 备份、钥匙串、FTS5、notify） | E-LIB-* | ⑥ 机械后端与基础设施 | 采用 SDK，逐项见子目录；outbox / 租约 / 代次维持自研 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |

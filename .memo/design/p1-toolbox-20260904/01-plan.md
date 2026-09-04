@@ -1,6 +1,6 @@
 # P1 收口计划：hctl2-tool 的现场 Git 职责
 
-> 状态：待拍板 · §四的三项取舍等所有者一句话；其余按所有者 2026-09-04「出计划即开工」执行，分工 Grok / Codex 主写、Claude / GLM 主审<br>
+> 状态：已拍板 · 执行中（所有者 2026-09-04「你开始吧」；§四第 2 项 git CLI 经讨论同意，另两项未表态、按建议走）；分工 Grok / Codex 主写、Claude / GLM 主审<br>
 > 基线：main @ `033da13`（草案 v0.16.5）<br>
 > 去向：`src/apps/hctl2-tool`、`docs/research/sdk/git.md`、`docs/usage.md`、`src/README.md`；不改约束层
 
@@ -70,7 +70,7 @@
 按「方向、边界、取舍找 human；接口细节 for agent」的纪律，只列三项，每项附我的建议，不说就按建议走：
 
 1. **集成策略的 P1 集合**：`delivery.md` §未决问题 里「ChangeSet/PR 默认基数与集成策略」尚未定。建议 P1 只实现两种——快进（目标头必须是基线且待集成提交以它为祖先）与合并提交（用 `git merge-tree --write-tree` 加 `commit-tree` 在不碰任何工作树的情况下生成，冲突即拒绝）；rebase、squash 不做。策略是调用方输入，工具箱不选。
-2. **git 来源**：建议用宿主 git，不随包（与 `ps` 同类，与随包的 `gh` 不同——gh 是为了复用用户登录并钉 `--json` 输出形状）。版本下限定在 Ubuntu 24.04 LTS 自带的 2.43，`merge-tree --write-tree` 需要 2.38 起；本机 macOS 26 的 Xcode git 是 2.50。工具箱启动时读版本，低于下限就拒绝并说明。
+2. **git 来源**（所有者 2026-09-04 同意）：宿主 git，不随包，也不内嵌 libgit2 / gitoxide——同一现场只能有一个引擎，理由与对照见 `docs/research/sdk/git.md`。版本下限 2.39（原写 2.43 偏严：唯一高要求是 `merge-tree --write-tree` 的 2.38，2.39 让 Debian 12 与 Xcode 15.6 起的命令行工具都在线内；Ubuntu 22.04 的 2.34 不满足要走 PPA）。工具箱启动时读版本，低于下限就拒绝并说明。
 3. **被忽略文件（`.gitignore` 命中）算不算修改**：约束写的是「已跟踪、未跟踪且尚未封存的修改」。建议不算：封存不收它们，拆除时把它们列进残留记录（路径与大小，封顶条数）后随 worktree 一起删；调用方可以要求「有被忽略文件即拒绝拆除」。否则每个 worktree 都有 `buck-out`，拆除永远要人确认。
 
 ## 五、任务书
