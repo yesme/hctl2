@@ -15,7 +15,7 @@ cache_config=$project_root/build/reapi/local-cache.yaml
 # (3.9.6 on macOS). Resolve the pinned interpreter and inject it as config;
 # build/toolchains/BUCK wires it into the toolchain. A broken pin must fail
 # here rather than silently falling back to the host interpreter.
-py_bin=$("$project_root/build/tools/host-bin/python3" -c 'import sys; print(sys.executable)') || {
+py_bin=$("$project_root/build/tools/host-bin/python3" -c 'import sys; print(sys.prefix + "/bin/python3")') || {
     printf 'error: pinned host Python at build/tools/host-bin/python3 is unusable\n' >&2
     exit 1
 }
