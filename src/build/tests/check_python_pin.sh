@@ -70,6 +70,12 @@ if [ "$poisoned_version" = "3.12.14" ]; then
 else
     fail "PATH poison changed the interpreter: $poisoned_version"
 fi
+poisoned_inner_version="$(PATH="$fake:$PATH" "$inner" -c 'import sys; print(sys.version.split()[0])')"
+if [ "$poisoned_inner_version" = "3.12.14" ]; then
+    note "PASS injected sys.prefix interpreter reports Python 3.12.14 under PATH poison"
+else
+    fail "injected sys.prefix interpreter version is $poisoned_inner_version, expected 3.12.14"
+fi
 if PATH="$fake:$PATH" command -v python3 | grep -F "$fake/python3" >/dev/null; then
     note "PASS poison python3 is first on PATH"
 else
