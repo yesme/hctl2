@@ -46,4 +46,4 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/design-review-20260902/` | 已拍板 · 待执行：Fable 审四轴、三轮制，所有者只在第二轮拍板；计划见 `01-plan.md`，状态见该目录 README |
+| `design/p1-toolbox-20260904/` | 待拍板 · §四三项取舍（P1 集成策略集合、宿主 git 与版本下限、被忽略文件不算修改）等所有者一句话；其余按「出计划即开工」执行，Grok / Codex 主写、Claude / GLM 主审 |
