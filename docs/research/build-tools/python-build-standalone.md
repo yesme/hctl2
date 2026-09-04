@@ -27,7 +27,7 @@ Buck2 action 环境是封闭的：**不含 PATH**，prelude 默认 `python_boots
 
 - ~~方案一（证伪）：启动器把 DotSlash 目录前置到 PATH~~——PATH 不进 action 环境，无效。
 - ~~方案二（证伪）：`xcrun --find clang` 的工具链裸二进制作为 C 编译器~~——它不像 `/usr/bin/clang` 那样自动注入活跃 SDK，`stdio.h` 找不到。
-- **定稿**：`src/buck2` 启动器每次以 `host-bin/python3 -c 'import sys; print(sys.executable)'` 解析出钉定解释器的**真实二进制绝对路径**（dotslash 缓存内），以 `--config hctl2.python=<abs>` 注入；`src/build/toolchains/BUCK` 的 `system_python_bootstrap_toolchain` 读该 config 作为 interpreter。无 config 时回退裸名 `python3`（保持旧行为）。
+- **定稿**：`src/buck2` 启动器每次以 `host-bin/python3 -c 'import sys; print(sys.prefix + "/bin/python3")'` 解析出 DotSlash 共享缓存内的钉定解释器绝对路径，以 `--config hctl2.python=<abs>` 注入；`src/build/toolchains/BUCK` 的 `system_python_bootstrap_toolchain` 读该 config 作为 interpreter。解析失败时启动器立即退出，不回退宿主 Python。
 
 同一趟修复还拆掉了同一 shim 链路上的另外三个阻塞（缺一仍不可用）：
 
@@ -41,7 +41,7 @@ Buck2 action 环境是封闭的：**不含 PATH**，prelude 默认 `python_boots
 - `src/build/tools/host-bin/python3`：三平台 DotSlash 清单，摘要锁定官方制品；`src/buck2` 注入解析出的绝对路径与 `hctl2.python` config。
 - `libsqlite3-sys` fixup 缩为一小块声明（run=true + `cargo_env` + `OPT_LEVEL` + `rustc_link_lib/search`），删除手工 `cxx_library`（20 个转录编译宏）与 bindings 拷贝 genrule——编译开关回归 upstream build.rs，随版本升级不再漂移。
 - 回归锚点已验：`hctl2-foundation` 的 JCS 官方向量、FTS5、Online Backup 测试在翻转后保持绿（本地 macOS arm64：first-party 全套 139 命令、docs 13 项、clippy、ShellCheck `--severity=error` 全绿；Linux 由 CI 矩阵验证——ubuntu-24.04 runner 预装 clang）。
-- **已知代价**：注入的解释器绝对路径含 dotslash 缓存哈希，逐机器不同——buildscript 相关 action 的 key 随机器变化，跨机 REAPI 缓存对这些（少数）动作不命中；C 编译/链接动作的 key 仍稳定（编译器路径 `/usr/bin/clang` 逐机一致）。
+- **已知代价**：注入的解释器绝对路径含 DotSlash 缓存哈希；同机各 worktree 共用该路径，build-script action key 稳定，跨机器仍可能不同。SQLite 的 C 编译发生在 `libsqlite3-sys` build-script action 内，因此该完整 action 跨机可能不命中；编译器路径 `/usr/bin/clang` 本身逐机一致。
 - **上游报告项**（待提交 issue，不阻塞）：① prelude `from_any_dir.py` 使用 3.12 API 但未声明最低 Python 版本；② `os.execl` 不搜 PATH，与 system_cxx_toolchain 的裸名编译器组合必然失败。修复前本仓库以 config 注入绝对路径为既定机制。
 - 升级路径：换版本 = 更新 DotSlash 清单中的版本号、大小与摘要，重跑三平台测试；属构建供应链变更，按仓库纪律整体审阅。
 
@@ -57,3 +57,5 @@ Buck2 action 环境是封闭的：**不含 PATH**，prelude 默认 `python_boots
 - 2026-09-04 上游报告项已提交（以所有者身份，发前核对 `main` 两处代码未动、无既有 issue）：① `walk_up` 未声明最低 Python 版本 → [facebook/buck2#1490](https://github.com/facebook/buck2/issues/1490)，建议改用 `os.path.relpath` 一行去掉 3.12 依赖；② `os.execl` 不搜 PATH 与 `path_clang_tools` 裸名错配 → [facebook/buck2#1491](https://github.com/facebook/buck2/issues/1491)，建议 `shutil.which` 或 `os.execvp`。两条互相引用，都表示可提 PR。上游修复合入并升级 prelude 之后，再评估是否撤掉启动器的绝对路径注入（撤掉即消除「buildscript action 跨机缓存不命中」这项已知代价）。
 
 - 2026-09-04 Grok 任务书三追加 · #165 核验：钉定解释器在用——PATH 前置 `exit 1` 的假 `python3` 后 `host-bin/python3` 仍报 3.12.14，`./buck2 test` 仍注入 trampoline 路径；弄坏当前平台 digest，DotSlash 以 `incorrect digest` 失败。启动器原文 `2>/dev/null || true` 会在钉失效时静默回落宿主 Python，已改为解析失败即退出。清单三平台 SHA-256 与官方 `20260901` 资产 digest 一致；本机 macOS arm64 注入 `/usr/bin/clang`（xcrun shim），不是 `Xcode.app` 内裸二进制。缓存代价与正文「已知代价」两处不符：注入的是 trampoline 的 `sys.executable`（worktree 绝对路径），不是 `sys.prefix` 下带缓存哈希的 `python3.12`；SQLite 的 C 编译没有独立 Buck C 动作，发生在 `libsqlite3-sys-0.38-build-script-run` 内部。清 `buck-out` 后同 worktree 重建 100% cache hit；第二个 worktree 的该 buildscript-run 为 Local，C 编译随它重跑。#158「一次 C 编译由缓存摊薄」在同机同树成立，跨 worktree 不成立。
+
+- 2026-09-04 后续修正：启动器改为注入 `sys.prefix/bin/python3`。该路径在同机的 Claude、Codex、GLM、Grok 四个 worktree 中相同，均指向 DotSlash 按制品摘要共享的缓存目录；#168 的反例测试同步要求该解释器存在且可执行，并检查启动器不再注入 worktree 内的 trampoline。新建 detached worktree 后重跑 `hctl2-foundation`，`libsqlite3-sys-0.38-build-script-run` 由共享缓存以 `Cache` executor 返回，未重编 SQLite。同机跨 worktree 的该 action key 因此不再受仓库绝对路径影响；跨机器的 DotSlash 缓存根仍可能不同。

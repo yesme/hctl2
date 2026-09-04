@@ -43,13 +43,13 @@ fi
 
 executable="$("$python_pin" -c 'import sys; print(sys.executable)')"
 prefix="$("$python_pin" -c 'import sys; print(sys.prefix)')"
-inner="$prefix/bin/python3.12"
+inner="$prefix/bin/python3"
 if head -n 1 "$python_pin" | grep -F '/usr/bin/env dotslash' >/dev/null &&
-    [ "$executable" != "$inner" ]
+    [ "$executable" != "$inner" ] && [ -x "$inner" ]
 then
-    note "PASS sys.executable is the DotSlash trampoline, not $inner"
+    note "PASS DotSlash cache interpreter is executable and differs from the trampoline"
 else
-    fail "sys.executable is not the trampoline: $executable (inner=$inner)"
+    fail "DotSlash cache interpreter is unavailable or is the trampoline: $executable (inner=$inner)"
 fi
 case "$prefix" in
     */Caches/dotslash/* | */.cache/dotslash/* | */dotslash/*)
@@ -118,6 +118,11 @@ if grep -F 'pinned host Python at build/tools/host-bin/python3 is unusable' "$la
     note "PASS src/buck2 fail-closed error is present"
 else
     fail "src/buck2 is missing the fail-closed error for a broken pin"
+fi
+if grep -F 'print(sys.prefix + "/bin/python3")' "$launcher" >/dev/null; then
+    note "PASS src/buck2 injects the shared DotSlash cache interpreter"
+else
+    fail "src/buck2 does not resolve Python from the shared DotSlash cache"
 fi
 
 # --- 2. supply-chain lock -------------------------------------------------
