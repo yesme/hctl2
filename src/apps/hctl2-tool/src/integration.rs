@@ -48,6 +48,11 @@ pub(crate) struct Arguments {
     #[arg(long)]
     idempotency_key: String,
     /// Allow a checked-out target to diverge from its unchanged worktree/index.
+    ///
+    /// This flag is bound to the idempotency key. Changing it after a result is
+    /// prepared returns HCTL2_TOOL_INTEGRATION_KEY_REUSED. If the target is then
+    /// checked out, switch away from or detach its worktrees and retry with the
+    /// original inputs.
     #[arg(long)]
     allow_checked_out_target: bool,
 }

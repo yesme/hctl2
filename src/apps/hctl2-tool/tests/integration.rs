@@ -1285,6 +1285,15 @@ fn checkout_appearing_after_preparation_is_rechecked_before_target_cas() {
         ],
     );
     assert!(!prepared.is_empty());
+    let refs = fixture.refs();
+    rejected_output(
+        fixture
+            .tool("merge-commit", &fixture.base, "late-checkout")
+            .arg("--allow-checked-out-target"),
+        "HCTL2_TOOL_INTEGRATION_KEY_REUSED",
+        3,
+    );
+    assert_eq!(fixture.refs(), refs);
     git(&linked, &["switch", "--detach"]);
     let retry = record(
         fixture
