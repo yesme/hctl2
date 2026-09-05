@@ -46,4 +46,3 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/p1-toolbox-20260904/` | 已拍板 · 执行中（2026-09-04）：序 0 研究文件已落，甲乙丙丁待各 harness 开工；Grok / Codex 主写、Claude / GLM 主审 |

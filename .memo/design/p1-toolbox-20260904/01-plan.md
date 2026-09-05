@@ -1,6 +1,6 @@
 # P1 收口计划：hctl2-tool 的现场 Git 职责
 
-> 状态：已拍板 · 执行中（所有者 2026-09-04「你开始吧」；§四第 2 项 git CLI 经讨论同意，另两项未表态、按建议走）；分工 Grok / Codex 主写、Claude / GLM 主审；2026-09-05 按 #176 / #177 审核结论修订乙丙任务书与审清单（所有者说「落」）<br>
+> 状态：已落地 · P1 收口（2026-09-05，main @ `65ad69f`）；原拍板：所有者 2026-09-04「你开始吧」，§四第 2 项 git CLI 经讨论同意、另两项按建议；2026-09-05 按 #176 / #177 审核结论修订过乙丙任务书（#178）<br>
 > 基线：main @ `033da13`（草案 v0.16.5）<br>
 > 去向：`src/apps/hctl2-tool`、`docs/research/sdk/git.md`、`docs/usage.md`、`src/README.md`；不改约束层
 
@@ -138,3 +138,20 @@
 - Herdr 可用性申报（本地 Agency 向 control 报名册）：P2 B2 前。
 - Grok 在 #159 留的脚注：P2 写准入时必须继续拒绝模型转述。
 - P2 前置调研（RPC / schema、SQLite 迁移方式）：Fable，等所有者说开。
+- 重试缓存 ref 的清理（丙的 `refs/hctl2/integrations/`、乙的 `refs/hctl2/changesets/<ref>/trees/`）：P1 只增不删，usage 已写明；P2 control 在意图结束、无需重试且结果仍有可达副本时显式清理，失败或结果未知的先保全再去掉最后一个 ref。
+- 集成目标被工作树检出时的处理：P1 默认拒绝，`--allow-checked-out-target` 放行且绑幂等键；updateInstead 类「顺带更新干净工作树」留 P2 有消费方再定。
+- 裸仓库作集成目标：`Repository::open` 沿用甲的「不能放 worktree」一律拒绝；P2 定 Repo Instance 形态时决定是否对 `integrate` 放开。
+- 合并提交信息固定为 `Integrate <sha> into <ref>`：P2 意图带 Task / ChangeSet 引用时加 `--message`，增量改动。
+- 保全证明是时点证明（证明到拆除之间 Harness 仍可写，锁只挡工具箱）：P1 由调用方保证写入者已停，P2 由租约撤销保证。
+- 研究文件纪律提醒：#174 的修正把 `docs/research/sdk/git.md` 正文就地改了而非追加复核记录，内容正确未返工；后续 PR 碰研究文件按「正文不改、文末追加复核记录」。
+
+## 七、收口核对（2026-09-05）
+
+对照 §三「P1 收口的验收（DoD）」：
+
+1. 六个子命令齐（`repo inspect`、`worktree materialize / verify`、`archive snapshot / remove`、`integrate`），全部只经宿主 `git` 二进制，每次调用一条 JSON 记录——#174、#177、#176。
+2. 三平台 CI 在打包后的发行物上跑通一条链（临时仓库 → 物化 → worktree 改文件并提交 → 封存 → 集成到目标 ref → 拆除）与五类失败（锁竞争、中途被杀、脏树、重复调用、预期目标头不匹配）——#179 的 `complete-test`，Linux x86_64、macOS arm64、macOS x86_64 全绿。
+3. 无账本、无 Receipt、无远端副作用；`docs/usage.md` 写明独立运行只提供普通本地操作——#179。
+4. `src/README.md` P1 描述与研究层索引已改（#179），状态板全绿（本次收口），决策史不加行。
+
+审核过程的数字：四个 PR、Fable 与 GLM 各四份主审加三份复审；Fable 推翻一次（#177 保全路径三处删孤本，修正后撤销）。所有者在这一轮说的话：「你开始吧」「落」（#178）、「丁已改完。你做整体收口」。
