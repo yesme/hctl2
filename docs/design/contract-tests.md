@@ -52,6 +52,7 @@
 - 验收项缺校验等级时「采纳契约」预览失效
 - `mechanical` 验收项只以转述证据提交，或证据通道低于验收策略要求时，「完成 Task」拒绝；Receipt 逐项记录校验等级与实际判定者
 - 契约冻结要求远端检查或远端合入时，本地测试成功或本地 ref 前移不能顶替；集成结果只认 Repo 模块的 Integration Receipt，平台合并状态自身不能完成 Task
+- 验收契约未要求代码集成的 Task（例如只交付已登记工件、由人验收）完成时不要求 Integration Receipt；要求集成时只认 Repo 模块的凭证
 
 ### `CT-RUN` · Run / Workflow
 
@@ -85,11 +86,11 @@
 - 本地 Agency 参考实现申报的 Skill digest 与工具箱回读不一致时不激活，拒绝结果列出不一致项
 - Revision 或 digest 不匹配的 Result Proposal 必须拒绝
 - 旧 `runtime_generation` 的输入和结果必须拒绝
-- 无法证明旧 writer 已被代次栅栏隔离时，本模块不得声称已隔离；Repo 模块因此不重授租约，写租约与保全的用例归 `CT-REPO`
+- 旧 writer 既不能证明已停止、也不能证明被限制在旧工作树与旧 ChangeSet 边界内时，本模块不得声称已隔离，Repo 模块因此不重授租约；能证明其一即算隔离，后续执行用新 ChangeSet、原 ChangeSet 不重授；写租约与保全的用例归 `CT-REPO`
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误归属者/代次输入和无 provenance Share 均拒绝
 - 治理命令只有两类 actor 来源：映射到有权用户本人的 direct client/provider event 与 task-bound Run 正常完成的 reducer；Workbench、CLI 与 provider adapter 产生相同 command envelope，Result Proposal 通道提交不了治理命令
-- 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/平台写凭据，凭据只由工具箱/平台适配器网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，但推不了远端；绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 因预期目标头不匹配显示 drift
+- 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/平台写凭据，凭据只由工具箱/平台适配器网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，但推不了远端；绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 显示 drift（预期目标头形态下是预期目标头不匹配，接受目标前移形态下是回读核对不符）
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人直接修改 Herdr workspace/pane 归属或已冻结派工结果只形成 drift，不能冒充结果；对精确 terminal 的输入则按 Execution Spec 输入策略处理
 - `native_interactive_allowed` 下原生 TUI/Workbench 直连输入是有效运行时输入，该输入不能直接产生领域结果；Agency 未声明逐次输入记录能力时，还必须标明逐次 provenance、generation 和物理单写者保证不完整
@@ -112,7 +113,11 @@
 - 无法证明旧 writer 已被隔离时默认保全并隔离旧 Git 工作树，不自动重授租约；接管、采用或丢弃缺少有权 human 显式确认时拒绝，失败清理不丢唯一未封存/未跟踪修改
 - 未经 Project 或 Run 准入的提案不产生获准 ChangeSet Revision；Git 封存完成但归属者在准入前被取消或替代时，不产生可供下游消费的版本，也不触发发布评审；平台上出现的提交不是准入
 - 同一获准版本只换提交包装（内容与基线相同）时 review_subject_digest 不变；基线或结果树变化时是新 Revision，旧 Verdict 失效；结果树相同不是充分条件
-- 本地/远端集成都先持久 integration intent，由工具箱/平台适配器执行并 readback；目标头竞争、确认回执状态未知、换绑或远端合并回执丢失时不得签成功 Integration Receipt，同一意图重试只得同一结果
+- 本地/远端集成都先持久 integration intent，由工具箱/平台适配器执行、工具箱 readback；预期目标头形态下的目标头竞争、确认回执状态未知、换绑或远端合并回执丢失时不得签成功 Integration Receipt，同一意图重试只得同一结果
+- 源版本不变、其余前置满足、目标从 A 前移到 B：预期目标头形态拒绝；事前已选接受目标前移形态则成功，Receipt 记实际目标头 B；保护规则变化另按快照判定，不能替代形态判定
+- 同一 target ref 上已有待决集成意图（任一形态）时，提交另一意图（不论形态）拒绝；前一意图终态后，同一目标的下一意图是新的授权并可成功
+- 有权 human actor 预览残留后的显式封存不经 Invocation/Attempt，由 Repo 模块按该命令准入为 ChangeSet Revision；封存意图重试同一关联键返回同一结果；工具箱已写出但未准入的树或提交不是获准版本
+- 关掉客户端后，获准结果仍按已冻结的评审发布策略发布，actor 信封沿用授权它的那次 human 提交；开关打开的仓库改为待处理、由人预览后提交
 - 「已开启自动合并」「已进合并队列」「请求已接受」都不算已合入，Receipt 只在回读到合并提交与目标头后签发；Receipt 记实际目标头
 - 绑定声明「不能保证预期目标头」而 actor 未显式选择「接受目标前移」形态时，集成意图拒绝；执行时不得由回读结果倒推放行
 - 目标开了「要求与目标同步」，在预览与执行之间变化时仍按冻结的目标保护快照接受或拒绝，不凭「同步开关为真」或「几个检查为绿」通过；保护条件与快照不一致时拒绝或标需要关注
@@ -142,6 +147,7 @@
 - Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一账本事务；工具箱封存回读先于准入，缺任一步不产生获准版本
 - Execution Spec 的评审发布策略作为字段冻结；Result Proposal 提供策略之外的发布地点或内容时拒绝
 - Repo 模块不接收 Result Proposal；执行体直接向 Repo 模块提交版本或集成命令时拒绝
+- Attempt 归属的版本按 Run Manifest 冻结进 Execution Spec 的评审发布策略发布，发布 outbox 挂在 Run 准入提案的事务上；席位不能自行推送远端
 - 既有 content 迁移必须显式预览、导出、导入并回读校验；普通换绑不得冒充无损迁移或热切换
 - 客户端无等级：Workbench 通过 provider 通道执行的消息/卡片/终端动作与原生客户端同语义，通过 command service 的动作与 CLI 同语义；Workbench 不得依赖 provider 私有导航或对象模型获得隐藏权限
 - provider event 只有模块绑定明确列出且 actor/target/version/idempotency/freshness 齐全时可成为 human command request；否则只能成为 content/Snapshot/运行时观测
@@ -191,7 +197,7 @@
 - 用户十秒内能回答 Project 目标、Task 状态、Run 阻塞、所需动作、当前 Harness 和证据版本
 - 正常成功保持安静
 - HCTL2 仓库自举不使用隐藏的特例豁免或产品外补签事实
-- 无 Run 路径、有契约的 Task：从 ChangeSet 封存到完成凭证，人的预览不超过两次（合入、完成）；无契约卡只多一步采纳。发布评审的授权在封存之前的 Trigger Preview，不计入
+- 无 Run 路径、有契约的 Task、默认发布策略：从 ChangeSet 封存到完成凭证，人的预览不超过两次（合入、完成）；无契约卡只多一步采纳。发布评审的授权在封存之前的 Trigger Preview，不计入；显式确认开关的例外见下条
 - 两条 B2 成功路径都成立：没有平台的普通仓库，和受保护的 GitHub `main`；默认路径都是两次预览，不借 Gate 或特例权限过关
 - 开了「发布评审须人显式确认」开关的仓库单独验收它的三次预览，不拿它给没开开关的仓库过关
 - 纯本地路径覆盖目标正被检出（人切离后重试）与确认丢失后的恢复

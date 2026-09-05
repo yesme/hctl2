@@ -31,7 +31,7 @@
 | Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | workflow engine 编译、注册、执行和回读 |
 | Terminal | harness、Agency，以及终端连接与输入能力 |
-| Change | 平台端口：推送变更集分支、创建或更新评审请求、回读检查/评审/保护条件与合并状态、请求合并、回读评审评论正文；能力声明与两层绑定见 [Repo 模块约束](./repo.md#平台绑定与能力声明) |
+| Change | 平台端口：平台适配器推送变更集分支、创建或更新评审请求、请求合并、写回记录，并为代取读取评审评论正文；检查、合并状态、评审请求头、线程与正式评审状态、保护条件由工具箱回读为机械事实；能力声明与两层绑定见 [Repo 模块约束](./repo.md#平台绑定与能力声明) |
 
 受控端口是替换供应端的唯一边界，不再增加跨模块通用适配层。每个 Port–Provider Binding 固定供应端制品、模块适配器、配置摘要、实测能力和降级方式。适配器只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新供应端通过本模块的契约测试后，只能用于新绑定；已有执行继续使用原绑定。迁移既有 content 必须另走显式的预览、导出、导入和回读校验。
 
@@ -111,7 +111,7 @@ frozen adapter binding
 canonical input digest
 ```
 
-actor 来源只能由直接客户端连接、绑定中的账号映射或 control 内部归约器赋予。治理命令只接受两类来源：可映射到归属 human 的动作，以及绑定 Task 的 Run 正常完成后由 control 归约器发出的内部命令。发布评审不是第三类来源：它的授权是有权 human 在 Trigger Preview 冻结进 Execution Spec 的评审发布策略，执行体的 Result Proposal 只提供策略允许的内容（见 [Repo 模块约束](./repo.md#发布评审)）。普通 Room 的临场扇出只接受有权的 human actor；workflow 归约器只能实例化 Workflow Revision 已冻结的边。Harness、模型和执行主体只能提交 Result Proposal，不能自报为 human。
+actor 来源只能由直接客户端连接、绑定中的账号映射或 control 内部归约器赋予。治理命令只接受两类来源：可映射到归属 human 的动作；以及 control 归约器发出的内部命令——它只能执行已冻结规则的边或已有 human 授权的后续动作：绑定 Task 的 Run 正常完成后的「完成 Task」命令、Workflow Revision 冻结的 Gate 通过后的「合入 ChangeSet」命令、注册确认后创建 Repo Room、按 Execution Spec 冻结的评审发布策略在版本获准后发出的「发布评审」命令（见 [Repo 模块约束](./repo.md#发布评审)）。内部命令的 actor 信封沿用授权它的那次 human 提交或冻结规则的引用，不构成第三类来源；执行体的 Result Proposal 只提供策略允许的内容，不能触发发布。普通 Room 的临场扇出只接受有权的 human actor；workflow 归约器只能实例化 Workflow Revision 已冻结的边。Harness、模型和执行主体只能提交 Result Proposal，不能自报为 human。
 
 control 必须在同一个 SQLite 事务中写入领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界。外部适配器使用同一幂等键投递并回读；结果未知时不得盲目重做。重复命令返回原结果，异载荷复用同一幂等键时必须拒绝。
 
@@ -129,7 +129,7 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 系统不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
 
-Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被 Harness 或用户在“合入 ChangeSet”命令之外直接改写时，只表现为预期目标头不匹配的分歧。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应归属者按约束产生。
+Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被 Harness 或用户在“合入 ChangeSet”命令之外直接改写时，只表现为分歧：预期目标头形态下是预期目标头不匹配，接受目标前移形态下是目标保护快照或回读核对不符（两种形态见 [Repo 模块约束](./repo.md#集成目标两个头与两种授权形态)）。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应归属者按约束产生。
 
 ## 事实与存储
 

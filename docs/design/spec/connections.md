@@ -50,8 +50,8 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 | Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要 | Repo 模块记待确认注册并持久化 outbox，工具箱写入并回读 Git 身份；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复 |
 | Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/现场/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
 | Project / Run → Repo | 获准提案中的 ChangeSet 输出、工具箱封存回读的 Git 事实 | 工具箱先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一账本事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
-| Project（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | Repo 模块按策略准入「发布评审」命令并持久化 intent/outbox，平台适配器推送并创建或更新评审请求；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
-| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，工具箱（本地目标）或平台适配器（远端目标）执行与回读；Integration Receipt 返回发起模块作证据 | intent id + 目标 + 所选授权形态 → 唯一 Receipt；结果未知不重投 |
+| Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；平台适配器推送并创建或更新评审请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
+| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，工具箱（本地目标）或平台适配器（远端目标）执行，工具箱回读；Integration Receipt 返回发起模块作证据 | intent id → 唯一 Receipt；同一目标同时至多一个待决意图，不论形态；结果未知不重投 |
 | Repo → Run | ChangeSet Revision 引用（ReviewSubjectRef 的一种）、平台检查与评审状态作 Evidence | Run 校验 review_subject_digest、代次与证据通道等级后形成 Seat 结果或 Verdict；Artifact Revision 的评审引用是 Project → Run 的既有连接 | review_subject_digest；基线或结果树变化即新版本，旧票失效 |
 | 平台事件 → Repo | 评论、批准/请求修改、检查结果、合并状态、账号映射 | 按 Repo 模块的逐项分类处理：content、外部评审证据、外部机械事实、或只作分歧；控制面自己写回的事件排除 | 事件引用 + 当前回读；重复、迟到、乱序得到相同结果 |
 | human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs（集成结果只认 Repo 模块的 Integration Receipt） | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
@@ -136,14 +136,14 @@ control inbox 先按提案标识符、producer sequence 和归属者去重。随
 
 - Room Invocation 的结果由 Project 记录并投影到 Room；
 - Attempt 的结果由 Run 归约为 Seat 结果、Verdict 或 Receipt；
-- 提案中的 ChangeSet 输出由 [Repo 模块](./repo.md#changeset-与-git-事实)在同一事务准入为 ChangeSet Revision：工具箱先按有效租约封存并回读，control 复核归属者状态、代次与租约仍然有效，然后归属模块准入提案、Repo 模块准入版本；封存是保存，准入才算数，封存期间被取消的归属者不产生获准版本，也不触发发布评审；
+- 提案中的 ChangeSet 输出由 [Repo 模块](./repo.md#changeset-与-git-事实)在同一事务准入为 ChangeSet Revision：工具箱先按提案给出的 ChangeSet、租约、基线与结果位置封存并回读，control 复核归属者状态、代次与租约仍然有效，然后归属模块准入提案、Repo 模块准入版本；封存是保存，准入才算数，封存的 Git 写入在事务之外并按关联键幂等，封存期间被取消的归属者不产生获准版本，也不触发发布评审。这个顺序只适用于由执行结果提案产生的版本；有权 human actor 的显式封存由 Repo 模块按该命令准入，不经此处；
 - Task 不消费 Harness 的进程状态、自述、终端屏幕或未经准入的 Proposal。
 
 任一旧代次、被取消或替代的归属者，或不匹配 spec/bundle 的结果只保留审计记录，不能推进 Project、Run 或 Task。
 
 ## Human Kanban / Run reducer → Task → Project：验收与回流
 
-无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef、测试证据与 Repo 模块的 Integration Receipt 后提交“完成 Task”命令，不生成 Run 专属的 Gate Receipt。验收约束要求内部独立 Gate 时，Task 先授权 Run；接受可回读的外部评审证据时，平台的批准与检查状态由 Repo 模块回读，能证明什么由契约定。
+无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef、测试证据，以及验收契约要求代码集成时 Repo 模块的 Integration Receipt，然后提交“完成 Task”命令，不生成 Run 专属的 Gate Receipt。验收约束要求内部独立 Gate 时，Task 先授权 Run；接受可回读的外部评审证据时，平台的批准与检查状态由 Repo 模块回读，能证明什么由契约定。
 
 有 Run 路径中，Run 返回冻结的 Task Revision、终止原因及 Verdict/Receipt/评审对象引用，并按 `completion_pending` 机制提交同一命令。两条获准来源与 Task 独立验收规则见[Task 写入约束](./task.md#写入约束)。Task 拒绝自动命令时，Run 保持完成，Task 保持开放并显示需要关注。
 
