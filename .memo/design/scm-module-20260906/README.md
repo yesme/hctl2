@@ -20,4 +20,4 @@
 | 5 | Codex/GPT、Grok、GLM、Antigravity | 各审一份，逐条维持 / 修正 / 推翻，评论写在 PR #184 | 完成（2026-09-06）：[Antigravity](https://github.com/yesme/hctl2/pull/184#issuecomment-5554035249)、[GLM](https://github.com/yesme/hctl2/pull/184#issuecomment-5554047924)、[Grok](https://github.com/yesme/hctl2/pull/184#issuecomment-5554061408)、[Codex/GPT](https://github.com/yesme/hctl2/pull/184#issuecomment-5554142863)。四家维持方向、无推翻；命名一致 Repo / Change；GPT 推翻「同步要求等于预期头检查」的推论并要求放行是另一种显式授权形态；决策史标题形式三比一分歧 |
 | 6 | Fable | 汇总处理为 v5（实质修正并入正文，各家立场与建议拍板见 `01` 第十五节）；所有者拍板后合入；再出 v0.17.0 约束批（不自合，再审一轮）；P2 计划的 B1、B2 引用它 | v5 已推，等所有者拍板 |
 
-等所有者拍板（`01` 第十五节）：命名（四家一致 Repo / Change）；Write Lease 随 ChangeSet（四家一致）；发布评审在 Trigger Preview 授权加开关、按第七节第 1 步的范围（四家一致，GPT/Grok 补范围）；结晶归属按 task.md 先例、不改统一律原句（四家一致）；目标头无保证时默认拒绝、放行为事前显式选择的另一种授权形态（四家一致，属约束语义调整）；决策史标题形式（三家做法一、GPT 做法二、我建议做法三）；平台范围维持已拍板。
+等所有者拍板（`01` 第十五节）：命名（四家一致 Repo / Change）；Write Lease 随 ChangeSet（四家一致）；发布评审在 Trigger Preview 授权加开关、按第七节第 1 步的范围（四家一致，GPT/Grok 补范围）；结晶归属按 task.md 先例、不改统一律原句（四家一致）；目标头无保证时默认拒绝、放行为事前显式选择的另一种授权形态（四家一致，属约束语义调整）；决策史标题形式已拍板走做法一（所有者 2026-09-06 按多数评审意见）；平台范围维持已拍板。
