@@ -90,8 +90,20 @@ impl Git {
         repository: &Path,
         arguments: &[OsString],
     ) -> Result<GitOutput, ToolError> {
+        self.invoke_with_env(repository, arguments, &[])
+    }
+
+    pub(crate) fn invoke_with_env(
+        &self,
+        repository: &Path,
+        arguments: &[OsString],
+        extra_env: &[(&str, OsString)],
+    ) -> Result<GitOutput, ToolError> {
         let mut command = sanitized_command(&self.executable);
         command.arg("-C").arg(repository).args(arguments);
+        for (name, value) in extra_env {
+            command.env(name, value);
+        }
         let output = command.output().map_err(|error| {
             ToolError::new(
                 "HCTL2_TOOL_GIT_COMMAND_FAILED",
@@ -109,6 +121,25 @@ impl Git {
         operation: &str,
     ) -> Result<GitOutput, ToolError> {
         let output = self.invoke(repository, arguments)?;
+        if output.success() {
+            Ok(output)
+        } else {
+            Err(ToolError::new(
+                code,
+                format!("{operation} failed: {}", output.stderr()),
+            ))
+        }
+    }
+
+    pub(crate) fn checked_with_env(
+        &self,
+        repository: &Path,
+        arguments: &[OsString],
+        extra_env: &[(&str, OsString)],
+        code: &'static str,
+        operation: &str,
+    ) -> Result<GitOutput, ToolError> {
+        let output = self.invoke_with_env(repository, arguments, extra_env)?;
         if output.success() {
             Ok(output)
         } else {

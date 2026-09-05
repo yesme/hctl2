@@ -15,15 +15,16 @@ use clap::{CommandFactory, Parser, Subcommand};
 use hctl2_facts::{Fact, Outcome, ReaderContext, wait_until};
 use serde_json::Value;
 
+mod archive;
 mod git;
 mod integration;
 mod repository;
 pub mod site_lock;
 mod worktree;
 
-// Next owner: archive.rs (乙). B1's immutable byte write/readback
-// primitive belongs in content.rs: caller supplies ref/path/bytes; readback returns
-// Git locator and digest. The CLI group will be `content`; no B1 commands exist yet.
+// Next owner: content.rs. B1's immutable byte write/readback primitive
+// belongs in content.rs: caller supplies ref/path/bytes; readback returns Git
+// locator and digest. The CLI group will be `content`; no B1 commands exist yet.
 
 /// Stable tool-local error code plus a human-readable explanation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +33,7 @@ pub struct ToolError {
     message: String,
     not_established: bool,
     details: Value,
+    recovery_action: Option<&'static str>,
 }
 
 impl ToolError {
@@ -41,6 +43,7 @@ impl ToolError {
             message: message.into(),
             not_established: false,
             details: Value::Null,
+            recovery_action: None,
         }
     }
 
@@ -56,6 +59,11 @@ impl ToolError {
         self
     }
 
+    pub(crate) fn with_recovery_action(mut self, recovery_action: &'static str) -> Self {
+        self.recovery_action = Some(recovery_action);
+        self
+    }
+
     fn readback(&self, git: &git::Git, operation: &str) -> ToolOutput {
         ToolOutput::json(
             serde_json::json!({
@@ -65,7 +73,12 @@ impl ToolError {
                 "operation": operation,
                 "git": { "path": git.executable(), "version": git.version() },
                 "outcome": if self.not_established { "not_established" } else { "unreadable" },
-                "error": { "code": self.code, "message": self.message, "details": self.details },
+                "error": {
+                    "code": self.code,
+                    "message": self.message,
+                    "recovery_action": self.recovery_action,
+                    "details": self.details,
+                },
             }),
             if self.not_established { 3 } else { 4 },
         )
@@ -146,6 +159,8 @@ enum ToolCommand {
     Repo(RepoArguments),
     /// Materialize or verify an isolated ChangeSet worktree.
     Worktree(WorktreeArguments),
+    /// Snapshot, salvage, or remove an isolated ChangeSet worktree.
+    Archive(ArchiveArguments),
     /// Integrate a caller-specified commit into a local ref using compare-and-swap.
     Integrate(integration::Arguments),
 }
@@ -205,6 +220,48 @@ enum WorktreeCommand {
         /// Caller-supplied stable ChangeSet reference.
         #[arg(long)]
         change_set_ref: String,
+    },
+}
+
+#[derive(Debug, clap::Args)]
+struct ArchiveArguments {
+    #[command(subcommand)]
+    command: ArchiveCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum ArchiveCommand {
+    /// Write tracked and untracked worktree contents to a reachable snapshot.
+    Snapshot {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+    },
+    /// Remove a ChangeSet worktree after salvage, or discard it if confirmed.
+    Remove {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+
+        /// Delete without keeping a snapshot. Requires --confirm-discard.
+        #[arg(long, requires = "confirm_discard")]
+        discard_unarchived: bool,
+
+        /// Must equal --change-set-ref to authorize --discard-unarchived.
+        #[arg(long, requires = "discard_unarchived")]
+        confirm_discard: Option<String>,
+
+        /// Refuse salvage-removal when ignored files are present.
+        #[arg(long)]
+        reject_ignored: bool,
     },
 }
 
@@ -325,6 +382,36 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, 
                 worktree::validate_change_set_ref(&change_set_ref)?;
                 run_git_command("worktree_verify", |git| {
                     worktree::verify(git, repo, change_set_ref)
+                })
+            }
+        },
+        ToolCommand::Archive(arguments) => match arguments.command {
+            ArchiveCommand::Snapshot {
+                repo,
+                change_set_ref,
+            } => {
+                worktree::validate_change_set_ref(&change_set_ref)?;
+                run_git_command("archive_snapshot", |git| {
+                    archive::snapshot(git, repo, change_set_ref)
+                })
+            }
+            ArchiveCommand::Remove {
+                repo,
+                change_set_ref,
+                discard_unarchived,
+                confirm_discard,
+                reject_ignored,
+            } => {
+                worktree::validate_change_set_ref(&change_set_ref)?;
+                run_git_command("archive_remove", |git| {
+                    archive::remove(
+                        git,
+                        repo,
+                        change_set_ref,
+                        discard_unarchived,
+                        confirm_discard,
+                        reject_ignored,
+                    )
                 })
             }
         },

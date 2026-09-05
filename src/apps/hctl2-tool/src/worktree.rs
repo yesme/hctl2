@@ -372,7 +372,7 @@ fn create_baseline_marker(
     Ok(())
 }
 
-fn read_optional_commit(
+pub(crate) fn read_optional_commit(
     git: &Git,
     repository: &Path,
     reference: &str,
@@ -443,7 +443,7 @@ fn short_branch(change_set_ref: &str) -> String {
     format!("{BRANCH_PREFIX}{change_set_ref}")
 }
 
-fn branch_ref(change_set_ref: &str) -> String {
+pub(crate) fn branch_ref(change_set_ref: &str) -> String {
     format!("refs/heads/{}", short_branch(change_set_ref))
 }
 
