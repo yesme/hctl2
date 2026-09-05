@@ -7,7 +7,7 @@
 | 序 | 阶段 | 写 | 状态 | 产出 | 最后更新 |
 | --- | --- | --- | --- | --- | --- |
 | 0 | git CLI 对象文件 `docs/research/sdk/git.md` | Fable | 完成 | PR #173：采用二进制、宿主 git、下限 2.39、不内嵌库；索引两处加行 | 2026-09-04 |
-| 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 待开始 | — | 2026-09-04 |
+| 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 完成 | PR #174：`repo inspect`、`worktree materialize/verify`、现场锁；双审修正与回归用例已落实 | 2026-09-05 |
 | 乙 | 封存、保全、拆除 | Grok | 待开始（等甲） | — | 2026-09-04 |
 | 丙 | 本地集成：校验 → CAS → 回读 | Codex | 待开始（等甲，与乙并行） | — | 2026-09-04 |
 | 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 待开始（等乙丙） | — | 2026-09-04 |
@@ -16,7 +16,7 @@
 
 | PR | Fable | GLM | 结果 |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| #174 | [9 项修正](https://github.com/yesme/hctl2/pull/174#issuecomment-5549351943) | [2 项修正、1 项备注](https://github.com/yesme/hctl2/pull/174#issuecomment-5549333306) | 修正已落实；身份来源采用显式标注提交与工作树；正文原语留位在 `content.rs` |
 
 **延后与遗留**见 `01-plan.md` §六。
 

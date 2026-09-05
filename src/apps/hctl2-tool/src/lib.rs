@@ -13,20 +13,61 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use hctl2_facts::{Fact, Outcome, ReaderContext, wait_until};
+use serde_json::Value;
+
+mod git;
+mod repository;
+pub mod site_lock;
+mod worktree;
+
+// Next owners: archive.rs (乙), integration.rs (丙). B1's immutable byte write/readback
+// primitive belongs in content.rs: caller supplies ref/path/bytes; readback returns
+// Git locator and digest. The CLI group will be `content`; no B1 commands exist yet.
 
 /// Stable tool-local error code plus a human-readable explanation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolError {
     code: &'static str,
     message: String,
+    not_established: bool,
+    details: Value,
 }
 
 impl ToolError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
+            not_established: false,
+            details: Value::Null,
         }
+    }
+
+    pub(crate) fn not_established(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            not_established: true,
+            ..Self::new(code, message)
+        }
+    }
+
+    pub(crate) fn with_details(mut self, details: Value) -> Self {
+        self.details = details;
+        self
+    }
+
+    fn readback(&self, git: &git::Git, operation: &str) -> ToolOutput {
+        ToolOutput::json(
+            serde_json::json!({
+                "schema": "hctl2.tool-error.v1",
+                "evidence_level": "toolbox_readback",
+                "observed_at_unix_ms": observed_at_unix_ms(),
+                "operation": operation,
+                "git": { "path": git.executable(), "version": git.version() },
+                "outcome": if self.not_established { "not_established" } else { "unreadable" },
+                "error": { "code": self.code, "message": self.message, "details": self.details },
+            }),
+            if self.not_established { 3 } else { 4 },
+        )
     }
 
     /// Returns the stable machine-readable error code.
@@ -58,6 +99,13 @@ pub struct ToolOutput {
 }
 
 impl ToolOutput {
+    pub(crate) fn json(value: Value, exit_code: u8) -> Self {
+        Self {
+            body: value.to_string(),
+            exit_code,
+        }
+    }
+
     /// Returns stdout without a trailing newline.
     #[must_use]
     pub fn body(&self) -> &str {
@@ -93,6 +141,68 @@ struct Cli {
 enum ToolCommand {
     /// Wait for one external mechanical fact and print one JSON fact record.
     Wait(WaitArguments),
+    /// Inspect a local Git repository without changing it.
+    Repo(RepoArguments),
+    /// Materialize or verify an isolated ChangeSet worktree.
+    Worktree(WorktreeArguments),
+}
+
+#[derive(Debug, clap::Args)]
+struct RepoArguments {
+    #[command(subcommand)]
+    command: RepoCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum RepoCommand {
+    /// Read repository identities, worktrees, HEAD, a ref, and remotes.
+    Inspect {
+        /// Any directory in the repository to inspect.
+        #[arg(long)]
+        path: PathBuf,
+
+        /// Optional Git ref or commit to resolve alongside HEAD.
+        #[arg(long = "ref")]
+        reference: Option<String>,
+    },
+}
+
+#[derive(Debug, clap::Args)]
+struct WorktreeArguments {
+    #[command(subcommand)]
+    command: WorktreeCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorktreeCommand {
+    /// Materialize one ChangeSet as an isolated worktree and branch.
+    Materialize {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Directory below which the new worktree is placed.
+        #[arg(long)]
+        root: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+
+        /// Git commit from which the ChangeSet starts.
+        #[arg(long)]
+        baseline: String,
+    },
+    /// Verify the current worktree, branch, baseline ancestry, and dirtiness.
+    Verify {
+        /// Any directory in the source repository.
+        #[arg(long)]
+        repo: PathBuf,
+
+        /// Caller-supplied stable ChangeSet reference.
+        #[arg(long)]
+        change_set_ref: String,
+    },
 }
 
 #[derive(Debug, clap::Args)]
@@ -185,7 +295,44 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, 
 
     match command {
         ToolCommand::Wait(arguments) => run_wait(arguments),
+        ToolCommand::Repo(arguments) => match arguments.command {
+            RepoCommand::Inspect { path, reference } => run_git_command("repo_inspect", |git| {
+                repository::inspect(git, path, reference)
+            }),
+        },
+        ToolCommand::Worktree(arguments) => match arguments.command {
+            WorktreeCommand::Materialize {
+                repo,
+                root,
+                change_set_ref,
+                baseline,
+            } => {
+                worktree::validate_change_set_ref(&change_set_ref)?;
+                run_git_command("worktree_materialize", |git| {
+                    worktree::materialize(git, repo, root, change_set_ref, baseline)
+                })
+            }
+            WorktreeCommand::Verify {
+                repo,
+                change_set_ref,
+            } => {
+                worktree::validate_change_set_ref(&change_set_ref)?;
+                run_git_command("worktree_verify", |git| {
+                    worktree::verify(git, repo, change_set_ref)
+                })
+            }
+        },
     }
+}
+
+// Startup/usage errors remain stderr errors in main; every Git observation has
+// one JSON readback, including rejected preconditions (3) and unreadable state (4).
+fn run_git_command(
+    operation: &str,
+    action: impl FnOnce(&git::Git) -> Result<ToolOutput, ToolError>,
+) -> Result<ToolOutput, ToolError> {
+    let git = git::Git::discover()?;
+    Ok(action(&git).unwrap_or_else(|error| error.readback(&git, operation)))
 }
 
 fn run_wait(arguments: WaitArguments) -> Result<ToolOutput, ToolError> {
@@ -233,6 +380,12 @@ fn resolve_gh() -> PathBuf {
         }
     }
     PathBuf::from("gh")
+}
+
+pub(crate) fn observed_at_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
 }
 
 #[cfg(test)]
