@@ -50,7 +50,7 @@ impl Fixture {
         fs::write(repo.join("candidate.txt"), "candidate\n").unwrap();
         let candidate = commit(&repo, "candidate");
         let tree = git(&repo, &["rev-parse", "HEAD^{tree}"]);
-        git(&repo, &["switch", "main"]);
+        git(&repo, &["switch", "--detach", "main"]);
         Self {
             root,
             repo,
@@ -105,8 +105,11 @@ impl Fixture {
     }
 
     fn advance_target(&self) -> String {
+        git(&self.repo, &["switch", "main"]);
         fs::write(self.repo.join("target.txt"), "target\n").unwrap();
-        commit(&self.repo, "target")
+        let head = commit(&self.repo, "target");
+        git(&self.repo, &["switch", "--detach"]);
+        head
     }
 
     fn refs(&self) -> String {
@@ -127,7 +130,12 @@ impl Fixture {
         use std::os::unix::fs::PermissionsExt;
         let path = self.root.join(format!("git-{mode}.sh"));
         let source = r#"#!/bin/sh
-if [ "$3" = update-ref ] && [ "$5" = refs/heads/main ]; then
+if [ "$HCTL2_TEST_MODE" = checkout-after-prepare ] && [ "$3" = update-ref ] && [ "$7" = --create-reflog ]; then
+    "$HCTL2_TEST_GIT" "$@" || exit $?
+    "$HCTL2_TEST_GIT" -C "$2" worktree add "$HCTL2_TEST_WORKTREE" main || exit $?
+    exit 0
+fi
+if [ "$3" = update-ref ] && [ "$7" = refs/heads/main ]; then
     case "$HCTL2_TEST_MODE" in
         before)
             : > "$HCTL2_TEST_READY"
@@ -144,9 +152,9 @@ if [ "$3" = update-ref ] && [ "$5" = refs/heads/main ]; then
             : > "$HCTL2_TEST_READY"
             exit 0
             ;;
-        advanced-after|failed-and-advanced-after)
+        advanced-after|failed-and-advanced-after|ancestry-failure)
             "$HCTL2_TEST_GIT" "$@" || exit $?
-            "$HCTL2_TEST_GIT" -C "$2" update-ref refs/heads/main "$HCTL2_TEST_OTHER" "$6" || exit $?
+            "$HCTL2_TEST_GIT" -C "$2" update-ref refs/heads/main "$HCTL2_TEST_OTHER" "$8" || exit $?
             if [ "$HCTL2_TEST_MODE" = failed-and-advanced-after ]; then exit 73; fi
             exit 0
             ;;
@@ -159,6 +167,10 @@ if [ "$3" = update-ref ] && [ "$5" = refs/heads/main ]; then
             exit 73
             ;;
     esac
+fi
+if [ "$HCTL2_TEST_MODE" = ancestry-failure ] && [ "$3" = merge-base ] && [ "$5" = "$HCTL2_TEST_RESULT" ] && [ "$6" = "$HCTL2_TEST_OTHER" ]; then
+    echo 'injected unreadable ancestry' >&2
+    exit 73
 fi
 if [ "$HCTL2_TEST_MODE" = read-failure ] && [ "$3" = for-each-ref ] && [ "$5" = refs/heads/main ] && [ -f "$HCTL2_TEST_READY" ]; then
     echo 'injected unreadable target' >&2
@@ -337,8 +349,9 @@ fn rejected_output(command: &mut Command, code: &str, exit: i32) -> Value {
 }
 
 #[test]
-fn fast_forward_is_idempotent_and_does_not_touch_dirty_target_index_or_files() {
+fn checked_out_target_override_warns_and_preserves_dirty_index_and_files() {
     let fixture = Fixture::new("ff");
+    git(&fixture.repo, &["switch", "main"]);
     fs::write(fixture.repo.join("base.txt"), "staged user edit\n").unwrap();
     git(&fixture.repo, &["add", "base.txt"]);
     fs::write(fixture.repo.join("base.txt"), "unstaged user edit\n").unwrap();
@@ -347,6 +360,7 @@ fn fast_forward_is_idempotent_and_does_not_touch_dirty_target_index_or_files() {
     let first = record(
         fixture
             .tool("fast-forward", &fixture.base, "ff-1")
+            .arg("--allow-checked-out-target")
             .output()
             .unwrap(),
         0,
@@ -356,6 +370,14 @@ fn fast_forward_is_idempotent_and_does_not_touch_dirty_target_index_or_files() {
     assert_eq!(first["before_head"], fixture.base);
     assert_eq!(first["after_head"], fixture.candidate);
     assert_eq!(first["integrated_tree_sha"], fixture.tree);
+    assert_eq!(
+        first["checked_out_worktrees"],
+        json!([fixture.repo.canonicalize().unwrap()])
+    );
+    assert_eq!(
+        first["warnings"][0]["code"],
+        "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT"
+    );
     assert_eq!(fixture.head(), fixture.candidate);
     assert_eq!(index, fs::read(fixture.repo.join(".git/index")).unwrap());
     assert_eq!(
@@ -371,6 +393,7 @@ fn fast_forward_is_idempotent_and_does_not_touch_dirty_target_index_or_files() {
     let second = record(
         fixture
             .tool("fast-forward", &fixture.base, "ff-1")
+            .arg("--allow-checked-out-target")
             .output()
             .unwrap(),
         0,
@@ -496,6 +519,7 @@ fn fast_forward_rejects_advanced_base_and_non_descendant_candidate() {
 #[test]
 fn conflicts_return_exact_paths_and_never_publish_the_conflicted_tree() {
     let fixture = Fixture::new("conflict");
+    git(&fixture.repo, &["switch", "main"]);
     let name = "conflict\nwith\ttab.txt";
     fs::write(fixture.repo.join(name), "target\n").unwrap();
     let expected = commit(&fixture.repo, "target conflict");
@@ -677,30 +701,39 @@ fn missing_git_identity_rejects_merge_without_changing_refs() {
 }
 
 #[test]
-fn candidate_equal_to_expected_head_is_a_repeatable_fast_forward_noop() {
+fn candidate_equal_to_expected_head_is_a_repeatable_noop_for_both_strategies() {
     let fixture = Fixture::new("noop");
+    git(&fixture.repo, &["switch", "main"]);
     let tree = git(
         &fixture.repo,
         &["rev-parse", &format!("{}^{{tree}}", fixture.base)],
     );
-    for _ in 0..2 {
-        let value = record(
-            fixture
-                .command(
-                    "fast-forward",
-                    &fixture.base,
-                    "noop",
-                    &fixture.base,
-                    &fixture.base,
-                    &tree,
-                    TARGET,
-                )
-                .output()
-                .unwrap(),
-            0,
-        );
-        assert_eq!(value["status"], "already_applied");
-        assert_eq!(fixture.head(), fixture.base);
+    let objects = git(&fixture.repo, &["count-objects", "-v"]);
+    let reflog = git(&fixture.repo, &["reflog", "show", TARGET]);
+    for strategy in ["fast-forward", "merge-commit"] {
+        for _ in 0..2 {
+            let value = record(
+                fixture
+                    .command(
+                        strategy,
+                        &fixture.base,
+                        strategy,
+                        &fixture.base,
+                        &fixture.base,
+                        &tree,
+                        TARGET,
+                    )
+                    .output()
+                    .unwrap(),
+                0,
+            );
+            assert_eq!(value["status"], "already_applied");
+            assert_eq!(fixture.head(), fixture.base);
+            assert_eq!(value["new_head"], fixture.base);
+            assert_eq!(value["after_head"], fixture.base);
+            assert_eq!(git(&fixture.repo, &["count-objects", "-v"]), objects);
+            assert_eq!(git(&fixture.repo, &["reflog", "show", TARGET]), reflog);
+        }
     }
 }
 
@@ -721,6 +754,13 @@ fn key_reuse_with_changed_fields_cannot_reapply_or_retarget() {
         3,
     );
     rejected_output(
+        fixture
+            .tool("fast-forward", &fixture.base, "bound-key")
+            .arg("--allow-checked-out-target"),
+        "HCTL2_TOOL_INTEGRATION_KEY_REUSED",
+        3,
+    );
+    rejected_output(
         &mut fixture.command(
             "fast-forward",
             &fixture.base,
@@ -737,7 +777,7 @@ fn key_reuse_with_changed_fields_cannot_reapply_or_retarget() {
 }
 
 #[test]
-fn unknown_retry_never_rewinds_an_advanced_or_deleted_target() {
+fn unknown_retry_never_rewinds_a_diverged_or_deleted_target() {
     let fixture = Fixture::new("unknown-retry");
     record(
         fixture
@@ -752,7 +792,7 @@ fn unknown_retry_never_rewinds_an_advanced_or_deleted_target() {
             "commit-tree",
             &fixture.tree,
             "-p",
-            &fixture.candidate,
+            &fixture.base,
             "-m",
             "external",
         ],
@@ -836,6 +876,23 @@ fn competing_tool_is_busy_and_external_git_wins_real_target_cas() {
         3,
     );
     assert_eq!(busy["error"]["details"]["holder"]["operation"], "integrate");
+    let prepared_ref = git(
+        &fixture.repo,
+        &[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/hctl2/integrations/",
+        ],
+    );
+    assert_eq!(
+        busy["error"]["details"]["holder"]["intent_digest"],
+        prepared_ref.rsplit('/').next().unwrap()
+    );
+    assert!(
+        busy["error"]["details"]["holder"]
+            .get("change_set_ref")
+            .is_none()
+    );
     git(
         &fixture.repo,
         &["update-ref", TARGET, &external, &fixture.base],
@@ -928,7 +985,7 @@ fn unreadable_post_cas_target_returns_unknown_then_retry_reports_applied() {
 
 #[test]
 #[cfg(unix)]
-fn successful_cas_followed_by_target_change_is_unknown_not_success() {
+fn successful_cas_followed_by_descendant_head_reports_actual_after_head() {
     let fixture = Fixture::new("post-cas-drift");
     let other = git(
         &fixture.repo,
@@ -944,13 +1001,17 @@ fn successful_cas_followed_by_target_change_is_unknown_not_success() {
     let mut command = fixture.tool("fast-forward", &fixture.base, "advanced-after");
     fixture.inject(&mut command, "advanced-after");
     command.env("HCTL2_TEST_OTHER", &other);
-    rejected_output(&mut command, "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN", 4);
+    let value = record(command.output().unwrap(), 0);
+    assert_eq!(value["status"], "applied");
+    assert_eq!(value["before_head"], fixture.base);
+    assert_eq!(value["new_head"], fixture.candidate);
+    assert_eq!(value["after_head"], other);
     assert_eq!(fixture.head(), other);
 }
 
 #[test]
 #[cfg(unix)]
-fn failed_exit_after_update_and_external_advance_cannot_prove_cas_rejection() {
+fn failed_exit_after_update_still_confirms_result_in_descendant_head() {
     let fixture = Fixture::new("failed-post-cas-drift");
     let other = git(
         &fixture.repo,
@@ -966,7 +1027,10 @@ fn failed_exit_after_update_and_external_advance_cannot_prove_cas_rejection() {
     let mut command = fixture.tool("fast-forward", &fixture.base, "failed-and-advanced-after");
     fixture.inject(&mut command, "failed-and-advanced-after");
     command.env("HCTL2_TEST_OTHER", &other);
-    rejected_output(&mut command, "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN", 4);
+    let value = record(command.output().unwrap(), 0);
+    assert_eq!(value["status"], "applied");
+    assert_eq!(value["new_head"], fixture.candidate);
+    assert_eq!(value["after_head"], other);
     assert_eq!(fixture.head(), other);
 }
 
@@ -1028,6 +1092,263 @@ fn rejected_cas_is_retryable_and_exit_failure_after_update_does_not_hide_readbac
     let value = record(retry.output().unwrap(), 0);
     assert_eq!(value["status"], "applied");
     assert_eq!(value["after_head"], fixture.candidate);
+}
+
+#[test]
+fn checked_out_main_is_rejected_before_any_ref_write_and_detach_allows_retry() {
+    let fixture = Fixture::new("checked-out-main");
+    git(&fixture.repo, &["switch", "main"]);
+    fs::write(fixture.repo.join("unrelated.txt"), "user staging\n").unwrap();
+    git(&fixture.repo, &["add", "unrelated.txt"]);
+    fs::write(fixture.repo.join("untracked.txt"), "only copy\n").unwrap();
+    let index = fs::read(fixture.repo.join(".git/index")).unwrap();
+    let refs = fixture.refs();
+    let value = rejected_output(
+        &mut fixture.tool("fast-forward", &fixture.base, "checked"),
+        "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT",
+        3,
+    );
+    assert_eq!(
+        value["error"]["details"]["worktree_paths"],
+        json!([fixture.repo.canonicalize().unwrap()])
+    );
+    assert_eq!(fixture.refs(), refs);
+    assert_eq!(fs::read(fixture.repo.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read_to_string(fixture.repo.join("untracked.txt")).unwrap(),
+        "only copy\n"
+    );
+    assert!(!git(&fixture.repo, &["status", "--short"]).contains("candidate.txt"));
+    git(&fixture.repo, &["switch", "--detach"]);
+    let retry = record(
+        fixture
+            .tool("fast-forward", &fixture.base, "checked")
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(retry["status"], "applied");
+    assert_eq!(retry["warnings"], json!([]));
+    assert_eq!(fixture.head(), fixture.candidate);
+}
+
+#[test]
+fn linked_changeset_target_is_rejected_with_its_exact_path_and_no_lost_bytes() {
+    let fixture = Fixture::new("checked-out-linked");
+    let target = "refs/heads/hctl2/changeset/CS-9";
+    git(
+        &fixture.repo,
+        &["branch", "hctl2/changeset/CS-9", &fixture.base],
+    );
+    let linked = fixture.root.join("linked changeset");
+    git(
+        &fixture.repo,
+        &[
+            "worktree",
+            "add",
+            linked.to_str().unwrap(),
+            "hctl2/changeset/CS-9",
+        ],
+    );
+    fs::write(linked.join("base.txt"), "staged\n").unwrap();
+    git(&linked, &["add", "base.txt"]);
+    fs::write(linked.join("base.txt"), "unstaged\n").unwrap();
+    fs::write(linked.join("untracked"), "unique\n").unwrap();
+    let index_path = git(
+        &linked,
+        &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+    );
+    let index = fs::read(&index_path).unwrap();
+    let refs = fixture.refs();
+    let value = rejected_output(
+        &mut fixture.command(
+            "merge-commit",
+            &fixture.base,
+            "linked",
+            &fixture.base,
+            &fixture.candidate,
+            &fixture.tree,
+            target,
+        ),
+        "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT",
+        3,
+    );
+    assert_eq!(
+        value["error"]["details"]["worktree_paths"],
+        json!([linked.canonicalize().unwrap()])
+    );
+    assert_eq!(fixture.refs(), refs);
+    assert_eq!(fs::read(&index_path).unwrap(), index);
+    assert_eq!(
+        fs::read_to_string(linked.join("base.txt")).unwrap(),
+        "unstaged\n"
+    );
+    assert_eq!(
+        fs::read_to_string(linked.join("untracked")).unwrap(),
+        "unique\n"
+    );
+    git(&linked, &["switch", "--detach"]);
+    let retry = record(
+        fixture
+            .command(
+                "merge-commit",
+                &fixture.base,
+                "linked",
+                &fixture.base,
+                &fixture.candidate,
+                &fixture.tree,
+                target,
+            )
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(retry["status"], "applied");
+}
+
+#[test]
+fn successful_retry_accepts_descendants_without_reapplying_even_when_checked_out() {
+    for strategy in ["fast-forward", "merge-commit"] {
+        let fixture = Fixture::new(strategy);
+        let first = record(
+            fixture
+                .tool(strategy, &fixture.base, "descendant")
+                .output()
+                .unwrap(),
+            0,
+        );
+        let new = first["new_head"].as_str().unwrap();
+        git(&fixture.repo, &["switch", "main"]);
+        fs::write(fixture.repo.join("later.txt"), "later content\n").unwrap();
+        let after = commit(&fixture.repo, "later work");
+        let refs = fixture.refs();
+        let retry = record(
+            fixture
+                .tool(strategy, &fixture.base, "descendant")
+                .output()
+                .unwrap(),
+            0,
+        );
+        assert_eq!(retry["status"], "already_applied");
+        assert_eq!(retry["new_head"], new);
+        assert_eq!(retry["before_head"], after);
+        assert_eq!(retry["after_head"], after);
+        assert_eq!(retry["integrated_tree_sha"], first["integrated_tree_sha"]);
+        assert_ne!(
+            git(&fixture.repo, &["rev-parse", "HEAD^{tree}"]),
+            retry["integrated_tree_sha"].as_str().unwrap()
+        );
+        assert_eq!(fixture.refs(), refs);
+    }
+}
+
+#[test]
+fn reflogs_identify_target_and_prepared_ref_writes_by_key_digest() {
+    let fixture = Fixture::new("reflogs");
+    let value = record(
+        fixture
+            .tool("merge-commit", &fixture.base, "log-key")
+            .output()
+            .unwrap(),
+        0,
+    );
+    let reference = value["prepared_ref"].as_str().unwrap();
+    let key_digest = reference.rsplit('/').nth(1).unwrap();
+    let expected = format!("hctl2 integrate {}", &key_digest[..12]);
+    for reference in [TARGET, reference] {
+        assert_eq!(
+            git(
+                &fixture.repo,
+                &["reflog", "show", "-1", "--format=%gs", reference]
+            ),
+            expected
+        );
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn checkout_appearing_after_preparation_is_rechecked_before_target_cas() {
+    let fixture = Fixture::new("checkout-race");
+    let linked = fixture.root.join("late-checkout");
+    let mut command = fixture.tool("merge-commit", &fixture.base, "late-checkout");
+    fixture.inject(&mut command, "checkout-after-prepare");
+    command.env("HCTL2_TEST_WORKTREE", &linked);
+    rejected_output(&mut command, "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT", 3);
+    assert_eq!(fixture.head(), fixture.base);
+    let prepared = git(
+        &fixture.repo,
+        &[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/hctl2/integrations/",
+        ],
+    );
+    assert!(!prepared.is_empty());
+    git(&linked, &["switch", "--detach"]);
+    let retry = record(
+        fixture
+            .tool("merge-commit", &fixture.base, "late-checkout")
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(retry["new_head"], prepared);
+}
+
+#[test]
+#[cfg(unix)]
+fn non_descendant_after_cas_is_unknown_even_if_git_reports_success() {
+    let fixture = Fixture::new("diverged-after");
+    let other = git(
+        &fixture.repo,
+        &[
+            "commit-tree",
+            &fixture.tree,
+            "-p",
+            &fixture.base,
+            "-m",
+            "diverged history",
+        ],
+    );
+    let mut command = fixture.tool("fast-forward", &fixture.base, "diverged-after");
+    fixture.inject(&mut command, "advanced-after");
+    command.env("HCTL2_TEST_OTHER", &other);
+    rejected_output(&mut command, "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN", 4);
+    assert_eq!(fixture.head(), other);
+}
+
+#[test]
+#[cfg(unix)]
+fn unreadable_post_cas_ancestry_remains_unknown_and_keeps_observed_head() {
+    let fixture = Fixture::new("ancestry-failure");
+    let other = git(
+        &fixture.repo,
+        &[
+            "commit-tree",
+            &fixture.tree,
+            "-p",
+            &fixture.candidate,
+            "-m",
+            "later work",
+        ],
+    );
+    let mut command = fixture.tool("fast-forward", &fixture.base, "ancestry-failure");
+    fixture.inject(&mut command, "ancestry-failure");
+    command
+        .env("HCTL2_TEST_OTHER", &other)
+        .env("HCTL2_TEST_RESULT", &fixture.candidate);
+    let value = rejected_output(&mut command, "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN", 4);
+    assert_eq!(value["error"]["details"]["observed_head"], other);
+    let retry = record(
+        fixture
+            .tool("fast-forward", &fixture.base, "ancestry-failure")
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(retry["status"], "already_applied");
+    assert_eq!(retry["after_head"], other);
 }
 
 #[test]

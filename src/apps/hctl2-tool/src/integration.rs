@@ -3,6 +3,11 @@
 //! A Git ref at `refs/hctl2/integrations/<key digest>/<input digest>` pins the prepared
 //! commit before target CAS. This is a retry cache, not an intent ledger. Keeping the
 //! commit reachable also prevents GC from changing a merge's identity during recovery.
+//! P1 retains these refs, including on failure. P2 control owns explicit cleanup once
+//! an intent is settled and no longer needs retries: successful results remain reachable
+//! through the target; failed results need preservation before dropping their last ref.
+//! Dropping the cache also drops this tool's key-to-result lookup. P1's packaging owner
+//! documents this lifecycle; this command does not guess when a caller is done retrying.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -42,6 +47,9 @@ pub(crate) struct Arguments {
     /// Caller-supplied retry key, bound to all integration inputs in this repository.
     #[arg(long)]
     idempotency_key: String,
+    /// Allow a checked-out target to diverge from its unchanged worktree/index.
+    #[arg(long)]
+    allow_checked_out_target: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -64,7 +72,10 @@ struct Intent {
     base: String,
     tree: String,
     expected: String,
+    target: String,
     fields: Value,
+    key_digest: String,
+    input_digest: String,
     cache_prefix: String,
     cache_ref: String,
 }
@@ -88,7 +99,8 @@ pub(crate) fn run(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError>
 fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
     let repository = Repository::open(git, &input.repo)?;
     let intent = Intent::new(git, &repository.anchor, input)?;
-    let _lock = SiteLock::acquire(&repository.common_dir, "integrate", None)?;
+    let _lock =
+        SiteLock::acquire_for_intent(&repository.common_dir, "integrate", &intent.input_digest)?;
     let repo = &repository.anchor;
 
     // Preconditions deliberately run in task-book order, even for retries.
@@ -127,13 +139,13 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
         }
     })?;
     if let Some(new) = &prepared {
-        if before.as_deref() == Some(new) {
+        if contains_result(git, repo, &intent, new, before.as_deref())? {
             return success(
                 git,
                 &repository,
-                input,
                 &intent,
                 new,
+                &before,
                 &before,
                 "already_applied",
             );
@@ -143,11 +155,15 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
                 &intent,
                 new,
                 before.as_deref(),
-                "prepared result exists but target is neither old nor new",
+                "prepared result exists but target is neither the old head nor a descendant of the result",
             ));
         }
     }
     require_expected(&intent, before.as_deref())?;
+    if intent.commit != intent.expected {
+        require_available_target(git, &repository, input)?;
+    }
+    let reflog_message = format!("hctl2 integrate {}", &intent.key_digest[..12]);
 
     let new = match prepared {
         Some(new) => new,
@@ -156,7 +172,16 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
             let zero = "0".repeat(new.len());
             git.checked(
                 repo,
-                &args(&["update-ref", "--no-deref", &intent.cache_ref, &new, &zero]),
+                &args(&[
+                    "update-ref",
+                    "--no-deref",
+                    "-m",
+                    &reflog_message,
+                    "--create-reflog",
+                    &intent.cache_ref,
+                    &new,
+                    &zero,
+                ]),
                 "HCTL2_TOOL_INTEGRATION_PREPARATION_FAILED",
                 "pin prepared integration commit",
             )?;
@@ -175,23 +200,26 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
     // Recheck immediately before CAS: non-tool Git writers do not take our site lock.
     let before = read_ref(git, repo, &input.target_ref)
         .map_err(|error| unknown(&intent, &new, None, error.to_string()))?;
-    if before.as_deref() == Some(&new) {
+    if contains_result(git, repo, &intent, &new, before.as_deref())? {
         return success(
             git,
             &repository,
-            input,
             &intent,
             &new,
+            &before,
             &before,
             "already_applied",
         );
     }
     require_expected(&intent, before.as_deref())?;
+    require_available_target(git, &repository, input)?;
     let cas = git.invoke(
         repo,
         &args(&[
             "update-ref",
             "--no-deref",
+            "-m",
+            &reflog_message,
             &input.target_ref,
             &new,
             &intent.expected,
@@ -200,8 +228,8 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
     // A process error/exit status is not evidence of the final ref value.
     let after = read_ref(git, repo, &input.target_ref)
         .map_err(|error| unknown(&intent, &new, None, error.to_string()))?;
-    if after.as_deref() == Some(&new) {
-        return success(git, &repository, input, &intent, &new, &before, "applied");
+    if contains_result(git, repo, &intent, &new, after.as_deref())? {
+        return success(git, &repository, &intent, &new, &before, &after, "applied");
     }
     match cas {
         Ok(output)
@@ -220,8 +248,8 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
             ))
         }
         result => {
-            // A different value could mean either a losing CAS or an applied result
-            // followed by another writer. Exit status alone cannot distinguish them.
+            // A head without the result could mean either a losing CAS or an applied
+            // result later removed from history. Exit status cannot distinguish them.
             let mut error = unknown(
                 &intent,
                 &new,
@@ -261,23 +289,26 @@ impl Intent {
             "schema": "hctl2.integration-input.v1", "commit": commit, "base_commit_sha": base,
             "result_tree_sha": tree, "target_ref": input.target_ref, "expected_head": expected,
             "strategy": input.strategy.name(), "idempotency_key": input.idempotency_key,
+            "allow_checked_out_target": input.allow_checked_out_target,
         });
         let digest = |value: &Value| {
             canonical_json_sha256(value).map_err(|error| {
                 ToolError::new("HCTL2_TOOL_SERIALIZATION_FAILED", error.to_string())
             })
         };
-        let cache_prefix = format!(
-            "refs/hctl2/integrations/{}/",
-            digest(&json!(input.idempotency_key))?
-        );
-        let cache_ref = format!("{cache_prefix}{}", digest(&fields)?);
+        let key_digest = digest(&json!(input.idempotency_key))?;
+        let input_digest = digest(&fields)?;
+        let cache_prefix = format!("refs/hctl2/integrations/{key_digest}/");
+        let cache_ref = format!("{cache_prefix}{input_digest}");
         Ok(Self {
             commit,
             base,
             tree,
             expected,
+            target: input.target_ref.clone(),
             fields,
+            key_digest,
+            input_digest,
             cache_prefix,
             cache_ref,
         })
@@ -308,6 +339,7 @@ impl Intent {
         require_commit(git, repo, new, "HCTL2_TOOL_INTEGRATION_CACHE_INVALID")?;
         let valid = match strategy {
             Strategy::FastForward => new == &self.commit,
+            Strategy::MergeCommit if self.commit == self.expected => new == &self.commit,
             Strategy::MergeCommit => {
                 let parents = git
                     .checked(
@@ -317,11 +349,7 @@ impl Intent {
                         "read prepared commit parents",
                     )?
                     .stdout_text()?;
-                let expected = if self.expected == self.commit {
-                    self.expected.clone()
-                } else {
-                    format!("{} {}", self.expected, self.commit)
-                };
+                let expected = format!("{} {}", self.expected, self.commit);
                 parents == expected
             }
         };
@@ -349,6 +377,9 @@ fn prepare_commit(
                 intent.fields.clone(),
             ));
         }
+        return Ok(intent.commit.clone());
+    }
+    if intent.commit == intent.expected {
         return Ok(intent.commit.clone());
     }
     let merge = git.invoke(
@@ -492,6 +523,51 @@ fn is_ancestor(git: &Git, repo: &Path, base: &str, head: &str) -> Result<bool, T
     }
 }
 
+fn contains_result(
+    git: &Git,
+    repo: &Path,
+    intent: &Intent,
+    new: &str,
+    actual: Option<&str>,
+) -> Result<bool, ToolError> {
+    match actual {
+        None => Ok(false),
+        Some(head) if head == new => Ok(true),
+        Some(head) => is_ancestor(git, repo, new, head)
+            .map_err(|error| unknown(intent, new, actual, error.to_string())),
+    }
+}
+
+fn checked_out_worktrees(
+    git: &Git,
+    repository: &Repository,
+    target: &str,
+) -> Result<Vec<PathBuf>, ToolError> {
+    Ok(repository
+        .worktrees(git)?
+        .into_iter()
+        .filter(|worktree| worktree.branch.as_deref() == Some(target))
+        .map(|worktree| worktree.path)
+        .collect())
+}
+
+fn require_available_target(
+    git: &Git,
+    repository: &Repository,
+    input: &Arguments,
+) -> Result<(), ToolError> {
+    let paths = checked_out_worktrees(git, repository, &input.target_ref)?;
+    if !paths.is_empty() && !input.allow_checked_out_target {
+        return Err(rejected(
+            "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT",
+            "target branch is checked out; advancing only its ref would leave a stale index and worktree",
+            "switch_or_detach_target_worktrees_then_retry_same_intent",
+            json!({"target_ref": input.target_ref, "worktree_paths": paths}),
+        ));
+    }
+    Ok(())
+}
+
 // refname / raw object ID / symbolic target, read in one Git command (no peel race).
 fn list_refs(
     git: &Git,
@@ -606,24 +682,32 @@ fn unknown(
 fn success(
     git: &Git,
     repository: &Repository,
-    input: &Arguments,
     intent: &Intent,
     new: &str,
     before: &Option<String>,
+    after: &Option<String>,
     status: &str,
 ) -> Result<ToolOutput, ToolError> {
     // No checkout/reset: a checked-out target's index and files stay byte-for-byte intact.
+    let paths = checked_out_worktrees(git, repository, &intent.target)
+        .map_err(|error| unknown(intent, new, after.as_deref(), error.to_string()))?;
     Ok(ToolOutput::json(
         json!({
             "schema": "hctl2.integration.v1", "evidence_level": "toolbox_readback",
             "observed_at_unix_ms": observed_at_unix_ms(), "operation": "integrate",
             "git": {"path": git.executable(), "version": git.version()},
             "git_common_dir": repository.common_dir, "outcome": "established", "status": status,
-            "input": intent.fields, "target_ref": input.target_ref,
-            "before_head": before, "new_head": new, "after_head": new,
+            "input": intent.fields, "target_ref": intent.target,
+            "before_head": before, "new_head": new, "after_head": after,
             "integrated_tree_sha": commit_tree(git, &repository.anchor, new)
-                .map_err(|error| unknown(intent, new, Some(new), error.to_string()))?,
+                .map_err(|error| unknown(intent, new, after.as_deref(), error.to_string()))?,
             "prepared_ref": intent.cache_ref, "worktrees_updated": false,
+            "checked_out_worktrees": paths,
+            "warnings": if paths.is_empty() { json!([]) } else { json!([{
+                "code": "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT",
+                "message": "Target is checked out. Worktree/index were not updated; inspect them before committing.",
+                "worktree_paths": paths,
+            }]) },
         }),
         0,
     ))

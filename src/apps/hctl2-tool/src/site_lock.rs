@@ -29,6 +29,28 @@ impl SiteLock {
         operation: &str,
         change_set_ref: Option<&str>,
     ) -> Result<Self, ToolError> {
+        Self::acquire_record(
+            common_dir,
+            json!({
+                "pid": std::process::id(), "operation": operation, "change_set_ref": change_set_ref,
+            }),
+        )
+    }
+
+    pub(crate) fn acquire_for_intent(
+        common_dir: &Path,
+        operation: &str,
+        intent_digest: &str,
+    ) -> Result<Self, ToolError> {
+        Self::acquire_record(
+            common_dir,
+            json!({
+                "pid": std::process::id(), "operation": operation, "intent_digest": intent_digest,
+            }),
+        )
+    }
+
+    fn acquire_record(common_dir: &Path, holder: serde_json::Value) -> Result<Self, ToolError> {
         let lock_directory = common_dir.join("hctl2");
         fs::create_dir_all(&lock_directory).map_err(|error| {
             ToolError::new(
@@ -85,12 +107,9 @@ impl SiteLock {
                 ));
             }
         };
-        let holder = serde_json::to_vec(&json!({
-            "pid": std::process::id(),
-            "operation": operation,
-            "change_set_ref": change_set_ref,
-        }))
-        .map_err(|error| ToolError::new("HCTL2_TOOL_SERIALIZATION_FAILED", error.to_string()))?;
+        let holder = serde_json::to_vec(&holder).map_err(|error| {
+            ToolError::new("HCTL2_TOOL_SERIALIZATION_FAILED", error.to_string())
+        })?;
         guard.write_holder_info(&holder).map_err(|error| {
             ToolError::new(
                 "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE",
