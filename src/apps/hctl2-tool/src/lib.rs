@@ -16,11 +16,12 @@ use hctl2_facts::{Fact, Outcome, ReaderContext, wait_until};
 use serde_json::Value;
 
 mod git;
+mod integration;
 mod repository;
 pub mod site_lock;
 mod worktree;
 
-// Next owners: archive.rs (乙), integration.rs (丙). B1's immutable byte write/readback
+// Next owner: archive.rs (乙). B1's immutable byte write/readback
 // primitive belongs in content.rs: caller supplies ref/path/bytes; readback returns
 // Git locator and digest. The CLI group will be `content`; no B1 commands exist yet.
 
@@ -145,6 +146,8 @@ enum ToolCommand {
     Repo(RepoArguments),
     /// Materialize or verify an isolated ChangeSet worktree.
     Worktree(WorktreeArguments),
+    /// Integrate a caller-specified commit into a local ref using compare-and-swap.
+    Integrate(integration::Arguments),
 }
 
 #[derive(Debug, clap::Args)]
@@ -295,6 +298,9 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, 
 
     match command {
         ToolCommand::Wait(arguments) => run_wait(arguments),
+        ToolCommand::Integrate(arguments) => {
+            run_git_command("integrate", |git| integration::run(git, &arguments))
+        }
         ToolCommand::Repo(arguments) => match arguments.command {
             RepoCommand::Inspect { path, reference } => run_git_command("repo_inspect", |git| {
                 repository::inspect(git, path, reference)
