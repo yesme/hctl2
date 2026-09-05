@@ -110,3 +110,9 @@ GitHub Desktop 用的 dugite-native 每个 git 版本出一套可搬移的 git �
 - gitoxide：[gix crates.io](https://crates.io/crates/gix)（0.87.1，2026-08-24，MSRV 1.85）· [crate-status.md](https://github.com/GitoxideLabs/gitoxide/blob/main/crate-status.md)（工作树创建、树合并、过滤器、钩子的完成状态）
 - 业界做法：[dugite-native v2.53.0-4](https://github.com/desktop/dugite-native/releases/tag/v2.53.0-4) · [jj CHANGELOG](https://github.com/jj-vcs/jj/blob/main/CHANGELOG.md)（0.27.0 子进程默认、0.30.0 删 libgit2）· [Gitea 后端指南](https://docs.gitea.com/contributing/guidelines-backend)（默认 git 命令行，`gogit` 为实验 build tag）
 - 本仓库：[决策史 §33](../../design/references/decision-history.md#33-hctl2-tool-定界为现场执行者v0153) · [Participant 约束 §ChangeSet 与 Git 事实](../../design/spec/participant.md#changeset-与-git-事实) · [系统边界 §单写者](../../design/spec/system.md#单写者) · [P1 收口计划](../../../.memo/design/p1-toolbox-20260904/01-plan.md) · [gh 二进制的同款做法](./github.md)
+
+## 复核记录
+
+- 2026-09-05 乙实现复核：封存按本文「五项职责」表执行——在 `<git-common-dir>/hctl2/` 下放临时 `GIT_INDEX_FILE`（现场锁串行化，路径按 ChangeSet 引用固定，重跑先删残留），`add --all` 不加 `-f`，再 `write-tree`、`commit-tree`、`update-ref` 挂到 `refs/hctl2/changesets/<ref>/trees/<tree_sha>`。同一树 sha 复用已有快照提交。被忽略文件不进树，拆除时用 `ls-files -o -i --exclude-standard` 列残留（路径与大小，封顶 64）。拆除走 `worktree remove --force -- <path>`，不调用 `worktree prune --expire now`，避免误清其他陈旧 worktree。`commit-tree` 使用工具箱自己的 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`，保全不依赖 `user.name`。无新依赖，仍是宿主 git、下限 2.39。
+- 2026-09-05 #177 双审修正：临时索引先 `read-tree HEAD` 再 `add --all`，已跟踪但被忽略的文件进入快照；`ls-files --stage` 发现 `160000` 即拒绝保全拆除（嵌套仓库与 linked worktree 子模块）。`--confirm-discard` 绑定当前树 sha。输出拆成 `head_commit_sha`（快照父）与 `baseline_commit_sha`（基线标记）。残留清单加 `ignored_residue_total`。`reference-transaction` hook 注入覆盖 SALVAGE_UNPROVEN。研究正文未改。
+- 2026-09-05 #177 复审修正：gitlink 只在磁盘上确实是仓库时才算存在（`<path>/.git` 在，或 `rev-parse --show-toplevel` 恰好等于该路径）；未初始化的已声明子模块不挡保全拆除。丢弃预览与 `removed_discarded` 输出带过滤后的 `nested_repositories`。研究正文未改。

@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 0 | git CLI 对象文件 `docs/research/sdk/git.md` | Fable | 完成 | PR #173：采用二进制、宿主 git、下限 2.39、不内嵌库；索引两处加行 | 2026-09-04 |
 | 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 完成 | PR #174：`repo inspect`、`worktree materialize/verify`、现场锁；双审修正与回归用例已落实 | 2026-09-05 |
-| 乙 | 封存、保全、拆除 | Grok | 待开始（等甲） | — | 2026-09-04 |
+| 乙 | 封存、保全、拆除 | Grok | 完成 | PR #177：`archive snapshot/remove`；保全覆盖已跟踪但被忽略的修改、磁盘上真实存在的嵌套仓库与已初始化子模块；丢弃确认绑当前树 sha | 2026-09-05 |
 | 丙 | 本地集成：校验 → CAS → 回读 | Codex | 完成（复审通过） | PR #176：按 #178 修订任务书修正检出保护、祖先回读、两策略 no-op 与 reflog；重试开关的恢复路径已补进 help 与测试 | 2026-09-05 |
 | 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 待开始（等乙丙） | — | 2026-09-04 |
 
@@ -18,6 +18,7 @@
 | --- | --- | --- | --- |
 | #174 | [9 项修正](https://github.com/yesme/hctl2/pull/174#issuecomment-5549351943) | [2 项修正、1 项备注](https://github.com/yesme/hctl2/pull/174#issuecomment-5549333306) | 修正已落实；身份来源采用显式标注提交与工作树；正文原语留位在 `content.rs` |
 | #176 | [4 项修正](https://github.com/yesme/hctl2/pull/176#issuecomment-5549705891) | [2 项非阻断备注](https://github.com/yesme/hctl2/pull/176#issuecomment-5549691090) | [Fable 复审](https://github.com/yesme/hctl2/pull/176#issuecomment-5549854613)与 [GLM 复审](https://github.com/yesme/hctl2/pull/176#issuecomment-5549857044)通过，六项关闭；锁诊断另列 `intent_digest`，预备 ref 清理归属见下 |
+| #177 | [推翻 R1–R3 + 3 项修正](https://github.com/yesme/hctl2/pull/177#issuecomment-5549742219)；[复审两项修正](https://github.com/yesme/hctl2/pull/177#issuecomment-5549885751)；[再复审维持](https://github.com/yesme/hctl2/pull/177#issuecomment-5550215203) | [修正 A/B](https://github.com/yesme/hctl2/pull/177#issuecomment-5549727741)；[复审通过](https://github.com/yesme/hctl2/pull/177#issuecomment-5549883476) | 推翻撤销；两轮修正均落实；GLM 无保留 |
 
 **延后与遗留**见 `01-plan.md` §六。
 
