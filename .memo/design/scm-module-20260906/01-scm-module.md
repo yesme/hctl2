@@ -154,28 +154,55 @@ B2 是「无 Run」的第一次真正自举：不用 Run 这个受治理的自�
 
 ## 十一、命名：候选与理由，交各家挑
 
-所有者 2026-09-06 的裁定：把候选和理由写清楚，让各家审阅者来挑；模块与场景不要同名，Change / Change 这种组合太一致，排除。下面先列要守的规矩，再列候选。
+所有者 2026-09-06 的裁定：把候选和理由写清楚，让各家审阅者来挑；模块与场景不要同名，Change / Change 这种组合太一致，排除；候选要多给一些。下面先列要守的规矩，再列模块名候选、场景名候选、可选组合，最后是内容系统与适配器的叫法。
 
-**命名要守的三条。** 第一，模块按它拥有的根对象或它治理的事命名，前例是第四模块从 Agent 改名 Participant，决策史 §34 的原话是「第四个模块从一开始就是干活的那一方，只是名字取错了」。第二，场景按人在那里做的事命名，四个老场景是聊天室、看板、施工图、终端。第三，核心产品词是英文单词加中文对照，不用缩写。
+**命名要守的三条。** 第一，模块按它拥有的根对象或它治理的事命名，前例是第四模块从 Agent 改名 Participant，决策史 §34 的原话是「第四个模块从一开始就是干活的那一方，只是名字取错了」。第二，场景按人在那里做的事命名，四个老场景是聊天室、看板、施工图、终端。第三，核心产品词是英文单词加中文对照，不用缩写，实现名（Git、GitHub）不能进设计层。
+
+**业界怎么叫这一块。** GitHub 叫 Pull requests，GitLab 叫 Merge requests，Bitbucket 也叫 Pull requests；Gerrit 的单位叫 Change；Phabricator 叫 Differential，单位是 Diff 与 Revision；Meta 内部沿用 Diff；Jujutsu 的单位也叫 change，带稳定的 change ID；Azure DevOps 把这一块作为产品分区命名为 Repos，与 Boards、Pipelines 并列，后两者对应我们的 Kanban 与 Workflow。所以 Change、Diff、Repo 三个词各有一支血统。
 
 **模块名候选。**
 
 | 候选 | 好处 | 代价 |
 | --- | --- | --- |
-| Change（变更） | 说的正是模块治理的事：一次变更从产生、封存、评审到进入目标的全过程；Gerrit 把待评审的变更就叫 Change；Codex 主审选它 | 与 ChangeSet（变更集）、ChangeSet Revision（变更集版本）三个词叠在一起，「Change 模块」可能被误读成「一个变更集」；中文「变更」与「变更集」倒是分得开 |
-| Repo（仓库） | 最符合「模块按根对象命名」：Repo 是根，下面挂现场、变更集、集成；中文对照现成 | Repo 已经是横跨各模块的限定词：Repo Room 归 Project，Repo Board 归 Task，Repo policy 归系统层，「一个 Repo 一个 Board」到处都是。叫「Repo 模块」之后，读者见到「Repo 某某」要多分辨一层：这是 Repo 模块的对象，还是别的模块里按仓库划定的东西。所有者问它会不会和 Project 撞车：不直接撞 Project 这个模块，撞的是这个限定词用法 |
+| Change（变更） | 说的正是模块治理的事：一次变更从产生、封存、评审到进入目标的全过程；Gerrit、Jujutsu 都把这个单位叫 Change；Codex 主审选它 | 与 ChangeSet（变更集）、ChangeSet Revision（变更集版本）三个词叠在一起，「Change 模块」可能被误读成「一个变更集」；中文「变更」与「变更集」倒是分得开 |
+| Repo（仓库） | 最符合「模块按根对象命名」：Repo 是根，下面挂现场、变更集、集成；中文对照现成；Azure DevOps 用 Repos 命名同一分区，与 Boards、Pipelines 并列，正好对上我们的 Kanban、Workflow | Repo 已是横跨各模块的限定词：Repo Room 归 Project，Repo Board 归 Task，Repo policy 归系统层。叫「Repo 模块」之后，读者见到「Repo 某某」要多分辨一层。所有者问它会不会和 Project 撞车：不直接撞 Project 这个模块，撞的是这个限定词用法 |
+| Integration（集成） | 点出模块最要紧的输出：改动可信地进入目标，以及 Integration Receipt 这个对象；愿景的第五问「哪些改动已经进入目标，凭什么」读起来顺 | 只说了末端。模块还拥有仓库身份、现场、变更集与写权，这些发生在集成之前；名字会让人以为它只管合入 |
+| Source（源码） | 涵盖仓库、变更、集成，不与现有对象撞名；中文「源码」自然 | 英文 Source 与设计里到处用的「来源」（来源引用、来源链、Context 的来源）撞词，英文读者会混；中文没这个问题 |
+| Code（代码） | 最直白，「代码模块」人人懂 | 太宽，什么都是代码；英文 Code 又与文档纪律里的「代码体」用法撞；作为核心产品词区分度差 |
+| Codebase（代码库） | 与 Repo 同义但不是现有限定词，避开「Repo 某某」的歧义 | 模块名与它拥有的根对象 Repo 不同词，违背「按根对象命名」；多一个近义词要在词表里解释与 Repo 的区别 |
 | SCM | 与所有者口头说法一致；「源码管理」确实涵盖本地 git 与平台 | 缩写，没有自然的中文对照；是外部系统的类别名；已经用作适配器名 SCM provider，模块再用会混 |
+
+排除掉的：Merge、Commit、Submission 只说一步且与命令名或 git 词撞；Delivery 与交付文档撞；Land、Landing 与我们「已落地」的状态词撞；Workspace 是愿景 §3 明确放弃的直觉；Version 与到处的 revision、version 字段撞；Git 是实现名，不能进设计层。
 
 **场景名候选。**
 
 | 候选 | 好处 | 代价 |
 | --- | --- | --- |
 | Change（变更） | 人在这里看的就是一次变更：diff、讨论、检查、集成状态；GitHub 的 PR 页面、GitLab 的 MR 页面、Gerrit 的 change 页面的公共称呼 | 与模块名 Change 同名的组合已被排除；作为场景名时，它与变更集对象的关系要在词表里说一句 |
-| Review（评审） | 直观，PR 页面的日常叫法 | 「评审」在 Run 模块的约束里已经是 Gate 的词汇：评审席位、评审对象引用、评审策略、增量评审，`spec/run.md` 出现九处。场景也叫评审，文档里要一直靠「Gate 评审」「评审场景」消歧 |
+| Review（评审） | 直观，PR 页面的日常叫法 | 「评审」在 Run 模块的约束里已是 Gate 的词汇：评审席位、评审对象引用、评审策略、增量评审，`spec/run.md` 出现九处。场景也叫评审，文档里要一直靠「Gate 评审」「评审场景」消歧 |
+| Diff（差异） | 具体、短，Phabricator 与 Meta 都以它为单位；与任何现有词都不撞 | 比场景窄：场景里还有讨论、检查、集成状态；中文对照「差异」当场景名别扭，多半只能保留英文 |
+| Integration（集成） | 点出人在这里的决定性动作：预览并提交合入；与 Review 的评审撞词无关 | 同样比场景窄，讨论与检查不是集成；若模块叫 Integration 就同名冲突 |
+| Code（代码） | GitHub 的「Code」页签就是这个意思 | 太宽；与模块名候选 Code 同名冲突；四个老场景名都比它具体 |
 
-**可选的组合。** Change / Review（Codex 之选，代价是评审撞词）；Repo / Change（我在与所有者讨论时的倾向，代价是 Repo 限定词的歧义）；Repo / Review（两种代价都有）；SCM / Change、SCM / Review（缩写，且与适配器同名）。审阅者请挑一个组合并给一句理由；所有者最后定。
+**可选的组合与一句话判断。**
 
-不论选哪个：「SCM provider」留作平台适配器的称呼；新增的只是模块名与场景名，不新增一个同名的持久对象，对象仍是 Repo、Repo Instance、ChangeSet、ChangeSet Revision、Write Lease、集成意图与 Integration Receipt；两个名字都是用户可见词，首现带中文对照。本文其余各节用「第五模块」「第五场景」占位。
+| 组合 | 判断 |
+| --- | --- |
+| Change / Review | Codex 之选；代价是「评审」撞 Gate 词汇 |
+| Change / Diff | 两词都不撞现有词；场景名偏窄，中文对照别扭 |
+| Change / Integration | 不撞词；场景名只说了末端动作 |
+| Repo / Change | 与所有者讨论时我的倾向；模块按根对象命名，场景按看的东西命名；代价是 Repo 限定词的歧义 |
+| Repo / Review | 两种代价都有 |
+| Repo / Diff | 不撞词；Azure DevOps 与 Phabricator 各占一半血统 |
+| Integration / Change | 模块名偏窄；场景名合适 |
+| Source / Change | 中文顺，英文 Source 撞「来源」 |
+| SCM / Change、SCM / Review | 缩写，且与适配器同名 |
+
+审阅者请挑一个组合并给一句理由；所有者最后定。
+
+**内容系统与适配器的叫法。** 内容系统我沿用 GPT 的「代码协作平台」，它比「代码托管平台」多出评审协作这一层意思，正是我们依赖的那一层；英文圈的通称是 forge，Forgejo 的名字就从这里来，但 forge 没有像样的中文对照，只在研究文件里作对照词。适配器叫「SCM provider」还是「平台适配器」，随模块名一起定：模块若叫 SCM，适配器就得换名。
+
+不论选哪个：新增的只是模块名与场景名，不新增一个同名的持久对象，对象仍是 Repo、Repo Instance、ChangeSet、ChangeSet Revision、Write Lease、集成意图与 Integration Receipt；两个名字都是用户可见词，首现带中文对照。本文其余各节用「第五模块」「第五场景」占位。
 
 ## 十二、要改哪些文档（v0.17.0 批）
 
