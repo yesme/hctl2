@@ -16,6 +16,9 @@ docs/design/delivery.md	WezTerm	WezTerm
 docs/design/project.md	AppService	AppService
 docs/design/spec/README.md	GitHub	GitHub
 docs/design/spec/project.md	AppService	AppService
+docs/design/spec/repo.md	GitHub	GitHub
+docs/design/spec/repo.md	GitLab	GitLab
+docs/design/contract-tests.md	GitHub	GitHub
 docs/design/spec/system.md	GitHub	GitHub
 docs/design/spec/system.md	WebView	WebView
 docs/design/spec/task.md	GitHub	GitHub

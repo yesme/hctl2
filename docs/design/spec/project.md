@@ -1,13 +1,12 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.5<br>
+> 状态：规范性约束 · 草案 v0.17.0<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
 
 | 对象 | 含义 |
 | --- | --- |
-| Repo | Git 内容与共享配置的逻辑仓库 |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
 | 参与者授权 | Project 版本化设置的一部分：哪些 Participant 可在本 Project 出场，各自的职责、权限与预算上限；每条授权冻结精确 Participant revision。两端都在 HCTL 内部，不属 Binding 族；Participant 本身由 [Participant 模块约束](./participant.md)定义 |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
@@ -23,7 +22,6 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；工具箱只写入/回读 Git identity | 一个 Repo identity 只有一个 Repo 与 Repo Room；待确认的外部写入按关联键恢复，不重复注册 |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | 参与者授权（Project 设置） | `project_version` | control 处理「授权/换人/撤销参与者」命令并推进 Project version | 活动 Invocation/Run 永久引用准入时的 Project version 与 Participant revision |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
@@ -36,15 +34,13 @@
 
 ## Repo 注册与 Project 归档
 
-Repo 是逻辑仓库，不等于外部组织、工作区或仓库副本。注册命令固定 `repo_id`、预期 Git 身份、配置正文摘要和幂等键。control 先记录待确认注册和 outbox，工具箱再写入并回读 Git 身份。结果未知时只能按原身份和摘要恢复同一次注册；缺失或冲突必须要求用户处理，不得静默合并。
-
-Git 已存在获准身份时，命令校验后复用它。注册确认事务激活唯一 Repo 身份并创建其唯一 Repo Room；待确认 Repo 不接受 Project、Task 或 Run。不同仓库副本通过[系统约束的显式现场挂接](./system.md#repo-与执行现场)连接同一 Repo，而不成为 Project 的子对象。
+Repo 的身份、「注册 Repo」命令、Git 中稳定身份的写入与回读，以及仓库副本的现场挂接，由 [Repo 模块约束](./repo.md#repo-注册与-repo-instance-挂接)拥有。Project 保留两件事实：一个 Repo 只有一个 Repo Room，Project 归属于一个 Repo。注册确认事务激活唯一 Repo 身份，Project 在同一账本事务中创建其唯一 Repo Room；待确认 Repo 不接受 Project、Task 或 Run。不同仓库副本通过 Repo 模块的显式现场挂接连接同一 Repo，而不成为 Project 的子对象。
 
 “创建 Project”命令在同一账本事务中创建该 Project 的唯一 Project Room。Room 身份与治理账本在用户级控制面；任何已挂接现场打开的都是同一个 Room，仓库副本只持有投影与现场操作状态，如草稿、未读和本地租约。进入 Project 默认打开该 Project Room。
 
-Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact/SCM/CI 和近期活动的只读投影，不是第五个场景或可写状态。Workbench 可以另行把同源 Request 和健康状态投影聚合为全局需要关注。
+Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是一个独立场景或可写状态。Workbench 可以另行把同源 Request 和健康状态投影聚合为全局需要关注。
 
-“归档 Project”要求系统进入静止状态。预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入或写租约，也不存在该 Project 所有且仍为待投递或结果未知的外部副作用。前置不满足时，系统必须列出阻塞项并拒绝命令。
+“归档 Project”要求系统进入静止状态。预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入租约，也不存在归属该 Project 的执行仍持有的活动 Write Lease、待投递或结果未知的集成意图与发布评审意图，以及该 Project 所有的其他待投递或结果未知的外部副作用。Write Lease 与集成意图归 [Repo 模块](./repo.md#写入约束)，归档预览必须能列出它们。前置不满足时，系统必须列出阻塞项并拒绝命令。
 
 开放 Task、开放 Request 与未归档 Scoped Room 不阻止归档。它们随 Project 一并转为只读，不被隐式完成或取消；恢复 Project 后保持原状态。仍在运行的只读 Invocation 也不阻止归档，其迟到结果按既有规则只留审计。
 
@@ -77,14 +73,14 @@ Context Bundle 是调用开工时交付给执行体的输入包，不代管执�
 ### 三种交付方式
 
 - `inline`：直接物化原文。它只用于执行体无法自行读取或不适合自行翻找的内容，包括相关聊天、Task 评论、契约与范围说明、用户显式引用，以及策略要求必用的同 Run 前序结果。必用内容超出预算时，必须降为 `pointer` 并附分片建议，不得静默丢弃。
-- `pointer`：只交付精确引用、摘要和一句说明。它只能指向执行体在获准范围内可自行打开的 Git 对象或 worktree 路径；账本和任务后端内容不得作为 `pointer`。
+- `pointer`：只交付精确引用、摘要和一句说明。它只能指向执行体在获准范围内可自行打开的 Git 对象或 worktree 路径；账本、任务后端内容和代码协作平台上的评审评论不得作为 `pointer`。
 - `recall`：运行期间按召回策略追加的子包条目。
 
 Gate Seat 的 ReviewSubjectRef diff 与返工 Seat 的 Verdict 正文属于必用的同 Run 前序结果，详细规则见 [Run 模块约束](./run.md#request重试与-gate)。
 
 ### 选材与排序
 
-来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Backend Snapshot 的引用与摘要冻结进 Manifest，不经检索。序列化时，稳定内容排在前面，高频变化内容排在后面。
+来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Backend Snapshot 的引用与摘要冻结进 Manifest，不经检索。变更在代码协作平台上的评审评论线——普通评论与正式评审——同样属于显式来源，按 [Repo 模块约束](./repo.md#变更与平台的映射)以精确 ChangeSet Revision 与评论标识冻结进 Manifest，不经检索；评论只供作者阅读，不构成授权、契约或裁决。没有平台绑定的 Repo 没有这一项，讨论在 Scoped Room 里走既有路径。序列化时，稳定内容排在前面，高频变化内容排在后面。
 
 ### 根 Context Manifest
 
@@ -137,6 +133,8 @@ Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢�
 
 Room Invocation 的 Execution Spec 先固定范围：`repo_scope` 只读，`project_scope` 才能携带写入与 ChangeSet 规则。human 批准建议时，Spec 还必须固定来源建议、建议摘要、可选父执行、扇出位置和预期 Room/Project version。
 
+写入型调用可以在 Trigger Preview 一并授权**评审发布策略**，由 Execution Spec 冻结：Repo、平台端口的 Port–Provider Binding 版本、发布到的分支或评审请求的规则、允许创建还是也允许更新、评审请求描述的来源，以及是否须人显式确认。预览必须写明这里授权的是发布去评审，不是合入。策略是范围：Result Proposal 只能提供被允许的内容，不能换发布地点或扩大权限；仓库或 Project 的「发布评审须人显式确认」开关值随本次授权冻结，之后改默认值不影响已接受的调用。发布的执行、映射与凭证归 [Repo 模块约束](./repo.md#发布评审)。
+
 若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和物理执行代次；进程内（`in_process`）模式仅使用连接约束定义的缩减字段组。
 
 上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--participant从授权到物理执行)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新执行体的载荷不能改写这些来源链字段。
@@ -155,7 +153,7 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；涉
 
 ## 场景约束
 
-mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
+mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、评审发布策略（若有）、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
 
 普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的直接客户端连接，也可以来自聊天端口的 Port–Provider Binding 明确允许的供应端结构化事件；两者都归一为同一命令草稿。系统按[系统约束](./system.md#客户端动作与-provider-事件)保留 actor 映射、来源事件、目标版本和幂等依据。chat server 里的普通消息本身不是入口。
 

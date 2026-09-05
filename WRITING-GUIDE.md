@@ -48,8 +48,8 @@ HCTL2 的文档按颗粒度分四层。层与层之间**引用而不复述**；�
 | 层 | 回答什么 | 文风 | 允许词汇 | 规范性 | 文件 |
 |---|---|---|---|---|---|
 | ① 愿景 | 为什么存在、想给什么体验、按什么原则取舍 | 宣言（M1 / M2 / M6） | 核心产品词中标「用户可见」的词（含 Receipt）+ 日常语言；Gate 只写中文「评审关卡」 | 规范性（原则层）；与约束冲突以约束为准 | `docs/design/vision.md` |
-| ② 架构 | 由哪些模块与面组成、怎么组装、失败时怎么办 | 混合，抓大放小 | 全部核心产品词 + 八个高频约束词（携中文对照） | 规范性（架构层） | `architecture.md`、`design/README.md`、`project/task/run/participant.md`、`context.md` |
-| ③ 机制 | 精确对象、状态机、写入者、不变量、互操作边界 | 技术（T1–T5） | 约束层全部词汇 | 规范性约束；冲突时最终权威 | `docs/design/spec/` 七个文件 |
+| ② 架构 | 由哪些模块与面组成、怎么组装、失败时怎么办 | 混合，抓大放小 | 全部核心产品词 + 八个高频约束词（携中文对照） | 规范性（架构层） | `architecture.md`、`design/README.md`、`project/task/run/participant/repo.md`、`context.md` |
+| ③ 机制 | 精确对象、状态机、写入者、不变量、互操作边界 | 技术（T1–T5） | 约束层全部词汇 | 规范性约束；冲突时最终权威 | `docs/design/spec/` 八个文件 |
 | ④ 交付与验证 | 当前范围做什么、怎么选型、怎么验收 | 技术（非规范） | 可引用约束词以指认被测约束，禁止重定义 | 非规范；不改变领域含义 | `delivery.md`、`contract-tests.md`、`docs/usage.md`、`docs/research/README.md` |
 | — 首页 | 仓库入口：这是什么、现状如何、从哪读起 | 指路，不说服 | 按段混层：每段用该段所属层的词汇 | 非规范；每段必须能指回本层权威 | 根 `README.md` |
 | — 参考 | 对照与史料 | 表格 / 叙事 | 全部 | 非规范 | `references/glossary.md`、`references/decision-history.md` |

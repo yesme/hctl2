@@ -20,6 +20,7 @@ my @architecture_files = qw(
     docs/design/context.md
     docs/design/participant.md
     docs/design/project.md
+    docs/design/repo.md
     docs/design/run.md
     docs/design/task.md
 );
@@ -267,7 +268,7 @@ sub run_first_use {
     # doc-discipline.md distinguishes natural Chinese equivalents, which must
     # be repeated at first use, from terms whose explanation lives only in the
     # glossary.  The latter must not acquire noisy per-file parentheticals.
-    my @natural = qw(Repo Kanban Participant Context Workflow Verdict Receipt Skill Artifact Memo);
+    my @natural = qw(Repo Change Kanban Participant Context Workflow Verdict Receipt Skill Artifact Memo);
     my %terms = ((map { $_ => $core->{$_}{zh} } @natural), %$high);
     my @all_terms = sort { length($b) <=> length($a) || $a cmp $b } keys %terms;
     my $fail = 0;
@@ -314,7 +315,7 @@ sub run_table_language_mix {
     my ($core, $high) = load_vocabulary();
     # Keep this deliberately narrow: only report one concept written in both
     # languages inside the same Markdown table, excluding explicit glosses.
-    my @natural = qw(Repo Kanban Participant Context Workflow Verdict Receipt Skill Artifact Memo);
+    my @natural = qw(Repo Change Kanban Participant Context Workflow Verdict Receipt Skill Artifact Memo);
     my %terms = ((map { $_ => $core->{$_}{zh} } @natural), %$high);
     my $findings = 0;
     for my $path ('docs/design/vision.md', @architecture_files) {
