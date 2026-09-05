@@ -1,9 +1,9 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.16.5<br>
+> 状态：交付文档（非规范） · 草案 v0.17.0<br>
 > 日期：2026-09-02
 
-> 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的四个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
+> 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
 
 ## 当前范围
 
@@ -16,9 +16,10 @@
 | [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以本地任务服务器为选定的 content 后端、CLI 完整 Task 管理与完成预览；Vikunja 原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为选定后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、多票评审 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
-| [Participant](./participant.md) | ChangeSet/diff/证据、写租约与代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
+| [Participant](./participant.md) | 参与者与执行者配置、证据通道、运行时代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
+| [Repo](./repo.md) | Repo 注册与 Repo Instance 挂接、ChangeSet/diff、写租约与现场代次、集成预览/提交/凭证的本地路径与平台路径、发布评审；两种授权形态与目标保护快照 | Change 场景：精确 diff、评审线程与检查投影、集成状态与凭证 | 工具箱随包；平台适配器本批只交付 GitHub（`gh` 随包，经平台端口通过契约测试）；其他平台不点名、按需，依据见[市场调研](../research/scm-platforms.md) |
 
-P3 的 Workbench 把四类供应端客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令；同一命令服务供 CLI、Workbench 与外部适配器使用。消息、卡片和终端输入仍按各供应端的公开协议及其绑定中声明的能力处理。Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
+P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令；同一命令服务供 CLI、Workbench 与外部适配器使用。消息、卡片和终端输入仍按各供应端的公开协议及其绑定中声明的能力处理。Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
 
 客户端动作与 provider 事件的分类及准入以[系统约束](./spec/system.md#客户端动作与-provider-事件)为准；P2 用 CLI 提供全部 HCTL 命令，不把 Workbench 设成必需组件。
 
@@ -29,12 +30,13 @@ P3 的 Workbench 把四类供应端客户端与 HCTL 命令入口组合到一个
 | 范围 | 当前命令 |
 | --- | --- |
 | 运维 | `init`、`start`、`status`、`doctor`、`export`、`backup create\|verify`、`restore preview\|apply` |
-| Repo / Project | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`project create\|list\|show\|update\|archive\|restore` |
+| Repo / Change | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`changeset show\|diff`、`review publish\|show`、`integration preview\|submit\|show`；集成与发布动作先预览确认 |
+| Project | `project create\|list\|show\|update\|archive\|restore` |
 | Participant / Context | `participant create\|update\|list\|show\|authorize\|revoke`、`context show\|preview` |
 | Project / Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
-| Participant / Integration / Terminal | `changeset show\|diff`、`integration preview\|submit\|show`、`terminal inspect\|attach\|replay`；Terminal 命令必须指向精确连接票据 |
+| Participant / Terminal | `terminal inspect\|attach\|replay`；Terminal 命令必须指向精确连接票据 |
 
 CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务器或 Agency。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象。Run 的语义恢复或替换使用 `run resume|replace`；Room Invocation 的再次施工使用创建新 Invocation 与新代次的 `invocation retry`。终端重连只恢复观察或输入通道，不得改变 Run 或 Room Invocation 的生命周期状态。
 
@@ -46,7 +48,8 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 - 自建聊天桥接（永久不做：非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入，HCTL 只保留桥接用户的身份映射）、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
 - 不对任意外部写入做全局检测与自动补偿；各模块只接纳明确列出的 content、human 命令请求和运行时输入路径，其余 provider mutation 与「合入 ChangeSet」命令之外的目标 ref 改写只作分歧/漂移/快照回读；
-- 同时完成 Linear 与 GitHub 两套完整双向适配器；
+- 同时完成 Linear 与 GitHub 两套完整任务后端双向适配器；
+- GitHub 之外的代码协作平台适配器：GitHub 是缺省实现，本批只做它，不点名第二个；未来支持哪些后端、先后如何，以[市场调研](../research/scm-platforms.md)为依据，端口的能力声明须能表达那里列出的差异；
 - 多 Task Run 的分支/合并政策；每个 Run 只绑定 0..1 个 Task Revision。
 
 ## 实现阶段
@@ -65,15 +68,16 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 ## 纵向切片 A：无 Run 自举
 
 1. 注册 Repo、挂接 Repo Instance，创建 Project 与 Task Revision。
-2. 从 Project Room 发起一次写入型 Room Invocation，冻结其 Execution Spec。
-3. Harness 在隔离 Git 工作树和有效写租约下修改代码，产出 ChangeSet Revision 与测试证据。
-4. Project 场景展示精确 diff；评审绑定精确的评审对象引用。
-5. 有权 human actor 提交固定 ChangeSet Revision、target ref、expected target head 与证据的 integration intent；control 先持久化，`hctl2-tool` 执行本地 Git 集成并 readback，确认后写唯一 Integration Receipt。
-6. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验精确 Integration Receipt 后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
-7. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
-8. 重启 control、Herdr 与已使用的 content 后端后，账本、Git 工作树归属、integration intent/Receipt、证据和 CLI 投影一致且不重复副作用。
+2. 从 Project Room 发起一次写入型 Room Invocation，冻结其 Execution Spec；平台仓库在 Trigger Preview 一并冻结评审发布策略，预览写明授权的是发布去评审、不是合入。
+3. Harness 在隔离 Git 工作树和有效写租约下修改代码；工具箱封存并回读 ChangeSet Revision，Project 准入提案的同一事务里 Repo 模块准入版本，Harness 产出测试证据。
+4. Change 场景展示精确 diff；评审绑定精确的评审对象引用。平台仓库按冻结策略由平台适配器推送分支、创建或更新 PR，写下变更与平台映射的第一条证据；纯本地仓库的讨论在 Scoped Room。
+5. 评审评论经代取进入下一次调用的开工包；返工是新的 Room Invocation，主干前移时执行体在自己的工作树里合并或变基，封存为新版本、旧评审失效。
+6. 有权 human actor 预览合入：本地路径核对预期目标头并要求目标工作树已切离；平台路径核对必需检查、线程、正式评审与目标保护快照，并显式选择授权形态（GitHub 不能保证预期目标头，只能选「接受目标前移」）。随后提交 integration intent；control 先持久化，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行并 readback，确认后写唯一 Integration Receipt。
+7. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验精确 Integration Receipt 后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
+8. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
+9. 重启 control、Herdr、已使用的 content 后端与平台连接后，账本、Git 工作树归属、integration intent/Receipt、变更与平台映射、证据和 CLI 投影一致且不重复副作用。
 
-这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。
+这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。有契约的 Task 走完这条链，人的预览是合入与完成两次；开了「发布评审须人显式确认」开关的仓库多一次，单独验收。两条路径——没有平台的普通仓库、受保护的 GitHub `main`——都要走通。
 
 ## 纵向切片 B：完整治理
 
@@ -83,8 +87,8 @@ CLI 没有隐藏权限，也不直接写治理账本、执行面 content 服务�
 4. 需要输入时创建 Project Request；答案 signal 回原执行。
 5. 多个评审席位对同一评审对象引用投票；备用候选只替换同一 Seat 的技术失败。
 6. `changes_requested` 产生新 ChangeSet Revision，旧票失效并完整 regate。
-7. 达到法定票数后写 Gate Receipt；有权 human actor 或冻结 reducer 再提交固定 ChangeSet Revision、target、expected head 与 Gate 证据的 integration intent。
-8. control 先持久化 intent/outbox，`hctl2-tool`（本地）或 adapter（远端）执行并 readback；只有确认目标事实后才写唯一 Integration Receipt，结果未知时不得签成功或盲重投。
+7. 达到法定票数后写 Gate Receipt；有权 human actor 或冻结 reducer 再提交固定 ChangeSet Revision、目标、所选授权形态、目标保护快照与 Gate 证据的 integration intent，Gate 结论写回 PR 只是记录。
+8. control 先持久化 intent/outbox，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行并 readback；只有确认合并提交与目标头后才写唯一 Integration Receipt，结果未知时不得签成功或盲重投。
 9. task-bound Run 按约束正常完成后，Run reducer 以稳定幂等键提交同一个「完成 Task」命令；Task 独立准入并校验精确 Integration Receipt，失败类 Run 不终结 Task。
 10. 任意步骤崩溃后按[连接约束的失败与恢复](./spec/connections.md#失败与恢复)对账恢复，不重复外部效果；本文不另写一份恢复算法。
 
@@ -102,7 +106,7 @@ HCTL2 不会等到当前范围完整交付才用来开发自己。自举按能�
 | --- | --- | --- |
 | B0 | ID、SQLite、command/query/event、进程和恢复底座 | 干净 clone 可启动；重启不丢状态；脚本只管进程和恢复 |
 | B1 | Project Room 与本地 Task 影子试用 | Room/Task/草稿重启可恢复；引用稳定；明确不切换事实 |
-| B2 | 无 Run 切片成为真实开发入口 | 从 Project Room 在隔离 Git 工作树与有效写租约下完成一次真实的非文档代码改动和测试；Harness 环境中取不到 HCTL 交付的集成/外部写凭据；声明了执行加固的 Profile 按声明生效并留记录，宿主施加不了则不启动。第一次真正自举 |
+| B2 | 无 Run 切片成为真实开发入口 | 前置是一个活跃 Project 与一张已采纳契约的 Task。从 Project Room 在隔离 Git 工作树与有效写租约下完成一次真实的非文档代码改动和测试，经发布评审、评论代取、返工、合入前准入走到 Integration Receipt 与完成凭证；纯本地路径与受保护 GitHub `main` 路径各走通一次，默认路径人只预览两次；Harness 环境中取不到 HCTL 交付的集成/平台写凭据；声明了执行加固的 Profile 按声明生效并留记录，宿主施加不了则不启动。第一次真正自举 |
 | B3 | 接管自身待办、并发 Invocation、Request、Receipt 和冷启动恢复 | 连续至少 5 个真实变更，覆盖核心/界面/适配器与故障重启，全程无手工改库、无人肉转发 Prompt |
 | B4 | 引入 workflow engine、Run、Seat 和独立 Gate | 一个真实变更走完“驳回 → 返工 → 重新评审 → 合并”，期间重启任一组件；无手工推进引擎或绕过 Receipt |
 | B5 | 候选切换、多票评审、regate 和完整故障恢复；当前范围的成熟度目标 | 完整治理切片在 HCTL 自身的真实变更上通过，而不只是测试样例 |
@@ -124,7 +128,7 @@ B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍�
 2. **运维简单**：本机执行模式优先单二进制、内嵌存储、低资源占用的后端。
 3. **生命周期可托管**：随 HCTL 一键启停（由 control 编排），支持备份、恢复与固定版本升级。
 4. **选型三件套**：每个新增系统都设限时、可丢弃的开工前验证，且只验 HCTL 实际依赖的 API 与行为（边界见「开工前限时验证」）；验证失败就重开并修订对应选型决定及 [decision-history](./references/decision-history.md)，不另造 ADR catalog；不自研第二个同类系统。
-5. **借用偏好顺序**：跨平台二进制 > SDK > 复制代码 > 借鉴想法。能借二进制的不借库，能借库的不抄代码；越靠后自己维护的越多。研究层的复用决策按这四级记（见[复用决策用语](../research/README.md#复用决策用语)）；供应端客户端另有三级顺序：官方 SDK > 从接口描述生成 > 手写。
+5. **借用偏好顺序**：跨平台二进制 > SDK > 复制代码 > 借鉴想法。能借二进制的不借库，能借库的不抄代码；越靠后自己维护的越多。研究层的复用决策按这四级记（见[复用决策用语](../research/README.md#复用决策用语)）；操作模块后端的客户端另有四级顺序：随包发布的官方命令行工具（以工具调用方式使用） > 官方 SDK > 从接口描述生成 > 手写。有官方命令行不等于调用面已经满足：要逐个操作核对它能不能给结构化结果、能不能带身份、能不能做条件写入，核对不过再降一级。
 
 ## 开工前限时验证
 
@@ -160,7 +164,7 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 
 技术栈包括 Rust control/tool 与 Herdr 适配代码；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；以及 Tiptap、React Aria、React Flow + Dagre、xterm.js。
 
-五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、现场锁用标准库文件锁、账本备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按三级顺序接入：官方 SDK > 从接口描述生成 > 手写，六家逐个的判定见[供应端客户端层](../research/sdk/README.md)。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作工具箱回读级证据。
+五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、现场锁用标准库文件锁、账本备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作工具箱回读级证据。
 
 执行面服务器经受控端口接入，由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）和 Herdr（Agency）。Room 场景另随包提供 Cinny 聊天客户端。
 

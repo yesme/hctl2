@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.16.5<br>
+> 状态：规范性 · 草案 v0.17.0<br>
 > 日期：2026-08-31<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -23,7 +23,7 @@
 
 | 词 | 中文对照 | 类别 | 可见性 |
 | --- | --- | --- | --- |
-| Repo | 仓库 | 对象 | 用户可见 |
+| Repo | 仓库 | 对象，也是拥有仓库、变更集与集成事实的模块名 | 用户可见 |
 | Project | 项目 | 对象 | 用户可见 |
 | Room | 聊天室 | 对象，也是 Project 模块的场景名 | 用户可见 |
 | Participant | 参与者 | 对象 | 用户可见 |
@@ -37,6 +37,7 @@
 | Run | 一次受治理施工 | 对象 | 用户可见 |
 | Workflow | 施工图 | 对象，也是 Run 模块的场景名 | 用户可见 |
 | Terminal | 终端 | Participant 模块的场景名 | 用户可见 |
+| Change | 变更 | Repo 模块的场景名 | 用户可见 |
 | Workbench | 工作台 | 客户端产品 | 用户可见 |
 | Receipt | 凭证 | 票据 | 用户可见——「完成不能自述」靠它，愿景层要讲 |
 | Gate | 评审关卡 | 节点类型 | 治理内部；愿景层只以中文「评审关卡」出现 |
@@ -49,7 +50,7 @@
 
 「类别」回答它是什么东西：对象有独立生命周期、恢复边界或权限边界；票据是步骤产物，只被引用不被改写；节点类型和场景名不是对象。「可见性」回答它能出现在哪一层：愿景层只用标「用户可见」的词（含 Receipt），治理内部的词从架构层起可用。愿景层讲执行内部时用日常语言——「一步要交出什么是固定的，谁来做可以换，做坏了从这一次重来」——不点治理词。
 
-设计正文还可以使用六个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+设计正文还可以使用七个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、SCM platform（代码协作平台，托管服务或自建服务器，按 Repo 绑定、可以没有）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Repo 一词有两层意思：核心产品词表里的对象「Repo（仓库）」，以及拥有它的「Repo 模块」；Repo Room 仍归 Project，Repo Board 仍归 Task，Repo 是各模块共享的作用域限定词，不因模块同名而改变归属。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
 
 另有八个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）、Context Manifest（根上下文清单）、Context Bundle（消费上下文包）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述八词。
 
@@ -73,10 +74,10 @@
 | 类别 | 中文对照 | 含义 | 权威所在 |
 | --- | --- | --- | --- |
 | metadata | 治理元数据 | 身份、绑定、授权与判决——谁是谁、谁连着谁、谁批了什么、凭什么算数 | HCTL 自己的账本（控制面） |
-| content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录 | 该场景的 content 系统（第三方 ground truth，事实源头） |
-| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更 | Git |
+| content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录、评审线程与检查状态 | 该场景的 content 系统（第三方 ground truth，事实源头） |
+| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更、合入目标的提交 | Git |
 
-统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。结晶归属与对象归属分开，先例是施工图：它从 Room 讨论中结晶、归 Room 场景，对象与写入者归 Run；同理，代码变更从 Terminal 会话中结晶、归 Terminal 场景，ChangeSet Revision 这个对象及其写入者归 Repo 模块，Change 场景的结晶是合入目标的提交与 Integration Receipt 在 Git 里的审计影子。「在 Terminal 会话中产生」是常见来源，不是准入前置：human command 也可以是 ChangeSet Revision 的生产者。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
 
 三条法贯穿全部模块约束，各处引用，不再各写一套：
 
@@ -87,10 +88,10 @@
 ## 词汇索引
 
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
-- **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、Participant–Agency Binding（Participant ↔ 派出方名册项）
+- **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、Participant–Agency Binding（Participant ↔ 派出方名册项）、ChangeSet–Platform Binding（ChangeSet Revision ↔ 代码协作平台上的提交与评审请求）
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
 - **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency 归属者虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
-- **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令
+- **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令；集成意图与发布评审意图是 Repo 模块的外部副作用命令，不占概念名额
 - **Snapshot/观测族**：Task Backend Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
@@ -110,5 +111,6 @@
 - [task.md](./task.md)：Task 模块约束 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块约束 + Dagu / BPMN 对齐
 - [participant.md](./participant.md)：Participant 模块约束 + Skill 申报 + PTY / Herdr / ACP 对齐
-- [connections.md](./connections.md)：四模块交接、事务边界与跨切恢复
+- [repo.md](./repo.md)：Repo 模块约束 + 集成的两种授权形态 + PR / Merge Request / Gerrit 对齐
+- [connections.md](./connections.md)：五模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复

@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.5<br>
+> 状态：规范性约束 · 草案 v0.17.0<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -96,7 +96,7 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 
 替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权和换代路径，不能先清空标记再留下两个可写执行。`completion_pending` 期间也拒绝另一次启动，以及来自 human 的 Task 完成或取消命令；只接受匹配 Run 归约器的内部完成命令。该命令成功或被 Task 持久拒绝时，control 在同一结果事务中清除标记。
 
-“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受工具箱回读或适配器结构化事件，`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
+“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受工具箱回读或适配器结构化事件，其中集成结果只认 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)签发的 Integration Receipt，平台上的合并状态、检查结果与评审状态只能作为该模块回读的外部机械事实进入；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
 
 绑定该 Task 的非终态 Run 存在时，完成与取消命令都必须拒绝。用户必须先显式结束该 Run 并等待旧执行撤权、隔离；Task 命令不会隐式停止 Run。重开或取消必须保留旧 Receipt 和历史。
 

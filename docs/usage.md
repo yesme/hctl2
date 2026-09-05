@@ -1,6 +1,6 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool` 做本地 Git 现场操作与闭集外部事实回读；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool` 做本地 Git 现场操作与闭集外部事实回读，它是设计里 Repo 模块的现场执行者；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
 
 ## 当前入口一览
 
@@ -12,7 +12,7 @@
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-`hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 账本、Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
+`hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 账本、Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用——远端动作归控制面里的平台适配器，见[Repo 模块约束](./design/spec/repo.md)。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 

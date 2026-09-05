@@ -38,7 +38,7 @@ fail() {
     failures=$((failures + 1))
 }
 
-architecture_files='README.md architecture.md context.md participant.md project.md run.md task.md vision.md'
+architecture_files='README.md architecture.md context.md participant.md project.md repo.md run.md task.md vision.md'
 
 write_tree() {
     local tree="$1"
@@ -414,10 +414,10 @@ for name in layer_terms.allowlist implementation_names.allowlist spec_need.allow
 done
 
 camel_rows="$(awk '/^[ \t]*#/ || NF == 0 { next } { print }' "$allowlist_dir/camelcase_names.allowlist" | wc -l | tr -d ' ')"
-if [ "$camel_rows" -ne 21 ]; then
-    fail "camelcase allowlist has $camel_rows rows, expected 21 proper-name exemptions"
+if [ "$camel_rows" -ne 24 ]; then
+    fail "camelcase allowlist has $camel_rows rows, expected 24 proper-name exemptions (v0.17.0 added GitHub/GitLab in spec/repo.md and GitHub in contract-tests.md)"
 else
-    note "PASS camelcase allowlist still has 21 proper-name exemptions"
+    note "PASS camelcase allowlist still has 24 proper-name exemptions"
 fi
 
 # --- PR contract rename / move / grow --------------------------------------

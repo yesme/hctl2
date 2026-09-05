@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.5<br>
+> 状态：规范性约束 · 草案 v0.17.0<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -14,7 +14,7 @@
 | Obligation | 一个 HCTL 外部节点必须产出的逻辑结果 |
 | Seat | Obligation 中稳定的逻辑执行者或投票位置 |
 | Attempt | 某个候选对一个 Seat 的一次执行。派发所需的完整冻结记录由 Execution Spec 承载；Attempt 自身只增加 attempt、seat、run 引用和 `attempt_generation`。共同字段见[连接约束](./connections.md) |
-| ReviewSubjectRef | 对 ChangeSet Revision 或 Artifact Revision 的精确 kind、ID 和 digest 引用（引用格式） |
+| ReviewSubjectRef | 对 ChangeSet Revision（[Repo 模块](./repo.md#changeset-与-git-事实)）或 Artifact Revision（[Project 模块](./project.md#context-memo-artifact)）的精确 kind、ID 和 digest 引用（引用格式） |
 | Verdict / Receipt | 对精确版本的语义裁决，以及 control 与工具箱校验后的正式证明（Receipt 族） |
 
 ## 写入约束
@@ -53,7 +53,7 @@ Run 进入完成前，control 必须逐项证明：
 
 任何一项未知都不得完成 Run。Engine 检查点、进程退出、Harness 或模型自述和单个 Result Proposal 都不能补足上述谓词。引擎报告的进度只用于分歧检测；该进度不可读或与账本不一致时，control 只把 Run–Engine Binding 标为分歧待对账，既不补足也不否定上述谓词。
 
-任何失败、取消或替代终态在释放 Task Run 占用标记前，都必须在同一事务中撤销旧派发、输入与写租约和外部副作用资格，并提交运行时停止与隔离 outbox。若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 Git 工作树和 ChangeSet；后续执行按 Participant 约束使用新的 Git 工作树和新的 ChangeSet。
+任何失败、取消或替代终态在释放 Task Run 占用标记前，都必须在同一事务中撤销旧派发、输入与写租约和外部副作用资格，并提交运行时停止与隔离 outbox。若只能撤销逻辑权威而无法证明旧进程已静默，则隔离旧 Git 工作树和 ChangeSet；后续执行按 [Repo 模块约束](./repo.md#changeset-与-git-事实)使用新的 Git 工作树和新的 ChangeSet。
 
 不能证明旧执行被限制在该隔离边界内时，Run 保持取消中或需要关注，并保留占用标记。系统不能以“失败了”为由并发启动第二个写入者。
 
@@ -85,7 +85,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 “替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧运行时、输入与写租约和归属者专用的代次栅栏，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。系统不得为了替代一个 Run 任意推进共享 site generation，进而误伤其他执行。
 
-新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Participant 约束](./participant.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
+新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Repo 模块约束](./repo.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
 
 运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
 

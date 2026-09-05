@@ -1,11 +1,11 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.16.5<br>
+> 状态：规范性约束 · 草案 v0.17.0<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与参与者授权，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果，Repo Instance 也仍归系统层所有。
+Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与参与者授权，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、Repo Instance、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
 
 人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令、名册和裁决里，不进入本模块的对象表。
 
@@ -17,9 +17,6 @@ Participant 模块拥有数字参与者的身份与配置，并负责把获准�
 | Skill | 带 revision 与 digest 的共享方法定义；三态与申报见[Skill 与申报](#skill-与申报) |
 | Worker Profile | Harness、模型、模式、权限、环境与可选执行加固声明的可复用配置 |
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
-| ChangeSet / ChangeSet Revision | 一次获准写入边界及其不可变 Git 快照 |
-| Write Lease | ChangeSet 的独占写入权与失权拦截（Lease 族） |
-| 外部副作用命令（executor = tool）/ Integration Receipt | 把精确 ChangeSet Revision 集成到目标 ref 的持久授权及回读证明 |
 | Execution Runtime | 一次执行的主机、隔离域和代次（归属者 = Attempt \| Room Invocation）；终端通道是其字段组 |
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
 | Participant–Agency Binding | Participant 到供给它的 Agency 名册项与条款的绑定（Binding 族）：换派出方是显式换绑，Participant 身份不变；活动执行引用准入时的版本 |
@@ -39,8 +36,6 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 | --- | --- | --- | --- |
 | Participant | immutable revision + current pointer | control 处理「创建/更新 Participant」命令；Agency 申报 Skill 与候选的可用性 | 活动 Invocation/Run/Seat 永久引用准入时的 Participant revision |
 | Worker Profile / Participant–Agency Binding | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
-| ChangeSet / Write Lease | change_set_version、current revision；租约为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，工具箱物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃租约；ChangeSet Revision 只追加 |
-| 外部副作用命令（executor = tool）/ Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；工具箱执行本地 Git 集成并回读；远端 SCM 是同族外部副作用命令（executor = adapter，见[系统边界](./system.md#外部权威副作用)） | 同一 target ref/expected head 只允许一个获准结果；只有回读确认才能写 Receipt |
 | Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测账 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
 | Terminal Input Lease | 租约代次；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
@@ -53,7 +48,7 @@ HCTL 启动的每个 Harness 都使用窄执行主体。以下三条底线不可
 
 1. **工具不是人。** Harness、运行时钩子和模型只能提交 Result Proposal，不能提交治理命令。
 2. **合入钥匙不进工具。** HCTL 不向 Harness 交付 control 客户端凭据、human principal credential、集成凭据或外部写凭据。目标引用、远端 SCM、任务后端和 chat 写入凭据只由持有当前代次栅栏的工具箱或适配器网关代用。
-3. **隔离工作树。** Harness 只能在有效 Write Lease 下写当前 ChangeSet 的独立 Git 工作树和分支。它可以读取所属 Repo Instance 的 Git 公共目录与引用，也可以在当前 ChangeSet 分支提交。直接改写目标引用或其他 ChangeSet 现场不会取得集成权威，只会在回读时形成分歧。
+3. **隔离工作树。** Harness 只能在有效 Write Lease 下写当前 ChangeSet 的独立 Git 工作树和分支。它可以读取所属 Repo Instance 的 Git 公共目录与引用，也可以在当前 ChangeSet 分支提交，但不推送远端：远端推送、评审请求与合并全部走 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)的适配器命令。直接改写目标引用或其他 ChangeSet 现场不会取得集成权威，只会在回读时形成分歧。
 
 ### 可选执行加固
 
@@ -69,35 +64,11 @@ control 必须在交付派工前核对 Context Bundle 的实际交付摘要、Ex
 
 ## ChangeSet 与 Git 事实
 
-Git 工作树是 ChangeSet 的可替换物理资源，不永久属于 Project、Task、Room 或 Harness。一个 ChangeSet 同时最多有一个有效写入租约；候选切换、接管或取消必须先让旧写入者失权。
+ChangeSet、ChangeSet Revision、Write Lease、封存、保全与集成的对象与写入约束由 [Repo 模块约束](./repo.md#changeset-与-git-事实)拥有；本节只保留执行侧的半边。
 
-旧写入者无法证明已经失权时，control 默认保全并隔离原 Git 工作树和 ChangeSet，不授予新租约。有权 human actor 可以在预览残留后选择接管、封存、采用到另一 ChangeSet 或丢弃。只有自动恢复必须从获准基线创建新的 Git 工作树和 ChangeSet。系统不能把来源未知的未封存字节、旧租约或旧生产者身份自动带入新执行。
+旧写入者失权时，两个模块各做自己的动作：Repo 模块撤销租约并拒绝重授；本模块停止或隔离旧执行，并提供进程、PTY 与工作树状态的证据。证明不了旧执行已经静默时，本模块不得声称已隔离，Repo 模块因此不授予新租约，原 Git 工作树与 ChangeSet 按其约束保全并隔离。
 
-ChangeSet Revision 在有效租约下封存，至少固定：
-
-```text
-change_set_revision_id
-+ change_set_id
-+ parent_revision_id?
-+ base_commit_sha
-+ result_tree_sha
-+ producer_ref             # human command，或精确 Invocation + invocation_version / Attempt + attempt_generation
-+ revision_digest
-```
-
-评审对象对 {change_set_revision_id, change_set_id, parent_revision_id?, base_commit_sha, result_tree_sha} 使用[共享摘要规则](./system.md#命令与跨服务正确性)生成独立 review_subject_digest；它不是完整 ChangeSet Revision 的 revision_digest。
-
-`result_commit_sha` 只存在于后续 Integration/SCM 证据，不属于 ChangeSet Revision，因此给同一 Revision 增加不同提交包装不会改变其评审身份。
-
-返工或结果树变化创建新 Revision，旧 Revision 不改写。producer_ref 不进入 review_subject_digest，但作者与评审者分离必须沿它解析并校验当前逻辑身份。
-
-模型自述不能证明集成成功。control 先持久化“合入 ChangeSet”意图和 outbox，工具箱再执行本地 Git 集成并回读；远端 push、PR 和 merge 走同族适配器命令。命令必须固定 ChangeSet Revision、来源与基线、目标引用、预期目标头、策略、适用 Verdict 和证据、actor 与权限、绑定和幂等键。成功回读后，control 才写唯一 Integration Receipt。
-
-Harness 可以操作自己的 Git 工作树，但改写目标引用不产生 Receipt。下一次预览或回读只会显示预期目标头不匹配的分歧，由有权 actor 对账处理。工具箱校验 Git 基线、HEAD、tree、祖先关系、PR、检查、评审和目标分支头。
-
-结果未知时，工具箱回读 Git 与 PR 状态；收敛前不得签发成功 Receipt 或清理现场。SCM 变更被中断时同样按结果未知处理，并返回类型化恢复动作。
-
-失败、取消、租约撤销和资源清理都不等于放弃代码。物理清理默认保全：工具箱先确认所有已跟踪、未跟踪且尚未封存的修改已有可恢复副本，现场资源得到该确认才可拆除；有权 human actor 在预览残留后显式确认丢弃时，可以不留副本直接拆除。保全或封存失败且未获显式丢弃确认时，保留精确 Git 工作树路径、Git 状态和显式恢复动作，不能删除唯一副本。清理 Git 工作树也不删除领域历史。
+执行体在有效租约下写自己的 Git 工作树与分支，封存由工具箱执行；执行体提交的 Result Proposal 只携带 ChangeSet 输出的引用与证据，版本准入在归属者准入提案的同一事务里由 Repo 模块完成。执行体不持有平台写凭据，远端推送、评审请求与合并不由它执行。
 
 ## 运行时与观测
 
@@ -183,4 +154,4 @@ Workbench 或终端客户端退出不停止执行。断流按运行时代次、�
 | 结构化接入 | ACP（Agent Client Protocol）等代理协议 | HCTL 只把它当作受控端口能力之一；协议会话不是 HCTL 身份 |
 | semantic resume | 各 Harness 原生的会话恢复（如 codex resume） | 恢复的是上下文，可能创建新进程；不等于 exact attach |
 | replay | 终端录像回放 | 只读历史，不冒充存活会话 |
-| Write Lease / Terminal Input Lease | 无对应 | 差异化语义：单写入者与单输入者，配代次失权 |
+| Terminal Input Lease | 无对应 | 差异化语义：单输入者，配代次失权；写入侧的 Write Lease 见 [Repo 模块约束](./repo.md#外部概念对齐) |

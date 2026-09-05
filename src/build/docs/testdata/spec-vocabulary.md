@@ -21,6 +21,7 @@ checker fixtures do not inherit live-document product names.
 | Run | 一次受治理施工 | 对象 | 用户可见 |
 | Workflow | 施工图 | 对象，也是 Run 模块的场景名 | 用户可见 |
 | Terminal | 终端 | Participant 模块的场景名 | 用户可见 |
+| Change | 变更 | Repo 模块的场景名 | 用户可见 |
 | Workbench | 工作台 | 客户端产品 | 用户可见 |
 | Receipt | 凭证 | 票据 | 用户可见——「完成不能自述」靠它，愿景层要讲 |
 | Gate | 评审关卡 | 节点类型 | 治理内部；愿景层只以中文「评审关卡」出现 |
