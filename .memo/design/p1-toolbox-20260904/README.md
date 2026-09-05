@@ -9,7 +9,7 @@
 | 0 | git CLI 对象文件 `docs/research/sdk/git.md` | Fable | 完成 | PR #173：采用二进制、宿主 git、下限 2.39、不内嵌库；索引两处加行 | 2026-09-04 |
 | 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 完成 | PR #174：`repo inspect`、`worktree materialize/verify`、现场锁；双审修正与回归用例已落实 | 2026-09-05 |
 | 乙 | 封存、保全、拆除 | Grok | 待开始（等甲） | — | 2026-09-04 |
-| 丙 | 本地集成：校验 → CAS → 回读 | Codex | 待开始（等甲，与乙并行） | — | 2026-09-04 |
+| 丙 | 本地集成：校验 → CAS → 回读 | Codex | 待双审（Fable / GLM） | `integrate`：快进 / 合并提交、Git ref 固定重试提交、CAS 与结果未知；分支 `codex/p1-toolbox-c` | 2026-09-05 |
 | 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 待开始（等乙丙） | — | 2026-09-04 |
 
 审核记录（每个 PR 两份评论，逐条维持 / 修正 / 推翻）：

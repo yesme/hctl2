@@ -36,6 +36,7 @@ rust_binary(
     rustc_flags = HCTL2_RUSTC_FLAGS,
     tests = [
         ":git_site_test",
+        ":integration_test",
         ":smoke_test",
     ],
     visibility = ["PUBLIC"],
@@ -73,6 +74,20 @@ rust_test(
 )
 
 rust_test(
+    name = "integration_test",
+    srcs = ["tests/integration.rs"],
+    crate_root = "tests/integration.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
     name = "smoke_test",
     srcs = ["tests/smoke.rs"],
     crate_root = "tests/smoke.rs",
@@ -91,6 +106,7 @@ filegroup(
     srcs = {
         "binary": ":hctl2-tool[clippy.txt]",
         "git_site": ":git_site_test[clippy.txt]",
+        "integration": ":integration_test[clippy.txt]",
         "library": ":hctl2_tool[clippy.txt]",
         "smoke": ":smoke_test[clippy.txt]",
         "unit": ":unit_test[clippy.txt]",
