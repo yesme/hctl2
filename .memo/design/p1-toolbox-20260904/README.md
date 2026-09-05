@@ -10,7 +10,7 @@
 | 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 完成 | PR #174：`repo inspect`、`worktree materialize/verify`、现场锁；双审修正与回归用例已落实 | 2026-09-05 |
 | 乙 | 封存、保全、拆除 | Grok | 完成 | PR #177：`archive snapshot/remove`；保全覆盖已跟踪但被忽略的修改、磁盘上真实存在的嵌套仓库与已初始化子模块；丢弃确认绑当前树 sha | 2026-09-05 |
 | 丙 | 本地集成：校验 → CAS → 回读 | Codex | 完成（复审通过） | PR #176：按 #178 修订任务书修正检出保护、祖先回读、两策略 no-op 与 reflog；重试开关的恢复路径已补进 help 与测试 | 2026-09-05 |
-| 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 待开始（等乙丙） | — | 2026-09-04 |
+| 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 进行中（待 Fable 收口） | 完整发行包 `complete-test` 跑通物化→提交→封存→集成→拆除与五类失败；`docs/usage.md` / `src/README.md` / 研究索引已改 | 2026-09-05 |
 
 审核记录（每个 PR 两份评论，逐条维持 / 修正 / 推翻）：
 

@@ -4,7 +4,7 @@
 
 P1 工作区包含 HCTL2 自己需要实现的机械组件与可复用基础机制：
 
-- `hctl2-tool`：Git/SCM 与仓库机械操作；当前 `wait` 子命令已能回读闭集外部事实。
+- `hctl2-tool`：Git/SCM 与仓库机械操作。P1 已具备仓库检查、现场锁、隔离 worktree 物化与核验、封存保全拆除、本地集成（快进或合并提交的比较并交换）以及 `wait` 回读闭集外部事实。独立运行只做普通本地操作，不产生账本或 Receipt。
 - `hctl2-facts`：供 `hctl2-tool` 与未来 control 共用的事实读取代码。
 - `hctl2-foundation`：标准库文件锁、JCS、SQLite Online Backup、keyring 与 FTS5 的受测封装。
 

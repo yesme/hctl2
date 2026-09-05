@@ -84,6 +84,11 @@ for command in hctl2-tool hctl2-services; do
 done
 "$contract_prefix/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 
+: "${HCTL2_TOOLBOX_TEST:?Buck must provide HCTL2_TOOLBOX_TEST}"
+# shellcheck source=test-toolbox.sh
+source "$HCTL2_TOOLBOX_TEST"
+test_packaged_toolbox "$contract_prefix/bin/hctl2-tool"
+
 find "$test_root" -depth -delete
 trap - EXIT
 
