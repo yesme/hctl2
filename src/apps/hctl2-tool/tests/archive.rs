@@ -511,6 +511,114 @@ fn salvage_remove_refuses_an_initialized_submodule_with_a_local_commit() {
     );
 }
 
+#[test]
+fn salvage_remove_allows_an_uninitialized_declared_submodule() {
+    let fixture = Fixture::new("uninit-sub");
+    let lib = fixture.root.join("lib");
+    git(None, ["init", "-b", "main", lib.to_str().expect("utf-8")]);
+    git(Some(&lib), ["config", "user.name", "HCTL2 Test"]);
+    git(
+        Some(&lib),
+        ["config", "user.email", "hctl2@example.invalid"],
+    );
+    fs::write(lib.join("src.c"), "int x;\n").expect("lib file");
+    git(Some(&lib), ["add", "."]);
+    git(Some(&lib), ["commit", "-m", "lib"]);
+    git(
+        Some(&fixture.repo),
+        [
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            lib.to_str().expect("utf-8"),
+            "lib",
+        ],
+    );
+    git(Some(&fixture.repo), ["commit", "-m", "add submodule"]);
+    let baseline = git_stdout(Some(&fixture.repo), ["rev-parse", "HEAD"]);
+    let worktree = fixture.materialize_at("CS-u", &baseline);
+    fs::write(worktree.join("notes.txt"), "progress\n").expect("untracked");
+    assert!(!worktree.join("lib/.git").exists());
+
+    let output = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args(["--change-set-ref", "CS-u"])
+        .output()
+        .expect("remove");
+    assert_success(&output);
+    let record = json_stdout(&output);
+    assert_eq!(record["operation"], "removed_salvaged");
+    assert_eq!(record["nested_repositories"], serde_json::json!([]));
+    assert!(!worktree.exists());
+}
+
+#[test]
+fn discard_preview_lists_nested_repositories() {
+    let fixture = Fixture::new("discard-nested");
+    let worktree = fixture.materialize("CS-drop-nested");
+    let vendor = worktree.join("vendor");
+    git(
+        None,
+        ["init", "-b", "main", vendor.to_str().expect("utf-8")],
+    );
+    git(Some(&vendor), ["config", "user.name", "HCTL2 Test"]);
+    git(
+        Some(&vendor),
+        ["config", "user.email", "hctl2@example.invalid"],
+    );
+    fs::write(vendor.join("crate.txt"), "embedded\n").expect("nested file");
+    git(Some(&vendor), ["add", "."]);
+    git(Some(&vendor), ["commit", "-m", "nested"]);
+
+    let mismatched = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args([
+            "--change-set-ref",
+            "CS-drop-nested",
+            "--discard-unarchived",
+            "--confirm-discard",
+            "other",
+        ])
+        .output()
+        .expect("mismatch");
+    let record = json_stdout(&mismatched);
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["path"],
+        "vendor"
+    );
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["in_gitmodules"],
+        false
+    );
+    let tree = record["error"]["details"]["current_tree_sha"]
+        .as_str()
+        .expect("current tree")
+        .to_owned();
+    assert_error_code(mismatched, "HCTL2_TOOL_DISCARD_CONFIRMATION_MISMATCH");
+    assert!(worktree.exists());
+
+    let discarded = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args([
+            "--change-set-ref",
+            "CS-drop-nested",
+            "--discard-unarchived",
+            "--confirm-discard",
+            &tree,
+        ])
+        .output()
+        .expect("discard");
+    assert_success(&discarded);
+    let record = json_stdout(&discarded);
+    assert_eq!(record["operation"], "removed_discarded");
+    assert_eq!(record["nested_repositories"][0]["path"], "vendor");
+    assert!(!worktree.exists());
+}
+
 #[cfg(unix)]
 #[test]
 fn salvage_remove_refuses_when_the_worktree_changes_after_snapshot() {

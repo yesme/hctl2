@@ -249,6 +249,7 @@ fn salvage_worktree(
         "removed_salvaged",
         Some(&snapshot),
         None,
+        &[],
         &ignored,
         &summary,
     ))
@@ -276,6 +277,11 @@ fn discard_worktree(
             "change_set_ref": change_set_ref,
             "confirm_discard": confirm_discard,
             "current_tree_sha": staged.tree_sha,
+            "nested_repositories": staged
+                .gitlinks
+                .iter()
+                .map(Gitlink::to_json)
+                .collect::<Vec<_>>(),
             "status_summary": status_summary(git, &worktree.path),
         })));
     }
@@ -291,6 +297,7 @@ fn discard_worktree(
         "removed_discarded",
         None,
         Some(staged.tree_sha.as_str()),
+        &staged.gitlinks,
         &ignored,
         &summary,
     ))
@@ -305,6 +312,7 @@ fn remove_output(
     operation: &str,
     snapshot: Option<&SnapshotRecord>,
     current_tree_sha: Option<&str>,
+    gitlinks: &[Gitlink],
     ignored: &IgnoredResidue,
     summary: &str,
 ) -> ToolOutput {
@@ -321,6 +329,7 @@ fn remove_output(
             "worktree_path": path,
             "snapshot": snapshot.map(SnapshotRecord::to_json),
             "current_tree_sha": current_tree_sha,
+            "nested_repositories": gitlinks.iter().map(Gitlink::to_json).collect::<Vec<_>>(),
             "status_summary": summary,
             "ignored_residue": ignored.files,
             "ignored_residue_total": ignored.total,
@@ -660,6 +669,13 @@ fn gitlinks_from_stage(
         if mode != "160000" {
             continue;
         }
+        // A gitlink in HEAD is not a nested repository until the path itself is
+        // a Git directory. Uninitialized submodule checkouts are empty and have
+        // nothing unique to lose; rev-parse in that directory would report the
+        // parent worktree's gitdir and mislead the caller.
+        if !nested_repository_on_disk(git, worktree, path) {
+            continue;
+        }
         let gitdir = git
             .invoke(
                 &worktree.join(path),
@@ -676,6 +692,24 @@ fn gitlinks_from_stage(
         });
     }
     Ok(gitlinks)
+}
+
+fn nested_repository_on_disk(git: &Git, worktree: &Path, relative: &str) -> bool {
+    let nested = worktree.join(relative);
+    if nested.join(".git").exists() {
+        return true;
+    }
+    let Ok(absolute) = nested.canonicalize() else {
+        return false;
+    };
+    git.invoke(
+        &nested,
+        &args(&["rev-parse", "--path-format=absolute", "--show-toplevel"]),
+    )
+    .ok()
+    .filter(crate::git::GitOutput::success)
+    .and_then(|output| output.stdout_text().ok())
+    .is_some_and(|toplevel| Path::new(&toplevel) == absolute.as_path())
 }
 
 fn submodule_paths(git: &Git, worktree: &Path) -> HashSet<String> {
