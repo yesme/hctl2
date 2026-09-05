@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 0 | git CLI 对象文件 `docs/research/sdk/git.md` | Fable | 完成 | PR #173：采用二进制、宿主 git、下限 2.39、不内嵌库；索引两处加行 | 2026-09-04 |
 | 甲 | 仓库检查、现场锁、worktree 物化与核验 | Codex | 完成 | PR #174：`repo inspect`、`worktree materialize/verify`、现场锁；双审修正与回归用例已落实 | 2026-09-05 |
-| 乙 | 封存、保全、拆除 | Grok | 进行中（PR #177 待复审） | PR #177：`archive snapshot/remove` | 2026-09-05 |
+| 乙 | 封存、保全、拆除 | Grok | 进行中（PR #177 待 Fable / GLM 双审） | PR #177：`archive snapshot/remove`；临时索引封存、保全默认、丢弃需 `--discard-unarchived` 且 `--confirm-discard` 等于 ChangeSet 引用 | 2026-09-05 |
 | 丙 | 本地集成：校验 → CAS → 回读 | Codex | 完成（复审通过） | PR #176：按 #178 修订任务书修正检出保护、祖先回读、两策略 no-op 与 reflog；重试开关的恢复路径已补进 help 与测试 | 2026-09-05 |
 | 丁 | 打包后三平台端到端、usage 与 README、状态板收口 | Grok | 待开始（等乙丙） | — | 2026-09-04 |
 
