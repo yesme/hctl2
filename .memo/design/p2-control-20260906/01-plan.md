@@ -1,6 +1,6 @@
 # P2 计划：接钥匙——control 与公共 CLI 从 B0 到 B2
 
-> 状态：待拍板 · §五列出要所有者一句话的取舍；其余按建议走<br>
+> 状态：已拍板 · 所有者 2026-09-06 对 §五五项逐条表态（v2 已按此改）；细节 for agent<br>
 > 基线：main @ `1d001ad`（草案 v0.17.0）<br>
 > 去向：`src/apps/hctl2-control`、`src/apps/hctl2`（公共 CLI）、`src/crates/*` 的适配器与账本 crate、`docs/research/` 新增对象文件、`docs/design/delivery.md` 只在发现缺口时改；不改约束层
 
@@ -53,11 +53,11 @@ P1 收口（`.memo/design/p1-toolbox-20260904/`）与 v0.17.0 约束批（`.memo
 
 | 序 | 工作包 | 写 | 依赖 |
 | --- | --- | --- | --- |
-| 0a | 研究：本地 RPC 与消息 schema（§五第 1 项的对象文件） | Fable | 无 |
-| 0b | 研究：SQLite schema 迁移方式（§五第 2 项） | Fable | 无 |
+| 0a | 研究：Protobuf 作接口 schema 的生成链与本地传输（§五第 1 项的对象文件 `libs/protobuf-rpc.md`） | Fable | 无 |
+| 0b | 研究：SQLite schema 迁移库（§五第 2 项，`libs/sqlite-migrations.md`） | Fable | 无 |
 | 0c | 研究：Process Compose 作为 control 托管服务的调用面（CLI 与 REST 的结构化输出、健康、按组件启停） | Fable | 无 |
 | 甲 | 账本与命令内核：schema 与迁移、命令信封与幂等、领域事件与投影、outbox/inbox、control writer 锁与代次、备份/恢复（用 foundation） | Codex | 0b |
-| 乙 | 进程与客户端边界：`hctl2-control` 守护进程生命周期、本地 IPC、Query/Preview/Submit/Subscribe 四类入口、`hctl2 init/start/status/doctor/export/backup/restore` | Grok | 0a、甲 |
+| 乙 | 进程与客户端边界：`hctl2-control` 守护进程生命周期、`.proto` 合同与生成链进 Buck2、ProtoJSON 走本地套接字、Query/Preview/Submit/Subscribe 四类入口、`hctl2 init/start/status/doctor/export/backup/restore` | Grok | 0a、甲 |
 | 丙 | Repo 模块的 B0 半边：Repo Instance 挂接（复用 `repo inspect`）、长持现场锁与 `site_generation`、`hctl2 repo instance attach/list/show/detach` | Codex | 甲 |
 | 丁 | 托管服务生命周期：control 经 Process Compose 拉起、健康检查、按首次消费的组件启停；`hctl2 start` 带起 Tuwunel 与 Vikunja；B0 收口：干净 clone 启动、杀进程重启不丢状态的端到端 | Grok | 乙、0c |
 
@@ -77,16 +77,16 @@ P1 收口（`.memo/design/p1-toolbox-20260904/`）与 v0.17.0 约束批（`.memo
 
 | 序 | 工作包 | 写 | 依赖 |
 | --- | --- | --- | --- |
-| 2a | 研究：第一个 harness 适配器的接入面（§五第 4 项定哪家；`harness-hooks-20260903.md` 的钩子白名单入口落到工具箱子命令） | Fable | 无 |
+| 2a | 研究：三家 harness 适配器的接入面（Claude Code、Codex、Gemini CLI；钩子注入、结构化事件归一、`harness-hooks-20260903.md` 的钩子白名单入口落到工具箱子命令） | Fable | 无 |
 | 2b | 研究复核：`sdk/github.md` 追加写侧调用面（`gh` 推分支、开/更新 PR、请求合并、写回评论；PR 描述三节；确认丢失后的回读） | Fable | 无 |
-| 壬 | Agency 端口与 Herdr：typify 生成 Herdr 类型；名册与可用性申报（技能目录的 digest 由工具箱回读记 known）；按 Execution Spec 拉起执行体、预留 `runtime_generation`、Attach Descriptor、停止与退出回读；输入策略两种 | Grok | 乙、2a |
+| 壬 | Agency 端口与 Herdr：typify 生成 Herdr 类型；名册与可用性申报（技能目录的 digest 由工具箱回读记 known）；按 Execution Spec 拉起执行体、预留 `runtime_generation`、Attach Descriptor、停止与退出回读；输入策略两种；harness 适配器骨架加 Claude Code、Codex、Gemini CLI 三家的钩子注入与事件归一 | Grok | 乙、2a |
 | 癸 | Participant 与 Room Invocation：Participant/Worker Profile/Skill 申报对象；Trigger Preview（执行者、Context、权限、预算、评审发布策略）；「创建/取消/准入结果」调用命令；Execution Spec 冻结；Result Proposal 准入 | Codex | 辛、壬 |
 | 子 | Context 组装器第一版：聊天史、任务后端评论线、平台评审评论线的萃取（无 small-brain，全本地）；三档投喂；根 Manifest 与 Bundle 冻结、交付摘要核对 | Codex | 己、庚 |
 | 丑 | Repo 模块的 B2 半边：ChangeSet 与 Write Lease；封存准入与人的显式封存；集成意图两种授权形态、目标保护快照、`integrate` 的本地路径与 `gh` 的平台路径；发布评审（control 按冻结策略发出）；ChangeSet–Platform Binding；平台动作分类；`hctl2 changeset/review/integration …` | Grok | 戊、2b |
 | 寅 | Task 完成与凭证：「完成 Task」命令逐项校验（mechanical 只认 Integration Receipt）、Task Completion Receipt、结晶副本写 Git；Vikunja Done 映射为同一命令的请求 | Codex | 庚、丑 |
-| 卯 | B2 收口：CT-PRODUCT 两条路径在 HCTL2 自己的仓库上各走通一次（纯本地目标；受保护的 GitHub `main`），默认两次预览；harness 环境取不到 HCTL 交付的凭据；执行加固按声明生效；重启后账本、工作树、意图、凭证一致 | Grok | 癸、子、丑、寅 |
+| 卯 | B2 收口：CT-PRODUCT 两条路径先在试验仓库上各走通一次（纯本地目标；受保护的 GitHub `main`），至少两家 harness 各跑一遍，默认两次预览；harness 环境取不到 HCTL 交付的凭据；执行加固按声明生效；重启后账本、工作树、意图、凭证一致。拿 HCTL2 自己的仓库当真实开发入口是 B3 的起点，由所有者按质量决定何时开始 | Grok | 癸、子、丑、寅 |
 
-B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地方；卯的验收就是 `delivery.md` §自举阶段 B2 那一行。
+B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地方；卯的验收对照 `delivery.md` §自举阶段 B2 那一行，其中「第一次真正自举」按 §五第 4 项的解读：切片在真实仓库上走通算 B2，拿 HCTL2 自身当开发入口从 B3 起算。
 
 ### B3 到 B5 的入口
 
@@ -98,11 +98,11 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 
 按「方向、边界、取舍找 human；接口细节 for agent」列五项，每项附建议；不说就按建议走。
 
-1. **CLI 与 control 之间用什么说话。** `.memo/notes/control-api-schema-20260902.md` 把这题留到 control 开工：先固定客户端组合、进程边界、升级方式，再选 schema 与传输。现在能固定的是：P2 的客户端只有 Rust 的 CLI 与进程内适配器，二者与 control 同包发行、同版本升级，没有跨版本兼容期；P3 的 Workbench 是 Tauri 2，TypeScript 一侧要读同一份合同。**建议**：P2 用本地 Unix 套接字（Windows 不在范围）上的 JSON 请求/响应加事件流，信封带 schema 版本，类型由 serde 派生、单一 Rust crate 拥有，不手写并行 DTO；Protobuf/Connect 留到 P3 出现 TypeScript 客户端且需要跨版本兼容时按同一备忘的触发点重选。对象文件 `docs/research/libs/local-rpc.md` 先落（候选：tarpc、jsonrpsee、原生 serde+tokio 帧；判据是本地套接字、流式订阅、零额外发行物）。
-2. **账本 schema 迁移怎么做。** **建议**：rusqlite 直连，编号 SQL 迁移文件嵌入二进制，用 SQLite `user_version` 记当前版本，启动时在单写者锁内顺序应用，迁移前先走 foundation 的 Online Backup 做一致快照；不引入迁移框架（refinery、sqlx 都要拖新依赖或运行时）。对象文件 `docs/research/libs/sqlite-migrations.md` 先落。
-3. **Repo 的稳定身份写在 Git 哪里。** 约束说身份写入 Git 的跟踪文件并回读（`spec/repo.md` §Repo 注册与 Repo Instance 挂接），存储拓扑写的是 `<repo>/.hctl2/repo.toml`。P1 备忘 §六 留了题：落在哪个 ref、由谁提交。**建议**：就是默认分支上的跟踪文件；注册命令让工具箱在一个 ChangeSet 工作树里写出它，人经正常路径把它合入（我们自己的仓库走 PR，纯本地仓库走 `integrate` 快进）；合入前 Repo 保持待确认，不接受 Project、Task、Run——这与约束一致，也让第一次注册就是第一次走完集成路径。不另设 `refs/hctl2/identity` 之类的旁路 ref，因为身份必须随普通 clone 走。
-4. **B2 的第一个 harness 适配器接哪家。** 约束不押注任何一家；`docs/research/harness-hooks-20260903.md` §决定建议 给了 PTY 模式钩子的优先级：Claude Code（`--settings` 内联钩子，不写文件、来源合并不覆盖用户钩子）、OpenCode、Gemini/Qwen（先实测）、Codex（钩子要过信任关卡，自动化须 `--dangerously-bypass-hook-trust` 或预置信任）。**建议**：第一个接 Claude Code，理由是钩子注入不落盘、退出码 2 硬拒、结构化事件（`stream-json`）与 Herdr 的 `--env` 透传都有文档依据；第二个接 Codex（B3 的真实变更要覆盖至少两家）。这是边界题，因为「先接谁」决定 B2 用谁来做第一次自举。
-5. **评审发布策略的开关缺省值。** 约束把「发布评审须人显式确认」定为仓库或 Project 的可选开关，缺省值不在约束里（`delivery.md` §运行默认值 是放缺省值的地方）。**建议**：缺省关——默认路径就是两次预览，这是产品承诺；我们自己的仓库也用缺省值，让 B2 的验收覆盖的是产品默认而不是我们的特例。
+1. **CLI 与 control 之间用什么说话——所有者倾向直接上 Protobuf，省得将来再迁。** 我原建议 P2 先用 serde JSON、P3 再选 Protobuf；讨论后改为**现在就以 Protobuf 作 schema**，理由与边界如下。省下的不只是一次迁移：`.proto` 从第一天起就是唯一的接口合同，P3 的 TypeScript 一侧用官方生成器读同一份文件，不会出现「Rust 类型是权威、TS 手抄一份」的漂移；Protobuf 的字段编号纪律也逼着我们从 B0 起就按可演进的方式改接口。代价是多一条生成链（protoc 或纯 Rust 的 protox，加 prost/tonic 类 crate）要进 Buck2 action，这是 0a 研究要回答的第一件事。三条边界：其一，线上编码在 P2 用 ProtoJSON（Protobuf 官方定义的 JSON 映射）走本地 Unix 套接字，人能读、能用命令行工具调试，与 P3 Tauri 2 的 JSON IPC 同形；二进制编码与 gRPC/Connect 留到出现跨进程、多语言、跨版本兼容的需求时切换，切换不改 schema。其二，领域正文（Task Revision、Workflow Revision 等进 Git 的东西）继续用 RFC 8785 规范化 JSON 作事实源，`.proto` 只承载传输语义，不反向定义事实格式——这是 `.memo/notes/control-api-schema-20260902.md` 的原话。其三，不手写并行 DTO：Rust 类型只从 `.proto` 生成。对象文件 `docs/research/libs/protobuf-rpc.md` 先落，要回答：生成器选型（prost + pbjson 对 ProtoJSON；tonic/Connect 作将来选项）、protoc 二进制随 DotSlash 钉定还是用 protox 免二进制、Buck2 里的 proto 规则怎么接、TS 侧生成器（Protobuf-ES）与 Buf 的关系、许可证。
+2. **账本 schema 迁移怎么做——所有者问业界最佳实践是什么。** 业界共识有四条：迁移只向前、按序编号、每条在一个事务里应用；当前版本记在库里而不是靠猜（SQLite 官方给的位置是 `PRAGMA user_version`，另有 `application_id` 标记这是谁的库；重量级框架则另建一张迁移历史表）；`ALTER TABLE` 在 SQLite 里能力有限，改列要按官方文档的「建新表、拷数据、删旧表、改名」十二步走；迁移前先做一致备份。Rust 生态里做这件事的库：`rusqlite_migration`（专为 rusqlite、用 `user_version`、迁移写成 SQL 字符串数组、带一致性自检）、`refinery`（多数据库、SQL 文件嵌入、历史表）、`sqlx migrate` 与 `diesel_migrations`（各绑自己的运行时或 ORM，我们不用）。**定**：按四级顺序取现成库，`rusqlite_migration` 首选——零额外运行时、与 foundation 里的 rusqlite 同栈；迁移在单写者锁内、Online Backup 一致快照之后应用。对象文件 `docs/research/libs/sqlite-migrations.md` 先落，钉版本与许可证，并核 `rusqlite_migration` 对 rusqlite 0.40 的兼容。
+3. **Repo 的稳定身份写在 Git 哪里——所有者问「仓库的稳定身份文件」是什么。** 它是 HCTL 认出「这个克隆和那个克隆是同一个仓库」的依据。远端地址会换、目录名随便起、纯本地仓库没有远端、两个不同仓库的 HEAD 也可能碰巧相同，所以约束不让这些当身份，而是在注册时生成一个稳定的 Repo 身份，写进仓库内容里的一个受跟踪文件——存储拓扑定的位置是 `<repo>/.hctl2/repo.toml`，内容是 Repo 的稳定 ID 加共享配置的引用，账本记它的摘要。任何克隆都带着它，工具箱的 `repo inspect` 已经会读它、没有就报缺失（P1 甲）。P1 备忘 §六 留的题是：这个文件的第一次提交落在哪个分支、由谁提交。**定（所有者未表态，按建议）**：就是默认分支上的普通跟踪文件；注册命令让工具箱在一个 ChangeSet 工作树里写出它，人经正常路径把它合入（我们自己的仓库走 PR，纯本地仓库走 `integrate` 快进）；合入前 Repo 保持待确认，不接受 Project、Task、Run——与约束一致，也让第一次注册就是第一次走完集成路径。不另设 `refs/hctl2/identity` 之类的旁路 ref，因为普通克隆不会带上自定义 ref，身份就跟不走。
+4. **B2 接哪些 harness——所有者：都行，你安排；可以接 Gemini；第一个接谁不代表自举，可以接好几家、写完再回头自举，刚做完的 HCTL2 未必拿得来写我们现在的内容。** 按这话改两处。其一，B2 的 harness 适配器不是「一家」而是「一组」：按 `docs/research/harness-hooks-20260903.md` §决定建议 的优先级，先接 Claude Code（钩子注入不落盘、退出码 2 硬拒、结构化事件与 Herdr 的 `--env` 透传都有文档依据），同批接 Codex（钩子要过信任关卡，自动化须预置信任或 `--dangerously-bypass-hook-trust`）与 Gemini CLI（系统 settings 路径变量，先实测）；三家共用一个适配器骨架，差别只在钩子注入方式与事件归一，2a 研究要把这三家的接入面一次写清。其二，**自举与 B2 的第一次走通解耦**：B2 的工作包先在一个试验仓库上把两条路径（纯本地目标、受保护的 GitHub `main`）走通并验收；拿 HCTL2 自己的仓库做真实开发入口是 B3「接管自身待办」的起点，什么时候开始由所有者按当时的质量判断，不由 B2 的时间表逼。`delivery.md` §自举阶段 B2 行写的「第一次真正自举」按这个解读，措辞是否要改留到 B2 收口时一并处理。
+5. **评审发布策略的开关缺省值——所有者：按建议来。** 缺省关：默认路径就是两次预览，这是产品承诺；我们自己的仓库也用缺省值，让 B2 的验收覆盖的是产品默认而不是我们的特例。落点是 `delivery.md` §运行默认值 加一行，随丑（Repo 模块 B2）的 PR 一起改。
 
 ## 六、任务书要点
 
@@ -121,7 +121,7 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 - **子（Context 组装器）**：三处讨论来源萃取全本地；指针只指 Git 对象与工作树路径；Bundle 记交付计量与 `bundle_digest`，派工前核对实际交付摘要；纪要与相关性门未配 small-brain 时不生成。失败用例：治理引用指向纪要拒绝；压缩条目缺回源指针拒绝交付。
 - **丑（Repo 模块 B2）**：全部 CT-REPO 用例；两种授权形态成对用例；同目标待决互斥；人的显式封存；`gh` 写侧确认丢失后按关联键回读不重复建 PR；执行体工作树的环境不带 `GH_TOKEN`、`GIT_ASKPASS` 类变量且 worktree 配置不继承凭据助手（这是可选加固的第一项，按 Worker Profile 声明生效）。
 - **寅（Task 完成）**：逐项核对判定者与校验等级；契约未要求集成的 Task 不要求 Integration Receipt；Receipt、生命周期事件、占用标记清除与写回 outbox 同一事务。
-- **卯（B2 收口）**：两条路径都在 HCTL2 自己的仓库上跑真实的非文档代码改动；默认两次预览；重启一致；以 `delivery.md` §自举阶段 B2 行为唯一验收依据。
+- **卯（B2 收口）**：两条路径都在试验仓库上跑真实的非文档代码改动，至少两家 harness；默认两次预览；重启一致；以 `delivery.md` §自举阶段 B2 行为验收依据（「自举」的解读见 §五第 4 项）。
 
 ## 七、审核方式与 DoD
 
@@ -131,7 +131,7 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 
 ## 八、研究层先行清单（Fable）
 
-按纪律三「新组件、新依赖先落 `docs/research/`」：0a 本地 RPC 与 schema、0b SQLite 迁移、0c Process Compose 调用面是 B0 前置；1a Matrix 与 Vikunja 的 B1 调用面复核是 B1 前置；2a 第一个 harness 适配器接入面、2b `gh` 写侧调用面是 B2 前置。已有研究结论有变的，逐份追加复核记录，不改正文。
+按纪律三「新组件、新依赖先落 `docs/research/`」：0a Protobuf 生成链与本地传输、0b SQLite 迁移库、0c Process Compose 调用面是 B0 前置；1a Matrix 与 Vikunja 的 B1 调用面复核是 B1 前置；2a 三家 harness 适配器接入面、2b `gh` 写侧调用面是 B2 前置。已有研究结论有变的，逐份追加复核记录，不改正文。
 
 ## 九、延后与遗留
 

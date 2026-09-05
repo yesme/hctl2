@@ -46,5 +46,5 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：Grok/GLM 的固定尾注、所有者身份列表、仓库只留 squash 与线性历史 |
-| `design/p2-control-20260906/` | P2 计划 §五五项取舍：本地 RPC 与 schema、账本迁移方式、Repo 身份文件的落点、第一个 harness 适配器接哪家、发布确认开关缺省值 |
+| `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡（按 abacistopia 的做法）：仓库设置只留 squash 由所有者改；`coauthor.py` 与钩子移植、PR contract 检查交 Codex 实现 |
+| `design/p2-control-20260906/` | 已拍板 · 研究先行中：五项取舍所有者 2026-09-06 逐条表态（Protobuf 现在就上、迁移用现成库、身份文件在默认分支、三家 harness 并接且自举与 B2 解耦、发布确认缺省关） |
