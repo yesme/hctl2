@@ -225,7 +225,7 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理代次栅栏时明确记录该限制；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 Agency binding generation；
 3. 回读全部已绑定 content 系统的游标（chat server、任务后端、workflow engine）以及 Herdr 运行状态和未确认副作用；
-4. 查询 workflow engine、Herdr API、工具箱回读的 Git 事实，以及平台适配器回读的评审请求与合并状态；结果未知的集成与发布意图按 [Repo 模块约束](./repo.md#恢复)分目标处理；
+4. 查询 workflow engine、Herdr API，以及工具箱回读的 Git 事实与平台机械事实（评审请求当前头、合并状态、检查、保护条件）；结果未知的集成与发布意图按 [Repo 模块约束](./repo.md#恢复)分目标处理；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。

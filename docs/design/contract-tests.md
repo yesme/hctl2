@@ -86,10 +86,10 @@
 - 本地 Agency 参考实现申报的 Skill digest 与工具箱回读不一致时不激活，拒绝结果列出不一致项
 - Revision 或 digest 不匹配的 Result Proposal 必须拒绝
 - 旧 `runtime_generation` 的输入和结果必须拒绝
-- 旧 writer 既不能证明已停止、也不能证明被限制在旧工作树与旧 ChangeSet 边界内时，本模块不得声称已隔离，Repo 模块因此不重授租约；能证明其一即算隔离，后续执行用新 ChangeSet、原 ChangeSet 不重授；写租约与保全的用例归 `CT-REPO`
+- 旧 writer 既不能证明已停止、也不能证明被限制在旧工作树与旧 ChangeSet 边界内时，本模块不得声称已隔离，Repo 模块因此不重授租约；证明已停止时，有权 human 授权的新调用可以在同一 ChangeSet 上取得新租约、继续产出新版本；只证明被限制在旧边界内时，后续执行用新 ChangeSet、原 ChangeSet 不重授；写租约与保全的用例归 `CT-REPO`
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误归属者/代次输入和无 provenance Share 均拒绝
-- 治理命令只有两类 actor 来源：映射到有权用户本人的 direct client/provider event 与 task-bound Run 正常完成的 reducer；Workbench、CLI 与 provider adapter 产生相同 command envelope，Result Proposal 通道提交不了治理命令
+- 治理命令只有两类 actor 来源：映射到有权用户本人的 direct client/provider event，与只执行已冻结规则的边或已有 human 授权后续动作的 control 归约器（task-bound Run 正常完成的「完成 Task」、Gate 通过后的「合入 ChangeSet」、按冻结策略的「发布评审」，来源规则见[系统边界](./spec/system.md#命令与跨服务正确性)）；Workbench、CLI 与 provider adapter 产生相同 command envelope，Result Proposal 通道提交不了治理命令
 - 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/平台写凭据，凭据只由工具箱/平台适配器网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，但推不了远端；绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 显示 drift（预期目标头形态下是预期目标头不匹配，接受目标前移形态下是回读核对不符）
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人直接修改 Herdr workspace/pane 归属或已冻结派工结果只形成 drift，不能冒充结果；对精确 terminal 的输入则按 Execution Spec 输入策略处理
