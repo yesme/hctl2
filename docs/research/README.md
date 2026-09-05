@@ -113,6 +113,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
+| [scm-platforms.md](./scm-platforms.md) | 代码协作平台市场调研：GitHub、GitLab、Gitea、Forgejo、Gerrit、Bitbucket、Azure DevOps 在合入调用面上的能力（源头校验、目标头保证、队列语义、官方命令行） | E-SCM-PLATFORMS | ⑥ 机械后端与基础设施 | 采用二进制、GitHub 缺省；其余平台暂缓，按能力声明维度按需接入 |
 | [tmux-runtime.md](./tmux-runtime.md) | 运行时后端复审 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 | 历史选型，不再采用 |
 | [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 采用 Herdr 的验证证据 |
 | [agentd-runtime-candidates-20260829.md](./agentd-runtime-candidates-20260829.md) | Agent 运行服务候选的源码复审：Termio、tty7、cmux、Pilotty 及相邻候选 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 旧结论废止，源码与实测证据保留 |
