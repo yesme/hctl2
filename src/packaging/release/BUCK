@@ -7,6 +7,11 @@ export_file(
     src = "export-first-party.sh",
 )
 
+export_file(
+    name = "test-toolbox.sh",
+    src = "test-toolbox.sh",
+)
+
 first_party_release(name = "first-party")
 
 complete_release(name = "complete")

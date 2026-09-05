@@ -130,11 +130,13 @@ def complete_release(name: str):
         env = {
             "HCTL2_BUILD_METADATA": "$(location root//packaging/dependencies:metadata)",
             "HCTL2_DEPENDENCY_SOURCE_ROOT": "$(location root//packaging/dependencies:test-support)",
+            "HCTL2_TOOLBOX_TEST": "$(location :test-toolbox.sh)",
         },
         resources = [
             ":{}".format(name),
             "root//packaging/dependencies:metadata",
             "root//packaging/dependencies:test-support",
+            ":test-toolbox.sh",
         ],
         labels = CI_INTEGRATION,
         run_test_separately = True,

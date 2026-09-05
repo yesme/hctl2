@@ -1,18 +1,18 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool wait` 回读闭集外部事实；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool` 做本地 Git 现场操作与闭集外部事实回读；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
 
 ## 当前入口一览
 
 | 名称 | 当前状态 | 面向谁 | 现在能做什么 |
 | --- | --- | --- | --- |
 | `hctl2-services` | 可用 | 安装包用户、开发者 | 通过 Process Compose 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
-| `hctl2-tool` | P1 可用子集 | HCTL2 开发者、Harness | `wait` 回读 CI、PR、引用、文件摘要与进程退出事实 |
+| `hctl2-tool` | P1 可用 | HCTL2 开发者、Harness、安装包用户 | 仓库检查、现场锁、worktree 物化与核验、封存保全拆除、本地集成，以及 `wait` 回读闭集外部事实 |
 | `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-`hctl2-tool` 不是后台服务，也不是治理命令入口；它只读外部事实并输出结构化结果。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
+`hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 账本、Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 
@@ -181,27 +181,62 @@ hctl2-services start
 
 ## 使用 `hctl2-tool`
 
-从源码构建：
+安装离线包后，`PATH` 里的 `hctl2-tool` 就是发行物里的那一份。从源码构建：
 
 ```bash
 cd src
 cargo build --locked -p hctl2-tool
 ```
 
-查看英文帮助、版本和事实词表：
+`--help` 与 `--version` 为英文。无参数调用等同于 `--help`。Git 现场命令要求宿主 `git` ≥ 2.39；可用 `HCTL2_GIT` 覆盖可执行文件路径，与 `HCTL2_GH` 同款。每次调用在标准输出写一条 JSON 记录，`evidence_level` 为 `toolbox_readback`。`outcome` 为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（仅 `wait`）；对应退出码 `0`、`3`、`4`、`5`。参数或启动错误返回 `1` 并写到标准错误。观察类失败（含仓库状态不成立）走标准输出 JSON，带 `error.code` 与 `error.recovery_action`。
+
+意图字段由调用方给出：ChangeSet 引用、基线、目标 ref、预期头、幂等键。工具箱不发明 ID，不读、不写账本。
+
+### 仓库检查
 
 ```bash
-./target/debug/hctl2-tool --help
-./target/debug/hctl2-tool --version
+hctl2-tool repo inspect --path /path/to/repo
+hctl2-tool repo inspect --path /path/to/repo --ref refs/heads/main
 ```
 
-也可以直接运行：
+输出把 Git 公共目录身份、稳定 Repo 身份（`<repo>/.hctl2/repo.toml` 缺失就报 missing，不造）和辅助证据分成三个字段组。
+
+### worktree 物化与核验
 
 ```bash
-cargo run --locked -p hctl2-tool -- --help
+hctl2-tool worktree materialize --repo /path/to/repo \
+  --root /path/to/worktree-root --change-set-ref CS-1 --baseline <commit-sha>
+hctl2-tool worktree verify --repo /path/to/repo --change-set-ref CS-1
 ```
 
-当前无参数调用等同于 `--help`。`wait` 接受绝对 Unix 秒截止时间与一个事实；一次调用只在标准输出写一条 JSON 事实记录：
+同一 ChangeSet 引用重复物化返回同一工作树。checkout 不进 Git 内部目录。核验分开计数已跟踪与未跟踪修改。
+
+### 封存、保全、拆除
+
+```bash
+hctl2-tool archive snapshot --repo /path/to/repo --change-set-ref CS-1
+hctl2-tool archive remove --repo /path/to/repo --change-set-ref CS-1
+hctl2-tool archive remove --repo /path/to/repo --change-set-ref CS-1 \
+  --discard-unarchived --confirm-discard <current-tree-sha>
+```
+
+默认拆除先封存再证明可达副本，然后只拆本次 worktree。`--confirm-discard` 必须等于当前工作树的树 sha（可用一次 snapshot 或确认不匹配记录里的 `current_tree_sha`）；缺一对是用法错误。被忽略的未跟踪文件默认随工作树删除，并列入残留（路径、大小、总数）；`--reject-ignored` 在有残留时拒绝拆除。磁盘上真实存在的嵌套仓库或已初始化子模块拒绝保全拆除。
+
+### 本地集成
+
+```bash
+hctl2-tool integrate --repo /path/to/repo \
+  --commit <candidate-sha> --base-commit-sha <baseline-sha> \
+  --result-tree-sha <tree-sha> --target-ref refs/heads/main \
+  --expected-head <current-main-sha> --strategy fast-forward \
+  --idempotency-key <caller-key>
+```
+
+`--strategy` 为 `fast-forward` 或 `merge-commit`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。工具箱把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
+
+### 等待外部事实
+
+`wait` 接受绝对 Unix 秒截止时间与一个事实：
 
 ```bash
 hctl2-tool wait --deadline 1788451200 commit-ci \
@@ -215,7 +250,7 @@ hctl2-tool wait --deadline 1788451200 path-digest \
 hctl2-tool wait --deadline 1788451200 process-exited --pid 12345
 ```
 
-记录的 `outcome` 固定为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（截止前没有结论），`evidence_level` 固定为 `toolbox_readback`。对应退出码依次为 `0`、`3`、`4`、`5`；参数或启动错误返回 `1` 并在标准错误输出稳定错误码。GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录；它不会发起交互登录，使用前可由用户运行 `gh auth login` 建立凭据，或按 GitHub CLI 支持的环境变量提供令牌。
+GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录；它不会发起交互登录，使用前可由用户运行 `gh auth login` 建立凭据，或按 GitHub CLI 支持的环境变量提供令牌。
 
 ## 安装完整离线包
 
