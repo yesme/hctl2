@@ -46,4 +46,4 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/scm-module-20260906/` | 待拍板 · 第五模块（代码变更与集成）方案：模块与场景命名（推荐 Change / Review）、Write Lease 归属；GPT 先审，再出 v0.17.0 约束批交四家审，流程见目录 README |
+| `design/scm-module-20260906/` | 已拍板 · 待落地：第五模块 Repo（仓库）/ 场景 Change（变更），七项取舍 2026-09-06 全部拍板；去向 v0.17.0 约束批（不自合，再审一轮），文件清单见 `01` 第十二节 |
