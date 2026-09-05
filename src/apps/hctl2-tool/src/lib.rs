@@ -255,7 +255,7 @@ enum ArchiveCommand {
         #[arg(long, requires = "confirm_discard")]
         discard_unarchived: bool,
 
-        /// Must equal --change-set-ref to authorize --discard-unarchived.
+        /// Current worktree tree sha; must match a snapshot or mismatch preview.
         #[arg(long, requires = "discard_unarchived")]
         confirm_discard: Option<String>,
 

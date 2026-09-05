@@ -37,18 +37,17 @@ impl Fixture {
     }
 
     fn materialize(&self, change_set_ref: &str) -> PathBuf {
+        self.materialize_at(change_set_ref, &self.first_commit)
+    }
+
+    fn materialize_at(&self, change_set_ref: &str, baseline: &str) -> PathBuf {
         let root = self.root.join("worktrees");
         let output = tool()
             .args(["worktree", "materialize", "--repo"])
             .arg(&self.repo)
             .arg("--root")
             .arg(&root)
-            .args([
-                "--change-set-ref",
-                change_set_ref,
-                "--baseline",
-                &self.first_commit,
-            ])
+            .args(["--change-set-ref", change_set_ref, "--baseline", baseline])
             .output()
             .expect("materialize");
         assert_success(&output);
@@ -86,7 +85,9 @@ fn snapshot_captures_tracked_and_untracked_but_not_ignored() {
     assert_eq!(record["error"], serde_json::Value::Null);
     let tree = record["result_tree_sha"].as_str().expect("tree");
     let commit = record["snapshot_commit_sha"].as_str().expect("commit");
-    assert_eq!(record["base_commit_sha"], fixture.first_commit);
+    assert_eq!(record["head_commit_sha"], fixture.first_commit);
+    assert_eq!(record["baseline_commit_sha"], fixture.first_commit);
+    assert_eq!(record["captures"], "worktree_content");
     assert_ne!(
         tree,
         git_stdout(Some(&worktree), ["rev-parse", "HEAD^{tree}"])
@@ -150,6 +151,7 @@ fn salvage_remove_keeps_a_reachable_copy_and_lists_ignored_residue() {
     assert!(listing.contains("only-copy.txt"));
     assert!(!listing.contains("noise.log"));
     assert_eq!(record["ignored_residue"][0]["path"], "noise.log");
+    assert_eq!(record["ignored_residue_total"], 1);
     assert_eq!(record["ignored_residue_truncated"], false);
     assert!(!worktree.exists());
     git(
@@ -167,7 +169,7 @@ fn salvage_remove_keeps_a_reachable_copy_and_lists_ignored_residue() {
 }
 
 #[test]
-fn discard_requires_matching_confirmation_and_does_not_keep_a_snapshot() {
+fn discard_requires_matching_tree_sha_and_does_not_keep_a_snapshot() {
     let fixture = Fixture::new("discard");
     let worktree = fixture.materialize("CS-drop");
     fs::write(worktree.join("only-copy.txt"), "gone\n").expect("untracked copy");
@@ -203,6 +205,16 @@ fn discard_requires_matching_confirmation_and_does_not_keep_a_snapshot() {
         record["error"]["recovery_action"],
         "pass_matching_confirm_discard"
     );
+    let tree = record["error"]["details"]["current_tree_sha"]
+        .as_str()
+        .expect("current tree")
+        .to_owned();
+    assert!(
+        !record["error"]["details"]["status_summary"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty()
+    );
     assert_error_code(mismatched, "HCTL2_TOOL_DISCARD_CONFIRMATION_MISMATCH");
     assert!(worktree.exists());
 
@@ -214,13 +226,14 @@ fn discard_requires_matching_confirmation_and_does_not_keep_a_snapshot() {
             "CS-drop",
             "--discard-unarchived",
             "--confirm-discard",
-            "CS-drop",
+            &tree,
         ])
         .output()
         .expect("discard");
     assert_success(&discarded);
     let record = json_stdout(&discarded);
     assert_eq!(record["operation"], "removed_discarded");
+    assert_eq!(record["current_tree_sha"], tree);
     assert!(record["snapshot"].is_null());
     assert!(!worktree.exists());
     let refs = git_stdout(
@@ -345,6 +358,205 @@ fn salvage_remove_does_not_prune_other_worktrees() {
     let text = String::from_utf8_lossy(&registered.stdout);
     assert!(text.contains("CS-other"));
     assert!(!text.contains("CS-gone"));
+}
+
+#[test]
+fn snapshot_includes_tracked_files_even_when_gitignored() {
+    let fixture = Fixture::new("tracked-ignored");
+    fs::write(fixture.repo.join("config.local"), "original\n").expect("tracked secret");
+    git(Some(&fixture.repo), ["add", "config.local"]);
+    git(Some(&fixture.repo), ["commit", "-m", "track local config"]);
+    let baseline = git_stdout(Some(&fixture.repo), ["rev-parse", "HEAD"]);
+    let worktree = fixture.materialize_at("CS-secret", &baseline);
+    fs::write(worktree.join(".gitignore"), "config.local\n").expect("ignore tracked file");
+    fs::write(worktree.join("config.local"), "edited-secret\n").expect("edit tracked ignored");
+
+    let output = snapshot(&fixture, "CS-secret");
+    assert_success(&output);
+    let tree = json_stdout(&output)["result_tree_sha"]
+        .as_str()
+        .expect("tree")
+        .to_owned();
+    let listing = git_stdout(Some(&fixture.repo), ["ls-tree", "-r", "--name-only", &tree]);
+    assert!(listing.contains("config.local"), "{listing}");
+    assert_eq!(
+        git_stdout(
+            Some(&fixture.repo),
+            ["show", &format!("{tree}:config.local")]
+        ),
+        "edited-secret"
+    );
+}
+
+#[test]
+fn salvage_remove_refuses_a_nested_repository() {
+    let fixture = Fixture::new("nested-repo");
+    let worktree = fixture.materialize("CS-nested");
+    let vendor = worktree.join("vendor");
+    git(
+        None,
+        ["init", "-b", "main", vendor.to_str().expect("utf-8")],
+    );
+    git(Some(&vendor), ["config", "user.name", "HCTL2 Test"]);
+    git(
+        Some(&vendor),
+        ["config", "user.email", "hctl2@example.invalid"],
+    );
+    fs::write(vendor.join("crate.txt"), "embedded\n").expect("nested file");
+    git(Some(&vendor), ["add", "."]);
+    git(Some(&vendor), ["commit", "-m", "nested"]);
+
+    let output = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args(["--change-set-ref", "CS-nested"])
+        .output()
+        .expect("remove");
+    let record = json_stdout(&output);
+    assert_eq!(
+        record["error"]["recovery_action"],
+        "relocate_or_publish_nested_repository_or_discard"
+    );
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["path"],
+        "vendor"
+    );
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["in_gitmodules"],
+        false
+    );
+    assert_error_code(output, "HCTL2_TOOL_NESTED_REPOSITORY_PRESENT");
+    assert!(worktree.exists());
+    assert_eq!(
+        fs::read_to_string(vendor.join("crate.txt")).expect("nested copy kept"),
+        "embedded\n"
+    );
+}
+
+#[test]
+fn salvage_remove_refuses_an_initialized_submodule_with_a_local_commit() {
+    let fixture = Fixture::new("submodule");
+    let lib = fixture.root.join("lib");
+    git(None, ["init", "-b", "main", lib.to_str().expect("utf-8")]);
+    git(Some(&lib), ["config", "user.name", "HCTL2 Test"]);
+    git(
+        Some(&lib),
+        ["config", "user.email", "hctl2@example.invalid"],
+    );
+    fs::write(lib.join("src.c"), "int x;\n").expect("lib file");
+    git(Some(&lib), ["add", "."]);
+    git(Some(&lib), ["commit", "-m", "lib"]);
+    git(
+        Some(&fixture.repo),
+        [
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            lib.to_str().expect("utf-8"),
+            "lib",
+        ],
+    );
+    git(Some(&fixture.repo), ["commit", "-m", "add submodule"]);
+    let baseline = git_stdout(Some(&fixture.repo), ["rev-parse", "HEAD"]);
+    let worktree = fixture.materialize_at("CS-sub", &baseline);
+    git(
+        Some(&worktree),
+        [
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "update",
+            "--init",
+        ],
+    );
+    git(
+        Some(&worktree.join("lib")),
+        ["config", "user.name", "HCTL2 Test"],
+    );
+    git(
+        Some(&worktree.join("lib")),
+        ["config", "user.email", "hctl2@example.invalid"],
+    );
+    git(
+        Some(&worktree.join("lib")),
+        ["commit", "--allow-empty", "-m", "local-only"],
+    );
+    let gitdir = PathBuf::from(git_stdout(
+        Some(&worktree.join("lib")),
+        ["rev-parse", "--path-format=absolute", "--git-dir"],
+    ));
+    assert!(gitdir.exists(), "{}", gitdir.display());
+
+    let output = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args(["--change-set-ref", "CS-sub"])
+        .output()
+        .expect("remove");
+    let record = json_stdout(&output);
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["path"],
+        "lib"
+    );
+    assert_eq!(
+        record["error"]["details"]["nested_repositories"][0]["in_gitmodules"],
+        true
+    );
+    assert_error_code(output, "HCTL2_TOOL_NESTED_REPOSITORY_PRESENT");
+    assert!(worktree.exists());
+    assert!(
+        gitdir.exists(),
+        "submodule gitdir must survive salvage refusal"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn salvage_remove_refuses_when_the_worktree_changes_after_snapshot() {
+    let fixture = Fixture::new("salvage-race");
+    let worktree = fixture.materialize("CS-race");
+    fs::write(worktree.join("notes.txt"), "before\n").expect("untracked");
+    let common = PathBuf::from(git_stdout(
+        Some(&fixture.repo),
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    ));
+    let hooks = common.join("hooks");
+    fs::create_dir_all(&hooks).expect("hooks");
+    let hook = hooks.join("reference-transaction");
+    let injected = worktree.join("injected.txt");
+    fs::write(
+        &hook,
+        format!(
+            "#!/bin/sh\n[ \"$1\" = \"committed\" ] || exit 0\nprintf 'injected\\n' >> '{}'\n",
+            injected.display()
+        ),
+    )
+    .expect("hook");
+    make_executable(&hook);
+
+    let output = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args(["--change-set-ref", "CS-race"])
+        .output()
+        .expect("remove");
+    let record = json_stdout(&output);
+    let paths = record["error"]["details"]["paths"]
+        .as_array()
+        .expect("differing paths");
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.as_str() == Some("injected.txt")),
+        "{record}"
+    );
+    assert_error_code(output, "HCTL2_TOOL_SALVAGE_UNPROVEN");
+    assert!(worktree.exists());
+    assert_eq!(
+        fs::read_to_string(&injected).expect("injected"),
+        "injected\n"
+    );
 }
 
 #[test]
@@ -500,4 +712,13 @@ fn wait_for_path(path: &Path) {
         thread::sleep(Duration::from_millis(25));
     }
     panic!("timed out waiting for {}", path.display());
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path).expect("metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).expect("chmod");
 }

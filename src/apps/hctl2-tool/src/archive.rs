@@ -1,3 +1,11 @@
+//! Snapshot and salvage-remove isolated ChangeSet worktrees.
+//!
+//! Salvage proof is point-in-time: the site lock serializes toolbox commands,
+//! not Harness writes. P1 callers must stop the writer; P2 lease revocation
+//! does that. Snapshots record worktree content, not the Harness index staging
+//! state.
+
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,11 +15,12 @@ use serde_json::{Value, json};
 use crate::git::{Git, args};
 use crate::repository::{Repository, WorktreeEntry, resolve_commit};
 use crate::site_lock::SiteLock;
-use crate::worktree::{branch_ref, read_optional_commit};
+use crate::worktree::{baseline_ref, branch_ref, read_optional_commit};
 use crate::{ToolError, ToolOutput, observed_at_unix_ms};
 
 const IGNORED_RESIDUE_LIMIT: usize = 64;
 const SNAPSHOT_MESSAGE: &str = "hctl2 archive snapshot";
+const CAPTURES_WORKTREE_CONTENT: &str = "worktree_content";
 
 pub(crate) fn snapshot(
     git: &Git,
@@ -39,71 +48,49 @@ pub(crate) fn remove(
     confirm_discard: Option<String>,
     reject_ignored: bool,
 ) -> Result<ToolOutput, ToolError> {
-    check_discard_confirmation(
-        &change_set_ref,
-        discard_unarchived,
-        confirm_discard.as_deref(),
-    )?;
+    if discard_unarchived {
+        if confirm_discard.is_none() {
+            return Err(ToolError::new(
+                "HCTL2_TOOL_INVALID_ARGUMENT",
+                "--discard-unarchived requires --confirm-discard",
+            ));
+        }
+    } else if confirm_discard.is_some() {
+        return Err(ToolError::new(
+            "HCTL2_TOOL_INVALID_ARGUMENT",
+            "--confirm-discard is only valid with --discard-unarchived",
+        ));
+    }
 
     let repository = Repository::open(git, &repository_path)?;
     let site_lock = acquire_lock(&repository, "archive_remove", &change_set_ref)?;
     let worktree = require_worktree(git, &repository, &change_set_ref)?;
-    let ignored = ignored_residue(git, &worktree.path)?;
-    let snapshot = if discard_unarchived {
-        None
+    if discard_unarchived {
+        discard_worktree(
+            git,
+            &repository,
+            &worktree,
+            &change_set_ref,
+            confirm_discard
+                .as_deref()
+                .expect("clap requires --confirm-discard with --discard-unarchived"),
+            &site_lock,
+        )
     } else {
-        let snapshot = write_snapshot(git, &repository, &worktree, &change_set_ref)?;
-        prove_salvage(git, &repository, &worktree, &change_set_ref, &snapshot)?;
-        if reject_ignored && !ignored.files.is_empty() {
-            return Err(ignored_residue_error(&ignored, &snapshot, git, &worktree));
-        }
-        Some(snapshot)
-    };
-
-    let path = worktree.path.clone();
-    let mut arguments = args(&["worktree", "remove", "--force", "--"]);
-    arguments.push(path.clone().into_os_string());
-    git.checked(
-        &repository.anchor,
-        &arguments,
-        "HCTL2_TOOL_WORKTREE_REMOVE_FAILED",
-        "remove worktree",
-    )
-    .map_err(|error| {
-        error
-            .with_recovery_action("inspect_worktree_then_retry_remove")
-            .with_details(json!({
-                "worktree": path,
-                "change_set_ref": change_set_ref,
-            }))
-    })?;
-
-    Ok(ToolOutput::json(
-        json!({
-            "schema": "hctl2.archive.v1",
-            "evidence_level": "toolbox_readback",
-            "outcome": "established",
-            "observed_at_unix_ms": observed_at_unix_ms(),
-            "operation": if discard_unarchived {
-                "removed_discarded"
-            } else {
-                "removed_salvaged"
-            },
-            "git": { "path": git.executable(), "version": git.version() },
-            "change_set_ref": change_set_ref,
-            "site_lock": { "path": site_lock.path(), "filesystem": site_lock.filesystem() },
-            "worktree_path": path,
-            "snapshot": snapshot.as_ref().map(SnapshotRecord::to_json),
-            "ignored_residue": ignored.files,
-            "ignored_residue_truncated": ignored.truncated,
-            "error": Value::Null,
-        }),
-        0,
-    ))
+        salvage_worktree(
+            git,
+            &repository,
+            &worktree,
+            &change_set_ref,
+            reject_ignored,
+            &site_lock,
+        )
+    }
 }
 
 struct SnapshotRecord {
-    base_commit_sha: String,
+    head_commit_sha: String,
+    baseline_commit_sha: Option<String>,
     result_tree_sha: String,
     snapshot_commit_sha: String,
     snapshot_ref: String,
@@ -113,18 +100,44 @@ struct SnapshotRecord {
 impl SnapshotRecord {
     fn to_json(&self) -> Value {
         json!({
-            "base_commit_sha": self.base_commit_sha,
+            "head_commit_sha": self.head_commit_sha,
+            "baseline_commit_sha": self.baseline_commit_sha,
             "result_tree_sha": self.result_tree_sha,
             "snapshot_commit_sha": self.snapshot_commit_sha,
             "snapshot_ref": self.snapshot_ref,
             "reused": self.reused,
+            "captures": CAPTURES_WORKTREE_CONTENT,
         })
     }
 }
 
 struct IgnoredResidue {
     files: Vec<Value>,
+    total: usize,
     truncated: bool,
+}
+
+struct Gitlink {
+    path: String,
+    commit: String,
+    gitdir: Option<String>,
+    in_gitmodules: bool,
+}
+
+impl Gitlink {
+    fn to_json(&self) -> Value {
+        json!({
+            "path": self.path,
+            "commit": self.commit,
+            "gitdir": self.gitdir,
+            "in_gitmodules": self.in_gitmodules,
+        })
+    }
+}
+
+struct StagedTree {
+    tree_sha: String,
+    gitlinks: Vec<Gitlink>,
 }
 
 struct TemporaryIndex {
@@ -176,50 +189,17 @@ fn snapshot_output(
                 "path": lock.path(),
                 "filesystem": lock.filesystem(),
             })),
-            "base_commit_sha": record.base_commit_sha,
+            "head_commit_sha": record.head_commit_sha,
+            "baseline_commit_sha": record.baseline_commit_sha,
             "result_tree_sha": record.result_tree_sha,
             "snapshot_commit_sha": record.snapshot_commit_sha,
             "snapshot_ref": record.snapshot_ref,
             "reused": record.reused,
+            "captures": CAPTURES_WORKTREE_CONTENT,
             "error": Value::Null,
         }),
         0,
     )
-}
-
-fn check_discard_confirmation(
-    change_set_ref: &str,
-    discard_unarchived: bool,
-    confirm_discard: Option<&str>,
-) -> Result<(), ToolError> {
-    if discard_unarchived {
-        let Some(token) = confirm_discard else {
-            return Err(ToolError::new(
-                "HCTL2_TOOL_INVALID_ARGUMENT",
-                "--discard-unarchived requires --confirm-discard",
-            ));
-        };
-        if token == change_set_ref {
-            Ok(())
-        } else {
-            Err(ToolError::not_established(
-                "HCTL2_TOOL_DISCARD_CONFIRMATION_MISMATCH",
-                "discard confirmation must equal the ChangeSet ref",
-            )
-            .with_recovery_action("pass_matching_confirm_discard")
-            .with_details(json!({
-                "change_set_ref": change_set_ref,
-                "confirm_discard": token,
-            })))
-        }
-    } else if confirm_discard.is_some() {
-        Err(ToolError::new(
-            "HCTL2_TOOL_INVALID_ARGUMENT",
-            "--confirm-discard is only valid with --discard-unarchived",
-        ))
-    } else {
-        Ok(())
-    }
 }
 
 fn acquire_lock(
@@ -234,6 +214,146 @@ fn acquire_lock(
             error
         }
     })
+}
+
+fn salvage_worktree(
+    git: &Git,
+    repository: &Repository,
+    worktree: &WorktreeEntry,
+    change_set_ref: &str,
+    reject_ignored: bool,
+    site_lock: &SiteLock,
+) -> Result<ToolOutput, ToolError> {
+    let snapshot = write_snapshot(git, repository, worktree, change_set_ref)?;
+    let staged = prove_salvage(git, repository, worktree, change_set_ref, &snapshot)?;
+    if !staged.gitlinks.is_empty() {
+        return Err(nested_repository_error(
+            git,
+            worktree,
+            &staged.gitlinks,
+            Some(&snapshot),
+        ));
+    }
+    let ignored = ignored_residue(git, &worktree.path)?;
+    if reject_ignored && !ignored.files.is_empty() {
+        return Err(ignored_residue_error(&ignored, &snapshot, git, worktree));
+    }
+    let summary = status_summary(git, &worktree.path);
+    let path = worktree.path.clone();
+    remove_worktree(git, repository, &path, change_set_ref)?;
+    Ok(remove_output(
+        git,
+        change_set_ref,
+        site_lock,
+        &path,
+        "removed_salvaged",
+        Some(&snapshot),
+        None,
+        &ignored,
+        &summary,
+    ))
+}
+
+fn discard_worktree(
+    git: &Git,
+    repository: &Repository,
+    worktree: &WorktreeEntry,
+    change_set_ref: &str,
+    confirm_discard: &str,
+    site_lock: &SiteLock,
+) -> Result<ToolOutput, ToolError> {
+    let index = TemporaryIndex::create(&repository.common_dir, "discard", change_set_ref)?;
+    let staged = write_worktree_tree(git, &worktree.path, &index, "HCTL2_TOOL_ARCHIVE_FAILED")
+        .map_err(|error| error.with_recovery_action("inspect_worktree_then_retry_archive"))?;
+    drop(index);
+    if confirm_discard != staged.tree_sha {
+        return Err(ToolError::not_established(
+            "HCTL2_TOOL_DISCARD_CONFIRMATION_MISMATCH",
+            "discard confirmation must equal the current worktree tree sha",
+        )
+        .with_recovery_action("pass_matching_confirm_discard")
+        .with_details(json!({
+            "change_set_ref": change_set_ref,
+            "confirm_discard": confirm_discard,
+            "current_tree_sha": staged.tree_sha,
+            "status_summary": status_summary(git, &worktree.path),
+        })));
+    }
+    let ignored = ignored_residue(git, &worktree.path)?;
+    let summary = status_summary(git, &worktree.path);
+    let path = worktree.path.clone();
+    remove_worktree(git, repository, &path, change_set_ref)?;
+    Ok(remove_output(
+        git,
+        change_set_ref,
+        site_lock,
+        &path,
+        "removed_discarded",
+        None,
+        Some(staged.tree_sha.as_str()),
+        &ignored,
+        &summary,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn remove_output(
+    git: &Git,
+    change_set_ref: &str,
+    site_lock: &SiteLock,
+    path: &Path,
+    operation: &str,
+    snapshot: Option<&SnapshotRecord>,
+    current_tree_sha: Option<&str>,
+    ignored: &IgnoredResidue,
+    summary: &str,
+) -> ToolOutput {
+    ToolOutput::json(
+        json!({
+            "schema": "hctl2.archive.v1",
+            "evidence_level": "toolbox_readback",
+            "outcome": "established",
+            "observed_at_unix_ms": observed_at_unix_ms(),
+            "operation": operation,
+            "git": { "path": git.executable(), "version": git.version() },
+            "change_set_ref": change_set_ref,
+            "site_lock": { "path": site_lock.path(), "filesystem": site_lock.filesystem() },
+            "worktree_path": path,
+            "snapshot": snapshot.map(SnapshotRecord::to_json),
+            "current_tree_sha": current_tree_sha,
+            "status_summary": summary,
+            "ignored_residue": ignored.files,
+            "ignored_residue_total": ignored.total,
+            "ignored_residue_truncated": ignored.truncated,
+            "error": Value::Null,
+        }),
+        0,
+    )
+}
+
+fn remove_worktree(
+    git: &Git,
+    repository: &Repository,
+    path: &Path,
+    change_set_ref: &str,
+) -> Result<(), ToolError> {
+    let mut arguments = args(&["worktree", "remove", "--force", "--"]);
+    arguments.push(path.to_path_buf().into_os_string());
+    git.checked(
+        &repository.anchor,
+        &arguments,
+        "HCTL2_TOOL_WORKTREE_REMOVE_FAILED",
+        "remove worktree",
+    )
+    .map_err(|error| {
+        error
+            .with_recovery_action("inspect_worktree_then_retry_remove")
+            .with_details(json!({
+                "worktree": path,
+                "change_set_ref": change_set_ref,
+            }))
+    })?;
+    Ok(())
 }
 
 fn require_worktree(
@@ -309,49 +429,66 @@ fn write_snapshot(
     worktree: &WorktreeEntry,
     change_set_ref: &str,
 ) -> Result<SnapshotRecord, ToolError> {
-    let base_commit_sha = resolve_commit(git, &worktree.path, "HEAD", "HCTL2_TOOL_HEAD_MISSING")?;
+    let head_commit_sha = resolve_commit(git, &worktree.path, "HEAD", "HCTL2_TOOL_HEAD_MISSING")?;
+    let baseline_commit_sha =
+        read_optional_commit(git, &repository.anchor, &baseline_ref(change_set_ref))?;
     let index = TemporaryIndex::create(&repository.common_dir, "archive", change_set_ref)?;
-    let result_tree_sha =
-        write_worktree_tree(git, &worktree.path, &index, "HCTL2_TOOL_ARCHIVE_FAILED")
-            .map_err(|error| error.with_recovery_action("inspect_worktree_then_retry_archive"))?;
+    let staged = write_worktree_tree(git, &worktree.path, &index, "HCTL2_TOOL_ARCHIVE_FAILED")
+        .map_err(|error| error.with_recovery_action("inspect_worktree_then_retry_archive"))?;
     drop(index);
-
+    let result_tree_sha = staged.tree_sha;
     let snapshot_ref = snapshot_ref(change_set_ref, &result_tree_sha);
+
     if let Some(existing) = read_optional_commit(git, &repository.anchor, &snapshot_ref)? {
-        let existing_tree = commit_tree_sha(git, &repository.anchor, &existing)?;
-        if existing_tree == result_tree_sha {
+        let existing_tree = commit_peel(git, &repository.anchor, &existing, "tree")?;
+        if existing_tree != result_tree_sha {
+            return Err(ToolError::new(
+                "HCTL2_TOOL_ARCHIVE_FAILED",
+                "snapshot ref does not point at the tree it is named for",
+            )
+            .with_recovery_action("inspect_worktree_then_retry_archive")
+            .with_details(json!({
+                "snapshot_ref": snapshot_ref,
+                "expected_tree_sha": result_tree_sha,
+                "actual_tree_sha": existing_tree,
+            })));
+        }
+        let existing_parent = commit_parent(git, &repository.anchor, &existing)?;
+        if existing_parent.as_deref() == Some(head_commit_sha.as_str()) {
             return Ok(SnapshotRecord {
-                base_commit_sha,
+                head_commit_sha,
+                baseline_commit_sha,
                 result_tree_sha,
                 snapshot_commit_sha: existing,
                 snapshot_ref,
                 reused: true,
             });
         }
-        return Err(ToolError::new(
+        let snapshot_commit_sha =
+            create_snapshot_commit(git, repository, &result_tree_sha, &head_commit_sha)?;
+        git.checked(
+            &repository.anchor,
+            &[
+                OsString::from("update-ref"),
+                OsString::from(&snapshot_ref),
+                OsString::from(&snapshot_commit_sha),
+                OsString::from(&existing),
+            ],
             "HCTL2_TOOL_ARCHIVE_FAILED",
-            "snapshot ref does not point at the tree it is named for",
-        )
-        .with_recovery_action("inspect_worktree_then_retry_archive")
-        .with_details(json!({
-            "snapshot_ref": snapshot_ref,
-            "expected_tree_sha": result_tree_sha,
-            "actual_tree_sha": existing_tree,
-        })));
+            "replace archive snapshot ref for a new parent",
+        )?;
+        return Ok(SnapshotRecord {
+            head_commit_sha,
+            baseline_commit_sha,
+            result_tree_sha,
+            snapshot_commit_sha,
+            snapshot_ref,
+            reused: false,
+        });
     }
 
-    let identity = commit_identity_env();
-    let mut commit_arguments = args(&["commit-tree", &result_tree_sha, "-p", &base_commit_sha]);
-    commit_arguments.extend(args(&["-m", SNAPSHOT_MESSAGE]));
-    let snapshot_commit_sha = git
-        .checked_with_env(
-            &repository.anchor,
-            &commit_arguments,
-            &identity,
-            "HCTL2_TOOL_ARCHIVE_FAILED",
-            "create archive snapshot commit",
-        )?
-        .stdout_text()?;
+    let snapshot_commit_sha =
+        create_snapshot_commit(git, repository, &result_tree_sha, &head_commit_sha)?;
     let zero = "0".repeat(snapshot_commit_sha.len());
     let publish = git.invoke(
         &repository.anchor,
@@ -364,7 +501,8 @@ fn write_snapshot(
     )?;
     if publish.success() {
         return Ok(SnapshotRecord {
-            base_commit_sha,
+            head_commit_sha,
+            baseline_commit_sha,
             result_tree_sha,
             snapshot_commit_sha,
             snapshot_ref,
@@ -372,10 +510,14 @@ fn write_snapshot(
         });
     }
     if let Some(existing) = read_optional_commit(git, &repository.anchor, &snapshot_ref)? {
-        let existing_tree = commit_tree_sha(git, &repository.anchor, &existing)?;
-        if existing_tree == result_tree_sha {
+        let existing_tree = commit_peel(git, &repository.anchor, &existing, "tree")?;
+        let existing_parent = commit_parent(git, &repository.anchor, &existing)?;
+        if existing_tree == result_tree_sha
+            && existing_parent.as_deref() == Some(head_commit_sha.as_str())
+        {
             return Ok(SnapshotRecord {
-                base_commit_sha,
+                head_commit_sha,
+                baseline_commit_sha,
                 result_tree_sha,
                 snapshot_commit_sha: existing,
                 snapshot_ref,
@@ -396,9 +538,9 @@ fn prove_salvage(
     worktree: &WorktreeEntry,
     change_set_ref: &str,
     snapshot: &SnapshotRecord,
-) -> Result<(), ToolError> {
+) -> Result<StagedTree, ToolError> {
     let index = TemporaryIndex::create(&repository.common_dir, "salvage", change_set_ref)?;
-    let tree_sha = write_worktree_tree(git, &worktree.path, &index, "HCTL2_TOOL_SALVAGE_UNPROVEN")
+    let staged = write_worktree_tree(git, &worktree.path, &index, "HCTL2_TOOL_SALVAGE_UNPROVEN")
         .map_err(|error| {
             salvage_unproven(
                 error.message(),
@@ -408,7 +550,7 @@ fn prove_salvage(
             )
         })?;
     drop(index);
-    if tree_sha != snapshot.result_tree_sha {
+    if staged.tree_sha != snapshot.result_tree_sha {
         return Err(salvage_unproven(
             "worktree contents changed after the salvage snapshot",
             snapshot,
@@ -416,7 +558,7 @@ fn prove_salvage(
                 git,
                 &repository.anchor,
                 &snapshot.result_tree_sha,
-                &tree_sha,
+                &staged.tree_sha,
             ),
             &status_summary(git, &worktree.path),
         ));
@@ -441,7 +583,7 @@ fn prove_salvage(
             &status_summary(git, &worktree.path),
         )
     })?;
-    Ok(())
+    Ok(staged)
 }
 
 fn write_worktree_tree(
@@ -449,8 +591,15 @@ fn write_worktree_tree(
     worktree: &Path,
     index: &TemporaryIndex,
     code: &'static str,
-) -> Result<String, ToolError> {
+) -> Result<StagedTree, ToolError> {
     let env = index.env();
+    git.checked_with_env(
+        worktree,
+        &args(&["read-tree", "HEAD"]),
+        &env,
+        code,
+        "seed archive index from HEAD",
+    )?;
     git.checked_with_env(
         worktree,
         &args(&["add", "--all", "--", "."]),
@@ -467,14 +616,91 @@ fn write_worktree_tree(
             "write archive tree",
         )?
         .stdout_text()?;
-    if is_object_id(&tree) {
-        Ok(tree)
-    } else {
-        Err(ToolError::new(
+    if !is_object_id(&tree) {
+        return Err(ToolError::new(
             "HCTL2_TOOL_GIT_OUTPUT_INVALID",
             format!("write-tree returned an invalid tree: {tree}"),
-        ))
+        ));
     }
+    let staged = git.checked_with_env(
+        worktree,
+        &args(&["ls-files", "--stage", "-z"]),
+        &env,
+        code,
+        "list staged gitlinks",
+    )?;
+    Ok(StagedTree {
+        tree_sha: tree,
+        gitlinks: gitlinks_from_stage(git, worktree, staged.stdout())?,
+    })
+}
+
+fn gitlinks_from_stage(
+    git: &Git,
+    worktree: &Path,
+    stdout: &[u8],
+) -> Result<Vec<Gitlink>, ToolError> {
+    let submodules = submodule_paths(git, worktree);
+    let mut gitlinks = Vec::new();
+    for record in stdout.split(|byte| *byte == 0) {
+        if record.is_empty() {
+            continue;
+        }
+        let text = String::from_utf8(record.to_vec()).map_err(|_| {
+            ToolError::new("HCTL2_TOOL_GIT_OUTPUT_INVALID", "staged path is not UTF-8")
+        })?;
+        let Some((meta, path)) = text.split_once('\t') else {
+            continue;
+        };
+        let mut fields = meta.split(' ');
+        let Some(mode) = fields.next() else { continue };
+        let Some(commit) = fields.next() else {
+            continue;
+        };
+        if mode != "160000" {
+            continue;
+        }
+        let gitdir = git
+            .invoke(
+                &worktree.join(path),
+                &args(&["rev-parse", "--path-format=absolute", "--git-dir"]),
+            )
+            .ok()
+            .and_then(|output| output.success().then_some(output))
+            .and_then(|output| output.stdout_text().ok());
+        gitlinks.push(Gitlink {
+            path: path.to_owned(),
+            commit: commit.to_owned(),
+            gitdir,
+            in_gitmodules: submodules.contains(path),
+        });
+    }
+    Ok(gitlinks)
+}
+
+fn submodule_paths(git: &Git, worktree: &Path) -> HashSet<String> {
+    let output = git.invoke(
+        worktree,
+        &args(&[
+            "config",
+            "-f",
+            ".gitmodules",
+            "--get-regexp",
+            r"^submodule\..*\.path$",
+        ]),
+    );
+    let Ok(output) = output else {
+        return HashSet::new();
+    };
+    if !output.success() {
+        return HashSet::new();
+    }
+    let Ok(text) = output.stdout_text() else {
+        return HashSet::new();
+    };
+    text.lines()
+        .filter_map(|line| line.split_once(' ').map(|(_, path)| path.to_owned()))
+        .collect()
 }
 
 fn ignored_residue(git: &Git, worktree: &Path) -> Result<IgnoredResidue, ToolError> {
@@ -485,14 +711,14 @@ fn ignored_residue(git: &Git, worktree: &Path) -> Result<IgnoredResidue, ToolErr
         "list ignored files",
     )?;
     let mut files = Vec::new();
-    let mut truncated = false;
+    let mut total = 0;
     for path in output.stdout().split(|byte| *byte == 0) {
         if path.is_empty() {
             continue;
         }
+        total += 1;
         if files.len() == IGNORED_RESIDUE_LIMIT {
-            truncated = true;
-            break;
+            continue;
         }
         let relative = String::from_utf8(path.to_vec()).map_err(|_| {
             ToolError::new("HCTL2_TOOL_GIT_OUTPUT_INVALID", "ignored path is not UTF-8")
@@ -502,7 +728,11 @@ fn ignored_residue(git: &Git, worktree: &Path) -> Result<IgnoredResidue, ToolErr
             .map(|metadata| metadata.len());
         files.push(json!({ "path": relative, "size": size }));
     }
-    Ok(IgnoredResidue { files, truncated })
+    Ok(IgnoredResidue {
+        files,
+        total,
+        truncated: total > IGNORED_RESIDUE_LIMIT,
+    })
 }
 
 fn ignored_residue_error(
@@ -519,8 +749,28 @@ fn ignored_residue_error(
     .with_details(json!({
         "worktree": worktree.path,
         "ignored_residue": ignored.files,
+        "ignored_residue_total": ignored.total,
         "ignored_residue_truncated": ignored.truncated,
         "snapshot": snapshot.to_json(),
+        "status_summary": status_summary(git, &worktree.path),
+    }))
+}
+
+fn nested_repository_error(
+    git: &Git,
+    worktree: &WorktreeEntry,
+    gitlinks: &[Gitlink],
+    snapshot: Option<&SnapshotRecord>,
+) -> ToolError {
+    ToolError::not_established(
+        "HCTL2_TOOL_NESTED_REPOSITORY_PRESENT",
+        "nested repository or submodule has no copy in this repository",
+    )
+    .with_recovery_action("relocate_or_publish_nested_repository_or_discard")
+    .with_details(json!({
+        "worktree": worktree.path,
+        "nested_repositories": gitlinks.iter().map(Gitlink::to_json).collect::<Vec<_>>(),
+        "snapshot": snapshot.map(SnapshotRecord::to_json),
         "status_summary": status_summary(git, &worktree.path),
     }))
 }
@@ -579,19 +829,65 @@ fn differing_paths(git: &Git, repository: &Path, left: &str, right: &str) -> Vec
     })
 }
 
-fn commit_tree_sha(git: &Git, repository: &Path, commit: &str) -> Result<String, ToolError> {
+fn create_snapshot_commit(
+    git: &Git,
+    repository: &Repository,
+    tree: &str,
+    parent: &str,
+) -> Result<String, ToolError> {
+    let identity = commit_identity_env();
+    let mut commit_arguments = args(&["commit-tree", tree, "-p", parent]);
+    commit_arguments.extend(args(&["-m", SNAPSHOT_MESSAGE]));
+    git.checked_with_env(
+        &repository.anchor,
+        &commit_arguments,
+        &identity,
+        "HCTL2_TOOL_ARCHIVE_FAILED",
+        "create archive snapshot commit",
+    )?
+    .stdout_text()
+}
+
+fn commit_peel(
+    git: &Git,
+    repository: &Path,
+    commit: &str,
+    peel: &str,
+) -> Result<String, ToolError> {
     git.checked(
         repository,
         &args(&[
             "rev-parse",
             "--verify",
             "--end-of-options",
-            &format!("{commit}^{{tree}}"),
+            &format!("{commit}^{{{peel}}}"),
         ]),
         "HCTL2_TOOL_GIT_INSPECTION_FAILED",
-        "read snapshot tree",
+        "read snapshot object",
     )?
     .stdout_text()
+}
+
+fn commit_parent(git: &Git, repository: &Path, commit: &str) -> Result<Option<String>, ToolError> {
+    let output = git.invoke(
+        repository,
+        &args(&[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{commit}^"),
+        ]),
+    )?;
+    if output.success() {
+        Ok(Some(output.stdout_text()?))
+    } else if output.code() == Some(128) {
+        Ok(None)
+    } else {
+        Err(ToolError::new(
+            "HCTL2_TOOL_GIT_INSPECTION_FAILED",
+            format!("could not read snapshot parent: {}", output.stderr()),
+        ))
+    }
 }
 
 fn commit_identity_env() -> [(&'static str, OsString); 4] {

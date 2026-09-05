@@ -447,7 +447,7 @@ pub(crate) fn branch_ref(change_set_ref: &str) -> String {
     format!("refs/heads/{}", short_branch(change_set_ref))
 }
 
-fn baseline_ref(change_set_ref: &str) -> String {
+pub(crate) fn baseline_ref(change_set_ref: &str) -> String {
     format!("{BASELINE_REF_PREFIX}{change_set_ref}/baseline")
 }
 
