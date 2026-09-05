@@ -1,6 +1,6 @@
 # GitHub 依赖与代码协作平台边界
 
-> 状态：已拍板 · 记录本轮讨论结论；设计正文与实现尚未调整
+> 状态：已拍板 · 记录 2026-09-05 讨论结论；事实核查与责任划分继续有效，「不意味着增加第五个业务模块」一句被所有者 2026-09-06 的方向覆盖（SCM 立为第五模块），见同目录 `01-scm-module.md`
 > 基线：main @ 0456ac2（草案 v0.16.5）
 > 去向：docs/design/spec/system.md + docs/design/spec/participant.md + docs/design/delivery.md
 
@@ -18,11 +18,11 @@
 
 | 问题 | 当前事实与出处 |
 | --- | --- |
-| Git 是否已是设计的一部分？ | 是。[Git 的双重角色](../../docs/design/spec/system.md#git-的双重角色)区分不可变正文与账本判决的审计副本；本地工作树、提交、集成也已进入合同。 |
-| 远端 PR/merge 是否完全没设计？ | 已有。[ChangeSet 与 Git 事实](../../docs/design/spec/participant.md#changeset-与-git-事实)明确远端 push、PR、merge 走适配器；[外部权威副作用](../../docs/design/spec/system.md#外部权威副作用)已有持久意图、绑定、投递与回读规则。 |
-| 本地集成必须经过 GitHub 吗？ | 不必。[交付文档](../../docs/design/delivery.md)的「纵向切片 A」第 5 步走本地工具箱，「纵向切片 B」第 8 步区分本地工具箱与远端适配器。 |
-| 当前代码是否已有 GitHub 专用依赖？ | 有。[使用说明](../../docs/usage.md#等待外部事实)中的三类 GitHub 事实查询使用随包固定版本的 `gh`；[GitHub SDK 调研](../../docs/research/sdk/github.md#复核记录)明确只读等待已落地，control 的 GitHub provider 尚未实现。 |
-| 设计真正缺什么？ | [固定内核与受控端口](../../docs/design/spec/system.md#固定内核与受控端口)的可替换端点表列出四场景，后文另有 SCM 副作用；[事实权威地图](../../docs/design/spec/system.md#全系统事实权威地图)尚未把 PR 讨论、平台评审与控制面判决的关系集中说明。缺的是既有边界的完整说明，不是从零发明适配层。 |
+| Git 是否已是设计的一部分？ | 是。[Git 的双重角色](../../../docs/design/spec/system.md#git-的双重角色)区分不可变正文与账本判决的审计副本；本地工作树、提交、集成也已进入合同。 |
+| 远端 PR/merge 是否完全没设计？ | 已有。[ChangeSet 与 Git 事实](../../../docs/design/spec/participant.md#changeset-与-git-事实)明确远端 push、PR、merge 走适配器；[外部权威副作用](../../../docs/design/spec/system.md#外部权威副作用)已有持久意图、绑定、投递与回读规则。 |
+| 本地集成必须经过 GitHub 吗？ | 不必。[交付文档](../../../docs/design/delivery.md)的「纵向切片 A」第 5 步走本地工具箱，「纵向切片 B」第 8 步区分本地工具箱与远端适配器。 |
+| 当前代码是否已有 GitHub 专用依赖？ | 有。[使用说明](../../../docs/usage.md#等待外部事实)中的三类 GitHub 事实查询使用随包固定版本的 `gh`；[GitHub SDK 调研](../../../docs/research/sdk/github.md#复核记录)明确只读等待已落地，control 的 GitHub provider 尚未实现。 |
+| 设计真正缺什么？ | [固定内核与受控端口](../../../docs/design/spec/system.md#固定内核与受控端口)的可替换端点表列出四场景，后文另有 SCM 副作用；[事实权威地图](../../../docs/design/spec/system.md#全系统事实权威地图)尚未把 PR 讨论、平台评审与控制面判决的关系集中说明。缺的是既有边界的完整说明，不是从零发明适配层。 |
 
 ## 谁负责什么
 
@@ -36,7 +36,7 @@ GitHub 在这条路径里不只是 repo storage：它还提供 diff、讨论、�
 
 原生客户端、Workbench 集成客户端与 CLI 都可以表达用户意图；客户端没有高低之分。平台上的评论、批准、合入是各自的外部事实，是否满足某个 HCTL 契约，仍按该契约判断。
 
-这不等于每次平台评审之后再加一轮 HCTL Gate。[Task 的轻量路径](../../docs/design/task.md#无-run-的轻量路径)已经允许契约接受可回读的精确外部 SCM 评审证据。只有任务确实要求 HCTL 内部独立评审、多席位或返工治理时，才使用相应 Run；平台已完成的工作直接复用。
+这不等于每次平台评审之后再加一轮 HCTL Gate。[Task 的轻量路径](../../../docs/design/task.md#无-run-的轻量路径)已经允许契约接受可回读的精确外部 SCM 评审证据。只有任务确实要求 HCTL 内部独立评审、多席位或返工治理时，才使用相应 Run；平台已完成的工作直接复用。
 
 ## 采用范围与代价
 
@@ -54,4 +54,4 @@ GitHub 的[普通评论](https://docs.github.com/en/rest/issues/comments)与[正
 
 ## 后续设计工作
 
-后续单独任务把代码协作平台的可选性、事实归属及与已有 SCM 适配器的关系补进权威文档；交付文档说明 GitHub 首先支持哪些操作、本地路径覆盖哪些场景。证据继续引用现有 [Git 调研](../../docs/research/sdk/git.md)与 [GitHub 调研](../../docs/research/sdk/github.md)，不在本备忘里另写接口字段或实现计划。
+后续单独任务把代码协作平台的可选性、事实归属及与已有 SCM 适配器的关系补进权威文档；交付文档说明 GitHub 首先支持哪些操作、本地路径覆盖哪些场景。证据继续引用现有 [Git 调研](../../../docs/research/sdk/git.md)与 [GitHub 调研](../../../docs/research/sdk/github.md)，不在本备忘里另写接口字段或实现计划。
