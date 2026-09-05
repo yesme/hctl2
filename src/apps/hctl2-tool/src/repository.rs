@@ -100,14 +100,25 @@ impl Repository {
         )?;
 
         Ok(Self {
-            anchor,
+            anchor: top_level.clone(),
             top_level,
             common_dir,
         })
     }
 
-    pub(crate) fn head(&self, git: &Git) -> Result<String, ToolError> {
-        resolve_commit(git, &self.anchor, "HEAD", "HCTL2_TOOL_HEAD_MISSING")
+    pub(crate) fn head(&self, git: &Git) -> Result<Option<String>, ToolError> {
+        let symbolic = git.invoke(&self.anchor, &args(&["symbolic-ref", "-q", "HEAD"]))?;
+        if symbolic.success() {
+            let reference = symbolic.stdout_text()?;
+            let exists = git.invoke(
+                &self.anchor,
+                &args(&["show-ref", "--verify", "--quiet", &reference]),
+            )?;
+            if exists.code() == Some(1) {
+                return Ok(None); // An unborn branch, not an unreadable commit.
+            }
+        }
+        resolve_commit(git, &self.anchor, "HEAD", "HCTL2_TOOL_HEAD_MISSING").map(Some)
     }
 
     pub(crate) fn worktrees(&self, git: &Git) -> Result<Vec<WorktreeEntry>, ToolError> {
@@ -122,22 +133,25 @@ impl Repository {
 }
 
 pub(crate) fn inspect(
+    git: &Git,
     path: PathBuf,
     requested_ref: Option<String>,
 ) -> Result<ToolOutput, ToolError> {
-    let git = Git::discover()?;
-    let repository = Repository::open(&git, &path)?;
-    let head = repository.head(&git)?;
-    let worktrees = repository.worktrees(&git)?;
+    let repository = Repository::open(git, &path)?;
+    let head = repository.head(git)?;
+    let worktrees = repository.worktrees(git)?;
     let requested_ref = requested_ref
         .map(|name| {
-            let value =
-                resolve_commit(&git, &repository.anchor, &name, "HCTL2_TOOL_REF_NOT_FOUND")?;
+            let value = resolve_commit(git, &repository.anchor, &name, "HCTL2_TOOL_REF_NOT_FOUND")?;
             Ok(json!({ "name": name, "commit_sha": value }))
         })
         .transpose()?;
-    let stable_identity = stable_repo_identity(&git, &repository)?;
-    let remotes = remotes(&git, &repository)?;
+    let mut stable_identity = stable_repo_identity(git, &repository, head.as_deref())?;
+    stable_identity["source"] = json!({
+        "worktree_root": repository.top_level,
+        "commit_sha": head,
+    });
+    let remotes = remotes(git, &repository)?;
 
     Ok(ToolOutput::json(
         json!({
@@ -185,7 +199,7 @@ pub(crate) fn resolve_commit(
     ];
     let output = git.invoke(repository, &arguments)?;
     if !output.success() {
-        return Err(ToolError::new(
+        return Err(ToolError::not_established(
             code,
             format!(
                 "Git commit {revision:?} does not exist: {}",
@@ -218,20 +232,28 @@ impl WorktreeEntry {
     }
 }
 
-fn stable_repo_identity(git: &Git, repository: &Repository) -> Result<Value, ToolError> {
+fn stable_repo_identity(
+    git: &Git,
+    repository: &Repository,
+    head: Option<&str>,
+) -> Result<Value, ToolError> {
     let relative = ".hctl2/repo.toml";
     let path = repository.top_level.join(relative);
     let tracked = git.invoke(
         &repository.anchor,
         &args(&["ls-files", "--error-unmatch", "--", relative]),
     )?;
-    let tree = git.checked(
-        &repository.anchor,
-        &args(&["ls-tree", "-z", "HEAD", "--", relative]),
-        "HCTL2_TOOL_REPO_IDENTITY_UNREADABLE",
-        "read committed Repo identity",
-    )?;
-    if !tree.stdout().is_empty() {
+    let tree = head
+        .map(|head| {
+            git.checked(
+                &repository.anchor,
+                &args(&["ls-tree", "-z", head, "--", relative]),
+                "HCTL2_TOOL_REPO_IDENTITY_UNREADABLE",
+                "read committed Repo identity",
+            )
+        })
+        .transpose()?;
+    if let Some(tree) = tree.filter(|tree| !tree.stdout().is_empty()) {
         let entry = std::str::from_utf8(tree.stdout().strip_suffix(&[0]).unwrap_or(tree.stdout()))
             .map_err(|_| {
                 ToolError::new(
@@ -255,18 +277,22 @@ fn stable_repo_identity(git: &Git, repository: &Repository) -> Result<Value, Too
                 format!("{relative} must be a regular tracked file, found mode {mode} {kind}"),
             ));
         }
-        let content = git
-            .checked(
-                &repository.anchor,
-                &[
-                    OsString::from("cat-file"),
-                    OsString::from("blob"),
-                    OsString::from(object_id),
-                ],
+        let blob = git.checked(
+            &repository.anchor,
+            &[
+                OsString::from("cat-file"),
+                OsString::from("blob"),
+                OsString::from(object_id),
+            ],
+            "HCTL2_TOOL_REPO_IDENTITY_UNREADABLE",
+            "read Repo identity blob",
+        )?;
+        let content = std::str::from_utf8(blob.stdout()).map_err(|_| {
+            ToolError::new(
                 "HCTL2_TOOL_REPO_IDENTITY_UNREADABLE",
-                "read Repo identity blob",
-            )?
-            .stdout_text()?;
+                "Repo identity blob is not UTF-8",
+            )
+        })?;
         Ok(json!({
             "status": "committed",
             "path": path,
@@ -330,11 +356,13 @@ fn remotes(git: &Git, repository: &Repository) -> Result<Vec<Value>, ToolError> 
 }
 
 fn redact_remote_url(url: &str) -> String {
-    if let Some((scheme, remainder)) = url.split_once("://")
-        && let Some((authority, suffix)) = remainder.split_once('/')
-        && let Some((_, host)) = authority.rsplit_once('@')
-    {
-        return format!("{scheme}://***@{host}/{suffix}");
+    if let Some((scheme, remainder)) = url.split_once("://") {
+        let boundary = remainder.find(['/', '?', '#']).unwrap_or(remainder.len());
+        let (authority, suffix) = remainder.split_at(boundary);
+        if let Some((_, host)) = authority.rsplit_once('@') {
+            return format!("{scheme}://***@{host}{suffix}");
+        }
+        return url.to_owned();
     }
     if let Some((_, host_and_path)) = url.split_once('@')
         && host_and_path.contains(':')
@@ -436,6 +464,10 @@ mod tests {
 
     #[test]
     fn redacts_remote_user_information() {
+        assert_eq!(
+            redact_remote_url("https://token@example.invalid"),
+            "https://***@example.invalid"
+        );
         assert_eq!(
             redact_remote_url("https://token@example.invalid/repo.git"),
             "https://***@example.invalid/repo.git"

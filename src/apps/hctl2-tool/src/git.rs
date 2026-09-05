@@ -153,16 +153,20 @@ fn sanitized_command(executable: &Path) -> Command {
     let mut command = Command::new(executable);
     for name in [
         "GIT_DIR",
+        "GIT_COMMON_DIR",
         "GIT_WORK_TREE",
         "GIT_INDEX_FILE",
         "GIT_OBJECT_DIRECTORY",
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
         "GIT_NAMESPACE",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_PARAMETERS",
     ] {
         command.env_remove(name);
     }
     for (name, _) in std::env::vars_os() {
-        if name.to_string_lossy().starts_with("GIT_CONFIG_") {
+        let name_text = name.to_string_lossy();
+        if name_text.starts_with("GIT_CONFIG_KEY_") || name_text.starts_with("GIT_CONFIG_VALUE_") {
             command.env_remove(name);
         }
     }

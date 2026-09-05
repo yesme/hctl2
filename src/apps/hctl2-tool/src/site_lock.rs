@@ -29,17 +29,6 @@ impl SiteLock {
         operation: &str,
         change_set_ref: Option<&str>,
     ) -> Result<Self, ToolError> {
-        let filesystem = filesystem_type(common_dir)?;
-        if is_nonlocal_filesystem(&filesystem) {
-            return Err(ToolError::new(
-                "HCTL2_TOOL_NONLOCAL_SITE_FILESYSTEM",
-                format!(
-                    "refusing a site lock on non-local filesystem {filesystem}: {}",
-                    common_dir.display()
-                ),
-            ));
-        }
-
         let lock_directory = common_dir.join("hctl2");
         fs::create_dir_all(&lock_directory).map_err(|error| {
             ToolError::new(
@@ -50,17 +39,43 @@ impl SiteLock {
                 ),
             )
         })?;
+        // Inspect the actual lock directory, which may itself be a mount or symlink.
+        let filesystem = filesystem_type(&lock_directory)?;
+        if is_nonlocal_filesystem(&filesystem) {
+            return Err(ToolError::not_established(
+                "HCTL2_TOOL_NONLOCAL_SITE_FILESYSTEM",
+                "site locks require a local filesystem; remote and FUSE filesystems are unsupported",
+            ).with_details(json!({ "filesystem": filesystem, "path": lock_directory })));
+        }
         let path = lock_directory.join("lock");
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(ToolError::not_established(
+                    "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE",
+                    "site lock must be a regular file, not a symlink or directory",
+                ));
+            }
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(ToolError::new(
+                    "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE",
+                    error.to_string(),
+                ));
+            }
+            _ => {}
+        }
         let mut guard = match ExclusiveFileLock::try_acquire(&path) {
             Ok(guard) => guard,
             Err(error) if error.is_lock_contended() => {
-                let holder = fs::read_to_string(&path)
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| "holder information unavailable".to_owned());
-                return Err(ToolError::new(
+                let holder_raw = fs::read_to_string(&path).ok();
+                let holder = holder_raw
+                    .as_deref()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+                return Err(ToolError::not_established(
                     "HCTL2_TOOL_SITE_BUSY",
-                    format!("site lock {} is held; holder: {holder}", path.display()),
+                    format!("site lock {} is held", path.display()),
+                )
+                .with_details(
+                    json!({ "path": path, "holder": holder, "holder_raw": holder_raw }),
                 ));
             }
             Err(error) => {
@@ -166,7 +181,7 @@ fn macos_filesystem_type(path: &Path) -> Result<String, ToolError> {
             format!("cannot canonicalize {}: {error}", path.display()),
         )
     })?;
-    let output = Command::new("mount")
+    let output = Command::new("/sbin/mount")
         .env("LC_ALL", "C")
         .output()
         .map_err(|error| {
@@ -190,6 +205,16 @@ fn macos_filesystem_type(path: &Path) -> Result<String, ToolError> {
             "mount returned non-UTF-8 output",
         )
     })?;
+    parse_mount_table(&path, &table).ok_or_else(|| {
+        ToolError::new(
+            "HCTL2_TOOL_FILESYSTEM_UNREADABLE",
+            format!("no mount-table entry contains {}", path.display()),
+        )
+    })
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn parse_mount_table(path: &Path, table: &str) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
     for line in table.lines() {
         let Some((placement, options)) = line.rsplit_once(" (") else {
@@ -218,15 +243,10 @@ fn macos_filesystem_type(path: &Path) -> Result<String, ToolError> {
             best = Some((specificity, filesystem));
         }
     }
-    best.map(|(_, filesystem)| filesystem).ok_or_else(|| {
-        ToolError::new(
-            "HCTL2_TOOL_FILESYSTEM_UNREADABLE",
-            format!("no mount-table entry contains {}", path.display()),
-        )
-    })
+    best.map(|(_, filesystem)| filesystem)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 fn unescape_mount_path(value: &str) -> String {
     value
         .replace("\\040", " ")
@@ -236,22 +256,65 @@ fn unescape_mount_path(value: &str) -> String {
 
 fn is_nonlocal_filesystem(filesystem: &str) -> bool {
     let normalized = filesystem.to_ascii_lowercase();
-    ["nfs", "cifs", "smbfs", "sshfs", "fuse.sshfs", "9p", "afs"]
-        .iter()
-        .any(|name| normalized == *name || normalized.starts_with(&format!("{name}.")))
+    // coreutils versions report Linux FUSE mounts as fuseblk or fuse, including sshfs.
+    // Reject FUSE conservatively: its type alone cannot establish locality.
+    [
+        "nfs", "cifs", "smb", "smb2", "smbfs", "afs", "ceph", "v9fs", "9p", "afpfs", "webdav",
+        "sshfs", "fuse", "fuseblk", "osxfuse", "macfuse",
+    ]
+    .iter()
+    .any(|name| normalized == *name || normalized.starts_with(&format!("{name}.")))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_nonlocal_filesystem;
+    use super::{is_nonlocal_filesystem, parse_mount_table};
+    use std::path::Path;
 
     #[test]
     fn classifies_known_remote_filesystems() {
-        for filesystem in ["nfs", "nfs.v4", "cifs", "smbfs", "fuse.sshfs", "9p"] {
+        for filesystem in [
+            "nfs",
+            "nfs.v4",
+            "cifs",
+            "smb",
+            "smb2",
+            "smbfs",
+            "afs",
+            "ceph",
+            "v9fs",
+            "afpfs",
+            "webdav",
+            "fuseblk",
+            "fuse.sshfs",
+            "macfuse",
+            "9p",
+        ] {
             assert!(is_nonlocal_filesystem(filesystem), "{filesystem}");
         }
         for filesystem in ["apfs", "ext2/ext3", "xfs", "tmpfs", "overlayfs"] {
             assert!(!is_nonlocal_filesystem(filesystem), "{filesystem}");
         }
+    }
+
+    #[test]
+    fn mount_table_selects_the_longest_matching_mountpoint() {
+        let table = "/dev/disk1 on / (apfs, local)\nserver on /Volumes/team (nfs, nodev)\n/dev/disk2 on /Volumes/team/local (apfs, local)\nserver on /Volumes/a\\040b (smbfs, nodev)\n";
+        assert_eq!(
+            parse_mount_table(Path::new("/Volumes/team/repo"), table).as_deref(),
+            Some("nfs")
+        );
+        assert_eq!(
+            parse_mount_table(Path::new("/Volumes/team/local/repo"), table).as_deref(),
+            Some("apfs")
+        );
+        assert_eq!(
+            parse_mount_table(Path::new("/Volumes/teammate/repo"), table).as_deref(),
+            Some("apfs")
+        );
+        assert_eq!(
+            parse_mount_table(Path::new("/Volumes/a b/repo"), table).as_deref(),
+            Some("smbfs")
+        );
     }
 }

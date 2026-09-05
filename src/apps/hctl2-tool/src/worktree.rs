@@ -13,224 +13,186 @@ const BRANCH_PREFIX: &str = "hctl2/changeset/";
 const BASELINE_REF_PREFIX: &str = "refs/hctl2/changesets/";
 
 pub(crate) fn materialize(
+    git: &Git,
     repository_path: PathBuf,
     root: PathBuf,
     change_set_ref: String,
     baseline: String,
 ) -> Result<ToolOutput, ToolError> {
-    validate_change_set_ref(&change_set_ref)?;
-    let git = Git::discover()?;
-    let repository = Repository::open(&git, &repository_path)?;
+    let repository = Repository::open(git, &repository_path)?;
+    let site_lock = SiteLock::acquire(
+        &repository.common_dir,
+        "worktree_materialize",
+        Some(&change_set_ref),
+    )?;
     let baseline = resolve_commit(
-        &git,
+        git,
         &repository.anchor,
         &baseline,
         "HCTL2_TOOL_BASELINE_NOT_FOUND",
     )?;
+    let marker = baseline_ref(&change_set_ref);
+    let recorded_baseline = read_optional_commit(git, &repository.anchor, &marker)?;
+    if let Some(recorded) = &recorded_baseline
+        && recorded != &baseline
+    {
+        return Err(ToolError::not_established(
+            "HCTL2_TOOL_BASELINE_MISMATCH",
+            "ChangeSet has a different recorded baseline",
+        )
+        .with_details(json!({
+            "change_set_ref": change_set_ref, "recorded_baseline": recorded,
+            "requested_baseline": baseline,
+        })));
+    }
+
+    let worktrees = repository.worktrees(git)?;
     let branch = branch_ref(&change_set_ref);
-    let baseline_ref = baseline_ref(&change_set_ref);
-    let recorded_baseline = read_optional_commit(&git, &repository.anchor, &baseline_ref)?;
-    if let Some(recorded) = &recorded_baseline
-        && recorded != &baseline
-    {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_BASELINE_MISMATCH",
-            format!("ChangeSet {change_set_ref} was materialized from {recorded}, not {baseline}"),
-        ));
-    }
-
-    let existing = repository
-        .worktrees(&git)?
-        .into_iter()
-        .find(|entry| entry.branch.as_deref() == Some(branch.as_str()));
-    if existing.is_some() && recorded_baseline.is_some() {
-        let verification = verify_state(&git, &repository, &change_set_ref)?;
-        if !verification.valid {
-            return Err(ToolError::new(
-                "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-                format!(
-                    "existing ChangeSet worktree failed verification: {}",
-                    verification.failure_summary()
-                ),
-            ));
-        }
-        return Ok(verification.output(&git, "already_materialized", None));
-    }
-
-    let mut site_lock = Some(SiteLock::acquire(
-        &repository.common_dir,
-        "worktree_materialize",
-        Some(&change_set_ref),
-    )?);
-    let root = prepare_root(&root, &repository.common_dir)?;
-    let target = root.join(&change_set_ref);
-
-    // Re-read under the lock so two callers cannot both create the branch.
-    let recorded_baseline = read_optional_commit(&git, &repository.anchor, &baseline_ref)?;
-    if let Some(recorded) = &recorded_baseline
-        && recorded != &baseline
-    {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_BASELINE_MISMATCH",
-            format!("ChangeSet {change_set_ref} was materialized from {recorded}, not {baseline}"),
-        ));
-    }
-    if let Some(entry) = repository
-        .worktrees(&git)?
-        .into_iter()
-        .find(|entry| entry.branch.as_deref() == Some(branch.as_str()))
-    {
-        recover_missing_baseline_marker(
-            &git,
-            &repository,
-            &entry,
-            &target,
-            &baseline_ref,
-            &baseline,
-            recorded_baseline.as_deref(),
-        )?;
-        let verification = verify_state(&git, &repository, &change_set_ref)?;
-        if !verification.valid {
-            return Err(ToolError::new(
-                "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-                verification.failure_summary(),
-            ));
-        }
-        return Ok(verification.output(&git, "already_materialized", site_lock.take()));
-    }
-
-    if target.exists() {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_WORKTREE_PATH_OCCUPIED",
-            format!(
-                "materialization path exists but is not the ChangeSet worktree: {}",
-                target.display()
-            ),
-        ));
-    }
-
-    let existing_branch = read_optional_commit(&git, &repository.anchor, &branch)?;
-    if let Some(commit) = &existing_branch
-        && commit != &baseline
-    {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-            format!("reserved branch {branch} points to {commit}, expected {baseline}"),
-        ));
-    }
-    let mut arguments = vec![OsString::from("worktree"), OsString::from("add")];
-    if existing_branch.is_none() {
-        arguments.extend([
-            OsString::from("-b"),
-            OsString::from(short_branch(&change_set_ref)),
-        ]);
-    }
-    arguments.push(target.clone().into_os_string());
-    arguments.push(OsString::from(
-        existing_branch
+    let existing = worktrees
+        .iter()
+        .any(|entry| entry.branch.as_deref() == Some(branch.as_str()));
+    if !existing {
+        let root = prepare_root(&root, &repository, &worktrees)?;
+        let target = root.join(&change_set_ref);
+        check_target(&target)?;
+        let existing_branch = read_optional_commit(git, &repository.anchor, &branch)?;
+        if existing_branch
             .as_ref()
-            .map_or(baseline.as_str(), |_| branch.as_str()),
-    ));
-    git.checked(
-        &repository.anchor,
-        &arguments,
-        "HCTL2_TOOL_WORKTREE_MATERIALIZE_FAILED",
-        "materialize worktree",
-    )?;
+            .is_some_and(|commit| commit != &baseline)
+        {
+            return Err(ToolError::not_established(
+                "HCTL2_TOOL_WORKTREE_STATE_INVALID",
+                "reserved branch is not at the requested baseline",
+            )
+            .with_details(
+                json!({ "branch": branch, "branch_head": existing_branch, "baseline": baseline }),
+            ));
+        }
 
+        let mut arguments = args(&["worktree", "add"]);
+        if existing_branch.is_none() {
+            arguments.extend(args(&["-b", &short_branch(&change_set_ref)]));
+        }
+        arguments.push(target.clone().into_os_string());
+        // Git attaches HEAD only for the short branch name, not refs/heads/… .
+        arguments.push(OsString::from(if existing_branch.is_some() {
+            short_branch(&change_set_ref)
+        } else {
+            baseline.clone()
+        }));
+        git.checked(
+            &repository.anchor,
+            &arguments,
+            "HCTL2_TOOL_WORKTREE_MATERIALIZE_FAILED",
+            "materialize worktree",
+        )
+        .map_err(|error| {
+            error.with_details(json!({
+                "occupied_path": target, "baseline_marker": marker,
+                "recovery_action": "inspect_worktree_then_retry_same_changeset",
+            }))
+        })?;
+    }
+
+    // The marker is a disposable cache. Validate the caller's baseline against
+    // the actual checkout before creating/rebuilding it, including after commits.
+    let verification = verify_state(git, &repository, &change_set_ref, Some(baseline.clone()))?;
+    if !verification.valid() {
+        return Err(ToolError::not_established(
+            "HCTL2_TOOL_WORKTREE_VERIFICATION_FAILED", "ChangeSet worktree failed readback",
+        ).with_details(json!({
+            "change_set_ref": change_set_ref, "worktree": verification.worktree.as_ref().map(WorktreeEntry::to_json),
+            "verification": verification.facts(), "baseline_marker": marker,
+            "marker_previously_present": recorded_baseline.is_some(),
+            "recovery_action": "inspect_worktree_then_retry_same_changeset",
+        })));
+    }
     if recorded_baseline.is_none() {
-        create_baseline_marker(&git, &repository, &baseline_ref, &baseline)?;
+        create_baseline_marker(git, &repository, &marker, &baseline)?;
     }
-    let verification = verify_state(&git, &repository, &change_set_ref)?;
-    if !verification.valid {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_WORKTREE_VERIFICATION_FAILED",
-            verification.failure_summary(),
-        ));
-    }
-    Ok(verification.output(&git, "created", site_lock.take()))
+    // Read the stored marker as well; successful output is never an input echo.
+    let verification = verify_state(
+        git,
+        &repository,
+        &change_set_ref,
+        read_optional_commit(git, &repository.anchor, &marker)?,
+    )?;
+    Ok(verification.output(
+        git,
+        if existing {
+            "already_materialized"
+        } else {
+            "created"
+        },
+        Some(&site_lock),
+    ))
 }
 
 pub(crate) fn verify(
+    git: &Git,
     repository_path: PathBuf,
     change_set_ref: String,
 ) -> Result<ToolOutput, ToolError> {
-    validate_change_set_ref(&change_set_ref)?;
-    let git = Git::discover()?;
-    let repository = Repository::open(&git, &repository_path)?;
-    let verification = verify_state(&git, &repository, &change_set_ref)?;
-    let exit_code = if verification.valid { 0 } else { 3 };
-    Ok(verification.output_with_code(&git, "verified", None, exit_code))
+    let repository = Repository::open(git, &repository_path)?;
+    let baseline = read_optional_commit(git, &repository.anchor, &baseline_ref(&change_set_ref))?;
+    Ok(verify_state(git, &repository, &change_set_ref, baseline)?.output(git, "verified", None))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Verification {
     change_set_ref: String,
     baseline: Option<String>,
     worktree: Option<WorktreeEntry>,
     path_exists: bool,
+    repository_matches: bool,
     branch_matches: bool,
     branch_head_matches: bool,
     baseline_is_ancestor: bool,
-    tracked_changes: usize,
-    untracked_changes: usize,
-    valid: bool,
+    status: Option<(usize, usize)>,
 }
 
 impl Verification {
-    fn output(&self, git: &Git, action: &str, lock: Option<SiteLock>) -> ToolOutput {
-        self.output_with_code(git, action, lock, 0)
+    fn valid(&self) -> bool {
+        self.path_exists
+            && self.repository_matches
+            && self.branch_matches
+            && self.branch_head_matches
+            && self.baseline_is_ancestor
     }
 
-    fn output_with_code(
-        &self,
-        git: &Git,
-        action: &str,
-        lock: Option<SiteLock>,
-        exit_code: u8,
-    ) -> ToolOutput {
-        let lock = lock.map(|lock| {
-            json!({
-                "path": lock.path(),
-                "filesystem": lock.filesystem(),
-            })
-        });
+    fn facts(&self) -> serde_json::Value {
+        json!({
+            "path_exists": self.path_exists,
+            "repository_matches": self.repository_matches,
+            "branch_matches": self.branch_matches,
+            "branch_head_matches": self.branch_head_matches,
+            "baseline_is_ancestor": self.baseline_is_ancestor,
+            "tracked_changes": self.status.map(|(tracked, _)| tracked),
+            "untracked_changes": self.status.map(|(_, untracked)| untracked),
+            "clean": self.status.map(|status| status == (0, 0)),
+        })
+    }
+
+    fn output(&self, git: &Git, operation: &str, lock: Option<&SiteLock>) -> ToolOutput {
         ToolOutput::json(
             json!({
                 "schema": "hctl2.worktree.v1",
                 "evidence_level": "toolbox_readback",
-                "outcome": if self.valid { "established" } else { "not_established" },
+                "outcome": if self.valid() { "established" } else { "not_established" },
                 "observed_at_unix_ms": observed_at_unix_ms(),
-                "operation": action,
-                "git": {
-                    "path": git.executable(),
-                    "version": git.version(),
-                },
+                "operation": operation,
+                "git": { "path": git.executable(), "version": git.version() },
                 "change_set_ref": self.change_set_ref,
                 "baseline_commit_sha": self.baseline,
-                "site_lock": lock,
+                "site_lock": lock.map(|lock| json!({ "path": lock.path(), "filesystem": lock.filesystem() })),
                 "worktree": self.worktree.as_ref().map(WorktreeEntry::to_json),
-                "verification": {
-                    "path_exists": self.path_exists,
-                    "branch_matches": self.branch_matches,
-                    "branch_head_matches": self.branch_head_matches,
-                    "baseline_is_ancestor": self.baseline_is_ancestor,
-                    "tracked_changes": self.tracked_changes,
-                    "untracked_changes": self.untracked_changes,
-                    "clean": self.tracked_changes == 0 && self.untracked_changes == 0,
-                },
+                "verification": self.facts(),
+                "error": if self.valid() { serde_json::Value::Null } else { json!({
+                    "code": "HCTL2_TOOL_WORKTREE_STATE_INVALID",
+                    "recovery_action": "inspect_worktree_then_retry_same_changeset",
+                }) },
             }),
-            exit_code,
-        )
-    }
-
-    fn failure_summary(&self) -> String {
-        format!(
-            "path_exists={}, branch_matches={}, branch_head_matches={}, baseline_is_ancestor={}",
-            self.path_exists,
-            self.branch_matches,
-            self.branch_head_matches,
-            self.baseline_is_ancestor
+            if self.valid() { 0 } else { 3 },
         )
     }
 }
@@ -239,104 +201,88 @@ fn verify_state(
     git: &Git,
     repository: &Repository,
     change_set_ref: &str,
+    baseline: Option<String>,
 ) -> Result<Verification, ToolError> {
     let branch = branch_ref(change_set_ref);
-    let baseline = read_optional_commit(git, &repository.anchor, &baseline_ref(change_set_ref))?;
-    let worktree = repository
-        .worktrees(git)?
-        .into_iter()
-        .find(|entry| entry.branch.as_deref() == Some(branch.as_str()));
-    let Some(entry) = worktree else {
-        return Ok(Verification {
-            change_set_ref: change_set_ref.to_owned(),
-            baseline,
-            worktree: None,
-            path_exists: false,
-            branch_matches: false,
-            branch_head_matches: false,
-            baseline_is_ancestor: false,
-            tracked_changes: 0,
-            untracked_changes: 0,
-            valid: false,
-        });
-    };
-    let path_exists = entry.path.is_dir();
-    if !path_exists {
-        return Ok(Verification {
-            change_set_ref: change_set_ref.to_owned(),
-            baseline,
-            worktree: Some(entry),
-            path_exists,
-            branch_matches: false,
-            branch_head_matches: false,
-            baseline_is_ancestor: false,
-            tracked_changes: 0,
-            untracked_changes: 0,
-            valid: false,
-        });
-    }
-
-    let symbolic = git.invoke(&entry.path, &args(&["symbolic-ref", "-q", "HEAD"]))?;
-    let branch_matches = symbolic.success() && symbolic.stdout_text()? == branch;
-    let head = resolve_commit(git, &entry.path, "HEAD", "HCTL2_TOOL_HEAD_MISSING")?;
-    let branch_head = read_optional_commit(git, &repository.anchor, &branch)?;
-    let branch_head_matches = branch_head.as_deref() == Some(head.as_str());
-    let baseline_is_ancestor = if let Some(baseline) = &baseline {
-        let output = git.invoke(
-            &repository.anchor,
-            &[
-                OsString::from("merge-base"),
-                OsString::from("--is-ancestor"),
-                OsString::from(baseline),
-                OsString::from(&head),
-            ],
-        )?;
-        match output.code() {
-            Some(0) => true,
-            Some(1) => false,
-            _ => {
-                return Err(ToolError::new(
-                    "HCTL2_TOOL_GIT_INSPECTION_FAILED",
-                    format!("could not compare baseline and HEAD: {}", output.stderr()),
-                ));
-            }
-        }
-    } else {
-        false
-    };
-    let (tracked_changes, untracked_changes) = status_counts(git, &entry.path)?;
-    let valid = path_exists
-        && branch_matches
-        && branch_head_matches
-        && baseline_is_ancestor
-        && baseline.is_some();
-    Ok(Verification {
+    let mut result = Verification {
         change_set_ref: change_set_ref.to_owned(),
         baseline,
-        worktree: Some(entry),
-        path_exists,
-        branch_matches,
-        branch_head_matches,
-        baseline_is_ancestor,
-        tracked_changes,
-        untracked_changes,
-        valid,
-    })
+        worktree: repository
+            .worktrees(git)?
+            .into_iter()
+            .find(|entry| entry.branch.as_deref() == Some(branch.as_str())),
+        ..Verification::default()
+    };
+    let Some(entry) = &mut result.worktree else {
+        return Ok(result);
+    };
+    result.path_exists = entry.path.is_dir();
+    if !result.path_exists {
+        return Ok(result);
+    }
+
+    // A registered path can be replaced with another checkout or lose its .git
+    // file. Git discovery alone could then silently inspect a parent repository.
+    let actual = Repository::open(git, &entry.path)?;
+    result.repository_matches = actual.common_dir == repository.common_dir
+        && entry.path.canonicalize().ok().as_ref() == Some(&actual.top_level);
+    if !result.repository_matches {
+        return Ok(result);
+    }
+    let symbolic = git.invoke(&entry.path, &args(&["symbolic-ref", "-q", "HEAD"]))?;
+    result.branch_matches = symbolic.success() && symbolic.stdout_text()? == branch;
+    let head = resolve_commit(git, &entry.path, "HEAD", "HCTL2_TOOL_HEAD_MISSING")?;
+    result.branch_head_matches =
+        read_optional_commit(git, &repository.anchor, &branch)?.as_deref() == Some(head.as_str());
+    if let Some(baseline) = &result.baseline {
+        result.baseline_is_ancestor = is_ancestor(git, &repository.anchor, baseline, &head)?;
+    }
+    entry.head = Some(head);
+    result.status = Some(status_counts(git, &entry.path)?);
+    Ok(result)
 }
 
-fn prepare_root(root: &Path, common_dir: &Path) -> Result<PathBuf, ToolError> {
-    fs::create_dir_all(root).map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE",
-            format!("cannot create worktree root {}: {error}", root.display()),
-        )
-    })?;
-    let metadata = fs::metadata(root).map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE",
-            format!("cannot inspect worktree root {}: {error}", root.display()),
-        )
-    })?;
+fn is_ancestor(
+    git: &Git,
+    repository: &Path,
+    baseline: &str,
+    head: &str,
+) -> Result<bool, ToolError> {
+    let output = git.invoke(
+        repository,
+        &args(&["merge-base", "--is-ancestor", baseline, head]),
+    )?;
+    match output.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(ToolError::new(
+            "HCTL2_TOOL_GIT_INSPECTION_FAILED",
+            format!("could not compare baseline and HEAD: {}", output.stderr()),
+        )),
+    }
+}
+
+fn prepare_root(
+    root: &Path,
+    repository: &Repository,
+    worktrees: &[WorktreeEntry],
+) -> Result<PathBuf, ToolError> {
+    // Validate before mkdir, then again after canonicalization.
+    let ancestor = root
+        .ancestors()
+        .find(|path| path.exists() || path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let ancestor = if ancestor.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        ancestor
+    };
+    let ancestor = ancestor.canonicalize().map_err(root_error)?;
+    check_root_location(&ancestor, repository, worktrees)?;
+    fs::create_dir_all(root).map_err(root_error)?;
+    let root = root.canonicalize().map_err(root_error)?;
+    check_root_location(&root, repository, worktrees)?;
+    let metadata = fs::metadata(&root).map_err(root_error)?;
     if !metadata.is_dir() || metadata.permissions().readonly() {
         return Err(ToolError::new(
             "HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE",
@@ -346,71 +292,63 @@ fn prepare_root(root: &Path, common_dir: &Path) -> Result<PathBuf, ToolError> {
             ),
         ));
     }
-    let root = root.canonicalize().map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE",
-            format!(
-                "cannot canonicalize worktree root {}: {error}",
-                root.display()
-            ),
-        )
-    })?;
-    let internal = common_dir.join("hctl2").canonicalize().map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE",
-            format!("cannot canonicalize internal state directory: {error}"),
-        )
-    })?;
-    if root.starts_with(&internal) {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_WORKTREE_ROOT_INTERNAL",
-            format!(
-                "worktree checkout cannot live under disposable state directory {}",
-                internal.display()
-            ),
-        ));
-    }
     Ok(root)
 }
 
-fn recover_missing_baseline_marker(
-    git: &Git,
+fn root_error(error: std::io::Error) -> ToolError {
+    ToolError::new("HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE", error.to_string())
+}
+
+fn check_root_location(
+    root: &Path,
     repository: &Repository,
-    entry: &WorktreeEntry,
-    target: &Path,
-    baseline_ref: &str,
-    baseline: &str,
-    recorded_baseline: Option<&str>,
+    worktrees: &[WorktreeEntry],
 ) -> Result<(), ToolError> {
-    if recorded_baseline.is_some() {
-        return Ok(());
-    }
-    let actual_path = entry.path.canonicalize().map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-            format!(
-                "cannot access interrupted worktree {}: {error}",
-                entry.path.display()
-            ),
-        )
-    })?;
-    let target_path = target.canonicalize().map_err(|error| {
-        ToolError::new(
-            "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-            format!(
-                "cannot access expected worktree {}: {error}",
-                target.display()
-            ),
-        )
-    })?;
-    let head = resolve_commit(git, &actual_path, "HEAD", "HCTL2_TOOL_HEAD_MISSING")?;
-    if actual_path != target_path || head != baseline {
-        return Err(ToolError::new(
-            "HCTL2_TOOL_WORKTREE_STATE_INVALID",
-            "reserved ChangeSet branch exists without its baseline marker",
+    let internal = repository
+        .common_dir
+        .join("hctl2")
+        .canonicalize()
+        .map_err(root_error)?;
+    if root.starts_with(&repository.common_dir) || root.starts_with(internal) {
+        return Err(ToolError::not_established(
+            "HCTL2_TOOL_WORKTREE_ROOT_INTERNAL",
+            "checkout root is inside Git's internal state directory",
         ));
     }
-    create_baseline_marker(git, repository, baseline_ref, baseline)
+    for entry in worktrees {
+        let path = entry
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| entry.path.clone());
+        if root.starts_with(&path) {
+            return Err(ToolError::not_established(
+                "HCTL2_TOOL_WORKTREE_ROOT_NESTED",
+                "checkout root is inside an existing worktree",
+            )
+            .with_details(json!({ "root": root, "containing_worktree": path })));
+        }
+    }
+    Ok(())
+}
+
+fn check_target(target: &Path) -> Result<(), ToolError> {
+    match fs::symlink_metadata(target) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(root_error(error)),
+        Ok(metadata) => {
+            // Git natively accepts an empty directory. Keep it intact and let
+            // worktree add use it; files, symlinks and nonempty directories stay.
+            if metadata.is_dir() && fs::read_dir(target).map_err(root_error)?.next().is_none() {
+                return Ok(());
+            }
+            Err(ToolError::not_established(
+                "HCTL2_TOOL_WORKTREE_PATH_OCCUPIED",
+                "materialization path is occupied; preserve its contents before retrying",
+            )
+            .with_details(json!({ "occupied_path": target,
+                    "recovery_action": "preserve_occupied_path_then_retry" })))
+        }
+    }
 }
 
 fn create_baseline_marker(
@@ -485,7 +423,7 @@ fn status_counts(git: &Git, worktree: &Path) -> Result<(usize, usize), ToolError
     Ok((tracked, untracked))
 }
 
-fn validate_change_set_ref(value: &str) -> Result<(), ToolError> {
+pub(crate) fn validate_change_set_ref(value: &str) -> Result<(), ToolError> {
     if value.is_empty()
         || value.len() > 128
         || !value

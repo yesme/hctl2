@@ -133,6 +133,10 @@ fn repository_inspection_ignores_inherited_git_environment() {
         .args(["repo", "inspect", "--path"])
         .arg(&fixture.repo)
         .env("GIT_DIR", fixture.root.join("not-a-git-directory"))
+        .env(
+            "GIT_COMMON_DIR",
+            fixture.root.join("wrong-common-directory"),
+        )
         .env("GIT_WORK_TREE", fixture.root.join("wrong-worktree"))
         .env("GIT_CONFIG_COUNT", "1")
         .env("GIT_CONFIG_KEY_0", "core.bare")
@@ -353,6 +357,7 @@ fn verification_reports_a_moved_changeset_branch_as_not_established() {
     let record = json_stdout(&output);
     assert_eq!(record["outcome"], "not_established");
     assert_eq!(record["verification"]["branch_matches"], false);
+    assert!(record["verification"]["clean"].is_null());
 }
 
 #[test]
@@ -424,8 +429,10 @@ fn materialization_fails_immediately_when_another_process_holds_the_site_lock() 
     );
     holder.kill().expect("holder must be killable");
     holder.wait().expect("holder must exit");
-    let stderr = String::from_utf8_lossy(&rejected.stderr);
-    assert!(stderr.contains("test-holder"), "{stderr}");
+    assert_eq!(
+        json_stdout(&rejected)["error"]["details"]["holder"]["operation"],
+        "test-holder"
+    );
     assert_error_code(rejected, "HCTL2_TOOL_SITE_BUSY");
 }
 
@@ -462,8 +469,390 @@ fn rejects_git_below_the_pinned_minimum() {
         .env("HCTL2_GIT", &fake)
         .output()
         .expect("tool must run");
-    assert_error_code(output, "HCTL2_TOOL_GIT_VERSION_UNSUPPORTED");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .starts_with("error[HCTL2_TOOL_GIT_VERSION_UNSUPPORTED]:")
+    );
     fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
+#[test]
+fn materialization_recovers_an_existing_branch_and_empty_directory() {
+    let fixture = Fixture::new("existing-branch");
+    git(
+        Some(&fixture.repo),
+        ["branch", "hctl2/changeset/CS-retry", &fixture.first_commit],
+    );
+    let root = fixture.root.join("worktrees");
+    fs::create_dir_all(root.join("CS-retry")).expect("empty interrupted directory");
+    let created = materialize(&fixture, &root, "CS-retry", &fixture.first_commit);
+    assert_success(&created);
+    let record = json_stdout(&created);
+    assert_eq!(record["worktree"]["detached"], false);
+    assert_eq!(record["verification"]["branch_matches"], true);
+    let path = record["worktree"]["path"].as_str().expect("worktree path");
+    assert_eq!(
+        git_stdout(Some(Path::new(path)), ["symbolic-ref", "HEAD"]),
+        "refs/heads/hctl2/changeset/CS-retry"
+    );
+    assert_success(&materialize(
+        &fixture,
+        &root,
+        "CS-retry",
+        &fixture.first_commit,
+    ));
+}
+
+#[test]
+fn missing_marker_is_rebuilt_after_commits_without_using_the_new_root() {
+    let fixture = Fixture::new("missing-marker");
+    let created = materialize(
+        &fixture,
+        &fixture.root.join("worktrees"),
+        "CS-cache",
+        &fixture.first_commit,
+    );
+    assert_success(&created);
+    let record = json_stdout(&created);
+    let path = Path::new(record["worktree"]["path"].as_str().expect("worktree path"));
+    fs::write(path.join("README.md"), "committed progress\n").expect("progress");
+    git(Some(path), ["add", "README.md"]);
+    git(Some(path), ["commit", "-m", "progress"]);
+    fs::write(path.join("only-copy.txt"), "uncommitted progress").expect("untracked progress");
+    git(
+        Some(&fixture.repo),
+        [
+            "update-ref",
+            "-d",
+            "refs/hctl2/changesets/CS-cache/baseline",
+        ],
+    );
+    let next_root = fixture.root.join("must-not-be-created");
+    let rebuilt = materialize(&fixture, &next_root, "CS-cache", &fixture.first_commit);
+    assert_success(&rebuilt);
+    let rebuilt = json_stdout(&rebuilt);
+    assert_eq!(rebuilt["worktree"]["path"], record["worktree"]["path"]);
+    assert_eq!(rebuilt["baseline_commit_sha"], fixture.first_commit);
+    assert_eq!(rebuilt["verification"]["untracked_changes"], 1);
+    assert!(!next_root.exists());
+
+    // A non-ancestor supplied by the caller cannot rebuild the cache.
+    git(
+        Some(&fixture.repo),
+        [
+            "update-ref",
+            "-d",
+            "refs/hctl2/changesets/CS-cache/baseline",
+        ],
+    );
+    let unrelated = fixture.second_commit();
+    assert_error_code(
+        materialize(&fixture, &next_root, "CS-cache", &unrelated),
+        "HCTL2_TOOL_WORKTREE_VERIFICATION_FAILED",
+    );
+    assert!(
+        !git_status(
+            &fixture.repo,
+            [
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/hctl2/changesets/CS-cache/baseline"
+            ]
+        )
+        .success()
+    );
+    assert_eq!(
+        fs::read_to_string(path.join("only-copy.txt")).expect("preserved"),
+        "uncommitted progress"
+    );
+}
+
+#[test]
+fn occupied_paths_are_preserved_with_structured_recovery() {
+    let fixture = Fixture::new("occupied");
+    let root = fixture.root.join("worktrees");
+    let target = root.join("CS-occupied");
+    fs::create_dir_all(&target).expect("occupied target");
+    fs::write(target.join("only-copy"), "precious").expect("only copy");
+    let output = materialize(&fixture, &root, "CS-occupied", &fixture.first_commit);
+    let record = json_stdout(&output);
+    assert_eq!(
+        record["error"]["details"]["occupied_path"].as_str(),
+        target.canonicalize().expect("canonical target").to_str()
+    );
+    assert_eq!(
+        record["error"]["details"]["recovery_action"],
+        "preserve_occupied_path_then_retry"
+    );
+    assert_error_code(output, "HCTL2_TOOL_WORKTREE_PATH_OCCUPIED");
+    assert_eq!(
+        fs::read_to_string(target.join("only-copy")).expect("preserved"),
+        "precious"
+    );
+}
+
+#[test]
+fn nested_roots_are_rejected_before_creating_directories() {
+    let fixture = Fixture::new("nested");
+    let created = materialize(
+        &fixture,
+        &fixture.root.join("worktrees"),
+        "CS-first",
+        &fixture.first_commit,
+    );
+    assert_success(&created);
+    let record = json_stdout(&created);
+    let other_worktree = Path::new(record["worktree"]["path"].as_str().expect("worktree path"));
+    for containing in [&fixture.repo, other_worktree] {
+        let nested = containing.join("new/nested");
+        assert_error_code(
+            materialize(&fixture, &nested, "CS-nested", &fixture.first_commit),
+            "HCTL2_TOOL_WORKTREE_ROOT_NESTED",
+        );
+        assert!(!containing.join("new").exists());
+    }
+}
+
+#[test]
+fn inspection_accepts_an_unborn_head_and_labels_identity_provenance() {
+    let fixture = Fixture::new("identity-source");
+    let empty = fixture.root.join("empty");
+    git(
+        None,
+        [
+            OsStr::new("init"),
+            OsStr::new("-b"),
+            OsStr::new("main"),
+            empty.as_os_str(),
+        ],
+    );
+    let output = tool()
+        .args(["repo", "inspect", "--path"])
+        .arg(&empty)
+        .output()
+        .expect("inspect");
+    assert_success(&output);
+    let record = json_stdout(&output);
+    assert!(record["repository_state"]["head_commit_sha"].is_null());
+    assert_eq!(record["stable_repo_identity"]["status"], "missing");
+
+    fs::create_dir(fixture.repo.join("subdir")).expect("subdir");
+    let output = tool()
+        .args(["repo", "inspect", "--path"])
+        .arg(fixture.repo.join("subdir"))
+        .output()
+        .expect("inspect subdir");
+    assert_success(&output);
+    let record = json_stdout(&output);
+    assert_eq!(
+        record["stable_repo_identity"]["content"],
+        "repo_id = \"repo-test\"\n"
+    );
+    assert_eq!(
+        record["stable_repo_identity"]["source"]["commit_sha"],
+        fixture.first_commit
+    );
+
+    let created = materialize(
+        &fixture,
+        &fixture.root.join("worktrees"),
+        "CS-identity",
+        &fixture.first_commit,
+    );
+    assert_success(&created);
+    let record = json_stdout(&created);
+    let path = Path::new(record["worktree"]["path"].as_str().expect("worktree path"));
+    git(Some(path), ["rm", ".hctl2/repo.toml"]);
+    git(Some(path), ["commit", "-m", "remove identity in changeset"]);
+    let output = tool()
+        .args(["repo", "inspect", "--path"])
+        .arg(path)
+        .output()
+        .expect("inspect changeset");
+    assert_success(&output);
+    let observed = json_stdout(&output);
+    assert_eq!(observed["stable_repo_identity"]["status"], "missing");
+    assert_eq!(
+        observed["stable_repo_identity"]["source"]["commit_sha"],
+        git_stdout(Some(path), ["rev-parse", "HEAD"])
+    );
+    assert_eq!(
+        observed["stable_repo_identity"]["source"]["worktree_root"].as_str(),
+        path.to_str()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn config_file_overrides_and_checkout_hooks_are_preserved() {
+    let fixture = Fixture::new("config-hooks");
+    let hooks = fixture.root.join("hooks");
+    fs::create_dir(&hooks).expect("hooks");
+    let hook = hooks.join("post-checkout");
+    fs::write(&hook, "#!/bin/sh\nprintf 'called' > hook-ran\n").expect("hook");
+    make_executable(&hook);
+    let config = fixture.root.join("global-config");
+    fs::write(
+        &config,
+        format!("[core]\n hooksPath = {}\n", hooks.display()),
+    )
+    .expect("config");
+    let output = tool()
+        .args(["worktree", "materialize", "--repo"])
+        .arg(&fixture.repo)
+        .arg("--root")
+        .arg(fixture.root.join("worktrees"))
+        .args([
+            "--change-set-ref",
+            "CS-config",
+            "--baseline",
+            &fixture.first_commit,
+        ])
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .env("GIT_CONFIG_SYSTEM", &config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.hooksPath")
+        .env("GIT_CONFIG_VALUE_0", fixture.root.join("wrong-hooks"))
+        .output()
+        .expect("materialize");
+    assert_success(&output);
+    let record = json_stdout(&output);
+    let path = Path::new(record["worktree"]["path"].as_str().expect("worktree path"));
+    assert_eq!(
+        fs::read_to_string(path.join("hook-ran")).expect("hook ran"),
+        "called"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_checkout_verification_does_not_create_a_baseline_marker() {
+    let fixture = Fixture::new("hook-branch");
+    let hooks = fixture.root.join("hooks");
+    fs::create_dir(&hooks).expect("hooks");
+    let hook = hooks.join("post-checkout");
+    fs::write(&hook, "#!/bin/sh\ngit symbolic-ref HEAD refs/heads/main\n").expect("hook");
+    make_executable(&hook);
+    git(
+        Some(&fixture.repo),
+        [
+            OsStr::new("config"),
+            OsStr::new("core.hooksPath"),
+            hooks.as_os_str(),
+        ],
+    );
+    let output = materialize(
+        &fixture,
+        &fixture.root.join("worktrees"),
+        "CS-hook",
+        &fixture.first_commit,
+    );
+    assert_error_code(output, "HCTL2_TOOL_WORKTREE_VERIFICATION_FAILED");
+    assert!(
+        !git_status(
+            &fixture.repo,
+            [
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/hctl2/changesets/CS-hook/baseline"
+            ]
+        )
+        .success()
+    );
+}
+
+#[test]
+fn verification_rejects_a_foreign_repository_at_the_registered_path() {
+    let fixture = Fixture::new("replaced-checkout");
+    let created = materialize(
+        &fixture,
+        &fixture.root.join("worktrees"),
+        "CS-replaced",
+        &fixture.first_commit,
+    );
+    assert_success(&created);
+    let record = json_stdout(&created);
+    let path = Path::new(record["worktree"]["path"].as_str().expect("worktree path"));
+    fs::rename(path, fixture.root.join("preserved-checkout")).expect("preserve original");
+    git(
+        None,
+        [
+            OsStr::new("clone"),
+            fixture.repo.as_os_str(),
+            path.as_os_str(),
+        ],
+    );
+    git(
+        Some(path),
+        [
+            "switch",
+            "-c",
+            "hctl2/changeset/CS-replaced",
+            &fixture.first_commit,
+        ],
+    );
+    let output = tool()
+        .args(["worktree", "verify", "--repo"])
+        .arg(&fixture.repo)
+        .args(["--change-set-ref", "CS-replaced"])
+        .output()
+        .expect("verify");
+    assert_eq!(output.status.code(), Some(3));
+    let record = json_stdout(&output);
+    assert_eq!(record["verification"]["repository_matches"], false);
+    assert!(record["verification"]["clean"].is_null());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinks_cannot_redirect_checkouts_or_lock_file_writes() {
+    use std::os::unix::fs::symlink;
+    let fixture = Fixture::new("symlinks");
+    let alias = fixture.root.join("alias");
+    symlink(&fixture.repo, &alias).expect("root alias");
+    assert_error_code(
+        materialize(
+            &fixture,
+            &alias.join("nested"),
+            "CS-alias",
+            &fixture.first_commit,
+        ),
+        "HCTL2_TOOL_WORKTREE_ROOT_NESTED",
+    );
+    assert!(!fixture.repo.join("nested").exists());
+    let root = fixture.root.join("worktrees");
+    fs::create_dir(&root).expect("root");
+    symlink(fixture.root.join("missing"), root.join("CS-dangling")).expect("dangling target");
+    assert_error_code(
+        materialize(&fixture, &root, "CS-dangling", &fixture.first_commit),
+        "HCTL2_TOOL_WORKTREE_PATH_OCCUPIED",
+    );
+    let lock = fixture.repo.join(".git/hctl2/lock");
+    fs::remove_file(&lock).expect("remove unlocked test lock");
+    let data = fixture.root.join("only-copy");
+    fs::write(&data, "preserve").expect("data");
+    symlink(&data, &lock).expect("lock symlink");
+    assert_error_code(
+        materialize(&fixture, &root, "CS-lock", &fixture.first_commit),
+        "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE",
+    );
+    assert_eq!(fs::read_to_string(data).expect("preserved"), "preserve");
+}
+
+fn git_status<const N: usize>(repository: &Path, arguments: [&str; N]) -> std::process::ExitStatus {
+    Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(arguments)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("git status")
 }
 
 fn materialize(fixture: &Fixture, root: &Path, change_set_ref: &str, baseline: &str) -> Output {
@@ -517,15 +906,27 @@ where
 fn assert_success(output: &Output) {
     assert!(
         output.status.success(),
-        "tool failed: {}",
+        "tool failed: {} {}",
+        String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
 }
 
 fn assert_error_code(output: Output, code: &str) {
-    assert!(!output.status.success(), "tool unexpectedly succeeded");
-    let stderr = String::from_utf8(output.stderr).expect("error must be UTF-8");
-    assert!(stderr.starts_with(&format!("error[{code}]:")), "{stderr}");
+    let record = json_stdout(&output);
+    assert!(
+        output.stderr.is_empty(),
+        "observation error leaked to stderr"
+    );
+    assert_eq!(record["schema"], "hctl2.tool-error.v1");
+    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["error"]["code"], code, "{record}");
+    let expected_exit = match record["outcome"].as_str() {
+        Some("not_established") => 3,
+        Some("unreadable") => 4,
+        outcome => panic!("unexpected failure outcome: {outcome:?}"),
+    };
+    assert_eq!(output.status.code(), Some(expected_exit));
 }
 
 fn json_stdout(output: &Output) -> serde_json::Value {
