@@ -50,7 +50,7 @@
 
 「类别」回答它是什么东西：对象有独立生命周期、恢复边界或权限边界；票据是步骤产物，只被引用不被改写；节点类型和场景名不是对象。「可见性」回答它能出现在哪一层：愿景层只用标「用户可见」的词（含 Receipt），治理内部的词从架构层起可用。愿景层讲执行内部时用日常语言——「一步要交出什么是固定的，谁来做可以换，做坏了从这一次重来」——不点治理词。
 
-设计正文还可以使用七个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、SCM platform（代码协作平台，外部的托管服务或自建服务器，或随包的本地平台，按 Repo 绑定）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Repo 一词有两层意思：核心产品词表里的对象「Repo（仓库）」，以及拥有它的「Repo 模块」；Repo Room 仍归 Project，Repo Board 仍归 Task，Repo 是各模块共享的作用域限定词，不因模块同名而改变归属。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+设计正文还可以使用七个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、SCM platform（代码协作平台，外部的托管服务或自建服务器，或随包的本地平台，按 Repo 绑定；显式不挂平台时没有）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Repo 一词有两层意思：核心产品词表里的对象「Repo（仓库）」，以及拥有它的「Repo 模块」；Repo Room 仍归 Project，Repo Board 仍归 Task，Repo 是各模块共享的作用域限定词，不因模块同名而改变归属。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
 
 另有八个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）、Context Manifest（根上下文清单）、Context Bundle（消费上下文包）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述八词。
 

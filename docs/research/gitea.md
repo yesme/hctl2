@@ -13,7 +13,7 @@
 
 - 版本：[Gitea v1.27.3](https://github.com/go-gitea/gitea/releases/tag/v1.27.3)，2026-08-29 发布；上游按月出补丁版，1.27.0 发布于 2026-07-13。
 - 许可：MIT（Copyright 2016 The Gitea Authors、2015 The Gogs Authors）。
-- 发布物：每个平台一个单文件可执行，内嵌静态资源，自带 SQLite、MySQL、PostgreSQL 驱动。HCTL 消费的四个：`gitea-1.27.3-linux-amd64`（120 MiB）、`gitea-1.27.3-linux-arm64`（111 MiB）、`gitea-1.27.3-darwin-10.12-amd64`（120 MiB）、`gitea-1.27.3-darwin-10.12-arm64`（112 MiB）。文件名里的 10.12 是历史命名，实际最低 macOS 由 Go 工具链决定，低于 HCTL 的 macOS 15 基线。下载包是 xz 压缩，darwin arm64 37 MiB、linux amd64 41 MiB；打包时锁定 xz 制品下载、解压后原样装入。HCTL 安装包整包用 xz `-9 -T0`：同一个 darwin arm64 二进制实测 gzip 41 MiB、上游 xz 37 MiB、zstd 最高档 34 MiB、xz `-9 -T0` 30 MiB，`-9e` 只再省 0.3% 且慢两成；多线程模式的输出与核数无关（xz 5.4 起），可复现。不用 UPX：UPX 自 4.2.0 起禁用 macOS 支持，且会改写上游制品。每个发布物附 `.sha256`、GPG `.asc` 与 Sigstore `.sigstore.json`，打包时按 SHA-256 锁定。
+- 发布物：每个平台一个单文件可执行，内嵌静态资源，自带 SQLite、MySQL、PostgreSQL 驱动。HCTL 消费的四个：`gitea-1.27.3-linux-amd64`（120 MiB）、`gitea-1.27.3-linux-arm64`（111 MiB）、`gitea-1.27.3-darwin-10.12-amd64`（120 MiB）、`gitea-1.27.3-darwin-10.12-arm64`（112 MiB）。文件名里的 10.12 是历史命名，实际最低 macOS 由 Go 工具链决定，低于 HCTL 的 macOS 15 基线。下载包是 xz 压缩，darwin arm64 37 MiB、linux amd64 41 MiB；打包时锁定 xz 制品下载、解压后原样装入。HCTL 安装包整包用 xz `-9 -T0`：同一个 darwin arm64 二进制实测 gzip 41 MiB、上游 xz 37 MiB、zstd 最高档 34 MiB、xz `-9 -T0` 30 MiB（交付文档用十进制 MB 记同一组数），`-9e` 只再省 0.3% 且慢两成；多线程模式的输出与核数无关（xz 5.4 起），可复现。不用 UPX：UPX 自 4.2.0 起禁用 macOS 支持，且会改写上游制品。每个发布物附 `.sha256`、GPG `.asc` 与 Sigstore `.sigstore.json`，打包时按 SHA-256 锁定。
 - 官方命令行：[tea v0.15.1](https://gitea.com/gitea/tea/releases/tag/v0.15.1)，2026-08-02 发布，darwin/linux × amd64/arm64 单二进制；`--output json` 逐命令可用。
 - 宿主依赖：Gitea 调用宿主 git（文档要求 2.0 以上），与工具箱用的是同一个宿主 git（HCTL 下限 2.39，见 [sdk/git.md](./sdk/git.md)）；不需要数据库服务，SQLite 文件默认在 `data/gitea.db`。
 
@@ -79,7 +79,7 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 ## 决定建议
 
 - **采用二进制**：Gitea v1.27.3 作为随包的本地代码协作平台，四个官方单二进制按 SHA-256 锁定；Forgejo 暂缓、记为备选。
-- **适配器第一级用 tea**：`pulls`、`branches`、`repos` 子命令覆盖建仓、发布评审、评审与合并的主路径；源头校验的合并、提交状态、分支保护字段用 `tea api` 直调 REST。不引入 Go SDK，Rust 侧没有官方 SDK。
+- **tea 随包、适配器第一级用它**：四平台单二进制按 SHA-256 锁定；`pulls`、`branches`、`repos` 子命令覆盖建仓、发布评审、评审与合并的主路径；源头校验的合并、提交状态、分支保护字段用 `tea api` 直调 REST。不引入 Go SDK，Rust 侧没有官方 SDK。
 - **待核项**：`http+unix` 与 tea 的配合；Forgejo 的 tea 兼容性；`REQUIRE_SIGNIN_VIEW` 打开时 webhook 的行为。
 
 ## 依据

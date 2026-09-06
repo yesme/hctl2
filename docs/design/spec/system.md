@@ -41,7 +41,7 @@ Workbench 的 HCTL 功能只调用 Query、Preview、Submit、Subscribe 和各�
 
 ### 端点与输入的信任边界
 
-1. chat server、本地任务服务器、workflow engine 和 Herdr 管理/API 端点只能绑定本机回环地址或仅归属者可访问的本地套接字；非本地传输必须认证客户端。
+1. chat server、本地任务服务器、本地代码协作平台、workflow engine 和 Herdr 管理/API 端点只能绑定本机回环地址或仅归属者可访问的本地套接字；非本地传输必须认证客户端。
 2. 若某个供应端修改必须先由 HCTL 记账、撤权或校验，只有 control 可以通过对应受控端口发起它。chat server 与任务后端的 content 读写不受这条限制；Herdr 的普通交互输入也不是治理命令。
 3. 当绑定声明支持代次栅栏回显和逐次输入记录时，Herdr 适配代码必须在每次输入前校验 Attach Descriptor、Terminal Input Lease 和当前代次。绑定未声明这些能力时，原生交互只能按来源不完整的运行时输入记录。
 4. 若允许 Herdr TUI 原生输入，绑定必须明确记录它不提供 HCTL 单输入租约保证。无论采用哪种输入模式，HCTL 结果都只能从 Result Proposal 准入。
@@ -180,7 +180,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步账本 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在账本及其可验证审计影子；远端后端由 provider 负责持久 |
 | workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，引擎停报进度只让 Run–Engine Binding 待对账 | 进度报告丢失不丢任何判决：Run 按账本继续结束或显式替代；凭证链权威在 metadata 账本，审计影子在 Git |
 | Harness 进程、PTY、主机与原始流 | Herdr 持有物理资源并提供观测；绑定、租约和 lifecycle 仍由 control 记账 | 执行安全暂停或按代次结束，不冒充成功 | 转录丢失只损失回放；观测账在 metadata、ChangeSet 在 Git 存活；物理观测本就可丢弃重建 |
-| 评审线程、平台评审状态、检查结果、合并状态（content） | Repo 所绑定的代码协作平台；控制面只保存变更与平台的映射、事件引用与冻结摘要 | 依赖平台当前回读的命令安全拒绝：远端合入、读评审请求状态、发布评审；不依赖它的操作继续：本地物化、封存、面向本地目标的集成。已投递或可能已投递的远端意图保持结果未知，不改道 | 评审讨论与平台评审状态丢失；Git 历史、ChangeSet Revision、账本里的 Receipt 与 Verdict 存活。可替换的接口不等于可迁移的历史，普通 clone 不带评审线程 |
+| 评审线程、平台评审状态、检查结果、合并状态（content） | Repo 所绑定的代码协作平台；控制面只保存变更与平台的映射、事件引用与冻结摘要 | 依赖平台当前回读的命令安全拒绝：远端合入、读评审请求状态、发布评审；不依赖它的操作继续：本地物化、封存；面向本地目标的集成只对显式不挂平台的 Repo 继续。已投递或可能已投递的远端意图保持结果未知，不改道 | 评审讨论与平台评审状态丢失；Git 历史、ChangeSet Revision、账本里的 Receipt 与 Verdict 存活。可替换的接口不等于可迁移的历史，普通 clone 不带评审线程 |
 
 ## 单写者
 
@@ -224,7 +224,7 @@ SQLite 事务只保证账本内部一致，而事务提交与外部投递不在�
 
 1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理代次栅栏时明确记录该限制；
 2. 打开权威账本、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 Agency binding generation；
-3. 回读全部已绑定 content 系统的游标（chat server、任务后端、workflow engine）以及 Herdr 运行状态和未确认副作用；
+3. 回读全部已绑定 content 系统的游标（chat server、任务后端、代码协作平台的评审请求状态与 webhook 游标、workflow engine）以及 Herdr 运行状态和未确认副作用；
 4. 查询 workflow engine、Herdr API，以及工具箱回读的 Git 事实与平台机械事实（评审请求当前头、合并状态、检查、保护条件）；结果未知的集成与发布意图按 [Repo 模块约束](./repo.md#恢复)分目标处理；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
