@@ -95,7 +95,7 @@
 | 推源分支 | 宿主 `git push --porcelain <remote> <精确提交>:refs/heads/<分支>`；porcelain 是稳定的制表符格式，**不是 JSON** | HTTPS credential helper 可调用 `gh auth git-credential`，平台记用户或 App；Git commit 的作者 / 共同作者独立保存 | 更新已授权的源 ref 时用显式 `--force-with-lease=<ref>:<已知旧SHA>` 作旧值校验；新 ref 以空旧值要求不存在。此标志只保证比较，不代替重写授权或分支保护 | 无；gh 本来没有 push 子命令，现成 Git 就是调用方 |
 | 创建 PR | `gh pr create -R … --head … --base … --title … --body-file …` 回 URL；需要 JSON 可用同二进制 `gh api --method POST repos/…/pulls --input …` | 令牌对应用户 / App | 没有服务端创建幂等键，也无冻结源 SHA 参数；先推精确提交再创建，创建后核 head、base、描述与关联信息 | 无；切 `gh api` 仍是采用二进制 |
 | 更新 PR 描述 | `gh pr edit <编号> -R … --body-file …`；或 `gh api --method PATCH repos/…/pulls/<编号>` 回 JSON | 同上；不能替别人发言 | 公开更新接口无预期 head / body 版本的原子比较；写前及写后摘要只作漂移检查，不宣称能排除原生客户端的并发修改 | 无；SDK 无法补服务端比较 |
-| 请求合入 | `gh pr merge <编号> -R … --merge --match-head-commit <源SHA>`；高层命令无 JSON，随后 `pr view --json` / `api` 回读 | 令牌对应用户 / App，另可指定 Git 合并提交署名字段，二者不是同一种身份 | `expectedHeadOid` 只比源头。无目标头比较并交换；成功退出可能仅已接受 / 已排队 | 无；需要单次 JSON 响应可用 `gh api`，不改授权形态 |
+| 请求合入 | `gh pr merge <编号> -R … --merge --match-head-commit <源SHA> --subject <PR标题> --body-file <三节描述文件>`；高层命令无 JSON，随后 `pr view --json` / `api` 回读 | 令牌对应用户 / App，另可指定 Git 合并提交署名字段，二者不是同一种身份 | `expectedHeadOid` 只比源头。无目标头比较并交换；成功退出可能仅已接受 / 已排队 | 无；需要单次 JSON 响应可用 `gh api`，不改授权形态 |
 | 写普通评论 | `gh pr comment <编号> -R … --body-file …` 回 URL；`gh api --method POST repos/…/issues/<编号>/comments` 回含 ID 的 JSON | 评论的实际作者是令牌账号 | 创建无服务端幂等键；保存 comment ID，确认丢失按操作关联与正文摘要查重；`--edit-last` 不能证明编辑的是本次操作那条 | 无 |
 | 读评审线程 | `gh api graphql` 查询 `reviewThreads { nodes { id isResolved isOutdated } pageInfo { … } }` | 读权限决定可见范围，不生成作者身份 | 分页取全；`isOutdated` 不等于 `isResolved`，查询失败 / 部分页不等于无未解决线程 | 无；`pr view --json` 没列出的字段用原生 API |
 | 读正式评审 | REST `/pulls/<编号>/reviews`，或 GraphQL `reviews/latestReviews`、`reviewDecision` | 保留评审账号稳定 ID、state、commit ID 与提交时间 | 普通 issue comment 不是 APPROVED / CHANGES_REQUESTED。当前资格还受旧评审失效、最后推送、CODEOWNERS 等规则约束；不数评论文字里的「通过」 | 无 |
@@ -122,7 +122,7 @@ gh `merge.go` 把 `--match-head-commit` 放进 payload，`http.go` 传成 GraphQ
 | main 的有效 rulesets | `deletion`、`non_fast_forward` | 补充禁止删除 / 非快进改 ref 的规则，不等于选择快进合并策略，也不等于预期目标头比较 |
 | PR #186 的 GraphQL 回读 | `reviewThreads`、`latestReviews` 为空，`reviewDecision=null` | 这个 PR 的普通评审评论不能被当成平台的正式批准；空列表只说明该查询的对象，不证明 HCTL 评审通过 |
 
-默认合并消息可能把 PR 描述落进 Git，control 仍需把真正的密钥排除在描述之外。普通直接合入需要确保本次合并消息时，gh 已有 `--subject` / `--body-file` 参数，不必再造消息拼装工具；队列限制见上。
+按[署名任务书 §二第 5、6 项](../../../.memo/design/scm-module-20260906/02-attribution-gate.md#二hctl2-要做的事)，本批直接合入用 `--merge`，并显式传 `--subject <PR标题>` / `--body-file <三节描述文件>`；描述由 control 组装，不依赖仓库缺省消息，也不另走 squash。描述会落进 Git，因此 control 仍需排除密钥；队列会忽略这些消息参数的限制仍保留，不能由直接合入的结论推定队列同样可用。
 
 #### 确认丢失后的关联
 
@@ -160,9 +160,11 @@ gh 固定的是客户端，不是远端 API 行为。2.99.0 源码的 REST 默�
 
 **维持采用二进制：control 与工具箱都用已随包的 `gh 2.99.0 / d528f20f`，推分支复用宿主 Git ≥2.39；P2 先复用用户登录，octocrab `0.54.1` 暂缓。** 高层命令缺 JSON 时改调同一 gh 的原生 API，写侧、线程、评审和保护读取均不需要降级到 SDK。缺的是 GitHub 的目标头条件写与部分写入幂等保证，不是 CLI：绑定如实声明，集成只按事前选定的「接受目标前移」，确认丢失按精确发布关联回读。本文不把旧文的「control 必须用 App」当已定前提，也不把仓库尚未应用的 merge-only 设置写成现状。
 
+本批直接合入固定 `--merge --match-head-commit`，并用 `--subject` / `--body-file` 显式携带 PR 标题与 control 组装的三节描述，保留提交与评审修正的来历；队列 / 自动合并仍待冻结源版本的竞争实验。
+
 #### 证据
 
 - gh 钉定源码：[create 的显式 head 与发布](https://github.com/cli/cli/blob/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0/pkg/cmd/pr/create/create.go)、[merge 策略与队列](https://github.com/cli/cli/blob/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0/pkg/cmd/pr/merge/merge.go)、[expectedHeadOid 请求](https://github.com/cli/cli/blob/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0/pkg/cmd/pr/merge/http.go)、[setup-git 的 global helper 写入](https://github.com/cli/cli/blob/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0/pkg/cmd/auth/shared/gitcredentials/helper_config.go)、[默认 API 版本](https://github.com/cli/cli/blob/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0/api/client.go)。
 - 写入接口：[gh pr create](https://cli.github.com/manual/gh_pr_create)、[edit](https://cli.github.com/manual/gh_pr_edit)、[merge](https://cli.github.com/manual/gh_pr_merge)、[comment](https://cli.github.com/manual/gh_pr_comment)、[gh api](https://cli.github.com/manual/gh_api)、[Git push porcelain / force-with-lease](https://git-scm.com/docs/git-push)、[GitHub PR REST](https://docs.github.com/en/rest/pulls/pulls)、[评论 REST](https://docs.github.com/en/rest/issues/comments)。
 - 读取与身份：[正式评审](https://docs.github.com/en/rest/pulls/reviews)、[分支保护](https://docs.github.com/en/rest/branches/branch-protection)、[有效 rulesets](https://docs.github.com/en/rest/repos/rules)、[App 安装身份](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)、[App 用户身份](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app)、[API 版本支持期](https://docs.github.com/en/rest/about-the-rest-api/api-versions)、[限流](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。GraphQL 的线程与正式评审字段已通过本库 PR #186 查询验证，未以 SDK 字段表代替实际接口。
-- 本库：[平台能力对照及快进反例](../scm-platforms.md#复核记录)、[Repo §平台绑定与能力声明](../../design/spec/repo.md#平台绑定与能力声明)、[Repo §发布评审](../../design/spec/repo.md#发布评审)、[Git 现场引擎](./git.md)。现有 `src/crates/hctl2-facts/src/lib.rs` 只有 checks、PR merged、ref advanced 三类事实，P2.4 仍需补线程 / 正式评审 / 保护回读，不能写作已经实现。
+- 本库：[平台能力对照及快进反例](../scm-platforms.md#复核记录)、[Repo §平台绑定与能力声明](../../design/spec/repo.md#平台绑定与能力声明)、[Repo §发布评审](../../design/spec/repo.md#发布评审)、[Git 现场引擎](./git.md)。现有 `src/crates/hctl2-facts/src/lib.rs` 的平台侧事实只有 checks、PR merged、ref advanced 三类，另有非平台侧的 path-digest、process-exited；P2.4 仍需补线程 / 正式评审 / 保护回读，不能写作已经实现。

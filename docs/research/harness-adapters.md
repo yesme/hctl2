@@ -73,6 +73,14 @@ Gemini 的单次配置用 `GEMINI_CLI_SYSTEM_SETTINGS_PATH` 指向 control 生�
 | Codex | app-server `approvalPolicy="untrusted"`、`approvalsReviewer="user"`，按当前 request ID 回一次性决定；同版本的规则与已信任钩子负责细化 | untrusted 不是所有工具都询问，on-request 更不是；托管工具不全受 PreToolUse 覆盖。未获信任的 hook 会被跳过，不能以「文件存在」算生效 |
 | Gemini | `--acp --approval-mode default`，受审工具选 `ask_user`，每次选 `allow_once` 对应的上游选项而非永久授权 | print 模式遇 ask_user 会拒绝；默认只读允许，源码还对部分安全 shell 命令作放行判断，笼统的一条 ask 规则不足以证明逐次拦截；应按实际工具与参数复核 |
 
+Codex 的字符串以 **0.153.4 二进制导出的 schema** 为准。重新运行 `codex app-server generate-json-schema --out <临时目录>`，`v2/ThreadStartParams.json` 与 `v2/TurnStartParams.json` 的 `definitions.AskForApproval` 字符串枚举均为：
+
+```json
+["untrusted", "on-request", "never"]
+```
+
+另有 `granular` 对象分支，`approvalPolicy` 属性也允许 `null`，二者不是额外的字符串枚举。[官方 app-server 文档](https://learn.chatgpt.com/docs/app-server)示例使用 `unlessTrusted` / `onRequest`，与本次导出的拼写不同；本版本保留 `approvalPolicy="untrusted"`，不照文档示例替换发送值。`ThreadStartParams.json` 的 SHA-256 为 `792e2f32e37cece971bd616664ea2053741acbed4e9c92e9d1766427718f2ecd`，两次导出逐字节一致；这证明协议定义的拼写，不代替真实会话审批验收。
+
 **推翻「三家只钉一个权限模式参数，就都能逐项询问」的假设；不推翻三家接入。** 若「逐项」指每个工具调用都经人确认，本次没有证据能为三家作这个统一承诺。需要审批的具体动作及其实际覆盖必须随冻结规格核验，不能自行把它缩成「危险命令才问」，也不能用自动批准或绕过沙盒替代缺失的请求通道。这里登记能力限制，不改约束层。
 
 ## 候选比较
@@ -99,6 +107,8 @@ Gemini 的单次配置用 `GEMINI_CLI_SYSTEM_SETTINGS_PATH` 指向 control 生�
 | 同 bundle，独立 `GEMINI_CLI_HOME`、`--list-sessions`，系统设置路径指向故意截断的 JSON | 退出 52，错误明确指向指定文件；改指向有效 `{}` 后越过解析，退出 41，提示独立 home 尚未配置认证。**只证明换路径及读取有效，不是登录或 hook 执行通过** |
 
 Gemini 实验输入是 v0.58.0 的 `gemini-cli-bundle.zip`，SHA-256 `c4e5914239a247091bd0ce2af782f4524a7d69f733e8a799b2b7a126272837ab`；未签名 arm64 zip 为 `2f3708ab95187215db759440eb010ea20162a4268f35b0230e7ce3ccdc45fb86`。其余事件映射基于官方协议文档与钉定源码。每种接入在 P2.3 激活前仍需真实会话验证：审批被拒、取消、缺终局、通道断开及精确会话恢复；没有以源代码核对代替这些实验。
+
+交接给 P2.3 壬 / 癸 / 卯：任务书沿用上述五项验收，并逐家核实际工具、参数与有效策略决定「哪些动作会询问」，再冻结 Execution Spec。三条双向路径的声明分别以各自验收为依据，「已研究」不等于「已验证」；本轮只补研究交接，不改计划或约束。
 
 会话标识不等于模型标识。署名读取这次实际会话的模型与 effort 证据，并与冻结规格核对，不从全局默认值或文件修改时间猜。转录能恢复谈话，不证明仍是同一个进程、同一物理代次；缺退出证据照约束报告恢复等级或丢失。
 
