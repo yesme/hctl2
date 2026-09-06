@@ -117,7 +117,9 @@ webhook 以子 project 为单位订阅。`models/webhooks.go` 在配置 secret �
 d3c8fc29a7c14717dc4ea60e8626b0f22af9eb7b6e7b61e12253c21faa0b9570
 ```
 
-摘要包含本次 public URL 配置；同配置重复导出一致，不能要求不同实例地址的整份文档摘要相同。正文的 136 路径是 9 月 3 日在线开发版数据，不是 2.5.0。
+摘要包含本次 public URL 配置；同配置重复导出一致，不能要求不同实例地址的整份文档摘要相同。正文的 136 路径是 9 月 3 日在线开发版数据，不是 2.5.0。原件保存在本机实验目录 `/tmp/hctl2-p2-research.kpvgTx/experiment/src/probe/openapi.json`，本轮重算摘要仍一致；这是临时证据位置，不是可依赖的长期制品地址。
+
+P2.2 把原件收入适配器的版本快照时，保留这个原件摘要作生成输入校验，另算排除部署地址的规格摘要供跨实例比较。本次地址只出现在 `/servers/1/url`；建议仅排除由 `service.publicurl` 产生的绝对地址条目，保留相对 `/api/v2` 条目，其余内容统一 JSON 排序后计算 SHA-256。排除规则也随快照固定，不改 paths、schemas 或媒体类型；跨部署一致性还待下一轮实验，不把排除后的文档替换成生成器输入。
 
 | 输入 / 实验步骤 | 真实失败点 | Buck Build ID |
 | --- | --- | --- |
@@ -137,16 +139,33 @@ d3c8fc29a7c14717dc4ea60e8626b0f22af9eb7b6e7b61e12253c21faa0b9570
 
 #### 边界与取舍
 
+**分组映射尚待 P2.2 庚开工前确定。** 子 project 能提供唯一归属，但父 project 不汇总子项目任务：只按前面的容器映射接入，用户看到的是每个 HCTL Project 各一块看板，尚未兑现[Task 设计 §Kanban 场景](../../design/task.md#kanban-场景)的 Repo 级总板。两条可比较的路线如下；本次不替所有者定产品取舍。
+
+| 路线 | 原生能力与创建方式 | 产品代价与维护者 |
+| --- | --- | --- |
+| 子 project 分组，saved filter（保存的跨项目查询）汇总 | v2.5.0 支持 `POST /api/v2/filters`，以 `filters.filter = "project in 12, 13"` 列出已准入子 project 的 ID；创建时同时建 List / Gantt / Table / Kanban 视图，任务仍在原来的子 project | filter 只属于创建账号，不能分享；HCTL bot 创建的视图不会出现在人的账号里。若采用，由人建并维护个人 filter；control 若要代维护，需另获该人的凭据与授权，不能沿用 bot token。分组增删后还要更新 ID 列表，不会自动递归包含新子项目。汇总视图的 bucket 按 view 独立，不是子看板列的并集，也不自动提供「Project 分组 × 阶段」两级展示 |
+| 单个 project 作 Repo Board，以获准标签 ID 作 Project 分组 | 一个共享原生看板容纳全部任务，标签由用户或获授权的适配器创建并记录稳定 ID，可按标签过滤；不为每个 HCTL Project 另建 project | 标签是多对多关系，可缺失或同时挂多个分组标签，也没有每组独立的 project 权限。原生界面没有自动强制唯一分组；control 按 [Task §契约与来源](../../design/spec/task.md#契约与来源)回读恰好一个获准标签后才认领，歧义与改组只记 Snapshot / 需要关注。标签过滤不等于总板上自动出现独立分组，分组呈现仍待界面验收 |
+
+以上核到固定 commit 的过滤解析、owner 权限、默认视图与标签关系源码，未做两种路线的浏览器体验验收。saved filter 能提供个人 Repo 总视图，但不能被写成已经解决共享总板；单 project 加标签也没有消除分组歧义。
+
+P2.2 庚的绑定实测能力应明确记录：任务 PUT / PATCH 不具备 `If-Match` 条件写保护，按后端已有语义写入并回读；本地绑定版本与过期预览检查仍照常执行。这是[系统边界 §固定内核与受控端口](../../design/spec/system.md#固定内核与受控端口)要求记录的「实测能力与降级方式」，不是用写前回读冒充服务端原子保护。
+
 Vikunja 服务与 OpenAPI 客户端路线维持；原文「progenitor 0.14.0 作 build 依赖」的实施前提尚未成立。P2.2 的生成客户端工作应先解决上述生成器兼容性，随后才是 tasks、bucket、position、webhook 与 routes 的编译和实际往返验证；不把 Task 映射研究完成写成客户端可交付。
+
+OpenAPI Generator `7.25.0` 是 Java 工具：运行官方 JAR 至少需要 Java 11 运行时，并不要求完整 JDK，但仍新增构建机依赖。若采用，单独论证并钉定 JAR 与三平台 Java 工具链，作为 Buck action 输入，不依赖宿主预装，也不成为用户运行依赖。如果它仍不能正确生成并通过实际往返验证，按既定四级顺序降到手写实际调用子集是合法兜底；以本次 17 路径诊断集为起点核齐所需操作，用钉定 OpenAPI 快照与真实服务做契约测试，不把 17 路径当作完整能力清单，也不无限叠生成器补丁。本轮未运行这个后备生成器。
 
 生成器许可和输入规范许可分开记录。这里仅确认发布包所列许可证，不用「构建期」或「独立进程」直接推出生成物的许可结论；原文对生成物归属的断言仍需发行时核验，不在本次扩展为新许可决策。
 
 #### 决定建议
 
-**服务继续采用二进制 Vikunja `v2.5.0 / ef2200e9`；客户端维持从 OpenAPI 生成的方向，但暂缓采用 progenitor `0.14.0`。** 理由是已实测的三种生成失败，原件无法产出可编译客户端；按原定后备顺序，下一候选钉 OpenAPI Generator **`7.25.0`**，尚未验证，不提前宣布采用，也不转手写。分组选择「顶层 project 作 Repo 容器、直接子 project 作 HCTL Project、task 作卡片」；PUT/PATCH **不具备 If-Match 条件写保护**，适配器据此声明能力。以上只推翻被实验否定的两项判断，不重开 Vikunja 服务选型。
+**服务继续采用二进制 Vikunja `v2.5.0 / ef2200e9`；客户端维持从 OpenAPI 生成的方向，但暂缓采用 progenitor `0.14.0`。** 理由是已实测的三种生成失败，原件无法产出可编译客户端；按原定后备顺序，下一候选钉 OpenAPI Generator **`7.25.0`**，尚未验证，采用前须解决新增 Java 构建依赖。它也失败时才进入手写实际调用子集与契约测试，不继续无限修补生成器。
+
+分组映射暂缓定案：子 project 加 saved filter 能提供个人总视图，但不共享；单 project 加标签保留共享总板，却有分组歧义。P2.2 庚开工前按这些代价确定映射并验原生界面。PUT/PATCH **不具备 If-Match 条件写保护**，进绑定的实测能力与降级说明。以上只推翻被实验否定的两项判断，不重开 Vikunja 服务选型。
 
 #### 证据
 
 - 钉定服务：[v2.5.0 官方制品](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)、[`huma.go` 的规格导出](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/huma.go)、[`tasks.go` 读写参数与处理](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/tasks.go)。上表 HTTP 响应与 Buck 错误是本机实测，不是文档引述。
 - 映射与观测：[project 父 ID](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/project.go)、[webhook 发送](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/webhooks.go)、[限流处理](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/rate_limit.go)、[默认配置](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/config/config.go)。
 - 生成器：[progenitor 0.14.0](https://crates.io/crates/progenitor/0.14.0)、[失败分支所在的 method.rs](https://docs.rs/crate/progenitor-impl/0.14.0/source/src/method.rs)、[OpenAPI Generator v7.25.0](https://github.com/OpenAPITools/openapi-generator/releases/tag/v7.25.0)。
+- 本轮映射复核（同一 `ef2200e9`）：[filter 的 v2 路由](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/saved_filters.go)、[创建与默认视图](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/saved_filters.go)、[owner-only 权限](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/saved_filters_permissions.go)、[`project in` 解析测试](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/task_collection_filter_test.go)、[按 view 存储 bucket](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/kanban_task_bucket.go)、[标签关系](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/label_task.go)。[官方 saved filter 说明](https://vikunja.io/help/saved-filters/)作交叉核对，行为以钉定源码为准。
+- Java 依赖：[OpenAPI Generator 官方安装说明 §JAR](https://openapi-generator.tech/docs/installation/#jar)要求最低 Java 11 runtime；本轮未下载或运行 JAR，未验证其生成客户端。
