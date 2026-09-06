@@ -27,7 +27,7 @@ Protobuf 是消息 schema（字段与类型的机器可读定义），gRPC 是�
 
 生成分两步：钉定 protoc 把显式列出的 `.proto`、imports 和标准 include 目录变成描述符集；一个 Buck `rust_binary` 调 `tonic_prost_build::compile_fds` 与 `pbjson_build::Builder::register_descriptors` 产出 Rust 文件。protoc 本身不直接生成 prost 类型。描述符也可经 prost-build 的 `file_descriptor_set_path` / `skip_protoc_run` 输入，均不用宿主 `PATH` 找编译器。
 
-生成物放独立 package、独立 `rust_library`；control 与 CLI 依赖这个 crate。工具、schema、imports 都是 action 输入，消费方不重复运行生成器。protoc 只在开发 / CI 使用，不进入用户运行依赖。`prost-types` 与 `pbjson-types` 的标准消息映射在首次实际使用 Timestamp 等类型时一并钉同系列版本，不手写第二份类型。
+生成物放独立 package、独立 `rust_library`；control 与 CLI 依赖这个 crate。工具、schema、imports 都是 action 输入，消费方不重复运行生成器。protoc 只在开发 / CI 使用，不进入用户运行依赖。P2.1 乙起草 schema 时就确定是否使用 Timestamp 等标准消息；若使用，同时钉定 `prost-types` 与 `pbjson-types` 的兼容版本和映射，避免字段定稿后再换类型，不手写第二份类型。
 
 ## 候选比较
 
@@ -42,7 +42,7 @@ tonic `Endpoint::connect_with_connector` 接 `tokio::net::UnixStream`，客户�
 
 Subscribe 可用服务端流；断线后客户端带业务游标重新订阅，过期时重新取快照。gRPC 不保存事件、不自动补历史，也不使 Submit 自动幂等；这些沿用[系统边界 §命令与跨服务正确性](../../design/spec/system.md#命令与跨服务正确性)。收到传输错误但提交结果不明时，仍靠命令幂等键回读。
 
-编译器选官方 protoc，不选 protox：两者都能摆脱宿主安装，但官方制品已覆盖三平台，沿用 DotSlash 即可，不需维护另一种 `.proto` 前端。建议 DotSlash 固定 `36.1`、下面的资产大小与 SHA-256；Buck 中把已物化的编译器和 include 文件声明为输入，下载不藏在生成 action 里。
+编译器选官方 protoc，不选 protox：两者都能摆脱宿主安装，但官方制品已覆盖三平台，沿用 DotSlash 即可，不需维护另一种 `.proto` 前端。建议 DotSlash 固定 `36.1`、下面的资产大小与 SHA-256，入口放在 `src/build/tools/`，与 gh / Process Compose 同列；Buck 中把已物化的编译器和 include 文件声明为输入，下载不藏在生成 action 里。
 
 | 平台 | 官方资产 | 字节数 | SHA-256 |
 | --- | --- | --- | --- |
@@ -53,6 +53,8 @@ Subscribe 可用服务端流；断线后客户端带业务游标重新订阅，�
 P3 仍从同一 `.proto` 经 `protoc-gen-es` 生成 TypeScript；Buf CLI 是可选的 lint / 生成调度工具，Buf 远程注册服务不是前提。Tauri Rust 核心转发字节，webview 用 Protobuf-ES 解码，不要求浏览器直接连 Unix socket。本轮只核生成路线，不引入 Node 或 Workbench 代码。
 
 进 Git 的 Task Revision 等领域正文继续用 RFC 8785 规范化 JSON；ProtoJSON 不是 JCS，Protobuf 字节也不保证规范化。传输中需要携带原正文时保留其原始字节和既有摘要，不拿传输重编码结果重新认定领域事实。出处是[接口备忘 §当前决定](../../../.memo/notes/control-api-schema-20260902.md#当前决定)；其中“暂不引入”的时机决定已由 P2 计划覆盖，事实格式边界仍成立。
+
+P2.1 甲 / 乙起草接口时还有一个待定衔接点：[hctl2-tool 的 JSON 记录](../../../src/apps/hctl2-tool/src/lib.rs) 已有带版本的 `schema`、`evidence_level`、`outcome` 与 `error.code`，将由 control 消费。这些记录是否也由同一份 `.proto` 定义并以 ProtoJSON 输出，要在实现前明确，避免两份定义分别演进；[P2 计划 §三](../../../.memo/design/p2-control-20260906/01-plan.md#三p2-的形状) 已定 P1 接口不重塑，不能因换生成方式改变已有字段或语义。本文只登记这个问题，不据此改工具箱。
 
 ## 决定建议
 
