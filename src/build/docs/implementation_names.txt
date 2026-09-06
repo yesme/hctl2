@@ -12,3 +12,4 @@ Reindeer
 Process Compose
 Gitea
 Forgejo
+Gogs

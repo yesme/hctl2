@@ -144,7 +144,7 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
    事务 ID、事件顺序与重同步沿用 Matrix homeserver 约束；低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化。结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
 4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja，备份恢复和托管生命周期留到 B1 产品化，git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——约束未押注它，双向适配是五项中最贵的一项。
-6. **本地代码协作平台（Gitea，已拍板；Forgejo 备选）**：只验 HCTL 的调用面：建仓与推送、分支保护的读写、评审请求的创建/更新/合并、正式评审与评论线程（含解决状态）回读、提交状态写回、webhook 唤醒，以及随包一键启停与备份恢复；不验 Gitea 自身功能，Actions 执行器不随包。探针在 B2 前完成，结论与固定版本见 [Gitea 调研](../research/gitea.md)。
+6. **本地代码协作平台（Gitea，已拍板；Forgejo 备选；Gogs 核对后落选）**：只验 HCTL 的调用面：建仓与推送、分支保护的读写、评审请求的创建/更新/合并、正式评审与评论线程（含解决状态）回读、提交状态写回、webhook 唤醒，以及随包一键启停与备份恢复；不验 Gitea 自身功能，Actions 执行器不随包。探针在 B2 前完成，结论与固定版本见 [Gitea 调研](../research/gitea.md)。
 
 ## 打包策略（选型判断，首次消费时产品化）
 
