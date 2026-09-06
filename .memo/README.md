@@ -46,4 +46,5 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/scm-module-20260906/` | 已拍板 · 待落地：第五模块 Repo（仓库）/ 场景 Change（变更），七项取舍 2026-09-06 全部拍板；去向 v0.17.0 约束批（不自合，再审一轮），文件清单见 `01` 第十二节 |
+| `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：仓库设置只留 merge commit 并让合并提交带 PR 描述（所有者改）；`src/agency/attribution/` 移植、PR contract 检查、AGENTS.md 一节交 Codex 实现 |
+| `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
