@@ -10,3 +10,5 @@
 | [`keyring.md`](./keyring.md) | 系统钥匙串 | 采用 SDK：keyring 经逐平台 store；无桌面会话的 Linux 持久来源（systemd 凭据或 0600 文件）需所有者拍板 |
 | [`sqlite-fts5.md`](./sqlite-fts5.md) | 全文索引 | 采用 SDK：随 bundled SQLite 零新增依赖；中文靠应用层预分词加 unicode61，trigram 表补子串检索；索引独立文件、可重建、不进备份集 |
 | [`notify.md`](./notify.md) | 文件系统监听 | 采用 SDK：notify 加 debouncer；`wait` 先查后等、事件只触发复查、定时兜底；CI / PR 事实不靠它，走 GitHub API |
+| [`protobuf-rpc.md`](./protobuf-rpc.md) | control 接口生成与本地 RPC | 采用 SDK：prost 0.14.4、tonic 0.14.6、pbjson 0.9.0；采用二进制：protoc 36.1；Unix socket 上的 gRPC |
+| [`sqlite-migrations.md`](./sqlite-migrations.md) | SQLite schema 迁移 | 采用 SDK：rusqlite_migration 2.6.0，兼容现用 rusqlite 0.40.2；先备份、事务升级、失败恢复 |
