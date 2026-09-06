@@ -110,6 +110,9 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [sdk/README.md](./sdk/README.md) | 七个供应端客户端层对象（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear，以及作工具箱现场引擎的 Git） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
 | [sdk/git.md](./sdk/git.md) | Git 现场引擎（宿主二进制） | E-SDK-GIT | ⑥ 机械后端与基础设施 | 采用二进制：宿主 git，下限 2.39，不随包；libgit2 / gitoxide 不进依赖树 |
 | [libs/README.md](./libs/README.md) | 五处通用机制的现成库加文件监听（JCS、文件锁、SQLite 备份、钥匙串、FTS5、notify） | E-LIB-* | ⑥ 机械后端与基础设施 | 采用 SDK，逐项见子目录；outbox / 租约 / 代次维持自研 |
+| [protobuf-rpc.md](./libs/protobuf-rpc.md) | Protobuf 生成链与本地 RPC | E-LIB-PROTOBUF-RPC | ⑥ 机械后端与基础设施 | 采用 SDK：prost / tonic / pbjson；采用二进制：钉 protoc，Buck 原生生成独立 crate |
+| [sqlite-migrations.md](./libs/sqlite-migrations.md) | SQLite 停机迁移 | E-LIB-SQLITE-MIGRATIONS | ⑥ 机械后端与基础设施 | 采用 SDK：rusqlite_migration 2.6.0，一致备份后事务升级 |
+| [process-compose.md](./runtime/process-compose.md) | 随包服务生命周期 | E-RUNTIME-PROCESS-COMPOSE | ⑥ 机械后端与基础设施 | 采用二进制：1.122.0，经现有 UDS、CLI JSON 与组件动作接入 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
