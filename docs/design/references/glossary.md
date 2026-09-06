@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.17.0<br>
+> 状态：非规范对照 · 草案 v0.17.1<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -50,6 +50,7 @@
 | --- | --- |
 | `hctl2-tool` | 工具箱；两者始终指同一个现场执行组件，它是 Repo 模块的现场执行者 |
 | 平台适配器 | Repo 模块经平台端口接入代码协作平台的适配代码；推送、评审请求、请求合并与回读归它，工具箱不做远端副作用 |
+| 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | Repo 某某 | Repo 是各模块共享的作用域限定词：Repo Room 归 Project，Repo Board 归 Task，Repo policy 归系统层；「Repo 模块」指拥有仓库对象的第五个模块，不改变这些归属 |
 | human actor | 有权的人；约束层用 `human actor`，设计层写「人」或「有权的人」 |
 | owner | 归属者；在精确对象或字段名中保留 `owner` |
@@ -91,7 +92,7 @@
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
 | Terminal | Agency 供给的执行体（默认：本地参考实现，运行时 Herdr） | 会话转录、PTY 流 |
-| Change | SCM platform（代码协作平台；按 Repo 绑定，可以没有，缺省选型 GitHub） | 评审线程、检查结果、合并状态 |
+| Change | SCM platform（代码协作平台；按 Repo 绑定：外部平台缺省选型 GitHub，只在本地的 Repo 缺省绑定随包的本地平台，选型 Gitea） | 评审线程、检查结果、合并状态 |
 
 权威对照见[三面架构](../architecture.md#场景与系统)。Participant（模块）、Agency（派出方）、worker（执行体）与 Agent（编码代理的泛称）是四个不同词；`provider` 泛指模块供应端，并非跨模块对象。
 

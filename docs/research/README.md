@@ -52,7 +52,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 <a id="l1-selected-evidence"></a>
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
-不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Herdr、Cinny 采用二进制，Tauri 2 与 UI 通用库采用 SDK，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
+不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Gitea、Herdr、Cinny 采用二进制，Tauri 2 与 UI 通用库采用 SDK，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
 
 ### ⑦ 直接谱系
 
@@ -118,7 +118,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
-| [scm-platforms.md](./scm-platforms.md) | 代码协作平台市场调研：GitHub、GitLab、Gitea、Forgejo、Gerrit、Bitbucket、Azure DevOps 在合入调用面上的能力（源头校验、目标头保证、队列语义、官方命令行） | E-SCM-PLATFORMS | ⑥ 机械后端与基础设施 | 采用二进制、GitHub 缺省；其余平台暂缓，按能力声明维度按需接入 |
+| [scm-platforms.md](./scm-platforms.md) | 代码协作平台市场调研：GitHub、GitLab、Gitea、Forgejo、Gerrit、Bitbucket、Azure DevOps 在合入调用面上的能力（源头校验、目标头保证、队列语义、官方命令行） | E-SCM-PLATFORMS | ⑥ 机械后端与基础设施 | 外部平台：采用二进制、GitHub 缺省，其余暂缓、按能力声明维度按需接入；本地平台另见 gitea.md |
+| [gitea.md](./gitea.md) | 随包的本地代码协作平台：Gitea v1.27.3 的调用面核对、运行形态与 tea 命令行覆盖 | E-SCM-GITEA | ⑥ 机械后端与基础设施 | 采用二进制，Forgejo 备选；适配器第一级用 tea，字段级操作走 `tea api` |
 | [tmux-runtime.md](./tmux-runtime.md) | 运行时后端复审 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 | 历史选型，不再采用 |
 | [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 采用 Herdr 的验证证据 |
 | [agentd-runtime-candidates-20260829.md](./agentd-runtime-candidates-20260829.md) | Agent 运行服务候选的源码复审：Termio、tty7、cmux、Pilotty 及相邻候选 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 旧结论废止，源码与实测证据保留 |

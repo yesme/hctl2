@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.0<br>
+> 状态：规范性约束 · 草案 v0.17.1<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -80,7 +80,7 @@ Gate Seat 的 ReviewSubjectRef diff 与返工 Seat 的 Verdict 正文属于必�
 
 ### 选材与排序
 
-来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Backend Snapshot 的引用与摘要冻结进 Manifest，不经检索。变更在代码协作平台上的评审评论线——普通评论与正式评审——同样属于显式来源，按 [Repo 模块约束](./repo.md#变更与平台的映射)以精确 ChangeSet Revision 与评论标识冻结进 Manifest，不经检索；评论只供作者阅读，不构成授权、契约或裁决。没有平台绑定的 Repo 没有这一项，讨论在 Scoped Room 里走既有路径。序列化时，稳定内容排在前面，高频变化内容排在后面。
+来源按以下顺序选择：用户显式引用；当前讨论窗口；Repo、Project、Task、Run 和 Request 的引用；Git 中的 Artifact、Verdict、Receipt 等结晶副本；必需 Skill；相关 Memo。绑定 Task 的任务后端评论线整条属于显式来源，以当前 Task Backend Snapshot 的引用与摘要冻结进 Manifest，不经检索。变更在代码协作平台上的评审评论线——普通评论与正式评审——同样属于显式来源，按 [Repo 模块约束](./repo.md#变更与平台的映射)以精确 ChangeSet Revision 与评论标识冻结进 Manifest，不经检索；评论只供作者阅读，不构成授权、契约或裁决。显式不挂平台的 Repo 没有这一项，讨论在 Scoped Room 里走既有路径。序列化时，稳定内容排在前面，高频变化内容排在后面。
 
 ### 根 Context Manifest
 

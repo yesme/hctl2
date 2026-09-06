@@ -10,3 +10,5 @@ Tauri
 Electron
 Reindeer
 Process Compose
+Gitea
+Forgejo

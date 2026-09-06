@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.17.0<br>
+> 状态：规范性约束 · 草案 v0.17.1<br>
 > 本文只定义五个模块共享的运行机制，不拥有 Project、Task、Run、Participant 或 Repo 的领域状态。
 
 ## 组件
@@ -14,7 +14,7 @@
 | workflow engine | 通过适配器保存 Run 的引擎执行令牌、引擎步骤、定时器、重试次数和执行历史 |
 | chat server | 经 Chat 端口访问的聊天服务器（Matrix 协议）；承载 Room 消息 content 的 ground truth |
 | task backend | 经任务源端口访问的任务后端（本地任务服务器或远端平台，按 Repo 选择）；承载任务卡 content 的 ground truth |
-| SCM platform | 经平台端口访问的代码协作平台（托管服务或自建服务器，按 Repo 绑定，可以没有）；承载评审线程、检查结果与合并状态 content 的 ground truth；平台适配器是 control 内的适配代码 |
+| SCM platform | 经平台端口访问的代码协作平台（外部的托管服务或自建服务器，或 control 托管的随包本地平台，按 Repo 绑定；显式不挂平台的 Repo 走受限路径）；承载评审线程、检查结果与合并状态 content 的 ground truth；平台适配器是 control 内的适配代码 |
 | 第三方场景平台 | 可以同时提供场景客户端和受控端口；这两种接入分别绑定，任何一种都不会因此取得 HCTL 治理权威 |
 
 ## 固定内核与受控端口
