@@ -153,6 +153,7 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 - **必须原生**：Herdr、harness、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 Git 工作树、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。Herdr 直接消费摘要锁定的官方单二进制并随包保留上游许可证，不维护另一套终端运行服务或自主构建链。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行目标。Linux x86_64、Linux arm64、macOS arm64 与 macOS x86_64 分别构建。macOS 最低基线为 15：`lock.json` 固定 15.0，托管 Tuwunel 的两种架构 Mach-O 均声明 `minos 15.0`，macOS 依赖与发布 CI 均在 macOS 15 arm64/Intel runner 验证；Herdr 官方制品声明 11.0，尚未落入源码树的 Tauri 2 Workbench 没有更高要求。
   Dagu、Vikunja、Herdr、Gitea 使用官方原生发布物。Tuwunel 上游无 Darwin 制品，HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包；日常打包消费托管制品，源码构建只用于更新托管制品。各发行目标共用锁定的 Cinny 官方 Web 发行包，不混用缓存、动态库闭包或生命周期验证。
+- **压缩只管下载，不碰运行形态**：安装包整包用 xz，参数固定 `-9 -T0`——多线程模式的输出只随 xz 版本、预设与块大小变，与核数无关，可复现；`-9e` 实测只再省 0.3%、慢两成，不用。随包二进制按上游官方制品原样装入，上游提供 xz 制品的（Gitea）锁定 xz 制品下载。不用 UPX 这类自解压打包：UPX 自 4.2.0 起禁用 macOS 支持，会改写上游制品让签名与哈希失效，运行时还把整份二进制解压进匿名内存、多进程不共享。实测 Gitea 二进制 117.5 MB：gzip 43.1 MB、上游 xz 38.3 MB、zstd 最高档 35.2 MB、xz `-9 -T0` 31.8 MB。（所有者裁定，2026-09-07）
 - **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
 - Windows 不在当前范围。Herdr v0.8.2 已提供官方 Windows x86_64 发行物，但 HCTL 当前的构建与生命周期验证矩阵只有 Linux/macOS，Tuwunel 也未见官方 Windows 包；未来须让完整 Windows 包重新通过同一约束与兼容矩阵，当前不宣称支持 Windows。
 

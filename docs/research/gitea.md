@@ -13,7 +13,7 @@
 
 - 版本：[Gitea v1.27.3](https://github.com/go-gitea/gitea/releases/tag/v1.27.3)，2026-08-29 发布；上游按月出补丁版，1.27.0 发布于 2026-07-13。
 - 许可：MIT（Copyright 2016 The Gitea Authors、2015 The Gogs Authors）。
-- 发布物：每个平台一个单文件可执行，内嵌静态资源，自带 SQLite、MySQL、PostgreSQL 驱动。HCTL 消费的四个：`gitea-1.27.3-linux-amd64`（120 MiB）、`gitea-1.27.3-linux-arm64`（111 MiB）、`gitea-1.27.3-darwin-10.12-amd64`（120 MiB）、`gitea-1.27.3-darwin-10.12-arm64`（112 MiB）。文件名里的 10.12 是历史命名，实际最低 macOS 由 Go 工具链决定，低于 HCTL 的 macOS 15 基线。下载包是 xz 压缩，darwin arm64 37 MiB、linux amd64 41 MiB。每个发布物附 `.sha256`、GPG `.asc` 与 Sigstore `.sigstore.json`，打包时按 SHA-256 锁定。
+- 发布物：每个平台一个单文件可执行，内嵌静态资源，自带 SQLite、MySQL、PostgreSQL 驱动。HCTL 消费的四个：`gitea-1.27.3-linux-amd64`（120 MiB）、`gitea-1.27.3-linux-arm64`（111 MiB）、`gitea-1.27.3-darwin-10.12-amd64`（120 MiB）、`gitea-1.27.3-darwin-10.12-arm64`（112 MiB）。文件名里的 10.12 是历史命名，实际最低 macOS 由 Go 工具链决定，低于 HCTL 的 macOS 15 基线。下载包是 xz 压缩，darwin arm64 37 MiB、linux amd64 41 MiB；打包时锁定 xz 制品下载、解压后原样装入。HCTL 安装包整包用 xz `-9 -T0`：同一个 darwin arm64 二进制实测 gzip 41 MiB、上游 xz 37 MiB、zstd 最高档 34 MiB、xz `-9 -T0` 30 MiB，`-9e` 只再省 0.3% 且慢两成；多线程模式的输出与核数无关（xz 5.4 起），可复现。不用 UPX：UPX 自 4.2.0 起禁用 macOS 支持，且会改写上游制品。每个发布物附 `.sha256`、GPG `.asc` 与 Sigstore `.sigstore.json`，打包时按 SHA-256 锁定。
 - 官方命令行：[tea v0.15.1](https://gitea.com/gitea/tea/releases/tag/v0.15.1)，2026-08-02 发布，darwin/linux × amd64/arm64 单二进制；`--output json` 逐命令可用。
 - 宿主依赖：Gitea 调用宿主 git（文档要求 2.0 以上），与工具箱用的是同一个宿主 git（HCTL 下限 2.39，见 [sdk/git.md](./sdk/git.md)）；不需要数据库服务，SQLite 文件默认在 `data/gitea.db`。
 
@@ -85,6 +85,7 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 ## 依据
 
 - 发布：[v1.27.3](https://github.com/go-gitea/gitea/releases/tag/v1.27.3) · [tea v0.15.1](https://gitea.com/gitea/tea/releases/tag/v0.15.1) · [LICENSE](https://github.com/go-gitea/gitea/blob/main/LICENSE)
+- 压缩：[UPX NEWS](https://github.com/upx/upx/blob/devel/NEWS)（4.2.0「disable macOS support until we fix compatibility with macOS 13+」）· xz 5.8.3 手册 `--threads`（多线程压缩器与核数无关）
 - 文档：[二进制安装](https://docs.gitea.com/installation/install-from-binary) · [配置速查](https://docs.gitea.com/administration/config-cheat-sheet) · [命令行](https://docs.gitea.com/administration/command-line) · [Actions 概览](https://docs.gitea.com/usage/actions/overview)
 - Gogs 对照：[v0.14.3 发布页](https://github.com/gogs/gogs/releases/tag/v0.14.3) · [`internal/route/api/v1/api.go`](https://github.com/gogs/gogs/blob/main/internal/route/api/v1/api.go) · [`internal/database/repo_branch.go`](https://github.com/gogs/gogs/blob/main/internal/database/repo_branch.go)
 - 源码：[`routers/api/v1/api.go`](https://github.com/go-gitea/gitea/blob/main/routers/api/v1/api.go) · [`modules/structs/repo_branch.go`](https://github.com/go-gitea/gitea/blob/main/modules/structs/repo_branch.go) · [`modules/structs/pull_review.go`](https://github.com/go-gitea/gitea/blob/main/modules/structs/pull_review.go) · [tea CLI 清单](https://gitea.com/gitea/tea/src/branch/main/docs/CLI.md)

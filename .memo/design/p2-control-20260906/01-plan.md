@@ -179,3 +179,4 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 - **丑（Repo 模块 B2 半边）**：平台路径分两家后端——GitHub 走 `gh`，本地平台走 tea（字段级操作走 `tea api`）；`integrate` 的本地路径退为显式不挂平台的受限路径，保留实现，不再是缺省。
 - **卯（B2 收口）**：两条验收路径改为「缺省绑定本地平台的本地仓库」与「受保护的 GitHub `main`」；A1 影子仍在试验仓库上跑，正好用本地平台。
 - **研究**：`docs/research/gitea.md` 首版随 v0.17.1 落地（Fable 写）；待核项（`http+unix` 与 tea 的配合、Forgejo 兼容、`REQUIRE_SIGNIN_VIEW` 下的 webhook）交 Codex 在丁开工前补复核记录。
+- **打包压缩（所有者 2026-09-07 裁定；丁或单开小代码 PR）**：安装包整包从 gzip 换 xz `-9 -T0`，不用 UPX。改动点：`src/packaging/dependencies/{common,platforms/macos,platforms/linux}/package.sh` 与 `defs.bzl` 里的 `gzip -n`，两处 `test-package.sh` 的 `.tar.gz` 匹配，`src/packaging/release/{assemble.sh,defs.bzl,test-package.sh}`，各 README 与 `docs/usage.md` 的 `tar -xzf`；`.sha256` 命名随文件名走；构建环境要有 xz ≥ 5.4 并钉版本（多线程输出与核数无关、可复现，macOS 要核对来源）；Gitea 的 lock.json 条目锁 `.xz` 制品。上游制品的下载格式不改。
