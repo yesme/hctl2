@@ -68,7 +68,7 @@
 
 ## 实践方案 \- cloud
 
-- 启动一个HCTL control instance \(cloud\_ctl\)，cloud\_ctl基于gl\-jstui创建了1个本地project \(cloud\_jstui\_01\)。
+- 启动一个HCTL control instance \(cloud\_ctl\)，cloud\_ctl基于gl\-jstui和gh\-jssdk分别创建了2个本地project \(cloud\_jstui\_01, cloud_jssdk_01\)。
 
 - 关于cloud\_jstui\_01，cloud\_ctl通过不同的agency，拿了以下的participants：
 
@@ -80,13 +80,22 @@
 
         1. cloud\_ptcp\_jstui\_01\_02：基于mac\_tpl\_ops
 
+- 关于cloud\_jssdk\_01，cloud\_ctl通过不同的agency，拿了以下的participants：
+    - 通过cloud_agency \(本地\)，拿了1个participant
+
+      1. cloud\_ptcp\_jssdk\_01\_01：基于cloud\_tpl\_pm
+
+    - 通过mac\_agency \(远程\)，拿了1个participant
+
+      1. cloud\_ptcp\_jssdk\_01\_02：基于mac\_tpl\_ops
+
 - cloud上只在创建project的时候使用了CLI前端cloud\_cli来连接cloud\_ctl，之后就没有前端了
 
 ## 实践方案 \- ubuntu
 
 - ubuntu是个『瘦客户端』，没有跑ubuntu\_ctl。
 
-- 前端方面，启动了ubuntu\_bench，连上了两个远程的projects：mac\_jssdk\_02和cloud\_jstui\_01。这就是『hctl\-control 一份存储有多个执行面 \(hctl\-workbench/hctl\-cli, 本地/远程\)』的典型例子了。
+- 前端方面，启动了ubuntu\_bench，连上了3个远程的projects：mac\_jssdk\_02、cloud\_jstui\_01、cloud_jssdk_01。这就是『hctl\-control 一份存储有多个执行面 \(hctl\-workbench/hctl\-cli, 本地/远程\)』的典型例子了。
 
 ## 综上所述
 
