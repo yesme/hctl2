@@ -46,5 +46,5 @@
 | `design/hctl2-agentd-prd-20260826.md` | 已废弃 · 组件已由 §29 退场 |
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
-| `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡（按 abacistopia 的做法）：仓库设置只留 squash 由所有者改；`coauthor.py` 与钩子移植、PR contract 检查交 Codex 实现 |
-| `design/p2-control-20260906/` | 已拍板 · 研究先行中：五项取舍所有者 2026-09-06 逐条表态（Protobuf 现在就上、迁移用现成库、身份文件在默认分支、三家 harness 并接且自举与 B2 解耦、发布确认缺省关） |
+| `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：仓库设置只留 merge commit 并让合并提交带 PR 描述（所有者改）；`src/agency/attribution/` 移植、PR contract 检查、AGENTS.md 一节交 Codex 实现 |
+| `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
