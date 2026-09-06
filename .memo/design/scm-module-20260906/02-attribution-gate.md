@@ -2,7 +2,7 @@
 
 > 状态：已拍板 · 做法照 abacistopia（所有者 2026-09-06：「所有的 harness 怎么写邮箱，都看 abacistopia 那边」）；仓库设置一项等所有者动手<br>
 > 基线：main @ `1d001ad`（草案 v0.17.0）<br>
-> 去向：`scripts/coauthor.py` 与 `scripts/hooks/commit-msg` 从 abacistopia 移植、`.github/workflows/pr-contract.yml` 加一步、`AGENTS.md` 加「提交署名」一节、仓库设置只留 squash；不改约束层
+> 去向：`src/agency/attribution/`（从 abacistopia 移植 `coauthor.py` 与 `hooks/commit-msg`）、`.github/workflows/pr-contract.yml` 加一步、`AGENTS.md` 加「提交署名」一节、仓库设置只留 squash；不改约束层
 
 所有者 2026-09-06 提出：coauthor 要有纪律，并且要机械执行。`01-scm-module.md` 附录二记了审计结论，四家评审都维持「另开小 PR、与第五模块方案分开」。本文是那份小 PR 的任务书；v2 按所有者的指向改成照搬 abacistopia 的做法，不再自己发明白名单。
 
@@ -27,17 +27,18 @@
 
 ## 二、hctl2 要做的事
 
-1. **移植生成器与钩子**（复制代码，来源是所有者自己的仓库，保留出处注释）：`scripts/coauthor.py` 只保留 hctl2 会用到的家（Claude、Codex、GLM、Grok、Antigravity；Kimi 先留着不删，无害），去掉 abacistopia 专有的 `./run --session-id` 与 `COAGNET_*` 环境变量路径，改为只认各家原生会话证据；`scripts/hooks/commit-msg` 原样移植，分支前缀表加 `fable/*` 映射到 claude（Fable 现有 PR 分支的前缀）。这两个是新增脚本，PR 的调研节要写清：不用现成的 DCO / commitlint 类 GitHub Action，因为它们检查的是 `Signed-off-by` 或提交格式，不认厂商机器人邮箱，也读不到会话证据。
-2. **作者身份**：所有者在这台 Mac 上给 `/Users/haibara/workspace/hctl2/.git/config` 设 `user.name`/`user.email` 为 Yesme / `jacky.chao.wang@gmail.com`，并 `git config core.hooksPath "$(git rev-parse --show-toplevel)/scripts/hooks"`（与 abacistopia 同一句）；每台机器一次。此后 hctl2 的提交作者是 Yesme，共同作者是尾注里的机器人。
+1. **移植生成器与钩子，放在本地 Agency 参考实现之下，不进 HCTL 主体**（所有者 2026-09-06：署名能力本质上是「本地 Agency」对「本地 Participant」的一个实现，逻辑上属于本地 Agency，不该泄露到 HCTL 主体）。落点是 `src/agency/attribution/`（与技能目录 `src/agency/skills/` 并列）：`coauthor.py` 从 abacistopia 复制（保留出处注释），只保留 hctl2 会用到的家（Claude、Codex、GLM、Grok、Antigravity），去掉 abacistopia 专有的 `./run --session-id` 与 `COAGNET_*` 环境变量路径，只认各家原生会话证据；`hooks/commit-msg` 原样移植，分支前缀表加 `fable/*` 映射到 claude。为什么这归 Agency：知道「Claude 的会话记录在哪、Codex 的 rollout 长什么样、OpenCode 的会话库怎么读」是派出方对自己派出的执行体的了解，HCTL 主体不该有这种各家私货。到了产品里这件事反而变简单：执行体在 ChangeSet 工作树里的提交，其模型与 effort 由 Execution Spec 冻结、Agency 交付时申报，尾注从冻结值生成，不用去翻会话文件——现在这套脚本是 HCTL 还没有的时候的过渡品。这两个是新增脚本，PR 的调研节要写清：不用现成的 DCO / commitlint 类 GitHub Action，因为它们检查的是 `Signed-off-by` 或提交格式，不认厂商机器人邮箱，也读不到会话证据。
+2. **作者身份**：已设（2026-09-06，Fable 代做）：`/Users/haibara/workspace/hctl2/.git/config` 的 `user.name`/`user.email` 为 Yesme / `jacky.chao.wang@gmail.com`，共享 `.git` 下的全部 worktree 生效；此后 hctl2 的提交作者是 Yesme，共同作者是尾注里的机器人。`core.hooksPath` 等钩子移植进仓库后再设，每台机器一次。
 3. **PR contract 加一步**（在现有那一步里加十几行，不新增脚本文件）：对 `origin/<base>...HEAD` 逐个提交，头分支前缀在上表的 harness 映射里时，每个提交必须至少有一条 `Co-authored-by:` 尾注，值匹配 `^.+ \(.+ effort\) <[0-9]+\+an?-[a-z-]+-bot\[bot\]@users\.noreply\.github\.com>$`，且邮箱属于该分支前缀对应的那一家；不匹配就失败，错误信息指出哪个提交、缺哪家的尾注。头分支不在映射里（所有者手工开的分支）不检查——责任仍由 PR 发起者、合并者与 squash 提交记录。这是护栏不是安防，和 abacistopia 的定位一样。
-4. **`AGENTS.md` 加「提交署名」一节**，三句：每个 harness 产出的提交末尾带本家的 `Co-authored-by` 尾注，用 `python3 scripts/coauthor.py <harness>` 生成、不手写；合并只用 squash；给别家署名只用它已验证的真实尾注。Fable 的 CLAUDE.md 侧默认尾注规则由本节覆盖。
-5. **仓库设置**（只有所有者能改，GitHub 网页：Settings → General → Pull Requests）：取消勾选「Allow merge commits」与「Allow rebase merging」，只留「Allow squash merging」；squash 提交消息保持现在的「commit messages」选项，这样各提交里的尾注会进主线的那一个提交。**「Require linear history」不用开**：所有者担心它限制太多，而只留 squash 之后主线本来就是线性的——线性历史开关只多防一件事：有推送权的人绕过 PR 直接推一个 merge 提交到 main，而 main 的分支保护已经要求走 PR、管理员也受约束，这条路已经堵死。
+4. **`AGENTS.md` 加「提交署名」一节**，四句：每个 harness 产出的提交末尾带本家的 `Co-authored-by` 尾注，用 `python3 src/agency/attribution/coauthor.py <harness>` 生成、不手写；合并只用 squash；给别家署名只用它已验证的真实尾注；提交与 PR 描述不带 harness 专有的会话链接，留痕写 HCTL 层面的引用。Fable 的 CLAUDE.md 侧默认尾注与会话链接规则由本节覆盖。
+5. **仓库设置**（只有所有者能改，GitHub 网页：Settings → General → Pull Requests）：取消勾选「Allow merge commits」与「Allow rebase merging」，只留「Allow squash merging」；squash 提交消息保持现在的「commit messages」选项，这样各提交里的尾注会进主线的那一个提交。「Require linear history」不开，理由见第三节。
 
-## 三、所有者问的两件
+## 三、所有者问的三件
 
-- **「会话链接」是什么**：Fable 的提交末尾除署名外还有一行 `Claude-Session: https://claude.ai/code/session_…`，PR 描述末尾也有同一个链接，指回产生这次改动的 Claude Code 会话，是 Claude Code 自带的留痕，别家没有对应物。**不列入检查**，它是自愿留痕不是纪律。
-- **「我去 GitHub 里改？」**：是，只有第二节第 5 项要你在 GitHub 网页上动手；第 2 项是在这台 Mac 上敲两句 git config，可以由我代做，你说一声即可。其余由 Codex 写、Fable 审。
+- **要求「线性」对不对，行业推荐是什么。** 行业没有唯一推荐，有三种合并方式各配一种历史观：merge commit 保留分支拓扑与每个中间提交，Linux 内核与 Git 自己这么干，代价是 `git log` 与 `git bisect` 要在网状历史里走；rebase 合并让主线线性且保留每个中间提交，前提是作者把提交整理干净；squash 把一个 PR 压成主线上的一个提交，Google 式的「一次评审一个提交」，代价是丢掉 PR 内部的提交粒度。GitHub 的官方建议只有一条：一个仓库选定一种、用设置限制住，别混用。「Require linear history」这个开关是给选了 squash 或 rebase 的仓库防止有人推 merge commit 进主线用的——它是结果不是目标。我们选 squash 的理由：PR 是评审单位，描述里的三节是给人看的证据，各提交里的尾注会被 squash 收进主线那一个提交，bisect 落在 PR 粒度正好够用；harness 产出的中间提交多半是 WIP，不值得保留。至于「要求线性」：只留 squash 之后主线本来就是线性的，那个开关只多防「有推送权的人绕过 PR 直接推 merge 提交」，而 main 的分支保护已经要求走 PR、管理员也受约束，这条路已经堵死；所以不开，所有者的担心（限制太多）成立。顺带一提，产品里合并方式不是全局设置而是每个目标的策略：集成意图固定「合并方式」，平台绑定声明允许哪几种（`spec/repo.md` §集成）；P1 的本地 `integrate` 做了快进与合并提交两种，squash 由 GitHub 路径提供。
+- **会话链接是什么、要不要留。** Fable 的提交末尾除署名外还有一行 `Claude-Session: https://claude.ai/code/session_…`，PR 描述末尾也有同一个链接，指回产生这次改动的 Claude Code 会话。它不是公开可访问的：只有登录了那个账号的人能打开，别人点开是登录页。所以在公开仓库里它对读者没有信息量，还顺带暴露了我们的内部工具形态；所有者的判断对。在 HCTL 的语境下，可追溯应该回到 HCTL 自己的对象：产品里 ChangeSet Revision 的 `producer_ref` 指向精确的 Invocation 或 Attempt，账本再从那里连到 Execution Runtime 与会话，这条链不靠提交消息里的链接。**定**：不检查会话链接，且 hctl2 的提交与 PR 描述不再带 harness 专有的会话链接；要留痕就写 HCTL 层面的引用——现在是 PR 编号与备忘路径，有了 control 之后是 Task 或 ChangeSet 的稳定 ID。`AGENTS.md` 那一节加这一句；Fable 从本 PR 落地后的下一次提交起去掉 `Claude-Session:` 行。
+- **「我去 GitHub 里改？」** 是，只有第二节第 5 项要在 GitHub 网页上动手；第 2 项已由 Fable 代做。
 
 ## 四、分工
 
-`scripts/` 两个文件的移植、`pr-contract.yml` 一步、`AGENTS.md` 一节由 Codex 写（代码归 Grok/Codex 的分工），Fable 审；PR 的调研节引用本文第一节与 abacistopia 的 `GIT-PROTOCOL.md` §1、§2、§5。落地后 Fable 与各家在下一次提交起改用新尾注；旧提交不改写（主线只进不改）。
+`src/agency/attribution/` 两个文件的移植、`pr-contract.yml` 一步、`AGENTS.md` 一节由 Codex 写（代码归 Grok/Codex 的分工），Fable 审；PR 的调研节引用本文第一节与 abacistopia 的 `GIT-PROTOCOL.md` §1、§2、§5。落地后 Fable 与各家在下一次提交起改用新尾注、去掉会话链接；旧提交不改写（主线只进不改）。
