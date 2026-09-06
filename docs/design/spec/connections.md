@@ -1,6 +1,6 @@
 # 五模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.17.0<br>
+> 状态：规范性约束 · 草案 v0.17.1<br>
 > 本文是 Project、Task、Run、Participant、Repo 之间连接约束的唯一权威。它不是一个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -47,7 +47,7 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 | Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、Participant/参与者授权/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 账本和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再预留、绑定和激活运行时 | invocation id + invocation_version + Execution Spec digest |
 | Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由工具箱回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
-| Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要 | Repo 模块记待确认注册并持久化 outbox，工具箱写入并回读 Git 身份；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复 |
+| Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要、平台绑定的声明（外部平台 / 本地平台 / 显式不挂） | Repo 模块记待确认注册并持久化 outbox，工具箱写入并回读 Git 身份、为本机检出登记远端；缺省绑定本地平台时平台适配器执行「在本地平台建仓并推送」外部副作用命令；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复；建仓与推送按自己的关联键回读，不重复建仓 |
 | Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/现场/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
 | Project / Run → Repo | 获准提案中的 ChangeSet 输出、工具箱封存回读的 Git 事实 | 工具箱先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一账本事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
 | Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；平台适配器推送并创建或更新评审请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
@@ -198,7 +198,7 @@ Task 路径的验收证据 → Task Completion Receipt
 | 任务后端不可用 | 已冻结且策略不要求来源当前回读的 metadata 命令可继续；依赖 placement/drift/head/cursor 的 Create/Adopt/Start/Complete/Move 拒绝，看板不显示假成功 |
 | workflow engine 不可用 | 已冻结的本地事实继续存在；Run 的完成与评审只依据账本推进，Run–Engine Binding 标为分歧待对账，对账期间 control 不创建新 Obligation |
 | harness / Agency 不可用 | 执行安全暂停或按代次结束，不冒充成功 |
-| 代码协作平台不可用 | 本地物化、封存与面向本地目标的集成继续；依赖平台当前回读的发布评审、读评审请求状态与远端合入拒绝，Change 场景显示重同步中；已投递或可能已投递的远端意图保持结果未知 |
+| 代码协作平台不可用 | 本地物化与封存继续，面向本地目标的集成只对显式不挂平台的 Repo 继续；依赖平台当前回读的发布评审、读评审请求状态与远端合入拒绝，Change 场景显示重同步中；已投递或可能已投递的远端意图保持结果未知 |
 | 远端集成或发布评审的结果未知 | 意图保持结果未知并继续占用冲突范围，不改道、不签成功 Receipt；按 [Repo 模块约束](./repo.md#恢复)分目标回读收敛，本地已有同一结果树也不解锁 |
 | 节点的外部机械事实前置读不到 | 该节点不派发并标需要关注；已派发的执行不受影响；事实可读后按当前观察重新判定 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |

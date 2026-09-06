@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.17.0**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.17.1**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；三个目标均已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -40,7 +40,7 @@ flowchart TB
         engine["工作流引擎"]
         agency["Agency · 派出方<br/>名册与条款"]
         worker["执行体<br/>Harness 进程 · Skill · TUI"]
-        platform["代码协作平台<br/>按仓库绑定 · 可以没有"]
+        platform["代码协作平台<br/>外部平台 · 或随包本地平台"]
     end
 
     Tool["hctl2-tool · 现场执行者"]
@@ -61,7 +61,7 @@ flowchart TB
 
 图中的 Room（聊天室）、Kanban、Workflow、Terminal 和 Change（变更）是五个模块对应的场景。Workbench、CLI 与 provider（供应端）原生客户端没有等级；动作按它落在哪个模块、带什么信封处理，分类规则见[系统约束](./docs/design/spec/system.md#客户端动作与-provider-事件)。
 
-图里带 `hctl2-` 前缀的是本仓库交付的第一方组件；执行面的聊天、任务、工作流、代码协作平台四类系统由外部供应端承担，其中代码协作平台按仓库绑定、纯本地仓库可以没有，工具箱是每个仓库都有的本地执行者；Agency 是参与者的供给方而不是模块，没有接入外部 Agency 时默认由发布包自带的本地参考实现承担；四类外部系统与本地运行时各选了谁、实现到什么阶段见[交付文档](./docs/design/delivery.md#实现阶段)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件职责与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)。
+图里带 `hctl2-` 前缀的是本仓库交付的第一方组件；执行面的聊天、任务、工作流、代码协作平台四类系统由供应端承担——随包的本地实现或外接的外部服务，其中代码协作平台按仓库绑定：来自外部平台的仓库用外部平台，只在本地的仓库用随包的本地平台，工具箱是每个仓库都有的本地执行者；Agency 是参与者的供给方而不是模块，没有接入外部 Agency 时默认由发布包自带的本地参考实现承担；四类外部系统与本地运行时各选了谁、实现到什么阶段见[交付文档](./docs/design/delivery.md#实现阶段)。三面职责、场景与系统、供应商替换边界见[三面架构](./docs/design/architecture.md)；组件职责与账本的精确划分见[系统边界的组件表](./docs/design/spec/system.md#组件)。
 
 ## 阅读入口
 

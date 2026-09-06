@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.17.0<br>
+> 状态：规范性索引 · 草案 v0.17.1<br>
 > 日期：2026-08-31
 
 HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者）与 Repo（仓库）。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
@@ -11,7 +11,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 | [Task](./task.md) | Kanban（看板） | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、后端映射与字段权威、操作态投影、完成证明 | Workbench Board / Linear、GitHub 任务源端口 |
 | [Run](./run.md) | Workflow（施工图） | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / workflow engine 端口 |
 | [Participant](./participant.md) | Terminal | Agency（派出方）供给的执行体；默认为本地参考实现 | 参与者身份与人设、Skill（技能包）申报、执行者配置与目录、物理运行时、终端、结果与证据 | Workbench Terminal（participant.tui）、CLI / ACP、harness、运行时 API / TUI |
-| [Repo](./repo.md) | Change（变更） | SCM platform（代码协作平台，按仓库绑定、可以没有）；工具箱是每个仓库都有的本地执行者 | 仓库身份与注册、执行现场、变更集与不可变快照、写入租约、集成意图与凭证、变更与平台的映射 | 平台原生页面与命令行 / HCTL 平台端口、工具箱 |
+| [Repo](./repo.md) | Change（变更） | SCM platform（代码协作平台，按仓库绑定：外部平台，或随包的本地平台）；工具箱是每个仓库都有的本地执行者 | 仓库身份与注册、执行现场、变更集与不可变快照、写入租约、集成意图与凭证、变更与平台的映射 | 平台原生页面与命令行 / HCTL 平台端口、工具箱 |
 
 每场景三类数据的完整归属、系统角色与丢失恢复见[三面架构](./architecture.md)。场景与模块是一一对应的主视角，不是强制的调用链。Task 可以没有 Run；Project 可以发起一次 Harness 调用；Kanban 可以显示 Run 和 Artifact（工件）投影。跨模块引用不转移事实所有权。
 

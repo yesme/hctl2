@@ -1,6 +1,6 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.0<br>
+> 状态：规范性约束 · 草案 v0.17.1<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
