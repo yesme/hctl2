@@ -10,5 +10,6 @@
 
 - [Herdr](./herdr.md)：源码审计和设计借鉴；
 - [Herdr 运行服务验证记录](./agency-runtime-validation-20260829.md)：当前选定实现的 API、行为、限制与 macOS footprint。
+- [Process Compose](./process-compose.md)：随包服务管理器的 CLI / REST、就绪回读和 control 重连；1.122.0 源码与隔离实测。
 
 全量分类与复用结论见[研究总表](../README.md)。

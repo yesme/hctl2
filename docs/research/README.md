@@ -112,6 +112,9 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [sdk/README.md](./sdk/README.md) | 七个供应端客户端层对象（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear，以及作工具箱现场引擎的 Git） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
 | [sdk/git.md](./sdk/git.md) | Git 现场引擎（宿主二进制） | E-SDK-GIT | ⑥ 机械后端与基础设施 | 采用二进制：宿主 git，下限 2.39，不随包；libgit2 / gitoxide 不进依赖树 |
 | [libs/README.md](./libs/README.md) | 五处通用机制的现成库加文件监听（JCS、文件锁、SQLite 备份、钥匙串、FTS5、notify） | E-LIB-* | ⑥ 机械后端与基础设施 | 采用 SDK，逐项见子目录；outbox / 租约 / 代次维持自研 |
+| [protobuf-rpc.md](./libs/protobuf-rpc.md) | Protobuf 生成链与本地 RPC | E-LIB-PROTOBUF-RPC | ⑥ 机械后端与基础设施 | 采用 SDK：prost / tonic / pbjson；采用二进制：钉 protoc，Buck 原生生成独立 crate |
+| [sqlite-migrations.md](./libs/sqlite-migrations.md) | SQLite 停机迁移 | E-LIB-SQLITE-MIGRATIONS | ⑥ 机械后端与基础设施 | 采用 SDK：rusqlite_migration 2.6.0，一致备份后事务升级 |
+| [process-compose.md](./runtime/process-compose.md) | 随包服务生命周期 | E-RUNTIME-PROCESS-COMPOSE | ⑥ 机械后端与基础设施 | 采用二进制：1.122.0，经现有 UDS、CLI JSON 与组件动作接入 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
@@ -133,6 +136,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [buck2-change-detector.md](./build-tools/buck2-change-detector.md) | Buck2 Change Detector 的源码、官方制品与失败回退审计 | E-TOOL-BTD | ⑥ 机械后端与基础设施 | 采用官方 `btd` 二进制；不自行构建 `supertd` |
 | [jq.md](./build-tools/jq.md) | BTD JSON Lines 解析工具与官方制品审计 | E-TOOL-JQ | ⑥ 机械后端与基础设施 | 采用摘要锁定的官方单文件制品；不依赖宿主预装 jq |
 | [github-actions-incremental-validation.md](./build-tools/github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | E-TOOL-GHA-REVALIDATION | ⑥ 机械后端与基础设施 | 采用平台原生 workflow 证据；快进更新增量验证，失败时全量回退 |
+| [sdk/matrix.md · P2.2 复核](./sdk/matrix.md#2026-09-06--p22-appservice-实际调用面) | Tuwunel AppService 注册、虚拟用户与加密回读 | E-SDK-MATRIX | ⑥ 机械后端与基础设施 | 采用 SDK：ruma 0.16.0，精确 features 与原生身份方法已核到源码 |
+| [sdk/vikunja.md · P2.2 复核](./sdk/vikunja.md#2026-09-06--p22-映射条件写入与生成实验) | Vikunja 2.5.0 的分组映射、条件写反例与生成实验 | E-SDK-VIKUNJA | ⑥ 机械后端与基础设施 | 服务采用二进制；progenitor 0.14.0 直接生成失败，暂缓采用；任务写入无 If-Match 保护 |
 
 ## 已选外部服务的运维与资源占用
 
