@@ -73,3 +73,80 @@ progenitor README 自己承认 "may fail for some OpenAPI documents"。Huma 3.1 
 - 生成器：[progenitor crates.io](https://crates.io/crates/progenitor)（0.14.0，MPL-2.0，rust-version 1.88）· [progenitor README](https://github.com/oxidecomputer/progenitor/blob/main/README.md)（"OpenAPI 3.0.x"）· [openapi-generator rust](https://openapi-generator.tech/docs/generators/rust/)
 - 社区 Rust 项目（均非库）：[cria](https://github.com/frigidplatypus/cria) · [vikunja-tui](https://github.com/mark-pitblado/vikunja-tui) · [vk](https://github.com/JMARyA/vk) · [vikunja-rust-mcp](https://github.com/brianluby/vikunja-rust-mcp)
 - 本仓库：[任务后端条目与 2026-08-30 复核](../task-backends.md) · [部件矩阵](../component-matrix-20260902.md)
+
+## 复核记录
+
+### 2026-09-06 · P2.2 映射、条件写入与生成实验
+
+> 对象：Vikunja `v2.5.0 / ef2200e9429c5cc42f5c1811433418bfcc72b3aa` · progenitor `0.14.0`<br>
+> 许可证：Vikunja AGPL-3.0-or-later；progenitor MPL-2.0；备选 OpenAPI Generator Apache-2.0<br>
+> 定位：核验 P2.2 对钉定服务的真实调用，不以在线 demo 或 README 的承诺代替；本次有本机写入反例与生成失败记录。
+
+#### 上游能力
+
+| HCTL 对象 / 操作 | Vikunja v2.5.0 的落点 | 稳定回读与限制 |
+| --- | --- | --- |
+| Repo 的 Board（任务内容容器） | 一个顶层 Vikunja project 的 ID 作为范围锚点 | 这是容器映射，不承诺顶层的一个 Kanban 页面自动展示所有子项目卡片 |
+| HCTL Project 分组 | 顶层之下的一个直接子 project，记录 ID 与 `parent_project_id` | `models.Project` 有明确的单一父 ID，比父任务关系更适合作分组锚点；回读父子关系与已准入绑定 |
+| HCTL Task 卡片 | 子 project 中的 task，以 `id` 与 `project_id` 认定内容身份、分组归属 | 看板 bucket 属于某个 view 的阶段，不作 Project 分组；子任务与清单也不自动成为 HCTL Task |
+| 读写与移动 | `/tasks/{projecttask}` 的 GET / PUT / PATCH / DELETE；`/tasks/{task}/position`；project view 下的 bucket 移动接口 | 以实际 OpenAPI 占位名为准。阶段、排序移动留在原分组，原生客户端改 `project_id` 后只记 Snapshot 与需要关注 |
+| 富文本 | 默认 HTML；`format=markdown` 做格式转换 | 转换不是字节无损往返；只改阶段时不顺便回写转换后的描述 |
+
+该映射沿用[Task §契约与来源](../../design/spec/task.md#契约与来源)的 Repo Board / Project 分组，不增加 HCTL 对象；父任务关系可多条，不能仅凭关系类型猜出唯一 Project。根、子 project 被移动或删除也需重核绑定，不能只盯 task 自己的字段。
+
+**条件写入实测：推翻「只要补 If-Match 请求头就能防止覆盖」的假设。** GET 的 ETag 是内容版本标签，但服务端并未把它用于任务写入的原子比较。源码 `tasksRead` 接受 `conditional.Params`；`tasksUpdate` 只接 ID、format 与 body，直接 `DoUpdate`。在隔离的 v2.5.0 实例中，对刚创建的 task 分别执行：
+
+| 请求 | 故意给错的条件 | 实际响应及回读 |
+| --- | --- | --- |
+| PUT `/api/v2/tasks/1`，修改 title | `If-Match: "impossible-stale-etag"` | HTTP 200，标题确实变成 PUT 的新值 |
+| PATCH 同一路径，`application/merge-patch+json`，再次改 title | 同一错误 ETag | HTTP 200，标题确实变成 PATCH 的新值 |
+
+所以 `updated`、写前读、写后读都不是服务端比较并交换；它们能发现部分漂移，不能消除两次读之间的并发覆盖。此处换 SDK 也不会补出服务端能力。GET 的 `If-None-Match` 仍适合轮询；写端按真实能力声明，不能声称具备条件写保护。
+
+webhook 以子 project 为单位订阅。`models/webhooks.go` 在配置 secret 后才生成 `X-Vikunja-Signature`（原始 body 的 HMAC-SHA256）；无 secret 就没有这项真实性校验。任务事件包括 `event_name`、`time`、`data.task` 与 `data.doer`，未找到稳定投递 ID 或可回放的服务端事件游标。发送代码直接发 HTTP 请求，不能据此承诺持久重试。沿用「通知触发回读 + 定期分页核对」，补足漏投、删除和项目归属变化；不假定订阅父 project 就覆盖子 project。
+
+用 `/user/bots` 建 HCTL bot，再经 `/tokens?owner_id=…` 给它发按 `/routes` 收窄的 API token；token 所属账号决定写入身份，不能任填 `doer`。创建时返回的明文 token 进入现有密钥存储。限流配置默认 `enabled=false`；开启后的默认值为按 user、60 秒 100 次、内存存储，未认证请求另有限额。控制端尊重部署值和 429，不把这些默认数值当接口保证。
+
+#### 生成实验
+
+2026-09-06，macOS arm64、rustc 1.98.0。在仓库之外用本库 `bb25282` 的构建配置建隔离实验，**通过 Buck2 的 rust_binary → genrule → rust_library** 调用 progenitor `0.14.0`；不改本库依赖，也未用 Cargo 绕过 Buck 构建。
+
+服务是随包所钉的官方 `vikunja-v2.5.0-darwin-10.15-arm64`，仅监听 `127.0.0.1:23456`，独立 SQLite 与文件目录，创建临时用户和卡片；没有向用户实例写数据。GET `/api/v2/openapi-3.0.json` 导出的原件为 OpenAPI **3.0.3**，`info.version=v2.5.0`，**128 路径、135 schemas**，SHA-256：
+
+```text
+d3c8fc29a7c14717dc4ea60e8626b0f22af9eb7b6e7b61e12253c21faa0b9570
+```
+
+摘要包含本次 public URL 配置；同配置重复导出一致，不能要求不同实例地址的整份文档摘要相同。正文的 136 路径是 9 月 3 日在线开发版数据，不是 2.5.0。
+
+| 输入 / 实验步骤 | 真实失败点 | Buck Build ID |
+| --- | --- | --- |
+| 原始完整文档；解析为 `openapiv3::OpenAPI`，`Generator::default().generate_tokens(&spec)` | `progenitor-impl/src/method.rs:2057`：`more media types than expected for patch-filters-read: 3`；该 PATCH 同时描述 JSON Patch、Merge Patch 与 shorthand | `b27c7473-5d31-4858-adc3-271246fd401a` |
+| 只作诊断：请求体选 JSON 或 Merge Patch 的 schema，统一成一个 JSON media type，仍保留全部路径 | `UnexpectedFormat("unexpected content type: multipart/form-data")` | `ba683000-ff21-442b-92a4-13175d94859a` |
+| 再缩到任务、分组、bucket、position、webhook、routes、token、bot 相关的 17 个路径，保留 components，沿用上述诊断处理 | `method.rs:1220`：`assertion failed: response_types.len() <= 1` | `b44a2838-e573-426e-a6a2-17257d94734f` |
+
+三次均在生成阶段退出，**没有生成客户端编译通过的结果，更没有 round-trip 通过**。后两次只用于定位兼容范围，不是可采用的规格改写方案：把 Merge Patch 媒体类型改成 JSON 已改变线上请求含义，也不能为让生成器过关删除条件响应。17 路径试验不是完整调用面验收。原始文档已足以重现首个失败，后续没有继续叠兼容补丁。
+
+#### 候选比较
+
+| 候选 | 钉定版本 / 许可证 | MSRV / 构建依赖 | 本次判定 |
+| --- | --- | --- | --- |
+| progenitor | `0.14.0` / MPL-2.0 | MSRV 1.88；生成器本身在 1.98 + Buck 上已运行 | **推翻直接可用的判断**；输入兼容失败，不是 Rust 版本不足 |
+| OpenAPI Generator Rust 生成器 | `7.25.0` / Apache-2.0 | Java 构建期工具，不以 Rust MSRV 描述；生成客户端的 MSRV 待实际构建核验 | 暂缓采用；按原文的后备顺序，下一次用同一快照验证它，不能写成本次已通过 |
+| 手写 HTTP 子集 | 无版本 / 本库代码 | 本库 1.98 | 暂缓；本次失败不构成跳过第二个现成生成器的理由 |
+
+#### 边界与取舍
+
+Vikunja 服务与 OpenAPI 客户端路线维持；原文「progenitor 0.14.0 作 build 依赖」的实施前提尚未成立。P2.2 的生成客户端工作应先解决上述生成器兼容性，随后才是 tasks、bucket、position、webhook 与 routes 的编译和实际往返验证；不把 Task 映射研究完成写成客户端可交付。
+
+生成器许可和输入规范许可分开记录。这里仅确认发布包所列许可证，不用「构建期」或「独立进程」直接推出生成物的许可结论；原文对生成物归属的断言仍需发行时核验，不在本次扩展为新许可决策。
+
+#### 决定建议
+
+**服务继续采用二进制 Vikunja `v2.5.0 / ef2200e9`；客户端维持从 OpenAPI 生成的方向，但暂缓采用 progenitor `0.14.0`。** 理由是已实测的三种生成失败，原件无法产出可编译客户端；按原定后备顺序，下一候选钉 OpenAPI Generator **`7.25.0`**，尚未验证，不提前宣布采用，也不转手写。分组选择「顶层 project 作 Repo 容器、直接子 project 作 HCTL Project、task 作卡片」；PUT/PATCH **不具备 If-Match 条件写保护**，适配器据此声明能力。以上只推翻被实验否定的两项判断，不重开 Vikunja 服务选型。
+
+#### 证据
+
+- 钉定服务：[v2.5.0 官方制品](https://github.com/go-vikunja/vikunja/releases/tag/v2.5.0)、[`huma.go` 的规格导出](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/huma.go)、[`tasks.go` 读写参数与处理](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/api/v2/tasks.go)。上表 HTTP 响应与 Buck 错误是本机实测，不是文档引述。
+- 映射与观测：[project 父 ID](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/project.go)、[webhook 发送](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/webhooks.go)、[限流处理](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/routes/rate_limit.go)、[默认配置](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/config/config.go)。
+- 生成器：[progenitor 0.14.0](https://crates.io/crates/progenitor/0.14.0)、[失败分支所在的 method.rs](https://docs.rs/crate/progenitor-impl/0.14.0/source/src/method.rs)、[OpenAPI Generator v7.25.0](https://github.com/OpenAPITools/openapi-generator/releases/tag/v7.25.0)。

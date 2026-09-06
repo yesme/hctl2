@@ -75,3 +75,53 @@ HCTL 不做端到端加密：读 `m.room.encryption` 只是为了识别并拒绝
 - Matrix 规范：[Application Service API v1.18](https://spec.matrix.org/v1.18/application-service-api/) · [v1.18 发布博文（2026-03-26）](https://matrix.org/blog/2026/03/26/matrix-v1.18-release/) · [matrix-spec OpenAPI 数据](https://github.com/matrix-org/matrix-spec/tree/main/data/api)
 - Tuwunel：[docs/appservices.md @ v1.9.0](https://github.com/matrix-construct/tuwunel/blob/v1.9.0/docs/appservices.md) · [Cargo.toml（ruma fork 依赖）](https://github.com/matrix-construct/tuwunel/blob/main/Cargo.toml) · [Release v1.9.0（2026-08-19）](https://github.com/matrix-construct/tuwunel/releases/tag/v1.9.0) · [Continuwuity](https://github.com/continuwuity/continuwuity)（备选，未核对）
 - 本仓库：[chat server 选型](../matrix-homeserver.md) · [部件矩阵 provider 适配客户端行](../component-matrix-20260902.md)
+
+## 复核记录
+
+### 2026-09-06 · P2.2 AppService 实际调用面
+
+> 对象：ruma `0.16.0`（ruma-common `0.19.0`、client-api `0.24.0`、appservice-api `0.16.0`）· Tuwunel `v1.9.0 / 5b3669144219d5d4c0774743c84191b476f1b54f`<br>
+> 许可证：ruma MIT；Tuwunel Apache-2.0；reqwest MIT OR Apache-2.0<br>
+> 定位：补齐 P2.2 的注册、身份与回读细节；下面是钉定源码核对，不是端到端联调通过记录。
+
+#### 上游能力
+
+AppService 是 homeserver 认可的服务账号及虚拟用户命名空间。注册 YAML 是服务端配置，不是普通 Matrix 客户端注册请求。
+
+| 动作 | 钉定版本的做法 | 核对结果 |
+| --- | --- | --- |
+| 注册 AppService | Tuwunel `appservice_dir` 下放注册 YAML，再启动服务；字段包括 `id`、`url`、`as_token`、`hs_token`、`sender_localpart`、`namespaces` | `service/appservice` 在启动时加载文件；不是热加载。管理房间 `!admin appservices register` 可运行时写入数据库，重复 ID 覆盖；配置来源的注册不能靠 `unregister` 删除 |
+| 创建虚拟用户 | `account::register::v3::Request` 的 `login_type = Some(LoginType::ApplicationService)`，`username` 落在已注册命名空间；请求用 `SendAccessToken::Appservice(as_token)` | 不是为每个虚拟用户保存密码再登录；重复创建应核对已存在账号，不改用新名字重试 |
+| 以虚拟用户发请求 | `OutgoingRequestAppserviceExt::try_into_http_request_with_identity`，传 `AppserviceUserIdentity::new(&user_id)` | **ruma 已处理 `user_id` 查询参数的编码与追加**，收回正文中「最坏情况自己附加」的待核项；无需自建 URL 拼接 |
+| 建房、邀请、加入 | `room::create_room`、`membership::invite_user`、`membership::join_room_by_id` 的 Client API 类型 | 命名空间授权不等于任意房间的成员权；邀请也不等于对方已加入，仍回读所需身份与成员状态 |
+| 按 ID 取消息 | `room::get_room_event::v3`，同时给 room ID 与 event ID | 返回原始事件 JSON；按事件 ID、作者及所需正文核对，不能用房间最新一条消息替代 |
+| 读加密状态 | `state::get_state_event_for_key::v3`，事件类型 `m.room.encryption`，`state_key = ""` | 在确认房间可读的前提下，明确的 `M_NOT_FOUND` 才表示未设置；200 表示已设置加密，403、超时及其他失败都不能解释为未加密 |
+| 接收服务端投递 | `event::push_events`、`ping`、`query` 的 AppService 服务端类型，经 axum 接收 | 来向校验 `hs_token`，去向使用 `as_token`；事务 ID 去重与持久接收之后才确认，HTTP 类型库不代办这两项 |
+
+ruma 的精确配置建议为 `default-features = false`，features 为 `client-api-c`、`appservice-api-s`、`events`、`rand`。前两项分别是「向 homeserver 发请求」和「接收 homeserver 的 AppService 请求」，它们已隐含 `events`；显式列出不增加额外功能。`rand` 提供随机事务 ID 等帮助方法。无需 `client-api-s`、`appservice-api-c`，也没有证据要求整组 `compat-*`。
+
+Tuwunel 的 `rate_limited` 默认 false，bot 不受该项限流，AppService 请求超时默认 35 秒。这不是投递保证：若实例启用了限流，仍处理 HTTP 429 / Matrix `M_LIMIT_EXCEEDED` 与服务端给出的等待时间；超时后复用事务 ID 或按已知对象 ID 回读，不重复建房。初次建房没有天然的事件事务 ID，仍需按 HCTL 的操作记录与房间关联信息恢复。
+
+#### 候选比较
+
+| 候选 | 版本 / 许可证 | MSRV（最低 Rust 版本） | 本次判定 |
+| --- | --- | --- | --- |
+| ruma 类型层 + reqwest | `0.16.0` / MIT；reqwest `0.13.4` / MIT OR Apache-2.0 | ruma 1.89；reqwest 1.85，均低于本库 1.98 | 维持；请求类型、身份追加与接收类型已核到源码 |
+| matrix-sdk | `0.18.0` / Apache-2.0 | 1.93，**也低于 1.98** | 仅参考行为；缺 AppService 接收层才是理由，不是工具链不够新 |
+| 再从 Matrix OpenAPI 生成 | 协议 v1.18；本次未选生成器 | 不适用 | 暂缓；重复 ruma 已提供的类型 |
+
+#### 边界与取舍
+
+注册仍选文件路径：control 在私有目录生成受权限保护的 YAML，交现有服务管理过程在 Tuwunel 启动前配置。变更注册需受控重启；管理房间命令是运维补救途径，不拿它冒充管理 REST API。同一个 AppService ID 只选一个配置来源，避免启动加载与数据库里的同名记录相互覆盖。
+
+绑定前读加密状态，绑定后继续接收状态变化，按[Project §Room 与消息](../../design/spec/project.md#room-与消息)限制依赖新正文的操作；已有摘要不作废。`matrix-sdk` 的加密能力不能替代这个约束。账号注册、进房、明文回读、启用加密后的拒绝与重复投递恢复仍需 P2.2 对钉定服务做联调；本次未运行这组用例。
+
+#### 决定建议
+
+**维持，采用 SDK：ruma `0.16.0`，配 reqwest `0.13.4` 与既定 axum。** ruma 已覆盖 P2.2 两个方向的协议类型及虚拟用户身份追加，省掉手写请求；精确 features 为 `client-api-c`、`appservice-api-s`、`events`、`rand`。Tuwunel 保持随包 `v1.9.0 / 5b366914`，AppService 走注册文件，不另造管理 API。正文与索引中若仍把 matrix-sdk 排除归因于 MSRV，应以本次核对为准：1.93 能在本库 1.98 上使用，排除原因是用途不匹配。
+
+#### 证据
+
+- 版本化源码：[ruma features](https://docs.rs/crate/ruma/0.16.0/source/Cargo.toml)、[ruma-common API 扩展](https://docs.rs/crate/ruma-common/0.19.0/source/src/api.rs)、[身份与令牌](https://docs.rs/crate/ruma-common/0.19.0/source/src/api/auth_scheme.rs)、[注册字段](https://docs.rs/crate/ruma-client-api/0.24.0/source/src/account/register.rs)。本次读取发布 crate 源码，而非只读 README。
+- Tuwunel 钉定源码：[注册加载与存储](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/service/appservice/mod.rs)、[注册文档](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/docs/appservices.md)、[客户端注册](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/api/client/register/register.rs)、[房间状态回读](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/api/client/state.rs)。
+- 发布元数据：[ruma 0.16.0](https://crates.io/crates/ruma/0.16.0)、[reqwest 0.13.4](https://crates.io/crates/reqwest/0.13.4)、[matrix-sdk 0.18.0](https://crates.io/crates/matrix-sdk/0.18.0)；协议：[Matrix v1.18 AppService](https://spec.matrix.org/v1.18/application-service-api/)。

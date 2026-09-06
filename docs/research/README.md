@@ -131,6 +131,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [buck2-change-detector.md](./build-tools/buck2-change-detector.md) | Buck2 Change Detector 的源码、官方制品与失败回退审计 | E-TOOL-BTD | ⑥ 机械后端与基础设施 | 采用官方 `btd` 二进制；不自行构建 `supertd` |
 | [jq.md](./build-tools/jq.md) | BTD JSON Lines 解析工具与官方制品审计 | E-TOOL-JQ | ⑥ 机械后端与基础设施 | 采用摘要锁定的官方单文件制品；不依赖宿主预装 jq |
 | [github-actions-incremental-validation.md](./build-tools/github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | E-TOOL-GHA-REVALIDATION | ⑥ 机械后端与基础设施 | 采用平台原生 workflow 证据；快进更新增量验证，失败时全量回退 |
+| [sdk/matrix.md · P2.2 复核](./sdk/matrix.md#2026-09-06--p22-appservice-实际调用面) | Tuwunel AppService 注册、虚拟用户与加密回读 | E-SDK-MATRIX | ⑥ 机械后端与基础设施 | 采用 SDK：ruma 0.16.0，精确 features 与原生身份方法已核到源码 |
+| [sdk/vikunja.md · P2.2 复核](./sdk/vikunja.md#2026-09-06--p22-映射条件写入与生成实验) | Vikunja 2.5.0 的分组映射、条件写反例与生成实验 | E-SDK-VIKUNJA | ⑥ 机械后端与基础设施 | 服务采用二进制；progenitor 0.14.0 直接生成失败，暂缓采用；任务写入无 If-Match 保护 |
 
 ## 已选外部服务的运维与资源占用
 
