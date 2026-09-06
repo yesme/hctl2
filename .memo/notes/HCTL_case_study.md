@@ -24,7 +24,7 @@
 
     - mac\_tpl\_ops \(mac\_k3\)
 
-- 在ubuntu上，安装了2个harness: ubuntu\_glm, ubuntu\_grok；有一个agency: ubuntu\_agency; 并创建了3个participant templates
+- 在ubuntu上，安装了2个harness: ubuntu\_glm, ubuntu\_grok；有一个agency: ubuntu\_agency; 并创建了2个participant templates
 
     - ubuntu\_tpl\_sde \(ubuntu\_grok\)
 
@@ -52,7 +52,7 @@
 
     - 通过mac\_agency \(本地\)，拿了1个participant
 
-        1. mac\_ptcp\_jssdk\_02\_01：基于mac\_tpl\_ops \- 这个的checkout依然在mac本地了，因此虽然和mac和\_jssdk\_01不是一个project，两者还是可以share同一个object database。← 这一点可商榷 \- 为了清晰起见，单独新clone一个也是可选的选择。
+        1. mac\_ptcp\_jssdk\_02\_01：基于mac\_tpl\_ops \- 这个的checkout依然在mac本地了，因此虽然和mac和\_jssdk\_01不是一个project，两者还是可以share同一个object database。两种做法都成立：共用同一个object database，或者单独新clone一个；写验收用例时按用例写清测的是哪种。
 
     - 通过ubuntu\_agency \(远程\)，拿了2个participant
 
@@ -89,13 +89,29 @@
 
       1. cloud\_ptcp\_jssdk\_01\_02：基于mac\_tpl\_ops
 
-- cloud上只在创建project的时候使用了CLI前端cloud\_cli来连接cloud\_ctl，之后就没有前端了
+- cloud上只在创建project的时候使用了CLI前端cloud\_cli来连接cloud\_ctl，之后没有常驻的本机前端；合入预览、完成Task这类要人拍板的动作，经ubuntu\_bench远程进来。没有前端不等于不用人决策。
 
 ## 实践方案 \- ubuntu
 
 - ubuntu是个『瘦客户端』，没有跑ubuntu\_ctl。
 
-- 前端方面，启动了ubuntu\_bench，连上了3个远程的projects：mac\_jssdk\_02、cloud\_jstui\_01、cloud_jssdk_01。这就是『hctl\-control 一份存储有多个执行面 \(hctl\-workbench/hctl\-cli, 本地/远程\)』的典型例子了。
+- 前端方面，启动了ubuntu\_bench，连上了3个远程的projects：mac\_jssdk\_02、cloud\_jstui\_01、cloud_jssdk_01。这就是『hctl\-control 一份存储有多个前端 \(hctl\-workbench/hctl\-cli, 本地/远程\)』的典型例子了。
+
+## 必然发生的情形
+
+- 同一个模板被两个控制面雇成不同的参与者实例：mac\_tpl\_ops 同时出现在 mac\_jssdk\_01 和 cloud\_jssdk\_01 里，是两个参与者。
+
+- mac\_ctl 和 cloud\_ctl 会同时对 gh\-jssdk 开 PR、同时请求合入 main。
+
+- mac 上 gh\-jssdk 的对象库会被 mac\_ctl 的参与者和 cloud\_ptcp\_jssdk\_01\_02 共用。
+
+- ubuntu 的参与者要推 gh\-jssdk 和 gl\-jstui，凭据在哪台机器、没有时谁中转。
+
+- gl\-jstui 的完整走通要等第二个外部平台适配器。
+
+- 同一个人在 mac\_ctl 和 cloud\_ctl 里是两个 human actor；多控制面不等于多用户，跨控制面的『同一人』归并本轮不做。
+
+- 跨机返工：cloud 上封存的版本被驳回，返工在 cloud 那台机器上做，用原工作树或重新物化，未封存的字节不搬去别的机器；旧版本的评审失效要让远端参与者看得到。
 
 ## 综上所述
 
