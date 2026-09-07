@@ -1,6 +1,6 @@
 # 用例反推 · 单元模型 · 状态板
 
-> 状态：讨论中 · 两轮审阅完成；§九 三处里用例修改与"账本"禁用已落（#195、#194），第 13 条治理正文已拍板（`03-governance-text.md` v3，五家一致，所有者授权收口）；改写规矩已定（`05-rewrite-process.md`）；下一步是 A0 词汇批的方案，以及 Repo Instance 去留与 Codex 对齐<br>
+> 状态：讨论中 · 两轮审阅完成；§九 三处里用例修改与"账本"禁用已落（#195、#194），第 13 条治理正文已拍板（`03-governance-text.md` v3，五家一致，所有者授权收口）；改写规矩已定（`05-rewrite-process.md`）；A0 词汇批的方案（`06`）与 Repo Instance 的题目（`07`）已开 PR 待审<br>
 > 基线：main @ `9bbab56`（草案 v0.17.1）<br>
 > 去向：`docs/design/architecture.md`、`vision.md`、五份模块正文与约束、`delivery.md` §当前范围、decision-history 新节；本 PR 不改约束层
 
@@ -12,5 +12,7 @@
 | `02-review-brief.md` | Fable | 四家主审的任务书：共同部分（审整个 PR 加 #191，给独立意见）与各家的专门方向 |
 | `03-governance-text.md` | Fable | 第 13 条治理正文放哪（v5，已拍板，第十节按 Codex 修正）：参与者读任务书靠冻结输入、实际交付、保留与可再取；缺省独立治理材料仓库、本地裸库必有、平台托管是写穿镜像、`.hctl2/` 跟踪目录取消、旁路 ref 显式选项、审计关联发布到评审请求；约束层落点清单；控制面存储的两半与 Git 后端（架构与约束要点加实现层脚注） |
 | `05-rewrite-process.md` | Fable | 设计改写的规矩：节奏、五个批次、人手、方案的形状、七问、审在哪一阶段、拍板与分歧、版本与决策史、待办（整理成技能留后） |
+| `06-batch-a0-vocabulary.md` | Fable | A0 词汇批的方案：163 处"账本"按五类改口、前端定名、机械检查接 dead_names、v0.17.2 与台账；附录逐行建议改法 |
+| `07-repo-instance-question.md` | Fable | Repo Instance 去留：Fable 的立场（取消控制面拥有的对象，现场归 Agency）与要和 Codex 核的三处 |
 
 流程（所有者定）：Codex、Grok、Kimi、GLM 都作为主审，第一轮独立审阅、第二轮交叉审阅，Antigravity 作为 #191 反馈的作者在第二轮加入；两轮后由 Fable 以 merge commit 合入。评论都在 PR #193。
