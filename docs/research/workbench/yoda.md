@@ -105,3 +105,6 @@ HCTL2 立场：Task 完成只接受有权人类命令，或绑定 Task 的 Run �
 ## 复核记录
 
 - **2026-09-07 · 上游条目已立**：Emdash 的独立审计见 [emdash.md](./emdash.md)；本条目里源自 Emdash 内核的 L1 证据（worktree 隔离、PTY 会话、Automations）以该条目为准，本条目只保留 Yoda 分叉后的增改。
+
+- **2026-09-07 · Feature Delivery 删除现场复原**（所有者要求，全部依据 GitHub 提交记录）。时间线：07-13 12:06Z `89f5860d` 加入（47 文件，+7,251）；56 分钟后 07-13 13:02Z `cf5f191b` 「unify Feature delivery and agent workflow」（32 文件，+9,673）；此后 33 天里该模块只被三次无关改动顺带触及（07-16 皮肤画廊、08-08 agent room 通信、08-13 测试计时改一行），没有一次功能迭代；08-15 13:06Z `b1a1a5ff` 删除。删除提交的正文只讲隐私模式的一个小修（「让名称被模糊时仍能点到允许名单」，Co-Authored-By Claude Opus 5），却带着 +103 / −4,937、31 个文件：27 个删除文件正是 Feature Delivery 的全部代码（主进程 `features/` 五个、`shared/features*` 与 `feature-workflow*` 四个、渲染端视图与弹窗十四个、导航与 hook 四个），8 个修改文件才是隐私模式修补（侧栏五个、两个语言包、一个测试）。它是单父提交、直接落在 main、无 PR、无 issue、无 ADR；仓库内文档 `agents/architecture/features.md` 与文档站的「Feature 开发闭环」页至今未删。「privacy」只是那次小修的 conventional-commit 作用域——隐私模式是 08-14 加的侧栏功能（把项目名模糊掉便于演示或共享屏幕），08-15 上午加允许名单、下午调菜单分组，与 Feature Delivery 毫无关系。当天该作者与 Claude 共提交 71 次，13:52 还有一条「refactor(paradigms): keep only vibe coding and agent teams」把五种范式砍成两种。**推断**：删除是有意的范围收缩（与同日砍范式同一动作），但删除本身没有单独成提交，工作树里已删的文件被 `git add -A` 一类操作卷进了紧接着的隐私小修里；证据是删除集合完整、无残留、三周内没有任何恢复提交、文档也没有同步清理。对 HCTL2 的告诫因此要修正一句：它不是「用户嫌治理重而拒绝」，而是一个人加一个 agent 在一个下午生成的一万六千行治理代码，从未被迭代、从未进入主路径，在一次简化扫除里被顺手清掉——治理如果不在主路径上、没有人真的走过一遍，再对的形状也活不过一个月。
+
