@@ -66,7 +66,7 @@ v1 提议按文件列"必须出现的短语"和"不许出现的短语"当关卡�
 - **反向用例**：故意给检查器一份违反该条的结果或执行历史，确认它真的会红。
 - **故障注入是脚本的一部分**：控制面停、Agency 断连、执行体被杀、时间推进。可注入的时间值得采用，是快速、可重复地测期限的办法，但"不注入就验不了"太强，真机可以用实际经过的时间验；同机加可注入时钟也不等于确定性模拟，可重放还取决于随机输入、消息次序、调度和外部 I/O。首批做可控故障的集成测试即可，不为模拟数据库集群那样完整而重写运行环境。
 - **脚本是数据，不当硬前提**：列出动作之后仍要实现动作、等待、并发、故障、断言和失败处理。先研究现有的 Rust 测试入口、现成的场景框架和已有的端口替身能覆盖多少，再决定要不要新的动作语言。
-- **业界做法只借办法**（实现层脚注）：FoundationDB 的模拟与它的执行环境紧密结合、会模拟网络和磁盘，TigerBeetle 的 VOPR 跑真实数据库代码并注入网络、存储、进程故障，能借的是可重现故障与断言的办法，不能从"一台机器能起多个服务"推得同等保证；Jepsen 记录操作的开始、结束与故障历史再用检查器判历史是否成立，这支持上面"检查历史"的要求；Gherkin 的可读步骤仍对应代码里的步骤实现。落代码前要有 `docs/research/scenario-testing.md` 逐一核对。
+- **业界复用先研究再决定**（实现层脚注）：FoundationDB 的模拟与它的执行环境紧密结合、会模拟网络和磁盘，TigerBeetle 的 VOPR 跑真实数据库代码并注入网络、存储、进程故障，可以借鉴可重现故障与断言的办法，不能从"一台机器能起多个服务"推得同等保证；Jepsen 记录操作的开始、结束与故障历史再用检查器判历史是否成立，这支持上面"检查历史"的要求；Gherkin 的可读步骤仍对应代码里的步骤实现。落代码前要在 `docs/research/scenario-testing.md` 逐一核对现成代码、框架与方法的适用性，再决定采用范围。
 
 ## 六、第三级：真机
 
@@ -110,16 +110,17 @@ steps:
   - { fault: control_unreachable, control: mac_ctl }
   - { do: seal, participant: mac_ptcp_jssdk_01_04, task: T3 }
   - { assert: [S1.I11], with: { result_held_by: cloud_agency, within_deadline: true } }
+  # 先设置 T3 的丢确认故障，再恢复连接；检查故障确实发生后再验证重投
+  - { fault: drop_ack, from: mac_ctl, to: cloud_agency, task: T3, once: true }
   - { fault: control_reachable, control: mac_ctl }
-  - { fault: drop_ack, from: mac_ctl, to: cloud_agency, once: true }
-  - { assert: [S1.I11, S1.I7], with: { redelivery_returns_same_result: true, bundle_copy_readable: true } }
+  - { assert: [S1.I11, S1.I7], with: { task: T3, ack_dropped: true, redelivery_returns_same_result: true, bundle_copy_readable: true } }
 ```
 
 ## 八、代价、排期与边界
 
 - 一级便宜但只查关联与词汇；语义靠审阅，行为靠二、三级。
 - 二级要先有假单元，假单元自己也要受约束，不得超出真供应端的能力；执行历史要留；反向用例要有。
-- 排期按能力列，不写"能验一半"（Codex）：P2.1 可先验命令、存储、进程间通信与多实例隔离；P2 计划 §十 把 Repo 与 Project 放 P2.2，Participant、调用与 Context 放 P2.3，封存与集成放 P2.4，Run 与 Gate 放 P2.5；假 Agency 不能补出被测控制面尚未实现的领域行为。每条不变量按它依赖的能力标在对应里程碑，见第三节的级别栏。
+- 排期按能力列，不写"能验一半"（Codex）：P2.1 可先验命令、存储、进程间通信与多实例隔离；P2 计划 §十 把 Repo 与 Project 放 P2.2，Participant、调用与 Context 放 P2.3，封存与集成放 P2.4，Run 与 Gate 放 P2.5；假 Agency 不能补出被测控制面尚未实现的领域行为。每条不变量按它依赖的能力标在对应里程碑。
 - 三级不能全自动，人的操作要按脚本记录；进程与连接故障先限定到测试实例。
 - 用例进 `docs/design/scenarios/` 之后就是验证文档，改它要走 PR、更新引用；这是它当"神谕"的代价。
 - 本文只提案，不加脚本、不加研究文件；落地顺序是研究文件、参考用例正式落点、一级的关联检查随设计改法批、二级先接现有 Buck 测试入口做少量真能抓住故障的行为用例，再决定是否值得抽公共驱动器。
