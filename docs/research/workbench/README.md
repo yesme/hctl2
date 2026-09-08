@@ -18,6 +18,8 @@
 | Codeg | [codeg.md](./codeg.md) | 多 Agent 会话、异步 WorkTask 与 ACP |
 | Stably Orca | [stably-orca.md](./stably-orca.md) | 终端、worktree Board 与可靠派发 |
 | Superset | [superset.md](./superset.md) | 终端复用、远程控制与会话恢复 |
+| emdash | [emdash.md](./emdash.md) | 每任务一 worktree 的会话多路复用、宿主侧现场账本与钩子纪律；Yoda 的上游 |
+| Yoda | [yoda.md](./yoda.md) | emdash 的硬分叉：Harness 观测面、Coordinator 分派协议、已删的阶段门尝试 |
 
 ## 相邻的完整 Agent 产品
 

@@ -90,6 +90,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [codeg.md](./workbench/codeg.md) | Codeg | E-L3-CODEG | ② Agent 协作平台 | 仅参考行为为主，可按需移植 |
 | [stably-orca.md](./workbench/stably-orca.md) | Stably Orca | E-L1-STABLY-ORCA、E-L2-STABLY-ORCA | ② Agent 协作平台 | 仅参考行为为主，可按需移植 |
 | [superset.md](./workbench/superset.md) | Superset | E-SUPERSET | ② Agent 协作平台 | 仅参考行为 |
+| [emdash.md](./workbench/emdash.md) | emdash（generalaction，YC W26） | E-EMDASH | ② Agent 协作平台 | 仅参考行为为主；现场步骤与 Git 观察 schema 作适配协议候选，钩子安装纪律作有边界移植候选 |
+| [yoda.md](./workbench/yoda.md) | Yoda（lovstudio，emdash 硬分叉） | E-YODA | ② Agent 协作平台 | 仅参考行为 |
 | [openclaw.md](./workbench/openclaw.md) | OpenClaw | E-L4-OPENCLAW | ③ 独立 Agent 产品 | 仅参考行为并适配协议 |
 | [hermes-agent.md](./workbench/hermes-agent.md) | Hermes Agent | E-L3-HERMES-AGENT | ③ 独立 Agent 产品 | 仅参考行为 |
 | [rakazo.md](./workbench/rakazo.md) | Rakazo | E-RAKAZO | ③ 独立 Agent 产品 | 仅参考行为为主，可按需移植 |
