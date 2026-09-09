@@ -213,3 +213,8 @@
 - E22 Task-Decoupled Planning，arXiv 2601.07577：<https://arxiv.org/abs/2601.07577>
 - E23 CodePlan，arXiv 2309.12499：<https://arxiv.org/abs/2309.12499>
 - E24 HCTL2 内部：[run.md](../design/run.md)、[task.md](../design/task.md)、[hctl2-shaping SKILL.md](../../src/agency/skills/hctl2-shaping/SKILL.md)、[方法论生态审计](./methodology-landscape-20260824.md) §一、§三
+
+## 复核记录
+
+- **2026-09-09 所有者裁决（借鉴第 5 条「运行中的分解」）**：施工图**暂不允许**节点在运行中归约出子节点，记为未来扩展。理由与现状：Participant 是抽象层，它的内部实现可以自带 DAG；实际的 worker harness 普遍有 subagent / spawn / task 机制，能原生产生子节点——所以「节点内的分解属于尝试内部，不进图」在今天已经可行。若将来要在施工图上产生子节点，最重要的是像「返工」一样控制规模，不能子子孙孙无穷匮：创立条件、审核、个数上限（尤其是持续滋生时怎么控），且不引入「层数」概念——HCTL2 的 DAG 是平层的——要有预算。
+
