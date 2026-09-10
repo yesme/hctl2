@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.17.2<br>
+> 状态：验证文档 · 草案 v0.17.3<br>
 > 本文列出十一族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -60,7 +60,7 @@
 - Run 绑定超过一个 Task Revision 时，启动必须拒绝
 - 已绑定 workflow engine 执行的状态只能由 control 命令推进
 - Dagu UI/API 直接 Start/Stop/Retry/Reschedule/Approve/Reject/Edit/Rename/Delete 时只标记 Run–Engine Binding 分歧，不倒推 Run 命令、Verdict 或 Receipt；停止路径若未先持久化 intent 与撤权则不能冒充 HCTL Cancel 成功
-- 超时与候选切换只依据账本自己的 Obligation deadline
+- 超时与候选切换只依据控制面记录的 Obligation deadline
 - 引擎停报进度（绑定分歧待对账）期间，或依据缓存、迟到事件和旧游标观察创建新 Obligation 时，创建必须拒绝；已经创建的义务照常验收与判决
 - 派发确认回执丢失允许待启动→丢失并用新 Attempt 恢复，已交提案不被误当成功
 - retry 只产生一个新 Obligation 并隔离旧 Seat/Attempt，候选耗尽和 Request expiry 产生明确的失败类型，所有 Run 过渡态可失败/替代
@@ -68,7 +68,7 @@
 - placement 变更留下不可变审计
 - Gate backup 改变参与者或任一 Context/Skill/policy ref 时拒绝，作者不能占必需 reviewer Seat
 - quorum-unreachable 沿冻结失败边推进
-- Run 正常完成只由账本谓词决定；引擎报告的进度与账本不一致时标为分歧待对账，既不补足也不阻止谓词
+- Run 正常完成只由治理记录的谓词决定；引擎报告的进度与治理记录不一致时标为分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
 - 启动中 / 暂停中 / 取消中到达默认或声明的超时后进入需要关注并保留状态，不自动取消或替代
 - 节点声明的外部机械事实前置：工具箱读不到时不派发并标需要关注；执行体或模型转述的事实不满足前置；前置不创建 Obligation、不占席位
@@ -98,7 +98,7 @@
 - Agency 未声明事件游标能力时，不得把事件流当作完整持久 trace；重连后只能按可证明范围恢复观察
 - Agency 未声明退出与停止回读能力，或不能证明同一进程和 PTY 仍存活时，不得声称 exact attach；缺失 exit/stop 回执的执行不得报告为成功停止
 - Agency 状态检测以低层来源覆盖仍有效的结构化 hook 证据时拒绝；Agency 恢复报告无法翻译为[恢复等级](./participant.md#terminal-场景)时按丢失处理
-- Agency 自带的接管/单写者/"会话有效"记录被当作账本事实或替代租约/代次时拒绝
+- Agency 自带的接管/单写者/"会话有效"记录被当作治理记录或替代租约/代次时拒绝
 - 未声明栅栏回显的 Agency 通道未按实际能力降级（原生输入仍宣称逐次受租约管理，或结果按高证据类准入）时拒绝；已声明栅栏回显的 Agency 放行不匹配代次时该绑定标记失信并需要关注
 - control 签发连接票据、Herdr 适配代码校验 HCTL 授权，观察、输入、Attempt 控制与安全输入权限分离；Agency 未声明栅栏回显能力时，无法执行的代次栅栏不得被记录为已生效
 - attach 只接通道，不能恢复 Run/Invocation 语义
@@ -149,7 +149,7 @@
 - Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
 - Dagu、Vikunja、Herdr、Gitea 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
 - 新 provider/adapter 未通过对应模块契约测试时不得产生 Port–Provider Binding；换绑不能改写活动 Run、Task、Room、Execution Runtime 或集成意图的冻结绑定
-- Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一账本事务；工具箱封存回读先于准入，缺任一步不产生获准版本
+- Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一控制面事务；工具箱封存回读先于准入，缺任一步不产生获准版本
 - Execution Spec 的评审发布策略作为字段冻结；Result Proposal 提供策略之外的发布地点或内容时拒绝
 - Repo 模块不接收 Result Proposal；执行体直接向 Repo 模块提交版本或集成命令时拒绝
 - Attempt 归属的版本按 Run Manifest 冻结进 Execution Spec 的评审发布策略发布，发布 outbox 挂在 Run 准入提案的事务上；席位不能自行推送远端
@@ -160,7 +160,7 @@
 
 ### `CT-SYSTEM` · 系统
 
-- 同一用户级账本只能有一个 control writer，第二 writer 拒绝
+- 同一用户级控制面存储只能有一个 control writer，第二 writer 拒绝
 - 多个执行现场可以登记（各有工具箱与 Herdr 绑定），但同一现场/仓库修改租约的旧代次必须被代次栅栏隔离。无法证明隔离已生效时默认不重授写权限，重授只能来自有权 human 预览证据后的显式确认
 - 命令幂等
 - 危险动作（不可逆、产生外部权威副作用或扩大权限）未经确认的直接 Submit 拒绝；普通命令直接 Submit 与经 Preview 提交结果一致
@@ -168,7 +168,7 @@
 - 同一 human action 经 Workbench、CLI 或 provider adapter 进入时使用同一准入规则；重复、迟到和乱序 provider event 不产生第二份领域效果
 - commit/确认回执各崩溃点回读
 - schema migration、投影重建
-- metadata 账本执行一致性 backup、restore preview/apply、writer generation 重置与恢复后 content readback，每个首次消费的 content 服务器执行备份与恢复
+- 对控制面存储执行一致性 backup、restore preview/apply、writer generation 重置与恢复后 content readback，每个首次消费的 content 服务器执行备份与恢复
 - content 服务器宕机不抹掉已接纳事实，但依赖 provider 当前回读的命令 fail closed
 - 从 Git 结晶回灌不得伪造未结晶判决
 - clone 本地运行目录（锁与缓存）删除后可完整对账重建、不丢事实

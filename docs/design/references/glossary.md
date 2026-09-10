@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.17.2<br>
+> 状态：非规范对照 · 草案 v0.17.3<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -29,7 +29,7 @@
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
 | Artifact | 工件 | 登记后可稳定引用的交付物；发布版本属于 Revision 族 | [Project](../project.md) |
 | Context | 上下文 | 顶层授权采用哪些来源，以及每个执行实际收到哪些字节 | [spec/project](../spec/project.md#context-memo-artifact) |
-| Skill | 技能包 | 带版本与摘要的共享方法定义；由 Agency 安装并申报，账本只记引用、摘要与可核验性 | [spec/participant](../spec/participant.md#skill-与申报) |
+| Skill | 技能包 | 带版本与摘要的共享方法定义；由 Agency 安装并申报，控制面存储只记引用、摘要与可核验性 | [spec/participant](../spec/participant.md#skill-与申报) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
 | Kanban | 看板 | Task 的主场景；一个 Repo 一个 Board，Project 是分组，Task 是卡片 | [Task](../task.md#kanban-场景) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选与权限的一次授权执行 | [Run](../run.md) |
@@ -53,6 +53,8 @@
 | `hctl2-tool` | 工具箱；两者始终指同一个现场执行组件，它是 Repo 模块的现场执行者 |
 | 平台适配器 | Repo 模块经平台端口接入代码协作平台的适配代码；推送、评审请求、请求合并与回读归它，工具箱不做远端副作用 |
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
+| 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令 |
+| 旧称「账本」 | 2026-09-10 改口（CONSTRAINTS 禁用）：指控制面的持久存储写"控制面存储"，指其中被记录的事实写"治理记录"，指存储的一次事务写"控制面事务"，Git 里的正文写"Git 正文"，平台上的记录写"平台记录"；决策史与备忘里的旧用法不改 |
 | Repo 某某 | Repo 是各模块共享的作用域限定词：Repo Room 归 Project，Repo Board 归 Task，Repo policy 归系统层；「Repo 模块」指拥有仓库对象的第五个模块，不改变这些归属 |
 | human actor | 有权的人；约束层用 `human actor`，设计层写「人」或「有权的人」 |
 | owner | 归属者；在精确对象或字段名中保留 `owner` |
@@ -68,7 +70,7 @@
 
 | 类别 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
-| metadata | 治理元数据 | 身份、绑定、授权与判决，住在 HCTL 账本 |
+| metadata | 治理元数据 | 身份、绑定、授权与判决，住在 HCTL 的控制面存储 |
 | content | 场景内容 | 协作与执行记忆，住在对应场景系统 |
 | artifact | 结晶 | 从 content 提炼出的不可变产物，进入 Git；与领域对象 Artifact 不同物 |
 
@@ -137,9 +139,9 @@ Project 不持有成员名单，只持有选人策略；选进 Room 的规划者
 | Terminal Input Lease | 终端输入租约 | 一个受 HCTL 管理的终端目标输入权 |
 | Agency binding owner lease | 派出方端口的归属者租约 | 一个 Agency 端口 Port–Provider Binding 的范围（同一服务器、套接字或主机命名空间）同时只有一个归属者，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
 
-control 账本排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
+控制面存储排他与 Repo 现场的 OS 锁不是 Lease 对象，是单写者约束的实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
 
-全系统共用六种彼此独立的代次：账本写入者、仓库现场、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Run–Engine Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
+全系统共用六种彼此独立的代次：控制面存储写入者、仓库现场、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Run–Engine Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
 
 ## 命令族（持久命令与副作用）
 

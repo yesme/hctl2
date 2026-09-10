@@ -1,6 +1,6 @@
 # Repo 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.2<br>
+> 状态：规范性约束 · 草案 v0.17.3<br>
 > 本文是 Repo 模块对象、状态机与写入约束的唯一权威。设计正文见 [Repo 与 Change](../repo.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -44,11 +44,11 @@ Repo 是逻辑仓库，不等于外部组织、工作区或仓库副本。注册
 
 从外部平台克隆的仓库绑定该平台，本机的克隆只是 Repo Instance，本地平台不为它建镜像。只在本地的仓库缺省绑定本地平台：control 持久化注册意图后，由平台适配器在本地平台创建对应仓库并推送，工具箱为本机检出登记指向本地平台的远端；之后该检出是 Repo Instance，评审请求、检查、保护条件与合入都在本地平台上走，与外部平台共用同一平台端口、能力声明、授权形态与恢复规则。推送范围固定：没有提交的仓库只建仓不推；默认只推当前 HEAD 所在的分支，没有时推默认分支；其余 ref 由人显式选择；refs/hctl2 名字空间下的引用、未准入的 ChangeSet 分支与 notes 不出本机；回读到平台上已有同名分支时不强制覆盖。在本地平台建仓与推送是外部副作用命令：结果未知时按关联键回读，不重复建仓；本地平台不可用时注册保持待确认，不改走不挂平台的路径；待确认阶段放弃注册时，已建的平台仓库按残留处理，记录并由人预览后显式清理，不自动删除。
 
-Git 已存在获准身份时，命令校验后复用它。注册确认事务激活唯一 Repo 身份，并由 [Project 模块](./project.md#repo-注册与-project-归档)在同一账本事务中创建其唯一 Repo Room；待确认 Repo 不接受 Project、Task 或 Run。不同仓库副本通过下文的显式现场挂接连接同一 Repo，而不成为 Project 的子对象。
+Git 已存在获准身份时，命令校验后复用它。注册确认事务激活唯一 Repo 身份，并由 [Project 模块](./project.md#repo-注册与-project-归档)在同一控制面事务中创建其唯一 Repo Room；待确认 Repo 不接受 Project、Task 或 Run。不同仓库副本通过下文的显式现场挂接连接同一 Repo，而不成为 Project 的子对象。
 
 Repo Instance 是本系统拥有的物理执行现场，不属于任何 Project。一个 Repo 可以显式挂接多个 Repo Instance。每个现场固定稳定 `repo_instance_id`、精确 `repo_id`、主机与站点身份、Git 公共目录身份，以及首次校验的 Git 证据；Git 工作树、ChangeSet 物化、工具箱锁与本机运行时都通过该现场引用。现场的 `site_generation` 与工具箱持有的现场 OS 锁由[系统边界](./system.md#单写者)统一定义。
 
-「挂接 Repo Instance」命令先由工具箱无副作用读取 Git 身份，再由 control 预览并写入账本。相同 Git 公共目录的重试返回原现场；不同现场只有在 Git 中的稳定 Repo 身份与命令指定的 `repo_id` 一致时才能挂接。远端 URL、目录名或碰巧相同的 HEAD 只作辅助证据。
+「挂接 Repo Instance」命令先由工具箱无副作用读取 Git 身份，再由 control 预览并写入控制面存储。相同 Git 公共目录的重试返回原现场；不同现场只有在 Git 中的稳定 Repo 身份与命令指定的 `repo_id` 一致时才能挂接。远端 URL、目录名或碰巧相同的 HEAD 只作辅助证据。
 
 身份缺失、分支来源语义不明、一个公共目录已归属另一 Repo，或证据互相冲突时，系统不得静默挂接。界面展示全部证据；用户明确选择挂接到指定 Repo、注册新 Repo 或修复来源后，系统才按该选择继续。移除现场只撤销其新执行资格，不删除 Repo、Project、历史 Run 或已封存 ChangeSet。
 
@@ -70,9 +70,9 @@ change_set_revision_id
 + revision_digest
 ```
 
-封存与准入是两件事：工具箱按有效租约把工作树内容封存成 Git 字节并回读，这是保存；账本接受这个版本，这是准入。
+封存与准入是两件事：工具箱按有效租约把工作树内容封存成 Git 字节并回读，这是保存；控制面接受这个版本，这是准入。
 
-由执行结果提案产生的版本，顺序固定为：工具箱按提案的 ChangeSet 输出封存并回读；control 复核归属者状态、代次与租约仍然有效；Project 或 Run 准入 Result Proposal 的同一账本事务里，本模块准入 ChangeSet Revision。提案中的 ChangeSet 输出至少固定：ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及结果的位置——执行体分支上的提交，或工作树本身。工具箱以此为封存输入：结果是提交时校验基线与祖先关系并取其树，结果是工作树时先封存成 Git 字节；回读 base_commit_sha 与 result_tree_sha，生成 change_set_revision_id 与 revision_digest，交给准入事务。封存的 Git 写入在账本事务之外（不同原子域）：封存意图以提案标识符与 producer sequence 为关联键，重试返回同一封存结果；工具箱已经写出的树或提交不是获准版本，没有归属者准入的封存只留审计。封存期间被取消或替代的归属者，其 Git 对象即使已经存在也不得成为获准版本；平台上出现一个提交也不是准入。
+由执行结果提案产生的版本，顺序固定为：工具箱按提案的 ChangeSet 输出封存并回读；control 复核归属者状态、代次与租约仍然有效；Project 或 Run 准入 Result Proposal 的同一控制面事务里，本模块准入 ChangeSet Revision。提案中的 ChangeSet 输出至少固定：ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及结果的位置——执行体分支上的提交，或工作树本身。工具箱以此为封存输入：结果是提交时校验基线与祖先关系并取其树，结果是工作树时先封存成 Git 字节；回读 base_commit_sha 与 result_tree_sha，生成 change_set_revision_id 与 revision_digest，交给准入事务。封存的 Git 写入在控制面事务之外（不同原子域）：封存意图以提案标识符与 producer sequence 为关联键，重试返回同一封存结果；工具箱已经写出的树或提交不是获准版本，没有归属者准入的封存只留审计。封存期间被取消或替代的归属者，其 Git 对象即使已经存在也不得成为获准版本；平台上出现一个提交也不是准入。
 
 有权 human actor 的显式封存——预览残留后接管、封存或采用，producer_ref 为 human command——不经 Invocation 或 Attempt：本模块按该 human 命令准入版本，不伪造一次调用或一份 Result Proposal。
 
@@ -123,7 +123,7 @@ Harness 可以操作自己的 Git 工作树，但改写目标引用不产生 Rec
 
 真正发布时再固定精确 ChangeSet Revision 与描述摘要。Result Proposal 只能提供策略允许的内容；换发布地点、换绑定或扩大发布范围都不在授权内，必须回到归属者重新预览与授权。策略中的「须人显式确认」开关随本次授权冻结，仓库或 Project 之后改默认值不影响已接受的调用。
 
-「发布评审」命令的提交者是 control，不是执行体，也不是第三种 actor 来源：它是授权它的那次 human 提交——Room Invocation 的 Trigger Preview，或 Run 的启动预览经 Run Manifest 冻结进 Execution Spec——的后续动作，与「注册确认后创建 Repo Room」同类。control 在归属者准入提案与本模块准入版本的同一账本事务里持久化发布意图与 outbox，actor 信封沿用那次 human 提交与冻结策略的引用；客户端是否在线不影响它。开关「须人显式确认」打开时，意图改为待处理，由有权 human 预览后提交。Attempt 归属的版本同理：发布 outbox 挂在 Run 准入提案的事务上，席位不自行推送远端。
+「发布评审」命令的提交者是 control，不是执行体，也不是第三种 actor 来源：它是授权它的那次 human 提交——Room Invocation 的 Trigger Preview，或 Run 的启动预览经 Run Manifest 冻结进 Execution Spec——的后续动作，与「注册确认后创建 Repo Room」同类。control 在归属者准入提案与本模块准入版本的同一控制面事务里持久化发布意图与 outbox，actor 信封沿用那次 human 提交与冻结策略的引用；客户端是否在线不影响它。开关「须人显式确认」打开时，意图改为待处理，由有权 human 预览后提交。Attempt 归属的版本同理：发布 outbox 挂在 Run 准入提案的事务上，席位不自行推送远端。
 
 发布评审的执行者只有平台适配器；执行体不持有平台写凭据，不能自行推送远端。推送成功而创建评审请求的确认丢失，或更新评审请求后确认丢失时，按原意图与关联键回读，不重复创建；旧 Revision 的迟到重试不能覆盖新 Revision 的分支或映射。
 
@@ -158,7 +158,7 @@ ChangeSet–Platform Binding 记两类东西。证据部分——某个冻结 Ch
 - 面向远端目标的意图，确定尚未投递的仍是待启动，可以照原意图重投；已经可能产生远端写入而无法确认的才是结果未知，保持未知并继续占用冲突范围，即使本地已有同一结果树也不解锁；两种状态都不能改道，也不能签成功 Receipt；
 - 发布评审意图同样按此处理；确认丢失后按关联键回读评审请求，不重复创建。
 
-代码协作平台不可用时，依赖平台当前回读的命令安全拒绝：远端合入、读评审请求状态、发布评审；不依赖它的操作继续：本地物化、封存；面向本地目标的集成只对显式不挂平台的 Repo 继续，绑定了平台的 Repo 没有本地目标。随包的本地平台停机时同样如此，不因为它在本机就放宽。全系统事实权威地图中的对应行见[系统边界](./system.md#全系统事实权威地图)。Receipt 的权威在账本，Git 里只有审计影子；平台丢失后不得凭 Git 提交重建 Receipt。
+代码协作平台不可用时，依赖平台当前回读的命令安全拒绝：远端合入、读评审请求状态、发布评审；不依赖它的操作继续：本地物化、封存；面向本地目标的集成只对显式不挂平台的 Repo 继续，绑定了平台的 Repo 没有本地目标。随包的本地平台停机时同样如此，不因为它在本机就放宽。全系统事实权威地图中的对应行见[系统边界](./system.md#全系统事实权威地图)。Receipt 的权威在控制面存储，Git 里只有审计影子；平台丢失后不得凭 Git 提交重建 Receipt。
 
 ## 外部概念对齐
 
@@ -168,10 +168,10 @@ ChangeSet–Platform Binding 记两类东西。证据部分——某个冻结 Ch
 | --- | --- | --- |
 | Repo | GitHub repository、GitLab project、Gerrit project、本地平台上的 repository | 逻辑身份写在 Git 里并记账，不随平台上的仓库改名或迁移漂移 |
 | Repo Instance | clone、worktree 所在的 Git 公共目录 | 物理现场，可丢失、可重挂接；不承载 Project 身份 |
-| ChangeSet | PR 的源分支、MR 的源分支、Gerrit change | 写入边界与租约在账本，分支只是载体 |
+| ChangeSet | PR 的源分支、MR 的源分支、Gerrit change | 写入边界与租约在控制面存储，分支只是载体 |
 | ChangeSet Revision | PR head commit、Gerrit patchset | 身份按基线与结果树算，换提交包装不换身份 |
 | 集成意图 | 平台的 merge 请求、命令行的 merge 子命令、Gerrit submit | 先持久意图后执行；平台一般只校验源头，预期目标头保证靠授权形态而不靠平台 |
-| Integration Receipt | merge commit 与 merged 状态 | 凭证只在回读到合并提交与目标头后签发，权威在账本 |
+| Integration Receipt | merge commit 与 merged 状态 | 凭证只在回读到合并提交与目标头后签发，权威在控制面存储 |
 | 目标保护快照 | branch protection、rulesets、merge queue 条件 | 预览时冻结进意图，执行与回读时对照 |
 | 平台账号映射 | 平台用户与机器人账号 | 只证明来源，不授予票权或命令权 |
 | Write Lease | 无对应 | 差异化语义：单写入者，配代次失权 |

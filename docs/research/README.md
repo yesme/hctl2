@@ -138,6 +138,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [multi-agent-effectiveness-20260908.md](./multi-agent-effectiveness-20260908.md) | 多 agent 协作有效性文献调研：CAMEL、AutoGen、MetaGPT、Magentic-One、辩论评估两篇加三十余篇补查；三问（有效吗、提升评审吗、什么结构有效）与对 Gate 席位策略的含义 | E-MULTI-AGENT-EFFECTIVENESS | 跨候选归纳 | 仅参考行为；席位多样性策略与法定票数默认进第三轮裁决 |
 | [prove2me-dag-collaboration-20260908.md](./prove2me-dag-collaboration-20260908.md) | AI 形式化费马大定理事件复原、Prove2Me 平台的依赖图机制、三个命题的证据、对施工图凝结的借鉴 | E-PROVE2ME-DAG | 跨候选归纳 | 仅参考行为；接口形状待施工图 schema 定形后作适配协议候选重估 |
 | [deepseek-v41-agent-team-20260910.md](./deepseek-v41-agent-team-20260910.md) | DeepSeek-V4.1-Flash 技术报告 §5.3.5 Agent Team 模式：运行中分解、共享任务板带版本检查、事件图关键路径作时延度量；对 Task → Run 转化与施工图可变性的启发 | E-DSV41-AGENT-TEAM | 跨候选归纳 | 仅参考行为；关键路径作「快」的度量候选 |
+| [skill-ponytail-20260911.md](./skill-ponytail-20260911.md) | ponytail（DietrichGebert/ponytail，MIT）：抑制代码膨胀的 Skill——七级「先找现成、最后才写」梯子，几乎全靠提示词自觉；实测收益远小于宣传且会削护栏 | E-SKILL-PONYTAIL | ⑧ Harness 技能包 | 仅参考行为：借梯子第二到五级与操作性指令写法；不用其 hook |
 | [context-landscape-20260824.md](./context-landscape-20260824.md) | Context 处理生态四族与快省准横评（链接级） | — | ④ Context 管理 | 仅参考行为 |
 | [grok-bot-reconstructed-audit-20260825.md](./workbench/grok-bot-reconstructed-audit-20260825.md) | Grok Bot 0.18 客户端重建源码审计（`a9f633e`），[grok-bot.md](./workbench/grok-bot.md) 的补充证据 | — | ② Agent 协作平台 | 仅参考行为的补充证据 |
 | [workbench-shell-reopen-20260826/](./workbench-shell-reopen-20260826/README.md) | Workbench 桌面壳重开调研：GPUI / Iced / Flutter / Web 壳，含 7 份附录 | — | ⑥ 机械后端与基础设施 | 采用 Tauri 2 的选型证据 |
