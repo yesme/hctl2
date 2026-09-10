@@ -28,7 +28,7 @@
 - 过期或被取代的 Memo 不进指针清单，显式引用除外
 - 压缩片段或纪要条目的回源指针不是组装器赋予（例如由压缩模型输出）时，Bundle 拒绝交付
 - Matrix 房间升级换 ID 后，换绑 Room–Server Binding 不改 Room 身份，旧事件引用与冻结 digest 仍可校验
-- 参与者授权换人后，活动 Invocation 仍引用准入时的 Project version 与 Participant revision；Task 或卡片上不存在独立的参与者授权
+- Room 名册换人后，活动 Invocation 仍引用选入时的记录；Run 席位启动后不换人，候选切换只换执行体；Project 不持有成员名单，只持有选人策略
 - 评审发布策略随 Execution Spec 冻结：Trigger Preview 未写明授权的是发布不是合入、策略缺仓库/绑定版本/发布目标规则/创建或更新/描述来源任一项时拒绝；「须人显式确认」开关的值随授权冻结，之后改默认值不影响已接受的调用
 - 平台评审评论线以精确 ChangeSet Revision 与评论标识冻结进 Context Manifest；评论被当作授权、契约或裁决时拒绝；显式不挂平台的仓库的 Manifest 没有这一项
 
@@ -109,7 +109,7 @@
 - attach 只接通道，不能恢复 Run/Invocation 语义
 - attach/replay、IME/背压/慢客户端隔离
 - 未标注证据通道的 Evidence 按转述处理；转述不能通过重新标注升级为高证据类
-- Participant 换绑到另一个 Agency 后身份不变，活动执行仍引用原 Participant–Agency Binding 版本
+- 同一工种在两个 Room 或两个 Run 里选出的是两条记录，不共享身份；`@` 在 Room 里解析不到只存在于某个 Run 席位上的施工者
 
 ### `CT-REPO` · Repo / Change
 

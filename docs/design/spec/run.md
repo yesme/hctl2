@@ -73,10 +73,12 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 - Project、0..1 个 Task Revision、Workflow Revision 与 Engine Deployment；
 - repo/base revision、根 Context Manifest ref+digest、逻辑 Seat 与各席位职责；
-- 每个 Seat 的精确 Participant revision、Project version 与参与者授权条目 digest、required/optional Skill refs+digests；
+- 每个 Seat 的要求（工种、Skill、证据等级）与选定的施工者记录：工种引用与摘要、Agency、Worker Profile revision、required/optional Skill refs+digests、职责、权限与预算；
 - 受控端口绑定、获准 Worker Profile 候选、切换规则、能力、权限与网络/secret 范围；
 - Gate（法定票数、席位多样性策略、返工轮数上限、是否允许增量评审）、预算、放置、过渡态超时和截止规则；
 - 批准施工图时引用的读回记录（Workflow Revision 声明关闭盲读回时可无）。
+
+施工图的席位只写要求，不写人。「启动 Run」的预览按要求从 Agency 名册选施工者，冻结进 Manifest；这次选人独立于 Room 名册，Room 里的规划者不自动成为席位上的施工者。启动后席位不换人，候选切换只换执行体；换人必须替代 Run。
 
 绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
 
@@ -111,7 +113,7 @@ HCTL Profile 的规则分三组：
 4. control 与工具箱校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与账本不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Run–Engine Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
-Execution Spec 必须固定 Attempt、Seat、Run、Participant、Project 参与者授权条目、Worker Profile、Participant–Agency Binding、Context、Skill、权限、预算和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
+Execution Spec 必须固定 Attempt、Seat、Run、席位记录（工种引用与摘要、Agency、Worker Profile revision、职责、权限、预算）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
 
 Attempt 的状态与合法转移如下。未列出的状态转换必须返回类型化拒绝。
 
@@ -147,9 +149,9 @@ Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正�
 
 候选耗尽且必须取得额外输入或授权时创建 Request；否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的接受（`accepted`）、驳回（`rejected`）或要求修改（`changes_requested`）只是归约器输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。要求修改（`changes_requested`）可携带分歧落点实现内（`implementation`）或契约内（`contract`）：落在实现时按语义返工路径处理；落在契约时，归约器不进入返工也不自动替代，只把 Task 标为需要关注并建议采纳新 Task Revision，替代与否归人。
 
-Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、必需 Skill 引用与摘要和能力与权限策略引用与摘要，并各自冻结精确 Participant revision 与 Project 参与者授权条目。
+Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、必需 Skill 引用与摘要和能力与权限策略引用与摘要，并各自冻结席位选定的施工者记录。
 
-被评审 Revision 的作者或生产者不得占用必需评审 Seat；必需评审 Seat 绑定互不相同的 Participant revision。Gate 策略可声明席位多样性：Worker Profile 互异、接入的 harness 互异、证据通道互异、回避作者所用的 Worker Profile。无论声明与否，**计票去重**总是生效：两个 Seat 若 Worker Profile revision 相同且 Context Bundle 摘要相同，法定票数只计一票，两票都记入 Gate Receipt；人设、显示名与 Skill 声明不参与去重判断，Skill 的差别经 Context Bundle 摘要体现。Gate Seat 的 Context Bundle 不得包含其他 Seat 的裁决、作者身份或作者所用 Worker Profile 的标识；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。
+被评审 Revision 的作者或生产者不得占用必需评审 Seat；必需评审 Seat 绑定互不相同的施工者记录。Gate 策略可声明席位多样性：Worker Profile 互异、接入的 harness 互异、证据通道互异、回避作者所用的 Worker Profile。无论声明与否，**计票去重**总是生效：两个 Seat 若 Worker Profile revision 相同且 Context Bundle 摘要相同，法定票数只计一票，两票都记入 Gate Receipt；人设、显示名与 Skill 声明不参与去重判断，Skill 的差别经 Context Bundle 摘要体现。Gate Seat 的 Context Bundle 不得包含其他 Seat 的裁决、作者身份或作者所用 Worker Profile 的标识；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。
 
 control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 

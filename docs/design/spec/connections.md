@@ -44,7 +44,7 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
 | Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；只有携带初始契约时才写正文 outbox，后续由“采纳契约”准入 Task Revision | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
-| Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、Participant/参与者授权/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 账本和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
+| Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、席位要求与选定的施工者/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 账本和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再预留、绑定和激活运行时 | invocation id + invocation_version + Execution Spec digest |
 | Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由工具箱回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
 | Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要、平台绑定的声明（外部平台 / 本地平台 / 显式不挂） | Repo 模块记待确认注册并持久化 outbox，工具箱写入并回读 Git 身份、为本机检出登记远端；缺省绑定本地平台时平台适配器执行「在本地平台建仓并推送」外部副作用命令；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复；建仓与推送按自己的关联键回读，不重复建仓 |
@@ -91,12 +91,10 @@ control 在一个用户级账本事务中写 Run、Manifest、幂等结果、可
 execution owner stable ref + invocation_version | attempt_generation
 + root Context Manifest ref + digest
 + consumer Context Bundle ref + digest
-+ exact Participant revision
-+ Project version + 参与者授权条目 digest（repo_scope 可无）
++ 选入记录：Room 名册记录或 Run 席位记录——工种引用与摘要、Agency、职责、权限、预算（repo_scope 可无）
 + required/optional Skill refs + digests（Agency 申报，逐个附 known | unknown）
 + Worker Profile revision
 + Harness/Runtime Port–Provider Binding + 接入方式与降级能力
-+ Participant–Agency Binding ref + version
 + terminal input policy（managed_single_writer | native_interactive_allowed；无 Terminal 时省略）
 + repo_id/base + 可选 selected Repo Instance ref / placement constraints
 + 能力与权限摘要
@@ -109,7 +107,7 @@ execution owner stable ref + invocation_version | attempt_generation
 
 归属者特有字段各自补充：Room Invocation 侧固定范围（`repo_scope | project_scope`）、`invocation_version`，以及 human 批准建议时的来源链字段；Attempt 侧固定 attempt、seat、run 身份与 `attempt_generation`。
 
-Participant 确定逻辑身份；Project 的参与者授权确定该身份在当前 Project 中的职责和权限上限；Participant–Agency Binding 确定谁供给它的执行体；Skill 提供方法；Worker Profile 选择物理执行配置。Execution Spec 必须分别引用它们，任何一个都不能代替另一个。两侧不各建一份“执行规格”。
+选入记录确定这次执行是哪个工种的哪位参与者、以什么职责与权限上限、由哪家 Agency 供给执行体；Skill 提供方法；Worker Profile 选择物理执行配置。Execution Spec 必须分别引用它们，任何一个都不能代替另一个。两侧不各建一份“执行规格”。
 
 外部运行时的启动顺序固定为：
 
@@ -180,7 +178,7 @@ Task 路径的验收证据 → Task Completion Receipt
 
 每一步保存上一步的 ID 与摘要或版本；current pointer 只用于预览，不能替代历史引用。上游版本变化不改写已接受的下游连接：提交前发生分歧时，比较并交换必须拒绝；提交后由冻结约束继续执行到终态，新的顶层授权使用新版本。范围、权限、候选或验收含义变化时必须显式替代，而不是原地修补；Run 的替代特例清单见[启动与 Manifest](./run.md#启动与-manifest)。
 
-权限只能逐级缩小：actor / Project 参与者授权 → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎、终端输入范围或评审发布的地点与范围；扩权时回到拥有该权限的上游重新预览和授权。
+权限只能逐级缩小：actor / Room 名册或 Run 席位记录 → Run Manifest（有 Run 时）→ Execution Spec → Agency/adapter envelope。任何下游都不能扩展网络、secret、Git、任务源、引擎、终端输入范围或评审发布的地点与范围；扩权时回到拥有该权限的上游重新预览和授权。
 
 ## 失败与恢复
 

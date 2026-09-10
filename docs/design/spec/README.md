@@ -26,7 +26,8 @@
 | Repo | 仓库 | 对象，也是拥有仓库、变更集与集成事实的模块名 | 用户可见 |
 | Project | 项目 | 对象 | 用户可见 |
 | Room | 聊天室 | 对象，也是 Project 模块的场景名 | 用户可见 |
-| Participant | 参与者 | 对象 | 用户可见 |
+| Participant | 参与者 | 对象：被选进某个 Room 或某个 Run 席位的一位工种实例 | 用户可见 |
+| Profession | 工种 | 对象：Agency 名册项的冻结引用 | 用户可见 |
 | Request | 请求卡 | 对象 | 用户可见 |
 | Memo | 备忘 | 对象 | 用户可见 |
 | Artifact | 工件 | 对象 | 用户可见 |
@@ -50,7 +51,7 @@
 
 「类别」回答它是什么东西：对象有独立生命周期、恢复边界或权限边界；票据是步骤产物，只被引用不被改写；节点类型和场景名不是对象。「可见性」回答它能出现在哪一层：愿景层只用标「用户可见」的词（含 Receipt），治理内部的词从架构层起可用。愿景层讲执行内部时用日常语言——「一步要交出什么是固定的，谁来做可以换，做坏了从这一次重来」——不点治理词。
 
-设计正文还可以使用七个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、SCM platform（代码协作平台，外部的托管服务或自建服务器，或随包的本地平台，按 Repo 绑定；显式不挂平台时没有）、Agency（参与者的派出方）和 worker（执行体，Agency 供给的一次具体运行）；权威定义见[三面架构](../architecture.md#场景与系统)。Repo 一词有两层意思：核心产品词表里的对象「Repo（仓库）」，以及拥有它的「Repo 模块」；Repo Room 仍归 Project，Repo Board 仍归 Task，Repo 是各模块共享的作用域限定词，不因模块同名而改变归属。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
+设计正文还可以使用七个系统角色名：harness（编码代理工具）、chat server（聊天服务器）、task backend（任务后端）、workflow engine（工作流引擎）、SCM platform（代码协作平台，外部的托管服务或自建服务器，或随包的本地平台，按 Repo 绑定；显式不挂平台时没有）、Agency（参与者的派出方）和执行体（execution runtime，Agency 供给的一次具体运行）；planner（规划者）与 worker（施工者）是 Participant 被选进 Room 或 Run 席位后的两顶帽子，不是对象名；权威定义见[三面架构](../architecture.md#场景与系统)。Repo 一词有两层意思：核心产品词表里的对象「Repo（仓库）」，以及拥有它的「Repo 模块」；Repo Room 仍归 Project，Repo Board 仍归 Task，Repo 是各模块共享的作用域限定词，不因模块同名而改变归属。Agent 不是模块名，只作编码代理的泛称；描述数字参与者一律用 Participant。人不是 Participant：约束层写 human actor，设计层写「人」或「有权的人」。`provider` 只是供应端的泛称，必须由具体模块说明它指哪一类供应端。
 
 另有八个高频约束词可在设计正文携中文对照使用：Task Revision（任务契约版本）、Workflow Revision（施工图版本）、Room Invocation（单次调用）、Execution Spec（执行规格）、Result Proposal（结果提案）、Run Manifest（施工清单）、Context Manifest（根上下文清单）、Context Bundle（消费上下文包）。[交付文档](../delivery.md)描述工程选型、里程碑和契约测试，因此可以直接使用约束层词汇。设计层正文——含仓库 README 与设计地图——仍只用核心产品词与上述八词。
 
@@ -61,7 +62,7 @@
 | 族 | 共同语义 |
 | --- | --- |
 | Revision | 只追加的不可变版本；以 digest 精确引用；current pointer 只由类型化命令推进，界面只读取 |
-| Binding | 把 HCTL 里的一个东西和外部系统里对应的东西钉在一起，钉的那一刻冻结成版本；正在跑的工作永远引用它准入时的版本，换绑不改历史。族里只有外部连接：HCTL 内部的授权（如 Project 的参与者授权）不是 Binding |
+| Binding | 把 HCTL 里的一个东西和外部系统里对应的东西钉在一起，钉的那一刻冻结成版本；正在跑的工作永远引用它准入时的版本，换绑不改历史。族里只有外部连接：HCTL 内部的选人记录（Room 名册、Run 席位）不是 Binding |
 | Receipt | control 与工具箱校验通过后签发的证明；它只证明已校验的结果，本身不是另一个写入者 |
 | Lease | 有期限、单持有者、可撤销的独占权；配合代次使用，旧代次一律失权 |
 | 命令（Intent） | 改变事实的持久命令或副作用记录；携带 actor 来源、目标版本与幂等键，重复提交返回原结果；请求可来自 direct client 或模块明确接纳的 provider event |
@@ -88,7 +89,7 @@
 ## 词汇索引
 
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
-- **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、Participant–Agency Binding（Participant ↔ 派出方名册项）、ChangeSet–Platform Binding（ChangeSet Revision ↔ 代码协作平台上的提交与评审请求）
+- **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、ChangeSet–Platform Binding（ChangeSet Revision ↔ 代码协作平台上的提交与评审请求）
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
 - **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency 归属者虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令；集成意图与发布评审意图是 Repo 模块的外部副作用命令，不占概念名额

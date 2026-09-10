@@ -8,7 +8,7 @@
 | 对象 | 含义 |
 | --- | --- |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
-| 参与者授权 | Project 版本化设置的一部分：哪些 Participant 可在本 Project 出场，各自的职责、权限与预算上限；每条授权冻结精确 Participant revision。两端都在 HCTL 内部，不属 Binding 族；Participant 本身由 [Participant 模块约束](./participant.md)定义 |
+| Room 名册 | 这个 Room 的规划者名单：每条记录一个被选进本 Room 的 Participant——工种引用与摘要、Agency、Worker Profile revision、Skill 集、名字标签、职责、权限与预算上限；Scoped Room 默认继承父 Room 的名册并可只取子集。两端都在 HCTL 内部，不属 Binding 族；工种与 Participant 的定义见 [Participant 模块约束](./participant.md) |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
 | Room–Server Binding | Room 到 chat server 房间的绑定（Binding 族）：固定房间稳定 ID、所用聊天端口与 content 事实源；房间升级换 ID 是显式换绑，Room 身份不变。准入前置见[Room 与消息](#room-与消息) |
 | 聊天端口的 Port–Provider Binding | chat server 连接：外部账号、获准身份映射策略、可选的结构化 human 动作清单与实测能力；族定义见[系统边界](./system.md#固定内核与受控端口) |
@@ -23,7 +23,7 @@
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
-| 参与者授权（Project 设置） | `project_version` | control 处理「授权/换人/撤销参与者」命令并推进 Project version | 活动 Invocation/Run 永久引用准入时的 Project version 与 Participant revision |
+| Room 名册 | Room state version | control 处理「选入 / 移出规划者」命令，候选来自 Agency 名册；Agency 只报名册与探测能力 | 活动 Invocation 永久引用选入时的记录；换人不改写活动调用 |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件账本都只追加；Project Room 随 Project 归档只读 |
 | Room–Server Binding | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理「绑定/换绑/停用房间」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定所用聊天端口的 Port–Provider Binding、外部 room stable ID 与降级能力；账号、身份映射策略与结构化 human 动作 allowlist 归聊天端口的 Port–Provider Binding；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
@@ -48,10 +48,10 @@ Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度
 
 Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游约束。
 
-<a id="参与者授权"></a>
-参与者授权是 Project 版本化设置的一部分：它列出哪些 Participant 可在当前 Project 出场，并给每个 Participant 定职责、权限和预算上限；「角色」只是职责标签字段，不是对象。授权条目冻结精确 Participant revision；Participant revision、Skill 与 Worker Profile 的定义见 [Participant 模块约束](./participant.md)。Execution Spec 必须分别冻结 Project version、授权条目、Participant revision、Skill 与 Worker Profile 的精确引用。授权只在 Project 一级：Task 不持有参与者，看板卡片上的负责人是后端字段的投影。人不是 Participant：人的权限由 human actor 的命令权限表达，不经参与者授权。
+<a id="room-名册"></a>
+Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立：建 Room 或 Trigger Preview 时把 Agency 名册里某个工种的实例选进 Room 成为规划者，启动 Run 时按席位要求选施工者（见 [Run 约束](./run.md#启动与-manifest)）；项目本身不持有成员名单，只持有选人策略——允许哪些 Agency 与工种、预算上限、多样性要求——作为 Project 版本化设置的一部分。名册记录冻结工种引用与摘要、Agency、Worker Profile revision、Skill 集、名字标签、职责、权限和预算上限；「角色」只是职责标签字段，不是对象。Execution Spec 分别冻结名册记录、Skill 与 Worker Profile 的精确引用。人不是 Participant：人的权限由 human actor 的命令权限表达，不进名册。
 
-换人或撤销授权推进 Project version，不改写活动 Invocation、Seat 或 Run；`repo_scope` 调用可以没有参与者授权。
+Room 名册换人不改写活动 Invocation；`repo_scope` 调用可以没有名册记录。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
@@ -153,13 +153,13 @@ Request 的应答面按需升级：默认在卡片或详情中直接回答；涉
 
 ## 场景约束
 
-mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、评审发布策略（若有）、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个 worker。
+mention 提交前的 Trigger Preview 必须显示实际 Participant/Worker Profile/Harness、required/optional Skills、Context 来源与 token 估算、权限与写入范围、评审发布策略（若有）、预算，以及将创建 Room Invocation/Run/Request 还是唤醒多个执行体。
 
 普通 Room 的临场执行边只能由可稳定归属到 human 的动作在 Trigger Preview 后提交。动作可以来自 Workbench/CLI 的直接客户端连接，也可以来自聊天端口的 Port–Provider Binding 明确允许的供应端结构化事件；两者都归一为同一命令草稿。系统按[系统约束](./system.md#客户端动作与-provider-事件)保留 actor 映射、来源事件、目标版本和幂等依据。chat server 里的普通消息本身不是入口。
 
 模型 Participant 的 Message、Result Proposal、总结及其正文中的 `@` 只能形成下一位 Participant 或职责与扇出建议，不能自行创建 Room Invocation、唤醒执行体或递归委派。用户批准建议后，系统自动把原消息、稳定引用、Context Manifest、权限、预算和父 Invocation 关系带入新预览；系统不能要求用户复制粘贴 Context。
 
-mention 的解析必须确定性：`@` 目标只按 Project 参与者授权里的 Participant 或职责精确解析；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
+mention 的解析必须确定性：`@` 目标只按本 Room 名册里的规划者或职责精确解析——Run 席位上的施工者不在 Room 里被 @，与施工者对话走 Execution Chat；无唯一授权候选时必须明确失败或要求人选择，不得按显示名模糊匹配、静默换人或把 mention 字符串交给模型猜测路由。
 
 类型化命令的预览、准入与判决在控制面执行，结果可作为结构化事件写回 chat server；Chat provider 动作成为 human 命令请求的条件见[客户端动作与 provider 事件](./system.md#客户端动作与-provider-事件)。
 

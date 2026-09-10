@@ -5,7 +5,7 @@
 
 ## 对象
 
-Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与参与者授权，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、Repo Instance、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
+Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Room 名册，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、Repo Instance、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
 
 人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令、名册和裁决里，不进入本模块的对象表。
 
@@ -13,16 +13,16 @@ Participant 模块拥有数字参与者的身份与配置，并负责把获准�
 
 | 对象 | 含义 |
 | --- | --- |
-| Participant | 数字参与者的稳定身份与不可变配置 revision：逻辑身份、人设引用、默认 Skill 声明与 Worker Profile 候选约束；不含密钥、Project 权限或运行时身份 |
+| Profession | 工种：Agency 名册项的冻结引用——Harness、模型、Skill 配置、人设默认、默认职责倾向（规划 / 施工）与条款；带版本与摘要 |
+| Participant | 被选进某个 Room（规划者）或某个 Run 席位（施工者）的一位工种实例：工种引用与摘要、Agency、Worker Profile revision、Skill 集、人设标签、名字、职责、权限与预算上限；只存在于被选进的地方，不跨阶段共享身份；不含密钥或运行时身份 |
 | Skill | 带 revision 与 digest 的共享方法定义；三态与申报见[Skill 与申报](#skill-与申报) |
 | Worker Profile | Harness、模型、模式、权限、环境与可选执行加固声明的可复用配置 |
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
 | Execution Runtime | 一次执行的主机、隔离域和代次（归属者 = Attempt \| Room Invocation）；终端通道是其字段组 |
 | Attach Descriptor / Terminal Input Lease | 对精确目标的短期连接票据和单输入者租约 |
-| Participant–Agency Binding | Participant 到供给它的 Agency 名册项与条款的绑定（Binding 族）：换派出方是显式换绑，Participant 身份不变；活动执行引用准入时的版本 |
 | Result Proposal / Evidence | Harness 提交给上层校验的结果和观测，不是 Verdict/Receipt；每条 Evidence 标注证据通道等级（见[证据通道](#证据通道)） |
 
-显示名、外部账号、人设、Skill、Worker Profile、Harness session 或模型名都不能替代 Participant ID，也不能自行授予角色或权限。Participant revision 换版不改写活动 Invocation、Seat 或 Run。
+显示名、外部账号、人设、Skill、Worker Profile、Harness session 或模型名都不能替代选入记录，也不能自行授予职责或权限。Room 名册或 Run 席位换人不改写活动 Invocation、Seat 或 Run。
 
 ## Skill 与申报
 
@@ -34,8 +34,8 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Participant | immutable revision + current pointer | control 处理「创建/更新 Participant」命令；Agency 申报 Skill 与候选的可用性 | 活动 Invocation/Run/Seat 永久引用准入时的 Participant revision |
-| Worker Profile / Participant–Agency Binding | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
+| Participant（Room 名册记录 / Run 席位记录） | 随所在 Room 名册版本或 Run Manifest 冻结 | control 处理「选入 Room」「席位选人」命令；Agency 只报名册与探测能力 | 活动 Invocation/Attempt 永久引用选入时的记录 |
+| Worker Profile / Profession 引用 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测账 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
 | Terminal Input Lease | 租约代次；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
@@ -78,9 +78,9 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
-Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；Participant 与供给它的名册项之间由 Participant–Agency Binding 连接——先用本地参考实现、后接外部 Agency，是同一个 Participant 换绑，不是新身份；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
+Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；名册项就是工种；换派出方就是选另一个工种的实例，不存在换绑；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
-control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；Participant 身份、参与者授权、人设和 Seat 仍由 control 账本拥有。
+control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；选谁进 Room、谁占 Seat、人设标签和 Seat 仍由 control 账本拥有。
 
 Agency 的接口约定**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决只在 control 账本。Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代账本事实。
 
