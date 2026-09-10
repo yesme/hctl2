@@ -32,7 +32,7 @@ P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个
 | 运维 | `init`、`start`、`status`、`doctor`、`export`、`backup create\|verify`、`restore preview\|apply` |
 | Repo / Change | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`changeset show\|diff`、`review publish\|show`、`integration preview\|submit\|show`；集成与发布动作先预览确认 |
 | Project | `project create\|list\|show\|update\|archive\|restore` |
-| Participant / Context | `participant create\|update\|list\|show\|authorize\|revoke`、`context show\|preview` |
+| Participant / Context | `profession list\|show`、`room roster add\|remove\|list`、`context show\|preview`；施工者在 `run preview\|start` 里按席位选 |
 | Project / Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |

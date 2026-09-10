@@ -186,3 +186,9 @@
 - **人设与 Skill 的分工**（所有者观点，供第三轮落地参考）：改人设（aieos.org 一类）本质是交流与界面问题——给用户挑人时作参考、在 Room 里影响 planner 型 Participant 的说话风格；对 Run / DAG 场景里的 worker 型 Participant 没有帮助，也不是为评审多样性设计的。改 Skill 有实质差别：它改变的是 Participant 会获取的外部信息和关注的方面（上下文不同），否则那些 Skill 就没必要存在——这与文献结论一致（信息与能力异质性有效，人设异质性约等于零）。
 - **所有者补足两点**：（一）「改 Skill 只是换人设」这个说法与软件工程类 Skill 如此流行是矛盾的——它们流行正因为改变了参与者获取的信息与关注点；（二）多 agent / 多 Participant 的一个真实好处是**上下文不一样**，所以 Context 管理很重要，HCTL2 为此专门有横切正文 `docs/design/context.md`。落地含义：席位各自的 Context Bundle 已记录每个席位实际读了什么，「两份 Skill 是否让评审员读不同证据」可以事后机械核对，而不只是声明。
 
+## 第三轮补充裁决（2026-09-11）
+
+- **Participant 模型重排**（所有者提出并拍板；对照表见 `.memo/design/participant-model-20260911.md`）：模板是 Agency 端概念，叫 **Profession（工种）**；没有「项目里的人」，只有「planning 里的人」和「building 里的人」——选进 Room 的是规划者（planner），选进 Run 席位的是施工者（worker），两次选人各自独立；Agency 每次派工交付执行体（execution runtime）。撤销上周立的「参与者授权」与 Participant–Agency Binding；系统角色名 worker 改执行体；`@` 只解析本 Room 名册；施工图席位写要求、启动 Run 时选人、启动后不换人。
+- **施工图归约的七条抑制规则**：所有者认可，写进 Run 正文作为放开的前提（PR #210）。
+- **ponytail**：仅参考行为；核心梯子可作施工者 Worker Profile 的默认 Skill，评审版作评审席位的一条方法轴。
+

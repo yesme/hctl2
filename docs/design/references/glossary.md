@@ -18,11 +18,13 @@
 | Agent | 编码代理（泛称） | 泛指 Codex、Claude Code 这类 AI 编码代理，不是模块名；第四个模块见 Participant | [Participant](../participant.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类执行编码工作的工具 | [三面架构](../architecture.md#场景与系统) |
 | Agency | 派出方 | 参与者的供给方：维护可派出的名册与条款，按冻结规格交付执行体端点；默认为发布包自带的本地参考实现，运行时用 Herdr | [spec/participant](../spec/participant.md#运行时与观测) |
-| worker | 执行体 | Agency 供给的一次具体运行：Harness 进程、装载的 Skill、PTY 与 TUI；接受派工、报告观测与结果提案 | [spec/participant](../spec/participant.md#运行时与观测) |
+| execution runtime | 执行体 | Agency 按一次冻结的执行规格交付的一次具体运行：Harness 进程、装载的 Skill、PTY 或结构化接入；接受派工、报告观测与结果提案 |
+| Profession | 工种 | Agency 名册里定义的一类可派参与者：Harness、模型、Skill 配置、默认职责倾向与条款；收进来时冻结引用与摘要 |
+| planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [spec/participant](../spec/participant.md#运行时与观测) |
 | Repo | 仓库 | Git 仓库的逻辑身份，共享配置与结晶随它走；也是第五个领域模块的名字，模块拥有仓库身份、执行现场、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 聊天室 | 持久的多参与者协作空间，分 Repo Room、Project Room、Scoped Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
-| Participant | 参与者 | 第四个领域模块：数字参与者的稳定身份、人设、Skill 申报、执行者配置与一次物理执行；人不是 Participant | [Participant](../participant.md) |
+| Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
 | Artifact | 工件 | 登记后可稳定引用的交付物；发布版本属于 Revision 族 | [Project](../project.md) |
@@ -94,7 +96,7 @@
 | Terminal | Agency 供给的执行体（默认：本地参考实现，运行时 Herdr） | 会话转录、PTY 流 |
 | Change | SCM platform（代码协作平台；按 Repo 绑定：外部平台缺省选型 GitHub，只在本地的 Repo 缺省绑定随包的本地平台，选型 Gitea） | 评审线程、检查结果、合并状态 |
 
-权威对照见[三面架构](../architecture.md#场景与系统)。Participant（模块）、Agency（派出方）、worker（执行体）与 Agent（编码代理的泛称）是四个不同词；`provider` 泛指模块供应端，并非跨模块对象。
+权威对照见[三面架构](../architecture.md#场景与系统)。Participant（模块与参与者实例）、Profession（工种）、Agency（派出方）、执行体（execution runtime）与 Agent（编码代理的泛称）是五个不同词，planner 与 worker 只是 Participant 的两顶帽子；`provider` 泛指模块供应端，并非跨模块对象。
 
 ## Revision 族（不可变版本）
 
@@ -115,10 +117,9 @@
 | Room–Server Binding | Room 与聊天服务器房间的绑定 | Room ↔ chat server 上房间的稳定 ID；房间升级换 ID 是换绑，Room 身份不变；加密准入见 [Project 约束](../spec/project.md#room-与消息) |
 | Task–Backend Binding | Task 与任务后端卡片的绑定 | Task ↔ 后端那张卡的外部身份、字段写入权、可接纳的人为动作与适配器版本 |
 | Run–Engine Binding | Run 与工作流引擎执行的绑定 | Run ↔ 引擎里那次执行的部署、执行 ID、关联键与代次 |
-| Participant–Agency Binding | Participant 与派出方名册项的绑定 | Participant ↔ 供给它的 Agency 名册项与条款；换派出方是换绑，身份不变 |
 | ChangeSet–Platform Binding | 变更与平台的映射 | ChangeSet Revision ↔ 代码协作平台上对应的提交与评审请求；「某版本对应哪个提交」冻结后不改，评审请求的当前头、检查与线程状态是回读；仓库一级的平台连接是平台端口的 Port–Provider Binding，两层不混叫 |
 
-Project 的**参与者授权**（哪些 Participant 可在本 Project 出场、职责、权限与预算上限）不是 Binding：两端都在 HCTL 内部，它是 Project 版本化设置的一部分，「角色」只是其中的职责标签字段；权威见 [Project 约束](../spec/project.md#参与者授权)。
+Project 不持有成员名单，只持有选人策略；选进 Room 的规划者记在 Room 名册，选进 Run 席位的施工者记在施工清单——两者两端都在 HCTL 内部，不是 Binding；权威见 [Project 约束](../spec/project.md#对象)与 [Run 约束](../spec/run.md#启动与-manifest)。
 
 ## Receipt 族（校验后的证明）
 
