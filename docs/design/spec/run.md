@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.2<br>
+> 状态：规范性约束 · 草案 v0.17.3<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -67,13 +67,16 @@ Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了�
 
 Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入并回读 Git。Git 保存不可变正文；control 账本独占身份、准入、摘要和批准/current pointer。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。
 
+「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭盲读回外，命令必须引用一份读回记录。读回记录由未在该施工图来源 Room 发过言的 Participant 产出，按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点与无节点的已决条目；它只是批准的输入，不改写 Workflow Revision，怎么写归 Skill，不进约束。
+
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
 - Project、0..1 个 Task Revision、Workflow Revision 与 Engine Deployment；
 - repo/base revision、根 Context Manifest ref+digest、逻辑 Seat 与各席位职责；
 - 每个 Seat 的精确 Participant revision、Project version 与参与者授权条目 digest、required/optional Skill refs+digests；
 - 受控端口绑定、获准 Worker Profile 候选、切换规则、能力、权限与网络/secret 范围；
-- Gate（法定票数、返工轮数上限、是否允许增量评审）、预算、放置、过渡态超时和截止规则。
+- Gate（法定票数、席位多样性策略、返工轮数上限、是否允许增量评审）、预算、放置、过渡态超时和截止规则；
+- 批准施工图时引用的读回记录（Workflow Revision 声明关闭盲读回时可无）。
 
 绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
 
@@ -94,6 +97,7 @@ HCTL Profile 的规则分三组：
 1. 允许的图结构：外部执行、fork/join、switch、loop、dynamic fork、timer wait、noop 和纯数据转换；节点可附外部机械事实前置声明（见「从节点到结果」）。
 2. 编译器拒绝的副作用：子 DAG、默认 command/script、HTTP/action/agent/Harness；Dagu `human.task` 仅作被动检查点。
 3. dynamic fork 只能实例化 Manifest 中已冻结的有界 Seat 模板；loop 每次重新进入节点都创建新 Obligation。
+4. 每个外部执行节点必须声明达成判据，二选一：外部机械事实前置（由工具箱读回），或 Gate 席位裁决加证据不低于某一级；两者皆无的节点编译拒绝。边必须引用上游节点的结晶或凭证标识——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实——编译校验图无环且每条边落地。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
 
 编译前先以 schema、引用、Profile 和图结构 lint 拒绝格式或结构不合法的 Workflow Revision，再由固定编译器生成并验证 Dagu YAML。dynamic fork 的候选 Participant/Role、最大基数、预算、选择函数和权限上限都必须预先固定；模型输出不能新增接收者、扩大扇出或扩权，无法机械校验时整次 fork 必须拒绝。lint 不承诺证明任意 loop 终止，也不依赖引擎提供可隔离的检查点身份。
 
@@ -145,13 +149,13 @@ Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正�
 
 Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、必需 Skill 引用与摘要和能力与权限策略引用与摘要，并各自冻结精确 Participant revision 与 Project 参与者授权条目。
 
-被评审 Revision 的作者或生产者不得占用必需评审 Seat；必需评审 Seat 绑定互不相同的 Participant revision。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。
+被评审 Revision 的作者或生产者不得占用必需评审 Seat；必需评审 Seat 绑定互不相同的 Participant revision。Gate 策略可声明席位多样性：Worker Profile 互异、接入的 harness 互异、证据通道互异、回避作者所用的 Worker Profile。无论声明与否，**计票去重**总是生效：两个 Seat 若 Worker Profile revision 相同且 Context Bundle 摘要相同，法定票数只计一票，两票都记入 Gate Receipt；人设、显示名与 Skill 声明不参与去重判断，Skill 的差别经 Context Bundle 摘要体现。Gate Seat 的 Context Bundle 不得包含其他 Seat 的裁决、作者身份或作者所用 Worker Profile 的标识；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，不能借更换 Worker Profile 改变 Context、Skill、权限、票位或绕过分离。
 
 control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 
 Gate 只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按已知（`known`）或未知（`unknown`）展示；Participant、Harness 或模型自报不能把未知变成已知。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回不支持（`unsupported`）。
 
-达到法定票数后，control 撤销剩余 Attempt 并提交汇总 Verdict/Receipt，再完成 Engine 检查点。剩余票已不可能达到门槛时，Gate 返回法定票数不可达（`quorum-unreachable`），使 Obligation 失败并沿 Workflow Revision 的失败边推进。返工产生新 Revision 后，旧票失效，新的 Revision 必须重新通过 Gate。Gate 策略可声明**返工轮数上限**（默认值见[交付文档](../delivery.md#运行默认值)）：达到上限后按法定票数不可达同路处理——Obligation 失败并沿失败边推进，或按策略创建 Request 找人；不得无上限返工。Gate 策略还可声明**增量评审**：新 Revision 的评审包附带与上一版的差异指针，席位可只读差异；未声明时每轮全量重评。Task Revision 只有在验收契约变化时才更新。
+达到法定票数后，control 撤销剩余 Attempt 并提交汇总 Verdict/Receipt，再完成 Engine 检查点。Gate Receipt 逐票记录 Participant revision、Worker Profile revision、Context Bundle 摘要、去重后是否计入法定票数、所引证据的通道等级与本票消耗的 token 估算。剩余票已不可能达到门槛时，Gate 返回法定票数不可达（`quorum-unreachable`），使 Obligation 失败并沿 Workflow Revision 的失败边推进。返工产生新 Revision 后，旧票失效，新的 Revision 必须重新通过 Gate。Gate 策略可声明**返工轮数上限**（默认值见[交付文档](../delivery.md#运行默认值)）：达到上限后按法定票数不可达同路处理——Obligation 失败并沿失败边推进，或按策略创建 Request 找人；不得无上限返工。Gate 策略还可声明**增量评审**：新 Revision 的评审包附带与上一版的差异指针，席位可只读差异；未声明时每轮全量重评。Task Revision 只有在验收契约变化时才更新。
 
 ## Run → Task
 
