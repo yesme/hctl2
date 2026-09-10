@@ -1,6 +1,6 @@
 # 从 HCTL 到 HCTL2 的来时路
 
-> 状态：Informative · 对应草案 v0.17.1 · 2026-09-07<br>
+> 状态：Informative · 对应草案 v0.17.2 · 2026-09-10<br>
 > 定位：本文只解释关键决策为什么转向，不定义当前对象、状态、命令或交付范围。当前约束以[设计地图](../README.md)及其链接的模块、连接和系统文档为准；可复核的版本与源码依据见[实现证据](../../research/README.md)。
 
 HCTL2 不是从一张完整产品蓝图一次推导出来的。它从 HCTL1 的治理内核出发，先面对多 Harness 终端与工作树的现实问题，再逐步把用户意图、任务承诺、受治理执行和物理运行时分开。下面记录的是这条边界收敛路径，而不是另一份规范。
@@ -375,6 +375,7 @@ Agency 定为参与者的供给方（provider），不是工厂：挑人是 cont
 | v0.16.2 | 2026-09-03 | 四轴评审第三轮约束批（第二轮裁决 M-30 / M-31 / M-32 / M-33 / M-38 / M-43 / A-37 / I-03 / W-16 与 Binding 族重构）：Binding 族只留外部连接并双端命名——Resolved Port Binding → Port–Provider Binding、Task Binding → Task–Backend Binding、Engine Execution Binding → Run–Engine Binding，新命名 Room–Server Binding（原 Chat 端口绑定的房间半边）与 Participant–Agency Binding（原 Execution Spec 里的「Agency 绑定」），Project Role Binding 退出族改为 Project 的参与者授权、Role 降为职责字段，Task Source Snapshot → Task Backend Snapshot；节点可声明外部机械事实前置、只由工具箱回读；证据通道三级并定义「高证据类」；验收项声明校验等级、Receipt 记判定者；Verdict 分歧落点；返工轮数上限与增量评审策略；Run 过渡态默认超时进需要关注；回源指针由组装器赋予；CT 各族补失败用例 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
 | v0.16.1 | 2026-09-03 | 四轴评审第三轮写法批：Chat Room 并入 Room；「第一阶段」提法退出，约束直接写规则、交付文档改「当前范围」；外部系统称「选型」、只有本地 Agency 称「默认」；核心产品词表加中文与类别两列，愿景层只用用户可见词；高频约束词加 Context Manifest / Context Bundle；设计层「人」的写法统一；Seat / Attempt 中文改「席位 / 尝试」；「三选二」改「多票评审」；不改约束语义 | [第二轮裁决记录](../../../.memo/design/design-review-20260902/21-r2-rulings.md) |
 | v0.15.6 | 2026-09-02 | 全库语言收口：按已裁决清单改写生硬复述、统一术语与大小写、补全契约测试谓词并拆分超长句；不改约束语义 | [语言 PR 任务书](../../../.memo/design/doc-style-sweep-20260831/21-language-brief.md) |
+| v0.17.2 | 2026-09-10 | 词汇改口：全库"账本"按上下文改为控制面存储、治理记录、控制面事务、Git 正文或平台记录，词族五个名词同改，六个词进退休词表；CLI 与 bench 定名"前端"；不改约束语义 | [CONSTRAINTS](../../../CONSTRAINTS.md#词汇与文档) · [A0 方案](../../../.memo/design/case-study-20260907/06-batch-a0-vocabulary.md) |
 
 <a id="36-当前设计"></a>
 ## 当前设计

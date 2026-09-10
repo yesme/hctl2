@@ -61,3 +61,11 @@ Engine Execution Binding	v0.16.2：改名 Run–Engine Binding
 Project Role Binding	v0.16.2：退出 Binding 族，改为 Project 的参与者授权
 Chat 端口绑定	v0.16.2：拆为 Room–Server Binding 与聊天端口的 Port–Provider Binding
 Task Source Snapshot	v0.16.2：改名 Task Backend Snapshot
+
+# --- CONSTRAINTS.md 2026-09-07「禁用账本」与 .memo/design/case-study-20260907/06-batch-a0-vocabulary.md ---
+账本	CONSTRAINTS 2026-09-07 禁用；按上下文改控制面存储 / 治理记录 / 控制面事务 / Git 正文 / 平台记录
+第二本账	同上，改「第二个权威」
+观测账	同上，改「观测记录」
+现场记账	同上，改「现场记录」
+终端通道账目	同上，改「终端通道记录」
+同一本账	同上，改「同一控制面存储的写入者」
