@@ -12,7 +12,7 @@
 | `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
-`hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 账本、Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用——远端动作归控制面里的平台适配器，见[Repo 模块约束](./design/spec/repo.md)。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
+`hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 治理记录，也不签发 Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用——远端动作归控制面里的平台适配器，见[Repo 模块约束](./design/spec/repo.md)。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
 
 ## 安装当前离线包
 
@@ -190,7 +190,7 @@ cargo build --locked -p hctl2-tool
 
 `--help` 与 `--version` 为英文。无参数调用等同于 `--help`。Git 现场命令要求宿主 `git` ≥ 2.39；可用 `HCTL2_GIT` 覆盖可执行文件路径，与 `HCTL2_GH` 同款。每次调用在标准输出写一条 JSON 记录，`evidence_level` 为 `toolbox_readback`。`outcome` 为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（仅 `wait`）；对应退出码 `0`、`3`、`4`、`5`。参数或启动错误返回 `1` 并写到标准错误。观察类失败（含仓库状态不成立）走标准输出 JSON，带 `error.code` 与 `error.recovery_action`。
 
-意图字段由调用方给出：ChangeSet 引用、基线、目标 ref、预期头、幂等键。工具箱不发明 ID，不读、不写账本。
+意图字段由调用方给出：ChangeSet 引用、基线、目标 ref、预期头、幂等键。工具箱不发明 ID，不读、不写控制面存储。
 
 ### 仓库检查
 

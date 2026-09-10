@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.3<br>
+> 状态：规范性约束 · 草案 v0.17.4<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -35,7 +35,7 @@ Board 与 Project 分组不是新聚合。它们的稳定锚定保存在 Repo �
 
 Task Revision 契约按需创建，但只能由显式“采纳契约”命令，或带已预览契约的“创建 Task”命令产生。无契约的“启动 Run”或“完成 Task”必须先要求该独立动作。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影。“完成 Task”不得在同一命令中隐式生成契约：预览必须要求先执行可审阅的“采纳契约”，再针对返回的精确 Revision 重新预览完成。
 
-Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文与位置、摘要在 Git，账本保存稳定身份、准入与 current pointer。
+Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文与位置、摘要在 Git，控制面存储保存稳定身份、准入与 current pointer。
 
 每条验收项必须声明**校验等级**：`mechanical`（机械可判——工具箱回读或适配器结构化事件即可判定）、`gate`（需评审席位判）、`human`（需有权的人判）。缺等级的验收项使「采纳契约」预览失效。验收项用什么写法——EARS 句式、「必须有」清单、真值 / 工件 / 连线分类——归 Skill 与写作指引，约束不钉。后端与关联来源的变化先成为 Snapshot。只有会改变 Task Revision 契约的内容才形成待采纳；用户采纳且工具箱回读正文后，control 才准入新 Task Revision。content 后端拥有的操作字段按绑定与 Snapshot 投影，不经过采纳。
 
@@ -43,16 +43,16 @@ Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文与
 
 绑定 Task 的后端评论线是 Context 的萃取来源。组装器按当前 Snapshot 的引用和摘要把评论线冻结进 Context Manifest 并物化；交付方式见 [Project 约束](./project.md#context-memo-artifact)。评论线仍只能经“采纳契约”进入 Task Revision，物化本身不改变契约。
 
-每个外部规范实体在用户级控制面账本内使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task。该唯一键不含端口绑定、范围或放置位置；停用或重新绑定端口，或改变放置位置，都不释放或重定向这份映射。
+每个外部规范实体在用户级控制面存储内使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task。该唯一键不含端口绑定、范围或放置位置；停用或重新绑定端口，或改变放置位置，都不释放或重定向这份映射。
 
 Task–Backend Binding 另行冻结可选的放置身份——`placement_scope_stable_id + external_board_item_id`——及其写入权。移动看板位置或更换看板项绑定不会产生第二个 Task，也不能改写规范实体身份。
 
 Task 有两条可恢复的创建路径：
 
-1. HCTL-first：账本先固定 Task 身份并提交后端 outbox；携带初始契约时，再提交 Git 正文 outbox 和该 Revision 的准入意图。
+1. HCTL-first：控制面先固定 Task 身份并提交后端 outbox；携带初始契约时，再提交 Git 正文 outbox 和该 Revision 的准入意图。
 2. content-first：对账过程先保存 Snapshot，再认领唯一外部实体并创建无契约 Task。
 
-两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。工具箱和适配器分别执行并回读，不能把 Git 或后端写入伪装成账本事务的一部分。content-first 路径只有在卡片恰好归属一个 Project 分组时才能认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
+两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。工具箱和适配器分别执行并回读，不能把 Git 或后端写入伪装成控制面事务的一部分。content-first 路径只有在卡片恰好归属一个 Project 分组时才能认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
 
 外部卡随后移到另一 Project 分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot，并把原 Task 标为需要关注。在恢复原位置或建立新 Task 前，系统必须阻止采纳、启动、完成和后端操作字段写入。
 
@@ -92,7 +92,7 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 | Task Backend Snapshot | append-only sequence + remote revision/digest/cursor；可产生待采纳 | control 持久化 refresh/reconcile 观测；「采纳契约」命令才消费契约变化；同一 provider event 若满足上文条件，adapter 另行归一出完成 command draft | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | Task Completion Receipt | immutable | 只有成功的「完成 Task」命令事务可写 | 精确绑定该次 `task_lifecycle_version`、Task Revision 与证据 |
 
-每个 Task 在账本中至多有一个绑定 Run 的占用标记，状态为 `active | completion_pending`。“启动 Run”必须在创建 Run/Manifest 的同一用户级账本事务中，以比较并交换把空标记推进为 `active`。已有任一标记时，同一幂等键返回原 Run，其他启动必须拒绝。
+每个 Task 在控制面存储中至多有一个绑定 Run 的占用标记，状态为 `active | completion_pending`。“启动 Run”必须在创建 Run/Manifest 的同一用户级控制面事务中，以比较并交换把空标记推进为 `active`。已有任一标记时，同一幂等键返回原 Run，其他启动必须拒绝。
 
 替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权和换代路径，不能先清空标记再留下两个可写执行。`completion_pending` 期间也拒绝另一次启动，以及来自 human 的 Task 完成或取消命令；只接受匹配 Run 归约器的内部完成命令。该命令成功或被 Task 持久拒绝时，control 在同一结果事务中清除标记。
 
@@ -108,7 +108,7 @@ Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revis
 
 若存在契约分歧，Receipt 还必须固定显式分歧选择、精确的未采纳 Snapshot 引用与摘要、Task–Backend Binding 版本与状态版本和权威策略摘要。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交。Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一标记。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
-冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，control 账本独占身份准入、digest、current 与 lifecycle；Task Completion Receipt 的权威在账本，Git 只有审计影子。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
+冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 的不可变正文字节以 Git 为 home，身份准入、digest、current 与 lifecycle 的权威仍归控制面；Task Completion Receipt 的权威在控制面存储，Git 只有审计影子。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 

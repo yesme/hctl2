@@ -1,8 +1,10 @@
 # dead_names.allowlist — 死名扫描豁免（文件<TAB>子串；无子串则整文件豁免）
 # 格式之外的每一行都应有理由；大修各簇修复后移除对应条目
 
-# spec/README.md 的归并/清扫表按定义罗列旧名（它是退休词表的来源），整文件豁免
-docs/design/spec/README.md
+# spec/README.md 的整文件豁免于 2026-09-10 移除：当年的归并/清扫表已不在该文件里（Codex 复核，按现有退休词表无命中）
+# 「账本」禁用条目本身与词汇表的旧称对照行，按特征子串豁免（2026-09-10）
+CONSTRAINTS.md	禁用"账本"
+docs/design/references/glossary.md	旧称「账本」
 
 # 已知问题，大修期间处理（S0 未拍板前不得改 docs/**）：
 docs/usage.md	hctl2-agentd
