@@ -209,7 +209,7 @@ if [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" =~ [Uu][Tt][Ff]-?8 ]]; then
     glm)    term_title="HCTL2 · 🔳 🅶🅻🅼" ;;
     grok)   term_title="HCTL2 · 🛰️ 𝐆𝐫𝐨𝐤" ;;
     kimi)   term_title="HCTL2 · 🎹 𝕂𝕚𝕞𝕚" ;;
-    muse)   term_title="HCTL2 · 🔷 𝕸𝖚𝖘𝖊" ;;
+    muse)   term_title="HCTL2 · 🥨 𝓜𝓾𝓼𝓮" ;;
     *)      term_title="HCTL2 · $agent" ;;
   esac
 else
