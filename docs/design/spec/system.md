@@ -141,7 +141,7 @@ Repo 是五模块可归属的逻辑仓库，Repo Instance 是本系统拥有的�
 
 hctl2-control 的存储只有一份：**用户级控制面存储**。它是全部 metadata 的唯一权威，包括稳定身份、Revision 准入与 current、绑定、授权、租约、代次、现场记录、Run Manifest、Execution Spec、Result Proposal 准入，以及 Verdict/Receipt。一人多机连接同一份控制面存储，它必须备份。
 
-仓库副本本地的 `<git-common-dir>/hctl2/` 是当前 Repo Instance 及其关联 Git 工作树的共享运行目录，只保存 OS 锁、跟踪记录与可丢弃缓存。它**不是第二个权威，也不是事实源**。现场状态始终可以从控制面存储、Git 与运行时观测对账重建；删除该目录不丢失事实，无法证明身份的旧执行会被标为丢失并撤权。
+仓库副本本地的 `<git-common-dir>/hctl2/` 是当前 Repo Instance 及其关联 Git 工作树的共享运行目录，只保存 OS 锁、跟踪记录与可丢弃缓存。它**不是控制面存储，也不是事实源**。现场状态始终可以从控制面存储、Git 与运行时观测对账重建；删除该目录不丢失事实，无法证明身份的旧执行会被标为丢失并撤权。
 
 control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份控制面存储：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
@@ -175,7 +175,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
 | 五模块 metadata：稳定身份、准入/current、Room/Request、参与者授权、权限、租约、代次、现场记录、集成意图与变更映射、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级控制面存储 + control；一人多机连同一控制面存储 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
-| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；控制面存储保存准入、digest、current/lifecycle，且独占 Verdict/Receipt 权威 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
+| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；控制面存储保存准入、digest、current/lifecycle；Verdict/Receipt 的权威仍归控制面 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步记录 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在控制面存储及其可验证审计影子；远端后端由 provider 负责持久 |
 | workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据治理记录推进，引擎停报进度只让 Run–Engine Binding 待对账 | 进度报告丢失不丢任何判决：Run 按治理记录继续结束或显式替代；凭证链权威在控制面存储，审计影子在 Git |

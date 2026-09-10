@@ -24,7 +24,7 @@
 | Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Run–Engine Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
-| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时创建（只认当前观察，见“从节点到结果”），此后按控制面存储内的 Attempt 结果与 Gate 策略推进 | 终态不可复活；引擎重试使检查点再次进入等待态，由 control 按新观察序号创建新 Obligation |
+| Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时创建（只认当前观察，见“从节点到结果”），此后按治理记录里的 Attempt 结果与 Gate 策略推进 | 终态不可复活；引擎重试使检查点再次进入等待态，由 control 按新观察序号创建新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；Agency 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
 | Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
