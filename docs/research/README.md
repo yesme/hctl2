@@ -180,3 +180,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 所有证据最终只归入六种复用决策：**采用二进制（Adopt binary）**、**采用 SDK（Adopt SDK）**、**移植有边界的组件（Port bounded component）**、**适配协议（Adapt protocol）**、**仅参考行为（Behavior reference）**、**暂缓（Defer）**。前四种有偏好顺序：**跨平台二进制 > SDK > 复制代码 > 借鉴想法**——能借二进制的不借库，能借库的不抄代码，能抄代码的不只借想法；越靠后我们要自己维护的越多。「采用为依赖」是 2026-09-03 前的旧写法，等于前两种的合称。不得给整个产品一个“取代 HCTL”的总分，也不得把参考项目中的 Session、Conversation、Project、Task、Run 名称或内部数据库带入 HCTL 的公开数据结构。
 
 与常见问法的对应关系：直接用它的二进制或服务＝采用二进制；用它的库＝采用 SDK；借它的 schema/协议形状＝适配协议；抄它的代码＝移植有边界的组件；借它的思想/阶段/交互＝仅参考行为。许可证只决定上限（闭源/无许可证/非 OSI 的最多到仅参考行为），不决定选择：许可宽松也可以只借行为。
+
+## 2026-09-12 · 模型与 Harness 派工证据补充
+
+[七组模型与 Harness：评测证据与派工参考](./model-harness-dispatch-20260912.md)（E-MODEL-HARNESS-DISPATCH）：核对 Astra、Fable 5.1、Grok 4.6、K3、GLM-5.3、Gemini 3.8 Flash、Muse Spark 1.3 的指定档位与 Harness，记录本机版本、公开代理评测、社区实测及证据缺口。仅参考行为，帮助派工；不定义产品约束，不调整既有配置。
