@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.17.2<br>
+> 状态：交付文档（非规范） · 草案 v0.17.3<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -32,7 +32,7 @@ P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个
 | 运维 | `init`、`start`、`status`、`doctor`、`export`、`backup create\|verify`、`restore preview\|apply` |
 | Repo / Change | `repo register\|list\|show`、`repo instance attach\|list\|show\|detach`、`changeset show\|diff`、`review publish\|show`、`integration preview\|submit\|show`；集成与发布动作先预览确认 |
 | Project | `project create\|list\|show\|update\|archive\|restore` |
-| Participant / Context | `participant create\|update\|list\|show\|authorize\|revoke`、`context show\|preview` |
+| Participant / Context | `profession list\|show`、`room roster add\|remove\|list`、`context show\|preview`；施工者在 `run preview\|start` 里按席位选 |
 | Project / Room | `room list\|show`、`invocation list\|show\|preview\|start\|cancel\|retry`、`request list\|show\|resolve` |
 | Task / Kanban | `task create\|update\|adopt\|move\|complete\|reopen\|cancel` |
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
@@ -81,7 +81,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 
 ## 纵向切片 B：完整治理
 
-1. 从 Project 提炼 Task，批准 Workflow Revision 和 Engine Deployment。
+1. 从 Project 提炼 Task；一个不在该 Room 名册里的参与者（另一个 Room 的规划者，或专门为读回发起的一次调用）把冻结的施工图按三张清单读回成人话，人对照后批准 Workflow Revision 和 Engine Deployment。
 2. 预览并启动绑定一个 Task Revision 的 Run。
 3. control 观察到 Engine 检查点进入等待态，在控制面存储创建 Obligation/Seat/Attempt，Harness 执行并返回提案。
 4. 需要输入时创建 Project Request；答案 signal 回原执行。
@@ -115,6 +115,8 @@ HCTL2 不会等到当前范围完整交付才用来开发自己。自举按能�
 旧工具在事实切换前可以作为执行者或逃生通道，不能继续维护平行的 Project/Task/Run 治理权威。降级超过约定能力时回退到上一自举级别并留下审计记录。
 
 B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍必须通过 B6，不能把“已能自举”当成可分发版本。
+
+自举期间每次 Run 从执行事件重建尝试内部的依赖图，记带等待的关键路径时长、总 token、节点数与归约次数，作观测存起来，只看不用，为将来是否放开施工图归约积累数据；本地参考实现的数据由工具箱可见的进程树校准，远程 Agency 自报的只作参考，上报不全标未知。自举期间还统计每条门的执行、放行、拒绝与显式关闭次数，并区分「没有触发机会」与「有机会却没执行」，作为验收的一部分：持续没有触发机会或有机会却没执行的门，要留下复审记录，由必要性与失败测试决定留、修还是删，删要进台账。任一逃生口（无契约卡、无 Run 路径、一票评审）走完，控制面存储里仍有可回溯的对象，走到完成的有凭证。将来重写 control 或 Workbench，每条被拿掉的门单独写台账行，不允许「不在这版里」。
 
 自举验收不得对 HCTL2 仓库、内置账号或测试环境设置隐藏的特例豁免：开发自身必须只使用公开的 Query/Preview/Submit/Subscribe、CLI 和受控端口，实际 Context、权限与证据均可检查；手工推进引擎、直接改库、隐藏 Prompt/Context 或在产品外补签 Receipt 都不算通过。
 
@@ -160,7 +162,7 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 <a id="运行默认值"></a>
 ## 运行默认值
 
-约束层留给施工图或施工清单声明、但要有缺省值的几项，缺省值定在这里，不进约束：Gate 返工轮数上限默认 3 轮；Run 过渡态（启动中、暂停中、取消中）墙钟超时默认 15 分钟；增量评审默认关闭（全量重评）。改缺省值只改本节。
+约束层留给施工图或施工清单声明、但要有缺省值的几项，缺省值定在这里，不进约束：Gate 返工轮数上限默认 2 轮（数字借自编排停滞阈值与模型自纠的研究，不是评审场景的直测，待自举校准，见[多模型协作有效性调研](../research/multi-agent-effectiveness-20260908.md)）；Run 过渡态（启动中、暂停中、取消中）墙钟超时默认 15 分钟；增量评审默认关闭（全量重评）；批准施工图前的读回那一步默认要做，施工图可声明跳过；读回默认由与施工图产出者不同的执行配置做，施工图可声明放开；席位多样性策略默认不声明，只靠计票去重兜底。改缺省值只改本节。
 
 ## 技术基线
 

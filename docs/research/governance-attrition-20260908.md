@@ -2,7 +2,7 @@
 
 > 类别：跨候选归纳 · 证据编号：E-GOVERNANCE-ATTRITION<br>
 > 状态：调研归纳 · 日期：2026-09-08；发布后正文不改，只在文末追加复核记录<br>
-> 逐家证据在两篇分册：[工作台类 15 家](./governance-attrition-workbench-20260907.md)、[方法论类 19 家](./governance-attrition-methodology-20260907.md)；总览与复用决策用语见 [docs/research/README.md](./README.md)。
+> 逐家证据在两篇分册：[工作台类 15 家](./governance-attrition-workbench-20260907.md)、[方法论类 19 家](./governance-attrition-methodology-20260907.md)（Yoda 两册都收，去重后共 33 家）；总览与复用决策用语见 [docs/research/README.md](./README.md)。
 
 ## 问题与样本
 
