@@ -65,9 +65,9 @@ Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了�
 
 ## Workflow 与 Run 授权
 
-Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。
+Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。Workflow Revision 可含一节「上下文」：只有文字的背景章节，随版本冻结，交付给每个席位与读回；它不产生节点、义务或席位，不作判据或前置，编译器不读它的内容。
 
-「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的版本与摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件三条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点与被定为交付义务却无节点的已决条目；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
+「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的版本与摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件四条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用；产出调用的 Execution Spec 权限摘要不含任何 Room 的消息读取权限。Workflow Revision 可声明读回须由与本版本产出调用不同的 Worker Profile 做，声明而实际 Worker Profile 摘要相同时拒绝，缺省见交付文档。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点、被定为交付义务却无节点的已决条目，以及「上下文」章节提到却无节点承接的事；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
