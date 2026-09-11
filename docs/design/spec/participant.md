@@ -34,7 +34,7 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Participant（Room 名册记录 / Run 席位记录） | 随所在 Room 名册版本或 Run Manifest 冻结 | control 处理「选入 Room」「席位选人」命令；Agency 只报名册与探测能力 | 活动 Invocation/Attempt 永久引用选入时的记录 |
+| Participant（Room 名册记录 / Run 席位记录） | 随所在 Room 名册版本或 Run Manifest 冻结 | control 处理「选入 Room」「移出 Room」「席位选人」命令；Agency 只报名册与探测能力 | 活动 Invocation/Attempt 永久引用选入时的记录 |
 | Worker Profile / Profession 引用 | immutable revision + current pointer | control 处理「创建/更新 Worker Profile」与「收进/更新工种引用」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测记录 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
 | Terminal Input Lease | 租约代次；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
