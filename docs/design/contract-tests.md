@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.17.4<br>
+> 状态：验证文档 · 草案 v0.17.5<br>
 > 本文列出十一族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。
@@ -71,7 +71,7 @@
 - Run 正常完成只由治理记录的谓词决定；引擎报告的进度与治理记录不一致时标为分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
 - 启动中 / 暂停中 / 取消中到达默认或声明的超时后进入需要关注并保留状态，不自动取消或替代
-- 节点声明的外部机械事实前置：工具箱读不到时不派发并标需要关注；执行体或模型转述的事实不满足前置；前置不创建 Obligation、不占席位
+- 节点声明的外部机械事实前置：`hctl2-tool` 读不到时不派发并标需要关注；执行体或模型转述的事实不满足前置；前置不创建 Obligation、不占席位
 - 返工达到声明的轮数上限后按 quorum-unreachable 同路推进或创建 Request，不进入下一轮
 - 未声明增量评审时新 Revision 全量重评；声明时评审包带与上一版的差异指针
 - `changes_requested` 分歧落点为契约时不进入语义返工、不自动替代，Task 标需要关注并给出采纳建议
@@ -87,15 +87,15 @@
 ### `CT-PARTICIPANT` · Participant / Terminal
 
 - 未探测到声明能力时，绑定必须拒绝或降级
-- Agency 申报的 Skill 引用与 digest 无法由工具箱回读核验时，Execution Spec 只能记 unknown，不得记 known；required Skill 缺失时解析失败
-- 本地 Agency 参考实现申报的 Skill digest 与工具箱回读不一致时不激活，拒绝结果列出不一致项
+- Agency 申报的 Skill 引用与 digest 无法由 `hctl2-tool` 回读核验时，Execution Spec 只能记 unknown，不得记 known；required Skill 缺失时解析失败
+- 本地 Agency 参考实现申报的 Skill digest 与 `hctl2-tool` 回读不一致时不激活，拒绝结果列出不一致项
 - Revision 或 digest 不匹配的 Result Proposal 必须拒绝
 - 旧 `runtime_generation` 的输入和结果必须拒绝
 - 旧 writer 既不能证明已停止、也不能证明被限制在旧工作树与旧 ChangeSet 边界内时，本模块不得声称已隔离，Repo 模块因此不重授租约；证明已停止时，有权 human 授权的新调用可以在同一 ChangeSet 上取得新租约、继续产出新版本；只证明被限制在旧边界内时，后续执行用新 ChangeSet、原 ChangeSet 不重授；写租约与保全的用例归 `CT-REPO`
 - 冲突观测按来源证据仲裁
 - Execution Chat 的错误归属者/代次输入和无 provenance Share 均拒绝
 - 治理命令只有两类 actor 来源：映射到有权用户本人的 direct client/provider event，与只执行已冻结规则的边或已有 human 授权后续动作的 control 归约器（task-bound Run 正常完成的「完成 Task」、Gate 通过后的「合入 ChangeSet」、按冻结策略的「发布评审」，来源规则见[系统边界](./spec/system.md#命令与跨服务正确性)）；Workbench、CLI 与 provider adapter 产生相同 command envelope，Result Proposal 通道提交不了治理命令
-- 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/平台写凭据，凭据只由工具箱/平台适配器网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，但推不了远端；绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 显示 drift（预期目标头形态下是预期目标头不匹配，接受目标前移形态下是回读核对不符）
+- 每个 Worker Profile：Harness 环境与进程取不到 HCTL 交付的 control/人类 credential 与集成/平台写凭据，凭据只由 `hctl2-tool`/平台适配器网关代用；Harness 在 worktree 内可读 common-dir/refs 并在本 ChangeSet 分支提交，但推不了远端；绕过「合入 ChangeSet」命令改写目标 ref 不产生 Integration Receipt，下一次 integration preview 显示 drift（预期目标头形态下是预期目标头不匹配，接受目标前移形态下是回读核对不符）
 - 声明了执行加固的 Worker Profile：所声明项按声明生效并与 Execution Runtime 记录一致；已声明而宿主不支持时不激活，拒绝结果列出缺项；未声明时照常启动、不记录为已生效
 - 人直接修改 Herdr workspace/pane 归属或已冻结派工结果只形成 drift，不能冒充结果；对精确 terminal 的输入则按 Execution Spec 输入策略处理
 - `native_interactive_allowed` 下原生 TUI/Workbench 直连输入是有效运行时输入，该输入不能直接产生领域结果；Agency 未声明逐次输入记录能力时，还必须标明逐次 provenance、generation 和物理单写者保证不完整
@@ -118,10 +118,10 @@
 - 无法证明旧 writer 已被隔离时默认保全并隔离旧 Git 工作树，不自动重授租约；接管、采用或丢弃缺少有权 human 显式确认时拒绝，失败清理不丢唯一未封存/未跟踪修改
 - 未经 Project 或 Run 准入的提案不产生获准 ChangeSet Revision；Git 封存完成但归属者在准入前被取消或替代时，不产生可供下游消费的版本，也不触发发布评审；平台上出现的提交不是准入
 - 同一获准版本只换提交包装（内容与基线相同）时 review_subject_digest 不变；基线或结果树变化时是新 Revision，旧 Verdict 失效；结果树相同不是充分条件
-- 本地/远端集成都先持久 integration intent，由工具箱/平台适配器执行、工具箱 readback；预期目标头形态下的目标头竞争、确认回执状态未知、换绑或远端合并回执丢失时不得签成功 Integration Receipt，同一意图重试只得同一结果
+- 本地/远端集成都先持久 integration intent，由 `hctl2-tool`/平台适配器执行、`hctl2-tool` readback；预期目标头形态下的目标头竞争、确认回执状态未知、换绑或远端合并回执丢失时不得签成功 Integration Receipt，同一意图重试只得同一结果
 - 源版本不变、其余前置满足、目标从 A 前移到 B：预期目标头形态拒绝；事前已选接受目标前移形态则成功，Receipt 记实际目标头 B；保护规则变化另按快照判定，不能替代形态判定
 - 同一 target ref 上已有待决集成意图（任一形态）时，提交另一意图（不论形态）拒绝；前一意图终态后，同一目标的下一意图是新的授权并可成功
-- 有权 human actor 预览残留后的显式封存不经 Invocation/Attempt，由 Repo 模块按该命令准入为 ChangeSet Revision；封存意图重试同一关联键返回同一结果；工具箱已写出但未准入的树或提交不是获准版本
+- 有权 human actor 预览残留后的显式封存不经 Invocation/Attempt，由 Repo 模块按该命令准入为 ChangeSet Revision；封存意图重试同一关联键返回同一结果；`hctl2-tool` 已写出但未准入的树或提交不是获准版本
 - 关掉客户端后，获准结果仍按已冻结的评审发布策略发布，actor 信封沿用授权它的那次 human 提交；开关打开的仓库改为待处理、由人预览后提交
 - 「已开启自动合并」「已进合并队列」「请求已接受」都不算已合入，Receipt 只在回读到合并提交与目标头后签发；Receipt 记实际目标头
 - 绑定声明「不能保证预期目标头」而 actor 未显式选择「接受目标前移」形态时，集成意图拒绝；执行时不得由回读结果倒推放行
@@ -134,11 +134,11 @@
 - 执行体拿不到远端写凭据；远端推送、PR 与合并只由平台适配器执行
 - 契约冻结要求远端检查时本地成功不能顶替；契约要求合入远端 ref 时本地 ref 前移不能顶替；能力缺失使命令等待、拒绝或标需要关注，不改契约
 - 显式不挂平台的 Repo 走受限路径：机械项只以本地事实为证据，集成只面向本地目标；之后绑定平台不改 Repo 身份、既有 Revision 与 Receipt，进行中的意图沿用原绑定版本
-- 注册只在本地的仓库时缺省绑定本地平台：control 先持久化注册意图，适配器在本地平台建仓、默认只推当前 HEAD 所在的分支，工具箱为本机检出登记远端；没有提交时只建仓不推；refs/hctl2 名字空间、未准入 ChangeSet 分支与 notes 不出本机；平台上已有同名分支时不强制覆盖；结果未知时按关联键回读、不重复建仓；本地平台不可用时注册保持待确认，不改走不挂平台的路径；待确认阶段放弃注册时已建的平台仓库记为残留、不自动删除
+- 注册只在本地的仓库时缺省绑定本地平台：control 先持久化注册意图，适配器在本地平台建仓、默认只推当前 HEAD 所在的分支，`hctl2-tool` 为本机检出登记远端；没有提交时只建仓不推；refs/hctl2 名字空间、未准入 ChangeSet 分支与 notes 不出本机；平台上已有同名分支时不强制覆盖；结果未知时按关联键回读、不重复建仓；本地平台不可用时注册保持待确认，不改走不挂平台的路径；待确认阶段放弃注册时已建的平台仓库记为残留、不自动删除
 - 平台由人声明、远端地址只作辅助证据：有来源平台证据而声明不挂时标需要关注、须人确认；没有来源证据而声明外部平台且给不出平台仓库身份时拒绝；证据冲突时列出全部证据由人选择，不静默
 - 来自外部平台的克隆绑定该外部平台，本地平台不建镜像；把它绑到本地平台的请求拒绝
 - 绑定了平台的 Repo 提交面向本地目标的集成意图时拒绝；本地平台上的评审请求、保护快照、授权形态与恢复按与外部平台相同的规则判定，本地平台停机时依赖平台回读的命令同样拒绝，随包不豁免
-- 本地平台绑定的「检查」只声明为外部状态写回：契约要求的机械项以工具箱回读的本地测试事实为证据，control 写回的提交状态不单独构成证据
+- 本地平台绑定的「检查」只声明为外部状态写回：契约要求的机械项以 `hctl2-tool` 回读的本地测试事实为证据，control 写回的提交状态不单独构成证据
 - 结果未知按目标分：本地意图只回读本地事实、不等 PR；远端意图确定未投递的可重投，可能已写的保持未知并继续占用冲突范围，本地已有同一结果树也不解锁
 - 平台失联时本地物化与封存继续，面向本地目标的集成只对显式不挂平台的 Repo 继续；发布评审、读 PR 状态与远端合入拒绝；平台丢失后不凭 Git 提交重建 Receipt
 
@@ -154,7 +154,7 @@
 - Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
 - Dagu、Vikunja、Herdr、Gitea 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
 - 新 provider/adapter 未通过对应模块契约测试时不得产生 Port–Provider Binding；换绑不能改写活动 Run、Task、Room、Execution Runtime 或集成意图的冻结绑定
-- Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一控制面事务；工具箱封存回读先于准入，缺任一步不产生获准版本
+- Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一控制面事务；`hctl2-tool` 封存回读先于准入，缺任一步不产生获准版本
 - Execution Spec 的评审发布策略作为字段冻结；Result Proposal 提供策略之外的发布地点或内容时拒绝
 - Repo 模块不接收 Result Proposal；执行体直接向 Repo 模块提交版本或集成命令时拒绝
 - Attempt 归属的版本按 Run Manifest 冻结进 Execution Spec 的评审发布策略发布，发布 outbox 挂在 Run 准入提案的事务上；席位不能自行推送远端
@@ -166,10 +166,10 @@
 ### `CT-SYSTEM` · 系统
 
 - 同一用户级控制面存储只能有一个 control writer，第二 writer 拒绝
-- 多个执行现场可以登记（各有工具箱与 Herdr 绑定），但同一现场/仓库修改租约的旧代次必须被代次栅栏隔离。无法证明隔离已生效时默认不重授写权限，重授只能来自有权 human 预览证据后的显式确认
+- 多个执行现场可以登记（各有 `hctl2-tool` 与 Herdr 绑定），但同一现场/仓库修改租约的旧代次必须被代次栅栏隔离。无法证明隔离已生效时默认不重授写权限，重授只能来自有权 human 预览证据后的显式确认
 - 命令幂等
 - 危险动作（不可逆、产生外部权威副作用或扩大权限）未经确认的直接 Submit 拒绝；普通命令直接 Submit 与经 Preview 提交结果一致
-- executor 越界拒绝：远端推送、PR 与合并只归 Repo 模块的平台适配器，lint/检查不经工具箱 intent 回路；工具箱只受理现场 Git 职责内的已持久化意图，不执行远端副作用
+- executor 越界拒绝：远端推送、PR 与合并只归 Repo 模块的平台适配器，lint/检查不经 `hctl2-tool` intent 回路；`hctl2-tool` 只受理现场 Git 职责内的已持久化意图，不执行远端副作用
 - 同一 human action 经 Workbench、CLI 或 provider adapter 进入时使用同一准入规则；重复、迟到和乱序 provider event 不产生第二份领域效果
 - commit/确认回执各崩溃点回读
 - schema migration、投影重建

@@ -190,7 +190,7 @@ cargo build --locked -p hctl2-tool
 
 `--help` 与 `--version` 为英文。无参数调用等同于 `--help`。Git 现场命令要求宿主 `git` ≥ 2.39；可用 `HCTL2_GIT` 覆盖可执行文件路径，与 `HCTL2_GH` 同款。每次调用在标准输出写一条 JSON 记录，`evidence_level` 为 `toolbox_readback`。`outcome` 为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（仅 `wait`）；对应退出码 `0`、`3`、`4`、`5`。参数或启动错误返回 `1` 并写到标准错误。观察类失败（含仓库状态不成立）走标准输出 JSON，带 `error.code` 与 `error.recovery_action`。
 
-意图字段由调用方给出：ChangeSet 引用、基线、目标 ref、预期头、幂等键。工具箱不发明 ID，不读、不写控制面存储。
+意图字段由调用方给出：ChangeSet 引用、基线、目标 ref、预期头、幂等键。`hctl2-tool` 不发明 ID，不读、不写控制面存储。
 
 ### 仓库检查
 
@@ -232,7 +232,7 @@ hctl2-tool integrate --repo /path/to/repo \
   --idempotency-key <caller-key>
 ```
 
-`--strategy` 为 `fast-forward` 或 `merge-commit`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。工具箱把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
+`--strategy` 为 `fast-forward` 或 `merge-commit`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。`hctl2-tool` 把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
 
 ### 等待外部事实
 

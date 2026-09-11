@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -37,7 +37,7 @@ Task Revision 契约按需创建，但只能由显式“采纳契约”命令，
 
 Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文与位置、摘要在 Git，控制面存储保存稳定身份、准入与 current pointer。
 
-每条验收项必须声明**校验等级**：`mechanical`（机械可判——工具箱回读或适配器结构化事件即可判定）、`gate`（需评审席位判）、`human`（需有权的人判）。缺等级的验收项使「采纳契约」预览失效。验收项用什么写法——EARS 句式、「必须有」清单、真值 / 工件 / 连线分类——归 Skill 与写作指引，约束不钉。后端与关联来源的变化先成为 Snapshot。只有会改变 Task Revision 契约的内容才形成待采纳；用户采纳且工具箱回读正文后，control 才准入新 Task Revision。content 后端拥有的操作字段按绑定与 Snapshot 投影，不经过采纳。
+每条验收项必须声明**校验等级**：`mechanical`（机械可判——`hctl2-tool` 回读或适配器结构化事件即可判定）、`gate`（需评审席位判）、`human`（需有权的人判）。缺等级的验收项使「采纳契约」预览失效。验收项用什么写法——EARS 句式、「必须有」清单、真值 / 工件 / 连线分类——归 Skill 与写作指引，约束不钉。后端与关联来源的变化先成为 Snapshot。只有会改变 Task Revision 契约的内容才形成待采纳；用户采纳且 `hctl2-tool` 回读正文后，control 才准入新 Task Revision。content 后端拥有的操作字段按绑定与 Snapshot 投影，不经过采纳。
 
 存在绑定该 Task 的非终态 Run 时，仍可“采纳契约”并推进 current Task Revision；活动 Run 已冻结的 Revision 不因此改写，Run 继续按冻结 Revision 执行。Run 正常完成路径只针对其冻结的 Revision。current 已前移时，Run 归约器的“完成 Task”按契约分歧拒绝，Task 保持开放并显示需要关注，不得静默按新 Revision 完成。
 
@@ -52,7 +52,7 @@ Task 有两条可恢复的创建路径：
 1. HCTL-first：控制面先固定 Task 身份并提交后端 outbox；携带初始契约时，再提交 Git 正文 outbox 和该 Revision 的准入意图。
 2. content-first：对账过程先保存 Snapshot，再认领唯一外部实体并创建无契约 Task。
 
-两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。工具箱和适配器分别执行并回读，不能把 Git 或后端写入伪装成控制面事务的一部分。content-first 路径只有在卡片恰好归属一个 Project 分组时才能认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
+两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。`hctl2-tool` 和适配器分别执行并回读，不能把 Git 或后端写入伪装成控制面事务的一部分。content-first 路径只有在卡片恰好归属一个 Project 分组时才能认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
 
 外部卡随后移到另一 Project 分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot，并把原 Task 标为需要关注。在恢复原位置或建立新 Task 前，系统必须阻止采纳、启动、完成和后端操作字段写入。
 
@@ -96,7 +96,7 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 
 替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权和换代路径，不能先清空标记再留下两个可写执行。`completion_pending` 期间也拒绝另一次启动，以及来自 human 的 Task 完成或取消命令；只接受匹配 Run 归约器的内部完成命令。该命令成功或被 Task 持久拒绝时，control 在同一结果事务中清除标记。
 
-“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受工具箱回读或适配器结构化事件，其中集成结果只认 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)签发的 Integration Receipt，平台上的合并状态、检查结果与评审状态只能作为该模块回读的外部机械事实进入；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
+“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受 `hctl2-tool` 回读或适配器结构化事件，其中集成结果只认 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)签发的 Integration Receipt，平台上的合并状态、检查结果与评审状态只能作为该模块回读的外部机械事实进入；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
 
 绑定该 Task 的非终态 Run 存在时，完成与取消命令都必须拒绝。用户必须先显式结束该 Run 并等待旧执行撤权、隔离；Task 命令不会隐式停止 Run。重开或取消必须保留旧 Receipt 和历史。
 
@@ -104,7 +104,7 @@ Task 终结只有两个获准 actor 来源：归属 human 的 Task 命令请求�
 
 Run 路径使用由 Run/Task 身份派生的稳定幂等键。Run 已完成而 Task 校验失败时，Run 保持完成，Task 保持开放并显示需要关注。失败、已取消或被替代的 Run 不能完成或取消 Task。“取消 Task”命令只接受归属 human 的直接命令。这里的 Kanban 是动作语义而非某个窗口，客户端不产生权限等级。
 
-Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revision 引用与摘要和验收策略。每一条验收项还要分别固定通过或失败、校验等级与实际判定者（工具箱 / Gate 席位 / human actor）、Evidence/Verdict/Receipt 引用与摘要、来源 Snapshot、来源头或版本，以及适用的生产者与执行代次；不能用一个总括的“测试通过”替代逐项绑定。
+Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revision 引用与摘要和验收策略。每一条验收项还要分别固定通过或失败、校验等级与实际判定者（`hctl2-tool` / Gate 席位 / human actor）、Evidence/Verdict/Receipt 引用与摘要、来源 Snapshot、来源头或版本，以及适用的生产者与执行代次；不能用一个总括的“测试通过”替代逐项绑定。
 
 若存在契约分歧，Receipt 还必须固定显式分歧选择、精确的未采纳 Snapshot 引用与摘要、Task–Backend Binding 版本与状态版本和权威策略摘要。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交。Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一标记。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 

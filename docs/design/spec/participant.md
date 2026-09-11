@@ -1,6 +1,6 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -28,7 +28,7 @@ Participant 模块拥有数字参与者的身份与配置，并负责把获准�
 
 Skill 是带稳定 ID、revision 和 digest 的共享方法定义，至少固定 manifest/instructions/assets/scripts、来源/license、兼容能力与依赖；更新创建新 revision，current pointer 只用于选择。Skill 提供方法并请求能力；权限、票权、委派与 Task 完成权仍由对应领域约束授予。Skill 的内容不归 HCTL 存放：由 Agency 安装并申报，由执行体装载；控制面存储只保存引用与 digest。
 
-Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、**available**（Agency 申报精确 revision 已安装、可回读、依赖满足）、**activated**（本次 Execution Spec 已冻结并装载）。Execution Spec 与 Run Manifest 必须冻结精确 ref+digest，并为每个 Skill 记录可核验性：工具箱能回读到同一 digest 的记 known，只有 Agency 申报的记 unknown；不得把 unknown 记为 known。required Skill 缺失，或申报的 digest 与工具箱回读不一致时，解析失败、不激活；optional Skill 缺失显示降级。含脚本的 Skill 是代码供应链输入。
+Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、**available**（Agency 申报精确 revision 已安装、可回读、依赖满足）、**activated**（本次 Execution Spec 已冻结并装载）。Execution Spec 与 Run Manifest 必须冻结精确 ref+digest，并为每个 Skill 记录可核验性：`hctl2-tool` 能回读到同一 digest 的记 known，只有 Agency 申报的记 unknown；不得把 unknown 记为 known。required Skill 缺失，或申报的 digest 与 `hctl2-tool` 回读不一致时，解析失败、不激活；optional Skill 缺失显示降级。含脚本的 Skill 是代码供应链输入。
 
 ## 写入约束
 
@@ -47,7 +47,7 @@ HCTL 启动的每个 Harness 都使用窄执行主体。以下三条底线不可
 ### 不可关闭的三条底线
 
 1. **工具不是人。** Harness、运行时钩子和模型只能提交 Result Proposal，不能提交治理命令。
-2. **合入钥匙不进工具。** HCTL 不向 Harness 交付 control 客户端凭据、human principal credential、集成凭据或外部写凭据。目标引用、远端 SCM、任务后端和 chat 写入凭据只由持有当前代次栅栏的工具箱或适配器网关代用。
+2. **合入钥匙不进工具。** HCTL 不向 Harness 交付 control 客户端凭据、human principal credential、集成凭据或外部写凭据。目标引用、远端 SCM、任务后端和 chat 写入凭据只由持有当前代次栅栏的 `hctl2-tool` 或适配器网关代用。
 3. **隔离工作树。** Harness 只能在有效 Write Lease 下写当前 ChangeSet 的独立 Git 工作树和分支。它可以读取所属 Repo Instance 的 Git 公共目录与引用，也可以在当前 ChangeSet 分支提交，但不推送远端：远端推送、评审请求与合并全部走 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)的适配器命令。直接改写目标引用或其他 ChangeSet 现场不会取得集成权威，只会在回读时形成分歧。
 
 ### 可选执行加固
@@ -68,7 +68,7 @@ ChangeSet、ChangeSet Revision、Write Lease、封存、保全与集成的对象
 
 旧写入者失权时，两个模块各做自己的动作：Repo 模块撤销租约并拒绝重授；本模块停止或隔离旧执行，并提供进程、PTY 与工作树状态的证据。隔离成立有两种证明：旧执行已经停止；或旧执行仍存活但已被限制在旧 Git 工作树与旧 ChangeSet 的边界内——后者按 [Run 约束](./run.md#写入约束)允许后续执行改用新工作树与新 ChangeSet，原 ChangeSet 不重授。两者都证明不了时，本模块不得声称已隔离，Repo 模块因此不授予新租约，原 Git 工作树与 ChangeSet 按其约束保全并隔离。
 
-执行体在有效租约下写自己的 Git 工作树与分支，封存由工具箱执行。执行体提交的 Result Proposal 中，ChangeSet 输出至少固定 ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及结果的位置——执行体分支上的提交，或工作树本身；封存输入与回读字段见 [Repo 模块约束](./repo.md#changeset-与-git-事实)。版本准入在归属者准入提案的同一事务里由 Repo 模块完成。执行体不持有平台写凭据，远端推送、评审请求与合并不由它执行。
+执行体在有效租约下写自己的 Git 工作树与分支，封存由 `hctl2-tool` 执行。执行体提交的 Result Proposal 中，ChangeSet 输出至少固定 ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及结果的位置——执行体分支上的提交，或工作树本身；封存输入与回读字段见 [Repo 模块约束](./repo.md#changeset-与-git-事实)。版本准入在归属者准入提案的同一事务里由 Repo 模块完成。执行体不持有平台写凭据，远端推送、评审请求与合并不由它执行。
 
 ## 运行时与观测
 
@@ -120,11 +120,11 @@ Evidence 是被判定的事实记录，本身不下结论。每条 Evidence 必�
 
 | 等级 | 通道 | 例子 |
 | --- | --- | --- |
-| `toolbox_readback` | 工具箱直接回读 | Git 基线与 HEAD、PR 与检查状态、CI 结果、路径与摘要、测试命令的退出码与输出 |
+| `toolbox_readback` | `hctl2-tool` 直接回读 | Git 基线与 HEAD、PR 与检查状态、CI 结果、路径与摘要、测试命令的退出码与输出 |
 | `adapter_event` | 适配器结构化事件 | harness 适配器归一的工具调用、测试、文件变化事件 |
 | `narrated` | 转述 | 执行体或模型在输出里说「我跑了测试，过了」 |
 
-「高证据类」指前两级。未标注通道的 Evidence 按 `narrated` 处理；转述不能通过重新标注升级。Task 验收策略可要求某验收项的证据不低于某一级，Gate 策略可要求 Verdict 引用的证据不低于某一级。工具箱回读也是 Run 节点外部机械事实前置的唯一来源（见 [Run 约束](./run.md#从节点到结果)）。
+「高证据类」指前两级。未标注通道的 Evidence 按 `narrated` 处理；转述不能通过重新标注升级。Task 验收策略可要求某验收项的证据不低于某一级，Gate 策略可要求 Verdict 引用的证据不低于某一级。`hctl2-tool` 回读也是 Run 节点外部机械事实前置的唯一来源（见 [Run 约束](./run.md#从节点到结果)）。
 
 ## 终端通道、连接与租约
 

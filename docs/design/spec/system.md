@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文只定义五个模块共享的运行机制，不拥有 Project、Task、Run、Participant 或 Repo 的领域状态。
 
 ## 组件
@@ -31,7 +31,7 @@
 | Kanban | 任务源端口读取、字段写回与快照 |
 | Workflow | workflow engine 编译、注册、执行和回读 |
 | Terminal | harness、Agency，以及终端连接与输入能力 |
-| Change | 平台端口：平台适配器推送变更集分支、创建或更新评审请求、请求合并、写回记录，并为代取读取评审评论正文；检查、合并状态、评审请求头、线程与正式评审状态、保护条件由工具箱回读为机械事实；能力声明与两层绑定见 [Repo 模块约束](./repo.md#平台绑定与能力声明) |
+| Change | 平台端口：平台适配器推送变更集分支、创建或更新评审请求、请求合并、写回记录，并为代取读取评审评论正文；检查、合并状态、评审请求头、线程与正式评审状态、保护条件由 `hctl2-tool` 回读为机械事实；能力声明与两层绑定见 [Repo 模块约束](./repo.md#平台绑定与能力声明) |
 
 受控端口是替换供应端的唯一边界，不再增加跨模块通用适配层。每个 Port–Provider Binding 固定供应端制品、模块适配器、配置摘要、实测能力和降级方式。适配器只翻译本模块实际使用的命令、查询和事件，不把供应端私有对象提升为 HCTL 对象。新供应端通过本模块的契约测试后，只能用于新绑定；已有执行继续使用原绑定。迁移既有 content 必须另走显式的预览、导出、导入和回读校验。
 
@@ -125,9 +125,9 @@ Receipt 证明的是已经校验的结果，不是另一个 writer。投影从�
 
 包括远端 SCM 在内，会改变第三方权威事实的动作统一写成持久外部副作用命令和 outbox 记录。记录固定归属者引用、Port–Provider Binding、操作、目标、适配器声明的冲突范围、权限、规范输入摘要和幂等键。同一远端资源的关闭、重开、更新等操作共用一个冲突范围。
 
-本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，工具箱再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。代码集成与发布评审的意图、目标、授权形态与 Receipt 由 [Repo 模块约束](./repo.md#集成目标两个头与两种授权形态)定义；发布评审的授权来源是归属者 Execution Spec 冻结的评审发布策略，不是执行体的请求。只有适配器确认目标、版本和结果后，control 与工具箱的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Participant 写入约束](./participant.md#写入约束)。
+本地 Git 变更属于同一类外部副作用命令：control 先持久化意图和 outbox，`hctl2-tool` 再执行和回读；Harness 和模型不直接取得集成权。适配器只投递并回读。代码集成与发布评审的意图、目标、授权形态与 Receipt 由 [Repo 模块约束](./repo.md#集成目标两个头与两种授权形态)定义；发布评审的授权来源是归属者 Execution Spec 冻结的评审发布策略，不是执行体的请求。只有适配器确认目标、版本和结果后，control 与 `hctl2-tool` 的校验事务才能写成功 Receipt。投递超时或确认回执丢失时，结果保持未知，并继续占用冲突范围以阻止重叠写。Harness 的窄执行主体、凭据与独立 Git 工作树边界见[Participant 写入约束](./participant.md#写入约束)。
 
-系统不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或工具箱回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
+系统不承诺自动补偿任意外部写。供应端事件只有在对应模块明确列为 content、human 命令请求或运行时输入时，才按相应路径处理；其余修改由对应端口或 `hctl2-tool` 回读为 Snapshot 或分歧，并阻止依赖旧版本的命令，直到用户通过该模块既有的采纳或对账动作处理。
 
 Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被 Harness 或用户在“合入 ChangeSet”命令之外直接改写时，只表现为分歧：预期目标头形态下是预期目标头不匹配，接受目标前移形态下是目标保护快照或回读核对不符（两种形态见 [Repo 模块约束](./repo.md#集成目标两个头与两种授权形态)）。外部观测只进入 Snapshot 或 Result Proposal；Artifact、Verdict 与 Receipt 仍由对应归属者按约束产生。
 
@@ -135,7 +135,7 @@ Harness 不获得可绕过受控端口的外部写凭据。本地目标引用被
 
 ### Repo 与执行现场
 
-Repo 是五模块可归属的逻辑仓库，Repo Instance 是本系统拥有的物理执行现场；两者的对象、「注册 Repo」与「挂接/移除 Repo Instance」命令、Git 身份的写入与回读由 [Repo 模块约束](./repo.md#repo-注册与-repo-instance-挂接)拥有。系统层保留的只有共享部分：每个现场的 `site_generation` 与工具箱持有的现场 OS 锁（见[单写者](#单写者)），以及现场运行目录的存储职责（见下节）。Git 工作树、ChangeSet 物化、工具箱锁与本机运行时都通过现场引用；现场不属于任何 Project。
+Repo 是五模块可归属的逻辑仓库，Repo Instance 是本系统拥有的物理执行现场；两者的对象、「注册 Repo」与「挂接/移除 Repo Instance」命令、Git 身份的写入与回读由 [Repo 模块约束](./repo.md#repo-注册与-repo-instance-挂接)拥有。系统层保留的只有共享部分：每个现场的 `site_generation` 与 `hctl2-tool` 持有的现场 OS 锁（见[单写者](#单写者)），以及现场运行目录的存储职责（见下节）。Git 工作树、ChangeSet 物化、`hctl2-tool` 的锁与本机运行时都通过现场引用；现场不属于任何 Project。
 
 ### 控制面自己的存储
 
@@ -143,7 +143,7 @@ hctl2-control 的存储只有一份：**用户级控制面存储**。它是全�
 
 仓库副本本地的 `<git-common-dir>/hctl2/` 是当前 Repo Instance 及其关联 Git 工作树的共享运行目录，只保存 OS 锁、跟踪记录与可丢弃缓存。它**不是控制面存储，也不是事实源**。现场状态始终可以从控制面存储、Git 与运行时观测对账重建；删除该目录不丢失事实，无法证明身份的旧执行会被标为丢失并撤权。
 
-control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份控制面存储：获准的不可变正文与判决审计影子经工具箱写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
+control 也会把结果写到自己的库以外，但那些是外部副作用的目标，不是另一份控制面存储：获准的不可变正文与判决审计影子经 `hctl2-tool` 写入 Git（见下节）；获准的记录可以写回 content 系统（记录不是命令）。
 
 控制面存储只保存 HCTL 自己的领域关系、授权与判决，以及 HCTL 身份到外部 content/运行时身份的跨系统锚定；承载系统内部的完整拓扑（如任务后端里与 HCTL 无关的卡片层级）仍由提供方拥有。控制面凭获准命令、精确映射与 Snapshot 对账受治理的那部分外部关系。控制面存储与其余本地存储（锁、缓存、定义文件）的物理布局是控制面的**私事**：事实经服务接口流通，路径和表结构不构成对外 API，也不进 Git；“唯一用户级控制面存储、权威归属和备份传承”由架构约束固定，独立于实现选择。
 
@@ -163,8 +163,8 @@ control 也会把结果写到自己的库以外，但那些是外部副作用的
 
 Git 里与 HCTL 相关的持久内容分两种；混淆“正文”和“准入”，或把审计影子当判决，会把 Git 误读成控制面的第二个权威：
 
-- **不可变正文**（家在 Repo）：Task Revision、Workflow Revision、Memo、Artifact/ChangeSet Revision 的正文，以及 Repo 共享 policy/schema revision。执行者是 Repo 模块的工具箱：按已持久化 intent 写入并回读其 immutable locator 与 digest，不因此取得这些正文的准入权；稳定身份、准入决定、规范摘要、current pointer 和 lifecycle 的权威仍归控制面。Git 中出现一份正文不表示已被 HCTL 准入，控制面存储也不复制一份可漂移正文。
-- **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 由控制面产生并保存在用户级控制面存储；副本由工具箱写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只恢复可验证、已结晶的判决候选，仍须显式恢复流程确认；未结晶的判决和现存治理记录保持原权威。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要。
+- **不可变正文**（家在 Repo）：Task Revision、Workflow Revision、Memo、Artifact/ChangeSet Revision 的正文，以及 Repo 共享 policy/schema revision。执行者是 Repo 模块的 `hctl2-tool`：按已持久化 intent 写入并回读其 immutable locator 与 digest，不因此取得这些正文的准入权；稳定身份、准入决定、规范摘要、current pointer 和 lifecycle 的权威仍归控制面。Git 中出现一份正文不表示已被 HCTL 准入，控制面存储也不复制一份可漂移正文。
+- **判决的结晶副本**（metadata 的审计影子）：Verdict/Receipt 由控制面产生并保存在用户级控制面存储；副本由 `hctl2-tool` 写入 Git，用于审计与随仓库同步。副本不是第二权威——从 Git 回灌只恢复可验证、已结晶的判决候选，仍须显式恢复流程确认；未结晶的判决和现存治理记录保持原权威。副本粒度按仓库策略可配：私有仓库默认全文，公开仓库可降为仅摘要。
 
 Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准入是执行授权记录，不因“不可变”就自动成为 Git 正文；它们的权威只在控制面存储。反过来，Git 正文的字节权威也不会因为控制面存储保存了 digest 就转移过去。
 
@@ -175,7 +175,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
 | 五模块 metadata：稳定身份、准入/current、Room/Request、Room 名册与 Run 席位、权限、租约、代次、现场记录、集成意图与变更映射、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级控制面存储 + control；一人多机连同一控制面存储 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
-| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；控制面存储保存准入、digest、current/lifecycle；Verdict/Receipt 的权威仍归控制面 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
+| Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由 `hctl2-tool` 写入/回读；控制面存储保存准入、digest、current/lifecycle；Verdict/Receipt 的权威仍归控制面 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步记录 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在控制面存储及其可验证审计影子；远端后端由 provider 负责持久 |
 | workflow engine 报告的执行进度 | 通过绑定访问的 workflow engine | 已冻结的本地事实继续存在；Run 的完成与评审只依据治理记录推进，引擎停报进度只让 Run–Engine Binding 待对账 | 进度报告丢失不丢任何判决：Run 按治理记录继续结束或显式替代；凭证链权威在控制面存储，审计影子在 Git |
@@ -190,7 +190,7 @@ Git 工作树的现场互斥由 `hctl2-tool` 的 OS 锁保证，control 只在�
 
 Agency 端口的 Port–Provider Binding 另有自己的归属者租约和代次；范围至少覆盖同一服务器、套接字或主机命名空间。新的归属者必须先对账，HCTL 不再向旧代次签发输入、停止、接管或结果准入。
 
-适配器在启动、输入和停止前必须校验适用的现场与运行时代次。只有工具箱持有的 OS 锁能在现场强制排除旧 Git 写入。供应端不能接收或回显代次时，只能声明 HCTL 入口已校验，不能声明物理执行点已经隔离旧动作。
+适配器在启动、输入和停止前必须校验适用的现场与运行时代次。只有 `hctl2-tool` 持有的 OS 锁能在现场强制排除旧 Git 写入。供应端不能接收或回显代次时，只能声明 HCTL 入口已校验，不能声明物理执行点已经隔离旧动作。
 
 SQLite 事务只保证控制面存储内部一致，而事务提交与外部投递不在同一原子域。因此，外部副作用还必须由幂等键、代次、租约、outbox 和回读共同隔离。
 
@@ -222,10 +222,10 @@ SQLite 事务只保证控制面存储内部一致，而事务提交与外部投�
 
 恢复顺序固定为：
 
-1. 取得用户级 control 锁，并经工具箱取得适用现场的 OS 排他权；Herdr 绑定不支持物理代次栅栏时明确记录该限制；
+1. 取得用户级 control 锁，并经 `hctl2-tool` 取得适用现场的 OS 排他权；Herdr 绑定不支持物理代次栅栏时明确记录该限制；
 2. 打开控制面存储、验证 schema，恢复 inbox/outbox/租约，并 CAS 推进 control writer、site 与 Agency binding generation；
 3. 回读全部已绑定 content 系统的游标（chat server、任务后端、代码协作平台的评审请求状态与 webhook 游标、workflow engine）以及 Herdr 运行状态和未确认副作用；
-4. 查询 workflow engine、Herdr API，以及工具箱回读的 Git 事实与平台机械事实（评审请求当前头、合并状态、检查、保护条件）；结果未知的集成与发布意图按 [Repo 模块约束](./repo.md#恢复)分目标处理；
+4. 查询 workflow engine、Herdr API，以及 `hctl2-tool` 回读的 Git 事实与平台机械事实（评审请求当前头、合并状态、检查、保护条件）；结果未知的集成与发布意图按 [Repo 模块约束](./repo.md#恢复)分目标处理；
 5. 将观测分类为运行、等待、丢失、被替代、孤儿或结果未知；
 6. 隔离旧 generation，只重放可证明幂等且仍获准的动作；
 7. 对账完成后才授予新的写入或输入租约。
@@ -246,7 +246,7 @@ metadata 备份必须是由唯一写入者协调的一致备份集：完整控�
 
 - 桌面壳 WebView/renderer、Web 内容、终端转义序列和外部消息都视为不可信输入。
 - 打包后的桌面壳固定最小权限面，WebView 只暴露具名 typed command：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer。禁止远程运行时脚本/CDN，CSP 拒绝远程或未声明的可执行来源。
-- 文件、Git、网络、凭据和进程能力由 control 与工具箱授权，不交给渲染器。
+- 文件、Git、网络、凭据和进程能力由 control 与 `hctl2-tool` 授权，不交给渲染器。
 - 敏感输入不进入 Room、日志、Context 或终端回放。
 - 日志与 trace 使用稳定关联 ID，但不得包含密钥和完整敏感 payload。
 - 授权模型是单用户的，不提供多租户隔离；Harness 的三条底线与可选执行加固见[Participant 写入约束](./participant.md#写入约束)。未启用加固时，Harness 与同 OS 用户的其他进程处于同一信任域。

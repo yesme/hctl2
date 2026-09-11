@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -29,8 +29,8 @@
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
 | Room Invocation | `invocation_version`；待启动 / 运行中 / 等待输入 / 丢失 / 完成 / 失败 / 已取消 | Project reducer/control 处理「创建/取消/准入结果」命令，Agency 只提供观测 | 丢失和其他终态不可复活；重试创建新 Invocation |
-| Memo | 发布 revision 只追加 | control 与工具箱处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
-| Artifact | `artifact_version`、current revision、活跃 / 已归档 | control 与工具箱处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
+| Memo | 发布 revision 只追加 | control 与 `hctl2-tool` 处理「发布 Memo」命令 | 已发布内容不可改写；更新以 supersedes 连接新 revision |
+| Artifact | `artifact_version`、current revision、活跃 / 已归档 | control 与 `hctl2-tool` 处理「登记/发布/归档/恢复 Artifact」命令 | Artifact Revision 不可变，current pointer 只由 Publish 推进 |
 
 ## Repo 注册与 Project 归档
 

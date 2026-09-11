@@ -1,6 +1,6 @@
 # 五模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文是 Project、Task、Run、Participant、Repo 之间连接约束的唯一权威。它不是一个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -37,7 +37,7 @@ flowchart LR
     C -->|Integration Receipt 作 mechanical 证据| T
 ```
 
-Project → Participant 是无 Run 的显式短路；Participant → Task 不存在原始状态通道，只有经过校验的 Revision、Evidence、Verdict 或 Receipt 才能进入 Task 验收。Participant → Repo 也不存在直接通道：执行体的 ChangeSet 输出由工具箱封存回读，再在 Project 或 Run 准入提案的同一事务里由 Repo 模块准入版本；Repo 模块不接收 Result Proposal。
+Project → Participant 是无 Run 的显式短路；Participant → Task 不存在原始状态通道，只有经过校验的 Revision、Evidence、Verdict 或 Receipt 才能进入 Task 验收。Participant → Repo 也不存在直接通道：执行体的 ChangeSet 输出由 `hctl2-tool` 封存回读，再在 Project 或 Run 准入提案的同一事务里由 Repo 模块准入版本；Repo 模块不接收 Result Proposal。
 
 ## 连接约束总表
 
@@ -46,12 +46,12 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 | Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；只有携带初始契约时才写正文 outbox，后续由“采纳契约”准入 Task Revision | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
 | Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、席位要求与选定的施工者/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 治理记录和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再预留、绑定和激活运行时 | invocation id + invocation_version + Execution Spec digest |
-| Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由工具箱回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
-| Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要、平台绑定的声明（外部平台 / 本地平台 / 显式不挂） | Repo 模块记待确认注册并持久化 outbox，工具箱写入并回读 Git 身份、为本机检出登记远端；缺省绑定本地平台时平台适配器执行「在本地平台建仓并推送」外部副作用命令；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复；建仓与推送按自己的关联键回读，不重复建仓 |
+| Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由 `hctl2-tool` 回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
+| Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要、平台绑定的声明（外部平台 / 本地平台 / 显式不挂） | Repo 模块记待确认注册并持久化 outbox，`hctl2-tool` 写入并回读 Git 身份、为本机检出登记远端；缺省绑定本地平台时平台适配器执行「在本地平台建仓并推送」外部副作用命令；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复；建仓与推送按自己的关联键回读，不重复建仓 |
 | Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/现场/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
-| Project / Run → Repo | 获准提案中的 ChangeSet 输出、工具箱封存回读的 Git 事实 | 工具箱先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一控制面事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
+| Project / Run → Repo | 获准提案中的 ChangeSet 输出、`hctl2-tool` 封存回读的 Git 事实 | `hctl2-tool` 先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一控制面事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
 | Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；平台适配器推送并创建或更新评审请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
-| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，工具箱（本地目标）或平台适配器（远端目标）执行，工具箱回读；Integration Receipt 返回发起模块作证据 | intent id → 唯一 Receipt；同一目标同时至多一个待决意图，不论形态；结果未知不重投 |
+| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行，`hctl2-tool` 回读；Integration Receipt 返回发起模块作证据 | intent id → 唯一 Receipt；同一目标同时至多一个待决意图，不论形态；结果未知不重投 |
 | Repo → Run | ChangeSet Revision 引用（ReviewSubjectRef 的一种）、平台检查与评审状态作 Evidence | Run 校验 review_subject_digest、代次与证据通道等级后形成 Seat 结果或 Verdict；Artifact Revision 的评审引用是 Project → Run 的既有连接 | review_subject_digest；基线或结果树变化即新版本，旧票失效 |
 | 平台事件 → Repo | 评论、批准/请求修改、检查结果、合并状态、账号映射 | 按 Repo 模块的逐项分类处理：content、外部评审证据、外部机械事实、或只作分歧；控制面自己写回的事件排除 | 事件引用 + 当前回读；重复、迟到、乱序得到相同结果 |
 | human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs（集成结果只认 Repo 模块的 Integration Receipt） | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
@@ -68,7 +68,7 @@ Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。�
 
 Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。创建命令先提交 Task 身份、后端 outbox 和关联键；只有命令携带初始契约时，才另写 Revision 准入意图和 Git 正文 outbox。确认回执未知时按原关联键分别回读，不能创建第二个 Task 或卡片。content-first 卡片只有唯一归属一个 Project 分组时，才能被认领为无契约 Task。
 
-“采纳契约”命令在工具箱回读 Git 正文后准入不可变 Task Revision，并返回精确引用；完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision。普通消息、总结、父分组实体和拖放都不能创建 Task，也不能改变 Task 的 Project 归属。
+“采纳契约”命令在 `hctl2-tool` 回读 Git 正文后准入不可变 Task Revision，并返回精确引用；完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision。普通消息、总结、父分组实体和拖放都不能创建 Task，也不能改变 Task 的 Project 归属。
 
 ## Project / Task → Run：授权自动施工
 
@@ -137,7 +137,7 @@ control inbox 先按提案标识符、producer sequence 和归属者去重。随
 
 - Room Invocation 的结果由 Project 记录并投影到 Room；
 - Attempt 的结果由 Run 归约为 Seat 结果、Verdict 或 Receipt；
-- 提案中的 ChangeSet 输出由 [Repo 模块](./repo.md#changeset-与-git-事实)在同一事务准入为 ChangeSet Revision：工具箱先按提案给出的 ChangeSet、租约、基线与结果位置封存并回读，control 复核归属者状态、代次与租约仍然有效，然后归属模块准入提案、Repo 模块准入版本；封存是保存，准入才算数，封存的 Git 写入在事务之外并按关联键幂等，封存期间被取消的归属者不产生获准版本，也不触发发布评审。这个顺序只适用于由执行结果提案产生的版本；有权 human actor 的显式封存由 Repo 模块按该命令准入，不经此处；
+- 提案中的 ChangeSet 输出由 [Repo 模块](./repo.md#changeset-与-git-事实)在同一事务准入为 ChangeSet Revision：`hctl2-tool` 先按提案给出的 ChangeSet、租约、基线与结果位置封存并回读，control 复核归属者状态、代次与租约仍然有效，然后归属模块准入提案、Repo 模块准入版本；封存是保存，准入才算数，封存的 Git 写入在事务之外并按关联键幂等，封存期间被取消的归属者不产生获准版本，也不触发发布评审。这个顺序只适用于由执行结果提案产生的版本；有权 human actor 的显式封存由 Repo 模块按该命令准入，不经此处；
 - Task 不消费 Harness 的进程状态、自述、终端屏幕或未经准入的 Proposal。
 
 任一旧代次、被取消或替代的归属者，或不匹配 spec/bundle 的结果只保留审计记录，不能推进 Project、Run 或 Task。
