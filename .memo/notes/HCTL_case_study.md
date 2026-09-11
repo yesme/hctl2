@@ -8,7 +8,7 @@
 
 - github有个repo，叫gh\-jssdk；gitlab有个repo，叫gl\-jstui
 
-- 一台云端主机cloud，安装了3个harness: cloud\_codex, cloud\_claude, cloud\_glm；有一个agency: cloud\_agency；在这个agency上用前边的harness创建participant templates
+- 一台云端主机cloud，安装了3个harness: cloud\_codex, cloud\_claude, cloud\_glm；有一个agency: cloud\_agency；在这个agency上用前边的harness创建工种
 
     - cloud\_tpl\_sde \(基于cloud\_codex\+skills，以下类似\)
 
@@ -18,13 +18,13 @@
 
     - cloud\_tpl\_sre \(cloud\_glm\)
 
-- 在mac上，安装了2个harness: mac\_gemini, mac\_k3；有一个agency: mac\_agency; 并创建了2个participant templates
+- 在mac上，安装了2个harness: mac\_gemini, mac\_k3；有一个agency: mac\_agency; 并创建了2个工种
 
     - mac\_tpl\_sdet \(mac\_gemini\)
 
     - mac\_tpl\_ops \(mac\_k3\)
 
-- 在ubuntu上，安装了2个harness: ubuntu\_glm, ubuntu\_grok；有一个agency: ubuntu\_agency; 并创建了2个participant templates
+- 在ubuntu上，安装了2个harness: ubuntu\_glm, ubuntu\_grok；有一个agency: ubuntu\_agency; 并创建了2个工种
 
     - ubuntu\_tpl\_sde \(ubuntu\_grok\)
 
@@ -40,7 +40,7 @@
 
         1. mac\_ptcp\_jssdk\_01\_01：基于mac\_tpl\_sdet－所以这会有一个mac\_gemini的session，用的是mac本地的worktree\-checkout－worktree位置跟着harness走。
 
-        2. mac\_ptcp\_jssdk\_01\_02：也基于mac\_tpl\_sdet－虽然模板相同，但这是个新的session和新的worktree\-checkout。它和mac\_ptcp\_01可以share一个object database / \.git directory，因为他俩都来自于一个repo。
+        2. mac\_ptcp\_jssdk\_01\_02：也基于mac\_tpl\_sdet－虽然工种相同，但这是个新的session和新的worktree\-checkout。它和mac\_ptcp\_01可以share一个object database / \.git directory，因为他俩都来自于一个repo。
 
         3. mac\_ptcp\_jssdk\_01\_03：基于mac\_tpl\_ops－虽然背后是不同的harness，但这个可以和mac\_ptcp\_jssdk\_01/02共用object database, 只是不同的checkout。
 
@@ -99,7 +99,7 @@
 
 ## 必然发生的情形
 
-- 同一个模板被两个控制面雇成不同的参与者实例：mac\_tpl\_ops 同时出现在 mac\_jssdk\_01 和 cloud\_jssdk\_01 里，是两个参与者。
+- 同一个工种被两个控制面雇成不同的参与者实例：mac\_tpl\_ops 同时出现在 mac\_jssdk\_01 和 cloud\_jssdk\_01 里，是两个参与者。
 
 - mac\_ctl 和 cloud\_ctl 会同时对 gh\-jssdk 开 PR、同时请求合入 main。
 
