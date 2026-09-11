@@ -84,7 +84,7 @@ my %meaning = (
     state_version                  => '状态版本',
     task_lifecycle_version         => '任务生命周期版本',
     task_source                    => '任务来源',
-    toolbox_readback               => '工具箱直接回读',
+    toolbox_readback               => '`hctl2-tool` 直接回读',
     unknown                        => '未知',
     unsupported                    => '不支持',
 );

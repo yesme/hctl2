@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.4<br>
+> 状态：规范性约束 · 草案 v0.17.5<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -15,18 +15,18 @@
 | Seat | Obligation 中稳定的逻辑执行者或投票位置 |
 | Attempt | 某个候选对一个 Seat 的一次执行。派发所需的完整冻结记录由 Execution Spec 承载；Attempt 自身只增加 attempt、seat、run 引用和 `attempt_generation`。共同字段见[连接约束](./connections.md) |
 | ReviewSubjectRef | 对 ChangeSet Revision（[Repo 模块](./repo.md#changeset-与-git-事实)）或 Artifact Revision（[Project 模块](./project.md#context-memo-artifact)）的精确 kind、ID 和 digest 引用（引用格式） |
-| Verdict / Receipt | 对精确版本的语义裁决，以及 control 与工具箱校验后的正式证明（Receipt 族） |
+| Verdict / Receipt | 对精确版本的语义裁决，以及 control 与 `hctl2-tool` 校验后的正式证明（Receipt 族） |
 
 ## 写入约束
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，工具箱校验摘要 | Revision 不改写；新内容创建新 Revision |
+| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；固定 compiler/adapter 产出，`hctl2-tool` 校验摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Run–Engine Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时创建（只认当前观察，见“从节点到结果”），此后按治理记录里的 Attempt 结果与 Gate 策略推进 | 终态不可复活；引擎重试使检查点再次进入等待态，由 control 按新观察序号创建新 Obligation |
 | Attempt | `attempt_generation` + state version；合法边见下文 | control 创建、取消、替代和准入结果；Agency 只返回观测 | 终态不可复活；候选切换创建同 Seat 的新 Attempt |
-| Verdict / Receipt | immutable | 只有 Run reducer 与 control/工具箱校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
+| Verdict / Receipt | immutable | 只有 Run reducer 与 control/`hctl2-tool` 校验事务可写 | 精确绑定 ReviewSubjectRef、规则和证据 |
 
 Run 状态只由 control 根据获准命令和治理记录推进，workflow engine 回读只提供观测。下表列出全部合法转移；未列出的状态转换必须返回类型化拒绝。
 
@@ -65,7 +65,7 @@ Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了�
 
 ## Workflow 与 Run 授权
 
-Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。Workflow Revision 可含一节「上下文」：只有文字的背景章节，随版本冻结，交付给每个席位与读回；它不产生节点、义务或席位，不作判据或前置，编译器不读它的内容。
+Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由 `hctl2-tool` 写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。Workflow Revision 可含一节「上下文」：只有文字的背景章节，随版本冻结，交付给每个席位与读回；它不产生节点、义务或席位，不作判据或前置，编译器不读它的内容。
 
 「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的版本与摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件四条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用；产出调用的 Execution Spec 权限摘要不含任何 Room 的消息读取权限。Workflow Revision 可声明读回须由与本版本产出调用不同的 Worker Profile 做，声明而实际 Worker Profile 摘要相同时拒绝，缺省见交付文档。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点、被定为交付义务却无节点的已决条目，以及「上下文」章节提到却无节点承接的事；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
 
@@ -99,7 +99,7 @@ HCTL Profile 的规则分三组：
 1. 允许的图结构：外部执行、fork/join、switch、loop、dynamic fork、timer wait、noop 和纯数据转换；节点可附外部机械事实前置声明（见「从节点到结果」）。
 2. 编译器拒绝的副作用：子 DAG、默认 command/script、HTTP/action/agent/Harness；Dagu `human.task` 仅作被动检查点。
 3. dynamic fork 只能实例化 Manifest 中已冻结的有界 Seat 模板；loop 每次重新进入节点都创建新 Obligation。
-4. 每个外部执行节点必须声明**达成判据**，二选一：机械完成判据——绑定本次待验收输出的外部机械事实（该输出所在提交的 CI 状态、对应 PR 的合并状态、路径与摘要），由 `hctl2-tool` 读回；或 Gate 席位裁决加证据不低于某一级。两者皆无的节点编译拒绝。开工前置（见「从节点到结果」）是另一回事，可派发不等于已达成。边分两类：控制依赖（fork/join、switch、timer、noop、纯转换与 loop 的结构边）不要求引用；**产物依赖**的边必须引用上游节点声明的产出——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实。编译时校验的是静态图：产物依赖能解析到图内某个上游节点声明的产出且类型匹配，这叫**落地**；静态图无环——loop 由既有结构表达、每次重入创建新 Obligation，dynamic fork 按冻结模板展开，两者都不算环也不算运行中扩图。运行时准入再校验被引用产出的精确标识与摘要由工具箱或控制面回读。引用与交付是两件事：被引用的产出按「从节点到结果」的 `inline` / `pointer` 交付；Verdict 与 Receipt 的权威在控制面，交付时内联其引用与摘要，或指向已交付到执行现场的精确副本。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
+4. 每个外部执行节点必须声明**达成判据**，二选一：机械完成判据——绑定本次待验收输出的外部机械事实（该输出所在提交的 CI 状态、对应 PR 的合并状态、路径与摘要），由 `hctl2-tool` 读回；或 Gate 席位裁决加证据不低于某一级。两者皆无的节点编译拒绝。开工前置（见「从节点到结果」）是另一回事，可派发不等于已达成。边分两类：控制依赖（fork/join、switch、timer、noop、纯转换与 loop 的结构边）不要求引用；**产物依赖**的边必须引用上游节点声明的产出——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实。编译时校验的是静态图：产物依赖能解析到图内某个上游节点声明的产出且类型匹配，这叫**落地**；静态图无环——loop 由既有结构表达、每次重入创建新 Obligation，dynamic fork 按冻结模板展开，两者都不算环也不算运行中扩图。运行时准入再校验被引用产出的精确标识与摘要由 `hctl2-tool` 或控制面回读。引用与交付是两件事：被引用的产出按「从节点到结果」的 `inline` / `pointer` 交付；Verdict 与 Receipt 的权威在控制面，交付时内联其引用与摘要，或指向已交付到执行现场的精确副本。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
 
 编译前先以 schema、引用、Profile 和图结构 lint 拒绝格式或结构不合法的 Workflow Revision，再由固定编译器生成并验证 Dagu YAML。dynamic fork 的候选施工者与职责、最大基数、预算、选择函数和权限上限都必须预先固定；模型输出不能新增接收者、扩大扇出或扩权，无法机械校验时整次 fork 必须拒绝。lint 不承诺证明任意 loop 终止，也不依赖引擎提供可隔离的检查点身份。
 
@@ -108,9 +108,9 @@ HCTL Profile 的规则分三组：
 本节定义 Run 内部归约；对 Participant 模块的派发、结果信封和故障恢复见[连接约束](./connections.md)。
 
 1. control 观察到 Engine 检查点在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的依赖、条件和等待等机械节点不创建 Obligation。control 只依据当前有效 Run–Engine Binding 的当前观察创建义务。绑定分歧待对账、引擎停报进度，或观察来自缓存、迟到事件或旧游标时，control 不创建新 Obligation；已经创建的义务照常验收与判决。
-2. control 按规则创建 Seat，并为候选产生 Execution Spec。若 Workflow Revision 为该节点声明了外部机械事实前置（某提交的 CI 状态、PR 是否合并、引用是否推进、路径存在且摘要匹配），control 先经工具箱回读该事实：成立才派发；不成立按冻结策略等待或沿失败边推进；读不到则不派发并标需要关注。事实只能来自工具箱回读，执行体、适配器转述或模型自述都不能满足前置。前置是准入条件：不占席位、不投票、不创建 Obligation。
+2. control 按规则创建 Seat，并为候选产生 Execution Spec。若 Workflow Revision 为该节点声明了外部机械事实前置（某提交的 CI 状态、PR 是否合并、引用是否推进、路径存在且摘要匹配），control 先经 `hctl2-tool` 回读该事实：成立才派发；不成立按冻结策略等待或沿失败边推进；读不到则不派发并标需要关注。事实只能来自 `hctl2-tool` 回读，执行体、适配器转述或模型自述都不能满足前置。前置是准入条件：不占席位、不投票、不创建 Obligation。
 3. [Participant](./participant.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
-4. control 与工具箱校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
+4. control 与 `hctl2-tool` 校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与治理记录不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Run–Engine Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
 Execution Spec 必须固定 Attempt、Seat、Run、选入记录引用与本次实际选用的 Worker Profile（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
@@ -153,7 +153,7 @@ Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和�
 
 被评审 Revision 的生产者——产出它的 Attempt 所属席位的选入记录——不得占用必需评审 Seat，同一 Run 内按选入记录比对；无 Run 路径的作者靠「回避作者所用 Worker Profile」策略回避。必需评审 Seat 绑定互不相同的选入记录，这是身份要求；**计票去重**是效力规则，前者不蕴含后者。Gate 策略可声明席位多样性：Worker Profile 互异、接入的 harness 互异、证据通道互异、回避作者所用的 Worker Profile；声明了而选定记录不满足时启动拒绝。无论声明与否去重总是生效：两个 Seat 若投票时实际使用的 Worker Profile 摘要相同、且**交付内容摘要**相同，法定票数只计一票——交付内容摘要只对 Bundle 实际交付的条目与席位必需 Skill 的引用摘要计算，排除消费者身份、计量与保留策略字段，与用于精确准入的完整 `bundle_digest` 不同。两票都留在裁决与审计记录里；重复组内裁决不一致时不计通过票，按其中最不利的裁决处理并标需要关注，否决权照常优先。人设、显示名不参与去重判断。Gate Seat 的 Context Bundle 不得包含本 Gate 其他 Seat 的裁决，也不得包含控制面附加的作者身份或作者所用 Worker Profile 的标识——被评对象自带的署名与历史评审材料不在此列；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。去重后计入票少于法定票数时按法定票数不可达处理，不得靠补席位、改门槛或换人补足；两席 Worker Profile 相同在预览时警告，交付内容摘要相同在派发后即可预判。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，只能在选入记录的获准候选范围内更换 Worker Profile，不能借此改变 Context、Skill、权限、票位或绕过分离；切换后的实际 Worker Profile 仍须满足本 Gate 声明的席位多样性，不满足的切换拒绝。
 
-control 与工具箱在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
+control 与 `hctl2-tool` 在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 
 Gate 只证明逻辑 Participant 与生产者/评审者分离，不证明物理或组织独立。受控端口能认证的供应端、模型和操作者信息必须按已知（`known`）或未知（`unknown`）展示；Participant、Harness 或模型自报不能把未知变成已知。策略要求物理或组织独立、但当前端口无法认证时，Gate 必须返回不支持（`unsupported`）。
 

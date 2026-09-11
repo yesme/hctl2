@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.17.4<br>
+> 状态：非规范对照 · 草案 v0.17.5<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -43,15 +43,15 @@
 | Terminal | 终端场景 | Participant 模块的场景：观察、诊断和接管精确执行体，也是执行体暴露给 Workbench 的 TUI 接口（participant.tui） | [Participant](../participant.md#terminal-场景) |
 | ChangeSet | 变更集 | 一次获准的代码写入边界；对象归 Repo 模块，执行体只在有效写租约下写它的独立工作树 | [spec/repo](../spec/repo.md#changeset-与-git-事实) |
 | Change | 变更 | Repo 模块的场景：看一次变更改了什么、评审怎么说、检查过了没有、进目标了没有；与对象 ChangeSet 不同物，场景给人看的是投影 | [Repo](../repo.md#change-场景) |
-| Evidence | 证据 | 被判定的事实记录（diff、测试输出、CI 状态、工具箱回读），本身不下结论；按证据通道分三级 | [spec/participant](../spec/participant.md#证据通道) |
+| Evidence | 证据 | 被判定的事实记录（diff、测试输出、CI 状态、`hctl2-tool` 回读），本身不下结论；按证据通道分三级 | [spec/participant](../spec/participant.md#证据通道) |
 | Workbench | 工作台 | 组合五类 provider 客户端、联合投影和 HCTL 公共命令入口的桌面 | [spec/system](../spec/system.md) |
 
 ## 系统组件与常用技术词
 
 | 写法 | 中文对照或用法 |
 | --- | --- |
-| `hctl2-tool` | 工具箱；两者始终指同一个现场执行组件，它是 Repo 模块的现场执行者 |
-| 平台适配器 | Repo 模块经平台端口接入代码协作平台的适配代码；推送、评审请求、请求合并与回读归它，工具箱不做远端副作用 |
+| `hctl2-tool` | 旧称「工具箱」，2026-09-12 改口：架构与约束层直接写组件名；它是 Repo 模块的现场执行者 |
+| 平台适配器 | Repo 模块经平台端口接入代码协作平台的适配代码；推送、评审请求、请求合并与回读归它，`hctl2-tool` 不做远端副作用 |
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令 |
 | 旧称「账本」 | 2026-09-10 改口（CONSTRAINTS 禁用）：指控制面的持久存储写"控制面存储"，指其中被记录的事实写"治理记录"，指存储的一次事务写"控制面事务"，Git 里的正文写"Git 正文"，平台上的记录写"平台记录"；决策史与备忘里的旧用法不改 |
@@ -188,6 +188,7 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | Run 引用 | `run_ref` | [run.md](../spec/run.md) |
 | Run 标识符 | `run_id` | [connections.md](../spec/connections.md) |
 | Run 状态版本 | `run_version` | [run.md](../spec/run.md) |
+| `hctl2-tool` 直接回读 | `toolbox_readback` | [participant.md](../spec/participant.md) |
 | 上下文包摘要 | `bundle_digest` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
 | 不可变外部实体标识符 | `immutable_external_entity_id` | [task.md](../spec/task.md) |
 | 不支持 | `unsupported` | [run.md](../spec/run.md) |
@@ -217,7 +218,6 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 尝试代次 | `attempt_generation` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
 | 工件版本标识符 | `artifact_revision_id` | [project.md](../spec/project.md) |
 | 工件状态版本 | `artifact_version` | [project.md](../spec/project.md) |
-| 工具箱直接回读 | `toolbox_readback` | [participant.md](../spec/participant.md) |
 | 已知 | `known` | [run.md](../spec/run.md) |
 | 引擎绑定代次 | `engine_binding_generation` | [run.md](../spec/run.md)、[system.md](../spec/system.md) |
 | 当前 | `current` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md) |

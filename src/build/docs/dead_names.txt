@@ -73,3 +73,6 @@ Task Source Snapshot	v0.16.2：改名 Task Backend Snapshot
 # --- v0.17.4 Participant 模型重排 ---
 参与者授权	v0.17.4：撤销，改为 Room 名册与 Run 席位的选入记录
 Participant–Agency Binding	v0.17.4：撤销，参与者本身是某 Agency 某工种的实例
+
+# --- 所有者 2026-09-12：组件名 ---
+工具箱	2026-09-12：特指 hctl2-tool 这款命令行工具时写它的名字，架构与约束层写组件名；「工具箱」太泛
