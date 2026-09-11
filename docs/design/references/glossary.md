@@ -188,7 +188,7 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | Run 引用 | `run_ref` | [run.md](../spec/run.md) |
 | Run 标识符 | `run_id` | [connections.md](../spec/connections.md) |
 | Run 状态版本 | `run_version` | [run.md](../spec/run.md) |
-| 上下文包摘要 | `bundle_digest` | [project.md](../spec/project.md) |
+| 上下文包摘要 | `bundle_digest` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
 | 不可变外部实体标识符 | `immutable_external_entity_id` | [task.md](../spec/task.md) |
 | 不支持 | `unsupported` | [run.md](../spec/run.md) |
 | 仓库实例标识符 | `repo_instance_id` | [repo.md](../spec/repo.md) |

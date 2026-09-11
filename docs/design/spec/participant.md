@@ -7,14 +7,14 @@
 
 Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Room 名册，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、Repo Instance、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
 
-人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令、名册和裁决里，不进入本模块的对象表。
+人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令和裁决里，不进规划者名册，也不进入本模块的对象表。
 
 每次执行的接入方式——ACP、app-server、SDK、PTY（伪终端）、钩子及其降级能力——由该次 Execution Spec 冻结，不是独立对象。
 
 | 对象 | 含义 |
 | --- | --- |
 | Profession | 工种：Agency 名册项的冻结引用——Harness、模型、Skill 配置、人设默认、默认职责倾向（规划 / 施工）与条款；带版本与摘要 |
-| Participant | 被选进某个 Room（规划者）或某个 Run 席位（施工者）的一位工种实例：工种引用与摘要、Agency、Worker Profile revision、Skill 集、人设标签、名字、职责、权限与预算上限；只存在于被选进的地方，不跨阶段共享身份；不含密钥或运行时身份 |
+| Participant | 被选进某个 Room（规划者）或某个 Run 席位（施工者）的一位工种实例，以一份选入记录存在（字段只在[连接约束](./connections.md#project--run--participant从授权到物理执行)定义一次）；只存在于被选进的地方，不跨阶段共享身份；不含密钥或运行时身份 |
 | Skill | 带 revision 与 digest 的共享方法定义；三态与申报见[Skill 与申报](#skill-与申报) |
 | Worker Profile | Harness、模型、模式、权限、环境与可选执行加固声明的可复用配置 |
 | Harness 目录 | 三类探测事实：定义（Harness 是什么）、本机安装（在哪里）、实测能力（实际支持什么）；不设类名 |
@@ -35,7 +35,7 @@ Skill 分三态：**declared**（参与者档案或 Agency 名册声称会）、
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Participant（Room 名册记录 / Run 席位记录） | 随所在 Room 名册版本或 Run Manifest 冻结 | control 处理「选入 Room」「席位选人」命令；Agency 只报名册与探测能力 | 活动 Invocation/Attempt 永久引用选入时的记录 |
-| Worker Profile / Profession 引用 | immutable revision + current pointer | control 处理「创建/更新/解析绑定」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
+| Worker Profile / Profession 引用 | immutable revision + current pointer | control 处理「创建/更新 Worker Profile」与「收进/更新工种引用」命令；Agency 报告名册与探测能力 | 活动 Invocation/Attempt 始终引用原 revision |
 | Execution Runtime | `runtime_generation`；已预留 / 活跃 / 停止中 / 已停止 / 丢失 | control 记录绑定并处理「激活/停止」命令；派出的 Agency 持有物理资源，control 记观测记录 | 已停止/丢失不复活；恢复或接管使用新运行时代次 |
 | Terminal Input Lease | 租约代次；活跃 / 已撤销 / 已过期 | control 授予/撤销，Agency 适配代码只把当前租约的输入送入 API；provider 原生写入是否受租约约束按声明能力与 Execution Spec 输入策略冻结 | 一个受 HCTL 管理的目标最多一个活跃输入者；允许原生交互时不得宣称 provider 物理单写者 |
 | Result Proposal / Evidence | immutable submission + producer sequence | Harness adapter 提交；control inbox 持久化；Project/Run 独占 admission | Proposal 不可改成 Verdict/Receipt；修正提交新 Proposal |
@@ -78,7 +78,7 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 代次必须分层记录，不能共用一个模糊的 `generation`。语义归属者代次、物理运行时代次与基础设施代次栅栏是三层不同的身份；成员与推导规则见[代次家族总表](./system.md#代次家族)。替代任一层只使引用该层旧值的 HCTL 动作失效，不得顺带改写其他层的身份；Agency 不能执行的物理代次栅栏必须明确标为未生效。
 
-Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；名册项就是工种；换派出方就是选另一个工种的实例，不存在换绑；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
+Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；名册项就是工种；换派出方就是选另一个工种的实例，不存在换绑；Agency 一侧的绑定归受控端口（Port–Provider Binding），与工种实例无关；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
 control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；选谁进 Room、谁占 Seat、人设标签和 Seat 仍由 control 控制面存储拥有。
 

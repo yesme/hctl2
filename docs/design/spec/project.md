@@ -8,7 +8,7 @@
 | 对象 | 含义 |
 | --- | --- |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
-| Room 名册 | 这个 Room 的规划者名单：每条记录一个被选进本 Room 的 Participant——工种引用与摘要、Agency、Worker Profile revision、Skill 集、名字标签、职责、权限与预算上限；Scoped Room 默认继承父 Room 的名册并可只取子集。两端都在 HCTL 内部，不属 Binding 族；工种与 Participant 的定义见 [Participant 模块约束](./participant.md) |
+| Room 名册 | 这个 Room 的规划者名单：每条是一份选入记录（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)），Room 侧另有名字与人设标签；Scoped Room 以父 Room 名册的某个版本为预填来源生成自己的记录，不活体共享。两端都在 HCTL 内部，不属 Binding 族；工种与 Participant 的定义见 [Participant 模块约束](./participant.md) |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
 | Room–Server Binding | Room 到 chat server 房间的绑定（Binding 族）：固定房间稳定 ID、所用聊天端口与 content 事实源；房间升级换 ID 是显式换绑，Room 身份不变。准入前置见[Room 与消息](#room-与消息) |
 | 聊天端口的 Port–Provider Binding | chat server 连接：外部账号、获准身份映射策略、可选的结构化 human 动作清单与实测能力；族定义见[系统边界](./system.md#固定内核与受控端口) |
@@ -23,7 +23,7 @@
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
-| Room 名册 | Room state version | control 处理「选入 / 移出规划者」命令，候选来自 Agency 名册；Agency 只报名册与探测能力 | 活动 Invocation 永久引用选入时的记录；换人不改写活动调用 |
+| Room 名册 | Room state version | control 处理「选入 Room」「移出 Room」命令，候选来自 Agency 名册且须满足 Project 选人策略；Agency 只报名册与探测能力 | 活动 Invocation 永久引用选入时的记录；换人只影响将来的调用 |
 | Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件控制面存储都只追加；Project Room 随 Project 归档只读 |
 | Room–Server Binding | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理「绑定/换绑/停用房间」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定所用聊天端口的 Port–Provider Binding、外部 room stable ID 与降级能力；账号、身份映射策略与结构化 human 动作 allowlist 归聊天端口的 Port–Provider Binding；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
@@ -49,9 +49,9 @@ Project Overview 是 Project 场景内按单个 Project 聚合目标、健康度
 Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 project_scope Room Invocation 时必须冻结获准的 Project version 与相关策略摘要；repo_scope Room Invocation 改为冻结 Repo Instance/repo/base 且只能只读。后续 Project 更新不改写已经接受的下游约束。
 
 <a id="room-名册"></a>
-Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立：建 Room 或 Trigger Preview 时把 Agency 名册里某个工种的实例选进 Room 成为规划者，启动 Run 时按席位要求选施工者（见 [Run 约束](./run.md#启动与-manifest)）；项目本身不持有成员名单，只持有选人策略——允许哪些 Agency 与工种、预算上限、多样性要求——作为 Project 版本化设置的一部分。名册记录冻结工种引用与摘要、Agency、Worker Profile revision、Skill 集、名字标签、职责、权限和预算上限；「角色」只是职责标签字段，不是对象。Execution Spec 分别冻结名册记录、Skill 与 Worker Profile 的精确引用。人不是 Participant：人的权限由 human actor 的命令权限表达，不进名册。
+Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立：建 Room 或 Trigger Preview 时把 Agency 名册里某个工种的实例选进 Room 成为规划者，启动 Run 时按席位要求选施工者（见 [Run 约束](./run.md#启动与-manifest)）；两处准入都校验候选满足 Project 选人策略。项目本身不持有成员名单，只持有选人策略——允许哪些 Agency 与工种、预算上限、多样性要求——作为 Project 版本化设置的一部分，随 project_version 冻结进下游。名册记录就是一份选入记录，字段只在连接约束定义一次；「角色」只是职责标签字段，不是对象。人不是 Participant：人的权限由 human actor 的命令权限表达；聊天平台的成员名单是 content，HCTL 的规划者名册只列数字参与者。
 
-Room 名册换人不改写活动 Invocation；`repo_scope` 调用可以没有名册记录。
+Room 名册换人只影响将来的调用，不改写活动 Invocation。Repo Room 有自己的名册，`repo_scope` 调用也从它的名册选人；没有选入记录的调用不准入，进程内（`in_process`）调用的缩减规则见[连接约束](./connections.md#project--run--participant从授权到物理执行)。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
@@ -171,7 +171,7 @@ mention 的解析必须确定性：`@` 目标只按本 Room 名册里的规划�
 | --- | --- | --- |
 | Room | Matrix room / Slack channel | HCTL Room 身份与治理在控制面；明文准入与事后降级见[Room 与消息](#room-与消息) |
 | 消息 | Matrix event | 消息 content 本体就是 chat server 上的 Matrix event（编辑/撤回是新事件；非 Matrix 平台的消息经 homeserver 桥接生态落为 Matrix event）；HCTL 治理事件只在控制面存储追加，以事件 ID 精确引用消息，不占领域对象名额 |
-| mention | @mention | HCTL 的 `@` 解析目标是逻辑 Participant/Role 而非平台账号，且必须经 Trigger Preview 准入 |
+| mention | @mention | HCTL 的 `@` 解析目标是本 Room 名册里的规划者或职责而非平台账号，且必须经 Trigger Preview 准入 |
 | Scoped Room | thread / 子频道 | 差异：有冻结的讨论目标与结论回填动作，不是自由分叉 |
 | Room–Server Binding 与聊天端口的 Port–Provider Binding | Matrix 房间 ID / AppService 注册与 homeserver 配置 | 差异：前者指认一个 Room 的 content 家在哪个房间，后者指认 chat server 连接；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
