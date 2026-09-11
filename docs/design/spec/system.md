@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.17.3<br>
+> 状态：规范性约束 · 草案 v0.17.4<br>
 > 本文只定义五个模块共享的运行机制，不拥有 Project、Task、Run、Participant 或 Repo 的领域状态。
 
 ## 组件
@@ -174,7 +174,7 @@ Run Manifest、Execution Spec、绑定、租约、代次与 Result Proposal 准�
 
 | 事实 | 权威来源 | 不可用时怎么降级 | 永久丢失时怎么重建 |
 | --- | --- | --- | --- |
-| 五模块 metadata：稳定身份、准入/current、Room/Request、参与者授权、权限、租约、代次、现场记录、集成意图与变更映射、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级控制面存储 + control；一人多机连同一控制面存储 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
+| 五模块 metadata：稳定身份、准入/current、Room/Request、Room 名册与 Run 席位、权限、租约、代次、现场记录、集成意图与变更映射、Run Manifest、Execution Spec、Result Proposal 准入与 Verdict/Receipt | 用户级控制面存储 + control；一人多机连同一控制面存储 | 控制面不可用即系统不可写；客户端只读缓存投影 | 唯一不可再生的完整权威，必须备份；Git 审计影子只能辅助显式恢复，不能伪造未结晶判决 |
 | Task/Workflow Revision、Memo、Artifact/ChangeSet Revision 的不可变正文与 Repo 共享 policy/schema revision；Verdict/Receipt 审计影子 | 正文字节在 Git，由工具箱写入/回读；控制面存储保存准入、digest、current/lifecycle；Verdict/Receipt 的权威仍归控制面 | 依赖新正文或 Git 回读的命令安全暂停；结果未知先回读 | Git 分布式冗余可恢复正文；只有审计影子时仍不得自行重建判决权威 |
 | Room 消息、调用过程与结果卡（content） | chat server（Matrix 协议，房间对 control 明文可读、不启用端到端加密）；控制面治理事件只保留精确事件引用与冻结 digest | 聊天入口降级（不可用显示重同步中，房间事后被加密显示需要关注）；不依赖当前消息、成员或游标的命令可继续，依赖者拒绝 | 未结晶讨论丢失；决议与 Memo 存活于 Git，治理引用与冻结 digest 仍可校验；桥接来源可部分重放 |
 | 任务卡、流转、排序、评论（content） | Repo 所选任务后端（本地任务服务器或 Linear/GitHub 等远端）；本地只存 Snapshot、身份映射和同步记录 | 看板显示待同步；不依赖当前放置位置、分歧、来源头或游标的命令可继续，依赖者拒绝且不显示假成功 | 卡片与流转丢失；Task Revision 正文存活于 Git，完成权威留在控制面存储及其可验证审计影子；远端后端由 provider 负责持久 |
@@ -216,7 +216,7 @@ SQLite 事务只保证控制面存储内部一致，而事务提交与外部投�
 - Agency binding owner generation 不能从 `site_generation` 推导，因为 Git 锁管不了另一台机器上的 PTY；
 - `engine_binding_generation` 不能从 `attempt_generation` 推导，因为引擎重试与候选切换是两条独立的换代路径。
 
-执行体出站结果必带哪些代次、进程内（`in_process`）模式何时可以缩减，见[连接约束](./connections.md#project--run--participant从授权到物理执行)。Participant revision、binding revision、producer sequence 与 content cursor 都不是代次。
+执行体出站结果必带哪些代次、进程内（`in_process`）模式何时可以缩减，见[连接约束](./connections.md#project--run--participant从授权到物理执行)。选入记录版本、binding revision、producer sequence 与 content cursor 都不是代次。
 
 ## 启动与恢复
 
