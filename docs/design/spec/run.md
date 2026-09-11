@@ -67,7 +67,7 @@ Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了�
 
 Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由工具箱写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。
 
-「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的版本与摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件三条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点与被定为交付义务却无节点的已决条目；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
+「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的版本与摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件三条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点与被定为交付义务却无节点的已决条目；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
@@ -99,7 +99,7 @@ HCTL Profile 的规则分三组：
 1. 允许的图结构：外部执行、fork/join、switch、loop、dynamic fork、timer wait、noop 和纯数据转换；节点可附外部机械事实前置声明（见「从节点到结果」）。
 2. 编译器拒绝的副作用：子 DAG、默认 command/script、HTTP/action/agent/Harness；Dagu `human.task` 仅作被动检查点。
 3. dynamic fork 只能实例化 Manifest 中已冻结的有界 Seat 模板；loop 每次重新进入节点都创建新 Obligation。
-4. 每个外部执行节点必须声明**达成判据**，二选一：机械完成判据——绑定本次待验收输出的外部机械事实（该输出所在提交的 CI 状态、对应 PR 的合并状态、路径与摘要），由工具箱读回；或 Gate 席位裁决加证据不低于某一级。两者皆无的节点编译拒绝。开工前置（见「从节点到结果」）是另一回事，可派发不等于已达成。边分两类：控制依赖（fork/join、switch、timer、noop、纯转换与 loop 的结构边）不要求引用；**产物依赖**的边必须引用上游节点声明的产出——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实。编译时校验的是静态图：产物依赖能解析到图内某个上游节点声明的产出且类型匹配，这叫**落地**；静态图无环——loop 由既有结构表达、每次重入创建新 Obligation，dynamic fork 按冻结模板展开，两者都不算环也不算运行中扩图。运行时准入再校验被引用产出的精确标识与摘要由工具箱或控制面回读。引用与交付是两件事：被引用的产出按「从节点到结果」的 `inline` / `pointer` 交付，Verdict 与 Receipt 的权威在控制面、Git 只有审计影子，交付它们时内联摘要或指向影子。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
+4. 每个外部执行节点必须声明**达成判据**，二选一：机械完成判据——绑定本次待验收输出的外部机械事实（该输出所在提交的 CI 状态、对应 PR 的合并状态、路径与摘要），由 `hctl2-tool` 读回；或 Gate 席位裁决加证据不低于某一级。两者皆无的节点编译拒绝。开工前置（见「从节点到结果」）是另一回事，可派发不等于已达成。边分两类：控制依赖（fork/join、switch、timer、noop、纯转换与 loop 的结构边）不要求引用；**产物依赖**的边必须引用上游节点声明的产出——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实。编译时校验的是静态图：产物依赖能解析到图内某个上游节点声明的产出且类型匹配，这叫**落地**；静态图无环——loop 由既有结构表达、每次重入创建新 Obligation，dynamic fork 按冻结模板展开，两者都不算环也不算运行中扩图。运行时准入再校验被引用产出的精确标识与摘要由工具箱或控制面回读。引用与交付是两件事：被引用的产出按「从节点到结果」的 `inline` / `pointer` 交付；Verdict 与 Receipt 的权威在控制面，交付时内联其引用与摘要，或指向已交付到执行现场的精确副本。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
 
 编译前先以 schema、引用、Profile 和图结构 lint 拒绝格式或结构不合法的 Workflow Revision，再由固定编译器生成并验证 Dagu YAML。dynamic fork 的候选施工者与职责、最大基数、预算、选择函数和权限上限都必须预先固定；模型输出不能新增接收者、扩大扇出或扩权，无法机械校验时整次 fork 必须拒绝。lint 不承诺证明任意 loop 终止，也不依赖引擎提供可隔离的检查点身份。
 
