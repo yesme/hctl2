@@ -14,6 +14,7 @@ Agents:
   glm      GLM via opencode
   grok     Grok Build (xAI)
   kimi     Kimi Code
+  muse     Muse Code
 
 Worktrees:
   agy      ~/workspace/hctl2-agy
@@ -22,6 +23,7 @@ Worktrees:
   glm      ~/workspace/hctl2-glm
   grok     ~/workspace/hctl2-grok
   kimi     ~/workspace/hctl2-kimi
+  muse     ~/workspace/hctl2-muse
 
 Options:
   --print, --dry-run  print cd + command without launching
@@ -36,6 +38,7 @@ Session ids:
     glm     ses_fd816ff58ffew9OZpjG0y62oc6
     grok    01a027e9-a557-7cf1-ac64-878cb7208851
     kimi    session_e96e0466-cdf7-4790-870f-20ae8b6e862b
+    muse    01a08ce4-5760-7673-abc1-edc3de391284
 
   Ubuntu
     agy     702ce8fd-5edb-4847-a2fc-d64d346e26ec
@@ -44,6 +47,7 @@ Session ids:
     glm     ses_fcdc15286ffemJbNe8YfvztD91
     grok    01a03240-17b3-7003-95ab-a8c9100d96b6
     kimi    session_891005b1-7f90-401f-aef7-b79a8d6d5737
+    muse    TODO-fill-on-ubuntu-host
 
 Examples:
   ./run claude
@@ -155,6 +159,14 @@ case "$agent" in
     esac
     cmd=(kimi --yolo -S "$session")
     ;;
+  muse)
+    workdir="$workspace/hctl2-muse"
+    case "$platform" in
+      macos)  session="01a08ce4-5760-7673-abc1-edc3de391284" ;;
+      ubuntu) session="TODO-fill-on-ubuntu-host" ;;
+    esac
+    cmd=(muse --yolo resume "$session")
+    ;;
   *)
     die "unknown agent: $agent"
     ;;
@@ -197,6 +209,7 @@ if [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" =~ [Uu][Tt][Ff]-?8 ]]; then
     glm)    term_title="HCTL2 · 🔳 🅶🅻🅼" ;;
     grok)   term_title="HCTL2 · 🛰️ 𝐆𝐫𝐨𝐤" ;;
     kimi)   term_title="HCTL2 · 🎹 𝕂𝕚𝕞𝕚" ;;
+    muse)   term_title="HCTL2 · 🥨 𝓜𝓾𝓼𝓮" ;;
     *)      term_title="HCTL2 · $agent" ;;
   esac
 else
@@ -207,6 +220,7 @@ else
     glm)    term_title="HCTL2 · GLM" ;;
     grok)   term_title="HCTL2 · Grok" ;;
     kimi)   term_title="HCTL2 · Kimi" ;;
+    muse)   term_title="HCTL2 · Muse" ;;
     *)      term_title="HCTL2 · $agent" ;;
   esac
 fi
