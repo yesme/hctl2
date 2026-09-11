@@ -18,9 +18,9 @@
 | Agent | 编码代理（泛称） | 泛指 Codex、Claude Code 这类 AI 编码代理，不是模块名；第四个模块见 Participant | [Participant](../participant.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类执行编码工作的工具 | [三面架构](../architecture.md#场景与系统) |
 | Agency | 派出方 | 参与者的供给方：维护可派出的名册与条款，按冻结规格交付执行体端点；默认为发布包自带的本地参考实现，运行时用 Herdr | [spec/participant](../spec/participant.md#运行时与观测) |
-| execution runtime | 执行体 | Agency 按一次冻结的执行规格交付的一次具体运行：Harness 进程、装载的 Skill、PTY 或结构化接入；接受派工、报告观测与结果提案 |
-| Profession | 工种 | Agency 名册里定义的一类可派参与者：Harness、模型、Skill 配置、默认职责倾向与条款；收进来时冻结引用与摘要 |
-| planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [spec/participant](../spec/participant.md#运行时与观测) |
+| execution runtime | 执行体 | Agency 按一次冻结的执行规格交付的一次具体运行：Harness 进程、装载的 Skill、PTY 或结构化接入；接受派工、报告观测与结果提案 | [Participant](../participant.md#agency-与执行体) |
+| Profession | 工种 | Agency 名册里定义的一类可派参与者：Harness、模型、Skill 配置、默认职责倾向与条款；收进来时冻结引用与摘要 | [Participant](../participant.md#agency-与执行体) |
+| planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [Participant](../participant.md#agency-与执行体) |
 | Repo | 仓库 | Git 仓库的逻辑身份，共享配置与结晶随它走；也是第五个领域模块的名字，模块拥有仓库身份、执行现场、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
 | Room | 聊天室 | 持久的多参与者协作空间，分 Repo Room、Project Room、Scoped Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
