@@ -1,6 +1,6 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.5<br>
+> 状态：规范性约束 · 草案 v0.17.6<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -80,7 +80,7 @@ Room Invocation 拥有的 Execution Runtime 继承其 Execution Spec 的 `projec
 
 Execution Runtime 由 **Agency**（派出方）供给的执行体承载。Agency 是参与者的供给方，经受控端口接入：它维护可派出的名册与条款，回应 control 的「要人」请求，并按冻结的 Execution Spec 交付一个执行体端点（运行现场与访问通道）；名册项就是工种；换派出方就是选另一个工种的实例，不存在换绑；Agency 一侧的绑定归受控端口（Port–Provider Binding），与工种实例无关；执行体常驻持有现场并报告存活与恢复等级。派工与观测发给执行体端点，Agency 不在派工路径上。没有接入外部 Agency 时，默认使用发布包自带的**本地参考实现**：它在 **Herdr** 外面只加技能目录、可用性申报和与 control 对话的适配器；进程、PTY、终端会话、API 与原生 TUI 全部由 Herdr 提供，HCTL 不放置独立的终端运行服务。
 
-control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；选谁进 Room、谁占 Seat、人设标签和 Seat 仍由 control 控制面存储拥有。
+control 是 Agency 的 HCTL 控制者，通过 Herdr 适配代码提交获准请求、核对交付结果并记账。替换未来的 Agency 不改变治理规则。派出交付物必须按冻结规格逐项核验后方可激活；缺项时列出缺项且不激活。Agency 在[七件事分层](../participant.md#七件事分层)中供给下四层的实物：模型、Skill、Worker Profile 所指的 Harness 与环境、Execution Runtime；选谁进 Room、谁占 Seat、人设标签，仍由 control 准入并记录。
 
 Agency 的接口约定**永不包含治理权威**：租约、代次、冻结规格、审计与恢复等级裁决的权威只归控制面。Agency 自带的接管、单写者或“会话有效”记录只作执行协助与观测证据，不得写入或替代治理记录。
 

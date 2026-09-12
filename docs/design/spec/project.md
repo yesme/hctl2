@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.17.5<br>
+> 状态：规范性约束 · 草案 v0.17.6<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -24,7 +24,7 @@
 | --- | --- | --- | --- |
 | Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
 | Room 名册 | Room state version | control 处理「选入 Room」「移出 Room」命令，候选来自 Agency 名册且须满足 Project 选人策略；Agency 只报名册与探测能力 | 活动 Invocation 永久引用选入时的记录；换人只影响将来的调用 |
-| Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件控制面存储都只追加；Project Room 随 Project 归档只读 |
+| Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（升格、调用与 Request 关联）和 Scoped Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件记录都只追加；Project Room 随 Project 归档只读 |
 | Room–Server Binding | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理「绑定/换绑/停用房间」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定所用聊天端口的 Port–Provider Binding、外部 room stable ID 与降级能力；账号、身份映射策略与结构化 human 动作 allowlist 归聊天端口的 Port–Provider Binding；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
