@@ -135,12 +135,24 @@ N0 的判据：Muse 的读回评论在本图的 PR 上，作者按走样处改�
 
 ## 五、运行手册（给控制面与引擎）
 
-每个节点三步：查上游判据是否满足；点火（开 PR 的节点通知作者，评审节点把 §六 的提示词填好贴给对应 harness，把它们的回复以「<家> · <批> · <轮>」为标题从所有者账号贴到 PR）；等本节点判据满足再看下一个。具体：
+每个节点三步：查上游判据是否满足；点火（作者节点与评审节点都到 §六 找到对应那一段原样贴给对应 harness，把它们的回复用提示词里写好的评论标题从所有者账号贴到 PR）；等本节点判据满足再看下一个。具体：
 
 1. **点火作者节点（P.1、P.3、P.5、P.6 后半、P.7 后半、W.1、W.3）**：到 §六 本批「作者节点」下找到对应那一段，原样贴给作者（Fable 或 Codex）。作者的产物是 PR 或评论。
 2. **点火评审节点（P.2、P.4、W.2、P.6、W.4 的核对席）**：到 §六 找到本批、本节点、本席位那一段，原样贴给对应 harness；它的回复以评论标题原样贴到 PR。等评论齐；不齐不进下一节点。独立审阅那一轮的 harness 不读他家评论，靠提示词里的一句话约束。
 3. **拍板节点（P.7）**：读作者说明与读回，逐条写「同意 / 改成… / 待」，待裁项逐条选；然后合入方案 PR。
-4. **合入节点（P.7、W.4）**：`gh pr merge <n> --merge --subject "<标题> (#<n>)" --body "<PR 描述>"`；合入前分支若落后于 main 先并入 main；合入后再看核对评论。
+4. **合入节点（P.7、W.4）**：合入前分支若落后于 main，先让作者并入 main（作者节点 W.1 的提示词里写了冲突处置纪律）；然后按分支原样运行下面对应的一行（主题为标题加编号，正文为 PR 描述）；合入后再看核对评论。
+   - `claude/rewrite-dag`：`gh pr merge claude/rewrite-dag --merge --subject "$(gh pr view claude/rewrite-dag --json title -q .title) (#$(gh pr view claude/rewrite-dag --json number -q .number))" --body "$(gh pr view claude/rewrite-dag --json body -q .body)"`
+   - `claude/fix-consistency-v0.17.6`：`gh pr merge claude/fix-consistency-v0.17.6 --merge --subject "$(gh pr view claude/fix-consistency-v0.17.6 --json title -q .title) (#$(gh pr view claude/fix-consistency-v0.17.6 --json number -q .number))" --body "$(gh pr view claude/fix-consistency-v0.17.6 --json body -q .body)"`
+   - `claude/batch-r-plan`：`gh pr merge claude/batch-r-plan --merge --subject "$(gh pr view claude/batch-r-plan --json title -q .title) (#$(gh pr view claude/batch-r-plan --json number -q .number))" --body "$(gh pr view claude/batch-r-plan --json body -q .body)"`
+   - `claude/batch-r`：`gh pr merge claude/batch-r --merge --subject "$(gh pr view claude/batch-r --json title -q .title) (#$(gh pr view claude/batch-r --json number -q .number))" --body "$(gh pr view claude/batch-r --json body -q .body)"`
+   - `claude/batch-a-plan`：`gh pr merge claude/batch-a-plan --merge --subject "$(gh pr view claude/batch-a-plan --json title -q .title) (#$(gh pr view claude/batch-a-plan --json number -q .number))" --body "$(gh pr view claude/batch-a-plan --json body -q .body)"`
+   - `claude/batch-a`：`gh pr merge claude/batch-a --merge --subject "$(gh pr view claude/batch-a --json title -q .title) (#$(gh pr view claude/batch-a --json number -q .number))" --body "$(gh pr view claude/batch-a --json body -q .body)"`
+   - `codex/batch-c-plan`：`gh pr merge codex/batch-c-plan --merge --subject "$(gh pr view codex/batch-c-plan --json title -q .title) (#$(gh pr view codex/batch-c-plan --json number -q .number))" --body "$(gh pr view codex/batch-c-plan --json body -q .body)"`
+   - `codex/batch-c`：`gh pr merge codex/batch-c --merge --subject "$(gh pr view codex/batch-c --json title -q .title) (#$(gh pr view codex/batch-c --json number -q .number))" --body "$(gh pr view codex/batch-c --json body -q .body)"`
+   - `claude/batch-b-plan`：`gh pr merge claude/batch-b-plan --merge --subject "$(gh pr view claude/batch-b-plan --json title -q .title) (#$(gh pr view claude/batch-b-plan --json number -q .number))" --body "$(gh pr view claude/batch-b-plan --json body -q .body)"`
+   - `claude/batch-b`：`gh pr merge claude/batch-b --merge --subject "$(gh pr view claude/batch-b --json title -q .title) (#$(gh pr view claude/batch-b --json number -q .number))" --body "$(gh pr view claude/batch-b --json body -q .body)"`
+   - `claude/batch-d-plan`：`gh pr merge claude/batch-d-plan --merge --subject "$(gh pr view claude/batch-d-plan --json title -q .title) (#$(gh pr view claude/batch-d-plan --json number -q .number))" --body "$(gh pr view claude/batch-d-plan --json body -q .body)"`
+   - `claude/batch-d`：`gh pr merge claude/batch-d --merge --subject "$(gh pr view claude/batch-d --json title -q .title) (#$(gh pr view claude/batch-d --json number -q .number))" --body "$(gh pr view claude/batch-d --json body -q .body)"`
 5. **任何节点发现上游产物不对**（例如 CI 红、版本戳不齐）：退回作者，不跳。
 6. **裁决随时来**：所有者任何时候可以在 PR 上直接裁；作者在同一个 PR 里改 05 §二 表和本图。
 
