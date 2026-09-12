@@ -1,6 +1,6 @@
 # 改写施工图：从 v0.17.6 到 v0.18.3 的节点、席位与判据
 
-> 状态：待读回与批准 · 所有者 2026-09-12 同意五项后由 Fable 编成；v2 按所有者意见把 §六 改成成品提示词（按批、节点、席位填好，PR 用分支名定位）；批准前先读回（读回席位见 §三），所有者批准即合入<br>
+> 状态：待读回与批准 · 所有者 2026-09-12 同意五项后由 Fable 编成；v2 按所有者意见把 §六 改成成品提示词（按批、节点、席位填好，PR 用分支名定位）；v3 按 Muse 读回改：N0 补已决来源、裁决到达设成节点 X 并定信号、再读回的触发与上限、C 批拆分的分叉规则、陪审席数写清、修正批的依据写清、缺席换人、版本戳以检查为准；批准前先读回（读回席位见 §三），所有者批准即合入<br>
 > 基线：main @ `4736316`（草案 v0.17.5）<br>
 > 去向：改写期间的施工图；所有者以控制面加工作流引擎的身份按节点推进，每个节点做完在 §四 的表里打勾；规矩本身在 [`05-rewrite-process.md`](./05-rewrite-process.md) v2
 
@@ -14,7 +14,7 @@
 
 **关键取舍。** 一次一批：上一批动手 PR 合入前，下一批只做方案讨论。方案阶段重审（独立一轮、交叉一轮、读回一步），动手 PR 轻审一轮加合并后核对。分歧由作者按论证质量先合成作者说明，合不拢的列成待裁项给所有者。
 
-**已知风险。** C 批最重，方案里可切两个 PR；同一批 harness 连审五批会疲劳，所以每批只挑一个陪审、读回换人；所有者的裁决随时会来，来了就在同一个 PR 里改 05 §二 的表与本图。
+**已知风险。** C 批最重，方案里可切两个 PR；同一批 harness 连审五批会疲劳，所以每批只挑一个陪审（A 批多一个 Muse 试席）、读回固定由不在席位上的家做、缺席按 §五 第 7 条换人；所有者的裁决随时会来，来了按 §四 的节点 X 处理：在同一个 PR 里改方案或文档、改 05 §二 的表与本图。
 
 ## 二、三张清单（施工图的来料）
 
@@ -35,6 +35,7 @@
 | D11 | 所有者逐条拍板方案里的每处改法，不是整份一个"同意"；已拍板不重开，重开要有新证据 | 05 §七 |
 | D12 | 合入方式：merge commit，主题为 PR 标题加编号，正文为 PR 描述；每家评论经所有者账号发出并在标题写明哪家哪轮 | 所有者 2026-09-06 裁定；05 §三 |
 | D13 | 版本：修正批 v0.17.6、R 批 v0.17.7、A v0.18.0、C v0.18.1、B v0.18.2、D v0.18.3；每批改了约束就进台账一行 | 05 §八 v2 |
+| D14 | 本施工图批准前先由不在讨论里的家读回，所有者批准即合入；读回走样处改后按 §四 P.6 的规则决定要不要再读回 | 05 §六 v2 读回纪律；所有者 2026-09-12「安排好 DAG 施工图……包括盲读等阶段……然后存档」 |
 
 **尚未定形**（在对应批次的方案里定，不进图）：F1 的具体结算规则（等组稳定还是关闸时比较）；R1 清单快照的冻结来源；R3 无产出调用时回避策略的适用；C 批要不要切两个 PR；B 批待命与会话复用写不写进设计正文；A 批决策史 §37 的行文；P2.1 何时开工。
 
@@ -76,21 +77,33 @@
 | 节点 | 交出什么 | 凭什么算交出（判据） | 依赖 | 席位 |
 | --- | --- | --- | --- | --- |
 | P.1 方案 v1 | 方案文件（§三 表里定死的那一份）v1，按 05 §四 六样东西写，走一遍 S1；开 PR，不自合 | PR 打开，描述三节齐、CI 绿 | 上一批 P.7 | 作者 |
-| P.2 独立审阅 | 主审、副审、陪审各一条评论，标题「某家 · 某批方案 · 独立审阅」，先七问表态再逐条维持/修正/推翻 | 三条评论都在（A 批四条） | P.1 | 主审、副审、陪审（并行） |
+| P.2 独立审阅 | 主审、副审、陪审各一条评论，标题「某家 · 某批方案 · 独立审阅」，先七问表态再逐条维持/修正/推翻 | 每个席位一条评论都在：R、C、B、D 三条，A 批陪审两席共四条 | P.1 | 主审、副审、陪审（并行） |
 | P.3 作者说明与 v2 | 评论「作者说明 · 第一轮汇总与 v2」：逐条采纳/拒绝并说理由；推送 v2 | 评论在、v2 提交在 PR 上 | P.2 全部 | 作者 |
 | P.4 交叉审阅 | 各席一条评论「某家 · 某批方案 · 交叉审阅」，读他家意见，撤回自己说错的要写明 | 评论齐 | P.3 | 同 P.2（并行） |
 | P.5 作者说明与 v3 | 评论「作者说明 · 第二轮汇总与 v3」，末尾列待裁项；推送 v3 | 评论在、v3 在 | P.4 全部 | 作者 |
-| P.6 读回 | 评论「某家 · 某批方案 · 读回」：只拿 v3 与 S1，逐处改法复述成人话、走 S1 每步与失败路径、单列不确定处；不投票 | 评论在；作者看过，走样处已改（改了就再读回一次） | P.5 | 读回席位 |
+| P.6 读回 | 评论「某家 · 某批方案 · 读回」：只拿 v3 与 S1，逐处改法复述成人话、走 S1 每步与失败路径、单列不确定处；不投票 | 评论在；作者看过，走样处已改。只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，由同一读回席位再读一次；最多两次，第二次仍走样的列为待裁项交所有者 | P.5 | 读回席位 |
 | P.7 拍板与合入 | 所有者评论「拍板 · 某批方案」：逐条同意/改/待，待裁项逐条选；作者按拍板改 v4（若有）；所有者合入方案 PR | PR 合入（merge commit） | P.6 | 所有者 |
 
 ### 动手子图 W（每批一套）
 
 | 节点 | 交出什么 | 凭什么算交出（判据） | 依赖 | 席位 |
 | --- | --- | --- | --- | --- |
-| W.1 动手 PR | 按拍板的方案改文档；约束改动配 CT 用例；版本戳全库一致；台账一行；05 §二 表与本图打勾；描述"已修回"先用 `git log -S` 核 | PR 打开、CI 绿（含 `buck2 test root//build/docs/...` 13 项） | 本批 P.7、上一批 W.4 | 作者 |
+| W.1 动手 PR | 按合入的方案改文档（修正批没有方案文件，依据是 §三 表里写的两处裁决清单）；约束改动配 CT 用例；版本戳全库一致（以文档检查为准，当前 23 处）；台账一行；05 §二 表与本图打勾；描述"已修回"先用 `git log -S` 核 | PR 打开、CI 绿（含 `buck2 test root//build/docs/...` 13 项） | 本批 P.7、上一批 W.4 | 作者 |
 | W.2 轻审 | 主审与副审各一条评论「某家 · 某批动手 · 轻审」，只答三样：忠于方案、层、CT | 评论齐 | W.1 | 主审、副审（修正批：Grok、GLM） |
 | W.3 修正 | 作者按轻审改，评论「作者说明 · 轻审处理」 | 评论在；两家都写"可合"或"修正后可合"且修正已落 | W.2 | 作者 |
 | W.4 合入与合并后核对 | 所有者合入；一个非作者一条评论「某家 · 某批 · 合并后核对」，按四种情况清单核本批改动的文件与 05 §二 表 | PR 合入；核对评论在；若核出回退，开一个修正 PR 走 W 子图 | W.3 | 所有者；核对席位 |
+
+### 插入节点 X（裁决处理，任何时候都可能出现）
+
+| 节点 | 交出什么 | 凭什么算交出（判据） | 依赖 | 席位 |
+| --- | --- | --- | --- | --- |
+| X 裁决处理 | 作者在裁决所在的 PR 上按裁决改方案或文档，改 05 §二 表与本图（消掉的行、变动的席位或顺序），评论「作者说明 · 裁决处理」逐条说明落在哪 | 评论在、改动已推送；被裁决影响的下游节点按改后的图走 | 所有者在对应 PR 上贴标题「裁决 · 某批 · 第几次」的评论。写进 `21-r2-rulings.md` 的裁决也要在 PR 上贴一条这样的评论指向它，引擎只认这条评论 | 作者 |
+
+X 不在链上，它插在任何两个节点之间；点火它不改变其他节点的判据，只改变它们要对照的方案或图。
+
+**修正批没有 P 子图**：它的 W.1 依据不是方案 PR，而是 §三 表里写的两处裁决清单（#216 报告修订节与 05 §二「修」行）。
+
+**C 批拆不拆两个 PR**，在 C 的 P.7 拍板时定。若拆：C 的 W 子图跑两遍，第二遍分支 `codex/batch-c-2`；两个动手 PR 各推进一个补丁号，B、D 的版本号顺延一位；§三 的表在 C 方案合入的同一个 PR 里改；B 的 P.1 仍依赖 C 的 P.7，B 的 W.1 依赖 C 最后一个 W.4。若不拆，图不变。
 
 ### 全图
 
@@ -114,7 +127,7 @@ flowchart LR
   PD --> WD
 ```
 
-N0 的判据：Muse 的读回评论在本图的 PR 上，作者按走样处改过，所有者合入本图的 PR。
+N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者按走样处改过并按 P.6 的规则决定是否再读回，所有者合入本图的 PR。
 
 ### 进度（做完打勾，改在同一个 PR 里）
 
@@ -140,7 +153,7 @@ N0 的判据：Muse 的读回评论在本图的 PR 上，作者按走样处改�
 1. **点火作者节点（P.1、P.3、P.5、P.6 后半、P.7 后半、W.1、W.3）**：到 §六 本批「作者节点」下找到对应那一段，原样贴给作者（Fable 或 Codex）。作者的产物是 PR 或评论。
 2. **点火评审节点（P.2、P.4、W.2、P.6、W.4 的核对席）**：到 §六 找到本批、本节点、本席位那一段，原样贴给对应 harness；它的回复以评论标题原样贴到 PR。等评论齐；不齐不进下一节点。独立审阅那一轮的 harness 不读他家评论，靠提示词里的一句话约束。
 3. **拍板节点（P.7）**：读作者说明与读回，逐条写「同意 / 改成… / 待」，待裁项逐条选；然后合入方案 PR。
-4. **合入节点（P.7、W.4）**：合入前分支若落后于 main，先让作者并入 main（作者节点 W.1 的提示词里写了冲突处置纪律）；然后按分支原样运行下面对应的一行（主题为标题加编号，正文为 PR 描述）；合入后再看核对评论。
+4. **合入节点（P.7、W.4）**：方案 PR 与动手 PR 各合一次，命令按分支各自一行。合入前分支若落后于 main，先让作者在自己的分支上把 main 并进来——那是作者解决冲突，不是合入；方案 PR 只有 memo 文件，照常并入即可，动手 PR 按 W.1 提示词里的冲突处置纪律重判。然后按分支原样运行下面对应的一行（主题为标题加编号，正文为 PR 描述）；合入后再看核对评论。
    - `claude/rewrite-dag`：`gh pr merge claude/rewrite-dag --merge --subject "$(gh pr view claude/rewrite-dag --json title -q .title) (#$(gh pr view claude/rewrite-dag --json number -q .number))" --body "$(gh pr view claude/rewrite-dag --json body -q .body)"`
    - `claude/fix-consistency-v0.17.6`：`gh pr merge claude/fix-consistency-v0.17.6 --merge --subject "$(gh pr view claude/fix-consistency-v0.17.6 --json title -q .title) (#$(gh pr view claude/fix-consistency-v0.17.6 --json number -q .number))" --body "$(gh pr view claude/fix-consistency-v0.17.6 --json body -q .body)"`
    - `claude/batch-r-plan`：`gh pr merge claude/batch-r-plan --merge --subject "$(gh pr view claude/batch-r-plan --json title -q .title) (#$(gh pr view claude/batch-r-plan --json number -q .number))" --body "$(gh pr view claude/batch-r-plan --json body -q .body)"`
@@ -154,7 +167,9 @@ N0 的判据：Muse 的读回评论在本图的 PR 上，作者按走样处改�
    - `claude/batch-d-plan`：`gh pr merge claude/batch-d-plan --merge --subject "$(gh pr view claude/batch-d-plan --json title -q .title) (#$(gh pr view claude/batch-d-plan --json number -q .number))" --body "$(gh pr view claude/batch-d-plan --json body -q .body)"`
    - `claude/batch-d`：`gh pr merge claude/batch-d --merge --subject "$(gh pr view claude/batch-d --json title -q .title) (#$(gh pr view claude/batch-d --json number -q .number))" --body "$(gh pr view claude/batch-d --json body -q .body)"`
 5. **任何节点发现上游产物不对**（例如 CI 红、版本戳不齐）：退回作者，不跳。
-6. **裁决随时来**：所有者任何时候可以在 PR 上直接裁；作者在同一个 PR 里改 05 §二 表和本图。
+6. **裁决随时来**：所有者在对应的方案 PR 或动手 PR 上贴一条标题「裁决 · 某批 · 第几次」的评论，这条评论就是引擎的信号；然后到 §六 本批「作者节点」下找「X 裁决处理」那一段贴给作者，等「作者说明 · 裁决处理」出现再继续。写进 `21-r2-rulings.md` 的裁决同样要贴这样一条评论指向它。
+7. **缺席换人**：主审缺席不换，等；副审、陪审、读回、核对席位缺席时，所有者从 §三 未占本批席位的家里指定一位，在 PR 上贴一条「席位变更 · 某批 · 某节点：某家换某家」的评论，作者在同一个 PR 里改 §三 的表；提示词里的家名照换。
+8. **版本戳与台账**：以文档检查（`cd src && ./buck2 test root//build/docs/...` 里的版本一致性用例）为准，当前 23 处；文件增删后以检查结果为准，不以本图的数字为准。
 
 ## 六、提示词（成品，按批、按节点、按席位；原样复制粘贴）
 
@@ -180,7 +195,7 @@ W.1 动手 PR（Fable）
 
 ```
 你是 yesme/hctl2 里 一致性修正批 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：#216 报告 `.memo/review/20260912-v0.17.5/codex-20260912.md` §六家复核后的修订（尤其「后续处置与本轮边界」表第一行）与 `.memo/design/case-study-20260907/05-rewrite-process.md` §二「修 一致性修正」行；本批没有方案文件，忠于的是这两处裁决清单。从最新 main 开分支 `claude/fix-consistency-v0.17.6`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.17.6（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：#216 报告 `.memo/review/20260912-v0.17.5/codex-20260912.md` §六家复核后的修订（尤其「后续处置与本轮边界」表第一行）与 `.memo/design/case-study-20260907/05-rewrite-process.md` §二「修 一致性修正」行；本批没有方案文件，忠于的是这两处裁决清单。从最新 main 开分支 `claude/fix-consistency-v0.17.6`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.17.6（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Fable）
 
@@ -188,6 +203,14 @@ W.3 轻审处理（Fable）
 你是 yesme/hctl2 里 一致性修正批 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head claude/fix-consistency-v0.17.6 --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Fable，动手 PR）
+
+```
+你是 yesme/hctl2 里 一致性修正批 的作者（Fable）。所有者在 `gh pr list --head claude/fix-consistency-v0.17.6 --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### W.2 轻审
 
 轻审（Grok）
@@ -246,7 +269,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR 上已有「Gemini · R 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；若改了实质内容，在评论第一句写「需要再读回一次」。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR 上已有「Gemini · R 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -258,7 +281,7 @@ W.1 动手 PR（Fable）
 
 ```
 你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/09-batch-r-plan.md` 与所有者的「拍板 · R 批方案」评论。从最新 main 开分支 `claude/batch-r`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.17.7（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/09-batch-r-plan.md` 与所有者的「拍板 · R 批方案」评论。从最新 main 开分支 `claude/batch-r`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.17.7（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Fable）
 
@@ -266,6 +289,22 @@ W.3 轻审处理（Fable）
 你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head claude/batch-r --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Fable，方案 PR）
+
+```
+你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的方案；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
+X 裁决处理（Fable，动手 PR）
+
+```
+你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-r --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### P.2 独立审阅
 
 主审（Codex）
@@ -399,7 +438,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR 上已有「Gemini · A 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；若改了实质内容，在评论第一句写「需要再读回一次」。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR 上已有「Gemini · A 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -411,7 +450,7 @@ W.1 动手 PR（Fable）
 
 ```
 你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/10-batch-a-plan.md` 与所有者的「拍板 · A 批方案」评论。从最新 main 开分支 `claude/batch-a`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.0（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/10-batch-a-plan.md` 与所有者的「拍板 · A 批方案」评论。从最新 main 开分支 `claude/batch-a`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.0（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Fable）
 
@@ -419,6 +458,22 @@ W.3 轻审处理（Fable）
 你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head claude/batch-a --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Fable，方案 PR）
+
+```
+你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的方案；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
+X 裁决处理（Fable，动手 PR）
+
+```
+你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-a --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### P.2 独立审阅
 
 主审（Codex）
@@ -572,7 +627,7 @@ P.6 后半：读回处理（Codex）
 
 ```
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有「Gemini · C 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；若改了实质内容，在评论第一句写「需要再读回一次」。
+现在进入 P.6 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有「Gemini · C 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Codex）
 
@@ -584,7 +639,7 @@ W.1 动手 PR（Codex）
 
 ```
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/11-batch-c-plan.md` 与所有者的「拍板 · C 批方案」评论。从最新 main 开分支 `codex/batch-c`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.1（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/11-batch-c-plan.md` 与所有者的「拍板 · C 批方案」评论。从最新 main 开分支 `codex/batch-c`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.1（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Codex）
 
@@ -592,6 +647,22 @@ W.3 轻审处理（Codex）
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head codex/batch-c --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Codex，方案 PR）
+
+```
+你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。所有者在 `gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的方案；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
+X 裁决处理（Codex，动手 PR）
+
+```
+你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。所有者在 `gh pr list --head codex/batch-c --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### P.2 独立审阅
 
 主审（Fable）
@@ -725,7 +796,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR 上已有「Gemini · B 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；若改了实质内容，在评论第一句写「需要再读回一次」。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR 上已有「Gemini · B 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -737,7 +808,7 @@ W.1 动手 PR（Fable）
 
 ```
 你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/12-batch-b-plan.md` 与所有者的「拍板 · B 批方案」评论。从最新 main 开分支 `claude/batch-b`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.2（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/12-batch-b-plan.md` 与所有者的「拍板 · B 批方案」评论。从最新 main 开分支 `claude/batch-b`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.2（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Fable）
 
@@ -745,6 +816,22 @@ W.3 轻审处理（Fable）
 你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head claude/batch-b --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Fable，方案 PR）
+
+```
+你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的方案；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
+X 裁决处理（Fable，动手 PR）
+
+```
+你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-b --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### P.2 独立审阅
 
 主审（Codex）
@@ -878,7 +965,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR 上已有「Gemini · D 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；若改了实质内容，在评论第一句写「需要再读回一次」。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR 上已有「Gemini · D 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -890,7 +977,7 @@ W.1 动手 PR（Fable）
 
 ```
 你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/13-batch-d-plan.md` 与所有者的「拍板 · D 批方案」评论。从最新 main 开分支 `claude/batch-d`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.3（全库 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
+现在进入 W.1。依据：合入 main 的 `.memo/design/case-study-20260907/13-batch-d-plan.md` 与所有者的「拍板 · D 批方案」评论。从最新 main 开分支 `claude/batch-d`，按方案改文档；约束改动逐条配契约测试用例；版本戳改为 v0.18.3（全库一致，以文档检查为准，当前 23 处，根 README 在内）；决策史小修订台账加一行；改 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 表与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表（本批打勾）。并入 main 时若遇冲突，逐句按 A0 §二 判别顺序重判，不按替换处理；PR 描述里写"已修回"之前先用 git log -S 核。跑 cd src && ./buck2 test root//build/docs/... 到 13 项通过。开 PR、不自合，描述三节，提交信息末尾不放 harness 会话链接。
 ```
 W.3 轻审处理（Fable）
 
@@ -898,6 +985,22 @@ W.3 轻审处理（Fable）
 你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 W.3：`gh pr list --head claude/batch-d --state open` 找到的那一个 PR 上已有两条「… 动手 · 轻审」。按它们改，写评论「作者说明 · 轻审处理」逐条说明；若两家都是"可合"且无修正，评论只写一句"无修正"。然后等所有者合入，不自合。
 ```
+X 裁决处理（Fable，方案 PR）
+
+```
+你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的方案；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
+X 裁决处理（Fable，动手 PR）
+
+```
+你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。所有者在 `gh pr list --head claude/batch-d --state open` 找到的那一个 PR 上贴了标题以「裁决 ·」开头的评论。
+先 git fetch origin，读那条评论（有多条取最新一条，之前的已处理过）、`.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md`。
+按裁决改本 PR 里的文档；裁决消掉或改动了哪一批的哪一行、哪个席位、哪个顺序，就在同一个 PR 里改 05 §二 的表与 08 的 §三、§四；推送后写评论「作者说明 · 裁决处理」，逐条说明每条裁决落在哪个文件哪一节。已拍板的其他条目不动。不自合。
+```
+
 #### P.2 独立审阅
 
 主审（Codex）
