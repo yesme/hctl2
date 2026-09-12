@@ -46,7 +46,7 @@
 | 批 | 作者 | 主审 | 副审 | 陪审 | 方案读回 | 合并后核对 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 修 一致性修正 | Fable | —（轻审：Grok、GLM） | — | — | — | Codex（他写的清单） |
-| R 计票与读回口径 | Fable | Codex | Grok | K3 | Gemini | GLM |
+| R 计票与读回口径 | Fable | Codex | Grok | K3 | Muse（Gemini 2026-09-13 因 API 地区限制缺席，按 §五 第 7 条换人；Muse Spark 1.2） | GLM |
 | A 架构 | Fable | Codex | Grok | GLM，另加 Muse 试一次逐行勾稽 | Gemini | K3 |
 | C Repo 与治理正文 | Codex | Fable | Grok | K3 | Gemini | GLM |
 | B 系统边界与 Participant | Fable | Codex | Grok | K3 | Gemini | GLM |
@@ -134,8 +134,8 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | 节点 | 状态 | 产物 |
 | --- | --- | --- |
 | N0 | 完成 · 读回两次通过 | #218 合入 |
-| 修 W.1–W.4 | 进行中 · W.1 动手 PR 已开 | 分支 `claude/fix-consistency-v0.17.6` |
-| R P.1–P.7 | 未开始 | |
+| 修 W.1–W.4 | 合入 `7c16066`（v0.17.6）；合并后核对（Codex，https://github.com/yesme/hctl2/pull/219#issuecomment-5644873971 ）：无第一类回退，一处第二类——对照表 Execution Spec 行漏了 Room Invocation 一路；修法搭在 #220，#220 合入后本行记完成 | #219 |
+| R P.1–P.7 | 完成 · 所有者 2026-09-13 逐条拍板（1 甲、2 是、3 甲、4 要声明、5 (a)），方案 v4 随 #220 合入 | PR #220 |
 | R W.1–W.4 | 未开始 | |
 | A P.1–P.7 | 未开始 | |
 | A W.1–W.4 | 未开始 | |
@@ -269,7 +269,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 R 批（Run 计票与读回口径） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR 上已有「Gemini · R 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR 上已有「Muse · R 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -369,12 +369,12 @@ X 裁决处理（Fable，动手 PR）
 专门方向不变：失败路径：超时、撤销、迟到、重复投递、候选切换、Obligation 截止各种顺序下结算结果是否唯一且不需要新对象；等组稳定的上界是否钉在既有 Attempt 终态与 Obligation 截止上；无产出调用（人直接写图、多轮塑形）时回避策略怎么求值、拒绝还是标未知。
 不改文件，不开 PR，不 push。
 ```
-#### P.6 读回（Gemini）
+#### P.6 读回（Muse，2026-09-13 换人）
 
 ```
 你在 yesme/hctl2 做读回，对象是 R 批（Run 计票与读回口径） 的方案 v3。PR：`gh pr list --head claude/batch-r-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/09-batch-r-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
-产出一条评论，标题「Gemini · R 批方案 · 读回」，分三段：
+产出一条评论，标题「Muse · R 批方案 · 读回」，分三段：
 一、复述：按方案里每处改法逐条用自己的话写——改哪句、改成什么意思、为什么、代价谁付；不许引用方案原话。
 二、走用例：拿 S1 的每一步和五条失败路径，在改后的规则下走一遍，每步写"走得通 / 走不通 / 看不出"。
 三、单列你不确定、猜了、或读了两遍还不明白的地方。
