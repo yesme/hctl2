@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | D1 | 一致性修正批先行，只有动手、不出方案，Grok 与 GLM 轻审 | 所有者 2026-09-12 同意五项之一；内容按 #216 §六家复核后的修订 |
 | D2 | R 小批：F1、R1、R3 三处先定行为再改约束、配 CT；R2 归 B | 同上；05 §二 R 行 |
-| D3 | A 架构批：内容按 05 §二 A 行；升 v0.18.0、立决策史 §37；验证器一级检查随本批 | 05 §二、§八；04 §四 |
+| D3 | A 架构批：内容按 05 §二 A 行；升 v0.18.0、立决策史 §37；一级检查沿用现有链接、版本戳与退休词表，不新增脚本 | 05 §二、§八；04 §四 |
 | D4 | C 在 B 之前；C 由 Codex 写、Fable 主审 | 所有者 2026-09-12 同意 |
 | D5 | B、D 按 05 §二 重切后的内容 | 05 §二 v2 |
 | D6 | 人手：Codex 主审架构与愿景稿、Grok 每批副审、K3/GLM 按批挑一个陪审；Muse 在 A 批试陪审；Gemini 只做读回与范围明确的核对 | 05 §三 v2 |
@@ -47,10 +47,10 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 修 一致性修正 | Fable | —（轻审：Grok、GLM） | — | — | — | Codex（他写的清单） |
 | R 计票与读回口径 | Fable | Codex | Grok | K3 | Muse（Gemini 2026-09-13 因 API 地区限制缺席，按 §五 第 7 条换人；Muse Spark 1.2） | GLM |
-| A 架构 | Fable | Codex | Grok | GLM，另加 Muse 试一次逐行勾稽 | Gemini | K3 |
-| C Repo 与治理正文 | Codex | Fable | Grok | K3 | Gemini | GLM |
-| B 系统边界与 Participant | Fable | Codex | Grok | K3 | Gemini | GLM |
-| D 看板、Run 交接与交付 | Fable | Codex | Grok | GLM | Gemini | K3 |
+| A 架构 | Fable | Codex | Grok | GLM，另加 Muse 试一次逐行勾稽 | K3（Gemini 不可用，2026-09-13 起） | GLM |
+| C Repo 与治理正文 | Codex | Fable | Grok | K3 | Muse（Gemini 不可用） | GLM |
+| B 系统边界与 Participant | Fable | Codex | Grok | K3 | Muse（Gemini 不可用） | GLM |
+| D 看板、Run 交接与交付 | Fable | Codex | Grok | GLM | Muse（Gemini 不可用） | K3 |
 | 本施工图 | Fable | — | — | — | Muse（不在讨论里） | — |
 
 轻审席位的产出只答三样（D9）；陪审按批的性质选（05 §三）；读回者不能是本批任何席位。
@@ -136,8 +136,8 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | N0 | 完成 · 读回两次通过 | #218 合入 |
 | 修 W.1–W.4 | 合入 `7c16066`（v0.17.6）；合并后核对（Codex，https://github.com/yesme/hctl2/pull/219#issuecomment-5644873971 ）：无第一类回退，一处第二类——对照表 Execution Spec 行漏了 Room Invocation 一路；修法搭在 #220，#220 合入后本行记完成 | #219 |
 | R P.1–P.7 | 完成 · 所有者 2026-09-13 逐条拍板（1 甲、2 是、3 甲、4 要声明、5 (a)），方案 v4 随 #220 合入 | PR #220 |
-| R W.1–W.4 | 进行中 · W.1 动手 PR 已开 | 分支 `claude/batch-r`，v0.17.7 |
-| A P.1–P.7 | 未开始 | |
+| R W.1–W.4 | 完成 · 合入 `0015380`（v0.17.7）；合并后核对（GLM，https://github.com/yesme/hctl2/pull/221#issuecomment-5647581370 ）：无回退 | #221 |
+| A P.1–P.7 | 完成 · 所有者 2026-09-13 逐条拍板（五项全按推荐），方案 v4 随 #222 合入 | PR #222 |
 | A W.1–W.4 | 未开始 | |
 | C P.1–P.7 | 未开始 | |
 | C W.1–W.4 | 未开始 | |
@@ -438,7 +438,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 A 批（架构） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR 上已有「Gemini · A 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR 上已有「K3 · A 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -558,12 +558,12 @@ X 裁决处理（Fable，动手 PR）
 专门方向不变：逐行勾稽：架构正文新增与改动的每一句对应 `.memo/design/case-study-20260907/01-unit-model.md` v3 的哪一条，多出来的、漏掉的、改了意思的各列一张表；验证器一级检查的每条规则能不能对着现文跑一遍、会不会误报。
 不改文件，不开 PR，不 push。
 ```
-#### P.6 读回（Gemini）
+#### P.6 读回（K3，Gemini 不可用）
 
 ```
 你在 yesme/hctl2 做读回，对象是 A 批（架构） 的方案 v3。PR：`gh pr list --head claude/batch-a-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/10-batch-a-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
-产出一条评论，标题「Gemini · A 批方案 · 读回」，分三段：
+产出一条评论，标题「K3 · A 批方案 · 读回」，分三段：
 一、复述：按方案里每处改法逐条用自己的话写——改哪句、改成什么意思、为什么、代价谁付；不许引用方案原话。
 二、走用例：拿 S1 的每一步和五条失败路径，在改后的规则下走一遍，每步写"走得通 / 走不通 / 看不出"。
 三、单列你不确定、猜了、或读了两遍还不明白的地方。
@@ -591,13 +591,13 @@ X 裁决处理（Fable，动手 PR）
 产出一条评论，标题「Grok · A 批动手 · 轻审」，第一句写"可合 / 修正后可合 / 不可合"。不审方案本身的对错。
 不改文件，不开 PR，不 push，不合并。
 ```
-#### W.4 合并后核对（K3）
+#### W.4 合并后核对（GLM）
 
 ```
 你在 yesme/hctl2 做合并后核对。对象：A 批（架构） 的动手 PR（分支 `claude/batch-a`）合入后的 main，以它的合并提交为准（`gh pr view claude/batch-a --json mergeCommit`）；上一基线：上一批动手 PR（分支 `claude/batch-r`）的合并提交；拍板的方案：`.memo/design/case-study-20260907/10-batch-a-plan.md` 与所有者的评论「拍板 · A 批方案」；另读 `.memo/design/case-study-20260907/05-rewrite-process.md` §二 与 `.memo/design/case-study-20260907/08-rewrite-dag.md` §四 进度表。
 先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md。按指定提交读文件（git show 提交:路径），不以本地工作树为准。
 只用四种情况的清单，对本批改动过的文件逐个核：一、已经改对、后来又改坏（尤其合并冲突处置把全库换词批改回去）；二、新规则与保留的旧规则不一致；三、已明确安排后续批次、尚未实施（只登记，不算问题）；四、所有者有意改变了原来的决定（不报作回退）。另核 05 §二 表与 08 进度表是否随本批更新。
-产出一条评论，标题「K3 · A 批 · 合并后核对」，第一句写"无回退 / 有回退（n 处）"；每处写位置、证据（提交）、四种里的哪一种、建议。纸面反例不等于运行故障；CI 通过不等于自然语言一致。
+产出一条评论，标题「GLM · A 批 · 合并后核对」，第一句写"无回退 / 有回退（n 处）"；每处写位置、证据（提交）、四种里的哪一种、建议。纸面反例不等于运行故障；CI 通过不等于自然语言一致。
 不改文件，不开 PR，不 push。
 ```
 ### C · C 批（Repo 与治理正文）
@@ -627,7 +627,7 @@ P.6 后半：读回处理（Codex）
 
 ```
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有「Gemini · C 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
+现在进入 P.6 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有「Muse · C 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Codex）
 
@@ -727,12 +727,12 @@ X 裁决处理（Codex，动手 PR）
 专门方向不变：失败路径：控制面崩溃、材料仓库不可达、平台停机、本地裸库损坏、写租约失权、跨控制面对同一仓库冲突写各情形下，恢复由谁做、对账怎么收口、有没有「结果未知」被写成了成功或失败；崩溃与回收表每格能不能配失败用例。
 不改文件，不开 PR，不 push。
 ```
-#### P.6 读回（Gemini）
+#### P.6 读回（Muse，Gemini 不可用）
 
 ```
 你在 yesme/hctl2 做读回，对象是 C 批（Repo 与治理正文） 的方案 v3。PR：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/11-batch-c-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
-产出一条评论，标题「Gemini · C 批方案 · 读回」，分三段：
+产出一条评论，标题「Muse · C 批方案 · 读回」，分三段：
 一、复述：按方案里每处改法逐条用自己的话写——改哪句、改成什么意思、为什么、代价谁付；不许引用方案原话。
 二、走用例：拿 S1 的每一步和五条失败路径，在改后的规则下走一遍，每步写"走得通 / 走不通 / 看不出"。
 三、单列你不确定、猜了、或读了两遍还不明白的地方。
@@ -796,7 +796,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 B 批（系统边界与 Participant） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR 上已有「Gemini · B 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR 上已有「Muse · B 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -896,12 +896,12 @@ X 裁决处理（Fable，动手 PR）
 专门方向不变：失败路径：失联 / 截止已过 / 身份不可证三分在派工、观测、结果准入、撤销各步的表现；失败恢复表每行能不能配失败用例；恢复等级与代次栅栏在新边界下是否仍然可判。
 不改文件，不开 PR，不 push。
 ```
-#### P.6 读回（Gemini）
+#### P.6 读回（Muse，Gemini 不可用）
 
 ```
 你在 yesme/hctl2 做读回，对象是 B 批（系统边界与 Participant） 的方案 v3。PR：`gh pr list --head claude/batch-b-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/12-batch-b-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
-产出一条评论，标题「Gemini · B 批方案 · 读回」，分三段：
+产出一条评论，标题「Muse · B 批方案 · 读回」，分三段：
 一、复述：按方案里每处改法逐条用自己的话写——改哪句、改成什么意思、为什么、代价谁付；不许引用方案原话。
 二、走用例：拿 S1 的每一步和五条失败路径，在改后的规则下走一遍，每步写"走得通 / 走不通 / 看不出"。
 三、单列你不确定、猜了、或读了两遍还不明白的地方。
@@ -965,7 +965,7 @@ P.6 后半：读回处理（Fable）
 
 ```
 你是 yesme/hctl2 里 D 批（看板、Run 交接与交付） 的作者（Fable）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
-现在进入 P.6 的后半：`gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR 上已有「Gemini · D 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
+现在进入 P.6 的后半：`gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR 上已有「Muse · D 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
 P.7 后半：拍板处理（Fable）
 
@@ -1065,12 +1065,12 @@ X 裁决处理（Fable，动手 PR）
 专门方向不变：对象与用词：看板对象与键表、两套分组、任务源 / 缺省源 / 认领 / 投影这些词的定义与首现；Task 约束表的字段组有没有塞进不该塞的东西；参考用例文件的用词与现行词汇表一致。
 不改文件，不开 PR，不 push。
 ```
-#### P.6 读回（Gemini）
+#### P.6 读回（Muse，Gemini 不可用）
 
 ```
 你在 yesme/hctl2 做读回，对象是 D 批（看板、Run 交接与交付） 的方案 v3。PR：`gh pr list --head claude/batch-d-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/13-batch-d-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
-产出一条评论，标题「Gemini · D 批方案 · 读回」，分三段：
+产出一条评论，标题「Muse · D 批方案 · 读回」，分三段：
 一、复述：按方案里每处改法逐条用自己的话写——改哪句、改成什么意思、为什么、代价谁付；不许引用方案原话。
 二、走用例：拿 S1 的每一步和五条失败路径，在改后的规则下走一遍，每步写"走得通 / 走不通 / 看不出"。
 三、单列你不确定、猜了、或读了两遍还不明白的地方。
