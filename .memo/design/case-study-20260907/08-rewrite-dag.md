@@ -135,7 +135,7 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | --- | --- | --- |
 | N0 | 完成 · 读回两次通过 | #218 合入 |
 | 修 W.1–W.4 | 合入 `7c16066`（v0.17.6）；合并后核对（Codex，https://github.com/yesme/hctl2/pull/219#issuecomment-5644873971 ）：无第一类回退，一处第二类——对照表 Execution Spec 行漏了 Room Invocation 一路；修法搭在 #220，#220 合入后本行记完成 | #219 |
-| R P.1–P.7 | 进行中 · P.1 v1、P.2 三家独立审阅、P.3 v2 已到；待 P.4 交叉审阅 | 分支 `claude/batch-r-plan`，文件 `09-batch-r-plan.md`，PR #220 |
+| R P.1–P.7 | 进行中 · P.1–P.5 完成（v3 已推，待裁项五条在 §九）；待 P.6 读回（Gemini） | 分支 `claude/batch-r-plan`，文件 `09-batch-r-plan.md`，PR #220 |
 | R W.1–W.4 | 未开始 | |
 | A P.1–P.7 | 未开始 | |
 | A W.1–W.4 | 未开始 | |
