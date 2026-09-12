@@ -136,6 +136,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [governance-attrition-workbench-20260907.md](./governance-attrition-workbench-20260907.md) | 工作台类 15 家的治理功能消亡逐家核对（emdash、Yoda、Superset、Orca、Codeg、Multica、Helio、Cumora、first-tree、LobeHub、Grok Bot、vibe-kanban、claude-squad、Crystal、Conductor） | E-GOVERNANCE-ATTRITION-WORKBENCH | 跨候选归纳 | 仅参考行为 |
 | [governance-attrition-methodology-20260907.md](./governance-attrition-methodology-20260907.md) | 方法论类 19 家的治理功能消亡逐家核对（spec-kit、OpenSpec、Kiro、BMAD、GSD、Gas Town、MetaGPT、ruflo、superpowers、ccpm、Taskmaster、agent-os、mattpocock/skills、tdd-guard、unlazy、Foreman、SSSF 等） | E-GOVERNANCE-ATTRITION-METHODOLOGY | 跨候选归纳 | 仅参考行为 |
 | [multi-agent-effectiveness-20260908.md](./multi-agent-effectiveness-20260908.md) | 多 agent 协作有效性文献调研：CAMEL、AutoGen、MetaGPT、Magentic-One、辩论评估两篇加三十余篇补查；三问（有效吗、提升评审吗、什么结构有效）与对 Gate 席位策略的含义 | E-MULTI-AGENT-EFFECTIVENESS | 跨候选归纳 | 仅参考行为；席位多样性策略与法定票数默认进第三轮裁决 |
+| [model-harness-dispatch-20260912.md](./model-harness-dispatch-20260912.md) | 七组指定模型、思考深度与 Harness：本机版本、公开代理评测、社区及本库案例，区分编码任务与设计评审的派工依据 | E-MODEL-HARNESS-DISPATCH | 跨候选归纳 | 仅参考行为；不调整配置或已定分工 |
 | [prove2me-dag-collaboration-20260908.md](./prove2me-dag-collaboration-20260908.md) | AI 形式化费马大定理事件复原、Prove2Me 平台的依赖图机制、三个命题的证据、对施工图凝结的借鉴 | E-PROVE2ME-DAG | 跨候选归纳 | 仅参考行为；接口形状待施工图 schema 定形后作适配协议候选重估 |
 | [deepseek-v41-agent-team-20260910.md](./deepseek-v41-agent-team-20260910.md) | DeepSeek-V4.1-Flash 技术报告 §5.3.5 Agent Team 模式：运行中分解、共享任务板带版本检查、事件图关键路径作时延度量；对 Task → Run 转化与施工图可变性的启发 | E-DSV41-AGENT-TEAM | 跨候选归纳 | 仅参考行为；关键路径作「快」的度量候选 |
 | [skill-ponytail-20260911.md](./skill-ponytail-20260911.md) | ponytail（DietrichGebert/ponytail，MIT）：抑制代码膨胀的 Skill——七级「先找现成、最后才写」梯子，几乎全靠提示词自觉；实测收益远小于宣传且会削护栏 | E-SKILL-PONYTAIL | ⑧ Harness 技能包 | 仅参考行为：借梯子第二到五级与操作性指令写法；不用其 hook |
@@ -180,7 +181,3 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 所有证据最终只归入六种复用决策：**采用二进制（Adopt binary）**、**采用 SDK（Adopt SDK）**、**移植有边界的组件（Port bounded component）**、**适配协议（Adapt protocol）**、**仅参考行为（Behavior reference）**、**暂缓（Defer）**。前四种有偏好顺序：**跨平台二进制 > SDK > 复制代码 > 借鉴想法**——能借二进制的不借库，能借库的不抄代码，能抄代码的不只借想法；越靠后我们要自己维护的越多。「采用为依赖」是 2026-09-03 前的旧写法，等于前两种的合称。不得给整个产品一个“取代 HCTL”的总分，也不得把参考项目中的 Session、Conversation、Project、Task、Run 名称或内部数据库带入 HCTL 的公开数据结构。
 
 与常见问法的对应关系：直接用它的二进制或服务＝采用二进制；用它的库＝采用 SDK；借它的 schema/协议形状＝适配协议；抄它的代码＝移植有边界的组件；借它的思想/阶段/交互＝仅参考行为。许可证只决定上限（闭源/无许可证/非 OSI 的最多到仅参考行为），不决定选择：许可宽松也可以只借行为。
-
-## 2026-09-12 · 模型与 Harness 派工证据补充
-
-[七组模型与 Harness：评测证据与派工参考](./model-harness-dispatch-20260912.md)（E-MODEL-HARNESS-DISPATCH）：核对 Astra、Fable 5.1、Grok 4.6、K3、GLM-5.3、Gemini 3.8 Flash、Muse Spark 1.3 的指定档位与 Harness，记录本机版本、公开代理评测、社区实测及证据缺口。仅参考行为，帮助派工；不定义产品约束，不调整既有配置。
