@@ -24,11 +24,11 @@ Agency 在名册里定义**工种**；人把工种的实例**选进 Room** 当�
 | Project 的「参与者授权」（v0.16.2 取代 Role Binding） | 撤销。规划者记在 Room 名册，施工者记在 Run 施工清单的席位；Project 只持有选人策略（允许的 Agency 与工种、预算上限、多样性要求） | spec/project.md 对象与写入表、参与者授权一段；glossary；system.md 权威地图；connections.md 权限缩小链 |
 | Participant–Agency Binding（v0.16.2 新命名） | 撤销。参与者本身就是某个 Agency 某个工种的实例，换派出方就是选另一个工种的实例，不存在换绑；Binding 族回到五个 | spec/participant.md、spec/README 词汇索引、glossary Binding 族 |
 | 系统角色名 worker（执行体） | 改为 执行体（execution runtime）；worker 让给「施工者」这顶帽子 | spec/README 系统角色名；architecture.md 场景与系统表；glossary |
-| Execution Spec 冻结 exact Participant revision + Project version + 参与者授权条目 | 冻结选入记录：工种引用与摘要、Agency、Worker Profile revision、Skill、职责、权限、预算 | spec/connections.md Execution Spec 字段块；spec/run.md Manifest 与 Gate |
+| Execution Spec 冻结 exact Participant revision + Project version + 参与者授权条目 | 冻结选入记录引用（选入记录里有工种引用与摘要、Agency、获准的 Worker Profile 候选范围、Skill、职责、权限、预算）、Project 选人策略摘要，以及本次实际选用的 Worker Profile；实选的 revision 与摘要记在 Attempt，不塞回选入记录（#211 终版；2026-09-12 按 #216 F5 改） | spec/connections.md Execution Spec 字段块；spec/run.md Manifest 与 Gate |
 | 施工清单冻结每个 Seat 的 Participant revision | 施工图的席位只写要求（工种、Skill、证据等级）；启动 Run 的预览按要求从名册选施工者并冻结；启动后席位不换人，候选切换只换执行体 | spec/run.md 启动与 Manifest；run.md 关键规则 |
 | `@` 只按 Project 参与者授权解析 | `@` 只按本 Room 名册解析；Run 席位上的施工者不在 Room 里被 @，和施工者说话走 Execution Chat | spec/project.md 场景约束；participant.md |
 | Scoped Room 的参与者 | 默认继承父 Room 名册，可只取子集；这是规划阶段内部的继承，不跨阶段 | spec/project.md Room 名册 |
-| 计票去重键（Worker Profile revision + Bundle 摘要） | 不变 | — |
+| 计票去重键 | #211 改为「投票时实际使用的 Worker Profile 摘要 + 交付内容摘要」：交付内容摘要只对实际交付的条目与席位必需 Skill 的引用摘要算，与含消费者身份字段的完整 bundle_digest 不是一物（原表写「Worker Profile revision + Bundle 摘要 · 不变」已过时；2026-09-12 按 #216 F5 改） | spec/run.md §Request、重试与 Gate |
 | CLI `participant authorize\|revoke` | `profession list\|show`、`room roster add\|remove\|list`；施工者在 `run preview\|start` 里选 | delivery.md |
 
 ## 不变的
@@ -50,7 +50,7 @@ Agency 在名册里定义**工种**；人把工种的实例**选进 Room** 当�
 | 参与者模板 | 工种（Profession）；备忘已改口 |
 | 雇佣的 Project 一级安排 | Room 名册里的规划者；Project 只持有选人策略，没有成员名单 |
 | 雇佣的 Run 一级安排 | Run 席位的选入记录；启动后不换人 |
-| 待命、四态、会话不跨机器 | 参与者一侧的实现；一个施工者同时跑几个执行体也留给实现 |
+| 待命、四态、会话不跨机器 | 推论（非裁决）：09-11 之后控制面记录的是每次派工的执行体与终端通道，没有跨派工的会话对象，所以待命与会话复用按参与者一侧定位；写不写进设计正文、写多少，待 B 批方案。裁决只有两条：并发数留给参与者、不做会话分叉（都是 09-12） |
 | 席位从聊天室会话分叉 | 不做；施工者与读回从零起，施工图带「上下文」章节 |
 | 评审独立按策略 | 多样性按 Gate 策略声明；计票去重总是生效 |
 
