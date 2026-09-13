@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.0<br>
+> 状态：规范性约束 · 草案 v0.18.1<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -21,7 +21,7 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；登记携带三张清单的快照与来源链（关闭读回时不强制）及产出来源（调用集合、显式无、缺失）；固定 compiler/adapter 产出，`hctl2-tool` 校验摘要 | Revision 不改写；新内容创建新 Revision |
+| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；登记携带三张清单的快照与来源链（关闭读回时不强制）及产出来源（调用集合、显式无、缺失）；正文与清单由控制面保存并核验；固定 compiler/adapter 产出及摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Run–Engine Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时创建（只认当前观察，见“从节点到结果”），此后按治理记录里的 Attempt 结果与 Gate 策略推进 | 终态不可复活；引擎重试使检查点再次进入等待态，由 control 按新观察序号创建新 Obligation |
@@ -65,9 +65,9 @@ Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了�
 
 ## Workflow 与 Run 授权
 
-Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后由 `hctl2-tool` 写入并回读 Git。Git 保存不可变正文；身份、准入、摘要和批准/current pointer 的权威仍归控制面。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。Workflow Revision 可含一节「上下文」：只有文字的背景章节，随版本冻结，交付给每个席位与读回；它不产生节点、义务或席位，不作判据或前置，编译器不读它的内容。
+Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和语义校验后，由控制面按[材料保存与准入顺序](./system.md#控制面自己的存储)保存精确正文，再准入版本；身份、准入、规范摘要与批准/current pointer 由治理记录维护。Engine Deployment 固定编译器、Profile、引擎适配器、绑定版本和引擎定义摘要。引擎产物不能反向定义 Workflow Revision。Workflow Revision 可含一节「上下文」：只有文字的背景章节，随版本冻结，交付给每个席位与读回；它不产生节点、义务或席位，不作判据或前置，编译器不读它的内容。
 
-「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件四条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用；产出调用的 Execution Spec 权限摘要不含任何 Room 的消息读取权限。三张清单的快照在「登记 Workflow」时随 Workflow Revision 冻结为附属正文，由 `hctl2-tool` 写入并回读 Git：来源是塑形清单所在的 Room 消息事件 ID，或显式标记的直接文本（记提交者与内容摘要；清单分散在多条消息时走直接文本并在来源链列出事件 ID）；快照只含三张清单的固定结构，含其他字段或条目种类时拒绝登记；来源链记在登记记录，不进读回调用的 Bundle；声明关闭读回的 Workflow Revision 不强制快照与来源链。批准时另核三处一致——登记记录里的图与快照摘要、读回记录所抄的摘要、产出调用的 Execution Spec 所冻结且实际交付的 Bundle 里的图与快照摘要——逐项相同，否则拒绝；快照内容是否夹带讨论，机器只核结构，语义归读回。登记记录还含**产出来源**，三种取值：非空的 Room Invocation 引用集合（塑形中写图的调用）、登记者的显式声明「无模型产出调用」、缺失；普通空集合不是显式声明。Workflow Revision 可声明读回须由与产出来源不同的 Worker Profile 做：只在启用读回且声明了回避时求值，读回调用实际使用的 Worker Profile 摘要与集合里每个调用的实际 Worker Profile 摘要都不同才通过；显式声明无模型产出调用时记为无需比较并在读回记录标注；来源缺失、引用无法解析或未知时不判满足，登记者补齐来源或撤回回避声明后方可批准；集合里每个引用须能解析到来源 Room 里真实存在的调用，不以最近一次调用替代集合；来源随本版本登记冻结，不得以变动的来源集合改变既有批准依据；关闭读回时不强制产出来源。缺省见交付文档。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点、被定为交付义务却无节点的已决条目，以及「上下文」章节提到却无节点承接的事；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
+「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件四条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用；产出调用的 Execution Spec 权限摘要不含任何 Room 的消息读取权限。三张清单的快照在「登记 Workflow」时随 Workflow Revision 冻结为附属正文，由控制面保存并核验精确正文：来源是塑形清单所在的 Room 消息事件 ID，或显式标记的直接文本（记提交者与内容摘要；清单分散在多条消息时走直接文本并在来源链列出事件 ID）；快照只含三张清单的固定结构，含其他字段或条目种类时拒绝登记；来源链记在登记记录，不进读回调用的 Bundle；声明关闭读回的 Workflow Revision 不强制快照与来源链。批准时另核三处一致——登记记录里的图与快照摘要、读回记录所抄的摘要、产出调用的 Execution Spec 所冻结且实际交付的 Bundle 里的图与快照摘要——逐项相同，否则拒绝；快照内容是否夹带讨论，机器只核结构，语义归读回。登记记录还含**产出来源**，三种取值：非空的 Room Invocation 引用集合（塑形中写图的调用）、登记者的显式声明「无模型产出调用」、缺失；普通空集合不是显式声明。Workflow Revision 可声明读回须由与产出来源不同的 Worker Profile 做：只在启用读回且声明了回避时求值，读回调用实际使用的 Worker Profile 摘要与集合里每个调用的实际 Worker Profile 摘要都不同才通过；显式声明无模型产出调用时记为无需比较并在读回记录标注；来源缺失、引用无法解析或未知时不判满足，登记者补齐来源或撤回回避声明后方可批准；集合里每个引用须能解析到来源 Room 里真实存在的调用，不以最近一次调用替代集合；来源随本版本登记冻结，不得以变动的来源集合改变既有批准依据；关闭读回时不强制产出来源。缺省见交付文档。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点、被定为交付义务却无节点的已决条目，以及「上下文」章节提到却无节点承接的事；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run Manifest 至少冻结：
 
@@ -88,7 +88,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 每个 Task 至多一个 `active | completion_pending` 占用标记；相同幂等键的第二次启动返回原 Run，其他启动返回类型化冲突，不能只靠引擎关联键去重。Project 已归档、Task 无契约、Project 不匹配或已有占用标记时，命令必须拒绝。
 
-“替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧运行时、输入与写租约和归属者专用的代次栅栏，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。系统不得为了替代一个 Run 任意推进共享 site generation，进而误伤其他执行。
+“替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧运行时、输入与写租约和归属者专用的代次栅栏，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。替代只撤销旧 Run 及其执行的授权，不得使其他获准执行失权；工作副本的隔离与目标引用按 [Repo 约束](./repo.md#changeset-与-git-事实)核验。
 
 新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Repo 模块约束](./repo.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
 
@@ -113,7 +113,7 @@ HCTL Profile 的规则分四组：
 4. control 与 `hctl2-tool` 校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与治理记录不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Run–Engine Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
-Execution Spec 必须固定 Attempt、Seat、Run、选入记录引用与本次实际选用的 Worker Profile（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/site/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
+Execution Spec 必须固定 Attempt、Seat、Run、选入记录引用与本次实际选用的 Worker Profile（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
 
 Attempt 的状态与合法转移如下。未列出的状态转换必须返回类型化拒绝。
 
@@ -125,7 +125,7 @@ Attempt 的状态与合法转移如下。未列出的状态转换必须返回类
 
 “已交提案”只表示 Proposal 已冻结，不表示 Seat、Gate、Run 或 Task 成功。归属者对 Proposal 的准入或拒绝推进 Seat/Obligation；修正或重新施工必须创建新的 Attempt 和 Proposal，不能复活旧 Attempt。状态只由 control 根据 Agency 观测与网关第一方观测推进，全部终态不可复活。
 
-Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifact)的交付方式装入同 Run 前序节点的结果。Gate Seat 的 ReviewSubjectRef 所指 Revision 与返工 Seat 所依据的 Verdict 正文是必用条目：预算内使用 `inline`，超出预算时改为 `pointer` 并附分片建议。Verdict 以治理记录物化，其 Git 结晶副本只作 `pointer`。
+Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifact)的交付方式装入同 Run 前序节点的结果。Gate Seat 的 ReviewSubjectRef 所指 Revision 与返工 Seat 所依据的 Verdict 正文是必用条目：预算内使用 `inline`，超出预算时改为 `pointer` 并附分片建议。Verdict 以治理记录物化；超预算的正文先交付成可核验、可重读的精确副本，再作 `pointer`，公开审计摘要不能替代返工正文。
 
 引擎报告的进度、步骤日志与终端跟踪记录不是来源。同一 Seat 的备用 Attempt 复用同一 Bundle，并附旧 ChangeSet Revision 的 `pointer`；未形成 ChangeSet Revision 的 Git 工作树内容不传承。
 
