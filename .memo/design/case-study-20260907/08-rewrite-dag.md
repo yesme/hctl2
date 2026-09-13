@@ -139,7 +139,7 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | R W.1–W.4 | 完成 · 合入 `0015380`（v0.17.7）；合并后核对（GLM，https://github.com/yesme/hctl2/pull/221#issuecomment-5647581370 ）：无回退 | #221 |
 | A P.1–P.7 | 完成 · 所有者 2026-09-13 逐条拍板（五项全按推荐），方案 v4 随 #222 合入 | PR #222 |
 | A W.1–W.4 | 完成 · 合入 bdc0c09；合并后核对（GLM）：一处链接文字随 C W.1 修 | #223，v0.18.0 |
-| C P.1–P.7 | 进行中 · P.1–P.4 完成，P.5 方案 v3；待 P.6 读回 | [11-batch-c-plan.md](./11-batch-c-plan.md)；#224，分支 `codex/batch-c-plan` |
+| C P.1–P.7 | 进行中 · P.1–P.6 完成（Muse 一次读回、措辞修订）；待 P.7 拍板 | [11-batch-c-plan.md](./11-batch-c-plan.md)；#224，分支 `codex/batch-c-plan` |
 | C W.1–W.4 | 未开始 | |
 | B P.1–P.7 | 未开始 | |
 | B W.1–W.4 | 未开始 | |
