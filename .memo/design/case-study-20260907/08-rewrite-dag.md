@@ -612,7 +612,6 @@ P.1 方案 v1（Codex）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 P.1。方案写在 `.memo/design/case-study-20260907/11-batch-c-plan.md`，按 05 §四 的六样东西写：改哪些句子、各来自哪条不变量或用例事实；每处几种改法；各自好处坏处、代价谁付；推荐哪种、为什么；已拍板不重开的条目逐条引用裁决出处，自己的推论单独标「推论」；落点到文件与节。拿参考用例 `.memo/notes/HCTL_case_study.md` 的 S1 走一遍。本批内容与输入按 05 §二「C」行：`.memo/design/case-study-20260907/01-unit-model.md` §四乙 7、8、13，§四丙 2，§四丁 14、15；`.memo/design/case-study-20260907/03-governance-text.md` §八、§九、§十；`.memo/design/case-study-20260907/07-repo-instance-question.md` v4；#216 报告 §F4；`docs/design/spec/system.md`、`spec/repo.md`、`spec/project.md` §三种交付方式与 §根 Context Manifest、`spec/connections.md`、`docs/design/context.md`、`spec/task.md`、`docs/design/architecture.md` §5×3 归属矩阵；`docs/research/gitea.md`。
 分支 `codex/batch-c-plan`，开 PR、不自合，描述按模板三节；提交信息末尾不放 harness 会话链接。
@@ -621,7 +620,6 @@ P.3 作者说明与 v2（Codex）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 P.3：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有主审、副审、陪审的独立审阅。按论证质量逐条取舍，不按人数；写评论「作者说明 · 第一轮汇总与 v2」，逐条采纳 / 部分采纳 / 拒绝并说理由；推送 v2（同一分支，新提交，提交信息写改了什么、听了谁的哪条意见）。已拍板的不重开。
 ```
@@ -629,7 +627,6 @@ P.5 作者说明与 v3（Codex）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 P.5：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有交叉审阅。写评论「作者说明 · 第二轮汇总与 v3」，逐条处置，末尾单列「待裁项」——合不拢的分歧各给几种选法、利弊、你的推荐；推送 v3。
 ```
@@ -637,7 +634,6 @@ P.6 后半：读回处理（Codex）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 P.6 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有「Muse · C 批方案 · 读回」。凡复述走样、走用例走不通、读不明白的地方，改方案让人能读对，不是解释给读回者听；写评论「作者说明 · 读回处理」列出改了哪几处；只改措辞、不改任何改法或落点的，不再读回；改了改法、落点或待裁项的，在评论第一句写「需要再读回一次」（仍由同一读回席位做，最多两次，第二次仍走样列为待裁项）。
 ```
@@ -645,7 +641,6 @@ P.7 后半：拍板处理（Codex）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你是 yesme/hctl2 里 C 批（Repo 与治理正文） 的作者（Codex）。先 git fetch origin，读 AGENTS.md、CONSTRAINTS.md、`.memo/design/case-study-20260907/05-rewrite-process.md` v2 和 `.memo/design/case-study-20260907/08-rewrite-dag.md`（§二、§三、§四）。
 现在进入 P.7 的后半：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR 上已有所有者的「拍板 · C 批方案」。按拍板逐条改方案（同意的不动，改的照改，待的在方案里标「待裁」并留选法），推送 v4；写评论「作者说明 · 拍板处理」；然后等所有者合入，不自合。
 ```
@@ -729,7 +724,6 @@ X 裁决处理（Codex，动手 PR）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你在 yesme/hctl2 做第二轮交叉审阅：C 批（Repo 与治理正文） 的方案。PR：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR；方案已改到 v2（见评论「作者说明 · 第一轮汇总与 v2」）。你的席位：主审（Fable）。
 先 git fetch origin，读方案 v2 `.memo/design/case-study-20260907/11-batch-c-plan.md` 和本 PR 上全部评论（含你自己第一轮的）。
 产出一条评论，标题「Fable · C 批方案 · 交叉审阅」：对作者说明里拒绝你的每一条，接受或反驳，反驳要有新证据；对他家意见，同意的说同意、不同意的说理由；撤回自己第一轮说错的要写明是哪条、为什么。仍是维持 / 修正 / 推翻的形状；不引入新议题，除非是 v2 新改出来的问题。
@@ -740,7 +734,6 @@ X 裁决处理（Codex，动手 PR）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你在 yesme/hctl2 做第二轮交叉审阅：C 批（Repo 与治理正文） 的方案。PR：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR；方案已改到 v2（见评论「作者说明 · 第一轮汇总与 v2」）。你的席位：副审（Grok）。
 先 git fetch origin，读方案 v2 `.memo/design/case-study-20260907/11-batch-c-plan.md` 和本 PR 上全部评论（含你自己第一轮的）。
 产出一条评论，标题「Grok · C 批方案 · 交叉审阅」：对作者说明里拒绝你的每一条，接受或反驳，反驳要有新证据；对他家意见，同意的说同意、不同意的说理由；撤回自己第一轮说错的要写明是哪条、为什么。仍是维持 / 修正 / 推翻的形状；不引入新议题，除非是 v2 新改出来的问题。
@@ -751,7 +744,6 @@ X 裁决处理（Codex，动手 PR）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你在 yesme/hctl2 做第二轮交叉审阅：C 批（Repo 与治理正文） 的方案。PR：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR；方案已改到 v2（见评论「作者说明 · 第一轮汇总与 v2」）。你的席位：陪审（K3）。
 先 git fetch origin，读方案 v2 `.memo/design/case-study-20260907/11-batch-c-plan.md` 和本 PR 上全部评论（含你自己第一轮的）。
 产出一条评论，标题「K3 · C 批方案 · 交叉审阅」：对作者说明里拒绝你的每一条，接受或反驳，反驳要有新证据；对他家意见，同意的说同意、不同意的说理由；撤回自己第一轮说错的要写明是哪条、为什么。仍是维持 / 修正 / 推翻的形状；不引入新议题，除非是 v2 新改出来的问题。
@@ -762,7 +754,6 @@ X 裁决处理（Codex，动手 PR）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 你在 yesme/hctl2 做读回，对象是 C 批（Repo 与治理正文） 的方案 v3。PR：`gh pr list --head codex/batch-c-plan --state open` 找到的那一个 PR；文件 `.memo/design/case-study-20260907/11-batch-c-plan.md`。
 只读这份方案文件与参考用例 `.memo/notes/HCTL_case_study.md`（S1）；不读本 PR 上的任何评论，不读讨论历史，不读其他 memo。
 产出一条评论，标题「Muse · C 批方案 · 读回」，分三段：
@@ -1226,7 +1217,6 @@ X 裁决处理（Fable，动手 PR）
 
 ```
 先读所有者的用例 `.memo/notes/HCTL_case_study.md`。方案里的每处改法、每个待裁项，先在用例里找到对应的那一步，写明系统在这一步要决定什么、依据是人已显式声明的还是推断的；人已显式声明的不成题；用例里没有的情形标「用例外」并写来源，不得想当然。
-再读 PR #224 上的「拍板 · C 批方案 · 补记：聊天原话与出处」：所有者 2026-09-13/14 的裁决原话（Agency 代理模型与 failover 阶梯、多写通则与六个后端、施工图 lint 去重检查、用例优先），08 §二 D15–D18 引的就是它。
 标题：拍板 · 某批方案
 正文：按作者说明 v3 的条目编号逐条写「同意」「改成：……」「待：……（原因）」；待裁项逐条选一个选法或写"另议"；末尾一句"按此改 v4 后合入"。
 ```
