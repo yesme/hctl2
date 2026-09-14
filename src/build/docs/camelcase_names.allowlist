@@ -27,3 +27,7 @@ docs/design/task.md	GitHub	GitHub
 docs/usage.md	GitHub	GitHub
 docs/design/vision.md	OpenCode	OpenCode
 docs/design/vision.md	SaaS	SaaS
+
+# 参考用例 S1（v0.18.3）：仓库来源平台的专名
+docs/design/scenarios/S1-multi-unit.md	GitHub	GitHub
+docs/design/scenarios/S1-multi-unit.md	GitLab	GitLab

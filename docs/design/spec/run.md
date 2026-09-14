@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.2<br>
+> 状态：规范性约束 · 草案 v0.18.3<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -78,7 +78,7 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 - Gate（法定票数、席位多样性策略、返工轮数上限、是否允许增量评审）、预算、放置、过渡态超时和截止规则；
 - 批准施工图时引用的读回记录（Workflow Revision 声明关闭读回时可无）。
 
-施工图的席位只写要求，不写人。「启动 Run」的预览按要求从 Agency 名册选施工者，冻结进 Manifest；候选须满足 Project 选人策略（允许的 Agency 与工种、预算上限、多样性要求），席位多样性声明不满足时启动拒绝；按全部获准候选与已冻结引用算出的最多可能通过票数（算法见[计票与结束](#计票与结束)）少于 Gate 法定票数时同样启动拒绝，交付内容尚不能确定时不把未知当相同、只作预览警告、运行中再判；这次选人独立于 Room 名册，Room 里的规划者不自动成为席位上的施工者。启动后席位不换人：候选切换只在选入记录的获准候选范围内更换 Worker Profile、由控制面另发一次派工，工种、Agency、职责、权限、票位不动，不产生新席位与新票；更换工种、Agency 或超出候选范围必须替代 Run。Room 名册可以为将来的调用换人，活动 Run 不允许换施工者。
+施工图的席位只写要求，不写人。「启动 Run」的预览按要求从 Agency 名册选施工者，冻结进 Manifest；候选须满足 Project 选人策略（允许的 Agency 与工种、预算上限、多样性要求），席位多样性声明不满足时启动拒绝；按全部获准候选与已冻结引用算出的最多可能通过票数（算法见[计票与结束](#计票与结束)）少于 Gate 法定票数时同样启动拒绝（登记时 lint 只用声明判，见下文；启动才用实际候选），交付内容尚不能确定时不把未知当相同、只作预览警告、运行中再判；这次选人独立于 Room 名册，Room 里的规划者不自动成为席位上的施工者。启动后席位不换人：候选切换只在选入记录的获准候选范围内更换 Worker Profile、由控制面另发一次派工，工种、Agency、职责、权限、票位不动，不产生新席位与新票；更换工种、Agency 或超出候选范围必须替代 Run。Room 名册可以为将来的调用换人，活动 Run 不允许换施工者。
 
 绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
 
@@ -101,7 +101,7 @@ HCTL Profile 的规则分四组：
 3. dynamic fork 只能实例化 Manifest 中已冻结的有界 Seat 模板；loop 每次重新进入节点都创建新 Obligation。
 4. 每个外部执行节点必须声明**达成判据**，二选一：机械完成判据——绑定本次待验收输出的外部机械事实（该输出所在提交的 CI 状态、对应 PR 的合并状态、路径与摘要），由 `hctl2-tool` 读回；或 Gate 席位裁决加证据不低于某一级。两者皆无的节点编译拒绝。开工前置（见「从节点到结果」）是另一回事，可派发不等于已达成。边分两类：控制依赖（fork/join、switch、timer、noop、纯转换与 loop 的结构边）不要求引用；**产物依赖**的边必须引用上游节点声明的产出——ChangeSet Revision、Artifact Revision、Verdict、Receipt 或外部机械事实。控制依赖只指这些结构件所连的边；两个外部执行节点之间直接相连的边是产物依赖，没写引用不算控制依赖，按落地失败拒绝；义务之间纯排序的边不在允许之列，要不要开放另行取舍。编译时校验的是静态图：产物依赖能解析到图内某个上游节点声明的产出且类型匹配，这叫**落地**；静态图无环——loop 由既有结构表达、每次重入创建新 Obligation，dynamic fork 按冻结模板展开，两者都不算环也不算运行中扩图。运行时准入再校验被引用产出的精确标识与摘要由 `hctl2-tool` 或控制面回读。引用与交付是两件事：被引用的产出按「从节点到结果」的 `inline` / `pointer` 交付；Verdict 与 Receipt 的权威在控制面，交付时内联其引用与摘要，或指向已交付到执行现场的精确副本。批准后节点集不变：不支持运行中派生子义务，节点内的分解属于 Attempt 内部，不产生新 Seat 与票。
 
-编译前先以 schema、引用、Profile 和图结构 lint 拒绝格式或结构不合法的 Workflow Revision，再由固定编译器生成并验证 Dagu YAML。dynamic fork 的候选施工者与职责、最大基数、预算、选择函数和权限上限都必须预先固定；模型输出不能新增接收者、扩大扇出或扩权，无法机械校验时整次 fork 必须拒绝。lint 不承诺证明任意 loop 终止，也不依赖引擎提供可隔离的检查点身份。
+编译前先以 schema、引用、Profile 和图结构 lint 拒绝格式或结构不合法的 Workflow Revision，再由固定编译器生成并验证 Dagu YAML。lint 还对每个 Gate 做票数检查，只用施工图声明、沿[计票与结束](#计票与结束)的同一条去重键：能证明所有合法取值都凑不足法定票数的才拒绝——法定票数大于必需评审席位数；重复引用同一个 Seat 身份不增加票位；同一席位模板展开成多个 Seat 不能仅凭模板相同证明同键，不作拒绝依据。席位要求与材料来源（工种、证据等级、必需 Skill 引用、ReviewSubjectRef 的来源节点）相同、Gate 又未对它们声明「Worker Profile 互异」的席位，lint 在登记结果里机械列出「可能按去重合成一票」、缺哪项信息与可选的处理（声明互异、改席位要求或必需 Skill、降法定票数）——只是提示，不把未知合成确定的一票，不要求作者制造材料差异；先算能证明的拒绝，拒了不再出提示。启动预览按实际候选与已冻结材料再算，运行中按计票与结束重算，三处同一条键，登记只取声明层。dynamic fork 的候选施工者与职责、最大基数、预算、选择函数和权限上限都必须预先固定；模型输出不能新增接收者、扩大扇出或扩权，无法机械校验时整次 fork 必须拒绝。lint 不承诺证明任意 loop 终止，也不依赖引擎提供可隔离的检查点身份。
 
 ## 从节点到结果
 
@@ -127,7 +127,7 @@ Attempt 的状态与合法转移如下。未列出的状态转换必须返回类
 
 Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifact)的交付方式装入同 Run 前序节点的结果。Gate Seat 的 ReviewSubjectRef 所指 Revision 与返工 Seat 所依据的 Verdict 正文是必用条目：预算内使用 `inline`，超出预算时改为 `pointer` 并附分片建议。Verdict 以治理记录物化；超预算的正文先交付成可核验、可重读的精确副本，再作 `pointer`，公开审计摘要不能替代返工正文。
 
-引擎报告的进度、步骤日志与终端跟踪记录不是来源。同一 Seat 的备用 Attempt 复用同一 Bundle，并附旧 ChangeSet Revision 的 `pointer`；未形成 ChangeSet Revision 的 Git 工作树内容不传承。
+引擎报告的进度、步骤日志与终端跟踪记录不是来源。同一 Seat 的备用 Attempt 复用同一 Bundle，并附旧 ChangeSet Revision 的 `pointer`；未形成 ChangeSet Revision 的 Git 工作树内容不传承。返工的新 Attempt 沿冻结的选入记录派工（选入记录已含 Agency），开工包带被驳回的评审对象与必用的 Verdict 正文；重建代码时只用已封存并获准交付的版本，从获准来源取得并确认送达，同一版本可以有多个获准副本；未封存的字节不搬去别的机器，原树续做还是重建归 Agency 门后。
 
 ## Request、重试与 Gate
 
@@ -142,7 +142,7 @@ Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正�
 | 传输重投 | 投递超时、确认回执丢失 | 无：同一幂等键重投，重复命令返回原结果 | 一切领域对象 |
 | 候选切换 | 类型化技术故障 | 同一 Seat 下的新 Attempt | Obligation、Seat、票位 |
 | 引擎重试 | Engine 检查点再次进入等待态 | control 按新观察序号创建新的 Obligation（旧 Obligation 及其 Seat/Attempt 置为被替代） | Run |
-| 语义返工 | changes_requested 汇总，且分歧落点在实现 | 新 ChangeSet Revision/Artifact Revision，旧票失效并重新过 Gate（全量或按策略增量） | Run、Task Revision |
+| 语义返工 | changes_requested 汇总，且分歧落点在实现 | 新 ChangeSet Revision/Artifact Revision，旧票失效并重新过 Gate（全量或按策略增量） | Run、Task Revision、选入记录（返工沿冻结选入记录派工；换 Agency 走替代 Run） |
 | 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 Task Revision | Project、Task 身份 |
 
 只有冻结策略列明的类型化技术故障才可以切换 Attempt，例如候选特有的认证、配额或网络故障、Agency 报无法履约，以及租约超时；Agency 在冻结规格内的内部重启、改派或搬机不是候选切换，也不凑新票。control 先撤销当前派工的授权，再在候选、预算和剩余截止时间允许时，于同一 Seat 创建新 Attempt 与新派工。

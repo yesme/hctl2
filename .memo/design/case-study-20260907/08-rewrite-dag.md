@@ -150,7 +150,8 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | B W.1 | 完成 · 动手 PR 已开（分支 `claude/batch-b`，v0.18.2；PR 描述按 12 §六 落点表逐行对照；顺手把 `hctl2-tool` 输出的 `evidence_level` 从 `toolbox_readback` 改为 `unmediated`，Rust 与打包测试同改） | [12-batch-b-plan.md](./12-batch-b-plan.md) |
 | B W.2–W.4 | 完成 · #229 合入 `577af20`（v0.18.2）；W.2 Codex「修正后可合」+ Grok「可合」，W.3 七条修正 `12c4579`；合并后核对（GLM，#229 评论）：无回退 | #229 |
 | D P.1–P.7 | 完成 · 三家独审（GLM 改后可进、Grok、Codex 修正后再拍板）、交叉一轮（L1 撤「静态上界」、X1 撤「持有版本的 Agency」通用规则）、Muse 读回一次只改措辞，所有者 2026-09-15 拍板（L1 乙、E1 甲、换卡不做、一个 PR），方案 v5 随 #230 合入；「席位变更」核对席 K3→Grok 已贴 | [13-batch-d-plan.md](./13-batch-d-plan.md)；#230 |
-| D W.1–W.4 | 未开始 | |
+| D W.1 | 完成 · 动手 PR 已开（分支 `claude/batch-d`，v0.18.3；PR 描述按 13 §六 落点表逐行对照；含研究层两份复核记录与 P2 计划补记） | [13-batch-d-plan.md](./13-batch-d-plan.md) |
+| D W.2–W.4 | 未开始 · W.2 Codex + Grok 轻审待所有者点火；W.4 核对席 Grok | |
 
 ## 五、运行手册（给控制面与引擎）
 
