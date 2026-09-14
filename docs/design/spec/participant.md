@@ -1,11 +1,11 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.0<br>
+> 状态：规范性约束 · 草案 v0.18.1<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Room 名册，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、Repo Instance、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
+Participant 模块拥有数字参与者的身份与配置，并负责把获准的 Execution Spec 变成物理执行，提供观察、隔离和恢复。Project 拥有 Room Invocation 与 Room 名册，Run 拥有 Attempt 与 Seat；两者各自拥有对应的 Execution Spec。Participant 模块不决定 Project、Task 或 Run 的领域结果；Repo、ChangeSet 与 Write Lease 归 [Repo 模块](./repo.md)所有，本模块只在有效租约下物理写入。
 
 人不是 Participant：人不干活，人拍板。人以 human actor 出现在命令和裁决里，不进规划者名册，也不进入本模块的对象表。
 
@@ -47,8 +47,8 @@ HCTL 启动的每个 Harness 都使用窄执行主体。以下三条底线不可
 ### 不可关闭的三条底线
 
 1. **工具不是人。** Harness、运行时钩子和模型只能提交 Result Proposal，不能提交治理命令。
-2. **合入钥匙不进工具。** HCTL 不向 Harness 交付 control 客户端凭据、human principal credential、集成凭据或外部写凭据。目标引用、远端 SCM、任务后端和 chat 写入凭据只由持有当前代次栅栏的 `hctl2-tool` 或适配器网关代用。
-3. **隔离工作树。** Harness 只能在有效 Write Lease 下写当前 ChangeSet 的独立 Git 工作树和分支。它可以读取所属 Repo Instance 的 Git 公共目录与引用，也可以在当前 ChangeSet 分支提交，但不推送远端：远端推送、评审请求与合并全部走 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)的适配器命令。直接改写目标引用或其他 ChangeSet 现场不会取得集成权威，只会在回读时形成分歧。
+2. **合入钥匙不进工具。** HCTL 不向模型交付通用 control 客户端凭据、human principal credential 或集成凭据与权限。获准源分支的 Git 交付由持相应凭据的单元执行，不包含合入目标权限；目标集成、任务后端与 chat 写入凭据仍由获准的工具或适配器网关代用，评审请求仍按原授权与适配器路径执行，见 [Repo 发布评审](./repo.md#发布评审)。
+3. **隔离工作树。** Harness 只能在有效 Write Lease 下写当前 ChangeSet 的独立 Git 工作树和分支。它可以在获准范围读取 Git 对象与引用，并在当前 ChangeSet 分支提交；工作副本由参与者管理，独立引用在写入前核验不相交。发布源版本与更新目标是不同权限，后者按 [Repo 模块](./repo.md#集成目标两个头与两种授权形态)的持久意图与回读处理；目标变化不自动取得本控制面的集成凭证。
 
 ### 可选执行加固
 
@@ -68,7 +68,7 @@ ChangeSet、ChangeSet Revision、Write Lease、封存、保全与集成的对象
 
 旧写入者失权时，两个模块各做自己的动作：Repo 模块撤销租约并拒绝重授；本模块停止或隔离旧执行，并提供进程、PTY 与工作树状态的证据。隔离成立有两种证明：旧执行已经停止；或旧执行仍存活但已被限制在旧 Git 工作树与旧 ChangeSet 的边界内——后者按 [Run 约束](./run.md#写入约束)允许后续执行改用新工作树与新 ChangeSet，原 ChangeSet 不重授。两者都证明不了时，本模块不得声称已隔离，Repo 模块因此不授予新租约，原 Git 工作树与 ChangeSet 按其约束保全并隔离。
 
-执行体在有效租约下写自己的 Git 工作树与分支，封存由 `hctl2-tool` 执行。执行体提交的 Result Proposal 中，ChangeSet 输出至少固定 ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及结果的位置——执行体分支上的提交，或工作树本身；封存输入与回读字段见 [Repo 模块约束](./repo.md#changeset-与-git-事实)。版本准入在归属者准入提案的同一事务里由 Repo 模块完成。执行体不持有平台写凭据，远端推送、评审请求与合并不由它执行。
+执行体在有效租约下写自己的 Git 工作树与分支，封存由 `hctl2-tool` 执行。执行体提交的 Result Proposal 中，ChangeSet 输出至少固定 ChangeSet 的稳定 ID、所持 Write Lease 引用、声明的基线提交，以及可解析的精确结果引用——执行体分支上的提交，或交给现场工具的工作树；跨单元交付不要求公开生产目录，封存输入与回读字段见 [Repo 模块约束](./repo.md#changeset-与-git-事实)。版本准入在归属者准入提案的同一事务里由 Repo 模块完成。源版本按获准范围由持 Git 凭据单元交付，评审请求与目标合入仍按 [Repo 约束](./repo.md#发布评审)处理；交代码不等于取得集成权。
 
 ## 运行时与观测
 
@@ -130,7 +130,7 @@ Evidence 是被判定的事实记录，本身不下结论。每条 Evidence 必�
 
 恢复等级包括 exact attach、native handoff、structured inspect、semantic resume 和 replay，定义见[设计正文](../participant.md#terminal-场景)。这些能力可以并存；每项能力按自己的证据要求分别声明与降级，不能用一项的证据顶替另一项。
 
-运行时绑定提交后，control 为 Execution Runtime 建立终端通道记录；物理通道、观察流与终端状态由 Agency 提供，HCTL 不转发或重放另一份 PTY 流。直接客户端按当前归属者、绑定与全部适用代次请求连接时，control 可以签发短期 Attach Descriptor，并为受管理写输入另行以比较并交换授予 Terminal Input Lease。Agency 适配代码只把仍匹配归属者、运行时、现场和绑定代次的获准动作送入 API。
+运行时绑定提交后，control 为 Execution Runtime 建立终端通道记录；物理通道、观察流与终端状态由 Agency 提供，HCTL 不转发或重放另一份 PTY 流。直接客户端按当前归属者、绑定与全部适用代次请求连接时，control 可以签发短期 Attach Descriptor，并为受管理写输入另行以比较并交换授予 Terminal Input Lease。Agency 适配代码只把仍匹配归属者、运行时和绑定代次的获准动作送入 API。
 
 Attach Descriptor 固定逻辑归属者、供应端终端 ID、主机、各层代次、能力、权限和过期时间。观察、终端输入或接管、Attempt 控制和安全输入分别授权，任一权限都不蕴含其他权限。一个目标可以有多个观察者；HCTL 管理的输入默认最多一个 Terminal Input Lease 持有者，接管必须原子撤销旧租约。
 

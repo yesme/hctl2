@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.18.0<br>
+> 状态：规范性 · 草案 v0.18.1<br>
 > 日期：2026-09-10<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -76,11 +76,11 @@
 | --- | --- | --- | --- |
 | metadata | 治理元数据 | 身份、绑定、授权与判决——谁是谁、谁连着谁、谁批了什么、凭什么算数 | HCTL 自己的控制面存储 |
 | content | 场景内容 | 各场景的协作与执行记忆：消息、任务卡与流转、机械执行历史、会话转录、评审线程与检查状态 | 该场景的 content 系统（第三方 ground truth，事实源头） |
-| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更、合入目标的提交 | Git |
+| artifact | 结晶 | content 提炼出的不可变产物：决议与 Memo、冻结契约与施工图、凭证链、代码变更、合入目标的提交 | 代码在被治理仓库，治理正文与审计副本在控制面材料存储；准入与判决仍在治理记录 |
 
-统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。结晶归属与对象归属分开，先例是施工图：它从 Room 讨论中结晶、归 Room 场景，对象与写入者归 Run；同理，代码变更从 Terminal 会话中结晶、归 Terminal 场景，ChangeSet Revision 这个对象及其写入者归 Repo 模块，Change 场景的结晶是合入目标的提交与 Integration Receipt 在 Git 里的审计影子。「在 Terminal 会话中产生」是常见来源，不是准入前置：human command 也可以是 ChangeSet Revision 的生产者。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
+统一律：**每个场景的 artifact 是该场景 content 的结晶**。结晶归产生它的场景所有：讨论产生的决议、Memo 与施工图归 Room，任务验收产生的冻结契约归 Kanban，引擎执行产生的凭证链归 Workflow，会话中的代码修改归 Terminal。没有产物的场景不必为了形式对称而补造一种结晶。结晶归属与对象归属分开，先例是施工图：它从 Room 讨论中结晶、归 Room 场景，对象与写入者归 Run；同理，代码变更从 Terminal 会话中结晶、归 Terminal 场景，ChangeSet Revision 这个对象及其写入者归 Repo 模块，Change 场景的结晶是合入目标的提交与 Integration Receipt 的审计副本。「在 Terminal 会话中产生」是常见来源，不是准入前置：human command 也可以是 ChangeSet Revision 的生产者。消歧：小写 artifact 是数据类别，中文一律写“结晶”；Artifact（工件）仍指 Project 模块登记的交付物对象，两者不同物。
 
-三条法贯穿全部模块约束，各处引用，不再各写一套：
+代码与治理正文的存储、准入和交付不因同属结晶而合为一处，精确分责见[系统边界](./system.md#控制面自己的存储)；Artifact 按登记用途引用其一。三条法贯穿全部模块约束，各处引用，不再各写一套：
 
 1. **能承载不等于能裁决。** content 系统拥有场景内容的 ground truth，但永远不拥有治理：普通消息不能触发派发，provider Done 最多请求同一 Task 验收，引擎的机械完成不能签发凭证。判决只在 metadata 层产生。
 2. **冻结摘要是 content 与治理之间的防火墙。** content 可变，治理引用不可变；既有的 Snapshot 观测、采纳与 digest 冻结机制原样构成这道墙——授权执行前把依赖的 content 冻结为带摘要的精确引用，此后 content 漂移不改写已授权的事实。
@@ -96,7 +96,7 @@
 - **Snapshot/观测族**：Task Backend Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
-- **独立对象**（核心产品词之外的约束层领域对象）：Repo Instance、Room Invocation、Execution Runtime、Worker Profile
+- **独立对象**（核心产品词之外的约束层领域对象）：Room Invocation、Execution Runtime、Worker Profile
 
 ## 外部对齐原则
 

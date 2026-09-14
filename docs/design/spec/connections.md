@@ -1,6 +1,6 @@
 # 五模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.18.0<br>
+> 状态：规范性约束 · 草案 v0.18.1<br>
 > 本文是 Project、Task、Run、Participant、Repo 之间连接约束的唯一权威。它不是一个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -9,9 +9,9 @@
 
 1. 来源模块只能提供稳定 ID、Revision digest、状态版本、来源和已获授权的范围；不能直接写目标模块。
 2. 目标模块在自己的命令准入中校验来源引用、当前版本、actor、权限和幂等键，并拥有新产生的状态。
-3. 目标状态、来源关联、幂等结果和必要 outbox 由唯一 control 在同一个用户级控制面事务中提交；跨 Project、Repo Instance 或模块都不得拆成 clone 本地事务再拼接。
+3. 目标状态、来源关联、幂等结果和必要 outbox 由唯一 control 在同一个用户级控制面事务中提交；同一控制面的跨 Project 或模块命令不得拆成工作副本的本地事务再拼接。
 4. 目标只以稳定引用和有序事件返回结果；来源和场景可以投影它们，但不能复制一套状态机。
-5. 涉及 workflow engine、Agency、Git/SCM 或第三方平台时，提交本地意图先于外部动作；确认回执不确定时按稳定关联键回读。
+5. 涉及 workflow engine、Agency、被治理仓库 Git/SCM 或第三方平台时，持久意图先于外部动作；确认不确定时按稳定关联键回读。控制面自己的治理正文按[系统存储约束](./system.md#控制面自己的存储)先保存、再事务准入，不转交 Repo 工具写入。
 
 连接引用必须包含对象种类、稳定 ID，以及精确 revision digest 或 state version。引用还必须携带所属 Repo/Project、生产者和适用绑定版本。`current`、显示名、外部 ID、文件路径和界面选择都不能替代这些字段。这是字段约束，不是新的持久领域对象。
 
@@ -34,7 +34,7 @@ flowchart LR
     C -->|ChangeSet Revision 作评审对象| R
     P -->|无 Run 的「合入 ChangeSet」命令 / 冻结的评审发布策略| C
     R -->|Gate 通过后的「合入 ChangeSet」命令| C
-    C -->|Integration Receipt 作 mechanical 证据| T
+    C -->|Integration Receipt 或契约接受的精确平台集成证据| T
 ```
 
 Project → Participant 是无 Run 的显式短路；Participant → Task 不存在原始状态通道，只有经过校验的 Revision、Evidence、Verdict 或 Receipt 才能进入 Task 验收。Participant → Repo 也不存在直接通道：执行体的 ChangeSet 输出由 `hctl2-tool` 封存回读，再在 Project 或 Run 准入提案的同一事务里由 Repo 模块准入版本；Repo 模块不接收 Result Proposal。
@@ -43,18 +43,18 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
-| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；只有携带初始契约时才写正文 outbox，后续由“采纳契约”准入 Task Revision | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
+| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；携带初始契约时先保存治理正文，在该事务一并准入 Task Revision；后续契约由“采纳契约”准入 | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
 | Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、席位要求与选定的施工者/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 治理记录和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再预留、绑定和激活运行时 | invocation id + invocation_version + Execution Spec digest |
 | Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置由 `hctl2-tool` 回读满足后，Run 才持久化派发授权；Participant 模块再预留、绑定和激活运行时 | attempt id + attempt_generation + Execution Spec digest |
-| Project → Repo | 「注册 Repo」命令、预期 Git 身份、配置摘要、平台绑定的声明（外部平台 / 本地平台 / 显式不挂） | Repo 模块记待确认注册并持久化 outbox，`hctl2-tool` 写入并回读 Git 身份、为本机检出登记远端；缺省绑定本地平台时平台适配器执行「在本地平台建仓并推送」外部副作用命令；确认事务激活 Repo 身份，Project 在同一事务创建唯一 Repo Room | repo identity + 摘要 → 同一次注册，不重复；建仓与推送按自己的关联键回读，不重复建仓 |
-| Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/现场/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
+| Project → Repo | 「注册 Repo」命令、人的仓库登记与平台声明、配置正文引用与摘要 | Repo 记待确认注册；有外部步骤则持久化 outbox，由有权限一方建仓、持 Git 凭据单元交付代码；确认事务激活 Repo，Project 同事务创建唯一 Repo Room；不写代码树身份、不挂接工作副本 | 原命令与关联键 → 原 Repo、外部建仓与交付结果及唯一 Repo Room |
+| Participant → Project/Run | Result Proposal、逐输出的归属者/运行时/Agency 绑定代次、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、代次、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
 | Project / Run → Repo | 获准提案中的 ChangeSet 输出、`hctl2-tool` 封存回读的 Git 事实 | `hctl2-tool` 先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一控制面事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
-| Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；平台适配器推送并创建或更新评审请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
-| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行，`hctl2-tool` 回读；Integration Receipt 返回发起模块作证据 | intent id → 唯一 Receipt；同一目标同时至多一个待决意图，不论形态；结果未知不重投 |
+| Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；按同一意图分阶段确认持凭据单元的 Git 交付与平台适配器的建/更新请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
+| human scene / Run reducer → Repo | 「合入 ChangeSet」命令、精确 ChangeSet Revision/目标/所选授权形态/目标保护快照/证据引用 | Repo 模块准入授权并持久化 intent/outbox，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行，`hctl2-tool` 回读；Integration Receipt 返回发起模块作证据 | intent id → 唯一 Receipt；本控制面同一目标同时至多一个待决意图，不论形态；结果未知不重投 |
 | Repo → Run | ChangeSet Revision 引用（ReviewSubjectRef 的一种）、平台检查与评审状态作 Evidence | Run 校验 review_subject_digest、代次与证据通道等级后形成 Seat 结果或 Verdict；Artifact Revision 的评审引用是 Project → Run 的既有连接 | review_subject_digest；基线或结果树变化即新版本，旧票失效 |
-| 平台事件 → Repo | 评论、批准/请求修改、检查结果、合并状态、账号映射 | 按 Repo 模块的逐项分类处理：content、外部评审证据、外部机械事实、或只作分歧；控制面自己写回的事件排除 | 事件引用 + 当前回读；重复、迟到、乱序得到相同结果 |
-| human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs（集成结果只认 Repo 模块的 Integration Receipt） | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
+| 平台事件 → Repo | 评论、批准/请求修改、检查结果、合并状态、账号映射 | 按 Repo 模块的逐项分类处理：content、外部评审证据与机械事实；按冻结前置判断分歧；控制面自己写回的事件排除 | 事件引用 + 当前回读；重复、迟到、乱序得到相同结果 |
+| human Kanban / Run reducer → Task | human provenance，或正常完成 Run ref；被冻结的 Task Revision ref、Revision/Evidence/Verdict/Receipt refs（集成结果为 Repo 模块的 Integration Receipt，或该模块核验且契约事先接受的精确平台集成 Evidence） | human actor 或 task-bound Run reducer 提交同一个「完成 Task」命令；Task 按当前验收约束独立校验 | 「完成 Task」命令 id → Task Completion Receipt；Harness 只提供证据 |
 | Task/Run/Participant/Repo → Project | source ref、event id/sequence、版本、敏感级别 | Project 只建低噪声投影；Memo/Artifact 仍需 Project 命令发布 | source event cursor，可从来源的治理记录重建 |
 
 ## Project → Task：从讨论到承诺
@@ -66,9 +66,9 @@ Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。�
 - 标题、预期结果、验收约束、角色/能力和可选外部来源绑定；
 - 规范化 proposal digest、actor/permission 与 idempotency key。
 
-Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。创建命令先提交 Task 身份、后端 outbox 和关联键；只有命令携带初始契约时，才另写 Revision 准入意图和 Git 正文 outbox。确认回执未知时按原关联键分别回读，不能创建第二个 Task 或卡片。content-first 卡片只有唯一归属一个 Project 分组时，才能被认领为无契约 Task。
+Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。创建命令携带初始契约时，先在事务外保存治理正文，再提交 Task 身份、Task Revision 的准入与定位摘要、后端 outbox 和关联键；不带契约只创建无契约 Task。确认回执未知时按原关联键分别回读，不能创建第二个 Task 或卡片。content-first 卡片只有唯一归属一个 Project 分组时，才能被认领为无契约 Task。
 
-“采纳契约”命令在 `hctl2-tool` 回读 Git 正文后准入不可变 Task Revision，并返回精确引用；完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision。普通消息、总结、父分组实体和拖放都不能创建 Task，也不能改变 Task 的 Project 归属。
+“采纳契约”命令在控制面保存并核验精确治理正文后，以预期版本与权限校验准入不可变 Task Revision，并返回精确引用；完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision。普通消息、总结、父分组实体和拖放都不能创建 Task，也不能改变 Task 的 Project 归属。
 
 ## Project / Task → Run：授权自动施工
 
@@ -99,11 +99,11 @@ execution owner stable ref + invocation_version | attempt_generation
 + required/optional Skill refs + digests（来自选入记录，逐个附 known | unknown）
 + Harness/Runtime Port–Provider Binding + 接入方式与降级能力
 + terminal input policy（managed_single_writer | native_interactive_allowed；无 Terminal 时省略）
-+ repo_id/base + 可选 selected Repo Instance ref / placement constraints
++ repo_id/base + 获准放置边界（不要求生产目录，按操作保留必要引用）
 + 能力与权限摘要
 + 预算与截止
 + 可选 ChangeSet / Write Lease 规则（对象归 Repo 模块，派工时在此冻结）
-+ 可选评审发布策略（Repo、平台绑定版本、发布目标或其规则、允许创建/更新、描述来源、是否须人显式确认；见 Repo 模块约束）
++ 可选评审发布策略（Repo、平台绑定版本、发布目标或其规则、允许创建/更新、描述来源、是否须人显式确认与审计公开范围；见 Repo 模块约束）
 + 可选执行加固声明（来自 Worker Profile：OS 沙箱、凭据代用范围、网络目的地与工具接口白名单）
 + spec digest 与幂等键
 ```
@@ -115,17 +115,17 @@ execution owner stable ref + invocation_version | attempt_generation
 外部运行时的启动顺序固定为：
 
 1. 归属模块提交 Execution Spec 与派发 outbox；此时只有 `invocation_version | attempt_generation`，不得预填运行时身份。
-2. Agency 适配器先校验当前 control、site 和绑定代次，再向 Agency 要人。Agency 交付执行体端点：返回实际能力、物理目标、Execution Runtime ID 和新的 `runtime_generation`。实际能力缺少任何已声明的加固项时，control 必须拒绝激活并列出缺项。Agency 不能回显的代次栅栏必须记录为未生效。
+2. Agency 适配器先校验当前 control 和绑定代次，再向 Agency 要人。Agency 交付执行体端点：返回实际能力、物理目标、Execution Runtime ID 和新的 `runtime_generation`。实际能力缺少任何已声明的加固项时，control 必须拒绝激活并列出缺项。Agency 不能回显的代次栅栏必须记录为未生效。
 3. control 在用户级控制面事务中记录归属者到 Execution Runtime 的精确映射、适用的 Write Lease 和激活 outbox。
-4. outbox 同时携带归属者版本或代次、运行时代次、control writer generation、site generation 与 Agency binding owner generation。适配器按完整字段组再次校验后向执行体端点提交激活并回读；本地参考实现的端点经 Herdr API 到达。声明代次栅栏回显的端点拒绝旧代次、旧租约和重复激活；未声明该能力的只在 HCTL 入口校验，绕过入口的动作按低信任处理。
+4. outbox 同时携带归属者版本或代次、运行时代次、control writer generation 与 Agency binding owner generation。适配器按完整字段组再次校验后向执行体端点提交激活并回读；本地参考实现的端点经 Herdr API 到达。声明代次栅栏回显的端点拒绝旧代次、旧租约和重复激活；未声明该能力的只在 HCTL 入口校验，绕过入口的动作按低信任处理。
 
-代次分三组记录。第一组标识语义归属者：`invocation_version` 或 `attempt_generation`。第二组标识物理执行：`runtime_generation`。第三组排除旧基础设施写入：control、site 和 Agency 绑定代次。选入记录版本、绑定版本、producer sequence 和 content cursor 都不属于代次。六个代次的成员、权威落点与推导禁令见[代次家族总表](./system.md#代次家族)。
+代次分三组记录。第一组标识语义归属者：`invocation_version` 或 `attempt_generation`。第二组标识物理执行：`runtime_generation`。第三组排除旧基础设施写入：control 和 Agency 绑定代次。选入记录版本、绑定版本、producer sequence 和 content cursor 都不属于代次。五个代次的成员、权威落点与推导禁令见[代次家族总表](./system.md#代次家族)。
 
-如果冻结的端口明确是受信任的纯进程内同步调用，Execution Spec 必须写 `execution_mode = in_process`，可以没有 Repo Instance、Runtime/Terminal、运行时/现场/Agency 绑定代次或租约。
+如果冻结的端口明确是受信任的纯进程内同步调用，Execution Spec 必须写 `execution_mode = in_process`，可以没有 Runtime/Terminal、运行时/Agency 绑定代次或租约。
 
 它的 Result Proposal 改为固定归属者版本或代次、control writer generation、Extension/Port–Provider Binding、spec/bundle digest 和 producer sequence，且不能提交 ChangeSet 或声称物理隔离与连接能力。
 
-除此之外不得省略物理字段组。派发或激活的确认回执只证明执行已被接受，不证明产生了语义结果。
+除此之外不得省略物理字段组。派发前按 [Project 的交付约束](./project.md#根-context-manifest)核验实际交付摘要与必需材料的送达，未满足时不激活执行。派发或激活的确认回执只证明执行已被接受，不证明产生了语义结果。
 
 ## Participant → Project / Run：结果准入
 
@@ -144,7 +144,7 @@ control inbox 先按提案标识符、producer sequence 和归属者去重。随
 
 ## Human Kanban / Run reducer → Task → Project：验收与回流
 
-无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef、测试证据，以及验收契约要求代码集成时 Repo 模块的 Integration Receipt，然后提交“完成 Task”命令，不生成 Run 专属的 Gate Receipt。验收约束要求内部独立 Gate 时，Task 先授权 Run；接受可回读的外部评审证据时，平台的批准与检查状态由 Repo 模块回读，能证明什么由契约定。
+无 Run 路径中，有权 human actor 在 Kanban 预览精确 ChangeSet Revision/Artifact Revision、ReviewSubjectRef、测试证据，以及验收契约要求代码集成时，Repo 模块的 Integration Receipt 或契约事先接受、由 Repo 核验的精确平台集成证据，然后提交“完成 Task”命令，不生成 Run 专属的 Gate Receipt。验收约束要求内部独立 Gate 时，Task 先授权 Run；接受可回读的外部评审证据时，平台的批准与检查状态由 Repo 模块回读，能证明什么由契约定。
 
 有 Run 路径中，Run 返回冻结的 Task Revision、终止原因及 Verdict/Receipt/评审对象引用，并按 `completion_pending` 机制提交同一命令。两条获准来源与 Task 独立验收规则见[Task 写入约束](./task.md#写入约束)。Task 拒绝自动命令时，Run 保持完成，Task 保持开放并显示需要关注。
 
@@ -185,13 +185,13 @@ Task 路径的验收证据 → Task Completion Receipt
 
 ## 失败与恢复
 
-命令幂等、outbox/inbox、确认回执回读、control writer generation、site generation、Agency binding owner generation 和租约恢复算法只由[系统边界](./system.md#命令与跨服务正确性)定义。本节只规定连接恢复后五模块可观察到的结果：
+命令幂等、outbox/inbox、确认回执回读、control writer generation、Agency binding owner generation 和租约恢复算法只由[系统边界](./system.md#命令与跨服务正确性)定义。本节只规定连接恢复后五模块可观察到的结果：
 
 | 失败点 | 连接语义 |
 | --- | --- |
 | 目标事务提交前来源已变化 | CAS 拒绝，不创建下游事实 |
 | 目标已提交、调用方未收到结果 | 恢复后返回同一目标引用，不出现第二个下游对象 |
-| 归属者身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接 |
+| 归属者身份可证明但外部结果仍未知 | 连接保持待启动/需要关注，来源不会被伪装成已交接；单纯不可达不证明身份丢失，网络失败不触发控制面重建供应端目录 |
 | 归属者、运行时、租约或任一适用的代次栅栏无法证明 | Attempt 或 Room Invocation 必须进入丢失。control 在同一事务中撤销输入/写租约，并提交旧运行时的停止与隔离 outbox。迟到流和结果只留审计；Retry 必须创建新的归属者、Execution Spec 和运行时代次。此行是执行身份丢失处理规则的唯一定义，模块约束引用而不复述 |
 | 归属者取消或被替代 | 停止新派发，撤销写入/输入权并等待物理执行静默；迟到结果只留历史 |
 | chat server 不可用 | 不依赖新消息/成员/cursor 的 metadata 命令可继续；依赖聊天当前回读的准入拒绝，聊天入口显示重同步中 |
@@ -203,6 +203,8 @@ Task 路径的验收证据 → Task Completion Receipt
 | 远端集成或发布评审的结果未知 | 意图保持结果未知并继续占用冲突范围，不改道、不签成功 Receipt；按 [Repo 模块约束](./repo.md#恢复)分目标回读收敛，本地已有同一结果树也不解锁 |
 | 节点的外部机械事实前置读不到 | 该节点不派发并标需要关注；已派发的执行不受影响；事实可读后按当前观察重新判定 |
 | 其他外部适配器不可用 | 已冻结的本地事实继续存在；连接显示待启动/需要关注或安全暂停 |
+| 精确结果待交，控制面离线或恢复旧备份 | 发送方保管到接收方确认同一结果已保全；恢复核原授权与既有处理，缺依据走显式恢复，不要求原进程或临时树仍在 |
+| 治理正文已保存但未准入，或准入后交付未确认 | 按原命令返回同一候选或准入结果；保护待准入及待交付材料，镜像或交付失败不伪造成功 |
 | 场景投影丢失 | 从五模块的治理记录和 source event cursor 重建，不从外部界面反推事实 |
 
 系统对账完成前，各模块都不得表现为已完成交接。连接产生的新尝试或替代执行必须拥有新的归属者版本或代次、Execution Spec 与运行时代次；不能复活旧归属者。

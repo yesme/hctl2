@@ -52,7 +52,7 @@
 | 修 一致性修正 | Fable | —（轻审：Grok、GLM） | — | — | — | Codex（他写的清单） |
 | R 计票与读回口径 | Fable | Codex | Grok | K3 | Muse（Gemini 2026-09-13 因 API 地区限制缺席，按 §五 第 7 条换人；Muse Spark 1.2） | GLM |
 | A 架构 | Fable | Codex | Grok | GLM，另加 Muse 试一次逐行勾稽 | K3（Gemini 不可用，2026-09-13 起） | GLM |
-| C Repo 与治理正文 | Codex | Fable | Grok | K3 | Muse（Gemini 不可用） | GLM |
+| C Repo 与治理正文 | Codex | Fable | Grok | K3（方案陪审；W.2 加席轻审：跨文件一致性与失败路径，所有者 [2026-09-14 席位变更](https://github.com/yesme/hctl2/pull/227#issuecomment-5658814226)） | Muse（Gemini 不可用） | GLM |
 | B 系统边界与 Participant | Fable | Codex | Grok | K3 | Muse（Gemini 不可用） | GLM |
 | D 看板、Run 交接与交付 | Fable | Codex | Grok | GLM | Muse（Gemini 不可用） | K3 |
 | 本施工图 | Fable | — | — | — | Muse（不在讨论里） | — |
@@ -143,8 +143,8 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | R W.1–W.4 | 完成 · 合入 `0015380`（v0.17.7）；合并后核对（GLM，https://github.com/yesme/hctl2/pull/221#issuecomment-5647581370 ）：无回退 | #221 |
 | A P.1–P.7 | 完成 · 所有者 2026-09-13 逐条拍板（五项全按推荐），方案 v4 随 #222 合入 | PR #222 |
 | A W.1–W.4 | 完成 · 合入 bdc0c09；合并后核对（GLM）：一处链接文字随 C W.1 修 | #223，v0.18.0 |
-| C P.1–P.7 | 进行中 · P.1–P.6 完成；P.7 已拍板，方案 v4 已按两条裁决评论更新；待所有者合入 | [11-batch-c-plan.md](./11-batch-c-plan.md)；#224，分支 `codex/batch-c-plan` |
-| C W.1–W.4 | 未开始 | |
+| C P.1–P.7 | 完成 · 两条所有者裁决已落 v4，合入 `97b94f0` | [11-batch-c-plan.md](./11-batch-c-plan.md)；#224 |
+| C W.1–W.4 | 进行中 · W.1 完成；W.2 按所有者 2026-09-14 席位变更加 K3 一席，Fable、Grok（后一条为准）、K3 轻审已齐；W.3 修正完成；W.4 待所有者合入与 GLM 核对；含 A 批链接文字修正 | #227，v0.18.1，分支 `codex/batch-c` |
 | B P.1–P.7 | 未开始 | |
 | B W.1–W.4 | 未开始 | |
 | D P.1–P.7 | 未开始 | |
