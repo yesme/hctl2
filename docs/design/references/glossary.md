@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.18.1<br>
+> 状态：非规范对照 · 草案 v0.18.2<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -17,8 +17,8 @@
 | --- | --- | --- | --- |
 | Agent | 编码代理（泛称） | 泛指 Codex、Claude Code 这类 AI 编码代理，不是模块名；第四个模块见 Participant | [Participant](../participant.md) |
 | Harness | 编码代理工具 | Codex、Claude Code、OpenCode 这类执行编码工作的工具 | [三面架构](../architecture.md#场景与系统) |
-| Agency | 派出方 | 参与者的供给方：维护可派出的名册与条款，按冻结规格交付执行体端点；默认为发布包自带的本地参考实现，运行时用 Herdr | [spec/participant](../spec/participant.md#运行时与观测) |
-| execution runtime | 执行体 | Agency 按一次冻结的执行规格交付的一次具体运行：Harness 进程、装载的 Skill、PTY 或结构化接入；接受派工、报告观测与结果提案 | [Participant](../participant.md#agency-与执行体) |
+| Agency | 派出方 | 参与者的供给方，也是控制面与参与者之间唯一的通路：维护可派出的名册与条款，为每个配对的控制面提供隔离租户，接受派工并对它负责；默认为发布包自带的本地参考实现，运行时选型见交付文档 | [spec/participant](../spec/participant.md#派工与观测) |
+| execution runtime | 执行体 | Agency 门后按一次冻结的执行规格实际干活的运行：Harness 进程、装载的 Skill、会话；控制面不持有它，只持有对 Agency 的派工 | [Participant](../participant.md#agency-与执行体) |
 | Profession | 工种 | Agency 名册里定义的一类可派参与者：Harness、模型、Skill 配置、默认职责倾向与条款；收进来时冻结引用与摘要 | [Participant](../participant.md#agency-与执行体) |
 | planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [Participant](../participant.md#agency-与执行体) |
 | Repo | 仓库 | 人登记的逻辑仓库与声明的平台绑定；也是第五个领域模块的名字，拥有仓库登记、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
@@ -40,10 +40,10 @@
 | Gate | 评审关卡 | 冻结在施工图中、决定结果如何通过的治理节点 | [spec/run](../spec/run.md) |
 | Verdict | 裁决 | 评审席位对精确版本投的一票：通过、要改、拒绝，可带分歧落点 | [spec/run](../spec/run.md) |
 | Receipt | 凭证 | 控制面校验后开出的不可变证明：结论、依据的规则、指向哪几条证据 | [spec/README](../spec/README.md#六族规则) |
-| Terminal | 终端场景 | Participant 模块的场景：观察、诊断和接管精确执行体，也是执行体暴露给 Workbench 的 TUI 接口（participant.tui） | [Participant](../participant.md#terminal-场景) |
+| Terminal | 终端场景 | Participant 模块的场景：经 Agency 观察、诊断和接管一次派工 | [Participant](../participant.md#terminal-场景) |
 | ChangeSet | 变更集 | 一次获准的代码写入边界；对象归 Repo 模块，执行体只在有效写租约下写它的独立工作树 | [spec/repo](../spec/repo.md#changeset-与-git-事实) |
 | Change | 变更 | Repo 模块的场景：看一次变更改了什么、评审怎么说、检查过了没有、进目标了没有；与对象 ChangeSet 不同物，场景给人看的是投影 | [Repo](../repo.md#change-场景) |
-| Evidence | 证据 | 被判定的事实记录（diff、测试输出、CI 状态、`hctl2-tool` 回读），本身不下结论；按证据通道分三级 | [spec/participant](../spec/participant.md#证据通道) |
+| Evidence | 证据 | 被判定的事实记录（diff、测试输出、CI 状态、`hctl2-tool` 回读），本身不下结论；按证据通道分三档：直报、旁路、转述 | [spec/participant](../spec/participant.md#证据通道) |
 | Workbench | 工作台 | 组合五类 provider 客户端、联合投影和 HCTL 公共命令入口的桌面 | [spec/system](../spec/system.md) |
 
 ## 系统组件与常用技术词
@@ -55,6 +55,9 @@
 | 治理正文 | 控制面保管的不可变契约、施工图、Memo 等材料；与治理记录同属一份控制面存储，保存、准入与交付分开，见[系统存储约束](../spec/system.md#控制面自己的存储)；不是新业务对象 |
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令；也是四类单元之一，见[单元与连接](../architecture.md#单元与连接) |
+| 派工 | Dispatch：控制面向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；控制面持有的唯一执行引用，没有主机、隔离域或物理代次字段；见[spec/participant](../spec/participant.md#派工与观测) |
+| 租户 | Agency 为每个配对的控制面开的隔离空间：独立的派工命名空间、会话、工作副本、凭据作用域、观测流与待交结果；跨租户的读取、订阅、输入、取消、结果收取在结构上不可达；见[单写者](../spec/system.md#单写者) |
+| 直报 / 旁路 / 转述 | 证据三档：`unmediated`（获准采集方经模型写不进去的通道提交、来源与所证版本可核）、`adapter_event`（适配器旁路观察到的结构化事件）、`narrated`（模型输出里的声称）；直报有三路来源，参与者内部那一路要 Agency 具备并声明「代为执行工具并直报」；见[证据通道](../spec/participant.md#证据通道) |
 | 单元 | 能独立安装、启动、停止、只靠连接与别的部分来往的部件：控制面、Agency、前端、内容系统；判据、义务与三种关系见[单元与连接](../architecture.md#单元与连接) |
 | 底座 | 各单元共同工作的对象：Git 与平台；仓库不是单元，平台同时是一种内容系统，不因此多算一个单元；见[单元与连接](../architecture.md#单元与连接) |
 | 三种关系 | 单元之间分开说的三件事：放置（字节在哪）、权威（谁能决定它是否生效）、交付（获准材料怎样到达需要它的一方）；见[单元与连接](../architecture.md#单元与连接) |
@@ -62,7 +65,6 @@
 | Repo 某某 | Repo 是各模块共享的作用域限定词：Repo Room 归 Project，Repo Board 归 Task，Repo policy 归系统层；「Repo 模块」指拥有仓库对象的第五个模块，不改变这些归属 |
 | human actor | 有权的人；约束层用 `human actor`，设计层写「人」或「有权的人」 |
 | owner | 归属者；在精确对象或字段名中保留 `owner` |
-| fence | 代次栅栏；在字段名或能力名中保留 `fence` |
 | worktree | Git 工作树；命令与路径中保留 `worktree` |
 | ID | 标识符；字段名中保留 `id` |
 | claim | 认领；字段名或外部 API 名中保留原形 |
@@ -86,7 +88,7 @@
 | --- | --- |
 | content 写入与观测 | 客户端改变 provider 拥有的消息、卡片等 content，control 按 Snapshot/cursor 对账 |
 | human 命令请求 | direct client 或模块接纳的 provider event 形成同一个 HCTL command draft，并经过 Preview 与准入 |
-| 运行时输入 | 向精确 Execution Runtime 输入，并按连接票据、租约与代次能力记录恢复等级 |
+| 运行时输入 | 经 Agency 向某次派工输入，并按连接票据、租约与 Agency 声明的能力记录恢复等级 |
 | Result Proposal | Harness/Agency 交给归属者校验的结果与证据 |
 | 不支持的 provider mutation | 先改变外部机械状态、无法保持 HCTL 副作用顺序的管理动作，只回读为分歧 |
 
@@ -99,7 +101,7 @@
 | Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
 | Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
-| Terminal | Agency 供给的执行体（默认：本地参考实现，运行时 Herdr） | 会话转录、PTY 流 |
+| Terminal | Agency（默认：本地参考实现） | 会话转录、PTY 流 |
 | Change | SCM platform（代码协作平台；按 Repo 绑定：外部平台缺省选型 GitHub，只在本地的 Repo 缺省绑定随包的本地平台，选型 Gitea） | 评审线程、检查结果、合并状态 |
 
 权威对照见[三面架构](../architecture.md#场景与系统)。Participant（模块与参与者实例）、Profession（工种）、Agency（派出方）、执行体（execution runtime）与 Agent（编码代理的泛称）是五个不同词，planner 与 worker 只是 Participant 的两顶帽子；`provider` 泛指模块供应端，并非跨模块对象。
@@ -141,11 +143,10 @@ Project 不持有成员名单，只持有选人策略；选进 Room 的规划者
 | --- | --- | --- |
 | Write Lease | 写入租约 | 一个 ChangeSet 的当前写权；归 Repo 模块，失权时 Participant 停止或隔离旧执行 |
 | Terminal Input Lease | 终端输入租约 | 一个受 HCTL 管理的终端目标输入权 |
-| Agency binding owner lease | 派出方端口的归属者租约 | 一个 Agency 端口 Port–Provider Binding 的范围（同一服务器、套接字或主机命名空间）同时只有一个归属者，与其代次成对；旧代次失权（见[单写者](../spec/system.md#单写者)） |
 
 控制面存储排他与工作副本中用于冲突写入的 OS 锁不是 Lease 对象，具体机制是实现细节；约束本身见[系统边界](../spec/system.md#单写者)。
 
-全系统共用五种彼此独立的代次：控制面存储写入者、Agency 绑定归属者、Attempt／Room Invocation 的语义归属者、Execution Runtime，以及 Run–Engine Binding 各使用自己范围内的一种。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
+全系统共用三种彼此独立的代次：控制面存储写入者、Attempt／Room Invocation 的语义归属者，以及 Run–Engine Binding 各使用自己范围内的一种。Agency 门后的进程与会话更替不是代次，派工引用也不是代次。成员、范围和推进时机见[系统边界的代次家族](../spec/system.md#代次家族)。Participant/Binding revision、producer sequence 与 cursor 属于版本或顺序概念，不是代次。
 
 ## 命令族（持久命令与副作用）
 
@@ -165,7 +166,7 @@ Project 不持有成员名单，只持有选人策略；选进 Room 的规划者
 | --- | --- | --- |
 | Execution Spec | 执行规格 | 派发执行时冻结归属者、Context、Participant、Skill、Profile 与权限 |
 | Run Manifest | 施工清单 | 启动 Run 时冻结 Project/Task/Workflow、候选、规则与预算 |
-| Attach Descriptor | 连接票据 | 连接精确终端目标的短期凭据 |
+| Attach Descriptor | 连接票据 | 经 Agency 连接某次派工终端的短期凭据 |
 | Context Manifest | 根上下文清单 | 顶层授权冻结的目的、来源、新鲜度、缺口与边界 |
 | Context Bundle | 消费上下文包 | 一次执行实际收到的有序内容、工具版本与 bytes digest |
 
@@ -174,7 +175,7 @@ Project 不持有成员名单，只持有选人策略；选进 Room 的规划者
 | 名字 | 中文对照 | 一句话含义 |
 | --- | --- | --- |
 | Room Invocation | 单次调用 | 从 Room 发起的一次有边界 Harness 调用 |
-| Execution Runtime | 执行运行时 | 一次执行的主机、隔离域、代次与终端通道 |
+| Dispatch | 派工 | 向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；无主机、隔离域或物理代次字段，终端通道是其字段组 |
 | Worker Profile | 执行者配置 | Harness、模型、模式、权限与可选加固的复用组合 |
 
 ## 引用格式（不是对象）
@@ -191,7 +192,6 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | Run 引用 | `run_ref` | [run.md](../spec/run.md) |
 | Run 标识符 | `run_id` | [connections.md](../spec/connections.md) |
 | Run 状态版本 | `run_version` | [run.md](../spec/run.md) |
-| `hctl2-tool` 直接回读 | `toolbox_readback` | [participant.md](../spec/participant.md) |
 | 上下文包摘要 | `bundle_digest` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
 | 不可变外部实体标识符 | `immutable_external_entity_id` | [task.md](../spec/task.md) |
 | 不支持 | `unsupported` | [run.md](../spec/run.md) |
@@ -207,7 +207,7 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 内部归约器 | `internal_reducer` | [system.md](../spec/system.md) |
 | 分组类型 | `group_kind` | [task.md](../spec/task.md) |
 | 分组锚点稳定标识符 | `group_anchor_stable_id` | [task.md](../spec/task.md) |
-| 单次调用版本 | `invocation_version` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md)、[system.md](../spec/system.md) |
+| 单次调用版本 | `invocation_version` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md)、[system.md](../spec/system.md) |
 | 受管单写者 | `managed_single_writer` | [participant.md](../spec/participant.md) |
 | 只读关联 | `linked_readonly` | [task.md](../spec/task.md) |
 | 后端权威 | `backend_authoritative` | [task.md](../spec/task.md) |
@@ -217,26 +217,27 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 外部看板项标识符 | `external_board_item_id` | [task.md](../spec/task.md) |
 | 契约内 | `contract` | [run.md](../spec/run.md) |
 | 实现内 | `implementation` | [run.md](../spec/run.md) |
-| 尝试代次 | `attempt_generation` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 尝试代次 | `attempt_generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
 | 工件版本标识符 | `artifact_revision_id` | [project.md](../spec/project.md) |
 | 工件状态版本 | `artifact_version` | [project.md](../spec/project.md) |
 | 已知 | `known` | [run.md](../spec/run.md) |
-| 引擎绑定代次 | `engine_binding_generation` | [run.md](../spec/run.md)、[system.md](../spec/system.md) |
+| 引擎绑定代次 | `engine_binding_generation` | [connections.md](../spec/connections.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
 | 当前 | `current` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md) |
 | 执行主体 | `execution_principal` | [system.md](../spec/system.md) |
-| 执行模式 | `execution_mode` | [connections.md](../spec/connections.md) |
 | 指针 | `pointer` | [project.md](../spec/project.md)、[run.md](../spec/run.md) |
 | 接受 | `accepted` | [run.md](../spec/run.md) |
-| 控制面写入者代次 | `control_writer_generation` | [system.md](../spec/system.md) |
+| 控制面写入者代次 | `control_writer_generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
 | 控制面权威 | `hctl_authoritative` | [task.md](../spec/task.md) |
 | 放置范围稳定标识符 | `placement_scope_stable_id` | [task.md](../spec/task.md) |
+| 旁路（适配器事件） | `adapter_event` | [participant.md](../spec/participant.md)、[task.md](../spec/task.md) |
 | 未知 | `unknown` | [run.md](../spec/run.md)、[system.md](../spec/system.md) |
-| 机械可判 | `mechanical` | [task.md](../spec/task.md) |
+| 机械可判 | `mechanical` | [participant.md](../spec/participant.md)、[task.md](../spec/task.md) |
 | 根上下文清单摘要 | `manifest_digest` | [connections.md](../spec/connections.md)、[project.md](../spec/project.md) |
 | 根上下文清单标识符 | `context_manifest_id` | [project.md](../spec/project.md) |
 | 法定票数不可达 | `quorum-unreachable` | [run.md](../spec/run.md) |
 | 活动 | `active` | [connections.md](../spec/connections.md)、[run.md](../spec/run.md)、[task.md](../spec/task.md) |
 | 状态版本 | `state_version` | [task.md](../spec/task.md) |
+| 直报 | `unmediated` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[run.md](../spec/run.md)、[task.md](../spec/task.md) |
 | 直接客户端 | `direct_client` | [system.md](../spec/system.md) |
 | 看板范围稳定标识符 | `board_scope_stable_id` | [task.md](../spec/task.md) |
 | 端口类型 | `port_kind` | [task.md](../spec/task.md) |
@@ -250,9 +251,6 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 请求卡版本 | `request_version` | [project.md](../spec/project.md) |
 | 账号稳定标识符 | `account_stable_id` | [task.md](../spec/task.md) |
 | 转述 | `narrated` | [participant.md](../spec/participant.md) |
-| 运行时代次 | `runtime_generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[run.md](../spec/run.md)、[system.md](../spec/system.md) |
-| 进程内 | `in_process` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md)、[system.md](../spec/system.md) |
-| 适配器事件 | `adapter_event` | [participant.md](../spec/participant.md) |
 | 项目标识符 | `project_id` | [connections.md](../spec/connections.md)、[task.md](../spec/task.md) |
 | 项目版本 | `project_version` | [project.md](../spec/project.md) |
 | 项目范围 | `project_scope` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md) |

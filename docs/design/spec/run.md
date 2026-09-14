@@ -1,6 +1,6 @@
 # Run 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.1<br>
+> 状态：规范性约束 · 草案 v0.18.2<br>
 > 本文是 Run 模块对象、状态机与写入者的唯一权威；设计正文见 [Run 与 Workflow](../run.md)，族规则与词汇分类见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -73,12 +73,12 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 - Project、0..1 个 Task Revision、Workflow Revision 与 Engine Deployment；
 - repo/base revision、根 Context Manifest ref+digest、逻辑 Seat 与各席位职责；
-- 每个 Seat 的要求（工种、Skill、证据等级）与选入记录（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)），含获准的 Worker Profile 候选范围；
+- 每个 Seat 的要求（工种、Skill、证据等级）与选入记录（字段见[连接约束](./connections.md#project--run--participant从授权到派工)），含获准的 Worker Profile 候选范围；
 - 受控端口绑定、获准 Worker Profile 候选、切换规则、能力、权限与网络/secret 范围；
 - Gate（法定票数、席位多样性策略、返工轮数上限、是否允许增量评审）、预算、放置、过渡态超时和截止规则；
 - 批准施工图时引用的读回记录（Workflow Revision 声明关闭读回时可无）。
 
-施工图的席位只写要求，不写人。「启动 Run」的预览按要求从 Agency 名册选施工者，冻结进 Manifest；候选须满足 Project 选人策略（允许的 Agency 与工种、预算上限、多样性要求），席位多样性声明不满足时启动拒绝；按全部获准候选与已冻结引用算出的最多可能通过票数（算法见[计票与结束](#计票与结束)）少于 Gate 法定票数时同样启动拒绝，交付内容尚不能确定时不把未知当相同、只作预览警告、运行中再判；这次选人独立于 Room 名册，Room 里的规划者不自动成为席位上的施工者。启动后席位不换人：候选切换只在选入记录的获准候选范围内更换 Worker Profile 与执行体，工种、Agency、职责、权限、票位不动，不产生新席位与新票；更换工种、Agency 或超出候选范围必须替代 Run。Room 名册可以为将来的调用换人，活动 Run 不允许换施工者。
+施工图的席位只写要求，不写人。「启动 Run」的预览按要求从 Agency 名册选施工者，冻结进 Manifest；候选须满足 Project 选人策略（允许的 Agency 与工种、预算上限、多样性要求），席位多样性声明不满足时启动拒绝；按全部获准候选与已冻结引用算出的最多可能通过票数（算法见[计票与结束](#计票与结束)）少于 Gate 法定票数时同样启动拒绝，交付内容尚不能确定时不把未知当相同、只作预览警告、运行中再判；这次选人独立于 Room 名册，Room 里的规划者不自动成为席位上的施工者。启动后席位不换人：候选切换只在选入记录的获准候选范围内更换 Worker Profile、由控制面另发一次派工，工种、Agency、职责、权限、票位不动，不产生新席位与新票；更换工种、Agency 或超出候选范围必须替代 Run。Room 名册可以为将来的调用换人，活动 Run 不允许换施工者。
 
 绑定 Task Revision 的 Run 表示对该完整 Task 验收约束的一次施工授权，因此只有它正常完成才具备提交 Task 完成命令的资格。只覆盖局部研究、咨询或中间步骤的自动化必须使用无 Task Run 或 Room Invocation，并以稳定引用把结果交回 Task；不能绑定 Task 后再依靠 Prompt 声明“这次不算完整施工”。
 
@@ -88,11 +88,11 @@ Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和�
 
 每个 Task 至多一个 `active | completion_pending` 占用标记；相同幂等键的第二次启动返回原 Run，其他启动返回类型化冲突，不能只靠引擎关联键去重。Project 已归档、Task 无契约、Project 不匹配或已有占用标记时，命令必须拒绝。
 
-“替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧运行时、输入与写租约和归属者专用的代次栅栏，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。替代只撤销旧 Run 及其执行的授权，不得使其他获准执行失权；工作副本的隔离与目标引用按 [Repo 约束](./repo.md#changeset-与-git-事实)核验。
+“替代 Run”不是先取消再另起。同一事务校验旧 Run/version，撤销旧派工、输入与写租约，把旧 Run/Obligation/Seat/Attempt 置为被替代并提交停止与隔离 outbox。同时，事务创建新 Run/Manifest，并把唯一 Task 占用标记从旧引用转到新引用。替代只撤销旧 Run 及其执行的授权，不得使其他获准执行失权；工作副本的隔离与目标引用按 [Repo 约束](./repo.md#changeset-与-git-事实)核验。
 
-新执行必须使用新的 Execution Spec 和运行时代次。旧写入未能在物理上证明静默时，还必须按 [Repo 模块约束](./repo.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
+新执行必须使用新的 Execution Spec 和新的派工。旧写入未能在物理上证明静默时，还必须按 [Repo 模块约束](./repo.md#changeset-与-git-事实)使用新的 ChangeSet 和 Git 工作树。事务任一步失败时都不得转移占用标记。
 
-运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
+运行中只有 Manifest 明确声明为可变的放置参数可以按冻结规则和边界调整；放置参数指控制面授权范围与对外交付目标，Agency 内部搬机、换目录不是放置调整，不更新 Run version、不产生审计。每次调整都校验预期 Run version，并留下固定前后值、适用规则、actor 和 Run version 的不可变审计事件。范围、验收、候选、权限、Gate 或超出获准边界的放置变化必须创建替代 Run，不能原地漂移。
 
 HCTL Profile 的规则分四组：
 
@@ -108,12 +108,12 @@ HCTL Profile 的规则分四组：
 本节定义 Run 内部归约；对 Participant 模块的派发、结果信封和故障恢复见[连接约束](./connections.md)。
 
 1. control 观察到 Engine 检查点在某个 HCTL 外部节点进入等待态，按 Run、节点与观察序号幂等创建唯一 Obligation；Dagu 的依赖、条件和等待等机械节点不创建 Obligation。control 只依据当前有效 Run–Engine Binding 的当前观察创建义务。绑定分歧待对账、引擎停报进度，或观察来自缓存、迟到事件或旧游标时，control 不创建新 Obligation；已经创建的义务照常验收与判决。
-2. control 按规则创建 Seat，并为候选产生 Execution Spec。若 Workflow Revision 为该节点声明了外部机械事实前置（某提交的 CI 状态、PR 是否合并、引用是否推进、路径存在且摘要匹配），control 先经 `hctl2-tool` 回读该事实：成立才派发；不成立按冻结策略等待或沿失败边推进；读不到则不派发并标需要关注。事实只能来自 `hctl2-tool` 回读，执行体、适配器转述或模型自述都不能满足前置。前置是准入条件：不占席位、不投票、不创建 Obligation。
-3. [Participant](./participant.md) 模块执行 Attempt，只能返回 Result Proposal、Revision 和证据。
+2. control 按规则创建 Seat，并为候选产生 Execution Spec。若 Workflow Revision 为该节点声明了外部机械事实前置（某提交的 CI 状态、PR 是否合并、引用是否推进、路径存在且摘要匹配），control 先取得该事实的直报（`unmediated`）证据：成立才派发；不成立按冻结策略等待或沿失败边推进；读不到则不派发并标需要关注。事实只能来自直报，参与者、适配器旁路事件或模型自述都不能满足前置。前置是准入条件：不占席位、不投票、不创建 Obligation。
+3. [Participant](./participant.md) 模块经 Agency 派工执行 Attempt，只能返回 Result Proposal、Revision 和证据。
 4. control 与 `hctl2-tool` 校验精确绑定、代次、权限、ReviewSubjectRef 和证据；通过后形成 Seat 结果、Verdict 或 Receipt。
 5. 领域结果与引擎完成 outbox 先持久提交，再经 Dagu `human.task` API 推进该检查点；确认回执未知时先回读再重投。引擎报告的进度与治理记录不一致时——例如检查点已被引擎自行推进、从界面完成或重试——control 只把 Run–Engine Binding 标为分歧并对账，不改写任何 HCTL 结果。
 
-Execution Spec 必须固定 Attempt、Seat、Run、选入记录引用与本次实际选用的 Worker Profile（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，`runtime_generation` 标识物理执行，control/Agency 代次排除旧基础设施动作；三组代次必须分别校验。
+Execution Spec 必须固定 Attempt、Seat、Run、选入记录引用与本次实际选用的 Worker Profile（字段见[连接约束](./connections.md#project--run--participant从授权到派工)）、Context、Skill 和可选 ChangeSet 的精确引用。`attempt_generation` 标识语义执行，派工引用标识 Agency 对这次执行的承诺，`control_writer_generation` 排除旧写者的动作；语义代次、派工引用与写者代次必须分别校验。
 
 Attempt 的状态与合法转移如下。未列出的状态转换必须返回类型化拒绝。
 
@@ -123,7 +123,7 @@ Attempt 的状态与合法转移如下。未列出的状态转换必须返回类
 | 运行中 | 等待输入 / 已交提案 / 失败 / 丢失 / 已取消 / 被替代 |
 | 等待输入 | 运行中 / 已交提案 / 失败 / 丢失 / 已取消 / 被替代 |
 
-“已交提案”只表示 Proposal 已冻结，不表示 Seat、Gate、Run 或 Task 成功。归属者对 Proposal 的准入或拒绝推进 Seat/Obligation；修正或重新施工必须创建新的 Attempt 和 Proposal，不能复活旧 Attempt。状态只由 control 根据 Agency 观测与网关第一方观测推进，全部终态不可复活。
+“已交提案”只表示 Proposal 已冻结，不表示 Seat、Gate、Run 或 Task 成功。归属者对 Proposal 的准入或拒绝推进 Seat/Obligation；修正或重新施工必须创建新的 Attempt 和 Proposal，不能复活旧 Attempt。状态只由 control 根据 Agency 的报告与控制面自己的观测推进，全部终态不可复活。
 
 Attempt 的 Context Bundle 按 [Project 约束](./project.md#context-memo-artifact)的交付方式装入同 Run 前序节点的结果。Gate Seat 的 ReviewSubjectRef 所指 Revision 与返工 Seat 所依据的 Verdict 正文是必用条目：预算内使用 `inline`，超出预算时改为 `pointer` 并附分片建议。Verdict 以治理记录物化；超预算的正文先交付成可核验、可重读的精确副本，再作 `pointer`，公开审计摘要不能替代返工正文。
 
@@ -145,13 +145,13 @@ Run 只在匹配确认回执或观测后恢复绑定执行；节点仍通过正�
 | 语义返工 | changes_requested 汇总，且分歧落点在实现 | 新 ChangeSet Revision/Artifact Revision，旧票失效并重新过 Gate（全量或按策略增量） | Run、Task Revision |
 | 替代执行 | 范围、验收、候选或权限变化 | 替代 Run 或新 Task Revision | Project、Task 身份 |
 
-只有冻结策略列明的类型化技术故障才可以切换 Attempt，例如候选特有的认证、配额或网络故障，进程或运行时丢失，以及租约超时。control 先隔离当前代次，再在候选、预算和剩余截止时间允许时，于同一 Seat 创建新 Attempt。
+只有冻结策略列明的类型化技术故障才可以切换 Attempt，例如候选特有的认证、配额或网络故障、Agency 报无法履约，以及租约超时；Agency 在冻结规格内的内部重启、改派或搬机不是候选切换，也不凑新票。control 先撤销当前派工的授权，再在候选、预算和剩余截止时间允许时，于同一 Seat 创建新 Attempt 与新派工。
 
 候选耗尽且必须取得额外输入或授权时创建 Request；否则把 Seat/Obligation 标为类型化技术失败，不能无限等待或伪装成语义驳回。单个 Seat 的接受（`accepted`）、驳回（`rejected`）或要求修改（`changes_requested`）只是归约器输入；只有策略声明的否决权或汇总结果才触发返工，不能用负面票偷偷更换裁判。要求修改（`changes_requested`）可携带分歧落点实现内（`implementation`）或契约内（`contract`）：落在实现时按语义返工路径处理；落在契约时，归约器不进入返工也不自动替代，只把 Task 标为需要关注并建议采纳新 Task Revision，替代与否归人。
 
 Gate 是 Run 内由 Workflow Revision 与 Run Manifest 冻结的治理节点和规则，不是独立模块。它的每个 Seat 绑定同一精确 ReviewSubjectRef、评审策略引用与摘要、根 Context Manifest 引用与摘要、关卡级必需 Skill 引用与摘要、能力与权限策略引用与摘要，并各自冻结席位的选入记录；席位级的 Skill 与执行配置按各席位的要求冻结，可以不同——席位间的多样性正是从这里来的。
 
-被评审 Revision 的生产者——产出它的 Attempt 所属席位的选入记录——不得占用必需评审 Seat，同一 Run 内按选入记录比对；无 Run 路径的作者靠「回避作者所用 Worker Profile」策略回避。必需评审 Seat 绑定互不相同的选入记录，这是身份要求；**计票去重**是效力规则，前者不蕴含后者。Gate 策略可声明席位多样性：Worker Profile 互异、接入的 harness 互异、证据通道互异、回避作者所用的 Worker Profile；声明了而选定记录不满足时启动拒绝。无论声明与否去重总是生效：两个 Seat 若投票时实际使用的 Worker Profile 摘要相同、且**交付内容摘要**相同，法定票数只计一票——交付内容摘要只对 Bundle 实际交付的条目与席位必需 Skill 的引用摘要计算，排除消费者身份、计量与保留策略字段，与用于精确准入的完整 `bundle_digest` 不同。两票都留在裁决与审计记录里；重复组内裁决不一致时不计通过票，按其中最不利的裁决处理并标需要关注，否决权照常优先——组何时算作一票见下文[计票与结束](#计票与结束)。人设、显示名不参与去重判断。Gate Seat 的 Context Bundle 不得包含本 Gate 其他 Seat 的裁决，也不得包含控制面附加的作者身份或作者所用 Worker Profile 的标识——被评对象自带的署名与历史评审材料不在此列；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。去重后的票够不够、什么时候算确定不可达，按[计票与结束](#计票与结束)判，不得靠补席位、改门槛或换人补足；两席 Worker Profile 相同或获准候选范围重叠在预览时警告，交付内容摘要相同在派发后即可预判。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，只能在选入记录的获准候选范围内更换 Worker Profile，不能借此改变 Context、Skill、权限、票位或绕过分离；切换后的实际 Worker Profile 仍须满足本 Gate 声明的席位多样性，不满足的切换拒绝。
+被评审 Revision 的生产者——产出它的 Attempt 所属席位的选入记录——不得占用必需评审 Seat，同一 Run 内按选入记录比对；无 Run 路径的作者靠「回避作者所用 Worker Profile」策略回避。必需评审 Seat 绑定互不相同的选入记录，这是身份要求；**计票去重**是效力规则，前者不蕴含后者。Gate 策略可声明席位多样性，只有两项：Worker Profile（harness、模型、模式、权限的组合）互异、回避作者所用的 Worker Profile；证据通道互异与接入的 harness 互异不作要求，两票都引用同类直报或两席 harness 相同都不因此拒绝；声明了而选定记录不满足时启动拒绝。无论声明与否去重总是生效：两个 Seat 若投票时实际使用的 Worker Profile 摘要相同、且**交付内容摘要**相同，法定票数只计一票——交付内容摘要只对 Bundle 实际交付的条目与席位必需 Skill 的引用摘要计算，排除消费者身份、计量与保留策略字段，与用于精确准入的完整 `bundle_digest` 不同。两票都留在裁决与审计记录里；重复组内裁决不一致时不计通过票，按其中最不利的裁决处理并标需要关注，否决权照常优先——组何时算作一票见下文[计票与结束](#计票与结束)。人设、显示名不参与去重判断。Gate Seat 的 Context Bundle 不得包含本 Gate 其他 Seat 的裁决，也不得包含控制面附加的作者身份或作者所用 Worker Profile 的标识——被评对象自带的署名与历史评审材料不在此列；席位之间的分歧不设商量回合，只经语义返工或分歧落点处理。去重后的票够不够、什么时候算确定不可达，按[计票与结束](#计票与结束)判，不得靠补席位、改门槛或换人补足；两席 Worker Profile 相同或获准候选范围重叠在预览时警告，交付内容摘要相同在派发后即可预判。备用 Attempt 必须继承原 Seat 的逻辑身份和全部评审依据，只能在选入记录的获准候选范围内更换 Worker Profile，不能借此改变 Context、Skill、权限、票位或绕过分离；切换后的实际 Worker Profile 仍须满足本 Gate 声明的席位多样性，不满足的切换拒绝。
 
 control 与 `hctl2-tool` 在计票时同时校验生产者、Participant、角色和权限。重复、越权、过期、身份冲突或摘要不匹配的票不计数；同一 Seat 的备用 Attempt 不增加票。
 

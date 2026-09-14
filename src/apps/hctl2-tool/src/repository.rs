@@ -156,7 +156,7 @@ pub(crate) fn inspect(
     Ok(ToolOutput::json(
         json!({
             "schema": "hctl2.repository-inspection.v1",
-            "evidence_level": "toolbox_readback",
+            "evidence_level": "unmediated",
             "outcome": "established",
             "observed_at_unix_ms": observed_at_unix_ms(),
             "git": {

@@ -80,7 +80,7 @@ fn snapshot_captures_tracked_and_untracked_but_not_ignored() {
     assert_success(&first);
     let record = json_stdout(&first);
     assert_eq!(record["schema"], "hctl2.archive.v1");
-    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["evidence_level"], "unmediated");
     assert_eq!(record["outcome"], "established");
     assert_eq!(record["error"], serde_json::Value::Null);
     let tree = record["result_tree_sha"].as_str().expect("tree");
@@ -781,7 +781,7 @@ fn assert_error_code(output: Output, code: &str) {
         "observation error leaked to stderr"
     );
     assert_eq!(record["schema"], "hctl2.tool-error.v1");
-    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["evidence_level"], "unmediated");
     assert_eq!(record["error"]["code"], code, "{record}");
     assert!(record["error"]["recovery_action"].is_string(), "{record}");
     let expected_exit = match record["outcome"].as_str() {

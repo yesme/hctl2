@@ -147,7 +147,8 @@ N0 的判据（来源 D14）：Muse 的读回评论在本图的 PR 上，作者�
 | C P.1–P.7 | 完成 · 两条所有者裁决已落 v4，合入 `97b94f0` | [11-batch-c-plan.md](./11-batch-c-plan.md)；#224 |
 | C W.1–W.4 | 完成 · 合入 `cc39b5a`（v0.18.1）；W.2 三席（Fable、Grok、K3 加席）轻审、W.3 三处小修；合并后核对（GLM，#227 评论）：无回退；含 A 批链接文字修正 | #227 |
 | B P.1–P.7 | 完成 · P.1–P.6 后裁决到达（节点 X，「裁决 · B 批 · 第一次」），四家「代理原则核查」，v4 重写、Muse 第二次读回，所有者 2026-09-14 拍板（B5 同意、其余同意），方案 v5 随 #228 合入 | [12-batch-b-plan.md](./12-batch-b-plan.md)；#228 |
-| B W.1–W.4 | 未开始 | |
+| B W.1 | 完成 · 动手 PR 已开（分支 `claude/batch-b`，v0.18.2；PR 描述按 12 §六 落点表逐行对照；顺手把 `hctl2-tool` 输出的 `evidence_level` 从 `toolbox_readback` 改为 `unmediated`，Rust 与打包测试同改） | [12-batch-b-plan.md](./12-batch-b-plan.md) |
+| B W.2–W.4 | 未开始 · W.2 Codex + Grok 轻审待所有者点火；W.4 核对席 GLM | |
 | D P.1–P.7 | 未开始 | |
 | D W.1–W.4 | 未开始 | |
 

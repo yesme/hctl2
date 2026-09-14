@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.1<br>
+> 状态：规范性约束 · 草案 v0.18.2<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -8,7 +8,7 @@
 | 对象 | 含义 |
 | --- | --- |
 | Project | 具名目标、范围、角色、健康状态和长期交付物的稳定容器 |
-| Room 名册 | 这个 Room 的规划者名单：每条是一份选入记录（字段见[连接约束](./connections.md#project--run--participant从授权到物理执行)），Room 侧另有名字与人设标签；Scoped Room 以父 Room 名册的某个版本为预填来源生成自己的记录，不活体共享。两端都在 HCTL 内部，不属 Binding 族；工种与 Participant 的定义见 [Participant 模块约束](./participant.md) |
+| Room 名册 | 这个 Room 的规划者名单：每条是一份选入记录（字段见[连接约束](./connections.md#project--run--participant从授权到派工)），Room 侧另有名字与人设标签；Scoped Room 以父 Room 名册的某个版本为预填来源生成自己的记录，不活体共享。两端都在 HCTL 内部，不属 Binding 族；工种与 Participant 的定义见 [Participant 模块约束](./participant.md) |
 | Room | 持久协作空间的身份与治理事实：归属、名册、content 房间绑定、升格与来源关系；消息 content 的 ground truth 在 chat server |
 | Room–Server Binding | Room 到 chat server 房间的绑定（Binding 族）：固定房间稳定 ID、所用聊天端口与 content 事实源；房间升级换 ID 是显式换绑，Room 身份不变。准入前置见[Room 与消息](#room-与消息) |
 | 聊天端口的 Port–Provider Binding | chat server 连接：外部账号、获准身份映射策略、可选的结构化 human 动作清单与实测能力；族定义见[系统边界](./system.md#固定内核与受控端口) |
@@ -16,7 +16,7 @@
 | Request | 向一个人或角色索取信息、授权或决定的一级对象 |
 | Memo | 由用户明确提炼、预览、去敏并发布的稳定知识 |
 | Artifact / Artifact Revision | 经 HCTL 登记的交付物身份及其不可变发布版本 |
-| Room Invocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [Execution Spec](./connections.md#project--run--participant从授权到物理执行) 承载 |
+| Room Invocation | 从 Room 发起的一次边界明确的 Harness 调用；其派发冻结由 [Execution Spec](./connections.md#project--run--participant从授权到派工) 承载 |
 
 ## 写入约束
 
@@ -51,7 +51,7 @@ Project 的目标、范围、角色和默认规则以单调 project_version 更�
 <a id="room-名册"></a>
 Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立：建 Room 或 Trigger Preview 时把 Agency 名册里某个工种的实例选进 Room 成为规划者，启动 Run 时按席位要求选施工者（见 [Run 约束](./run.md#启动与-manifest)）；两处准入都校验候选满足 Project 选人策略。项目本身不持有成员名单，只持有选人策略——允许哪些 Agency 与工种、预算上限、多样性要求——作为 Project 版本化设置的一部分，随 project_version 冻结进下游。名册记录就是一份选入记录，字段只在连接约束定义一次；「角色」只是职责标签字段，不是对象。人不是 Participant：人的权限由 human actor 的命令权限表达；聊天平台的成员名单是 content，HCTL 的规划者名册只列数字参与者。
 
-Room 名册换人只影响将来的调用，不改写活动 Invocation。Repo Room 有自己的名册，`repo_scope` 调用也从它的名册选人；没有选入记录的调用不准入，进程内（`in_process`）调用的缩减规则见[连接约束](./connections.md#project--run--participant从授权到物理执行)。
+Room 名册换人只影响将来的调用，不改写活动 Invocation。Repo Room 有自己的名册，`repo_scope` 调用也从它的名册选人；没有选入记录的调用不准入；控制面内部的纯计算不是调用，不进本节。
 
 从 Repo Room 创建 Project 时，先提供可编辑、可删减补充和去敏的提升预览，再提交「创建 Project」命令；该命令只能显式选择来源 Message 引用和/或已预览的 Context Manifest/Context Bundle 摘要，并冻结所选内容的可追溯来源链。Project 只保存这些引用和经确认的名称、目标、范围等创建字段；不得复制整段 Room、把隐式聊天窗口当作来源，或让后续 Room 消息改变既有 Project。父 Room 的滚动纪要（若有）可作为提升预览的预填材料；被采纳的部分同样以显式选择进入来源链，纪要本身不随子概念活体继承。
 
@@ -127,19 +127,19 @@ Artifact 的评审对象对 {artifact_revision_id, artifact_id, immutable_conten
 
 ## Room Invocation
 
-Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和可选 Harness 运行时，但没有持久 DAG、候选自动切换、Gate 或自动后继；依赖这些能力时则创建 [Run](./run.md)。
+Room Invocation 适合一次性的研究、比较或范围明确的写入。它可以持有一份 Execution Spec 和至多一次派工，但没有持久 DAG、候选自动切换、Gate 或自动后继；依赖这些能力时则创建 [Run](./run.md)。
 
 Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交停止与隔离 outbox、迟到结果只留审计等动作由[连接约束的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。
 
-迟到流或 Result Proposal 不能准入语义结果，也不能附着到新调用。用户重试必须在旧授权失效后创建新的 Room Invocation、Execution Spec、运行时代次和必要的 ChangeSet，并保留原调用引用；系统不能重放或复活旧调用。
+迟到流或 Result Proposal 不能准入语义结果，也不能附着到新调用。用户重试必须在旧授权失效后创建新的 Room Invocation、Execution Spec、派工和必要的 ChangeSet，并保留原调用引用；系统不能重放或复活旧调用。
 
 Room Invocation 的 Execution Spec 先固定范围：`repo_scope` 只读，`project_scope` 才能携带写入与 ChangeSet 规则。human 批准建议时，Spec 还必须固定来源建议、建议摘要、可选父执行、扇出位置和预期 Room/Project version。
 
 写入型调用可以在 Trigger Preview 一并授权**评审发布策略**，由 Execution Spec 冻结：Repo、平台端口的 Port–Provider Binding 版本、发布到的分支或评审请求的规则、允许创建还是也允许更新、评审请求描述的来源，是否须人显式确认，以及审计关联的公开范围。预览必须写明这里授权的是发布去评审，不是合入。策略是范围：Result Proposal 只能提供被允许的内容，不能换发布地点或扩大权限；仓库或 Project 的「发布评审须人显式确认」开关值随本次授权冻结，之后改默认值不影响已接受的调用。发布的执行、映射与凭证归 [Repo 模块约束](./repo.md#发布评审)。
 
-若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和物理执行代次；进程内（`in_process`）模式仅使用连接约束定义的缩减字段组。
+若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和派工引用。
 
-上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--participant从授权到物理执行)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新执行体的载荷不能改写这些来源链字段。
+上述字段的完整格式见[连接约束定义的共同字段](./connections.md#project--run--participant从授权到派工)。来源建议必须精确引用 chat server 事件 ID 或 Result Proposal；父执行必须精确引用 Room Invocation 或 Attempt。新派工的载荷不能改写这些来源链字段。
 
 Repo Room 可以在没有 Project 的情况下做只读研究；写入、Project Artifact 或 Project 范围权限必须选择精确 Project 与版本。
 

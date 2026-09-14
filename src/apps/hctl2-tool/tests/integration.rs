@@ -326,7 +326,7 @@ fn record(output: Output, exit: i32) -> Value {
     );
     assert!(output.stderr.is_empty(), "observation must use stdout JSON");
     let value: Value = serde_json::from_slice(&output.stdout).expect("one JSON record");
-    assert_eq!(value["evidence_level"], "toolbox_readback");
+    assert_eq!(value["evidence_level"], "unmediated");
     value
 }
 

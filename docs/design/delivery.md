@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.1<br>
+> 状态：交付文档（非规范） · 草案 v0.18.2<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -16,7 +16,7 @@
 | [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以本地任务服务器为选定的 content 后端、CLI 完整 Task 管理与完成预览；Vikunja 原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（拖放、泳道、后续动作入口） | 本地任务服务器经限时验证后作为选定后端交付；Linear/GitHub 远端后端均通过身份/快照测试，其中一个通过完整字段读写与对账 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、多票评审 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
-| [Participant](./participant.md) | 参与者与执行者配置、证据通道、运行时代次、terminal inspect/attach/replay；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、精确 attach UI | Codex/Claude Code/OpenCode 能力探测；至少一个 harness 适配器与 Herdr v0.8.2 通过契约测试；Herdr 官方 TUI 是原生 Terminal 客户端，WezTerm 可选 |
+| [Participant](./participant.md) | 参与者与执行者配置、证据三档、经 Agency 的派工与观测、terminal inspect/attach/replay；验证完整 Agency 的唯一通路、租户隔离、公开交互与结果保管；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、经 Agency 的 attach UI | Codex/Claude Code/OpenCode 能力探测；本地 Agency 参考实现（运行时 Herdr v0.8.2）至少接入一个 harness 并通过契约测试；Herdr 官方 TUI 是它的原生 Terminal 客户端，WezTerm 可选 |
 | [Repo](./repo.md) | Repo 登记与平台绑定、ChangeSet/diff、写租约与资源隔离、集成预览/提交/凭证的本地路径与平台路径、发布评审；两种授权形态与目标保护快照 | Change 场景：精确 diff、评审线程与检查投影、集成状态与凭证 | `hctl2-tool` 随包；本地平台随包（Gitea，由 control 托管；其官方命令行 tea 随包，适配器先用它，逐项核对见 [Gitea 调研](../research/gitea.md)）；外部平台适配器本批只交付 GitHub（`gh` 随包，经平台端口通过契约测试）；其他外部平台不点名、按需，依据见[市场调研](../research/scm-platforms.md) |
 
 P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令；同一命令服务供 CLI、Workbench 与外部适配器使用。消息、卡片和终端输入仍按各供应端的公开协议及其绑定中声明的能力处理。Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
@@ -38,7 +38,7 @@ P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个
 | Run / Workflow | `workflow list\|show\|register\|compile\|approve`、`run list\|show\|preview\|start\|pause\|resume\|replace\|cancel`；修改动作先预览确认 |
 | Participant / Terminal | `terminal inspect\|attach\|replay`；Terminal 命令必须指向精确连接票据 |
 
-CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服务器或 Agency。`terminal attach` 只建立观察或输入通道，不恢复任何领域对象。Run 的语义恢复或替换使用 `run resume|replace`；Room Invocation 的再次施工使用创建新 Invocation 与新代次的 `invocation retry`。终端重连只恢复观察或输入通道，不得改变 Run 或 Room Invocation 的生命周期状态。
+CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服务器或 Agency 门后的资源。`terminal attach` 经 Agency 只建立观察或输入通道，不恢复任何领域对象。Run 的语义恢复或替换使用 `run resume|replace`；Room Invocation 的再次施工使用创建新 Invocation 与新代次的 `invocation retry`。终端重连只恢复观察或输入通道，不得改变 Run 或 Room Invocation 的生命周期状态。
 
 ## 明确不做
 
@@ -54,15 +54,15 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 
 ## 实现阶段
 
-施工顺序从最小可用链路开始：先做可丢弃的实现验证，再准备 Herdr 与本地 `hctl2-tool`，随后由 control 和 CLI 接管治理。各 content 系统的产品打包、备份恢复与一键生命周期在 control 出现后，按其首次被使用的阶段完成，而不是先把四套服务器全部产品化。
+施工顺序从最小可用链路开始：先做可丢弃的实现验证，再准备本地 Agency 参考实现（运行时 Herdr）与本地 `hctl2-tool`，随后由 control 和 CLI 接管治理。各 content 系统的产品打包、备份恢复与一键生命周期在 control 出现后，按其首次被使用的阶段完成，而不是先把四套服务器全部产品化。
 
 下面用两张表回答两个不同问题。P0—P3 表示实现顺序；B0—B6 表示 HCTL2 可以接管自身开发事实的程度。B0—B5 都发生在 P2，B6 在 P3 末验收。组件完成实现并不自动提高自举等级。
 
 | 阶段 | 建什么 | 达成 |
 | --- | --- | --- |
 | P0 · 探路 | 只对 HCTL 与已选实现实际使用的 API 和行为做限时、可丢弃的协议验证并记录实现证据，不替第三方验其自身功能；临时数据与拼装环境不进入产品生命周期。失败则重新评估并修订对应选型决定与 decision-history | 关键假设有证据，不宣称四个外部服务已可运维 |
-| P1 · 备装 | 打包本地 Agency 参考实现（运行时为 Herdr），并实现 `hctl2-tool` 的现场 Git 职责。Harness 仍按仓库配置运行代码检查，CI 负责强制；这些检查不进入 `hctl2-tool` 意图回路。P1 只验证本地 Agency 的启动、观察和停止，不产生 HCTL metadata 或 Receipt，因此不得称为自举 | Herdr 与本地 `hctl2-tool` 就位，未切换治理事实 |
-| P2 · 接钥匙 | `hctl2-control` 与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；各系统首次使用时完成打包、备份恢复和一键生命周期。Matrix/Vikunja 原生界面承担 content；Herdr TUI 按 Execution Spec 输入策略使用；Dagu console 只用于管理和诊断，且到 B4 才是必需项 | B0 → B5 |
+| P1 · 备装 | 打包本地 Agency 参考实现（运行时为 Herdr），并实现 `hctl2-tool` 的现场 Git 职责。Harness 仍按仓库配置运行代码检查，CI 负责强制；这些检查不进入 `hctl2-tool` 意图回路。P1 只验证本地 Agency 的配对、派工、观察和停止，不产生 HCTL metadata 或 Receipt，因此不得称为自举 | 本地 Agency 参考实现与本地 `hctl2-tool` 就位，未切换治理事实 |
+| P2 · 接钥匙 | `hctl2-control` 与覆盖 B0–B5 的公共 `hctl2` CLI 承载治理；各系统首次使用时完成打包、备份恢复和一键生命周期。Matrix/Vikunja 原生界面承担 content；控制面与前端对参与者的全部交互经本地 Agency 参考实现，它的原生界面按 Execution Spec 输入策略使用；Dagu console 只用于管理和诊断，且到 B4 才是必需项 | B0 → B5 |
 | P3 · 装门面 | `hctl2-workbench` 与发布链；Workbench 不承担任何 B0–B5 晋级 | B6 |
 
 ## 纵向切片 A：无 Run 自举
@@ -75,7 +75,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 6. 有权 human actor 预览合入：本地路径核对预期目标头并要求目标工作树已切离；平台路径核对必需检查、线程、正式评审与目标保护快照，并显式选择授权形态（GitHub 与本地平台都不能保证预期目标头，只能选「接受目标前移」）。随后提交 integration intent；control 先持久化，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行并 readback，确认后写唯一 Integration Receipt。
 7. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验自己的 Integration Receipt，或契约事先接受、由 Repo 回读核验的精确平台集成 Evidence，及其余验收项后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
 8. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
-9. 重启 control、Herdr、已使用的 content 后端与平台连接后，治理记录及其承诺正文、执行归属与精确结果、integration intent/Receipt、变更与平台映射、证据和 CLI 投影一致且不重复副作用。
+9. 重启 control、本地 Agency 参考实现、已使用的 content 后端与平台连接后，治理记录及其承诺正文、执行归属与精确结果、integration intent/Receipt、变更与平台映射、证据和 CLI 投影一致且不重复副作用。
 
 这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。有契约的 Task 走完这条链，人的预览是合入与完成两次；开了「发布评审须人显式确认」开关的仓库多一次，单独验收。两条路径——缺省绑定本地平台的本地仓库、受保护的 GitHub `main`——都要走通。
 
@@ -116,7 +116,7 @@ HCTL2 不会等到当前范围完整交付才用来开发自己。自举按能�
 
 B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍必须通过 B6，不能把“已能自举”当成可分发版本。
 
-自举期间每次 Run 从执行事件重建尝试内部的依赖图，记带等待的关键路径时长、总 token、节点数与归约次数，作观测存起来，只看不用，为将来是否放开施工图归约积累数据；本地参考实现的数据由 `hctl2-tool` 可见的进程树校准，远程 Agency 自报的只作参考，上报不全标未知。自举期间还统计每条门的执行、放行、拒绝与显式关闭次数，并区分「没有触发机会」与「有机会却没执行」，作为验收的一部分：持续没有触发机会或有机会却没执行的门，要留下复审记录，由必要性与失败测试决定留、修还是删，删要进台账。任一逃生口（无契约卡、无 Run 路径、一票评审）走完，控制面存储里仍有可回溯的对象，走到完成的有凭证。将来重写 control 或 Workbench，每条被拿掉的门单独写台账行，不允许「不在这版里」。
+自举期间每次 Run 从执行事件重建尝试内部的依赖图，记带等待的关键路径时长、总 token、节点数与归约次数，作观测存起来，只看不用，为将来是否放开施工图归约积累数据；数据按 Agency 对这次派工的用量报告记，上报不全标未知，控制面不重建门后的进程树。自举期间还统计每条门的执行、放行、拒绝与显式关闭次数，并区分「没有触发机会」与「有机会却没执行」，作为验收的一部分：持续没有触发机会或有机会却没执行的门，要留下复审记录，由必要性与失败测试决定留、修还是删，删要进台账。任一逃生口（无契约卡、无 Run 路径、一票评审）走完，控制面存储里仍有可回溯的对象，走到完成的有凭证。将来重写 control 或 Workbench，每条被拿掉的门单独写台账行，不允许「不在这版里」。
 
 自举验收不得对 HCTL2 仓库、内置账号或测试环境设置隐藏的特例豁免：开发自身必须只使用公开的 Query/Preview/Submit/Subscribe、CLI 和受控端口，实际 Context、权限与证据均可检查；手工推进引擎、直接改库、隐藏 Prompt/Context 或在产品外补签 Receipt 都不算通过。
 
@@ -136,10 +136,10 @@ B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍�
 
 P0 只验证 HCTL 实际依赖的 API 和行为，不重新比较已拍板的候选。探针使用可删除环境，只留下实现证据、固定版本和产品化要求；通过探针不等于已经具备一键生命周期、备份或升级。各探针在对应场景首次消费前完成，不构成全局门禁。
 
-chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2。失败时重开选型并修订对应决定与 decision-history。
+chat 与 task 探针在 B1 首次消费前完成，Agency 探针在 B2 前完成，workflow engine 探针只须在 B4 前完成，不能阻塞 B2。失败时重开选型并修订对应决定与 decision-history。
 
 1. **workflow engine（Dagu，已拍板）**：DAG 提交与启动/暂停/恢复/取消回读、`human.task` 等待/完成/回读和引擎自行推进或重试的分歧检查均按 HCTL 实际调用面核对；生成物只用机械结构与无进程的 `human.task`，Obligation 身份与隔离仍由 HCTL 控制面负责，结论与固定源码证据见 [Dagu 与候选复审](../research/workflow-engines.md#e-l2-dagu)。
-2. **Agency（Herdr，已拍板）**：固定基线为 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0；HCTL 当前消费 macOS/Linux × arm64/x86_64 官方单二进制）。Herdr 直接按规格启动 Harness，持有进程、PTY 和终端会话，并提供 API 与原生 TUI；HCTL 只实现适配代码，不再放置独立 Agency 组件或下一层终端运行服务。
+2. **Agency（本地参考实现内部采用 Herdr，已拍板）**：固定基线为 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0；HCTL 当前消费 macOS/Linux × arm64/x86_64 官方单二进制）。本地 Agency 参考实现内部采用 Herdr 按规格启动 Harness、持有进程、PTY 和终端会话并提供 API 与原生 TUI；参考实现自己承担配对认证、租户隔离、票据校验与转发（职责、形态候选与判据见[本地 Agency 参考实现](#本地-agency-参考实现)），不另写一套终端运行服务。
    P0 验证版本协商，workspace/tab/pane/terminal 创建与定位，输入与 resize，观察与断线重连，停止与退出状态，以及恢复等级能否如实翻译。已确认的限制包括：原生输入不经 HCTL 输入租约、API 与原生 controller 可交错写入、事件 ring 没有公开 sequence/gap、退出和停止回读不足。
    这些功能在补齐前按低信任或不支持处理，不在 HCTL 内另写终端服务。源码、API、macOS RSS 与历史运行时对照数据见 [Herdr 运行服务验证记录](../research/runtime/agency-runtime-validation-20260829.md)。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读，均按 Chat 端口调用面核对。
@@ -148,11 +148,21 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——约束未押注它，双向适配是五项中最贵的一项。
 6. **本地代码协作平台（Gitea，已拍板；Forgejo 备选；Gogs 核对后落选）**：只验 HCTL 的调用面：建仓与推送、分支保护的读写、评审请求的创建/更新/合并、正式评审与评论线程（含解决状态）回读、提交状态写回、webhook 唤醒，以及随包一键启停与备份恢复；不验 Gitea 自身功能，Actions 执行器不随包。探针在 B2 前完成，结论与固定版本见 [Gitea 调研](../research/gitea.md)。
 
+## 本地 Agency 参考实现
+
+发布包自带一份 Agency，装了 HCTL 就有参与者可派。它对控制面承担三项职责，缺任一项就不能接受派工：**统一接入与租户隔离**——配对认证，每个配对的控制面一个租户，票据校验，把控制面的派工、输入、停止、观测转到门后，把结果、证据与工具报告转回来；**执行资源**——进程、PTY、会话、多观察者、会话恢复与原生界面，由它内部选用的现成终端运行时 Herdr 提供，HCTL 不自己实现 PTY 持有、终端模拟、观察者转发或重放；**待交成果保管**——结果与证据保管到接收方确认保全，控制面睡着时参与者照常干到封存。能否「代为执行工具并直报」按它的能力声明如实填，不因为随包就默认有。
+
+参与者卡住由它兜住，是所有者的产品要求：在冻结的执行规格内重启会话、改派备份、换主机，控制面无感；规格内干不了才报无法履约。回来的旧执行体在门后机械核对——图还是那张图、席位还归自己——用 Git 的 check-in 前置钩子做，不靠散文。
+
+待命也是它的产品要求（所有者原则，不进约束）：雇着就一直待命，不为同一个参与者新起会话；只有闲置超时才冬眠，被杀后按会话文件恢复，唤醒不算新派工；闲置与整理参数是它自己的配置，控制面不记也不核。控制面只留两条既有不变量：下一次派工不续用前一次派工的权限；会话文件能恢复不证明旧执行仍成立。
+
+形态本批不选，候选与判据留在这里：现有运行服务（Herdr）能否直接承担配对认证与转发；给上游打补丁的维护成本；独立组件的进程与打包成本；可观测性。P1 验证它的配对、派工、观察和停止；P2 起控制面与前端对参与者的全部交互都经它，包括 Workbench 就位前经 CLI 取票据的观察与接管。
+
 ## 打包策略（选型判断，首次消费时产品化）
 
 分界线是**碰不碰宿主机现场**：
 
-- **必须原生**：Herdr、harness、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 Git 工作树、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。Herdr 直接消费摘要锁定的官方单二进制并随包保留上游许可证，不维护另一套终端运行服务或自主构建链。
+- **必须原生**：本地 Agency 参考实现（含 Herdr）、harness、`hctl2-control`、`hctl2-tool` 与 CLI——要碰真实 Git 工作树、PTY 与 OS 密钥串，不进容器；macOS/Linux 原生分发。Herdr 直接消费摘要锁定的官方单二进制并随包保留上游许可证，不维护另一套终端运行服务或自主构建链。
 - **服务器按服务声明形态**：control 出现后，生命周期托管器在服务首次被消费前声明原生发行目标。Linux x86_64、Linux arm64、macOS arm64 与 macOS x86_64 分别构建。macOS 最低基线为 15：`lock.json` 固定 15.0，托管 Tuwunel 的两种架构 Mach-O 均声明 `minos 15.0`，macOS 依赖与发布 CI 均在 macOS 15 arm64/Intel runner 验证；Herdr 官方制品声明 11.0，尚未落入源码树的 Tauri 2 Workbench 没有更高要求。
   Dagu、Vikunja、Herdr、Gitea 与 tea 使用官方原生发布物。Tuwunel 上游无 Darwin 制品，HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包；日常打包消费托管制品，源码构建只用于更新托管制品。各发行目标共用锁定的 Cinny 官方 Web 发行包，不混用缓存、动态库闭包或生命周期验证。
 - **仅安装控制面也须有 Git**：治理材料裸库沿用既有的 Git 可用性与兼容性检查，不要求安装 Agency、工作副本或本地平台；版本与可用性按已有打包检查验证，材料布局不成为跨单元接口。
@@ -167,15 +177,15 @@ chat 与 task 探针在 B1 首次消费前完成，Herdr 探针在 B2 前完成�
 
 ## 技术基线
 
-技术栈包括 Rust control/tool 与 Herdr 适配代码；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；以及 Tiptap、React Aria、React Flow + Dagre、xterm.js。
+技术栈包括 Rust control/tool 与本地 Agency 参考实现（含 Herdr 适配代码）；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；以及 Tiptap、React Aria、React Flow + Dagre、xterm.js。
 
-五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、本地冲突写入的锁用标准库文件锁（用于需互斥的资源，不锁住整个共享对象库）、治理记录备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作 `hctl2-tool` 回读级证据。
+五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、本地冲突写入的锁用标准库文件锁（用于需互斥的资源，不锁住整个共享对象库）、治理记录备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作直报级证据；在参与者内部运行时，能否算直报看 Agency 是否声明「代为执行工具并直报」。
 
 治理记录继续用 SQLite，治理正文以 Git 为后端：每个控制面一份私有本地裸库，供它管理的多个 Repo/Project 共用，不注册成另一个业务仓库。沿用既有 Git 调用与校验机制（见 [Git 研究](../research/sdk/git.md)），不另做一套存储协议；四个存取动作与事务边界见[系统约束](./spec/system.md#控制面自己的存储)。
 
 安装了本地平台时，材料库缺省镜像到其中的私有仓库；也可显式选择其他镜像或不镜像。镜像不是本地存入、准入与读取的前置，不要求只跑控制面的部署先启动 Gitea。只有正文读者与代码仓库读写权限完全一致、且人显式选择时，才可用代码仓库的旁路 ref；ref 名不提供读取隔离。镜像只交付获准范围，未准入私密候选不向外公开。备份按同一治理记录快照收齐承诺的材料、定位与精确定义，平台数据和代码 Git 另外备份，不以一份普通 clone 冒充控制面备份。
 
-执行面服务器经受控端口接入，由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、本地代码协作平台（Gitea；Forgejo 备选）和 Herdr（Agency）。Room 场景另随包提供 Cinny 聊天客户端。
+执行面服务器经受控端口接入，由 control 托管一键启停：Dagu（workflow engine）、Matrix homeserver（Tuwunel；Continuwuity 备选）、本地任务服务器（Vikunja）、本地代码协作平台（Gitea；Forgejo 备选）和本地 Agency 参考实现（内部运行时 Herdr）。Room 场景另随包提供 Cinny 聊天客户端。
 
 精确版本、实测 footprint 与运维分级见[实现证据](../research/README.md#已选外部服务的运维与资源占用)。Workbench 桌面壳的选型证据、实机探针与安全网回退条件见[桌面壳证据](../research/workbench-shell.md#e-workbench-shell)与[重开调研](../research/workbench-shell-reopen-20260826/README.md)。选择受契约测试约束，不能为了保留依赖而削弱模块边界。
 

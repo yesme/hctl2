@@ -177,7 +177,7 @@ impl Verification {
         ToolOutput::json(
             json!({
                 "schema": "hctl2.worktree.v1",
-                "evidence_level": "toolbox_readback",
+                "evidence_level": "unmediated",
                 "outcome": if self.valid() { "established" } else { "not_established" },
                 "observed_at_unix_ms": observed_at_unix_ms(),
                 "operation": operation,

@@ -8,7 +8,7 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.18.1**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.18.2**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；三个目标均已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
@@ -38,8 +38,8 @@ flowchart TB
         chat_srv["聊天服务"]
         task_backend["任务后端"]
         engine["工作流引擎"]
-        agency["Agency · 派出方<br/>名册与条款"]
-        worker["执行体<br/>Harness 进程 · Skill · TUI"]
+        agency["Agency · 派出方<br/>名册与条款 · 租户 · 派工"]
+        worker["执行体（门后）<br/>Harness 进程 · Skill · 会话"]
         platform["代码协作平台<br/>外部平台 · 或随包本地平台"]
     end
 
@@ -47,14 +47,13 @@ flowchart TB
 
     Clients -->|治理命令| Control
     Clients -->|消息 / 卡片| Exec
-    Clients -->|终端通道 participant.tui| worker
+    Clients -->|终端票据| agency
     Control --> Tool
     P --> chat_srv
     T --> task_backend
     R --> engine
-    A -->|名册查询 · 要人| agency
-    A -->|派工 · 观测| worker
-    agency -.->|供给| worker
+    A -->|要人 · 派工 · 观测| agency
+    agency -.->|门后：供给 · 转接| worker
     C -->|发布评审 · 合入 · 回读| platform
     C -->|物化 · 封存 · 本地集成| Tool
 ```

@@ -76,3 +76,8 @@ Participant–Agency Binding	v0.17.4：撤销，参与者本身是某 Agency 某
 
 # --- 所有者 2026-09-12：组件名 ---
 工具箱	2026-09-12：特指 hctl2-tool 这款命令行工具时写它的名字，架构与约束层写组件名；「工具箱」太泛
+
+# --- v0.18.2 B 批：Agency 是唯一通路、功能不泄露（decision-history §37 台账 v0.18.2）---
+Execution Runtime	v0.18.2：控制面对象改名「派工」（Dispatch）；门后的执行体归 Agency，控制面不持有
+runtime_generation	v0.18.2：控制面不记物理代次，代次家族只剩三种
+Agency binding owner generation	v0.18.2：租户模型下没有共享端点可归属，端口归属者租约与代次一并删除

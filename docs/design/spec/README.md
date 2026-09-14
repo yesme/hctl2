@@ -1,6 +1,6 @@
 # 约束层总则
 
-> 状态：规范性 · 草案 v0.18.1<br>
+> 状态：规范性 · 草案 v0.18.2<br>
 > 日期：2026-09-10<br>
 > 定位：本目录是 HCTL2 的约束层——精确的对象、状态机、写入者与共享机制。设计层（`docs/design/` 根目录）用产品语言回答为什么与怎么用；两层冲突时以约束层为准，但约束层不得引入设计层没有的产品行为。
 
@@ -91,12 +91,12 @@
 - **Revision 族**：Task Revision、Workflow Revision、ChangeSet Revision、Artifact Revision、Extension Revision、Engine Deployment
 - **Binding 族**（每个都是「HCTL 对象 ↔ 外部对象」）：Port–Provider Binding（受控端口 ↔ 供应端）、Room–Server Binding（Room ↔ 聊天服务器房间）、Task–Backend Binding（Task ↔ 任务后端的卡）、Run–Engine Binding（Run ↔ 工作流引擎执行）、ChangeSet–Platform Binding（ChangeSet Revision ↔ 代码协作平台上的提交与评审请求）
 - **Receipt 族**：Gate Receipt、Task Completion Receipt、Integration Receipt
-- **Lease 族**：Write Lease、Terminal Input Lease；control writer 和 Agency 归属者虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
+- **Lease 族**：Write Lease、Terminal Input Lease；control writer 虽然不是 Lease 对象，也必须遵守同样的排他规则：同一时刻只有一个持有者，旧代次失去权限
 - **命令族**：各模块的类型化命令（动宾语义名，如「完成 Task」命令），以及「外部副作用」命令；集成意图与发布评审意图是 Repo 模块的外部副作用命令，不占概念名额
 - **Snapshot/观测族**：Task Backend Snapshot、Result Proposal、运行时观测
 - **票据与规格**：Execution Spec、Run Manifest、Attach Descriptor、Context Manifest、Context Bundle（场景投影如 Execution Chat 不占概念名额）
 - **引用格式**：ReviewSubjectRef、review_subject_digest、revision_digest
-- **独立对象**（核心产品词之外的约束层领域对象）：Room Invocation、Execution Runtime、Worker Profile
+- **独立对象**（核心产品词之外的约束层领域对象）：Room Invocation、派工、Worker Profile
 
 ## 外部对齐原则
 
@@ -111,7 +111,7 @@
 - [project.md](./project.md)：Project 模块约束 + Room 场景对齐（Matrix / Slack 系）
 - [task.md](./task.md)：Task 模块约束 + Linear / GitHub 对齐
 - [run.md](./run.md)：Run 模块约束 + Dagu / BPMN 对齐
-- [participant.md](./participant.md)：Participant 模块约束 + Skill 申报 + PTY / Herdr / ACP 对齐
+- [participant.md](./participant.md)：Participant 模块约束 + Skill 申报 + Agency 端口与终端概念对齐
 - [repo.md](./repo.md)：Repo 模块约束 + 集成的两种授权形态 + PR / Merge Request / Gerrit 对齐
 - [connections.md](./connections.md)：五模块交接、事务边界与跨切恢复
 - [system.md](./system.md)：组件、共享机制、存储、单写者与恢复

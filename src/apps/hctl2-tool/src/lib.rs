@@ -68,7 +68,7 @@ impl ToolError {
         ToolOutput::json(
             serde_json::json!({
                 "schema": "hctl2.tool-error.v1",
-                "evidence_level": "toolbox_readback",
+                "evidence_level": "unmediated",
                 "observed_at_unix_ms": observed_at_unix_ms(),
                 "operation": operation,
                 "git": { "path": git.executable(), "version": git.version() },
@@ -523,7 +523,7 @@ mod tests {
         let record: serde_json::Value =
             serde_json::from_str(output.body()).expect("answer must be JSON");
         assert_eq!(record["outcome"], "timeout");
-        assert_eq!(record["evidence_level"], "toolbox_readback");
+        assert_eq!(record["evidence_level"], "unmediated");
     }
 
     fn unix_deadline_secs_from_now(seconds: u64) -> OsString {
