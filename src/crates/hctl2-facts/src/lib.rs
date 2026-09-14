@@ -60,7 +60,7 @@ impl FactRecord {
     fn new(fact: Fact, outcome: Outcome, observation: Value) -> Self {
         Self {
             schema: "hctl2.external-fact.v1",
-            evidence_level: "toolbox_readback",
+            evidence_level: "unmediated",
             fact,
             outcome,
             observed_at_unix_ms: unix_millis(SystemTime::now()),
@@ -675,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn wait_record_is_toolbox_readback_evidence() {
+    fn wait_record_is_unmediated_evidence() {
         let fact = Fact::ProcessExited { pid: u32::MAX };
         let record = wait_until(
             fact,
@@ -684,7 +684,7 @@ mod tests {
         );
 
         assert_eq!(record.schema, "hctl2.external-fact.v1");
-        assert_eq!(record.evidence_level, "toolbox_readback");
+        assert_eq!(record.evidence_level, "unmediated");
     }
 
     fn write_executable(directory: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
@@ -768,7 +768,7 @@ exit 1
             panic!("merged pull request must be terminal");
         };
         assert_eq!(merged.outcome, Outcome::Established);
-        assert_eq!(merged.evidence_level, "toolbox_readback");
+        assert_eq!(merged.evidence_level, "unmediated");
 
         let rejected = read_once(&fact, &ReaderContext::new(closed.into_os_string()));
         let ReadResult::Answer(rejected) = rejected else {
@@ -951,7 +951,7 @@ fi
             panic!("invalid arguments must be terminal");
         };
         assert_eq!(record.outcome, Outcome::Unreadable);
-        assert_eq!(record.evidence_level, "toolbox_readback");
+        assert_eq!(record.evidence_level, "unmediated");
     }
 
     #[test]
@@ -974,8 +974,8 @@ fi
         let second = second.join().expect("second waiter must finish");
         assert_eq!(first.outcome, Outcome::Established);
         assert_eq!(second.outcome, Outcome::Established);
-        assert_eq!(first.evidence_level, "toolbox_readback");
-        assert_eq!(second.evidence_level, "toolbox_readback");
+        assert_eq!(first.evidence_level, "unmediated");
+        assert_eq!(second.evidence_level, "unmediated");
         fs::remove_dir_all(directory).expect("fixture must be removed");
     }
 
@@ -1000,6 +1000,6 @@ fi
             &ReaderContext::new("gh"),
         );
         assert_eq!(record.outcome, Outcome::Established);
-        assert_eq!(record.evidence_level, "toolbox_readback");
+        assert_eq!(record.evidence_level, "unmediated");
     }
 }

@@ -1,11 +1,11 @@
 # Repo 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.1<br>
+> 状态：规范性约束 · 草案 v0.18.2<br>
 > 本文是 Repo 模块对象、状态机与写入约束的唯一权威。设计正文见 [Repo 与 Change](../repo.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Repo 模块拥有逻辑仓库的稳定身份与注册、获准的写入边界及其不可变 Git 快照、写入租约、代码集成的持久意图与凭证，以及变更与代码协作平台之间的映射。Project 拥有 Repo Room 与 Project 对 Repo 的归属；Participant 拥有执行体、运行时与观测；Run 拥有 Gate、Seat 与 Verdict。本模块不决定 Project、Task 或 Run 的领域结果，也不接收 Result Proposal。
+Repo 模块拥有逻辑仓库的稳定身份与注册、获准的写入边界及其不可变 Git 快照、写入租约、代码集成的持久意图与凭证，以及变更与代码协作平台之间的映射。Project 拥有 Repo Room 与 Project 对 Repo 的归属；Participant 拥有派工与观测；Run 拥有 Gate、Seat 与 Verdict。本模块不决定 Project、Task 或 Run 的领域结果，也不接收 Result Proposal。
 
 `hctl2-tool` 是本模块的现场执行者：物化与隔离 Git 工作树、封存与保全 ChangeSet、执行面向本地目标的集成、回读 Git 事实与闭集外部机械事实。平台适配器经平台端口创建或更新评审请求、请求合并、写回记录，以及为代取读取评审评论正文；Git 版本由持相应凭据的单元交付，分工见[发布评审](#发布评审)。平台上的机械事实——提交的检查状态、评审请求当前头与是否合并、线程是否解决、正式评审状态、目标 ref 的保护条件——仍由 `hctl2-tool` 回读，证据通道等级为 `hctl2-tool` 回读，Run 的节点前置只认它。两者是分工：有平台的仓库照样由 `hctl2-tool` 物化、封存与回读事实。
 

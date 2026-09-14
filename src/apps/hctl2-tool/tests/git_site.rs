@@ -105,7 +105,7 @@ fn repository_inspection_keeps_three_identity_groups_separate() {
     assert_success(&output);
     let record = json_stdout(&output);
     assert_eq!(record["schema"], "hctl2.repository-inspection.v1");
-    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["evidence_level"], "unmediated");
     assert!(
         Path::new(record["git"]["path"].as_str().expect("Git path")).is_absolute(),
         "resolved Git path must be absolute"
@@ -919,7 +919,7 @@ fn assert_error_code(output: Output, code: &str) {
         "observation error leaked to stderr"
     );
     assert_eq!(record["schema"], "hctl2.tool-error.v1");
-    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["evidence_level"], "unmediated");
     assert_eq!(record["error"]["code"], code, "{record}");
     let expected_exit = match record["outcome"].as_str() {
         Some("not_established") => 3,

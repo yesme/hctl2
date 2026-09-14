@@ -164,7 +164,7 @@ test_packaged_toolbox() {
     expect_rc 0 repo inspect --path "$repo"
     [[ "$(json_get "$TOOL_OUT" schema)" == "hctl2.repository-inspection.v1" ]] || \
         die "inspect schema: $TOOL_OUT"
-    [[ "$(json_get "$TOOL_OUT" evidence_level)" == "toolbox_readback" ]] || \
+    [[ "$(json_get "$TOOL_OUT" evidence_level)" == "unmediated" ]] || \
         die "inspect evidence_level: $TOOL_OUT"
     [[ "$(json_get "$TOOL_OUT" stable_repo_identity.status)" == "missing" ]] || \
         die "inspect invented a repo identity: $TOOL_OUT"

@@ -19,3 +19,6 @@ docs/design/spec/system.md	Electron 安全网
 
 # 「工具箱」的词汇表旧称对照行，按特征子串豁免（2026-09-12）
 docs/design/references/glossary.md	旧称「工具箱」
+
+# 写作指南的反例引用（v0.18.2 退休 runtime_generation 后仍作反例保留）
+WRITING-GUIDE.md	是语义 owner 代次

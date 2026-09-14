@@ -698,7 +698,7 @@ fn success(
         .map_err(|error| unknown(intent, new, after.as_deref(), error.to_string()))?;
     Ok(ToolOutput::json(
         json!({
-            "schema": "hctl2.integration.v1", "evidence_level": "toolbox_readback",
+            "schema": "hctl2.integration.v1", "evidence_level": "unmediated",
             "observed_at_unix_ms": observed_at_unix_ms(), "operation": "integrate",
             "git": {"path": git.executable(), "version": git.version()},
             "git_common_dir": repository.common_dir, "outcome": "established", "status": status,

@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.1<br>
+> 状态：规范性约束 · 草案 v0.18.2<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -37,7 +37,7 @@ Task Revision 契约按需创建，但只能由显式“采纳契约”命令，
 
 Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文由控制面保存为治理材料，治理记录保存稳定身份、准入、精确定位与摘要和 current pointer，存取顺序见[系统边界](./system.md#控制面自己的存储)。
 
-每条验收项必须声明**校验等级**：`mechanical`（机械可判——`hctl2-tool` 回读或适配器结构化事件即可判定）、`gate`（需评审席位判）、`human`（需有权的人判）。缺等级的验收项使「采纳契约」预览失效。验收项用什么写法——EARS 句式、「必须有」清单、真值 / 工件 / 连线分类——归 Skill 与写作指引，约束不钉。后端与关联来源的变化先成为 Snapshot。只有会改变 Task Revision 契约的内容才形成待采纳；control 在正文已保存且摘要核验通过后，重新校验预期版本与权限，再准入新 Task Revision。content 后端拥有的操作字段按绑定与 Snapshot 投影，不经过采纳。
+每条验收项必须声明**校验等级**：`mechanical`（机械可判——直报或旁路证据即可判定）、`gate`（需评审席位判）、`human`（需有权的人判）。缺等级的验收项使「采纳契约」预览失效。验收项用什么写法——EARS 句式、「必须有」清单、真值 / 工件 / 连线分类——归 Skill 与写作指引，约束不钉。后端与关联来源的变化先成为 Snapshot。只有会改变 Task Revision 契约的内容才形成待采纳；control 在正文已保存且摘要核验通过后，重新校验预期版本与权限，再准入新 Task Revision。content 后端拥有的操作字段按绑定与 Snapshot 投影，不经过采纳。
 
 存在绑定该 Task 的非终态 Run 时，仍可“采纳契约”并推进 current Task Revision；活动 Run 已冻结的 Revision 不因此改写，Run 继续按冻结 Revision 执行。Run 正常完成路径只针对其冻结的 Revision。current 已前移时，Run 归约器的“完成 Task”按契约分歧拒绝，Task 保持开放并显示需要关注，不得静默按新 Revision 完成。
 
@@ -96,7 +96,7 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 
 替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权和换代路径，不能先清空标记再留下两个可写执行。`completion_pending` 期间也拒绝另一次启动，以及来自 human 的 Task 完成或取消命令；只接受匹配 Run 归约器的内部完成命令。该命令成功或被 Task 持久拒绝时，control 在同一结果事务中清除标记。
 
-“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受 `hctl2-tool` 回读或适配器结构化事件，其中集成结果按契约接受 [Repo 模块](./repo.md#平台动作与命令)的 Integration Receipt，或由该模块回读核验的精确平台集成 Evidence；后者须已由契约事先声明接受，Task 不直接读平台，平台标签或自述不够；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
+“完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受直报（`unmediated`）或旁路（`adapter_event`）证据，其中集成结果按契约接受 [Repo 模块](./repo.md#平台动作与命令)的 Integration Receipt，或由该模块回读核验的精确平台集成 Evidence；后者须已由契约事先声明接受，Task 不直接读平台，平台标签或自述不够；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
 
 接受外部集成事实的声明只经「采纳契约」或带预览契约的「创建 Task」形成精确 Task Revision，不由观测或完成命令补入。完成按当前 Task Revision 检查；活动 Run 仍冻结原 Revision，旧契约只接受自身 Integration Receipt 时不因新规则扩大。外部事实不自动完成 Task，不替代 Gate 或 human 验收项，也不补签本控制面的 Integration Receipt。
 

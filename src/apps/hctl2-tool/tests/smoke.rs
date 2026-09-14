@@ -64,5 +64,5 @@ fn wait_prints_one_structured_timeout_record() {
     let record: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("record must be JSON");
     assert_eq!(record["outcome"], "timeout");
-    assert_eq!(record["evidence_level"], "toolbox_readback");
+    assert_eq!(record["evidence_level"], "unmediated");
 }
