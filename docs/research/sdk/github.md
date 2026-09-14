@@ -168,3 +168,27 @@ gh 固定的是客户端，不是远端 API 行为。2.99.0 源码的 REST 默�
 - 写入接口：[gh pr create](https://cli.github.com/manual/gh_pr_create)、[edit](https://cli.github.com/manual/gh_pr_edit)、[merge](https://cli.github.com/manual/gh_pr_merge)、[comment](https://cli.github.com/manual/gh_pr_comment)、[gh api](https://cli.github.com/manual/gh_api)、[Git push porcelain / force-with-lease](https://git-scm.com/docs/git-push)、[GitHub PR REST](https://docs.github.com/en/rest/pulls/pulls)、[评论 REST](https://docs.github.com/en/rest/issues/comments)。
 - 读取与身份：[正式评审](https://docs.github.com/en/rest/pulls/reviews)、[分支保护](https://docs.github.com/en/rest/branches/branch-protection)、[有效 rulesets](https://docs.github.com/en/rest/repos/rules)、[App 安装身份](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)、[App 用户身份](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app)、[API 版本支持期](https://docs.github.com/en/rest/about-the-rest-api/api-versions)、[限流](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)。GraphQL 的线程与正式评审字段已通过本库 PR #186 查询验证，未以 SDK 字段表代替实际接口。
 - 本库：[平台能力对照及快进反例](../scm-platforms.md#复核记录)、[Repo §平台绑定与能力声明](../../design/spec/repo.md#平台绑定与能力声明)、[Repo §发布评审](../../design/spec/repo.md#发布评审)、[Git 现场引擎](./git.md)。现有 `src/crates/hctl2-facts/src/lib.rs` 的平台侧事实只有 checks、PR merged、ref advanced 三类，另有非平台侧的 path-digest、process-exited；P2.4 仍需补线程 / 正式评审 / 保护回读，不能写作已经实现。
+
+### 2026-09-15 · D 批 Issues 作任务源的调用面复核
+
+> 对象：随包 `gh`（本机核对 2.100.0，2026-09-03；随包钉定版本以 lock.json 为准）、GitHub REST issues 接口、Projects V2 GraphQL<br>
+> 许可证：同上节<br>
+> 定位：Task 模块任务源端口用 GitHub Issues 作缺省任务源（D 批 #230 拍板甲）；Projects V2 只在绑定声明支持看板位置时用；issue 状态不变成 HCTL 完成。
+
+#### 上游能力
+
+| 操作 | 调用及结构化输出 | 身份 | 条件写 / 恢复限制 | 备注 |
+| --- | --- | --- | --- | --- |
+| 列卡 | `gh issue list -R … --state all --json number,id,title,state,stateReason,updatedAt,labels,milestone,projectItems,url`。本机核对：`--json` 字段含 `id`（节点 ID）、`number`、`projectItems`、`milestone`、`labels`、`updatedAt`；对本仓库实测返回 JSON | 读权限决定可见范围 | 只读。REST 里 PR 也是 issue（含 `pull_request` 键），列表要过滤 | 实体键取 `id`（不可变节点 ID）；`number` 是仓库内序号；transfer 到别的仓库生成新实体，按新卡与 tombstone 处理（待实测） |
+| 读卡 | `gh issue view <n> -R … --json …` | 同上 | 只读 | — |
+| 建卡 | `gh issue create -R … -t … -F … -l … -m … -p …` 回 URL；要 JSON 用 `gh api --method POST repos/{owner}/{repo}/issues --input …` | 令牌对应用户或 App | 无服务端幂等键；创建后按标题、正文摘要与时间窗查重，确认丢失不盲重建 | `-p` 直接加入 Projects V2 |
+| 编辑 | `gh issue edit <n> --title / --body-file / --add-label / --milestone / --add-project / --parent …`；或 `gh api --method PATCH repos/{owner}/{repo}/issues/{n}`（字段 `title`、`body`、`state`、`state_reason`、`milestone`、`labels`、`assignees`、`type`，文档核） | 同上 | REST PATCH 没有 If-Match 或预期版本参数（文档核）：条件写入声明为「无」，以回读为准，`updated_at` 只作漂移检查 | 写回评论 `gh issue comment` 或 `gh api --method POST …/issues/{n}/comments` 回含 ID 的 JSON |
+| 关闭 / 重开 | `gh issue close / reopen`；PATCH 的 `state` 加 `state_reason` | 同上 | 同上 | 原生 Done 事件另行归一为完成请求，规则在 Task 约束 |
+| 看板位置 | Projects V2 只有 GraphQL：`addProjectV2ItemById`、`updateProjectV2ItemFieldValue`（单选字段用 `singleSelectOptionId`）、`deleteProjectV2Item`；`gh project item-list --format json`、`item-add`、`item-edit`（本机核对存在） | 令牌须 `project` scope，只读 `read:project` | 加项与改字段不能在同一次调用；没有版本比较 | 不用 Projects 时位置由 `state` 加 milestone、标签派生 |
+| 观测 | webhook `issues`（opened、edited、closed、reopened、labeled、milestoned、transferred、deleted 等）、`issue_comment`（created、edited、deleted）、`projects_v2_item`（public preview） | — | 只负责唤醒，接纳前回读 | 与 Repo 模块的 PR 事件共用一个 webhook 端点 |
+
+#### 决定
+
+- 采用随包 `gh`；高层命令缺 JSON 时用 `gh api`，不新增 SDK。
+- 绑定能力声明：建卡与字段写回「有」；条件写入「无，以回读为准」；看板位置「Projects V2，需 `project` scope，绑定声明时才有」；源内分组锚点用 milestone 或标签。
+- 运行验证（P2.2 使用前，研究记录不代替）：issue transfer 后的实体变化；只有 `read:project` 时 `gh project` 的行为；PR 过滤；webhook 与轮询对账。

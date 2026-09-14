@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.2<br>
+> 状态：规范性约束 · 草案 v0.18.3<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -9,11 +9,11 @@
 | --- | --- |
 | Task | 稳定身份、标题、目标结果和所属 Project |
 | Task Revision | 不可变的范围、验收项（每项带校验等级）、来源、所需职责和能力 |
-| Task–Backend Binding | Task 与外部来源之间的冻结绑定。它固定外部身份、字段写入权、可接纳的供应端 human 动作和适配器版本。排序、优先级、负责人和阻塞等后端字段只形成操作投影，其事实源仍在 content 后端 |
+| Task–Backend Binding | Task 与外部来源之间的冻结绑定。它固定外部身份（实体键，即这张卡的**家指针**：卡在哪个源、是哪张卡，创建或认领时落定，此后不改写）、字段写入权、可接纳的供应端 human 动作和适配器版本。排序、优先级、负责人和阻塞等后端字段只形成操作投影，其事实源仍在 content 后端 |
 | Task Backend Snapshot | 外部系统一次只追加的原始与规范化观测 |
 | Task Completion Receipt | 某次「完成 Task」命令对精确 Task Revision、规则、候选和证据的完成证明 |
 
-Repo 到外部 provider/account/scope 的连接由 Port–Provider Binding（port_kind = task_source）承载；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个活跃绑定。
+Repo 到任务源（provider/account/scope）的连接由 Port–Provider Binding（port_kind = task_source）承载，零到多个；每个 Repo 对同一 `provider + account_stable_id + scope_stable_id` 至多解析一个活跃绑定。
 
 Task lifecycle 只有开放 | 完成 | 已取消。`project_id` 是 Task 稳定身份的一部分，创建后不可改写；契约变化创建新 Task Revision，高频操作变化经受控端口写入 content 后端，回读为 Task–Backend Binding 的操作投影。历史 Revision、Run 和 Receipt 永不改写或物理删除。Project 已归档时拒绝创建、采纳、移动、重开、取消或完成 Task；归档前的静默条件见 [Project 约束](./project.md#repo-注册与-project-归档)。
 
@@ -23,15 +23,15 @@ Backlog、Ready、In Progress 和 Review 是本地阶段，不是 Task 生命周
 
 ## 契约与来源
 
-任务 content 的家是 Repo 级选择。注册仓库或首次启用 Kanban 时，系统为整个 Repo 选定一个 content 后端：本地任务服务器，或 GitHub/Linear 这类远端平台。场景客户端经 API 直访远端，客户端本身只是投影。
+任务 content 的家按仓库绑定的任务源来定。一个仓库可以绑零到多个任务源——仓库所绑平台自带的 issues、本地任务服务器、Linear 这类远端平台；一个都不绑时只有 Room，没有看板。注册仓库或首次启用看板时，人从候选列表显式选定仓库级**缺省任务源**：候选列表里的缺省建议项是平台自带的 issues，显式不挂平台的仓库缺省建议项是本地任务服务器；能作缺省源的只有能力声明含建卡与字段写回的绑定，只过了身份与快照的绑定在列表里标「不能作缺省源、可认领」；没有显式同意，系统不绑源、不建卡、不启用看板。启用看板的 Project 恰有一个**源引用**：Project 启用看板时显式确认所选源——采用仓库的缺省建议就是继承，Project 保存自己的源引用；之后仓库缺省建议变化不改既有 Project 与 Task 的来源，也不搬卡与分组锚点。只开聊天室的 Project 没有源引用；仓库没绑源时不能给 Project 启用看板。从 HCTL 新建的 Task 落到 Project 的源引用所指的源。两层选择可以在同一个预览里确认。场景客户端经 API 直访远端，客户端本身只是投影。
 
-一个 Repo 一个 Board。Board 是该仓库任务 content 的容器；HCTL Project 在板上映射为后端的分组实体，如父任务、milestone 或 Linear project，能力不足时降级为标签或过滤视图；Task 映射为分组之下的卡片。后端连接由 Port–Provider Binding（`port_kind = task_source`）承载；更换后端是显式的绑定替换，不改变既有 Task 身份映射。
+一个仓库一张**合并板**。合并板是本控制面所知各任务源的派生视图，不是对象，不进写入约束表：行是本控制面该仓库的全部 Task（各取实体键所指的卡）加各绑定源里尚未认领的卡；泳道与健康状态按本约束的投影规则算；同一张外部卡被两个控制面各认领一张 Task 时，一个前端连着两个控制面可以合并显示，但两份 Task、各自的验收状态与控制面来源分别展示，沿实体键去重，不设板级权威、板级命令或跨控制面锁。HCTL Project 在其源引用所指的源里映射为后端的分组实体，如父任务、milestone 或 Linear project，能力不足时降级为标签或过滤视图；Task 映射为卡片。后端连接由 Port–Provider Binding（`port_kind = task_source`）承载；更换某个源的后端是显式的绑定替换，不改变既有 Task 身份映射。
 
-Board 与 Project 分组不是新聚合。它们的稳定锚定保存在 Repo 任务端口的 Port–Provider Binding 元数据中，至少固定 `repo_id + board_scope_stable_id + project_id + group_kind + group_anchor_stable_id + binding_revision`。
+源内的板范围与 Project 分组不是新聚合。它们的稳定锚定保存在该任务源绑定的元数据中，至少固定 `repo_id + board_scope_stable_id + project_id + group_kind + group_anchor_stable_id + binding_revision`；每个源绑定各有自己的 `board_scope_stable_id`，合并板不另存。
 
-分组锚点可以是后端父实体、milestone 或获准的标签与过滤器身份，但永远不是 Task、Task–Backend Binding 或某张“项目卡”。一个活跃 Project 在一个绑定中恰有一个获准锚点。适配器必须能按锚点稳定回读归属；做不到时，该后端只能显示过滤视图，不能声称支持 Task 身份导入或跨组移动。
+分组锚点可以是后端父实体、milestone 或获准的标签与过滤器身份，但永远不是 Task、Task–Backend Binding 或某张“项目卡”。**两套分组并存**：源内分组只在该 Project 的源引用所指的绑定里建，一个活跃 Project 在那一个绑定中恰有一个获准锚点，其他源不建 Project 分组锚点；跨源归组靠控制面投影——Task 到 Project 的记录。稳定唯一的原生分组只作为自动认领的前置：适配器做不到按锚点稳定回读归属时，该源没有自动认领，只有人的显式认领与过滤视图，不能声称支持 Task 身份导入。
 
-看板卡片是 content，粒度由后端自由承载；子任务、清单和微卡不受 HCTL 约束。只有稳定归属到一个已准入 Project 分组的规范卡片，才能认领一个 HCTL Task 身份。未分组、同时落入多个 Project 分组，或分组锚点不可稳定回读的卡片只形成未认领 Snapshot 和需要关注；系统不得猜测 Project 或先创建 Task。
+看板卡片是 content，粒度由后端自由承载；子任务、清单和微卡不受 HCTL 约束。认领分两路：源引用所指的源里稳定归属到恰好一个已准入 Project 分组的规范卡片，可由对账自动认领；仓库已绑的其他源里的卡、源内未分组或多分组的卡、源里没有 Project 分组锚点的卡，只能由有权的人经「认领卡片」命令显式认领进指定 Project，按实体身份、权限与所选 Project 核验，不要求外源替它建分组；适配器不自选 Project、不先创建 Task，否则只形成未认领 Snapshot 和需要关注。**一张卡一个家，认领不搬家**：卡留在它所在的源，HCTL 只记实体键；用户用合适的客户端编辑那张卡照样可以，写发往卡实际所在的源，HCTL 不自动跨源同步；认领后，卡在外源的分组与它在 HCTL 的 Project 归属脱钩，合并板的跨源归组只认控制面自己的 Task 到 Project 记录，不去外源补建分组。
 
 Task Revision 契约按需创建，但只能由显式“采纳契约”命令，或带已预览契约的“创建 Task”命令产生。无契约的“启动 Run”或“完成 Task”必须先要求该独立动作。没有契约的 Task 只有身份映射与操作投影，不进入治理；它在看板上的终态只是 content 投影。“完成 Task”不得在同一命令中隐式生成契约：预览必须要求先执行可审阅的“采纳契约”，再针对返回的精确 Revision 重新预览完成。
 
@@ -43,7 +43,7 @@ Task Revision 冻结验收契约，不冻结施工步骤；其不可变正文由
 
 绑定 Task 的后端评论线是 Context 的萃取来源。组装器按当前 Snapshot 的引用和摘要把评论线冻结进 Context Manifest 并物化；交付方式见 [Project 约束](./project.md#context-memo-artifact)。评论线仍只能经“采纳契约”进入 Task Revision，物化本身不改变契约。
 
-每个外部规范实体在用户级控制面存储内使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task。该唯一键不含端口绑定、范围或放置位置；停用或重新绑定端口，或改变放置位置，都不释放或重定向这份映射。
+每个外部规范实体在用户级控制面存储内使用 `(provider, account_stable_id, external_entity_kind, immutable_external_entity_id)` 持久映射到一个 HCTL Task。该唯一键不含端口绑定、范围或放置位置；停用或重新绑定端口，或改变放置位置，都不释放或重定向这份映射。唯一范围是本控制面；另一控制面把它的 Task 绑到同一张卡不产生第二张卡（见下文多写通则实例）。键做身份、绑定做寻址：实体键识别卡片，读写这张卡经选定且有权访问该实体的端口绑定；同 provider 同账号不同 scope 可以各有活跃绑定，同一实体键就是同一张卡，不同 scope 的绑定只是寻址路径。
 
 Task–Backend Binding 另行冻结可选的放置身份——`placement_scope_stable_id + external_board_item_id`——及其写入权。移动看板位置或更换看板项绑定不会产生第二个 Task，也不能改写规范实体身份。
 
@@ -52,11 +52,13 @@ Task 有两条可恢复的创建路径：
 1. HCTL-first：携带初始契约时，先在事务外保存精确治理正文，再在准入事务核验并记录 Task、Task Revision、引用摘要、幂等结果和后端创建 outbox；不带契约时只固定 Task 身份与后端 outbox。
 2. content-first：对账过程先保存 Snapshot，再认领唯一外部实体并创建无契约 Task。
 
-两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。正文保存与后端建卡分别恢复，适配器以关联键投递并回读；后端写入不与正文或控制面事务原子提交。content-first 路径只有在卡片恰好归属一个 Project 分组时才能认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
+两条路径都按同一关联键恢复。确认回执未知时，Task 保持开放，并显示待确认或待同步；系统必须按精确关联键和摘要回读，不得盲目重投，也不得另建卡片或 Task。正文保存与后端建卡分别恢复，适配器以关联键投递并回读；后端写入不与正文或控制面事务原子提交。content-first 路径只有在源引用所指的源里、卡片恰好归属一个 Project 分组时才自动认领，其余只由人显式认领，适配器不能自行选择 Project 或写 Task。并发命中同一实体时只能复用同一 Task 或返回类型化冲突。
 
-外部卡随后移到另一 Project 分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot，并把原 Task 标为需要关注。在恢复原位置或建立新 Task 前，系统必须阻止采纳、启动、完成和后端操作字段写入。
+外部卡随后在源里移到另一分组、同时出现在多个分组或脱离原分组时，control 只追加 Snapshot：不改 Task 的 Project，不冻结采纳、启动、完成或字段写入——「偏离旧分组」本身不是冻结理由；仍冻结的只有依赖当前回读的动作（按[启动 Run 的前置与排序令牌](#启动-run-的前置与排序令牌)）与来源停用、卡被删除各自的规则。
 
-系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只能在原 Project 锚点内改变阶段和排序；跨 Project 分组的预览必须拒绝。改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。
+系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组。“移动 Task”只改阶段与排序，不改 Project；跨源的相对移动拒绝。改变 Project 时，用户显式取消或保留旧 Task，并在目标 Project 创建新 Task，再用来源引用连接历史。迁往另一张卡（换家）不做：卡不搬家，卡所在的源挂了就是 content 后端挂了，ground truth 在那里。
+
+**多写通则的任务后端实例**（[通则](./system.md#命令与跨服务正确性)）：另一控制面把它的 Task 绑到同一张卡，它的评论、写回与 Done 对本控制面是事实，不是命令，也不是违规；本控制面的 Task 不因此完成或取消，本控制面的 Run 也不因此完成；人经原生客户端做的 Done 仍可分别成为两个控制面各自的完成请求、各自独立验收，不等于两边都完成；本控制面的自动写回不能冒充人的新动作，写回评论必须带控制面与 Task 标识；卡内容的并发写按任务源自己的能力处理，有条件写入的用，没有的以回读为准——未确认时不报成功，能确认的结果照常收口，不虚构并发保证；两个控制面各有一份绑定不产生第二张卡。
 
 task_source 端口绑定与 Task–Backend Binding 的本地 current 投影使用 control 维护的单调 `state_version` 做比较并交换；Task Backend Snapshot 另行保存供应端的远端 revision、摘要和游标。采用外部来源内容的“采纳契约”命令必须让 Snapshot、字段权威策略与新 Task Revision 引用同一个 Task–Backend Binding，并把绑定版本、Snapshot、契约投影摘要和权威策略摘要一并写入 Task Revision。
 
@@ -88,7 +90,7 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 | --- | --- | --- | --- |
 | Task / Task Revision | contract version；开放 / 完成 / 已取消与独立 lifecycle version | control 处理「创建/采纳契约/完成/重开/取消 Task」命令 | Task Revision 只追加；Reopen 不改写旧完成历史 |
 | 操作投影（Task–Backend Binding 字段组） | 绑定 `state_version`；后端并发前置按其能力使用 | control 准入「更新 Task」命令与「移动 Task」命令，经受控端口写 content 后端并回读；投影只由回读推进 | 不启动 Run，不改变 Task Revision 或 lifecycle |
-| task_source 端口绑定 / Task–Backend Binding | current revision + local `state_version`；活跃 / 停用 / 已替换 | control 处理「接通/更新/停用」与「绑定/换绑」命令，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的身份认领持久唯一 |
+| task_source 端口绑定 / Task–Backend Binding | current revision + local `state_version`；活跃 / 停用 / 已替换 | control 处理「接通/更新/停用」与「绑定/换绑」命令，adapter 只返回观测 | 历史 Revision 不改写；规范实体到 Task 的身份认领持久唯一；家所在的源停用后 Task、历史与认领保留、标需要关注，人经「接通/换绑」恢复对同一实体的访问即恢复，Task 不换、不新建，恢复前依赖当前回读的动作拒绝，其余按冻结契约判 |
 | Task Backend Snapshot | append-only sequence + remote revision/digest/cursor；可产生待采纳 | control 持久化 refresh/reconcile 观测；「采纳契约」命令才消费契约变化；同一 provider event 若满足上文条件，adapter 另行归一出完成 command draft | Snapshot、tombstone 和外部 lifecycle 不能直接写 Task |
 | Task Completion Receipt | immutable | 只有成功的「完成 Task」命令事务可写 | 精确绑定该次 `task_lifecycle_version`、Task Revision 与证据 |
 
@@ -133,7 +135,8 @@ Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当�
 | Task | Issue / 任务卡 | 后端卡片承载 content；Task 的身份、契约与验收由 HCTL 拥有 |
 | 操作投影的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 Task–Backend Binding 逐字段决定 |
 | 排序（rank） | Linear sortOrder / ProjectV2 排序 | 归后端；adapter 按后端能力用其条件写入，以回读为准 |
-| Task–Backend Binding 的 placement | GitHub ProjectV2 item；Linear 无独立看板项，位置由 workflow state + sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
+| 任务源（缺省建议：平台自带的 issues） | GitHub Issues 加 Projects V2 看板项；本地平台的 issues（编辑接口带内容版本号，可作条件写入；无看板位置接口）；本地任务服务器；Linear | 一张卡一个家；能否作缺省源看绑定的能力声明（建卡与字段写回）；条件写入有就用，没有以回读为准 |
+| Task–Backend Binding 的 placement | GitHub ProjectV2 item；Linear 与本地平台的 issues 无独立看板项，位置由状态加 milestone、标签或 sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
 | Task Backend Snapshot | webhook / API payload | 先观测后采纳；会改契约的内容必须经用户采纳 |
 | 后端关闭态 | issue closed / 卡片终态 | 只是 content 事实，不等于验收完成 |
 | Task Completion Receipt | 无对应 | HCTL 差异化语义：绑定精确契约与证据的完成证明 |

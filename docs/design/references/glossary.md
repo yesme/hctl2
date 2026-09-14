@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.18.2<br>
+> 状态：非规范对照 · 草案 v0.18.3<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -31,7 +31,7 @@
 | Context | 上下文 | 顶层授权采用哪些来源，以及每个执行实际收到哪些字节 | [spec/project](../spec/project.md#context-memo-artifact) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；由 Agency 安装并申报，控制面存储只记引用、摘要与可核验性 | [spec/participant](../spec/participant.md#skill-与申报) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
-| Kanban | 看板 | Task 的主场景；一个 Repo 一个 Board，Project 是分组，Task 是卡片 | [Task](../task.md#kanban-场景) |
+| Kanban | 看板 | Task 的主场景；一个仓库一张合并板（各任务源的投影），Project 是分组，Task 是卡片 | [Task](../task.md#kanban-场景) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选与权限的一次授权执行 | [Run](../run.md) |
 | Workflow | 施工图 | 与引擎无关的控制图与治理规则 | [Run](../run.md) |
 | Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
@@ -55,6 +55,10 @@
 | 治理正文 | 控制面保管的不可变契约、施工图、Memo 等材料；与治理记录同属一份控制面存储，保存、准入与交付分开，见[系统存储约束](../spec/system.md#控制面自己的存储)；不是新业务对象 |
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令；也是四类单元之一，见[单元与连接](../architecture.md#单元与连接) |
+| 任务源 | 任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
+| 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做身份，绑定做寻址 |
+| 合并板 | 一个仓库一张，本控制面所知各任务源的派生视图，不是对象：本仓库全部 Task 加各源里未认领的卡；两套分组——源内分组是源原生的，跨源归组是控制面的 Task 到 Project 记录 |
+| 参考用例 | 所有者写的多单元用例的正式落点 [S1](../scenarios/S1-multi-unit.md)：拓扑、步骤、必然情形、不变量、变体；引用既有 CT 用例，不新增族 |
 | 派工 | Dispatch：控制面向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；控制面持有的唯一执行引用，没有主机、隔离域或物理代次字段；见[spec/participant](../spec/participant.md#派工与观测) |
 | 租户 | Agency 为每个配对的控制面开的隔离空间：独立的派工命名空间、会话、工作副本、凭据作用域、观测流与待交结果；跨租户的读取、订阅、输入、取消、结果收取在结构上不可达；见[单写者](../spec/system.md#单写者) |
 | 直报 / 旁路 / 转述 | 证据三档：`unmediated`（获准采集方经模型写不进去的通道提交、来源与所证版本可核）、`adapter_event`（适配器旁路观察到的结构化事件）、`narrated`（模型输出里的声称）；直报有三路来源，参与者内部那一路要 Agency 具备并声明「代为执行工具并直报」；见[证据通道](../spec/participant.md#证据通道) |
@@ -99,7 +103,7 @@
 | 场景 | content 系统角色 | 拥有的 content |
 | --- | --- | --- |
 | Room | chat server（聊天服务器） | 聊天记录、调用过程与结果卡 |
-| Kanban | task backend（任务后端） | 任务卡、流转、排序、评论 |
+| Kanban | task backend（任务后端；仓库绑零到多个任务源） | 任务卡、流转、排序、评论 |
 | Workflow | workflow engine（工作流引擎） | 令牌位置、重试、定时器、机械执行历史 |
 | Terminal | Agency（默认：本地参考实现） | 会话转录、PTY 流 |
 | Change | SCM platform（代码协作平台；按 Repo 绑定：外部平台缺省选型 GitHub，只在本地的 Repo 缺省绑定随包的本地平台，选型 Gitea） | 评审线程、检查结果、合并状态 |

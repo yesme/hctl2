@@ -89,3 +89,20 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 - 文档：[二进制安装](https://docs.gitea.com/installation/install-from-binary) · [配置速查](https://docs.gitea.com/administration/config-cheat-sheet) · [命令行](https://docs.gitea.com/administration/command-line) · [Actions 概览](https://docs.gitea.com/usage/actions/overview)
 - Gogs 对照：[v0.14.3 发布页](https://github.com/gogs/gogs/releases/tag/v0.14.3) · [`internal/route/api/v1/api.go`](https://github.com/gogs/gogs/blob/main/internal/route/api/v1/api.go) · [`internal/database/repo_branch.go`](https://github.com/gogs/gogs/blob/main/internal/database/repo_branch.go)
 - 源码：[`routers/api/v1/api.go`](https://github.com/go-gitea/gitea/blob/main/routers/api/v1/api.go) · [`modules/structs/repo_branch.go`](https://github.com/go-gitea/gitea/blob/main/modules/structs/repo_branch.go) · [`modules/structs/pull_review.go`](https://github.com/go-gitea/gitea/blob/main/modules/structs/pull_review.go) · [tea CLI 清单](https://gitea.com/gitea/tea/src/branch/main/docs/CLI.md)
+
+## 2026-09-15 · D 批 issues 作任务源的调用面复核
+
+> 对象：Gitea v1.27 源码（`modules/structs/issue.go`、`routers/api/v1/api.go`、`modules/webhook/type.go`，release/v1.27 分支）；tea 命令行文档（`docs/CLI.md`，main 分支；随包 tea v0.15.1 的逐命令核对留给运行验证）<br>
+> 定位：只在本地的仓库缺省绑定本地平台，它的 issues 是缺省任务源（D 批 #230 拍板甲）。
+
+| 操作 | 调用及结构化输出 | 条件写 / 限制 | 备注 |
+| --- | --- | --- | --- |
+| 列 / 读卡 | REST `GET /repos/{owner}/{repo}/issues`、`GET …/issues/{index}`；`tea issues list -o json --fields …`，`--state all\|open\|closed`、`--milestone`、`--labels` | 只读 | 实体键 `id`（int64）；`number` 是仓库内 index |
+| 建卡 | `POST …/issues`（`CreateIssueOption`：title、body、ref、assignees、due_date、milestone、labels、projects、closed）；`tea issues create` | 无幂等键，创建后查重 | — |
+| 编辑 | `PATCH …/issues/{index}`（`EditIssueOption`：title、body、ref、assignees、milestone、projects、state、due_date、unset_due_date、`content_version`）；`tea issues edit --title / --description`，`tea issues close / reopen`；字段级走 `tea api -X PATCH … --data` | `content_version` 的源码注释是「用于编辑时检测冲突」：条件写入声明为「有」；tea 子命令是否传它待核，不传时用 `tea api` 显式带 | — |
+| 评论 | `POST …/issues/{index}/comments`；`GET / PATCH / DELETE …/issues/comments/{id}` | 回含 ID | 写回评论带控制面与 Task 标识 |
+| milestone / 标签 | `…/milestones`、`…/labels` 的增删改查；`tea milestones`、`tea labels` | — | 源内分组锚点用 milestone 或标签 |
+| 看板位置 | v1.27 的 API 路由表里没有 projects（看板）路由 | 看板位置声明为「无」，位置由 state 加 milestone、标签派生 | 平台自带的项目看板只能在界面里动，HCTL 不读它 |
+| 观测 | webhook 事件 `issues`、`issue_assign`、`issue_label`、`issue_milestone`、`issue_comment` | 只唤醒，接纳前回读 | 仓库 hooks：`/repos/{owner}/{repo}/hooks` |
+
+决定：采用随包 tea 加 `tea api`，不新增 SDK；绑定能力声明：建卡与字段写回「有」、条件写入「有（`content_version`）」、看板位置「无」。运行验证（P2.2 使用前，研究记录不代替）：tea v0.15.1 各子命令 `-o json` 的字段、`content_version` 冲突时的实际响应、`http+unix` 形态下的 tea。
