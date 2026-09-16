@@ -48,4 +48,4 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 | Linear | `IssueRelationType`：blocks、duplicate、related、similar；父子经 `parent` / `children` | GraphQL | 官方 SDK 仓库 `packages/sdk/src/schema.graphql` |
 | Vikunja | `RelationKind`：subtask、parenttask、related、duplicateof、duplicates、blocking、blocked、precedes、follows、copiedfrom、copiedto | `PUT /tasks/{id}/relations`、`DELETE /tasks/{id}/relations/{kind}/{other}` | 源码 `pkg/models/task_relation.go`（main 分支） |
 
-结论：四家都有阻塞与父子两种语义，HCTL 的投影只取这两种；其余关系种类不进治理。
+结论：四家都有阻塞与父子两种语义，HCTL 的投影只取这两种，治理只用阻塞；其余关系种类不投影。

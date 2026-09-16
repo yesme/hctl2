@@ -42,7 +42,7 @@
 
 - 外部卡片只改变 stage 或 health 时，Task lifecycle 和当前 Task Revision 必须保持不变；Kanban lane 只重新计算投影
 - 非法 move/complete 拒绝
-- Task 依赖归源：HCTL 写回依赖、另存依赖对象或为跨源记依赖时失败；源上有未关闭的阻塞方而卡片与合并板不投影时失败；父卡完成预览不列未完成子卡时失败；源无依赖语义时因缺依赖而阻拦时失败
+- Task 依赖归源：HCTL 另存依赖对象或为跨源记依赖时失败；源上有父子或阻塞关系而卡片与合并板的四个字段不投影时失败；改关系不经 content 写入通道、或写入后不以回读为准时失败；源无依赖语义时因缺依赖而阻拦时失败
 - local state version 与 remote revision 不混用，过期邻项移动重算
 - 本地 adoption 不要求伪造 Task–Backend Binding，外部 adoption 混用 Task–Backend Binding 版本时拒绝
 - 未采纳契约使 Start/Complete fail-closed，明确 divergence 后新增 drift 仍使旧预览失效
