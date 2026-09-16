@@ -57,7 +57,7 @@ Room 名册换人只影响将来的调用，不改写活动 Invocation。Repo Ro
 
 ## Room 与消息
 
-创建 Scoped Room 时必须冻结 parent Room、讨论目标、完成条件和回填动作。达到完成条件不会自动修改目标。归档只允许两条路径：回填动作成功，或有权 human actor 显式以 abandoned、no-decision 或 superseded 结案并记录理由。回填失败时，Room 和目标引用必须保留为可恢复状态。Scoped Room 不自动归档：闲置（无新消息且未回填）超过[运行默认值](../delivery.md#运行默认值)所定天数时进「需要关注」投影，由人选结案理由；系统不得代人写理由。
+创建 Scoped Room 时必须冻结 parent Room、讨论目标、完成条件和回填动作。达到完成条件不会自动修改目标。归档只允许两条路径：回填动作成功，或有权 human actor 显式以 abandoned、no-decision 或 superseded 结案并记录理由。回填失败时，Room 和目标引用必须保留为可恢复状态。Scoped Room 不自动归档：闲置（无新消息且未回填）满[运行默认值](../delivery.md#运行默认值)所定天数时进「需要关注」投影，由人选结案理由；系统不得代人写理由。
 
 Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。
 
