@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.5<br>
+> 状态：规范性约束 · 草案 v0.18.6<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -63,7 +63,7 @@ Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 
 
 时间线顺序由 chat server 的线性事件顺序给出；这是单 homeserver 的约束前提，写入以事务 ID 保持幂等。稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面存储只追加，以 Room–Server Binding 和 chat server 事件 ID 精确引用消息。被治理引用的消息在引用时冻结事件 ID 与内容摘要，此后 content 分歧不改写已冻结引用。
 
-冻结摘要、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新游标的 metadata 命令可以继续；依赖当前消息正文、成员身份或完整游标的命令必须类型化拒绝。聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实。加密情形由有权 human actor 换绑到未加密房间恢复；已冻结的引用与摘要不受影响。
+冻结摘要、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新游标的 metadata 命令可以继续；依赖当前消息正文、成员身份或完整游标的命令必须类型化拒绝。聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实。加密情形由有权 human actor 换绑到未加密房间恢复；已冻结的引用与摘要不受影响。谁能进房间、消息留多久与远程传输的保护，按[安全策略面](./system.md#安全策略面)「房间隐私与保留」策略点的当前缺省执行。
 
 <a id="context-memo-artifact"></a>
 ## Context、Memo 与 Artifact

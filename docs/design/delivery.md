@@ -1,13 +1,13 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.5<br>
+> 状态：交付文档（非规范） · 草案 v0.18.6<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
 
 ## 当前范围
 
-当前范围分两期。第一期单机装齐全部单元——一个控制面、本地 Agency 参考实现、随包的内容系统与本地平台、前端——服务多个 Project，并交付 macOS/Linux 打包后的 Workbench、control、本地 Agency 参考实现（含技能目录，运行时为 Herdr）、workflow engine、chat server、本地任务服务器和本地代码协作平台生命周期；第二期交付跨机连接：多控制面跨机复用、远程 Agency、共享的内容系统与平台。设计从第一天按多单元写；分期是交付次序，不是从部署模型推出来的唯一排期。这两期区分单元组合的部署范围，不替换 P0–P3 的实现顺序：第一期仍按首次使用逐步交付各系统，P2 不要求 Workbench，也不推迟已定的外部平台与远端任务后端验收。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
+当前范围分两期。第一期单机装齐全部单元——一个控制面、本地 Agency 参考实现、随包的内容系统与本地平台、前端——服务多个 Project，并交付 macOS/Linux 打包后的 Workbench、control、本地 Agency 参考实现（含技能目录，运行时为 Herdr）、workflow engine、chat server、本地任务服务器和本地代码协作平台生命周期；第二期交付跨机连接：多控制面跨机复用、远程 Agency、共享的内容系统与平台；远程连接的认证与传输是[安全策略面](./spec/system.md#安全策略面)「端点与连接」策略点的后续取值。设计从第一天按多单元写；分期是交付次序，不是从部署模型推出来的唯一排期。这两期区分单元组合的部署范围，不替换 P0–P3 的实现顺序：第一期仍按首次使用逐步交付各系统，P2 不要求 Workbench，也不推迟已定的外部平台与远端任务后端验收。领域服务不依赖 Workbench 窗口存活，Windows 只保留原生适配边界。
 
 范围按实现阶段分两组：P2 的验收条件可通过公共 CLI 和各 content 系统原生界面完成；P3 的验收条件覆盖 Workbench 场景。
 
@@ -171,7 +171,7 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
   Dagu、Vikunja、Herdr、Gitea 与 tea 使用官方原生发布物。Tuwunel 上游无 Darwin 制品，HCTL2 在自己的 GitHub Release 托管按 SHA-256 锁定的 macOS 包；日常打包消费托管制品，源码构建只用于更新托管制品。各发行目标共用锁定的 Cinny 官方 Web 发行包，不混用缓存、动态库闭包或生命周期验证。
 - **仅安装控制面也须有 Git**：治理材料裸库沿用既有的 Git 可用性与兼容性检查，不要求安装 Agency、工作副本或本地平台；版本与可用性按已有打包检查验证，材料布局不成为跨单元接口。
 - **压缩只管下载，不碰运行形态**：安装包整包用 xz，参数固定 `-9 -T0`——多线程模式的输出只随 xz 版本、预设与块大小变，与核数无关，可复现；`-9e` 实测只再省 0.3%、慢两成，不用。随包二进制按上游官方制品原样装入，上游提供 xz 制品的（Gitea）锁定 xz 制品下载。不用 UPX 这类自解压打包：UPX 自 4.2.0 起禁用 macOS 支持，会改写上游制品让签名与哈希失效，运行时还把整份二进制解压进匿名内存、多进程不共享。实测 Gitea 二进制 117.5 MB：gzip 43.1 MB、上游 xz 38.3 MB、zstd 最高档 35.2 MB、xz `-9 -T0` 31.8 MB。（所有者裁定，2026-09-07）
-- **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加。
+- **Docker 不做统一打包方式，也不做 Harness 的沙箱或桌面形态**：执行面一半天生进不了容器；macOS/Windows 上容器即 Linux 虚拟机，有授权与资源开销问题。Linux/macOS 发行均为原生包，最终用户无需安装 Docker Desktop；执行加固只按宿主 OS 原生机制施加——这是随包本地 Agency 参考实现对「执行加固」策略点的取值，不是所有 Agency 的缺省（[安全策略面](./spec/system.md#安全策略面)）。
 - Windows 不在当前范围。Herdr v0.8.2 已提供官方 Windows x86_64 发行物，但 HCTL 当前的构建与生命周期验证矩阵只有 Linux/macOS，Tuwunel 也未见官方 Windows 包；未来须让完整 Windows 包重新通过同一约束与兼容矩阵，当前不宣称支持 Windows。
 
 <a id="运行默认值"></a>
@@ -182,6 +182,8 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 ## 技术基线
 
 技术栈包括 Rust control/tool 与本地 Agency 参考实现（含 Herdr 适配代码）；Tauri 2 + React 19 Workbench（GPUI 原生备选，Electron 安全网）；SQLite + FTS5 与 Git；以及 Tiptap、React Aria、React Flow + Dagre、xterm.js。
+
+桌面壳的最小权限面是[安全策略面](./spec/system.md#安全策略面)「客户端最小权限」策略点的当前实现：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer；CSP 拒绝远程或未声明的可执行来源。
 
 五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、本地冲突写入的锁用标准库文件锁（用于需互斥的资源，不锁住整个共享对象库）、治理记录备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作直报级证据；在参与者内部运行时，能否算直报看 Agency 是否声明「代为执行工具并直报」。
 
@@ -197,5 +199,4 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 
 ## 未决问题
 
-- Repo Room 的隐私与保留期限——端到端加密不是答案（HCTL 房间对 control 明文可读），只能由 homeserver 侧访问控制、传输/存储加密与保留策略回答（2026-09-17 裁决：默认安全环境、预留策略点，随安全批落到唯一落点）；
-- 多主机与远程的实施：架构方向已定（Workbench 连接本机或远程控制面，见[三面架构](./architecture.md#三个面)），未决的是远程连接的认证与传输、多主机执行现场的编排、Windows 与多用户权限（2026-09-17 裁决：认证属安全策略面，同上一条随安全批落点；多主机编排沿租户模型不另造对象；Windows 与多用户仍不做）；
+暂无。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Repo Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。
