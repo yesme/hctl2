@@ -414,10 +414,10 @@ for name in layer_terms.allowlist implementation_names.allowlist spec_need.allow
 done
 
 camel_rows="$(awk '/^[ \t]*#/ || NF == 0 { next } { print }' "$allowlist_dir/camelcase_names.allowlist" | wc -l | tr -d ' ')"
-if [ "$camel_rows" -ne 24 ]; then
-    fail "camelcase allowlist has $camel_rows rows, expected 24 proper-name exemptions (v0.17.0 added GitHub/GitLab in spec/repo.md and GitHub in contract-tests.md)"
+if [ "$camel_rows" -ne 26 ]; then
+    fail "camelcase allowlist has $camel_rows rows, expected 26 proper-name exemptions (v0.17.0 added GitHub/GitLab in spec/repo.md and GitHub in contract-tests.md; v0.18.3 added GitHub/GitLab in scenarios/S1-multi-unit.md)"
 else
-    note "PASS camelcase allowlist still has 24 proper-name exemptions"
+    note "PASS camelcase allowlist still has 26 proper-name exemptions"
 fi
 
 # --- PR contract rename / move / grow --------------------------------------

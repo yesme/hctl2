@@ -180,3 +180,23 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 - **卯（B2 收口）**：两条验收路径改为「缺省绑定本地平台的本地仓库」与「受保护的 GitHub `main`」；A1 影子仍在试验仓库上跑，正好用本地平台。
 - **研究**：`docs/research/gitea.md` 首版随 v0.17.1 落地（Fable 写）；待核项（`http+unix` 与 tea 的配合、Forgejo 兼容、`REQUIRE_SIGNIN_VIEW` 下的 webhook）交 Codex 在丁开工前补复核记录。
 - **打包压缩（所有者 2026-09-07 裁定；丁或单开小代码 PR）**：安装包整包从 gzip 换 xz `-9 -T0`，不用 UPX。改动点：`src/packaging/dependencies/{common,platforms/macos,platforms/linux}/package.sh` 与 `defs.bzl` 里的 `gzip -n`，两处 `test-package.sh` 的 `.tar.gz` 匹配，`src/packaging/release/{assemble.sh,defs.bzl,test-package.sh}`，各 README 与 `docs/usage.md` 的 `tar -xzf`；`.sha256` 命名随文件名走；构建环境要有 xz ≥ 5.4 并钉版本（多线程输出与核数无关、可复现，macOS 要核对来源）；Gitea 的 lock.json 条目锁 `.xz` 制品；tea v0.15.1 四平台单二进制也进 lock.json。上游制品的下载格式不改。
+
+## 十二、2026-09-15 补记：按 A、C、B、D 四批重切（D 批 #230 拍板，v0.18.3）
+
+改写 DAG 四批把约束改了一遍，本节按「旧工作包 / 被哪条现行约束替代 / 现在谁做 / 依赖谁」逐项映射，不改上面的历史正文；目录 `README.md` 状态板改为指向本节。P2.1 何时开工仍由所有者定。
+
+| 旧入口 | 被哪条现行约束替代 | 现在谁做 | 依赖谁 |
+| --- | --- | --- | --- |
+| §三「适配器都在 control 进程内」（含 harness 适配器）；给现场工具追加治理正文与 Skill 原语 | B 批：在参与者这一侧，控制面只保留 Agency 端口适配，harness 适配在 Agency 内部（本地参考实现）；平台、聊天、任务源的控制面适配不退场。C 批：治理正文归控制面存储与材料裸库，`hctl2-tool` 不代管治理正文；Skill 申报与核验报告经 Agency 取得 | 壬（Agency 端口）、甲（材料存储） | — |
+| §三「一本账」与 `<repo>/.hctl2/`；§四甲、§六甲 | C 批：治理记录与治理正文两半、保存/准入/交付三阶段、一致备份集；「账本」改口控制面存储 | 甲交付两半存储与备份 | 0b |
+| 丙 Repo Instance 挂接与 `site_generation` | C 批：没有 Repo Instance，工作副本归参与者；引用不相交与旧写者隔离证据由 Repo 模块核 | 撤销；相关核验并入丑 | — |
+| 戊 Repo 注册与 repo.toml（冻结） | C 批：注册三选一（外部平台 / 本地平台 / 显式不挂），由人登记与声明绑定，不写身份文件；本地平台建仓与持凭据单元交付是外部副作用命令 | 解冻，Codex | 甲（不再依赖丙） |
+| 庚 任务源端口（Vikunja 先） | D 批：任务源零到多个、缺省源由人显式同意（缺省建议平台自带 issues）、一张卡一个家、两套分组、合并板投影、多写实例 | 分两段：先平台 issues（`gh issue` / `tea issue`，B2 之前），再本地任务服务器加绑与完整切片（B2 之后、P2 出门之前）；Linear 身份/快照沿 1a | 戊；issues 调用面运行验证在 P2.2 使用前 |
+| 辛「参与者授权」 | #210/#211：按 Project 选人策略与选入记录承接，不恢复已撤销的授权对象 | Grok | 己、庚 |
+| 壬 Agency 端口与 Herdr | B 批：Agency 端口——配对认证、租户、派工引用与实际能力、票据校验、代为执行工具并直报的能力声明；删 `runtime_generation` 与栅栏回显；Herdr 在本地参考实现内部。完整的本地 Agency 参考实现（配对、租户、技能申报、成果保管）是 P2.3 的前置，形态候选见交付文档，不在此选新组件 | Grok | 乙、2a |
+| 癸 Participant 与 Room Invocation | B 批：派工与 Trigger Preview；无 Run 返工由人发起新调用并明确选人（D 批） | Codex | 辛、壬 |
+| 子 Context 组装器 | C 批：「指针只指 Git 对象与工作树路径」改为承接已交付的只读副本与派工前实际可读检查 | Codex | 己、庚 |
+| 丑 Repo 模块 B2 半边 | C 批：持凭据单元交付、发布评审分两阶段、审计关联；D 批：重建只用封存并获准交付的版本 | Grok | 戊、2b |
+| 寅 Task 完成 | C 批：机械项按契约接受 Integration Receipt 或 Repo 核验的平台集成证据 | Codex | 庚、丑 |
+| §十 P2.1 含丙；丁与庚的首次消费关系 | 丙撤后 P2.1 = 0a/0b/0c → 甲 → 乙 → 丁；平台 issues 与本地平台生命周期在 P2.2 消费前就绪 | — | — |
+| P2.5 施工图 lint | D 批：登记时的票数检查（能证明的拒绝加重复风险提示，同一条去重键） | 待写 | Run 模块 |
