@@ -43,7 +43,7 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
-| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、Repo Board/Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；携带初始契约时先保存治理正文，在该事务一并准入 Task Revision；后续契约由“采纳契约”准入 | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
+| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、源引用所指任务源上的 Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；携带初始契约时先保存治理正文，在该事务一并准入 Task Revision；后续契约由“采纳契约”准入 | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
 | Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、席位要求与选定的施工者/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 治理记录和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再经 Agency 派工并激活（顺序见[下文四步](#project--run--participant从授权到派工)） | invocation id + invocation_version + Execution Spec digest + 派工引用 |
 | Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置只认直报（`unmediated`）证据，满足后 Run 才持久化派发授权；Participant 模块再经 Agency 派工并激活（顺序见下文四步） | attempt id + attempt_generation + Execution Spec digest + 派工引用 |
