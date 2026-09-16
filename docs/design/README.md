@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.18.2<br>
+> 状态：规范性索引 · 草案 v0.18.3<br>
 > 日期：2026-08-31
 
 HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者）与 Repo（仓库）。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
@@ -8,7 +8,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 | 权威模块 | 对应场景 | content 系统 | 模块拥有 | 场景客户端 / 受控端口示例 |
 | --- | --- | --- | --- | --- |
 | [Project](./project.md) | Room（聊天室） | chat server（聊天服务器） | 目标与范围、协作现场的身份与升格记录、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
-| [Task](./task.md) | Kanban（看板） | 任务后端（本地任务服务器或远端平台） | 承诺与验收契约、后端映射与字段权威、操作态投影、完成证明 | Workbench Board / Linear、GitHub 任务源端口 |
+| [Task](./task.md) | Kanban（看板） | 任务源（平台自带的 issues、本地任务服务器或远端平台，零到多个） | 承诺与验收契约、来源映射与字段权威、操作态投影、完成证明 | Workbench Board / 平台 issues、Linear 任务源端口 |
 | [Run](./run.md) | Workflow（施工图） | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / workflow engine 端口 |
 | [Participant](./participant.md) | Terminal | Agency（派出方）；默认为本地参考实现 | 参与者身份与人设、Skill（技能包）申报、执行者配置、经 Agency 的派工与观测、终端票据、结果与证据 | Workbench Terminal、CLI（经 Agency 端口）；harness 与运行时在 Agency 门后 |
 | [Repo](./repo.md) | Change（变更） | SCM platform（代码协作平台，按仓库绑定：外部平台，或随包的本地平台）；`hctl2-tool` 是每个仓库都有的本地执行者 | 仓库身份与注册、变更集与不可变快照、写入租约、集成意图与凭证、变更与平台的映射 | 平台原生页面与命令行 / HCTL 平台端口、`hctl2-tool` |
@@ -75,6 +75,7 @@ Workbench 把五个场景客户端和 HCTL 命令入口组合成一个产品桌�
 - [五模块的端到端连接](./spec/connections.md)：类型化交接、事务边界、版本链和跨模块恢复。
 - [交付、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、自举、选型验证和未决项。
 - [契约测试矩阵](./contract-tests.md)：CT 各族与产品验收用例。
+- [参考用例 S1](./scenarios/S1-multi-unit.md)：多单元用例的正式落点——拓扑、步骤、必然情形、不变量与变体，引用既有 CT 用例，不新增族。
 - [文档纪律](./doc-discipline.md)：谁定义什么、去重、引入门槛、修订与审计规则——面向写文档的人的协议；文风与结构见根目录[写作指南](../../WRITING-GUIDE.md)。
 - [术语对照表](./references/glossary.md)：中英对照与一句话含义；语义以模块文档为准。
 - [从 HCTL 到 HCTL2 的来时路](./references/decision-history.md)：关键决策转折的非规范说明；它不形成第二套约束。

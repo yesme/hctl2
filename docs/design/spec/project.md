@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.2<br>
+> 状态：规范性约束 · 草案 v0.18.3<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -131,7 +131,7 @@ Room Invocation 适合一次性的研究、比较或范围明确的写入。它�
 
 Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢失、运行中 ↔ 等待输入，以及运行中/等待输入 → 完成/失败/已取消/丢失。执行身份无法证明时进入丢失；撤销租约、提交停止与隔离 outbox、迟到结果只留审计等动作由[连接约束的统一丢失处理规则](./connections.md#失败与恢复)定义一次，本模块不复述。
 
-迟到流或 Result Proposal 不能准入语义结果，也不能附着到新调用。用户重试必须在旧授权失效后创建新的 Room Invocation、Execution Spec、派工和必要的 ChangeSet，并保留原调用引用；系统不能重放或复活旧调用。
+迟到流或 Result Proposal 不能准入语义结果，也不能附着到新调用。用户重试必须在旧授权失效后创建新的 Room Invocation、Execution Spec、派工和必要的 ChangeSet，并保留原调用引用；系统不能重放或复活旧调用。无 Run 路径的返工也是新的 Room Invocation：由人发起并明确选人，可以选另一家获准 Agency 的参与者，原 Agency 在线与否不构成限制；开工包带人选中的精确版本与评论（可能没有 HCTL Verdict），材料按[三种交付方式](#三种交付方式)交付。
 
 Room Invocation 的 Execution Spec 先固定范围：`repo_scope` 只读，`project_scope` 才能携带写入与 ChangeSet 规则。human 批准建议时，Spec 还必须固定来源建议、建议摘要、可选父执行、扇出位置和预期 Room/Project version。
 
