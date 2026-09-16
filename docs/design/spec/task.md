@@ -23,13 +23,13 @@ Backlog、Ready、In Progress 和 Review 是本地阶段，不是 Task 生命周
 
 ## 契约与来源
 
-任务 content 的家按仓库绑定的任务源来定。一个仓库可以绑零到多个任务源——仓库所绑平台自带的 issues、本地任务服务器、Linear 这类远端平台；一个都不绑时只有 Room，没有看板。注册仓库或首次启用看板时，人从候选列表显式选定仓库级**缺省任务源**：候选列表里的缺省建议项是平台自带的 issues，显式不挂平台的仓库缺省建议项是本地任务服务器；能作缺省源的只有能力声明含建卡与字段写回的绑定，只过了身份与快照的绑定在列表里标「不能作缺省源、可认领」；没有显式同意，系统不绑源、不建卡、不启用看板。启用看板的 Project 恰有一个**源引用**：Project 启用看板时显式确认所选源——采用仓库的缺省建议就是继承，Project 保存自己的源引用；之后仓库缺省建议变化不改既有 Project 与 Task 的来源，也不搬卡与分组锚点。只开聊天室的 Project 没有源引用；仓库没绑源时不能给 Project 启用看板。从 HCTL 新建的 Task 落到 Project 的源引用所指的源。两层选择可以在同一个预览里确认。场景客户端经 API 直访远端，客户端本身只是投影。
+任务 content 的家按仓库绑定的任务源来定。一个仓库可以绑零到多个任务源——仓库所绑平台自带的 issues、本地任务服务器、Linear 这类远端平台；一个都不绑时不启用看板，Room 与其他模块照常。注册仓库或首次启用看板时，人从候选列表显式选定仓库级**缺省任务源**：候选列表里的缺省建议项是平台自带的 issues，显式不挂平台的仓库缺省建议项是本地任务服务器；能作缺省源的只有能力声明含建卡与字段写回的绑定，只过了身份与快照的绑定在列表里标「不能作缺省源、可认领」；没有显式同意，系统不绑源、不建卡、不启用看板。启用看板的 Project 恰有一个**源引用**：Project 启用看板时显式确认所选源——采用仓库的缺省建议就是继承，Project 保存自己的源引用；之后仓库缺省建议变化不改既有 Project 与 Task 的来源，也不搬卡与分组锚点。只开聊天室的 Project 没有源引用；仓库没绑源时不能给 Project 启用看板。从 HCTL 新建的 Task 落到 Project 的源引用所指的源。两层选择可以在同一个预览里确认。场景客户端经 API 直访远端，客户端本身只是投影。
 
 一个仓库一张**合并板**。合并板是本控制面所知各任务源的派生视图，不是对象，不进写入约束表：行是本控制面该仓库的全部 Task（各取实体键所指的卡）加各绑定源里尚未认领的卡；泳道与健康状态按本约束的投影规则算；同一张外部卡被两个控制面各认领一张 Task 时，一个前端连着两个控制面可以合并显示，但两份 Task、各自的验收状态与控制面来源分别展示，沿实体键去重，不设板级权威、板级命令或跨控制面锁。HCTL Project 在其源引用所指的源里映射为后端的分组实体，如父任务、milestone 或 Linear project，能力不足时降级为标签或过滤视图；Task 映射为卡片。后端连接由 Port–Provider Binding（`port_kind = task_source`）承载；更换某个源的后端是显式的绑定替换，不改变既有 Task 身份映射。
 
 源内的板范围与 Project 分组不是新聚合。它们的稳定锚定保存在该任务源绑定的元数据中，至少固定 `repo_id + board_scope_stable_id + project_id + group_kind + group_anchor_stable_id + binding_revision`；每个源绑定各有自己的 `board_scope_stable_id`，合并板不另存。
 
-分组锚点可以是后端父实体、milestone 或获准的标签与过滤器身份，但永远不是 Task、Task–Backend Binding 或某张“项目卡”。**两套分组并存**：源内分组只在该 Project 的源引用所指的绑定里建，一个活跃 Project 在那一个绑定中恰有一个获准锚点，其他源不建 Project 分组锚点；跨源归组靠控制面投影——Task 到 Project 的记录。稳定唯一的原生分组只作为自动认领的前置：适配器做不到按锚点稳定回读归属时，该源没有自动认领，只有人的显式认领与过滤视图，不能声称支持 Task 身份导入。
+分组锚点可以是后端父实体、milestone 或获准的标签与过滤器身份，但永远不是 Task、Task–Backend Binding 或某张“项目卡”。**两套分组并存**：源内分组只在该 Project 的源引用所指的绑定里建，一个活跃 Project 在那一个绑定中恰有一个获准锚点，其他源不建 Project 分组锚点；跨源归组靠控制面投影——Task 到 Project 的记录。稳定唯一的原生分组只作为自动认领的前置：适配器做不到按锚点稳定回读归属时，该源没有自动认领，只有人的显式认领与过滤视图。
 
 看板卡片是 content，粒度由后端自由承载；子任务、清单和微卡不受 HCTL 约束。认领分两路：源引用所指的源里稳定归属到恰好一个已准入 Project 分组的规范卡片，可由对账自动认领；仓库已绑的其他源里的卡、源内未分组或多分组的卡、源里没有 Project 分组锚点的卡，只能由有权的人经「认领卡片」命令显式认领进指定 Project，按实体身份、权限与所选 Project 核验，不要求外源替它建分组；适配器不自选 Project、不先创建 Task，否则只形成未认领 Snapshot 和需要关注。**一张卡一个家，认领不搬家**：卡留在它所在的源，HCTL 只记实体键；用户用合适的客户端编辑那张卡照样可以，写发往卡实际所在的源，HCTL 不自动跨源同步；认领后，卡在外源的分组与它在 HCTL 的 Project 归属脱钩，合并板的跨源归组只认控制面自己的 Task 到 Project 记录，不去外源补建分组。
 
@@ -135,7 +135,7 @@ Start、Complete、Adopt 与跨来源冲突判断若要求 task backend 的当�
 | Task | Issue / 任务卡 | 后端卡片承载 content；Task 的身份、契约与验收由 HCTL 拥有 |
 | 操作投影的 stage | Linear workflow state / GitHub ProjectV2 status | 谁拥有该字段由 Task–Backend Binding 逐字段决定 |
 | 排序（rank） | Linear sortOrder / ProjectV2 排序 | 归后端；adapter 按后端能力用其条件写入，以回读为准 |
-| 任务源（缺省建议：平台自带的 issues） | GitHub Issues 加 Projects V2 看板项；本地平台的 issues（编辑接口带内容版本号，可作条件写入；无看板位置接口）；本地任务服务器；Linear | 一张卡一个家；能否作缺省源看绑定的能力声明（建卡与字段写回）；条件写入有就用，没有以回读为准 |
+| 任务源（缺省建议：平台自带的 issues） | GitHub Issues 加 Projects V2 看板项；本地平台的 issues；本地任务服务器；Linear | 一张卡一个家；能否作缺省源看绑定的能力声明（建卡与字段写回）；条件写入有就用，没有以回读为准 |
 | Task–Backend Binding 的 placement | GitHub ProjectV2 item；Linear 与本地平台的 issues 无独立看板项，位置由状态加 milestone、标签或 sortOrder 派生 | 实体身份与看板位置分离；移动位置不产生第二个 Task |
 | Task Backend Snapshot | webhook / API payload | 先观测后采纳；会改契约的内容必须经用户采纳 |
 | 后端关闭态 | issue closed / 卡片终态 | 只是 content 事实，不等于验收完成 |

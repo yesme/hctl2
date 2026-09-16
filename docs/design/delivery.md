@@ -144,8 +144,8 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
    这些功能在补齐前按低信任或不支持处理，不在 HCTL 内另写终端服务。源码、API、macOS RSS 与历史运行时对照数据见 [Herdr 运行服务验证记录](../research/runtime/agency-runtime-validation-20260829.md)。
 3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读，均按 Chat 端口调用面核对。
    事务 ID、事件顺序与重同步沿用 Matrix homeserver 约束；低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化。结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
-4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja，备份恢复和托管生命周期留到 B1 产品化，git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
-5. **远端任务后端（移出 P0）**：Linear/GitHub 的身份、字段权威、outbox/readback、限流和 tombstone 验证延至 P2 的日常自举子阶梯之后按需启动——约束未押注它，双向适配是五项中最贵的一项。
+4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja；探针、备份恢复和托管生命周期在首次加绑它之前完成（B2 之后、P2 出门之前），git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
+5. **远端任务后端**：GitHub Issues 是外部平台仓库的缺省任务源，其调用面按首次消费在 P2.2 使用前完成运行验证（复核记录见 [sdk/github.md](../research/sdk/github.md)）；Linear 的身份、字段权威、outbox/readback、限流和 tombstone 验证按需在 P2 出门前完成——约束未押注它，双向适配是五项中最贵的一项。
 6. **本地代码协作平台（Gitea，已拍板；Forgejo 备选；Gogs 核对后落选）**：只验 HCTL 的调用面：建仓与推送、分支保护的读写、评审请求的创建/更新/合并、正式评审与评论线程（含解决状态）回读、提交状态写回、webhook 唤醒，以及随包一键启停与备份恢复；issues 作任务源的调用面（建卡、编辑与内容版本号、评论、milestone 与标签、issue 类 webhook）按首次消费在 P2.2 使用前验证；不验 Gitea 自身功能，Actions 执行器不随包。其余探针在 B2 前完成，结论与固定版本见 [Gitea 调研](../research/gitea.md)。
 
 ## 本地 Agency 参考实现
