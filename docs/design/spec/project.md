@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.3<br>
+> 状态：规范性约束 · 草案 v0.18.6<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -57,13 +57,13 @@ Room 名册换人只影响将来的调用，不改写活动 Invocation。Repo Ro
 
 ## Room 与消息
 
-创建 Scoped Room 时必须冻结 parent Room、讨论目标、完成条件和回填动作。达到完成条件不会自动修改目标。归档只允许两条路径：回填动作成功，或有权 human actor 显式以 abandoned、no-decision 或 superseded 结案并记录理由。回填失败时，Room 和目标引用必须保留为可恢复状态。
+创建 Scoped Room 时必须冻结 parent Room、讨论目标、完成条件和回填动作。达到完成条件不会自动修改目标。归档只允许两条路径：回填动作成功，或有权 human actor 显式以 abandoned、no-decision 或 superseded 结案并记录理由。回填失败时，Room 和目标引用必须保留为可恢复状态。Scoped Room 不自动归档：闲置（无新消息且未回填）满[运行默认值](../delivery.md#运行默认值)所定天数时进「需要关注」投影，由人选结案理由；系统不得代人写理由。
 
 Message 是只追加的协作事实，其 ground truth 在 chat server（Matrix 协议：编辑与撤回是新事件）；修正、删除和外部编辑形成新事件或 tombstone，不能抹掉已被引用的历史。
 
 时间线顺序由 chat server 的线性事件顺序给出；这是单 homeserver 的约束前提，写入以事务 ID 保持幂等。稳定 ID、时间戳和 Invocation 完成顺序只用于身份或展示。HCTL 治理事件在控制面存储只追加，以 Room–Server Binding 和 chat server 事件 ID 精确引用消息。被治理引用的消息在引用时冻结事件 ID 与内容摘要，此后 content 分歧不改写已冻结引用。
 
-冻结摘要、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新游标的 metadata 命令可以继续；依赖当前消息正文、成员身份或完整游标的命令必须类型化拒绝。聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实。加密情形由有权 human actor 换绑到未加密房间恢复；已冻结的引用与摘要不受影响。
+冻结摘要、Context 萃取与桥接可读都以 control 能按事件 ID 读取明文正文为前提，因此 HCTL 创建或绑定的房间不启用端到端加密。chat server 不可用，或绑定后房间被开启端到端加密时，不依赖新消息、当前成员或新游标的 metadata 命令可以继续；依赖当前消息正文、成员身份或完整游标的命令必须类型化拒绝。聊天入口分别显示重同步中或需要关注，不能用缓存冒充当前事实。加密情形由有权 human actor 换绑到未加密房间恢复；已冻结的引用与摘要不受影响。谁能进房间、消息留多久与远程传输的保护，按[安全策略面](./system.md#安全策略面)「房间隐私与保留」策略点的当前缺省执行。
 
 <a id="context-memo-artifact"></a>
 ## Context、Memo 与 Artifact

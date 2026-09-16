@@ -106,3 +106,21 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 | 观测 | webhook 事件 `issues`、`issue_assign`、`issue_label`、`issue_milestone`、`issue_comment` | 只唤醒，接纳前回读 | 仓库 hooks：`/repos/{owner}/{repo}/hooks` |
 
 决定：采用随包 tea 加 `tea api`，不新增 SDK；绑定能力声明：建卡与字段写回「有」、条件写入「有（`content_version`）」、看板位置「无」。运行验证（P2.2 使用前，研究记录不代替）：tea v0.15.1 各子命令 `-o json` 的字段、`content_version` 冲突时的实际响应、`http+unix` 形态下的 tea。
+
+## 2026-09-17 · 本机运行验证（Gitea 1.27.3 + tea 0.15.1，darwin-arm64）
+
+> 对象：`gitea-1.27.3-darwin-10.12-arm64`、`tea-0.15.1-darwin-arm64`（dl.gitea.com，SHA-256 与发布页一致）；回环端口、sqlite、`INSTALL_LOCK`、`DISABLE_REGISTRATION`、`REQUIRE_SIGNIN_VIEW = true`；webhook 指向本机监听器。全程在本机完成，无外网请求。<br>
+> 结论：09-15 调用面复核的每一格都跑通；三个待核项里 `http+unix` 与 `REQUIRE_SIGNIN_VIEW` 下的 webhook 有答案，Forgejo 只做了文档对照——它没有 darwin 制品，本机跑不了。
+
+| 待核 / 复核项 | 观察 | 对设计的意思 |
+| --- | --- | --- |
+| `content_version` | issue JSON（建、读、列）直接带 `content_version`，从 0 起；`PATCH` 带旧值回 `409 {"message":"the issue is already changed"}`；不带该字段则无条件覆盖、版本号照样递增；title 与 body 都受它保护；评论的 `PATCH` 没有版本号 | 条件写入「有」成立，范围只是 issue 编辑（title、body 等）；写回 issue 一律带上读到的 `content_version`，不带等于放弃锁；评论接口没有版本锁，只追加不改写 |
+| 列与轮询 | `GET …/issues?state=all&type=issues&since=…&limit=…&page=…` 生效，`since` 按 `updated_at` 过滤，回 `X-Total-Count` 与 `Link`（rel=next / last）；跨仓库 `GET /repos/issues/search?since=…` 可作控制面一次轮询的入口 | 轮询对账用 `since` 加分页，不逐卡读；这不取消启动 Run 前置所要求的当前回读 |
+| webhook 与 `REQUIRE_SIGNIN_VIEW` | 打开时未登录访问 API 一律 `403 "Only signed in user is allowed to call APIs."`（含 `/version`），网页 303 到登录页；出站 webhook 不受影响：`issues`（opened / edited / closed / reopened / assigned / milestoned / label_updated）与 `issue_comment`（created / edited）都投递到本机监听器，每条带 `X-Gitea-Delivery`、`X-Gitea-Event`、`X-Gitea-Signature` 与 `X-Hub-Signature-256` | 待核项关闭：签入才可见不影响唤醒；控制面校验 `X-Hub-Signature-256` 即可，与 GitHub 同一套 |
+| webhook 目标在本机 | `[webhook] ALLOWED_HOST_LIST` 缺省 `external`，回环地址会被拒；设成 `loopback` 后才投递。建 hook 时不校验目标（指向不可达地址也回 201），失败只在投递时发生；REST 没有投递记录接口（`…/hooks/{id}/deliveries` 404），只有 `POST …/hooks/{id}/tests` | 随包 `app.ini` 加 `ALLOWED_HOST_LIST = loopback`；投递失败靠轮询兜底，不靠回查 |
+| `http+unix` | `PROTOCOL = http+unix` 加 `HTTP_ADDR = <套接字路径>` 可用：curl `--unix-socket` 读写 issues、409 冲突、webhook 投递都与 TCP 一致；套接字路径受 macOS 104 字节上限，超长路径下进程起来但套接字不出现、日志无错。tea 0.15.1 只认 `http(s)://`：`http+unix://` 报 `unsupported protocol scheme`，`unix://` 与 `http://unix:…` 被当主机名解析失败 | 待核项关闭：本地平台监听回环端口（09-15 已定）；套接字形态只对不经 tea 的第一方调用可选，且路径要短 |
+| tea 子命令 | `issues list -o json --fields …` 可用，字段全集 `index,state,kind,author,author-id,url,title,body,created,updated,deadline,assignees,milestone,labels,comments,owner,repo`（`updated` 为 UTC，`labels` 与 `assignees` 是逗号串）；`issues create / edit / close / reopen` 与 `comment` 不理会 `-o json`，只出人读文本；`milestones list`、`labels list` 的 `-o json` 可用；`tea api -X POST/PATCH -d '<json>' <path>` 原样透传，回原始 JSON，409 也原样回 | 建卡、改卡、评论的结构化通路只走 `tea api`；`issues list` 的 JSON 里没有实体键 `id` 与 `content_version`，只够做投影，身份与锁仍要 `tea api` 读 |
+| 看板与依赖 | `…/projects`、`/user/projects` 404，与源码结论一致；`…/issues/{index}/dependencies` 增删查可用 | 看板位置「无」成立；Task 依赖若要投影，源原生依赖可读 |
+| Forgejo（只对照 swagger，未运行） | 发布页（v16.0.4、v15.0.8）的预编译服务器二进制只有 linux，另有源码包；forgejo 分支 swagger（提交 `3b7f449d`）的 `EditIssueOption` 与 `Issue` 都没有 `content_version`，`EditIssueOption` 与 `EditIssueCommentOption` 各多一个 `updated_at`——那是设置更新时间的字段，不是预期版本比较；issues 列表多 `sort` 参数；projects 与 hook deliveries 同样没有；依赖与 `/repos/issues/search` 有 | 备选不是零成本：Forgejo 未验证服务端条件写入，绑定能力声明按平台探测，条件写入声明「无」；时间戳只作漂移检查、以回读为准，不宣称并发保证；真要验须在 linux 上跑 |
+
+决定不变：Gitea 1.27.3 与 tea 0.15.1 随包，结构化写走 `tea api`。随包配置补两条：`ALLOWED_HOST_LIST = loopback`；不用套接字形态。GitHub Issues 侧的写侧验证同日在私有沙箱完成，见 `sdk/github.md` 复核记录；GitHub 的 issues 权限与 Projects V2 权限分开，`project` scope 只管后者。
