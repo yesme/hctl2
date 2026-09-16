@@ -192,3 +192,4 @@ gh 固定的是客户端，不是远端 API 行为。2.99.0 源码的 REST 默�
 - 采用随包 `gh`；高层命令缺 JSON 时用 `gh api`，不新增 SDK。
 - 绑定能力声明：建卡与字段写回「有」；条件写入「无，以回读为准」；看板位置「Projects V2，需 `project` scope，绑定声明时才有」；源内分组锚点用 milestone 或标签。
 - 运行验证（P2.2 使用前，研究记录不代替）：issue transfer 后的实体变化；只有 `read:project` 时 `gh project` 的行为；PR 过滤；webhook 与轮询对账。
+- 2026-09-17 · 运行验证的前置条件核对：本机 gh 2.100.0 的令牌 scope 是 `gist, read:org, repo, workflow`，Projects V2 的 GraphQL 回 `INSUFFICIENT_SCOPES`（读要 `read:project`，写要 `project`）；账号下没有可写的沙箱仓库。issues 建卡、编辑、评论与 webhook 的写侧验证因此没有做。做的时候要三样：一个私有沙箱仓库（建仓是对外动作，等所有者点头）、`gh auth refresh -s project`（同样等所有者）、本机接 webhook 用 `gh webhook forward` 或隧道。读侧 09-15 已核。与 Gitea 的差别已在 `gitea.md` 09-17 复核记录里对照：GitHub 的 issue `PATCH` 没有条件写入，Gitea 有 `content_version`。
