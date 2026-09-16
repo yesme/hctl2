@@ -26,7 +26,7 @@
 
 ## 3 · Project 拆分 / 合并与 Task 依赖的产品表达
 
-- **背景**：现行有：Project 归档与恢复、跨 Project 换 Task 用「取消或保留旧 Task、在目标 Project 新建、来源引用连历史」、Task 依赖没有治理对象。任务源原生有依赖（GitHub sub-issues 与 blocked_by、Gitea 的依赖、Linear 的关系）。
+- **背景**：现行有：Project 归档与恢复、跨 Project 换 Task 用「取消或保留旧 Task、在目标 Project 新建、来源引用连历史」、Task 依赖没有治理对象。任务源原生有依赖（GitHub sub-issues 与 blocked_by、Gitea 的依赖、Linear 的关系）；Gitea 的 `…/issues/{index}/dependencies` 增删查 2026-09-17 已在本机跑通（#240 复核记录）。
 - **问题**：要不要给 Project 拆合、Task 依赖各造一个 HCTL 命令或对象。
 - **影响面**：`spec/project.md`、`spec/task.md`、看板投影。
 - **阻塞级别**：不阻塞任何阶段。
