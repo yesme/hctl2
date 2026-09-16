@@ -1,6 +1,6 @@
 # Repo 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.4<br>
+> 状态：规范性约束 · 草案 v0.18.5<br>
 > 本文是 Repo 模块对象、状态机与写入约束的唯一权威。设计正文见 [Repo 与 Change](../repo.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -133,7 +133,7 @@ Harness 可以操作自己的 Git 工作树；其他写者更新目标是平台�
 
 ChangeSet–Platform Binding 记两类东西。证据部分——某个冻结 ChangeSet Revision 对应平台上哪个提交、哪条评审请求——在发布评审、更新评审请求与集成回读时写入，冻结后不改写。状态部分——评审请求的当前头、检查结果、线程是否解决、正式评审状态、合并状态——是回读事实，随时变，只用于预览、准入前核对与投影。
 
-评审请求的头变化时，`hctl2-tool` 重算基线与结果树，按[ChangeSet 与 Git 事实](#changeset-与-git-事实)判定是否为新 Revision；新 Revision 由归属者准入后才映射，平台上的提交自身不产生获准版本。一个 ChangeSet 对应几条评审请求、一条评审请求能否换 ChangeSet，见[交付文档的未决问题](../delivery.md#未决问题)；本约束不默认一对一。
+评审请求的头变化时，`hctl2-tool` 重算基线与结果树，按[ChangeSet 与 Git 事实](#changeset-与-git-事实)判定是否为新 Revision；新 Revision 由归属者准入后才映射，平台上的提交自身不产生获准版本。一个 Run 对应一条评审请求：Run 内换 ChangeSet 或产生新 Revision 都更新同一请求；一个 Task 可先后挂多个 Run，各自一条评审请求（所有者 2026-09-17 裁决）。
 
 评审评论正文是代取来源：组装器按精确 ChangeSet Revision 与评论标识冻结进 Context Manifest，规则见 [Project 约束](./project.md#context-memo-artifact)。评论进入上下文只供作者阅读，不构成授权、契约或裁决。
 

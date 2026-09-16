@@ -36,3 +36,16 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 - outbound webhook 只有 payload HMAC、可选 Basic Auth、User-Agent 与 Content-Type，没有单独 delivery ID header（[`webhooks.go`](https://github.com/go-vikunja/vikunja/blob/ef2200e9429c5cc42f5c1811433418bfcc72b3aa/pkg/models/webhooks.go#L345-L371)）。因此 HCTL 不能用“收到第几次 HTTP POST”作动作身份；幂等依据应由 binding revision、external task ID、updated/remote revision、Done transition 和映射后的 actor 组成，并在接纳前回读 current task。
 
 结论：Vikunja 原生 Done 可以表达 owner human 的完成请求，但不能直接证明 HCTL Task 完成。缺 doer、明确前后变化、版本或 fresh readback 时只作 Snapshot；满足条件时归一到与 CLI/Workbench 相同的「完成 Task」命令，仍由 Task reducer 独立验收。普通创建、编辑和非终态移动继续按 backend-authoritative content 处理。
+
+## 2026-09-17 · 任务依赖语义四家对照
+
+> 定位：所有者 2026-09-17 裁决「依赖是任务源内部语义，HCTL 认得但不持有」；本表只核各源有没有这个语义、怎么读。
+
+| 源 | 依赖语义 | 读写面 | 核对方式 |
+| --- | --- | --- | --- |
+| GitHub Issues | 子 issue（parent / sub-issues）；阻塞（blocked_by / blocking） | REST `…/issues/{n}/sub_issues`、`…/issues/{n}/parent`、`…/issues/{n}/dependencies/blocked_by`、`…/blocking`；issue JSON 带 `parent_issue_url`、`sub_issues_summary`、`issue_dependencies_summary` | 2026-09-17 私有沙箱仓库跑通增查（见 `sdk/github.md` 复核记录） |
+| Gitea | dependencies（阻塞） | REST `…/issues/{index}/dependencies` 增删查 | 2026-09-17 本机 1.27.3 跑通（见 `gitea.md` 复核记录） |
+| Linear | `IssueRelationType`：blocks、duplicate、related、similar；父子经 `parent` / `children` | GraphQL | 官方 SDK 仓库 `packages/sdk/src/schema.graphql` |
+| Vikunja | `RelationKind`：subtask、parenttask、related、duplicateof、duplicates、blocking、blocked、precedes、follows、copiedfrom、copiedto | `PUT /tasks/{id}/relations`、`DELETE /tasks/{id}/relations/{kind}/{other}` | 源码 `pkg/models/task_relation.go`（main 分支） |
+
+结论：四家都有阻塞与父子两种语义，HCTL 的投影只取这两种，治理只用阻塞；其余关系种类不投影。
