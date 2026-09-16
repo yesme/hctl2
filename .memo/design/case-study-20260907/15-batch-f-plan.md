@@ -23,7 +23,9 @@
 
 **症状。** 拆分或合并 Project 要逐张取消重建；Task 历史被切在旧 Project、靠来源引用缝；归档 Project 顺手冻 Task；出现「拆分/合并 Project 要不要造命令」这种伪问题（#243 §明确不做）；「认领卡片」命令把两件事绑在一起——为卡建 Task，和把它放进哪个 Project（`spec/task.md` §契约与来源「显式认领进指定 Project」）。
 
-**它可能是更大问题的症状。** Project 同时是三样东西：一个 Room、一套规矩、一个分组。前两样合起来是 Run 的授权域，第三样是展示。本批不拆 Project，只把 Task 从它身上解下来；要不要把「授权域」与「分组」拆成两个概念，列在备选丁，给陪审团判。
+**它就是更大问题的症状——所有者 09-17 的补充（原话）。** 「你现在这个改动，是不是对 fundamental 的那个树状图也有影响 - 本质上讲 control 是一切的起点，而 repo 是所有讨论的 closure - 至于里边的 project、task，实际上已经平权了，是 repo 的不同视图。我说 task 和 project 之间解耦 - 说的是在同一个 project 下的不同子 project/room - 无论是 project、task、run，都是不能跨越 <control, repo> 这个限制/沙箱对的。」
+
+所以本批改的不只是 Task 的一个指针，是树状图：现在 \`architecture.md\` §场景与系统 写「content 容器的层级……一个 Project 一个 Project Room……Project 是板上的分组，Task 是卡片……容器归属 Repo/Project 身份」，把 Project 画成 Task 的容器。改后的图只有两层硬的：控制面是起点，仓库是讨论与工作的闭包，<控制面, 仓库> 是沙箱对；Project、Task、Run 在这一对里面平权，是仓库的三种视图——Project 是一个 Room 加一套规矩加一个分组视图，Task 是一份契约加一张卡，Run 是一次授权执行，各自引用另外两者但互不为容器；三者都不跨 <控制面, 仓库>。备选丁（把 Project 再拆成授权域与标签）在这个图下不必要：Project 本来就不是容器，不用拆它，只要不让 Task 挂在它身上。
 
 **业界。** 硬容器：Jira（issue 键带项目前缀，移项目换键）、Linear 的 team（换 team 换标识符）、GitHub 的仓库（09-17 沙箱验证：transfer 后 id 与 node_id 全换）。软标签：Asana 的 multi-homing（一个任务同时在多个 project）、Linear 的 project（可空指针，随便挪）、GitHub 的 milestone（一个可改字段）与 Projects 看板（一张卡进多个）、Vikunja（任务属一个 project、可移）。规律：硬容器只有一个，是身份与 ground truth 所在；分组都是标签。软件之外：人属于一个部门是硬的，参与哪个项目是软的。
 
@@ -38,13 +40,15 @@
 | 甲 · 不做 | 维持硬容器；#243「拆合不另造命令」留着；拆合靠取消重建 | 用的人付：每次拆合逐张取消重建；Task 历史被切；归档冻 Task |
 | 乙 · 解耦，一张卡一个分组 | Task 的当前 Project 是可变分组记录，0..1；Run 冻结「在哪个 Project 下跑」与「跑哪个 Task 版本」，两者同仓库；归档 Project 冻 Room、拒新 Run，不冻 Task；拆合 = 改标签 | 一次约束层改动（本批）；Kanban 投影按当前分组；CT 换几行 |
 | 丙 · 解耦且多归属 | 同乙，但 0..N（Asana multi-homing） | 源锚点只映射一个 milestone，多归属要在控制面另存；看板泳道、自动认领的「恰一分组」前置都要重写；S1 没有这种情形 |
-| 丁 · 换问题 | 把 Project 拆成「授权域」（Room + 名册 + 规矩）与「分组标签」两个概念；Task 只挂标签，Run 只挂授权域 | 多一个概念；只有当一个 Room 要管多个分组、或多个 Room 共用一套规矩时才有收益；S1 里 Project 与授权域一一对应 |
+| 丁 · 换问题 | 把 Project 拆成「授权域」（Room + 名册 + 规矩）与「分组标签」两个概念；Task 只挂标签，Run 只挂授权域 | 多一个概念；所有者的树状图（Project、Task、Run 平权、都是仓库的视图）已经不把 Project 当容器，拆它没有收益；只有当一个 Room 要管多个分组、或多个 Room 共用一套规矩时才值得重开 |
 
-**推荐乙。** 丙以后放开是加法。丁记为触发条件「出现一个 Room 管多个分组，或多个 Project 要共用一套规矩」时再开。
+**推荐乙，并按所有者的树状图改写架构层的容器层级（K0）。** 丙以后放开是加法。丁记为触发条件「出现一个 Room 管多个分组，或多个 Project 要共用一套规矩」时再开。
 
 ## 二、改法逐条
 
 每条：改哪些句子、来自哪条不变量或用例事实、几种改法、代价、推荐；已拍板的标出处。
+
+**K0 · 树状图：两层硬容器，三种平权视图。** 改 \`architecture.md\` §场景与系统 容器层级句：「content 容器的层级随场景各得其所……容器归属 Repo/Project 身份，不归属某个 clone 或客户端」→「控制面是一切的起点，仓库是讨论与工作的闭包，<控制面, 仓库> 是沙箱对；Project、Task、Run 是仓库的三种视图，互相引用、互不为容器，三者都不跨这一对；content 容器随场景：聊天里一个仓库一个 Repo Room、一个 Project 一个 Project Room，看板里一个仓库一张合并板、Project 是分组、Task 是卡片；容器归属仓库身份，不归属某个 clone 或客户端」。\`spec/project.md\` §Repo 注册与 Project 归档「Project 归属于一个 Repo」保留，\`spec/task.md\` §对象 加「Task 归属于一个 Repo」，\`spec/run.md\` §启动与 Manifest 加「Run 的 Project 与 Task 同一仓库」（K3）。新增不变量：Project、Task、Run 的任何引用都不指向另一个仓库或另一个控制面的对象——CT-SYSTEM 或 CT-CONNECTION 一行「跨仓库归组、跨仓库绑定 Task、跨控制面引用时失败」；S1 §四 加 I18。来源：所有者 09-17 原话；这是本批的前提，不是待裁。
 
 **K1 · Task 归属可变。** 改 `spec/task.md` §对象 Task 行「所属 Project」→「当前 Project（可变分组，0..1）」，lifecycle 句删「`project_id` 是稳定身份的一部分，创建后不可改写」，改为「Task 稳定身份是仓库加实体键（有卡）或仓库加本地 ID（无卡）；当前 Project 是有版本的分组记录，只经『归组』命令或源引用所指源的稳定分组对账改变」；§契约与来源 删「系统不改变 Task 的 Project 归属……再用来源引用连接历史」整句，保留「换卡不做」；`spec/connections.md` Project → Task 行「固定不可变 `project_id`」→「记初始当前 Project（可为空）」，§跨模块 Request 回路「不能改变 Task 的 Project 归属」→「不能改当前 Project；改它只经归组命令或稳定分组对账」；`glossary.md` 项目标识符行。来源：§零 四样东西表——归属只服务展示与认领。改法 A（推荐）如上；改法 B 保留不可变 `project_id` 另造「转移 Task」命令改写它——仍是容器思维，不推荐。
 
@@ -67,6 +71,7 @@
 | 步骤 / 情形 | 改后规则下 | 判 |
 | --- | --- | --- |
 | S1.2 mac_ctl 开两个 Project 各拿参与者 | Project 仍是授权域与 Room；Run 冻结它 | 走得通 |
+| 人把 gh-jssdk 的一个 Task 归组到另一个仓库的 Project | 跨仓库归组拒绝（K0 不变量） | 走得通（拒绝即正确） |
 | S1.X1 启用看板、选缺省源 | 不变 | 走得通 |
 | S1.X3 Linear 的卡显式认领进 mac_jssdk_01 | 认领建 Task 并归组到 mac_jssdk_01；卡留在 Linear | 走得通 |
 | S1.X4 Linear 绑定停用 | Task 保留、当前 Project 不动、标需要关注 | 走得通 |
@@ -80,6 +85,7 @@
 
 | 改法 | 文件 §节 |
 | --- | --- |
+| K0 | `architecture.md` §场景与系统；`spec/task.md` §对象；`spec/run.md` §启动与 Manifest；CT-SYSTEM 或 CT-CONNECTION；S1 §四 I18 |
 | K1 | `spec/task.md` §对象、§契约与来源；`spec/connections.md` §连接约束总表、§跨模块 Request 回路；`glossary.md` |
 | K2 | `spec/task.md` §契约与来源；CT-TASK |
 | K3 | `spec/run.md` §启动与 Manifest；CT-RUN |
@@ -97,7 +103,7 @@
 
 ## 六、已拍板不重开
 
-一张卡一个家、认领不搬家、两套分组、合并板是投影、换卡不做（#230）；依赖归源、只有阻塞进启动预览（#243 补记）；Run 与评审请求一对一（#243）；「偏离旧分组不再冻结」（#230）——本批只在其上加同源自动归组，不重开不冻结的裁决。
+所有者 09-17 树状图（控制面起点、仓库闭包、<控制面, 仓库> 沙箱对、Project/Task/Run 平权视图）是本批前提；一张卡一个家、认领不搬家、两套分组、合并板是投影、换卡不做（#230）；依赖归源、只有阻塞进启动预览（#243 补记）；Run 与评审请求一对一（#243）；「偏离旧分组不再冻结」（#230）——本批只在其上加同源自动归组，不重开不冻结的裁决。
 
 ## 七、陪审团怎么审本批
 
