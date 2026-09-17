@@ -49,3 +49,4 @@
 | `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：仓库设置只留 merge commit 并让合并提交带 PR 描述（所有者改）；`src/agency/attribution/` 移植、PR contract 检查、AGENTS.md 一节交 Codex 实现 |
 | `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
 | `design/case-study-20260907/` | 所有者用例（#191）反推的单元模型（01 v3）、治理正文（03 v5，已拍板）、验证器（04 v2）、改写规矩（05 v2）、A0 方案（06，已合 #209）、Repo Instance（07 v4，已对齐）、改写施工图（08）；改写顺序：一致性修正批 → R 小批 → A → C → B → D，所有者按 08 的节点与判据推进 |
+| `design/grok-user-journey-20260917.md` | Workbench 主路径与五模块/多单元对照：topic 房间默认形态、有远端的仓是否改挂 Gitea、界面「新建项目」是否仍拆成登记仓库+第一个 Project |
