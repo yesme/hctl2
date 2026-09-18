@@ -1,6 +1,6 @@
 # 系统边界与适配器约束
 
-> 状态：规范性约束 · 草案 v0.18.6<br>
+> 状态：规范性约束 · 草案 v0.18.7<br>
 > 本文只定义五个模块共享的运行机制，不拥有 Project、Task、Run、Participant 或 Repo 的领域状态。
 
 ## 组件
@@ -111,7 +111,7 @@ frozen adapter binding
 canonical input digest
 ```
 
-actor 来源只能由直接客户端连接、绑定中的账号映射或 control 内部归约器赋予。治理命令只接受两类来源：可映射到归属 human 的动作；以及 control 归约器发出的内部命令——它只能执行已冻结规则的边或已有 human 授权的后续动作：绑定 Task 的 Run 正常完成后的「完成 Task」命令、Workflow Revision 冻结的 Gate 通过后的「合入 ChangeSet」命令、注册确认后创建 Repo Room、按 Execution Spec 冻结的评审发布策略在版本获准后发出的「发布评审」命令（见 [Repo 模块约束](./repo.md#发布评审)）。内部命令的 actor 信封沿用授权它的那次 human 提交或冻结规则的引用，不构成第三类来源；执行体的 Result Proposal 只提供策略允许的内容，不能触发发布。普通 Room 的临场扇出只接受有权的 human actor；workflow 归约器只能实例化 Workflow Revision 已冻结的边。Harness、模型和执行主体只能提交 Result Proposal，不能自报为 human。
+actor 来源只能由直接客户端连接、绑定中的账号映射或 control 内部归约器赋予。治理命令只接受两类来源：可映射到归属 human 的动作；以及 control 归约器发出的内部命令——它只能执行已冻结规则的边或已有 human 授权的后续动作：绑定 Task 的 Run 正常完成后的「完成 Task」命令、Workflow Revision 冻结的 Gate 通过后的「合入 ChangeSet」命令、创建 Project 时建立主 Room、按 Execution Spec 冻结的评审发布策略在版本获准后发出的「发布评审」命令（见 [Repo 模块约束](./repo.md#发布评审)）。内部命令的 actor 信封沿用授权它的那次 human 提交或冻结规则的引用，不构成第三类来源；执行体的 Result Proposal 只提供策略允许的内容，不能触发发布。普通 Room 的临场扇出只接受有权的 human actor；workflow 归约器只能实例化 Workflow Revision 已冻结的边。Harness、模型和执行主体只能提交 Result Proposal，不能自报为 human。
 
 control 必须在同一个 SQLite 事务中写入领域事件、幂等结果和 outbox；跨模块命令也只能使用这一个事务边界。外部适配器使用同一幂等键投递并回读；结果未知时不得盲目重做。重复命令返回原结果，异载荷复用同一幂等键时必须拒绝。
 

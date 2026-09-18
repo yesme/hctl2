@@ -103,6 +103,6 @@ N8 的原文还要求机械核对旧执行是否仍有资格提交，不能只�
 
 [S1 验证映射](../design/scenarios/S1-multi-unit.md#四不变量)中“同 Control、同 Repo 建两个 Project”的事实，与本次 C2 确认一致，应保留相应 CT。此前整理将它判作应改成两间 Topic Room，是整理错误，不是所有者改变了这项用例。
 
-现行 S1 §二/§四/§五及契约测试矩阵的导言还留有这次误判的说明，需在正式文档对齐时纠正；每个 Project 的主 Room、多 Source 导航等仍需对应规范与测试，不能宣称本次整理已完成验证。具体位置见[接手清单](./open-questions.md#规范对齐清单)。
+S1 §二/§四/§五及契约测试矩阵的误判说明已随本 PR 纠正；每个 Project 的主 Room、多 Source 导航等已配对应约束和 [S3 验收路径](../design/scenarios/S3-user-journey.md)。这是要求与映射的同步，不是产品行为已通过验证，具体位置见[接手清单](./open-questions.md#规范对齐清单)。
 
 多 Source 导航是[已明确的体验](./04-project-navigation.md#kanbans每个-source-一个入口)，不再因为它曾列在旧 S1 的“用例外”就把它排除出产品要求；它不改变本页的两个 Control、三个 Agency、多前端拓扑。

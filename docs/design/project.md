@@ -1,6 +1,6 @@
 # Project 与 Room
 
-> 状态：规范性（架构层） · 草案 v0.18.6<br>
+> 状态：规范性（架构层） · 草案 v0.18.7<br>
 > 日期：2026-09-02
 
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
@@ -15,7 +15,7 @@ Project 也不是施工管线：研究、规格说明、ADR（架构决策记录
 
 ## 模块拥有什么
 
-Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册（选进来的规划者）与升格记录，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用。
+Project 模块保存“为什么做、依据是什么、谁在参与”的长期事实：目标与范围，协作现场（Room）的身份、名册（选进来的规划者）与来源记录，每次调用可解释的上下文（Context），向人索取输入的 Request（请求卡），沉淀的 Memo（备忘）与登记的 Artifact（工件），以及从聊天室发起的单次调用。
 
 消息本体是场景内容（content），住在 chat server。讨论产生的决议、Memo 和施工图由控制面保管为治理正文，向参与者按授权交付，不要求它们住在代码树。Project 不等于仓库、聊天串、Task 集合、Run、Harness 会话或 Git 工作树。
 
@@ -23,8 +23,8 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 
 - 普通聊天形成提案；正式变化走带预览的类型化命令，人的结构化动作的准入见[场景约束](./spec/project.md#场景约束)。
 - 普通 Room 的临场执行边由人提交；模型 Participant 只建议下一条边。
-- 外来事项的分诊在 Room 里完成，不另立阶段：采纳契约就是「可执行」，留一张无契约卡就是「不做或未定」，开一间 Scoped Room 就是「需澄清」。模型可以在 Room 里贴建议卡，采纳仍由人做。
-- 塑形的三张清单是施工图的来料：只有「已决」里被定为交付义务、能写成「交出什么、凭什么算交出」的条目才成为节点候选，「已决」里的范围限制、取舍与验收条件留作约束或来源；「尚未定形」只能成为 Request 或 Scoped Room；「出界」不进图。问题之间的依赖在清单里写下来，结晶时作为候选边逐条判断。怎么凝结见 [Run 正文](./run.md#施工图怎么凝结)。
+- 外来事项的分诊在 Room 里完成，不另立阶段：采纳契约就是「可执行」，留一张无契约卡就是「不做或未定」，开一间 Topic Room 就是「需澄清」。模型可以在 Room 里贴建议卡，采纳仍由人做。
+- 塑形的三张清单是施工图的来料：只有「已决」里被定为交付义务、能写成「交出什么、凭什么算交出」的条目才成为节点候选，「已决」里的范围限制、取舍与验收条件留作约束或来源；「尚未定形」只能成为 Request 或 Topic Room；「出界」不进图。问题之间的依赖在清单里写下来，结晶时作为候选边逐条判断。怎么凝结见 [Run 正文](./run.md#施工图怎么凝结)。
 - Room 与 Project 使用独立于 Harness 进程与外部账号的稳定身份；规划者与施工者是选入记录，「角色」只是记录里的职责标签；换工具不改写已授权执行。
 - 上下文保留来源和版本，使每次执行看到的内容可解释。
 - Request 只能由获准动作解决，只解锁它声明的阻塞范围；应答面按需升级——默认在卡片或详情里回答，需要多轮论述、多人参与或共同编辑才开临时讨论空间，敏感输入走安全通道，只有诊断或接管才连接终端。无论升到哪一级，都还是同一个请求、同一个阻塞范围。
@@ -32,22 +32,21 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 - HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 约束](./spec/project.md#room-与消息)。
 - Memo 经显式提炼、预览并发布后成为长期知识；正文保存不等于发布，按[存储约束](./spec/system.md#控制面自己的存储)准入。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时则创建 [Run](./run.md)。
-- 从仓库（Repo）的 Repo Room 提升 Project 时只带显式选中的来源，可删减、补充、去敏；之后的聊天不会偷偷改变既有 Project。
+- 从主 Room 创建 Topic Room 时，先确认一份可独立阅读的前情提要与精确来源，可删减、补充、去敏；之后的主 Room 聊天不会自动流入 Topic Room。
 - Project/Room 历史独立于客户端与运行时存活。
 
 ## Room 类型
 
 | Room | 作用 | 生命周期 |
 | --- | --- | --- |
-| Repo Room | 无固定主题的研究、发现和 Project 入口 | 与 Repo 注册同寿命；身份在用户级控制面 |
-| Project Room | 围绕一个 Project 的长期协作和里程碑 | Project 归档后只读 |
-| Scoped Room | 为复杂 Request 或决定临时建立的讨论空间 | 结论回填或显式结案后归档 |
+| Project Room（主 Room） | Project 的日常讨论；用户从 Project 名称进入的主 Room | 创建 Project 时建立；Project 归档后只读 |
+| Topic Room | 在同一 Project 内围绕一个话题独立讨论，也可关联 Request | 由人关闭；关联对象各按自己的规则推进 |
 
-临时讨论空间创建时必须先说清目标与完成后回填什么；结束时把结论回填，或由有权的人显式结案，然后归档。归档的前置条件只在[约束附录](./spec/project.md#room-与消息)定义。
+一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run。精确边界见[约束附录](./spec/project.md#room-与消息)。
 
 ## Room 场景
 
-Room 是 Project 的主要操作场景——它就是聊天室，提供：
+Room 是 Project 的主要操作场景——它就是聊天室。Workbench 左侧点击 Project 名打开主 Room，旁边的“待你处理”打开待处理面板；Rooms、Kanbans、Runs 是并列入口，彼此通过引用联系（见[导航与交互](../user-experience/04-project-navigation.md)）。Room 提供：
 
 - 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
 - `@` 本 Room 名册里的规划者或职责——施工者不在 Room 里被 @，要和正在执行的施工者说话，进绑定那次执行的 Execution Chat；/ 类型化动作、$ Skill（技能包）、`#` 文件/Artifact/消息引用；
@@ -69,7 +68,7 @@ Workbench 就位之前，Matrix 客户端负责读写消息、引用和讨论，
 | 角色 | 可以做什么 |
 | --- | --- |
 | 场景客户端：Workbench Room | 通过 Matrix 写消息 content；提供完整时间线、Composer（输入区）、预览和公共命令入口 |
-| 场景客户端：CLI | 承载调用、Request、升格、Memo/Artifact 的预览与提交，以 chat server 消息事件 ID 引用讨论内容；聊天读写走 Matrix 客户端 |
+| 场景客户端：CLI | 承载调用、Request、Topic Room 创建、Memo/Artifact 的预览与提交，以 chat server 消息事件 ID 引用讨论内容；聊天读写走 Matrix 客户端 |
 | content 系统：chat server（Matrix 协议） | 承载消息、调用过程与结果卡的 ground truth（事实源头）；Workbench 与 Matrix 生态客户端可直接读写聊天 |
 
 chat server 的实现经调研选定（选型与验证见[交付文档](./delivery.md)），Matrix 生态客户端天然可用；非 Matrix 平台由 homeserver/bridge 生态接入，HCTL 只处理身份映射。职责边界见[三面架构](./architecture.md#避免供应商锁定)。
@@ -82,6 +81,6 @@ HCTL 创建或绑定的房间不开端到端加密，因为冻结引用、Contex
 
 - Project 中的提案只有通过采纳命令才会产生 [Task](./task.md) 契约的新版本。
 - Project 可以通过 [Participant](./participant.md) 模块发起一次调用；持久自动施工必须显式创建 [Run](./run.md)。写入型调用可以在 Trigger Preview 一并授权“发布去评审”的范围，发布、集成与凭证由 [Repo（仓库）模块](./repo.md)执行。
-- 注册仓库时 Repo 模块激活仓库身份，Project 在同一控制面事务里建 Repo Room；Project 归属于一个仓库。
+- Repo 模块注册并激活仓库身份；创建 Project 时建立它自己的主 Room。一个 Project 关联一个 Repo，同一 Repo 可以被多个 Project 使用。
 - Task、Run 和 Participant 模块的状态以投影或引用回到 Room；人的显式动作经对应模块的公共命令入口请求变化。
 - 稳定经验通过 Memo 回流；交付内容通过 Artifact 的不可变发布版本回流，按登记用途来自代码仓库或治理材料。

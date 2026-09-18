@@ -2,7 +2,7 @@
 
 > 状态：所有者的目标体验；组织结构已确认，未声称完整应用已交付。<br>
 > 日期：2026-09-19<br>
-> 来源：2026-09-17 用户流程，结合 09-18/19 的 [Project 导航与组织结构](./04-project-navigation.md#project-入口与-rooms--kanbans--runs)更新；09-19 按所有者要求补入 Topic Room 前情提要与 Run 交付、观察体验，供看稿。
+> 来源：2026-09-17 用户流程，结合 09-18/19 的 [Project 导航与组织结构](./04-project-navigation.md#project-入口与-rooms--kanbans--runs)更新；09-19 按所有者要求补入 Topic Room 前情提要与 Run 交付、观察体验，供看稿；同轮确认后，验收输入与失败反例见 [S3](../design/scenarios/S3-user-journey.md)。
 
 这是一条从“有一份代码”到“展开讨论、安排工作、观察执行”的用户路径，不是代码施工顺序，也不是强制每个 Room 都先有 Task、每个 Task 都先有 Run。内容的归属与引用按 [04](./04-project-navigation.md#松散耦合具体意味着什么)，本页只写人怎样使用它。
 

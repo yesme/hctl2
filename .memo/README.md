@@ -50,4 +50,4 @@
 | `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
 | `design/case-study-20260907/` | 所有者用例（#191）反推的单元模型（01 v3）、治理正文（03 v5，已拍板）、验证器（04 v2）、改写规矩（05 v2）、A0 方案（06，已合 #209）、Repo Instance（07 v4，已对齐）、改写施工图（08）；改写顺序：一致性修正批 → R 小批 → A → C → B → D，所有者按 08 的节点与判据推进 |
 
-2026-09-19：本轮用户路径、Project / Repo / Topic 同题备忘已在各自文件头标为已归档，逐项注明被覆盖与仍成立的判断；旧待拍板入口已撤下。同 Control、同 Repo 可有多个 Project 仍成立，前轮的过度核销已按 C2 纠正。当前需求与接手工作统一读[基础用户体验](../docs/user-experience/README.md#基础用户体验)及[接手清单](../docs/user-experience/open-questions.md#旧讨论怎样接手)。原始用例、聊天记录与备忘正文保留，不把历史候选变成已拍板，也不把体验确认冒充正式规范已经改完。
+2026-09-19：本轮用户路径、Project / Repo / Topic 同题备忘已在各自文件头标为已归档，逐项注明被覆盖与仍成立的判断；旧待拍板入口已撤下。同 Control、同 Repo 可有多个 Project 仍成立，前轮的过度核销已按 C2 纠正。当前需求与接手工作统一读[基础用户体验](../docs/user-experience/README.md#基础用户体验)及[接手清单](../docs/user-experience/open-questions.md#旧讨论怎样接手)。原始用例、聊天记录与备忘正文保留，不把历史候选变成已拍板，体验确认与正式约束、验收的同步范围在 #257 扩充后由接手清单列明，不把文档通过冒充行为已实现。

@@ -1,6 +1,6 @@
 # Project 入口与 Rooms / Kanbans / Runs
 
-> 状态：所有者已确认的体验与组织结构；正式规范尚待对齐，不是产品已实现的报告。<br>
+> 状态：所有者已确认的体验与组织结构；对应约束与验收随 #257 同步，不是产品已实现的报告。<br>
 > 日期：2026-09-19<br>
 > 来源：所有者 09-18 的导航提议、09-19 的侧栏示意、归属说明、待处理入口与 C2 确认，以及随后按此修订体验目录的要求；原话见文末。
 
@@ -66,6 +66,8 @@ Kanbans 接受多个 Source；每个 Source 是列表中的一个入口。用户
 
 Source 指选定的实际来源及范围，不只是品牌名字。Task 保留自己的 Source；Kanban 是该 Source 的可视化入口，不另拥有一套复制出来的任务内容。GitHub Issues 中的 Task 不会通过跨 Kanban 拖放变成 Linear 中的 Task。
 
+Project 是独立的 Namespace（工作与授权的命名范围）。两个 Project 可以各自把同一张外部卡认领为自己的 Task，各有契约、Run 与验收状态；同一 Project 内才去重为一个 Task。它们不复制外部卡，源端的标题、评论或关闭态仍是双方可见的共享事实；Project A 的 Task 完成不替 Project B 作验收。
+
 同一 Source 内的状态、泳道与排序变化，不是跨 Source 搬家。本轮没有要求另加一张强制的合并板；后续的汇总显示也不能替代按 Source 的入口。
 
 ## Runs：完整列出活动执行
@@ -107,7 +109,7 @@ Runs 列出本 Project 所有活动 Run，无论它从哪个 Room、哪个 Task 
 
 **Project 与 Repo 不合成一对一关系；同一 Control、同一 Repo 上的多个 Project 保留。** 当前 Project 内展开话题是建立 Topic Room，不另造一层 Project；用户明确新建 Project 则是独立的工作范围，不能被整理成别的 Project 下的一间 Topic Room。
 
-此前把 Q1 概括成“同 Repo 下多个 Project 的业务层退出”扩大了所有者的意思，现按 [C2 原话](#2026-09-19c2-确认)纠正。Repo 仍负责代码来源、平台绑定、版本与集成，Project 负责各自工作的组织。Project 的默认设置、执行授权和归档规则逐项核对，不因纠词丢掉，也不整套复制到 Topic Room；后续落点见[接手清单](./open-questions.md#规范对齐清单)。
+此前把 Q1 概括成“同 Repo 下多个 Project 的业务层退出”扩大了所有者的意思，现按 [C2 原话](#2026-09-19c2-确认)纠正。Repo 仍负责代码来源、平台绑定、版本与集成，Project 负责各自工作的组织。Project 的默认设置、执行授权和归档规则逐项核对，不因纠词丢掉，也不整套复制到 Topic Room；同步落点见[接手清单](./open-questions.md#规范对齐清单)。
 
 ## 本轮原话
 
@@ -169,3 +171,11 @@ Project Apollo (Repo: github.com/yesme/apollo-mission-decrypt) ← 点这里右�
 > 两个都是主room. 事实上一个control当然可以对同一份repo开两个project (repo room).
 
 据此保留两个 Project、各自主 Room 与原名册。“每个 Project 一个主 Room”不等于“每个 Repo 只有一个 Project”；此前把 Mac 两组工作合为一个 Project 的整理撤回，其余导航、内容归属和独立选人的确认不变。
+
+### 2026-09-19：Project 独立 Namespace
+
+所有者指出此前拟写的“两个 Project 读到同一张卡时不能复制成两个 Task”错误：
+
+> 如果是两个project，这就是两个independent的namespace。这样在各自的namesapce里各自有自己的task，不是很正常么？
+
+据此，外部实体到 Task 的唯一映射改为每个 Project 内；各 Project 可以有自己的 Task，共享外部卡片不共享承诺、Run 或验收。这是本轮明确修订的约束，不再把旧的 Control 级唯一范围当作新体验的前提。

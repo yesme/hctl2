@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.18.6<br>
+> 状态：非规范对照 · 草案 v0.18.7<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -23,7 +23,7 @@
 | planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [Participant](../participant.md#agency-与执行体) |
 | Repo | 仓库 | 人登记的逻辑仓库与声明的平台绑定；也是第五个领域模块的名字，拥有仓库登记、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
 | Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
-| Room | 聊天室 | 持久的多参与者协作空间，分 Repo Room、Project Room、Scoped Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
+| Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
 | Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
@@ -31,7 +31,7 @@
 | Context | 上下文 | 顶层授权采用哪些来源，以及每个执行实际收到哪些字节 | [spec/project](../spec/project.md#context-memo-artifact) |
 | Skill | 技能包 | 带版本与摘要的共享方法定义；由 Agency 安装并申报，控制面存储只记引用、摘要与可核验性 | [spec/participant](../spec/participant.md#skill-与申报) |
 | Task | 任务承诺 | 可排序、可指派、可验收的长期承诺 | [Task](../task.md) |
-| Kanban | 看板 | Task 的主场景；一个仓库一张合并板（各任务源的投影），Project 是分组，Task 是卡片 | [Task](../task.md#kanban-场景) |
+| Kanban | 看板 | Task 的主场景；Project 内按已连接的任务源分别进入，展示卡片、认领与验收状态 | [Task](../task.md#kanban-场景) |
 | Run | 一次受治理施工 | 对冻结施工图、契约、候选与权限的一次授权执行 | [Run](../run.md) |
 | Workflow | 施工图 | 与引擎无关的控制图与治理规则 | [Run](../run.md) |
 | Obligation | 交付义务 | 一个外部节点必须产出的逻辑结果 | [spec/run](../spec/run.md) |
@@ -56,8 +56,8 @@
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令；也是四类单元之一，见[单元与连接](../architecture.md#单元与连接) |
 | 任务源 | 任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
-| 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做身份，绑定做寻址 |
-| 合并板 | 一个仓库一张，本控制面所知各任务源的派生视图，不是对象：本仓库全部 Task 加各源里未认领的卡；两套分组——源内分组是源原生的，跨源归组是控制面的 Task 到 Project 记录 |
+| 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做外部卡身份，绑定做寻址；同一 Project 内映射唯一，不同 Project 可各自有 Task |
+| 合并板 | 可选的跨源派生视图，不是权威对象，也不代替 Project 内按源分别进入的 Kanbans；源内分组与 Task 的 Project 归属分开 |
 | 参考用例 | 所有者的[多单元体验用例](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)统一记录修正后的拓扑、步骤、必然情形与变体；[S1](../scenarios/S1-multi-unit.md#四不变量)保留现行设计的 CT 映射，尚待对齐新体验 |
 | 派工 | Dispatch：控制面向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；控制面持有的唯一执行引用，没有主机、隔离域或物理代次字段；见[spec/participant](../spec/participant.md#派工与观测) |
 | 租户 | Agency 为每个配对的控制面开的隔离空间：独立的派工命名空间、会话、工作副本、凭据作用域、观测流与待交结果；跨租户的读取、订阅、输入、取消、结果收取在结构上不可达；见[安全策略面](../spec/system.md#安全策略面) |
@@ -67,7 +67,7 @@
 | 底座 | 各单元共同工作的对象：Git 与平台；仓库不是单元，平台同时是一种内容系统，不因此多算一个单元；见[单元与连接](../architecture.md#单元与连接) |
 | 三种关系 | 单元之间分开说的三件事：放置（字节在哪）、权威（谁能决定它是否生效）、交付（获准材料怎样到达需要它的一方）；见[单元与连接](../architecture.md#单元与连接) |
 | 旧称「账本」 | 2026-09-10 改口（CONSTRAINTS 禁用）：指控制面的持久存储写"控制面存储"，指其中被记录的事实写"治理记录"，指存储的一次事务写"控制面事务"，Git 里的正文写"Git 正文"，平台上的记录写"平台记录"；决策史与备忘里的旧用法不改 |
-| Repo 某某 | Repo 是各模块共享的作用域限定词：Repo Room 归 Project，Repo 合并板归 Task，Repo policy 归系统层；「Repo 模块」指拥有仓库对象的第五个模块，不改变这些归属 |
+| Repo 某某 | Repo 是代码与平台事实的共同作用域；Project 的主 Room、Topic Room 归 Project 模块，Kanban 归 Task 模块，Repo policy 归系统层；同一 Repo 可对应多个 Project |
 | human actor | 有权的人；约束层用 `human actor`，设计层写「人」或「有权的人」 |
 | owner | 归属者；在精确对象或字段名中保留 `owner` |
 | worktree | Git 工作树；命令与路径中保留 `worktree` |
@@ -202,7 +202,6 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 不支持 | `unsupported` | [run.md](../spec/run.md) |
 | 仓库标识符 | `repo_id` | [repo.md](../spec/repo.md)、[task.md](../spec/task.md) |
 | 仓库版本 | `repo_version` | [repo.md](../spec/repo.md) |
-| 仓库范围 | `repo_scope` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md) |
 | 代次 | `generation` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md) |
 | 任务来源 | `task_source` | [task.md](../spec/task.md) |
 | 任务生命周期版本 | `task_lifecycle_version` | [task.md](../spec/task.md) |
@@ -258,6 +257,5 @@ ReviewSubjectRef 是 kind + ID + digest 的评审对象引用；`revision_digest
 | 转述 | `narrated` | [participant.md](../spec/participant.md) |
 | 项目标识符 | `project_id` | [connections.md](../spec/connections.md)、[task.md](../spec/task.md) |
 | 项目版本 | `project_version` | [project.md](../spec/project.md) |
-| 项目范围 | `project_scope` | [connections.md](../spec/connections.md)、[participant.md](../spec/participant.md)、[project.md](../spec/project.md) |
 | 驳回 | `rejected` | [run.md](../spec/run.md) |
 <!-- END GENERATED IDENTIFIER GLOSSARY -->
