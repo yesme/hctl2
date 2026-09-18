@@ -24,7 +24,7 @@
 | 旧材料中的写法 | 当前体验读法 | 不能顺手推出什么 |
 | --- | --- | --- |
 | “新建 project，选择 SCM 地址” | 为这份 Repo 建 Project 入口 | 不是建一个 Topic，也不再套一层旧 Project 容器 |
-| 同一 Control、同 Repo 的两个讨论 Project | 同一 Project 下的两间 Topic Room | 不是两份 Repo；Mac 用例的名册与执行位置照旧保留 |
+| 同一 Control、同 Repo 的两个讨论 Project | 同一 Project 内各自选人的 Room；主 Room 与 Topic Room 的位置逐例核对 | 不是两份 Repo；Mac 的名册与执行位置保留，旧标签具体映射待 [C2](./open-questions.md#c2mac-用例的-room-位置) 确认 |
 | “ctl + repo 是闭包” | 当前代码场景即同一 Control 中这份 Project 的工作边界 | 不推出全世界同一 Repo 只能由一个 Control 使用 |
 | confession 中的 repo room | 当前统一称为 Project Room 的主 Room | 不在旁边再增加一间重复的 Repo Room |
 | Topic Room、Scoped Room | 用户只面对 Topic Room | 不因合并名称就抹掉实际工作仍需处理的结果或请求 |
@@ -39,7 +39,7 @@
 
 | 材料 | 本轮状态 |
 | --- | --- |
-| 多 Control、多 Repo 的用户叙事 | 已在 [01](./01-multi-unit.md#修正后的-project-与-room-对照)纠正；所有者已确认 cloud 两处都是主 Repo Room，即本目录所称的 Project Room |
+| 多 Control、多 Repo 的用户叙事 | 已在 [01](./01-multi-unit.md#修正后的-project-与-room-对照)纠正工作层次；cloud 两处主 Room 已确认，Mac 两个旧标签的 Room 位置待 C2 核对 |
 | 新建 Project、产生 Topic、观测 Run 的路径 | 已在 [02](./02-user-journey.md#用户体验流程)按最新口径整理 |
 | Project Room 与三列表、内容归属与分别选人 | 已在 [04](./04-project-navigation.md#project-入口与-rooms--kanbans--runs)收录所有者原话与确认的组织结构 |
 | 原始用例、confession log | 保留作史料，不继续在原话里改词 |

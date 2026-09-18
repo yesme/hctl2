@@ -28,11 +28,12 @@
 
 | Control | Project 对应的 Repo | 原文标签 | 修正后的用途 |
 | --- | --- | --- | --- |
-| `mac_ctl` | `gh-jssdk` | `mac_jssdk_01`、`mac_jssdk_02` | 同一 Project 内的两个 Topic Room，各自选人；不再为两个讨论分组建两个 Project |
+| `mac_ctl` | `gh-jssdk` | 主 Room 对应哪个标签待 C2 确认 | 这个 Project 的唯一主 Room，从 Project 名称进入；不从原文另推一份名册 |
+| `mac_ctl` | `gh-jssdk` | `mac_jssdk_01`、`mac_jssdk_02` | 同一 Project 内两组 Room 与名册，各自选人；是否包括上行的主 Room 待 C2 确认，不再作为两个 Project |
 | `cloud_ctl` | `gl-jstui` | `cloud_jstui_01` | 这个 Project 的主 Room 及其名册 |
 | `cloud_ctl` | `gh-jssdk` | `cloud_jssdk_01` | 这个 Project 的主 Room 及其名册；与 `mac_ctl` 中使用同一 Repo 的 Project 分别归属各自 Control |
 
-所有者已确认两个 cloud 标签都是各自的主 Repo Room，也就是本目录所称的 Project Room，见[C1 确认记录](./open-questions.md#c1cloud-用例的-room-位置)。Mac 的两个 Topic Room 是用例展开后的状态；新 Project 的 Rooms 初始仍为空，Project Room 从 Project 入口打开。
+所有者已确认两个 cloud 标签都是各自的主 Repo Room，也就是本目录所称的 Project Room，见[C1 确认记录](./open-questions.md#c1cloud-用例的-room-位置)。Mac 两个旧标签与主 Room 的对应关系尚待 [C2 核对](./open-questions.md#c2mac-用例的-room-位置)，本页不预定 Topic Room 的数量。新 Project 的 Rooms 初始为空；后来展开 Topic 时仍按 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)从主 Room 的相关讨论构造前情提要。
 
 每个 Room 分别选人；随后建立 Run 时，也为该 Run 独立选择施工与评审 Participant，不把 Room 名单直接当成 Run 名单。同 Project 的 Room 可以引用同一 Task 或 Run，引用不搬动原消息、Task 或 Run 的归属；完整关系见 [04](./04-project-navigation.md#松散耦合具体意味着什么)。
 
@@ -46,7 +47,7 @@
 | `mac_jssdk_01` | `mac_ptcp_jssdk_01_02` | `mac_agency` / `mac_tpl_sdet` | Mac；与上一位不同的会话、工作副本，可共用对象库 |
 | `mac_jssdk_01` | `mac_ptcp_jssdk_01_03` | `mac_agency` / `mac_tpl_ops` | Mac；Harness 不同也可与前两位共用对象库，各自工作副本 |
 | `mac_jssdk_01` | `mac_ptcp_jssdk_01_04` | `cloud_agency` / `cloud_tpl_sde` | cloud；不与 Mac 共用对象库 |
-| `mac_jssdk_02` | `mac_ptcp_jssdk_02_01` | `mac_agency` / `mac_tpl_ops` | Mac；可与另一个 Topic Room 的同 Repo 执行共用对象库，也可另行克隆 |
+| `mac_jssdk_02` | `mac_ptcp_jssdk_02_01` | `mac_agency` / `mac_tpl_ops` | Mac；可与另一 Room 的同 Repo 执行共用对象库，也可另行克隆 |
 | `mac_jssdk_02` | `mac_ptcp_jssdk_02_02` | `ubuntu_agency` / `ubuntu_tpl_sde` | Ubuntu |
 | `mac_jssdk_02` | `mac_ptcp_jssdk_02_03` | `ubuntu_agency` / `ubuntu_tpl_pm` | Ubuntu；本用例与上一位共用对象库 |
 | `cloud_jstui_01` | `cloud_ptcp_jstui_01_01` | `ubuntu_agency` / `ubuntu_tpl_sde` | Ubuntu |
@@ -58,15 +59,15 @@
 
 ## 操作步骤
 
-沿用 S1.1–S1.11，纠正原来“开两个 Project”的叙述，不改用户跨机协作的目的。
+沿用 S1.1–S1.11，纠正原来“开两个 Project”的叙述，不改用户跨机协作的目的。这里压缩了创建 Room 与选人的过程，核对的是展开后的连接与名单；首次使用和 Topic 的创建顺序见 [P3](./02-user-journey.md#p3选人并进入-project-room) 与 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。C2 确认前不把 Mac 的两个旧标签写成“两间 Topic Room 加另一间主 Room”。
 
 | 编号 | 用户动作 | 用户看到的结果 |
 | --- | --- | --- |
-| S1.1 | 启动 `mac_ctl`，为 `gh-jssdk` 建 Project，再建立 `mac_jssdk_01`、`mac_jssdk_02` 两个 Topic Room | 一个 Project、一间 Project Room、两间 Topic Room，不是两个 Repo 或两个顶层 Project |
+| S1.1 | 启动 `mac_ctl`，为 `gh-jssdk` 建 Project，再展开原文 `mac_jssdk_01`、`mac_jssdk_02` 两组 Room 与名册 | 一个 Project，从其名称进入唯一主 Room；两个旧标签是否包括这间主 Room 待 C2 确认，不是两个 Repo 或两个顶层 Project |
 | S1.2 | 在 `mac_jssdk_01` 从 `mac_agency` 选前三位 Participant | 同工种可选两位，名单区分各自身份 |
-| S1.3 | 同一 Topic Room 再从 `cloud_agency` 选第四位 | 本地与远程供给可以一起工作；远程执行仍在 cloud |
-| S1.4 | 在 `mac_jssdk_02` 选一位 Mac、两位 Ubuntu Participant | 两个 Topic Room 阵容独立，同 Repo 的对象库可复用 |
-| S1.5 | 用 `mac_cli` 和 `mac_bench` 同时连接 `mac_ctl` | 两个前端看到同一 Project 及其中两个 Topic Room，不各复制一份工作 |
+| S1.3 | 同一 Room 再从 `cloud_agency` 选第四位 | 本地与远程供给可以一起工作；远程执行仍在 cloud |
+| S1.4 | 在 `mac_jssdk_02` 选一位 Mac、两位 Ubuntu Participant | 两个 Room 阵容独立，同 Repo 的对象库可复用 |
+| S1.5 | 用 `mac_cli` 和 `mac_bench` 同时连接 `mac_ctl` | 两个前端看到同一 Project 与同样的 Room 名册，不各复制一份工作 |
 | S1.6 | 启动 `cloud_ctl`，分别为 `gl-jstui`、`gh-jssdk` 建 Project | 两个 Project；与 Mac 上的工作分别归属各自 Control |
 | S1.7 | 在 `cloud_jstui_01` 选择表中两位远程 Participant | cloud 的 Control 使用 Ubuntu 和 Mac 的 Agency |
 | S1.8 | 在 `cloud_jssdk_01` 选择表中两位 Participant | 同一 `mac_agency` 同时服务两个 Control |
@@ -93,13 +94,13 @@ N8 的原文还要求机械核对旧执行是否仍有资格提交，不能只�
 
 ## 两种布局都要覆盖
 
-- **S1.V1a：共用对象库。** 同机、同 Repo 的独立工作副本可以共享对象库，包括来自不同 Topic Room、不同 Control 的执行。
+- **S1.V1a：共用对象库。** 同机、同 Repo 的独立工作副本可以共享对象库，包括来自不同 Room、不同 Control 的执行。
 - **S1.V1b：各自克隆。** 同样的协作路径也能在彼此不共享对象库时成立。
 
 两者都是原用例，不选其中一个冒充唯一合法布局。共享 Git 元数据本身没有问题；这不是要求向 Harness 隐藏 common-dir 或目标 refs。
 
 ## 与既有验证的关系
 
-[旧 S1 验证映射](../design/scenarios/S1-multi-unit.md#四不变量)保留 v0.18.6 的 CT 对应关系。尤其其中“同 ctl、同 repo 建两个旧 Project”的 CT 描述与本稿“两间 Topic Room”不同，尚待规范与测试一起修订，不能宣称本次整理已经让测试覆盖了新体验。
+[旧 S1 验证映射](../design/scenarios/S1-multi-unit.md#四不变量)保留 v0.18.6 的 CT 对应关系。尤其其中“同 ctl、同 repo 建两个旧 Project”的 CT 描述，与本稿“同一 Project 中的 Room 和名册”不同，尚待规范与测试一起修订；Mac 标签的具体位置先核对 C2，不能宣称本次整理已经让测试覆盖了新体验。需对齐的现行 CT 族见[接手清单](./open-questions.md#规范对齐清单)。
 
 多 Source 导航是[已明确的体验](./04-project-navigation.md#kanbans每个-source-一个入口)，不再因为它曾列在旧 S1 的“用例外”就把它排除出产品要求；它不改变本页的两个 Control、三个 Agency、多前端拓扑。
