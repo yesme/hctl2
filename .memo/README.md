@@ -52,3 +52,4 @@
 | `design/grok-user-journey-20260917.md` | Workbench 主路径与五模块/多单元对照：topic 房间默认形态、有远端的仓是否改挂 Gitea、界面「新建项目」是否仍拆成登记仓库+第一个 Project |
 | `design/user-path-20260917.md` | 所有者 2026-09-17 的三段用户路径与现行设计的对齐：入口 Project-first 与 Repo Room 去留、一个 Project 一块板、Room 级归纳施工图、话题室、模板跳过读回、观察面三档、1:N 含义、参考用例 S3 共八项 |
 | `design/closure-control-repo-20260918.md` | 闭包是〈控制面，仓库〉：术语一词一义（仓库、话题、Repo Room、话题室）、三个视图 rooms/tasks/runs 的关系验证（只有任务与 Run、三者到仓库两条硬边）、Project 对象退场的三条路与推荐甲、若拍板要改的约束清单，六项拍板；§十 按三份第一手资料逐条判读「project」，`user-path-20260917.md` 的拍板项 1、2 因此作废 |
+| `design/user-path-alignment-20260918.md` | 用户路径对照（K3）：F1 闭包口径被所有者 09-18 澄清覆盖；三项拍板已并入 `closure-control-repo-20260918.md` §九 与 `user-path-20260917.md` §六；残余增量两个（向导第三选项「显式不挂平台」、注册待确认中间态露面） |
