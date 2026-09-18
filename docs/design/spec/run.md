@@ -21,7 +21,7 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；登记携带三张清单的快照与来源链（关闭读回时不强制）及产出来源（调用集合、显式无、缺失）；正文与清单由控制面保存并核验；固定 compiler/adapter 产出及摘要 | Revision 不改写；新内容创建新 Revision |
+| Workflow Revision / Engine Deployment | immutable revision + approval version | control 协调「登记/编译/批准」命令；登记可携带同一 Project 内的 Task 引用，关联随登记一并准入并由本模块保存；登记携带三张清单的快照与来源链（关闭读回时不强制）及产出来源（调用集合、显式无、缺失）；正文与清单由控制面保存并核验；固定 compiler/adapter 产出及摘要 | Revision 不改写；新内容创建新 Revision |
 | Run / Manifest | `run_version`；启动中 / 运行中 / 暂停中 / 已暂停 / 取消中 / 完成 / 失败 / 已取消 / 被替代 | control 处理「启动/暂停/恢复/取消/替代 Run」命令 | 完成、失败、已取消、被替代不复活；替代创建新 Run |
 | Run–Engine Binding | `engine_binding_generation`；启动中 / 已绑定 / 已关闭 / 分歧 | control 经 workflow engine 端口适配器启动、回读、关闭或标记分歧 | 外部 execution ID 只作绑定，不成为 Run 身份 |
 | Obligation / Seat | state version；活跃 / 已达成 / 失败 / 已取消 / 被替代 | control 在观察到 Engine 检查点进入等待态时创建（只认当前观察，见“从节点到结果”），此后按治理记录里的 Attempt 结果与 Gate 策略推进 | 终态不可复活；引擎重试使检查点再次进入等待态，由 control 按新观察序号创建新 Obligation |
@@ -69,7 +69,7 @@ Workflow Revision 使用 HCTL 规范化 JSON，经过数据结构、Profile 和�
 
 「批准 Workflow」命令的前置：除 Workflow Revision 显式声明关闭读回外，命令必须引用一份**读回记录**——一次从零新起、只交付施工图与清单快照的无 Run 调用的产物，字段固定：被读回的 Workflow Revision 摘要、三张清单快照的摘要、产出调用的选入记录引用与 Context Bundle 摘要、正文摘要。准入条件四条，全部机器判：读回所引用的 Workflow Revision 摘要与本次批准的相同；产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照——它是另一个 Room 的规划者，或专门为读回发起、不进来源 Room 名册的一次调用；产出调用的 Execution Spec 权限摘要不含任何 Room 的消息读取权限。三张清单的快照在「登记 Workflow」时随 Workflow Revision 冻结为附属正文，由控制面保存并核验精确正文：来源是塑形清单所在的 Room 消息事件 ID，或显式标记的直接文本（记提交者与内容摘要；清单分散在多条消息时走直接文本并在来源链列出事件 ID）；快照只含三张清单的固定结构，含其他字段或条目种类时拒绝登记；来源链记在登记记录，不进读回调用的 Bundle；声明关闭读回的 Workflow Revision 不强制快照与来源链。批准时另核三处一致——登记记录里的图与快照摘要、读回记录所抄的摘要、产出调用的 Execution Spec 所冻结且实际交付的 Bundle 里的图与快照摘要——逐项相同，否则拒绝；快照内容是否夹带讨论，机器只核结构，语义归读回。登记记录还含**产出来源**，三种取值：非空的 Room Invocation 引用集合（塑形中写图的调用）、登记者的显式声明「无模型产出调用」、缺失；普通空集合不是显式声明。Workflow Revision 可声明读回须由与产出来源不同的 Worker Profile 做：只在启用读回且声明了回避时求值，读回调用实际使用的 Worker Profile 摘要与集合里每个调用的实际 Worker Profile 摘要都不同才通过；显式声明无模型产出调用时记为无需比较并在读回记录标注；来源缺失、引用无法解析或未知时不判满足，登记者补齐来源或撤回回避声明后方可批准；集合里每个引用须能解析到来源 Room 里真实存在的调用，不以最近一次调用替代集合；来源随本版本登记冻结，不得以变动的来源集合改变既有批准依据；关闭读回时不强制产出来源。缺省见交付文档。读回按塑形清单逐节点写出交出什么、凭什么算交出、依赖谁、对应哪条已决，并列出无对应已决条目的节点、被定为交付义务却无节点的已决条目，以及「上下文」章节提到却无节点承接的事；它只是批准的输入，不改写 Workflow Revision；正文怎么写归 Skill。声明关闭读回时批准照常通过。
 
-Task 在所属 Project 内保存计划的 Workflow Revision 引用；登记与保存不创建活动 Run，也不授予执行权限。用户可以从 Task 取回已保存版本，继续编辑形成新 Revision；退出预览或切换页面不删除已保存的引用。
+「登记 Workflow」可携带 Project 与可选 Task 引用；携带 Task 时，control 核对其归属与本次 Project 一致，并在同一准入事务中由 Run 模块保存 Task 与 Workflow Revision 的关联和幂等结果。Task 侧只投影该关联，不另写一份计划；不带 Task 的登记仍可进行。登记与保存不创建活动 Run，也不授予执行权限。用户可以从 Task 取回已保存版本，继续编辑形成新 Revision；退出预览或切换页面不删除已保存的引用。
 
 Approve Workflow 只确认施工图；「启动 Run」命令才授予资源和副作用权。Run 的 Project 与所绑定 Task 的 Project 必须一致；其他 Room 或 Task 的展示入口不改变这份授权。Run Manifest 至少冻结：
 

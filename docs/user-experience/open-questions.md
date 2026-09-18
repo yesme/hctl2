@@ -58,9 +58,9 @@
 | 工作边界与命名 | [三面架构 §单元与连接](../design/architecture.md#单元与连接)、[设计地图](../design/README.md#对象关系)、[Project 约束](../design/spec/project.md#对象)、[Repo 约束](../design/spec/repo.md#repo-注册) | Project 作为工作范围，Repo 保留代码职责；保留同 Control、同 Repo 多 Project 及各自授权，只凭 Control 与 Repo 不能确定是哪份工作。Q2 另起本地工作才登记新 Repo，普通的同 Repo 新 Project 不需要另一份 Repo 身份 |
 | 架构中的场景与容器 | [场景与系统](../design/architecture.md#场景与系统)、[5×3 归属矩阵](../design/architecture.md#53-归属矩阵) | 对齐表后“一个 Repo 一个 Repo Room、一个 Project 一个 Project Room”两级聊天容器，以及“一仓一张合并板、Project 是分组”的旧叙述；按 Source 进入看板不改变内容仍归各任务源的分责 |
 | 内容归属与引用 | [Project 约束](../design/spec/project.md#repo-注册与-project-归档)、[Task 约束](../design/spec/task.md#对象)、[连接约束](../design/spec/connections.md#连接模型) | 既有内容不换 Project；消息不换 Room；Task 不换 Source；同 Project 的交叉引用不迁移归属、不自动改变承诺与授权 |
-| Room 创建、分类与入口 | [Project 正文](../design/project.md#room-类型)、[Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room 与消息](../design/spec/project.md#room-与消息) | 对齐登记 Repo 另建仓库级 Room、无 Project 的 Repo Room 及来源提升的旧路径；唯一性按每个 Project 的主 Room，不按 Repo 把多个 Project 的主 Room 合成一间。Topic Room 用本 Project 主 Room 的前情提要开场 |
+| Room 创建、分类与入口 | [Project 正文](../design/project.md#room-类型)、[Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room 与消息](../design/spec/project.md#room-与消息) | 对齐登记 Repo 另建仓库级 Room、无 Project 的 Repo Room 及来源提升的旧路径；唯一性按每个 Project 的主 Room，不按 Repo 把多个 Project 的主 Room 合成一间。聊天派生的 Topic Room 用本 Project 主 Room 的前情提要开场；Request 升级则引用请求及其阻塞对象。提要的选材范围与生成方式留给实现设计 |
 | 主 Room 的调用范围 | [Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room Invocation](../design/spec/project.md#room-invocation) | 替换旧 `repo_scope` 只读、`project_scope` 可携带写入规则的区分，让主 Room 和 Topic Room 都能走 T3 的有边界调用；合并房间不自动授予写权限，仍按具体调用的批准范围做事 |
-| Topic 的关闭与闲置提示 | [Room 与消息](../design/spec/project.md#room-与消息)、[交付 §运行默认值](../design/delivery.md#运行默认值) | Scoped Room 的用途并入 Topic Room，但冻结完成条件、回填与结案理由、闲置 14 天提示不能整体套给普通 Topic。实际请求仍有处理路径，不给所有 Topic 强加结案手续；真正待办按已有 Request 或对象状态投影，处理仍走原命令 |
+| Topic 的关闭与闲置提示 | [Room 与消息](../design/spec/project.md#room-与消息)、[交付 §运行默认值](../design/delivery.md#运行默认值) | Scoped Room 的用途并入 Topic Room，但冻结完成条件、回填与结案理由、闲置 14 天提示不能整体套给普通 Topic。承接开放 Request 的 Topic 保留旧闲置关注提醒，普通话题不适用，不给所有 Topic 强加结案手续；真正待办按已有 Request 或对象状态投影，处理仍走原命令 |
 | 待人处理入口 | [Project 正文](../design/project.md#room-场景)、[Run 正文](../design/run.md#workflow-场景) | 按 [04](./04-project-navigation.md#待你处理从-project-标记进入)对齐 Project 标记与待处理面板；汇总已有事项，处理历史留在原处；普通进度与确需人处理的请求分开 |
 | Participant 选择 | [Participant 正文](../design/participant.md#agency-与执行体)、[派工连接](../design/spec/connections.md#project--run--participant从授权到派工) | 每个 Room、每个 Run 分别选人；推荐与预填不自动继承授权；TAMP 延长线不冒充当前已实现 |
 | 多 Source | [Task 正文](../design/task.md#kanban-场景)、[Task 约束 §对象](../design/spec/task.md#对象)、[契约与来源](../design/spec/task.md#契约与来源) | 每 Source 一个入口；新 Task 目标 Source 明确；任务来源固定与源内状态、排序变化分开；对齐旧 Project 分组及唯一源引用。汇总投影是否提供另行设计，本轮既不要求保留强制合并板，也不禁止可选汇总 |
@@ -75,9 +75,9 @@
 
 09-17/18 各 Harness 的同题备忘已归档，文件头逐项写明哪些判断被覆盖、哪些仍成立。C2 已纠正前轮的过度核销：同 Control、同 Repo 开多个 Project 不是过时结论，把 Mac 两个 Project 改成 Topic Room 才是误读。当前需求读本目录，原文仍供溯源；不按旧拍板表逐项追问，也不将整篇建议算作所有者裁决。
 
-持续建议的触发与费用控制、图形观察能力怎样交付，仍需主笔安排实现设计；模板与读回沿用既有批准规则，本 PR 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
+持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付，仍需主笔安排实现设计；模板与读回沿用既有批准规则，本 PR 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
 
-[F 批 PR #246](https://github.com/yesme/hctl2/pull/246)讨论 Task 与 Project 的归属、可变分组。C2 保留同 Repo 多 Project，不能再以“这一层已删除”宣布 F 批无题可审；其改法仍要与所有者“内容不搬 Project”的要求逐条核对。本轮不修改或关闭那份 PR，也不把归档备忘当作正式规范已经失效。
+[F 批 PR #246](https://github.com/yesme/hctl2/pull/246)原来讨论 Task 的 Project 归属可变，以及实体到 Task 在整个 Control 内唯一。两项前提已由所有者 09-19 的固定归属与独立 Namespace 确认取代：现为各 Project 自己认领 Task，唯一范围是 Project 内（见[决策史 §38](../design/references/decision-history.md#38-体验澄清project-各自主-roomtopic-与多源入口v0187)）。同 Repo 多 Project 仍成立，不能用“这一层已删除”作理由；F 批应由其作者和所有者据此前提决定关闭或改题，不再重开已定归属与唯一范围。本轮不修改或关闭那份 PR。
 
 ## 接手时的完成边界
 

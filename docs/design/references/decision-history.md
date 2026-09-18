@@ -381,7 +381,7 @@ D 批按所有者 2026-09-15 的 [#230 拍板](https://github.com/yesme/hctl2/pu
 
 ## 38. 体验澄清：Project 各自主 Room，Topic 与多源入口（v0.18.7）
 
-2026-09-19，所有者在导航、归属和 C2 确认后，将 [#257](https://github.com/yesme/hctl2/pull/257) 扩为“体验澄清＋场景与验收同步”。新建 Project 即建立自己的主 Room；展开话题是带确认的前情提要创建 Topic Room，不再额外设仓库级 Room 或把 Topic 当 Project。Project 的 Rooms、Kanbans、Runs 并列，任务源按入口分别展示；Scoped Room 的用途并入 Topic Room，普通话题不继承强制回填与闲置提醒。原有同 Control、同 Repo 多 Project 及各自授权保留，撤回的是整理者把它误判成两间 Topic Room 的解释，不是所有者取消多 Project 后又恢复。完整裁决与来源见[用户体验](../../user-experience/README.md#第一手来源与整理边界)。
+2026-09-19，所有者在导航、归属和 C2 确认后，将 [#257](https://github.com/yesme/hctl2/pull/257) 扩为“体验澄清＋场景与验收同步”。新建 Project 即建立自己的主 Room；展开话题是带确认的前情提要创建 Topic Room，不再额外设仓库级 Room 或把 Topic 当 Project。Project 的 Rooms、Kanbans、Runs 并列，任务源按入口分别展示；Scoped Room 的用途并入 Topic Room，普通话题不继承强制回填与闲置提醒；承接开放 Request 的 Topic 保留 v0.18.5 的闲置关注提醒，不因此增加“待你处理”计数。原有同 Control、同 Repo 多 Project 及各自授权保留，撤回的是整理者把它误判成两间 Topic Room 的解释，不是所有者取消多 Project 后又恢复。完整裁决与来源见[用户体验](../../user-experience/README.md#第一手来源与整理边界)。
 
 所有者随后明确 Project 是独立 Namespace：同一外部卡可在各 Project 中对应自己的 Task。因此实体到 Task 的唯一范围从 Control 收窄为 Project 内，各自验收；外部卡片不复制，源端变化仍是共享事实。
 

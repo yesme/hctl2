@@ -40,7 +40,7 @@ Repo 的登记与声明的平台绑定由 [Repo 模块约束](./repo.md#repo-注
 
 Room 的 Project 归属创建后固定；消息仍属于原 Room，跨 Room 引用保留出处，不搬动消息。Task 与 Run 的归属各由其模块固定；关联、关闭 Room 或切换客户端不改变归属、终结关联工作或转移授权。
 
-Project Overview 是按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是独立场景或可写状态。Project 的“待你处理”面板只汇总确实要求当前用户决定、输入或授权的已有事项，按来源引用去重；条目列明对象、原因、可用动作与后果、未处理影响及返回原处的入口。阅读或关闭面板不解决事项；实际动作仍走原模块的预览与准入，生效后退出待处理列表，历史留在原处。普通消息、可忽略建议与无需人介入的自动等待不计入待处理数；别的客户端已处理时投影随之更新。
+Project Overview 是按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是独立场景或可写状态。Project 的“待你处理”只投影已有记录中等待当前用户处理的事项：目标为本人或本人所任角色的开放 Request；[发布评审](./repo.md#发布评审)中冻结策略要求本人确认、尚未确认的待处理意图；存在待本人采纳的契约变化，或已有候选交付、没有 Run 占用标记且仍待本人确认完成的开放 Task（判定前置见 [Task 写入约束](./task.md#写入约束)）；[Run 过渡态超时](./run.md#写入约束)后等待有权用户取消或替代的 Run。投影按来源引用与原处理动作去重，Request 已承接的同一处理动作不另计一项；条目列明对象、原因、可用动作与后果、未处理影响及返回原处的入口。读取投影不解决事项；实际动作仍走原模块的预览与准入，生效后退出列表，历史留在原处。预览本身不成为待办，普通消息、可忽略建议与无需人介入的自动等待不计数；别的客户端已处理时投影随之更新。
 
 “归档 Project”要求系统进入静止状态。预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入租约，也不存在归属该 Project 的执行仍持有的活动 Write Lease、待投递或结果未知的集成意图与发布评审意图，以及该 Project 所有的其他待投递或结果未知的外部副作用。Write Lease 与集成意图归 [Repo 模块](./repo.md#写入约束)，归档预览必须能列出它们。前置不满足时，系统必须列出阻塞项并拒绝命令。
 
@@ -55,11 +55,13 @@ Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立
 
 Room 名册换人只影响将来的调用，不改写活动 Invocation。主 Room 与 Topic Room 都从各自名册选人；没有选入记录的调用不准入；控制面内部的纯计算不是调用，不进本节。
 
-从 Project 主 Room 展开话题使用「创建 Topic Room」命令，不创建另一个 Project。创建预览提供可查看、删减、补充和去敏的前情提要，说明话题缘起与目标、已定事实与决定的理由、分歧与待答问题、所需约束与材料，并列明相关来源；已定与未定分开。命令固定本 Project、主 Room 的精确来源 Message 引用、经确认的提要正文及摘要；只带创建时选定的背景，不复制整段会话或继承原授权。主 Room 后续消息不自动进入 Topic Room。
+从 Project 主 Room 展开话题使用「创建 Topic Room」命令，不创建另一个 Project。创建预览提供可查看、删减、补充和去敏的前情提要，说明话题缘起与目标、已定事实与决定的理由、分歧与待答问题、所需约束与材料，并列明相关来源；已定与未定分开。命令固定本 Project、经确认的提要正文及摘要、精确来源：从聊天展开时引用本 Project 主 Room 的 Message；按 [Request 应答路径](#request)升级时引用本 Project 的 Request 及其冻结的阻塞对象与版本，可补充相关 Message，但不要求先在主 Room 发消息。创建准入核对来源的 Project、引用与版本；只带创建时选定的背景，不复制整段会话或继承原授权。主 Room 后续消息不自动进入 Topic Room。
 
 ## Room 与消息
 
 Room 分为每个 Project 唯一的 Project Room，以及该 Project 内零到多间 Topic Room。Topic Room 承接普通话题和复杂 Request 的讨论；普通 Topic 不以完成条件、结论回填或结案理由为创建、关闭的前置，也不因闲置自动进入“待你处理”。人可以关闭 Topic Room；关闭不解决关联 Request，不取消或删除 Task、Run，也不解除其授权与截止条件。实际事项仍按原模块规则处理，其待处理入口保留；讨论结论只有经原类型化动作准入才改变目标。
+
+承接开放 Request 的活跃 Topic Room，自创建或最近一条消息起超过缺省闲置期限、所关联 Request 仍开放时，投影为“需要关注”；期限见[运行默认值](../delivery.md#运行默认值)。这只提醒关联事项，不自动关闭 Room、解决 Request 或增加“待你处理”计数；普通 Topic 不适用。Request 自己的截止与状态规则不变。
 
 Topic Room 的开场材料必须含可反复读取的前情提要正文与来源，而非只有旧 Room 链接。首次调用把提要按本次权限与预算作为必用材料交付，采用[三种交付方式](#三种交付方式)，不要求参与者先通读主 Room。提要不代替权威契约、代码或专业材料，不自动成为 Memo；后续纠正以新消息或新材料保留，不能改写已冻结的调用来源。自动归纳未配置或失败时显式报告，人工补写可作为创建的替代，不报告自动归纳已完成。
 
@@ -178,7 +180,7 @@ mention 的解析必须确定性：`@` 目标只按本 Room 名册里的规划�
 | Room | Matrix room / Slack channel | HCTL Room 身份与治理在控制面；明文准入与事后降级见[Room 与消息](#room-与消息) |
 | 消息 | Matrix event | 消息 content 本体就是 chat server 上的 Matrix event（编辑/撤回是新事件；非 Matrix 平台的消息经 homeserver 桥接生态落为 Matrix event）；HCTL 治理事件只在控制面存储追加，以事件 ID 精确引用消息，不占领域对象名额 |
 | mention | @mention | HCTL 的 `@` 解析目标是本 Room 名册里的规划者或职责而非平台账号，且必须经 Trigger Preview 准入 |
-| Topic Room | thread / 子频道 | 差异：归固定 Project、独立选人，以主 Room 的前情提要开场；关联事项仍经各自命令处理，不因关 Room 完成 |
+| Topic Room | thread / 子频道 | 差异：归固定 Project、独立选人，以经确认的提要及消息或 Request 来源开场；关联事项仍经各自命令处理，不因关 Room 完成 |
 | Room–Server Binding 与聊天端口的 Port–Provider Binding | Matrix 房间 ID / AppService 注册与 homeserver 配置 | 差异：前者指认一个 Room 的 content 家在哪个房间，后者指认 chat server 连接；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
 | Request | 无直接对应 | 差异化语义：向指定人/角色索取输入的一级对象，只能由获准动作解决 |

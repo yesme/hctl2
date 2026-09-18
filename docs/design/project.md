@@ -32,7 +32,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 - HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 约束](./spec/project.md#room-与消息)。
 - Memo 经显式提炼、预览并发布后成为长期知识；正文保存不等于发布，按[存储约束](./spec/system.md#控制面自己的存储)准入。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时则创建 [Run](./run.md)。
-- 从主 Room 创建 Topic Room 时，先确认一份可独立阅读的前情提要与精确来源，可删减、补充、去敏；之后的主 Room 聊天不会自动流入 Topic Room。
+- 创建 Topic Room 时，先确认一份可独立阅读的前情提要与精确来源，可删减、补充、去敏；聊天话题取自主 Room，Request 升级取自请求及所阻塞的工作，不要求先在主 Room 发消息。之后的主 Room 聊天不会自动流入 Topic Room。
 - Project/Room 历史独立于客户端与运行时存活。
 
 ## Room 类型
@@ -42,7 +42,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 | Project Room（主 Room） | Project 的日常讨论；用户从 Project 名称进入的主 Room | 创建 Project 时建立；Project 归档后只读 |
 | Topic Room | 在同一 Project 内围绕一个话题独立讨论，也可关联 Request | 由人关闭；关联对象各按自己的规则推进 |
 
-一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run。精确边界见[约束附录](./spec/project.md#room-与消息)。
+一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run；承接未解决 Request 的房间仍保留闲置关注提醒。精确边界见[约束附录](./spec/project.md#room-与消息)。
 
 ## Room 场景
 

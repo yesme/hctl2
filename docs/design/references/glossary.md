@@ -22,7 +22,7 @@
 | Profession | 工种 | Agency 名册里定义的一类可派参与者：Harness、模型、Skill 配置、默认职责倾向与条款；收进来时冻结引用与摘要 | [Participant](../participant.md#agency-与执行体) |
 | planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [Participant](../participant.md#agency-与执行体) |
 | Repo | 仓库 | 人登记的逻辑仓库与声明的平台绑定；也是第五个领域模块的名字，拥有仓库登记、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
-| Project | 项目 | 具名目标、协作、承诺和交付物的长期容器 | [Project](../project.md) |
+| Project | 项目 | 关联一个 Repo 的具名工作范围；同 Repo 可有多个 Project，各自保存工作与授权 | [Project](../project.md) |
 | Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
 | Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
@@ -58,7 +58,7 @@
 | 任务源 | 任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
 | 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做外部卡身份，绑定做寻址；同一 Project 内映射唯一，不同 Project 可各自有 Task |
 | 合并板 | 可选的跨源派生视图，不是权威对象，也不代替 Project 内按源分别进入的 Kanbans；源内分组与 Task 的 Project 归属分开 |
-| 参考用例 | 所有者的[多单元体验用例](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)统一记录修正后的拓扑、步骤、必然情形与变体；[S1](../scenarios/S1-multi-unit.md#四不变量)保留现行设计的 CT 映射，尚待对齐新体验 |
+| 参考用例 | 所有者的[多单元体验用例](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)统一记录修正后的拓扑、步骤、必然情形与变体；[S1](../scenarios/S1-multi-unit.md#四不变量)已按主 Room 与独立 Project 对齐 CT 映射，新用户路径由 [S3](../scenarios/S3-user-journey.md)补充 |
 | 派工 | Dispatch：控制面向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；控制面持有的唯一执行引用，没有主机、隔离域或物理代次字段；见[spec/participant](../spec/participant.md#派工与观测) |
 | 租户 | Agency 为每个配对的控制面开的隔离空间：独立的派工命名空间、会话、工作副本、凭据作用域、观测流与待交结果；跨租户的读取、订阅、输入、取消、结果收取在结构上不可达；见[安全策略面](../spec/system.md#安全策略面) |
 | 安全策略面 | 全库安全文本的唯一落点：七个策略点各写管什么、当前缺省、不可配置的底线；别处只引用；见[安全策略面](../spec/system.md#安全策略面) |

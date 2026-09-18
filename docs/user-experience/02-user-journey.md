@@ -48,13 +48,15 @@
 
 用户接受后，可以确认主题并按同样的方式选择 Participant，建立新的 Topic Room；它出现在当前 Project 的 Rooms 中。忽略则不创建。新 Room 的名单独立选定，可以参考主 Room 的阵容，不自动继承整份会话和授权；未来 TAMP 推荐见[分别选入](./04-project-navigation.md#participant-分别选入)。
 
-**新 Topic Room 创立时，从本 Project 主 Repo Room（本目录称 Project Room）的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
+**从聊天展开的新 Topic Room 创立时，从本 Project 主 Repo Room（本目录称 Project Room）的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
 
 提要说清话题为什么产生、要解决什么、已确定的事实与决定及其理由、仍存在的分歧和待答问题，以及开展讨论所需的约束与材料。已定与未定分开呈现；用户可以查看并纠正。原消息与材料的出处供需要时追溯，不能用一串链接代替本应写清的前情。
 
 提要承接的是创建时的相关背景，不是整个主 Room 的会话副本。此后的讨论在 Topic Room 内继续；主 Room 的后续发言不自动混进新 Room，确需补充时再明确带入。前情提要不替代实际做事时要查阅的代码或专业材料，也不因带入背景就带入原 Room 的授权。
 
 主 Room 与 Topic Room 都可以继续讨论。新 Topic 不产生新 Project，引用原讨论也不把原消息从旧 Room 搬走。
+
+已有 Request 需要多人、多轮讨论时，也可升级成 Topic Room：提要来自该请求及它要处理的工作，主 Room 没有相关消息也能创建，不必为凑出处先发一条消息。选人、确认提要与独立讨论的体验相同；关闭 Topic 不等于已回答请求。
 
 这个体验要求包括持续建议，不只是一颗手动新建 Room 按钮。归纳尚未配置或暂时失败时如实显示；手动创建可以作为替代入口，但不能算持续建议已经实现。模型、触发与费用控制留给后续设计，不在这里预定常驻 Agent 或新的工作流。
 
@@ -64,7 +66,7 @@ Project Room 和 Topic Room 都能通过聊天建立、修改或删除 Task。�
 
 接了多个 Source 时，新 Task 的目标 Source 需要明确。由哪种默认值减少重复选择交给产品实现；没有明确目标时，不因当前 Room 的名字猜 Source。已有 Task 可以在多间 Room 中被讨论，来源和所属 Project 不随讨论地点改变。
 
-未提交草稿可以删除；已有工作的默认动作叫“取消并归档”，保留历史与 Source 卡片。删除 Source 卡片另行确认，有活动 Run 时明确处理其去向，见[Q3 裁决](./open-questions.md#q3删除-task-的后果)。关闭 Topic Room 不删除它提到的 Task，也不停止关联 Run。
+未提交草稿可以删除；已有工作的默认动作叫“取消并归档”，保留历史与 Source 卡片。删除 Source 卡片另行确认，先看到本 Control 中绑定这张共享卡的所有 Task、所属 Project 及活动 Run；不把删卡说成只影响眼前的 Project。有活动 Run 时明确处理其去向，停止或取消仍按各自授权另作决定，见[Q3 裁决](./open-questions.md#q3删除-task-的后果)。关闭 Topic Room 不删除它提到的 Task，也不停止关联 Run。
 
 ### T3：模板与表单生成 Run 计划
 
@@ -98,7 +100,7 @@ Project Room 和 Topic Room 都能通过聊天建立、修改或删除 Task。�
 
 ### R3：按供给能力观察 Worker
 
-点击 Worker，按选人时约定的能力进入图形工作面（例如 Grok Bot 式计算机）、Herdr 式 TUI，或无交互界面（Headless）方式。Headless 没有交互屏幕，不等于没有进度、结果或需要人处理的请求。
+点击 Worker，按选人时约定的能力进入图形桌面、终端界面，或无交互界面（Headless）方式。Headless 没有交互屏幕，不等于没有进度、结果或需要人处理的请求。
 
 同一执行可以提供多种观察方式，不把这三种呈现做成互斥的 Participant 类别。界面分别标明能看什么、能否输入、能否接管；打开画面只是观察，不自动取得输入权。日常了解进度和结果不以打开终端或桌面为前提。
 
