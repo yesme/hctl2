@@ -70,3 +70,10 @@ sh_test(
     run_test_separately = True,
     test_rule_timeout_ms = 120000,
 )
+
+sh_test(
+    name = "validation_range_test",
+    test = "validation-range-test.sh",
+    labels = CI_FAST,
+    test_rule_timeout_ms = 60000,
+)

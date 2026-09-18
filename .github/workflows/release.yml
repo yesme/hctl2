@@ -60,25 +60,26 @@ jobs:
             if ! git merge-base --is-ancestor "$PREVIOUS_HEAD" "$CURRENT_HEAD"; then
               echo "::notice::The PR history was rewritten; validate the complete PR diff."
               mode=full-pr-rewritten
-            elif workflow_runs=$(gh api --method GET \
+            elif ! query_output=$(gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs" \
               -f head_sha="$PREVIOUS_HEAD" \
               -f event=pull_request \
               -f status=completed \
-              -f per_page=100); then
-              if printf '%s' "$workflow_runs" | src/build/tools/jq-bin -e \
-                --arg head "$PREVIOUS_HEAD" \
-                'any(.workflow_runs[]; .head_sha == $head and .conclusion == "success")' \
-                >/dev/null; then
+              -f per_page=100 \
+              --jq 'any(.workflow_runs[]; .head_sha == "'"$PREVIOUS_HEAD"'" and .conclusion == "success")' 2>&1); then
+              echo "::warning::Could not query the previous Release run ($query_output); validate the complete PR diff."
+              mode=full-pr-query-fallback
+            else
+              if [ "$query_output" = "true" ]; then
                 base=$PREVIOUS_HEAD
                 mode=incremental-validated-head
-              else
+              elif [ "$query_output" = "false" ]; then
                 echo "::notice::The previous PR head has no successful Release run; validate the complete PR diff."
                 mode=full-pr-no-prior-success
+              else
+                echo "::warning::Could not parse the previous Release run response ($query_output); validate the complete PR diff."
+                mode=full-pr-query-fallback
               fi
-            else
-              echo "::warning::Could not query the previous Release run; validate the complete PR diff."
-              mode=full-pr-query-fallback
             fi
           fi
 
