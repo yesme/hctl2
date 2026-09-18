@@ -1,8 +1,12 @@
 # 用户路径与现行多单元架构对照
 
-> 状态：待拍板
+> 状态：已归档 · 2026-09-19；按旧 Project 模型作的解释已被后续体验确认覆盖，正文保留作史料
 > 基线：main @ 31ccffc（草案 v0.18.6）
-> 去向：拍板后按条进入 `docs/design/project.md` / `task.md` / `repo.md` / `participant.md` / `delivery.md` / `contract-tests.md` CT-WORKBENCH-IA，以及来时路一章；会改变含义的不在本轮落
+> 去向：[基础用户体验](../../docs/user-experience/README.md#基础用户体验)与[已定事项](../../docs/user-experience/open-questions.md#已定事项与接手清单)；§七 不再作为当前待拍板清单
+
+> 覆盖范围：§2/§3 的同 Control、同 Repo 再开多个旧 Project，单板过滤入口，以及 §5 的普通 Topic 强制回填、向导不提供有远端时的 Gitea 独立选项，均不再作为当前建议。现行结构与行为见去向；多 Control、多 Agency、观察能力与交付结果的分析仍可参考，不能据此声称产品已实现。
+> 说明（原状态）：待拍板
+> 原去向（历史）：拍板后按条进入 `docs/design/project.md` / `task.md` / `repo.md` / `participant.md` / `delivery.md` / `contract-tests.md` CT-WORKBENCH-IA，以及来时路一章；会改变含义的不在本轮落
 
 所有者口述了一条 Workbench 主路径：新建项目 → 绑看板 → 选人开聊天室 → 聊天里长出 topic 与 Task → 左侧看 Kanban / Room / Run → 点开 Run 看施工图与工人。本文把它逐步对到现行五个模块和多单元拓扑（参考用例 S1），分清三件事：已经对齐的、只是向导/信息架构、会改约束的。不改 `docs/`。
 

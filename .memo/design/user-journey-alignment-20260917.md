@@ -1,8 +1,12 @@
 # 用户路径与多单元架构对齐
 
-> 状态：已归档 · 部分判断被后续体验纠正；原稿把用户的 project 套进旧 Project 对象，对闭包、看板、房间的部分判断不再作为当前口径。以 [2026-09-18 基础用户体验](../../docs/user-experience/README.md#基础用户体验)及其待拍板清单接手，不按本稿直接改规范。
+> 状态：已归档 · 2026-09-19 补齐覆盖范围；原稿把用户的 Project 套进旧对象，部分判断撤回，不按本稿直接改规范
 > 基线：main @ a8aea94e3ed6045e3661670b2769f1ccb51e227d（草案 v0.18.6；2026-09-17 提交前再次 fetch 并快进；规范正文与开工基线 31ccffc 相同）
-> 去向：docs/design/architecture.md、五模块正文与 spec、delivery.md、scenarios、contract-tests.md；批准后按本文落点分批消化
+> 去向：[基础用户体验](../../docs/user-experience/README.md#基础用户体验)与[已定事项](../../docs/user-experience/open-questions.md#已定事项与接手清单)；§十 的旧待裁表停止使用
+
+> 覆盖范围：§三–§五 的另建旧 Project 容器、取消 Repo Room、单板入口与 Scoped Room 解释撤回；保留唯一主 Room，并按新的 Project 范围、Kanbans 多 Source 和 Topic Room 解释路径。§十 的独立副本与删除 Task 两项已分别由 Q2/Q3 确认；供给复用、观察、交付和异常分析保留为历史参考，不整篇升格成新方案。
+> 说明（原状态）：已归档 · 部分判断被后续体验纠正；原稿把用户的 project 套进旧 Project 对象，对闭包、看板、房间的部分判断不再作为当前口径。以 [2026-09-18 基础用户体验](../../docs/user-experience/README.md#基础用户体验)及其待拍板清单接手，不按本稿直接改规范。
+> 原去向（历史）：docs/design/architecture.md、五模块正文与 spec、delivery.md、scenarios、contract-tests.md；批准后按本文落点分批消化
 
 ## 一、结论与先审题
 
