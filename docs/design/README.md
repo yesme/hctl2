@@ -3,6 +3,8 @@
 > 状态：规范性索引 · 草案 v0.18.6<br>
 > 日期：2026-08-31
 
+本文描述 v0.18.6 的现行对象结构。所有者最新的[基础用户体验](../user-experience/README.md#基础用户体验)与它尚未全量对齐，尤其是 project / repo / topic 的指代及三列表导航；[待拍板与落点](../user-experience/open-questions.md#规范对齐清单)单列，不把旧对象定义反过来当作用户需求。
+
 HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者）与 Repo（仓库）。每个模块拥有稳定身份、状态、命令和不变量；与它对应的场景只提供查询、预览、操作和事件投影。
 
 | 权威模块 | 对应场景 | content 系统 | 模块拥有 | 场景客户端 / 受控端口示例 |
@@ -85,7 +87,8 @@ Workbench 把五个场景客户端和 HCTL 命令入口组合成一个产品桌�
 - [五模块的端到端连接](./spec/connections.md)：类型化交接、事务边界、版本链和跨模块恢复。
 - [交付、验证与自举](./delivery.md)：交付范围、CLI、纵向切片、自举、选型验证和未决项。
 - [契约测试矩阵](./contract-tests.md)：CT 各族与产品验收用例。
-- [参考用例 S1](./scenarios/S1-multi-unit.md)：多单元用例的正式落点——拓扑、步骤、必然情形、不变量与变体，引用既有 CT 用例，不新增族。
+- [基础用户体验](../user-experience/README.md#四份正文)：所有者的多单元用例、用户流程、术语纠正与 project 导航，作为结构讨论依据。
+- [参考用例 S1](./scenarios/S1-multi-unit.md)：保留既有设计的 CT 验证映射；纠正术语后的用户叙事统一在[多单元用例](../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)，新旧差异尚待对齐。
 - [文档纪律](./doc-discipline.md)：谁定义什么、去重、引入门槛、修订与审计规则——面向写文档的人的协议；文风与结构见根目录[写作指南](../../WRITING-GUIDE.md)。
 - [术语对照表](./references/glossary.md)：中英对照与一句话含义；语义以模块文档为准。
 - [从 HCTL 到 HCTL2 的来时路](./references/decision-history.md)：关键决策转折的非规范说明；它不形成第二套约束。
