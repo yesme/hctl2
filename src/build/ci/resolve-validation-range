@@ -1,0 +1,156 @@
+#!/bin/sh
+set -eu
+
+# Decide which Git range Code/Release should validate.
+#
+# A fast-forward PR update may reuse the previous head as the range base when
+# the same workflow already succeeded on that head. Query/parse failures still
+# fall back to the complete PR diff, but they must not be logged as "no
+# successful run".
+#
+# Environment:
+#   EVENT_NAME, EVENT_ACTION, BASE_COMMIT, CURRENT_HEAD, PREVIOUS_HEAD
+#   GITHUB_REPOSITORY, WORKFLOW_FILE, WORKFLOW_LABEL, GITHUB_OUTPUT
+#   GH_TOKEN (consumed by gh)
+
+usage() {
+    cat <<'EOF'
+Resolve the Git range Code and Release should validate.
+
+Usage:
+  resolve-validation-range
+
+Reads GitHub event fields from the environment and writes base, head, and
+mode to $GITHUB_OUTPUT. Queries prior workflow success with `gh api --jq`
+so the path-filter job does not need DotSlash or jq-bin.
+EOF
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+esac
+
+: "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+: "${WORKFLOW_FILE:?WORKFLOW_FILE is required}"
+: "${WORKFLOW_LABEL:?WORKFLOW_LABEL is required}"
+
+event_name=${EVENT_NAME:-}
+event_action=${EVENT_ACTION:-}
+base_commit=${BASE_COMMIT:-}
+current_head=${CURRENT_HEAD:-}
+previous_head=${PREVIOUS_HEAD:-}
+repository=${GITHUB_REPOSITORY:-}
+
+is_hex_sha() {
+    sha=$1
+    case "$sha" in
+        *[!0-9a-fA-F]* | "")
+            return 1
+            ;;
+    esac
+    length=${#sha}
+    [ "$length" -ge 7 ] && [ "$length" -le 40 ]
+}
+
+is_workflow_file() {
+    name=$1
+    case "$name" in
+        "" | */* | .* | *[!A-Za-z0-9._-]*)
+            return 1
+            ;;
+    esac
+    case "$name" in
+        *.yml | *.yaml)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+write_result() {
+    base=$1
+    head=$2
+    mode=$3
+    {
+        printf 'base=%s\n' "$base"
+        printf 'head=%s\n' "$head"
+        printf 'mode=%s\n' "$mode"
+    } >>"$GITHUB_OUTPUT"
+    printf 'Validation mode: %s\n' "$mode"
+    printf 'Validation range: %s...%s\n' "$base" "$head"
+}
+
+if ! is_workflow_file "$WORKFLOW_FILE"; then
+    printf 'invalid WORKFLOW_FILE: %s\n' "$WORKFLOW_FILE" >&2
+    exit 2
+fi
+
+if [ "$event_name" != pull_request ]; then
+    write_result HEAD HEAD full-periodic
+    exit 0
+fi
+
+if [ -z "$base_commit" ] || [ -z "$current_head" ]; then
+    printf 'BASE_COMMIT and CURRENT_HEAD are required for pull_request events\n' >&2
+    exit 1
+fi
+
+candidate=$(git rev-parse --verify 'HEAD^{commit}')
+base=$base_commit
+mode=full-pr
+
+if [ "$event_action" = synchronize ] && [ -n "$previous_head" ]; then
+    if ! git merge-base --is-ancestor "$previous_head" "$current_head"; then
+        printf '::notice::The PR history was rewritten; validate the complete PR diff.\n'
+        mode=full-pr-rewritten
+    else
+        if [ -z "$repository" ]; then
+            printf 'GITHUB_REPOSITORY is required to query previous %s runs\n' "$WORKFLOW_LABEL" >&2
+            exit 1
+        fi
+        if ! is_hex_sha "$previous_head"; then
+            printf '::warning::Previous head SHA is not a hex object name; validate the complete PR diff.\n'
+            mode=full-pr-parse-fallback
+        else
+            jq_expr="any(.workflow_runs[]?; .head_sha == \"$previous_head\" and .conclusion == \"success\")"
+            err=$(mktemp "${TMPDIR:-/tmp}/hctl2-validation-range.XXXXXX")
+            if ! result=$(gh api --method GET \
+                "repos/${repository}/actions/workflows/${WORKFLOW_FILE}/runs" \
+                -f head_sha="$previous_head" \
+                -f event=pull_request \
+                -f status=completed \
+                -f per_page=100 \
+                --jq "$jq_expr" 2>"$err"); then
+                detail=$(tr '\n' ' ' <"$err")
+                printf '::warning::Could not query the previous %s run; validate the complete PR diff.%s\n' \
+                    "$WORKFLOW_LABEL" "${detail:+ ${detail}}"
+                mode=full-pr-query-fallback
+            else
+                case "$result" in
+                    true)
+                        base=$previous_head
+                        mode=incremental-validated-head
+                        ;;
+                    false)
+                        printf '::notice::The previous PR head has no successful %s run; validate the complete PR diff.\n' \
+                            "$WORKFLOW_LABEL"
+                        mode=full-pr-no-prior-success
+                        ;;
+                    *)
+                        printf '::warning::Could not parse the previous %s run query (got %s); validate the complete PR diff.\n' \
+                            "$WORKFLOW_LABEL" "${result:-<empty>}"
+                        mode=full-pr-parse-fallback
+                        ;;
+                esac
+            fi
+            rm -f "$err"
+        fi
+    fi
+fi
+
+write_result "$base" "$candidate" "$mode"

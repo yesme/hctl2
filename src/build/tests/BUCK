@@ -54,6 +54,22 @@ sh_test(
 )
 
 sh_test(
+    name = "validation_range_test",
+    test = "check_validation_range.sh",
+    env = {
+        "RESOLVE_VALIDATION_RANGE": "$(location root//build/ci:resolve-validation-range)",
+        "CODE_WORKFLOW": "$(location repo//:code_yml)",
+        "RELEASE_WORKFLOW": "$(location repo//:release_yml)",
+    },
+    labels = CI_FAST,
+    resources = [
+        "root//build/ci:resolve-validation-range",
+        "repo//:code_yml",
+        "repo//:release_yml",
+    ],
+)
+
+sh_test(
     name = "process_compose_contract_test",
     test = "check_process_compose_contract.sh",
     env = {
