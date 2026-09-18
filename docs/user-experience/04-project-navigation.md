@@ -2,11 +2,11 @@
 
 > 状态：所有者已确认的体验与组织结构；正式规范尚待对齐，不是产品已实现的报告。<br>
 > 日期：2026-09-19<br>
-> 来源：所有者 09-18 的导航提议、09-19 的侧栏示意、归属说明与待处理入口确认，以及随后按此修订体验目录的要求；原话见文末。
+> 来源：所有者 09-18 的导航提议、09-19 的侧栏示意、归属说明、待处理入口与 C2 确认，以及随后按此修订体验目录的要求；原话见文末。
 
-**Project 是顶层工作范围，当前关联一个 Repo；点击 Project 名称进入它的主 Room。** 本目录统一把这间主 Room 称为 Project Room，原流程和 09-19 示意中的 Repo Room 指的也是它，不并存两间。Project 下的 Rooms、Kanbans、Runs 是并列入口；内容归属固定，引用可以交叉。
+**Project 是顶层工作范围，每个 Project 当前关联一个 Repo；同一 Control 可以为同一 Repo 建多个 Project。** 点击一个 Project 的名称进入它自己的唯一主 Room。本目录把这间主 Room 称为 Project Room，所有者所说的主 Repo Room 指同一间；不是同一 Repo 的所有 Project 共用一间。每个 Project 下的 Rooms、Kanbans、Runs 是并列入口；内容归属固定，引用可以交叉。
 
-保留 Project 这个产品名，是为了未来能扩展到不完全由 Repo 定义的工作，不是本轮立刻实现那些扩展。当前边界仍是同一个 Control 里的这份仓库工作；名称与旧对象的区别见[术语纠正](./03-terminology-confession.md#当前怎么读旧词)。
+保留 Project 这个产品名，是为了未来能扩展到不完全由 Repo 定义的工作，不是本轮立刻实现那些扩展。当前做事时需明确哪个 Control 中的哪个 Project；只知道 Control 与 Repo，不足以区分同仓的两个 Project。名称的澄清过程见[术语纠正](./03-terminology-confession.md#当前怎么读旧词)。
 
 ## Project 是主入口
 
@@ -29,7 +29,7 @@ Project Apollo (Repo: github.com/yesme/apollo-mission-decrypt)  [待你处理 2]
 
 Project Apollo 是工作名称，Repo 地址说明它当前关联的代码来源。Code Collaboration、Project Management 是用户给 Source 入口取的显示名称，不是新增模块或另一层 Project。
 
-多 Control 的联合界面仍标清每个 Project 来自哪个 Control。同一外部 Repo 在另一个 Control 中有自己的 Project，不与当前工作合成一份身份。这个边界不阻止多个 Project 共用 Agency、内容服务或读取同一外部代码事实，也不要求每个 Project 有独立的服务器或 Git 对象库。
+同一 Control 中，两个 Project 即使显示相同 Repo 地址，也有各自的主 Room、Rooms、Kanbans、Runs 与待处理入口，不合成一份工作。多 Control 的联合界面还要标清每个 Project 来自哪个 Control。这个边界不阻止多个 Project 共用 Agency、内容服务或读取同一外部代码事实，也不要求每个 Project 有独立的服务器或 Git 对象库。
 
 ## 待你处理：从 Project 标记进入
 
@@ -56,7 +56,7 @@ Project Apollo 是工作名称，Repo 地址说明它当前关联的代码来源
 
 Rooms 是 Topic Rooms 列表，初始为空；Project Room 由 Project 名称进入，不在列表里重复出现。每间 Topic Room 有自己的主题、消息与 Participant 名单，可以与主 Room 使用相同的选人方式。
 
-新 Topic Room 以主 Repo Room 的相关讨论构造前情提要；Participant 读这份开场材料就能开始后续讨论，不以读完原 Room 历史为前提。出处用于追溯，前情提要承接背景，后续会话各自独立；完整流程见 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。
+新 Topic Room 以本 Project 主 Repo Room 的相关讨论构造前情提要；Participant 读这份开场材料就能开始后续讨论，不以读完原 Room 历史为前提。出处用于追溯，前情提要承接背景，后续会话各自独立；完整流程见 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。
 
 新 Topic 不创建新 Project。旧 Scoped Room 的讨论用途并入 Topic Room，不为临时澄清和普通讨论再造两个并列产品概念。若一个 Topic 真承接了需要回复的事项，可以显示这种关联；不是所有 Topic 一出生就有 Task、Run 或预定交付物。
 
@@ -84,7 +84,7 @@ Runs 列出本 Project 所有活动 Run，无论它从哪个 Room、哪个 Task 
 
 | 内容或关系 | 已确认的体验 |
 | --- | --- |
-| Project 的工作内容 | 既有 Room、Task、Run 不从 Project A 搬到 Project B；换一个讨论入口不改变所属工作范围 |
+| Project 的工作内容 | 既有 Room、Task、Run 不从 Project A 搬到 Project B；两者使用同一 Repo 也不合并归属，换一个讨论入口不改变所属工作范围 |
 | Room 的讨论内容 | Topic Room 1 的消息不能挪成 Topic Room 2 的原始消息；Room 2 可以引用它，并保留原出处 |
 | Task 的来源 | Kanban 1 对应 Source 中的 Task 不搬到 Kanban 2 对应的 Source；引用不复制卡片、不改变来源 |
 | Room 与 Task | 一间 Room 可以讨论不同 Source 的多项 Task，同一 Task 可以被多间 Room 引用；Task 不从属于讨论它的某间 Room |
@@ -105,9 +105,9 @@ Runs 列出本 Project 所有活动 Run，无论它从哪个 Room、哪个 Task 
 
 ## 对旧模型的结论
 
-**Q1 的产品方向已确认：正式设计应采用这一组织方式，不再保留“同一 Repo 下把不同目标或话题各建成一个旧 Project”的业务层。** 也不只在界面上隐藏旧层级、继续让它决定 Task 的归属与 Topic 的归档效果。
+**Project 与 Repo 不合成一对一关系；同一 Control、同一 Repo 上的多个 Project 保留。** 当前 Project 内展开话题是建立 Topic Room，不另造一层 Project；用户明确新建 Project 则是独立的工作范围，不能被整理成别的 Project 下的一间 Topic Room。
 
-这不等于删除 Repo 的职责。Repo 仍负责代码来源、平台绑定、版本与集成，Project 负责这份工作的组织；内部如何分模块、存储记录，不由这张侧栏图规定。旧 Project 的默认设置、具体执行授权和归档规则需要逐条安放，不能通过换名丢掉，也不能不经核对就复制到 Topic Room 上。后续落点见[接手清单](./open-questions.md#规范对齐清单)。
+此前把 Q1 概括成“同 Repo 下多个 Project 的业务层退出”扩大了所有者的意思，现按 [C2 原话](#2026-09-19c2-确认)纠正。Repo 仍负责代码来源、平台绑定、版本与集成，Project 负责各自工作的组织。Project 的默认设置、执行授权和归档规则逐项核对，不因纠词丢掉，也不整套复制到 Topic Room；后续落点见[接手清单](./open-questions.md#规范对齐清单)。
 
 ## 本轮原话
 
@@ -161,3 +161,11 @@ Project Apollo (Repo: github.com/yesme/apollo-mission-decrypt) ← 点这里右�
 > 有意思，『等人处理』其实把Project那一行分成了两个部分：点project的名字是打开右边的聊天室，点project旁边的『待你处理 2』则是打开待处理面板来处理内容。我觉得这个设计是okay的。包括后边的4个问题、处理后行为、避免变成噪声中心，这些都可以。
 
 据此确认同一 Project 行上的两个独立入口，以及上文的条目内容、处理后行为和降噪规则。
+
+### 2026-09-19：C2 确认
+
+所有者针对 Mac 用例的 `mac_jssdk_01`、`mac_jssdk_02` 明确：
+
+> 两个都是主room. 事实上一个control当然可以对同一份repo开两个project (repo room).
+
+据此保留两个 Project、各自主 Room 与原名册。“每个 Project 一个主 Room”不等于“每个 Repo 只有一个 Project”；此前把 Mac 两组工作合为一个 Project 的整理撤回，其余导航、内容归属和独立选人的确认不变。

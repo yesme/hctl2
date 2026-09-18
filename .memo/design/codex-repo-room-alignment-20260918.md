@@ -4,7 +4,7 @@
 > 基线：main @ a2f198a808aa9be3c9f1ce6ad5b1dfed541b1d9d（草案 v0.18.6）
 > 去向：[Project 组织结构](../../docs/user-experience/04-project-navigation.md#project-入口与-rooms--kanbans--runs)与[已定事项](../../docs/user-experience/open-questions.md#已定事项与接手清单)
 
-> 覆盖范围：§二 把主 Room 列入 Rooms、Tasks 单一入口，§四 的 Project 退出主路径，§六 的 Room 位置待确认及 §八 两项待裁，均已由后续确认接替。Project 作为顶层工作范围保留，主 Room 从名称进入，Rooms 只列 Topic Rooms，Kanbans 按 Source 分列，cloud 两处为主 Room；职责、引用与完整交付的区分仍有参考价值。
+> 覆盖范围：§二 把主 Room 列入 Rooms、Tasks 单一入口，§四 的 Project 退出主路径，§六 的 Room 位置候选及 §八 两项待裁，均由后续确认接替。C1/C2 明确 cloud 与 Mac 的四处各是一个 Project 的主 Room，不能把 Mac 两组解释为同一 Project 的话题，也不能仅用〈Control，Repo〉唯一识别工作。主 Room 从各自 Project 名称进入，Rooms 只列 Topic Rooms，Kanbans 按 Source 分列；职责、引用与完整交付的区分仍可参考。
 > 说明（原状态）：讨论中 · 记录所有者的术语澄清与 Codex 的独立判断；不是设计裁决或施工方案
 > 原去向（历史）：docs/design/architecture.md、project.md、task.md、run.md 及对应 spec、场景与词汇表；正式改写仍由主笔负责
 

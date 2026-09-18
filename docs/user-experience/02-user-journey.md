@@ -22,7 +22,7 @@
 
 多 Control 场景里，用户知道正在为哪个 Control 建 Project。本地路径指用户提供的那台机器上的路径，不是远端 Control 上碰巧同名的目录。读取失败、远端不可达、未支持的平台都如实显示，不当成纯本地悄悄换路径；缺少平台访问授权时，引导用户到对应连接的授权设置。
 
-当前 Project 关联一个 Repo，不为同一 Repo 的新 Topic 再建 Project。本轮没有追加多 Repo 或非代码 Project 的实现需求，也不把旧的目标容器藏在入口背后。
+当前每个 Project 关联一个 Repo；同一 Control 已有 Project 使用该 Repo 时，用户仍可为它另建 Project。新入口进入新 Project 自己的主 Room，不自动跳回已有 Project，也不把新 Project 改成已有 Project 的 Topic Room。展开当前 Project 的 Topic 则走 T1，是另一个动作。本轮没有追加多 Repo 或非代码 Project 的实现需求。
 
 ### P2：接入 Kanbans
 
@@ -48,7 +48,7 @@
 
 用户接受后，可以确认主题并按同样的方式选择 Participant，建立新的 Topic Room；它出现在当前 Project 的 Rooms 中。忽略则不创建。新 Room 的名单独立选定，可以参考主 Room 的阵容，不自动继承整份会话和授权；未来 TAMP 推荐见[分别选入](./04-project-navigation.md#participant-分别选入)。
 
-**新 Topic Room 创立时，从主 Repo Room（本目录称 Project Room）的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
+**新 Topic Room 创立时，从本 Project 主 Repo Room（本目录称 Project Room）的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
 
 提要说清话题为什么产生、要解决什么、已确定的事实与决定及其理由、仍存在的分歧和待答问题，以及开展讨论所需的约束与材料。已定与未定分开呈现；用户可以查看并纠正。原消息与材料的出处供需要时追溯，不能用一串链接代替本应写清的前情。
 

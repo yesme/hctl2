@@ -4,7 +4,7 @@
 > 基线：main @ `a2f198a`（草案 v0.18.6）
 > 去向：[Project 组织结构](../../docs/user-experience/04-project-navigation.md#project-入口与-rooms--kanbans--runs)与[接手清单](../../docs/user-experience/open-questions.md#规范对齐清单)
 
-> 覆盖范围：§三/§六 的 Project 退出用户词汇或退为话题、§十 的一仓一板与 cloud Room 两可判断，均被后续确认覆盖。Project 现在是顶层工作范围，当前关联一个 Repo；主 Room 只有一间；Kanbans 按 Source 分列，cloud 两处已确认是主 Room。工作边界与部署复用的区分仍有参考价值；§七 的字段迁移、权限放开和版本号只是当时的建议，不是本轮获准改法。
+> 覆盖范围：§三/§六 的 Project 退出或退为话题、§八/§十 把 Mac 两个 Project 改成两个话题室、§十 的一仓一板与 cloud Room 两可判断，均被后续确认覆盖。同 Control、同 Repo 可有多个 Project，每个 Project 各有主 Room；Mac 与 cloud 四个标签均已确认是各自主 Room，Kanbans 按 Source 分列。不能从〈Control，Repo〉推出唯一 Project。工作边界与部署复用的区分仍可参考；§七 的字段迁移、权限放开和版本号只是当时建议，不是本轮获准改法。
 > 说明（原状态）：讨论中 · 主笔 Claude 的独立评价，未读他家同题备忘；第一手资料只有三份：所有者的用例 `.memo/notes/HCTL_case_study.md`、所有者 2026-09-17 口述的用户流程（原文录在 `user-path-20260917.md` §一）、所有者 2026-09-18 承认术语混用的那段话；§十 按这三份逐条判读；两轮对话原文见 `../log/2026-09-18-project-repo-topic-混用.md`；请所有者对 §九 逐条拍板
 > 原去向（历史）：若拍板，这是决策史要记的一次转折（Project 从容器退为话题），落 `vision.md`、`project.md` 与 `spec/project.md`、`task.md`、`run.md`、`README.md`（设计地图）、词汇表、契约测试，版本升到 v0.19.0；本文只写理解与验证，不改正文
 
