@@ -1,56 +1,28 @@
 # 参考用例 S1：多单元协作
 
 > 状态：验证文档 · 草案 v0.18.6<br>
-> 定位：所有者 2026-09-06 写下、09-07 与 09-13 两次补写的多机用例的正式落点。它是验证器的第零级：拓扑、步骤、必然发生的情形、不变量与变体在这里编号，文档检查、将来的同机多单元测试与真机验证都引用它，不各自再写一份。行为的含义由相应的约束定义，本文只记录拓扑、步骤与预期结果并引用权威条款；已拍板但尚未落到约束的方向标「待落地」。用例引用[契约测试矩阵](../contract-tests.md)里用例的描述文本，不引用序号。S1 主线只保留所有者文本中的动作及其必然后果；看板多源、共享卡、原生 Done 与施工图 lint 是用例外，单列在末节，不冒充 S1 必然情形。
+> 日期：2026-09-18<br>
+> 定位：保留 v0.18.6 的多单元验证映射。用户叙事已归拢到[基础用户体验](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)，并按所有者澄清修正 project / repo / topic 的混用；第一至三节保留旧链接入口，第四至六节保留既有 CT 对应关系，尚未对齐新体验。本页不再成为另一份用户需求权威，也不声明新体验已通过验证。CT 仍引用[契约测试矩阵](../contract-tests.md)里的描述文本，不引用序号。
 
 ## 引言：所有者的世界观
 
-所有者原话（2026-09-06）：「关键问题是——1 个 repo 的多个 HCTL instance（比如 mac、ubuntu）之间，是否应当协同工作、如何协同工作？mac 上做了一个 task，要不要 ubuntu 上接过来做完？我之前希望是这样，但现在不觉得了——因为以前的视角是 harness session，那么就会希望 ubuntu 上的 codex 可以接过来正在执行的 task。但现在 ① 有了 participant 概念后，引入了远程 agency 抽象；② 有了 UI-backend binding 概念后，引入了多 workbench：单 control 分界后；我的世界观有了变化。」结论一句：「新的架构已经做了大量的 dependency/deployment 分离，让各种配置分立远程化。核心的安排是 agency、ctl、cli/bench。」机器之间不接管会话，传的是结晶与契约。
+多前端连接原 ctl，不等于另一个 ctl 接管 session。完整用例与来源见[多单元体验](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)；原始措辞保留在[所有者原文](../../../.memo/notes/HCTL_case_study.md#hctl案例)，不在历史引文里静默改词。
 
 ## 一、拓扑
 
-| 单元 | 位置 | 内容 |
-| --- | --- | --- |
-| 仓库（底座） | GitHub 上的 `gh-jssdk`；GitLab 上的 `gl-jstui` | 两个仓库各绑自己来源的平台 |
-| cloud_agency | 云端主机 cloud | 装 cloud_codex、cloud_claude、cloud_glm 三个 harness；工种 cloud_tpl_sde（cloud_codex 加 Skill）、cloud_tpl_sdet（cloud_codex）、cloud_tpl_pm（cloud_claude）、cloud_tpl_sre（cloud_glm） |
-| mac_agency | mac | 装 mac_gemini、mac_k3；工种 mac_tpl_sdet（mac_gemini）、mac_tpl_ops（mac_k3） |
-| ubuntu_agency | ubuntu | 装 ubuntu_glm、ubuntu_grok；工种 ubuntu_tpl_sde（ubuntu_grok）、ubuntu_tpl_pm（ubuntu_glm） |
-| mac_ctl | mac | 控制面，基于 gh-jssdk 开两个 Project：mac_jssdk_01、mac_jssdk_02 |
-| cloud_ctl | cloud | 控制面，基于 gl-jstui 开 cloud_jstui_01、基于 gh-jssdk 开 cloud_jssdk_01 |
-| 前端 | mac：mac_cli、mac_bench；cloud：只在建 Project 时用过 cloud_cli，没有常驻本机前端；ubuntu：ubuntu_bench，瘦客户端，没有控制面 | 一个控制面可以有多个前端；一个前端可以连多个控制面 |
-
-工种是各机器的 Agency 定义的（[Participant 约束 §对象](../spec/participant.md#对象)）；席位选的是工种的实例，harness 名（mac_gemini 等）不是工种。
+机器、repo、agency 和工种见[场景环境](../../user-experience/01-multi-unit.md#场景环境)，分组名称见[修正后的 project 与 room 对照](../../user-experience/01-multi-unit.md#修正后的-project-与-room-对照)，十一位 participant 的来源与执行位置见[人员表](../../user-experience/01-multi-unit.md#人员选择与执行位置)。
 
 ## 二、步骤
 
-| 编号 | 步骤（所有者文本） | 系统在这一步要决定什么、依据 | 权威条款 |
-| --- | --- | --- | --- |
-| S1.1 | mac_ctl 启动，基于 gh-jssdk 建 mac_jssdk_01 与 mac_jssdk_02 | 人显式登记仓库、声明平台绑定、开两个 Project；不推断、不去重仓库身份 | [Repo 约束 §Repo 注册](../spec/repo.md#repo-注册)；[C 批拍板](https://github.com/yesme/hctl2/pull/224) |
-| S1.2 | mac_jssdk_01 经 mac_agency 拿三个参与者：mac_ptcp_jssdk_01_01、_02 都基于 mac_tpl_sdet（各自新会话、新工作树检出，可共用一个对象库），_03 基于 mac_tpl_ops（可与前两者共用对象库、各自检出） | 三条选入记录、三次派工；同工种两个是两条记录；对象库共用与否归参与者机器（V1a/V1b） | [连接约束 §从授权到派工](../spec/connections.md#project--run--participant从授权到派工)；[系统边界 §Repo 与执行现场](../spec/system.md#repo-与执行现场) |
-| S1.3 | mac_jssdk_01 经 cloud_agency（远程）拿 mac_ptcp_jssdk_01_04，基于 cloud_tpl_sde，检出在 cloud | mac_ctl 与 cloud_agency 配对认证一次、得到自己的租户；此后派工、观测、报告都经 cloud_agency | [Participant 约束 §派工与观测](../spec/participant.md#派工与观测)；[系统边界 §端点与输入的信任边界](../spec/system.md#端点与输入的信任边界) |
-| S1.4 | mac_jssdk_02 经 mac_agency 拿 mac_ptcp_jssdk_02_01（mac_tpl_ops，检出在 mac，可与 mac_jssdk_01 的参与者共用对象库或另 clone）；经 ubuntu_agency 拿 _02（ubuntu_tpl_sde）、_03（ubuntu_tpl_pm），检出在 ubuntu、共用一个对象库 | 同上；跨 Project 共用对象库是允许的布局不是必须的布局 | 同上 |
-| S1.5 | mac_cli 与 mac_bench 都连上 mac_ctl 的两个 Project | 同一控制面多个前端，前端不拥有事实 | [三面架构 §三个面](../architecture.md#三个面) |
-| S1.6 | cloud_ctl 启动，基于 gl-jstui 建 cloud_jstui_01、基于 gh-jssdk 建 cloud_jssdk_01 | 同 S1.1；gh-jssdk 同时被两个控制面开 Project 是常态 | [三面架构 §单元与连接](../architecture.md#单元与连接) |
-| S1.7 | cloud_jstui_01 经 ubuntu_agency 拿 cloud_ptcp_jstui_01_01（ubuntu_tpl_sde）、经 mac_agency 拿 _02（mac_tpl_ops） | 同 S1.3 | 同上 |
-| S1.8 | cloud_jssdk_01 经 cloud_agency 拿 cloud_ptcp_jssdk_01_01（cloud_tpl_pm）、经 mac_agency 拿 _02（mac_tpl_ops） | mac_agency 同时给 mac_ctl 与 cloud_ctl 供人，各一个租户 | [系统边界 §单写者](../spec/system.md#单写者) |
-| S1.9 | cloud 只在建 Project 时用 cloud_cli，之后没有常驻本机前端；合入预览、完成 Task 这类要人拍板的动作经 ubuntu_bench 远程进来 | 无前端不等于不用人决策；治理动作可经远程前端进入 | [三面架构 §三个面](../architecture.md#三个面) |
-| S1.10 | ubuntu 是瘦客户端，没有 ubuntu_ctl | 参与者机器不需要控制面 | [三面架构 §单元与连接](../architecture.md#单元与连接) |
-| S1.11 | ubuntu_bench 连上 mac_jssdk_02、cloud_jstui_01、cloud_jssdk_01 三个远程 Project | 一个前端连多个控制面，联合视图里每项事实与动作保留控制面来源 | 同上 |
+S1.1–S1.11 的当前叙述见[操作步骤](../../user-experience/01-multi-unit.md#操作步骤)。编号保留；同 ctl、同 repo 下原先叫作两个 project 的讨论分组，改按同一 project 下的 topic rooms 解释。此处不再复述旧的“开两个 Project”动作。
 
 ## 三、必然发生的情形
 
-| 编号 | 情形（所有者文本） | 走法 | 权威条款 |
-| --- | --- | --- | --- |
-| S1.N1 | 同一工种被两个控制面雇成不同的参与者实例：mac_tpl_ops 同时出现在 mac_jssdk_01 与 cloud_jssdk_01 里，是两个参与者 | 两条选入记录，两个租户各一次派工 | [Participant 约束 §对象](../spec/participant.md#对象) |
-| S1.N2 | mac_ctl 与 cloud_ctl 同时对 gh-jssdk 开 PR、同时请求合入 main | 各按冻结的授权形态与目标保护判，平台仲裁；另一方的合法合入是外部事实，按事先采纳的契约核验，不自动成为自己的完成凭证 | [Repo 约束 §集成](../spec/repo.md#集成目标两个头与两种授权形态)；[系统边界 §命令与跨服务正确性](../spec/system.md#命令与跨服务正确性)多写通则 |
-| S1.N3 | mac 上 gh-jssdk 的对象库被 mac_ctl 的参与者和 cloud_ptcp_jssdk_01_02 共用 | 共享存储不共享会话、凭据与结果；引用不相交与写租约 | [Repo 约束 §ChangeSet 与 Git 事实](../spec/repo.md#changeset-与-git-事实) |
-| S1.N4 | ubuntu 的参与者要推 gh-jssdk 和 gl-jstui，凭据在哪台机器、没有时谁中转 | 凭据在哪动作在哪：持凭据单元交付；没有凭据按既定中转；推送权限不等于更新目标的权限 | [Repo 约束 §发布评审](../spec/repo.md#发布评审) |
-| S1.N5 | gl-jstui 的完整走通要等第二个外部平台适配器 | 适配器未到不等于人撤掉了平台绑定；本地封存与精确版本交付单独核 | [交付文档 §当前范围](../delivery.md#当前范围) |
-| S1.N6 | 同一个人在 mac_ctl 与 cloud_ctl 里是两个 human actor；多控制面不等于多用户，跨控制面的「同一人」归并不做 | 不归并；一方的授权不当另一方的授权 | [系统边界 §客户端动作与 provider 事件](../spec/system.md#客户端动作与-provider-事件) |
-| S1.N7 | 跨机返工：cloud 上封存的版本被驳回，返工在 cloud 那台机器上做，用原工作树或重新物化，未封存的字节不搬去别的机器；旧版本的评审失效要让远端参与者看得到 | 有 Run：同一 Seat 的新 Attempt 沿冻结的选入记录派到 cloud_agency 的本控制面租户，开工包带被驳回的评审对象与必用的 Verdict 正文；无 Run：人发起新调用并明确选人；原树续做还是重建归 Agency 门后；重建只用封存并获准交付的版本；失效可见靠开工包、新的评审对象与 Change 投影 | [Run 约束 §从节点到结果](../spec/run.md#从节点到结果)；[Repo 约束 §ChangeSet 与 Git 事实](../spec/repo.md#changeset-与-git-事实)；[Project 约束 §Room Invocation](../spec/project.md#room-invocation) |
-| S1.N8 | 参与者不响应而控制面还活着（Room 里 @ 了没反应、Run 里超时）：Agency 超时与 failover 的问题，Agency 是参与者的代理 | Agency 在冻结的执行规格内自愈，控制面无感；规格内干不了报无法履约；Agency 不可达只是联系不上，按截止与取消条件处理；Agency 挂了由人指定别的 Agency；回来的旧执行体在门后机械核图与席位 | [Participant 约束 §派工与观测](../spec/participant.md#派工与观测)；[连接约束 §失败与恢复](../spec/connections.md#失败与恢复) |
+S1.N1–S1.N8 的用户要求见[必然发生的情形](../../user-experience/01-multi-unit.md#必然发生的情形)，旧规范机制仍可沿下面的不变量表查到。共享对象库、并行 PR、跨机返工、agency 恢复等要求没有因改名而删除。
 
 ## 四、不变量
+
+**以下是 v0.18.6 的既有映射，不是新体验已验收的结论。** S1.I3 及相关 CT 中“两个 Project”的描述仍指旧设计对象；S1.X1/X3 的源引用与分组也尚待对齐。差异见[规范对齐清单](../../user-experience/open-questions.md#规范对齐清单)，本次不以文档搬家代替约束修订。其余机制保留供后续逐项核对，不按名称批量替换。
 
 每条写：来自哪一步、限定、钉住哪句设计文本、对到哪条既有契约测试用例的描述文本（或「本批新写」）、在哪一级检查（1 文档关联与词汇；2 同机多单元行为测试；3 真机）。
 
@@ -77,6 +49,8 @@
 
 ## 五、变体
 
+体验要求见[两种布局都要覆盖](../../user-experience/01-multi-unit.md#两种布局都要覆盖)。下表暂保留旧 CT 描述，不能把其旧 Project 叫法带回当前用户叙事。
+
 | 编号 | 变体 | 说明 |
 | --- | --- | --- |
 | S1.V1a | 同机参与者共用一个对象库（mac_ptcp_jssdk_01_01/02/03；mac_jssdk_02_01 与 mac_jssdk_01 的参与者） | 两个变体都是主线——用例原文「两种做法都成立」——同机多单元测试两种都跑，不以哪种为准；各引用 CT-PRODUCT「S1 的 mac_ctl 显式在 gh-jssdk 建两个 Project……」与 CT-SYSTEM「共用对象库的独立工作树可并行」 |
@@ -84,7 +58,7 @@
 
 ## 六、用例外补充验证
 
-以下不是 S1 必然情形，来源逐项注明；它们的规则在相应约束里，验证用例在契约测试矩阵。
+以下是原 S1 主线之外的验证映射，来源逐项注明；规则在相应约束里，验证用例在契约测试矩阵。多 source 已成为本轮[明确的导航要求](../../user-experience/04-project-navigation.md#kanbans每个-source-一个入口)，不因本节的历史分类而被排除出产品范围；本表仍未更新旧 Project 分组口径。
 
 | 编号 | 情形 | 来源 | 走法 | 契约测试用例（描述文本） |
 | --- | --- | --- | --- | --- |

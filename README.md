@@ -14,6 +14,8 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 
 当前已有命令、离线安装包和四类打包依赖的具体操作方法见[HCTL2 使用说明](./docs/usage.md)。
 
+讨论产品路径和结构时，先读[基础用户体验](./docs/user-experience/README.md#基础用户体验)：多单元用例、用户流程、术语纠正、project 导航及待拍板清单已集中在这里。它记录所有者最新要求；上面的现行设计基线尚未完成对应的结构调整，不能将两者视为已经一致。
+
 ## 为什么需要它
 
 聊天、任务、工作流和终端工具各自解决了项目协作的一部分，却没有共同覆盖从目标塑形到运行观察的完整过程。完整的问题与失败模式见[为什么需要 HCTL2](./docs/design/vision.md#为什么需要-hctl2)；五个模块的分工、六个持续可回答的问题、目标体验与取舍原则分别见[四个阶段的心智模型](./docs/design/vision.md#四个阶段的心智模型)、[目标体验](./docs/design/vision.md#目标体验)和[设计原则](./docs/design/vision.md#设计原则)。
@@ -64,6 +66,7 @@ flowchart TB
 
 ## 阅读入口
 
+- **对齐用户体验或换机器接手讨论**：从[体验目录](./docs/user-experience/README.md#四份正文)进入，下一步见[待拍板与接手清单](./docs/user-experience/open-questions.md#待拍板与接手清单)。
 - **新读者**：本页 → [愿景](./docs/design/vision.md) → [设计地图](./docs/design/README.md) → [三面架构](./docs/design/architecture.md)。
   - 五份模块正文：[Project](./docs/design/project.md)、[Task](./docs/design/task.md)、[Run](./docs/design/run.md)、[Participant](./docs/design/participant.md)、[Repo](./docs/design/repo.md)。
   - 一份横切正文：[Context](./docs/design/context.md)。
