@@ -64,25 +64,48 @@ jobs:
             if ! git merge-base --is-ancestor "$PREVIOUS_HEAD" "$CURRENT_HEAD"; then
               echo "::notice::The PR history was rewritten; validate the complete PR diff."
               mode=full-pr-rewritten
-            elif workflow_runs=$(gh api --method GET \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/code.yml/runs" \
-              -f head_sha="$PREVIOUS_HEAD" \
-              -f event=pull_request \
-              -f status=completed \
-              -f per_page=100); then
-              if printf '%s' "$workflow_runs" | src/build/tools/jq-bin -e \
-                --arg head "$PREVIOUS_HEAD" \
-                'any(.workflow_runs[]; .head_sha == $head and .conclusion == "success")' \
-                >/dev/null; then
-                base=$PREVIOUS_HEAD
-                mode=incremental-validated-head
-              else
-                echo "::notice::The previous PR head has no successful Code run; validate the complete PR diff."
-                mode=full-pr-no-prior-success
-              fi
             else
-              echo "::warning::Could not query the previous Code run; validate the complete PR diff."
-              mode=full-pr-query-fallback
+              # Evaluate the answer with the jq that ships inside gh: this job
+              # runs before DotSlash is installed, so no src/build/tools
+              # trampoline can run here. Three outcomes are kept apart: a
+              # count of successful runs (0 or more), a failed query, and an
+              # answer that cannot be evaluated. Only the first one may say
+              # "no successful run".
+              query_stderr=$(mktemp)
+              if successful_runs=$(gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/code.yml/runs" \
+                -f head_sha="$PREVIOUS_HEAD" \
+                -f event=pull_request \
+                -f status=completed \
+                -f per_page=100 \
+                --jq '[.workflow_runs[] | select(.head_sha == $ENV.PREVIOUS_HEAD and .conclusion == "success")] | length' \
+                2>"$query_stderr"); then
+                case "$successful_runs" in
+                  0)
+                    echo "::notice::The previous PR head $PREVIOUS_HEAD has no successful Code run; validate the complete PR diff."
+                    mode=full-pr-no-prior-success
+                    ;;
+                  '' | *[!0-9]*)
+                    echo "::warning::The previous Code run query answered '$successful_runs' instead of a count; validate the complete PR diff."
+                    mode=full-pr-parse-fallback
+                    ;;
+                  *)
+                    echo "The previous PR head $PREVIOUS_HEAD has $successful_runs successful Code run(s)."
+                    base=$PREVIOUS_HEAD
+                    mode=incremental-validated-head
+                    ;;
+                esac
+              elif grep -Eq '^gh: |^error connecting to |dial tcp|i/o timeout|TLS handshake' "$query_stderr"; then
+                # gh prefixes HTTP and authentication errors with "gh:" and
+                # reports connection failures as "error connecting to"; a
+                # filter that cannot be evaluated prints the bare jq message.
+                echo "::warning::Could not query the previous Code run ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
+                mode=full-pr-query-fallback
+              else
+                echo "::warning::Could not evaluate the previous Code run answer ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
+                mode=full-pr-parse-fallback
+              fi
+              rm -f "$query_stderr"
             fi
           fi
 
