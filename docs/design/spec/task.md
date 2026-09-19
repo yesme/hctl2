@@ -102,6 +102,10 @@ control 对该完成请求执行与 Workbench/CLI 相同的预览和准入。只
 
 替代只能走 [Run 约束](./run.md#启动与-manifest)规定的原子撤权和换代路径，不能先清空标记再留下两个可写执行。`completion_pending` 期间也拒绝另一次启动，以及来自 human 的 Task 完成或取消命令；只接受匹配 Run 归约器的内部完成命令。该命令成功或被 Task 持久拒绝时，control 在同一结果事务中清除标记。
 
+待处理投影中的**候选交付**是已准入的 ChangeSet Revision 或已发布的 Artifact Revision，其准入记录通过获准调用的交付目标范围，或人的显式封存 / 发布命令，明确关联到本 Task 与精确 Task Revision。人工交付不要求伪造 Room Invocation；普通文件、未准入的 Result Proposal、仅凭同 Repo 或 Room 推断的关联不算候选交付。
+
+Task 开放、候选交付对应当前 Task Revision 且没有 Run 占用标记时，向有权确认完成的用户投影待确认完成事项。旧 Task Revision 的交付保留历史，不自动计入当前版本的待办。投影只读取上述准入记录与 Task 当前状态，不新增对象、生命周期状态或命令；候选存在不表示已通过验收，实际完成仍走下述命令的预览与准入。
+
 “完成 Task”命令必须先校验当前 Revision、验收规则、候选和全部必需证据，并逐项核对判定者与校验等级一致：`mechanical` 项只接受直报（`unmediated`）或旁路（`adapter_event`）证据，其中集成结果按契约接受 [Repo 模块](./repo.md#平台动作与命令)的 Integration Receipt，或由该模块回读核验的精确平台集成 Evidence；后者须已由契约事先声明接受，Task 不直接读平台，平台标签或自述不够；`gate` 项只接受 Gate Receipt 所含 Verdict，`human` 项只接受有权 human actor 的显式判定。验收策略可要求某项证据不低于某个证据通道等级（见 [Participant 约束](./participant.md#证据通道)）；等级不足时拒绝，转述不能补足。存在未采纳的契约变化时，actor 必须先采纳新 Revision，或在预览中明确选择按当前 Revision 完成；后一选择必须冻结当前绑定、来源头和全部未采纳 Snapshot。预览后出现的新 Snapshot 或变化必须使命令失效。“启动 Run”命令预览时的拒绝或延期不能代替这次选择。
 
 接受外部集成事实的声明只经「采纳契约」或带预览契约的「创建 Task」形成精确 Task Revision，不由观测或完成命令补入。完成按当前 Task Revision 检查；活动 Run 仍冻结原 Revision，旧契约只接受自身 Integration Receipt 时不因新规则扩大。外部事实不自动完成 Task，不替代 Gate 或 human 验收项，也不补签本控制面的 Integration Receipt。

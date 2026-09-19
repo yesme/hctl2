@@ -19,7 +19,7 @@
 - Topic Room 首次调用只给原聊天链接、不交付可重读的提要，或以提要代替契约时失败；自动归纳未配置或失败却报告自动建议已完成时失败，人工补写不算自动能力通过
 - Room 的 Project 归属或消息所属 Room 被引用动作改写时失败；同根因 Request 重复创建仍去重，Topic 讨论的结论未提交原动作不解决 Request
 - 待你处理按现有事项去重：同一 Request 在 Room/Task/Run 出现被计三次、缺对象/原因/动作后果/未处理影响/返回入口、普通进度或可忽略建议计入数字、阅读面板即解决事项时失败；另一客户端完成后仍显示待办、处理失败却移除条目、处理历史从原处消失时失败
-- 待处理来源分别注入：目标为当前用户的开放 Request、冻结要求本人确认的待处理发布评审意图、存在待本人采纳的契约 Snapshot 的 Task、无 Run 占用且已交付候选但待本人确认完成的开放 Task、已超时且等待本人取消或替代的过渡态 Run；漏项、把已确认意图或仅打开过的 Trigger Preview 列为待办时失败；其他人待答的 Request 计给当前用户、Request 已承接同一验收动作仍重复计 Task 时失败
+- 待处理来源分别注入：目标为当前用户的开放 Request、冻结要求本人确认的待处理发布评审意图、存在待本人采纳的契约 Snapshot 的 Task、无 Run 占用且已有明确关联当前 Task Revision 的已准入 ChangeSet Revision 或已发布 Artifact Revision 的开放 Task、已超时且等待本人取消或替代的过渡态 Run；漏项、把已确认意图或仅打开过的 Trigger Preview 列为待办时失败；其他人待答的 Request、无权确认完成的 Task 计给当前用户，或 Request 已承接同一验收动作仍重复计 Task 时失败
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
 - chat server 不可用时，依赖 Room 来源、身份或 Context 当前回读的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
 - Room–Server Binding 只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
@@ -74,6 +74,7 @@
 - 同一 `mechanical` 验收项、其余条件满足：契约允许旁路（`adapter_event`）时以旁路证据提交通过；同一证据在只认直报（`unmediated`）的项上拒绝，不因参与者一侧加固与否改判；「完成 Task」把所有机械项一律收紧成只认直报时失败
 - 契约冻结要求远端检查或远端合入时，本地测试成功或本地 ref 前移不能顶替；契约只接受自己的 Integration Receipt 时，外部合并不能顶替；事先声明接受精确平台集成证据且 Repo 回读核验版本、目标与结果匹配时，该机械项通过，但仍需本控制面的完成命令与其余验收项
 - 验收契约未要求代码集成的 Task（例如只交付已登记工件、由人验收）完成时不要求 Integration Receipt；要求集成时按事先采纳的契约核自己的 Integration Receipt 或 Repo 核验的精确平台集成 Evidence，不接受 merged 字样、他人凭证或模型自述直接顶替
+- 候选交付按准入记录判定：各例从开放 Task T、当前契约 R2 要求人验收、无 Run 占用且无候选的初态独立开始；分别由获准 Room Invocation 交回并准入 ChangeSet Revision、由人显式封存 ChangeSet Revision、由人发布 Artifact Revision，记录均明确关联 T/R2；任一路径不显示待有权用户确认完成、人工路径被要求补造 Invocation 时失败。普通文件、未准入 Result Proposal、未关联 Task、只关联另一 Task 或 T/R1 的同 Repo 产出被计入 T 的待办时失败；有效交付后将 T 改为完成/已取消，或设置 active/completion_pending 占用，仍计入该完成待办时失败；候选准入就自动完成 T、未有人验收也签完成凭证时失败
 - 契约未声明接受外部集成证据，或已声明但精确源版本、平台目标、实际合入结果任一不符时完成拒绝；新 Task Revision 增加声明后不改旧契约，绑定旧 Revision 的 Run 仍不得静默按新契约完成；其余 gate/human 项未满足时不能仅凭平台合入通过
 - Task/契约创建前正文已存而准入前崩溃，恢复同一命令只产生一个 Task Revision；准入后后端建卡确认丢失，按原关联键回读，不再建卡；材料保存成功不等于契约采纳或 Task 完成
 
