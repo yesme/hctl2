@@ -2,7 +2,7 @@
 
 > 状态：已拍板 · 2026-09-20 起 P2.1 按 [`04-p21-kickoff.md`](./04-p21-kickoff.md) 开工（所有者 09-19「开」；按 v0.18.11 重切，变化映射见其 §二）；此前：四项取舍与里程碑重切已定，2026-09-15 工作包按 `01-plan.md` §十二 补记重切（v0.18.3），Repo 身份题已撤，戊解冻，丙撤销；六份前置研究已由 Codex 完成<br>
 > 基线：main @ `2c6b2e4`（草案 v0.18.11）；`01-plan.md` 正文写于 v0.17.0，历史不改<br>
-> 去向：`src/apps/hctl2-control`、`src/apps/hctl2`、`src/crates/*`、`docs/research/`；不改约束层
+> 去向：`src/apps/*`（控制面与 CLI 目录按职责取名，对外二进制仍为 `hctl2-control` / `hctl2`）、`src/crates/*`、`docs/research/`；不改约束层
 
 > 2026-09-20 命名更新：已有源码目录 `apps/hctl2-tool`、`crates/hctl2-facts`、`crates/hctl2-foundation`、`crates/hctl2-store` 分别改为 `apps/tool`、`crates/facts`、`crates/foundation`、`crates/store`（均相对 `src/`）；私有 package 与库目标同步用短名，对外命令仍为 `hctl2-tool`。本目录已拍板任务书的历史名称不回写，继续开工时按 [src/README 命名说明](../../../src/README.md)定位现行代码；尚未建立的 control / CLI 目录也按职责取名，不照抄上述历史路径。
 
