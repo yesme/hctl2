@@ -8,11 +8,13 @@ HCTL2 是把**人主导的目标塑形**与**机器驱动的可验证施工**连
 > （Project-scoped · Room-mediated shaping · Task-tracked · Run-executed）
 
 > [!IMPORTANT]
-> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.18.6**。`src/` 现有 Rust 工作区与
+> HCTL2 已进入早期实现，权威设计基线是 **草案 v0.18.7**。`src/` 现有 Rust 工作区与
 > Linux x86_64、macOS arm64/x86_64 分目标依赖打包代码；三个目标均已通过原生整包生命周期验证，
 > 但还没有可用的公共 CLI 或完整应用。
 
 当前已有命令、离线安装包和四类打包依赖的具体操作方法见[HCTL2 使用说明](./docs/usage.md)。
+
+讨论产品路径和结构时，先读[基础用户体验](./docs/user-experience/README.md#基础用户体验)：多单元用例、用户流程、术语纠正、project 导航及待拍板清单已集中在这里。它记录所有者最新要求；上面的现行设计基线尚未完成对应的结构调整，不能将两者视为已经一致。
 
 ## 为什么需要它
 
@@ -64,6 +66,7 @@ flowchart TB
 
 ## 阅读入口
 
+- **对齐用户体验或换机器接手讨论**：从[体验目录](./docs/user-experience/README.md#四份正文)进入，下一步见[待拍板与接手清单](./docs/user-experience/open-questions.md#待拍板与接手清单)。
 - **新读者**：本页 → [愿景](./docs/design/vision.md) → [设计地图](./docs/design/README.md) → [三面架构](./docs/design/architecture.md)。
   - 五份模块正文：[Project](./docs/design/project.md)、[Task](./docs/design/task.md)、[Run](./docs/design/run.md)、[Participant](./docs/design/participant.md)、[Repo](./docs/design/repo.md)。
   - 一份横切正文：[Context](./docs/design/context.md)。

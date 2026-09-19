@@ -1,5 +1,7 @@
 # HCTL案例
 
+> 说明：所有者的原始材料，保留当时的 project / repo / topic 混用，不在原话里改写历史。纠正后的当前体验在 [docs/user-experience/01-multi-unit.md](../../docs/user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)，讨论结构以该稿及同目录的术语说明为入口。
+
 我觉得关键问题是 \- 1个repo的多个HCTL instance \(比如mac, ubuntu）之间，是否应当协同工作、如何协同工作？mac上做了一个task，要不要ubuntu上接过来做完？我之前希望是这样，但现在不觉得了 \- 因为以前的视角是harness session，那么就会希望ubuntu上的codex可以接过来正在执行的task。但现在 ① 有了participant概念后，引入了远程agency抽象；② 有了UI\-backend binding概念后，引入了多workbench：单control分界后；我的世界观有了变化。
 
 为了说明这个问题，我专门构造了一个场景作为例子，你可以记下来，未来可以作为reference来验证我们的产品/功能设计。
@@ -120,4 +122,3 @@
 - 新的架构已经做了大量的dependency/deployment分离，让各种配置分立远程化。
 
 - 核心的安排是agency, ctl, cli/bench
-

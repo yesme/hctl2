@@ -11,7 +11,7 @@ build/tools/install-dotslash "${XDG_BIN_HOME:-$HOME/.local/bin}"
 dotslash --version
 ```
 
-如果该目录尚未加入 `PATH`，由开发者按所用 shell 的正常方式加入一次。安装器不修改 shell 配置；它按 `dotslash.env` 选择宿主平台官方包并校验 SHA-256。此后 Buck2、BTD、jq、Actionlint、ShellCheck 和 cache server 均由各自 DotSlash 清单准备，不再分别安装。更新 Action 提交或 DotSlash 版本属于构建供应链变更，应连同三平台验证一起审阅。
+如果该目录尚未加入 `PATH`，由开发者按所用 shell 的正常方式加入一次。安装器不修改 shell 配置；它按 `dotslash.env` 选择宿主平台官方包并校验 SHA-256。此后 Buck2、BTD、jq、Actionlint、ShellCheck 和 cache server 均由各自 DotSlash 清单准备，不再分别安装。 例外只有 Code 与 Release workflow 的 path-filter job：它在安装 DotSlash 之前就要判断本次 PR 更新的验证区间，因此那一步用 runner 自带 GitHub CLI 的内置 jq（`gh api --jq`）读取上一 head 的 workflow 结论，不经 `jq-bin`；查询失败、答案无法求值与无法归类的错误分别如实报出并回退完整检查（对 gh stderr 的分类是诊断用的启发式，不是完备分类），回归用例在 `build/tests/check_validation_range.sh`。更新 Action 提交或 DotSlash 版本属于构建供应链变更，应连同三平台验证一起审阅。
 
 随后在 `src/` 内直接使用 `./buck2` 入口。启动器通过固定版本的 Process Compose 和声明式 [`reapi/local-cache.yaml`](./reapi/local-cache.yaml) 启动只监听 loopback 的标准 REAPI action cache；进程的后台化、PID、健康检查、重启、日志和关闭全部由 Process Compose 管理，cache server 仍是 `src/build/tools/bazel-remote-bin` 固定的官方 `bazel-remote`。在 macOS 上，启动器还会把 Xcode version/build 与 SDK version 注入 Buck 配置，使宿主工具链升级参与 action key。缓存数据默认位于 `${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi`，最多 10 GiB，所有本机 hctl2 worktree 共用；它只缓存 Buck 声明的 CAS/action results，不共享 daemon 或 `buck-out`。可用 `HCTL2_BUCK2_CACHE=0` 临时禁用，或用 `HCTL2_BUCK2_CACHE_DIR`、`HCTL2_BUCK2_CACHE_MAX_GIB` 调整位置和上限。
 

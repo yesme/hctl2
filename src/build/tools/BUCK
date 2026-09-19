@@ -11,3 +11,9 @@ export_file(
     src = "host-bin/python3",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "jq-bin",
+    src = "jq-bin",
+    visibility = ["PUBLIC"],
+)

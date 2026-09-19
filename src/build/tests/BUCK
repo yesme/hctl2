@@ -70,3 +70,20 @@ sh_test(
     run_test_separately = True,
     test_rule_timeout_ms = 120000,
 )
+
+sh_test(
+    name = "validation_range_test",
+    test = "check_validation_range.sh",
+    env = {
+        "CODE_WORKFLOW": "$(location repo//:code_workflow_yml)",
+        "RELEASE_WORKFLOW": "$(location repo//:release_workflow_yml)",
+        "JQ_BIN": "$(location root//build/tools:jq-bin)",
+    },
+    labels = CI_FAST,
+    resources = [
+        "repo//:code_workflow_yml",
+        "repo//:release_workflow_yml",
+        "root//build/tools:jq-bin",
+    ],
+    test_rule_timeout_ms = 120000,
+)
