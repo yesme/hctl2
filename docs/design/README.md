@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.18.8<br>
+> 状态：规范性索引 · 草案 v0.18.9<br>
 > 日期：2026-08-31
 
 本文描述当前对象结构。Project、Repo（仓库）、Topic 的含义与三列表导航依据所有者确认的[基础用户体验](../user-experience/README.md#基础用户体验)；对应的约束和验收路径已同步，产品实现与实测结果仍须按[交付文档](./delivery.md)分别验证。
@@ -9,7 +9,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 
 | 权威模块 | 对应场景 | content 系统 | 模块拥有 | 场景客户端 / 受控端口示例 |
 | --- | --- | --- | --- | --- |
-| [Project](./project.md) | Room（聊天室） | chat server（聊天服务器） | 目标与范围、协作现场的身份与来源记录、参与者、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
+| [Project](./project.md) | Room（聊天室） | chat server（聊天服务器） | 目标与范围、协作现场的身份与来源记录、各 Room 的名册与 Project 的选人策略、上下文、请求、备忘与工件 | Workbench Room / 外部 Chat 端口 |
 | [Task](./task.md) | Kanban（看板） | 任务源（平台自带的 issues、本地任务服务器或远端平台，零到多个） | 承诺与验收契约、来源映射与字段权威、操作态投影、完成证明 | Workbench Board / 平台 issues、Linear 任务源端口 |
 | [Run](./run.md) | Workflow（施工图） | workflow engine（工作流引擎） | 施工图与批准、授权执行、交付义务与席位、评审关卡、裁决与凭证 | Workbench Run 图 / workflow engine 端口 |
 | [Participant](./participant.md) | Terminal | Agency（派出方）；默认为本地参考实现 | 参与者身份与人设、Skill（技能包）申报、执行者配置、经 Agency 的派工与观测、终端票据、结果与证据 | Workbench Terminal、CLI（经 Agency 端口）；harness 与运行时在 Agency 门后 |
@@ -33,7 +33,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 
 ```mermaid
 flowchart TD
-    R["Repo（Repo 模块）"] --> P["Project 0..N"]
+    R["Repo（Repo 模块）"] -->|每个 Project 关联一个 Repo；同一 Control 可多个| P["Project 0..N"]
     P --> PR["Project Room（一个 Project 一个主 Room）"]
     P --> TP["Topic Room 0..N"]
     P --> T["Task 0..N"]
