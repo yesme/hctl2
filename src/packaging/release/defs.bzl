@@ -23,7 +23,7 @@ def _export_command(target: str) -> str:
         '"$OUT"',
         HCTL2_VERSION,
         target,
-        "$(location root//apps/hctl2-tool:hctl2-tool)",
+        "$(location root//apps/tool:hctl2-tool)",
     ])
 
 def first_party_release(name: str):

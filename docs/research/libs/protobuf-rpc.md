@@ -54,7 +54,7 @@ P3 仍从同一 `.proto` 经 `protoc-gen-es` 生成 TypeScript；Buf CLI 是可�
 
 进 Git 的 Task Revision 等领域正文继续用 RFC 8785 规范化 JSON；ProtoJSON 不是 JCS，Protobuf 字节也不保证规范化。传输中需要携带原正文时保留其原始字节和既有摘要，不拿传输重编码结果重新认定领域事实。出处是[接口备忘 §当前决定](../../../.memo/notes/control-api-schema-20260902.md#当前决定)；其中“暂不引入”的时机决定已由 P2 计划覆盖，事实格式边界仍成立。
 
-P2.1 甲 / 乙起草接口时还有一个待定衔接点：[hctl2-tool 的 JSON 记录](../../../src/apps/hctl2-tool/src/lib.rs) 已有带版本的 `schema`、`evidence_level`、`outcome` 与 `error.code`，将由 control 消费。这些记录是否也由同一份 `.proto` 定义并以 ProtoJSON 输出，要在实现前明确，避免两份定义分别演进；[P2 计划 §三](../../../.memo/design/p2-control-20260906/01-plan.md#三p2-的形状) 已定 P1 接口不重塑，不能因换生成方式改变已有字段或语义。本文只登记这个问题，不据此改工具箱。
+P2.1 甲 / 乙起草接口时还有一个待定衔接点：[hctl2-tool 的 JSON 记录](../../../src/apps/tool/src/lib.rs) 已有带版本的 `schema`、`evidence_level`、`outcome` 与 `error.code`，将由 control 消费。这些记录是否也由同一份 `.proto` 定义并以 ProtoJSON 输出，要在实现前明确，避免两份定义分别演进；[P2 计划 §三](../../../.memo/design/p2-control-20260906/01-plan.md#三p2-的形状) 已定 P1 接口不重塑，不能因换生成方式改变已有字段或语义。本文只登记这个问题，不据此改工具箱。
 
 ## 决定建议
 

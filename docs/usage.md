@@ -185,7 +185,7 @@ hctl2-services start
 
 ```bash
 cd src
-cargo build --locked -p hctl2-tool
+./buck2 build root//apps/tool:hctl2-tool
 ```
 
 `--help` 与 `--version` 为英文。无参数调用等同于 `--help`。Git 现场命令要求宿主 `git` ≥ 2.39；可用 `HCTL2_GIT` 覆盖可执行文件路径，与 `HCTL2_GH` 同款。每次调用在标准输出写一条 JSON 记录，`evidence_level` 为 `unmediated`（直报，2026-09-14 前为 `toolbox_readback`）。`outcome` 为 `established`（成立）、`not_established`（已确定不成立）、`unreadable`（读不到）或 `timeout`（仅 `wait`）；对应退出码 `0`、`3`、`4`、`5`。参数或启动错误返回 `1` 并写到标准错误。观察类失败（含仓库状态不成立）走标准输出 JSON，带 `error.code` 与 `error.recovery_action`。
