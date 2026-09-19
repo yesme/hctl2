@@ -41,53 +41,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_HEAD: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" != pull_request ]; then
-            echo "base=HEAD" >> "$GITHUB_OUTPUT"
-            echo "head=HEAD" >> "$GITHUB_OUTPUT"
-            echo "mode=full-periodic" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          test -n "$BASE_COMMIT"
-          test -n "$CURRENT_HEAD"
-          candidate=$(git rev-parse --verify 'HEAD^{commit}')
-          base=$BASE_COMMIT
-          mode=full-pr
-
-          if [ "$EVENT_ACTION" = synchronize ] && [ -n "$PREVIOUS_HEAD" ]; then
-            if ! git merge-base --is-ancestor "$PREVIOUS_HEAD" "$CURRENT_HEAD"; then
-              echo "::notice::The PR history was rewritten; validate the complete PR diff."
-              mode=full-pr-rewritten
-            elif ! query_output=$(gh api --method GET \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs" \
-              -f head_sha="$PREVIOUS_HEAD" \
-              -f event=pull_request \
-              -f status=completed \
-              -f per_page=100 \
-              --jq 'any(.workflow_runs[]; .head_sha == "'"$PREVIOUS_HEAD"'" and .conclusion == "success")' 2>&1); then
-              echo "::warning::Could not query the previous Release run ($query_output); validate the complete PR diff."
-              mode=full-pr-query-fallback
-            else
-              if [ "$query_output" = "true" ]; then
-                base=$PREVIOUS_HEAD
-                mode=incremental-validated-head
-              elif [ "$query_output" = "false" ]; then
-                echo "::notice::The previous PR head has no successful Release run; validate the complete PR diff."
-                mode=full-pr-no-prior-success
-              else
-                echo "::warning::Could not parse the previous Release run response ($query_output); validate the complete PR diff."
-                mode=full-pr-query-fallback
-              fi
-            fi
-          fi
-
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "head=$candidate" >> "$GITHUB_OUTPUT"
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "Validation mode: $mode"
-          echo "Validation range: $base...$candidate"
+          WORKFLOW_FILE: release.yml
+        run: src/build/ci/resolve-validation-range.sh
 
       - name: Detect product and release paths
         id: paths

@@ -37,3 +37,15 @@ export_file(
     src = ".github/workflows/pr-contract.yml",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "code_workflow",
+    src = ".github/workflows/code.yml",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "release_workflow",
+    src = ".github/workflows/release.yml",
+    visibility = ["PUBLIC"],
+)

@@ -74,6 +74,16 @@ sh_test(
 sh_test(
     name = "validation_range_test",
     test = "validation-range-test.sh",
+    env = {
+        "RESOLVE_SCRIPT": "$(location root//build/ci:resolve_validation_range)",
+        "CODE_WORKFLOW": "$(location repo//:code_workflow)",
+        "RELEASE_WORKFLOW": "$(location repo//:release_workflow)",
+    },
     labels = CI_FAST,
+    resources = [
+        "root//build/ci:resolve_validation_range",
+        "repo//:code_workflow",
+        "repo//:release_workflow",
+    ],
     test_rule_timeout_ms = 60000,
 )
