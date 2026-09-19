@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.6<br>
+> 状态：交付文档（非规范） · 草案 v0.18.7<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -13,13 +13,15 @@
 
 | 模块 | P2 出门（control + CLI + content 系统） | P3 出门（Workbench 场景） | 执行面与第三方适配 |
 | --- | --- | --- | --- |
-| [Project](./project.md) | Repo Room、Project Room、Scoped Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
-| [Task](./task.md) | 以仓库所绑平台自带的 issues 为缺省任务源（本地平台的 issues、GitHub Issues；缺省源由人显式同意）、本地任务服务器可加绑；CLI 完整 Task 管理与完成预览；平台或本地任务服务器的原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（合并板、拖放、泳道、后续动作入口） | 平台 issues 经随包 `gh` 与 `tea` 接入（调用面复核见 [sdk/github.md](../research/sdk/github.md)、[gitea.md](../research/gitea.md)）；本地任务服务器经限时验证后作为可加绑源交付，完整 Kanban 切片仍在 P2 出门前；Linear 通过身份/快照测试 |
+| [Project](./project.md) | Project Room（主 Room）与 Topic Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
+| [Task](./task.md) | 以仓库所绑平台自带的 issues 为缺省任务源（本地平台的 issues、GitHub Issues；缺省源由人显式同意）、本地任务服务器可加绑；CLI 完整 Task 管理与完成预览；平台或本地任务服务器的原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（Project 内按任务源分别进入、拖放、泳道、后续动作入口） | 平台 issues 经随包 `gh` 与 `tea` 接入（调用面复核见 [sdk/github.md](../research/sdk/github.md)、[gitea.md](../research/gitea.md)）；本地任务服务器经限时验证后作为可加绑源交付，完整 Kanban 切片仍在 P2 出门前；Linear 通过身份/快照测试 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、多票评审 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
 | [Participant](./participant.md) | 参与者与执行者配置、证据三档、经 Agency 的派工与观测、terminal inspect/attach/replay；验证完整 Agency 的唯一通路、租户隔离、公开交互与结果保管；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、经 Agency 的 attach UI | Codex/Claude Code/OpenCode 能力探测；本地 Agency 参考实现（运行时 Herdr v0.8.2）至少接入一个 harness 并通过契约测试；Herdr 官方 TUI 是它的原生 Terminal 客户端，WezTerm 可选 |
 | [Repo](./repo.md) | Repo 登记与平台绑定、ChangeSet/diff、写租约与资源隔离、集成预览/提交/凭证的本地路径与平台路径、发布评审；两种授权形态与目标保护快照 | Change 场景：精确 diff、评审线程与检查投影、集成状态与凭证 | `hctl2-tool` 随包；本地平台随包（Gitea，由 control 托管；其官方命令行 tea 随包，适配器先用它，逐项核对见 [Gitea 调研](../research/gitea.md)）；外部平台适配器本批只交付 GitHub（`gh` 随包，经平台端口通过契约测试）；其他外部平台不点名、按需，依据见[市场调研](../research/scm-platforms.md) |
 
 P3 的 Workbench 把五类供应端客户端与 HCTL 命令入口组合到一个桌面，但不引入任何 CLI 不可达的 HCTL 命令；同一命令服务供 CLI、Workbench 与外部适配器使用。消息、卡片和终端输入仍按各供应端的公开协议及其绑定中声明的能力处理。Workbench 不因集成而升权；关掉 Workbench 不影响服务和执行。
+
+体验澄清后的验收按 [S1 多单元](./scenarios/S1-multi-unit.md)、[S2 异常](./scenarios/S2-rough-road.md)与 [S3 用户路径](./scenarios/S3-user-journey.md)分别记录。每个 Project 的主 Room、Topic 开场提要、多源入口、待处理面板、计划重入与 Run 观察都需实际走通；仅有手动新建入口不算持续建议，Linear 的只读验证不算写入，未声明图形观察能力不算桌面可用。S3 的命令与材料行为在相应模块交付时验，Workbench 入口在 P3 验，跨机部分沿第二期；本轮文档同步不改变上述排期，也不预定自动建议的触发算法。
 
 客户端动作与 provider 事件的分类及准入以[系统约束](./spec/system.md#客户端动作与-provider-事件)为准；P2 用 CLI 提供全部 HCTL 命令，不把 Workbench 设成必需组件。
 
@@ -70,7 +72,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 1. 注册 Repo（只在本地的仓库缺省绑定本地平台，有权限一方建仓、持 Git 凭据单元交代码），创建 Project 与 Task Revision；不写代码树身份或挂接工作副本，契约由控制面材料存储保存并准入。
 2. 从 Project Room 发起一次写入型 Room Invocation，冻结其 Execution Spec；平台仓库在 Trigger Preview 一并冻结评审发布策略，预览写明授权的是发布去评审、不是合入。
 3. Harness 在隔离 Git 工作树和有效写租约下修改代码；`hctl2-tool` 封存并回读 ChangeSet Revision，Project 准入提案的同一事务里 Repo 模块准入版本，Harness 产出测试证据。
-4. Change 场景展示精确 diff；评审绑定精确的评审对象引用。平台仓库按同一冻结意图分段确认 Git 交付与 PR 创建/更新：持凭据单元交版本，平台适配器建请求，写下变更与平台映射的第一条证据；显式不挂平台的仓库讨论在 Scoped Room。
+4. Change 场景展示精确 diff；评审绑定精确的评审对象引用。平台仓库按同一冻结意图分段确认 Git 交付与 PR 创建/更新：持凭据单元交版本，平台适配器建请求，写下变更与平台映射的第一条证据；显式不挂平台的仓库讨论在 Topic Room。
 5. 评审评论经代取进入下一次调用的开工包；返工是新的 Room Invocation，由人明确选人，重建只用封存并获准交付的版本、未封存字节不搬机；主干前移时执行体在自己的工作树里合并或变基，封存为新版本、旧评审失效。
 6. 有权 human actor 预览合入：本地路径核对预期目标头并要求目标工作树已切离；平台路径核对必需检查、线程、正式评审与目标保护快照，并显式选择授权形态（GitHub 与本地平台都不能保证预期目标头，只能选「接受目标前移」）。随后提交 integration intent；control 先持久化，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行并 readback，确认后写唯一 Integration Receipt。
 7. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验自己的 Integration Receipt，或契约事先接受、由 Repo 回读核验的精确平台集成 Evidence，及其余验收项后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
@@ -177,7 +179,9 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 <a id="运行默认值"></a>
 ## 运行默认值
 
-约束层留给施工图或施工清单声明、但要有缺省值的几项，缺省值定在这里，不进约束：Gate 返工轮数上限默认 2 轮（数字借自编排停滞阈值与模型自纠的研究，不是评审场景的直测，待自举校准，见[多模型协作有效性调研](../research/multi-agent-effectiveness-20260908.md)）；Run 过渡态（启动中、暂停中、取消中）墙钟超时默认 15 分钟；增量评审默认关闭（全量重评）；批准施工图前的读回那一步默认要做，施工图可声明跳过；启用读回时，读回默认由与产出来源集合里每个调用都不同的执行配置做，登记显式声明无模型产出调用时缺省自动满足，来源缺失时批准等到补齐来源或撤回回避声明，登记预览把来源 Room 里的调用列出来供勾选或一键确认；施工图可声明放开；席位多样性策略默认不声明，只靠计票去重兜底；Scoped Room 闲置提示默认 14 天——无新消息且未回填满 14 天进「需要关注」，一条汇总提示（规则见 [Project 约束](./spec/project.md#room-与消息)）；预算耗尽的缺省处理是「跑完当前派工，不再派」（规则见 [Run 约束](./spec/run.md#request重试与-gate)）。跟进到可交付的缺省路径是一张缺省施工图模板，不用画：施工、机械检查、返工（上限沿用 2 轮）、评审关卡一席、按仓库授权形态合入；批准施工图与开工可以一次预览提交，各自的准入与读回等前置照旧，等待检查不调用模型，返工超限、契约分歧、预算越限回到人手里；模板随发布包提供，内容按本节缺省值。改缺省值只改本节。
+约束层留给施工图或施工清单声明、但要有缺省值的几项，缺省值定在这里，不进约束：Gate 返工轮数上限默认 2 轮（数字借自编排停滞阈值与模型自纠的研究，不是评审场景的直测，待自举校准，见[多模型协作有效性调研](../research/multi-agent-effectiveness-20260908.md)）；Run 过渡态（启动中、暂停中、取消中）墙钟超时默认 15 分钟；增量评审默认关闭（全量重评）；批准施工图前的读回那一步默认要做，施工图可声明跳过；启用读回时，读回默认由与产出来源集合里每个调用都不同的执行配置做，登记显式声明无模型产出调用时缺省自动满足，来源缺失时批准等到补齐来源或撤回回避声明，登记预览把来源 Room 里的调用列出来供勾选或一键确认；施工图可声明放开；席位多样性策略默认不声明，只靠计票去重兜底；预算耗尽的缺省处理是「跑完当前派工，不再派」（规则见 [Run 约束](./spec/run.md#request重试与-gate)）。跟进到可交付的缺省路径是一张缺省施工图模板，不用画：施工、机械检查、返工（上限沿用 2 轮）、评审关卡一席、按仓库授权形态合入；批准施工图与开工可以一次预览提交，各自的准入与读回等前置照旧，等待检查不调用模型，返工超限、契约分歧、预算越限回到人手里；模板随发布包提供，内容按本节缺省值。改缺省值只改本节。
+
+承接开放 Request 的 Topic Room，闲置提醒期限默认 14 天，统一显示为“需要关注”；普通 Topic 不适用，也不因此增加“待你处理”计数。判定与处理见 [Room 与消息](./spec/project.md#room-与消息)。
 
 ## 技术基线
 
@@ -199,4 +203,4 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 
 ## 未决问题
 
-暂无。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Repo Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。
+暂无。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。

@@ -1,11 +1,11 @@
 # Repo 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.6<br>
+> 状态：规范性约束 · 草案 v0.18.7<br>
 > 本文是 Repo 模块对象、状态机与写入约束的唯一权威。设计正文见 [Repo 与 Change](../repo.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
 
-Repo 模块拥有逻辑仓库的稳定身份与注册、获准的写入边界及其不可变 Git 快照、写入租约、代码集成的持久意图与凭证，以及变更与代码协作平台之间的映射。Project 拥有 Repo Room 与 Project 对 Repo 的归属；Participant 拥有派工与观测；Run 拥有 Gate、Seat 与 Verdict。本模块不决定 Project、Task 或 Run 的领域结果，也不接收 Result Proposal。
+Repo 模块拥有逻辑仓库的稳定身份与注册、获准的写入边界及其不可变 Git 快照、写入租约、代码集成的持久意图与凭证，以及变更与代码协作平台之间的映射。Project 拥有各 Project 的 Room 与 Project 对 Repo 的归属；Participant 拥有派工与观测；Run 拥有 Gate、Seat 与 Verdict。本模块不决定 Project、Task 或 Run 的领域结果，也不接收 Result Proposal。
 
 `hctl2-tool` 是本模块的现场执行者：物化与隔离 Git 工作树、封存与保全 ChangeSet、执行面向本地目标的集成、回读 Git 事实与闭集外部机械事实。平台适配器经平台端口创建或更新评审请求、请求合并、写回记录，以及为代取读取评审评论正文；Git 版本由持相应凭据的单元交付，分工见[发布评审](#发布评审)。平台上的机械事实——提交的检查状态、评审请求当前头与是否合并、线程是否解决、正式评审状态、目标 ref 的保护条件——仍由 `hctl2-tool` 回读，证据通道等级为 `hctl2-tool` 回读，Run 的节点前置只认它。两者是分工：有平台的仓库照样由 `hctl2-tool` 物化、封存与回读事实。
 
@@ -27,7 +27,7 @@ ChangeSet 在[核心产品词](./README.md#核心产品词)中仍是治理内部
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；平台建仓与初始 Git 交付按持久意图执行并回读 | 同一注册幂等键返回原 Repo；确认激活 Repo 与唯一 Repo Room；外部步骤未知时按关联键恢复 |
+| Repo | stable `repo_id` + `repo_version`；待确认 / 活跃 | control 处理「注册 Repo」命令；平台建仓与初始 Git 交付按持久意图执行并回读 | 同一注册幂等键返回原 Repo；确认激活 Repo；外部步骤未知时按关联键恢复 |
 | ChangeSet / Write Lease | change_set_version、current revision；租约为待启动 / 活跃 / 撤销中 / 已撤销 | control 准入「预备/授予/撤销/封存」命令，`hctl2-tool` 物化并回读 Git 并执行失权 | 一个 ChangeSet 至多一个活跃租约；ChangeSet Revision 只追加 |
 | 集成意图 / Integration Receipt | intent state version；待启动 / 结果未知 / 成功 / 失败；Receipt immutable | control 准入「合入 ChangeSet」命令；面向本地目标由 `hctl2-tool` 执行与回读，面向远端目标由平台适配器投递、`hctl2-tool` 回读 | 同一集成意图只有一个获准结果与唯一 Receipt；本控制面内同一目标（供应端目标引用及 ref）同时至多一个待决（待启动或结果未知）的集成意图，不论授权形态，共用[系统边界](./system.md#外部权威副作用)定义的冲突范围；前一意图终态后，同一目标的下一意图是新的授权；只有回读确认才能写 Receipt |
 | 发布评审意图 | intent state version；待启动 / 结果未知 / 成功 / 失败 | control 按 Execution Spec 冻结的评审发布策略准入「发布评审」命令；持凭据单元交付 Git 版本，具平台权限的一方创建或更新评审请求 | 同一 ChangeSet Revision 与同一发布目标只允许一条评审请求映射；确认丢失时按原意图回读，不重复创建 |
@@ -40,11 +40,11 @@ Repo 是人显式登记的仓库，不等于外部组织、工作区或工作副
 
 注册命令定下平台绑定：仓库来源的外部平台、随包的本地平台，或显式不挂平台。来自外部平台的仓库绑定该平台，本地平台不为它建代码镜像；只在本地的仓库缺省绑定本地平台，不挂平台须显式选择。按人声明的来源，外部平台仓库绑定或换绑到本地平台时拒绝；显式不挂平台仍按人的选择走受限路径，不因远端辅助证据改判。平台与仓库标识由人声明；远端地址只作辅助证据，证据冲突时预览列出供人确认，不替人重新认定仓库身份。
 
-control 先记录待确认注册与外部步骤的 outbox；需在本地平台建仓时，由有权限的一方建仓，持 Git 凭据的单元交付初始代码并回读。给工作副本配置 remote 是参与者的便利操作，不是登记生效条件。注册不要求在代码树写身份文件，也不要求登记或挂接工作副本。
+control 先记录待确认注册与外部步骤的 outbox；需在本地平台建仓时，由有权限的一方建仓，持 Git 凭据的单元交付初始代码并回读。用户从本地路径选择接原 remote 时，读取的是用户提供路径所在机器的事实；读取失败、平台不可达或凭据缺失不当成纯本地。用户选择脱离原平台另起工作时，登记新的本地 Repo，缺省使用独立副本保留输入目录及 remote；原地切换须显式预览并确认影响范围。复制代码不迁移原平台的卡片、评审历史或建立持续同步。给工作副本配置 remote 是参与者的便利操作，不是登记生效条件。注册不要求在代码树写身份文件，也不要求登记或挂接工作副本。
 
 初始推送范围固定：没有提交时只建仓；默认只推当前 HEAD 所在的分支，没有时推默认分支，其余 ref 由人显式选择；私有保管引用、未准入的变更分支与未经显式发布的治理材料不随建仓推送。平台已有同名分支时不强制覆盖。结果未知按原关联键回读，不重复建仓或改走不挂平台的路径；平台不可用时注册保持待确认。放弃注册时，已建平台仓库记为残留，由人预览后显式清理，不自动删除。
 
-外部步骤确认后，control 在同一事务激活 Repo，由 [Project 模块](./project.md#repo-注册与-project-归档)创建唯一 Repo Room；待确认 Repo 不接受 Project、Task 或 Run。同一命令重试复用原记录，不因确认丢失再建 Repo 或 Room。参与者自己的 clone、共享对象库与工作树不成为 Repo 或 Project 的子对象，分责与必要引用见[系统边界](./system.md#repo-与执行现场)。
+外部步骤确认后，control 在同一事务激活 Repo；待确认 Repo 不接受 Project、Task 或 Run。同一命令重试复用原记录，不因确认丢失再建 Repo。主 Room 随「创建 Project」建立，由 [Project 模块](./project.md#repo-注册与-project-归档)保持每 Project 唯一；注册不另建仓库级 Room。参与者自己的 clone、共享对象库与工作树不成为 Repo 或 Project 的子对象，分责与必要引用见[系统边界](./system.md#repo-与执行现场)。
 
 ## ChangeSet 与 Git 事实
 
@@ -119,7 +119,7 @@ Harness 可以操作自己的 Git 工作树；其他写者更新目标是平台�
 
 真正发布时再固定精确 ChangeSet Revision 与描述摘要。Result Proposal 只能提供策略允许的内容；换发布地点、换绑定或扩大发布范围都不在授权内，必须回到归属者重新预览与授权。策略中的「须人显式确认」开关随本次授权冻结，仓库或 Project 之后改默认值不影响已接受的调用。
 
-「发布评审」命令的提交者是 control，不是执行体，也不是第三种 actor 来源：它是授权它的那次 human 提交——Room Invocation 的 Trigger Preview，或 Run 的启动预览经 Run Manifest 冻结进 Execution Spec——的后续动作，与「注册确认后创建 Repo Room」同类。control 在归属者准入提案与本模块准入版本的同一控制面事务里持久化发布意图与 outbox，actor 信封沿用那次 human 提交与冻结策略的引用；客户端是否在线不影响它。开关「须人显式确认」打开时，意图改为待处理，由有权 human 预览后提交。Attempt 归属的版本同理：发布 outbox 挂在 Run 准入提案的事务上，席位不自行提交发布命令，获准 Git 交付按下述执行分工处理。
+「发布评审」命令的提交者是 control，不是执行体，也不是第三种 actor 来源：它是授权它的那次 human 提交——Room Invocation 的 Trigger Preview，或 Run 的启动预览经 Run Manifest 冻结进 Execution Spec——的后续动作，与「创建 Project 同时建立主 Room」同类。control 在归属者准入提案与本模块准入版本的同一控制面事务里持久化发布意图与 outbox，actor 信封沿用那次 human 提交与冻结策略的引用；客户端是否在线不影响它。开关「须人显式确认」打开时，意图改为待处理，由有权 human 预览后提交。Attempt 归属的版本同理：发布 outbox 挂在 Run 准入提案的事务上，席位不自行提交发布命令，获准 Git 交付按下述执行分工处理。
 
 发布评审是一条持久意图的两个执行阶段：先由持相应 Git 凭据的单元交付精确获准版本，再由具平台权限的一方创建或更新评审请求。缺省前段在参与者一侧、后段在控制面；获准的中转方或控制面持有相应 Git 凭据时也可执行前段。没有可达且获准的交付路径就不算发布成功。模型不取得通用凭据（底线见[安全策略面](./system.md#安全策略面)）；源分支推送权限不包含目标合入权限。
 
