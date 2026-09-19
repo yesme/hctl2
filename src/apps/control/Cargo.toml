@@ -1,0 +1,30 @@
+[package]
+name = "control"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Local Unix-socket control daemon"
+
+[[bin]]
+name = "hctl2-control"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+foundation = { path = "../../crates/foundation" }
+proto = { path = "../../crates/proto" }
+serde_json.workspace = true
+store = { path = "../../crates/store" }
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true
+
+[lints]
+workspace = true

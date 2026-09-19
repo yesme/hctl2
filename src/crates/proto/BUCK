@@ -1,0 +1,73 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+export_file(
+    name = "control_proto",
+    src = "proto/hctl2/control/v1/control.proto",
+)
+
+rust_binary(
+    name = "codegen",
+    srcs = ["codegen/main.rs"],
+    crate_root = "codegen/main.rs",
+    deps = [
+        "root//third-party/rust:pbjson-build",
+        "root//third-party/rust:prost",
+        "root//third-party/rust:prost-types",
+        "root//third-party/rust:tonic-prost-build",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+)
+
+genrule(
+    name = "generated",
+    srcs = [
+        ":control_proto",
+        "root//build/tools:protoc-bin",
+        ":codegen",
+    ],
+    out = "generated",
+    cmd = """
+set -euo pipefail
+mkdir -p "$TMP/include/hctl2/control/v1"
+cp "$(location :control_proto)" "$TMP/include/hctl2/control/v1/control.proto"
+"$(location root//build/tools:protoc-bin)" --include_imports --descriptor_set_out "$TMP/control.binpb" -I "$TMP/include" hctl2/control/v1/control.proto
+"$(location :codegen)" "$TMP/control.binpb" "$OUT"
+""",
+    labels = CI_FAST,
+)
+
+rust_library(
+    name = "proto",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    deps = [
+        "root//third-party/rust:pbjson",
+        "root//third-party/rust:prost",
+        "root//third-party/rust:serde",
+        "root//third-party/rust:tonic",
+        "root//third-party/rust:tonic-prost",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "HCTL2_PROTO_OUT": "$(location :generated)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "codegen": ":codegen[clippy.txt]",
+        "library": ":proto[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

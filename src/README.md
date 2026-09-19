@@ -5,15 +5,18 @@
 工作区包含 HCTL2 自己需要实现的机械组件与可复用基础机制：
 
 - [`apps/tool`](apps/tool/)：Git/SCM 与仓库机械操作，对外命令为 `hctl2-tool`。P1 已具备仓库检查、现场锁、隔离 worktree 物化与核验、封存保全拆除、本地集成（快进或合并提交的比较并交换）以及 `wait` 回读闭集外部事实。独立运行只做普通本地操作，不产生治理记录或 Receipt。
-- [`crates/facts`](crates/facts/)：供 `tool` 与未来 control 共用的事实读取代码。
+- [`crates/facts`](crates/facts/)：供 `tool` 与 control 共用的事实读取代码。
 - [`crates/foundation`](crates/foundation/)：标准库文件锁、JCS、SQLite Online Backup、keyring 与 FTS5 的受测封装。
 - [`crates/store`](crates/store/README.md)：P2.1 的控制面存储与命令内核，含 schema 迁移、同事务记录、私有 Git 材料库和一致备份恢复；不包含业务命令或守护进程。
+- [`crates/proto`](crates/proto/README.md)：Query / Preview / Submit / Subscribe 的 Protobuf 合同，由钉定 protoc 与 Buck 生成。
+- [`apps/control`](apps/control/)：归属者 Unix socket 上的 control 守护进程，对外命令为 `hctl2-control`。
+- [`apps/cli`](apps/cli/)：公共 CLI，经该 socket 说话，不直接写控制面存储；对外命令为 `hctl2`。
 
-内部目录、私有 Cargo package、Rust 库与 Buck 库目标按职责取短名（如 `store`、`root//crates/store:store`），不重复产品前缀；四个 package 均继承工作区的 `publish = false`。对外命令与发行物继续用产品名：`tool` 通过显式 Binary 配置生成 `hctl2-tool`，Buck 入口为 `root//apps/tool:hctl2-tool`。安装到 Harness 的 Skill 名、环境变量、持久化标识和系统临时目录仍处于仓库外的共享命名空间，保留 `hctl2` / `HCTL2` 前缀。
+内部目录、私有 Cargo package、Rust 库与 Buck 库目标按职责取短名（如 `store`、`root//crates/store:store`），不重复产品前缀；package 均继承工作区的 `publish = false`。对外命令与发行物继续用产品名：`tool` 生成 `hctl2-tool`（`root//apps/tool:hctl2-tool`），`control` 生成 `hctl2-control`（`root//apps/control:hctl2-control`），`cli` 生成 `hctl2`（`root//apps/cli:hctl2`）。安装到 Harness 的 Skill 名、环境变量、持久化标识和系统临时目录仍处于仓库外的共享命名空间，保留 `hctl2` / `HCTL2` 前缀。
 
-当前没有真实的 HCTL2 进程间 API，因此不预建公共 protocol crate。`hctl2-control` 开工并形成多客户端边界时，再根据实际兼容与多语言需求调研 schema-first RPC；协议生成代码不能反向成为 Git 领域正文的事实源。
+Git 领域正文仍是 JCS；Protobuf 只做进程间传输。
 
-Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 Herdr；本代码树不再实现或打包 `hctl2-agentd`。`hctl2-control`、公共 `hctl2` CLI 与 Workbench 将在 P2/P3 进入代码树。`hctl2-tool` 目前不是治理命令入口。
+Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 Herdr；本代码树不再实现或打包 `hctl2-agentd`。Workbench 仍在 P3 进入代码树。`hctl2-tool` 目前不是治理命令入口。
 
 `packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器。服务生命周期由随包 Process Compose 的声明式配置管理；GitHub 事实由随包 `gh` 读取。除上游没有 Darwin 二进制的 Tuwunel 外，第三方运行内容都直接消费摘要锁定的官方发行物；下载输入与生成归档不提交 Git。
 
