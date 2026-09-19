@@ -49,7 +49,5 @@
 | `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：仓库设置只留 merge commit 并让合并提交带 PR 描述（所有者改）；`src/agency/attribution/` 移植、PR contract 检查、AGENTS.md 一节交 Codex 实现 |
 | `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
 | `design/case-study-20260907/` | 所有者用例（#191）反推的单元模型（01 v3）、治理正文（03 v5，已拍板）、验证器（04 v2）、改写规矩（05 v2）、A0 方案（06，已合 #209）、Repo Instance（07 v4，已对齐）、改写施工图（08）；改写顺序：一致性修正批 → R 小批 → A → C → B → D，所有者按 08 的节点与判据推进 |
-| `design/grok-user-journey-20260917.md` | Workbench 主路径与五模块/多单元对照：topic 房间默认形态、有远端的仓是否改挂 Gitea、界面「新建项目」是否仍拆成登记仓库+第一个 Project |
-| `design/user-path-20260917.md` | 所有者 2026-09-17 的三段用户路径与现行设计的对齐：入口 Project-first 与 Repo Room 去留、一个 Project 一块板、Room 级归纳施工图、话题室、模板跳过读回、观察面三档、1:N 含义、参考用例 S3 共八项 |
-| `design/closure-control-repo-20260918.md` | 闭包是〈控制面，仓库〉：术语一词一义（仓库、话题、Repo Room、话题室）、三个视图 rooms/tasks/runs 的关系验证（只有任务与 Run、三者到仓库两条硬边）、Project 对象退场的三条路与推荐甲、若拍板要改的约束清单，六项拍板；§十 按三份第一手资料逐条判读「project」，`user-path-20260917.md` 的拍板项 1、2 因此作废 |
-| `design/user-path-alignment-20260918.md` | 用户路径对照（K3）：F1 闭包口径被所有者 09-18 澄清覆盖；三项拍板已并入 `closure-control-repo-20260918.md` §九 与 `user-path-20260917.md` §六；残余增量两个（向导第三选项「显式不挂平台」、注册待确认中间态露面） |
+
+2026-09-19：本轮用户路径、Project / Repo / Topic 同题备忘已在各自文件头标为已归档，逐项注明被覆盖与仍成立的判断；旧待拍板入口已撤下。同 Control、同 Repo 可有多个 Project 仍成立，前轮的过度核销已按 C2 纠正。当前需求与接手工作统一读[基础用户体验](../docs/user-experience/README.md#基础用户体验)及[接手清单](../docs/user-experience/open-questions.md#旧讨论怎样接手)。原始用例、聊天记录与备忘正文保留，不把历史候选变成已拍板，体验确认与正式约束、验收的同步范围在 #257 扩充后由接手清单列明，不把文档通过冒充行为已实现。

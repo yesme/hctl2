@@ -1,6 +1,6 @@
 # 五模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.18.6<br>
+> 状态：规范性约束 · 草案 v0.18.7<br>
 > 本文是 Project、Task、Run、Participant、Repo 之间连接约束的唯一权威。它不是一个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -28,7 +28,7 @@ flowchart LR
     H -->|Result Proposal + Revision / Evidence| R
     R -->|Run ref + Verdict / Receipt；正常完成可提交 Task 命令| T
     T -->|里程碑与稳定引用| P
-    P -->|「注册 Repo」命令；同事务建 Repo Room| C["Repo<br/>Change"]
+    P -->|「注册 Repo」命令| C["Repo<br/>Change"]
     P -->|准入提案的同一事务：ChangeSet Revision 准入| C
     R -->|准入提案的同一事务：ChangeSet Revision 准入| C
     C -->|ChangeSet Revision 作评审对象| R
@@ -43,11 +43,11 @@ Project → Participant 是无 Run 的显式短路；Participant → Task 不存
 
 | 方向 | 耐久输入 | 目标准入与提交 | 恢复依据 |
 | --- | --- | --- | --- |
-| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、源引用所指任务源上的 Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；携带初始契约时先保存治理正文，在该事务一并准入 Task Revision；后续契约由“采纳契约”准入 | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
+| Project → Task | Project/version、来源引用、可选 Task 契约及摘要、选定的 Project 源引用与目标源，及适用的 Project 分组锚点 | “创建 Task”命令固定不可变 `project_id` 并持久化后端创建 outbox；携带初始契约时先保存治理正文，在该事务一并准入 Task Revision；后续契约由“采纳契约”准入 | 命令、幂等与关联键 → 同一 Task、外部卡和可选 Task Revision 引用 |
 | Project / Task → Run | Project/version、可选精确 Task Revision、Workflow/Deployment refs、repo baseline、根 Context Manifest、席位要求与选定的施工者/Skill、候选、权限、预算和 Gate | Run 命令原子写 Run Manifest、Task Run 占用标记、Run 治理记录和引擎启动 outbox | run ID + manifest digest → Run–Engine Binding/readback |
 | Project → Participant | Room Invocation + Execution Spec | Project 先持久化调用授权，Participant 模块再经 Agency 派工并激活（顺序见[下文四步](#project--run--participant从授权到派工)） | invocation id + invocation_version + Execution Spec digest + 派工引用 |
 | Run → Participant | Attempt + Execution Spec | 节点声明的外部机械事实前置只认直报（`unmediated`）证据，满足后 Run 才持久化派发授权；Participant 模块再经 Agency 派工并激活（顺序见下文四步） | attempt id + attempt_generation + Execution Spec digest + 派工引用 |
-| Project → Repo | 「注册 Repo」命令、人的仓库登记与平台声明、配置正文引用与摘要 | Repo 记待确认注册；有外部步骤则持久化 outbox，由有权限一方建仓、持 Git 凭据单元交付代码；确认事务激活 Repo，Project 同事务创建唯一 Repo Room；不写代码树身份、不挂接工作副本 | 原命令与关联键 → 原 Repo、外部建仓与交付结果及唯一 Repo Room |
+| Project → Repo | 「注册 Repo」命令、人的仓库登记与平台声明、配置正文引用与摘要 | Repo 记待确认注册；有外部步骤则持久化 outbox，由有权限一方建仓、持 Git 凭据单元交付代码；确认事务激活 Repo；主 Room 随独立的创建 Project 命令建立，不随 Repo 注册建立；不写代码树身份、不挂接工作副本 | 原命令与关联键 → 原 Repo、外部建仓与交付结果 |
 | Participant → Project/Run | Result Proposal、逐输出的归属者语义代次与派工引用、Revision/Evidence 引用 | 归属模块去重并逐项校验身份、语义代次、派工引用、Context Bundle、权限、写租约和输出 schema 后准入 | 提案标识符 + producer sequence + 归属者/spec digest；迟到结果只留历史 |
 | Project / Run → Repo | 获准提案中的 ChangeSet 输出、`hctl2-tool` 封存回读的 Git 事实 | `hctl2-tool` 先封存并回读；control 复核归属者状态、代次与租约；归属模块准入提案的同一控制面事务里，Repo 模块准入 ChangeSet Revision | change_set_revision_id + revision_digest；封存期间被取消或替代的归属者不产生获准版本 |
 | Project / Run（Execution Spec 的评审发布策略）→ Repo | 冻结的评审发布策略、获准 ChangeSet Revision、被允许的描述文本 | control 在归属者准入提案与 Repo 模块准入版本的同一事务里按策略持久化「发布评审」意图与 outbox，actor 信封沿用授权它的那次 human 提交；按同一意图分阶段确认持凭据单元的 Git 交付与平台适配器的建/更新请求；开关打开时意图待处理、由人预览后提交；第一条 ChangeSet–Platform Binding 证据随回读写入 | intent id + 发布目标 → 同一条评审请求映射；确认丢失按关联键回读，不重复创建 |
@@ -66,7 +66,7 @@ Room 可以生成 Task 提炼提案的预览，但预览不是第二个 Task。�
 - 标题、预期结果、验收约束、角色/能力和可选外部来源绑定；
 - 规范化 proposal digest、actor/permission 与 idempotency key。
 
-Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。创建命令携带初始契约时，先在事务外保存治理正文，再提交 Task 身份、Task Revision 的准入与定位摘要、后端 outbox 和关联键；不带契约只创建无契约 Task。确认回执未知时按原关联键分别回读，不能创建第二个 Task 或卡片。content-first 卡片只有唯一归属一个 Project 分组时，才能被认领为无契约 Task。
+Task 模块先以比较并交换校验 Project 和可选当前 Task Revision。创建命令携带初始契约时，先在事务外保存治理正文，再提交 Task 身份、Task Revision 的准入与定位摘要、后端 outbox 和关联键；不带契约只创建无契约 Task。确认回执未知时按原关联键分别回读，不能创建第二个 Task 或卡片。content-first 自动认领按本 Project 已准入的源引用与无歧义分组映射处理；显式认领、Project 内实体唯一性及跨 Project 的独立 Task 按 [Task 约束](./task.md#契约与来源)处理。
 
 “采纳契约”命令在控制面保存并核验精确治理正文后，以预期版本与权限校验准入不可变 Task Revision，并返回精确引用；完整恢复约束见 [Task 模块](./task.md#契约与来源)。Room 中继续编辑或删除显示内容不会改写已采纳 Revision。普通消息、总结、父分组实体和拖放都不能创建 Task，也不能改变 Task 的 Project 归属。
 
@@ -82,7 +82,7 @@ control 在一个用户级控制面事务中写 Run、Manifest、幂等结果、
 
 两条入口共用同一个派发协议，但保留不同归属者：
 
-- Project 入口先持久化 [Project 模块定义的](./project.md#room-invocation) Room Invocation 与其 Execution Spec；`repo_scope` 永远只读。它没有自动候选切换或 Gate。
+- Project 入口先持久化 [Project 模块定义的](./project.md#room-invocation) Room Invocation 与其 Execution Spec，冻结该 Room 所属 Project 与本次读写授权。它没有自动候选切换或 Gate。
 - Run 入口先持久化 [Run 模块定义的](./run.md#从节点到结果) Attempt 与其 Execution Spec；候选、Seat 和语义归约仍由 Run 拥有。
 
 **选入记录**只在这里定义一次：控制面把一个工种的实例选进某处时写下的一组字段，Room 名册与 Run 席位各持一份，只写各自的差异。字段：所属 Room 或 Run 及其名册版本或 Manifest；选入项的稳定引用与冻结版本；工种引用与摘要；Agency；required/optional Skill refs+digests（Agency 申报，逐个附 known | unknown）；获准的 Worker Profile 候选范围；职责；权限与预算上限。Room 侧另有名字与人设标签。每次 Attempt 实际选用的 Worker Profile revision 与摘要记在 Attempt 上，只能在候选范围内选，不改选入记录。
@@ -93,8 +93,8 @@ control 在一个用户级控制面事务中写 Run、Manifest、幂等结果、
 execution owner stable ref + invocation_version | attempt_generation
 + root Context Manifest ref + digest
 + consumer Context Bundle ref + digest
-+ 选入记录引用与冻结版本（Room 名册记录或 Run 席位记录；`repo_scope` 调用取 Repo Room 名册的记录）
-+ Project version 与选人策略摘要（`project_scope`）
++ 选入记录引用与冻结版本（本 Room 名册记录或本 Run 席位记录）
++ 所属 Project、Project version 与选人策略摘要
 + 本次实际选用的 Worker Profile revision 与摘要（在选入记录的获准候选范围内）
 + required/optional Skill refs + digests（来自选入记录，逐个附 known | unknown）
 + Agency 端口的 Port–Provider Binding（只冻结 Agency 的公开承诺：实测能力、信任级别、权限作用域、降级策略、是否具备「代为执行工具并直报」）
@@ -108,7 +108,7 @@ execution owner stable ref + invocation_version | attempt_generation
 + spec digest 与幂等键
 ```
 
-归属者特有字段各自补充：Room Invocation 侧固定范围（`repo_scope | project_scope`）、`invocation_version`，以及 human 批准建议时的来源链字段；Attempt 侧固定 attempt、seat、run 身份与 `attempt_generation`。
+归属者特有字段各自补充：Room Invocation 侧固定所属 Room/Project 与本次读写范围、`invocation_version`，以及 human 批准建议时的来源链字段；Attempt 侧固定 attempt、seat、run 身份与 `attempt_generation`。
 
 选入记录确定这次执行是哪个工种的哪位参与者、以什么职责与权限上限、由哪家 Agency 派工、允许哪些 Worker Profile；Skill 提供方法；本次实际选用的 Worker Profile 选择执行配置，候选切换只在选入记录的候选范围内换、由控制面另发一次派工。Execution Spec 必须分别引用它们，任何一个都不能代替另一个。两侧不各建一份“执行规格”。
 
@@ -167,8 +167,7 @@ Request 由 Project 模块保存，但可以阻塞 Task 待办、Run 中的 Atte
 ```text
 Project sources → Task Revision → Run Manifest → Execution Spec → Result Proposal
 Project sources → Run Manifest（0 Task）→ Execution Spec → Result Proposal
-Project sources → project_scope Execution Spec → Result Proposal
-Repo sources    → repo_scope Execution Spec（只读）→ Result Proposal
+Room sources    → 所属 Project 内的 Execution Spec（按本次读写授权）→ Result Proposal
 
 获准 Result Proposal → Revision / Evidence → ReviewSubjectRef / Verdict / Receipt
 获准 ChangeSet Revision → 集成意图（目标 + 所选授权形态）→ Integration Receipt
@@ -213,3 +212,7 @@ Workbench 与第三方聊天/Kanban/Workflow/Terminal/代码协作平台都通�
 Run 的用户输入和参与者的结果先进入 control，持久化后再由 outbox 推动 Dagu；Dagu 原生修改只形成分歧。Agency 按 Execution Spec 冻结的输入策略与它声明的[恢复等级](../participant.md#terminal-场景)接纳原生终端输入。能力不足时隐藏动作、保留待处理请求或安全拒绝。动作分类见[系统约束](./system.md#客户端动作与-provider-事件)。
 
 Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。
+
+Project 入口同时固定控制面与 Project 引用，不能只凭 Repo 合并不同 Project。主 Room、Topic Rooms、按源看板、Runs 与[待处理投影](./project.md#repo-注册与-project-归档)均以该 Project 为查询范围，交互入口见[Project 正文](../project.md#room-场景)。跨列表引用保留原对象与 Project 归属；从本 Project 发起的关联与命令须核对目标归属，不以同 Repo 为由越过 Project 范围。
+
+Run 列表保留等待、暂停与待人处理的非终态 Run，不仅列有施工者运行的条目。DAG 与任务书对应同一 Run，施工者与步骤投影来自该 Run 的派工记录；交互见[Workflow 场景](../run.md#workflow-场景)。对派工的观察使用 Agency 已声明且本次获准的能力；无图形或终端输出不等于没有执行状态，结束观察不取消执行。展示分别引用执行、检查、评审、集成与 Task 验收的事实，未要求的环节不强加；缺证据、旧版本或结果未知不能显示为当前工作已通过。
