@@ -196,6 +196,11 @@ case "$FAKE_GH_CASE" in
         echo "something went sideways while talking to the API" >&2
         exit 1
         ;;
+    gojq-error-prefix)
+        # gh's built-in jq reports the filter's own error() as "error: ...".
+        echo "error: unexpected workflow_runs type: object" >&2
+        exit 1
+        ;;
     fixture)
         # Without --jq the CLI prints the response body; this is what the
         # unfixed step relied on before piping the body into jq-bin.
@@ -239,6 +244,7 @@ printf '{"total_count":1,"workflow_runs":[%s]}' "$(run_json "$c1" failure)" > "$
 printf '{"total_count":0,"workflow_runs":[]}' > "$fixtures/empty.json"
 printf '{"total_count":1,"workflow_runs":[%s]}' "$(run_json 0000000000000000000000000000000000000000 success)" > "$fixtures/other-sha.json"
 printf '{"message":"unexpected body"}' > "$fixtures/shapeless.json"
+printf '{"total_count":0,"workflow_runs":{}}' > "$fixtures/object.json"
 
 # --- running a step body ----------------------------------------------------
 output="$work/output.txt"
@@ -351,8 +357,17 @@ for workflow in code release; do
 
     run_step "$body" pull_request synchronize "$c1" fixture "$fixtures/shapeless.json" || true
     expect "$workflow: unreadable answer -> parse fallback" "$(output_value mode)" full-pr-parse-fallback
-    expect_log "$workflow: unreadable answer is quoted" "Could not evaluate .*iterate over"
+    expect_log "$workflow: unreadable answer is quoted" "Could not evaluate .*unexpected workflow_runs type: null"
     expect_no_log "$workflow: unreadable answer is not 'no success'" "has no successful"
+
+    run_step "$body" pull_request synchronize "$c1" fixture "$fixtures/object.json" || true
+    expect "$workflow: workflow_runs that is an object, not an array -> parse fallback" "$(output_value mode)" full-pr-parse-fallback
+    expect_log "$workflow: the type check names the anomaly" "Could not evaluate .*unexpected workflow_runs type: object"
+    expect_no_log "$workflow: an object is not reported as 'no success'" "has no successful"
+
+    run_step "$body" pull_request synchronize "$c1" gojq-error-prefix "" || true
+    expect "$workflow: gh's 'error: ' form -> parse fallback" "$(output_value mode)" full-pr-parse-fallback
+    expect_log "$workflow: gh's 'error: ' form is quoted" "Could not evaluate .*error: unexpected workflow_runs type"
 
     run_step "$body" pull_request synchronize "$c1" weird-answer "" || true
     expect "$workflow: non-count answer -> parse fallback" "$(output_value mode)" full-pr-parse-fallback

@@ -78,7 +78,7 @@ jobs:
                 -f event=pull_request \
                 -f status=completed \
                 -f per_page=100 \
-                --jq '[.workflow_runs[] | select(.head_sha == $ENV.PREVIOUS_HEAD and .conclusion == "success")] | length' \
+                --jq 'if (.workflow_runs | type) != "array" then error("unexpected workflow_runs type: " + (.workflow_runs | type)) else [.workflow_runs[] | select(.head_sha == $ENV.PREVIOUS_HEAD and .conclusion == "success")] | length end' \
                 2>"$query_stderr"); then
                 case "$successful_runs" in
                   0)
@@ -101,11 +101,13 @@ jobs:
                 # authentication errors with "gh:" and reports connection
                 # failures as "error connecting to"; its built-in jq prints
                 # bare messages such as "cannot iterate over" or "failed to
-                # parse jq expression". Text that matches neither is reported
-                # as undetermined. All three validate the complete PR diff.
+                # parse jq expression", and "error: ..." for the filter's own
+                # type check on workflow_runs. Text that matches neither is
+                # reported as undetermined. All three validate the complete
+                # PR diff.
                 echo "::warning::Could not query the previous Code run ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
                 mode=full-pr-query-fallback
-              elif grep -Eiq '^(cannot |expected |failed to parse jq|invalid |unexpected )' "$query_stderr"; then
+              elif grep -Eiq '^(error: |cannot |expected |failed to parse jq|invalid |unexpected )' "$query_stderr"; then
                 echo "::warning::Could not evaluate the previous Code run answer ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
                 mode=full-pr-parse-fallback
               else
