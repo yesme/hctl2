@@ -1,6 +1,6 @@
 # Task 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.7<br>
+> 状态：规范性约束 · 草案 v0.18.8<br>
 > 本文是 Task 模块对象、状态机与写入约束的唯一权威；设计正文见 [Task 与 Kanban](../task.md)。族语义见[约束层总则](./README.md)，模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)。
 
 ## 对象
@@ -120,7 +120,7 @@ Task Completion Receipt 至少固定 Task、“完成 Task”命令、Task Revis
 
 若存在契约分歧，Receipt 还必须固定显式分歧选择、精确的未采纳 Snapshot 引用与摘要、Task–Backend Binding 版本与状态版本和权威策略摘要。Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交。Run 路径若被 Task 拒绝，也在持久化拒绝结果与需要关注时清除同一标记。外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实。
 
-冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 正文属于控制面治理材料，身份、准入、摘要、当前指针与生命周期由治理记录维护；Task Completion Receipt 的权威在治理记录，审计副本在治理材料，公开范围不随代码仓库隐私自动推定。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景，其对象与写入者归 [Run 模块约束](./run.md)。
+冻结契约（Task Revision）与完成凭证是 Kanban 场景的结晶：Task Revision 正文属于控制面治理材料，身份、准入、摘要、当前指针与生命周期由治理记录维护；Task Completion Receipt 的权威在治理记录，审计副本在治理材料，公开范围不随代码仓库隐私自动推定。完整边界见[系统存储约束](./system.md#git-的双重角色)；施工图（Workflow Revision）的结晶归属与对象归属见 [Run 模块约束](./run.md#写入约束)。
 
 「重开 Task」命令只接受有权 human actor，必须以预期 task_lifecycle_version 把完成/已取消 → 开放并推进版本；它不复活旧 Receipt。若当前来源契约已有未处理 drift，重开预览必须先采纳新 Task Revision 或显式冻结继续使用的当前 Revision 与 divergence，不能让外部 Reopen 或旧完成证明静默决定新一轮施工。
 
