@@ -16,7 +16,7 @@
 
 此前写成“不再保留同 Repo 下多个 Project 的业务层”，把“Topic 不等于 Project”扩大成了“Repo 与 Project 一对一”，是整理者的错误推断，现撤回。用户在当前 Project 内展开 Topic，不自动新建 Project；用户明确新建另一个 Project，也不被降为 Topic。Project 与 Repo 的记录、模块不要求合并，Project 原有默认设置、授权与归档效果逐项核对，不整套丢掉或移给 Topic。
 
-**本 PR 已同步：** 按本页清单对齐规范与验证，保留 [Project](../design/spec/project.md#对象)、[Repo](../design/spec/repo.md#repo-注册)中已经一致的关系。本轮经所有者同意扩大为体验澄清与场景验收同步，相关 spec 与 CT 已改、版本推进 v0.18.7；未改产品代码或数据。依据见 [04 的组织结论](./04-project-navigation.md#对旧模型的结论)、[归属确认](./04-project-navigation.md#2026-09-19归属与选人)及 [C2 原话](./04-project-navigation.md#2026-09-19c2-确认)。
+**#257 已同步：** 按本页清单对齐规范与验证，保留 [Project](../design/spec/project.md#对象)、[Repo](../design/spec/repo.md#repo-注册)中已经一致的关系。本轮经所有者同意扩大为体验澄清与场景验收同步，相关 spec 与 CT 已改、版本推进 v0.18.7；未改产品代码或数据。依据见 [04 的组织结论](./04-project-navigation.md#对旧模型的结论)、[归属确认](./04-project-navigation.md#2026-09-19归属与选人)及 [C2 原话](./04-project-navigation.md#2026-09-19c2-确认)。
 
 ## Q2：本地 detach 会改哪份目录
 
@@ -24,7 +24,7 @@
 
 独立副本多一份存储，但不改动原来的工作环境；原地切换可能影响共用配置的工作树。建立副本不表示原目录也已 detach。
 
-**本 PR 已同步：** 按此对齐[新建流程 P1](./02-user-journey.md#p1选择代码来源)和 [Repo 注册](../design/spec/repo.md#repo-注册)：另起独立工作时登记新的本地 Repo，不把原外部 Repo 的身份换绑到本地平台；原地切换目录也不等于沿用原 Repo 身份。带入的代码范围沿原注册预览与授权，不默认迁移平台历史；实现仍须验证实际副作用。
+**#257 已同步：** 按此对齐[新建流程 P1](./02-user-journey.md#p1选择代码来源)和 [Repo 注册](../design/spec/repo.md#repo-注册)：另起独立工作时登记新的本地 Repo，不把原外部 Repo 的身份换绑到本地平台；原地切换目录也不等于沿用原 Repo 身份。带入的代码范围沿原注册预览与授权，不默认迁移平台历史；实现仍须验证实际副作用。
 
 ## Q3：删除 Task 的后果
 
@@ -32,7 +32,7 @@
 
 有活动 Run 时明确处理其去向，不把删卡冒充执行已经停止。归属固定不等于禁止删除；取消工作、删除 Source 卡片和清除历史不是同一个动作。
 
-这里的“归档”是用户动作效果，不是在体验文档里新增 Task 状态。本 PR 按此对齐 [T2](./02-user-journey.md#t2在两种-room-里操作-task)、Task 约束与失败用例，Run 原取消前置保留；未改实现。
+这里的“归档”是用户动作效果，不是在体验文档里新增 Task 状态。#257 按此对齐 [T2](./02-user-journey.md#t2在两种-room-里操作-task)、Task 约束与失败用例，Run 原取消前置保留；未改实现。
 
 ## C1：cloud 用例的 Room 位置
 
@@ -50,9 +50,9 @@
 
 ## 规范对齐清单
 
-以下是本 PR 已同步的文档落点，不是新的待拍板问题。约束与验收要求已更新，产品实现及行为实测仍未因文档变化而完成；新路径的具体输入与反例见 [S3](../design/scenarios/S3-user-journey.md)。
+以下是 #257 已同步的文档落点，不是新的待拍板问题。约束与验收要求已更新，产品实现及行为实测仍未因文档变化而完成；新路径的具体输入与反例见 [S3](../design/scenarios/S3-user-journey.md)。
 
-| 范围 | 本 PR 同步位置 | 同步内容与保留边界 |
+| 范围 | #257 同步位置 | 同步内容与保留边界 |
 | --- | --- | --- |
 | 愿景中的完整旅程 | [愿景 §目标体验](../design/vision.md#目标体验)、[一句话定位](../design/vision.md#一句话定位) | 新建 Project 时选择 Repo，再从本 Project 主 Room 展开 Topic；不把展开 Topic 写成必建 Project，也不禁止用户为同 Repo 再开 Project。Project-scoped 与固定 Project 归属保持一致 |
 | 工作边界与命名 | [三面架构 §单元与连接](../design/architecture.md#单元与连接)、[设计地图](../design/README.md#对象关系)、[Project 约束](../design/spec/project.md#对象)、[Repo 约束](../design/spec/repo.md#repo-注册) | Project 作为工作范围，Repo 保留代码职责；保留同 Control、同 Repo 多 Project 及各自授权，只凭 Control 与 Repo 不能确定是哪份工作。Q2 另起本地工作才登记新 Repo，普通的同 Repo 新 Project 不需要另一份 Repo 身份 |
@@ -63,7 +63,7 @@
 | Topic 的关闭与闲置提示 | [Room 与消息](../design/spec/project.md#room-与消息)、[交付 §运行默认值](../design/delivery.md#运行默认值) | Scoped Room 的用途并入 Topic Room，但冻结完成条件、回填与结案理由、闲置 14 天提示不能整体套给普通 Topic。承接开放 Request 的 Topic 保留旧闲置关注提醒，普通话题不适用，不给所有 Topic 强加结案手续；真正待办按已有 Request 或对象状态投影，处理仍走原命令 |
 | 待人处理入口 | [Project 正文](../design/project.md#room-场景)、[Run 正文](../design/run.md#workflow-场景) | 按 [04](./04-project-navigation.md#待你处理从-project-标记进入)对齐 Project 标记与待处理面板；汇总已有事项，处理历史留在原处；普通进度与确需人处理的请求分开 |
 | Participant 选择 | [Participant 正文](../design/participant.md#agency-与执行体)、[派工连接](../design/spec/connections.md#project--run--participant从授权到派工) | 每个 Room、每个 Run 分别选人；推荐与预填不自动继承授权；TAMP 延长线不冒充当前已实现 |
-| 多 Source | [Task 正文](../design/task.md#kanban-场景)、[Task 约束 §对象](../design/spec/task.md#对象)、[契约与来源](../design/spec/task.md#契约与来源) | 每 Source 一个入口；新 Task 目标 Source 明确；任务来源固定与源内状态、排序变化分开；对齐旧 Project 分组及唯一源引用。汇总投影是否提供另行设计，本轮既不要求保留强制合并板，也不禁止可选汇总 |
+| 多 Source | [Task 正文](../design/task.md#kanban-场景)、[Task 约束 §对象](../design/spec/task.md#对象)、[契约与来源](../design/spec/task.md#契约与来源) | 每 Source 一个入口；新 Task 目标 Source 明确；任务来源固定与源内状态、排序变化分开；对齐旧 Project 分组及唯一源引用。可选汇总投影沿用 [Task 约束 §契约与来源](../design/spec/task.md#契约与来源) 的口径（只汇总、不替代按源入口、不是权威）；本轮不要求实现强制合并板 |
 | Run 关联与导航 | [Run 约束](../design/spec/run.md#对象)、[Run 正文](../design/run.md#workflow-场景) | 独立活动列表、默认 DAG、任务书与共同 Worker 侧栏；Task 上可找回其已保存、尚未开工的计划，不另造活动 Run。执行、检查、评审、合入与 Task 验收分别可见，异常时保留原因与处理入口；引用不自动承担完整 Task 交付，不擅自扩大基数或并发规则 |
 | 持续建议、模板、观察 | [交付文档](../design/delivery.md#当前范围)、[运行默认值](../design/delivery.md#运行默认值)、[Participant 正文](../design/participant.md#terminal-场景) | 对齐真实能力与验收；模板沿用批准前默认读回，显式跳过仍走既有规则；不把未配置归纳、只读 Source、没有图形能力冒充完整覆盖 |
 | 术语与验证 | [术语表](../design/references/glossary.md#核心产品词)、[S1 映射](../design/scenarios/S1-multi-unit.md#四不变量)、[契约测试](../design/contract-tests.md) | 保留 CT-REPO 的同 Repo 两个 Project 分别授权及 CT-PRODUCT 的四 Project 多机走查；纠正 S1 §二/§四/§五和矩阵导言把两个 Project 误判为两间 Topic Room 的说明。CT-PROJECT 的主 Room 创建、来源提升、闲置回填，CT-TASK 的看板与分组、CT-WORKBENCH-IA 的入口按实际变化对齐；S1.I3 的 Room 唯一范围改为每 Project |
@@ -75,13 +75,13 @@
 
 09-17/18 各 Harness 的同题备忘已归档，文件头逐项写明哪些判断被覆盖、哪些仍成立。C2 已纠正前轮的过度核销：同 Control、同 Repo 开多个 Project 不是过时结论，把 Mac 两个 Project 改成 Topic Room 才是误读。当前需求读本目录，原文仍供溯源；不按旧拍板表逐项追问，也不将整篇建议算作所有者裁决。
 
-持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付，仍需主笔安排实现设计；模板与读回沿用既有批准规则，本 PR 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
+持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付，仍需主笔安排实现设计；模板与读回沿用既有批准规则，#257 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
 
-[F 批 PR #246](https://github.com/yesme/hctl2/pull/246)原来讨论 Task 的 Project 归属可变，以及实体到 Task 在整个 Control 内唯一。两项前提已由所有者 09-19 的固定归属与独立 Namespace 确认取代：现为各 Project 自己认领 Task，唯一范围是 Project 内（见[决策史 §38](../design/references/decision-history.md#38-体验澄清project-各自主-roomtopic-与多源入口v0187)）。同 Repo 多 Project 仍成立，不能用“这一层已删除”作理由；F 批应由其作者和所有者据此前提决定关闭或改题，不再重开已定归属与唯一范围。本轮不修改或关闭那份 PR。
+[F 批 PR #246](https://github.com/yesme/hctl2/pull/246)原来讨论 Task 的 Project 归属可变，以及实体到 Task 在整个 Control 内唯一。两项前提已由所有者 09-19 的固定归属与独立 Namespace 确认取代：现为各 Project 自己认领 Task，唯一范围是 Project 内（见[决策史 §38](../design/references/decision-history.md#38-体验澄清project-各自主-roomtopic-与多源入口v0187)）。同 Repo 多 Project 仍成立，不能用“这一层已删除”作理由；F 批已由作者与所有者于 2026-09-19 决定归档：#246 改为方案备忘的归档 PR 并合入（`fc2aad8`），前提被 v0.18.7 取代。
 
 ## 接手时的完成边界
 
 - 本目录已记录：四份体验正文、第一手出处、09-19 确认的组织结构，以及 Q1–Q3、C1/C2；Q1 的归纳按 C2 纠正，不再留下待答标签。前情提要、Run 体验、待处理标记、面板内容、处理后行为与降噪规则保留。
-- 本 PR 同步：主 Room 与 Topic Room、Project 多 Source、固定归属、待处理投影、已保存计划等直接相关约束与设计引用；S1 保留正确事实并纠错，S2 补界面核对，S3 及现有 CT 族补失败用例，版本为 v0.18.7。
-- 尚未完成：本 PR 复审与合入、产品实现和真实行为验收。下一步审核体验、约束、场景与 CT 是否一致，不再等待重拍 Q1–Q3 或 C1/C2；具体接口、默认 Source 的预填方式及历史列表折叠由设计者处理。文档检查通过不等于能力已交付。
+- #257 同步：主 Room 与 Topic Room、Project 多 Source、固定归属、待处理投影、已保存计划等直接相关约束与设计引用；S1 保留正确事实并纠错，S2 补界面核对，S3 及现有 CT 族补失败用例，版本为 v0.18.7。
+- 尚未完成：产品实现和真实行为验收。一致性核对由 G 批承接（#262），不再等待重拍 Q1–Q3 或 C1/C2；具体接口、默认 Source 的预填方式及历史列表折叠由设计者处理。文档检查通过不等于能力已交付。
 - 跨机接手以已合入 main 的修订为准；本地未提交修改不算 Git 交付，接手不依赖某台机器的临时目录或 Harness Session。
