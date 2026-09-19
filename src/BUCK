@@ -23,8 +23,11 @@ export_file(
 filegroup(
     name = "clippy",
     srcs = {
+        "cli": "root//apps/cli:clippy",
+        "control": "root//apps/control:clippy",
         "facts": "root//crates/facts:clippy",
         "foundation": "root//crates/foundation:clippy",
+        "proto": "root//crates/proto:clippy",
         "store": "root//crates/store:clippy",
         "tool": "root//apps/tool:clippy",
     },
