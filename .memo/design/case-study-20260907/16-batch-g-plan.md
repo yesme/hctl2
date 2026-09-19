@@ -158,7 +158,7 @@ Unit（U）：
 | E10 | docs/design/contract-tests.md:16（同型 :23、:50、:52、:130、:148、:149、:226、:230、:231、:236、:245、:282） | CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结 | M | contract-tests.md:6「失败用例」；早于本批 | 丙 · 待裁 A4（范围） | 十二行只写题目不写失败输入：本批补、另立小批、或文首标占位，所有者定 | 上列各行 |
 | E11 | docs/design/contract-tests.md:22（对照 spec/project.md:43、S3:41） | 存在待本人采纳的契约 Snapshot 的 Task | N | N7 | 乙 | CT 与 S3 用同一词「存在待本人采纳的契约变化的 Task」 | contract-tests.md:22；S3.R2 |
 | F1 | docs/user-experience/README.md:74 | 仍待复审、合入以及产品实现和行为测试 | 状态 | #261 F4；#257 已合 7a4fd40 | 乙 · 族「状态文字」（F1–F8、B10、B13、B14） | 「…（#257，v0.18.7 已合入）；产品实现和行为测试仍待分别验证」 | 无 |
-| F2 | docs/user-experience/open-questions.md:86 | 尚未完成：本 PR 复审与合入、产品实现和真实行为验收。下一步审核体验、约束、场景与 CT 是否一致，不再等待重拍 Q1–Q3 或 C1/C2 | 状态 | #261 F4 | 乙 · 族「状态文字」 | 「尚未完成：产品实现和真实行为验收。一致性核对由 G 批承接（PR 号），不再等待重拍 Q1–Q3 或 C1/C2」 | 无 |
+| F2 | docs/user-experience/open-questions.md:86 | 尚未完成：本 PR 复审与合入、产品实现和真实行为验收。下一步审核体验、约束、场景与 CT 是否一致，不再等待重拍 Q1–Q3 或 C1/C2 | 状态 | #261 F4 | 乙 · 族「状态文字」 | 「尚未完成：产品实现和真实行为验收。一致性核对由 G 批承接（#262），不再等待重拍 Q1–Q3 或 C1/C2」 | 无 |
 | F3 | docs/user-experience/03-terminology-confession.md:3 | 待本 PR 复审确认后再判退役，不提前删历史 | 状态 | #257 已合；03:56–60 三项退役条件 | 乙 · 族「状态文字」· 待裁 B10 | 「#257 已合入；退役按 §什么时候可以退役 的三项、随 G 批收口判定，不提前删历史」 | 无 |
 | F4 | docs/user-experience/03-terminology-confession.md:54 | 本 PR 扩大同步范围后，仍待复审核对以下条件，不由作者提前宣布完成。 | 状态 | 同 F3；三项条件与 #261 §五 完成判据同义 | 乙 · 族「状态文字」 | 「#257 已合入；以下三项由 G 批逐条核对，不由作者提前宣布完成。」 | 无 |
 | F5 | docs/user-experience/03-terminology-confession.md:36 | 读 v0.18.6 的设计对象时逐项核对：同 Repo 可有多个 Project 仍成立；把 Project 主 Room、Topic Room 与额外的仓库级 Room 混在一起的地方需要改。 | N | 决策史 §38（基线已到 v0.18.7） | 乙 | 「v0.18.7 已按此同步设计对象；读更早版本时逐项核对……残留由 G 批处理」 | 无 |
