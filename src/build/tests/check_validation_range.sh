@@ -115,17 +115,64 @@ for tool in bash git grep awk sed tr mktemp rm cat sort uniq xargs echo printf e
 done
 cat > "$bin/gh" <<'GH'
 #!/usr/bin/env bash
-# Stand-in for the runner's GitHub CLI. Answers `gh api ... --jq FILTER` from a
-# fixture by evaluating FILTER with the pinned jq, or reproduces the CLI's error
-# output; it never touches the network.
+# Stand-in for the runner's GitHub CLI. It checks that the step asks exactly
+# for this workflow's completed pull_request runs on the previous head, then
+# answers `gh api ... --jq FILTER` from the fixture chosen per workflow file by
+# evaluating FILTER with the pinned jq (gh evaluates it with its built-in jq),
+# or reproduces the CLI's error output. It never touches the network.
 set -euo pipefail
-printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+method=""
+path=""
 filter=""
+head_sha=""
+event=""
+status=""
+per_page=""
 prev=""
+first=1
 for arg in "$@"; do
-    if [ "$prev" = "--jq" ]; then filter=$arg; fi
+    if [ "$first" = 1 ]; then
+        [ "$arg" = api ] || { echo "stand-in gh: unexpected subcommand $arg" >&2; exit 2; }
+        first=0
+        prev=$arg
+        continue
+    fi
+    case "$prev" in
+        --method) method=$arg ;;
+        --jq) filter=$arg ;;
+        -f)
+            case "$arg" in
+                head_sha=*) head_sha=${arg#head_sha=} ;;
+                event=*) event=${arg#event=} ;;
+                status=*) status=${arg#status=} ;;
+                per_page=*) per_page=${arg#per_page=} ;;
+                *) echo "stand-in gh: unexpected field $arg" >&2; exit 2 ;;
+            esac
+            ;;
+        *)
+            case "$arg" in
+                --method | --jq | -f) ;;
+                -*) echo "stand-in gh: unexpected flag $arg" >&2; exit 2 ;;
+                *) path=$arg ;;
+            esac
+            ;;
+    esac
     prev=$arg
 done
+case "$path" in
+    "repos/${GITHUB_REPOSITORY}/actions/workflows/code.yml/runs") workflow=CODE ;;
+    "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs") workflow=RELEASE ;;
+    *) echo "stand-in gh: unexpected request path '$path'" >&2; exit 2 ;;
+esac
+[ "$method" = GET ] || { echo "stand-in gh: unexpected method '$method'" >&2; exit 2; }
+[ "$head_sha" = "${PREVIOUS_HEAD:-}" ] || { echo "stand-in gh: head_sha '$head_sha' is not the previous head" >&2; exit 2; }
+[ "$event" = pull_request ] || { echo "stand-in gh: unexpected event filter '$event'" >&2; exit 2; }
+[ "$status" = completed ] || { echo "stand-in gh: unexpected status filter '$status'" >&2; exit 2; }
+printf 'api GET %s head_sha=%s event=%s status=%s per_page=%s jq=%s\n' \
+    "$path" "$head_sha" "$event" "$status" "$per_page" "${filter:+set}" >> "$FAKE_GH_LOG"
+fixture=$FAKE_GH_FIXTURE
+if [ "$workflow" = CODE ] && [ -n "${FAKE_GH_FIXTURE_CODE:-}" ]; then fixture=$FAKE_GH_FIXTURE_CODE; fi
+if [ "$workflow" = RELEASE ] && [ -n "${FAKE_GH_FIXTURE_RELEASE:-}" ]; then fixture=$FAKE_GH_FIXTURE_RELEASE; fi
 case "$FAKE_GH_CASE" in
     http-404)
         printf '{"message":"Not Found","status":"404"}'
@@ -145,15 +192,21 @@ case "$FAKE_GH_CASE" in
         echo null
         exit 0
         ;;
+    unknown-error)
+        echo "something went sideways while talking to the API" >&2
+        exit 1
+        ;;
     fixture)
         # Without --jq the CLI prints the response body; this is what the
         # unfixed step relied on before piping the body into jq-bin.
         if [ -z "$filter" ]; then
-            cat "$FAKE_GH_FIXTURE"
+            cat "$fixture"
             exit 0
         fi
-        if ! PATH="$FAKE_GH_TOOL_PATH" "$FAKE_GH_JQ" -r "$filter" < "$FAKE_GH_FIXTURE" 2>"$FAKE_GH_LOG.jq"; then
-            sed 's/^jq: error[^:]*: //' "$FAKE_GH_LOG.jq" >&2
+        if ! PATH="$FAKE_GH_TOOL_PATH" "$FAKE_GH_JQ" -r "$filter" < "$fixture" 2>"$FAKE_GH_LOG.jq"; then
+            # gh's built-in jq prints the bare message ("cannot iterate over:
+            # null"); strip jq's "jq: error (at <stdin>:0): " prefix to match.
+            sed -E 's/^jq: error( \([^)]*\))?: //' "$FAKE_GH_LOG.jq" >&2
             exit 1
         fi
         ;;
@@ -202,6 +255,7 @@ run_step() { # body event_name event_action previous_head gh_case fixture
         PATH="$poisoned_path" GITHUB_OUTPUT="$output" RUNNER_TEMP="$runner_tmp" \
         GITHUB_REPOSITORY=yesme/hctl2 GH_TOKEN=stand-in \
         FAKE_GH_LOG="$gh_log" FAKE_GH_CASE="$5" FAKE_GH_FIXTURE="$6" \
+        FAKE_GH_FIXTURE_CODE="${STEP_FIXTURE_CODE:-}" FAKE_GH_FIXTURE_RELEASE="${STEP_FIXTURE_RELEASE:-}" \
         FAKE_GH_JQ="$jq_bin" FAKE_GH_TOOL_PATH="$original_path" \
         EVENT_NAME="$2" EVENT_ACTION="$3" BASE_COMMIT="$base_commit" \
         CURRENT_HEAD="$c2" PREVIOUS_HEAD="$4" BASE_REF=main \
@@ -237,6 +291,14 @@ expect_no_log() { # label pattern
         note "PASS $1"
     fi
 }
+expect_gh_request() { # label pattern (matched against the stand-in's request log)
+    if grep -Eq -- "$2" "$gh_log"; then
+        note "PASS $1"
+    else
+        fail "$1: no request matching '$2'"
+        sed 's/^/    | /' "$gh_log" "$log" >&2
+    fi
+}
 
 for workflow in code release; do
     body="$workflow-range"
@@ -247,6 +309,9 @@ for workflow in code release; do
         expect "$workflow: incremental base is the previous head" "$(output_value base)" "$c1"
         expect "$workflow: head is the checked-out commit" "$(output_value head)" "$c2"
         expect "$workflow: one query" "$(gh_calls)" 1
+        expect_gh_request "$workflow: asks for this workflow's completed pull_request runs on the previous head" \
+            "^api GET repos/yesme/hctl2/actions/workflows/$workflow\.yml/runs head_sha=$c1 event=pull_request status=completed per_page=100 jq=set\$"
+        expect_no_log "$workflow: the stand-in accepted the request shape" "stand-in gh: unexpected"
         expect_no_log "$workflow: no DotSlash error" "dotslash"
         expect_no_log "$workflow: success is not reported as missing" "has no successful"
     else
@@ -293,6 +358,12 @@ for workflow in code release; do
     expect "$workflow: non-count answer -> parse fallback" "$(output_value mode)" full-pr-parse-fallback
     expect_log "$workflow: non-count answer is quoted" "answered 'null' instead of a count"
 
+    run_step "$body" pull_request synchronize "$c1" unknown-error "" || true
+    expect "$workflow: unrecognised error -> full PR diff" "$(output_value mode)" full-pr-query-fallback
+    expect_log "$workflow: unrecognised error is reported as undetermined and quoted" "Could not determine .*something went sideways"
+    expect_no_log "$workflow: unrecognised error is not 'no success'" "has no successful"
+    expect_no_log "$workflow: unrecognised error is not called an evaluation failure" "Could not evaluate"
+
     # 4. rewritten history, first open, missing previous head, non-PR runs
     run_step "$body" pull_request synchronize "$c3" fixture "$fixtures/success.json" || true
     expect "$workflow: rewritten history -> full PR diff" "$(output_value mode)" full-pr-rewritten
@@ -310,6 +381,23 @@ for workflow in code release; do
     expect "$workflow: scheduled run validates HEAD" "$(output_value base)" HEAD
     expect "$workflow: scheduled run never queries" "$(gh_calls)" 0
 done
+
+# each workflow consults only its own history: Release success must not let Code go incremental, and vice versa
+STEP_FIXTURE_CODE="$fixtures/failure.json"
+STEP_FIXTURE_RELEASE="$fixtures/success.json"
+export STEP_FIXTURE_CODE STEP_FIXTURE_RELEASE
+run_step code-range pull_request synchronize "$c1" fixture "" || true
+expect "code: Release success alone does not make Code incremental" "$(output_value mode)" full-pr-no-prior-success
+run_step release-range pull_request synchronize "$c1" fixture "" || true
+expect "release: its own success still selects incremental" "$(output_value mode)" incremental-validated-head
+STEP_FIXTURE_CODE="$fixtures/success.json"
+STEP_FIXTURE_RELEASE="$fixtures/failure.json"
+export STEP_FIXTURE_CODE STEP_FIXTURE_RELEASE
+run_step release-range pull_request synchronize "$c1" fixture "" || true
+expect "release: Code success alone does not make Release incremental" "$(output_value mode)" full-pr-no-prior-success
+run_step code-range pull_request synchronize "$c1" fixture "" || true
+expect "code: its own success still selects incremental" "$(output_value mode)" incremental-validated-head
+unset STEP_FIXTURE_CODE STEP_FIXTURE_RELEASE
 
 # 5. docs-only commit after a Skill change: the incremental range excludes the Skill file
 STEP_HEAD_COMMIT="$c2"

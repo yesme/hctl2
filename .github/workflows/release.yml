@@ -92,14 +92,21 @@ jobs:
                     ;;
                 esac
               elif grep -Eq '^gh: |^error connecting to |dial tcp|i/o timeout|TLS handshake' "$query_stderr"; then
-                # gh prefixes HTTP and authentication errors with "gh:" and
-                # reports connection failures as "error connecting to"; a
-                # filter that cannot be evaluated prints the bare jq message.
+                # The three branches below are diagnostic heuristics over gh's
+                # stderr, not a complete classification: gh prefixes HTTP and
+                # authentication errors with "gh:" and reports connection
+                # failures as "error connecting to"; its built-in jq prints
+                # bare messages such as "cannot iterate over" or "failed to
+                # parse jq expression". Text that matches neither is reported
+                # as undetermined. All three validate the complete PR diff.
                 echo "::warning::Could not query the previous Release run ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
                 mode=full-pr-query-fallback
-              else
+              elif grep -Eiq '^(cannot |expected |failed to parse jq|invalid |unexpected )' "$query_stderr"; then
                 echo "::warning::Could not evaluate the previous Release run answer ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
                 mode=full-pr-parse-fallback
+              else
+                echo "::warning::Could not determine whether the previous Release run query or its evaluation failed ($(tr '\n' ' ' <"$query_stderr")); validate the complete PR diff."
+                mode=full-pr-query-fallback
               fi
               rm -f "$query_stderr"
             fi
