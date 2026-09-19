@@ -15,3 +15,11 @@
 已拍板 **Tuwunel**（Continuwuity 记录在案备选）。理由：接口更 API 化、与 Synapse 参考实现兼容性更强；AppService 注册程序化而非房间内发命令。上游 `v1.9.0` 发布物只有 Linux；HCTL2 因而在自己的 GitHub Release 托管由锁定 commit、Rust 1.95.0 和明确 feature 集生成的 macOS arm64/x86_64 包，分别约 32.6/35.5 MiB，并在 `lock.json` 固定 URL 与 SHA-256。正常组包只下载、检查 Mach-O 并完成生命周期，不再编译源码；更新制品时才手动触发隔离的原生构建 workflow。Apple Silicon 的交叉构建只能生成候选，仍须由 Intel runner 验证同一制品。
 
 角色：执行面独立服务器——采用为依赖、由 control 托管生命周期，不 vendor 源码；P0 必须固定实际存储后端及 build features，并验证 macOS 承载、低内存配置与 RocksDB/media 一致性备份。它们承载消息 content，不获得任何治理权威；HCTL 依赖的约束前提（事务 ID 幂等、单 homeserver 线性顺序）以验证结果为准。
+
+## 复核记录
+
+### 2026-09-20 · P2.2 调用面运行验证（darwin-arm64）
+
+> 对象：HCTL2 托管包 `tuwunel-v1.9.0-macos-aarch64-hctl2.1`，`lock.json` SHA-256 `1dbfb672…02b1`；进程自报 `Tuwunel 1.9.0`。可删除环境，回环端口。完整用例表见 [sdk/matrix.md 2026-09-20 复核记录](./sdk/matrix.md#2026-09-20-p22-tuwunel-runtime)。
+
+账号/房间、AppService YAML 注册与虚拟用户、事件投递、按事件 ID 读正文、加密状态 `M_NOT_FOUND`/`200`、同一 txnId 重投同一 `event_id`、`sync` 旧游标补洞、停进程后当前回读失败，均通过。bridge 与人的同形 `m.room.message` 只在 `sender` 上可分。低内存、RocksDB/media 备份和托管生命周期未验（B1）。选型不变：Tuwunel 已拍板，Continuwuity 仍为备选。
