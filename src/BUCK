@@ -19,6 +19,7 @@ filegroup(
     srcs = {
         "hctl2-facts": "root//crates/hctl2-facts:clippy",
         "hctl2-foundation": "root//crates/hctl2-foundation:clippy",
+        "hctl2-store": "root//crates/hctl2-store:clippy",
         "hctl2-tool": "root//apps/hctl2-tool:clippy",
     },
     labels = CI_FULL,

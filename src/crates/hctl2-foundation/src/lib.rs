@@ -4,6 +4,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod git;
+
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{self, File, OpenOptions};
@@ -88,6 +90,12 @@ pub fn canonical_json_sha256(value: &Value) -> Result<String, FoundationError> {
     Ok(lower_hex(&Sha256::digest(bytes)))
 }
 
+/// SHA-256 of exact bytes, distinct from the canonical digest of a domain object.
+#[must_use]
+pub fn bytes_sha256(bytes: &[u8]) -> String {
+    lower_hex(&Sha256::digest(bytes))
+}
+
 fn validate_canonical_numbers(value: &Value) -> Result<(), FoundationError> {
     match value {
         Value::Array(values) => {
@@ -158,6 +166,14 @@ impl ExclusiveFileLock {
     }
 }
 
+impl Drop for ExclusiveFileLock {
+    fn drop(&mut self) {
+        // A concurrently spawned child may briefly share the open file description before
+        // exec closes it. End our lock explicitly instead of waiting for every copy to close.
+        let _ = self.file.unlock();
+    }
+}
+
 impl FoundationError {
     /// Reports whether this error means that another process owns the advisory lock.
     #[must_use]
@@ -192,7 +208,9 @@ pub fn backup_sqlite(source: &Path, destination: &Path) -> Result<(), Foundation
     )?;
     let mut destination_connection = Connection::open(destination)?;
     let backup = Backup::new(&source_connection, &mut destination_connection)?;
-    backup.step(-1)?;
+    if backup.step(-1)? != rusqlite::backup::StepResult::Done {
+        return Err(FoundationError::Sqlite(rusqlite::Error::InvalidQuery));
+    }
     drop(backup);
 
     let integrity: String =
@@ -475,6 +493,20 @@ mod tests {
                 .len(),
             64
         );
+    }
+
+    #[test]
+    fn dropping_guard_unlocks_even_while_a_duplicate_descriptor_is_open() {
+        let directory = temporary_directory("lock-duplicate");
+        let path = directory.join("control.lock");
+        let guard = ExclusiveFileLock::try_acquire(&path).unwrap();
+        let duplicate = guard.file.try_clone().unwrap();
+        drop(guard);
+        let next = ExclusiveFileLock::try_acquire(&path).unwrap();
+        drop(duplicate);
+        assert!(ExclusiveFileLock::try_acquire(&path).is_err());
+        drop(next);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
