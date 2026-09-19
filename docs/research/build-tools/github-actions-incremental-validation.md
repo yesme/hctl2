@@ -44,3 +44,5 @@ GitHub 的临时测试 merge 可能已经包含稍后才进入 PR 分支的 base
 ### 2026-09-19 · path-filter 把解析失败写成「无成功记录」（#260）
 
 修正上文「平台机制」里「GitHub CLI 和仓库固定的 jq」与「判定顺序」里「API 不可用」的落点：path-filter 作业在安装 DotSlash 之前运行，不能调用 `jq-bin`。#257 `9686ace` 的 Code `35392813862` / Release `35392813857` 在 Resolve 步骤出现 `/usr/bin/env: 'dotslash': No such file or directory`，随后日志写成 `full-pr-no-prior-success`。现改用 runner 自带 `gh api --jq` 查询 [List workflow runs for a workflow](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow)。`workflow_runs` 合法空数组才是「没有成功记录」；缺字段、null 或类型不对视为解析失败。查询失败与解析失败仍回退完整 PR diff，日志不得伪装成没有成功 run。回归见 `src/build/tests:validation_range_test`。
+
+远端 `fec2872` 的 synchronize 查到上一 head `0810fc0` 已成功（Code `35394995429` / Release `35394995407`），本 head 的 Code `35422286203` 与 Release `35422286250` 均为 `incremental-validated-head`，区间 `0810fc0...a353df59`。Release `release=false`，跳过三平台完整包；Code BTD 为 `affected`。本句只追加文档，供下一轮验证完整包与 Buck 矩阵按路径跳过。
