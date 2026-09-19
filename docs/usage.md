@@ -280,3 +280,5 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 外部运行包、源码伴随包及各自的 `.sha256` 位于导出的 Buck 目录，不会提交到 Git。
 
 在源码仓库中，更详细的供应链、版本锁定与平台范围记录在 `src/packaging/dependencies/README.md`；Buck2 第一方导出、确定性组装和完整包验收记录在 `src/packaging/release/README.md`。
+
+<!-- docs-only incremental validation prove -->
