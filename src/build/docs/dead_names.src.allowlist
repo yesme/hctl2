@@ -1,0 +1,7 @@
+# dead_names.src.allowlist — src/ 下 Markdown 的死名扫描豁免（路径相对 src/；文件<TAB>子串；无子串则整文件豁免）
+# 依据 2026-09-19 Muse 的 dry-run（#270 评论）：三处命中都是历史陈述或检查器夹具，不是现行误用
+
+# 否定式历史陈述：本代码树不再实现或打包 hctl2-agentd（决策史 §28）
+README.md	不再实现或打包
+# 检查器夹具：docs/design/spec/README.md 的解析稳定子集，故意固化旧名，不随现行文档改
+build/docs/testdata/spec-vocabulary.md

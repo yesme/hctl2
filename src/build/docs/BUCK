@@ -45,6 +45,20 @@ sh_test(
     resources = ["repo//:docs_tree", ":configs"],
 )
 
+# Same retired-name list over first-party Markdown under src/ (skills, packaging
+# and workspace READMEs); exemptions live in dead_names.src.allowlist.
+sh_test(
+    name = "check_dead_names_src",
+    test = "check_dead_names.sh",
+    args = [
+        "$(location root//:src_docs_tree)",
+        "$(location :configs)/dead_names.txt",
+        "$(location :configs)/dead_names.src.allowlist",
+    ],
+    labels = CI_DOCS,
+    resources = ["root//:src_docs_tree", ":configs"],
+)
+
 sh_test(
     name = "check_memo_review_baseline",
     test = "check_memo_review_baseline.sh",
