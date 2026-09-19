@@ -1,6 +1,6 @@
 # 五模块的端到端连接
 
-> 状态：规范性约束 · 草案 v0.18.10<br>
+> 状态：规范性约束 · 草案 v0.18.11<br>
 > 本文是 Project、Task、Run、Participant、Repo 之间连接约束的唯一权威。它不是一个领域模块：连接的两端仍由对应模块约束（本目录）与[设计正文](../README.md)定义，共享命令、适配器与恢复机制见[系统边界](./system.md)。
 
 ## 连接模型
@@ -213,6 +213,6 @@ Run 的用户输入和参与者的结果先进入 control，持久化后再由 o
 
 Workbench 的跨场景卡片和 deep link 只携带 stable ref 与可重建 projection；选择、焦点、展开状态和窗口布局都是客户端状态。用户从 Room 跳到 Task、从 Kanban 打开 Run、从 Workflow 连接 Terminal 时，动作仍路由到目标模块的 Query/Preview/Submit；第三方客户端遵守同一规则。
 
-Project 入口同时固定控制面与 Project 引用，不能只凭 Repo 合并不同 Project。主 Room、Topic Rooms、按源看板、Runs 与[待处理投影](./project.md#repo-注册与-project-归档)均以该 Project 为查询范围，交互入口见[Project 正文](../project.md#room-场景)。跨列表引用保留原对象与 Project 归属；从本 Project 发起的关联与命令须核对目标归属，不以同 Repo 为由越过 Project 范围。
+Project 入口同时固定控制面与 Project 引用，不能只凭 Repo 合并不同 Project。主 Room、Topic Rooms、按源看板、Runs 与[待处理投影](./project.md#待你处理)均以该 Project 为查询范围，交互入口见[Project 正文](../project.md#room-场景)。跨列表引用保留原对象与 Project 归属；从本 Project 发起的关联与命令须核对目标归属，不以同 Repo 为由越过 Project 范围。
 
 Run 列表保留等待、暂停与待人处理的非终态 Run，不仅列有施工者运行的条目。DAG 与任务书对应同一 Run，施工者与步骤投影来自该 Run 的派工记录；交互见[Workflow 场景](../run.md#workflow-场景)。对派工的观察使用 Agency 已声明且本次获准的能力；无图形或终端输出不等于没有执行状态，结束观察不取消执行。展示分别引用执行、检查、评审、集成与 Task 验收的事实，未要求的环节不强加；缺证据、旧版本或结果未知不能显示为当前工作已通过。

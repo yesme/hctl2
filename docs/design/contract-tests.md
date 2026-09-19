@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.18.10<br>
+> 状态：验证文档 · 草案 v0.18.11<br>
 > 本文列出十一族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。[参考用例 S1](./scenarios/S1-multi-unit.md)、[S2](./scenarios/S2-rough-road.md) 与 [S3](./scenarios/S3-user-journey.md) 引用本表用例的描述文本，不引用会随插入变化的序号。本轮按[体验基线](../user-experience/README.md#基础用户体验)同步：S1 保留四个 Project，新路径由 S3 串联。本表是待实现与执行的行为验收要求；文档检查通过不证明这些行为已通过。
@@ -11,7 +11,7 @@
 - 主 Room 与 Topic Room 均可按本次授权发起只读或写入调用：因主 Room 类型一律拒绝合法写入、仅因进入房间就取得写权、Execution Spec 缺 Project 及版本时失败
 - 普通 Topic Room 因未填完成条件、回填动作或结案理由而不能创建或关闭，因闲置而进入“待你处理”，或被系统自动结案时失败；关闭 Topic Room 后关联 Request 被解决、Task 被取消、Run 被停止或其待处理入口消失时失败
 - 两间活跃 Topic 同样闲置 15 天，使用缺省配置，一间承接尚未到截止的开放 Request、一间只是普通讨论：前者没有“需要关注”提醒、后者仅因闲置被提醒，或提醒另增待处理数时失败；未满缺省期限或 Request 已解决后仍因该 Request 提醒时失败，提醒不自动关闭 Room
-- 有非终态 Run、写入型 Invocation、活动 Write Lease、待投递或结果未知的集成意图/发布评审意图或其他未决外部写副作用时归档 Project 拒绝，阻塞项列表能看见归 Repo 模块的租约与意图；仅开放 Task/Request 或未归档 Topic Room 随归档转入只读，不被隐式终结
+- 有非终态 Run、写入型 Invocation、活动 Write Lease、待投递或结果未知的集成意图/发布评审意图或其他未决外部写副作用时归档 Project 拒绝，阻塞项列表能看见归 Repo 模块的租约与意图；仅开放 Task/Request 或未归档 Topic Room 随归档转入只读，不被隐式终结；恢复 Project 后这些开放 Task、Request 或 Topic Room 仍只读时失败，归档前已关闭的 Topic Room 随 Project 恢复变为可写时失败
 - CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结
 - Topic Room 的前情提要缺正文或精确来源、把未决问题写成已定、复制整段主 Room 历史或继承原授权时失败；创建预览的删减、补充、去敏未反映到确认版本时失败；主 Room 新消息自动流入已创建 Topic Room 时失败
 - Run 的 Request 在主 Room 没有相关 Message：以同 Project 的精确 Request、冻结阻塞对象与版本及确认提要创建 Topic 应通过，因缺主 Room Message 拒绝或补造消息来源时失败；来源的 Project 或阻塞版本不符仍准入时失败；关闭该 Topic 不解决原 Request
@@ -97,6 +97,7 @@
 - quorum-unreachable 沿冻结失败边推进
 - Run 正常完成只由治理记录的谓词决定；引擎报告的进度与治理记录不一致时标为分歧待对账，既不补足也不阻止谓词
 - 失败/已取消/被替代 Run 不终结 Task，quorum/regate 和迟到结果拒绝
+- Room 或 Task 引用 Run 不改其 Manifest、任务书或授权：Run 因被第二个 Task 引用而对该 Task 签完成、引用方 Room 关闭或引用方 Task 取消时 Run 被停止、引用改写 Manifest 时失败；另一次有权的 Run 取消命令不在此列
 - 启动中 / 暂停中 / 取消中到达默认或声明的超时后进入需要关注并保留状态，不自动取消或替代
 - 节点声明的外部机械事实前置：直报读不到时不派发并标需要关注；参与者、适配器旁路事件或模型转述的事实不满足前置，控制面自己的适配器或本机工具的直报满足；前置不创建 Obligation、不占席位
 - 汇总仍要求返工、而再开一轮将超过声明的轮数上限时，按 quorum-unreachable 同路推进或创建 Request，不进入下一轮；最后一轮取得合格结果时照常通过
@@ -261,7 +262,7 @@
 
 ### `CT-WORKBENCH-IA` · Workbench 信息架构
 
-- 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生新场景或写状态；Change 场景是 Repo 模块的场景，Overview 只投影它
+- 单 Project Overview 是可重建的只读投影，不产生新场景、写状态或独立导航入口，不能替代主 Room 与「待你处理」；跨 Project 的「需要关注」汇总若提供，保留各 Project 来源与授权、不归并事项；「需要关注」标记本身不增加「待你处理」条目；Change 场景仍归 Repo，Overview 只投影它：读 Overview 解决 Request 或提交发布时失败，只有「需要关注」标记、没有待本人处理事项的对象增加待处理计数时失败
 - 打开入口固定控制面、Repo 与 Project：同 Repo 多 Project 被合成一个入口、未选择就进入另一 Project、重试创建出第二个主 Room 时失败；必要时拉起本机控制面，尚未交付的远程连接入口隐藏或安全拒绝
 - 进入 Project 默认打开自己的 Project Room，点击相邻“待你处理”标记打开面板；两者混用、Rooms 重列主 Room、初始 Rooms 不为空、Rooms/Kanbans/Runs 被排成必须逐层进入的包含链时失败；deep link 保留返回路径
 - 同一 Request ID 跨 Room/Task/Run 聚合去重；面板上的动作经原模块 Preview/Submit，直接写投影状态或不校验已被其他客户端处理的版本时失败

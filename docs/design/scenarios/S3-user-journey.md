@@ -1,6 +1,6 @@
 # 参考用例 S3：Project 用户路径
 
-> 状态：验证文档 · 草案 v0.18.10<br>
+> 状态：验证文档 · 草案 v0.18.11<br>
 > 日期：2026-09-19<br>
 > 定位：把所有者已确认的[用户流程](../../user-experience/02-user-journey.md)与[导航和组织结构](../../user-experience/04-project-navigation.md)落实为可失败的验收路径，不另写一份需求或增加执行机制。CT 引用[矩阵](../contract-tests.md)的描述文本；以下是验收要求，不是已经执行的测试报告。
 
@@ -38,8 +38,8 @@ Project A、B 使用同一 Control、同一 Repo；除注明外，都只操作 A
 | 编号 / 来源 | 输入与动作 | 预期；怎样算失败 | 权威与 CT 描述 |
 | --- | --- | --- | --- |
 | S3.R1 / R1–R2 | A 有执行中、等检查、等人、暂停的 Run；一个 Run 两节点并行；切换 DAG 与任务书 | 活动条目都能找到；默认 DAG、并行节点同时可见，侧栏保持本 Run 的 Worker 与步骤。不因无运行 Worker 隐藏等待项，不产生第二次 Run | [跨场景入口](../spec/connections.md#场景与第三方适配器)；CT-WORKBENCH-IA「Run 导航隐藏等待或暂停中的活动 Run」 |
-| S3.R2 / 待你处理 | 同一待本人应答 Request 关联 Room/Task/Run；另有待本人确认的发布意图、契约变化待本人采纳的 Task、S3.T9 中本人有权确认完成的 Task 及其交付正反例、过渡态超时 Run。再注入他人待答 Request、本人无权确认完成的 Task、普通未读、Topic 建议、已打开的 Trigger Preview、自动等 CI，另测 Request 已承接同一 Task 验收动作；点击 Project 名与标记 | 名称进主 Room，标记进面板；四类实际来源均显示，各来源去重并回答四问；若 Request 已承接同一验收动作不再另计 Task。他人待答、无权处理、交付反例、消息、建议、预览本身与自动等待不计；任一漏项或多计即失败 | [Project Overview](../spec/project.md#repo-注册与-project-归档)；CT-PROJECT「待你处理按现有事项去重」「待处理来源分别注入」 |
-| S3.R3 / 待处理的完成 | 先阅读/关闭面板，再提交一个失败动作；随后另一客户端成功处理 | 阅读或失败不销项；实际生效才退出列表，原处保留历史，旧面板再提交须重核。并发操作双重生效或原动作之外写投影状态即失败 | [Project Overview](../spec/project.md#repo-注册与-project-归档)、[跨场景入口](../spec/connections.md#场景与第三方适配器)；CT-PROJECT「待你处理按现有事项去重」、CT-WORKBENCH-IA「同一 Request ID 跨 Room/Task/Run 聚合去重」 |
+| S3.R2 / 待你处理 | 同一待本人应答 Request 关联 Room/Task/Run；另有待本人确认的发布意图、契约变化待本人采纳的 Task、S3.T9 中本人有权确认完成的 Task 及其交付正反例、过渡态超时 Run。再注入他人待答 Request、本人无权确认完成的 Task、普通未读、Topic 建议、已打开的 Trigger Preview、自动等 CI，另测 Request 已承接同一 Task 验收动作；点击 Project 名与标记 | 名称进主 Room，标记进面板；四类实际来源均显示，各来源去重并回答四问；若 Request 已承接同一验收动作不再另计 Task。他人待答、无权处理、交付反例、消息、建议、预览本身与自动等待不计；任一漏项或多计即失败 | [待你处理](../spec/project.md#待你处理)；CT-PROJECT「待你处理按现有事项去重」「待处理来源分别注入」 |
+| S3.R3 / 待处理的完成 | 先阅读/关闭面板，再提交一个失败动作；随后另一客户端成功处理 | 阅读或失败不销项；实际生效才退出列表，原处保留历史，旧面板再提交须重核。并发操作双重生效或原动作之外写投影状态即失败 | [待你处理](../spec/project.md#待你处理)、[跨场景入口](../spec/connections.md#场景与第三方适配器)；CT-PROJECT「待你处理按现有事项去重」、CT-WORKBENCH-IA「同一 Request ID 跨 Room/Task/Run 聚合去重」 |
 | S3.R4 / R3 | 依次选有图形观察、终端观察、仅 Headless 的派工；另有同名 Worker；旧派工也有记录 | 按所选派工的能力与授权呈现，Headless 仍有进度/结果；观察不授输入权，旧画面不冒充当前，关闭面板不取消。转投同名 Worker 或伪装缺失能力即失败 | [Participant 端口与输入](../spec/participant.md#写入约束)、[跨场景入口](../spec/connections.md#场景与第三方适配器)；CT-PARTICIPANT「control 签发连接票据、Agency 校验，观察、输入、Attempt 控制与安全输入权限分离；票据不经 Agency 校验就生效、票据含主机或终端 ID、控制面或前端绕过 Agency 直连门后的进程、PTY 或 API、工具或参与者绕过 Agency 直接向控制面报告、控制面存储出现门后地址时失败」、「`native_interactive_allowed` 下经 Agency 的原生客户端输入是有效运行时输入，该输入不能直接产生领域结果，其中的文字与“完成”不准入；Agency 未声明逐次输入记录能力时，还必须标明逐次 provenance 和物理单写者保证不完整」、「`managed_single_writer` 下绕开有效输入授权的动作不得落到该派工；两个客户端同时持有同一目标的输入租约时失败，接管必须原子撤销旧租约；Agency 不能统一拦截全部写入时执行不得继续声称策略成立」、CT-WORKBENCH-IA「Run 导航隐藏等待或暂停中的活动 Run」 |
 | S3.R5 / R4 | Worker 已结束、检查成功，但评审或集成未确认；另测 Run 完成而 Task 当前契约已升级 | 分别显示已知事实、对应版本与缺项；不把 Worker 退出、平台 merged 或旧版绿灯当成 Task 已验收。无代码交付的 Run 不被强加集成环节 | [Run 完成谓词](../spec/run.md#写入约束)、[Task 写入约束](../spec/task.md#写入约束)；CT-WORKBENCH-IA「进度分开投影执行、检查、评审、集成与 Task 验收」 |
 | S3.R6 / R5 | 分别注入 S2 的契约升级、评后换版、施工者失联/回来、合入响应丢失 | UI 逐项符合 [S2 五个回答](./S2-rough-road.md#三每种情形的五个回答)，列明影响、系统正在做什么、是否需人动作；保留上下文与原入口。授权已失效却显示可继续写、合入未知却引导再合一次即失败 | S2 引用的各模块约束；CT-PRODUCT「S3 用户路径逐项按输入注入失败」 |
