@@ -19,7 +19,7 @@
 | PR 分支前移 | [Update a pull request branch](https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request-branch) 把最新 base merge 进 PR head | 使用 merge 更新，保留旧 head 为新 head 的祖先；rebase/强推不能继承旧结果 |
 | 影响范围 | BTD 比较两份 Buck 图并沿反向依赖传播，见 [`buck2-change-detector.md`](./buck2-change-detector.md) | 增量模式传入 `before...after`；selector 失败仍由现有全量目标回退接管 |
 
-GitHub 官方也给出了以 `GH_TOKEN` 调用 `gh` 的 workflow 示例，并建议按最小权限配置 `GITHUB_TOKEN`；HCTL2 因此直接使用 runner 已有的 GitHub CLI 及其内置 [`--jq`](https://cli.github.com/manual/gh_help_formatting)，不在 path-filter 作业里调用 `jq-bin`。该作业在安装 DotSlash 之前运行，#257 的 `9686ace` 曾把 `jq-bin` 的 DotSlash 失败误判成「上一 head 没有成功 run」，从而退回完整 PR diff。查询失败与解析失败仍回退完整检查，但日志必须说明真实原因，不得写成「没有成功记录」。参考：[在 workflow 中使用 `GITHUB_TOKEN`](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token)、[workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)、[List workflow runs for a workflow](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow)。
+GitHub 官方也给出了以 `GH_TOKEN` 调用 `gh` 的 workflow 示例，并建议按最小权限配置 `GITHUB_TOKEN`；HCTL2 因此直接使用 runner 已有的 GitHub CLI 和仓库固定的 jq，不引入新的 Action 或常驻服务。参考：[在 workflow 中使用 `GITHUB_TOKEN`](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token)、[workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)。
 
 ## 判定顺序
 
@@ -31,10 +31,16 @@ GitHub 官方也给出了以 `GH_TOKEN` 调用 `gh` 的 workflow 示例，并建
 
 成立后，Code 的路径分类、Cargo hygiene、文档检查和 BTD 都读取旧 head 到当前 test merge 的增量；Release 的完整包路径分类也读取同一区间。新增提交影响某个既有 target 时，BTD 会把它及受影响的反向依赖重新选出；没有进入相应依赖闭包的变化不启动三平台重构建。Code/Release workflow 自身或 target selector 变化仍命中现有的全量策略。
 
-以下情况不继承：PR 第一次打开或重新打开、旧 workflow 未成功、API 查询失败、响应无法解析、旧对象不可达、rebase/强推造成非快进历史。它们全部回到 base 到当前 test merge 的完整 PR diff。查询或解析失败的回退不得伪装成「没有成功记录」；这个回退允许外部 CI 继续独立工作，也避免把 GitHub 可用性错误解释成“没有影响”。
+以下情况不继承：PR 第一次打开或重新打开、旧 workflow 未成功、API 不可用、旧对象不可达、rebase/强推造成非快进历史。它们全部回到 base 到当前 test merge 的完整 PR diff。这个回退允许外部 CI 继续独立工作，也避免把 GitHub 可用性错误解释成“没有影响”。
 
 ## 仓库实测
 
 GitHub API 对本仓库 PR #122 的连续运行返回真实 PR head，而不是临时测试 merge SHA；旧 head `ffacc37` 可分别查到成功的 Code 和 Release run。该 PR 后续的 GitHub 原生 merge 更新产生 `20c53de`，第一父提交是 `ffacc37`，所以祖先关系能够机械证明。相反，PR #120 的一次 rebase 把 `60053e5` 改写为不相干的 `e29f7de`；这种历史没有安全的增量继承链，必须完整重验。
 
 GitHub 的临时测试 merge 可能已经包含稍后才进入 PR 分支的 base 提交，但历史 workflow API 不保存那次临时 merge 的 base SHA。本方案不解析旧日志或另存证据清单，而选择保守重验这一小类竞态；避免为减少一次边缘重复构建而维护第二套状态。
+
+## 复核记录
+
+### 2026-09-19 · path-filter 把解析失败写成「无成功记录」（#260）
+
+修正上文「平台机制」里「GitHub CLI 和仓库固定的 jq」与「判定顺序」里「API 不可用」的落点：path-filter 作业在安装 DotSlash 之前运行，不能调用 `jq-bin`。#257 `9686ace` 的 Code `35392813862` / Release `35392813857` 在 Resolve 步骤出现 `/usr/bin/env: 'dotslash': No such file or directory`，随后日志写成 `full-pr-no-prior-success`。现改用 runner 自带 `gh api --jq` 查询 [List workflow runs for a workflow](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow)。`workflow_runs` 合法空数组才是「没有成功记录」；缺字段、null 或类型不对视为解析失败。查询失败与解析失败仍回退完整 PR diff，日志不得伪装成没有成功 run。回归见 `src/build/tests:validation_range_test`。

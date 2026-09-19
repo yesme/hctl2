@@ -117,7 +117,9 @@ if [ "$event_action" = synchronize ] && [ -n "$previous_head" ]; then
             printf '::warning::Previous head SHA is not a hex object name; validate the complete PR diff.\n'
             mode=full-pr-parse-fallback
         else
-            jq_expr="any(.workflow_runs[]?; .head_sha == \"$previous_head\" and .conclusion == \"success\")"
+            # Empty workflow_runs is "no success". Missing/null/non-array
+            # workflow_runs is a malformed payload, not a business miss.
+            jq_expr="if (has(\"workflow_runs\") and ((.workflow_runs | type) == \"array\")) then any(.workflow_runs[]?; .head_sha == \"$previous_head\" and .conclusion == \"success\") else \"invalid\" end"
             err=$(mktemp "${TMPDIR:-/tmp}/hctl2-validation-range.XXXXXX")
             if ! result=$(gh api --method GET \
                 "repos/${repository}/actions/workflows/${WORKFLOW_FILE}/runs" \
@@ -127,9 +129,18 @@ if [ "$event_action" = synchronize ] && [ -n "$previous_head" ]; then
                 -f per_page=100 \
                 --jq "$jq_expr" 2>"$err"); then
                 detail=$(tr '\n' ' ' <"$err")
-                printf '::warning::Could not query the previous %s run; validate the complete PR diff.%s\n' \
-                    "$WORKFLOW_LABEL" "${detail:+ ${detail}}"
-                mode=full-pr-query-fallback
+                case "$detail" in
+                    *"parse error"* | *"jq:"* | *"invalid JSON"* | *"cannot parse"* | *"failed to parse"*)
+                        printf '::warning::Could not parse the previous %s run query%s; validate the complete PR diff.\n' \
+                            "$WORKFLOW_LABEL" "${detail:+ (${detail})}"
+                        mode=full-pr-parse-fallback
+                        ;;
+                    *)
+                        printf '::warning::Could not query the previous %s run; validate the complete PR diff.%s\n' \
+                            "$WORKFLOW_LABEL" "${detail:+ ${detail}}"
+                        mode=full-pr-query-fallback
+                        ;;
+                esac
             else
                 case "$result" in
                     true)
@@ -140,6 +151,11 @@ if [ "$event_action" = synchronize ] && [ -n "$previous_head" ]; then
                         printf '::notice::The previous PR head has no successful %s run; validate the complete PR diff.\n' \
                             "$WORKFLOW_LABEL"
                         mode=full-pr-no-prior-success
+                        ;;
+                    invalid)
+                        printf '::warning::Could not parse the previous %s run query (got invalid payload); validate the complete PR diff.\n' \
+                            "$WORKFLOW_LABEL"
+                        mode=full-pr-parse-fallback
                         ;;
                     *)
                         printf '::warning::Could not parse the previous %s run query (got %s); validate the complete PR diff.\n' \

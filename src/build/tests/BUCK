@@ -60,13 +60,16 @@ sh_test(
         "RESOLVE_VALIDATION_RANGE": "$(location root//build/ci:resolve-validation-range)",
         "CODE_WORKFLOW": "$(location repo//:code_yml)",
         "RELEASE_WORKFLOW": "$(location repo//:release_yml)",
+        "JQ_BIN": "$(location root//build/tools:jq-bin)",
     },
     labels = CI_FAST,
     resources = [
         "root//build/ci:resolve-validation-range",
         "repo//:code_yml",
         "repo//:release_yml",
+        "root//build/tools:jq-bin",
     ],
+    test_rule_timeout_ms = 120000,
 )
 
 sh_test(
