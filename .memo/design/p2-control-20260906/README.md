@@ -4,6 +4,8 @@
 > 基线：main @ `2c6b2e4`（草案 v0.18.11）；`01-plan.md` 正文写于 v0.17.0，历史不改<br>
 > 去向：`src/apps/hctl2-control`、`src/apps/hctl2`、`src/crates/*`、`docs/research/`；不改约束层
 
+> 2026-09-20 命名更新：已有源码目录 `apps/hctl2-tool`、`crates/hctl2-facts`、`crates/hctl2-foundation`、`crates/hctl2-store` 分别改为 `apps/tool`、`crates/facts`、`crates/foundation`、`crates/store`（均相对 `src/`）；私有 package 与库目标同步用短名，对外命令仍为 `hctl2-tool`。本目录已拍板任务书的历史名称不回写，继续开工时按 [src/README 命名说明](../../../src/README.md)定位现行代码；尚未建立的 control / CLI 目录也按职责取名，不照抄上述历史路径。
+
 | 文件 | 作者 | 内容 |
 | --- | --- | --- |
 | `01-plan.md` | Fable | P2 计划：定位与重述、起点核对、P2 的形状、工作包与分工、五项取舍的讨论与拍板、任务书要点、审核方式、研究层先行清单、延后与遗留、里程碑重切 |

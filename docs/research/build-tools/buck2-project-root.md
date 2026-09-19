@@ -24,3 +24,4 @@
 ## 复核记录
 
 - 2026-09-02 首发，随落地 PR 一并提交。
+- 2026-09-20 内部命名复核：Buck 的 cell/package 路径已区分内部目标；Cargo 的[目标命名](https://doc.rust-lang.org/cargo/reference/cargo-targets.html#the-name-field)允许 package、库与 Binary 分别命名，[Buck `rust_binary`](https://buck2.build/docs/prelude/rules/rust/rust_binary/)也独立声明 Binary 目标。本仓库四个第一方 package 均继承 `publish = false`，因此目录、package 与库目标采用 `tool`、`facts`、`foundation`、`store`；`tool` 用显式 `[[bin]]` 保留对外的 `hctl2-tool`。不新增命名转换脚本或依赖，Cargo.lock 只调整第一方名称，三方版本与摘要不变。构建根与 cell 布局不变，当前路径见 [src/README](../../../src/README.md)；本条更新内部目标名称，不回写上文项目根迁移时的历史标签。

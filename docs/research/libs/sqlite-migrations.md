@@ -36,4 +36,4 @@ SQLite 官方十二步中的事务边界不能照“十二步全放事务”理�
 
 - [rusqlite_migration 2.6.0 manifest](https://docs.rs/crate/rusqlite_migration/2.6.0/source/Cargo.toml)、[`goto_up` / `foreign_key_check` / `user_version` 实现](https://docs.rs/crate/rusqlite_migration/2.6.0/source/src/lib.rs)；源码核对，不以 README 的“原子更新”一句替代事务检查。
 - [refinery-core 0.9.2 依赖范围](https://docs.rs/crate/refinery-core/0.9.2/source/Cargo.toml)、[SQLite 改表十二步](https://sqlite.org/lang_altertable.html#otheralter)、[user_version](https://sqlite.org/pragma.html#pragma_user_version)、[application_id](https://sqlite.org/pragma.html#pragma_application_id)。
-- [现用依赖](../../../src/Cargo.toml)、[foundation 实现](../../../src/crates/hctl2-foundation/src/lib.rs)、[系统边界 §控制面自己的存储](../../design/spec/system.md#控制面自己的存储)。
+- [现用依赖](../../../src/Cargo.toml)、[foundation 实现](../../../src/crates/foundation/src/lib.rs)、[系统边界 §控制面自己的存储](../../design/spec/system.md#控制面自己的存储)。
