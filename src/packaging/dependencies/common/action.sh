@@ -21,6 +21,27 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+run_xz() {
+    : "${HCTL2_XZ_ROOT:?Buck must declare the xz tool input}"
+    # pkgx's Linux RPATH points to a build-time directory. Scope its bundled
+    # liblzma to this process; never fall back to PATH's xz or inherit options.
+    LD_LIBRARY_PATH="$HCTL2_XZ_ROOT/lib" XZ_DEFAULTS= XZ_OPT= \
+        "$HCTL2_XZ_ROOT/bin/xz" "$@"
+}
+
+require_pinned_xz() {
+    local actual
+    local expected
+    : "${HCTL2_XZ_VERSION:?Buck must provide the pinned xz version}"
+    actual="$(LC_ALL=C run_xz --version)" || die "could not run pinned xz"
+    expected="$(printf 'xz (XZ Utils) %s\nliblzma %s' "$HCTL2_XZ_VERSION" "$HCTL2_XZ_VERSION")"
+    [[ "$actual" == "$expected" ]] || die "xz/liblzma version mismatch: $actual"
+}
+
+compress_archive() {
+    run_xz -9 -T0 --no-adjust -c
+}
+
 hash_file() {
     local path="$1"
 

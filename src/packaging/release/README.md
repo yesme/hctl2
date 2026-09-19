@@ -7,10 +7,10 @@
 每个目标平台生成：
 
 ```text
-hctl2-<version>-<target>.tar.gz
-hctl2-<version>-<target>.tar.gz.sha256
-hctl2-<version>-<target>-sources.tar.gz
-hctl2-<version>-<target>-sources.tar.gz.sha256
+hctl2-<version>-<target>.tar.xz
+hctl2-<version>-<target>.tar.xz.sha256
+hctl2-<version>-<target>-sources.tar.xz
+hctl2-<version>-<target>-sources.tar.xz.sha256
 hctl2-<version>-<target>.spdx
 hctl2-<version>-<target>.release.tsv
 hctl2-<version>-<target>.SHA256SUMS

@@ -29,14 +29,14 @@ source "$HCTL2_BUILD_METADATA"
 # shellcheck source=common/build.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 
-archives=("$PACKAGE_OUTPUT_DIRECTORY"/hctl2-*-"$HCTL2_TARGET_ID".tar.gz)
+archives=("$PACKAGE_OUTPUT_DIRECTORY"/hctl2-*-"$HCTL2_TARGET_ID".tar.xz)
 if [[ "${#archives[@]}" -ne 1 || ! -f "${archives[0]}" ]]; then
     die "expected exactly one runtime archive for $HCTL2_TARGET_ID"
 fi
 ARCHIVE="${archives[0]}"
-PACKAGE_ID="$(basename -- "$ARCHIVE" .tar.gz)"
+PACKAGE_ID="$(basename -- "$ARCHIVE" .tar.xz)"
 SOURCE_PACKAGE_ID="$PACKAGE_ID-sources"
-SOURCE_ARCHIVE="$PACKAGE_OUTPUT_DIRECTORY/$SOURCE_PACKAGE_ID.tar.gz"
+SOURCE_ARCHIVE="$PACKAGE_OUTPUT_DIRECTORY/$SOURCE_PACKAGE_ID.tar.xz"
 readonly ARCHIVE PACKAGE_ID SOURCE_ARCHIVE SOURCE_PACKAGE_ID
 
 [[ -f "$SOURCE_ARCHIVE" ]] || die "source archive is missing: $SOURCE_ARCHIVE"

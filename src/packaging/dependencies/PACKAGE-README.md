@@ -12,7 +12,7 @@
 
 安装器会验证完整内容，不联网、不编译，也不要求 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。默认状态目录为 `${XDG_STATE_HOME:-$HOME/.local/state}/hctl2`；绝对路径 `HCTL2_STATE_ROOT` 可隔离并行环境。所有网络 listener 都只绑定 loopback。
 
-对应的锁定上游源码不占用本安装包；它们位于同一 Release 中的 `hctl2-<version>-<target>-sources.tar.gz`。普通安装不需要下载源码包，精确文件名见本目录的 `SOURCES.md`。
+对应的锁定上游源码不占用本安装包；它们位于同一 Release 中的 `hctl2-<version>-<target>-sources.tar.xz`。普通安装不需要下载源码包，精确文件名见本目录的 `SOURCES.md`。
 
 默认启动后可用的浏览器入口为：Chatroom `http://127.0.0.1:6168/`、Kanban `http://127.0.0.1:3456/`、Workflow `http://127.0.0.1:18080/`。Cinny 是随包的 Matrix 互操作与查看客户端，不是 HCTL2 Workbench。
 

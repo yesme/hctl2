@@ -1,7 +1,24 @@
 load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
+load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
 
 oncall("hctl2")
+
+sh_test(
+    name = "xz_test",
+    test = "check_xz.sh",
+    env = {
+        "HCTL2_XZ_ROOT": "$(location root//build/tools:xz)/" + XZ_DIRECTORY,
+        "HCTL2_XZ_VERSION": XZ_VERSION,
+        "PACKAGING_HELPERS": "$(location root//packaging/dependencies:service_lifecycle_sources)",
+    },
+    resources = [
+        "root//build/tools:xz",
+        "root//packaging/dependencies:service_lifecycle_sources",
+    ],
+    labels = CI_FAST,
+    test_rule_timeout_ms = 120000,
+)
 
 filegroup(
     name = "process_compose_fixtures",

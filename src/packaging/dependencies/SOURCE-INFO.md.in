@@ -3,7 +3,7 @@
 本安装包对应的锁定上游源码单独发布为：
 
 ```text
-@SOURCE_PACKAGE_ID@.tar.gz
+@SOURCE_PACKAGE_ID@.tar.xz
 ```
 
 它应与本安装包出现在同一个 HCTL2 Release 下载页，并提供相邻的 `.sha256` 校验文件。安装和运行 HCTL2 不需要下载源码包。

@@ -13,6 +13,7 @@ readonly HCTL2_PRODUCT_ROOT HCTL2_DEPENDENCY_SOURCE_ROOT
 
 # shellcheck source=../dependencies/common/build.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
+require_pinned_xz
 
 usage() {
     printf '%s\n' \
@@ -83,7 +84,7 @@ validate_archive_layout() {
             "$expected_root" | "$expected_root"/*) ;;
             *) die "archive entry is outside $expected_root: $entry" ;;
         esac
-    done < <(tar -tzf "$archive")
+    done < <(tar -tJf "$archive")
 }
 
 format_spdx_time() {
@@ -128,7 +129,7 @@ create_archive() {
 
     if tar --version 2>/dev/null | grep -q 'GNU tar'; then
         tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$source_date_epoch" \
-            -C "$build_dir" -cf - "$package_id" | gzip -n >"$archive"
+            -C "$build_dir" -cf - "$package_id" | compress_archive >"$archive"
         return
     fi
 
@@ -142,7 +143,7 @@ create_archive() {
             --no-recursion \
             --uid 0 --gid 0 --uname root --gname wheel --numeric-owner \
             -cf - -T "$file_list"
-    ) | gzip -n >"$archive"
+    ) | compress_archive >"$archive"
     rm -f -- "$file_list"
 }
 
@@ -186,9 +187,9 @@ hctl2_version="$(read_hctl2_version "$HCTL2_PRODUCT_ROOT/Cargo.toml")"
 [[ -n "$hctl2_version" ]] || die "could not read HCTL2 workspace version"
 package_id="hctl2-$hctl2_version-$target"
 source_package_id="$package_id-sources"
-[[ "$(basename -- "$dependencies_archive")" == "$package_id.tar.gz" ]] || \
+[[ "$(basename -- "$dependencies_archive")" == "$package_id.tar.xz" ]] || \
     die "dependency archive does not match first-party target: $dependencies_archive"
-[[ "$(basename -- "$sources_archive")" == "$source_package_id.tar.gz" ]] || \
+[[ "$(basename -- "$sources_archive")" == "$source_package_id.tar.xz" ]] || \
     die "source archive does not match first-party target: $sources_archive"
 validate_archive_layout "$dependencies_archive" "$package_id"
 validate_archive_layout "$sources_archive" "$source_package_id"
@@ -199,7 +200,7 @@ case "$build_dir" in
     *) die "unsafe release build directory: $build_dir" ;;
 esac
 trap 'find "${build_dir:?}" -depth -delete' EXIT
-tar -xzf "$dependencies_archive" -C "$build_dir"
+tar -xJf "$dependencies_archive" -C "$build_dir"
 package_root="$build_dir/$package_id"
 payload_root="$package_root/payload"
 
@@ -260,8 +261,8 @@ write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libex
 write_checksum_manifest "$package_root" MANIFEST.sha256 \
     README.md SOURCES.md USAGE.md install.sh payload
 
-runtime_output="$output_dir/$package_id.tar.gz"
-sources_output="$output_dir/$source_package_id.tar.gz"
+runtime_output="$output_dir/$package_id.tar.xz"
+sources_output="$output_dir/$source_package_id.tar.xz"
 sbom_output="$output_dir/$sbom_name"
 release_manifest="$output_dir/$package_id.release.tsv"
 checksum_manifest="$output_dir/$package_id.SHA256SUMS"

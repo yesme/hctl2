@@ -1,4 +1,8 @@
+load(":xz.bzl", "declare_xz")
+
 oncall("hctl2")
+
+declare_xz()
 
 export_file(
     name = "process-compose-bin",
