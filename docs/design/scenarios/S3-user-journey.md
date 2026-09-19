@@ -1,6 +1,6 @@
 # 参考用例 S3：Project 用户路径
 
-> 状态：验证文档 · 草案 v0.18.7<br>
+> 状态：验证文档 · 草案 v0.18.8<br>
 > 日期：2026-09-19<br>
 > 定位：把所有者已确认的[用户流程](../../user-experience/02-user-journey.md)与[导航和组织结构](../../user-experience/04-project-navigation.md)落实为可失败的验收路径，不另写一份需求或增加执行机制。CT 引用[矩阵](../contract-tests.md)的描述文本；以下是验收要求，不是已经执行的测试报告。
 
@@ -29,7 +29,7 @@ Project A、B 使用同一 Control、同一 Repo；除注明外，都只操作 A
 | S3.T5 / T2 | 在主 Room 与 Topic 分别预览建 Task；A 有两个 Source，目标未定或选只读 Source | 先明确有能力且获准的目标 Source，普通聊天不直接写入；两种 Room 均能提交合法预览，不因主 Room 类型拒绝获准写入 | [Task 契约与来源](../spec/task.md#契约与来源)、[Room Invocation](../spec/project.md#room-invocation)；CT-TASK「新建卡未确认目标源」、CT-PROJECT「主 Room 与 Topic Room 均可按本次授权发起只读或写入调用」 |
 | S3.T6 / T2、固定归属 | 两个 Topic 引用同一 Task 和 Run；关闭其中一个；尝试把消息挪到另一 Room、把 Task 拖到另一 Source 或 B | 引用保留原归属，关闭不结束关联工作；普通 Topic 不要求结案理由，关联 Request 未经原动作仍待处理。搬消息、搬 Task 或凭同 Repo 越过 Project 即失败 | [Room 与消息](../spec/project.md#room-与消息)、[Task 契约与来源](../spec/task.md#契约与来源)；CT-PROJECT「普通 Topic Room」「Room 的 Project 归属」、CT-TASK「跨源的相对移动拒绝」 |
 | S3.T7 / Q3 | 丢弃未提交草稿；A、B 各自的 Task 同绑卡 T，A 无活动 Run、B 有活动 Run。先取消并归档 A、尝试取消 B，再由有源删除权的人预览并确认删 T；分别注入响应未知与确认成功 | 草稿可丢弃，取消 A 保留历史、源卡和 B，B 因活动 Run 拒绝取消；删卡预览列出双方 Project、Task 状态与 B 的 Run，另确认共享后果与 Run 去向，但不授予取消 B 的权限。响应未知不报成功；确认后双方观测 tombstone，B 仍是原 Task、未完成未取消，Run 不被自动停止 | [Task 契约与来源](../spec/task.md#契约与来源)、[写入约束](../spec/task.md#写入约束)；CT-TASK「取消并归档未通过取消前置」「A、B 的 Task 同绑一张源卡且 B 有活动 Run」 |
-| S3.T8 / T3 | 为 A 的 Task 填模板并登记 W，注入响应丢失后重试，切页再回来；编辑成 W2，尚未批准开工；另注入登记失败、Task 与 Project 不符，以及不带 Task 的合法登记 | 关联随 Run 模块登记准入，Task 可找回 W/W2；重试不重复、失败不留关联、跨 Project 拒绝，不带 Task 可登记。旧版不覆盖，保存不启 Run；无显式跳过声明时仍需默认读回，模板不免授权 | [Workflow 与 Run 授权](../spec/run.md#workflow-与-run-授权)；CT-RUN「保存计划只登记并关联 Workflow Revision」 |
+| S3.T8 / T3 | 为 A 的 Task 填模板并登记 W，注入响应丢失后重试，切页再回来；编辑成 W2，尚未批准开工；另注入登记失败、Task 与 Project 不符，以及不带 Task 的合法登记 | 关联随 Run 模块登记准入，Task 可找回 W/W2；重试不重复、失败不留关联、跨 Project 拒绝，不带 Task 可登记。旧版不覆盖，保存不启 Run；无显式跳过声明时仍需默认读回，模板不免授权 | [Workflow 与 Run 授权](../spec/run.md#workflow-与-run-授权)；CT-RUN「保存计划只登记并关联 Workflow Revision」「施工图确无来源 Room 时」 |
 | S3.T9 / T3 无 Run 路径 | 各例从开放文档 Task T、当前契约 R2 只需精确文档和人验收、无 Run 占用且无候选的初态独立开始；分别注入获准单次调用准入的 ChangeSet Revision、人工封存准入的 ChangeSet Revision、人工发布的 Artifact Revision，均明确关联 T/R2；另注入普通文件、未准入提案、无 Task 关联、只关联另一 Task 或 T/R1 的产出 | 三种有效交付均可从待处理面板回到 T，由有权用户按原完成命令验收；反例不计，人工交付不补造 Invocation，准入不自动完成。需要合入的另走原集成流程，不强行建 Run、不增加预览次数 | [Task 写入约束](../spec/task.md#写入约束)；CT-TASK「候选交付按准入记录判定」「验收契约未要求代码集成」、CT-PRODUCT「无 Run 路径、有契约的 Task、默认发布策略」 |
 | S3.T10 / 既有 Request 升级路径 | A 的 Run 发出缺输入的 Request，主 Room 无相关消息；人以请求与冻结阻塞对象准备提要并创建 Topic，另试错误 Project/阻塞版本；以缺省配置将本房间与普通 Topic 都置为闲置 15 天（Request 截止晚于观察时点），再分别测试解决 Request 与关闭房间 | 合法创建不要求或伪造主 Room 消息，错来源拒绝；仅承接开放 Request 的活跃房间进需要关注，不另增待办；解决 Request 后无此提醒，关闭 Room 不解决 Request。普通 Topic 不被提醒或强制结案 | [Topic 创建与消息](../spec/project.md#room-与消息)、[Request](../spec/project.md#request)；CT-PROJECT「Run 的 Request 在主 Room 没有相关 Message」「两间活跃 Topic 同样闲置 15 天」 |
 
