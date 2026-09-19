@@ -1,6 +1,7 @@
-# G 批方案 v1：全库对照 v0.18.7 核对——错的改、多的删、含混的定
+# G 批方案 v2：全库对照 v0.18.7 核对——错的改、多的删、含混的定
 
-> 状态：v1 · 清点表 76 行（甲 5、乙 54、丙 9、缺落点 8）· 待四席三层审（Codex、Grok、GLM、K3）· 读回席待定<br>
+> 状态：v2 · 第一轮四席（Codex、Grok、GLM、Muse）已审，逐条取舍见 PR 上「作者说明 · 第一轮汇总与 v2」· 清点表 85 行（甲 8、乙 61、丙 5、缺落点 11）· 待交叉轮 · 读回席待定<br>
+> v2 与 v1 的差别：§零 三处归因改准（#261 的评价不写成 #257 自述、F1 收成「写得像唯一来源」、删「没有一家靠通读润色」）；裁决清单 U3 改口（一人可多机连同一控制面、也可运行多个控制面，前端可连多个）、O9 补范围（本控制面已知的全部绑定 Task，不替其他 Project 作决定）；K3 缺口定义收准并加「用户能读到吗」；K6 改按族分 PR、同族四层一起改、乙行抽查、状态文字两阶段；清点表改判 5 行（A1、A9、B15 降，D1 升，C8 升 A 档）、二十余行按席位替代写法改改法、新增 9 行（Codex-1–5、Grok-1–2、GLM-2、GLM-4）；§四 补「应保留的规则」；§五 A 档 4 项变 5 项（读回无来源 Room 升入），B 档加归档恢复语义。<br>
 > 基线：main @ `459cda6`（草案 v0.18.7；#257 体验澄清、#259 CI 修正、#261 Codex 抽查备忘已合）<br>
 > 流程：05 §三 的 P.1–P.7；陪审团三层审（§七）。本批是核对批：不改约束语义的条目直接落；要改语义的单列待裁，所有者逐条裁<br>
 > 所有者 2026-09-19 的期待（原话）：「依据我们 #257 的精细梳理，把整个 design doc 调整到与之相符的情况。错误的假设要修正、多余的表达要删除、含混的说法要确定下来。」四个视角（Unit / Module / 对象归属 / 用户导航）与「#257 主要澄清了后两项，并影响前两项的表达；它没有把每个 Project 变成一套独立部署的系统；反过来，共用 Agency、Repo 或源卡，也不意味着共用工作身份和授权」是本批判据；#261（Codex 抽查）与 #251、#232–#237（集体智能与 Grok Bot 对照）的视角一并考虑（§二 K4）<br>
@@ -8,15 +9,15 @@
 
 ## 零、先审题：这个问题存在吗、值得解吗
 
-**问题陈述。** #257 把体验目录（`docs/user-experience/`）定为 v0.18.7 的 ground truth，并同步了直接相关的约束、正文、CT、场景与术语；它自己声明「没有承诺审完其余所有章节」（[#261 §一](../post-257-design-sweep/codex-20260919.md)），接手清单也写「下一步审核体验、约束、场景与 CT 是否一致」（`open-questions.md:86`）。剩下的问题是：全库还有哪些句子按旧模型讲（Repo 与 Project 一对一、仓库级 Room、Scoped Room 作为独立概念、合并板是仓库级权威、唯一范围本控制面、`repo_scope`/`project_scope` 二分、施工图只能从主 Room 长出……）；哪些规则在两层各写一遍且措辞不同；哪些说法含混到读者会补造行为。准确的问法：**每一个用户步骤，在体验、架构、约束、验收四层是否得到同一个答案；答案不同的地方，是旧句、是含混，还是要新裁一条规则。**
+**问题陈述。** #257 把体验目录（`docs/user-experience/`）定为 v0.18.7 的 ground truth，并同步了直接相关的约束、正文、CT、场景与术语；Codex 的抽查指出它「没有承诺审完其余所有章节」（[#261 §一](../post-257-design-sweep/codex-20260919.md)），接手清单也写「下一步审核体验、约束、场景与 CT 是否一致」（`open-questions.md:86`）。剩下的问题是：全库还有哪些句子按旧模型讲（Repo 与 Project 一对一、仓库级 Room、Scoped Room 作为独立概念、合并板是仓库级权威、唯一范围本控制面、`repo_scope`/`project_scope` 二分、施工图只能从主 Room 长出……）；哪些规则在两层各写一遍且措辞不同；哪些说法含混到读者会补造行为。准确的问法：**每一个用户步骤，在体验、架构、约束、验收四层是否得到同一个答案；答案不同的地方，是旧句、是含混，还是要新裁一条规则。**
 
 **它怎么来的。** 三个来源叠在一起：(1) 09-07 起的改写 DAG 六批（修正、R、A、C、B、D）加 E、S 两批，每批只核自己的范围；(2) 09-17/18 的用户路径讨论把 Repo / Project / Topic 混用（[03 术语纠正](../../../docs/user-experience/03-terminology-confession.md)），#257 于 09-19 一次澄清；(3) 09-16 的 Grok Bot 对照（#232–#237，已随 #245 落 v0.18.4）与 09-18 的集体智能研究（#251）给模块职责换了一套更准的说法——Room 承载塑形的连续性、Task 是可验收的承诺、Run 是有边界的自动行动、Context 是材料交付合同——正文里旧的比喻式说法没有跟着收。没有专门裁过「全库怎么核」；所有者 09-19 两次指示（「#257 完成后，不单是它，整个 design doc 都需要被重新核对一遍 sweep 一遍」；今日原话见文首）。
 
-**症状。** 已见的：`run.md` 把「从 Project Room 的塑形讨论中长出」写成施工图的唯一来源（#261 F1）；同节还带「私有仓库默认全文，公开仓库可降为仅摘要」的旧括号（#261 F2）；CT-PROJECT / CT-TASK 两条分组概括笼统到判不了失败（#261 F3）；体验 README 仍写「仍待复审、合入」（#261 F4）；塑形技能的产出里还有「开 Scoped Room」（`src/agency/README.md:17`）。主笔抽查五处（闲置 14 天、待你处理来源、已保存计划、Run 与 Task 的 Project 一致、归档转只读）三层一致——#257 列过的落点大体已改对，问题集中在它没列的篇章与跨层重复。
+**症状。** 已见的：`run.md` 把「从 Project Room 的塑形讨论中长出」写得像施工图的唯一来源，读者会把它当必经步骤（#261 F1：叙事过窄，不足以证明约束强制）；同节还带「私有仓库默认全文，公开仓库可降为仅摘要」的旧括号（#261 F2）；CT-PROJECT / CT-TASK 两条分组概括笼统到判不了失败（#261 F3）；体验 README 仍写「仍待复审、合入」（#261 F4）；塑形技能的产出里还有「开 Scoped Room」（`src/agency/README.md:17`）。主笔抽查五处（闲置 14 天、待你处理来源、已保存计划、Run 与 Task 的 Project 一致、归档转只读）三层一致——#257 列过的落点大体已改对，问题集中在它没列的篇章与跨层重复。
 
 **是不是症状。** 是更大问题的症状：多批分片改写之后没有一次「按关系走到底」的全库核对，而 #257 后正是做这件事的时点——体验目录第一次成了完整的 ground truth。不解决会怎样：实现者读到旧句补造行为（为满足「从主 Room 长出」给模板路径伪造聊天；按「唯一范围本控制面」拒绝第二个 Project 认领）；陪审团继续在已废前提上审题（F 批就是这样，见 [15](./15-batch-f-plan.md) 页眉）。
 
-**业界两种做法。** (a) 架构决策记录（ADR，Nygard 2011）的「被取代」状态：一条决策被新决策取代时，旧记录标 Superseded 并指向新记录，参考文档随之改写——对应我们的决策史「只记转折」加接手清单「旧讨论怎样接手」，本批把它做到正文。(b) 需求追溯矩阵（RTM，系统工程惯例；IEEE 29148 的追溯要求）：每条需求列出设计、实现、测试的落点，缺一格就是缺口——对应本批的「裁决→落点矩阵」。两种都是先列表、再改，没有一家靠通读润色。
+**业界两种做法。** (a) 架构决策记录（ADR，Nygard 2011）的「被取代」状态：一条决策被新决策取代时，旧记录标 Superseded 并指向新记录，参考文档随之改写——对应我们的决策史「只记转折」加接手清单「旧讨论怎样接手」，本批把它做到正文。(b) 需求追溯矩阵（RTM，系统工程惯例；IEEE 29148 的追溯要求）：每条需求列出设计、实现、测试的落点，缺一格就是缺口——对应本批的「裁决→落点矩阵」。两种都是先列表、再改。
 
 **用例哪一步。** 本批不改用例；核对沿 S1（四个 Project、多机）与 S3（P1–P7、T1–T10、R1–R7）走。#261 §四 的五条主线（同 Repo 多 Project；同卡不同 Project 两个 Task；Room / Task / Run 交叉引用；从计划到交付；共用单元与材料交付）就是「用例哪一步」的索引，§三 清点表每行的「依据」引到步骤或裁决。
 
@@ -28,7 +29,7 @@
 | --- | --- | --- |
 | 甲 · 不做 | 等 P2 实现碰到旧句再改 | 实现者付：按旧句补造行为再返工；陪审团付：在已废前提上审题 |
 | 乙 · 逐文件润色 | 每篇通读，见旧词就改 | 快，但漏跨层不一致，还会「各自润色」出新的不一致（#261 §四 明确反对） |
-| 丙 · 按关系走到底（推荐） | 先列裁决清单与清点表，按五条主线核到底；处置分三类；要改约束语义的另列待裁 | 主笔付一次清点；陪审团审清点表、补漏，不通读 |
+| 丙 · 按关系走到底（推荐） | 先列裁决清单与清点表，按五条主线核到底；处置分三类；要改约束语义的另列待裁 | 主笔付一次清点；陪审团审清点表，并沿各自主线通读所负责的权威文件补漏 |
 | 丁 · 换问题：以体验目录为纲重写整套设计文档 | 推翻重写 | 代价最大；#261 §一「不需要推翻重写」；决策史与 CT 失去连续性 |
 | 戊 · 改前提：体验目录升为权威、设计正文降为解释 | 反转分层 | 违反文档纪律的唯一权威分层；体验目录自己也说「不代替模块约束」（`open-questions.md:7`） |
 
@@ -56,7 +57,7 @@
 - O6 Project 是独立 Namespace：同一外部卡在各 Project 各有 Task；唯一范围 Project 内；共享源卡不共享契约、Run、授权、验收（04:69、04:181；`spec/task.md:46`）。
 - O7 Participant 分别选入：每个 Room、每个 Run 独立选人；Project 无自动灌入的名单；推荐不继承授权；观察与输入指向具体执行、经 Agency（04:102–106）。
 - O8 归档：开放 Task、Request、Topic 随 Project 归档转只读（决策史 §32 保留；`spec/project.md:47`）。
-- O9 删除 Task（Q3）：草稿可删；已有工作默认「取消并归档」，保留历史、不删源卡；删源卡另行确认并列出所有绑定 Task；有活动 Run 时明确去向（`open-questions.md:31–35`）。
+- O9 删除 Task（Q3）：草稿可删；已有工作默认「取消并归档」，保留历史、不删源卡；删源卡另行确认，预览列出本控制面已知的全部绑定 Task（不声称列全其他控制面的使用，删卡确认不替其他 Project 取消 Task 或 Run）；有活动 Run 时明确去向（`open-questions.md:31–35`；`spec/task.md:77`；v2 按 Codex 补范围）。
 - O10 本地 detach（Q2）：默认另建独立副本，不换绑原 Repo 身份（`open-questions.md:23–27`）。
 
 Module（M）：
@@ -71,7 +72,7 @@ Module（M）：
 Unit（U）：
 - U1 Project 不是部署单元；多个 Project 可共用 Agency、内容服务、Git 对象库与外部代码事实；不要求每 Project 独立服务器（04:32）。
 - U2 共用 Agency、Repo 或源卡不等于共用工作身份与授权（所有者今日原话；04:32、04:69）。
-- U3 多 Control 联合界面标清每个 Project 来自哪个 Control（04:32）；一人多机只连同一控制面（架构原则，v0.18.0）；租户隔离按 Control（`spec/system.md` 安全策略面）。
+- U3 多 Control 联合界面标清每个 Project 来自哪个 Control（04:32）；一个人可以多机连同一控制面，也可以运行多个控制面，前端可连一个或多个，各控制面的身份与授权分别确认（`architecture.md:17`、`:21`、`:35`；v2 按 Codex 改口，v1 的「只连同一控制面」是错的）；租户隔离按 Control（`spec/system.md` 安全策略面）。
 - U4 工作副本跟执行位置走，不跟前端走（01:42）。
 
 ### 二.2 改法逐条
@@ -80,13 +81,13 @@ Unit（U）：
 
 **K2 · 处置只分三类加缺落点（#261 §四）。** 甲 被取代的旧句：按裁决纠正，不进待裁；乙 含混或多余：收紧或删，不改语义——若动的是约束句的措辞，随批 bump 一次 patch，不新配 CT；丙 需要新的行为取舍：只登记，写选法、代价、场景，所有者裁；缺落点：某条裁决在某层该有落点却没有——正文缺解释补一句，约束缺规则归丙，CT 缺失败例补例。
 
-**K3 · 按关系走到底，不按文件润色。** §四 的五条主线各走一遍，每条主线的「需要一致的地方」在四层各找一句；找不到就是缺落点，找到两句不一样就是乙或甲。
+**K3 · 按关系走到底，不按文件润色。** §四 的五条主线各走一遍，每条主线的「需要一致的地方」在相关层核答案相容、能追到唯一权威；缺少本层应有的答案或权威引用才是缺口，不适用的层写明不适用，不为凑四层补复述（Codex）；找到两句不一样就是乙或甲。另核「用户能读到吗」：约束有、正文没向用户解释的规则登记为镜像型缺落点（GLM）。每条主线先列「应保留的规则」，核对时不把它们再复述进四层（§四）。
 
 **K4 · #251 与 Grok Bot 对照怎么进本批。** 只作 M7 的判据：正文里与之相抵或含混的句子登记为乙（例：把 Room 写成权威记录、把 Run 写成流程引擎、把 Context 写成全部上下文）；不搬 #251 的格式、字段或对象进设计；Grok Bot 对照的候选池（[主笔处置 §三](../../notes/grokbot-compare/claude-disposition-20260917.md)）仍登记不实施；要把 #251 的某个说法写成规则的，一律归丙。
 
 **K5 · 四个视角的边界句。** 架构层是否已有「Project 不是部署单元；多个 Project 可共用 Agency、内容服务、Git 对象库与外部代码事实；共用不等于共用工作身份与授权」的等价句，清点表核；没有则补一句到 `architecture.md` §单元与连接（性质缺落点；依据 04:32、04:69，不是新规则）。
 
-**K6 · 落地分批。** 清点表拍板后按层开动手 PR：(1) 设计正文、设计地图、体验目录、首页——不改约束语义；(2) 约束层与 CT——措辞收紧加补失败例，版本 bump patch 一次；(3) 术语表、Agency 技能、评审技能补两条（§二.2 K8）。每个 PR 轻审两席，合并后核对一家（05 §七 的四种情况）。
+**K6 · 落地分批。** 清点表拍板后按族开动手 PR，同一族的正文、约束、CT、术语在同一个 PR 里一起改，不先合新正文、后合决定其含义的约束（Codex）：(1) 机械族——状态文字、账本残留、Agency 技能、术语表、评审技能两条；(2) 施工图来源族与「哪份 Git」族；(3) 语义范围族、归属与 Namespace 各行、重复收口族（等 A1、A2 裁）；(4) Overview、Topic 关闭、归档恢复、读回无来源 Room（等 A3、A5 与 B 档裁）。约束句措辞动了的 PR 各 bump 一次 patch。轻审两席，对乙行每篇抽两行问「除了措辞真的什么都没改吗」（GLM）；合并后核对一家（05 §七 的四种情况）。首页与接手页的状态文字分两阶段：首批只写「#257 已同步直接相关关系，其余由 G 批核对」，全部子批合入后才写「已按体验目录核对」（Codex）。
 
 **K7 · 完成判据（#261 §五）。** 同一个用户步骤在体验、架构、约束、验收里得到同一个答案；每项发现有修正、保留理由或待裁去向；没有因修辞调整新增身份、权限或执行义务。文档机械检查不替代这条内容判据。
 
@@ -94,68 +95,68 @@ Unit（U）：
 
 ## 三、清点表（v1）
 
-主笔分六组走查（每组把文件从头读到尾），合成后逐条用 grep 核对原句在 `459cda6` 的位置，全部命中。性质一列是主笔判定；与走查席判定不同的地方标「改判」。「族」把同一件事的多处并在一起，动手时一族一次改完。
+主笔分六组走查（每组把文件从头读到尾），合成后逐条用 grep 核对原句在 `459cda6` 的位置，全部命中。性质一列是主笔判定；与走查席判定不同的地方标「改判」，v2 按第一轮席位意见再改的标「v2 改判」并写明听了谁的。「族」把同一件事的多处并在一起，动手时一族一次改完。改判的依据只有一条：行为变不变——变的才是丙；落实既有裁决、只需所有者核措辞的，标「请核措辞」而不升丙（Codex）。
 
 | 编号 | 位置 | 原句（逐字，≤160 字） | 视角 | 依据 | 性质 | 建议改法 | 受影响验收 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A1 | docs/design/project.md:58 | 在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：规划者仍在本 Room 重新选入，权限、预算和绑定不跨仓库继承 | O | O7 04:102–104；N1 04:7；N3 04:57 | 甲 | 「仓库 Room」是旧的仓库级 Room；同 Repo 两个 Project 的 Room 之间同样只预填、不继承。改为：「在 Workbench 里同时打开多个 Project 时，一个 Room 可以把另一个 Room（同一或另一 Project）的 Participant 阵容借用为预填选择……权限、预算和绑定不跨 Room 继承」 | CT-PROJECT 选人独立行；S1.I3 |
-| A2 | docs/design/run.md:30 | 施工图（“干什么的计划”）从 Project Room 的塑形讨论中长出，作为结晶归 Room 场景 | M | #261 F1；N6 04:77；M3 spec/run.md:72；02 §T3 | 乙 · 族「施工图来源」（A2、A4、B5、B6、C6、C8、F10） | 一种来源写成唯一来源，且只点主 Room。改为：「施工图可以由 Room（主 Room 或 Topic Room）的塑形讨论凝结，也可以从 Task 选模板填表保存而来；其版本、批准与 Task 关联由 Run 模块管理，讨论凝结的做法见 §施工图怎么凝结」 | contract-tests.md:89 |
+| A1 | docs/design/project.md:58 | 在 Workbench 里同时管理多个仓库时，一个 Room 可以把另一个仓库 Room 的 Participant 阵容借用为预填选择，不必逐个重选。借用只是预填：规划者仍在本 Room 重新选入，权限、预算和绑定不跨仓库继承 | O | O7 04:102–104；N1 04:7；N3 04:57 | 乙（v2 改判：Codex——旧词，行为不变；走查席判甲） | 「仓库 Room」是旧的仓库级说法；同 Repo 两个 Project 的 Room 之间同样只预填、不继承。改为：「在 Workbench 里同时打开多个 Project 时，一个 Room 可以把另一个 Room（同一或另一 Project）的 Participant 阵容借用为预填选择……权限、预算和绑定不跨 Room 继承」 | S3.T4；contract-tests.md:151「名册预填未经确认自动选入、复用另一 Room 或 Run 的授权时失败」（Codex；S1.I3 只验主 Room 身份，不再引） |
+| A2 | docs/design/run.md:30 | 施工图（“干什么的计划”）从 Project Room 的塑形讨论中长出，作为结晶归 Room 场景 | M | #261 F1；N6 04:77；M3 spec/run.md:72；02 §T3 | 乙 · 族「施工图来源」（A2、A4、B5、B6、C6、C8、Codex-5） | 来源叙事过窄，会被读成必经路径（不是已证实的唯一来源约束——Codex）。改为：「施工图可以由 Room（主 Room 或 Topic Room）的塑形讨论凝结，也可以从 Task 选模板填表保存而来；其版本、批准与 Task 关联由 Run 模块管理，讨论凝结的做法见 §施工图怎么凝结」 | contract-tests.md:89 |
 | A3 | docs/design/run.md:30 | 判决的权威在控制面存储，结晶副本进 Git（私有仓库默认全文，公开仓库可降为仅摘要） | M | #261 F2；repo.md:74「审计公开按授权」；spec/repo.md §发布评审；spec/system.md §控制面自己的存储 | 甲 · 族「哪份 Git」（A3、C7） | 旧括号把存放、公开、交付三件事压成仓库公私属性。改为：「判决的权威在控制面存储；审计副本属于治理材料，公开关联与返工正文按各自获准范围交付（见 Repo 正文 §关键规则「审计公开按授权」）」 | 无（约束未变） |
 | A4 | docs/design/run.md:65 | 施工图从 Room 的塑形讨论里长出来。 | M | 同 A2 | 乙 · 族「施工图来源」 | 本节只讲讨论凝结这一条路，句首加限定：「从讨论凝结施工图时（模板与表单路径见 Workflow 场景一节），塑形产出三张清单……」 | 无 |
 | A5 | docs/design/project.md:30 | 需要多轮论述、多人参与或共同编辑才开临时讨论空间 | N | N3 04:61；N4 04:59；project.md:43 | 乙 | 「临时讨论空间」是 Scoped Room 时代的说法，现在只有 Topic Room。改为：「才升级为关联该 Request 的 Topic Room（开场提要按请求与所阻塞的工作准备）」 | contract-tests.md:13；S3.T6 |
-| A6 | docs/design/README.md:12 | 目标与范围、协作现场的身份与来源记录、参与者、上下文、请求、备忘与工件 | O | O7 04:102；participant.md:47「项目本身不持有成员名单，只持有选人策略」 | 乙 | 「参与者」读成 Project 持有成员名单。改为「各 Room 的名册与选人策略」 | 无 |
+| A6 | docs/design/README.md:12 | 目标与范围、协作现场的身份与来源记录、参与者、上下文、请求、备忘与工件 | O | O7 04:102；participant.md:47「项目本身不持有成员名单，只持有选人策略」；spec/project.md §Repo 注册与 Project 归档 | 乙 | 「参与者」读成 Project 持有成员名单。改为「各 Room 的名册与 Project 的选人策略」（Codex：策略归 Project、名册归 Room，参与者身份与配置仍归 Participant 模块） | 无 |
 | A7 | docs/design/README.md:36 | R["Repo（Repo 模块）"] --> P["Project 0..N"] | M | N1 04:7、04:9；M1 open-questions.md:15 | 乙 | 无标签的箭头读成 Repo 包含 Project。给边加标签「每个 Project 关联一个 Repo；同一 Control 可多个」，或改成 P 指向 R 的「关联」边 | 无 |
-| A8 | docs/design/task.md:27 | Project 可连接多个任务源，各有一个 Kanban 入口 | M | N5 04:65–67；spec/task.md:26（仓库绑源、Project 存源引用） | 乙 | 「连接」与第 18 行「仓库绑零到多个」没说清是同一批源。改为：「Project 从仓库已绑定的任务源里接入一个或多个（各存一条源引用），各有一个 Kanban 入口」 | contract-tests.md:62–63 |
-| A9 | docs/design/task.md:40（§无 Run 的轻量路径） | 有权的人在看板预览精确的评审对象与验收证据 | N | N7 04:49；M6 spec/task.md:105–107；spec/project.md:43 | 缺落点 | 正文没说候选交付会出现在「待你处理」。加一句：「候选交付就绪、无 Run 占用时，向有权确认完成的人投影为 Project『待你处理』里的待确认事项；动作仍回到看板的完成预览」 | contract-tests.md:77 |
-| A10 | docs/design/repo.md:39 | 第二种是只在本地的仓库：没有任何平台承载它。注册时按持久意图在本地平台建仓 | M | O10 open-questions.md:23–27；02 §P1 | 缺落点 | 正文没讲带 remote 的本地检出想另起独立工作怎么登记。加一句：「已有 remote 的本地检出仍推荐登记为第一种；要用本地平台另起独立工作时，默认另建独立副本并登记为新的本地 Repo，不把原外部 Repo 的身份换绑到本地平台」 | CT-REPO 注册行；S3.P1 |
+| A8 | docs/design/task.md:27 | Project 可连接多个任务源，各有一个 Kanban 入口 | M | N5 04:65–67；spec/task.md:26（仓库绑源、Project 存源引用） | 乙 | 「连接」与第 18 行「仓库绑零到多个」没说清是同一批源。改为：「需要看板时，Project 可选用该 Repo 已绑定的一个或多个任务源，按源进入；只开聊天室也可以」（Codex：正文不解释「源引用」字段，也不把接源写成每个 Project 的前置） | contract-tests.md:62–63；S3.P6 |
+| A9 | docs/design/task.md:40（§无 Run 的轻量路径） | 有权的人在看板预览精确的评审对象与验收证据 | N | N7 04:49；M6 spec/task.md:105–107；spec/project.md:43 | 乙（v2 改判：GLM——规则已在 spec/project.md:43，正文缺的是指针句） | 加一句：「开放 Task 有当前契约的候选交付、没有 Run 占用时，向有权验收的人提示待确认，从 Project『待你处理』进入；具体判定见 Task 约束」（Codex：已完成 Task 与旧契约的交付不重新进待办） | contract-tests.md:77；S3.T9 |
+| A10 | docs/design/repo.md:39 | 第二种是只在本地的仓库：没有任何平台承载它。注册时按持久意图在本地平台建仓 | M | O10 open-questions.md:23–27；02 §P1 | 缺落点 | 正文没讲带 remote 的本地检出想另起独立工作怎么登记。加一句：「已有 remote 的本地检出仍推荐登记为第一种；要用本地平台另起独立工作时，默认另建独立副本并登记为新的本地 Repo，不把原外部 Repo 的身份换绑到本地平台」；输入目录与 remote、原地切换须确认两条分别验 | S3.P2、S3.P3（Codex：S3.P1 只验双 Project）；CT-REPO 注册行 |
 | A11 | docs/design/repo.md:51 | 有权的人从 Project Room 发起写入型 Room Invocation（单次调用） | M | M4 open-questions.md:62；spec/project.md §Room Invocation | 乙（低） | 走查示例可保留，补「Topic Room 同样可以发起，范围按具体调用批准」，免得读成只有主 Room 能发起写入型调用 | 无 |
-| B1 | docs/design/vision.md:9 | 交付物与承诺以 Git 仓库为边界，协作与治理随用户走 | O | O6 04:69、04:181；N1 04:7、04:9 | 丙（改判：走查席判乙；愿景一句话定位由所有者过目）· 族「语义范围」（B1、B2、B3、D1）· 待裁 A1 | 候选：「交付物落在 Git 仓库里；承诺、授权与验收以 Project 为范围——一个 Project 当前关联一个 Repo，同一仓库可以有多个 Project；协作与治理随用户走」 | 无 |
-| B2 | docs/design/vision.md:113 | 按仓库划分语义范围的项目语义控制面（project semantic control plane：控制面归用户级，语义范围以 Repo 为界） | O | O6 spec/task.md:46；N1 04:9；同族 spec/system.md:22 | 丙 · 族「语义范围」· 待裁 A1 | 候选：「随用户走、以 Project 为语义范围的项目语义控制面（控制面归用户级；每个 Project 是独立的工作与授权范围，关联一个 Repo）」 | 无 |
-| B3 | README.md:3 | 它的交付物与承诺以 Git 仓库为边界，协作与治理随用户走 | O | 同 B1 | 丙 · 族「语义范围」· 待裁 A1 | 与愿景一句话定位同改 | 无 |
-| B4 | docs/design/vision.md:169 | 仓库级 Harness 目录与能力探测 | U | U1/U2 04:32；spec/participant.md:20「由 Agency 申报…安装位置与逐主机清单归 Agency，控制面不持有」 | 甲 | 「Agency 申报的 Harness 目录与能力探测」 | 无 |
+| B1 | docs/design/vision.md:9 | 交付物与承诺以 Git 仓库为边界，协作与治理随用户走 | O | O6 04:69、04:181；N1 04:7、04:9 | 乙 · 请核措辞（v2 改判：Codex——落实既有裁决，行为不变；v1 判丙）· 族「语义范围」（B1、B2、B3、D1）· 待裁 A1 | 候选 a（Codex，v2 推荐）：「围绕代码仓库开展工作，每个 Project 分别组织自己的讨论、承诺与验收；协作与治理随用户走」；候选 b（主笔 v1）：「交付物落在 Git 仓库里；承诺、授权与验收以 Project 为范围——一个 Project 当前关联一个 Repo，同一仓库可以有多个 Project；协作与治理随用户走」——b 的「交付物落在 Git」是新的存放断言，不取 | 无 |
+| B2 | docs/design/vision.md:113 | 按仓库划分语义范围的项目语义控制面（project semantic control plane：控制面归用户级，语义范围以 Repo 为界） | O | O6 spec/task.md:46；N1 04:9；同族 spec/system.md:22 | 乙 · 请核措辞 · 族「语义范围」· 待裁 A1 | 候选（Codex）：「控制面随用户走，以 Project 组织各份独立工作；Project 关联 Repo，但同 Repo 不合并承诺与授权」——不从「全以 Repo 为界」摆到「全以 Project 为界」，Repo 注册与共享配置仍有自己的范围 | 无 |
+| B3 | README.md:3 | 它的交付物与承诺以 Git 仓库为边界，协作与治理随用户走 | O | 同 B1 | 乙 · 请核措辞 · 族「语义范围」· 待裁 A1 | 与愿景一句话定位同改（B1 候选 a） | 无 |
+| B4 | docs/design/vision.md:169 | 仓库级 Harness 目录与能力探测 | U | U1/U2 04:32；spec/participant.md:20「由 Agency 申报…安装位置与逐主机清单归 Agency，控制面不持有」 | 甲 | 「发现并选择可用的参与者，清楚知道它们能做什么」（Codex：愿景层不写「Agency 申报」这种机制语言；申报留在 Participant 正文与约束） | 无 |
 | B5 | docs/design/architecture.md:92 | 例如施工图从 Room 的塑形讨论中产生，因此归 Room，而它的批准与版本对象归 Run | M | #261 F1；N6 04:77；02 §T3；M3 spec/run.md:72 | 乙 · 族「施工图来源」 | 「例如施工图可以从 Room 的塑形讨论中结晶，也可以从 Task 上按模板填表而来；结晶归产生它的场景，施工图的版本、批准与 Task 关联归 Run」 | contract-tests.md:89 |
 | B6 | docs/design/architecture.md:86 | 决议、Memo（备忘）、施工图 | M | 同 B5 | 乙 · 族「施工图来源」 | Room 行的 artifact 格改「决议、Memo（备忘）、从讨论结晶的施工图」 | 无 |
-| B7 | docs/design/architecture.md:31 | **四类单元和一个底座。** 单元的判据是两条：能独立安装、启动、停止，与别的单元只靠连接来往 | U | U1/U2 04:32；所有者今日原话；architecture.md:41 只讲了聊天室归属 | 缺落点（K5） | 在控制面条目（:33）末尾加「Project 不是单元：同一控制面的多个 Project 共用它所连的 Agency、内容系统与仓库底座，分开的是归属、名册与授权，不是部署」 | 无 |
-| B8 | docs/design/architecture.md:21 | 打开仓库会连接本次选定或缺省的控制面——本机连接可在必要时拉起本机控制面 | N | N1 04:7、04:9（只知 Control 与 Repo 不足以定工作） | 乙 | 「从本机仓库进入时，先连接本次选定或缺省的控制面，再在其中创建或选定 Project」 | 无 |
+| B7 | docs/design/architecture.md:31 | **四类单元和一个底座。** 单元的判据是两条：能独立安装、启动、停止，与别的单元只靠连接来往 | U | U1/U2 04:32；所有者今日原话；architecture.md:33 已有「同一控制面也可为它开多个独立 Project」 | 缺落点（K5） | 在控制面条目（:33）末尾只补：「Project 不是单元；多个 Project 可以复用所连的 Agency、内容服务与 Git 存储，也可以用不同的已接入服务或工作副本；共享资源不合并归属与授权」（Codex、Grok：04 说的是「可共用」，不写成必选拓扑；:33 已有同 Repo 多 Project 一句，不重复） | S1.V1a、S1.V1b 都要成立 |
+| B8 | docs/design/architecture.md:21 | 打开仓库会连接本次选定或缺省的控制面——本机连接可在必要时拉起本机控制面 | N | N1 04:7、04:9；:21 前一句已写「创建或打开 Project…由人选定」 | 乙 | 保留本机拉起、远程选择与「仓库在哪不决定选哪个控制面」原句，只补「同 Repo 有多个 Project 时仍由人选定」（Codex；v1 的替换句会漏掉自动拉起） | CT-WORKBENCH-IA 自动拉起行 |
 | B9 | docs/design/delivery.md:48 | 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定 | N | N1/N2 04:7、04:28；architecture.md:21「产品从选择仓库、创建或打开 Project 开始」 | 甲 | 「用户进入产品即在某个 Project 之下操作（创建 Project 时选定它关联的 Repo），这是显式设计决定」 | 无 |
 | B10 | docs/design/delivery.md:206 | 暂无。已裁决条目的去向见 | N | open-questions.md:78（三项仍需实现设计）；S3.T3 | 乙 | 列出「持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付——留待实现设计，不改约束，出处接手清单」 | S3.T3 |
 | B11 | docs/design/delivery.md:78 | 或通过已验证的 Vikunja Done 映射请求同一命令 | M | delivery.md:17、:99、:111（B2 看板在平台 issues 上，本地任务服务器之后加绑）；非 #257 引起 | 乙 | 「或通过已验证的任务源原生 Done 映射（B2 时为平台 issues）请求同一命令」 | 切片 A 第 7 步 |
 | B12 | docs/design/delivery.md:99 | Kanban 切片依次完成后端选择、Project 分组映射、Snapshot 导入 | M | #261 F3；M2 spec/task.md:32（映射可选） | 乙 | 「可选的原生分组映射（启用时才建锚点）」 | 无 |
-| B13 | README.md:17 | 它记录所有者最新要求；上面的现行设计基线尚未完成对应的结构调整，不能将两者视为已经一致 | N | open-questions.md:5、:86 | 乙 · 族「状态文字」 | G 批合入时改「设计基线已按体验目录核对，差异与未实施能力见接手清单」；同行「待拍板清单」改「已定事项与接手清单」 | 无 |
+| B13 | README.md:17 | 它记录所有者最新要求；上面的现行设计基线尚未完成对应的结构调整，不能将两者视为已经一致 | N | open-questions.md:5、:86 | 乙 · 族「状态文字」 | 两阶段（Codex）：首批改「#257 已同步直接相关关系，其余由 G 批核对；差异与未实施能力见接手清单」；全部子批合入后再改「已按体验目录核对」；同行「待拍板清单」改「已定事项与接手清单」 | 无 |
 | B14 | README.md:69 | 下一步见[待拍板与接手清单] | N | open-questions.md:1 | 乙 · 族「状态文字」 | 链接文字改「已定事项与接手清单」，锚点保留 | 无 |
-| B15 | docs/design/doc-discipline.md:15 | spec/connections.md 只定义模块交接，spec/system.md 只定义共享机制，delivery.md 只定义范围与验证，证据文档只记录来源。 | N | 04:3、open-questions.md:7「不代替模块约束」、README.md:17 | 丙 B 档（改判：走查席判缺落点；这是文档纪律条文，所有者过目）· 待裁 B5 | 加一条「`docs/user-experience/` 记录所有者确认的体验与原话，是设计变更的需求来源，不定义对象、状态或命令；与约束冲突时走设计变更（决策史记转折、约束 bump、配 CT），不以体验正文覆盖约束」 | 无 |
-| B16 | docs/design/vision.md:83 | 需要澄清、决定或授权时，系统创建 Request（请求卡）并投影回 Project | N | N7 04:28、04:36 | 缺落点 | 「…并投影到 Project 的「待你处理」入口」 | 无 |
+| B15 | docs/design/doc-discipline.md:15 | spec/connections.md 只定义模块交接，spec/system.md 只定义共享机制，delivery.md 只定义范围与验证，证据文档只记录来源。 | N | 04:3、open-questions.md:7「不代替模块约束」、README.md:17 | 乙 · 待裁 B6（v2 改判：Codex——体验目录已声明不定义状态与命令，这是补纪律句，不是行为取舍；v1 判丙 B 档） | 加一条：「`docs/user-experience/` 记录所有者确认的体验与原话，是已确认的需求来源，不定义对象、状态或命令；与约束冲突时修改规范并验收（决策史记转折、约束 bump、配 CT），落地前不把未改的约束冒充已对齐，也不以体验正文覆盖约束」 | 无 |
+| B16 | docs/design/vision.md:83 | 需要澄清、决定或授权时，系统创建 Request（请求卡）并投影回 Project | N | N7 04:28、04:36；S3.R2 他人 Request 反例 | 缺落点 | 「需要用户处理的澄清、决定或授权，从 Project 的「待你处理」进入；其余 Request 仍作进度或阻塞投影」（Codex：不把所有 Request 都计给当前用户） | S3.R2 |
 | B17 | docs/design/delivery.md:16 | 时间线、Composer、Trigger Preview、只读 Project Overview | N | N2/N3/N7 04:7、04:28；delivery.md:24 已要求走通 | 缺落点（与待裁 A3 联动） | P3 格补「Project 入口（主 Room 与待处理面板两入口、Rooms/Kanbans/Runs 并列列表）」；「只读 Project Overview」按待裁 A3 处理 | 无 |
-| C1 | docs/design/spec/project.md:25（对照 :49） | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 | O | O8；spec/project.md:49「拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation」；spec/task.md:18 第三份清单 | 乙 · 族「重复收口」（C1、C5、D4、D7） | :25 改为「已归档拒绝的命令见 §Repo 注册与 Project 归档」，清单只在 :49 写一次；task:18 的归档句改指针 | contract-tests.md:15 |
-| C2 | docs/design/spec/project.md:49（对照 :47） | 恢复命令只恢复 Project 与 Project Room 接收新命令的资格，不复活历史 Task、Run、Invocation、Request、Topic Room、租约或外部副作用。 | O | O8；决策史 §32；:47「它们随 Project 一并转为只读……恢复 Project 后保持原状态」 | 乙 | 两句读法相反（随归档转只读的开放 Task / Request / 未归档 Topic Room，恢复后是否恢复可写）。:49 改「恢复后，随归档转只读的开放 Task、开放 Request 与未归档 Topic Room 恢复接收命令；已终态的 Task、Run、Invocation、Request、租约与外部副作用不复活」 | contract-tests.md:15（补「恢复后开放 Task 仍只读时失败」） |
+| C1 | docs/design/spec/project.md:25（对照 :49） | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 | O | O8；spec/project.md:49「拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation」；spec/task.md:18 第三份清单 | 乙 · 族「重复收口」（C1、C5、D4、D7） | 先把 task:18 的动作清单（拒绝创建、采纳、移动、重开、取消、完成）完整并进 project.md:49 的权威句，再把 :25 与 task:18 改成指针（Codex：三份清单不等价，直接删会让归档后老 Task 读成可改） | contract-tests.md:15 |
+| C2 | docs/design/spec/project.md:49（对照 :47） | 恢复命令只恢复 Project 与 Project Room 接收新命令的资格，不复活历史 Task、Run、Invocation、Request、Topic Room、租约或外部副作用。 | O | O8；决策史 §32；:47「它们随 Project 一并转为只读……恢复 Project 后保持原状态」 | 乙 · 待裁 B11（Grok 认为「恢复后开放对象恢复可写」是行为取舍要所有者点头；Codex、GLM、Muse 认为 :47「保持原状态」已定） | 两句读法相反。:49 改「恢复后，随归档转只读的开放 Task、开放 Request 与未归档 Topic Room 恢复接收命令；已终态的 Task、Run、Invocation、Request、租约与外部副作用不复活；原本已关闭的 Topic 不随 Project 恢复」（Codex 补最后一句） | contract-tests.md:15（补「恢复后开放 Task 仍只读时失败」与「已关闭 Topic 随恢复复活时失败」） |
 | C3 | docs/design/spec/project.md:27（对照 :62、:183） | control 只处理治理事件（来源关联、调用与 Request 关联）和 Topic Room 的「创建/归档」命令 | O | O4；04:93；:62「人可以关闭 Topic Room」；CT:13 用「关闭」 | 乙 · 待裁 B7（命令叫「归档」、规则与 CT 叫「关闭」；若所有者认为关闭与归档是两态则升 A 档） | 命令统一为「创建/关闭 Topic Room」，:62 写「人可以关闭 Topic Room（关闭即该 Room 已归档；随 Project 归档则转只读）」 | contract-tests.md:13 |
 | C4 | docs/design/spec/project.md:43 | Project Overview 是按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是独立场景或可写状态。 | N | N2/N3；04:28「子列表仍只有 Rooms、Kanbans、Runs」；04:110–112；CT:263 | 丙 · 待裁 A3 | Overview 在确认的导航里没有入口（Project 行只有主 Room 与「待你处理」），是旧「第四类导航」的残留：删、并入主 Room 的只读摘要、或保留为可选投影，所有者定 | contract-tests.md:263 |
 | C5 | docs/design/spec/task.md:18、:57、:59、:87 | :57「control 只追加 Snapshot：不改 Task 的 Project」；:59「系统不改变 Task 的 Project 归属，也不把不可变 `project_id` 改成新分组」（另 :18 身份句、:87 无命令句） | O | O2；spec/project.md:41 | 乙 · 族「重复收口」 | 同一规则同文四写。保留 :18（身份）与 :87（无命令）；:57 只留「只追加 Snapshot，不冻结采纳、启动、完成或字段写入」；:59 删首句，只留「移动 Task 只改阶段与排序；跨源的相对移动拒绝；换家不做」 | contract-tests.md:62、:63 |
-| C6 | docs/design/spec/README.md:81；docs/design/spec/task.md:123 | README:81「结晶归属与对象归属分开，先例是施工图：它从 Room 讨论中结晶、归 Room 场景，对象与写入者归 Run」；task:123「施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景」 | M | #261 F1；02 §T3；spec/run.md:70「显式标记的直接文本」、:72 从 Task 登记 | 乙 · 族「施工图来源」 | 约束层版本的 F1，两处重复。README:81 改「先例是施工图：从 Room 讨论结晶时归 Room 场景，从模板与直接文本登记时没有 Room 结晶；对象与写入者一律归 Run」；task:123 删该句只留指针 | 无 |
+| C6 | docs/design/spec/README.md:81；docs/design/spec/task.md:123 | README:81「结晶归属与对象归属分开，先例是施工图：它从 Room 讨论中结晶、归 Room 场景，对象与写入者归 Run」；task:123「施工图（Workflow Revision）从 Room 讨论中结晶、归 Room 场景」 | M | #261 F1；02 §T3；spec/run.md:70「显式标记的直接文本」、:72 从 Task 登记 | 乙 · 族「施工图来源」 | README:81 改「先例是施工图：由 Room 讨论形成时，其讨论结晶归 Room；模板等其他来源不要求先有 Room 讨论；版本和批准归 Run。按实际来源判断，不按登记形式推断」（Codex：直接文本也可能来自 Room 消息，v1 的「模板与直接文本没有 Room 结晶」不成立）；task:123 删该句只留指针 | 无 |
 | C7 | docs/design/spec/run.md:64 | Verdict、Gate Receipt 与凭证链是 Workflow 场景的结晶（“干成了的证明”）：权威在控制面存储，结晶副本按[系统存储约束]写入 Git。 | M | #261 F2；spec/README.md:79「治理正文与审计副本在控制面材料存储」 | 乙 · 族「哪份 Git」 | 没说是材料库的 Git 还是代码仓库。改「权威在治理记录，审计副本在治理材料；公开范围不随代码仓库隐私推定」 | 无 |
-| C8 | docs/design/spec/run.md:70 | 产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照 | M | #261 F1；02 §T3（模板路径也要独立读回）；CT:89 | 丙 B 档（改判：走查席判乙；补的是新条件句，所有者过目）· 族「施工图来源」· 待裁 B6 | 从 Task 模板或直接文本登记的施工图没有「来源 Room」，本行四处「来源 Room」条件无所指。加一句「登记时没有来源 Room（模板或直接文本）时，与来源 Room 有关的三项按满足处理；读回仍须是不进本 Project 任一名册的新调用，或另一 Room 的规划者」 | contract-tests.md:89、:115 |
-| C9 | docs/design/spec/task.md:133 | “后端离线”本身不放宽 Project group、drift 或 CAS 前置 | M | M2；spec/task.md:32 | 乙 | 未定义词「Project group」，改「原生分组映射」 | 无 |
+| C8 | docs/design/spec/run.md:70 | 产出调用的 Context Bundle 条目只含施工图与清单快照，不含来源 Room 的任何消息条目；产出者的选入记录不属于来源 Room 在批准时刻的名册快照 | M | #261 F1；02 §T3（模板路径也要独立读回）；CT:89 | 丙 · 待裁 A5（v2 升 A 档：GLM、Codex——这是新的读回例外，不能 B 档默认过）· 族「施工图来源」 | 从 Task 模板或直接文本登记的施工图可能没有「来源 Room」，本行四处「来源 Room」条件无所指。候选窄例外（Codex）：「按实际来源判断；确无来源 Room 时，只有该 Room 名册回避项记不适用；从零调用、只交付图与清单、无任何 Room 消息读取权限仍检查；产出配置回避仍按现有显式声明及缺失 / 未知规则判断」——不写「三项按满足」，也不另加「不进本 Project 任一名册」；配无 Room 正例与「直接文本仍来自 Room」反例；Codex-5 两处随之联动 | contract-tests.md:89、:115 |
+| C9 | docs/design/spec/task.md:133 | “后端离线”本身不放宽 Project group、drift 或 CAS 前置 | M | M2；spec/task.md:32 | 乙 | 未定义词「Project group」。改「后端离线本身不放宽该动作适用的当前回读、契约分歧或版本比较前置」；是否需要分组只按自动认领条件判（Codex：直接换成「原生分组映射前置」会与「认领后脱离分组不冻结」冲突） | 无 |
 | C10 | docs/design/spec/task.md:26 | 注册仓库或首次启用看板时，人从候选列表显式选定仓库级**缺省任务源** | N | N5；02 §P2（接入 Kanbans / Source）；CT:61「接入源」 | 乙 | 术语三套（约束「启用看板」、体验「接入 Source」、CT「接入源」）；「首次」指仓库第一次还是每个 Project 第一次未写清。统一为「Project 接入任务源」；缺省源句改「注册仓库时，或该仓库第一个 Project 接入任务源时」 | contract-tests.md:61 |
-| C11 | docs/design/spec/task.md:28（另 :30、:34） | 可选的**合并板**只汇总这些来源，不替代按源入口，不是对象或权威表 | N | N5；04:71；open-questions.md:66「汇总投影是否提供另行设计」 | 乙（低） | 约束层给体验层「另行设计」的东西定了名；名字不一致（合并板 vs 汇总显示 / 汇总投影）。三处改条件句「若提供跨源汇总投影……」并改口「汇总投影」 | contract-tests.md:63 |
-| D1 | docs/design/spec/system.md:22 | 它对每个 Repo 保持独立的语义范围，而不是在每个仓库副本各起一套控制面；多个控制面对同一仓库各有一份语义范围，互不归并。 | U | N1、U1；04:7、04:9；spec/project.md:37 | 乙 · 族「语义范围」（约束句可先改；愿景句见待裁 A1） | 「它对每个登记的 Repo 及其上的每个 Project 各保持独立的语义范围（同 Repo 的多个 Project 不归并），而不是在每个仓库副本各起一套控制面；多个控制面对同一仓库各有自己的范围，互不归并。」 | contract-tests.md:242、:264 |
-| D2 | docs/design/spec/connections.md:16 | 引用还必须携带所属 Repo/Project、生产者和适用绑定版本。 | O | O2、N1；04:9；connections.md:216 | 乙 | 「引用还必须携带所属 Project（Repo 模块对象携带所属 Repo；Repo 由 Project 的关联确定，同 Repo 不能替代 Project）、生产者和适用绑定版本。」 | contract-tests.md:264 |
+| C11 | docs/design/spec/task.md:28（另 :30、:34；术语表 :60；CT:63） | 可选的**合并板**只汇总这些来源，不替代按源入口，不是对象或权威表 | N | N5；04:71；open-questions.md:66「汇总投影是否提供另行设计」 | 乙（低） | 约束层给体验层「另行设计」的东西定了名；名字不一致（合并板 vs 汇总显示 / 汇总投影）。三处改条件句「若提供跨源汇总投影……」并改口「汇总投影」；统一名称时术语表 :60 与 CT:63 一并改，不留两个像是不同的概念（Codex） | contract-tests.md:63；glossary.md:60 |
+| D1 | docs/design/spec/system.md:22 | 它对每个 Repo 保持独立的语义范围，而不是在每个仓库副本各起一套控制面；多个控制面对同一仓库各有一份语义范围，互不归并。 | U | N1、U1；04:7、04:9；spec/project.md:37 | 甲（v2 改判：Grok——同仓多 Project 之后这是旧句，不是含混）· 族「语义范围」（约束句先改；愿景句见待裁 A1） | 「控制面管理自己登记的 Repo 及各 Project；同 Repo 的 Project 各自保存工作和授权，Repo 级代码与平台事实仍按 Repo 管理；不按工作副本另起控制面」（Codex：不写「Repo 及 Project 各有独立语义范围」继续含混；本控制面同目标意图互斥与单写者不因此拆成每 Project 一份） | contract-tests.md:242、:264 |
+| D2 | docs/design/spec/connections.md:16 | 引用还必须携带所属 Repo/Project、生产者和适用绑定版本。 | O | O2、N1；04:9；connections.md:216 | 乙 | 「引用保留对象既有作用域；Project 内的工作显式携带该 Project，涉及 Repo 时核其与 Project 的关系；共享定义与绑定（Worker Profile、工种、Skill、端口绑定）按原作用域引用；生产者、精确版本与适用绑定仍必需」（Codex：不能令所有共享对象虚构 Project 归属，也不能省掉生产者与授权归属） | contract-tests.md:264 |
 | D3 | docs/design/spec/connections.md:75（拒绝条件在 :79） | Project 是必需且活跃的授权来源，Task Revision 是 0..1 个可选绑定； | O | O5；spec/run.md:74；04:98 | 缺落点 | 连接权威没写同 Project 条件：:75 加「所绑定的 Task 必须属于同一 Project」，:79 拒绝清单加「Task 的 Project 与本次 Project 不一致」 | contract-tests.md:89 已有失败例 |
-| D4 | docs/design/spec/connections.md:50（同句另见 spec/repo.md:47、spec/project.md:37、:150；权威 :39；CT:10） | 主 Room 随独立的创建 Project 命令建立，不随 Repo 注册建立；不写代码树身份、不挂接工作副本 | N | N2 | 乙 · 族「重复收口」 | 「注册不另建仓库级 Room」在约束层写了五遍：保留 project.md:39 与 CT:10 为权威，connections:50 该分句删，repo.md:47、project.md:37、:150 改成一句指针或删 | contract-tests.md:10 |
+| D4 | docs/design/spec/connections.md:50（同句另见 spec/repo.md:47、spec/project.md:37、:150；权威 :39；CT:10） | 主 Room 随独立的创建 Project 命令建立，不随 Repo 注册建立；不写代码树身份、不挂接工作副本 | N | N2 | 乙 · 族「重复收口」 | 「注册不另建仓库级 Room」在约束层写了五遍：权威留 project.md:39，其余改指针或删；只删重复的「主 Room 建立」断言，保留「不写代码树身份、不挂接工作副本」、待确认 Repo 限制与「纯研究仍归精确 Project」各自的规则；CT 是验收不是第二权威（Codex） | contract-tests.md:10 |
 | D5 | docs/design/spec/repo.md:120（同写法 spec/project.md:144；正文 repo.md:54、:61、task.md:47、delivery.md:82 只说「仓库」；CT:40、:286） | 策略中的「须人显式确认」开关随本次授权冻结，仓库或 Project 之后改默认值不影响已接受的调用。 | M | M1、U2；04:112；spec/project.md:51 | 丙 · 待裁 A2 | 两层说法不一致；同 Repo 多 Project 后须定谁持有缺省。场景：mac_jssdk_01 要求人再确认、mac_jssdk_02 不要求，两者同用 gh-jssdk | contract-tests.md:40、:286 |
-| D6 | docs/design/spec/repo.md:155 | 本控制面的契约若事先声明接受他人或其他控制面完成的精确平台集成事实，Repo 模块回读并核验平台目标、源版本、实际合入结果和证据，作为既有 Evidence 交给 Task； | O | O6；spec/task.md:61「另一 Project 或另一控制面」；04:69 | 乙 | 「接受他人、本控制面另一 Project 或其他控制面完成的精确平台集成事实」。场景：同卡两 Project，_01 的 Run 已合入，_02 的契约要求远端 ref 已合入 | contract-tests.md:65 |
+| D6 | docs/design/spec/repo.md:155 | 本控制面的契约若事先声明接受他人或其他控制面完成的精确平台集成事实，Repo 模块回读并核验平台目标、源版本、实际合入结果和证据，作为既有 Evidence 交给 Task； | O | O6；spec/task.md:61「另一 Project 或另一控制面」；04:69 | 乙 | 「接受他人、本控制面另一 Project 或其他控制面完成的精确平台集成事实」；仍是本 Task 依事先契约独立验收，不共用完成凭证。场景：同卡两 Project，_01 的 Run 已合入，_02 的契约要求远端 ref 已合入 | contract-tests.md:75「事先声明接受精确平台集成证据且 Repo 回读核验版本、目标与结果匹配时，该机械项通过」；S1.I5（Codex：v1 引的 :65 测的是写回事件来源，不验合入证据） |
 | D7 | docs/design/spec/participant.md:82 | 为每个配对的控制面提供一个隔离租户，并对租户内的每次派工负责： | U | U3；system.md:270「本节是全库安全文本的唯一落点…别处只引用」 | 乙（低）· 族「重复收口」 | 加指针：「（定义见安全策略面「租户隔离」行）」 | contract-tests.md:136、:212 |
 | D8 | docs/design/spec/connections.md:216 | 主 Room、Topic Rooms、按源看板、Runs 与[待处理投影]均以该 Project 为查询范围 | N | N7；spec/project.md:43 定义「待你处理」却挂在「Repo 注册与 Project 归档」节下 | 乙（结构） | project.md 给「待你处理」投影单独加锚点或小节，本行链接改指它 | contract-tests.md:21、:265 |
-| D9 | docs/design/spec/connections.md:12 | 同一控制面的跨 Project 或模块命令不得拆成工作副本的本地事务再拼接。 | O | O2；spec/task.md:87；删源卡是 content 动作（task.md:77） | 乙（低） | 现无跨 Project 命令：改「同一控制面的跨模块命令」；若指删源卡预览列多 Project 的 Task，另写清 | 无 |
+| D9 | docs/design/spec/connections.md:12 | 同一控制面的跨 Project 或模块命令不得拆成工作副本的本地事务再拼接。 | O | O2、O9；spec/task.md:77 删源卡预览列本控制面全部绑定 | 乙（低） | 改「同一控制面内一次合法连接命令的领域结果、来源关联与必要 outbox 同事务提交，不按工作副本拆开」（Codex、Grok：删源卡预览就是跨 Project 的 content 动作，v1 的「现无跨 Project 命令」不成立；新句也不暗授跨 Project 写权） | 无 |
 | E1 | docs/design/contract-tests.md:11 | Project 分组与 Room anchor 可重建 | M | #261 F3；M2；CT:38 已覆盖 Room 换绑重建、CT:67 已覆盖 Task 锚点重建 | 乙 | 删；不再留一条判不了失败的概括 | contract-tests.md:11、:38、:67 |
-| E2 | docs/design/contract-tests.md:68 | Project 分组映射（父任务/milestone/标签降级）有测试 | M | #261 F3；M2；与 CT:67 同题且无失败输入 | 乙 | 并入 :67 末尾：「父任务、milestone、标签任一种原生分组不可用时该源只走人的显式认领，系统替它伪造分组或降级成别的锚点仍自动认领时失败」，删本行 | contract-tests.md:67–68 |
-| E3 | docs/design/contract-tests.md:67 | 或跨源归组去读外源分组时失败 | O | M2（spec/task.md:34 现句「不去外源补建分组」；「跨源归组」一词已不在约束层） | 乙 | 改为「或拿外源分组决定 Task 的 Project 归属时失败」 | contract-tests.md:67 |
+| E2 | docs/design/contract-tests.md:68 | Project 分组映射（父任务/milestone/标签降级）有测试 | M | #261 F3；M2；与 CT:67 同题且无失败输入；spec/task.md:32 允许父实体、milestone 或获准标签中任一稳定映射 | 乙 | 并入 :67 时写「所选获准映射不能稳定、无歧义回读时仍自动认领则失败；缺其他分组类型、不影响当前映射时应通过；无能力伪造锚点失败」，删本行（Codex 推翻 v1 写法：只有稳定获准标签也能自动认领，v1 的失败条件比约束强，等于新增限制） | contract-tests.md:67–68 |
+| E3 | docs/design/contract-tests.md:67 | 或跨源归组去读外源分组时失败 | O | M2（spec/task.md:34 现句「不去外源补建分组」；「跨源归组」一词已不在约束层） | 乙 | 改「Task 已认领后，因源内分组变化改写它的 Project 归属，或为此向外源补建分组时失败」，并保留有获准无歧义映射的首次自动认领正例（Codex：v1 的「拿外源分组决定 Task 的 Project」会把合法的首次自动认领也拒掉） | contract-tests.md:67 |
 | E4 | docs/design/contract-tests.md:263 | 单 Project Overview 与全局「需要关注」都是可重建的只读导航投影，不产生新场景或写状态 | N | N7；约束层无「全局需要关注」投影的定义（spec 全文无「全局」）；需要关注是逐对象标记 | 丙 · 待裁 A3（与 C4 同题） | 若删 Overview：改「「待你处理」是可重建的只读导航投影；「需要关注」是对象上的标记，不另成一份待办」；若保留则在约束层补定义 | contract-tests.md:263；spec/project.md:43 |
-| E5 | docs/design/references/glossary.md:14（核心产品词表） | 表内无「前情提要」「待你处理」「Source」「候选交付」条目；Topic Room 只在别的词条里带过 | N | N2/N4/N5/N7；M6；open-questions.md:69 只写了保留旧词 | 缺落点 · 待裁 B9 | 补五行：Topic Room、前情提要、待你处理、Source（任务源入口）、候选交付，各指向权威节 | 无 |
-| E6 | docs/design/references/glossary.md:26 | 持久的多参与者协作空间，分 Project Room（主 Room）与 Topic Room；也是 Project 模块的场景名 | N | N2 04:7；spec/project.md:39 三个名字并用 | 乙 | 加半句「（所有者与用户流程说的『主 Repo Room』指同一间，不是另一种 Room）」，让三个名字在词汇表有一处收口 | 无 |
-| E7 | docs/design/scenarios/S1-multi-unit.md:66、:68 | 「01 §五 推论；所有者把「两控制面同改一张卡」归多写通则（原 S1.I12）」；:68「01 §五（Kimi）」 | O | 01 各节无编号 | 乙 | 改为可解析的节名与链接（「必然发生的情形」「两种布局都要覆盖」） | S1.X2、S1.X4 |
-| E8 | docs/design/scenarios/S3-user-journey.md:43 | CT-PARTICIPANT 的票据与输入用例、CT-WORKBENCH-IA「Run 导航隐藏等待或暂停中的活动 Run」 | N | contract-tests.md:292 要求引用描述文本 | 乙 | 改为逐字描述文本（CT:144、:137） | contract-tests.md:144、:137 |
+| E5 | docs/design/references/glossary.md:14（核心产品词表） | 表内无「前情提要」「待你处理」「候选交付」条目；Topic Room 只在别的词条里带过；「任务源」条目无英文对照 | N | N2/N4/N5/N7；M6；open-questions.md:69 只写了保留旧词 | 缺落点 · 待裁 B9 | 补：Topic Room、前情提要、待你处理各一行（简释加权威指针）；「候选交付」写成「满足条件的既有 ChangeSet / Artifact 版本，不是新对象或 Task 状态」；Source 不新造词条——「任务源」现有条目补英文对照与「实际来源及范围」，Kanban 入口是它在 Project 里的呈现（Codex） | 无（词汇表非规范） |
+| E6 | docs/design/references/glossary.md:26 | 持久的多参与者协作空间，分 Project Room（主 Room）与 Topic Room；也是 Project 模块的场景名 | N | N2 04:7；spec/project.md:39 三个名字并用 | 乙 | 别称挂在 Project Room 上，不挂泛称 Room：「Project Room（主 Room；所有者与用户流程说的『主 Repo Room』指同一间，不是另一种 Room）」（Codex） | 无 |
+| E7 | docs/design/scenarios/S1-multi-unit.md:66、:68 | 「01 §五 推论；所有者把「两控制面同改一张卡」归多写通则（原 S1.I12）」；:68「01 §五（Kimi）」 | O | 「01 §五」指案例研究 `.memo/design/case-study-20260907/01-unit-model.md` §五「看板：多源（v3）」，不是体验 01（Codex；主笔核该节存在） | 乙 | 改成这份历史材料的准确链接，并指向现行 `spec/task.md` §契约与来源、§写入约束 的处置；保持「用例外」，不改成「必然发生」 | S1.X2、S1.X4 |
+| E8 | docs/design/scenarios/S3-user-journey.md:43 | CT-PARTICIPANT 的票据与输入用例、CT-WORKBENCH-IA「Run 导航隐藏等待或暂停中的活动 Run」 | N | contract-tests.md:292 要求引用描述文本 | 乙 | 分别引用逐字描述文本：票据行（contract-tests.md:144「control 签发连接票据、Agency 校验，观察、输入、Attempt 控制与安全输入权限分离」）与受管输入行（:137「`native_interactive_allowed` 下经 Agency 的原生客户端输入是有效运行时输入」），保留 CT-WORKBENCH-IA 的 Run 导航反例（Codex） | contract-tests.md:144、:137 |
 | E9 | docs/design/contract-tests.md:13（对照 :88、:101） | 关闭 Topic Room 后关联 Request 被解决、Task 被取消、Run 被停止或其待处理入口消失时失败 | O | O4 04:93；O5 04:94 | 缺落点 | CT-RUN 补一行：「Room 或 Task 引用 Run 不改其 Manifest、任务书或授权；Run 因被第二个 Task 引用而对该 Task 签完成、或引用方关闭 / 取消时 Run 被停止、Manifest 被改写时失败」 | contract-tests.md:13、:88、:101 |
-| E10 | docs/design/contract-tests.md:16（同型 :23、:50、:52、:130、:148、:149、:226、:230、:231、:236、:245、:282） | CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结 | M | contract-tests.md:6「失败用例」；早于本批 | 丙 · 待裁 A4（范围） | 十二行只写题目不写失败输入：本批补、另立小批、或文首标占位，所有者定 | 上列各行 |
+| E10 | docs/design/contract-tests.md:16 等 13 行（:16、:23、:50、:52、:130、:148、:149、:226、:230、:231、:236、:245、:282） | CJK 输入、结构化引用、草稿/游标/未读、并发流隔离；时间线顺序以 chat server 给出的为准，治理引用只按事件 ID 冻结 | M | contract-tests.md:6「失败用例」；早于本批 | 丙 · 待裁 A4（范围） | 主笔逐行分两组（Codex）：只有题目、没有失败输入——:16、:23、:50、:130、:149、:226、:230、:231、:236、:245 十行；已可判失败——:52（过期邻项移动重算）、:148（attach 不能恢复 Run/Invocation 语义）、:282（正常成功保持安静）三行留在验收里不动。十行的处置见待裁 A4；本批新改的约束照配失败例，不借「另批」搁置 | 上列各行 |
 | E11 | docs/design/contract-tests.md:22（对照 spec/project.md:43、S3:41） | 存在待本人采纳的契约 Snapshot 的 Task | N | N7 | 乙 | CT 与 S3 用同一词「存在待本人采纳的契约变化的 Task」 | contract-tests.md:22；S3.R2 |
 | F1 | docs/user-experience/README.md:74 | 仍待复审、合入以及产品实现和行为测试 | 状态 | #261 F4；#257 已合 7a4fd40 | 乙 · 族「状态文字」（F1–F8、B10、B13、B14） | 「…（#257，v0.18.7 已合入）；产品实现和行为测试仍待分别验证」 | 无 |
 | F2 | docs/user-experience/open-questions.md:86 | 尚未完成：本 PR 复审与合入、产品实现和真实行为验收。下一步审核体验、约束、场景与 CT 是否一致，不再等待重拍 Q1–Q3 或 C1/C2 | 状态 | #261 F4 | 乙 · 族「状态文字」 | 「尚未完成：产品实现和真实行为验收。一致性核对由 G 批承接（#262），不再等待重拍 Q1–Q3 或 C1/C2」 | 无 |
@@ -164,18 +165,27 @@ Unit（U）：
 | F5 | docs/user-experience/03-terminology-confession.md:36 | 读 v0.18.6 的设计对象时逐项核对：同 Repo 可有多个 Project 仍成立；把 Project 主 Room、Topic Room 与额外的仓库级 Room 混在一起的地方需要改。 | N | 决策史 §38（基线已到 v0.18.7） | 乙 | 「v0.18.7 已按此同步设计对象；读更早版本时逐项核对……残留由 G 批处理」 | 无 |
 | F6 | docs/user-experience/README.md:39 | 提到既有模型时标明“v0.18.6 的设计对象”，逐项核对与当前体验的异同 | N | 同 F5 | 乙 | 「提到设计对象时以当前基线（v0.18.7）为准；追溯更早版本时标明版本号并逐项核对异同」 | 无 |
 | F7 | docs/user-experience/README.md:5、:31；01-multi-unit.md:106；03-terminology-confession.md:47；open-questions.md:19、:27、:35、:53、:55、:78、:85 | 以下是本 PR 已同步的文档落点，不是新的待拍板问题。（open-questions:53；其余各行同用「本 PR」，共 14 处） | 状态 | #257 已合入，从 main 进入时「本 PR」无所指 | 乙 · 族「状态文字」 | 「本 PR」一律改「#257」 | 无 |
-| F8 | docs/user-experience/open-questions.md:80 | F 批应由其作者和所有者据此前提决定关闭或改题，不再重开已定归属与唯一范围。本轮不修改或关闭那份 PR。 | O | 所有者 09-19「归档」；#246 已改为归档 PR | 乙 · 族「状态文字」 | 「F 批已由作者与所有者于 2026-09-19 决定归档：#246 改为方案备忘的归档 PR，前提被 v0.18.7 取代」（依赖 #246 合入） | 无 |
+| F8 | docs/user-experience/open-questions.md:80 | F 批应由其作者和所有者据此前提决定关闭或改题，不再重开已定归属与唯一范围。本轮不修改或关闭那份 PR。 | O | 所有者 09-19「归档」；#246 已于 09-19 合入 `fc2aad8`（晚于本批基线 `459cda6`） | 乙 · 族「状态文字」 | 「F 批已由作者与所有者于 2026-09-19 决定归档：#246 改为方案备忘的归档 PR 并合入，前提被 v0.18.7 取代」 | 无 |
 | F9 | src/agency/README.md:17 | 产出只有四种建议（创建 Request、开 Scoped Room、雾毕业为 Task、更新 Project 范围） | N | N3 04:61；技能正文 hctl2-shaping/SKILL.md:35 已写「建议开 Topic Room」 | 甲 | 「开 Topic Room」 | 无 |
-| F10 | src/agency/skills/hctl2-shaping/SKILL.md:3 | 在 Project Room 里把一个还说不清的目标审问成可拍板的决定、可指派的问题和可承诺的 Task。 | M | M4 open-questions.md:62；04:57 | 乙 · 族「施工图来源」 | 「在 Project Room 或 Topic Room 里把…」 | 无 |
-| F11 | src/agency/README.md:3 | 参与者身份、授权、租约、代次和结果验收都不在这里，它们在 control 账本。 | U | CONSTRAINTS「禁用账本」；机械检查扫的是文档树 `repo//:docs_tree`，`src/` 下的 .md 不在其中 | 乙 · 族「账本残留」（F11、F12、F13、G1） | 「它们在控制面存储（治理记录）」；落点另加：dead-names 扫描范围扩到 `src/` 下的 .md（待裁 B8） | 无 |
+| F10 | src/agency/skills/hctl2-shaping/SKILL.md:3 | 在 Project Room 里把一个还说不清的目标审问成可拍板的决定、可指派的问题和可承诺的 Task。 | M | M4 open-questions.md:62；04:57 | 乙（Grok：这是塑形场所，不并入「施工图来源」族，动手时不与 A2 绑成一次语义改写） | 「在 Project Room 或 Topic Room 里把…」 | 无 |
+| F11 | src/agency/README.md:3 | 参与者身份、授权、租约、代次和结果验收都不在这里，它们在 control 账本。 | U | CONSTRAINTS「禁用账本」；根 `BUCK` 的 `docs_tree` 不含 `src/**`，死名检查沿用该树 | 乙 · 族「账本残留」（F11、F12、F13、G1） | 「它们在控制面存储（治理记录）」；扫描扩围另列落点：让第一方 Markdown 经 Buck2 原生输入进检查、保护历史豁免与检查器夹具，先 dry-run 看命中量再定（Codex、GLM；待裁 B8）；本文件另有代理边界旧句见 Codex-2 | 无 |
 | F12 | src/agency/skills/hctl2-design-review/SKILL.md:50 | 这条「必须」由什么强制：账本机制、适配器回读、还是只有文字？ | M | 同 F11 | 乙 · 族「账本残留」 | 「控制面机制（比较并交换、租约、代次、归约）、适配器回读，还是只有文字？」 | 无 |
 | F13 | src/agency/skills/hctl2-shaping/SKILL.md:53 | 「一切产出只是建议，门在账本」「不写执行许可」是 HCTL2 的绑定 | M | 同 F11；引号内是本仓库措辞，不是外部引文 | 乙 · 族「账本残留」 | 「一切产出只是建议，门在控制面」 | 无 |
 | F14 | docs/user-experience/02-user-journey.md:16 | 也提供断开原 remote、用 Gitea 另起一份独立工作的选项。 | M | O10 open-questions.md:23–25（默认另建副本、保留原目录及其 remote） | 乙 | 「也提供不接原 remote、用 Gitea 另起一份独立工作的选项（默认另建独立副本，见下段）。」 | 无 |
 | F15 | docs/user-experience/open-questions.md:66 | 汇总投影是否提供另行设计，本轮既不要求保留强制合并板，也不禁止可选汇总 | N | N5 04:71；spec/task.md:28 已定义可选合并板口径 | 乙（与 C11 同题） | 「可选汇总投影沿用 spec/task.md §契约与来源 的口径（只汇总、不替代按源入口、不是权威）；本轮不要求实现强制合并板」 | 无 |
 | F16 | src/agency/skills/hctl2-design-review/SKILL.md:117 | 把评审共识当裁决、把 04 旧稿当用例事实 | 术语 | 「04」现有两份：案例研究 04 验证器旧稿与体验目录 04 | 乙 | 「把案例研究 04（验证器）旧稿当用例事实」 | 无 |
 | G1 | src/README.md:7 | 不产生账本或 Receipt | U | 同 F11 | 乙 · 族「账本残留」 | 「不产生治理记录或 Receipt」 | 无 |
+| Codex-1 | docs/design/spec/system.md:259（对照 :184；spec/participant.md:29） | 所引用的精确用户级 Profile/Skill 定义与公开冻结配置的字节与摘要 | U/M | spec/participant.md:29「Skill 的内容不归 HCTL 存放：由 Agency 安装并申报」；:184 只存 revision/digest 引用；:259 后半句又排除「Agency 内部的运行与安装定义」（主笔核） | 甲（两条约束句冲突；B 批已定分责） | 分开写：备份控制面自己的 Profile 定义、已冻结的 Skill 引用 / 摘要 / 可核验性、自己承诺可取的精确治理材料与交付字节；不因引用 Skill 就要求控制面保管 Agency 的安装定义；已进入承诺保存范围的 Bundle 原文仍保留 | CT-SYSTEM 一致备份：仅缺 Agency 安装包不判备份不完整；缺控制面承诺保存的 Bundle 字节仍失败 |
+| Codex-2 | src/agency/README.md:3、:11 | 按冻结的执行规格交付执行体端点；落在 `hctl2-control` 的 Herdr 适配代码旁 | U/M | B 批（#228 裁决，决策史 §37）：Agency 是唯一通路，控制面只经公开端口派工、取得派工引用；spec/participant.md §派工与观测 | 甲（代理边界旧句） | 改「经 Agency 公开端口接受冻结规格并返回派工引用」；控制面侧适配的是 Agency 的公开端口，运行时适配在 Agency 内部；保留「待建」状态，不借改 README 宣称代码已实现 | CT-CONNECTION「Execution Spec 不携内部端点」；CT-PARTICIPANT 代理与故障恢复行 |
+| Codex-3 | docs/design/run.md:40 | 执行体崩了，同一把椅子开新一次尝试。它是对象：崩了从这里重来，是恢复边界。 | U/M | contract-tests.md:135「控制面凭内部进程故障直接切换 Attempt 时失败，切换只在 Agency 报无法履约后按冻结规则」；S1.N8 | 甲（正文仍把内部故障当控制面换 Attempt 的条件） | 改「Attempt 是席位上的一次获准执行；Agency 能在原规格内恢复时不另开 Attempt，报告无法履约后，Run 才按冻结规则决定是否重试」；恢复细则指向 Participant 约束，联系不上不直接写成失败 | 复用 contract-tests.md:135 与 S1.N8，不新增 CT 族 |
+| Codex-4 | docs/design/contract-tests.md:169 | 开关打开的仓库改为待处理、由人预览后提交 | O/M | 待裁 A2（D5）；spec/project.md:144 Execution Spec 冻结发布策略 | 缺落点（随 A2 联动） | 若缺省归 Project：本行按该 Project 及本次已冻结策略判，不再按 Repo 开关判 | 同 Repo 的 P1 开确认、P2 不开：各自新调用采用各自策略；改缺省不回写旧调用；把 P1 的开关套给 P2 或改活动 Execution Spec 均失败 |
+| Codex-5 | docs/design/run.md:73；src/agency/skills/hctl2-shaping/SKILL.md:57 | 批准前找一个不在这个 Room 名册里的规划者；控制面找一个不在这个 Room 名册里的规划者 | M | 待裁 A5（C8）；S3.T8 | 缺落点（随 A5 联动）· 族「施工图来源」 | 若保留讨论路径的限定，写明只说有来源 Room 的情形并链接统一读回条件；没有来源 Room 时仍核从零调用、输入范围、消息权限与产出配置回避，不凭「直接文本」免检 | CT-RUN 读回行；S3.T8 |
+| Grok-1 | docs/design/spec/task.md:32 | 两套分组并存：源内分组是后端的父实体、milestone、标签或过滤视图；本控制面中 Task 到 Project 的固定归属是另一件事。 | O | O6；spec/task.md:46 唯一范围已是 Project 内 | 乙 | 「本控制面中」易读成唯一范围仍在控制面。改「控制面记录的 Task 到 Project 固定归属是另一件事（实体到 Task 的唯一范围是 Project 内，见本节后文）」 | contract-tests.md:64；S3.P5 |
+| Grok-2 | docs/design/architecture.md:98 | Project 关联一个 Repo，同一 Repo 可以对应多个 Project；各 Project 有自己的主 Room、Topic Rooms、任务源入口与 Runs。…Task 的卡留在原任务源 | O | O6、U2；04:69；S3.P5 | 缺落点 | 段后补「同一外部卡可被多个 Project 各自认领为 Task；共用源卡不等于共用契约、Run、授权或验收」——04 已裁、架构层未落的那句 | contract-tests.md:64–66；S3.P5 / P7 / T7 |
+| GLM-2 | docs/design/run.md（§一次评审合入走一遍）、docs/design/task.md §关键规则 | （无——04:92「Task 不从属于讨论它的某间 Room」与 04:94「引用不等于承担完成该 Task 的责任」只在约束层有：spec/project.md:41、spec/run.md:74） | O | O4、O5 | 缺落点（镜像型：约束有、正文没向用户解释；GLM-1 并入此行） | 正文加一句用户可读的话：「Run 完成只说明它自己的完成条件成立；别的 Task 引用了这次 Run，不等于那个 Task 也完成了，各 Task 的验收各自独立；Task 也不从属于讨论它的某间 Room」 | 无（约束已有；CT 由 E9 补） |
+| GLM-4 | docs/design/spec/connections.md:69–71（§Project → Task：从讨论到承诺） | Task 模块先以比较并交换校验 Project 和可选当前 Task Revision | O | O2、O5；connections.md:216「从本 Project 发起的关联与命令须核对目标归属，不以同 Repo 为由越过 Project 范围」 | 乙（缺指针：Run 侧 D3 补了同 Project 校验，Room Invocation 侧只在 :216 有总括句） | 本段加半句「写入型 Room Invocation 所操作或采纳契约的 Task 须属于该 Invocation 冻结的 Project（见 §场景与第三方适配器）」 | CT-CONNECTION 可补：跨 Project 的 Task 经 Room Invocation 采纳契约时失败 |
 
-**计数**：76 行——甲 5、乙 54、丙 9（待裁 A 档 4 项、B 档 6 项，见 §五）、缺落点 8。六组都没有发现需要推翻 #257 裁决的句子；#257 列过的落点已改对，问题集中在它没列的篇章、跨层重复与合入后的状态文字。
+**计数（v2）**：85 行——甲 8、乙 61、丙 5（待裁 A 档 5 项、B 档 6 项，见 §五）、缺落点 11。v1 为 76 行；v2 改判 5 行、按席位替代写法改改法二十余行、新增 9 行、拒绝 6 条补漏（理由见 PR「作者说明 · 第一轮汇总与 v2」）。六组与四席都没有发现需要推翻 #257 裁决的句子；#257 列过的落点已改对，问题集中在它没列的篇章、跨层重复与合入后的状态文字。
 
 **走查席的覆盖声明**：组 A 七篇、组 B 五篇、组 C 四篇、组 D 四篇、组 E 五篇、组 F 体验五篇与四份技能文件都从头读到尾；WRITING-GUIDE.md 只按旧词扫描并读命中行；决策史与 docs/research 不在范围。
 
@@ -183,29 +193,42 @@ Unit（U）：
 
 | 主线 | 走查输入 | 需要一致的地方 | 清点表对应行 |
 | --- | --- | --- | --- |
-| 同 Repo 的多个 Project | S1.1、S3.P1：人在同 Control 显式建 A、B | 主 Room、查询范围、默认设置、授权、归档不因 Repo 相同而合并 | A1、A7、B1–B3、B8、B9、C10、D1、D2、D4、D5 |
-| 同卡、不同 Project、两个 Task | S3.P5 / P7 / T7：分别认领，观测标题与 Done，再取消一方或删共享源卡 | 身份、对账、自动写回、完成、幂等、删除预览保留各自 Task 的含义；不复制源卡、不互相完成 | A8、C5、C11、D6、E1–E3、F15 |
-| Room / Task / Run 交叉引用 | S3.T4 / T6 / T10：独立选人，关一间 Topic，Request 升级为 Topic | 引用不搬归属、不继承授权；关 Room 不结束关联工作；来源无需补造 | A5、A6、C2、C3、C4、D9、E4、E9 |
-| 从计划到交付 | S3.T8 / T9、R1–R7：保存模板计划、开工、观察、验收、失败处理 | 保存计划不等于启动 Run；执行、检查、评审、集成、Task 完成各自成立；待处理只汇总已有事项 | A2、A4、A9、B5、B6、B16、B17、C6、C7、C8、E11、F10 |
-| 共用单元与材料交付 | S1.N3 / N4 / N8：共用 Git 对象库、异机凭据、Agency 不可达 | 部署共用不改治理归属；副本可读不等于获准；失联不等于执行已丢失 | A3、A10、B4、B7、D3、D7、F11–F13、F14、G1 |
+| 同 Repo 的多个 Project | S1.1、S3.P1：人在同 Control 显式建 A、B | 主 Room、查询范围、默认设置、授权、归档不因 Repo 相同而合并 | A1、A7、B1–B3、B8、B9、C10、D1、D2、D4、D5、Codex-4 |
+| 同卡、不同 Project、两个 Task | S3.P5 / P7 / T7：分别认领，观测标题与 Done，再取消一方或删共享源卡 | 身份、对账、自动写回、完成、幂等、删除预览保留各自 Task 的含义；不复制源卡、不互相完成 | A8、C5、C11、D6、E1–E3、F15、Grok-1、Grok-2 |
+| Room / Task / Run 交叉引用 | S3.T4 / T6 / T10：独立选人，关一间 Topic，Request 升级为 Topic | 引用不搬归属、不继承授权；关 Room 不结束关联工作；来源无需补造 | A5、A6、C2、C3、C4、D9、E4、E9、GLM-2、GLM-4 |
+| 从计划到交付 | S3.T8 / T9、R1–R7：保存模板计划、开工、观察、验收、失败处理 | 保存计划不等于启动 Run；执行、检查、评审、集成、Task 完成各自成立；待处理只汇总已有事项 | A2、A4、A9、B5、B6、B16、B17、C6、C7、C8、E11、F10、Codex-5 |
+| 共用单元与材料交付 | S1.N3 / N4 / N8：共用 Git 对象库、异机凭据、Agency 不可达 | 部署共用不改治理归属；副本可读不等于获准；失联不等于执行已丢失 | A3、A10、B4、B7、D3、D7、F11–F13、F14、G1、Codex-1、Codex-2、Codex-3 |
+
+**应保留的规则**（Codex，主线「共用单元与材料交付」；核对时不把它们再复述进四层，动手 PR 不得顺手改弱）：
+
+| 用例步骤与系统要决定的事 | 现行答案 |
+| --- | --- |
+| S1.N3 多方共用 Git 存储，谁能写哪份结果 | `spec/system.md` §Repo 与执行现场、§单写者；`spec/repo.md` §ChangeSet 与 Git 事实、§写入约束 已分清对象库共用、工作副本互斥与获准目标更新；不因同 Repo 多 Project 制造多个控制面写者，也不放宽本控制面同目标待决意图互斥。B7、D1、D2 改后须与此一致 |
+| S1.N4 不同机器与授权来源之间怎么交付精确材料 | `spec/system.md` §控制面自己的存储 的保存、准入、交付顺序；`spec/repo.md` §发布评审 的公开范围；`spec/project.md` §三种交付方式、§根 Context Manifest；`spec/connections.md` §从授权到派工——同摘要或已发指针不等于保全；交付精确获准副本不等于公开材料仓库或转交凭据；不需要新材料对象、新传输协议或每 Project 一套服务器 |
+| S1.N8 Participant 不响应或 Agency 失联，是否另发工作 | `spec/participant.md` §派工与观测、`spec/system.md` §启动与恢复 已区分未知、无法履约与已完成待交；真正的冲突只在 Codex-2、Codex-3 的旧说明 |
+
+交叉引用主线另核「用户能读到吗」：04:92–94 三句在约束层有 `spec/project.md:41`、`spec/run.md:74`，正文几乎没有（GLM），见 GLM-2。
 
 ## 五、待裁项
 
-**A 档（所有者必须逐条答）。** 每项写背景、现状、问题、选法、推荐，附场景。
+改判的依据只有「行为变不变」。A 档里 A1 是请所有者核措辞，其余四项是行为取舍；B 档默认按建议做，所有者只标反对。
 
-1. **「以仓库为边界 / 语义范围以 Repo 为界」这一族怎么改**（B1、B2、B3；约束句 D1 可先改）。背景：愿景一句话定位与 README 首句写「交付物与承诺以 Git 仓库为边界」，v0.18.7 定了承诺、授权、验收以 Project 为范围，同一仓库可有多个 Project。现状：读者按现句会把 mac_jssdk_01 和 mac_jssdk_02 读成一个范围。选法：a）四句同改——交付物落在 Git 仓库里，承诺以 Project 为范围，一个 Project 关联一个 Repo；b）愿景与 README 保留「仓库为边界」的说法、只加半句「同一仓库可以有多个 Project，各自独立」，约束句 D1 按 a 改。推荐 a：愿景层用词要和体验目录同一口径；但一句话定位是所有者的话，改法请所有者过目。
-2. **「发布评审须人显式确认」开关谁持有缺省**（D5）。背景：正文四处说「仓库自愿打开」，约束两处说「仓库或 Project」，CT 说「开了开关的仓库」。问题：同 Repo 可开多个 Project 之后，mac_jssdk_01 要求人再确认、mac_jssdk_02 不要求，两者同用 gh-jssdk——仓库级开关做不到。选法：a）缺省归 Project 的版本化设置，Repo 绑定只声明平台能力（正文四处、约束两处、CT 两处同改）；b）保留仓库级；c）两级、Project 覆盖仓库缺省，须写优先级规则。推荐 a：M1 说 Repo 负责平台绑定、Project 负责各自工作的组织；c 多一条规则，用例不要求。
-3. **Project Overview 与「全局需要关注」**（C4、E4、B17）。背景：约束层定义了按 Project 聚合的只读 Overview，CT 还提到「全局需要关注」投影；04 确认的导航里 Project 行只有主 Room 与「待你处理」两处，子列表只有 Rooms / Kanbans / Runs，约束层也没有「全局」投影的定义。选法：a）删 Overview 定义与 CT 句，「需要关注」只作对象标记，跨 Project 的汇总留给可选派生投影（同合并板的处理）；b）Overview 并入主 Room 的只读摘要、不设入口；c）保留为可选投影并在约束层补定义。推荐 a：最省，且和「不另建一套待办」同向；Apollo 侧栏就是场景。
-4. **十二行只写题目的 CT 短行**（E10）。背景：早于本批，#257 没碰。选法：a）本批补失败输入；b）另立小批，本批只在 CT 文首标明这些行待展开；c）不动。推荐 b：不混进 #257 对齐，避免一个 PR 两种性质。
+**A 档（所有者必须逐条答）。**
+
+1. **「以仓库为边界 / 语义范围以 Repo 为界」这一族怎么改——请核措辞**（B1、B2、B3；约束句 D1 已判甲、先改）。背景：愿景一句话定位与 README 首句写「交付物与承诺以 Git 仓库为边界」，v0.18.7 定了承诺、授权、验收以 Project 为范围，同一仓库可有多个 Project。现状：读者按现句会把 mac_jssdk_01 和 mac_jssdk_02 读成一个范围。四席都选「四句同改」；Codex 指出这是落实既有裁决、不是新取舍，且 v1 文案的「交付物落在 Git 仓库里」是新的存放断言。选法：a）Codex 文案——vision:9「围绕代码仓库开展工作，每个 Project 分别组织自己的讨论、承诺与验收；协作与治理随用户走」，vision:113「控制面随用户走，以 Project 组织各份独立工作；Project 关联 Repo，但同 Repo 不合并承诺与授权」，README:3 同 vision:9；b）主笔 v1 文案；c）愿景保留「仓库为边界」只加半句「同一仓库可以有多个 Project，各自独立」。推荐 a。一句话定位是所有者的话，请过目。
+2. **「发布评审须人显式确认」开关谁持有缺省**（D5、Codex-4）。背景：正文四处说「仓库自愿打开」，约束两处说「仓库或 Project」，CT 两处说「开了开关的仓库」。问题：同 Repo 可开多个 Project 之后，mac_jssdk_01 要求人再确认、mac_jssdk_02 不要求，两者同用 gh-jssdk——仓库级开关做不到。选法：a）这个开关的版本化缺省归 Project，本次授权冻结进 Execution Spec（四席一致；Codex 要求不写「Repo 只声明平台能力」的「只」——Repo 仍有平台绑定与权限等既有职责）；b）保留仓库级；c）两级、Project 覆盖仓库缺省，须写优先级规则。推荐 a。Codex 另提醒：「两个 Project 恰好要不同缺省」是本批提出的用例外配置，不由「独立 Namespace」自动推出，请所有者明答是否纳入。落点：正文四处、约束两处、CT:40、:286、:169。
+3. **Project Overview 与「全局需要关注」**（C4、E4、B17、D8）。事实：Overview 在库里只出现四处——`spec/project.md:43` 的定义句、CT:263、delivery:16 P3 的一格、S3.R2/R3 两处链接文字（都指向「待你处理」所在的节）；它没有查询接口或字段定义，只是投影的名字；04 确认的导航里 Project 行只有主 Room 与「待你处理」，子列表只有 Rooms / Kanbans / Runs；约束层没有「全局需要关注」投影的定义，「需要关注」是对象上的标记，与「待你处理」不是同一个东西。席位三比一：Muse、GLM、Grok 选删；Codex 推翻——导航不决定对象是否存在，物理入口与只读汇总是两件事，保留定义句并注明「不要求独立导航入口；不能替代主 Room 与待处理入口」，CT:263 保留只读、不新增写权的测试，不能只因搜不到「全局」就改成只验待处理。选法：a）删定义句与 CT:263 的 Overview / 全局半句，「需要关注」只作对象标记，S3 链接文字改指「待你处理」自己的锚点（D8），跨 Project 汇总留给可选派生投影（同合并板处理）；b）Overview 并入主 Room 的只读摘要、不设入口；c）保留定义句，加「不要求独立入口；不能替代主 Room 与待处理入口」。推荐 a：删的是一个没有入口、没有字段的名字，不删任何已定义的能力；若所有者想给主 Room 头部摘要留个名字，选 c。
+4. **十三行只写题目的 CT 短行**（E10）。主笔分组后：只有题目、没有失败输入的十行（:16、:23、:50、:130、:149、:226、:230、:231、:236、:245）；已可判失败的三行（:52、:148、:282）留在验收里不动。选法：a）本批补十行的失败输入；b）另立小批，本批只在 CT 文首标明这十行待展开（四席一致）；c）不动。推荐 b；本批新改的约束照配失败例，不借「另批」搁置（Codex）。
+5. **读回规则在「没有来源 Room」时怎么判**（C8、Codex-5；v2 新升 A 档，GLM、Codex）。背景：`spec/run.md:70` 的读回规则四处引用「来源 Room」——不含来源 Room 的消息、产出者不在来源 Room 名册等；从 Task 选模板或直接文本登记的施工图可能没有来源 Room，条件无所指。不补则模板路径要么无法读回，要么为满足条件补造聊天，正是 §零 说的补造行为。选法：a）Codex 窄例外——「按实际来源判断；确无来源 Room 时，只有该 Room 名册回避项记不适用；从零调用、只交付图与清单、无任何 Room 消息读取权限仍检查；产出配置回避仍按现有显式声明及缺失 / 未知规则判断」，配无 Room 正例与「直接文本仍来自 Room」反例；b）主笔 v1 写法——「与来源 Room 有关的三项按满足处理；读回仍须是不进本 Project 任一名册的新调用，或另一 Room 的规划者」（Codex 指出它豁免了只交付图与清单的输入限制、又多加了选人限制）；c）不补，模板路径由人显式跳过读回。推荐 a；Grok、Muse 第一轮接受了 b，交叉轮再看。落点：`spec/run.md:70`、`run.md:73`、shaping 技能 :57、CT:89、:115。
 
 **B 档（默认按建议做，只标反对）。**
 
-5. 文档纪律加一条体验目录的分层句（B15）。
-6. 读回规则补「登记时没有来源 Room」的条件（C8）。
-7. Topic Room 命令词统一为「创建 / 关闭」，关闭即已归档（C3）；若所有者认为「关闭」与「已归档」是两态，升 A 档。
-8. 评审技能加两条反复出现的错（K8）；dead-names 机械检查的扫描范围扩到 `src/` 下的 .md（F11 的落点，不是新规则）。
-9. 术语表补 Topic Room、前情提要、待你处理、Source、候选交付（E5）。
-10. 03 术语纠正的退役判定随本批收口（F3、F4；所有者 03:54 已允许）。
+6. 文档纪律加一条体验目录的分层句（B15；性质改乙，用 Codex 文案）。
+7. Topic Room 命令词统一为「创建 / 关闭」，关闭对应现有「已归档」，与因 Project 归档而只读区分，不加第四种状态（C3；四席同意；若所有者认为「关闭」与「已归档」是两态，升 A 档）。
+8. 评审技能「六批里反复出现的错」加两条（K8）——用短例补进原节，不平铺禁令（Codex）；dead-names 扫描扩围到第一方 Markdown**先不做**：先列 Buck2 落点（`docs_tree` 不含 `src/**`）、历史豁免与夹具保护，跑一遍 dry-run 看命中量再定（GLM、Codex）。
+9. 术语表补 Topic Room、前情提要、待你处理，「候选交付」按既有版本解释，「任务源」补英文与范围、不新造 Source 词条（E5，按 Codex 修正）。
+10. 03 术语纠正的退役随本批收口判定，按它自己的三项条件，不因 G 批合入自动退役（F3、F4；Codex）。
+11. 归档恢复语义（C2）：:49 改「恢复后，随归档转只读的开放 Task、开放 Request 与未归档 Topic Room 恢复接收命令；已终态的不复活；原本已关闭的 Topic 不随 Project 恢复」——Grok 认为要所有者点头，Codex、GLM、Muse 认为 :47「保持原状态」已定；放 B 档，所有者一眼否决或放行。
 
 ## 六、已拍板不重开
 
@@ -213,4 +236,4 @@ Unit（U）：
 
 ## 七、陪审团怎么审本批
 
-三层，按顺序：**审题**——§零 的问题存在吗、「核对批」这个问法对不对、四个视角够不够、有没有本文没列的框架；**审解**——§一 的备选够不够、丙 是不是最优、清点表这种形状能不能承担「错的改、多的删、含混的定」；**审改**——§三 清点表逐行：原句引对没有（对照 `459cda6`）、性质判对没有（甲 / 乙 与 丙 的界线是重点：把该待裁的藏成措辞清理，或把措辞清理抬成待裁）、建议改法忠不忠于裁决、层对不对、缺落点有没有漏。三层各表态，再逐条维持 / 修正 / 推翻；补漏的行接编号（席位字母 + 序号）。每席另沿一条主线补漏：Codex——共用单元与材料交付、约束二；Grok——同卡不同 Project；GLM——交叉引用、体验目录；K3——从计划到交付。第一轮独立，不读他家。
+三层，按顺序：**审题**——§零 的问题存在吗、「核对批」这个问法对不对、四个视角够不够、有没有本文没列的框架；**审解**——§一 的备选够不够、丙 是不是最优、清点表这种形状能不能承担「错的改、多的删、含混的定」；**审改**——§三 清点表逐行：原句引对没有（对照 `459cda6`）、性质判对没有（甲 / 乙 与 丙 的界线是重点：把该待裁的藏成措辞清理，或把措辞清理抬成待裁）、建议改法忠不忠于裁决、层对不对、缺落点有没有漏。三层各表态，再逐条维持 / 修正 / 推翻；补漏的行接编号（席位字母 + 序号）。每席另沿一条主线补漏：Codex——共用单元与材料交付、约束二；Grok——同卡不同 Project；GLM——交叉引用、体验目录；K3——从计划到交付。第一轮独立，不读他家。交叉轮：对作者拒绝的每一条接受或反驳，反驳要有新证据；对他家意见同意的说同意、不同意的说理由；撤回自己上一轮说错的要写明是哪条、为什么；§五 A 档五项各再表一次选法。
