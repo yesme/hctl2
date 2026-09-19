@@ -5,6 +5,8 @@
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。[参考用例 S1](./scenarios/S1-multi-unit.md)、[S2](./scenarios/S2-rough-road.md) 与 [S3](./scenarios/S3-user-journey.md) 引用本表用例的描述文本，不引用会随插入变化的序号。本轮按[体验基线](../user-experience/README.md#基础用户体验)同步：S1 保留四个 Project，新路径由 S3 串联。本表是待实现与执行的行为验收要求；文档检查通过不证明这些行为已通过。
 
+以下十行只写了题目、尚未写失败输入，按所有者 2026-09-19 的裁定（G 批待裁 A4）另立小批展开，在展开前不算本表的可判用例：「CJK 输入、结构化引用、草稿/游标/未读、并发流隔离」「Context 可解释、Room 历史可恢复」「非法 move/complete 拒绝」「冲突观测按来源证据仲裁」「attach/replay、IME/背压/慢客户端隔离」「命令幂等」「commit/确认回执各崩溃点回读」「schema migration、投影重建」「一键启停下已消费服务器的启动顺序与健康检查」「打包后的整窗启动/退出/升级和安全边界」。
+
 ### `CT-PROJECT` · Project / Room
 
 - 创建 Project 同时建立它唯一的主 Room；同一命令重投多建 Room、同一控制面另建同 Repo 的第二个 Project 却复用第一间主 Room 时失败；未选 Participant 不能查看主 Room 时失败；注册 Repo 自行建立全局仓库级 Room 时失败，待确认 Repo 不接受 Project/Task/Run

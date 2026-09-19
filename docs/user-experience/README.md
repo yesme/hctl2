@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 多 Control、多 Repo 的用例 | [01 · 多单元用例](./01-multi-unit.md#多-control多-repo-的用例) | 保留四个 Project、机器、Agency、人员选择和远程连接，明确各自主 Room；沿用 S1 编号 |
 | 用户体验流程 | [02 · 用户流程](./02-user-journey.md#用户体验流程) | 建 Project、接 Source、选人、前情提要带入 Topic Room、操作 Task、模板生成 DAG、观察 Run 及交付与异常处理 |
-| 术语混用说明 | [03 · 术语纠正](./03-terminology-confession.md#project--repo--topic-混用的-confession) | 保留原话，说明新旧含义、纠正进度与记录退役条件；同步位置与未实现能力见接手清单 |
+| 术语混用说明（已退役，史料） | [03 · 术语纠正](./03-terminology-confession.md#project--repo--topic-混用的-confession) | 三项退役条件已在 G 批收口核过（03 §什么时候可以退役 末段）；只在追溯 2026-09-18 之前的旧说法时读，不是当前正文 |
 | 导航与组织结构 | [04 · 导航与关系](./04-project-navigation.md#project-入口与-rooms--kanbans--runs) | 记录 Apollo 侧栏、待处理入口与行为、固定归属与交叉引用、Room/Run 分别选人，以及 Q1 的结论 |
 
 [已定事项与接手清单](./open-questions.md#已定事项与接手清单)记录 Q1–Q3、C1/C2 的确认和设计者的后续工作，无需重拍；[C2](./open-questions.md#c2mac-用例的-room-位置)明确 Mac 的两处各是独立 Project 的主 Room，并纠正此前“同 Repo 只能有一个 Project”的整理推断。后续体验补充另按所有者确认更新，不让接手者靠恢复聊天记录继续。
@@ -69,6 +69,6 @@ Project 与 Topic 不混用，也不因此取消同 Repo 下的多个 Project。
 
 ## 从另一台机器接手
 
-在自己的工作分支更新到 origin/main，从本页进入：先读 04 确认组织结构，再走 01、02，最后读已定事项与接手清单。03 只在需要追溯旧说法时读；跨机使用新修订前先确认它已合入 main。
+在自己的工作分支更新到 origin/main，从本页进入：先读 04 确认组织结构，再走 01、02，最后读已定事项与接手清单。03 已退役，只在需要追溯旧说法时读；跨机使用新修订前先确认它已合入 main。
 
 当前已记录体验与组织方向，并同步直接相关的设计正文、spec、术语表、场景与契约测试要求（#257，v0.18.7 已合入）；产品实现和行为测试仍待分别验证。接手以仓内记录为依据，不直接按某份旧 Memo 的推荐开工，也不依赖某台机器的 Harness Session 或临时文件。
