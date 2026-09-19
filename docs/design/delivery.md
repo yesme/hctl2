@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.10<br>
+> 状态：交付文档（非规范） · 草案 v0.18.11<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -13,7 +13,7 @@
 
 | 模块 | P2 出门（control + CLI + content 系统） | P3 出门（Workbench 场景） | 执行面与第三方适配 |
 | --- | --- | --- | --- |
-| [Project](./project.md) | Project Room（主 Room）与 Topic Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
+| [Project](./project.md) | Project Room（主 Room）与 Topic Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | Project 入口（主 Room 与待处理面板两入口、Rooms / Kanbans / Runs 并列列表）、时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以仓库所绑平台自带的 issues 为缺省任务源（本地平台的 issues、GitHub Issues；缺省源由人显式同意）、本地任务服务器可加绑；CLI 完整 Task 管理与完成预览；平台或本地任务服务器的原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（Project 内按任务源分别进入、拖放、泳道、后续动作入口） | 平台 issues 经随包 `gh` 与 `tea` 接入（调用面复核见 [sdk/github.md](../research/sdk/github.md)、[gitea.md](../research/gitea.md)）；本地任务服务器经限时验证后作为可加绑源交付，完整 Kanban 切片仍在 P2 出门前；Linear 通过身份/快照测试 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、多票评审 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
 | [Participant](./participant.md) | 参与者与执行者配置、证据三档、经 Agency 的派工与观测、terminal inspect/attach/replay；验证完整 Agency 的唯一通路、租户隔离、公开交互与结果保管；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、经 Agency 的 attach UI | Codex/Claude Code/OpenCode 能力探测；本地 Agency 参考实现（运行时 Herdr v0.8.2）至少接入一个 harness 并通过契约测试；Herdr 官方 TUI 是它的原生 Terminal 客户端，WezTerm 可选 |
