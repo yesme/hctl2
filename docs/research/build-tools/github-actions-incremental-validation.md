@@ -38,3 +38,10 @@ GitHub 官方也给出了以 `GH_TOKEN` 调用 `gh` 的 workflow 示例，并建
 GitHub API 对本仓库 PR #122 的连续运行返回真实 PR head，而不是临时测试 merge SHA；旧 head `ffacc37` 可分别查到成功的 Code 和 Release run。该 PR 后续的 GitHub 原生 merge 更新产生 `20c53de`，第一父提交是 `ffacc37`，所以祖先关系能够机械证明。相反，PR #120 的一次 rebase 把 `60053e5` 改写为不相干的 `e29f7de`；这种历史没有安全的增量继承链，必须完整重验。
 
 GitHub 的临时测试 merge 可能已经包含稍后才进入 PR 分支的 base 提交，但历史 workflow API 不保存那次临时 merge 的 base SHA。本方案不解析旧日志或另存证据清单，而选择保守重验这一小类竞态；避免为减少一次边缘重复构建而维护第二套状态。
+
+## 复核记录
+
+- 2026-09-19 · 增量路径从未生效：path-filter job 在安装 DotSlash 之前运行「Resolve validation range」，那一步却用仓库固定的 `src/build/tools/jq-bin`（DotSlash 清单）判断上一 head 有没有成功 run；`/usr/bin/env: 'dotslash': No such file or directory` 使管道退出非零，被 `if` 当成「没有成功 run」，每次 `synchronize` 都回退到完整 PR diff（#257 的 Code run 35392813862、Release run 35392813857，以及更早的 35388630244 都是这样）。修法沿用本文已采用的机制：runner 自带的 GitHub CLI 内置 jq，`gh api --jq` 直接求值（jq 变量用 `$ENV.PREVIOUS_HEAD` 读环境），不引入新工具；三种结果分开——成功 run 计数为 0 才是「没有成功记录」，`gh api` 非零退出且 stderr 带 `gh:` 前缀或连接错误是查询失败，其余是答案无法求值——后两种回退完整检查并在日志里引用 stderr 原文。历史改写、非 PR 运行、缺上一 head 的判定不变。回归用例 `src/build/tests/check_validation_range.sh` 从两份 workflow 抽出步骤正文，在没有 DotSlash 的 PATH 下用替身 `gh`（以固定 jq 求值同一条 `--jq` 过滤式）跑十几种输入，含「上一提交只改 Skill、本次只改文档」时 Release 路径过滤为 false。
+- 2026-09-19 · Codex SWE 评审（#259）后的两处收紧：对 `gh api` 非零退出的分类改为三段——`gh:` 前缀或连接错误记查询失败，裸的 jq 消息（`cannot iterate over`、`failed to parse jq expression`）记求值失败，其余如实报「无法判定查询还是求值失败」；三段都回退完整 PR diff 并引用 stderr 原文，分类只是诊断用的启发式，不是完备分类。回归用例的替身 `gh` 改为核对请求本身（`api`、`--method GET`、本 workflow 的 runs 路径、`head_sha` 等于上一 head、`event=pull_request`、`status=completed`），并按 workflow 文件分别给夹具，用「Release 成功但 Code 没成功」及其反向配对证明两份历史不能互借；本地变异核对：把 code.yml 的查询改指 release.yml 时 3 项失败，把计数 0 当成功时 6 项失败。替身用固定的 jq 1.8.2 求值同一条过滤式，生产用 gh 内置的 gojq；替身的错误用例是复现 CLI 文案，不是真实 GitHub API 故障实测。
+- 2026-09-19 · Codex 复审指出 `{"workflow_runs":{}}` 这种结构异常在原过滤式下得 0、会被记成「没有成功记录」；过滤式改为先用 jq 原生的 `type` 核 `workflow_runs` 是数组，不是就 `error("unexpected workflow_runs type: …")`，gh 内置 jq 把它打成 `error: …`（本机核过），分类规则据此把 `error: ` 前缀记为求值失败；回归用例加对象夹具与 `error: ` 文案两条。
+
