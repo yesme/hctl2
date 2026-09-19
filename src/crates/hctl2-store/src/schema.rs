@@ -32,6 +32,7 @@ CREATE TABLE events (
 );
 CREATE TABLE inbox (
  source_key TEXT NOT NULL, message_key TEXT NOT NULL, digest TEXT NOT NULL,
+ binding TEXT NOT NULL,
  command_key TEXT NOT NULL REFERENCES commands(idempotency_key),
  PRIMARY KEY(source_key,message_key)
 );
@@ -92,7 +93,7 @@ pub(crate) fn inspect(conn: &Connection) -> Result<u32> {
         for sql in [
             "SELECT idempotency_key,command_id,fingerprint,envelope,result FROM commands LIMIT 0",
             "SELECT sequence,command_key,object_key,version,record FROM events LIMIT 0",
-            "SELECT source_key,message_key,digest,command_key FROM inbox LIMIT 0",
+            "SELECT source_key,message_key,digest,binding,command_key FROM inbox LIMIT 0",
             "SELECT intent_id,command_key,intent,conflict_key,state,generation,confirmation FROM outbox LIMIT 0",
             "SELECT material_id,reference,command_key FROM materials LIMIT 0",
             "SELECT delivery_id,grant_json,command_key,state FROM deliveries LIMIT 0",
@@ -115,6 +116,29 @@ pub(crate) fn integrity(conn: &Connection) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Shared by startup and offline restore. Callers keep a snapshot or stage the upgrade
+/// away from live records, so any migration or postcondition failure can be discarded.
+pub(crate) fn upgrade(conn: &mut Connection, migrations: &Migrations<'_>) -> Result<()> {
+    let old = inspect(conn)?;
+    let previous = (old != 0).then(|| identity(conn)).transpose()?;
+    migrations.to_latest(conn).map_err(|e| {
+        StoreError::new(
+            "MIGRATION_FAILED",
+            e.to_string(),
+            "inspect_migration_snapshot",
+        )
+    })?;
+    let current = identity(conn)?;
+    if inspect(conn)? != VERSION || previous.as_ref().is_some_and(|before| before != &current) {
+        return Err(StoreError::new(
+            "MIGRATION_FAILED",
+            "migration changed identity/generation or left an unreadable schema",
+            "inspect_migration_snapshot",
+        ));
+    }
+    crate::store::rebuild(conn)
 }
 
 pub(crate) fn identity(conn: &Connection) -> Result<(String, i64)> {

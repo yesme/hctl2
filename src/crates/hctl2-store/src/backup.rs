@@ -77,7 +77,7 @@ impl Store {
         }
         let conn = readonly(&path.join("control.sqlite"))?;
         let version = schema::inspect(&conn)?;
-        if version != schema::VERSION
+        if version == 0
             || version != report.schema_version
             || schema::identity(&conn)? != (report.control_id.clone(), report.writer_generation)
         {
@@ -87,9 +87,14 @@ impl Store {
                 "select_complete_backup",
             ));
         }
-        let seq: i64 = conn.query_row("SELECT coalesce(max(sequence),0) FROM events", [], |r| {
-            r.get(0)
-        })?;
+        // Schema 1 predates commands, events and material admission.
+        let seq: i64 = if version == 1 {
+            0
+        } else {
+            conn.query_row("SELECT coalesce(max(sequence),0) FROM events", [], |r| {
+                r.get(0)
+            })?
+        };
         let materials = Materials::open(&path.join("materials.git"), false)?;
         if seq != report.event_sequence
             || verify_materials(&conn, &materials, &report.control_id)?
@@ -149,7 +154,7 @@ impl Store {
                 "verify_backup_again",
             ));
         }
-        let stage = Connection::open(&staged)?;
+        let mut stage = Connection::open(&staged)?;
         if schema::inspect(&stage)? != report.schema_version
             || schema::identity(&stage)? != (report.control_id.clone(), report.writer_generation)
         {
@@ -159,6 +164,11 @@ impl Store {
                 "verify_backup_again",
             ));
         }
+        verify_materials(&stage, &materials, &report.control_id)?;
+        // Upgrade and rebuild on the staged copy, under the same writer lock. A failure
+        // leaves both the original backup and the live database untouched.
+        stage.pragma_update(None, "foreign_keys", "ON")?;
+        schema::upgrade(&mut stage, &schema::migrations())?;
         verify_materials(&stage, &materials, &report.control_id)?;
         let next = before
             .max(report.writer_generation)
@@ -202,6 +212,9 @@ fn readonly(path: &Path) -> Result<Connection> {
 }
 
 fn verify_materials(conn: &Connection, materials: &Materials, control_id: &str) -> Result<usize> {
+    if schema::inspect(conn)? == 1 {
+        return Ok(0);
+    }
     let mut query = conn.prepare("SELECT reference FROM materials ORDER BY material_id")?;
     let references = query.query_map([], |r| r.get::<_, String>(0))?;
     let mut count = 0;

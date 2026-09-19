@@ -23,7 +23,7 @@ impl InboxEntry {
         nonempty(&self.message_key, "inbox message key")?;
         digest(&self.digest)?;
         // The same provider event can legitimately be processed by independent Project targets.
-        Ok(serde_json::to_string(&(&self.binding, consumer))?)
+        Ok(serde_json::to_string(&(&self.binding.key, consumer))?)
     }
     pub(crate) fn previous(
         &self,
@@ -58,8 +58,8 @@ impl InboxEntry {
         consumer: &ObjectKey,
     ) -> Result<()> {
         tx.execute(
-            "INSERT INTO inbox VALUES(?1,?2,?3,?4)",
-            params![self.key(consumer)?, self.message_key, self.digest, command],
+            "INSERT INTO inbox(source_key,message_key,digest,binding,command_key) VALUES(?1,?2,?3,?4,?5)",
+            params![self.key(consumer)?, self.message_key, self.digest, serde_json::to_string(&self.binding)?, command],
         )?;
         Ok(())
     }
@@ -510,6 +510,22 @@ pub(crate) fn project_record(conn: &Connection, record: &Record) -> Result<()> {
         } => Some(canonical_json_sha256(&serde_json::to_value(entity)?)?),
         _ => None,
     };
+    let conflict: Option<String> = conn
+        .query_row(
+            "SELECT object_key FROM objects WHERE object_key!=?1 AND project_id=?2 AND
+         ((?3='main' AND kind='room' AND room_kind='main') OR
+          (?4 IS NOT NULL AND kind='task' AND entity_key=?4)) LIMIT 1",
+            params![record.key.encoded()?, project, room_kind, entity],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(existing) = conflict {
+        return Err(StoreError::new(
+            "UNIQUENESS_CONFLICT",
+            format!("Project already has this main Room or entity Task: {existing}"),
+            "preview_existing_object",
+        ));
+    }
     conn.execute(
         "INSERT INTO objects VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
          ON CONFLICT(object_key) DO UPDATE SET version=excluded.version,

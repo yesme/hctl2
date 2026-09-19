@@ -85,7 +85,6 @@ impl Store {
             let db = root.join("control.sqlite");
             let mut conn = Connection::open(&db)?;
             let old = schema::inspect(&conn)?;
-            let previous_identity = (old != 0).then(|| schema::identity(&conn)).transpose()?;
             conn.pragma_update(None, "foreign_keys", "ON")?;
             conn.pragma_update(None, "journal_mode", "WAL")?;
             conn.pragma_update(None, "synchronous", "FULL")?;
@@ -97,28 +96,7 @@ impl Store {
                     conn.query_row("SELECT lower(hex(randomblob(16)))", [], |r| r.get(0))?;
                 let snapshot = snapshot_dir.join(format!("before-v{old}-{nonce}.sqlite"));
                 schema::snapshot(&db, &snapshot)?;
-                let upgraded = migrations
-                    .to_latest(&mut conn)
-                    .map_err(|e| {
-                        StoreError::new(
-                            "MIGRATION_FAILED",
-                            e.to_string(),
-                            "inspect_migration_snapshot",
-                        )
-                    })
-                    .and_then(|()| {
-                        let identity = schema::identity(&conn)?;
-                        if schema::inspect(&conn)? != schema::VERSION
-                            || previous_identity.as_ref().is_some_and(|before| before != &identity)
-                        {
-                            return Err(StoreError::new(
-                                "MIGRATION_FAILED",
-                                "migration changed identity/generation or left an unreadable schema",
-                                "inspect_migration_snapshot",
-                            ));
-                        }
-                        rebuild(&mut conn)
-                    });
+                let upgraded = schema::upgrade(&mut conn, migrations);
                 if let Err(mut error) = upgraded {
                     // Preserve the failed database for diagnosis; rollback is via SQLite, not file copy.
                     let diagnostic =
@@ -481,7 +459,7 @@ pub(crate) fn advance_generation(conn: &mut Connection, previous: i64) -> Result
     Ok(WriterGeneration(next))
 }
 
-fn rebuild(conn: &mut Connection) -> Result<()> {
+pub(crate) fn rebuild(conn: &mut Connection) -> Result<()> {
     let tx = conn.transaction()?;
     tx.execute_batch("DROP TABLE IF EXISTS objects;")?;
     tx.execute_batch(schema::PROJECTION)?;

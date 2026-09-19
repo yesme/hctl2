@@ -25,6 +25,43 @@ fn each_envelope_field_missing_is_rejected() {
 }
 
 #[test]
+fn empty_envelope_values_and_wrong_digest_are_rejected_before_reduction() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    for field in [
+        "command_id",
+        "idempotency_key",
+        "principal",
+        "operation",
+        "input_digest",
+        "target",
+        "binding",
+    ] {
+        let mut cmd = command("invalid", key("object"));
+        match field {
+            "command_id" => cmd.command_id.clear(),
+            "idempotency_key" => cmd.idempotency_key.clear(),
+            "principal" => cmd.actor.principal.clear(),
+            "operation" => cmd.operation.clear(),
+            "input_digest" => cmd.input_digest = "0".repeat(64),
+            "target" => cmd.target.id.clear(),
+            "binding" => cmd.binding.key.id.clear(),
+            _ => unreachable!(),
+        }
+        let trusted = TrustedActor(cmd.actor.clone());
+        assert_code(
+            store.submit(store.generation(), &trusted, &cmd, None, |_| {
+                panic!("invalid {field} reached reducer")
+            }),
+            "INVALID_INPUT",
+        );
+        for table in ["commands", "events", "inbox", "outbox"] {
+            assert_eq!(count(&temp.path().join("control"), table), 0);
+        }
+    }
+}
+
+#[test]
 fn replay_returns_original_result_and_changed_envelope_is_rejected() {
     let temp = Temp::new();
     let mut store = temp.store();
@@ -132,9 +169,37 @@ fn inbox_is_deduplicated_in_the_command_transaction() {
     );
     assert_eq!(count(&temp.path().join("control"), "events"), 1);
     assert_eq!(count(&temp.path().join("control"), "inbox"), 1);
+    let mut updated = input.clone();
+    updated.binding.version = Version::State(2);
+    let mut replay = command("binding-v2-replay", key("object"));
+    replay.binding = updated.binding.clone();
+    replay.expected = Expected::Exact(Version::State(1));
+    assert_eq!(
+        store
+            .submit(
+                store.generation(),
+                &actor(),
+                &replay,
+                Some(&updated),
+                |_| panic!("binding version created another effect")
+            )
+            .unwrap(),
+        json!("once")
+    );
+    for table in ["commands", "events", "inbox"] {
+        assert_eq!(count(&temp.path().join("control"), table), 1);
+    }
+    let audit: String = rusqlite::Connection::open(temp.path().join("control/control.sqlite"))
+        .unwrap()
+        .query_row("SELECT binding FROM inbox", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Reference>(&audit).unwrap(),
+        input.binding
+    );
     let altered = InboxEntry {
         digest: "c".repeat(64),
-        ..input
+        ..updated
     };
     assert_code(
         store.submit(
@@ -297,6 +362,96 @@ fn unknown_effect_retains_conflict_and_requires_exact_readback() {
         store.begin_effect(store.generation(), "e"),
         "READBACK_REQUIRED",
     );
+}
+
+#[test]
+fn duplicate_transport_delivery_keeps_one_effect_and_the_frozen_idempotency_key() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    let cmd = command("c", key("object"));
+    store
+        .submit(store.generation(), &actor(), &cmd, None, |tx| {
+            tx.enqueue_effect(&effect("e"))?;
+            Ok(json!(true))
+        })
+        .unwrap();
+    let sent = store.begin_effect(store.generation(), "e").unwrap();
+    let mut provider = rusqlite::Connection::open_in_memory().unwrap();
+    provider
+        .execute_batch(
+            "CREATE TABLE sends(idempotency_key TEXT NOT NULL);
+        CREATE TABLE effects(idempotency_key TEXT PRIMARY KEY, input_digest TEXT NOT NULL);",
+        )
+        .unwrap();
+    let mut deliver = |intent: &EffectIntent| {
+        // Test adapter for a provider with idempotent writes. Duplicate delivery is a
+        // transport property, not permission for the kernel to resend an unknown action.
+        let tx = provider.transaction().unwrap();
+        tx.execute("INSERT INTO sends VALUES(?1)", [&intent.idempotency_key])
+            .unwrap();
+        tx.execute(
+            "INSERT INTO effects VALUES(?1,?2) ON CONFLICT(idempotency_key) DO NOTHING",
+            rusqlite::params![intent.idempotency_key, intent.input_digest],
+        )
+        .unwrap();
+        let digest: String = tx
+            .query_row(
+                "SELECT input_digest FROM effects WHERE idempotency_key=?1",
+                [&intent.idempotency_key],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(digest, intent.input_digest);
+        tx.commit().unwrap();
+    };
+    deliver(&sent);
+    drop(store); // The first response never reached the kernel.
+    let mut store = temp.store();
+    store
+        .submit(store.generation(), &actor(), &cmd, None, |_| {
+            panic!("command ran twice")
+        })
+        .unwrap();
+    assert_code(
+        store.begin_effect(store.generation(), "e"),
+        "READBACK_REQUIRED",
+    );
+    let (frozen, state) = store.effect("e").unwrap();
+    assert_eq!(state, EffectState::Unknown);
+    assert_eq!(
+        serde_json::to_value(&frozen).unwrap(),
+        serde_json::to_value(&sent).unwrap()
+    );
+    // The duplicate of the already-sent request arrives, with the persisted intent unchanged.
+    deliver(&frozen);
+    for (table, expected) in [("sends", 2), ("effects", 1)] {
+        let count: i64 = provider
+            .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, expected);
+    }
+    assert_eq!(count(&temp.path().join("control"), "outbox"), 1);
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("confirm", key("object")),
+            None,
+            |tx| {
+                tx.confirm_effect(
+                    "e",
+                    &Readback::Confirmed {
+                        binding: frozen.binding.clone(),
+                        target: frozen.target.clone(),
+                        input_digest: frozen.input_digest.clone(),
+                        result: json!(true),
+                    },
+                )?;
+                Ok(json!(true))
+            },
+        )
+        .unwrap();
+    assert_eq!(store.effect("e").unwrap().1, EffectState::Confirmed);
 }
 
 // Re-enter this test in a child and exit without destructors. This exercises real SQLite

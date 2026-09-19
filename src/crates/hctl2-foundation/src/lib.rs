@@ -255,6 +255,17 @@ impl SecretStore {
         self.backend
     }
 
+    /// Explicitly select the approved private-file backend (for offline use and isolated tests).
+    /// This does not probe or modify the machine's system keyring.
+    #[must_use]
+    pub fn user_file(service: impl Into<String>, fallback_root: PathBuf) -> Self {
+        Self {
+            service: service.into(),
+            fallback_root,
+            backend: SecretBackend::UserFile,
+        }
+    }
+
     /// Stores a secret in the selected persistent backend.
     ///
     /// # Errors

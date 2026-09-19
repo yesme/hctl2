@@ -125,3 +125,25 @@ Tuwunel 的 `rate_limited` 默认 false，bot 不受该项限流，AppService �
 - 版本化源码：[ruma features](https://docs.rs/crate/ruma/0.16.0/source/Cargo.toml)、[ruma-common API 扩展](https://docs.rs/crate/ruma-common/0.19.0/source/src/api.rs)、[身份与令牌](https://docs.rs/crate/ruma-common/0.19.0/source/src/api/auth_scheme.rs)、[注册字段](https://docs.rs/crate/ruma-client-api/0.24.0/source/src/account/register.rs)。本次读取发布 crate 源码，而非只读 README。
 - Tuwunel 钉定源码：[注册加载与存储](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/service/appservice/mod.rs)、[注册文档](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/docs/appservices.md)、[客户端注册](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/api/client/register/register.rs)、[房间状态回读](https://github.com/matrix-construct/tuwunel/blob/5b3669144219d5d4c0774743c84191b476f1b54f/src/api/client/state.rs)。
 - 发布元数据：[ruma 0.16.0](https://crates.io/crates/ruma/0.16.0)、[reqwest 0.13.4](https://crates.io/crates/reqwest/0.13.4)、[matrix-sdk 0.18.0](https://crates.io/crates/matrix-sdk/0.18.0)；协议：[Matrix v1.18 AppService](https://spec.matrix.org/v1.18/application-service-api/)。
+
+<a id="2026-09-20-p22-tuwunel-runtime"></a>
+### 2026-09-20 · P2.2 Tuwunel 调用面运行验证
+
+> 对象：Tuwunel `v1.9.0 / 5b366914`，制品 `tuwunel-v1.9.0-macos-aarch64-hctl2.1.tar.gz`（`lock.json` SHA-256 `1dbfb672a2acc0bfcdaca208f92ab25ba419aa8af99052dedb416ee4b56202b1`）；`/_tuwunel/server_version` 回报 `{"name":"Tuwunel","version":"1.9.0"}`。<br>
+> 许可证：Tuwunel Apache-2.0。<br>
+> 定位：补上 09-06 记录写明「未运行」的联调用例。可删除环境，回环监听，无联邦。只验 HCTL Chat 端口会用的调用面，不替 Tuwunel 做产品测试。低内存、RocksDB/media 备份与托管生命周期按 [delivery.md §开工前限时验证](../../design/delivery.md#开工前限时验证) 第 3 项留到 B1，本次未验。选型不变。
+
+| 项 | 结果 | 观察 |
+| --- | --- | --- |
+| 账号与房间管理 | 通过 | `registration_token` 走完 UIA 后注册 `@alice:probe.localhost` 并拿到 `access_token`。`createRoom` 建明文房 `!y6l2TWEFD42aRU7lJd:probe.localhost`，邀请 AppService bot 后 `join` HTTP 200。第一个注册用户被 Tuwunel 授予 admin，这是 homeserver 自己的行为，HCTL 绑定不依赖它 |
+| AppService 注册与虚拟用户 | 通过 | `appservice_dir` 下放 YAML，启动时加载。`sender_localpart` 用户在启动时已存在，再发 `m.login.application_service` 得 `M_USER_IN_USE`。命名空间内另一虚拟用户 `@hctl2_bridgebot:probe.localhost` 可 `join`、可 `send`。假冒靠 `user_id` 查询参数 + `as_token` |
+| AppService 事件投递 | 通过 | 本机 HTTP 端按 `hs_token` 收 `PUT /_matrix/app/v1/transactions/{txnId}`，本次建房与发言共 5 个 txnId。control 仍须按 txnId 去重后才回 200 |
+| 按事件 ID 读正文 | 通过 | `GET /_matrix/client/v3/rooms/{roomId}/event/{eventId}` 回原始事件，`content.body` 与发送一致，不能用房间最新一条替代 |
+| 房间加密状态回读 | 通过 | 明文 `GET …/state/m.room.encryption` → `404 M_NOT_FOUND`。带 `initial_state` 的加密房与事后 `PUT m.room.encryption` 后均为 `200` + `algorithm=m.megolm.v1.aes-sha2`。HCTL 自建房应在绑定前读到 `M_NOT_FOUND`；已绑定房变成 200 时标需要关注并 fail-closed 依赖新正文的命令。随包配置 `allow_encryption = false` 是产品化开关，本次为覆盖 200 路径临时打开，不改随包缺省 |
+| 事务 ID 幂等重投 | 通过 | 同一 `txnId` 两次 `PUT …/send/m.room.message/{txnId}` 都是 200，`event_id` 同为 `$oVPwm-GePsVKsy_OT5PNIRWApq9C4Zj35MCR3U_p4Rs` |
+| 断线后带游标重同步 | 通过 | 初次 `sync` 得 `next_batch`（本实例为短序号），停调后再发言，用旧 `since` 再 `sync`，join 时间线含 `after-gap` |
+| bridge bot 同形事件 | 通过（区分点在 sender） | 人与 AS 虚拟用户发出的 `m.room.message` 同 `type`/`msgtype`/`body`；`unsigned` 只有 `age`/`membership`/`transaction_id`，没有单独的 bridge 标记。区分靠 `sender` 是否落在 AppService 命名空间。HCTL 须按身份映射拒绝把 bot/bridge 当 human 来源（CT-PROJECT），不能靠正文形状 |
+| chat server 不可用 | 通过 | 停掉进程后再 `GET event` 为连接拒绝。依赖当前回读的命令应类型化拒绝，已冻结摘要不作废 |
+| 低内存 / RocksDB 备份 / 托管生命周期 | 未验 | 交付文档第 3 项明确留到 B1 |
+
+09-06 源码核对里「ruma 已处理 `user_id` 查询参数」在本次假冒发送上成立。注册仍走文件目录，不另造管理 REST。决定维持：homeserver 用钉定 Tuwunel `v1.9.0 / 5b366914`，客户端类型层仍是 ruma `0.16.0`。

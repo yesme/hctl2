@@ -30,19 +30,18 @@ fn task_mapping_is_unique_per_project_not_per_repo_binding_or_placement() {
     submit_record(&mut store, "p", &task("p", "task-p"));
     submit_record(&mut store, "q", &task("q", "task-q"));
     let duplicate = task("p", "other");
-    assert!(
-        store
-            .submit(
-                store.generation(),
-                &actor(),
-                &command("duplicate", duplicate.key.clone()),
-                None,
-                |tx| {
-                    tx.put(&duplicate)?;
-                    Ok(json!(true))
-                }
-            )
-            .is_err()
+    assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("duplicate", duplicate.key.clone()),
+            None,
+            |tx| {
+                tx.put(&duplicate)?;
+                Ok(json!(true))
+            },
+        ),
+        "UNIQUENESS_CONFLICT",
     );
     let mut moved = task("p", "task-p");
     moved.version = 2;
@@ -99,19 +98,18 @@ fn same_repo_projects_and_shared_refs_keep_their_scopes() {
         submit_record(&mut store, &format!("room-{p}"), &room);
         let mut duplicate = room.clone();
         duplicate.key.id = "another-main".into();
-        assert!(
-            store
-                .submit(
-                    store.generation(),
-                    &actor(),
-                    &command(&format!("dup-{p}"), duplicate.key.clone()),
-                    None,
-                    |tx| {
-                        tx.put(&duplicate)?;
-                        Ok(json!(true))
-                    }
-                )
-                .is_err()
+        assert_code(
+            store.submit(
+                store.generation(),
+                &actor(),
+                &command(&format!("dup-{p}"), duplicate.key.clone()),
+                None,
+                |tx| {
+                    tx.put(&duplicate)?;
+                    Ok(json!(true))
+                },
+            ),
+            "UNIQUENESS_CONFLICT",
         );
     }
     let mut invalid = record("wrong", 1);

@@ -4,6 +4,124 @@ use hctl2_store::*;
 use serde_json::json;
 
 #[test]
+fn old_schema_backup_is_verified_and_upgraded_before_restore_serves() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    let backup = temp.path().join("backup");
+    let mut report = store.backup(store.generation(), &backup).unwrap();
+    let identity = store.control_id().to_owned();
+    drop(store);
+    let live = temp.store();
+    let live_generation = live.generation();
+    drop(live);
+    // A schema-1 backup contains only control_identity; Git has no admitted material.
+    let database = backup.join("control.sqlite");
+    let conn = rusqlite::Connection::open(&database).unwrap();
+    conn.execute_batch(
+        "DROP TABLE objects; DROP TABLE inbox; DROP TABLE events;
+        DROP TABLE outbox; DROP TABLE materials; DROP TABLE deliveries;
+        DROP TABLE secret_references; DROP TABLE commands; PRAGMA user_version=1;",
+    )
+    .unwrap();
+    drop(conn);
+    report.schema_version = 1;
+    let original = std::fs::read(&database).unwrap();
+    report.database_sha256 = hctl2_foundation::bytes_sha256(&original);
+    std::fs::write(
+        backup.join("manifest.json"),
+        serde_json::to_vec(&report).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(Store::verify_backup(&backup).unwrap().schema_version, 1);
+    for target in [temp.path().join("control"), temp.path().join("moved")] {
+        let mut restored = Store::restore(&target, &backup).unwrap();
+        restored.startup_status().require_ready().unwrap();
+        assert_eq!(restored.control_id(), identity);
+        assert!(restored.generation().0 > report.writer_generation);
+        if target.ends_with("control") {
+            assert!(restored.generation().0 > live_generation.0);
+        }
+        // Current commands and events do not exist at schema 1.
+        submit_record(&mut restored, "after-upgrade", &record("object", 1));
+        assert_eq!(restored.versions(&key("object")).unwrap().len(), 1);
+        let after = restored
+            .backup(restored.generation(), &target.join("after-backup"))
+            .unwrap();
+        assert_eq!(after.schema_version, 2);
+    }
+    assert_eq!(std::fs::read(database).unwrap(), original);
+    Store::verify_backup(&backup).unwrap();
+}
+
+#[test]
+fn credentials_require_a_nonempty_secret_and_backups_preserve_only_references() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    let secrets =
+        hctl2_foundation::SecretStore::user_file("hctl2-store-test", temp.path().join("secrets"));
+    let binding = effect("e").binding;
+    assert_code(
+        store.require_secret(&binding, &secrets),
+        "CREDENTIAL_UNAVAILABLE",
+    );
+    let cmd = command("credential", key("object"));
+    store
+        .submit(store.generation(), &actor(), &cmd, None, |tx| {
+            tx.bind_secret(&binding, "provider-credential")?;
+            Ok(json!(true))
+        })
+        .unwrap();
+    assert_code(
+        store.require_secret(&binding, &secrets),
+        "CREDENTIAL_UNAVAILABLE",
+    );
+    secrets.set("provider-credential", b"").unwrap();
+    assert_code(
+        store.require_secret(&binding, &secrets),
+        "CREDENTIAL_UNAVAILABLE",
+    );
+    let secret = b"test-only-secret-value-that-must-not-enter-control-backup";
+    secrets.set("provider-credential", secret).unwrap();
+    assert_eq!(store.require_secret(&binding, &secrets).unwrap(), secret);
+    let backup = temp.path().join("backup");
+    store.backup(store.generation(), &backup).unwrap();
+    let mut pending = vec![backup.clone()];
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(
+                std::fs::read_dir(path)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().path()),
+            );
+        } else {
+            assert!(
+                !std::fs::read(path)
+                    .unwrap()
+                    .windows(secret.len())
+                    .any(|bytes| bytes == secret)
+            );
+        }
+    }
+    let restored = Store::restore(&temp.path().join("restored"), &backup).unwrap();
+    let absent = hctl2_foundation::SecretStore::user_file(
+        "hctl2-store-test",
+        temp.path().join("absent-secrets"),
+    );
+    assert_code(
+        restored.require_secret(&binding, &absent),
+        "CREDENTIAL_UNAVAILABLE",
+    );
+    assert_eq!(restored.require_secret(&binding, &secrets).unwrap(), secret);
+    let conn = rusqlite::Connection::open(backup.join("control.sqlite")).unwrap();
+    let stored: String = conn
+        .query_row("SELECT secret_reference FROM secret_references", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(stored, "provider-credential");
+}
+
+#[test]
 fn empty_store_backup_restores_without_content_services_or_agency_definitions() {
     let temp = Temp::new();
     let mut store = temp.store();
