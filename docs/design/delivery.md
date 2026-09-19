@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.7<br>
+> 状态：交付文档（非规范） · 草案 v0.18.11<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -13,7 +13,7 @@
 
 | 模块 | P2 出门（control + CLI + content 系统） | P3 出门（Workbench 场景） | 执行面与第三方适配 |
 | --- | --- | --- | --- |
-| [Project](./project.md) | Project Room（主 Room）与 Topic Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | 时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
+| [Project](./project.md) | Project Room（主 Room）与 Topic Room 的治理事实与命令、Context、Request、Memo/Artifact、至少两个并发 Invocation——治理走 CLI，聊天走 Matrix 客户端 | Project 入口（主 Room 与待处理面板两入口、Rooms / Kanbans / Runs 并列列表）、时间线、Composer、Trigger Preview、只读 Project Overview | chat server（Matrix 协议）经限时验证后作为选定实现交付，Matrix 生态客户端可直接访问；非 Matrix 平台经 Matrix 桥接生态接入，HCTL 不自建桥接 |
 | [Task](./task.md) | 以仓库所绑平台自带的 issues 为缺省任务源（本地平台的 issues、GitHub Issues；缺省源由人显式同意）、本地任务服务器可加绑；CLI 完整 Task 管理与完成预览；平台或本地任务服务器的原生 Done 在能力满足时可请求同一完成命令 | Workbench Board（Project 内按任务源分别进入、拖放、泳道、后续动作入口） | 平台 issues 经随包 `gh` 与 `tea` 接入（调用面复核见 [sdk/github.md](../research/sdk/github.md)、[gitea.md](../research/gitea.md)）；本地任务服务器经限时验证后作为可加绑源交付，完整 Kanban 切片仍在 P2 出门前；Linear 通过身份/快照测试 |
 | [Run](./run.md) | Workflow Revision 编译、Run 预览/启动/暂停/取消、多票评审 Gate、返工/regate、Request | 只读图与节点/席位/尝试的渐进展开 | Dagu 经 workflow engine 受控端口通过检查点等待/完成/回读的接口测试 |
 | [Participant](./participant.md) | 参与者与执行者配置、证据三档、经 Agency 的派工与观测、terminal inspect/attach/replay；验证完整 Agency 的唯一通路、租户隔离、公开交互与结果保管；按 Execution Spec 验证受租约输入与原生交互输入两种恢复等级 | Execution Chat/结构化执行检查、xterm、经 Agency 的 attach UI | Codex/Claude Code/OpenCode 能力探测；本地 Agency 参考实现（运行时 Herdr v0.8.2）至少接入一个 harness 并通过契约测试；Herdr 官方 TUI 是它的原生 Terminal 客户端，WezTerm 可选 |
@@ -45,7 +45,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 ## 明确不做
 
 - 多用户组织/RBAC、云队列、多主机调度和 Dagu coordinator/worker 集群；
-- 用户级“总入口对话面”：用户进入产品即在某个 repo 之下操作，这是显式设计决定（见[来时路 §12](./references/decision-history.md#12-场景数据的三分metadata--content--artifact)），不是待补功能；
+- 用户级“总入口对话面”：用户进入产品即在某个 Project 之下操作（创建 Project 时选定它关联的 Repo），这是显式设计决定（见[来时路 §12](./references/decision-history.md#12-场景数据的三分metadata--content--artifact)），不是待补功能；
 - Windows 正式版本、浏览器/移动客户端和通用远程中继；
 - 自建聊天桥接（永久不做：非 Matrix 平台经 homeserver 侧 Matrix 桥接生态接入，HCTL 只保留桥接用户的身份映射）、任意第三方插件市场；
 - 通用可视化 Workflow 编辑器或模型自由生成后直接部署；
@@ -79,7 +79,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 8. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
 9. 重启 control、本地 Agency 参考实现、已使用的 content 后端与平台连接后，治理记录及其承诺正文、执行归属与精确结果、integration intent/Receipt、变更与平台映射、证据和 CLI 投影一致且不重复副作用。
 
-这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。有契约的 Task 走完这条链，人的预览是合入与完成两次；开了「发布评审须人显式确认」开关的仓库多一次，单独验收。两条路径——缺省绑定本地平台的本地仓库、受保护的 GitHub `main`——都要走通。
+这是 B2 的第一次真正自举；它不等待 workflow engine 或法定票数。有契约的 Task 走完这条链，人的预览是合入与完成两次；开了「发布评审须人显式确认」开关的 Project 多一次，单独验收。两条路径——缺省绑定本地平台的本地仓库、受保护的 GitHub `main`——都要走通。
 
 ## 纵向切片 B：完整治理
 
@@ -120,7 +120,7 @@ B5 是当前范围的功能成熟度目标；正式发布、升级与回滚仍�
 
 自举期间每次 Run 按 Agency 为各次派工上报的用量与结构化事件记带等待的关键路径时长、总 token、节点数与归约次数，作观测存起来，只看不用，为将来是否放开施工图归约积累数据；上报不全标未知，控制面不重建门后的团队图与进程树。自举期间还统计每条门的执行、放行、拒绝与显式关闭次数，并区分「没有触发机会」与「有机会却没执行」，作为验收的一部分：持续没有触发机会或有机会却没执行的门，要留下复审记录，由必要性与失败测试决定留、修还是删，删要进台账。任一逃生口（无契约卡、无 Run 路径、一票评审）走完，控制面存储里仍有可回溯的对象，走到完成的有凭证。将来重写 control 或 Workbench，每条被拿掉的门单独写台账行，不允许「不在这版里」。
 
-自举验收的「省」按交付计总账。每份经核验的合格交付计入全部消耗：准备、执行、评审、失败、备用、返工、读回与协调的 token 和含等待的耗时，模型版本、思考深度、Harness 与配置一并记，缓存计费条件与实际费用可得时记；同时记人工搬运、盯状态、补上下文与处理异常的次数与时间，正常授权另列。每新增一轮模型调用要能说明它带来了什么新信息、证据或必要判断，只搬运状态、复述规则、维持对话的交给代码或删掉。三个问题随时可答：比直接操作 Harness 省事吗；同等验收要求下省 token 吗；出了问题之后更容易继续吗。相同基线与验收要求下的合格交付、误报、漏报和返工一起记，失败样本也留，不挑成功样本，也不用放松验收换成本。四种不顺利的情形单列成参考用例 [S2](./scenarios/S2-rough-road.md)，自举里每种至少真实走过一次。
+自举验收的「省」按交付计总账。每份经核验的合格交付计入全部消耗：准备、执行、评审、失败、备用、返工、读回与协调的 token 和含等待的耗时，模型版本、思考深度、Harness 与配置一并记，缓存计费条件与实际费用可得时记；同时记人工搬运、盯状态、补上下文与处理异常的次数与时间，正常授权另列；另记一项形成可执行承诺的成本——从自然请求到双方认可的契约，花了多少时间、多少次有效澄清。每新增一轮模型调用要能说明它带来了什么新信息、证据或必要判断，只搬运状态、复述规则、维持对话的交给代码或删掉。三个问题随时可答：比直接操作 Harness 省事吗；同等验收要求下省 token 吗；出了问题之后更容易继续吗。相同基线与验收要求下的合格交付、误报、漏报和返工一起记，失败样本也留，不挑成功样本，也不用放松验收换成本。四种不顺利的情形单列成参考用例 [S2](./scenarios/S2-rough-road.md)，自举里每种至少真实走过一次。
 
 自举验收不得对 HCTL2 仓库、内置账号或测试环境设置隐藏的特例豁免：开发自身必须只使用公开的 Query/Preview/Submit/Subscribe、CLI 和受控端口，实际 Context、权限与证据均可检查；手工推进引擎、直接改库、隐藏 Prompt/Context 或在产品外补签 Receipt 都不算通过。
 

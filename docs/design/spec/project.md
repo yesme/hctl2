@@ -1,6 +1,6 @@
 # Project 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.7<br>
+> 状态：规范性约束 · 草案 v0.18.11<br>
 > 本文是 Project 模块的约束附录，对象、状态机与写入者的唯一权威。设计正文见[Project 与 Room](../project.md)；词汇分类与族规则见[总则](./README.md)；交接见[连接约束](./connections.md)。
 
 ## 对象
@@ -22,9 +22,9 @@
 
 | 聚合 | version / lifecycle | 合法命令与唯一写入者 | 终态或不可变结果 |
 | --- | --- | --- | --- |
-| Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝新 Task、Run 和写入型 Invocation；历史只读 |
+| Project | `project_version`；活跃 / 已归档 | control 处理「创建/更新/归档/恢复 Project」命令 | 已归档拒绝的命令见 [Repo 注册与 Project 归档](#repo-注册与-project-归档)；历史只读 |
 | Room 名册 | Room state version | control 处理「选入 Room」「移出 Room」命令，候选来自 Agency 名册且须满足 Project 选人策略；Agency 只报名册与探测能力 | 活动 Invocation 永久引用选入时的记录；换人只影响将来的调用 |
-| Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（来源关联、调用与 Request 关联）和 Topic Room 的「创建/归档」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件记录都只追加；Project Room 随 Project 归档只读 |
+| Room / 治理事件 | Room state version；活跃 / 只读 / 已归档；消息 content 由 chat server 承载 | 消息经 chat server 只追加（事务 ID 幂等）；control 只处理治理事件（来源关联、调用与 Request 关联）和 Topic Room 的「创建 / 关闭」命令，并以 chat server 事件 ID 精确引用消息 | chat server 时间线与治理事件记录都只追加；Project Room 随 Project 归档只读 |
 | Room–Server Binding | immutable revision + current pointer；活跃 / 停用 / 已替换 | control 处理「绑定/换绑/停用房间」命令，adapter 只投递/回读；「绑定/换绑」与 HCTL 自建房间的准入都以房间状态的当前回读证明目标房间未启用端到端加密 | 固定所用聊天端口的 Port–Provider Binding、外部 room stable ID 与降级能力；账号、身份映射策略与结构化 human 动作 allowlist 归聊天端口的 Port–Provider Binding；事后降级见[Room 与消息](#room-与消息) |
 | Context Manifest / Context Bundle | immutable value + digest | Project control 按获准来源、scope、权限和预算物化；consumer 只读 | 后续 Room 消息、索引变化和 Harness 召回不能改写已冻结 Manifest/Bundle |
 | Request | `request_version`；开放 / 已解决 / 已过期 / 已取消 / 被替代 | Project reducer/control 处理「创建/解决/取消」命令与 deadline | 终态不可复活；新问题创建新 Request |
@@ -34,21 +34,25 @@
 
 ## Repo 注册与 Project 归档
 
-Repo 的登记与声明的平台绑定由 [Repo 模块约束](./repo.md#repo-注册)拥有，Project 只引用该登记，不另认定仓库身份。每个 Project 关联一个已激活的 Repo；同一控制面内，多个 Project 使用同一 Repo 是人的显式选择，分别保存工作与授权。注册 Repo 不另建仓库级 Room；待确认 Repo 不接受 Project、Task 或 Run。工作副本不成为 Project 的子对象。
+Repo 的登记与声明的平台绑定由 [Repo 模块约束](./repo.md#repo-注册)拥有，Project 只引用该登记，不另认定仓库身份。每个 Project 关联一个已激活的 Repo；同一控制面内，多个 Project 使用同一 Repo 是人的显式选择，分别保存工作与授权。待确认 Repo 不接受 Project、Task 或 Run。工作副本不成为 Project 的子对象。
 
 “创建 Project”命令在同一控制面事务中创建该 Project 的唯一 Project Room；同一命令重试返回原 Project 与 Room，另一条显式创建命令可以引用同一 Repo 创建另一 Project。Project Room 是该 Project 的主 Room，用户流程中的主 Repo Room 指它，不是另一种 Room。Room 身份与治理记录在用户级控制面；不同客户端打开同一 Project 时进入同一主 Room，未选 Participant 不阻止查看。工作副本的位置与布局由参与者管理。
 
 Room 的 Project 归属创建后固定；消息仍属于原 Room，跨 Room 引用保留出处，不搬动消息。Task 与 Run 的归属各由其模块固定；关联、关闭 Room 或切换客户端不改变归属、终结关联工作或转移授权。
 
-Project Overview 是按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是独立场景或可写状态。Project 的“待你处理”只投影已有记录中等待当前用户处理的事项：目标为本人或本人所任角色的开放 Request；[发布评审](./repo.md#发布评审)中冻结策略要求本人确认、尚未确认的待处理意图；存在待本人采纳的契约变化，或已有候选交付、没有 Run 占用标记且仍待本人确认完成的开放 Task（判定前置见 [Task 写入约束](./task.md#写入约束)）；[Run 过渡态超时](./run.md#写入约束)后等待有权用户取消或替代的 Run。投影按来源引用与原处理动作去重，Request 已承接的同一处理动作不另计一项；条目列明对象、原因、可用动作与后果、未处理影响及返回原处的入口。读取投影不解决事项；实际动作仍走原模块的预览与准入，生效后退出列表，历史留在原处。预览本身不成为待办，普通消息、可忽略建议与无需人介入的自动等待不计数；别的客户端已处理时投影随之更新。
+<a id="project-overview"></a>
+Project Overview 是按单个 Project 聚合目标、健康度、Task、Run、Request、Artifact、变更与检查状态和近期活动的只读投影，不是独立场景或可写状态；不要求独立导航入口，不能替代主 Room 与“待你处理”入口。
+
+<a id="待你处理"></a>
+Project 的“待你处理”只投影已有记录中等待当前用户处理的事项：目标为本人或本人所任角色的开放 Request；[发布评审](./repo.md#发布评审)中冻结策略要求本人确认、尚未确认的待处理意图；存在待本人采纳的契约变化，或已有候选交付、没有 Run 占用标记且仍待本人确认完成的开放 Task（判定前置见 [Task 写入约束](./task.md#写入约束)）；[Run 过渡态超时](./run.md#写入约束)后等待有权用户取消或替代的 Run。投影按来源引用与原处理动作去重，Request 已承接的同一处理动作不另计一项；条目列明对象、原因、可用动作与后果、未处理影响及返回原处的入口。读取投影不解决事项；实际动作仍走原模块的预览与准入，生效后退出列表，历史留在原处。预览本身不成为待办，普通消息、可忽略建议与无需人介入的自动等待不计数；别的客户端已处理时投影随之更新。
 
 “归档 Project”要求系统进入静止状态。预览与提交都必须确认：不存在非终态 Run、非终态写入型 Room Invocation、活动输入租约，也不存在归属该 Project 的执行仍持有的活动 Write Lease、待投递或结果未知的集成意图与发布评审意图，以及该 Project 所有的其他待投递或结果未知的外部副作用。Write Lease 与集成意图归 [Repo 模块](./repo.md#写入约束)，归档预览必须能列出它们。前置不满足时，系统必须列出阻塞项并拒绝命令。
 
-开放 Task、开放 Request 与未归档 Topic Room 不阻止归档。它们随 Project 一并转为只读，不被隐式完成或取消；恢复 Project 后保持原状态。仍在运行的只读 Invocation 也不阻止归档，其迟到结果按既有规则只留审计。
+开放 Task、开放 Request 与未归档 Topic Room 不阻止归档。它们随 Project 一并转为只读，不被隐式完成或取消；恢复 Project 后，这些开放对象恢复接收命令，已终态的不复活，归档前已关闭的 Topic Room 不随 Project 恢复。仍在运行的只读 Invocation 也不阻止归档，其迟到结果按既有规则只留审计。
 
-成功事务把 Project 与 Project Room 置为只读，并拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation。恢复命令只恢复 Project 与 Project Room 接收新命令的资格，不复活历史 Task、Run、Invocation、Request、Topic Room、租约或外部副作用。
+成功事务把 Project 与 Project Room 置为只读，并拒绝新的 Task、Run、Request、Artifact 发布与写入型 Invocation，也拒绝对既有 Task 的采纳、移动、重开、取消或完成。恢复命令恢复 Project 与 Project Room 接收新命令的资格，随归档转只读的开放 Task、开放 Request 与未归档 Topic Room 一并恢复接收命令；已终态的 Task、Run、Invocation、Request、租约与外部副作用不复活，归档前已关闭的 Topic Room 不随 Project 恢复。
 
-Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 Room Invocation 时必须冻结所属 Project、获准的 Project version 与相关策略摘要。只读与写入按本次调用的授权范围区分，不按主 Room 或 Topic Room 区分。后续 Project 更新不改写已经接受的下游约束。
+Project 的目标、范围、角色和默认规则以单调 project_version 更新。创建 Task、Run 或 Room Invocation 时必须冻结所属 Project、获准的 Project version 与相关策略摘要。只读与写入按本次调用的授权范围区分，不按主 Room 或 Topic Room 区分。后续 Project 更新不改写已经接受的下游约束。「发布评审须人显式确认」开关的缺省是 Project 版本化设置的一部分，随对应 project_version 带入授权预览，所用策略随本次授权冻结；Repo 模块只引用其归属，执行时只读已冻结策略。
 
 <a id="room-名册"></a>
 Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立：建 Room 或 Trigger Preview 时把 Agency 名册里某个工种的实例选进 Room 成为规划者，启动 Run 时按席位要求选施工者（见 [Run 约束](./run.md#启动与-manifest)）；两处准入都校验候选满足 Project 选人策略。项目本身不持有成员名单，只持有选人策略——允许哪些 Agency 与工种、预算上限、多样性要求——作为 Project 版本化设置的一部分，随 project_version 冻结进下游。名册记录就是一份选入记录，字段只在连接约束定义一次；「角色」只是职责标签字段，不是对象。人不是 Participant：人的权限由 human actor 的命令权限表达；聊天平台的成员名单是 content，HCTL 的规划者名册只列数字参与者。
@@ -59,7 +63,7 @@ Room 名册换人只影响将来的调用，不改写活动 Invocation。主 Roo
 
 ## Room 与消息
 
-Room 分为每个 Project 唯一的 Project Room，以及该 Project 内零到多间 Topic Room。Topic Room 承接普通话题和复杂 Request 的讨论；普通 Topic 不以完成条件、结论回填或结案理由为创建、关闭的前置，也不因闲置自动进入“待你处理”。人可以关闭 Topic Room；关闭不解决关联 Request，不取消或删除 Task、Run，也不解除其授权与截止条件。实际事项仍按原模块规则处理，其待处理入口保留；讨论结论只有经原类型化动作准入才改变目标。
+Room 分为每个 Project 唯一的 Project Room，以及该 Project 内零到多间 Topic Room。Topic Room 承接普通话题和复杂 Request 的讨论；普通 Topic 不以完成条件、结论回填或结案理由为创建、关闭的前置，也不因闲置自动进入“待你处理”。人可以关闭 Topic Room（关闭即该 Room 已归档；随 Project 归档则转为只读，不是第四种状态）；关闭不解决关联 Request，不取消或删除 Task、Run，也不解除其授权与截止条件。实际事项仍按原模块规则处理，其待处理入口保留；讨论结论只有经原类型化动作准入才改变目标。
 
 承接开放 Request 的活跃 Topic Room，自创建或最近一条消息起超过缺省闲置期限、所关联 Request 仍开放时，投影为“需要关注”；期限见[运行默认值](../delivery.md#运行默认值)。这只提醒关联事项，不自动关闭 Room、解决 Request 或增加“待你处理”计数；普通 Topic 不适用。Request 自己的截止与状态规则不变。
 
@@ -141,7 +145,7 @@ Room Invocation 的合法边只有待启动 → 运行中/失败/已取消/丢�
 
 Room Invocation 的 Execution Spec 固定所属 Project 与版本、相关 Repo/base 及本次读写范围。主 Room 与 Topic Room 都可以发起只读或获准的写入调用；进入房间本身不授予写权。human 批准建议时，Spec 还必须固定来源建议、建议摘要、可选父执行、扇出位置和预期 Room/Project version。
 
-写入型调用可以在 Trigger Preview 一并授权**评审发布策略**，由 Execution Spec 冻结：Repo、平台端口的 Port–Provider Binding 版本、发布到的分支或评审请求的规则、允许创建还是也允许更新、评审请求描述的来源，是否须人显式确认，以及审计关联的公开范围。预览必须写明这里授权的是发布去评审，不是合入。策略是范围：Result Proposal 只能提供被允许的内容，不能换发布地点或扩大权限；仓库或 Project 的「发布评审须人显式确认」开关值随本次授权冻结，之后改默认值不影响已接受的调用。发布的执行、映射与凭证归 [Repo 模块约束](./repo.md#发布评审)。
+写入型调用可以在 Trigger Preview 一并授权**评审发布策略**，由 Execution Spec 冻结：Repo、平台端口的 Port–Provider Binding 版本、发布到的分支或评审请求的规则、允许创建还是也允许更新、评审请求描述的来源，是否须人显式确认，以及审计关联的公开范围。预览必须写明这里授权的是发布去评审，不是合入。策略是范围：Result Proposal 只能提供被允许的内容，不能换发布地点或扩大权限；Project 的「发布评审须人显式确认」开关值（缺省见 [Repo 注册与 Project 归档](#repo-注册与-project-归档)）随本次授权冻结，之后改默认值不影响已接受的调用。发布的执行、映射与凭证归 [Repo 模块约束](./repo.md#发布评审)。
 
 若建议来自 Result Proposal，还必须逐项校验归属者、Execution Spec、绑定、Context Bundle 和派工引用。
 
