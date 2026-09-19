@@ -17,3 +17,9 @@ export_file(
     src = "jq-bin",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "protoc-bin",
+    src = "protoc-bin",
+    visibility = ["PUBLIC"],
+)
