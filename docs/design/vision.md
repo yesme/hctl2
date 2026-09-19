@@ -1,6 +1,6 @@
 # 愿景与设计原则
 
-> 状态：规范性（愿景与原则层）· 草案 v0.18.6<br>
+> 状态：规范性（愿景与原则层）· 草案 v0.18.7<br>
 > 日期：2026-09-10<br>
 > 定位：本文回答“HCTL2 为什么存在、想给用户什么体验、按什么原则做取舍”。对象、状态、命令和不变量的权威定义在[约束层](./spec/README.md)；两者冲突时以约束为准，本文用于裁决约束尚未覆盖的新问题。阅读入口见[设计地图](./README.md)。
 
@@ -75,9 +75,9 @@ Project · Room             Task · Kanban              Run · Workflow         
 
 理想的完整旅程是：
 
-1. 用户打开一个仓库（Repo），进入它的 Repo Room，引用代码、Artifact（工件，登记过的交付物）、Commit 或 Memo（沉淀的备忘），邀请多个 Participant 做有边界的研究。
-2. 话题成型后，把相关来源和上下文提升为一个具名 Project。
-3. 用户在 Project Room 中塑形目标、范围和验收标准，把承诺提炼成 Task Revision（任务契约版本）。
+1. 用户选择一个仓库（Repo），创建或打开具名的 Project，进入它自己的主 Room，邀请 Participant 讨论；同一仓库可以有多个 Project。
+2. 值得单独讨论的话题，带着人确认的前情提要和来源进入 Topic Room，另选参与者，不必重读主 Room 的长篇聊天。
+3. 用户在主 Room 或 Topic Room 中塑形目标、范围和验收标准，把承诺提炼成 Task；Rooms、Kanbans、Runs 在 Project 中并列呈现。
 4. 简单工作由人完成，或通过一次有边界的 Room Invocation（从聊天室发起的单次调用）完成；它不需要 Run。
 5. 需要持久自动施工时，用户先批准 Workflow（施工图），再显式启动 Run，授予有边界的自主权。批准施工图与开工是两条治理记录，复用现成施工图时可以在一次预览里同时提交。
 6. Run 默认在后台推进；需要澄清、决定或授权时，系统创建 Request（请求卡）并投影回 Project。
@@ -101,7 +101,7 @@ Project · Room             Task · Kanban              Run · Workflow         
 
 | 制度 | 推进权在谁手里 | 主要产物 |
 | --- | --- | --- |
-| 塑形（Planning / Shaping） | 人是意图和授权中心；系统可以研究、建议、汇总，但不能替用户决定目标 | 规格、ADR（架构决策记录）、Task、Artifact、Workflow 提案，或普通 Git 文件 |
+| 塑形（Planning / Shaping） | 人是意图和授权中心；系统可以研究、建议、汇总，但不能替用户决定目标 | 规格、ADR（架构决策记录）、Task、Artifact（工件）、Workflow 提案，或普通 Git 文件 |
 | 施工（Run / Automated Build） | control 在冻结的 Workflow 与规则内自动推进；人只处理例外 | 代码/文档、裁决、Receipt、PR、Run 历史 |
 
 批准 Workflow 与启动 Run 是两条治理记录：前者确认施工图，后者才允许系统消耗资源、产生副作用；复用现成施工图时，两件事可以在一次预览里提交。Run r1 按冻结的版本施工时，Project Room 可以继续讨论 r2——讨论不必等施工结束，施工也不会随讨论漂移；范围、验收、候选或权限要变，就结束或替代旧 Run，而不是原地改。
@@ -113,7 +113,7 @@ Project · Room             Task · Kanban              Run · Workflow         
 HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装——执行面确实由聊天、任务、工作流、执行体这四类系统，加上按仓库可选的代码协作平台组成（见[三面架构](./architecture.md)），但把它们黏合成一个产品的，是一个**随用户走、按仓库划分语义范围的项目语义控制面**（project semantic control plane：控制面归用户级，语义范围以 Repo 为界）。这才是产品原生核心，由三项能力构成：
 
 1. **Repo–Project 生命周期**：仓库注册、Project 的创建/更新/归档/恢复，以及不随外部平台漂移的稳定身份；
-2. **Project 连续性**：Room、Task、Run、Artifact、Request 和证据始终回到同一个 Project——替换 Harness、会话、终端甚至外部 SaaS 之后，项目仍可继续；
+2. **Project 连续性**：Room、Task、Run、Artifact（工件）、Request 和证据始终回到同一个 Project——替换 Harness、会话、终端甚至外部 SaaS 之后，项目仍可继续；
 3. **Project 驱动的控制**：系统根据 Project 上下文、角色、版本、能力和证据判断下一步允许发生什么。
 
 即使把全部界面、聊天平台、Task 来源、工作流引擎和终端客户端都换掉，下列最小内核也必须保留：
@@ -166,7 +166,7 @@ HCTL2 不是聊天室、看板、流程引擎和终端的并列拼装——执�
 
 ## 要解决什么，不解决什么
 
-HCTL2 要解决：仓库级 Harness 目录与能力探测；Repo/Project Room 中的多参与者结构化协作；可追踪、可排序、可验收的 Task；冻结施工图的持久 Run；候选切换、法定票数与重新评审；Git/worktree/PR/Receipt 的确定性验证，包括只在本地、没有外部平台的仓库；低噪声的注意力管理与按需商议；Harness 结构化事件与终端逃生通道；各组件重启后的对账恢复。
+HCTL2 要解决：仓库级 Harness 目录与能力探测；Project Room 与 Topic Room 中的多参与者结构化协作；可追踪、可排序、可验收的 Task；冻结施工图的持久 Run；候选切换、法定票数与重新评审；Git/worktree/PR/Receipt 的确定性验证，包括只在本地、没有外部平台的仓库；低噪声的注意力管理与按需商议；Harness 结构化事件与终端逃生通道；各组件重启后的对账恢复。
 
 HCTL2 不解决：不重新实现 LLM、Coding Harness、通用工作流引擎、终端模拟器或复用器；不用自然语言提示替代分支保护、Receipt、权限或规则；不把不同 Harness 的能力伪装成完全相同；**不让每项工作都必须聊天，也不让每项工作都必须先画一张施工图**；不把跨项目的数字伙伴关系当作产品的组织中心，伙伴式体验作为推荐层存在（见下文延长线）；当前不做多人组织、云队列、浏览器/移动客户端和引擎高可用（范围见[交付文档](./delivery.md#当前范围)）。
 

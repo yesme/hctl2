@@ -1,6 +1,6 @@
 # Participant 模块约束
 
-> 状态：规范性约束 · 草案 v0.18.6<br>
+> 状态：规范性约束 · 草案 v0.18.7<br>
 > 本文是 Participant 模块对象、状态机与写入约束的唯一权威。设计正文见 [Participant 与 Terminal](../participant.md)；模块交接见[连接约束](./connections.md)，共享机制见[系统边界](./system.md)，族语义与词汇分类见[约束层总则](./README.md)。
 
 ## 对象
@@ -75,7 +75,7 @@ ChangeSet、ChangeSet Revision、Write Lease、封存、保全与集成的对象
 
 Run 经其 Attempt 可以有多次派工；Room Invocation 至多一次。Attempt 与 Room Invocation 各至多一组终端通道。派工不以 TTY 存在为前提。
 
-Room Invocation 的派工继承其 Execution Spec 的 `project_scope | repo_scope`；Attempt 的派工的 Project 范围来自 Run Manifest。repo-scoped 调用可以没有 Project ref，但仍必须保留精确 Room Invocation、派工引用、绑定、语义代次和权限；已知派工不能被降级成无主活动或模糊仓库活动。
+Room Invocation 的派工继承其 Execution Spec 中的所属 Project 与本次读写范围；Attempt 的 Project 范围来自 Run Manifest。两条路径都必须保留精确归属者、Project、派工引用、绑定、语义代次和权限；已知派工不能被降级成无主活动或模糊仓库活动。
 
 代次分层记录，不能共用一个模糊的 `generation`：语义归属者代次标识这一次逻辑执行归谁；`control_writer_generation` 标识控制面存储此刻的写入者；成员与推导规则见[代次家族总表](./system.md#代次家族)。控制面不记录物理代次：Agency 门后换了几次进程、会话或主机不是控制面可见的代次。替代语义归属者只使引用旧值的 HCTL 动作失效，不得顺带改写其他层的身份。
 
