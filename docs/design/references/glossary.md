@@ -23,7 +23,10 @@
 | planner / worker | 规划者 / 施工者 | Participant 的两顶帽子：选进 Room 的是规划者，选进 Run 席位的是施工者；不是对象名 | [Participant](../participant.md#agency-与执行体) |
 | Repo | 仓库 | 人登记的逻辑仓库与声明的平台绑定；也是第五个领域模块的名字，拥有仓库登记、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
 | Project | 项目 | 关联一个 Repo 的具名工作范围；同 Repo 可有多个 Project，各自保存工作与授权 | [Project](../project.md) |
-| Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
+| Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room；所有者与用户流程说的『主 Repo Room』指同一间，不是另一种 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
+| Topic Room | 主题聊天室 | Project 内围绕话题或 Request 展开的独立讨论空间 | [spec/project](../spec/project.md#room-与消息) |
+| 前情提要 | — | Topic Room 开场时可反复读取的背景正文与来源 | [spec/project](../spec/project.md#room-与消息) |
+| 待你处理 | — | Project 内已有记录中等待当前用户处理的事项投影 | [spec/project](../spec/project.md#repo-注册与-project-归档) |
 | Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
@@ -53,9 +56,10 @@
 | `hctl2-tool` | 旧称「工具箱」，2026-09-12 改口：架构与约束层直接写组件名；它是 Repo 模块的现场执行者 |
 | 平台适配器 | Repo 模块经平台端口接入代码协作平台的适配代码；负责评审请求、请求合并、记录写回与 content 读取；Git 版本由持凭据单元交付，机械事实仍由 `hctl2-tool` 回读 |
 | 治理正文 | 控制面保管的不可变契约、施工图、Memo 等材料；与治理记录同属一份控制面存储，保存、准入与交付分开，见[系统存储约束](../spec/system.md#控制面自己的存储)；不是新业务对象 |
+| 候选交付 | 满足条件的既有 ChangeSet / Artifact 版本，不是新对象或 Task 状态；见 [Task 写入约束](../spec/task.md#写入约束) |
 | 本地平台 | 随包、由 control 托管的代码协作平台实例；只在本地的 Repo 缺省绑定它，评审请求、检查、保护条件与合入都在它上面走；对 Repo 模块它只是又一个平台绑定，选型 Gitea |
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令；也是四类单元之一，见[单元与连接](../architecture.md#单元与连接) |
-| 任务源 | 任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
+| 任务源 | Source，任务的实际来源及范围；Kanban 入口是它在 Project 里的呈现。任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
 | 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做外部卡身份，绑定做寻址；同一 Project 内映射唯一，不同 Project 可各自有 Task |
 | 合并板 | 可选的跨源派生视图，不是权威对象，也不代替 Project 内按源分别进入的 Kanbans；源内分组与 Task 的 Project 归属分开 |
 | 参考用例 | 所有者的[多单元体验用例](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)统一记录修正后的拓扑、步骤、必然情形与变体；[S1](../scenarios/S1-multi-unit.md#四不变量)已按主 Room 与独立 Project 对齐 CT 映射，新用户路径由 [S3](../scenarios/S3-user-journey.md)补充 |

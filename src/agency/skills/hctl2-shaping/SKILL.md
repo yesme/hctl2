@@ -1,6 +1,6 @@
 ---
 name: hctl2-shaping
-description: 在 Project Room 里把一个还说不清的目标审问成可拍板的决定、可指派的问题和可承诺的 Task。由人发起；产出只有建议，动作由人经 Trigger Preview 批准。
+description: 在 Project Room 或 Topic Room 里把一个还说不清的目标审问成可拍板的决定、可指派的问题和可承诺的 Task。由人发起；产出只有建议，动作由人经 Trigger Preview 批准。
 disable-model-invocation: true
 ---
 
@@ -50,7 +50,7 @@ disable-model-invocation: true
 
 ## 来源
 
-改编自 Matt Pocock 的 [mattpocock/skills](https://github.com/mattpocock/skills)（MIT，© 2026 Matt Pocock）中的 grilling 与 wayfinder：轮次与前沿、事实归模型而决定归人、三张清单及其毕业判据来自原作；「一切产出只是建议，门在账本」「不写执行许可」是 HCTL2 的绑定。原许可证见同目录 `LICENSE-mattpocock-skills`；调研见 `docs/research/methodology-mattpocock-skills-20260902.md`。
+改编自 Matt Pocock 的 [mattpocock/skills](https://github.com/mattpocock/skills)（MIT，© 2026 Matt Pocock）中的 grilling 与 wayfinder：轮次与前沿、事实归模型而决定归人、三张清单及其毕业判据来自原作；「一切产出只是建议，门在控制面」「不写执行许可」是 HCTL2 的绑定。原许可证见同目录 `LICENSE-mattpocock-skills`；调研见 `docs/research/methodology-mattpocock-skills-20260902.md`。
 
 ## 读回（批准施工图前的一步）
 
