@@ -78,12 +78,14 @@ sh_test(
         "CODE_WORKFLOW": "$(location repo//:code_workflow_yml)",
         "RELEASE_WORKFLOW": "$(location repo//:release_workflow_yml)",
         "JQ_BIN": "$(location root//build/tools:jq-bin)",
+        "AFFECTED_TARGETS": "$(location root//:affected_targets)",
     },
     labels = CI_FAST,
     resources = [
         "repo//:code_workflow_yml",
         "repo//:release_workflow_yml",
         "root//build/tools:jq-bin",
+        "root//:affected_targets",
     ],
     test_rule_timeout_ms = 120000,
 )

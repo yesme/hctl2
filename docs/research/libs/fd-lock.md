@@ -57,3 +57,7 @@
 - 标准库：[`File::lock` 文档](https://doc.rust-lang.org/std/fs/struct.File.html#method.lock)、[Rust 1.89.0 发布公告](https://blog.rust-lang.org/2025/08/07/Rust-1.89.0/)
 - 系统调用：[flock(2)（man7，含 NFS 与 CIFS 节）](https://man7.org/linux/man-pages/man2/flock.2.html)、[macOS flock(2)](https://keith.github.io/xcode-man-pages/flock.2.html)、[LockFileEx（Microsoft Learn）](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex)
 - 本库：[部件矩阵表 D 现场 OS 锁一行](../component-matrix-20260902.md#d--约束层里靠第一方代码实现的通用机制)
+
+## 2026-09-20 · P2.1 复核
+
+维持标准库 SDK。控制面存储的并行测试曾在显式 drop writer 后重开时报 `WRITER_BUSY`；已有研究中的 open file description 语义提示：复制的描述符尚未关闭时，单纯关闭原描述符不保证释放锁。foundation 的 guard 现于 Drop 中显式调用 `File::unlock`，正常退出不等全部复制描述符关闭。新增确定性反例：复制描述符仍开着，drop 原 guard 后另一 writer 立即可取得锁；关闭旧副本不会释放新 writer 的锁。实际进程死亡的内核释放用例保留。不新增依赖、锁协议或重试脚本。

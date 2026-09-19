@@ -1,0 +1,2 @@
+[buildscript.run]
+env = { CARGO_PKG_README = "README.md" }

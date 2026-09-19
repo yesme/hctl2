@@ -2,11 +2,12 @@
 
 这个目录存放全部 HCTL2 产品代码和产品测试。仓库根目录继续存放产品与设计文档。Buck2 的项目根是仓库根：`src/` 是名为 `root` 的 cell，仓库根是 `repo` cell，文档与许可证以 `repo//...` 标签进入构建图；`./buck2` 启动器仍在本目录，从任何子目录运行都能找到项目根。
 
-P1 工作区包含 HCTL2 自己需要实现的机械组件与可复用基础机制：
+工作区包含 HCTL2 自己需要实现的机械组件与可复用基础机制：
 
 - `hctl2-tool`：Git/SCM 与仓库机械操作。P1 已具备仓库检查、现场锁、隔离 worktree 物化与核验、封存保全拆除、本地集成（快进或合并提交的比较并交换）以及 `wait` 回读闭集外部事实。独立运行只做普通本地操作，不产生治理记录或 Receipt。
 - `hctl2-facts`：供 `hctl2-tool` 与未来 control 共用的事实读取代码。
 - `hctl2-foundation`：标准库文件锁、JCS、SQLite Online Backup、keyring 与 FTS5 的受测封装。
+- [`hctl2-store`](crates/hctl2-store/README.md)：P2.1 的控制面存储与命令内核，含 schema 迁移、同事务记录、私有 Git 材料库和一致备份恢复；不包含业务命令或守护进程。
 
 当前没有真实的 HCTL2 进程间 API，因此不预建公共 protocol crate。`hctl2-control` 开工并形成多客户端边界时，再根据实际兼容与多语言需求调研 schema-first RPC；协议生成代码不能反向成为 Git 领域正文的事实源。
 
@@ -26,7 +27,7 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 
 ```bash
 ./buck2 test --build-default-info \
-  root//apps/... root//build/tests/... \
+  root//apps/... root//crates/... root//build/tests/... \
   root//:clippy root//packaging/release:first-party
 ```
 

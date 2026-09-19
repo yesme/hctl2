@@ -2757,6 +2757,59 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "rusqlite_migration",
+    actual = ":rusqlite_migration-2",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "rusqlite_migration-2.6.0.crate",
+    sha256 = "03451d4dc523c0a96d9e412c574670b3f5f184c3988b77a435876be25477bbd3",
+    strip_prefix = "rusqlite_migration-2.6.0",
+    urls = ["https://static.crates.io/crates/rusqlite_migration/2.6.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "rusqlite_migration-2",
+    srcs = [":rusqlite_migration-2.6.0.crate"],
+    crate = "rusqlite_migration",
+    crate_root = "rusqlite_migration-2.6.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :rusqlite_migration-2-build-script-run[out_dir])",
+    },
+    features = ["default"],
+    rustc_flags = ["@$(location :rusqlite_migration-2-build-script-run[rustc_flags])"],
+    visibility = [],
+    deps = [
+        ":log-0.4",
+        ":rusqlite-0.40",
+    ],
+)
+
+cargo.rust_binary(
+    name = "rusqlite_migration-2-build-script-build",
+    srcs = [":rusqlite_migration-2.6.0.crate"],
+    crate = "build_script_build",
+    crate_root = "rusqlite_migration-2.6.0.crate/build.rs",
+    edition = "2021",
+    features = ["default"],
+    visibility = [],
+)
+
+buildscript_run(
+    name = "rusqlite_migration-2-build-script-run",
+    package_name = "rusqlite_migration",
+    buildscript_rule = ":rusqlite_migration-2-build-script-build",
+    env = {
+        "CARGO_PKG_README": "README.md",
+    },
+    features = ["default"],
+    version = "2.6.0",
+)
+
 http_archive(
     name = "rustix-1.1.4.crate",
     sha256 = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190",
