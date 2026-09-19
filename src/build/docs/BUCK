@@ -238,6 +238,7 @@ test_suite(
         ":check_links",
         ":check_version_stamps",
         ":check_dead_names",
+        ":check_dead_names_src",
         ":check_memo_review_baseline",
         ":check_layer_terms",
         ":check_implementation_names",
