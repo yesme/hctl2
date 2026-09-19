@@ -9,6 +9,7 @@
 | [`jq.md`](./jq.md) | jq | 采用摘要锁定的官方单文件制品；只解析 BTD JSON Lines，不承担选择策略 |
 | [`github-actions-incremental-validation.md`](./github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | 复用旧 head 的成功 workflow 证据；快进增量验证，历史改写时全量回退 |
 | [`syft.md`](./syft.md) | Syft | 采用官方三平台二进制生成 SPDX 2.3；Buck 固定版本、摘要、输入和输出 |
+| [`xz.md`](./xz.md) | XZ Utils | 锁定 pkgx 的 xz 5.8.4 三平台预编译包；安装包使用 xz -9 -T0，上游下载格式不变 |
 | [`process-compose.md`](./process-compose.md) | Process Compose | 采用官方三平台二进制管理本机 REAPI cache 生命周期；不再自建 PID/锁/健康检查 |
 | [`macdylibbundler.md`](./macdylibbundler.md) | macdylibbundler | 不采用；布局与冲突语义不符，且无上游发行制品；继续只在产物外层调用 Apple 原生工具 |
 | [`buck2-project-root.md`](./buck2-project-root.md) | Buck2 项目根与 cell 布局 | 项目根挪到仓库根，`src/` 仍为 `root` cell；文档与许可证以 `repo//...` 直接进图，发行快照与 materialize 桥退役 |

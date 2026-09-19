@@ -1,4 +1,56 @@
 {
+  "download_only": {
+    "gitea": {
+      "version": "1.27.3",
+      "assets": {
+        "linux_x86_64": {
+          "filename": "gitea-1.27.3-linux-amd64.xz",
+          "url": "https://dl.gitea.com/gitea/1.27.3/gitea-1.27.3-linux-amd64.xz",
+          "sha256": "acdc052132d7abea16353e41ac83227685e616ec844170043d8dc1cea83eba2e"
+        },
+        "linux_arm64": {
+          "filename": "gitea-1.27.3-linux-arm64.xz",
+          "url": "https://dl.gitea.com/gitea/1.27.3/gitea-1.27.3-linux-arm64.xz",
+          "sha256": "2bf1e93aa936649a8f2b307e12753bff69e4591e8fd003af7475a6dd28353800"
+        },
+        "macos_x86_64": {
+          "filename": "gitea-1.27.3-darwin-10.12-amd64.xz",
+          "url": "https://dl.gitea.com/gitea/1.27.3/gitea-1.27.3-darwin-10.12-amd64.xz",
+          "sha256": "e0c6468324acd11926cf475d40136100377fe84900d3a04b307aab3922bdb0d3"
+        },
+        "macos_arm64": {
+          "filename": "gitea-1.27.3-darwin-10.12-arm64.xz",
+          "url": "https://dl.gitea.com/gitea/1.27.3/gitea-1.27.3-darwin-10.12-arm64.xz",
+          "sha256": "891777340f720b3f61c3d79044d80bb41847a5688fd0a788c8d0b3bb19c65ef8"
+        }
+      }
+    },
+    "tea": {
+      "version": "0.15.1",
+      "assets": {
+        "linux_x86_64": {
+          "filename": "tea-0.15.1-linux-amd64",
+          "url": "https://dl.gitea.com/tea/0.15.1/tea-0.15.1-linux-amd64",
+          "sha256": "aac99cc6e650a81ae7b5061f8c75bc0eade4509c828d97b6072e1f0a3bd24357"
+        },
+        "linux_arm64": {
+          "filename": "tea-0.15.1-linux-arm64",
+          "url": "https://dl.gitea.com/tea/0.15.1/tea-0.15.1-linux-arm64",
+          "sha256": "0db109df6696bfe01f9203402f503404692404d4ea9c16a540ecaeecc8e6bab2"
+        },
+        "macos_x86_64": {
+          "filename": "tea-0.15.1-darwin-amd64",
+          "url": "https://dl.gitea.com/tea/0.15.1/tea-0.15.1-darwin-amd64",
+          "sha256": "1548437d4a40f9bff03d3d69932821870aa253e9be8e58ce22c38cc884d3bcc1"
+        },
+        "macos_arm64": {
+          "filename": "tea-0.15.1-darwin-arm64",
+          "url": "https://dl.gitea.com/tea/0.15.1/tea-0.15.1-darwin-arm64",
+          "sha256": "2342bcaccaff2ede5d09f3fc2640ca2ded72aeb16e4062cb26561f73075ce512"
+        }
+      }
+    }
+  },
   "metadata": {
     "components": {
       "tuwunel": {

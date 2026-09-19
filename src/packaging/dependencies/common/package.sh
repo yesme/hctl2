@@ -35,7 +35,7 @@ assemble_dependency_package() {
     local script
 
     require_target_host
-    require_command gzip
+    require_pinned_xz
     require_command install
     require_command sed
     require_command tar
@@ -54,8 +54,8 @@ assemble_dependency_package() {
     package_id="hctl2-$hctl2_version-$HCTL2_TARGET_ID"
     source_package_id="$package_id-sources"
     dist_dir="${HCTL2_DIST_DIR:?Buck must declare the package output directory}"
-    archive="$dist_dir/$package_id.tar.gz"
-    source_archive="$dist_dir/$source_package_id.tar.gz"
+    archive="$dist_dir/$package_id.tar.xz"
+    source_archive="$dist_dir/$source_package_id.tar.xz"
     build_dir="$(mktemp -d "$P0_TMP_DIR/package.XXXXXX")"
     package_root="$build_dir/$package_id"
     payload_root="$package_root/payload"

@@ -1,5 +1,6 @@
 load(":lock.json", LOCK = "value")
 load("//build/rules:ci.bzl", "CI_INTEGRATION")
+load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
 
 _MACOS_SDK_VERSION = read_config("hctl2", "macos_sdk_version", "unavailable")
 _MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
@@ -366,6 +367,7 @@ def _package_sources(package_sources: dict) -> dict:
         "product/Cargo.toml": "root//:Cargo.toml",
         "release/LICENSE": "repo//:LICENSE",
         "release/USAGE.md": "repo//:usage",
+        "tools/xz": "root//build/tools:xz",
     })
     for component in _COMPONENT_PREFIXES:
         target_name = _component_target_name(component)
@@ -409,6 +411,8 @@ export HCTL2_DIST_DIR="$output_root"
 export HCTL2_PRODUCT_ROOT="$source_root/product"
 export HCTL2_LICENSE_FILE="$source_root/release/LICENSE"
 export HCTL2_USAGE_FILE="$source_root/release/USAGE.md"
+export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
+export HCTL2_XZ_VERSION="{xz_version}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 init_build_environment
@@ -416,6 +420,8 @@ assemble_dependency_package
 """.format(
         package_target = spec["package_target"],
         platform = spec["os"],
+        xz_directory = XZ_DIRECTORY,
+        xz_version = XZ_VERSION,
     )
 
 def declare_external_dependencies(build_sources: dict, package_sources: dict, test_sources: dict):
@@ -424,6 +430,19 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
     for target, spec in LOCK["targets"].items():
         for name, asset in spec["assets"].items():
             _declare_http_file(_asset_target_name(target, name), asset)
+
+    # Stage all four platforms without adding services or a new release target.
+    scm_downloads = []
+    for component, spec in LOCK["download_only"].items():
+        for target, asset in spec["assets"].items():
+            name = _asset_target_name(target, component)
+            _declare_http_file(name, asset)
+            scm_downloads.append(":" + name)
+    native.filegroup(
+        name = "scm-downloads",
+        srcs = scm_downloads,
+        visibility = ["PUBLIC"],
+    )
 
     _declare_tuwunel_rust_components()
 

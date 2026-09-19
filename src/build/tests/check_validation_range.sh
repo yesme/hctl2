@@ -434,6 +434,20 @@ expect "release: the complete PR diff still includes the Skill change" "$(output
 run_step code-paths pull_request synchronize "$c1" fixture "" || true
 expect "code: the complete PR diff still includes the Skill change" "$(output_value code)" true
 
+# A compressor pin or tool declaration change must trigger the full release.
+for tool_file in xz.bzl BUCK; do
+    previous_head="$(git -C "$repo" rev-parse HEAD)"
+    mkdir -p "$repo/src/build/tools"
+    echo pin > "$repo/src/build/tools/$tool_file"
+    git -C "$repo" add "src/build/tools/$tool_file"
+    git -C "$repo" commit -q -m "xz tool fixture: $tool_file"
+    STEP_VALIDATION_BASE="$previous_head"
+    STEP_HEAD_COMMIT="$(git -C "$repo" rev-parse HEAD)"
+    export STEP_VALIDATION_BASE STEP_HEAD_COMMIT
+    run_step release-paths pull_request synchronize "$previous_head" fixture "" || true
+    expect "release: $tool_file change selects the complete package" "$(output_value release)" true
+done
+
 # 6. Every full selection must execute standalone library tests, not just compile their Clippy.
 # Run the actual selector's early policy-change path in the throwaway repository.
 mkdir -p "$repo/src/build/ci" "$runner_tmp/hctl2-btd"
