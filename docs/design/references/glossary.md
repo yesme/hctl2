@@ -1,6 +1,6 @@
 # 术语对照表
 
-> 状态：非规范对照 · 草案 v0.18.9<br>
+> 状态：非规范对照 · 草案 v0.18.10<br>
 > 本表只提供中英对照与一句话释义；完整语义以[约束层](../spec/README.md)为准，Revision、Binding、Receipt、Lease、命令、Snapshot 六族的共同性质只在[约束总则](../spec/README.md#六族规则)定义。
 
 ## 约束、契约与清单
@@ -61,7 +61,7 @@
 | 前端 | Workbench 与 CLI 的统称，展示面的实例；不拥有事实，按动作目标查询或提交 HCTL 命令；也是四类单元之一，见[单元与连接](../architecture.md#单元与连接) |
 | 任务源 | Source，任务的实际来源及范围；Kanban 入口是它在 Project 里的呈现。任务后端作为看板来源时的产品叫法，与 task backend 是同一样东西，绑定层叫 task_source 端口；一个仓库绑零到多个（平台自带的 issues、本地任务服务器、Linear），缺省源由人显式选定，缺省建议是平台自带的 issues；Task–Backend Binding 是 Task 与一张卡的绑定，家指针是它所含的实体键，Task Backend Snapshot 不变；见[Task 约束](../spec/task.md#契约与来源) |
 | 家指针 | 一张卡的家：实体键（provider、账号、实体种类、不可变外部 ID），创建或认领时落定，不搬家、不做跨源同步、不换卡；键做外部卡身份，绑定做寻址；同一 Project 内映射唯一，不同 Project 可各自有 Task |
-| 合并板 | 可选的跨源派生视图，不是权威对象，也不代替 Project 内按源分别进入的 Kanbans；源内分组与 Task 的 Project 归属分开 |
+| 汇总投影（旧称合并板） | 可选的跨源派生视图，若提供只汇总各源，不是权威对象，也不代替 Project 内按源分别进入的 Kanbans；源内分组与 Task 的 Project 归属分开 |
 | 参考用例 | 所有者的[多单元体验用例](../../user-experience/01-multi-unit.md#多-ctl多-repo-的-use-cases)统一记录修正后的拓扑、步骤、必然情形与变体；[S1](../scenarios/S1-multi-unit.md#四不变量)已按主 Room 与独立 Project 对齐 CT 映射，新用户路径由 [S3](../scenarios/S3-user-journey.md)补充 |
 | 派工 | Dispatch：控制面向 Agency 提交一次执行规格并被接受后得到的引用，Agency 对它负责；控制面持有的唯一执行引用，没有主机、隔离域或物理代次字段；见[spec/participant](../spec/participant.md#派工与观测) |
 | 租户 | Agency 为每个配对的控制面开的隔离空间：独立的派工命名空间、会话、工作副本、凭据作用域、观测流与待交结果；跨租户的读取、订阅、输入、取消、结果收取在结构上不可达；见[安全策略面](../spec/system.md#安全策略面) |

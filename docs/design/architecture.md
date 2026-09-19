@@ -1,6 +1,6 @@
 # 三面架构
 
-> 状态：规范性（架构层）· 草案 v0.18.9<br>
+> 状态：规范性（架构层）· 草案 v0.18.10<br>
 > 日期：2026-09-10<br>
 > 定位：本文回答职责与单元两个正交视角，以及数据视角：三个面是职责（治理元数据 / 内容 / 呈现），「单元与连接」是什么能独立装、怎么连；每个场景的数据分哪三类、住在哪里、不可用或丢失时怎么办。模块的语义分责见[设计地图](./README.md)；对象、状态机与三类数据的权威定义在[约束层](./spec/README.md)；具体实现选型与验证在[交付文档](./delivery.md)。
 
@@ -95,7 +95,7 @@ Workbench 是五个场景的稳定组合界面，但只使用公开的命令与�
 
 统一律与三条法（能承载不等于能裁决；冻结摘要是防火墙；命令走 HCTL、记录落平台）见[约束层总则](./spec/README.md#三类数据)，此处不重复。
 
-Project 关联一个 Repo，同一 Repo 可以对应多个 Project；各 Project 有自己的主 Room、Topic Rooms、任务源入口与 Runs。Rooms、Tasks、Runs 在 Project 内相互引用，不因引用改变归属，也不互相包含。Room 的消息留在原 Room，Task 的卡留在原任务源；源内子任务与清单归后端原生能力。每个 Room 与每次 Run 各自选人；容器不归属某个 clone 或客户端。
+Project 关联一个 Repo，同一 Repo 可以对应多个 Project；各 Project 有自己的主 Room、Topic Rooms、任务源入口与 Runs。Rooms、Tasks、Runs 在 Project 内相互引用，不因引用改变归属，也不互相包含。Room 的消息留在原 Room，Task 的卡留在原任务源；源内子任务与清单归后端原生能力。同一外部卡可被多个 Project 各自认领为 Task；共用源卡不等于共用契约、Run、授权或验收。每个 Room 与每次 Run 各自选人；容器不归属某个 clone 或客户端。
 
 ## 模块交接
 
