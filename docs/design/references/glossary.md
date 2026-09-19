@@ -26,7 +26,7 @@
 | Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room；所有者与用户流程说的『主 Repo Room』指同一间，不是另一种 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
 | Topic Room | 主题聊天室 | Project 内围绕话题或 Request 展开的独立讨论空间 | [spec/project](../spec/project.md#room-与消息) |
 | 前情提要 | — | Topic Room 开场时可反复读取的背景正文与来源 | [spec/project](../spec/project.md#room-与消息) |
-| 待你处理 | — | Project 内已有记录中等待当前用户处理的事项投影 | [spec/project](../spec/project.md#repo-注册与-project-归档) |
+| 待你处理 | — | Project 内已有记录中等待当前用户处理的事项投影 | [spec/project](../spec/project.md#待你处理) |
 | Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |
 | Memo | 备忘 | 经提炼、预览与发布形成的长期知识 | [Project](../project.md) |
