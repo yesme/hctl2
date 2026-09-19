@@ -13,7 +13,7 @@
 用户在 Workbench 选择新建 Project，并给出 SCM 地址或本地 Git 路径。Project 可以有自己的显示名称，例如 Apollo；它关联的 Repo 则显示实际代码地址。
 
 - **远端地址：** 以所选 Repo 建立当前 Project 的工作入口。
-- **本地路径、有 remote：** 读出对应 remote 供用户选择。推荐接原 remote，继续使用它；也提供断开原 remote、用 Gitea 另起一份独立工作的选项。
+- **本地路径、有 remote：** 读出对应 remote 供用户选择。推荐接原 remote，继续使用它；也提供不接原 remote、用 Gitea 另起一份独立工作的选项（默认另建独立副本，见下段）。
 - **纯本地：** 直接走 Gitea 本地方案。
 
 本地另起默认建立独立副本并接到 Gitea，保留输入目录及其 remote；原地切换作为显式选择，操作前说明修改范围与后果。见[Q2 裁决](./open-questions.md#q2本地-detach-会改哪份目录)。

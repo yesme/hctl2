@@ -75,7 +75,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 4. Change 场景展示精确 diff；评审绑定精确的评审对象引用。平台仓库按同一冻结意图分段确认 Git 交付与 PR 创建/更新：持凭据单元交版本，平台适配器建请求，写下变更与平台映射的第一条证据；显式不挂平台的仓库讨论在 Topic Room。
 5. 评审评论经代取进入下一次调用的开工包；返工是新的 Room Invocation，由人明确选人，重建只用封存并获准交付的版本、未封存字节不搬机；主干前移时执行体在自己的工作树里合并或变基，封存为新版本、旧评审失效。
 6. 有权 human actor 预览合入：本地路径核对预期目标头并要求目标工作树已切离；平台路径核对必需检查、线程、正式评审与目标保护快照，并显式选择授权形态（GitHub 与本地平台都不能保证预期目标头，只能选「接受目标前移」）。随后提交 integration intent；control 先持久化，`hctl2-tool`（本地目标）或平台适配器（远端目标）执行并 readback，确认后写唯一 Integration Receipt。
-7. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的 Vikunja Done 映射请求同一命令；Task 准入校验自己的 Integration Receipt，或契约事先接受、由 Repo 回读核验的精确平台集成 Evidence，及其余验收项后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
+7. 有权用户本人通过 CLI 完成预览提交「完成 Task」命令，或通过已验证的任务源原生 Done 映射（B2 时为平台 issues）请求同一命令；Task 准入校验自己的 Integration Receipt，或契约事先接受、由 Repo 回读核验的精确平台集成 Evidence，及其余验收项后写 Task Completion Receipt，Harness 不能代为提交，provider Done 本身也不是 Receipt。
 8. 有权的人从 Project Room 发布一份 Memo，把这次改动的结论回流 Project；发布走「发布 Memo」命令，原始消息与执行日志不自动进入。
 9. 重启 control、本地 Agency 参考实现、已使用的 content 后端与平台连接后，治理记录及其承诺正文、执行归属与精确结果、integration intent/Receipt、变更与平台映射、证据和 CLI 投影一致且不重复副作用。
 
@@ -96,7 +96,7 @@ CLI 没有隐藏权限，也不直接写控制面存储、执行面 content 服�
 
 ## Kanban content 后端切片
 
-Kanban 切片依次完成后端选择、Project 分组映射、Snapshot 导入、按需采纳契约、字段写回和结果回读。平台 issues（缺省源）与本地任务服务器（可加绑源）各走通一次主线，并支持显式刷新与定期对账，不依赖公网 webhook；工作包分两段——先平台 issues（B2 之前），再本地任务服务器加绑与完整切片（B2 之后、P2 出门之前）；Linear 的身份/快照验证沿现行安排；这三项都在 P2 出门范围内，推后任何一项都是交付范围变化，交所有者裁。
+Kanban 切片依次完成后端选择、可选的原生分组映射（启用时才建锚点）、Snapshot 导入、按需采纳契约、字段写回和结果回读。平台 issues（缺省源）与本地任务服务器（可加绑源）各走通一次主线，并支持显式刷新与定期对账，不依赖公网 webhook；工作包分两段——先平台 issues（B2 之前），再本地任务服务器加绑与完整切片（B2 之后、P2 出门之前）；Linear 的身份/快照验证沿现行安排；这三项都在 P2 出门范围内，推后任何一项都是交付范围变化，交所有者裁。
 
 正向用例另覆盖 content-first 卡：先由原生界面建卡，认领为无契约 Task，再采纳契约并完成，凭证逐项绑定证据。另用独立失败用例覆盖结果未知、限流、外部修改、tombstone、重新绑定、无 Workbench 操作、无契约卡和 Done 请求拒绝。外部终态永远不直接写 HCTL 完成；Vikunja 明确的 Done 变化只有在操作者、版本、幂等依据和当前回读齐全时，才能请求同一完成命令。
 
@@ -203,4 +203,4 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 
 ## 未决问题
 
-暂无。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。
+持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付——留待实现设计，不改约束，出处见[接手清单](../user-experience/open-questions.md#旧讨论怎样接手)。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。

@@ -19,7 +19,7 @@
 - Topic Room 首次调用只给原聊天链接、不交付可重读的提要，或以提要代替契约时失败；自动归纳未配置或失败却报告自动建议已完成时失败，人工补写不算自动能力通过
 - Room 的 Project 归属或消息所属 Room 被引用动作改写时失败；同根因 Request 重复创建仍去重，Topic 讨论的结论未提交原动作不解决 Request
 - 待你处理按现有事项去重：同一 Request 在 Room/Task/Run 出现被计三次、缺对象/原因/动作后果/未处理影响/返回入口、普通进度或可忽略建议计入数字、阅读面板即解决事项时失败；另一客户端完成后仍显示待办、处理失败却移除条目、处理历史从原处消失时失败
-- 待处理来源分别注入：目标为当前用户的开放 Request、冻结要求本人确认的待处理发布评审意图、存在待本人采纳的契约 Snapshot 的 Task、无 Run 占用且已有明确关联当前 Task Revision 的已准入 ChangeSet Revision 或已发布 Artifact Revision 的开放 Task、已超时且等待本人取消或替代的过渡态 Run；漏项、把已确认意图或仅打开过的 Trigger Preview 列为待办时失败；其他人待答的 Request、无权确认完成的 Task 计给当前用户，或 Request 已承接同一验收动作仍重复计 Task 时失败
+- 待处理来源分别注入：目标为当前用户的开放 Request、冻结要求本人确认的待处理发布评审意图、存在待本人采纳的契约变化的 Task、无 Run 占用且已有明确关联当前 Task Revision 的已准入 ChangeSet Revision 或已发布 Artifact Revision 的开放 Task、已超时且等待本人取消或替代的过渡态 Run；漏项、把已确认意图或仅打开过的 Trigger Preview 列为待办时失败；其他人待答的 Request、无权确认完成的 Task 计给当前用户，或 Request 已承接同一验收动作仍重复计 Task 时失败
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）
 - chat server 不可用时，依赖 Room 来源、身份或 Context 当前回读的预览/命令 fail closed，不依赖这些读数的已接纳治理事实仍可使用
 - Room–Server Binding 只接受未启用端到端加密的房间，HCTL 自建房间回读无 `m.room.encryption`；已绑定房间事后被加密与 chat server 不可用走同一条 fail-closed 规则并标为需要关注，换绑到未加密房间后恢复
