@@ -24,3 +24,15 @@ filegroup(
     labels = CI_FULL,
     visibility = ["PUBLIC"],
 )
+
+# First-party Markdown under src/ (skills, packaging and workspace READMEs),
+# scanned by the dead-name check alongside repo//:docs_tree. Vendored trees and
+# build outputs are not first-party text.
+filegroup(
+    name = "src_docs_tree",
+    srcs = glob(
+        ["README.md", "**/*.md"],
+        exclude = ["third-party/**", "buck-out/**", "target/**"],
+    ),
+    visibility = ["PUBLIC"],
+)
