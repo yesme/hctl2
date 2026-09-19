@@ -1,6 +1,6 @@
 # 参考用例 S3：Project 用户路径
 
-> 状态：验证文档 · 草案 v0.18.9<br>
+> 状态：验证文档 · 草案 v0.18.10<br>
 > 日期：2026-09-19<br>
 > 定位：把所有者已确认的[用户流程](../../user-experience/02-user-journey.md)与[导航和组织结构](../../user-experience/04-project-navigation.md)落实为可失败的验收路径，不另写一份需求或增加执行机制。CT 引用[矩阵](../contract-tests.md)的描述文本；以下是验收要求，不是已经执行的测试报告。
 
