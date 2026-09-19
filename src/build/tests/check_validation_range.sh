@@ -17,10 +17,12 @@ repo_root="$(CDPATH= cd -- "$script_dir/../../.." && pwd)"
 code_workflow="${CODE_WORKFLOW:-$repo_root/.github/workflows/code.yml}"
 release_workflow="${RELEASE_WORKFLOW:-$repo_root/.github/workflows/release.yml}"
 jq_bin="${JQ_BIN:-$script_dir/../tools/jq-bin}"
+affected_targets="${AFFECTED_TARGETS:-$script_dir/../ci/affected-targets}"
 
 [[ -f "$code_workflow" ]] || { echo "missing workflow: $code_workflow" >&2; exit 1; }
 [[ -f "$release_workflow" ]] || { echo "missing workflow: $release_workflow" >&2; exit 1; }
 [[ -f "$jq_bin" ]] || { echo "missing pinned jq: $jq_bin" >&2; exit 1; }
+[[ -f "$affected_targets" ]] || { echo "missing target selector: $affected_targets" >&2; exit 1; }
 command -v dotslash >/dev/null || { echo "dotslash must be on PATH for the stand-in gh (the step itself runs without it)" >&2; exit 1; }
 
 failures=0
@@ -431,6 +433,40 @@ run_step release-paths pull_request synchronize "$c1" fixture "" || true
 expect "release: the complete PR diff still includes the Skill change" "$(output_value release)" true
 run_step code-paths pull_request synchronize "$c1" fixture "" || true
 expect "code: the complete PR diff still includes the Skill change" "$(output_value code)" true
+
+# 6. Every full selection must execute standalone library tests, not just compile their Clippy.
+# Run the actual selector's early policy-change path in the throwaway repository.
+mkdir -p "$repo/src/build/ci" "$runner_tmp/hctl2-btd"
+cp "$affected_targets" "$repo/src/build/ci/affected-targets"
+git -C "$repo" add src/build/ci/affected-targets
+git -C "$repo" commit -q -m 'target selection policy fixture'
+policy_head="$(git -C "$repo" rev-parse HEAD)"
+sh "$repo/src/build/ci/affected-targets" --base "$c2" --head "$policy_head" \
+    --output "$runner_tmp/hctl2-btd/selected.txt" --mode-output "$runner_tmp/hctl2-btd/mode.txt"
+if grep -Fxq 'root//crates/...' "$runner_tmp/hctl2-btd/selected.txt"; then
+    note 'PASS policy-change target selection includes standalone crate tests'
+else
+    fail 'policy-change target selection omits standalone crate tests'
+fi
+
+extract_step "$code_workflow" 'Resolve Buck target selection' > "$work/steps/code-targets.sh"
+for selection in full-policy-change full-btd-fallback full-periodic; do
+    event=pull_request
+    btd_outcome=success
+    case "$selection" in
+        full-btd-fallback) btd_outcome=failure ;;
+        full-periodic) event=schedule ;;
+    esac
+    : > "$output"
+    EVENT_NAME="$event" BTD_OUTCOME="$btd_outcome" RUNNER_TEMP="$runner_tmp" \
+        GITHUB_OUTPUT="$output" "$BASH" "$work/steps/code-targets.sh" > "$log" 2>&1
+    expect "$selection: mode preserved" "$(output_value mode)" "$selection"
+    if output_value targets | tr ' ' '\n' | grep -Fxq 'root//crates/...'; then
+        note "PASS $selection: workflow executes standalone crate tests"
+    else
+        fail "$selection: workflow omits standalone crate tests"
+    fi
+done
 
 if [ "$failures" -ne 0 ]; then
     echo "check_validation_range: FAILED ($failures)" >&2

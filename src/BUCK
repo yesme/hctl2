@@ -3,6 +3,12 @@ load("//build/rules:ci.bzl", "CI_FULL")
 oncall("hctl2")
 
 export_file(
+    name = "affected_targets",
+    src = "build/ci/affected-targets",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
     name = "Cargo.toml",
     src = "Cargo.toml",
     visibility = ["PUBLIC"],
