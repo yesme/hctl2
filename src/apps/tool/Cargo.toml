@@ -1,0 +1,22 @@
+[package]
+name = "tool"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Standalone mechanical Git and SCM toolbox for HCTL2"
+
+[[bin]]
+name = "hctl2-tool"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+facts = { path = "../../crates/facts" }
+foundation = { path = "../../crates/foundation" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

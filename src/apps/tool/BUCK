@@ -1,0 +1,132 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+TOOL_LIBRARY_SRCS = glob(
+    ["src/**/*.rs"],
+    exclude = ["src/main.rs"],
+)
+
+rust_library(
+    name = "tool",
+    srcs = TOOL_LIBRARY_SRCS,
+    crate_root = "src/lib.rs",
+    deps = [
+        "root//crates/facts:facts",
+        "root//crates/foundation:foundation",
+        "root//third-party/rust:clap",
+        "root//third-party/rust:serde_json",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":unit_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "hctl2-tool",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = [":tool"],
+    edition = HCTL2_RUST_EDITION,
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [
+        ":archive_test",
+        ":git_site_test",
+        ":integration_test",
+        ":smoke_test",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "unit_test",
+    srcs = TOOL_LIBRARY_SRCS,
+    crate_root = "src/lib.rs",
+    deps = [
+        "root//crates/facts:facts",
+        "root//crates/foundation:foundation",
+        "root//third-party/rust:clap",
+        "root//third-party/rust:serde_json",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "git_site_test",
+    srcs = ["tests/git_site.rs"],
+    crate_root = "tests/git_site.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "archive_test",
+    srcs = ["tests/archive.rs"],
+    crate_root = "tests/archive.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "integration_test",
+    srcs = ["tests/integration.rs"],
+    crate_root = "tests/integration.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "smoke_test",
+    srcs = ["tests/smoke.rs"],
+    crate_root = "tests/smoke.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2-tool": "$(location :hctl2-tool)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "archive": ":archive_test[clippy.txt]",
+        "binary": ":hctl2-tool[clippy.txt]",
+        "git_site": ":git_site_test[clippy.txt]",
+        "integration": ":integration_test[clippy.txt]",
+        "library": ":tool[clippy.txt]",
+        "smoke": ":smoke_test[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

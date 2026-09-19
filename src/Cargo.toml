@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "apps/hctl2-tool",
-    "crates/hctl2-facts",
-    "crates/hctl2-foundation",
-    "crates/hctl2-store",
+    "apps/tool",
+    "crates/facts",
+    "crates/foundation",
+    "crates/store",
 ]
 resolver = "3"
 
