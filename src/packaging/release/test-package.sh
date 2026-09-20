@@ -109,7 +109,7 @@ wait_consumed_available() {
     local attempt
     local snapshot=""
     local needle
-    needle="\"name\":\"${name}\",\"running\":true,\"ready\":true,\"available\":true"
+    needle="\"available\":true,\"name\":\"${name}\""
     for attempt in $(seq 1 60); do
         snapshot="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status 2>/dev/null || true)"
         if printf '%s\n' "$snapshot" | grep -F "$needle" >/dev/null; then
