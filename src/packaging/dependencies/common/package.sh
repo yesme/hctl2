@@ -180,11 +180,13 @@ assemble_dependency_package() {
             "$PROCESS_COMPOSE_VERSION" "$PROCESS_COMPOSE_SOURCE_COMMIT" \
             "$PROCESS_COMPOSE_BUILD_INPUT_SHA256" "$PROCESS_COMPOSE_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/process-compose")"
-        printf 'gitea\t%s\t\t%s\t\t%s\n' \
-            "1.27.3" "$(hash_file "$P0_DOWNLOAD_DIR/gitea.xz")" \
+        printf 'gitea\t%s\t%s\t%s\t%s\t%s\n' \
+            "$GITEA_VERSION" "$GITEA_SOURCE_COMMIT" "$(hash_file "$P0_DOWNLOAD_DIR/gitea.xz")" \
+            "$GITEA_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/gitea")"
-        printf 'tea\t%s\t\t%s\t\t%s\n' \
-            "0.15.1" "$(hash_file "$P0_DOWNLOAD_DIR/tea")" \
+        printf 'tea\t%s\t%s\t%s\t%s\t%s\n' \
+            "$TEA_VERSION" "$TEA_SOURCE_COMMIT" "$(hash_file "$P0_DOWNLOAD_DIR/tea")" \
+            "$TEA_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/tea")"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
@@ -214,6 +216,10 @@ assemble_dependency_package() {
         "$source_files_root/$STATIC_WEB_SERVER_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
         "$source_files_root/$PROCESS_COMPOSE_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$GITEA_SOURCE_ASSET" \
+        "$source_files_root/$GITEA_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TEA_SOURCE_ASSET" \
+        "$source_files_root/$TEA_SOURCE_ASSET"
     {
         printf 'component\tversion\tcommit\tarchive\tsha256\trole\n'
         printf 'tuwunel\t%s\t%s\t%s\t%s\treproducibility\n' \
@@ -240,6 +246,12 @@ assemble_dependency_package() {
         printf 'process-compose\t%s\t%s\t%s\t%s\treproducibility\n' \
             "$PROCESS_COMPOSE_VERSION" "$PROCESS_COMPOSE_SOURCE_COMMIT" \
             "$PROCESS_COMPOSE_SOURCE_ASSET" "$PROCESS_COMPOSE_SOURCE_SHA256"
+        printf 'gitea\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$GITEA_VERSION" "$GITEA_SOURCE_COMMIT" \
+            "$GITEA_SOURCE_ASSET" "$GITEA_SOURCE_SHA256"
+        printf 'tea\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$TEA_VERSION" "$TEA_SOURCE_COMMIT" \
+            "$TEA_SOURCE_ASSET" "$TEA_SOURCE_SHA256"
     } >"$source_package_root/sources.tsv"
     platform_stage_sources "$source_files_root" "$source_package_root/sources.tsv"
     {

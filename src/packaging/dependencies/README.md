@@ -1,6 +1,6 @@
 # 依赖打包
 
-这个目录把 HCTL2 的四类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。四类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）。正常发布只下载锁定制品，再完成动态库检查、签名和许可证归档；源码编译只发生在更新 HCTL2 托管的 macOS Tuwunel 制品时。最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
+这个目录把 HCTL2 的五类外部运行依赖制作成按目标平台区分的两份归档：可离线安装的运行包，以及同 Release 发布、不参与安装的源码伴随包。五类依赖是 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）、Terminal（Herdr）和本地代码协作平台（Gitea 与 tea 命令行客户端）。正常发布只下载锁定制品，再完成动态库检查、签名和许可证归档；源码编译只发生在更新 HCTL2 托管的 macOS Tuwunel 制品时。最终用户不需要 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
 ## 代码树边界
 
@@ -18,7 +18,7 @@ test-package.sh         Buck sh_test 调用的整包生命周期测试体
 
 Buck 从 `lock.json` 为选定平台生成只读的 `build-metadata.sh`；脚本不再维护第二份版本、URL、摘要或 `uname` 分发表。新增 CPU 架构时应扩展 lock、Buck platform 和对应 platform 实现；CI 与发布入口仍只选择 Buck platform。
 
-`lock.json` 的 `download_only` 另锁 Gitea 1.27.3（`.xz`）与 tea 0.15.1（单二进制）的 Linux / macOS × x86_64 / arm64 制品。`./buck2 build root//packaging/dependencies:scm-downloads` 只下载并校验八份 SHA-256；完整发行测试也依赖它，但这些文件尚不进入安装包、不启动服务，Linux arm64 也未因此成为发布目标。
+`lock.json` 的 `download_only` 锁 Gitea 1.27.3（`.xz`）与 tea 0.15.1（单二进制）的 Linux / macOS × x86_64 / arm64 制品。`./buck2 build root//packaging/dependencies:scm-downloads` 只下载并校验八份 SHA-256；运行包另按目标选入对应二进制，Gitea 由 `hctl2-services` 管理。Linux arm64 未因此成为发布目标。`common.gitea_source` 与 `common.tea_source` 锁同版本源码归档，随源码伴随包交付。
 
 HCTL2 两份归档使用锁定的 [xz 5.8.4](../../../docs/research/build-tools/xz.md) `-9 -T0`，沿用 tar 的时间与排序归一化。已有上游下载格式及托管的 Tuwunel `.tar.gz` 不变。
 
@@ -27,8 +27,8 @@ HCTL2 两份归档使用锁定的 [xz 5.8.4](../../../docs/research/build-tools/
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
 | `linux-x86_64` | Linux x86_64 | 全部第三方运行内容均消费上游官方发行包 |
-| `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh 官方包；Tuwunel 使用 HCTL2 托管制品 |
-| `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh 官方包；Tuwunel 使用 HCTL2 托管制品 |
+| `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
+| `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
 
 Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构建只能生成候选，该候选必须由 Intel runner 对同一 SHA-256 完成 Mach-O 检查和完整生命周期后才能采用。
 
@@ -64,9 +64,9 @@ macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必�
 
 运行安装包包括：
 
-- Tuwunel、Vikunja、Dagu、Herdr 四个内容与运行服务，以及所需的非系统动态库；
+- Tuwunel、Vikunja、Dagu、Herdr、Gitea 五个内容与运行服务，以及所需的非系统动态库；
 - Cinny 官方 Web 发行内容，以及只绑定 loopback 的官方 `static-web-server` 单二进制；
-- Process Compose、供 `hctl2-tool wait` 使用的 GitHub CLI，以及声明式服务配置；
+- Process Compose、供 `hctl2-tool wait` 使用的 GitHub CLI、Gitea 的 tea 客户端，以及声明式服务配置；
 - `hctl2-services` 薄客户端和目标平台 runtime hook；
 - target、构建环境、版本、commit、构建输入 digest 和最终二进制 digest；
 - HCTL2 与所有分发依赖的许可证；
@@ -101,5 +101,6 @@ cd hctl2-0.0.0-<target>
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
 | Herdr | 0.8.2 | owner-only Unix socket；协议版本 20 |
+| Gitea | 1.27.3 | `http://127.0.0.1:3001` |
 
-所有 listener 都绑定 loopback。Cinny 与 Tuwunel 合在一起是 Chatroom 解决方案，并不增加第五类执行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。Cinny 只允许连接随包 Tuwunel，并启用 hash router 适配内部静态服务。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
+所有 listener 都绑定 loopback。Cinny 与 Tuwunel 合在一起是 Chatroom 解决方案，不另增一类运行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。Cinny 只允许连接随包 Tuwunel，并启用 hash router 适配内部静态服务。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
