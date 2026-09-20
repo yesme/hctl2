@@ -233,7 +233,7 @@ pub fn begin(
                     ..
                 }
             )
-            || t.lifecycle != "open"
+            || (t.lifecycle != "open" && e.operation != "task.delete")
         {
             return Err(reject(
                 "PERMISSION_DENIED",

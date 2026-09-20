@@ -93,6 +93,48 @@ fn pending_delete_rechecks_consequences_before_dispatch() {
 }
 
 #[test]
+fn explicit_content_deletion_after_cancel_keeps_task_cancelled() {
+    let mut e = Env::new();
+    e.attach("A", None);
+    e.observe("card", false);
+    let id = e.claim("A");
+    let (r, _) = task(&e.store, "A", &id).unwrap();
+    apply(
+        &mut e.store,
+        "cancel",
+        Action::Cancel {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+        },
+    )
+    .unwrap();
+    assert!(e.store.pending_effects().unwrap().is_empty());
+    let (r, _) = task(&e.store, "A", &id).unwrap();
+    let result = apply(
+        &mut e.store,
+        "delete",
+        Action::DeleteCard {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+            confirm_irreversible: true,
+            active_run_choices: vec![],
+        },
+    )
+    .unwrap();
+    let effect = result["effect_id"].as_str().unwrap();
+    let (intent, send) = begin(&mut e.store, &actor(), effect).unwrap();
+    assert!(send);
+    let mut card: Card = serde_json::from_value(intent.input["write"]["card"].clone()).unwrap();
+    card.tombstone = true;
+    confirm(&mut e.store, effect, &card).unwrap();
+    let (_, task) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(task.lifecycle, "cancelled");
+    assert!(task.archived);
+}
+
+#[test]
 fn local_adoption_survives_disabled_source_without_faking_backend_authority() {
     let mut e = Env::new();
     e.attach("A", None);
