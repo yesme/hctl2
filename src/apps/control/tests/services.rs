@@ -411,7 +411,7 @@ async fn corrupt_consumed_record_is_reported_not_treated_as_empty() {
         r#"{"component":"never-ready"}"#,
     )
     .await;
-    assert_eq!(denied["error"]["code"], "INVALID_INPUT", "{denied}");
+    assert_eq!(denied["error"]["code"], "SERVICES_FAILED", "{denied}");
     assert_eq!(
         std::fs::read(temp.0.join("hosted-consumed.json")).unwrap(),
         b"{"
@@ -494,4 +494,132 @@ async fn backup_restored_into_a_new_root_keeps_consumption() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(running, "restore into a new root lost consumption: {last}");
+}
+
+#[tokio::test]
+async fn concurrent_consume_keeps_every_record() {
+    let temp = Temp::new();
+    let _server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    wait_available(&mut client, "ready-ok").await;
+    let mut a = connect(&temp.0).await;
+    let mut b = connect(&temp.0).await;
+    let (first, second) = tokio::join!(
+        submit_json(&mut a, "services.consume", r#"{"component":"never-ready"}"#),
+        submit_json(&mut b, "services.consume", r#"{"component":"other-ok"}"#),
+    );
+    assert_eq!(first["consumed"], true, "{first}");
+    assert_eq!(second["consumed"], true, "{second}");
+    let record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(temp.0.join("hosted-consumed.json")).unwrap())
+            .unwrap();
+    let names: Vec<&str> = record["consumed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(
+        names.contains(&"never-ready") && names.contains(&"other-ok"),
+        "{record}"
+    );
+    let services = query_json(&mut client, "services").await;
+    assert_eq!(
+        hosted(&services, "never-ready")["consumed"],
+        true,
+        "{services}"
+    );
+    assert_eq!(
+        hosted(&services, "other-ok")["consumed"],
+        true,
+        "{services}"
+    );
+    assert!(!temp.0.join("hosted-consumed.json.tmp").is_file());
+}
+
+#[tokio::test]
+async fn backup_refuses_while_an_unconsumed_hosted_component_runs() {
+    let temp = Temp::new();
+    let _server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    wait_available(&mut client, "ready-ok").await;
+    // Start a hosted component natively (like `hctl2-services start gitea`)
+    // without consuming it through control.
+    let services = query_json(&mut client, "services").await;
+    let socket = services["source"]
+        .as_str()
+        .and_then(|source| source.strip_prefix("process-compose:"))
+        .expect("socket")
+        .to_owned();
+    let pc = std::env::var("HCTL2_PROCESS_COMPOSE_BIN").expect("pc bin");
+    let started = std::process::Command::new(&pc)
+        .env("PC_DISABLE_DOTENV", "1")
+        .args([
+            "--use-uds",
+            "--unix-socket",
+            &socket,
+            "process",
+            "start",
+            "other-ok",
+        ])
+        .status()
+        .unwrap();
+    assert!(started.success(), "start other-ok");
+    for _ in 0..40 {
+        let services = query_json(&mut client, "services").await;
+        if hosted(&services, "other-ok")["running"] == true {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let backup = temp.0.join("services-backup");
+    let payload = format!(r#"{{"path":"{}"}}"#, backup.display());
+    let refused = submit_json(&mut client, "services.backup", &payload).await;
+    assert_eq!(refused["error"]["code"], "SERVICES_FAILED", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("other-ok"),
+        "{refused}"
+    );
+    assert!(
+        !backup.exists(),
+        "refused backup must not create the directory"
+    );
+    let stopped = std::process::Command::new(&pc)
+        .env("PC_DISABLE_DOTENV", "1")
+        .args([
+            "--use-uds",
+            "--unix-socket",
+            &socket,
+            "process",
+            "stop",
+            "other-ok",
+        ])
+        .status()
+        .unwrap();
+    assert!(stopped.success(), "stop other-ok");
+    let mut accepted = serde_json::Value::Null;
+    for _ in 0..40 {
+        accepted = submit_json(&mut client, "services.backup", &payload).await;
+        if accepted["backend"] == "fixture" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(accepted["backend"], "fixture", "{accepted}");
+    assert!(backup.join("manifest.json").is_file());
 }

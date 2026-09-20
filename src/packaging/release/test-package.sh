@@ -126,6 +126,8 @@ wait_consumed_available tuwunel
 b0_services="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status)"
 printf '%s\n' "$b0_services" | grep -F '"available":false,"consumed":false,"name":"gitea"' >/dev/null || \
     die "hctl2 start brought up Gitea before any consumption: $b0_services"
+printf '%s\n' "$b0_services" | grep -F '"name":"gitea","pid":null,"ready":false,"running":false' >/dev/null || \
+    die "hctl2 start left an unconsumed Gitea process running: $b0_services"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" services consume gitea >/dev/null
 wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true

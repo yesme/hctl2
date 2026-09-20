@@ -13,6 +13,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -20,6 +21,7 @@ use serde_json::{Value, json};
 const HOSTED: &[&str] = &["tuwunel", "gitea"];
 const BASELINE: &[&str] = &["tuwunel"];
 const CONSUMED_FILE: &str = "hosted-consumed.json";
+static WRITE_SERIAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
 pub struct ServiceHealth {
@@ -66,10 +68,54 @@ impl Snapshot {
     }
 }
 
+/// Error surfaced to the RPC layer: bad input keeps `INVALID_INPUT`; a
+/// deployment-state or process failure is `SERVICES_FAILED` so clients do not
+/// "correct" their input for something they cannot fix.
+#[derive(Clone, Debug)]
+pub struct ServiceError {
+    pub code: &'static str,
+    pub message: String,
+    pub recovery_action: &'static str,
+}
+
+impl ServiceError {
+    fn input(message: impl Into<String>) -> Self {
+        Self {
+            code: "INVALID_INPUT",
+            message: message.into(),
+            recovery_action: "correct_input",
+        }
+    }
+
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            code: "SERVICES_FAILED",
+            message: message.into(),
+            recovery_action: "check_services",
+        }
+    }
+}
+
+impl ServiceError {
+    pub fn from_input(message: impl Into<String>) -> Self {
+        Self::input(message)
+    }
+}
+
+impl From<String> for ServiceError {
+    fn from(message: String) -> Self {
+        Self::failed(message)
+    }
+}
+
 pub struct Supervisor {
     root: PathBuf,
     backend: Backend,
     last_error: Mutex<Option<String>>,
+    /// One serial boundary for every deployment-state change and lifecycle
+    /// operation (start on open, consume, stop, backup, restore). Inner
+    /// helpers never take it, so callers hold it once.
+    ops: Mutex<()>,
 }
 
 enum Backend {
@@ -96,7 +142,12 @@ impl Supervisor {
             root,
             backend,
             last_error: Mutex::new(None),
+            ops: Mutex::new(()),
         }
+    }
+
+    fn serialized(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.ops.lock().unwrap_or_else(|poison| poison.into_inner())
     }
 
     pub fn set_last_error(&self, error: impl Into<String>) {
@@ -149,11 +200,14 @@ impl Supervisor {
     /// Mark a hosted component as consumed, persist that, and start it without
     /// waiting for its probe. Callers decide when consumption happens (for
     /// example registering a purely local repository consumes Gitea).
-    pub fn consume(&self, name: &str) -> Result<Value, String> {
+    pub fn consume(&self, name: &str) -> Result<Value, ServiceError> {
         let name = name.trim();
         if !self.hosted_names().iter().any(|hosted| hosted == name) {
-            return Err(format!("{name} is not a hosted component"));
+            return Err(ServiceError::input(format!(
+                "{name} is not a hosted component"
+            )));
         }
+        let _guard = self.serialized();
         let mut consumed = self.persisted_consumed().inspect_err(|error| {
             self.set_last_error(error.clone());
         })?;
@@ -166,11 +220,20 @@ impl Supervisor {
             Ok(()) => self.clear_last_error(),
             Err(error) => self.set_last_error(error.clone()),
         }
-        result.map(|()| json!({"component": name, "consumed": true}))
+        // Success means "recorded and start requested"; readiness is observed
+        // through the services snapshot, never implied here.
+        result
+            .map(|()| json!({"component": name, "consumed": true, "start_requested": true}))
+            .map_err(ServiceError::failed)
     }
 
     /// Start consumed services without waiting for probes. Store stays available.
     pub fn ensure_up(&self) -> Result<(), String> {
+        let _guard = self.serialized();
+        self.ensure_up_inner()
+    }
+
+    fn ensure_up_inner(&self) -> Result<(), String> {
         let (names, record_error) = match self.consumed_names() {
             Ok(names) => (names, None),
             // A corrupt record is not "never consumed": keep the baseline up,
@@ -232,10 +295,16 @@ impl Supervisor {
                 if self.pc_alive() {
                     for name in names {
                         if !self.health(name).running {
-                            let _ = self
+                            let status = self
                                 .pc_client(pc_bin, socket)
                                 .args(["process", "start", name])
-                                .status();
+                                .status()
+                                .map_err(io)?;
+                            if !status.success() {
+                                return Err(format!(
+                                    "process-compose start {name} failed: {status}"
+                                ));
+                            }
                         }
                     }
                     return Ok(());
@@ -255,6 +324,7 @@ impl Supervisor {
 
     /// Tear down the whole Process Compose project. Tests use this in Drop.
     pub fn shutdown_project(&self) -> Result<(), String> {
+        let _guard = self.serialized();
         match &self.backend {
             Backend::Absent => Ok(()),
             Backend::Packaged {
@@ -281,6 +351,11 @@ impl Supervisor {
     }
 
     pub fn stop_consumed(&self) -> Result<(), String> {
+        let _guard = self.serialized();
+        self.stop_consumed_inner()
+    }
+
+    fn stop_consumed_inner(&self) -> Result<(), String> {
         match &self.backend {
             Backend::Absent => Ok(()),
             Backend::Packaged {
@@ -335,7 +410,9 @@ impl Supervisor {
     }
 
     pub fn backup(&self, dest: &Path) -> Result<Value, String> {
-        self.stop_consumed()?;
+        let _guard = self.serialized();
+        self.stop_consumed_inner()?;
+        self.require_quiescent("backup")?;
         fs::create_dir_all(dest).map_err(io)?;
         fs::set_permissions(dest, fs::Permissions::from_mode(0o700)).map_err(io)?;
         let consumed = self.consumed_names()?;
@@ -359,12 +436,28 @@ impl Supervisor {
         if result.is_ok() && self.consumed_file().is_file() {
             fs::copy(self.consumed_file(), dest.join(CONSUMED_FILE)).map_err(io)?;
         }
-        let _ = self.ensure_up();
+        let _ = self.ensure_up_inner();
         result
     }
 
+    /// Whole-directory backup and restore copy every hosted service's data,
+    /// so anything still running in that range (for example Gitea started
+    /// natively but not consumed) makes the copy inconsistent: refuse instead.
+    fn require_quiescent(&self, operation: &str) -> Result<(), String> {
+        let running = self.running_names();
+        if running.is_empty() {
+            return Ok(());
+        }
+        Err(format!(
+            "{operation} refused: {} still running in the service state root; stop them or consume them first",
+            running.join(", ")
+        ))
+    }
+
     pub fn restore(&self, src: &Path) -> Result<Value, String> {
-        self.stop_consumed()?;
+        let _guard = self.serialized();
+        self.stop_consumed_inner()?;
+        self.require_quiescent("restore")?;
         if src.join(CONSUMED_FILE).is_file() {
             let bytes = fs::read(src.join(CONSUMED_FILE)).map_err(io)?;
             let names = parse_consumed(&bytes)?;
@@ -380,14 +473,14 @@ impl Supervisor {
                 if src.join("config").exists() {
                     replace_tree(&src.join("config"), &state.join("config"))?;
                 }
-                let _ = self.ensure_up();
+                let _ = self.ensure_up_inner();
                 Ok(json!({"backend":"packaged"}))
             }
             Backend::Fixture { work, .. } => {
                 if src.join("fixture").exists() {
                     replace_tree(&src.join("fixture"), work)?;
                 }
-                let _ = self.ensure_up();
+                let _ = self.ensure_up_inner();
                 Ok(json!({"backend":"fixture"}))
             }
         }
@@ -602,11 +695,26 @@ impl Supervisor {
     }
 
     fn write_consumed(&self, consumed: &[String]) -> Result<(), String> {
+        use std::io::Write;
         fs::create_dir_all(&self.root).map_err(io)?;
         let path = self.consumed_file();
-        let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, json!({"consumed": consumed}).to_string()).map_err(io)?;
-        fs::rename(&tmp, &path).map_err(io)
+        let tmp = self.root.join(format!(
+            "{CONSUMED_FILE}.tmp.{}.{}",
+            std::process::id(),
+            WRITE_SERIAL.fetch_add(1, Ordering::Relaxed)
+        ));
+        {
+            let mut file = fs::File::create(&tmp).map_err(io)?;
+            file.write_all(json!({"consumed": consumed}).to_string().as_bytes())
+                .map_err(io)?;
+            file.sync_all().map_err(io)?;
+        }
+        fs::rename(&tmp, &path).map_err(io)?;
+        // A successful reply promises the record survives a crash: sync the
+        // directory entry too, not only the file bytes.
+        fs::File::open(&self.root)
+            .and_then(|dir| dir.sync_all())
+            .map_err(io)
     }
 
     fn backend_name(&self) -> &'static str {
