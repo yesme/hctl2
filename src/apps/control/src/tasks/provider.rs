@@ -218,7 +218,13 @@ impl Client {
                 } else {
                     self.list(&format!("{base}/dependencies"))?
                 },
-                blocking: self.list(&format!("{base}/blocks"))?,
+                blocking: if repo["internal_tracker"]["enable_issue_dependencies"].as_bool()
+                    == Some(false)
+                {
+                    vec![]
+                } else {
+                    self.list(&format!("{base}/blocks"))?
+                },
                 ..Dependencies::default()
             },
         })

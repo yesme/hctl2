@@ -188,6 +188,7 @@ fn approved_source(
 }
 
 pub fn latest(store: &Store, source: &Source) -> Result<(Record, Snapshot)> {
+    let (binding, _) = crate::source(store, &source.repo_id, &source.id)?;
     let r = required(
         store,
         &key(
@@ -198,6 +199,7 @@ pub fn latest(store: &Store, source: &Source) -> Result<(Record, Snapshot)> {
     )?;
     let snap: Snapshot = decode(&r)?;
     if !source.active
+        || snap.source != reference(&binding)
         || !snap.complete
         || snap.error.is_some()
         || now().saturating_sub(snap.observed_at) > 60

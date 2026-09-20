@@ -60,13 +60,21 @@ fn native_gitea_pagination_conditionals_dependencies_comments_delete_and_recover
     let root = std::env::temp_dir().join(format!("hctl-native-task-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let gitea = root.join("gitea");
-    let xz = PathBuf::from(env!("HCTL2_TEST_XZ_ROOT")).join("v5.8.4/bin/xz");
-    let out = Command::new(xz)
+    let xz = PathBuf::from(env!("HCTL2_TEST_XZ_ROOT"));
+    let out = Command::new(xz.join("bin/xz"))
+        // Match packaging/common/action.sh: do not load the runner's older liblzma.
+        .env("LD_LIBRARY_PATH", xz.join("lib"))
+        .env_remove("XZ_DEFAULTS")
+        .env_remove("XZ_OPT")
         .args(["-dc"])
         .arg(archive)
         .output()
         .unwrap();
-    assert!(out.status.success());
+    assert!(
+        out.status.success(),
+        "xz: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     std::fs::write(&gitea, out.stdout).unwrap();
     std::fs::set_permissions(&gitea, std::fs::Permissions::from_mode(0o700)).unwrap();
     let tea_copy = root.join("tea");

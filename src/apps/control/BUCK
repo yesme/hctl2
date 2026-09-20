@@ -1,5 +1,6 @@
 load("//build/rules:ci.bzl", "CI_FAST", "CI_INTEGRATION")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+load("//build/tools:xz.bzl", "XZ_DIRECTORY")
 
 oncall("hctl2")
 
@@ -133,7 +134,7 @@ rust_test(
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env() | {
         "HCTL2_TEST_SCM_DOWNLOADS": "$(location root//packaging/dependencies:scm-downloads)",
-        "HCTL2_TEST_XZ_ROOT": "$(location root//build/tools:xz)",
+        "HCTL2_TEST_XZ_ROOT": "$(location root//build/tools:xz)/" + XZ_DIRECTORY,
     },
     rustc_flags = HCTL2_RUSTC_FLAGS + ["--cfg=hctl_task_native"],
     labels = CI_INTEGRATION,

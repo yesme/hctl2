@@ -127,6 +127,25 @@ fn local_adoption_survives_disabled_source_without_faking_backend_authority() {
     let (_, task) = task(&e.store, "A", &id).unwrap();
     assert!(task.revision.unwrap().binding.is_none());
     assert!(task.needs_attention);
+    let (sr, _) = source(&e.store, &e.rid, &e.sid).unwrap();
+    apply(
+        &mut e.store,
+        "enable",
+        Action::SetActive {
+            repo_id: e.rid.clone(),
+            source_id: e.sid.clone(),
+            version: sr.version,
+            active: true,
+        },
+    )
+    .unwrap();
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    assert_eq!(
+        latest(&e.store, &src).unwrap_err().code,
+        "READBACK_REQUIRED"
+    );
+    e.observe("card", false);
+    assert!(latest(&e.store, &src).is_ok());
 }
 struct Env {
     store: Store,
