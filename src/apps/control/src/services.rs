@@ -1,6 +1,11 @@
-//! Process Compose client for consumed bundled services.
+//! Process Compose client for hosted bundled services.
 //!
-//! Health is an observation. It is never written as a governance record.
+//! Hosted components start on first consumption: Tuwunel is consumed by every
+//! Project (main Room), so it is the baseline; Gitea is consumed the first time a
+//! purely local repository (or an explicit local-platform choice) is registered.
+//! The consumed set is deployment state kept next to the control root, not a
+//! governance record. Health is an observation. It is never written as a
+//! governance record either.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -11,11 +16,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-const CONSUMED: &[&str] = &["tuwunel", "gitea"];
+const HOSTED: &[&str] = &["tuwunel", "gitea"];
+const BASELINE: &[&str] = &["tuwunel"];
+const CONSUMED_FILE: &str = "hosted-consumed.json";
 
 #[derive(Clone, Debug)]
 pub struct ServiceHealth {
     pub name: String,
+    pub consumed: bool,
     pub running: bool,
     pub ready: bool,
     pub pid: Option<i64>,
@@ -34,7 +42,7 @@ pub struct Snapshot {
     pub source: String,
     pub observed_at: String,
     pub last_error: Option<String>,
-    pub consumed: Vec<ServiceHealth>,
+    pub hosted: Vec<ServiceHealth>,
 }
 
 impl Snapshot {
@@ -45,8 +53,9 @@ impl Snapshot {
             "source": self.source,
             "observed_at": self.observed_at,
             "last_error": self.last_error,
-            "consumed": self.consumed.iter().map(|service| json!({
+            "hosted": self.hosted.iter().map(|service| json!({
                 "name": service.name,
+                "consumed": service.consumed,
                 "running": service.running,
                 "ready": service.ready,
                 "available": service.available(),
@@ -71,7 +80,8 @@ enum Backend {
     Fixture {
         pc_bin: PathBuf,
         configs: Vec<PathBuf>,
-        names: Vec<String>,
+        hosted: Vec<String>,
+        baseline: Vec<String>,
         socket: PathBuf,
         work: PathBuf,
     },
@@ -97,22 +107,25 @@ impl Supervisor {
 
     #[must_use]
     pub fn snapshot(&self) -> Snapshot {
-        let consumed = match &self.backend {
-            Backend::Absent => CONSUMED
-                .iter()
-                .map(|name| ServiceHealth {
-                    name: (*name).into(),
-                    running: false,
-                    ready: false,
-                    pid: None,
-                })
-                .collect(),
-            Backend::Packaged { .. } | Backend::Fixture { .. } => self
-                .consumed_names()
-                .into_iter()
-                .map(|name| self.health(&name))
-                .collect(),
-        };
+        let consumed = self.consumed_names();
+        let hosted = self
+            .hosted_names()
+            .into_iter()
+            .map(|name| {
+                let mut health = match &self.backend {
+                    Backend::Absent => ServiceHealth {
+                        name: name.clone(),
+                        consumed: false,
+                        running: false,
+                        ready: false,
+                        pid: None,
+                    },
+                    Backend::Packaged { .. } | Backend::Fixture { .. } => self.health(&name),
+                };
+                health.consumed = consumed.contains(&name);
+                health
+            })
+            .collect();
         Snapshot {
             backend: self.backend_name().into(),
             source: format!("process-compose:{}", self.socket_path().display()),
@@ -122,26 +135,52 @@ impl Supervisor {
                 .lock()
                 .unwrap_or_else(|poison| poison.into_inner())
                 .clone(),
-            consumed,
+            hosted,
         }
+    }
+
+    /// Mark a hosted component as consumed, persist that, and start it without
+    /// waiting for its probe. Callers decide when consumption happens (for
+    /// example registering a purely local repository consumes Gitea).
+    pub fn consume(&self, name: &str) -> Result<Value, String> {
+        let name = name.trim();
+        if !self.hosted_names().iter().any(|hosted| hosted == name) {
+            return Err(format!("{name} is not a hosted component"));
+        }
+        let mut consumed = self.persisted_consumed();
+        if !consumed.iter().any(|item| item == name) {
+            consumed.push(name.to_owned());
+            self.write_consumed(&consumed)?;
+        }
+        let result = self.start_components(&[name.to_owned()]);
+        match &result {
+            Ok(()) => self.clear_last_error(),
+            Err(error) => self.set_last_error(error.clone()),
+        }
+        result.map(|()| json!({"component": name, "consumed": true}))
     }
 
     /// Start consumed services without waiting for probes. Store stays available.
     pub fn ensure_up(&self) -> Result<(), String> {
-        let result = self.ensure_up_inner();
+        let result = self.start_components(&self.consumed_names());
         match &result {
-            Ok(()) => {
-                *self
-                    .last_error
-                    .lock()
-                    .unwrap_or_else(|poison| poison.into_inner()) = None;
-            }
+            Ok(()) => self.clear_last_error(),
             Err(error) => self.set_last_error(error.clone()),
         }
         result
     }
 
-    fn ensure_up_inner(&self) -> Result<(), String> {
+    fn clear_last_error(&self) {
+        *self
+            .last_error
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = None;
+    }
+
+    fn start_components(&self, names: &[String]) -> Result<(), String> {
+        if names.is_empty() {
+            return Ok(());
+        }
         match &self.backend {
             Backend::Absent => Ok(()),
             Backend::Packaged {
@@ -153,7 +192,8 @@ impl Supervisor {
                 cmd.env("HCTL2_INSTALL_ROOT", install_root);
                 self.apply_state_env(&mut cmd);
                 let status = cmd
-                    .args(["start", "--no-wait", "tuwunel", "gitea"])
+                    .args(["start", "--no-wait"])
+                    .args(names)
                     .status()
                     .map_err(io)?;
                 if status.success() {
@@ -165,9 +205,9 @@ impl Supervisor {
             Backend::Fixture {
                 pc_bin,
                 configs,
-                names,
                 socket,
                 work,
+                ..
             } => {
                 fs::create_dir_all(work).map_err(io)?;
                 if let Some(parent) = socket.parent() {
@@ -234,10 +274,11 @@ impl Supervisor {
                 let mut stop = Command::new(services_bin);
                 stop.env("HCTL2_INSTALL_ROOT", install_root);
                 self.apply_state_env(&mut stop);
-                let status = stop
-                    .args(["stop", "tuwunel", "gitea"])
-                    .status()
-                    .map_err(io)?;
+                let consumed = self.consumed_names();
+                if consumed.is_empty() {
+                    return Ok(());
+                }
+                let status = stop.arg("stop").args(&consumed).status().map_err(io)?;
                 if !(status.success() || status.code() == Some(1)) {
                     return Err(format!("hctl2-services stop failed: {status}"));
                 }
@@ -282,12 +323,12 @@ impl Supervisor {
                 let state = self.state_root();
                 copy_tree(&state.join("data"), &dest.join("data"))?;
                 copy_tree(&state.join("config"), &dest.join("config"))?;
-                write_manifest(dest, "packaged")?;
+                write_manifest(dest, "packaged", &self.consumed_names())?;
                 Ok(json!({"backend":"packaged","path": dest.display().to_string()}))
             }
             Backend::Fixture { work, .. } => {
                 copy_tree(work, &dest.join("fixture"))?;
-                write_manifest(dest, "fixture")?;
+                write_manifest(dest, "fixture", &self.consumed_names())?;
                 Ok(json!({"backend":"fixture","path": dest.display().to_string()}))
             }
         };
@@ -326,6 +367,7 @@ impl Supervisor {
             None => {
                 return ServiceHealth {
                     name: name.into(),
+                    consumed: false,
                     running: false,
                     ready: false,
                     pid: None,
@@ -347,6 +389,7 @@ impl Supervisor {
             .filter(|pid| *pid > 0);
         ServiceHealth {
             name: name.into(),
+            consumed: false,
             running,
             ready,
             pid,
@@ -445,7 +488,7 @@ impl Supervisor {
                 .output()
                 .is_ok_and(|output| output.status.success()),
             Backend::Packaged { .. } => self
-                .consumed_names()
+                .hosted_names()
                 .iter()
                 .any(|name| self.health(name).running),
             Backend::Absent => false,
@@ -485,11 +528,60 @@ impl Supervisor {
         cmd
     }
 
-    fn consumed_names(&self) -> Vec<String> {
+    fn hosted_names(&self) -> Vec<String> {
         match &self.backend {
-            Backend::Fixture { names, .. } => names.clone(),
-            _ => CONSUMED.iter().map(|name| (*name).to_string()).collect(),
+            Backend::Fixture { hosted, .. } => hosted.clone(),
+            _ => HOSTED.iter().map(|name| (*name).to_string()).collect(),
         }
+    }
+
+    fn baseline_names(&self) -> Vec<String> {
+        match &self.backend {
+            Backend::Fixture { baseline, .. } => baseline.clone(),
+            _ => BASELINE.iter().map(|name| (*name).to_string()).collect(),
+        }
+    }
+
+    /// Baseline plus persisted consumption, in hosted order.
+    fn consumed_names(&self) -> Vec<String> {
+        let baseline = self.baseline_names();
+        let persisted = self.persisted_consumed();
+        self.hosted_names()
+            .into_iter()
+            .filter(|name| baseline.contains(name) || persisted.contains(name))
+            .collect()
+    }
+
+    fn consumed_file(&self) -> PathBuf {
+        self.root.join(CONSUMED_FILE)
+    }
+
+    fn persisted_consumed(&self) -> Vec<String> {
+        let Ok(bytes) = fs::read(self.consumed_file()) else {
+            return Vec::new();
+        };
+        let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+            return Vec::new();
+        };
+        value
+            .get("consumed")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn write_consumed(&self, consumed: &[String]) -> Result<(), String> {
+        fs::create_dir_all(&self.root).map_err(io)?;
+        let path = self.consumed_file();
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, json!({"consumed": consumed}).to_string()).map_err(io)?;
+        fs::rename(&tmp, &path).map_err(io)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -558,7 +650,22 @@ fn fixture_backend(root: &Path) -> Option<Backend> {
     if configs.is_empty() {
         return None;
     }
-    let names = std::env::var("HCTL2_CONSUMED_SERVICES")
+    let baseline = env_list("HCTL2_CONSUMED_SERVICES", &["ready-ok"]);
+    let hosted = env_list("HCTL2_HOSTED_SERVICES", &["ready-ok", "never-ready"]);
+    let work = root.join("services/fixture");
+    let socket = fixture_socket(root);
+    Some(Backend::Fixture {
+        pc_bin,
+        configs,
+        hosted,
+        baseline,
+        socket,
+        work,
+    })
+}
+
+fn env_list(key: &str, default: &[&str]) -> Vec<String> {
+    std::env::var(key)
         .ok()
         .map(|value| {
             value
@@ -567,16 +674,7 @@ fn fixture_backend(root: &Path) -> Option<Backend> {
                 .map(str::to_string)
                 .collect()
         })
-        .unwrap_or_else(|| vec!["ready-ok".into()]);
-    let work = root.join("services/fixture");
-    let socket = fixture_socket(root);
-    Some(Backend::Fixture {
-        pc_bin,
-        configs,
-        names,
-        socket,
-        work,
-    })
+        .unwrap_or_else(|| default.iter().map(|item| (*item).to_string()).collect())
 }
 
 fn packaged_install_root() -> Option<PathBuf> {
@@ -663,10 +761,10 @@ fn observed_at() -> String {
     format!("{secs}")
 }
 
-fn write_manifest(dest: &Path, backend: &str) -> Result<(), String> {
+fn write_manifest(dest: &Path, backend: &str, components: &[String]) -> Result<(), String> {
     let body = json!({
         "backend": backend,
-        "components": CONSUMED,
+        "components": components,
         "observed_at": observed_at(),
     });
     fs::write(dest.join("manifest.json"), body.to_string()).map_err(io)

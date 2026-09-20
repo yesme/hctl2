@@ -100,7 +100,8 @@ rust_test(
     env = hctl2_cargo_env() | {
         "HCTL2_PROCESS_COMPOSE_BIN": "$(location root//build/tools:process-compose-bin)",
         "HCTL2_PROCESS_COMPOSE_CONFIG": "$(location root//build/tests:process_compose_fixtures)/testdata/process-compose/lifecycle.yaml",
-        "HCTL2_CONSUMED_SERVICES": "ready-ok,never-ready",
+        "HCTL2_CONSUMED_SERVICES": "ready-ok",
+        "HCTL2_HOSTED_SERVICES": "ready-ok,never-ready",
     },
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,

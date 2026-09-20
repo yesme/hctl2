@@ -1,4 +1,4 @@
-//! Hosted service lifecycle: probes, start order, and service death vs store.
+//! Hosted service lifecycle: first consumption, probes, service death vs store.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,7 +101,7 @@ async fn wait_ready(client: &mut ControlClient<tonic::transport::Channel>) {
 }
 
 fn consumed<'a>(body: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
-    body["consumed"]
+    body["hosted"]
         .as_array()
         .unwrap()
         .iter()
@@ -123,18 +123,132 @@ async fn probe_not_ready_is_not_available_and_store_still_serves() {
     let status = query_json(&mut client, "status").await;
     assert_eq!(status["ready"], true);
     assert!(status["control_id"].as_str().unwrap().len() == 32);
+    // Hosted but not consumed: start must not bring it up.
+    wait_available(&mut client, "ready-ok").await;
     let services = query_json(&mut client, "services").await;
     let never = consumed(&services, "never-ready");
-    for _ in 0..20 {
-        if never["available"] == false {
+    assert_eq!(never["consumed"], false, "{services}");
+    assert_eq!(never["running"], false, "{services}");
+    // First consumption starts it; a failing probe keeps it unavailable while
+    // the store keeps serving.
+    let result = submit_json(
+        &mut client,
+        "services.consume",
+        r#"{"component":"never-ready"}"#,
+    )
+    .await;
+    assert_eq!(result["consumed"], true, "{result}");
+    let mut running = false;
+    for _ in 0..40 {
+        let services = query_json(&mut client, "services").await;
+        if consumed(&services, "never-ready")["running"] == true {
+            running = true;
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    assert!(running, "never-ready was consumed but never started");
     let services = query_json(&mut client, "services").await;
     let never = consumed(&services, "never-ready");
+    assert_eq!(never["consumed"], true, "{services}");
     assert_eq!(never["available"], false, "{services}");
     assert_eq!(never["ready"], false);
+    let status = query_json(&mut client, "status").await;
+    assert_eq!(status["ready"], true);
+    let denied = submit_json(&mut client, "services.consume", r#"{"component":"crash"}"#).await;
+    assert_eq!(denied["error"]["code"], "INVALID_INPUT", "{denied}");
+}
+
+#[tokio::test]
+async fn consumption_persists_across_control_restart() {
+    let temp = Temp::new();
+    let server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    wait_available(&mut client, "ready-ok").await;
+    let result = submit_json(
+        &mut client,
+        "services.consume",
+        r#"{"component":"never-ready"}"#,
+    )
+    .await;
+    assert_eq!(result["consumed"], true, "{result}");
+    assert!(temp.0.join("hosted-consumed.json").is_file());
+    let stopped = submit_json(&mut client, "services.stop", "{}").await;
+    assert_eq!(stopped["stopped"], true, "{stopped}");
+    // The open connection keeps the old service (and its store lock) alive;
+    // close it before stopping the daemon so the new one can take the lock.
+    drop(client);
+    server.abort();
+    let _ = server.await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let _server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    wait_available(&mut client, "ready-ok").await;
+    let mut running = false;
+    let mut last = serde_json::Value::Null;
+    for _ in 0..200 {
+        let services = query_json(&mut client, "services").await;
+        let never = consumed(&services, "never-ready");
+        if never["consumed"] == true && never["running"] == true {
+            running = true;
+            break;
+        }
+        last = services;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        running,
+        "consumed component was not restarted after control restart: {last}"
+    );
+}
+
+async fn wait_available(client: &mut ControlClient<tonic::transport::Channel>, name: &str) {
+    for _ in 0..80 {
+        let services = query_json(client, "services").await;
+        if consumed(&services, name)["available"] == true {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("{name} never became available");
+}
+
+async fn submit_json(
+    client: &mut ControlClient<tonic::transport::Channel>,
+    operation: &str,
+    payload: &str,
+) -> serde_json::Value {
+    let id = format!("{operation}-{}", TEMPS.fetch_add(1, Ordering::Relaxed));
+    let response = client
+        .submit(SubmitRequest {
+            protocol: Some(proto()),
+            operation: operation.into(),
+            payload: payload.as_bytes().to_vec(),
+            command_id: id.clone(),
+            idempotency_key: id,
+            preview_token: String::new(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    match response.error {
+        Some(error) => serde_json::json!({"error": {
+            "code": error.code, "message": error.message, "recovery_action": error.recovery_action,
+        }}),
+        None => serde_json::from_slice(&response.result).unwrap(),
+    }
 }
 
 #[tokio::test]

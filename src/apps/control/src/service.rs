@@ -427,6 +427,11 @@ impl ControlService {
         let operation = req.operation.clone();
         let outcome = tokio::task::spawn_blocking(move || match operation.as_str() {
             "services.stop" => services.stop_consumed().map(|()| json!({"stopped": true})),
+            "services.consume" => payload
+                .get("component")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "services.consume needs component".to_owned())
+                .and_then(|name| services.consume(name)),
             "services.backup" => payload
                 .get("path")
                 .and_then(Value::as_str)
