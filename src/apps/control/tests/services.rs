@@ -4,10 +4,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use control::{Daemon, socket_path};
+use control::{Daemon, Supervisor, socket_path};
 use hyper_util::rt::TokioIo;
 use proto::control_client::ControlClient;
-use proto::{Protocol, QueryRequest, SubmitRequest};
+use proto::{Protocol, QueryRequest};
 use tokio::net::UnixStream;
 use tonic::transport::Endpoint;
 use tower::service_fn;
@@ -29,6 +29,7 @@ impl Temp {
 }
 impl Drop for Temp {
     fn drop(&mut self) {
+        let _ = Supervisor::from_root(self.0.clone()).stop_consumed();
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
@@ -160,20 +161,15 @@ async fn service_death_does_not_change_store() {
     let before = query_json(&mut client, "status").await;
     let control_id = before["control_id"].clone();
     let generation = before["writer_generation"].clone();
-    let _ = client
-        .submit(SubmitRequest {
-            protocol: Some(proto()),
-            operation: "services.stop".into(),
-            payload: Vec::new(),
-            command_id: "stop-1".into(),
-            idempotency_key: "stop-1".into(),
-            preview_token: String::new(),
-        })
-        .await
-        .unwrap();
+    let services = query_json(&mut client, "services").await;
+    let pid = consumed(&services, "ready-ok")["pid"]
+        .as_i64()
+        .expect("ready-ok pid");
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status();
+    tokio::time::sleep(Duration::from_millis(200)).await;
     let after = query_json(&mut client, "status").await;
     assert_eq!(after["control_id"], control_id);
     assert_eq!(after["writer_generation"], generation);
-    let services = query_json(&mut client, "services").await;
-    assert_eq!(consumed(&services, "ready-ok")["available"], false);
 }

@@ -67,6 +67,15 @@ write_secret_once() {
     printf '\n' >>"$path"
 }
 
+write_b64url_once() {
+    local path="$1"
+
+    [[ -f "$path" ]] && return
+    umask 077
+    head -c 32 /dev/urandom | openssl base64 -A | tr '+/' '-_' | tr -d '=\n' >"$path"
+    printf '\n' >>"$path"
+}
+
 prepare_runtime() {
     local component
     local registration_token
@@ -74,6 +83,8 @@ prepare_runtime() {
     local tuwunel_config_tmp
     local vikunja_secret
     local gitea_secret
+    local gitea_internal
+    local gitea_jwt
     local gitea_config
     local gitea_config_tmp
 
@@ -104,9 +115,13 @@ prepare_runtime() {
     write_secret_once "$P0_CONFIG_DIR/tuwunel-registration-token"
     write_secret_once "$P0_CONFIG_DIR/vikunja-secret"
     write_secret_once "$P0_CONFIG_DIR/gitea-secret-key"
+    write_secret_once "$P0_CONFIG_DIR/gitea-internal-token"
+    write_b64url_once "$P0_CONFIG_DIR/gitea-jwt-secret"
     IFS= read -r registration_token <"$P0_CONFIG_DIR/tuwunel-registration-token"
     IFS= read -r vikunja_secret <"$P0_CONFIG_DIR/vikunja-secret"
     IFS= read -r gitea_secret <"$P0_CONFIG_DIR/gitea-secret-key"
+    IFS= read -r gitea_internal <"$P0_CONFIG_DIR/gitea-internal-token"
+    IFS= read -r gitea_jwt <"$P0_CONFIG_DIR/gitea-jwt-secret"
 
     tuwunel_config="$P0_CONFIG_DIR/tuwunel.toml"
     tuwunel_config_tmp="$tuwunel_config.tmp.$$"
@@ -150,6 +165,9 @@ prepare_runtime() {
             '[security]' \
             'INSTALL_LOCK = true' \
             "SECRET_KEY = $gitea_secret" \
+            "INTERNAL_TOKEN = $gitea_internal" \
+            '[oauth2]' \
+            "JWT_SECRET = $gitea_jwt" \
             '[service]' \
             'DISABLE_REGISTRATION = true' \
             'REQUIRE_SIGNIN_VIEW = true' \

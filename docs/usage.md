@@ -256,7 +256,7 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 完整离线包的下载、校验、解压和安装步骤见[安装当前离线包](#安装当前离线包)。最终用户只需下载同一版本和目标平台的运行包及其 `.sha256` 文件；源码伴随包与它的校验文件在同一 Release 提供，供源码与供应链审计按需下载，不参与安装。
 
-安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起 Tuwunel 与 Gitea，不等所有服务探针通过才接受控制面命令。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr）。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
+安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起 Tuwunel 与 Gitea，不等所有服务探针通过才接受控制面命令。缺省数据目录与 `hctl2-services` 相同（`~/.local/state/hctl2` 或 `$XDG_STATE_HOME/hctl2`）；只有 `hctl2 --root DIR` 才把服务状态放到 `DIR/services`。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr），请与 `hctl2 start` 共用同一状态根，避免抢端口。`hctl2 stop` 停掉本控制面拉起的 Tuwunel 与 Gitea；若没有别的组件在跑，会把 Process Compose 项目 `down` 掉，否则本体可按 `--keep-project` 留下。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
 
 ## 制作外部子系统包
 

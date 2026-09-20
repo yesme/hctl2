@@ -104,7 +104,45 @@ printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
     die "hctl2 start did not report a ready control: $b0_status"
 b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
 [[ -n "$b0_id" ]] || die "could not read control_id from status: $b0_status"
+component_available() {
+    python3 -c '
+import json, sys
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.exit(1)
+want = sys.argv[1]
+for item in data.get("consumed", []):
+    if item.get("name") == want and item.get("available") is True:
+        sys.exit(0)
+sys.exit(1)
+' "$1"
+}
+wait_consumed_available() {
+    local name="$1"
+    local attempt
+    local snapshot=""
+    for attempt in $(seq 1 60); do
+        snapshot="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status 2>/dev/null || true)"
+        if printf '%s\n' "$snapshot" | component_available "$name"; then
+            note "B0 $name available"
+            return 0
+        fi
+        sleep 1
+    done
+    die "hctl2 start did not bring $name to available: $snapshot"
+}
+wait_consumed_available tuwunel
+wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
+sleep 2
+if HCTL2_INSTALL_ROOT="$contract_prefix/lib/hctl2/$PACKAGE_ID" \
+    HCTL2_STATE_ROOT="$b0_root/services" \
+    "$contract_prefix/bin/hctl2-services" status >/dev/null 2>&1
+then
+    die "hctl2-services status succeeded after hctl2 stop"
+fi
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
 b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
 b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"

@@ -4,8 +4,11 @@
 
 use std::fs;
 use std::io::ErrorKind;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -16,6 +19,7 @@ pub struct ServiceHealth {
     pub name: String,
     pub running: bool,
     pub ready: bool,
+    pub pid: Option<i64>,
 }
 
 impl ServiceHealth {
@@ -28,6 +32,9 @@ impl ServiceHealth {
 #[derive(Clone, Debug)]
 pub struct Snapshot {
     pub backend: String,
+    pub source: String,
+    pub observed_at: String,
+    pub last_error: Option<String>,
     pub consumed: Vec<ServiceHealth>,
 }
 
@@ -36,11 +43,15 @@ impl Snapshot {
     pub fn to_json(&self) -> Value {
         json!({
             "backend": self.backend,
+            "source": self.source,
+            "observed_at": self.observed_at,
+            "last_error": self.last_error,
             "consumed": self.consumed.iter().map(|service| json!({
                 "name": service.name,
                 "running": service.running,
                 "ready": service.ready,
                 "available": service.available(),
+                "pid": service.pid,
             })).collect::<Vec<_>>(),
         })
     }
@@ -49,6 +60,7 @@ impl Snapshot {
 pub struct Supervisor {
     root: PathBuf,
     backend: Backend,
+    last_error: Mutex<Option<String>>,
 }
 
 enum Backend {
@@ -70,47 +82,78 @@ impl Supervisor {
     #[must_use]
     pub fn from_root(root: PathBuf) -> Self {
         let backend = detect(&root);
-        Self { root, backend }
+        Self {
+            root,
+            backend,
+            last_error: Mutex::new(None),
+        }
+    }
+
+    pub fn set_last_error(&self, error: impl Into<String>) {
+        *self
+            .last_error
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner()) = Some(error.into());
     }
 
     #[must_use]
     pub fn snapshot(&self) -> Snapshot {
-        match &self.backend {
-            Backend::Absent => Snapshot {
-                backend: "not_installed".into(),
-                consumed: CONSUMED
-                    .iter()
-                    .map(|name| ServiceHealth {
-                        name: (*name).into(),
-                        running: false,
-                        ready: false,
-                    })
-                    .collect(),
-            },
-            Backend::Packaged { .. } | Backend::Fixture { .. } => Snapshot {
-                backend: self.backend_name().into(),
-                consumed: self
-                    .consumed_names()
-                    .into_iter()
-                    .map(|name| self.health(&name))
-                    .collect(),
-            },
+        let consumed = match &self.backend {
+            Backend::Absent => CONSUMED
+                .iter()
+                .map(|name| ServiceHealth {
+                    name: (*name).into(),
+                    running: false,
+                    ready: false,
+                    pid: None,
+                })
+                .collect(),
+            Backend::Packaged { .. } | Backend::Fixture { .. } => self
+                .consumed_names()
+                .into_iter()
+                .map(|name| self.health(&name))
+                .collect(),
+        };
+        Snapshot {
+            backend: self.backend_name().into(),
+            source: format!("process-compose:{}", self.socket_path().display()),
+            observed_at: observed_at(),
+            last_error: self
+                .last_error
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .clone(),
+            consumed,
         }
     }
 
     /// Start consumed services without waiting for probes. Store stays available.
     pub fn ensure_up(&self) -> Result<(), String> {
+        let result = self.ensure_up_inner();
+        match &result {
+            Ok(()) => {
+                *self
+                    .last_error
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner()) = None;
+            }
+            Err(error) => self.set_last_error(error.clone()),
+        }
+        result
+    }
+
+    fn ensure_up_inner(&self) -> Result<(), String> {
         match &self.backend {
             Backend::Absent => Ok(()),
             Backend::Packaged {
                 install_root,
                 services_bin,
             } => {
-                let state = self.state_root();
-                fs::create_dir_all(&state).map_err(io)?;
-                let status = Command::new(services_bin)
-                    .env("HCTL2_INSTALL_ROOT", install_root)
-                    .env("HCTL2_STATE_ROOT", &state)
+                fs::create_dir_all(self.state_root()).map_err(io)?;
+                let mut cmd = Command::new(services_bin);
+                cmd.env("HCTL2_INSTALL_ROOT", install_root);
+                self.apply_state_env(&mut cmd);
+                let status = cmd
                     .args(["start", "--no-wait", "tuwunel", "gitea"])
                     .status()
                     .map_err(io)?;
@@ -162,17 +205,27 @@ impl Supervisor {
                 install_root,
                 services_bin,
             } => {
-                let status = Command::new(services_bin)
-                    .env("HCTL2_INSTALL_ROOT", install_root)
-                    .env("HCTL2_STATE_ROOT", self.state_root())
+                let mut stop = Command::new(services_bin);
+                stop.env("HCTL2_INSTALL_ROOT", install_root);
+                self.apply_state_env(&mut stop);
+                let status = stop
                     .args(["stop", "tuwunel", "gitea"])
                     .status()
                     .map_err(io)?;
-                if status.success() || status.code() == Some(1) {
-                    Ok(())
-                } else {
-                    Err(format!("hctl2-services stop failed: {status}"))
+                if !(status.success() || status.code() == Some(1)) {
+                    return Err(format!("hctl2-services stop failed: {status}"));
                 }
+                if !self
+                    .consumed_names()
+                    .iter()
+                    .any(|name| self.health(name).running)
+                {
+                    let mut down = Command::new(services_bin);
+                    down.env("HCTL2_INSTALL_ROOT", install_root);
+                    self.apply_state_env(&mut down);
+                    let _ = down.arg("stop").status();
+                }
+                Ok(())
             }
             Backend::Fixture { pc_bin, socket, .. } => {
                 if !self.pc_alive() {
@@ -189,20 +242,26 @@ impl Supervisor {
     }
 
     pub fn backup(&self, dest: &Path) -> Result<Value, String> {
+        self.stop_consumed()?;
         fs::create_dir_all(dest).map_err(io)?;
-        match &self.backend {
+        fs::set_permissions(dest, fs::Permissions::from_mode(0o700)).map_err(io)?;
+        let result = match &self.backend {
             Backend::Absent => Ok(json!({"backend":"not_installed"})),
             Backend::Packaged { .. } => {
                 let state = self.state_root();
                 copy_tree(&state.join("data"), &dest.join("data"))?;
                 copy_tree(&state.join("config"), &dest.join("config"))?;
+                write_manifest(dest, "packaged")?;
                 Ok(json!({"backend":"packaged","path": dest.display().to_string()}))
             }
             Backend::Fixture { work, .. } => {
                 copy_tree(work, &dest.join("fixture"))?;
+                write_manifest(dest, "fixture")?;
                 Ok(json!({"backend":"fixture","path": dest.display().to_string()}))
             }
-        }
+        };
+        let _ = self.ensure_up();
+        result
     }
 
     pub fn restore(&self, src: &Path) -> Result<Value, String> {
@@ -238,6 +297,7 @@ impl Supervisor {
                     name: name.into(),
                     running: false,
                     ready: false,
+                    pid: None,
                 };
             }
         };
@@ -250,32 +310,33 @@ impl Supervisor {
             .get("is_ready")
             .and_then(Value::as_str)
             .is_some_and(|value| value == "Ready");
+        let pid = entry
+            .get("pid")
+            .and_then(Value::as_i64)
+            .filter(|pid| *pid > 0);
         ServiceHealth {
             name: name.into(),
             running,
             ready,
+            pid,
         }
     }
 
     fn process_json(&self, name: &str) -> Option<Value> {
         let output = match &self.backend {
             Backend::Absent => return None,
-            Backend::Packaged {
-                install_root,
-                services_bin: _,
-            } => {
+            Backend::Packaged { install_root, .. } => {
                 let pc = install_root.join("libexec/hctl2/process-compose");
                 if !pc.exists() {
                     return None;
                 }
-                // Packaged PC socket is computed inside hctl2-services; use CLI get via env.
                 Command::new(pc)
                     .env("XDG_CONFIG_HOME", self.state_root().join("config"))
                     .env("PC_DISABLE_DOTENV", "1")
                     .args([
                         "--use-uds",
                         "--unix-socket",
-                        &packaged_pc_socket(&self.state_root()).to_string_lossy(),
+                        &self.socket_path().to_string_lossy(),
                     ])
                     .args(["process", "get", name, "--output", "json"])
                     .output()
@@ -356,8 +417,30 @@ impl Supervisor {
         }
     }
 
+    fn nested_state(&self) -> bool {
+        self.root != crate::default_root()
+    }
+
     fn state_root(&self) -> PathBuf {
-        self.root.join("services")
+        if self.nested_state() {
+            self.root.join("services")
+        } else {
+            default_services_state()
+        }
+    }
+
+    fn apply_state_env(&self, cmd: &mut Command) {
+        if self.nested_state() {
+            cmd.env("HCTL2_STATE_ROOT", self.state_root());
+        }
+    }
+
+    fn socket_path(&self) -> PathBuf {
+        match &self.backend {
+            Backend::Fixture { socket, .. } => socket.clone(),
+            Backend::Packaged { .. } => packaged_pc_socket(&self.state_root()),
+            Backend::Absent => PathBuf::from(""),
+        }
     }
 }
 
@@ -425,6 +508,19 @@ fn packaged_install_root() -> Option<PathBuf> {
         .then(|| payload.to_path_buf())
 }
 
+fn default_services_state() -> PathBuf {
+    if let Some(root) = std::env::var_os("HCTL2_STATE_ROOT") {
+        return PathBuf::from(root);
+    }
+    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME") {
+        return PathBuf::from(xdg).join("hctl2");
+    }
+    match std::env::var_os("HOME") {
+        Some(home) => PathBuf::from(home).join(".local/state/hctl2"),
+        None => PathBuf::from(".local/state/hctl2"),
+    }
+}
+
 fn fixture_socket(root: &Path) -> PathBuf {
     let digest = foundation::bytes_sha256(root.to_string_lossy().as_bytes());
     let dir = std::env::temp_dir().join(format!("hctl2-pc-{}", std::process::id()));
@@ -450,6 +546,23 @@ fn uid() -> u32 {
         .unwrap_or(0)
 }
 
+fn observed_at() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
+}
+
+fn write_manifest(dest: &Path, backend: &str) -> Result<(), String> {
+    let body = json!({
+        "backend": backend,
+        "components": CONSUMED,
+        "observed_at": observed_at(),
+    });
+    fs::write(dest.join("manifest.json"), body.to_string()).map_err(io)
+}
+
 fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
     if !from.exists() {
         return Ok(());
@@ -468,16 +581,31 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 fn replace_tree(from: &Path, to: &Path) -> Result<(), String> {
+    let aside = to.with_extension("aside");
     if to.exists() {
-        fs::remove_dir_all(to).map_err(io)?;
+        if aside.exists() {
+            fs::remove_dir_all(&aside).map_err(io)?;
+        }
+        fs::rename(to, &aside).map_err(io)?;
     }
-    copy_tree(from, to)
+    match copy_tree(from, to) {
+        Ok(()) => {
+            if aside.exists() {
+                let _ = fs::remove_dir_all(&aside);
+            }
+            Ok(())
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(to);
+            if aside.exists() {
+                let _ = fs::rename(&aside, to);
+            }
+            Err(error)
+        }
+    }
 }
 
 fn io(error: std::io::Error) -> String {
-    if error.kind() == ErrorKind::NotFound {
-        error.to_string()
-    } else {
-        error.to_string()
-    }
+    let _ = ErrorKind::NotFound;
+    error.to_string()
 }

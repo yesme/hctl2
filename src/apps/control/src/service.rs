@@ -50,7 +50,7 @@ pub struct ControlService {
     events: Mutex<VecDeque<Event>>,
     seq: AtomicI64,
     bus: broadcast::Sender<Event>,
-    services: Supervisor,
+    services: Arc<Supervisor>,
 }
 
 impl ControlService {
@@ -71,7 +71,29 @@ impl ControlService {
             events: Mutex::new(VecDeque::new()),
             seq: AtomicI64::new(0),
             bus,
-            services: Supervisor::from_root(root),
+            services: Arc::new(Supervisor::from_root(root)),
+        }
+    }
+
+    #[must_use]
+    pub fn with_services(
+        root: PathBuf,
+        status: StartupStatus,
+        store: Arc<Mutex<Option<Store>>>,
+        open_error: Arc<Mutex<Option<StoreError>>>,
+        services: Arc<Supervisor>,
+    ) -> Self {
+        let (bus, _) = broadcast::channel(64);
+        Self {
+            root,
+            status,
+            store,
+            open_error,
+            previews: Mutex::new(VecDeque::new()),
+            events: Mutex::new(VecDeque::new()),
+            seq: AtomicI64::new(0),
+            bus,
+            services,
         }
     }
 
@@ -401,23 +423,24 @@ impl ControlService {
             Ok(value) => value,
             Err(error) => return Ok(submit_err(error, 0)),
         };
-        let outcome = match req.operation.as_str() {
-            "services.stop" => self
-                .services
-                .stop_consumed()
-                .map(|()| json!({"stopped": true})),
+        let services = Arc::clone(&self.services);
+        let operation = req.operation.clone();
+        let outcome = tokio::task::spawn_blocking(move || match operation.as_str() {
+            "services.stop" => services.stop_consumed().map(|()| json!({"stopped": true})),
             "services.backup" => payload
                 .get("path")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "services.backup needs path".to_owned())
-                .and_then(|path| self.services.backup(Path::new(path))),
+                .and_then(|path| services.backup(Path::new(path))),
             "services.restore" => payload
                 .get("path")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "services.restore needs path".to_owned())
-                .and_then(|path| self.services.restore(Path::new(path))),
+                .and_then(|path| services.restore(Path::new(path))),
             other => Err(format!("unknown operation {other}")),
-        };
+        })
+        .await
+        .unwrap_or_else(|_| Err("services worker failed".into()));
         match outcome {
             Ok(value) => {
                 if is_dangerous(&req.operation) {
@@ -444,7 +467,14 @@ impl ControlService {
 
     async fn status_or_doctor(&self, kind: &str, actor: &TrustedActor) -> Response<QueryResponse> {
         let seq = self.seq.load(Ordering::Acquire);
-        let services = self.services.snapshot().to_json();
+        let supervisor = Arc::clone(&self.services);
+        let mut services = tokio::task::spawn_blocking(move || supervisor.snapshot())
+            .await
+            .map(|snapshot| snapshot.to_json())
+            .unwrap_or_else(|_| json!({"backend":"unavailable"}));
+        if let Some(object) = services.as_object_mut() {
+            object.insert("event_seq".into(), json!(seq));
+        }
         if kind == "services" {
             return Response::new(QueryResponse {
                 error: None,

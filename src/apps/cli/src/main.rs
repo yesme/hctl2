@@ -246,7 +246,10 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
 }
 
 async fn stop_daemon(root: &Path) -> Result<(), String> {
-    let _ = submit(root, "services.stop", json!({}), None).await;
+    match submit(root, "services.stop", json!({}), None).await {
+        Ok(_) => {}
+        Err(error) => eprintln!("hctl2: services.stop: {error}"),
+    }
     if let Ok(pid) = std::fs::read_to_string(root.join("control.pid")) {
         let _ = std::process::Command::new("kill").arg(pid.trim()).status();
     }
