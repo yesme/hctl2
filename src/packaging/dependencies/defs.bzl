@@ -7,6 +7,11 @@ _MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
 _MACOS_XCODE_VERSION = read_config("hctl2", "macos_xcode_version", "unavailable")
 _TUWUNEL_NATIVE_BUILD = read_config("hctl2", "tuwunel_native_build", "0")
 
+# `release` (xz -9) ships; `fast` (xz -1) is for pull-request verification only.
+# CI passes `-c hctl2.xz_preset=fast` on pull_request; every other event keeps
+# the default, so published and post-merge artifacts are always `release`.
+XZ_PRESET = read_config("hctl2", "xz_preset", "release")
+
 _COMPONENT_PREFIXES = {
     "cinny": "CINNY",
     "dagu": "DAGU",
@@ -425,6 +430,7 @@ export HCTL2_LICENSE_FILE="$source_root/release/LICENSE"
 export HCTL2_USAGE_FILE="$source_root/release/USAGE.md"
 export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
 export HCTL2_XZ_VERSION="{xz_version}"
+export HCTL2_XZ_PRESET="{xz_preset}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 init_build_environment
@@ -434,6 +440,7 @@ assemble_dependency_package
         platform = spec["os"],
         xz_directory = XZ_DIRECTORY,
         xz_version = XZ_VERSION,
+        xz_preset = XZ_PRESET,
     )
 
 def declare_external_dependencies(build_sources: dict, package_sources: dict, test_sources: dict):

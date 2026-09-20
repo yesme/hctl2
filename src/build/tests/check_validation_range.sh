@@ -53,6 +53,8 @@ extract_step "$code_workflow" "Resolve validation range" > "$work/steps/code-ran
 extract_step "$release_workflow" "Resolve validation range" > "$work/steps/release-range.sh"
 extract_step "$code_workflow" "Detect first-party / CI paths" > "$work/steps/code-paths.sh"
 extract_step "$release_workflow" "Detect product and release paths" > "$work/steps/release-paths.sh"
+extract_step "$code_workflow" "Select build platforms" > "$work/steps/code-platforms.sh"
+extract_step "$release_workflow" "Select build platforms" > "$work/steps/release-platforms.sh"
 for body in code-range release-range code-paths release-paths; do
     file="$work/steps/$body.sh"
     if [ ! -s "$file" ] || ! grep -q GITHUB_OUTPUT "$file"; then
@@ -481,6 +483,41 @@ for selection in full-policy-change full-btd-fallback full-periodic; do
         fail "$selection: workflow omits standalone crate tests"
     fi
 done
+
+# --- event-selected platform matrices -------------------------------------
+# pull_request builds Linux x86_64 and macOS arm64 only; every other event
+# keeps the three-platform matrix (Intel macOS included).
+check_platforms() {
+    local label="$1" script="$2" event="$3" expected="$4"
+    local out="$work/platforms-$label-$event.out"
+    local matrix count
+    : >"$out"
+    if ! EVENT_NAME="$event" GITHUB_OUTPUT="$out" bash "$script"; then
+        fail "$label platform selection failed for $event"
+        return
+    fi
+    matrix="$(sed -n 's/^matrix=//p' "$out")"
+    count="$(printf '%s' "$matrix" | "$jq_bin" 'length' 2>/dev/null || echo invalid)"
+    [ "$count" = "$expected" ] || fail "$label $event selected $count platforms, expected $expected: $matrix"
+    if [ "$event" = pull_request ]; then
+        if printf '%s' "$matrix" | grep -F 'macOS x86_64' >/dev/null; then
+            fail "$label pull_request still selects Intel macOS"
+        fi
+    elif ! printf '%s' "$matrix" | grep -F 'macOS x86_64' >/dev/null; then
+        fail "$label $event dropped Intel macOS"
+    fi
+    if ! printf '%s' "$matrix" | grep -F '"Linux x86_64"' >/dev/null || \
+        ! printf '%s' "$matrix" | grep -F '"macOS arm64"' >/dev/null; then
+        fail "$label $event lost Linux x86_64 or macOS arm64: $matrix"
+    fi
+}
+for event in pull_request push schedule workflow_dispatch; do
+    expected=3
+    [ "$event" = pull_request ] && expected=2
+    check_platforms code "$work/steps/code-platforms.sh" "$event" "$expected"
+    check_platforms release "$work/steps/release-platforms.sh" "$event" "$expected"
+done
+note "PASS platform matrices: pull_request 2 platforms, other events 3, both workflows"
 
 if [ "$failures" -ne 0 ]; then
     echo "check_validation_range: FAILED ($failures)" >&2

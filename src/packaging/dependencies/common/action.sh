@@ -38,8 +38,22 @@ require_pinned_xz() {
     [[ "$actual" == "$expected" ]] || die "xz/liblzma version mismatch: $actual"
 }
 
+# HCTL2_XZ_PRESET selects the compression preset. `release` (-9) is the shipped
+# artifact and the default; `fast` (-1) is only for pull-request verification
+# builds, whose archives are installed and exercised but never published.
+xz_preset_flag() {
+    # Unset means release; an explicit empty value is a mistake, not a default.
+    case "${HCTL2_XZ_PRESET-release}" in
+        release) printf -- '-9' ;;
+        fast) printf -- '-1' ;;
+        *) die "unsupported HCTL2_XZ_PRESET: '${HCTL2_XZ_PRESET-}'" ;;
+    esac
+}
+
 compress_archive() {
-    run_xz -9 -T0 --no-adjust -c
+    local preset
+    preset="$(xz_preset_flag)"
+    run_xz "$preset" -T0 --no-adjust -c
 }
 
 hash_file() {
