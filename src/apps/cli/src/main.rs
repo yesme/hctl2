@@ -221,9 +221,15 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
             })
         })
         .ok_or_else(|| "hctl2-control binary not found; set HCTL2_CONTROL_BIN".to_owned())?;
-    let mut child = std::process::Command::new(bin)
-        .arg("--root")
-        .arg(root)
+    let mut command = std::process::Command::new(&bin);
+    command.arg("--root").arg(root);
+    if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT")
+        .map(PathBuf::from)
+        .or_else(install_root_from_exe)
+    {
+        command.env("HCTL2_INSTALL_ROOT", install);
+    }
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -384,6 +390,29 @@ fn print_out(as_json: bool, value: Value) {
             serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
         );
     }
+}
+
+fn install_root_from_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let resolved = std::fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
+    for candidate in [&resolved, &exe] {
+        let bin = candidate.parent()?;
+        let parent = bin.parent()?;
+        let payload_pc = parent.join("libexec/hctl2/process-compose");
+        if payload_pc.is_file() {
+            return Some(parent.to_path_buf());
+        }
+        let lib = parent.join("lib/hctl2");
+        if let Ok(entries) = std::fs::read_dir(lib) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.join("libexec/hctl2/process-compose").is_file() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn invocation_id(kind: &str) -> String {

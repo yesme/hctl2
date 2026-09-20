@@ -581,14 +581,40 @@ fn fixture_backend(root: &Path) -> Option<Backend> {
 
 fn packaged_install_root() -> Option<PathBuf> {
     if let Some(root) = std::env::var_os("HCTL2_INSTALL_ROOT") {
-        return Some(PathBuf::from(root));
+        let path = PathBuf::from(root);
+        return is_payload(&path).then_some(path);
     }
     let exe = std::env::current_exe().ok()?;
-    let payload = exe.parent()?.parent()?;
-    payload
-        .join("libexec/hctl2/process-compose")
-        .exists()
-        .then(|| payload.to_path_buf())
+    let resolved = fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
+    for candidate in payload_candidates(&resolved)
+        .into_iter()
+        .chain(payload_candidates(&exe))
+    {
+        if is_payload(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn is_payload(path: &Path) -> bool {
+    path.join("libexec/hctl2/process-compose").is_file()
+        && path.join("bin/hctl2-services").is_file()
+}
+
+fn payload_candidates(exe: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Some(bin) = exe.parent() else {
+        return out;
+    };
+    if let Some(parent) = bin.parent() {
+        out.push(parent.to_path_buf());
+        let lib = parent.join("lib/hctl2");
+        if let Ok(entries) = fs::read_dir(lib) {
+            out.extend(entries.flatten().map(|entry| entry.path()));
+        }
+    }
+    out
 }
 
 fn default_services_state() -> PathBuf {
