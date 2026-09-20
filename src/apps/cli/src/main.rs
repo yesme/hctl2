@@ -52,6 +52,10 @@ enum Command {
 #[derive(Subcommand)]
 enum ServicesCommand {
     Status,
+    /// Mark a hosted component (tuwunel, gitea) as consumed and start it.
+    Consume {
+        component: String,
+    },
     Backup {
         path: PathBuf,
     },
@@ -170,6 +174,17 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Query { kind } => query(root, json, &kind, json!({})).await,
         Command::Services(ServicesCommand::Status) => {
             query(root, json, "services", json!({})).await
+        }
+        Command::Services(ServicesCommand::Consume { component }) => {
+            let result = submit(
+                root,
+                "services.consume",
+                json!({"component": component}),
+                None,
+            )
+            .await?;
+            print_out(json, result);
+            Ok(())
         }
         Command::Services(ServicesCommand::Backup { path }) => {
             let result = submit(root, "services.backup", json!({"path": path}), None).await?;

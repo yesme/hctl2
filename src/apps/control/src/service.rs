@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::owner_actor;
-use crate::services::Supervisor;
+use crate::services::{ServiceError, Supervisor};
 use crate::socket_path;
 use foundation::SecretStore;
 use proto::control_server::Control;
@@ -425,22 +425,38 @@ impl ControlService {
         };
         let services = Arc::clone(&self.services);
         let operation = req.operation.clone();
-        let outcome = tokio::task::spawn_blocking(move || match operation.as_str() {
-            "services.stop" => services.stop_consumed().map(|()| json!({"stopped": true})),
-            "services.backup" => payload
-                .get("path")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "services.backup needs path".to_owned())
-                .and_then(|path| services.backup(Path::new(path))),
-            "services.restore" => payload
-                .get("path")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "services.restore needs path".to_owned())
-                .and_then(|path| services.restore(Path::new(path))),
-            other => Err(format!("unknown operation {other}")),
+        let outcome = tokio::task::spawn_blocking(move || -> Result<Value, ServiceError> {
+            match operation.as_str() {
+                "services.stop" => services
+                    .stop_consumed()
+                    .map(|()| json!({"stopped": true}))
+                    .map_err(ServiceError::from),
+                "services.consume" => payload
+                    .get("component")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ServiceError::from_input("services.consume needs component"))
+                    .and_then(|name| services.consume(name)),
+                "services.backup" => payload
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ServiceError::from_input("services.backup needs path"))
+                    .and_then(|path| services.backup(Path::new(path)).map_err(ServiceError::from)),
+                "services.restore" => payload
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| ServiceError::from_input("services.restore needs path"))
+                    .and_then(|path| {
+                        services
+                            .restore(Path::new(path))
+                            .map_err(ServiceError::from)
+                    }),
+                other => Err(ServiceError::from_input(format!(
+                    "unknown operation {other}"
+                ))),
+            }
         })
         .await
-        .unwrap_or_else(|_| Err("services worker failed".into()));
+        .unwrap_or_else(|_| Err(ServiceError::from("services worker failed".to_owned())));
         match outcome {
             Ok(value) => {
                 if is_dangerous(&req.operation) {
@@ -458,8 +474,8 @@ impl ControlService {
                     event_seq: seq,
                 }))
             }
-            Err(message) => Ok(submit_err(
-                error("INVALID_INPUT", message, "correct_input"),
+            Err(failure) => Ok(submit_err(
+                error(failure.code, failure.message, failure.recovery_action),
                 0,
             )),
         }

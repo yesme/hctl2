@@ -109,7 +109,7 @@ wait_consumed_available() {
     local attempt
     local snapshot=""
     local needle
-    needle="\"available\":true,\"name\":\"${name}\""
+    needle="\"available\":true,\"consumed\":true,\"name\":\"${name}\""
     for attempt in $(seq 1 60); do
         snapshot="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status 2>/dev/null || true)"
         if printf '%s\n' "$snapshot" | grep -F "$needle" >/dev/null; then
@@ -121,6 +121,14 @@ wait_consumed_available() {
     die "hctl2 start did not bring $name to available: $snapshot"
 }
 wait_consumed_available tuwunel
+# Gitea is hosted but only consumed by the first purely local repository (or an
+# explicit local-platform choice); a plain start must leave it down.
+b0_services="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status)"
+printf '%s\n' "$b0_services" | grep -F '"available":false,"consumed":false,"name":"gitea"' >/dev/null || \
+    die "hctl2 start brought up Gitea before any consumption: $b0_services"
+printf '%s\n' "$b0_services" | grep -F '"name":"gitea","pid":null,"ready":false,"running":false' >/dev/null || \
+    die "hctl2 start left an unconsumed Gitea process running: $b0_services"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" services consume gitea >/dev/null
 wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
@@ -131,6 +139,9 @@ then
     die "hctl2-services status succeeded after hctl2 stop"
 fi
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
+# Consumption is remembered: the restart brings Gitea back without a new consume.
+wait_consumed_available tuwunel
+wait_consumed_available gitea
 b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
 b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
 [[ "$b0_id" == "$b0_id2" ]] || die "restart changed control identity: $b0_id -> $b0_id2"
