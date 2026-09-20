@@ -31,9 +31,10 @@ P2.2 长在 P2.1 上：全部业务命令走甲的命令内核与两半存储，
 
 | 项 | 状态 | 影响 |
 | --- | --- | --- |
-| 甲（控制面存储与命令内核，Codex，P2.1） | 开工中 | 四包的地基；四包在甲合入后开工 |
-| 乙（进程与 CLI 骨架，Grok，P2.1）、丁（托管生命周期） | 未开 | CLI 子命令挂乙；己等丁拉起 Tuwunel、戊的本地平台路径等丁拉起 Gitea |
-| chat 探针（Grok，进行中） | 进行中 | 己的前置；结果追加到 `docs/research/sdk/matrix.md` 复核记录，失败项直接改己的任务书 |
+| 甲（控制面存储与命令内核，Codex，P2.1） | 已合入 #276 | 四包的地基 |
+| 乙（进程与 CLI 骨架，Grok，P2.1） | 已合入 #279 | CLI 子命令挂乙 |
+| 丁（托管生命周期，Grok，P2.1） | 未开；前置 #278（xz 与 Gitea / tea 制品锁定）已合 | 己等丁拉起 Tuwunel、戊的本地平台路径等丁拉起 Gitea |
+| chat 探针（Grok） | 已完成 #274 | 己的前置；复核记录已追加到 `docs/research/sdk/matrix.md`，全部通过，B1 三项未验 |
 | GitHub Issues 写侧运行验证（`docs/research/sdk/github.md` 09-17） | 已完成 | 庚的 GitHub 一侧 |
 | Gitea issues 调用面（`docs/research/gitea.md` 09-17，`tea api`） | 已完成 | 庚的本地平台一侧、戊的本地平台建仓 |
 | 1a Matrix / Vikunja 复核（09-06，钉定源码核对） | 已完成 | Vikunja 只在本阶段之后加绑 |
