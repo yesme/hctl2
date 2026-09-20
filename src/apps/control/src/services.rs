@@ -8,6 +8,7 @@
 //! governance record either.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -107,7 +108,13 @@ impl Supervisor {
 
     #[must_use]
     pub fn snapshot(&self) -> Snapshot {
-        let consumed = self.consumed_names();
+        let consumed = match self.consumed_names() {
+            Ok(names) => names,
+            Err(error) => {
+                self.set_last_error(error);
+                self.baseline_names()
+            }
+        };
         let hosted = self
             .hosted_names()
             .into_iter()
@@ -147,7 +154,9 @@ impl Supervisor {
         if !self.hosted_names().iter().any(|hosted| hosted == name) {
             return Err(format!("{name} is not a hosted component"));
         }
-        let mut consumed = self.persisted_consumed();
+        let mut consumed = self.persisted_consumed().inspect_err(|error| {
+            self.set_last_error(error.clone());
+        })?;
         if !consumed.iter().any(|item| item == name) {
             consumed.push(name.to_owned());
             self.write_consumed(&consumed)?;
@@ -162,10 +171,17 @@ impl Supervisor {
 
     /// Start consumed services without waiting for probes. Store stays available.
     pub fn ensure_up(&self) -> Result<(), String> {
-        let result = self.start_components(&self.consumed_names());
-        match &result {
-            Ok(()) => self.clear_last_error(),
-            Err(error) => self.set_last_error(error.clone()),
+        let (names, record_error) = match self.consumed_names() {
+            Ok(names) => (names, None),
+            // A corrupt record is not "never consumed": keep the baseline up,
+            // report the record, and leave the file for the operator.
+            Err(error) => (self.baseline_names(), Some(error)),
+        };
+        let result = self.start_components(&names);
+        match (&result, record_error) {
+            (Ok(()), None) => self.clear_last_error(),
+            (Ok(()), Some(error)) => self.set_last_error(error),
+            (Err(error), _) => self.set_last_error(error.clone()),
         }
         result
     }
@@ -274,7 +290,9 @@ impl Supervisor {
                 let mut stop = Command::new(services_bin);
                 stop.env("HCTL2_INSTALL_ROOT", install_root);
                 self.apply_state_env(&mut stop);
-                let consumed = self.consumed_names();
+                let consumed = self
+                    .consumed_names()
+                    .unwrap_or_else(|_| self.baseline_names());
                 if consumed.is_empty() {
                     return Ok(());
                 }
@@ -294,7 +312,10 @@ impl Supervisor {
                 if !self.pc_alive() {
                     return Ok(());
                 }
-                for name in self.consumed_names() {
+                let consumed = self
+                    .consumed_names()
+                    .unwrap_or_else(|_| self.baseline_names());
+                for name in consumed {
                     let _ = self
                         .pc_client(pc_bin, socket)
                         .args(["process", "stop", &name])
@@ -317,27 +338,38 @@ impl Supervisor {
         self.stop_consumed()?;
         fs::create_dir_all(dest).map_err(io)?;
         fs::set_permissions(dest, fs::Permissions::from_mode(0o700)).map_err(io)?;
+        let consumed = self.consumed_names()?;
         let result = match &self.backend {
             Backend::Absent => Ok(json!({"backend":"not_installed"})),
             Backend::Packaged { .. } => {
                 let state = self.state_root();
                 copy_tree(&state.join("data"), &dest.join("data"))?;
                 copy_tree(&state.join("config"), &dest.join("config"))?;
-                write_manifest(dest, "packaged", &self.consumed_names())?;
+                write_manifest(dest, "packaged", &consumed)?;
                 Ok(json!({"backend":"packaged","path": dest.display().to_string()}))
             }
             Backend::Fixture { work, .. } => {
                 copy_tree(work, &dest.join("fixture"))?;
-                write_manifest(dest, "fixture", &self.consumed_names())?;
+                write_manifest(dest, "fixture", &consumed)?;
                 Ok(json!({"backend":"fixture","path": dest.display().to_string()}))
             }
         };
+        // The consumed record travels with the backup so a restore into a new
+        // control root brings the same components back up.
+        if result.is_ok() && self.consumed_file().is_file() {
+            fs::copy(self.consumed_file(), dest.join(CONSUMED_FILE)).map_err(io)?;
+        }
         let _ = self.ensure_up();
         result
     }
 
     pub fn restore(&self, src: &Path) -> Result<Value, String> {
         self.stop_consumed()?;
+        if src.join(CONSUMED_FILE).is_file() {
+            let bytes = fs::read(src.join(CONSUMED_FILE)).map_err(io)?;
+            let names = parse_consumed(&bytes)?;
+            self.write_consumed(&names)?;
+        }
         match &self.backend {
             Backend::Absent => Ok(json!({"backend":"not_installed"})),
             Backend::Packaged { .. } => {
@@ -542,38 +574,31 @@ impl Supervisor {
         }
     }
 
-    /// Baseline plus persisted consumption, in hosted order.
-    fn consumed_names(&self) -> Vec<String> {
+    /// Baseline plus persisted consumption, in hosted order. A missing record
+    /// means nothing was consumed yet; an unreadable one is an error, never an
+    /// empty set.
+    fn consumed_names(&self) -> Result<Vec<String>, String> {
         let baseline = self.baseline_names();
-        let persisted = self.persisted_consumed();
-        self.hosted_names()
+        let persisted = self.persisted_consumed()?;
+        Ok(self
+            .hosted_names()
             .into_iter()
             .filter(|name| baseline.contains(name) || persisted.contains(name))
-            .collect()
+            .collect())
     }
 
     fn consumed_file(&self) -> PathBuf {
         self.root.join(CONSUMED_FILE)
     }
 
-    fn persisted_consumed(&self) -> Vec<String> {
-        let Ok(bytes) = fs::read(self.consumed_file()) else {
-            return Vec::new();
+    fn persisted_consumed(&self) -> Result<Vec<String>, String> {
+        let path = self.consumed_file();
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(format!("{}: {error}", path.display())),
         };
-        let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
-            return Vec::new();
-        };
-        value
-            .get("consumed")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        parse_consumed(&bytes).map_err(|error| format!("{}: {error}", path.display()))
     }
 
     fn write_consumed(&self, consumed: &[String]) -> Result<(), String> {
@@ -751,6 +776,23 @@ fn uid() -> u32 {
         .and_then(|output| String::from_utf8(output.stdout).ok())
         .and_then(|text| text.trim().parse().ok())
         .unwrap_or(0)
+}
+
+fn parse_consumed(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let value = serde_json::from_slice::<Value>(bytes)
+        .map_err(|error| format!("consumed record is not JSON: {error}"))?;
+    let items = value
+        .get("consumed")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "consumed record has no \"consumed\" array".to_owned())?;
+    items
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "consumed record holds a non-string entry".to_owned())
+        })
+        .collect()
 }
 
 fn observed_at() -> String {

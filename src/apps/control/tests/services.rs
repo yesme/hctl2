@@ -100,7 +100,7 @@ async fn wait_ready(client: &mut ControlClient<tonic::transport::Channel>) {
     panic!("control never became ready");
 }
 
-fn consumed<'a>(body: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+fn hosted<'a>(body: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
     body["hosted"]
         .as_array()
         .unwrap()
@@ -126,7 +126,7 @@ async fn probe_not_ready_is_not_available_and_store_still_serves() {
     // Hosted but not consumed: start must not bring it up.
     wait_available(&mut client, "ready-ok").await;
     let services = query_json(&mut client, "services").await;
-    let never = consumed(&services, "never-ready");
+    let never = hosted(&services, "never-ready");
     assert_eq!(never["consumed"], false, "{services}");
     assert_eq!(never["running"], false, "{services}");
     // First consumption starts it; a failing probe keeps it unavailable while
@@ -141,7 +141,7 @@ async fn probe_not_ready_is_not_available_and_store_still_serves() {
     let mut running = false;
     for _ in 0..40 {
         let services = query_json(&mut client, "services").await;
-        if consumed(&services, "never-ready")["running"] == true {
+        if hosted(&services, "never-ready")["running"] == true {
             running = true;
             break;
         }
@@ -149,7 +149,7 @@ async fn probe_not_ready_is_not_available_and_store_still_serves() {
     }
     assert!(running, "never-ready was consumed but never started");
     let services = query_json(&mut client, "services").await;
-    let never = consumed(&services, "never-ready");
+    let never = hosted(&services, "never-ready");
     assert_eq!(never["consumed"], true, "{services}");
     assert_eq!(never["available"], false, "{services}");
     assert_eq!(never["ready"], false);
@@ -200,7 +200,7 @@ async fn consumption_persists_across_control_restart() {
     let mut last = serde_json::Value::Null;
     for _ in 0..200 {
         let services = query_json(&mut client, "services").await;
-        let never = consumed(&services, "never-ready");
+        let never = hosted(&services, "never-ready");
         if never["consumed"] == true && never["running"] == true {
             running = true;
             break;
@@ -217,7 +217,7 @@ async fn consumption_persists_across_control_restart() {
 async fn wait_available(client: &mut ControlClient<tonic::transport::Channel>, name: &str) {
     for _ in 0..80 {
         let services = query_json(client, "services").await;
-        if consumed(&services, name)["available"] == true {
+        if hosted(&services, name)["available"] == true {
             return;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -265,7 +265,7 @@ async fn service_death_does_not_change_store() {
     let mut available = false;
     for _ in 0..40 {
         let services = query_json(&mut client, "services").await;
-        if consumed(&services, "ready-ok")["available"] == true {
+        if hosted(&services, "ready-ok")["available"] == true {
             available = true;
             break;
         }
@@ -276,7 +276,7 @@ async fn service_death_does_not_change_store() {
     let control_id = before["control_id"].clone();
     let generation = before["writer_generation"].clone();
     let services = query_json(&mut client, "services").await;
-    let pid = consumed(&services, "ready-ok")["pid"]
+    let pid = hosted(&services, "ready-ok")["pid"]
         .as_i64()
         .expect("ready-ok pid");
     let _ = std::process::Command::new("kill")
@@ -301,7 +301,7 @@ async fn stop_consumed_leaves_other_processes() {
     wait_ready(&mut client).await;
     for _ in 0..40 {
         let services = query_json(&mut client, "services").await;
-        if consumed(&services, "ready-ok")["available"] == true {
+        if hosted(&services, "ready-ok")["available"] == true {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -361,7 +361,7 @@ async fn stop_consumed_leaves_other_processes() {
         .await
         .unwrap();
     let services = query_json(&mut client, "services").await;
-    assert_eq!(consumed(&services, "ready-ok")["available"], false);
+    assert_eq!(hosted(&services, "ready-ok")["available"], false);
     let output = std::process::Command::new(&pc)
         .env("PC_DISABLE_DOTENV", "1")
         .args([
@@ -381,4 +381,117 @@ async fn stop_consumed_leaves_other_processes() {
         text.contains("\"is_running\": true") || text.contains("\"is_running\":true"),
         "other-ok should keep running after services.stop: {text}"
     );
+}
+
+#[tokio::test]
+async fn corrupt_consumed_record_is_reported_not_treated_as_empty() {
+    let temp = Temp::new();
+    std::fs::write(temp.0.join("hosted-consumed.json"), b"{").unwrap();
+    let _server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    // The baseline still comes up; the broken record is reported, not ignored.
+    wait_available(&mut client, "ready-ok").await;
+    let services = query_json(&mut client, "services").await;
+    let last_error = services["last_error"].as_str().unwrap_or("");
+    assert!(last_error.contains("hosted-consumed.json"), "{services}");
+    assert_eq!(
+        hosted(&services, "never-ready")["running"],
+        false,
+        "{services}"
+    );
+    let denied = submit_json(
+        &mut client,
+        "services.consume",
+        r#"{"component":"never-ready"}"#,
+    )
+    .await;
+    assert_eq!(denied["error"]["code"], "INVALID_INPUT", "{denied}");
+    assert_eq!(
+        std::fs::read(temp.0.join("hosted-consumed.json")).unwrap(),
+        b"{"
+    );
+}
+
+#[tokio::test]
+async fn backup_restored_into_a_new_root_keeps_consumption() {
+    let temp = Temp::new();
+    let _server = tokio::spawn({
+        let root = temp.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    wait_available(&mut client, "ready-ok").await;
+    let result = submit_json(
+        &mut client,
+        "services.consume",
+        r#"{"component":"never-ready"}"#,
+    )
+    .await;
+    assert_eq!(result["consumed"], true, "{result}");
+    let backup = temp.0.join("services-backup");
+    let payload = format!(r#"{{"path":"{}"}}"#, backup.display());
+    let backed = submit_json(&mut client, "services.backup", &payload).await;
+    assert_eq!(backed["backend"], "fixture", "{backed}");
+    assert!(backup.join("hosted-consumed.json").is_file());
+    // Fresh control root, restore, and the consumed component comes back.
+    let fresh = Temp::new();
+    let _fresh_server = tokio::spawn({
+        let root = fresh.0.clone();
+        async move {
+            let _ = Daemon::new(root).serve().await;
+        }
+    });
+    let mut fresh_client = connect(&fresh.0).await;
+    wait_ready(&mut fresh_client).await;
+    let before = query_json(&mut fresh_client, "services").await;
+    assert_eq!(
+        hosted(&before, "never-ready")["consumed"],
+        false,
+        "{before}"
+    );
+    let preview = fresh_client
+        .preview(proto::PreviewRequest {
+            protocol: Some(proto()),
+            operation: "services.restore".into(),
+            payload: payload.as_bytes().to_vec(),
+            command_id: "restore-preview".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let response = fresh_client
+        .submit(SubmitRequest {
+            protocol: Some(proto()),
+            operation: "services.restore".into(),
+            payload: payload.as_bytes().to_vec(),
+            command_id: "restore-apply".into(),
+            idempotency_key: "restore-apply".into(),
+            preview_token: preview.preview_token,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(response.error.is_none(), "{:?}", response.error);
+    let mut running = false;
+    let mut last = serde_json::Value::Null;
+    for _ in 0..200 {
+        let services = query_json(&mut fresh_client, "services").await;
+        let never = hosted(&services, "never-ready");
+        if never["consumed"] == true && never["running"] == true {
+            running = true;
+            break;
+        }
+        last = services;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(running, "restore into a new root lost consumption: {last}");
 }

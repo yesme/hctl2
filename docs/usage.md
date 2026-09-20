@@ -9,7 +9,7 @@
 | `hctl2-services` | 可用 | 安装包用户、开发者 | 通过 Process Compose 启停并检查 Chatroom（Tuwunel + Cinny）、Gitea、Vikunja、Dagu 和 Herdr |
 | `hctl2-tool` | P1 可用 | HCTL2 开发者、Harness、安装包用户 | 仓库检查、现场锁、worktree 物化与核验、封存保全拆除、本地集成，以及 `wait` 回读闭集外部事实 |
 | `hctl2` | P2.1 可用 | 最终用户 | 公共 CLI：`init/start/stop/status/doctor/export/backup/restore`，经本地 Unix socket 与 control 说话 |
-| `hctl2-control` | P2.1 可用 | HCTL2 内部组件 | 控制面守护进程；`hctl2 start` 拉起它，并按首次消费经 Process Compose 拉起随包服务：Tuwunel 随 start 拉起，Gitea 在第一次注册纯本地仓库（或显式选本地平台）时拉起并记为已消费 |
+| `hctl2-control` | P2.1 可用 | HCTL2 内部组件 | 控制面守护进程；`hctl2 start` 拉起它，并按首次消费经 Process Compose 拉起随包服务：Tuwunel 随 start 拉起；Gitea 由 `hctl2 services consume gitea` 拉起并记为已消费，P2.2 戊在注册纯本地仓库（或显式选本地平台）时调用它 |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
 `hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 治理记录，也不签发 Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用——远端动作归控制面里的平台适配器，见[Repo 模块约束](./design/spec/repo.md)。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
@@ -256,7 +256,7 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 完整离线包的下载、校验、解压和安装步骤见[安装当前离线包](#安装当前离线包)。最终用户只需下载同一版本和目标平台的运行包及其 `.sha256` 文件；源码伴随包与它的校验文件在同一 Release 提供，供源码与供应链审计按需下载，不参与安装。
 
-安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起随包服务：Tuwunel 是每个 Project 主 Room 的落点，随 start 拉起；Gitea 只在第一次注册纯本地仓库（或显式选本地平台）时拉起并记为已消费，之后随 start 一起起；GitHub 等外部平台的克隆绑来源平台，不会拉起 Gitea。已消费集合记在控制面数据目录的 `hosted-consumed.json`；`hctl2 services status` 列出每个托管组件的 `consumed` 与健康，`hctl2 services consume gitea` 是手动消费入口。control 不等所有服务探针通过才接受控制面命令。缺省数据目录与 `hctl2-services` 相同（`~/.local/state/hctl2` 或 `$XDG_STATE_HOME/hctl2`）；只有 `hctl2 --root DIR` 才把服务状态放到 `DIR/services`。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr），请与 `hctl2 start` 共用同一状态根，避免抢端口。`hctl2 stop` 停掉本控制面拉起的 Tuwunel 与 Gitea；若没有别的组件在跑，会把 Process Compose 项目 `down` 掉，否则本体可按 `--keep-project` 留下。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
+安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起随包服务：Tuwunel 是每个 Project 主 Room 的落点，随 start 拉起；Gitea 不随 start 拉起：`hctl2 services consume gitea` 把它记为已消费并拉起，之后随 start 一起起；P2.2 戊在注册纯本地仓库（或显式选本地平台）时调用这个入口，本阶段只提供入口，`repo register` 还没有接线。GitHub 等外部平台的克隆绑来源平台，不会拉起 Gitea。已消费集合记在控制面数据目录的 `hosted-consumed.json`，随 `hctl2 services backup` 一起备份、随 `restore` 写回；`hctl2 services status` 列出每个托管组件的 `consumed` 与健康。control 不等所有服务探针通过才接受控制面命令。缺省数据目录与 `hctl2-services` 相同（`~/.local/state/hctl2` 或 `$XDG_STATE_HOME/hctl2`）；只有 `hctl2 --root DIR` 才把服务状态放到 `DIR/services`。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr），请与 `hctl2 start` 共用同一状态根，避免抢端口。`hctl2 stop` 停掉本控制面拉起的 Tuwunel 与 Gitea；若没有别的组件在跑，会把 Process Compose 项目 `down` 掉，否则本体可按 `--keep-project` 留下。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
 
 ## 制作外部子系统包
 
