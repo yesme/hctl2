@@ -1,0 +1,50 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+DEPS = [
+    "root//crates/foundation:foundation",
+    "root//crates/store:store",
+    "root//third-party/rust:serde",
+    "root//third-party/rust:serde_json",
+]
+
+rust_library(
+    name = "repo",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":registration_test", ":git_test"],
+    visibility = ["PUBLIC"],
+)
+
+[
+    rust_test(
+        name = suite + "_test",
+        srcs = ["tests/" + suite + ".rs", "tests/common/mod.rs"],
+        crate_root = "tests/" + suite + ".rs",
+        deps = [":repo"] + DEPS,
+        edition = HCTL2_RUST_EDITION,
+        env = hctl2_cargo_env(),
+        labels = CI_FAST,
+        rustc_flags = HCTL2_RUSTC_FLAGS,
+        visibility = ["PUBLIC"],
+    )
+    for suite in ["registration", "git"]
+]
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "library": ":repo[clippy.txt]",
+        "registration": ":registration_test[clippy.txt]",
+        "git": ":git_test[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

@@ -49,12 +49,47 @@ fn old_schema_upgrades_before_ready_and_identity_does_not_change() {
             hook_seen.store(true, Ordering::SeqCst);
             Ok(())
         }),
+        M::up(CANCEL_PENDING),
     ]);
     let store = Store::open_migrations(&temp.0, status.clone(), &plan).unwrap();
     assert!(seen.load(Ordering::SeqCst));
     assert_eq!(store.control_id(), id);
     status.require_ready().unwrap();
     assert_eq!(inspect(&store.conn).unwrap(), VERSION);
+}
+
+#[test]
+fn v2_upgrade_preserves_unknown_effect_and_its_conflict_scope() {
+    let temp = Temp::new();
+    let mut conn = Connection::open(temp.0.join("control.sqlite")).unwrap();
+    Migrations::new(vec![M::up(IDENTITY), M::up(CORE)])
+        .to_latest(&mut conn)
+        .unwrap();
+    conn.execute_batch("INSERT INTO commands VALUES('c','c','digest','{}','{}'); INSERT INTO outbox VALUES('e','c','{}','same-target','unknown',0,NULL);").unwrap();
+    let old = identity(&conn).unwrap();
+    drop(conn);
+    let store = Store::open(&temp.0).unwrap();
+    assert_eq!(store.control_id(), old.0);
+    assert_eq!(inspect(&store.conn).unwrap(), 3);
+    assert_eq!(store.pending_effects().unwrap(), vec!["e"]);
+    let row: (String, String, Option<String>) = store
+        .conn
+        .query_row(
+            "SELECT state,conflict_key,confirmation FROM outbox WHERE intent_id='e'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("unknown".into(), "same-target".into(), None));
+    assert!(
+        store
+            .conn
+            .execute(
+                "INSERT INTO outbox VALUES('other','c','{}','same-target','pending',0,NULL)",
+                []
+            )
+            .is_err()
+    );
 }
 
 #[test]

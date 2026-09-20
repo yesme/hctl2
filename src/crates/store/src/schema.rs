@@ -6,7 +6,7 @@ use rusqlite_migration::{M, Migrations};
 
 use crate::{Result, StoreError};
 
-pub(crate) const VERSION: u32 = 2;
+pub(crate) const VERSION: u32 = 3;
 const APPLICATION_ID: u32 = 1_213_372_018;
 
 const IDENTITY: &str = "
@@ -56,6 +56,21 @@ CREATE TABLE deliveries (
 CREATE TABLE secret_references (binding_key TEXT PRIMARY KEY, secret_reference TEXT NOT NULL);
 ";
 
+// Cancellation proves only that dispatch never began, not an external outcome.
+const CANCEL_PENDING: &str = "
+CREATE TABLE outbox_v3 (
+ intent_id TEXT PRIMARY KEY,
+ command_key TEXT NOT NULL REFERENCES commands(idempotency_key) DEFERRABLE INITIALLY DEFERRED,
+ intent TEXT NOT NULL, conflict_key TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','unknown','confirmed','cancelled')),
+ generation INTEGER NOT NULL, confirmation TEXT
+);
+INSERT INTO outbox_v3 SELECT * FROM outbox;
+DROP TABLE outbox;
+ALTER TABLE outbox_v3 RENAME TO outbox;
+CREATE UNIQUE INDEX unresolved_effect ON outbox(conflict_key) WHERE state IN ('pending','unknown');
+";
+
 pub(crate) const PROJECTION: &str = "
 CREATE TABLE IF NOT EXISTS objects (
  object_key TEXT PRIMARY KEY, kind TEXT NOT NULL, scope TEXT NOT NULL,
@@ -67,7 +82,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_task_per_entity ON objects(project_id,enti
 ";
 
 pub(crate) fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(IDENTITY), M::up(CORE).foreign_key_check()])
+    Migrations::new(vec![
+        M::up(IDENTITY),
+        M::up(CORE).foreign_key_check(),
+        M::up(CANCEL_PENDING).foreign_key_check(),
+    ])
 }
 
 pub(crate) fn inspect(conn: &Connection) -> Result<u32> {

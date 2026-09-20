@@ -16,6 +16,7 @@ path = "src/main.rs"
 clap.workspace = true
 foundation = { path = "../../crates/foundation" }
 proto = { path = "../../crates/proto" }
+repo = { path = "../../crates/repo" }
 serde_json.workspace = true
 store = { path = "../../crates/store" }
 tokio.workspace = true

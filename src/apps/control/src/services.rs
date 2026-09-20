@@ -737,6 +737,16 @@ impl Supervisor {
         }
     }
 
+    /// Native platform adapter uses the exact installation and state selected by lifecycle.
+    pub(crate) fn gitea_paths(&self) -> Option<(PathBuf, PathBuf)> {
+        match &self.backend {
+            Backend::Packaged { install_root, .. } => {
+                Some((install_root.clone(), self.state_root()))
+            }
+            _ => None,
+        }
+    }
+
     fn apply_state_env(&self, cmd: &mut Command) {
         if self.nested_state() {
             cmd.env("HCTL2_STATE_ROOT", self.state_root());
@@ -817,15 +827,10 @@ fn packaged_install_root() -> Option<PathBuf> {
     }
     let exe = std::env::current_exe().ok()?;
     let resolved = fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
-    for candidate in payload_candidates(&resolved)
+    payload_candidates(&resolved)
         .into_iter()
         .chain(payload_candidates(&exe))
-    {
-        if is_payload(&candidate) {
-            return Some(candidate);
-        }
-    }
-    None
+        .find(|candidate| is_payload(candidate))
 }
 
 fn is_payload(path: &Path) -> bool {

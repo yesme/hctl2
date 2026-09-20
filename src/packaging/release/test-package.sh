@@ -46,7 +46,13 @@ case "$test_root" in
     /*/hctl2-release-contract.*) ;;
     *) die "unsafe release test directory: $test_root" ;;
 esac
-trap 'find "${test_root:?}" -depth -delete' EXIT
+cleanup_release_test() {
+    if [[ -n "${b0_root:-}" && -x "${contract_prefix:-}/bin/hctl2" ]]; then
+        "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null 2>&1 || true
+    fi
+    find "${test_root:?}" -depth -delete
+}
+trap cleanup_release_test EXIT
 tar -xJf "$ARCHIVE" -C "$test_root"
 release_root="$test_root/$PACKAGE_ID"
 
@@ -128,7 +134,51 @@ printf '%s\n' "$b0_services" | grep -F '"available":false,"consumed":false,"name
     die "hctl2 start brought up Gitea before any consumption: $b0_services"
 printf '%s\n' "$b0_services" | grep -F '"name":"gitea","pid":null,"ready":false,"running":false' >/dev/null || \
     die "hctl2 start left an unconsumed Gitea process running: $b0_services"
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" services consume gitea >/dev/null
+# P2.2: registration, not start, is Gitea's first consumer. All data is disposable.
+: "${HCTL2_JQ:?Buck must provide HCTL2_JQ}"
+repo_input="$test_root/register.json"
+repo_source="$test_root/source"
+mkdir -p "$repo_source"
+git -C "$repo_source" init -b main >/dev/null
+git -C "$repo_source" -c user.name=Contract -c user.email=contract@example.invalid \
+    commit --allow-empty -m baseline >/dev/null
+git -C "$repo_source" branch unpublished
+# Registration must not run user hooks or URL rewrites with the hosted credential.
+printf '#!/bin/sh\nprintf leaked >"%s"\nexit 1\n' "$test_root/user-hook-ran" >"$repo_source/.git/hooks/pre-push"
+chmod +x "$repo_source/.git/hooks/pre-push"
+git -C "$repo_source" config url.https://invalid.example/.insteadOf http://127.0.0.1:
+"$HCTL2_JQ" -n --arg path "$repo_source" \
+    '{name:"package-contract",origin:"local",platform_path:"package-contract",local:{machine:"control",path:$path},default_source:"gitea_issues"}' >"$repo_input"
+repo_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract)"
+repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_preview")"
+repo_created="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract --preview-token "$repo_token")" || die "registration failed: $repo_created"
+"$HCTL2_JQ" -e '.registration.lifecycle == "pending" and .registration.delivered == true and .error == null' <<<"$repo_created" >/dev/null
+repo_id="$("$HCTL2_JQ" -er '.registration.repo_id' <<<"$repo_created")"
+repo_platform_id="$("$HCTL2_JQ" -er '.registration.observed.stable_id' <<<"$repo_created")"
+repo_version="$("$HCTL2_JQ" -er '.registration.version' <<<"$repo_created")"
+repo_full_name="$("$HCTL2_JQ" -er '.registration.observed.full_name' <<<"$repo_created")"
+repo_bare="$b0_root/services/data/gitea/gitea-repositories/$repo_full_name.git"
+[[ "$(git --git-dir="$repo_bare" rev-parse refs/heads/main)" == "$(git -C "$repo_source" rev-parse HEAD)" ]] || die "registered Git head mismatch"
+[[ "$(git --git-dir="$repo_bare" for-each-ref --format='%(refname)')" == refs/heads/main ]] || die "initial delivery pushed unselected refs"
+[[ -z "$(git -C "$repo_source" remote)" ]] || die "registration configured original working-copy remote"
+[[ ! -e "$test_root/user-hook-ran" ]] || die "registration ran input repository hook"
+repo_confirm="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --confirm "$repo_id" --version "$repo_version" --platform-repo-id "$repo_platform_id" --key package-confirm)"
+repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_confirm")"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --confirm "$repo_id" --version "$repo_version" --platform-repo-id "$repo_platform_id" --key package-confirm --preview-token "$repo_token" | \
+    "$HCTL2_JQ" -e '.lifecycle == "active"' >/dev/null
+# An empty source creates a real platform repository without inventing a commit/ref.
+repo_empty="$test_root/empty-source"
+mkdir -p "$repo_empty"
+git -C "$repo_empty" init -b main >/dev/null
+"$HCTL2_JQ" -n --arg path "$repo_empty" \
+    '{name:"empty-contract",origin:"local",platform_path:"empty-contract",local:{machine:"control",path:$path}}' >"$test_root/empty-register.json"
+empty_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$test_root/empty-register.json" --key empty-contract)"
+empty_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$empty_preview")"
+empty_created="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$test_root/empty-register.json" --key empty-contract --preview-token "$empty_token")"
+"$HCTL2_JQ" -e '.registration.delivered == true and .registration.prepared.local.refs == {} and .error == null' <<<"$empty_created" >/dev/null
+empty_full_name="$("$HCTL2_JQ" -er '.registration.observed.full_name' <<<"$empty_created")"
+empty_id="$("$HCTL2_JQ" -er '.registration.repo_id' <<<"$empty_created")"
+[[ -z "$(git --git-dir="$b0_root/services/data/gitea/gitea-repositories/$empty_full_name.git" for-each-ref)" ]] || die "empty registration invented a ref"
 wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
@@ -145,6 +195,14 @@ wait_consumed_available gitea
 b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
 b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
 [[ "$b0_id" == "$b0_id2" ]] || die "restart changed control identity: $b0_id -> $b0_id2"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo show "$repo_id" | "$HCTL2_JQ" -e '.lifecycle == "active"' >/dev/null
+repo_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract)"
+repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_preview")"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract --preview-token "$repo_token" | \
+    "$HCTL2_JQ" -e --arg id "$repo_id" '.registration.repo_id == $id and .registration.lifecycle == "active"' >/dev/null
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo list | \
+    "$HCTL2_JQ" -e --arg id "$repo_id" --arg empty "$empty_id" \
+    '.items | (map(.repo_id) | sort) == ([$id, $empty] | sort)' >/dev/null || die "restart duplicated or lost a registration"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
 

@@ -26,12 +26,14 @@ use tonic::{Request, Response, Status};
 pub const PROTOCOL: &str = "hctl2.control.v1";
 const LOG_LIMIT: usize = 32;
 const PREVIEW_LIMIT: usize = 32;
+type EventStream = Pin<Box<dyn Stream<Item = Result<SubscribeEvent, Status>> + Send + 'static>>;
 
 #[derive(Clone)]
 struct Preview {
     token: String,
     operation: String,
     payload: Vec<u8>,
+    details: Value,
 }
 
 #[derive(Clone)]
@@ -51,6 +53,8 @@ pub struct ControlService {
     seq: AtomicI64,
     bus: broadcast::Sender<Event>,
     services: Arc<Supervisor>,
+    /// Repo effects and storage/service maintenance serialize; unrelated commands and Query do not.
+    operations: Arc<Mutex<()>>,
 }
 
 impl ControlService {
@@ -72,6 +76,7 @@ impl ControlService {
             seq: AtomicI64::new(0),
             bus,
             services: Arc::new(Supervisor::from_root(root)),
+            operations: Arc::new(Mutex::new(())),
         }
     }
 
@@ -94,6 +99,7 @@ impl ControlService {
             seq: AtomicI64::new(0),
             bus,
             services,
+            operations: Arc::new(Mutex::new(())),
         }
     }
 
@@ -197,6 +203,19 @@ impl Control for ControlService {
             return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
         let result = match req.kind.as_str() {
+            "repo.list" | "repo.show" => {
+                let store = Arc::clone(&self.store);
+                let kind = req.kind.clone();
+                match tokio::task::spawn_blocking(move || {
+                    crate::repositories::query(&store, &kind, &payload)
+                })
+                .await
+                {
+                    Ok(Ok(value)) => value,
+                    Ok(Err(err)) => return Ok(err_query(&err, self.seq.load(Ordering::Acquire))),
+                    Err(_) => return Ok(invalid_query("Repo query worker failed")),
+                }
+            }
             "pending" => json!({"items": []}),
             "overview" => json!({"projection":"overview","placeholder":true}),
             "get" | "versions" => {
@@ -266,12 +285,43 @@ impl Control for ControlService {
             return Ok(preview_err(error));
         }
         let dangerous = is_dangerous(&req.operation);
-        let token = preview_token(&req.operation, &req.payload, &req.command_id);
+        let details = if req.operation.starts_with("repo.") {
+            let payload = match json_bytes(&req.payload) {
+                Ok(value) => value,
+                Err(err) => return Ok(preview_err(err)),
+            };
+            let store = Arc::clone(&self.store);
+            let operation = req.operation.clone();
+            match tokio::task::spawn_blocking(move || {
+                crate::repositories::preview(&store, &operation, &payload)
+            })
+            .await
+            {
+                Ok(Ok(value)) => value,
+                Ok(Err(err)) => return Ok(preview_err(present(&err))),
+                Err(_) => {
+                    return Ok(preview_err(error(
+                        "STORAGE_IO",
+                        "Repo preview worker failed",
+                        "retry_preview",
+                    )));
+                }
+            }
+        } else {
+            json!({"operation":req.operation,"dangerous":dangerous})
+        };
+        let base_token = preview_token(&req.operation, &req.payload, &req.command_id);
+        let token = if req.operation.starts_with("repo.") {
+            foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
+        } else {
+            base_token
+        };
         let mut previews = self.previews.lock().await;
         previews.push_back(Preview {
             token: token.clone(),
             operation: req.operation.clone(),
             payload: req.payload.clone(),
+            details: details.clone(),
         });
         while previews.len() > PREVIEW_LIMIT {
             previews.pop_front();
@@ -281,9 +331,7 @@ impl Control for ControlService {
             error: None,
             preview_token: token,
             dangerous,
-            effect_summary: json!({"operation":req.operation,"dangerous":dangerous})
-                .to_string()
-                .into_bytes(),
+            effect_summary: details.to_string().into_bytes(),
         }))
     }
 
@@ -291,9 +339,10 @@ impl Control for ControlService {
         &self,
         request: Request<SubmitRequest>,
     ) -> Result<Response<SubmitResponse>, Status> {
-        if let Err(error) = self.require_owner(&request) {
-            return Ok(submit_err(error, 0));
-        }
+        let actor = match self.require_owner(&request) {
+            Ok(actor) => actor,
+            Err(error) => return Ok(submit_err(error, 0)),
+        };
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
             return Ok(submit_err(error, 0));
@@ -304,14 +353,17 @@ impl Control for ControlService {
         if let Some(error) = self.startup_error().await {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
         }
+        let mut details = json!({});
         if is_dangerous(&req.operation) {
             let previews = self.previews.lock().await;
-            let matched = previews.iter().any(|preview| {
+            let matched = previews.iter().find(|preview| {
                 preview.token == req.preview_token
                     && preview.operation == req.operation
                     && preview.payload == req.payload
             });
-            if !matched {
+            if let Some(preview) = matched {
+                details = preview.details.clone();
+            } else {
                 return Ok(submit_err(
                     error(
                         "PREVIEW_REQUIRED",
@@ -329,7 +381,28 @@ impl Control for ControlService {
         let store = Arc::clone(&self.store);
         let operation = req.operation.clone();
         let root = self.root.clone();
+        let guard = if operation.starts_with("repo.") || operation == "restore.apply" {
+            Some(Arc::clone(&self.operations).lock_owned().await)
+        } else {
+            None
+        };
+        let services = Arc::clone(&self.services);
+        let repo_request = req.clone();
         let result = match tokio::task::spawn_blocking(move || {
+            // The blocking worker owns the guard even when its RPC client disconnects.
+            let _guard = guard;
+            if operation.starts_with("repo.") {
+                return crate::repositories::submit(
+                    &store,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &payload,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
             let mut store_slot = store.blocking_lock();
             run_operation(&operation, &payload, &mut store_slot, &root)
         })
@@ -425,7 +498,9 @@ impl ControlService {
         };
         let services = Arc::clone(&self.services);
         let operation = req.operation.clone();
+        let guard = Arc::clone(&self.operations).lock_owned().await;
         let outcome = tokio::task::spawn_blocking(move || -> Result<Value, ServiceError> {
+            let _guard = guard;
             match operation.as_str() {
                 "services.stop" => services
                     .stop_consumed()
@@ -667,7 +742,7 @@ fn run_operation(
 }
 
 fn is_dangerous(operation: &str) -> bool {
-    matches!(operation, "restore.apply" | "services.restore")
+    matches!(operation, "restore.apply" | "services.restore") || operation.starts_with("repo.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {
@@ -769,9 +844,7 @@ fn preview_err(error: ProtoError) -> Response<PreviewResponse> {
     })
 }
 
-fn subscribe_error(
-    error: ProtoError,
-) -> Response<Pin<Box<dyn Stream<Item = Result<SubscribeEvent, Status>> + Send + 'static>>> {
+fn subscribe_error(error: ProtoError) -> Response<EventStream> {
     let stream = tokio_stream::once(Ok(SubscribeEvent {
         error: Some(error),
         seq: 0,
@@ -782,9 +855,7 @@ fn subscribe_error(
     Response::new(Box::pin(stream))
 }
 
-fn expired_snapshot(
-    latest: i64,
-) -> Response<Pin<Box<dyn Stream<Item = Result<SubscribeEvent, Status>> + Send + 'static>>> {
+fn expired_snapshot(latest: i64) -> Response<EventStream> {
     let stream = tokio_stream::once(Ok(SubscribeEvent {
         error: Some(error(
             "CURSOR_EXPIRED",

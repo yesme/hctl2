@@ -86,6 +86,8 @@ pub enum EffectState {
     Pending,
     Unknown,
     Confirmed,
+    /// Human withdrew a never-dispatched intent; no external result is asserted.
+    Cancelled,
 }
 
 /// A caller's verified observation of the original target, never an instruction to resend.
@@ -126,6 +128,27 @@ impl CommandTransaction<'_> {
     }
     pub fn confirm_effect(&mut self, id: &str, readback: &Readback) -> Result<()> {
         self.apply(|tx| tx.confirm_effect_inner(id, readback))
+    }
+    pub fn cancel_pending_effect(&mut self, id: &str) -> Result<()> {
+        self.apply(|tx| {
+            let (intent, state) = effect(tx.tx, id)?;
+            tx.actor.permits(&intent.permission_scope)?;
+            match state {
+                EffectState::Cancelled => Ok(()),
+                EffectState::Pending => {
+                    tx.tx.execute(
+                        "UPDATE outbox SET state='cancelled' WHERE intent_id=?1",
+                        [id],
+                    )?;
+                    Ok(())
+                }
+                _ => Err(StoreError::new(
+                    "READBACK_REQUIRED",
+                    "attempted effects cannot be cancelled as unsent",
+                    "read_back_original_intent",
+                )),
+            }
+        })
     }
     pub fn enqueue_delivery(&mut self, id: &str, grant: &DeliveryGrant) -> Result<()> {
         self.apply(|tx| tx.enqueue_delivery_inner(id, grant))
@@ -256,7 +279,9 @@ impl CommandTransaction<'_> {
         // must not split a single external resource's conflict range.
         if self
             .tx
-            .prepare("SELECT 1 FROM outbox WHERE conflict_key=?1 AND state!='confirmed'")?
+            .prepare(
+                "SELECT 1 FROM outbox WHERE conflict_key=?1 AND state IN ('pending','unknown')",
+            )?
             .exists([&intent.conflict_scope])?
         {
             return Err(StoreError::new(
@@ -282,6 +307,13 @@ impl CommandTransaction<'_> {
     fn confirm_effect_inner(&self, id: &str, readback: &Readback) -> Result<()> {
         let (intent, state) = effect(self.tx, id)?;
         self.actor.permits(&intent.permission_scope)?;
+        if state == EffectState::Cancelled {
+            return Err(StoreError::new(
+                "READBACK_REQUIRED",
+                "cancelled unsent effect cannot acquire an external result",
+                "inspect_original_intent",
+            ));
+        }
         match readback {
             Readback::Unknown => {
                 if state != EffectState::Confirmed {
@@ -556,6 +588,7 @@ pub(crate) fn effect(conn: &Connection, id: &str) -> Result<(EffectIntent, Effec
         "pending" => EffectState::Pending,
         "unknown" => EffectState::Unknown,
         "confirmed" => EffectState::Confirmed,
+        "cancelled" => EffectState::Cancelled,
         _ => return Err(StoreError::invalid("invalid effect state")),
     };
     Ok((serde_json::from_str(&intent)?, state))

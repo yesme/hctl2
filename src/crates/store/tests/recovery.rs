@@ -47,7 +47,7 @@ fn old_schema_backup_is_verified_and_upgraded_before_restore_serves() {
         let after = restored
             .backup(restored.generation(), &target.join("after-backup"))
             .unwrap();
-        assert_eq!(after.schema_version, 2);
+        assert_eq!(after.schema_version, 3);
     }
     assert_eq!(std::fs::read(database).unwrap(), original);
     Store::verify_backup(&backup).unwrap();
