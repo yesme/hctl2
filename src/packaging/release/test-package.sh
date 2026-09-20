@@ -93,6 +93,25 @@ done
 source "$HCTL2_TOOLBOX_TEST"
 test_packaged_toolbox "$contract_prefix/bin/hctl2-tool"
 
+# B0: control + consumed services restart without changing storage identity.
+# Must run before $test_root is deleted; the installer prefix lives under it.
+b0_root="$test_root/b0-control"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" init >/dev/null
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
+b0_status="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
+printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
+    grep -F '"ready": true' <<<"$b0_status" >/dev/null || \
+    die "hctl2 start did not report a ready control: $b0_status"
+b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
+[[ -n "$b0_id" ]] || die "could not read control_id from status: $b0_status"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
+b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
+b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
+[[ "$b0_id" == "$b0_id2" ]] || die "restart changed control identity: $b0_id -> $b0_id2"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
+sleep 2
+
 find "$test_root" -depth -delete
 trap - EXIT
 
@@ -104,21 +123,5 @@ trap - EXIT
 # shellcheck source=../dependencies/common/test-package.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/test-package.sh"
 test_dependency_package
-
-# B0: control + consumed services restart without changing storage identity.
-b0_root="$test_root/b0-control"
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" init >/dev/null
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
-b0_status="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
-printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
-    grep -F '"ready": true' <<<"$b0_status" >/dev/null || \
-    die "hctl2 start did not report a ready control: $b0_status"
-b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
-b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
-b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
-[[ "$b0_id" == "$b0_id2" ]] || die "restart changed control identity: $b0_id -> $b0_id2"
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 
 note "$HCTL2_TARGET_ID complete release passed first-party and service lifecycle tests"
