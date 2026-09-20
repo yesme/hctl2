@@ -212,10 +212,14 @@ verify_tree_manifest "$payload_root" share/hctl2/PAYLOAD.sha256
     die "dependency payload has the wrong target"
 
 tool_seen=0
+cli_seen=0
+control_seen=0
 while IFS=$'\t' read -r component version component_target binary_sha256; do
     [[ "$component" == "component" ]] && continue
     case "$component" in
         hctl2-tool) tool_seen=$((tool_seen + 1)) ;;
+        hctl2) cli_seen=$((cli_seen + 1)) ;;
+        hctl2-control) control_seen=$((control_seen + 1)) ;;
         *) die "unexpected first-party component: $component" ;;
     esac
     [[ "$version" == "$hctl2_version" ]] || die "$component has the wrong version: $version"
@@ -225,7 +229,8 @@ while IFS=$'\t' read -r component version component_target binary_sha256; do
     verify_sha256 "$first_party/bin/$component" "$binary_sha256"
     install -m 0755 "$first_party/bin/$component" "$payload_root/bin/$component"
 done <"$first_party/binaries.tsv"
-[[ "$tool_seen" -eq 1 ]] || die "first-party export is incomplete"
+[[ "$tool_seen" -eq 1 && "$cli_seen" -eq 1 && "$control_seen" -eq 1 ]] || \
+    die "first-party export is incomplete"
 
 install -m 0644 "$first_party/binaries.tsv" "$payload_root/share/hctl2/first-party.tsv"
 

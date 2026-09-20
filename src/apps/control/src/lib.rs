@@ -4,10 +4,12 @@
 
 mod identity;
 mod service;
+mod services;
 mod socket;
 
 pub use identity::owner_actor;
 pub use service::{ControlService, PROTOCOL};
+pub use services::Supervisor;
 pub use socket::{bind_owner_socket, occupied_error, socket_path};
 
 use std::path::{Path, PathBuf};
@@ -54,19 +56,29 @@ impl Daemon {
         let store = Arc::clone(&self.store);
         let open_error = Arc::clone(&self.open_error);
         let root = self.root.clone();
+        let hosted = Arc::new(Supervisor::from_root(root.clone()));
+        let hosted_open = Arc::clone(&hosted);
         tokio::task::spawn_blocking(move || match Store::open_with_status(&root, status) {
             Ok(opened) => {
                 *store.blocking_lock() = Some(opened);
+                if let Err(error) = hosted_open.ensure_up() {
+                    hosted_open.set_last_error(error);
+                }
             }
             Err(error) => {
+                hosted_open.set_last_error(format!(
+                    "store not ready ({}); services not started",
+                    error.code
+                ));
                 *open_error.blocking_lock() = Some(error);
             }
         });
-        let service = ControlService::new(
+        let service = ControlService::with_services(
             self.root.clone(),
             self.status.clone(),
             Arc::clone(&self.store),
             Arc::clone(&self.open_error),
+            hosted,
         );
         serve_listener(listener, service).await
     }

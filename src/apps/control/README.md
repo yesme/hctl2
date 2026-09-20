@@ -5,3 +5,7 @@ P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进�
 `TrustedActor` 由 Unix 连接的 `peer_cred.uid` 构造（`local-owner:<uid>` / DirectClient / Control），并与 socket 文件所有者比对，不从客户端字段反序列化。业务命令留 P2.2；本阶段运维入口是 `status`、`doctor`、`export`、`backup`、`restore`。危险动作 `restore.apply` 必须先 Preview。
 
 Subscribe 本轮只在内存里保留 32 条事件；游标过期时的重同步快照只带 `event_seq` 占位。P2.2 起序号改从 store 事件表出，快照要载投影。开库失败时进程继续服务，`status` / `doctor` 以类型化 `startup_error` 呈现，不自行退出。
+
+随包 Tuwunel 与 Gitea 由 Process Compose 按首次消费拉起：存储打开成功之后才 `hctl2-services start --no-wait`，开库失败不碰服务。不等所有探针通过才接受命令。探针未过的组件 `available=false`。服务死活只出现在 `status` / `query services` 的观察字段（含 `source`、`observed_at`、`event_seq`），不写入治理记录。Vikunja 仍不随 `hctl2 start` 拉起。Gitea 管理员账号与访问令牌不在本包物化，交给 P2.2 戊接本地平台时处理。
+
+缺省 `--root` 时与 `hctl2-services` 共用 `~/.local/state/hctl2`（或 `XDG_STATE_HOME/hctl2`）。显式 `--root` 才把服务状态嵌在该目录的 `services/` 下。没有其他组件在跑时，`hctl2 stop` 会 `down` 掉 Process Compose 项目；有 Cinny/Vikunja 等仍在跑则只停 Tuwunel 与 Gitea，本体可按 `--keep-project` 留下。

@@ -102,6 +102,7 @@
       "dagu_coordinator_port": "15055",
       "dagu_coordinator_health_port": "18091",
       "cinny_port": "6168",
+      "gitea_port": "3001",
       "herdr_protocol": "20"
     },
     "macos_deployment_target": "15.0",

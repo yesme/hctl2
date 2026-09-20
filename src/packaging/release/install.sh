@@ -110,9 +110,10 @@ link_command() {
     ln -sfn "$target" "$command_link"
 }
 
-for command in hctl2-tool hctl2-services; do
+for command in hctl2-tool hctl2 hctl2-control hctl2-services; do
     link_command "$command"
 done
 
 printf 'hctl2: installed %s at %s\n' "$package_id" "$DESTINATION"
-printf 'hctl2: start bundled services with %s/bin/hctl2-services start\n' "$prefix"
+printf 'hctl2: start control and consumed services with %s/bin/hctl2 start\n' "$prefix"
+printf 'hctl2: or start every bundled component with %s/bin/hctl2-services start\n' "$prefix"

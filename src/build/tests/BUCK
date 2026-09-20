@@ -23,6 +23,7 @@ sh_test(
 filegroup(
     name = "process_compose_fixtures",
     srcs = glob(["testdata/process-compose/**"]),
+    visibility = ["PUBLIC"],
 )
 
 rust_binary(

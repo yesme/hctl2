@@ -1,15 +1,15 @@
 # HCTL2 使用说明
 
-本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、Kanban、Workflow、Terminal 四类打包依赖，并用 `hctl2-tool` 做本地 Git 现场操作与闭集外部事实回读，它是设计里 Repo 模块的现场执行者；公共 `hctl2` CLI、控制面和 Workbench 尚未实现。
+本文说明当前代码树里每个 `hctl2-*` 入口的实际用途。HCTL2 仍处于早期实现阶段：现在可以运行 Chatroom、本地 Gitea、Kanban、Workflow、Terminal 五类打包依赖，用 `hctl2` / `hctl2-control` 起控制面与已消费服务，并用 `hctl2-tool` 做本地 Git 现场操作与闭集外部事实回读。Workbench 尚未实现。
 
 ## 当前入口一览
 
 | 名称 | 当前状态 | 面向谁 | 现在能做什么 |
 | --- | --- | --- | --- |
-| `hctl2-services` | 可用 | 安装包用户、开发者 | 通过 Process Compose 启停并检查 Chatroom（Tuwunel + Cinny）、Vikunja、Dagu 和 Herdr |
+| `hctl2-services` | 可用 | 安装包用户、开发者 | 通过 Process Compose 启停并检查 Chatroom（Tuwunel + Cinny）、Gitea、Vikunja、Dagu 和 Herdr |
 | `hctl2-tool` | P1 可用 | HCTL2 开发者、Harness、安装包用户 | 仓库检查、现场锁、worktree 物化与核验、封存保全拆除、本地集成，以及 `wait` 回读闭集外部事实 |
-| `hctl2` | 尚未实现 | 最终用户 | 未来的公共治理 CLI；当前不要尝试安装或调用 |
-| `hctl2-control` | 尚未实现 | HCTL2 内部组件 | 未来的控制面进程 |
+| `hctl2` | P2.1 可用 | 最终用户 | 公共 CLI：`init/start/stop/status/doctor/export/backup/restore`，经本地 Unix socket 与 control 说话 |
+| `hctl2-control` | P2.1 可用 | HCTL2 内部组件 | 控制面守护进程；`hctl2 start` 拉起它，并按首次消费经 Process Compose 拉起 Tuwunel 与 Gitea |
 | `hctl2-workbench` | 尚未实现 | 最终用户 | 未来的图形客户端 |
 
 `hctl2-tool` 不是后台服务，也不是治理命令入口。独立运行只提供普通本地操作：经宿主 `git` 读写本机仓库，并用 `wait` 回读闭集外部事实。它不产生 HCTL 治理记录，也不签发 Receipt 或 Verdict，也不做 push、PR、merge 等远端副作用——远端动作归控制面里的平台适配器，见[Repo 模块约束](./design/spec/repo.md)。Herdr 是随包提供的外部运行服务，不是 HCTL2 自建命令。
@@ -18,7 +18,7 @@
 
 当前代码树为 Linux x86_64、macOS arm64 和 macOS x86_64 分别定义离线包；macOS 系统要求以[交付文档的打包策略](./design/delivery.md#打包策略选型判断首次消费时产品化)为准。
 
-运行安装包内含固定版本的 Tuwunel、Cinny、Vikunja、Dagu、Herdr、Static Web Server、Process Compose、供 `hctl2-tool` 使用的 GitHub CLI、许可证、`hctl2-services` 与 `hctl2-tool`。锁定的上游源码位于同一 Release 中单独发布的源码伴随包。
+运行安装包内含固定版本的 Tuwunel、Cinny、Gitea、tea、Vikunja、Dagu、Herdr、Static Web Server、Process Compose、供 `hctl2-tool` 使用的 GitHub CLI、许可证、`hctl2`、`hctl2-control`、`hctl2-services` 与 `hctl2-tool`。锁定的上游源码位于同一 Release 中单独发布的源码伴随包。
 
 安装过程不联网，也不在用户机器上编译，不依赖 Rust、Python、Node.js、Homebrew 或 Linux 构建工具。
 
@@ -51,7 +51,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ./install.sh --prefix /absolute/path/to/hctl2
 ```
 
-安装器会校验整个运行归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2-services` 与 `$PREFIX/bin/hctl2-tool` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。运行包根目录的 `SOURCES.md` 会明确指出与它对应的源码伴随包名。
+安装器会校验整个运行归档及 payload 的 SHA-256，随后创建 `$PREFIX/bin/hctl2`、`$PREFIX/bin/hctl2-control`、`$PREFIX/bin/hctl2-services` 与 `$PREFIX/bin/hctl2-tool` 符号链接。重复安装同一个完整包是安全的；安装不会自动启动任何进程。运行包根目录的 `SOURCES.md` 会明确指出与它对应的源码伴随包名。
 
 查看安装器的英文命令帮助：
 
@@ -256,7 +256,7 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 完整离线包的下载、校验、解压和安装步骤见[安装当前离线包](#安装当前离线包)。最终用户只需下载同一版本和目标平台的运行包及其 `.sha256` 文件；源码伴随包与它的校验文件在同一 Release 提供，供源码与供应链审计按需下载，不参与安装。
 
-安装后提供 `hctl2-tool` 与 `hctl2-services` 两个命令。运行 `hctl2-services start` 会启动 Tuwunel、Cinny、Vikunja、Dagu 和 Herdr；Tuwunel 与 Cinny 共同组成 Chatroom，Herdr 由 `hctl2-services` 管理。
+安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起 Tuwunel 与 Gitea，不等所有服务探针通过才接受控制面命令。缺省数据目录与 `hctl2-services` 相同（`~/.local/state/hctl2` 或 `$XDG_STATE_HOME/hctl2`）；只有 `hctl2 --root DIR` 才把服务状态放到 `DIR/services`。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr），请与 `hctl2 start` 共用同一状态根，避免抢端口。`hctl2 stop` 停掉本控制面拉起的 Tuwunel 与 Gitea；若没有别的组件在跑，会把 Process Compose 项目 `down` 掉，否则本体可按 `--keep-project` 留下。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
 
 ## 制作外部子系统包
 

@@ -368,6 +368,16 @@ def _package_sources(package_sources: dict) -> dict:
         "release/LICENSE": "repo//:LICENSE",
         "release/USAGE.md": "repo//:usage",
         "tools/xz": "root//build/tools:xz",
+        "downloads/gitea.xz": _platform_select({
+            target: ":{}".format(_asset_target_name(target, "gitea"))
+            for target in LOCK["targets"]
+        }),
+        "downloads/tea": _platform_select({
+            target: ":{}".format(_asset_target_name(target, "tea"))
+            for target in LOCK["targets"]
+        }),
+        "licenses/Gitea-MIT.txt": package_sources["licenses/Gitea-MIT.txt"],
+        "licenses/Tea-MIT.txt": package_sources["licenses/Tea-MIT.txt"],
     })
     for component in _COMPONENT_PREFIXES:
         target_name = _component_target_name(component)

@@ -14,6 +14,10 @@ platform_stage_payload() {
         grep -F '(NEEDED)' | grep -vF 'libc.so.6' >/dev/null; then
         die "official Linux GitHub CLI binary has unexpected dynamic dependencies"
     fi
+    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/gitea" 2>/dev/null | \
+        grep -F '(NEEDED)' | grep -vE 'libc.so.6|libpthread.so.0|libdl.so.2' >/dev/null; then
+        die "official Linux Gitea binary has unexpected dynamic dependencies"
+    fi
 }
 
 platform_stage_licenses() {

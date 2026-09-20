@@ -81,6 +81,8 @@ assemble_dependency_package() {
     for component in vikunja dagu gh herdr static-web-server process-compose; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from its component action"
     done
+    [[ -f "$P0_DOWNLOAD_DIR/gitea.xz" ]] || die "Gitea xz asset is missing"
+    [[ -f "$P0_DOWNLOAD_DIR/tea" ]] || die "tea binary is missing"
     [[ -f "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/index.html" ]] || \
         die "Cinny is missing from its component action"
 
@@ -98,6 +100,9 @@ assemble_dependency_package() {
     for component in vikunja dagu gh herdr static-web-server process-compose; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
+    run_xz -dc "$P0_DOWNLOAD_DIR/gitea.xz" >"$payload_root/libexec/hctl2/gitea"
+    chmod 0755 "$payload_root/libexec/hctl2/gitea"
+    install -m 0755 "$P0_DOWNLOAD_DIR/tea" "$payload_root/libexec/hctl2/tea"
     cp -a "$P0_VENDOR_DIR/cinny-$CINNY_VERSION/." \
         "$payload_root/share/hctl2/chatroom/cinny/"
     install -m 0755 "$P0_DEPENDENCY_SOURCE_ROOT/hctl2-services" "$payload_root/bin/hctl2-services"
@@ -132,6 +137,10 @@ assemble_dependency_package() {
     tar -xOf "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
         "process-compose-$PROCESS_COMPOSE_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Process-Compose-Apache-2.0.txt"
+    install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/licenses/Gitea-MIT.txt" \
+        "$payload_root/share/hctl2/licenses/Gitea-MIT.txt"
+    install -m 0644 "$P0_DEPENDENCY_SOURCE_ROOT/licenses/Tea-MIT.txt" \
+        "$payload_root/share/hctl2/licenses/Tea-MIT.txt"
     platform_stage_licenses
 
     platform_stage_build_metadata
@@ -171,6 +180,12 @@ assemble_dependency_package() {
             "$PROCESS_COMPOSE_VERSION" "$PROCESS_COMPOSE_SOURCE_COMMIT" \
             "$PROCESS_COMPOSE_BUILD_INPUT_SHA256" "$PROCESS_COMPOSE_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/process-compose")"
+        printf 'gitea\t%s\t\t%s\t\t%s\n' \
+            "1.27.3" "$(hash_file "$P0_DOWNLOAD_DIR/gitea.xz")" \
+            "$(hash_file "$payload_root/libexec/hctl2/gitea")"
+        printf 'tea\t%s\t\t%s\t\t%s\n' \
+            "0.15.1" "$(hash_file "$P0_DOWNLOAD_DIR/tea")" \
+            "$(hash_file "$payload_root/libexec/hctl2/tea")"
     } >"$payload_root/share/hctl2/dependencies.tsv"
 
     write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libexec share

@@ -3,8 +3,8 @@
 
 set -euo pipefail
 
-if [[ "$#" -ne 4 ]]; then
-    printf 'usage: export-first-party.sh OUTPUT_DIR VERSION TARGET TOOL\n' >&2
+if [[ "$#" -ne 6 ]]; then
+    printf 'usage: export-first-party.sh OUTPUT_DIR VERSION TARGET TOOL CLI CONTROL\n' >&2
     exit 2
 fi
 
@@ -12,6 +12,8 @@ readonly OUTPUT_DIR="$1"
 readonly HCTL2_VERSION="$2"
 readonly HCTL2_TARGET="$3"
 readonly TOOL="$4"
+readonly CLI="$5"
+readonly CONTROL="$6"
 
 hash_file() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -23,6 +25,8 @@ hash_file() {
 
 mkdir -p "$OUTPUT_DIR/bin"
 install -m 0755 "$TOOL" "$OUTPUT_DIR/bin/hctl2-tool"
+install -m 0755 "$CLI" "$OUTPUT_DIR/bin/hctl2"
+install -m 0755 "$CONTROL" "$OUTPUT_DIR/bin/hctl2-control"
 
 case "$HCTL2_TARGET" in
     macos-*)
@@ -30,7 +34,9 @@ case "$HCTL2_TARGET" in
             printf 'error: codesign is required for macOS first-party exports\n' >&2
             exit 1
         }
-        codesign --force --sign - --timestamp=none "$OUTPUT_DIR/bin/hctl2-tool"
+        for binary in hctl2-tool hctl2 hctl2-control; do
+            codesign --force --sign - --timestamp=none "$OUTPUT_DIR/bin/$binary"
+        done
         ;;
 esac
 
@@ -41,7 +47,9 @@ esac
 
 {
     printf 'component\tversion\ttarget\tbinary_sha256\n'
-    printf 'hctl2-tool\t%s\t%s\t%s\n' \
-        "$HCTL2_VERSION" "$HCTL2_TARGET" \
-        "$(hash_file "$OUTPUT_DIR/bin/hctl2-tool")"
+    for binary in hctl2-tool hctl2 hctl2-control; do
+        printf '%s\t%s\t%s\t%s\n' \
+            "$binary" "$HCTL2_VERSION" "$HCTL2_TARGET" \
+            "$(hash_file "$OUTPUT_DIR/bin/$binary")"
+    done
 } >"$OUTPUT_DIR/binaries.tsv"

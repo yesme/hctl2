@@ -32,6 +32,7 @@ struct Args {
 enum Command {
     Init,
     Start,
+    Stop,
     Status,
     Doctor,
     Export {
@@ -43,6 +44,23 @@ enum Command {
     Restore(RestoreCommand),
     Query {
         kind: String,
+    },
+    #[command(subcommand)]
+    Services(ServicesCommand),
+}
+
+#[derive(Subcommand)]
+enum ServicesCommand {
+    Status,
+    Backup {
+        path: PathBuf,
+    },
+    Restore {
+        path: PathBuf,
+        #[arg(long)]
+        preview_token: Option<String>,
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -97,6 +115,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             Ok(())
         }
         Command::Start => start_daemon(root).await,
+        Command::Stop => stop_daemon(root).await,
         Command::Status => query(root, json, "status", json!({})).await,
         Command::Doctor => query(root, json, "doctor", json!({})).await,
         Command::Export { path } => {
@@ -149,6 +168,38 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             Ok(())
         }
         Command::Query { kind } => query(root, json, &kind, json!({})).await,
+        Command::Services(ServicesCommand::Status) => {
+            query(root, json, "services", json!({})).await
+        }
+        Command::Services(ServicesCommand::Backup { path }) => {
+            let result = submit(root, "services.backup", json!({"path": path}), None).await?;
+            print_out(json, result);
+            Ok(())
+        }
+        Command::Services(ServicesCommand::Restore {
+            path,
+            preview_token,
+            yes,
+        }) => {
+            let payload = json!({"path": path});
+            let token = if let Some(token) = preview_token {
+                token
+            } else if yes {
+                let preview = preview(root, "services.restore", payload.clone()).await?;
+                preview
+                    .get("preview_token")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "preview missing token".to_owned())?
+                    .to_owned()
+            } else {
+                return Err(
+                    "services restore requires --preview-token from preview, or --yes".into(),
+                );
+            };
+            let result = submit(root, "services.restore", payload, Some(&token)).await?;
+            print_out(json, result);
+            Ok(())
+        }
     }
 }
 
@@ -170,9 +221,15 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
             })
         })
         .ok_or_else(|| "hctl2-control binary not found; set HCTL2_CONTROL_BIN".to_owned())?;
-    let mut child = std::process::Command::new(bin)
-        .arg("--root")
-        .arg(root)
+    let mut command = std::process::Command::new(&bin);
+    command.arg("--root").arg(root);
+    if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT")
+        .map(PathBuf::from)
+        .or_else(install_root_from_exe)
+    {
+        command.env("HCTL2_INSTALL_ROOT", install);
+    }
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -192,6 +249,17 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Err("control did not become ready".into())
+}
+
+async fn stop_daemon(root: &Path) -> Result<(), String> {
+    match submit(root, "services.stop", json!({}), None).await {
+        Ok(_) => {}
+        Err(error) => eprintln!("hctl2: services.stop: {error}"),
+    }
+    if let Ok(pid) = std::fs::read_to_string(root.join("control.pid")) {
+        let _ = std::process::Command::new("kill").arg(pid.trim()).status();
+    }
+    Ok(())
 }
 
 fn rpc_code(error: &str) -> Option<&str> {
@@ -322,6 +390,29 @@ fn print_out(as_json: bool, value: Value) {
             serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
         );
     }
+}
+
+fn install_root_from_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let resolved = std::fs::canonicalize(&exe).unwrap_or_else(|_| exe.clone());
+    for candidate in [&resolved, &exe] {
+        let bin = candidate.parent()?;
+        let parent = bin.parent()?;
+        let payload_pc = parent.join("libexec/hctl2/process-compose");
+        if payload_pc.is_file() {
+            return Some(parent.to_path_buf());
+        }
+        let lib = parent.join("lib/hctl2");
+        if let Ok(entries) = std::fs::read_dir(lib) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.join("libexec/hctl2/process-compose").is_file() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn invocation_id(kind: &str) -> String {

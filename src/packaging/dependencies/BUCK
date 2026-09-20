@@ -41,6 +41,8 @@ declare_external_dependencies(
             "common/runtime.sh",
             "hctl2-services",
             "install-package.sh",
+            "licenses/Gitea-MIT.txt",
+            "licenses/Tea-MIT.txt",
             "platforms/linux/bootstrap.sh",
             "platforms/linux/package.sh",
             "platforms/linux/runtime.sh",
