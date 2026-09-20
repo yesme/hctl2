@@ -1,0 +1,19 @@
+[package]
+name = "proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Generated Query/Preview/Submit/Subscribe contract for hctl2-control"
+
+[dependencies]
+pbjson.workspace = true
+prost.workspace = true
+serde.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+
+[lints]
+workspace = true

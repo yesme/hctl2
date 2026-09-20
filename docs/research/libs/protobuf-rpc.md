@@ -58,7 +58,7 @@ P2.1 甲 / 乙起草接口时还有一个待定衔接点：[hctl2-tool 的 JSON 
 
 ## 决定建议
 
-**维持 Protobuf schema；采用 SDK：prost / prost-build `0.14.4`、tonic / tonic-prost / tonic-prost-build `0.14.6`、pbjson / pbjson-build `0.9.0`；采用二进制：protoc `36.1`，按三平台官方资产由 DotSlash 钉摘要。** 传输选 tonic gRPC over Unix socket，用现成流控、取消和错误机制；Buck 原生 action 生成独立 crate，省去自建 RPC 帧协议。P3 的 Protobuf-ES `2.14.1` 只记生成路线，Git 领域正文继续 JCS。
+**维持 Protobuf schema；采用 SDK：prost / prost-build `0.14.4`、tonic / tonic-prost / tonic-prost-build `0.14.6`、pbjson / pbjson-build `0.9.0`；采用二进制：protoc `36.1`，按三平台官方资产由 DotSlash 钉摘要。** 传输选 tonic gRPC over Unix socket，用现成流控、取消和错误机制；Buck 原生 action 生成独立 crate，省去自建 RPC 帧协议。Unix connector 的直接依赖钉 `tokio` `1.48.0`、`tower` `0.5.2`、`hyper-util` `0.1.19`（与 tonic 0.14.6 配套，不另开对象文件）。P3 的 Protobuf-ES `2.14.1` 只记生成路线，Git 领域正文继续 JCS。
 
 ## 证据
 

@@ -1,0 +1,96 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+CONTROL_DEPS = [
+    "root//crates/foundation:foundation",
+    "root//crates/proto:proto",
+    "root//crates/store:store",
+    "root//third-party/rust:serde_json",
+    "root//third-party/rust:tokio",
+    "root//third-party/rust:tokio-stream",
+    "root//third-party/rust:tonic",
+    "root//third-party/rust:tonic-prost",
+]
+
+rust_library(
+    name = "control",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_root = "src/lib.rs",
+    deps = CONTROL_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":unit_test", ":boundary_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "hctl2-control",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = [
+        ":control",
+        "root//third-party/rust:clap",
+        "root//third-party/rust:tokio",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "unit_test",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_root = "src/lib.rs",
+    deps = CONTROL_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "boundary_test",
+    srcs = ["tests/boundary.rs"],
+    crate_root = "tests/boundary.rs",
+    deps = [
+        ":control",
+        "root//crates/proto:proto",
+        "root//crates/store:store",
+        "root//third-party/rust:hyper-util",
+        "root//third-party/rust:rusqlite",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:tokio",
+        "root//third-party/rust:tonic",
+        "root//third-party/rust:tower",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "binary": ":hctl2-control[clippy.txt]",
+        "boundary": ":boundary_test[clippy.txt]",
+        "library": ":control[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

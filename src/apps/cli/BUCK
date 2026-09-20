@@ -1,0 +1,53 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+CLI_DEPS = [
+    "root//crates/proto:proto",
+    "root//third-party/rust:clap",
+    "root//third-party/rust:hyper-util",
+    "root//third-party/rust:serde_json",
+    "root//third-party/rust:tokio",
+    "root//third-party/rust:tonic",
+    "root//third-party/rust:tonic-prost",
+    "root//third-party/rust:tower",
+]
+
+rust_binary(
+    name = "hctl2",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = CLI_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":cli_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "cli_test",
+    srcs = ["tests/cli.rs"],
+    crate_root = "tests/cli.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2": "$(location :hctl2)",
+        "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "binary": ":hctl2[clippy.txt]",
+        "cli": ":cli_test[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)

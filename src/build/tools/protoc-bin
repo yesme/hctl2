@@ -1,0 +1,43 @@
+#!/usr/bin/env dotslash
+
+{
+  "name": "protoc-36.1",
+  "platforms": {
+    "linux-x86_64": {
+      "size": 3678715,
+      "hash": "sha256",
+      "digest": "c4bc672d9d49214dc8cafdceadf4df92182d6ca8e3ec65a56b2d7de5602669b4",
+      "format": "zip",
+      "path": "bin/protoc",
+      "providers": [
+        {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protoc-36.1-linux-x86_64.zip"
+        }
+      ]
+    },
+    "macos-aarch64": {
+      "size": 2622007,
+      "hash": "sha256",
+      "digest": "de56d57afe30c5d191b11d24ff93dd4025728d7fb43b773886b2d3613e0bdbb2",
+      "format": "zip",
+      "path": "bin/protoc",
+      "providers": [
+        {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protoc-36.1-osx-aarch_64.zip"
+        }
+      ]
+    },
+    "macos-x86_64": {
+      "size": 2756492,
+      "hash": "sha256",
+      "digest": "ee2c5496e4af0aa6a224894bc0f7025145260e004d890487d510725ce8b473eb",
+      "format": "zip",
+      "path": "bin/protoc",
+      "providers": [
+        {
+          "url": "https://github.com/protocolbuffers/protobuf/releases/download/v36.1/protoc-36.1-osx-x86_64.zip"
+        }
+      ]
+    }
+  }
+}
