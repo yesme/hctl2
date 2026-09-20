@@ -143,6 +143,10 @@ git -C "$repo_source" init -b main >/dev/null
 git -C "$repo_source" -c user.name=Contract -c user.email=contract@example.invalid \
     commit --allow-empty -m baseline >/dev/null
 git -C "$repo_source" branch unpublished
+# Registration must not run user hooks or URL rewrites with the hosted credential.
+printf '#!/bin/sh\nprintf leaked >"%s"\nexit 1\n' "$test_root/user-hook-ran" >"$repo_source/.git/hooks/pre-push"
+chmod +x "$repo_source/.git/hooks/pre-push"
+git -C "$repo_source" config url.https://invalid.example/.insteadOf http://127.0.0.1:
 "$HCTL2_JQ" -n --arg path "$repo_source" \
     '{name:"package-contract",origin:"local",platform_path:"package-contract",local:{machine:"control",path:$path},default_source:"gitea_issues"}' >"$repo_input"
 repo_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract)"
@@ -157,10 +161,23 @@ repo_bare="$b0_root/services/data/gitea/gitea-repositories/$repo_full_name.git"
 [[ "$(git --git-dir="$repo_bare" rev-parse refs/heads/main)" == "$(git -C "$repo_source" rev-parse HEAD)" ]] || die "registered Git head mismatch"
 [[ "$(git --git-dir="$repo_bare" for-each-ref --format='%(refname)')" == refs/heads/main ]] || die "initial delivery pushed unselected refs"
 [[ -z "$(git -C "$repo_source" remote)" ]] || die "registration configured original working-copy remote"
+[[ ! -e "$test_root/user-hook-ran" ]] || die "registration ran input repository hook"
 repo_confirm="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --confirm "$repo_id" --version "$repo_version" --platform-repo-id "$repo_platform_id" --key package-confirm)"
 repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_confirm")"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --confirm "$repo_id" --version "$repo_version" --platform-repo-id "$repo_platform_id" --key package-confirm --preview-token "$repo_token" | \
     "$HCTL2_JQ" -e '.lifecycle == "active"' >/dev/null
+# An empty source creates a real platform repository without inventing a commit/ref.
+repo_empty="$test_root/empty-source"
+mkdir -p "$repo_empty"
+git -C "$repo_empty" init -b main >/dev/null
+"$HCTL2_JQ" -n --arg path "$repo_empty" \
+    '{name:"empty-contract",origin:"local",platform_path:"empty-contract",local:{machine:"control",path:$path}}' >"$test_root/empty-register.json"
+empty_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$test_root/empty-register.json" --key empty-contract)"
+empty_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$empty_preview")"
+empty_created="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$test_root/empty-register.json" --key empty-contract --preview-token "$empty_token")"
+"$HCTL2_JQ" -e '.registration.delivered == true and .registration.prepared.local.refs == {} and .error == null' <<<"$empty_created" >/dev/null
+empty_full_name="$("$HCTL2_JQ" -er '.registration.observed.full_name' <<<"$empty_created")"
+[[ -z "$(git --git-dir="$b0_root/services/data/gitea/gitea-repositories/$empty_full_name.git" for-each-ref)" ]] || die "empty registration invented a ref"
 wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2

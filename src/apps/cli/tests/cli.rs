@@ -170,3 +170,45 @@ fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_no
         3
     );
 }
+
+#[test]
+fn repo_abandon_before_dispatch_releases_target_and_resume_never_restarts_it() {
+    let temp = Temp::new();
+    let root = &temp.0;
+    let (ok, out, err) = run(root, &["start"]);
+    assert!(ok, "{out} {err}");
+    let input = root.join("register.json");
+    std::fs::write(
+        &input,
+        r#"{"name":"local","origin":"local","platform":"local","platform_path":"reusable"}"#,
+    )
+    .unwrap();
+    let (ok, first) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "first"],
+    );
+    assert!(!ok, "no installed Gitea package");
+    assert_eq!(first["error"]["code"], "PLATFORM_NOT_INSTALLED");
+    let id = first["registration"]["repo_id"].as_str().unwrap();
+    let version = first["registration"]["version"].to_string();
+    let (ok, abandoned) = register(
+        root,
+        &["--abandon", id, "--version", &version, "--key", "abandon"],
+    );
+    assert!(ok, "{abandoned}");
+    assert_eq!(abandoned["abandoned"], true);
+    let (ok, resumed) = register(root, &["--resume", id, "--key", "resume"]);
+    assert!(
+        ok,
+        "cancelled registration must not try Gitea again: {resumed}"
+    );
+    assert_eq!(resumed["registration"], abandoned);
+    let (ok, second) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "second"],
+    );
+    assert!(!ok);
+    assert_eq!(second["error"]["code"], "PLATFORM_NOT_INSTALLED");
+    assert_ne!(second["registration"]["repo_id"], id);
+    assert_eq!(second["registration"]["lifecycle"], "pending");
+}

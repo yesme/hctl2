@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use repo::git::Git;
-use repo::{Lifecycle, Origin, Platform, Prepared, Register, Registration, Result, reject};
+use repo::{Lifecycle, Platform, Prepared, Register, Registration, Result, reject};
 use serde_json::{Value, json};
 use store::{EffectState, Store, TrustedActor};
 use tokio::sync::Mutex;
@@ -149,7 +149,7 @@ pub(super) fn submit(
         }
     };
     let id = registration.repo_id.clone();
-    let outcome = drive(shared, services, root, registration);
+    let outcome = drive(shared, services, root, actor, registration);
     let current = access(shared, |store| repo::get(store, &id))?;
     Ok(match outcome {
         Ok(()) => json!({"registration":current}),
@@ -159,30 +159,47 @@ pub(super) fn submit(
     })
 }
 
-fn start_step(shared: &SharedStore, id: &str, step: &str) -> Result<()> {
-    access(shared, |store| {
-        let effect_id = repo::effect_id(id, step);
-        let (_, state) = store.effect(&effect_id)?;
-        if state == EffectState::Pending {
-            store.resume_pending_effect(store.generation(), &effect_id, true)?;
-            store.begin_effect(store.generation(), &effect_id)?;
-        }
-        Ok(())
-    })
-}
-
 fn drive(
     shared: &SharedStore,
     services: &Supervisor,
     root: &Path,
+    actor: &TrustedActor,
     mut reg: Registration,
 ) -> Result<()> {
-    if reg.lifecycle == Lifecycle::Active || reg.abandoned {
+    if reg.abandoned {
+        return reconcile_residual(shared, services, root, actor, &reg);
+    }
+    if reg.lifecycle == Lifecycle::Active {
         return Ok(());
     }
     if reg.observed.is_none() {
-        start_step(shared, &reg.repo_id, "platform")?;
-        let observed = platform::verify_platform(&reg, root, services)?;
+        // Service/bootstrap failure has not attempted repository creation. Keep the intent
+        // pending until the adapter is ready; it can then be safely abandoned as unsent.
+        let hosted = if reg.prepared.platform == Platform::Local {
+            Some(platform::Hosted::connect(
+                root,
+                &reg.config.control_id,
+                services,
+            )?)
+        } else {
+            None
+        };
+        let state = access(shared, |store| {
+            repo::begin_step(store, actor, &reg.repo_id, "platform")
+        })?;
+        let observed = if let Some(hosted) = hosted {
+            hosted
+                .repository(&reg, state == EffectState::Pending)?
+                .ok_or_else(|| {
+                    reject(
+                        "RESULT_UNKNOWN",
+                        "original platform repository not found; unknown creation is not resent",
+                        "read_back_original_intent",
+                    )
+                })?
+        } else {
+            platform::github(&reg, services)?
+        };
         reg = access(shared, |store| {
             repo::confirm_platform(store, &reg.repo_id, observed)
         })?;
@@ -190,7 +207,6 @@ fn drive(
     if reg.delivered {
         return Ok(());
     }
-    start_step(shared, &reg.repo_id, "delivery")?;
     let hosted = platform::Hosted::connect(root, &reg.config.control_id, services)?;
     let observed = hosted.repository(&reg, false)?.ok_or_else(|| {
         reject(
@@ -199,13 +215,12 @@ fn drive(
             "read_back_original_intent",
         )
     })?;
-    if reg.observed.as_ref() != Some(&observed) {
-        return Err(reject(
-            "PLATFORM_ID_MISMATCH",
-            "platform identity changed since creation",
-            "read_back_original_intent",
-        ));
-    }
+    reg = access(shared, |store| {
+        repo::refresh_platform(store, &reg.repo_id, observed.clone())
+    })?;
+    access(shared, |store| {
+        repo::begin_step(store, actor, &reg.repo_id, "delivery")
+    })?;
     if let Some(snapshot) = &reg.prepared.local {
         let git = Git::discover()?;
         let input = reg.prepared.request.local.as_ref().unwrap();
@@ -218,11 +233,8 @@ fn drive(
                 Some((&hosted.username, &hosted.token)),
             )?
         {
-            let path = if reg.prepared.request.origin == Origin::Independent && !input.in_place {
-                git.copy(snapshot, &root.join("imports").join(&reg.repo_id))?
-            } else {
-                snapshot.path.clone()
-            };
+            // Privileged Git never executes inside the user's repository/configuration.
+            let path = git.copy(snapshot, &root.join("imports").join(&reg.repo_id))?;
             git.deliver(
                 &path,
                 snapshot,
@@ -235,6 +247,50 @@ fn drive(
         }
     }
     access(shared, |store| repo::confirm_delivery(store, &reg.repo_id))?;
+    Ok(())
+}
+
+fn reconcile_residual(
+    shared: &SharedStore,
+    services: &Supervisor,
+    root: &Path,
+    actor: &TrustedActor,
+    reg: &Registration,
+) -> Result<()> {
+    let unresolved = access(shared, |store| {
+        Ok(store
+            .pending_effects()?
+            .iter()
+            .any(|id| id.starts_with(&format!("repo:{}:", reg.repo_id))))
+    })?;
+    if !unresolved {
+        return Ok(());
+    }
+    let (observed, delivered) = if reg.prepared.platform == Platform::Local {
+        let hosted = platform::Hosted::connect(root, &reg.config.control_id, services)?;
+        let observed = hosted.repository(reg, false)?.ok_or_else(|| {
+            reject(
+                "RESULT_UNKNOWN",
+                "original repository not observed; retain its conflict scope",
+                "read_back_original_intent",
+            )
+        })?;
+        let delivered = match &reg.prepared.local {
+            Some(snapshot) if !snapshot.refs.is_empty() => Git::discover()?.delivered(
+                root,
+                snapshot,
+                &observed.clone_url,
+                Some((&hosted.username, &hosted.token)),
+            )?,
+            _ => true,
+        };
+        (observed, delivered)
+    } else {
+        (platform::github(reg, services)?, true)
+    };
+    access(shared, |store| {
+        repo::reconcile_residual(store, actor, &reg.repo_id, observed, delivered)
+    })?;
     Ok(())
 }
 

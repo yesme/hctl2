@@ -274,3 +274,130 @@ fn in_place_selection_needs_independent_origin_and_frozen_remote() {
         "https://github.com/a/changed.git"
     );
 }
+
+#[test]
+fn detached_head_does_not_silently_replace_existing_main() {
+    let source = Temp::new();
+    git(&source.0, &["init", "-b", "main"]);
+    let main = commit(&source.0, "main");
+    git(&source.0, &["checkout", "-b", "other"]);
+    let detached = commit(&source.0, "other");
+    git(&source.0, &["checkout", "--detach"]);
+    let g = Git::discover().unwrap();
+    assert_ne!(main, detached);
+    assert_eq!(
+        g.inspect(&input(&source.0)).unwrap_err().code,
+        "DETACHED_HEAD_AMBIGUOUS"
+    );
+    let mut selected = input(&source.0);
+    selected.extra_refs.push("refs/heads/main".into());
+    let snapshot = g.inspect(&selected).unwrap();
+    assert_eq!(snapshot.refs["refs/heads/main"], main);
+    assert_eq!(git(&source.0, &["rev-parse", "HEAD"]), detached);
+    git(&source.0, &["checkout", "-b", "hctl2/private"]);
+    assert_eq!(
+        g.inspect(&input(&source.0)).unwrap_err().code,
+        "PRIVATE_REF"
+    );
+}
+
+#[test]
+fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(root) = std::env::var("HCTL2_REPO_GIT_ISOLATION_FIXTURE") {
+        let root = Path::new(&root);
+        let g = Git::discover().unwrap();
+        let snapshot = g.inspect(&input(&root.join("source"))).unwrap();
+        let copy = g.copy(&snapshot, &root.join("copy")).unwrap();
+        let target = root.join("target");
+        // Readback must ignore configuration even if its cwd is inside the source repository.
+        assert!(
+            !g.delivered(
+                &root.join("source"),
+                &snapshot,
+                target.to_str().unwrap(),
+                Some(("fixture", "not-a-real-token"))
+            )
+            .unwrap()
+        );
+        g.deliver(
+            &copy,
+            &snapshot,
+            target.to_str().unwrap(),
+            Some(("fixture", "not-a-real-token")),
+        )
+        .unwrap();
+        assert!(
+            g.delivered(&copy, &snapshot, target.to_str().unwrap(), None)
+                .unwrap()
+        );
+        return;
+    }
+    let temp = Temp::new();
+    let source = temp.0.join("source");
+    let target = temp.0.join("target");
+    let template = temp.0.join("template");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir(&target).unwrap();
+    std::fs::create_dir_all(template.join("hooks")).unwrap();
+    git(&source, &["init", "-b", "main"]);
+    commit(&source, "frozen");
+    git(&target, &["init", "--bare"]);
+    let marker = temp.0.join("hook-ran");
+    let hook = format!("#!/bin/sh\nprintf hook > '{}'\nexit 1\n", marker.display());
+    for path in [
+        source.join(".git/hooks/pre-push"),
+        template.join("hooks/pre-push"),
+    ] {
+        std::fs::write(&path, &hook).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    // A URL rewrite in the input copy must not affect privileged readback/push.
+    git(
+        &source,
+        &[
+            "config",
+            "url./must-not-be-used.insteadOf",
+            target.to_str().unwrap(),
+        ],
+    );
+    let global = temp.0.join("global-config");
+    std::fs::write(
+        &global,
+        format!(
+            "[core]\n hooksPath = {}\n[url \"/must-not-be-used\"]\n insteadOf = {}\n",
+            template.join("hooks").display(),
+            target.display()
+        ),
+    )
+    .unwrap();
+    let trace = temp.0.join("trace");
+    let child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "credentials_do_not_reach_user_hooks_or_configured_tracing",
+        ])
+        .env("HCTL2_REPO_GIT_ISOLATION_FIXTURE", &temp.0)
+        .env("GIT_CONFIG_GLOBAL", global)
+        .env("GIT_TEMPLATE_DIR", template)
+        .env("GIT_TRACE", &trace)
+        .env("GIT_TRACE_CURL", &trace)
+        .env("GIT_CURL_VERBOSE", "1")
+        .output()
+        .unwrap();
+    assert!(
+        child.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&child.stdout),
+        String::from_utf8_lossy(&child.stderr)
+    );
+    assert!(!marker.exists());
+    assert!(
+        !trace.exists(),
+        "Git diagnostics must not inherit caller tracing"
+    );
+    assert_eq!(
+        git(&target, &["rev-parse", "main"]),
+        git(&source, &["rev-parse", "main"])
+    );
+}

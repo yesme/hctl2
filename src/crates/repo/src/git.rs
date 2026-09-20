@@ -107,10 +107,7 @@ impl Git {
                 "install_git_2_39_or_newer",
             )
         })?;
-        let banner = run(
-            foundation::git::sanitized_command(&executable).arg("--version"),
-            None,
-        )?;
+        let banner = run(Self::isolated_command(&executable).arg("--version"), None)?;
         let (major, minor, _) =
             foundation::git::parse_version(&String::from_utf8_lossy(&banner.stdout))
                 .ok_or_else(|| reject("GIT_VERSION", "cannot parse Git version", "check_git"))?;
@@ -123,8 +120,31 @@ impl Git {
         }
         Ok(Self { executable })
     }
+    fn isolated_command(executable: &Path) -> Command {
+        let mut cmd = foundation::git::sanitized_command(executable);
+        // These are registration/delivery subprocesses, not interactive user Git.
+        cmd.env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env_remove("GIT_TEMPLATE_DIR")
+            .env_remove("GIT_CURL_VERBOSE")
+            .env_remove("GIT_ASKPASS")
+            .env_remove("SSH_ASKPASS");
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("GIT_TRACE") {
+                cmd.env_remove(name);
+            }
+        }
+        cmd.args([
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+        ]);
+        cmd
+    }
     fn command(&self, path: &Path) -> Command {
-        let mut cmd = foundation::git::sanitized_command(&self.executable);
+        let mut cmd = Self::isolated_command(&self.executable);
         cmd.arg("-C").arg(path);
         cmd
     }
@@ -197,6 +217,20 @@ impl Git {
         )?;
         let mut refs: BTreeMap<String, String> = BTreeMap::new();
         if head.status.success() {
+            self.validate_ref(&path, &branch)?;
+            if !symbolic.status.success() && !input.extra_refs.contains(&branch) {
+                let existing =
+                    self.text(&path, &["for-each-ref", "--format=%(objectname)", &branch])?;
+                if !existing.trim().is_empty()
+                    && existing.trim() != String::from_utf8_lossy(&head.stdout).trim()
+                {
+                    return Err(reject(
+                        "DETACHED_HEAD_AMBIGUOUS",
+                        "detached HEAD differs from existing main; check out the intended branch or explicitly select refs/heads/main",
+                        "select_initial_branch",
+                    ));
+                }
+            }
             refs.insert(
                 branch.clone(),
                 String::from_utf8_lossy(&head.stdout).trim().into(),
@@ -284,6 +318,7 @@ impl Git {
             destination,
             &[
                 "init",
+                "--template=",
                 "--initial-branch",
                 snapshot.head_branch.trim_start_matches("refs/heads/"),
             ],
@@ -359,7 +394,7 @@ impl Git {
         if !missing.is_empty() {
             let mut cmd = self.command(path);
             credentials(&mut cmd, credential);
-            cmd.args(["push", "--porcelain", "--atomic"]);
+            cmd.args(["push", "--porcelain", "--atomic", "--no-verify"]);
             // Empty expected old ref means create-only CAS, never permission to overwrite.
             for (reference, _) in &missing {
                 cmd.arg(format!("--force-with-lease={reference}:"));
@@ -387,6 +422,9 @@ impl Git {
         credential: Option<(&str, &str)>,
     ) -> Result<BTreeMap<String, String>> {
         let mut cmd = self.command(path);
+        // ls-remote needs no local repository. Do not discover configuration in a
+        // caller-selected directory (which may itself live inside another worktree).
+        cmd.arg("--git-dir=/dev/null");
         credentials(&mut cmd, credential);
         let output = run(cmd.args(["ls-remote", "--refs", url]), None)?;
         if !output.status.success() {

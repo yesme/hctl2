@@ -179,6 +179,10 @@ async fn consumption_persists_across_control_restart() {
     .await;
     assert_eq!(result["consumed"], true, "{result}");
     assert!(temp.0.join("hosted-consumed.json").is_file());
+    let before = query_json(&mut client, "services").await;
+    let previous_pid = hosted(&before, "never-ready")["pid"]
+        .as_i64()
+        .expect("first consumption must have started a process");
     let stopped = submit_json(&mut client, "services.stop", "{}").await;
     assert_eq!(stopped["stopped"], true, "{stopped}");
     // The open connection keeps the old service (and its store lock) alive;
@@ -196,20 +200,23 @@ async fn consumption_persists_across_control_restart() {
     let mut client = connect(&temp.0).await;
     wait_ready(&mut client).await;
     wait_available(&mut client, "ready-ok").await;
-    let mut running = false;
+    let mut restarted = false;
     let mut last = serde_json::Value::Null;
     for _ in 0..200 {
         let services = query_json(&mut client, "services").await;
         let never = hosted(&services, "never-ready");
-        if never["consumed"] == true && never["running"] == true {
-            running = true;
+        // The fixture's failing readiness probe terminates it after three failures.
+        // A new PID proves restart even if those failures happen while ready-ok is polled.
+        if never["consumed"] == true && never["pid"].as_i64().is_some_and(|pid| pid != previous_pid)
+        {
+            restarted = true;
             break;
         }
         last = services;
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(
-        running,
+        restarted,
         "consumed component was not restarted after control restart: {last}"
     );
 }

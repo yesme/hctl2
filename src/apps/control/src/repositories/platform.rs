@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use foundation::SecretStore;
 use repo::git::run;
-use repo::{Platform, PlatformObservation, Registration, Result, reject};
+use repo::{PlatformObservation, Registration, Result, reject};
 use serde_json::{Value, json};
 
 use crate::services::Supervisor;
@@ -350,27 +350,3 @@ fn numeric_id(value: &Value) -> Result<String> {
 #[cfg(test)]
 #[path = "platform_tests.rs"]
 mod tests;
-
-pub(super) fn verify_platform(
-    reg: &Registration,
-    root: &Path,
-    services: &Supervisor,
-) -> Result<PlatformObservation> {
-    match reg.prepared.platform {
-        Platform::Github => github(reg, services),
-        Platform::Local => Hosted::connect(root, &reg.config.control_id, services)?
-            .repository(reg, true)?
-            .ok_or_else(|| {
-                reject(
-                    "RESULT_UNKNOWN",
-                    "created platform repository not found",
-                    "read_back_original_intent",
-                )
-            }),
-        Platform::None => Err(reject(
-            "INVALID_INPUT",
-            "no-platform registration has no platform step",
-            "inspect_repo",
-        )),
-    }
-}

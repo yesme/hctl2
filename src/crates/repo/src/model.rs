@@ -109,6 +109,14 @@ pub struct PlatformObservation {
     pub can_write_issues: bool,
     pub credential_ref: String,
 }
+impl PlatformObservation {
+    pub fn same_repository(&self, other: &Self) -> bool {
+        self.instance == other.instance
+            && self.stable_id == other.stable_id
+            && self.full_name == other.full_name
+            && self.clone_url == other.clone_url
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -127,6 +135,9 @@ pub struct Registration {
     pub idempotency_key: String,
     pub actor: Actor,
     pub prepared: Prepared,
+    /// Current observations are separate from the immutable confirmed preview.
+    #[serde(default)]
+    pub sources: Vec<SourceCandidate>,
     pub config: MaterialRef,
     pub observed: Option<PlatformObservation>,
     pub delivered: bool,

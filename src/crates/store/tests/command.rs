@@ -309,6 +309,19 @@ fn unknown_effect_retains_conflict_and_requires_exact_readback() {
         .unwrap();
     store.begin_effect(store.generation(), "e").unwrap();
     assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("cancel-unknown", key("object")),
+            None,
+            |tx| {
+                tx.cancel_pending_effect("e")?;
+                Ok(json!(null))
+            },
+        ),
+        "READBACK_REQUIRED",
+    );
+    assert_code(
         store.begin_effect(store.generation(), "e"),
         "READBACK_REQUIRED",
     );
@@ -362,6 +375,91 @@ fn unknown_effect_retains_conflict_and_requires_exact_readback() {
         store.begin_effect(store.generation(), "e"),
         "READBACK_REQUIRED",
     );
+}
+
+#[test]
+fn cancelling_unsent_effect_is_atomic_terminal_and_does_not_confirm_it() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("c", key("object")),
+            None,
+            |tx| {
+                tx.enqueue_effect(&effect("e"))?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
+    assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("cancel", key("object")),
+            None,
+            |tx| {
+                tx.cancel_pending_effect("e")?;
+                Err(StoreError {
+                    code: "DOMAIN_REFUSED",
+                    message: "rollback".into(),
+                    recovery_action: "retry",
+                })
+            },
+        ),
+        "DOMAIN_REFUSED",
+    );
+    assert_eq!(store.effect("e").unwrap().1, EffectState::Pending);
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("cancel", key("object")),
+            None,
+            |tx| {
+                tx.cancel_pending_effect("e")?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
+    drop(store);
+    let mut store = temp.store();
+    assert_eq!(store.effect("e").unwrap().1, EffectState::Cancelled);
+    assert!(store.pending_effects().unwrap().is_empty());
+    assert_code(
+        store.begin_effect(store.generation(), "e"),
+        "READBACK_REQUIRED",
+    );
+    assert_code(
+        store.resume_pending_effect(store.generation(), "e", true),
+        "READBACK_REQUIRED",
+    );
+    assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("revive", key("object")),
+            None,
+            |tx| {
+                tx.confirm_effect("e", &Readback::Unknown)?;
+                Ok(json!(null))
+            },
+        ),
+        "READBACK_REQUIRED",
+    );
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("next", key("object")),
+            None,
+            |tx| {
+                tx.enqueue_effect(&effect("next"))?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
 }
 
 #[test]

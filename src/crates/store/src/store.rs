@@ -451,9 +451,9 @@ impl Store {
     }
 
     pub fn pending_effects(&self) -> Result<Vec<String>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT intent_id FROM outbox WHERE state!='confirmed' ORDER BY rowid")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT intent_id FROM outbox WHERE state IN ('pending','unknown') ORDER BY rowid",
+        )?;
         Ok(stmt
             .query_map([], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?)

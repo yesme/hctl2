@@ -60,12 +60,14 @@ fi
         token: "fixture-only".into(),
         credential_ref: "fixture".into(),
     };
+    assert!(hosted.repository(&reg, false).unwrap().is_none());
+    assert!(!temp.0.join("tea-fixture.posts").exists());
     assert_eq!(
         hosted.repository(&reg, true).unwrap_err().code,
         "PLATFORM_UNAVAILABLE",
         "tea exit zero with HTTP 503 must not confirm a platform step"
     );
-    let observed = hosted.repository(&reg, true).unwrap().unwrap();
+    let observed = hosted.repository(&reg, false).unwrap().unwrap();
     assert_eq!(observed.stable_id, "7");
     assert_eq!(
         std::fs::read_to_string(temp.0.join("tea-fixture.posts")).unwrap(),
