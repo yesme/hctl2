@@ -51,9 +51,13 @@ tar -xJf "$ARCHIVE" -C "$test_root"
 release_root="$test_root/$PACKAGE_ID"
 
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"
+[[ -x "$release_root/payload/bin/hctl2" ]] || die "release is missing hctl2"
+[[ -x "$release_root/payload/bin/hctl2-control" ]] || die "release is missing hctl2-control"
 [[ -x "$release_root/payload/libexec/hctl2/herdr" ]] || die "release is missing Herdr"
 [[ -x "$release_root/payload/libexec/hctl2/process-compose" ]] || \
     die "release is missing Process Compose"
+[[ -x "$release_root/payload/libexec/hctl2/gitea" ]] || die "release is missing Gitea"
+[[ -x "$release_root/payload/libexec/hctl2/tea" ]] || die "release is missing tea"
 [[ -x "$release_root/payload/libexec/hctl2/gh" ]] || die "release is missing GitHub CLI"
 [[ ! -e "$release_root/payload/bin/hctl2-agentd" ]] || die "release still contains hctl2-agentd"
 [[ -f "$release_root/payload/share/hctl2/first-party.tsv" ]] || \
@@ -79,7 +83,7 @@ grep -F 'FileName: libexec/hctl2/gh' "$release_root/payload/share/hctl2/SBOM.spd
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"
 "$release_root/install.sh" --prefix "$contract_prefix"
-for command in hctl2-tool hctl2-services; do
+for command in hctl2-tool hctl2 hctl2-control hctl2-services; do
     [[ -L "$contract_prefix/bin/$command" ]] || die "installer did not link $command"
 done
 "$contract_prefix/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
@@ -100,5 +104,21 @@ trap - EXIT
 # shellcheck source=../dependencies/common/test-package.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/test-package.sh"
 test_dependency_package
+
+# B0: control + consumed services restart without changing storage identity.
+b0_root="$test_root/b0-control"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" init >/dev/null
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
+b0_status="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
+printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
+    grep -F '"ready": true' <<<"$b0_status" >/dev/null || \
+    die "hctl2 start did not report a ready control: $b0_status"
+b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
+b0_again="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
+b0_id2="$(printf '%s\n' "$b0_again" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
+[[ "$b0_id" == "$b0_id2" ]] || die "restart changed control identity: $b0_id -> $b0_id2"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 
 note "$HCTL2_TARGET_ID complete release passed first-party and service lifecycle tests"

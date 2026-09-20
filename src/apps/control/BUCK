@@ -26,7 +26,7 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":unit_test", ":boundary_test"],
+    tests = [":unit_test", ":boundary_test", ":services_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -83,12 +83,37 @@ rust_test(
     visibility = ["PUBLIC"],
 )
 
+rust_test(
+    name = "services_test",
+    srcs = ["tests/services.rs"],
+    crate_root = "tests/services.rs",
+    deps = [
+        ":control",
+        "root//crates/proto:proto",
+        "root//third-party/rust:hyper-util",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:tokio",
+        "root//third-party/rust:tonic",
+        "root//third-party/rust:tower",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "HCTL2_PROCESS_COMPOSE_BIN": "$(location root//build/tools:process-compose-bin)",
+        "HCTL2_PROCESS_COMPOSE_CONFIG": "$(location root//build/tests:process_compose_fixtures)/testdata/process-compose/lifecycle.yaml",
+        "HCTL2_CONSUMED_SERVICES": "ready-ok,never-ready",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
 filegroup(
     name = "clippy",
     srcs = {
         "binary": ":hctl2-control[clippy.txt]",
         "boundary": ":boundary_test[clippy.txt]",
         "library": ":control[clippy.txt]",
+        "services": ":services_test[clippy.txt]",
         "unit": ":unit_test[clippy.txt]",
     },
     labels = CI_FAST,

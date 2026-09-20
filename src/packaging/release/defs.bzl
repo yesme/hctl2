@@ -25,11 +25,19 @@ def _export_command(target: str) -> str:
         HCTL2_VERSION,
         target,
         "$(location root//apps/tool:hctl2-tool)",
+        "$(location root//apps/cli:hctl2)",
+        "$(location root//apps/control:hctl2-control)",
     ])
 
 def first_party_release(name: str):
     native.genrule(
         name = name,
+        srcs = {
+            "export-first-party.sh": "export-first-party.sh",
+            "hctl2-tool": "root//apps/tool:hctl2-tool",
+            "hctl2": "root//apps/cli:hctl2",
+            "hctl2-control": "root//apps/control:hctl2-control",
+        },
         out = "hctl2-first-party",
         cmd = select({
             "prelude//os:linux": select({

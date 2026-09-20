@@ -32,6 +32,7 @@ struct Args {
 enum Command {
     Init,
     Start,
+    Stop,
     Status,
     Doctor,
     Export {
@@ -43,6 +44,23 @@ enum Command {
     Restore(RestoreCommand),
     Query {
         kind: String,
+    },
+    #[command(subcommand)]
+    Services(ServicesCommand),
+}
+
+#[derive(Subcommand)]
+enum ServicesCommand {
+    Status,
+    Backup {
+        path: PathBuf,
+    },
+    Restore {
+        path: PathBuf,
+        #[arg(long)]
+        preview_token: Option<String>,
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -97,6 +115,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             Ok(())
         }
         Command::Start => start_daemon(root).await,
+        Command::Stop => stop_daemon(root).await,
         Command::Status => query(root, json, "status", json!({})).await,
         Command::Doctor => query(root, json, "doctor", json!({})).await,
         Command::Export { path } => {
@@ -149,6 +168,38 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             Ok(())
         }
         Command::Query { kind } => query(root, json, &kind, json!({})).await,
+        Command::Services(ServicesCommand::Status) => {
+            query(root, json, "services", json!({})).await
+        }
+        Command::Services(ServicesCommand::Backup { path }) => {
+            let result = submit(root, "services.backup", json!({"path": path}), None).await?;
+            print_out(json, result);
+            Ok(())
+        }
+        Command::Services(ServicesCommand::Restore {
+            path,
+            preview_token,
+            yes,
+        }) => {
+            let payload = json!({"path": path});
+            let token = if let Some(token) = preview_token {
+                token
+            } else if yes {
+                let preview = preview(root, "services.restore", payload.clone()).await?;
+                preview
+                    .get("preview_token")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "preview missing token".to_owned())?
+                    .to_owned()
+            } else {
+                return Err(
+                    "services restore requires --preview-token from preview, or --yes".into(),
+                );
+            };
+            let result = submit(root, "services.restore", payload, Some(&token)).await?;
+            print_out(json, result);
+            Ok(())
+        }
     }
 }
 
@@ -192,6 +243,14 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Err("control did not become ready".into())
+}
+
+async fn stop_daemon(root: &Path) -> Result<(), String> {
+    let _ = submit(root, "services.stop", json!({}), None).await;
+    if let Ok(pid) = std::fs::read_to_string(root.join("control.pid")) {
+        let _ = std::process::Command::new("kill").arg(pid.trim()).status();
+    }
+    Ok(())
 }
 
 fn rpc_code(error: &str) -> Option<&str> {

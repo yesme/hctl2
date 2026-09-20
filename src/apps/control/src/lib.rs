@@ -4,6 +4,7 @@
 
 mod identity;
 mod service;
+mod services;
 mod socket;
 
 pub use identity::owner_actor;
@@ -60,6 +61,12 @@ impl Daemon {
             }
             Err(error) => {
                 *open_error.blocking_lock() = Some(error);
+            }
+        });
+        let hosted = services::Supervisor::from_root(self.root.clone());
+        tokio::task::spawn_blocking(move || {
+            if let Err(error) = hosted.ensure_up() {
+                eprintln!("hctl2-control: hosted services: {error}");
             }
         });
         let service = ControlService::new(

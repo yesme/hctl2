@@ -78,7 +78,7 @@ else
 fi
 
 # --- per-service YAML contract ---------------------------------------------
-for service in tuwunel cinny vikunja dagu herdr; do
+for service in tuwunel cinny vikunja dagu herdr gitea; do
     yaml="$packaging/process-compose/$service.yaml"
     [[ -f "$yaml" ]] || { fail "missing $yaml"; continue; }
     for field in readiness_probe availability shutdown; do
@@ -151,15 +151,18 @@ export HCTL2_LOG_DIR="$work"
 export HCTL2_CONFIG_DIR="$work"
 export HCTL2_CINNY_ROOT="$work"
 export HCTL2_TUWUNEL_CONFIG="$work/tuwunel.toml"
+export HCTL2_GITEA_CONFIG="$work/gitea.ini"
+export HCTL2_GITEA_WORK="$work"
 export HCTL2_VIKUNJA_DATA="$work"
 export HCTL2_VIKUNJA_SECRET="fixture"
 export HCTL2_DAGU_DATA="$work"
 export HCTL2_HERDR_CONFIG="$work/herdr.toml"
 export HCTL2_HERDR_SOCKET="$work/herdr.sock"
-export TUWUNEL_PORT=1 CINNY_PORT=1 VIKUNJA_PORT=1
+export TUWUNEL_PORT=1 CINNY_PORT=1 VIKUNJA_PORT=1 GITEA_PORT=1
 export DAGU_PORT=1 DAGU_SCHEDULER_PORT=1 DAGU_COORDINATOR_PORT=1 DAGU_COORDINATOR_HEALTH_PORT=1
 : >"$HCTL2_TUWUNEL_CONFIG"
 : >"$HCTL2_HERDR_CONFIG"
+: >"$HCTL2_GITEA_CONFIG"
 if pc \
     --config "$packaging/process-compose/process-compose.yaml" \
     --config "$packaging/process-compose/tuwunel.yaml" \
@@ -167,11 +170,12 @@ if pc \
     --config "$packaging/process-compose/vikunja.yaml" \
     --config "$packaging/process-compose/dagu.yaml" \
     --config "$packaging/process-compose/herdr.yaml" \
+    --config "$packaging/process-compose/gitea.yaml" \
     up --dry-run >/dev/null
 then
-    note "PASS packaged five-service YAML --dry-run"
+    note "PASS packaged service YAML --dry-run"
 else
-    fail "packaged five-service YAML failed --dry-run"
+    fail "packaged service YAML failed --dry-run"
 fi
 
 wait_ready() {

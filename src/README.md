@@ -18,7 +18,7 @@ Git 领域正文仍是 JCS；Protobuf 只做进程间传输。
 
 Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 Herdr；本代码树不再实现或打包 `hctl2-agentd`。Workbench 仍在 P3 进入代码树。`hctl2-tool` 目前不是治理命令入口。
 
-`packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器。服务生命周期由随包 Process Compose 的声明式配置管理；GitHub 事实由随包 `gh` 读取。除上游没有 Darwin 二进制的 Tuwunel 外，第三方运行内容都直接消费摘要锁定的官方发行物；下载输入与生成归档不提交 Git。
+`packaging/dependencies` 负责外部依赖供应链。它固定 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、本地代码协作平台（Gitea 与 tea）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）的版本，为三种目标平台分别构建运行安装包与源码伴随包，并交付离线安装器。服务生命周期由随包 Process Compose 的声明式配置管理；GitHub 事实由随包 `gh` 读取。除上游没有 Darwin 二进制的 Tuwunel 外，第三方运行内容都直接消费摘要锁定的官方发行物；下载输入与生成归档不提交 Git。
 
 `packaging/release` 由 Buck2 导出第一方二进制和 manifest，校验并消费外部运行包与源码包，确定性地生成三平台完整用户安装包、checksums、SPDX SBOM 与 release manifest。它只在子系统边界组装，不改写外部项目的原生构建方式。
 

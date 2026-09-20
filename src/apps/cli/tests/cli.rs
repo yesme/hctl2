@@ -89,4 +89,8 @@ fn init_start_status_doctor_backup_restore_round_trip() {
         &["restore", "apply", backup.to_str().unwrap(), "--yes"],
     );
     assert!(ok, "restore apply {stderr} {stdout}");
+    let (ok, stdout, stderr) = run(root, &["services", "status"]);
+    assert!(ok, "services status {stderr} {stdout}");
+    let (ok, _, stderr) = run(root, &["stop"]);
+    assert!(ok, "stop {stderr}");
 }

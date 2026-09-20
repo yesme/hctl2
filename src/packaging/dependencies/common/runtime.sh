@@ -73,11 +73,15 @@ prepare_runtime() {
     local tuwunel_config
     local tuwunel_config_tmp
     local vikunja_secret
+    local gitea_secret
+    local gitea_config
+    local gitea_config_tmp
 
     mkdir -p \
         "$P0_CONFIG_DIR/process-compose" \
         "$P0_CONFIG_DIR/herdr" \
         "$P0_DATA_DIR/tuwunel" \
+        "$P0_DATA_DIR/gitea" \
         "$P0_DATA_DIR/vikunja" \
         "$P0_DATA_DIR/dagu" \
         "$P0_DATA_DIR/herdr" \
@@ -86,11 +90,12 @@ prepare_runtime() {
     chmod 700 \
         "$P0_ROOT" "$P0_CONFIG_DIR" "$P0_CONFIG_DIR/process-compose" \
         "$P0_CONFIG_DIR/herdr" "$P0_DATA_DIR" "$P0_DATA_DIR/tuwunel" \
+        "$P0_DATA_DIR/gitea" \
         "$P0_DATA_DIR/vikunja" "$P0_DATA_DIR/dagu" "$P0_DATA_DIR/herdr" \
         "$P0_RUNTIME_DIR" "$P0_RUNTIME_DIR/herdr"
 
     for component in \
-        tuwunel static-web-server vikunja dagu herdr process-compose; do
+        tuwunel static-web-server vikunja dagu herdr process-compose gitea; do
         [[ -x "$P0_BIN_DIR/$component" ]] || \
             die "$component is missing; reinstall the HCTL2 package"
     done
@@ -98,8 +103,10 @@ prepare_runtime() {
 
     write_secret_once "$P0_CONFIG_DIR/tuwunel-registration-token"
     write_secret_once "$P0_CONFIG_DIR/vikunja-secret"
+    write_secret_once "$P0_CONFIG_DIR/gitea-secret-key"
     IFS= read -r registration_token <"$P0_CONFIG_DIR/tuwunel-registration-token"
     IFS= read -r vikunja_secret <"$P0_CONFIG_DIR/vikunja-secret"
+    IFS= read -r gitea_secret <"$P0_CONFIG_DIR/gitea-secret-key"
 
     tuwunel_config="$P0_CONFIG_DIR/tuwunel.toml"
     tuwunel_config_tmp="$tuwunel_config.tmp.$$"
@@ -122,11 +129,47 @@ prepare_runtime() {
     } >"$tuwunel_config_tmp"
     mv -f -- "$tuwunel_config_tmp" "$tuwunel_config"
 
+    mkdir -p "$P0_CONFIG_DIR/gitea" "$P0_DATA_DIR/gitea/gitea-repositories"
+    chmod 700 "$P0_CONFIG_DIR/gitea"
+    gitea_config="$P0_CONFIG_DIR/gitea/app.ini"
+    gitea_config_tmp="$gitea_config.tmp.$$"
+    {
+        printf '%s\n' \
+            'APP_NAME = HCTL2 Gitea' \
+            "WORK_PATH = $P0_DATA_DIR/gitea" \
+            '[server]' \
+            'PROTOCOL = http' \
+            'DOMAIN = 127.0.0.1' \
+            'HTTP_ADDR = 127.0.0.1' \
+            "HTTP_PORT = $GITEA_PORT" \
+            "ROOT_URL = http://127.0.0.1:$GITEA_PORT/" \
+            'DISABLE_SSH = true' \
+            '[database]' \
+            'DB_TYPE = sqlite3' \
+            "PATH = $P0_DATA_DIR/gitea/gitea.db" \
+            '[security]' \
+            'INSTALL_LOCK = true' \
+            "SECRET_KEY = $gitea_secret" \
+            '[service]' \
+            'DISABLE_REGISTRATION = true' \
+            'REQUIRE_SIGNIN_VIEW = true' \
+            '[webhook]' \
+            'ALLOWED_HOST_LIST = loopback' \
+            '[repository]' \
+            "ROOT = $P0_DATA_DIR/gitea/gitea-repositories" \
+            '[log]' \
+            'MODE = file' \
+            "ROOT_PATH = $P0_LOG_DIR/gitea"
+    } >"$gitea_config_tmp"
+    mv -f -- "$gitea_config_tmp" "$gitea_config"
+
     export HCTL2_BIN_DIR="$P0_BIN_DIR"
     export HCTL2_CONFIG_DIR="$P0_CONFIG_DIR"
     export HCTL2_LOG_DIR="$P0_LOG_DIR"
     export HCTL2_CINNY_ROOT="$P0_CINNY_ROOT"
     export HCTL2_TUWUNEL_CONFIG="$tuwunel_config"
+    export HCTL2_GITEA_CONFIG="$gitea_config"
+    export HCTL2_GITEA_WORK="$P0_DATA_DIR/gitea"
     export HCTL2_VIKUNJA_DATA="$P0_DATA_DIR/vikunja"
     export HCTL2_VIKUNJA_SECRET="$vikunja_secret"
     export HCTL2_DAGU_DATA="$P0_DATA_DIR/dagu"
@@ -134,11 +177,11 @@ prepare_runtime() {
     export HCTL2_HERDR_DATA="$P0_DATA_DIR/herdr"
     export HCTL2_HERDR_SOCKET="$(platform_herdr_socket_path)"
     export HCTL2_PROCESS_COMPOSE_SOCKET="$(platform_process_compose_socket_path)"
-    export TUWUNEL_PORT CINNY_PORT VIKUNJA_PORT DAGU_PORT
+    export TUWUNEL_PORT CINNY_PORT VIKUNJA_PORT DAGU_PORT GITEA_PORT
     export DAGU_SCHEDULER_PORT DAGU_COORDINATOR_PORT DAGU_COORDINATOR_HEALTH_PORT
 }
 
-readonly -a P0_COMPONENTS=(tuwunel cinny vikunja dagu herdr)
+readonly -a P0_COMPONENTS=(tuwunel cinny vikunja dagu herdr gitea)
 readonly -a P0_PROCESS_COMPOSE_FILES=(
     "$P0_PROCESS_COMPOSE_CONFIG_DIR/process-compose.yaml"
     "$P0_PROCESS_COMPOSE_CONFIG_DIR/tuwunel.yaml"
@@ -146,6 +189,7 @@ readonly -a P0_PROCESS_COMPOSE_FILES=(
     "$P0_PROCESS_COMPOSE_CONFIG_DIR/vikunja.yaml"
     "$P0_PROCESS_COMPOSE_CONFIG_DIR/dagu.yaml"
     "$P0_PROCESS_COMPOSE_CONFIG_DIR/herdr.yaml"
+    "$P0_PROCESS_COMPOSE_CONFIG_DIR/gitea.yaml"
 )
 
 validate_components() {

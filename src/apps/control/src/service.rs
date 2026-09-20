@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::owner_actor;
+use crate::services::Supervisor;
 use crate::socket_path;
 use foundation::SecretStore;
 use proto::control_server::Control;
@@ -49,6 +50,7 @@ pub struct ControlService {
     events: Mutex<VecDeque<Event>>,
     seq: AtomicI64,
     bus: broadcast::Sender<Event>,
+    services: Supervisor,
 }
 
 impl ControlService {
@@ -61,7 +63,7 @@ impl ControlService {
     ) -> Self {
         let (bus, _) = broadcast::channel(64);
         Self {
-            root,
+            root: root.clone(),
             status,
             store,
             open_error,
@@ -69,6 +71,7 @@ impl ControlService {
             events: Mutex::new(VecDeque::new()),
             seq: AtomicI64::new(0),
             bus,
+            services: Supervisor::from_root(root),
         }
     }
 
@@ -165,7 +168,7 @@ impl Control for ControlService {
             Ok(value) => value,
             Err(error) => return Ok(err_query_proto(error, 0)),
         };
-        if matches!(req.kind.as_str(), "status" | "doctor") {
+        if matches!(req.kind.as_str(), "status" | "doctor" | "services") {
             return Ok(self.status_or_doctor(&req.kind, &actor).await);
         }
         if let Some(error) = self.startup_error().await {
@@ -273,6 +276,9 @@ impl Control for ControlService {
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
             return Ok(submit_err(error, 0));
         }
+        if req.operation.starts_with("services.") {
+            return self.submit_services(&req).await;
+        }
         if let Some(error) = self.startup_error().await {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
         }
@@ -369,8 +375,83 @@ impl Control for ControlService {
 }
 
 impl ControlService {
+    async fn submit_services(
+        &self,
+        req: &SubmitRequest,
+    ) -> Result<Response<SubmitResponse>, Status> {
+        if is_dangerous(&req.operation) {
+            let previews = self.previews.lock().await;
+            let matched = previews.iter().any(|preview| {
+                preview.token == req.preview_token
+                    && preview.operation == req.operation
+                    && preview.payload == req.payload
+            });
+            if !matched {
+                return Ok(submit_err(
+                    error(
+                        "PREVIEW_REQUIRED",
+                        "dangerous submit requires a matching preview token",
+                        "preview_then_submit",
+                    ),
+                    self.seq.load(Ordering::Acquire),
+                ));
+            }
+        }
+        let payload = match json_bytes(&req.payload) {
+            Ok(value) => value,
+            Err(error) => return Ok(submit_err(error, 0)),
+        };
+        let outcome = match req.operation.as_str() {
+            "services.stop" => self
+                .services
+                .stop_consumed()
+                .map(|()| json!({"stopped": true})),
+            "services.backup" => payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "services.backup needs path".to_owned())
+                .and_then(|path| self.services.backup(Path::new(path))),
+            "services.restore" => payload
+                .get("path")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "services.restore needs path".to_owned())
+                .and_then(|path| self.services.restore(Path::new(path))),
+            other => Err(format!("unknown operation {other}")),
+        };
+        match outcome {
+            Ok(value) => {
+                if is_dangerous(&req.operation) {
+                    self.previews
+                        .lock()
+                        .await
+                        .retain(|preview| preview.token != req.preview_token);
+                }
+                let seq = self
+                    .emit("submit", json!({"operation": req.operation}))
+                    .await;
+                Ok(Response::new(SubmitResponse {
+                    error: None,
+                    result: value.to_string().into_bytes(),
+                    event_seq: seq,
+                }))
+            }
+            Err(message) => Ok(submit_err(
+                error("INVALID_INPUT", message, "correct_input"),
+                0,
+            )),
+        }
+    }
+
     async fn status_or_doctor(&self, kind: &str, actor: &TrustedActor) -> Response<QueryResponse> {
         let seq = self.seq.load(Ordering::Acquire);
+        let services = self.services.snapshot().to_json();
+        if kind == "services" {
+            return Response::new(QueryResponse {
+                error: None,
+                payload: services.to_string().into_bytes(),
+                event_seq: seq,
+            });
+        }
         if let Some(error) = self.startup_error().await {
             let payload = json!({
                 "ready": false,
@@ -380,6 +461,7 @@ impl ControlService {
                     "recovery_action": error.recovery_action,
                 },
                 "actor": actor.0,
+                "services": services,
             });
             return Response::new(QueryResponse {
                 error: Some(error),
@@ -397,9 +479,9 @@ impl ControlService {
                 return Err(not_ready_error());
             };
             Ok(if kind == "doctor" {
-                doctor_payload(store, &root, actor_json)
+                doctor_payload(store, &root, actor_json, services)
             } else {
-                status_payload(store, actor_json)
+                status_payload(store, actor_json, services)
             })
         })
         .await
@@ -539,7 +621,7 @@ fn run_operation(
 }
 
 fn is_dangerous(operation: &str) -> bool {
-    matches!(operation, "restore.apply")
+    matches!(operation, "restore.apply" | "services.restore")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {
@@ -573,7 +655,7 @@ fn error(code: &str, message: impl Into<String>, recovery: &str) -> ProtoError {
     }
 }
 
-fn status_payload(store: &Store, actor: Value) -> Value {
+fn status_payload(store: &Store, actor: Value, services: Value) -> Value {
     json!({
         "ready": true,
         "control_id": store.control_id(),
@@ -582,10 +664,11 @@ fn status_payload(store: &Store, actor: Value) -> Value {
         "endpoint": "unix",
         "policy": policy_values(),
         "actor": actor,
+        "services": services,
     })
 }
 
-fn doctor_payload(store: &Store, root: &Path, actor: Value) -> Value {
+fn doctor_payload(store: &Store, root: &Path, actor: Value, services: Value) -> Value {
     let secrets = SecretStore::detect("hctl2", root.join("secrets"));
     json!({
         "ready": true,
@@ -594,6 +677,7 @@ fn doctor_payload(store: &Store, root: &Path, actor: Value) -> Value {
         "policy": policy_values(),
         "socket": root.join("control.sock").display().to_string(),
         "actor": actor,
+        "services": services,
     })
 }
 

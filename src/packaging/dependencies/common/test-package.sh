@@ -139,7 +139,13 @@ test_dependency_package() {
     "$test_root/$PACKAGE_ID/install.sh" --prefix "$prefix"
     "$test_root/$PACKAGE_ID/install.sh" --prefix "$prefix"
     "$services" --help | grep -F 'Usage:' >/dev/null
-    "$services" --help | grep -F 'tuwunel  cinny  vikunja  dagu  herdr' >/dev/null
+    "$services" --help | grep -F 'tuwunel  cinny  vikunja  dagu  herdr  gitea' >/dev/null
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/gitea" ]] || \
+        die "runtime package does not contain Gitea"
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/tea" ]] || \
+        die "runtime package does not contain tea"
+    [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Gitea-MIT.txt" ]] || \
+        die "runtime package is missing the Gitea license"
     if "$services" status unexpected >/dev/null 2>&1; then
         die "hctl2-services accepted an argument for status"
     fi
