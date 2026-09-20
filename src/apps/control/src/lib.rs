@@ -4,9 +4,11 @@
 
 mod identity;
 mod repositories;
+mod scm;
 mod service;
 mod services;
 mod socket;
+mod tasks;
 
 pub use identity::owner_actor;
 pub use service::{ControlService, PROTOCOL};
@@ -81,7 +83,11 @@ impl Daemon {
             Arc::clone(&self.open_error),
             hosted,
         );
-        serve_listener(listener, service).await
+        let polling = service.reconcile_task_sources();
+        tokio::select! {
+            result = serve_listener(listener, service) => result,
+            _ = polling => Ok(()),
+        }
     }
 }
 

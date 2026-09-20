@@ -1,5 +1,6 @@
-load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:ci.bzl", "CI_FAST", "CI_INTEGRATION")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+load("//build/tools:xz.bzl", "XZ_DIRECTORY")
 
 oncall("hctl2")
 
@@ -8,6 +9,7 @@ CONTROL_DEPS = [
     "root//crates/proto:proto",
     "root//crates/repo:repo",
     "root//crates/store:store",
+    "root//crates/task:task",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:tokio",
     "root//third-party/rust:tokio-stream",
@@ -27,7 +29,7 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":unit_test", ":boundary_test", ":services_test"],
+    tests = [":unit_test", ":boundary_test", ":services_test", ":task_native_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -116,8 +118,25 @@ filegroup(
         "boundary": ":boundary_test[clippy.txt]",
         "library": ":control[clippy.txt]",
         "services": ":services_test[clippy.txt]",
+        "task_native": ":task_native_test[clippy.txt]",
         "unit": ":unit_test[clippy.txt]",
     },
     labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+# Runs the pinned native Gitea/tea pair in a private, loopback-only test directory.
+rust_test(
+    name = "task_native_test",
+    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    crate_root = "src/lib.rs",
+    deps = CONTROL_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "HCTL2_TEST_SCM_DOWNLOADS": "$(location root//packaging/dependencies:scm-downloads)",
+        "HCTL2_TEST_XZ_ROOT": "$(location root//build/tools:xz)/" + XZ_DIRECTORY,
+    },
+    rustc_flags = HCTL2_RUSTC_FLAGS + ["--cfg=hctl_task_native"],
+    labels = CI_INTEGRATION,
     visibility = ["PUBLIC"],
 )

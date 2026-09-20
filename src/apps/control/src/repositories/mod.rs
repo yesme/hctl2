@@ -1,5 +1,5 @@
 //! Repo RPC orchestration. SQLite is locked only for admission/confirmation, never network I/O.
-mod platform;
+use crate::scm as platform;
 
 use std::path::Path;
 use std::sync::Arc;

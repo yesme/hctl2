@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::services::Supervisor;
 
-pub(super) struct Hosted {
+pub(crate) struct Hosted {
     tea: PathBuf,
     pub url: String,
     pub username: String,
@@ -18,6 +18,16 @@ pub(super) struct Hosted {
     credential_ref: String,
 }
 impl Hosted {
+    #[cfg(test)]
+    pub(crate) fn fixture(tea: PathBuf, url: String, username: String, token: String) -> Self {
+        Self {
+            tea,
+            url,
+            username,
+            token,
+            credential_ref: "test-only".into(),
+        }
+    }
     pub fn connect(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
         let (install, state) = services.gitea_paths().ok_or_else(|| {
             reject(
@@ -191,7 +201,12 @@ impl Hosted {
         }
         Ok(hosted)
     }
-    fn api(&self, method: &str, path: &str, body: Option<Value>) -> Result<Option<Value>> {
+    pub(crate) fn api(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Option<Value>> {
         let mut cmd = Command::new(&self.tea);
         cmd.env("GITEA_INSTANCE_URL", &self.url)
             .env("GITEA_TOKEN", &self.token)
@@ -223,7 +238,11 @@ impl Hosted {
                 "read_back_original_intent",
             ));
         }
-        Ok(Some(serde_json::from_slice(&output.stdout)?))
+        Ok(Some(if output.stdout.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&output.stdout)?
+        }))
     }
     pub fn repository(
         &self,
@@ -348,5 +367,5 @@ fn numeric_id(value: &Value) -> Result<String> {
 }
 
 #[cfg(test)]
-#[path = "platform_tests.rs"]
+#[path = "repositories/platform_tests.rs"]
 mod tests;

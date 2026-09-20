@@ -153,3 +153,13 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 | 实际 macOS arm64 完整包：start 仅带 Tuwunel，注册本地仓库后 Gitea 可用、建仓并只推 main、稳定 ID 确认后激活；stop/start 后重复命令仍返回同一 Repo | 接入已有 Supervisor；注册与初始交付分阶段回读，pending 不冒充 active |
 
 未知建仓结果的适配器失败注入使用子进程 fixture：模拟 POST 已生效但返回 HTTP 503；重试按原名称及注册关联读取，POST 计数仍为一次。它检验恢复分支，不冒充真实网络故障实验。没有重做 Gitea 服务、账户系统或 Git 协议。
+
+## 2026-09-21 · 任务源写入条件的范围复核
+
+决定建议：仍采用 Gitea 1.27.3 / tea 0.15.1；修正 09-17「title 与 body 都受它保护」的宽泛说法。`content_version` 的数据库比较并更新只覆盖正文；标题、状态等字段有入口的旧版本检查，不具备整次 PATCH 的原子条件写入保证。任务源能力声明同时写出这个范围，每次 issue 编辑仍带已读到的版本，并回读目标字段；未知不报成功。
+
+钉定源码：[issue API](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/issue.go) 的 `EditIssue` 先检查 `ContentVersion`，随后分别调用 `ChangeTitle`、`ChangeContent`；源码明确留有将全部修改包进事务的待办。不能据入口检查推导多字段事务或标题并发保证。
+
+本包原生 Buck 测试用锁定的官方二进制在私有回环仓库验证：标题写入后 `content_version` 不变；正文写入才推进版本；再携带旧值修改标题返回 409。依赖投影分别读 `dependencies`（阻塞本卡）与 `blocks`（本卡阻塞的卡）；同版本 API 没有父子接口，两个父子字段为空，不从现有阻塞关系编造父子。09-17 的任务后端总览「四家都有父子」不能作为 Gitea 父子能力声明的依据。
+
+评论读取也不套通用分页：[`ListIssueComments`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/issue_comment.go) 返回该 Issue 的全部评论，只有 since/before 过滤，没有 page/limit；通用的「读下一页直到空」会重复读同一批。适配器按此接口单次读取，并保留进程输出大小上限；其他分页接口重复返回同一页时报告不完整，不报告空板。
