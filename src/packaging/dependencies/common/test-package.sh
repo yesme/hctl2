@@ -29,6 +29,35 @@ verify_archive_sidecar() {
         die "archive checksum mismatch: $archive"
 }
 
+verify_locked_scm_source() {
+    local root="$1"
+    local component="$2"
+    local version="$3"
+    local commit="$4"
+    local archive="$5"
+    local sha256="$6"
+
+    awk -F '\t' -v component="$component" -v version="$version" \
+        -v commit="$commit" -v archive="$archive" -v sha256="$sha256" '
+        $1 == component {
+            rows++
+            if (NF == 6 && $2 == version && $3 == commit && $4 == archive &&
+                $5 == sha256 && $6 == "reproducibility") valid++
+        }
+        END { exit !(rows == 1 && valid == 1) }
+    ' "$root/$SOURCE_PACKAGE_ID/sources.tsv" || \
+        die "source package does not record the locked $component source"
+    awk -F '\t' -v component="$component" -v version="$version" \
+        -v commit="$commit" -v sha256="$sha256" '
+        $1 == component {
+            rows++
+            if (NF == 6 && $2 == version && $3 == commit && $5 == sha256) valid++
+        }
+        END { exit !(rows == 1 && valid == 1) }
+    ' "$root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" || \
+        die "runtime package records the wrong $component source metadata"
+}
+
 test_dependency_package() {
     local test_root
     local prefix
@@ -130,6 +159,10 @@ test_dependency_package() {
     grep -F $'herdr\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
         grep -F "$HERDR_SOURCE_ASSET" >/dev/null || \
         die "source package does not contain the locked Herdr source"
+    verify_locked_scm_source "$test_root" gitea "$GITEA_VERSION" \
+        "$GITEA_SOURCE_COMMIT" "$GITEA_SOURCE_ASSET" "$GITEA_SOURCE_SHA256"
+    verify_locked_scm_source "$test_root" tea "$TEA_VERSION" \
+        "$TEA_SOURCE_COMMIT" "$TEA_SOURCE_ASSET" "$TEA_SOURCE_SHA256"
     ! grep -F $'element-web\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" >/dev/null
     while IFS=$'\t' read -r source_component source_version source_commit \
         source_asset source_sha256 source_role; do

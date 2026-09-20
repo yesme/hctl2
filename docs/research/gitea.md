@@ -124,3 +124,16 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 | Forgejo（只对照 swagger，未运行） | 发布页（v16.0.4、v15.0.8）的预编译服务器二进制只有 linux，另有源码包；forgejo 分支 swagger（提交 `3b7f449d`）的 `EditIssueOption` 与 `Issue` 都没有 `content_version`，`EditIssueOption` 与 `EditIssueCommentOption` 各多一个 `updated_at`——那是设置更新时间的字段，不是预期版本比较；issues 列表多 `sort` 参数；projects 与 hook deliveries 同样没有；依赖与 `/repos/issues/search` 有 | 备选不是零成本：Forgejo 未验证服务端条件写入，绑定能力声明按平台探测，条件写入声明「无」；时间戳只作漂移检查、以回读为准，不宣称并发保证；真要验须在 linux 上跑 |
 
 决定不变：Gitea 1.27.3 与 tea 0.15.1 随包，结构化写走 `tea api`。随包配置补两条：`ALLOWED_HOST_LIST = loopback`；不用套接字形态。GitHub Issues 侧的写侧验证同日在私有沙箱完成，见 `sdk/github.md` 复核记录；GitHub 的 issues 权限与 Projects V2 权限分开，`project` scope 只管后者。
+
+## 2026-09-21 · 源码伴随包锁定复核
+
+决定建议：维持 Gitea 1.27.3 与 tea 0.15.1 的官方二进制；补齐同版本上游源码归档，沿用 Buck `http_file` 的 SHA-256 校验和现有源码伴随包，不自行重打上游归档。两项都标 `reproducibility`，表示保留源码供复核，不表示已经验证源码能逐字节重建随包二进制。
+
+| 组件 | 锁定归档 | Release tag 对应 commit | 实测 SHA-256 |
+| --- | --- | --- | --- |
+| Gitea 1.27.3 | [gitea-src-1.27.3.tar.gz](https://dl.gitea.com/gitea/1.27.3/gitea-src-1.27.3.tar.gz) | `146cc3eec57174711eac0e0a0c7b38670c6e3922` | `3283ae40dd1f7b09450bb5a56455e78106fe17f4211d254c7c0179b8927bf382` |
+| tea 0.15.1 | [v0.15.1.tar.gz](https://gitea.com/gitea/tea/archive/v0.15.1.tar.gz)，包内命名 `tea-0.15.1-source.tar.gz` | `f34697c5ed65928e265d6f48e16928819ce0f332` | `e242dd3589c31a36320d75e0de9eefa3fa429bd9b0af89d35af8585c7f514b9c` |
+
+Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag/v1.27.3) 的源码资产；下载摘要与[上游 `.sha256`](https://dl.gitea.com/gitea/1.27.3/gitea-src-1.27.3.tar.gz.sha256) 一致，归档内 `VERSION` 为 `1.27.3`。tea 使用 [Release API](https://gitea.com/api/v1/repos/gitea/tea/releases/tags/v0.15.1) 的 `tarball_url`；其[发布校验清单](https://dl.gitea.com/tea/0.15.1/checksums.txt)未列 tag 源码归档，因此上表是本次下载实算的摘要，不冒充上游签名校验。commit 分别核自 [Gitea tag 的 commit](https://api.github.com/repos/go-gitea/gitea/commits/v1.27.3) 与 [tea tag API](https://gitea.com/api/v1/repos/gitea/tea/tags/v0.15.1)。两份归档的根 `LICENSE` 都是 MIT；原文随归档保留。
+
+落地范围：`lock.json` 的 `common.gitea_source` / `common.tea_source` 与组件源码元数据；`sources.tsv`、源码伴随包及 `dependencies.tsv` 的源码列。运行二进制、下载格式、服务配置与启停行为不变。

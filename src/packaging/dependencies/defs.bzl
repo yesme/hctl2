@@ -126,9 +126,11 @@ def _metadata_lines(target: str, component = None) -> list[str]:
     if component == None or component == "tuwunel":
         lines.append(_readonly("TUWUNEL_RUST_TOOLCHAIN", LOCK["tuwunel_rust"]["version"]))
 
-    selected_components = _COMPONENT_PREFIXES.keys() if component == None else [component]
+    # Full package metadata includes direct-download components (Gitea / tea)
+    # without introducing a component preparation action for them.
+    selected_components = metadata["components"].keys() if component == None else [component]
     for selected_component in selected_components:
-        prefix = _COMPONENT_PREFIXES[selected_component]
+        prefix = selected_component.upper()
         component_metadata = metadata["components"][selected_component]
         source_asset = common_assets[component_metadata["source_asset"]]
         lines.extend([
