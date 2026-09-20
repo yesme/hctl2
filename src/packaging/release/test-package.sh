@@ -177,6 +177,7 @@ empty_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$empty_preview")"
 empty_created="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$test_root/empty-register.json" --key empty-contract --preview-token "$empty_token")"
 "$HCTL2_JQ" -e '.registration.delivered == true and .registration.prepared.local.refs == {} and .error == null' <<<"$empty_created" >/dev/null
 empty_full_name="$("$HCTL2_JQ" -er '.registration.observed.full_name' <<<"$empty_created")"
+empty_id="$("$HCTL2_JQ" -er '.registration.repo_id' <<<"$empty_created")"
 [[ -z "$(git --git-dir="$b0_root/services/data/gitea/gitea-repositories/$empty_full_name.git" for-each-ref)" ]] || die "empty registration invented a ref"
 wait_consumed_available gitea
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
@@ -199,7 +200,9 @@ repo_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" repo regis
 repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_preview")"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" repo register --input "$repo_input" --key package-contract --preview-token "$repo_token" | \
     "$HCTL2_JQ" -e --arg id "$repo_id" '.registration.repo_id == $id and .registration.lifecycle == "active"' >/dev/null
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo list | "$HCTL2_JQ" -e '.items | length == 1' >/dev/null
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" repo list | \
+    "$HCTL2_JQ" -e --arg id "$repo_id" --arg empty "$empty_id" \
+    '.items | (map(.repo_id) | sort) == ([$id, $empty] | sort)' >/dev/null || die "restart duplicated or lost a registration"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
 
