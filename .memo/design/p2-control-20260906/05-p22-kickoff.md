@@ -33,7 +33,7 @@ P2.2 长在 P2.1 上：全部业务命令走甲的命令内核与两半存储，
 | --- | --- | --- |
 | 甲（控制面存储与命令内核，Codex，P2.1） | 已合入 #276 | 四包的地基 |
 | 乙（进程与 CLI 骨架，Grok，P2.1） | 已合入 #279 | CLI 子命令挂乙 |
-| 丁（托管生命周期，Grok，P2.1） | 已合入 #282（前置 #278 已合） | `hctl2 start` 已带起 Tuwunel 与 Gitea；服务备份是停进程后拷数据目录，己 / 戊 消费时可按需换在线备份 |
+| 丁（托管生命周期，Grok，P2.1） | 已合入 #282；修正 #285（Fable） | `hctl2 start` 只带 Tuwunel，Gitea 等戊的首次消费；服务备份是停进程后拷数据目录，己 / 戊 消费时可按需换在线备份 |
 | chat 探针（Grok） | 已完成 #274 | 己的前置；复核记录已追加到 `docs/research/sdk/matrix.md`，全部通过，B1 三项未验 |
 | GitHub Issues 写侧运行验证（`docs/research/sdk/github.md` 09-17） | 已完成 | 庚的 GitHub 一侧 |
 | Gitea issues 调用面（`docs/research/gitea.md` 09-17，`tea api`） | 已完成 | 庚的本地平台一侧、戊的本地平台建仓 |
@@ -51,6 +51,7 @@ P2.2 长在 P2.1 上：全部业务命令走甲的命令内核与两半存储，
 - **依据**：`spec/repo.md` §对象、§写入约束、§Repo 注册、§平台绑定与能力声明；`spec/system.md` §外部权威副作用；`spec/task.md` §契约与来源（缺省任务源）；`docs/research/gitea.md`、`sdk/github.md`、`sdk/git.md`。
 - **失败用例（CT-REPO 现行行）**：同一注册命令重投返回原 Repo、出现第二份登记失败；平台标识缺失不能完成绑定、远端 URL 不代替、辅助证据冲突由人确认；外部平台仓库绑定或换绑到本地平台拒绝；显式不挂走受限路径不因远端证据改判；本地目录入口区分有 remote 与纯本地——读取失败或路径不在指定机器当作纯本地失败、有 remote 未让人选就 detach 失败、另起独立工作改了原目录或 remote 失败、原地切换未经确认失败；只在本地的仓库缺省绑定本地平台、只推当前 HEAD 分支、没有提交只建仓、不配置工作副本 remote 也能登记；待确认 Repo 不接受 Project / Task / Run；注册建 Room 失败；结果未知按原关联键回读不重复建仓，平台不可用保持待确认。
 - **依赖**：甲；丁（Gitea 生命周期，本地平台路径）；乙（CLI 骨架）。
+- **首次消费 Gitea（所有者 2026-09-21 修正，落地 #285）**：`hctl2 start` 只带 Tuwunel；注册纯本地仓库（缺省绑本地平台）或人显式选本地平台时，外部步骤先调 control 的 `Supervisor::consume("gitea")`（运维 Submit `services.consume`）并等探针就绪，再 `tea api` 建仓；已消费集合记在 `<控制面根>/hosted-consumed.json`，之后随 start 一起起。GitHub 等外部平台的 clone 绑来源平台，本机目录只是 Repo Instance，不消费 Gitea。Gitea 管理员账号与令牌的物化归本包。
 
 ### 己 · 聊天端口与 Room（Grok）
 
