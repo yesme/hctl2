@@ -1,6 +1,7 @@
 load("//build/rules:ci.bzl", "CI_INTEGRATION", "CI_PLATFORM", "CI_RELEASE")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
+load("//packaging/dependencies:defs.bzl", "XZ_PRESET")
 
 _SYFT_VERSION = "1.51.1"
 _SYFT_ASSETS = {
@@ -67,6 +68,7 @@ export HCTL2_DEPENDENCY_SOURCE_ROOT="$source_root/packaging/dependencies"
 export HCTL2_SYFT="$source_root/tools/syft/syft"
 export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
 export HCTL2_XZ_VERSION="{xz_version}"
+export HCTL2_XZ_PRESET="{xz_preset}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 bash "$source_root/packaging/release/assemble.sh" \
@@ -75,7 +77,12 @@ bash "$source_root/packaging/release/assemble.sh" \
   --dependencies "$source_root/dependencies/{package_id}.tar.xz" \
   --sources "$source_root/dependencies/{package_id}-sources.tar.xz" \
   --output "$output_root"
-""".format(package_id = package_id, xz_directory = XZ_DIRECTORY, xz_version = XZ_VERSION)
+""".format(
+        package_id = package_id,
+        xz_directory = XZ_DIRECTORY,
+        xz_version = XZ_VERSION,
+        xz_preset = XZ_PRESET,
+    )
 
 def _platform_select(values: dict):
     return select({

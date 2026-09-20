@@ -29,6 +29,20 @@ run_xz -9 -T+1 --no-adjust --block-size=1MiB -c "$work/input" >"$work/one.xz"
 run_xz -9 -T2 --no-adjust --block-size=1MiB -c "$work/input" >"$work/two.xz"
 cmp "$work/one.xz" "$work/two.xz"
 
+# Presets: the default is the shipped -9 stream byte for byte; `fast` (-1)
+# still round-trips; anything else is rejected instead of silently falling back.
+run_xz -9 -T0 --no-adjust -c <"$work/input" >"$work/explicit-9.xz"
+cmp "$work/normal.xz" "$work/explicit-9.xz"
+HCTL2_XZ_PRESET=release compress_archive <"$work/input" >"$work/release.xz"
+cmp "$work/normal.xz" "$work/release.xz"
+HCTL2_XZ_PRESET=fast compress_archive <"$work/input" >"$work/fast.xz"
+run_xz -dc "$work/fast.xz" >"$work/fast-output"
+cmp "$work/input" "$work/fast-output"
+if (HCTL2_XZ_PRESET=bogus compress_archive <"$work/input" >/dev/null) >"$work/bogus-preset.log" 2>&1; then
+    die "unknown xz preset was accepted"
+fi
+grep -F 'unsupported HCTL2_XZ_PRESET' "$work/bogus-preset.log" >/dev/null
+
 dd if="$work/normal.xz" of="$work/broken.xz" bs=1 count=16 2>/dev/null
 if run_xz -t "$work/broken.xz" 2>/dev/null; then
     die "truncated xz stream was accepted"
@@ -49,4 +63,4 @@ if (HCTL2_XZ_ROOT="$work/missing" require_pinned_xz) >"$work/missing-tool.log" 2
     die "missing pinned tool fell back to PATH"
 fi
 grep -F 'could not run pinned xz' "$work/missing-tool.log" >/dev/null
-printf 'xz pin, environment isolation, round trip, MT reproducibility and rejection tests passed\n'
+printf 'xz pin, environment isolation, presets, round trip, MT reproducibility and rejection tests passed\n'

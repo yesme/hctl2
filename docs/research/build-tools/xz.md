@@ -48,3 +48,5 @@ Linux ELF 依赖 glibc（最高要求 GLIBC_2.17）和 liblzma；制品的 RPATH
 
 - 构建启动也有解码前提：本库所用 Buck Prelude 的 `prelude//http_archive/unarchive.bzl` 中，`_TAR_FLAGS` 为 `tar.xz` 选择 `-J`，`_unarchive_cmd` 调用构建机的 `tar`，先解开 pkgx 工具包。macOS 系统 tar 自带解码能力；GNU tar 环境需可调用的 xz 解码器。这个启动用解码器不决定安装归档的压缩字节；后续压缩仍只用已钉定、同时核验工具与 liblzma 的 5.8.4，满足裁定的 ≥ 5.4，不要求启动用解码器同版。
 - 多线程一致性回归比较同一份 3 MiB 输入、同一 1 MiB 块大小下的 `-T+1` 与 `-T2`；它不是在不同核数机器上逐字节比较完整安装包。三平台完整安装测试验证的是归档完整性与安装、服务生命周期，不应将它报告为完整包的跨机字节一致性证明。
+- 2026-09-21 · 预设开关：`compress_archive` 改读 `HCTL2_XZ_PRESET`，`release` = `-9`（缺省，发布制品，所有者 09-07 裁定不变），`fast` = `-1`（只给 pull_request 的验证构建，产物安装、测试但不发布），其他取值直接报错不退回。取值由 Buck 配置 `hctl2.xz_preset` 经两个打包 genrule 的命令注入，CI 只在 pull_request 事件传 `--config hctl2.xz_preset=fast`。`check_xz.sh` 加三条：缺省与显式 `-9` 字节相同、`fast` 往返一致、未知预设被拒。`-T0 --no-adjust` 与环境隔离不随预设变。
+

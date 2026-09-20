@@ -3,6 +3,8 @@ name: Release
 on:
   pull_request:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   schedule:
@@ -171,11 +173,24 @@ jobs:
         working-directory: src
     env:
       BUCK_CONSOLE: simple
-      HCTL2_BUCK2_CACHE: "0"
+      # Same bazel-remote REAPI cache as the Code workflow, keyed per platform.
+      HCTL2_BUCK2_CACHE: local
+      HCTL2_BUCK2_CACHE_MAX_GIB: 2
 
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Locate Buck2 action cache
+        run: echo "HCTL2_BUCK2_CACHE_DIR=$RUNNER_TEMP/hctl2-buck2-cache" >> "$GITHUB_ENV"
+
+      - name: Restore Buck2 action cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/hctl2-buck2-cache/data
+          key: buck2-reapi-${{ matrix.buck_target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            buck2-reapi-${{ matrix.buck_target }}-
 
       - name: Read workspace release version
         id: metadata
@@ -210,10 +225,37 @@ jobs:
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
           --out "$RUNNER_TEMP/hctl2-release"
 
-      - name: Test complete offline install and lifecycle
+      # Pull-request packages are installed and exercised but never published,
+      # so they use the fast xz preset; main, tags, schedule and dispatch keep
+      # the shipped `release` preset (xz -9).
+      - name: Test complete offline install and lifecycle (fast xz preset)
+        if: ${{ github.event_name == 'pull_request' }}
         run: >-
           ./buck2 test root//packaging/release:complete-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
+          --config hctl2.xz_preset=fast
+
+      - name: Test complete offline install and lifecycle
+        if: ${{ github.event_name != 'pull_request' }}
+        run: >-
+          ./buck2 test root//packaging/release:complete-test
+          --target-platforms root//build/platforms:${{ matrix.buck_target }}
+
+      - name: Stop Buck2 action cache
+        if: always()
+        run: |
+          state="$HCTL2_BUCK2_CACHE_DIR/state"
+          if [ -S "$state/process-compose.sock" ]; then
+            XDG_CONFIG_HOME="$state/config" build/tools/process-compose-bin \
+              --use-uds --unix-socket "$state/process-compose.sock" down || true
+          fi
+
+      - name: Save Buck2 action cache
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ${{ runner.temp }}/hctl2-buck2-cache/data
+          key: buck2-reapi-${{ matrix.buck_target }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload release artifacts
         if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
