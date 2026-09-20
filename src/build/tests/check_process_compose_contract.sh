@@ -143,6 +143,7 @@ if ! pc --config "$fixture" up --dry-run >/dev/null; then
 else
     note "PASS lifecycle fixture --dry-run"
 fi
+pc down >/dev/null 2>&1 || true
 
 # Validate the real five-service files with placeholder env. Commands are not
 # executed under --dry-run; this catches merge/schema errors on every platform.
@@ -177,6 +178,7 @@ then
 else
     fail "packaged service YAML failed --dry-run"
 fi
+pc down >/dev/null 2>&1 || true
 
 wait_ready() {
     local name="$1"
