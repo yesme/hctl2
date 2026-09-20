@@ -5,7 +5,7 @@
 先校验下载目录中的 SHA-256 sidecar，再解压并安装：
 
 ```bash
-tar -xzf hctl2-<version>-<target>.tar.gz
+tar -xJf hctl2-<version>-<target>.tar.xz
 cd hctl2-<version>-<target>
 ./install.sh
 ```

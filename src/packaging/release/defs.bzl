@@ -1,5 +1,6 @@
 load("//build/rules:ci.bzl", "CI_INTEGRATION", "CI_PLATFORM", "CI_RELEASE")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
+load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
 
 _SYFT_VERSION = "1.51.1"
 _SYFT_ASSETS = {
@@ -56,15 +57,17 @@ source "$source_root/build-metadata.sh"
 export HCTL2_PRODUCT_ROOT="$source_root/product"
 export HCTL2_DEPENDENCY_SOURCE_ROOT="$source_root/packaging/dependencies"
 export HCTL2_SYFT="$source_root/tools/syft/syft"
+export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
+export HCTL2_XZ_VERSION="{xz_version}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 bash "$source_root/packaging/release/assemble.sh" \
   --first-party "$source_root/first-party" \
   --agency-skills "$source_root/agency/skills" \
-  --dependencies "$source_root/dependencies/{package_id}.tar.gz" \
-  --sources "$source_root/dependencies/{package_id}-sources.tar.gz" \
+  --dependencies "$source_root/dependencies/{package_id}.tar.xz" \
+  --sources "$source_root/dependencies/{package_id}-sources.tar.xz" \
   --output "$output_root"
-""".format(package_id = package_id)
+""".format(package_id = package_id, xz_directory = XZ_DIRECTORY, xz_version = XZ_VERSION)
 
 def _platform_select(values: dict):
     return select({
@@ -107,6 +110,7 @@ def complete_release(name: str):
             "packaging/release/assemble.sh": "assemble.sh",
             "packaging/release/install.sh": "install.sh",
             "product/Cargo.toml": "root//:Cargo.toml",
+            "tools/xz": "root//build/tools:xz",
             "tools/syft": _platform_select({
                 target: ":syft-{}".format(target)
                 for target in _SYFT_ASSETS
@@ -136,6 +140,7 @@ def complete_release(name: str):
             ":{}".format(name),
             "root//packaging/dependencies:metadata",
             "root//packaging/dependencies:test-support",
+            "root//packaging/dependencies:scm-downloads",
             ":test-toolbox.sh",
         ],
         labels = CI_INTEGRATION,

@@ -42,5 +42,5 @@ platform_create_archive() {
     local source_date_epoch="$4"
 
     tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$source_date_epoch" \
-        -C "$build_dir" -cf - "$package_id" | gzip -n >"$archive"
+        -C "$build_dir" -cf - "$package_id" | compress_archive >"$archive"
 }

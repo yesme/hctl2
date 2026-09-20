@@ -26,15 +26,15 @@
 
 | 文件 | 用途 | 是否需要安装 |
 | --- | --- | --- |
-| `hctl2-0.0.0-<target>.tar.gz` | 运行安装包 | 是 |
-| `hctl2-0.0.0-<target>-sources.tar.gz` | GPL/AGPL 对应源码与其余构建审计源码 | 否 |
+| `hctl2-0.0.0-<target>.tar.xz` | 运行安装包 | 是 |
+| `hctl2-0.0.0-<target>-sources.tar.xz` | GPL/AGPL 对应源码与其余构建审计源码 | 否 |
 
 两份归档各有独立的 `.sha256` 文件。源码包必须和运行包保存在同一 Release 下载位置，但普通用户安装和运行 HCTL2 时不需要下载它。
 
-解压并按默认位置安装：
+解压并按默认位置安装（macOS 使用系统 tar；Linux 需有 tar 和 xz 解码器，通常由 `xz-utils` 提供）：
 
 ```bash
-tar -xzf hctl2-0.0.0-<target>.tar.gz
+tar -xJf hctl2-0.0.0-<target>.tar.xz
 cd hctl2-0.0.0-<target>
 ./install.sh
 ```

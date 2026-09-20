@@ -18,6 +18,10 @@ test-package.sh         Buck sh_test 调用的整包生命周期测试体
 
 Buck 从 `lock.json` 为选定平台生成只读的 `build-metadata.sh`；脚本不再维护第二份版本、URL、摘要或 `uname` 分发表。新增 CPU 架构时应扩展 lock、Buck platform 和对应 platform 实现；CI 与发布入口仍只选择 Buck platform。
 
+`lock.json` 的 `download_only` 另锁 Gitea 1.27.3（`.xz`）与 tea 0.15.1（单二进制）的 Linux / macOS × x86_64 / arm64 制品。`./buck2 build root//packaging/dependencies:scm-downloads` 只下载并校验八份 SHA-256；完整发行测试也依赖它，但这些文件尚不进入安装包、不启动服务，Linux arm64 也未因此成为发布目标。
+
+HCTL2 两份归档使用锁定的 [xz 5.8.4](../../../docs/research/build-tools/xz.md) `-9 -T0`，沿用 tar 的时间与排序归一化。已有上游下载格式及托管的 Tuwunel `.tar.gz` 不变。
+
 三个发布 target 都要求原生构建，不在另一架构上伪装交叉构建：
 
 | target | 构建宿主 | 组件来源 |
@@ -46,10 +50,10 @@ Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构
 开发机由 loopback `bazel-remote` 在各 worktree 之间共享标准 REAPI CAS/action results。CI 不持久化本地 REAPI 数据或 `buck-out`；macOS 正常发布直接下载约 33–36 MiB 的 Tuwunel 压缩包并由 Buck 校验 SHA-256，不再用约 0.5–1 GiB 的 cache 掩盖源码编译。导出的目录包含：
 
 ```text
-hctl2-<version>-<target>.tar.gz
-hctl2-<version>-<target>.tar.gz.sha256
-hctl2-<version>-<target>-sources.tar.gz
-hctl2-<version>-<target>-sources.tar.gz.sha256
+hctl2-<version>-<target>.tar.xz
+hctl2-<version>-<target>.tar.xz.sha256
+hctl2-<version>-<target>-sources.tar.xz
+hctl2-<version>-<target>-sources.tar.xz.sha256
 ```
 
 Linux 构建只需基本归档工具和用于解开 Tuwunel 官方包的 `dpkg-deb`，不需要 Rust 或 C toolchain，也不调用 `apt-get`。Static Web Server 和 Herdr 都使用上游静态二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
@@ -77,7 +81,7 @@ macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必�
 把 `<target>` 换成下载包名中的目标：
 
 ```bash
-tar -xzf hctl2-0.0.0-<target>.tar.gz
+tar -xJf hctl2-0.0.0-<target>.tar.xz
 cd hctl2-0.0.0-<target>
 ./install.sh
 ~/.local/bin/hctl2-services start

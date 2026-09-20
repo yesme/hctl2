@@ -79,10 +79,10 @@ test_dependency_package() {
 
     verify_archive_sidecar "$ARCHIVE"
     verify_archive_sidecar "$SOURCE_ARCHIVE"
-    tar -xzf "$ARCHIVE" -C "$test_root"
-    tar -xzf "$SOURCE_ARCHIVE" -C "$test_root"
+    tar -xJf "$ARCHIVE" -C "$test_root"
+    tar -xJf "$SOURCE_ARCHIVE" -C "$test_root"
     grep -F '# HCTL2 使用说明' "$test_root/$PACKAGE_ID/USAGE.md" >/dev/null
-    grep -F "$SOURCE_PACKAGE_ID.tar.gz" "$test_root/$PACKAGE_ID/SOURCES.md" >/dev/null
+    grep -F "$SOURCE_PACKAGE_ID.tar.xz" "$test_root/$PACKAGE_ID/SOURCES.md" >/dev/null
     [[ -f "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/cinny/index.html" ]] || \
         die "runtime package does not contain Cinny"
     [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/static-web-server" ]] || \

@@ -99,6 +99,6 @@ platform_create_archive() {
             --no-recursion \
             --uid 0 --gid 0 --uname root --gname wheel --numeric-owner \
             -cf - -T "$file_list"
-    ) | gzip -n >"$archive"
+    ) | compress_archive >"$archive"
     rm -f -- "$file_list"
 }
