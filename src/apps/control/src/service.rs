@@ -1,12 +1,14 @@
 //! Query / Preview / Submit / Subscribe. Store errors are forwarded unchanged.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use crate::owner_actor;
+use crate::socket_path;
 use foundation::SecretStore;
 use proto::control_server::Control;
 use proto::{
@@ -14,16 +16,19 @@ use proto::{
     SubmitRequest, SubmitResponse, SubscribeEvent, SubscribeRequest,
 };
 use serde_json::{Value, json};
-use store::{StartupStatus, Store, StoreError};
+use store::{StartupStatus, Store, StoreError, TrustedActor};
 use tokio::sync::{Mutex, broadcast};
 use tokio_stream::Stream;
+use tonic::transport::server::UdsConnectInfo;
 use tonic::{Request, Response, Status};
 
 pub const PROTOCOL: &str = "hctl2.control.v1";
 const LOG_LIMIT: usize = 32;
+const PREVIEW_LIMIT: usize = 32;
 
 #[derive(Clone)]
 struct Preview {
+    token: String,
     operation: String,
     payload: Vec<u8>,
 }
@@ -39,7 +44,8 @@ pub struct ControlService {
     root: PathBuf,
     status: StartupStatus,
     store: Arc<Mutex<Option<Store>>>,
-    previews: Mutex<HashMap<String, Preview>>,
+    open_error: Arc<Mutex<Option<StoreError>>>,
+    previews: Mutex<VecDeque<Preview>>,
     events: Mutex<VecDeque<Event>>,
     seq: AtomicI64,
     bus: broadcast::Sender<Event>,
@@ -47,13 +53,19 @@ pub struct ControlService {
 
 impl ControlService {
     #[must_use]
-    pub fn new(root: PathBuf, status: StartupStatus, store: Arc<Mutex<Option<Store>>>) -> Self {
+    pub fn new(
+        root: PathBuf,
+        status: StartupStatus,
+        store: Arc<Mutex<Option<Store>>>,
+        open_error: Arc<Mutex<Option<StoreError>>>,
+    ) -> Self {
         let (bus, _) = broadcast::channel(64);
         Self {
             root,
             status,
             store,
-            previews: Mutex::new(HashMap::new()),
+            open_error,
+            previews: Mutex::new(VecDeque::new()),
             events: Mutex::new(VecDeque::new()),
             seq: AtomicI64::new(0),
             bus,
@@ -72,7 +84,43 @@ impl ControlService {
         }
     }
 
-    fn startup_error(&self) -> Option<ProtoError> {
+    fn require_owner<T>(&self, request: &Request<T>) -> Result<TrustedActor, ProtoError> {
+        let socket = socket_path(&self.root);
+        let Some(info) = request.extensions().get::<UdsConnectInfo>() else {
+            return Err(error(
+                "PERMISSION_DENIED",
+                "missing unix peer credentials",
+                "reconnect_control",
+            ));
+        };
+        let Some(cred) = info.peer_cred else {
+            return Err(error(
+                "PERMISSION_DENIED",
+                "unix peer credentials unavailable",
+                "reconnect_control",
+            ));
+        };
+        let owner = std::fs::metadata(&socket)
+            .map(|meta| meta.uid())
+            .unwrap_or(u32::MAX);
+        if cred.uid() != owner {
+            return Err(error(
+                "PERMISSION_DENIED",
+                "peer uid does not own the control socket",
+                "reconnect_control",
+            ));
+        }
+        Ok(owner_actor(cred.uid()))
+    }
+
+    async fn presented_open_error(&self) -> Option<ProtoError> {
+        self.open_error.lock().await.as_ref().map(present)
+    }
+
+    async fn startup_error(&self) -> Option<ProtoError> {
+        if let Some(error) = self.presented_open_error().await {
+            return Some(error);
+        }
         match self.status.require_ready() {
             Ok(()) => None,
             Err(err) => Some(present(&err)),
@@ -105,37 +153,25 @@ impl Control for ControlService {
         &self,
         request: Request<QueryRequest>,
     ) -> Result<Response<QueryResponse>, Status> {
+        let actor = match self.require_owner(&request) {
+            Ok(actor) => actor,
+            Err(error) => return Ok(err_query_proto(error, 0)),
+        };
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
-            return Ok(Response::new(QueryResponse {
-                error: Some(error),
-                payload: Vec::new(),
-                event_seq: self.seq.load(Ordering::Acquire),
-            }));
+            return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
-        if let Some(error) = self.startup_error() {
-            return Ok(Response::new(QueryResponse {
-                error: Some(error),
-                payload: Vec::new(),
-                event_seq: self.seq.load(Ordering::Acquire),
-            }));
-        }
-        let mut store_slot = self.store.lock().await;
-        let Some(store) = store_slot.as_mut() else {
-            return Ok(Response::new(QueryResponse {
-                error: Some(error(
-                    "STORE_NOT_READY",
-                    "storage is not serving",
-                    "check_status",
-                )),
-                payload: Vec::new(),
-                event_seq: self.seq.load(Ordering::Acquire),
-            }));
+        let payload = match json_bytes(&req.payload) {
+            Ok(value) => value,
+            Err(error) => return Ok(err_query_proto(error, 0)),
         };
-        let payload = json_bytes(&req.payload);
+        if matches!(req.kind.as_str(), "status" | "doctor") {
+            return Ok(self.status_or_doctor(&req.kind, &actor).await);
+        }
+        if let Some(error) = self.startup_error().await {
+            return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
+        }
         let result = match req.kind.as_str() {
-            "status" => status_payload(store),
-            "doctor" => doctor_payload(store, &self.root),
             "pending" => json!({"items": []}),
             "overview" => json!({"projection":"overview","placeholder":true}),
             "get" | "versions" => {
@@ -143,26 +179,42 @@ impl Control for ControlService {
                     "get/versions are internal store APIs and are not public Query",
                 ));
             }
-            "backup.verify" => match payload.get("path").and_then(Value::as_str) {
-                Some(path) => match Store::verify_backup(Path::new(path)) {
-                    Ok(report) => serde_json::to_value(report).unwrap_or(json!({})),
-                    Err(err) => {
-                        return Ok(err_query(&err, self.seq.load(Ordering::Acquire)));
-                    }
-                },
-                None => {
+            "backup.verify" => {
+                let Some(path) = payload.get("path").and_then(Value::as_str) else {
                     return Ok(invalid_query("backup.verify needs path"));
+                };
+                let path = path.to_owned();
+                match tokio::task::spawn_blocking(move || Store::verify_backup(Path::new(&path)))
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(StoreError {
+                            code: "STORAGE_IO",
+                            message: "backup verify worker failed".into(),
+                            recovery_action: "inspect_storage",
+                        })
+                    }) {
+                    Ok(report) => serde_json::to_value(report).unwrap_or(json!({})),
+                    Err(err) => return Ok(err_query(&err, self.seq.load(Ordering::Acquire))),
                 }
-            },
-            "restore.preview" => match payload.get("path").and_then(Value::as_str) {
-                Some(path) => match Store::verify_backup(Path::new(path)) {
+            }
+            "restore.preview" => {
+                let Some(path) = payload.get("path").and_then(Value::as_str) else {
+                    return Ok(invalid_query("restore.preview needs path"));
+                };
+                let path = path.to_owned();
+                match tokio::task::spawn_blocking(move || Store::verify_backup(Path::new(&path)))
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(StoreError {
+                            code: "STORAGE_IO",
+                            message: "restore preview worker failed".into(),
+                            recovery_action: "inspect_storage",
+                        })
+                    }) {
                     Ok(report) => json!({"dangerous":true,"report":report}),
-                    Err(err) => {
-                        return Ok(err_query(&err, self.seq.load(Ordering::Acquire)));
-                    }
-                },
-                None => return Ok(invalid_query("restore.preview needs path")),
-            },
+                    Err(err) => return Ok(err_query(&err, self.seq.load(Ordering::Acquire))),
+                }
+            }
             other => {
                 return Ok(invalid_query(&format!("unknown query {other}")));
             }
@@ -178,32 +230,28 @@ impl Control for ControlService {
         &self,
         request: Request<PreviewRequest>,
     ) -> Result<Response<PreviewResponse>, Status> {
+        if let Err(error) = self.require_owner(&request) {
+            return Ok(preview_err(error));
+        }
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
-            return Ok(Response::new(PreviewResponse {
-                error: Some(error),
-                preview_token: String::new(),
-                dangerous: false,
-                effect_summary: Vec::new(),
-            }));
+            return Ok(preview_err(error));
         }
-        if let Some(error) = self.startup_error() {
-            return Ok(Response::new(PreviewResponse {
-                error: Some(error),
-                preview_token: String::new(),
-                dangerous: false,
-                effect_summary: Vec::new(),
-            }));
+        if let Some(error) = self.startup_error().await {
+            return Ok(preview_err(error));
         }
         let dangerous = is_dangerous(&req.operation);
         let token = preview_token(&req.operation, &req.payload, &req.command_id);
-        self.previews.lock().await.insert(
-            token.clone(),
-            Preview {
-                operation: req.operation.clone(),
-                payload: req.payload.clone(),
-            },
-        );
+        let mut previews = self.previews.lock().await;
+        previews.push_back(Preview {
+            token: token.clone(),
+            operation: req.operation.clone(),
+            payload: req.payload.clone(),
+        });
+        while previews.len() > PREVIEW_LIMIT {
+            previews.pop_front();
+        }
+        drop(previews);
         Ok(Response::new(PreviewResponse {
             error: None,
             preview_token: token,
@@ -218,37 +266,64 @@ impl Control for ControlService {
         &self,
         request: Request<SubmitRequest>,
     ) -> Result<Response<SubmitResponse>, Status> {
+        if let Err(error) = self.require_owner(&request) {
+            return Ok(submit_err(error, 0));
+        }
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
             return Ok(submit_err(error, 0));
         }
-        if let Some(error) = self.startup_error() {
+        if let Some(error) = self.startup_error().await {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
         }
         if is_dangerous(&req.operation) {
             let previews = self.previews.lock().await;
-            match previews.get(&req.preview_token) {
-                Some(preview)
-                    if preview.operation == req.operation && preview.payload == req.payload => {}
-                _ => {
-                    return Ok(submit_err(
-                        error(
-                            "PREVIEW_REQUIRED",
-                            "dangerous submit requires a matching preview token",
-                            "preview_then_submit",
-                        ),
-                        self.seq.load(Ordering::Acquire),
-                    ));
-                }
+            let matched = previews.iter().any(|preview| {
+                preview.token == req.preview_token
+                    && preview.operation == req.operation
+                    && preview.payload == req.payload
+            });
+            if !matched {
+                return Ok(submit_err(
+                    error(
+                        "PREVIEW_REQUIRED",
+                        "dangerous submit requires a matching preview token",
+                        "preview_then_submit",
+                    ),
+                    self.seq.load(Ordering::Acquire),
+                ));
             }
         }
-        let payload = json_bytes(&req.payload);
-        let mut store_slot = self.store.lock().await;
-        let result = match run_operation(&req.operation, &payload, &mut store_slot, &self.root) {
+        let payload = match json_bytes(&req.payload) {
             Ok(value) => value,
-            Err(err) => return Ok(submit_err(err, 0)),
+            Err(error) => return Ok(submit_err(error, 0)),
         };
-        drop(store_slot);
+        let store = Arc::clone(&self.store);
+        let operation = req.operation.clone();
+        let root = self.root.clone();
+        let result = match tokio::task::spawn_blocking(move || {
+            let mut store_slot = store.blocking_lock();
+            run_operation(&operation, &payload, &mut store_slot, &root)
+        })
+        .await
+        {
+            Ok(outcome) => match outcome {
+                Ok(value) => value,
+                Err(err) => return Ok(submit_err(err, 0)),
+            },
+            Err(_) => {
+                return Ok(submit_err(
+                    error("STORAGE_IO", "submit worker failed", "inspect_storage"),
+                    0,
+                ));
+            }
+        };
+        if is_dangerous(&req.operation) {
+            self.previews
+                .lock()
+                .await
+                .retain(|preview| preview.token != req.preview_token);
+        }
         let seq = self
             .emit("submit", json!({"operation":req.operation}))
             .await;
@@ -263,60 +338,93 @@ impl Control for ControlService {
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
+        if let Err(error) = self.require_owner(&request) {
+            return Ok(subscribe_error(error));
+        }
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
-            let stream = tokio_stream::once(Ok(SubscribeEvent {
-                error: Some(error),
-                seq: 0,
-                kind: String::new(),
-                payload: Vec::new(),
-                snapshot: false,
-            }));
-            return Ok(Response::new(Box::pin(stream)));
+            return Ok(subscribe_error(error));
         }
-        if let Some(error) = self.startup_error() {
-            let stream = tokio_stream::once(Ok(SubscribeEvent {
-                error: Some(error),
-                seq: 0,
-                kind: String::new(),
-                payload: Vec::new(),
-                snapshot: false,
-            }));
-            return Ok(Response::new(Box::pin(stream)));
+        if let Some(error) = self.startup_error().await {
+            return Ok(subscribe_error(error));
         }
         let log = self.events.lock().await;
         let oldest = log.front().map(|event| event.seq).unwrap_or(0);
         let latest = self.seq.load(Ordering::Acquire);
         if req.since_seq > 0 && (req.since_seq < oldest || req.since_seq > latest) {
             drop(log);
-            let stream = tokio_stream::once(Ok(SubscribeEvent {
-                error: Some(error(
-                    "CURSOR_EXPIRED",
-                    "subscribe cursor is behind the retained log or in the future",
-                    "resync_snapshot",
-                )),
-                seq: latest,
-                kind: "snapshot".into(),
-                payload: json!({"event_seq":latest}).to_string().into_bytes(),
-                snapshot: true,
-            }));
-            return Ok(Response::new(Box::pin(stream)));
+            return Ok(expired_snapshot(latest));
         }
         let backlog: Vec<Event> = log
             .iter()
             .filter(|event| event.seq > req.since_seq)
             .cloned()
             .collect();
-        drop(log);
+        let last_backlog = backlog.last().map_or(req.since_seq, |event| event.seq);
         let rx = self.bus.subscribe();
-        let stream = subscribe_stream(backlog, rx);
+        drop(log);
+        let stream = subscribe_stream(backlog, rx, last_backlog);
         Ok(Response::new(Box::pin(stream)))
+    }
+}
+
+impl ControlService {
+    async fn status_or_doctor(&self, kind: &str, actor: &TrustedActor) -> Response<QueryResponse> {
+        let seq = self.seq.load(Ordering::Acquire);
+        if let Some(error) = self.startup_error().await {
+            let payload = json!({
+                "ready": false,
+                "startup_error": {
+                    "code": error.code,
+                    "message": error.message,
+                    "recovery_action": error.recovery_action,
+                },
+                "actor": actor.0,
+            });
+            return Response::new(QueryResponse {
+                error: Some(error),
+                payload: payload.to_string().into_bytes(),
+                event_seq: seq,
+            });
+        }
+        let store = Arc::clone(&self.store);
+        let root = self.root.clone();
+        let kind = kind.to_owned();
+        let actor_json = serde_json::to_value(&actor.0).unwrap_or(json!({}));
+        let payload = tokio::task::spawn_blocking(move || {
+            let slot = store.blocking_lock();
+            let Some(store) = slot.as_ref() else {
+                return Err(not_ready_error());
+            };
+            Ok(if kind == "doctor" {
+                doctor_payload(store, &root, actor_json)
+            } else {
+                status_payload(store, actor_json)
+            })
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(error(
+                "STORAGE_IO",
+                "status worker failed",
+                "inspect_storage",
+            ))
+        });
+        match payload {
+            Ok(value) => Response::new(QueryResponse {
+                error: None,
+                payload: value.to_string().into_bytes(),
+                event_seq: seq,
+            }),
+            Err(error) => err_query_proto(error, seq),
+        }
     }
 }
 
 fn subscribe_stream(
     backlog: Vec<Event>,
     mut rx: broadcast::Receiver<Event>,
+    last_backlog: i64,
 ) -> impl Stream<Item = Result<SubscribeEvent, Status>> {
     tokio_stream::wrappers::ReceiverStream::new({
         let (tx, rx_out) = tokio::sync::mpsc::channel(16);
@@ -329,6 +437,9 @@ fn subscribe_stream(
             loop {
                 match rx.recv().await {
                     Ok(event) => {
+                        if event.seq <= last_backlog {
+                            continue;
+                        }
                         if tx.send(Ok(to_proto(event))).await.is_err() {
                             return;
                         }
@@ -441,11 +552,12 @@ fn protocol(value: &Option<proto::Protocol>) -> &str {
         .map_or("", |protocol| protocol.version.as_str())
 }
 
-fn json_bytes(bytes: &[u8]) -> Value {
+fn json_bytes(bytes: &[u8]) -> Result<Value, ProtoError> {
     if bytes.is_empty() {
-        json!({})
+        Ok(json!({}))
     } else {
-        serde_json::from_slice(bytes).unwrap_or(json!({}))
+        serde_json::from_slice(bytes)
+            .map_err(|_| error("INVALID_INPUT", "payload must be JSON", "correct_input"))
     }
 }
 
@@ -461,52 +573,53 @@ fn error(code: &str, message: impl Into<String>, recovery: &str) -> ProtoError {
     }
 }
 
-fn status_payload(store: &Store) -> Value {
+fn status_payload(store: &Store, actor: Value) -> Value {
     json!({
+        "ready": true,
         "control_id": store.control_id(),
         "writer_generation": store.generation().0,
         "protocol": PROTOCOL,
         "endpoint": "unix",
         "policy": policy_values(),
-        "actor": owner_actor().0,
+        "actor": actor,
     })
 }
 
-fn doctor_payload(store: &Store, root: &Path) -> Value {
+fn doctor_payload(store: &Store, root: &Path, actor: Value) -> Value {
     let secrets = SecretStore::detect("hctl2", root.join("secrets"));
     json!({
+        "ready": true,
         "control_id": store.control_id(),
         "secret_backend": format!("{:?}", secrets.backend()),
         "policy": policy_values(),
         "socket": root.join("control.sock").display().to_string(),
-        "actor": owner_actor().0,
+        "actor": actor,
     })
 }
 
 fn policy_values() -> Value {
     json!({
         "endpoint_and_connection": "loopback-unix-owner-only",
-        "non_local_requires_auth": true,
+        "non_local_transport": "not_offered",
         "credential_storage": "system-keyring-then-user-file",
         "client_least_privilege": true,
-        "tenant_isolation": "per-control",
     })
 }
 
 fn err_query(err: &StoreError, seq: i64) -> Response<QueryResponse> {
+    err_query_proto(present(err), seq)
+}
+
+fn err_query_proto(error: ProtoError, seq: i64) -> Response<QueryResponse> {
     Response::new(QueryResponse {
-        error: Some(present(err)),
+        error: Some(error),
         payload: Vec::new(),
         event_seq: seq,
     })
 }
 
 fn invalid_query(message: &str) -> Response<QueryResponse> {
-    Response::new(QueryResponse {
-        error: Some(error("INVALID_INPUT", message, "correct_input")),
-        payload: Vec::new(),
-        event_seq: 0,
-    })
+    err_query_proto(error("INVALID_INPUT", message, "correct_input"), 0)
 }
 
 fn submit_err(error: ProtoError, seq: i64) -> Response<SubmitResponse> {
@@ -515,6 +628,47 @@ fn submit_err(error: ProtoError, seq: i64) -> Response<SubmitResponse> {
         result: Vec::new(),
         event_seq: seq,
     })
+}
+
+fn preview_err(error: ProtoError) -> Response<PreviewResponse> {
+    Response::new(PreviewResponse {
+        error: Some(error),
+        preview_token: String::new(),
+        dangerous: false,
+        effect_summary: Vec::new(),
+    })
+}
+
+fn subscribe_error(
+    error: ProtoError,
+) -> Response<Pin<Box<dyn Stream<Item = Result<SubscribeEvent, Status>> + Send + 'static>>> {
+    let stream = tokio_stream::once(Ok(SubscribeEvent {
+        error: Some(error),
+        seq: 0,
+        kind: String::new(),
+        payload: Vec::new(),
+        snapshot: false,
+    }));
+    Response::new(Box::pin(stream))
+}
+
+fn expired_snapshot(
+    latest: i64,
+) -> Response<Pin<Box<dyn Stream<Item = Result<SubscribeEvent, Status>> + Send + 'static>>> {
+    let stream = tokio_stream::once(Ok(SubscribeEvent {
+        error: Some(error(
+            "CURSOR_EXPIRED",
+            "subscribe cursor is behind the retained log or in the future",
+            "resync_snapshot",
+        )),
+        seq: latest,
+        kind: "snapshot".into(),
+        payload: json!({"event_seq":latest,"placeholder":true})
+            .to_string()
+            .into_bytes(),
+        snapshot: true,
+    }));
+    Response::new(Box::pin(stream))
 }
 
 fn not_ready_error() -> ProtoError {

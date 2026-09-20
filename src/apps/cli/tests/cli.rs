@@ -84,6 +84,9 @@ fn init_start_status_doctor_backup_restore_round_trip() {
     let (ok, stdout, stderr) = run(root, &["query", "pending"]);
     assert!(ok, "pending {stderr} {stdout}");
     assert!(stdout.contains("items"), "{stdout}");
-    let (ok, stdout, stderr) = run(root, &["restore", "apply", backup.to_str().unwrap()]);
+    let (ok, stdout, stderr) = run(
+        root,
+        &["restore", "apply", backup.to_str().unwrap(), "--yes"],
+    );
     assert!(ok, "restore apply {stderr} {stdout}");
 }

@@ -20,6 +20,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
     let root = args.root.unwrap_or_else(control::default_root);
     std::fs::create_dir_all(&root)?;
-    std::fs::write(root.join("control.pid"), std::process::id().to_string())?;
     Daemon::new(root).serve().await
 }

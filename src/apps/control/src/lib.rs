@@ -13,7 +13,7 @@ pub use socket::{bind_owner_socket, occupied_error, socket_path};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use store::{StartupStatus, Store};
+use store::{StartupStatus, Store, StoreError};
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -25,6 +25,7 @@ pub struct Daemon {
     pub socket: PathBuf,
     pub status: StartupStatus,
     pub store: Arc<Mutex<Option<Store>>>,
+    pub open_error: Arc<Mutex<Option<StoreError>>>,
 }
 
 impl Daemon {
@@ -36,29 +37,45 @@ impl Daemon {
             socket,
             status: StartupStatus::default(),
             store: Arc::new(Mutex::new(None)),
+            open_error: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Bind the owner-only socket, start serving, then open storage on a worker.
+    ///
+    /// Open-store failure keeps the process serving so `status` / `doctor` can
+    /// present the typed store error. The process does not exit on that path.
     pub async fn serve(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = bind_owner_socket(&self.socket)?;
+        let pid_path = self.root.join("control.pid");
+        std::fs::write(&pid_path, std::process::id().to_string())?;
+        let _pid = PidFile(pid_path);
         let status = self.status.clone();
         let store = Arc::clone(&self.store);
+        let open_error = Arc::clone(&self.open_error);
         let root = self.root.clone();
         tokio::task::spawn_blocking(move || match Store::open_with_status(&root, status) {
             Ok(opened) => {
                 *store.blocking_lock() = Some(opened);
             }
             Err(error) => {
-                eprintln!("hctl2-control: failed to open storage: {error}");
+                *open_error.blocking_lock() = Some(error);
             }
         });
         let service = ControlService::new(
             self.root.clone(),
             self.status.clone(),
             Arc::clone(&self.store),
+            Arc::clone(&self.open_error),
         );
         serve_listener(listener, service).await
+    }
+}
+
+struct PidFile(PathBuf);
+impl Drop for PidFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 

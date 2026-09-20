@@ -14,7 +14,7 @@ use proto::control_client::ControlClient;
 use proto::{
     PreviewRequest, Protocol, QueryRequest, QueryResponse, SubmitRequest, SubscribeRequest,
 };
-use store::{StartupStatus, Store};
+use store::{StartupStatus, Store, StoreError};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 use tonic::transport::Endpoint;
@@ -77,8 +77,17 @@ async fn spawn_service(
     status: StartupStatus,
     store: Arc<Mutex<Option<Store>>>,
 ) -> tokio::task::JoinHandle<()> {
+    spawn_service_with_open_error(root, status, store, Arc::new(Mutex::new(None))).await
+}
+
+async fn spawn_service_with_open_error(
+    root: PathBuf,
+    status: StartupStatus,
+    store: Arc<Mutex<Option<Store>>>,
+    open_error: Arc<Mutex<Option<StoreError>>>,
+) -> tokio::task::JoinHandle<()> {
     let listener = bind_owner_socket(&socket_path(&root)).unwrap();
-    let service = ControlService::new(root, status, store);
+    let service = ControlService::new(root, status, store, open_error);
     tokio::spawn(async move {
         let _ = serve_listener(listener, service).await;
     })
@@ -279,6 +288,7 @@ async fn dangerous_submit_without_preview_is_rejected_ordinary_is_not() {
         .unwrap()
         .into_inner();
     assert!(via_preview.error.is_none());
+    assert_eq!(ping.result, via_preview.result);
     let restore_preview = client
         .preview(PreviewRequest {
             protocol: Some(proto()),
@@ -381,6 +391,102 @@ async fn store_not_ready_and_upgrade_are_presented_on_rpc() {
         "upgrade-in-progress was never presented on the public Query"
     );
     wait_ready(&mut client).await;
+}
+
+#[tokio::test]
+async fn subscribe_and_submit_keep_contiguous_seq() {
+    let temp = Temp::new();
+    let _server = spawn_daemon(temp.0.clone()).await;
+    let mut subscriber = connect(&temp.0).await;
+    wait_ready(&mut subscriber).await;
+    let mut stream = subscriber
+        .subscribe(SubscribeRequest {
+            protocol: Some(proto()),
+            since_seq: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let mut publisher = connect(&temp.0).await;
+    const N: i64 = 12;
+    let publish = tokio::spawn(async move {
+        for i in 0..N {
+            let response = publisher
+                .submit(SubmitRequest {
+                    protocol: Some(proto()),
+                    operation: "ops.ping".into(),
+                    payload: Vec::new(),
+                    command_id: format!("c{i}"),
+                    idempotency_key: format!("c{i}"),
+                    preview_token: String::new(),
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            assert!(response.error.is_none());
+        }
+    });
+    let mut seqs = Vec::new();
+    while (seqs.len() as i64) < N {
+        let event = tokio::time::timeout(Duration::from_secs(2), stream.message())
+            .await
+            .expect("event")
+            .unwrap()
+            .unwrap();
+        assert!(event.error.is_none(), "{:?}", event.error);
+        seqs.push(event.seq);
+    }
+    publish.await.unwrap();
+    seqs.sort_unstable();
+    assert_eq!(seqs, (1..=N).collect::<Vec<_>>());
+}
+
+#[tokio::test]
+async fn malformed_json_payload_is_rejected() {
+    let temp = Temp::new();
+    let _server = spawn_daemon(temp.0.clone()).await;
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    let response = client
+        .submit(SubmitRequest {
+            protocol: Some(proto()),
+            operation: "backup.create".into(),
+            payload: b"not-json".to_vec(),
+            command_id: "bad".into(),
+            idempotency_key: "bad".into(),
+            preview_token: String::new(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let error = response.error.expect("json");
+    assert_eq!(error.code, "INVALID_INPUT");
+    assert!(error.message.contains("JSON"));
+}
+
+#[tokio::test]
+async fn store_open_failure_is_presented_on_status() {
+    let temp = Temp::new();
+    let open_error = Arc::new(Mutex::new(Some(StoreError {
+        code: "WRITER_BUSY",
+        message: "another control writer owns the storage".into(),
+        recovery_action: "stop_previous_writer",
+    })));
+    let _server = spawn_service_with_open_error(
+        temp.0.clone(),
+        StartupStatus::default(),
+        Arc::new(Mutex::new(None)),
+        open_error,
+    )
+    .await;
+    let mut client = connect(&temp.0).await;
+    let response = query_kind(&mut client, "status").await;
+    let error = response.error.expect("open failure");
+    assert_eq!(error.code, "WRITER_BUSY");
+    assert_eq!(error.recovery_action, "stop_previous_writer");
+    let body: serde_json::Value = serde_json::from_slice(&response.payload).unwrap();
+    assert_eq!(body["ready"], false);
+    assert_eq!(body["startup_error"]["code"], "WRITER_BUSY");
 }
 
 async fn wait_ready(client: &mut ControlClient<tonic::transport::Channel>) {

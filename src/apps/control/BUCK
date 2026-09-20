@@ -71,6 +71,7 @@ rust_test(
         "root//crates/store:store",
         "root//third-party/rust:hyper-util",
         "root//third-party/rust:rusqlite",
+        "root//third-party/rust:serde_json",
         "root//third-party/rust:tokio",
         "root//third-party/rust:tonic",
         "root//third-party/rust:tower",

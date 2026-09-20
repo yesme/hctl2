@@ -54,8 +54,16 @@ enum BackupCommand {
 
 #[derive(Subcommand)]
 enum RestoreCommand {
-    Preview { path: PathBuf },
-    Apply { path: PathBuf },
+    Preview {
+        path: PathBuf,
+    },
+    Apply {
+        path: PathBuf,
+        #[arg(long)]
+        preview_token: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
@@ -116,14 +124,27 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             print_out(json, preview);
             Ok(())
         }
-        Command::Restore(RestoreCommand::Apply { path }) => {
+        Command::Restore(RestoreCommand::Apply {
+            path,
+            preview_token,
+            yes,
+        }) => {
             let payload = json!({"path": path});
-            let preview = preview(root, "restore.apply", payload.clone()).await?;
-            let token = preview
-                .get("preview_token")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "preview missing token".to_owned())?;
-            let result = submit(root, "restore.apply", payload, Some(token)).await?;
+            let token = if let Some(token) = preview_token {
+                token
+            } else if yes {
+                let preview = preview(root, "restore.apply", payload.clone()).await?;
+                preview
+                    .get("preview_token")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "preview missing token".to_owned())?
+                    .to_owned()
+            } else {
+                return Err(
+                    "restore apply requires --preview-token from restore preview, or --yes".into(),
+                );
+            };
+            let result = submit(root, "restore.apply", payload, Some(&token)).await?;
             print_out(json, result);
             Ok(())
         }
@@ -157,14 +178,29 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(io)?;
-    for _ in 0..50 {
-        if query_raw(root, "status", json!({})).await.is_ok() {
-            return Ok(());
+    for _ in 0..2_400 {
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("control exited before ready: {status}"));
+        }
+        match query_raw(root, "status", json!({})).await {
+            Ok(_) => return Ok(()),
+            Err(error) => match rpc_code(&error) {
+                Some("STORE_NOT_READY" | "UPGRADE_IN_PROGRESS") | None => {}
+                Some(_) => return Err(error),
+            },
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    let _ = child.kill();
     Err("control did not become ready".into())
+}
+
+fn rpc_code(error: &str) -> Option<&str> {
+    let code = error.split(':').next()?;
+    if code.chars().all(|c| c.is_ascii_uppercase() || c == '_') && code.len() > 2 {
+        Some(code)
+    } else {
+        None
+    }
 }
 
 async fn query(root: &Path, json_out: bool, kind: &str, payload: Value) -> Result<(), String> {
@@ -204,7 +240,7 @@ async fn preview(root: &Path, operation: &str, payload: Value) -> Result<Value, 
             }),
             operation: operation.into(),
             payload: payload.to_string().into_bytes(),
-            command_id: "cli-preview".into(),
+            command_id: invocation_id("preview"),
         })
         .await
         .map_err(|e| e.to_string())?
@@ -229,6 +265,7 @@ async fn submit(
     token: Option<&str>,
 ) -> Result<Value, String> {
     let mut client = client(root).await?;
+    let id = invocation_id(operation);
     let response = client
         .submit(SubmitRequest {
             protocol: Some(Protocol {
@@ -236,8 +273,8 @@ async fn submit(
             }),
             operation: operation.into(),
             payload: payload.to_string().into_bytes(),
-            command_id: format!("cli-{operation}"),
-            idempotency_key: format!("cli-{operation}"),
+            command_id: id.clone(),
+            idempotency_key: id,
             preview_token: token.unwrap_or("").into(),
         })
         .await
@@ -285,6 +322,14 @@ fn print_out(as_json: bool, value: Value) {
             serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
         );
     }
+}
+
+fn invocation_id(kind: &str) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("cli-{kind}-{}-{nanos}", std::process::id())
 }
 
 fn io(error: std::io::Error) -> String {

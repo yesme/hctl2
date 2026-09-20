@@ -1,12 +1,12 @@
-//! Connection identity. The Unix socket is already owner-only; actor is the local owner.
+//! Connection identity comes from Unix peer credentials, never from client fields.
 
 use store::{Actor, ActorSource, Scope, TrustedActor};
 
-/// Construct the trusted actor from the local owner connection, never from client fields.
+/// Construct the trusted actor from the connecting process uid.
 #[must_use]
-pub fn owner_actor() -> TrustedActor {
+pub fn owner_actor(uid: u32) -> TrustedActor {
     TrustedActor(Actor {
-        principal: "local-owner".into(),
+        principal: format!("local-owner:{uid}"),
         source: ActorSource::DirectClient,
         permission_scope: vec![Scope::Control],
         authority: None,
