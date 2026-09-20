@@ -6,6 +6,7 @@ oncall("hctl2")
 CONTROL_DEPS = [
     "root//crates/foundation:foundation",
     "root//crates/proto:proto",
+    "root//crates/repo:repo",
     "root//crates/store:store",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:tokio",

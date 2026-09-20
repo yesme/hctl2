@@ -213,6 +213,9 @@ pub struct ProjectSettings {
 pub enum RecordData {
     Repo {
         platform_binding: Option<Reference>,
+        /// Repo reducer-owned registration state. Absent in the P2.1 fixtures.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        registration: Option<Value>,
     },
     Project {
         repo_id: String,
@@ -228,9 +231,7 @@ pub enum RecordData {
         source: Reference,
     },
     /// Other module payloads remain owned and validated by their reducer.
-    Value {
-        value: Value,
-    },
+    Value { value: Value },
 }
 
 /// An immutable event snapshot; the current-object table is entirely rebuildable.
@@ -253,7 +254,12 @@ impl Record {
         }
         digest(&self.revision_digest)?;
         match (&self.data, self.key.kind.as_str()) {
-            (RecordData::Repo { platform_binding }, "repo") => {
+            (
+                RecordData::Repo {
+                    platform_binding, ..
+                },
+                "repo",
+            ) => {
                 if let Some(binding) = platform_binding {
                     binding.validate()?;
                 }

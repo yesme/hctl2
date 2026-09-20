@@ -3,6 +3,13 @@ use common::*;
 use serde_json::json;
 use store::*;
 
+#[test]
+fn p21_repo_payload_round_trips_without_adding_a_registration_field() {
+    let old = json!({"type":"repo", "platform_binding":null});
+    let record: RecordData = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(record).unwrap(), old);
+}
+
 fn task(project: &str, id: &str) -> Record {
     let mut r = record(id, 1);
     r.key.scope = Scope::Project(project.into());

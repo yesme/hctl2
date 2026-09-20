@@ -1,8 +1,9 @@
-//! Local Unix-socket control daemon. Domain commands stay in later packages.
+//! Local Unix-socket control daemon and Repo registration command entry point.
 
 #![forbid(unsafe_code)]
 
 mod identity;
+mod repositories;
 mod service;
 mod services;
 mod socket;

@@ -1,5 +1,6 @@
 //! CLI wiring for init/start/status/doctor/export/backup/restore against a live daemon.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -93,4 +94,79 @@ fn init_start_status_doctor_backup_restore_round_trip() {
     assert!(ok, "services status {stderr} {stdout}");
     let (ok, _, stderr) = run(root, &["stop"]);
     assert!(ok, "stop {stderr}");
+}
+
+fn register(root: &std::path::Path, arguments: &[&str]) -> (bool, serde_json::Value) {
+    let mut args = vec!["repo", "register"];
+    args.extend_from_slice(arguments);
+    let (ok, out, err) = run(root, &args);
+    assert!(ok, "preview failed: {out} {err}");
+    let preview: serde_json::Value = serde_json::from_str(&out).unwrap();
+    args.extend_from_slice(&[
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, out, err) = run(root, &args);
+    let value = serde_json::from_str(&out).unwrap_or_else(|_| panic!("invalid JSON: {out} {err}"));
+    (ok, value)
+}
+
+#[test]
+fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_none() {
+    let temp = Temp::new();
+    let root = &temp.0;
+    let gh = root.join("gh-fixture");
+    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
+    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let out = Command::new(hctl2())
+        .env("HCTL2_CONTROL_BIN", control())
+        .env("HCTL2_GH", &gh)
+        .args(["--root", root.to_str().unwrap(), "start"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let input = root.join("register.json");
+    std::fs::write(&input,r#"{"name":"external","origin":"external","platform":"github","instance":"github.com","platform_repo_id":"12","platform_path":"a/b","default_source":"github_issues"}"#).unwrap();
+    let args = ["--input", input.to_str().unwrap(), "--key", "external"];
+    let (ok, external) = register(root, &args);
+    assert!(ok, "{external}");
+    let id = external["registration"]["repo_id"].as_str().unwrap();
+    assert_eq!(external["registration"]["lifecycle"], "active");
+    let (ok, replay) = register(root, &args);
+    assert!(ok, "{replay}");
+    assert_eq!(replay["registration"]["repo_id"], id);
+    assert!(!root.join("hosted-consumed.json").exists());
+    let (ok, out, err) = run(root, &["repo", "show", id]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["lifecycle"],
+        "active"
+    );
+    // Wrong ID cannot be activated, and stays the same pending record on retry.
+    std::fs::write(&input,r#"{"name":"wrong","origin":"external","platform":"github","instance":"github.com","platform_repo_id":"99","platform_path":"a/b"}"#).unwrap();
+    let (ok, wrong) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "wrong"],
+    );
+    assert!(!ok);
+    assert_eq!(wrong["error"]["code"], "PLATFORM_ID_MISMATCH");
+    assert_eq!(wrong["registration"]["lifecycle"], "pending");
+    std::fs::write(&input,r#"{"name":"no platform","origin":"external","platform":"none","remote_evidence":"https://github.com/a/b.git"}"#).unwrap();
+    let (ok, none) = register(root, &["--input", input.to_str().unwrap(), "--key", "none"]);
+    assert!(ok, "{none}");
+    assert_eq!(none["registration"]["prepared"]["platform"], "none");
+    assert!(!root.join("hosted-consumed.json").exists());
+    let (ok, out, err) = run(root, &["repo", "list"]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
 }

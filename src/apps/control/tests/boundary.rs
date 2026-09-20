@@ -371,12 +371,12 @@ async fn store_not_ready_and_upgrade_are_presented_on_rpc() {
     let mut probe = connect(&temp.0).await;
     let probe_task = tokio::spawn(async move {
         for _ in 0..5_000 {
-            if let Some(error) = query_kind(&mut probe, "status").await.error {
-                if error.code == "UPGRADE_IN_PROGRESS" {
-                    assert_eq!(error.message, "schema upgrade in progress");
-                    assert_eq!(error.recovery_action, "retry_after_upgrade");
-                    return true;
-                }
+            if let Some(error) = query_kind(&mut probe, "status").await.error
+                && error.code == "UPGRADE_IN_PROGRESS"
+            {
+                assert_eq!(error.message, "schema upgrade in progress");
+                assert_eq!(error.recovery_action, "retry_after_upgrade");
+                return true;
             }
             tokio::task::yield_now().await;
         }
@@ -487,6 +487,127 @@ async fn store_open_failure_is_presented_on_status() {
     let body: serde_json::Value = serde_json::from_slice(&response.payload).unwrap();
     assert_eq!(body["ready"], false);
     assert_eq!(body["startup_error"]["code"], "WRITER_BUSY");
+}
+
+#[tokio::test]
+async fn repo_concurrent_registration_reuses_one_record_and_requires_preview() {
+    let temp = Temp::new();
+    let server = spawn_daemon(temp.0.clone()).await;
+    let mut first = connect(&temp.0).await;
+    wait_ready(&mut first).await;
+    let mut second = first.clone();
+    let payload = serde_json::json!({"registration_key":"one", "request":{
+        "name":"none", "origin":"local", "platform":"none"
+    }})
+    .to_string()
+    .into_bytes();
+    let mut request = SubmitRequest {
+        protocol: Some(proto()),
+        operation: "repo.register".into(),
+        command_id: "repo.register:one".into(),
+        idempotency_key: "one".into(),
+        payload: payload.clone(),
+        preview_token: String::new(),
+    };
+    let denied = first.submit(request.clone()).await.unwrap().into_inner();
+    assert_eq!(denied.error.unwrap().code, "PREVIEW_REQUIRED");
+    let preview = first
+        .preview(PreviewRequest {
+            protocol: Some(proto()),
+            operation: request.operation.clone(),
+            command_id: "preview-one".into(),
+            payload: payload.clone(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(preview.error.is_none());
+    request.preview_token = preview.preview_token;
+    let mut other = request.clone();
+    other.preview_token = second
+        .preview(PreviewRequest {
+            protocol: Some(proto()),
+            operation: request.operation.clone(),
+            command_id: "preview-two".into(),
+            payload,
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .preview_token;
+    let (a, b) = tokio::join!(first.submit(request), second.submit(other));
+    let a = a.unwrap().into_inner();
+    let b = b.unwrap().into_inner();
+    assert!(a.error.is_none() && b.error.is_none());
+    assert_eq!(a.result, b.result);
+    let list = query_kind(&mut first, "repo.list").await;
+    let value: serde_json::Value = serde_json::from_slice(&list.payload).unwrap();
+    assert_eq!(value["items"].as_array().unwrap().len(), 1);
+    assert!(!temp.0.join("hosted-consumed.json").exists());
+    server.abort();
+}
+
+#[tokio::test]
+async fn repo_unavailable_platform_keeps_original_pending_intent() {
+    let temp = Temp::new();
+    let server = spawn_daemon(temp.0.clone()).await;
+    let mut client = connect(&temp.0).await;
+    wait_ready(&mut client).await;
+    let payload = serde_json::json!({"registration_key":"unavailable", "request":{
+        "name":"local", "origin":"local", "platform":"local", "platform_path":"unavailable"
+    }})
+    .to_string()
+    .into_bytes();
+    let mut previous_id = None;
+    for _ in 0..2 {
+        let preview = client
+            .preview(PreviewRequest {
+                protocol: Some(proto()),
+                operation: "repo.register".into(),
+                command_id: "preview".into(),
+                payload: payload.clone(),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(preview.error.is_none());
+        let response = client
+            .submit(SubmitRequest {
+                protocol: Some(proto()),
+                operation: "repo.register".into(),
+                command_id: "repo.register:unavailable".into(),
+                idempotency_key: "unavailable".into(),
+                payload: payload.clone(),
+                preview_token: preview.preview_token,
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(response.error.is_none());
+        let result: serde_json::Value = serde_json::from_slice(&response.result).unwrap();
+        assert!(result["error"]["code"].is_string());
+        assert_eq!(result["registration"]["lifecycle"], "pending");
+        assert_eq!(result["registration"]["prepared"]["platform"], "local");
+        let id = result["registration"]["repo_id"].clone();
+        if let Some(previous) = &previous_id {
+            assert_eq!(previous, &id);
+        }
+        previous_id = Some(id);
+    }
+    let ping = client
+        .submit(SubmitRequest {
+            protocol: Some(proto()),
+            operation: "ops.ping".into(),
+            command_id: "ping".into(),
+            idempotency_key: "ping".into(),
+            payload: Vec::new(),
+            preview_token: String::new(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(ping.error.is_none());
+    server.abort();
 }
 
 async fn wait_ready(client: &mut ControlClient<tonic::transport::Channel>) {

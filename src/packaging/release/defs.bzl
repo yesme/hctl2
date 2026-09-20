@@ -150,6 +150,7 @@ def complete_release(name: str):
             "HCTL2_BUILD_METADATA": "$(location root//packaging/dependencies:metadata)",
             "HCTL2_DEPENDENCY_SOURCE_ROOT": "$(location root//packaging/dependencies:test-support)",
             "HCTL2_TOOLBOX_TEST": "$(location :test-toolbox.sh)",
+            "HCTL2_JQ": "$(location root//build/tools:jq-bin)",
         },
         resources = [
             ":{}".format(name),

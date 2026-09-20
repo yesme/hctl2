@@ -8,6 +8,7 @@
 - [`crates/facts`](crates/facts/)：供 `tool` 与 control 共用的事实读取代码。
 - [`crates/foundation`](crates/foundation/)：标准库文件锁、JCS、SQLite Online Backup、keyring 与 FTS5 的受测封装。
 - [`crates/store`](crates/store/README.md)：P2.1 的控制面存储与命令内核，含 schema 迁移、同事务记录、私有 Git 材料库和一致备份恢复；不包含业务命令或守护进程。
+- [`crates/repo`](crates/repo/README.md)：P2.2 戊的 Repo 注册、平台身份确认、首次 Git 交付；`hctl2 repo` 经控制面调用，原生 Git / gh / tea 执行外部步骤。
 - [`crates/proto`](crates/proto/README.md)：Query / Preview / Submit / Subscribe 的 Protobuf 合同，由钉定 protoc 与 Buck 生成。
 - [`apps/control`](apps/control/)：归属者 Unix socket 上的 control 守护进程，对外命令为 `hctl2-control`。
 - [`apps/cli`](apps/cli/)：公共 CLI，经该 socket 说话，不直接写控制面存储；对外命令为 `hctl2`。

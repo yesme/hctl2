@@ -244,6 +244,18 @@ impl Store {
         crate::command::get_record(&self.conn, key)
     }
 
+    /// Typed domain query entry point; callers still authorize their public projection.
+    pub fn list(&self, kind: &str) -> Result<Vec<Record>> {
+        self.status.require_ready()?;
+        let mut query = self
+            .conn
+            .prepare("SELECT record FROM objects WHERE kind=?1 ORDER BY object_key")?;
+        query
+            .query_map([kind], |r| r.get::<_, String>(0))?
+            .map(|r| Ok(serde_json::from_str(&r?)?))
+            .collect()
+    }
+
     /// History comes from admitted events, never candidates or Git log ordering.
     pub fn versions(&self, key: &ObjectKey) -> Result<Vec<Record>> {
         self.status.require_ready()?;

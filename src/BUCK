@@ -28,6 +28,7 @@ filegroup(
         "facts": "root//crates/facts:clippy",
         "foundation": "root//crates/foundation:clippy",
         "proto": "root//crates/proto:clippy",
+        "repo": "root//crates/repo:clippy",
         "store": "root//crates/store:clippy",
         "tool": "root//apps/tool:clippy",
     },

@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+mod repo;
+
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -47,6 +49,8 @@ enum Command {
     },
     #[command(subcommand)]
     Services(ServicesCommand),
+    #[command(subcommand)]
+    Repo(repo::RepoCommand),
 }
 
 #[derive(Subcommand)]
@@ -110,6 +114,7 @@ fn default_root() -> PathBuf {
 
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
+        Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Init => {
             std::fs::create_dir_all(root).map_err(io)?;
             print_out(

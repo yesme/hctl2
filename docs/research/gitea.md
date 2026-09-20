@@ -137,3 +137,19 @@ Gitea 大在内嵌的前端资源、模板与三种数据库驱动，和 Vikunja
 Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag/v1.27.3) 的源码资产；下载摘要与[上游 `.sha256`](https://dl.gitea.com/gitea/1.27.3/gitea-src-1.27.3.tar.gz.sha256) 一致，归档内 `VERSION` 为 `1.27.3`。tea 使用 [Release API](https://gitea.com/api/v1/repos/gitea/tea/releases/tags/v0.15.1) 的 `tarball_url`；其[发布校验清单](https://dl.gitea.com/tea/0.15.1/checksums.txt)未列 tag 源码归档，因此上表是本次下载实算的摘要，不冒充上游签名校验。commit 分别核自 [Gitea tag 的 commit](https://api.github.com/repos/go-gitea/gitea/commits/v1.27.3) 与 [tea tag API](https://gitea.com/api/v1/repos/gitea/tea/tags/v0.15.1)。两份归档的根 `LICENSE` 都是 MIT；原文随归档保留。
 
 落地范围：`lock.json` 的 `common.gitea_source` / `common.tea_source` 与组件源码元数据；`sources.tsv`、源码伴随包及 `dependencies.tsv` 的源码列。运行二进制、下载格式、服务配置与启停行为不变。
+
+## 2026-09-21 · Repo 注册调用复核
+
+决定建议：仍用 Gitea 1.27.3、tea 0.15.1 的锁定二进制与原生管理 CLI，不引入 HTTP SDK。控制面只在注册消费本地平台时启动 Gitea、等就绪、物化账号与令牌；外部 GitHub clone 不走这条路径。
+
+本次对照上节锁定源码归档：tea 的 `cmd/api.go`、`modules/context/context_login.go`、`modules/context/context.go`；Gitea 的 `cmd/admin_user_generate_access_token.go`、`routers/api/v1/api.go`。原生管理命令用法另核[官方 CLI 文档](https://docs.gitea.com/administration/command-line/)。
+
+| 观察 | 实现决定 |
+| --- | --- |
+| tea `api --include` 的 JSON 正文在 stdout、HTTP 状态与响应头在 stderr；HTTP 403 仍退出 0，本机实际建仓已遇到 | 校验 HTTP 2xx，再解析平台身份与关联；进程退出 0 不等于成功 |
+| `GITEA_INSTANCE_URL`、`GITEA_TOKEN` 支持每次调用的登录；无需写 tea 全局配置 | 令牌来自既有 SecretStore，经子进程环境传入，不放 argv、URL 或治理材料 |
+| Gitea `/user/repos` 同时经过 user 与 repository scope 检查；只有 `read:user` 时 POST 返回 403，改成 `write:user` 后真实建仓通过 | 管理账号的本包令牌用 `write:user,write:repository,write:issue`；不误认为 repository scope 单独足够 |
+| 原生 `generate-access-token --raw` 可读出令牌；同名 token 再建被拒绝，旧明文不能重新取回 | 固定 token 名；持久化失败后报凭据不可用，由人恢复或明确撤销失落 token，不静默制造多份 |
+| 实际 macOS arm64 完整包：start 仅带 Tuwunel，注册本地仓库后 Gitea 可用、建仓并只推 main、稳定 ID 确认后激活；stop/start 后重复命令仍返回同一 Repo | 接入已有 Supervisor；注册与初始交付分阶段回读，pending 不冒充 active |
+
+未知建仓结果的适配器失败注入使用子进程 fixture：模拟 POST 已生效但返回 HTTP 503；重试按原名称及注册关联读取，POST 计数仍为一次。它检验恢复分支，不冒充真实网络故障实验。没有重做 Gitea 服务、账户系统或 Git 协议。
