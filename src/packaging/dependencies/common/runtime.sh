@@ -72,7 +72,7 @@ write_b64url_once() {
 
     [[ -f "$path" ]] && return
     umask 077
-    head -c 32 /dev/urandom | openssl base64 -A | tr '+/' '-_' | tr -d '=\n' >"$path"
+    head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n' >"$path"
     printf '\n' >>"$path"
 }
 

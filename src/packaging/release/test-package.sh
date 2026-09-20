@@ -104,28 +104,15 @@ printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
     die "hctl2 start did not report a ready control: $b0_status"
 b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
 [[ -n "$b0_id" ]] || die "could not read control_id from status: $b0_status"
-component_available() {
-    python3 -c '
-import json, sys
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw)
-except Exception:
-    sys.exit(1)
-want = sys.argv[1]
-for item in data.get("consumed", []):
-    if item.get("name") == want and item.get("available") is True:
-        sys.exit(0)
-sys.exit(1)
-' "$1"
-}
 wait_consumed_available() {
     local name="$1"
     local attempt
     local snapshot=""
+    local needle
+    needle="\"name\":\"${name}\",\"running\":true,\"ready\":true,\"available\":true"
     for attempt in $(seq 1 60); do
         snapshot="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" services status 2>/dev/null || true)"
-        if printf '%s\n' "$snapshot" | component_available "$name"; then
+        if printf '%s\n' "$snapshot" | grep -F "$needle" >/dev/null; then
             note "B0 $name available"
             return 0
         fi

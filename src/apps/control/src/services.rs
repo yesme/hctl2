@@ -3,7 +3,6 @@
 //! Health is an observation. It is never written as a governance record.
 
 use std::fs;
-use std::io::ErrorKind;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -198,6 +197,33 @@ impl Supervisor {
         }
     }
 
+    /// Tear down the whole Process Compose project. Tests use this in Drop.
+    pub fn shutdown_project(&self) -> Result<(), String> {
+        match &self.backend {
+            Backend::Absent => Ok(()),
+            Backend::Packaged {
+                install_root,
+                services_bin,
+            } => {
+                let mut down = Command::new(services_bin);
+                down.env("HCTL2_INSTALL_ROOT", install_root);
+                self.apply_state_env(&mut down);
+                let _ = down.arg("stop").status();
+                Ok(())
+            }
+            Backend::Fixture { pc_bin, socket, .. } => {
+                if self.pc_alive() {
+                    let _ = self
+                        .pc_client(pc_bin, socket)
+                        .arg("down")
+                        .stdout(Stdio::null())
+                        .status();
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub fn stop_consumed(&self) -> Result<(), String> {
         match &self.backend {
             Backend::Absent => Ok(()),
@@ -215,11 +241,7 @@ impl Supervisor {
                 if !(status.success() || status.code() == Some(1)) {
                     return Err(format!("hctl2-services stop failed: {status}"));
                 }
-                if !self
-                    .consumed_names()
-                    .iter()
-                    .any(|name| self.health(name).running)
-                {
+                if self.running_names().is_empty() {
                     let mut down = Command::new(services_bin);
                     down.env("HCTL2_INSTALL_ROOT", install_root);
                     self.apply_state_env(&mut down);
@@ -231,11 +253,20 @@ impl Supervisor {
                 if !self.pc_alive() {
                     return Ok(());
                 }
-                let _ = self
-                    .pc_client(pc_bin, socket)
-                    .arg("down")
-                    .stdout(Stdio::null())
-                    .status();
+                for name in self.consumed_names() {
+                    let _ = self
+                        .pc_client(pc_bin, socket)
+                        .args(["process", "stop", &name])
+                        .stdout(Stdio::null())
+                        .status();
+                }
+                if self.running_names().is_empty() {
+                    let _ = self
+                        .pc_client(pc_bin, socket)
+                        .arg("down")
+                        .stdout(Stdio::null())
+                        .status();
+                }
                 Ok(())
             }
         }
@@ -320,6 +351,58 @@ impl Supervisor {
             ready,
             pid,
         }
+    }
+
+    fn running_names(&self) -> Vec<String> {
+        let Some(raw) = self.list_json() else {
+            return Vec::new();
+        };
+        let rows = raw
+            .as_array()
+            .or_else(|| raw.get("data").and_then(Value::as_array));
+        let Some(rows) = rows else {
+            return Vec::new();
+        };
+        rows.iter()
+            .filter(|row| {
+                row.get("is_running")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+            })
+            .filter_map(|row| row.get("name").and_then(Value::as_str).map(str::to_owned))
+            .collect()
+    }
+
+    fn list_json(&self) -> Option<Value> {
+        let output = match &self.backend {
+            Backend::Absent => return None,
+            Backend::Packaged { install_root, .. } => {
+                let pc = install_root.join("libexec/hctl2/process-compose");
+                if !pc.exists() {
+                    return None;
+                }
+                Command::new(pc)
+                    .env("XDG_CONFIG_HOME", self.state_root().join("config"))
+                    .env("PC_DISABLE_DOTENV", "1")
+                    .args([
+                        "--use-uds",
+                        "--unix-socket",
+                        &self.socket_path().to_string_lossy(),
+                    ])
+                    .args(["process", "list", "--output", "json"])
+                    .output()
+                    .ok()?
+            }
+            Backend::Fixture { pc_bin, socket, .. } => self
+                .pc_client(pc_bin, socket)
+                .args(["process", "list", "--output", "json"])
+                .output()
+                .ok()?,
+        };
+        if !output.status.success() {
+            return None;
+        }
+        serde_json::from_slice(&output.stdout).ok()
     }
 
     fn process_json(&self, name: &str) -> Option<Value> {
@@ -606,6 +689,5 @@ fn replace_tree(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 fn io(error: std::io::Error) -> String {
-    let _ = ErrorKind::NotFound;
     error.to_string()
 }

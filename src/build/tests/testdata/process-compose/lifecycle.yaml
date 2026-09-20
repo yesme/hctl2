@@ -22,6 +22,22 @@ processes:
       signal: 15
       timeout_seconds: 5
 
+  other-ok:
+    command: '/bin/sh -c "touch other-ok.flag; exec sleep 60"'
+    working_dir: "${HCTL2_PC_WORK}"
+    availability:
+      restart: "no"
+    readiness_probe:
+      exec:
+        command: '/bin/sh -c "test -f other-ok.flag"'
+      initial_delay_seconds: 0
+      period_seconds: 1
+      timeout_seconds: 2
+      failure_threshold: 20
+    shutdown:
+      signal: 15
+      timeout_seconds: 5
+
   never-ready:
     command: '/bin/sh -c "exec sleep 60"'
     working_dir: "${HCTL2_PC_WORK}"
