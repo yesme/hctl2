@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   schedule:
     - cron: "0 19 * * 0"
   workflow_dispatch:
@@ -316,16 +318,21 @@ jobs:
           build/tools/install-dotslash "$RUNNER_TEMP/hctl2-tools"
           echo "$RUNNER_TEMP/hctl2-tools" >> "$GITHUB_PATH"
 
+      # Cache entries are scoped to the runner image (ImageOS + ImageVersion):
+      # the host C toolchain is not a declared Buck input, so actions built on
+      # one image must not be reused on another.
       - name: Locate Buck2 action cache
-        run: echo "HCTL2_BUCK2_CACHE_DIR=$RUNNER_TEMP/hctl2-buck2-cache" >> "$GITHUB_ENV"
+        run: |
+          echo "HCTL2_BUCK2_CACHE_DIR=$RUNNER_TEMP/hctl2-buck2-cache" >> "$GITHUB_ENV"
+          echo "HCTL2_CACHE_IMAGE=${ImageOS:-$RUNNER_OS}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
 
       - name: Restore Buck2 action cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ${{ runner.temp }}/hctl2-buck2-cache/data
-          key: buck2-reapi-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: buck2-reapi-${{ matrix.target }}-${{ env.HCTL2_CACHE_IMAGE }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            buck2-reapi-${{ matrix.target }}-
+            buck2-reapi-${{ matrix.target }}-${{ env.HCTL2_CACHE_IMAGE }}-
 
       - name: Verify runner and tools
         run: |
@@ -353,19 +360,24 @@ jobs:
         if: always()
         run: |
           state="$HCTL2_BUCK2_CACHE_DIR/state"
-          if [ -S "$state/process-compose.sock" ]; then
-            XDG_CONFIG_HOME="$state/config" build/tools/process-compose-bin \
-              --use-uds --unix-socket "$state/process-compose.sock" down || true
+          if [ ! -S "$state/process-compose.sock" ]; then
+            echo "HCTL2_CACHE_STOPPED=1" >> "$GITHUB_ENV"
+          elif XDG_CONFIG_HOME="$state/config" build/tools/process-compose-bin \
+              --use-uds --unix-socket "$state/process-compose.sock" down; then
+            echo "HCTL2_CACHE_STOPPED=1" >> "$GITHUB_ENV"
+          else
+            echo "cache service did not stop cleanly; skipping cache save" >&2
           fi
 
       # Only non-PR runs publish cache entries, so pull requests reuse main's
-      # actions and never pollute it.
+      # actions and never pollute it; a directory whose service did not stop
+      # cleanly is not saved either.
       - name: Save Buck2 action cache
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.event_name != 'pull_request' && env.HCTL2_CACHE_STOPPED == '1' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ${{ runner.temp }}/hctl2-buck2-cache/data
-          key: buck2-reapi-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: buck2-reapi-${{ matrix.target }}-${{ env.HCTL2_CACHE_IMAGE }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   cargo-parity:
     name: Cargo hygiene / Linux x86_64

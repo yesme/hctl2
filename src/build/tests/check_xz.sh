@@ -38,10 +38,26 @@ cmp "$work/normal.xz" "$work/release.xz"
 HCTL2_XZ_PRESET=fast compress_archive <"$work/input" >"$work/fast.xz"
 run_xz -dc "$work/fast.xz" >"$work/fast-output"
 cmp "$work/input" "$work/fast-output"
+# On compressible data -1 and -9 produce different streams, so this catches
+# `fast` silently reverting to -9 (or any other preset).
+awk 'BEGIN { for (i = 0; i < 131072; i++) print "hctl2 preset regression line" }' >"$work/text"
+run_xz -1 -T0 --no-adjust -c <"$work/text" >"$work/text-1.xz"
+run_xz -9 -T0 --no-adjust -c <"$work/text" >"$work/text-9.xz"
+if cmp -s "$work/text-1.xz" "$work/text-9.xz"; then
+    die "compressible fixture does not distinguish -1 from -9"
+fi
+HCTL2_XZ_PRESET=fast compress_archive <"$work/text" >"$work/text-fast.xz"
+cmp "$work/text-1.xz" "$work/text-fast.xz"
+compress_archive <"$work/text" >"$work/text-default.xz"
+cmp "$work/text-9.xz" "$work/text-default.xz"
 if (HCTL2_XZ_PRESET=bogus compress_archive <"$work/input" >/dev/null) >"$work/bogus-preset.log" 2>&1; then
     die "unknown xz preset was accepted"
 fi
 grep -F 'unsupported HCTL2_XZ_PRESET' "$work/bogus-preset.log" >/dev/null
+if (HCTL2_XZ_PRESET= compress_archive <"$work/input" >/dev/null) >"$work/empty-preset.log" 2>&1; then
+    die "empty xz preset was accepted as the default"
+fi
+grep -F 'unsupported HCTL2_XZ_PRESET' "$work/empty-preset.log" >/dev/null
 
 dd if="$work/normal.xz" of="$work/broken.xz" bs=1 count=16 2>/dev/null
 if run_xz -t "$work/broken.xz" 2>/dev/null; then

@@ -42,10 +42,11 @@ require_pinned_xz() {
 # artifact and the default; `fast` (-1) is only for pull-request verification
 # builds, whose archives are installed and exercised but never published.
 xz_preset_flag() {
-    case "${HCTL2_XZ_PRESET:-release}" in
+    # Unset means release; an explicit empty value is a mistake, not a default.
+    case "${HCTL2_XZ_PRESET-release}" in
         release) printf -- '-9' ;;
         fast) printf -- '-1' ;;
-        *) die "unsupported HCTL2_XZ_PRESET: ${HCTL2_XZ_PRESET}" ;;
+        *) die "unsupported HCTL2_XZ_PRESET: '${HCTL2_XZ_PRESET-}'" ;;
     esac
 }
 
