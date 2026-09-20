@@ -23,7 +23,7 @@ rust_binary(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":cli_test"],
+    tests = [":cli_test", ":task_cli_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -47,7 +47,30 @@ filegroup(
     srcs = {
         "binary": ":hctl2[clippy.txt]",
         "cli": ":cli_test[clippy.txt]",
+        "task_cli": ":task_cli_test[clippy.txt]",
     },
     labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "task_cli_test",
+    srcs = ["tests/task.rs"],
+    crate_root = "tests/task.rs",
+    deps = [
+        "root//crates/foundation:foundation",
+        "root//crates/repo:repo",
+        "root//crates/store:store",
+        "root//crates/task:task",
+        "root//third-party/rust:serde_json",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2": "$(location :hctl2)",
+        "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
+        "HCTL2_TEST_JQ": "$(location root//build/tools:jq-bin)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )

@@ -9,6 +9,7 @@ members = [
     "crates/proto/codegen",
     "crates/repo",
     "crates/store",
+    "crates/task",
 ]
 resolver = "3"
 

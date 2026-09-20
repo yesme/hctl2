@@ -24,3 +24,9 @@ tower.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+foundation = { path = "../../crates/foundation" }
+repo = { path = "../../crates/repo" }
+store = { path = "../../crates/store" }
+task = { path = "../../crates/task" }
