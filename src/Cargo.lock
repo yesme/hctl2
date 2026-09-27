@@ -517,6 +517,7 @@ dependencies = [
  "reqwest",
  "ruma",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "store",

@@ -918,13 +918,24 @@ fn packaged_pc_socket(state: &Path) -> PathBuf {
 }
 
 fn uid() -> u32 {
-    Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .and_then(|text| text.trim().parse().ok())
-        .unwrap_or(0)
+    // A native read needs neither a child process nor output pipes. In particular,
+    // status polling must not wait for EOF on a pipe inherited by a hosted daemon.
+    rustix::process::geteuid().as_raw()
+}
+
+#[cfg(test)]
+mod uid_tests {
+    #[test]
+    fn native_effective_uid_matches_service_launcher() {
+        let output = std::process::Command::new("id").arg("-u").output().unwrap();
+        assert!(output.status.success());
+        let expected: u32 = String::from_utf8(output.stdout)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(super::uid(), expected);
+    }
 }
 
 fn parse_consumed(bytes: &[u8]) -> Result<Vec<String>, String> {

@@ -708,20 +708,7 @@ cargo.rust_library(
     crate = "bitflags",
     crate_root = "bitflags-2.13.2.crate/src/lib.rs",
     edition = "2021",
-    platform = {
-        "linux-arm64": dict(
-            features = ["std"],
-        ),
-        "linux-x86_64": dict(
-            features = ["std"],
-        ),
-        "macos-arm64": dict(
-            features = ["std"],
-        ),
-        "macos-x86_64": dict(
-            features = ["std"],
-        ),
-    },
+    features = ["std"],
     visibility = [],
 )
 
@@ -1531,12 +1518,32 @@ cargo.rust_library(
     crate = "errno",
     crate_root = "errno-0.3.14.crate/src/lib.rs",
     edition = "2018",
-    features = [
-        "default",
-        "std",
-    ],
+    features = ["std"],
+    platform = {
+        "linux-arm64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "linux-x86_64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "macos-arm64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "macos-x86_64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "windows-gnu": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+        "windows-msvc": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+    },
     visibility = [],
-    deps = [":libc-0.2"],
 )
 
 http_archive(
@@ -4900,6 +4907,12 @@ buildscript_run(
     version = "2.6.0",
 )
 
+alias(
+    name = "rustix",
+    actual = ":rustix-1",
+    visibility = ["PUBLIC"],
+)
+
 http_archive(
     name = "rustix-1.1.5.crate",
     sha256 = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d",
@@ -4920,16 +4933,16 @@ cargo.rust_library(
     features = [
         "alloc",
         "default",
-        "fs",
+        "process",
         "std",
     ],
     platform = {
         "linux-arm64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
             deps = [":linux-raw-sys-0.12"],
@@ -4937,24 +4950,38 @@ cargo.rust_library(
         "linux-x86_64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
             deps = [":linux-raw-sys-0.12"],
         ),
         "macos-arm64": dict(
+            features = ["fs"],
             named_deps = {
                 "libc_errno": ":errno-0.3",
             },
             deps = [":libc-0.2"],
         ),
         "macos-x86_64": dict(
+            features = ["fs"],
             named_deps = {
                 "libc_errno": ":errno-0.3",
             },
             deps = [":libc-0.2"],
+        ),
+        "windows-gnu": dict(
+            named_deps = {
+                "libc_errno": ":errno-0.3",
+            },
+            deps = [":windows-sys-0.61"],
+        ),
+        "windows-msvc": dict(
+            named_deps = {
+                "libc_errno": ":errno-0.3",
+            },
+            deps = [":windows-sys-0.61"],
         ),
     },
     rustc_flags = ["@$(location :rustix-1-build-script-run[rustc_flags])"],
@@ -4971,27 +4998,33 @@ cargo.rust_binary(
     features = [
         "alloc",
         "default",
-        "fs",
+        "process",
         "std",
     ],
     platform = {
         "linux-arm64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
         ),
         "linux-x86_64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
+        ),
+        "macos-arm64": dict(
+            features = ["fs"],
+        ),
+        "macos-x86_64": dict(
+            features = ["fs"],
         ),
     },
     visibility = [],
@@ -5004,27 +5037,33 @@ buildscript_run(
     features = [
         "alloc",
         "default",
-        "fs",
+        "process",
         "std",
     ],
     platform = {
         "linux-arm64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
         ),
         "linux-x86_64": dict(
             features = [
                 "event",
+                "fs",
                 "net",
                 "pipe",
-                "process",
                 "time",
             ],
+        ),
+        "macos-arm64": dict(
+            features = ["fs"],
+        ),
+        "macos-x86_64": dict(
+            features = ["fs"],
         ),
     },
     version = "1.1.5",
@@ -7058,6 +7097,8 @@ cargo.rust_library(
         "Win32_Storage_FileSystem",
         "Win32_System",
         "Win32_System_Console",
+        "Win32_System_Diagnostics",
+        "Win32_System_Diagnostics_Debug",
         "Win32_System_IO",
         "Win32_System_Pipes",
         "Win32_System_SystemInformation",
