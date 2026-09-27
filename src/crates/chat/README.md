@@ -14,7 +14,7 @@ P2.2 己的实现说明；依据 [Project 的 Room 与消息](../../../docs/desi
 
 辛创建 Project 时调用 `chat::main_room(project, server, name, command_key)`，把返回的 Room 记录与外部意图放进创建 Project 的同一事务，再由己的投递器建原生房间。函数不建 Project、不联网；同 Project 的主 Room ID 固定，数据库唯一索引再拒绝第二间。另一个 Project 即使指同 Repo，也得到独立主 Room。`Server` 的绑定与端点来自 AppService 配置，不含令牌。
 
-Topic 的 `participants` 是本 Project 已有 `room_selection` 记录的精确引用；空名册也需确认。选入记录的创建与候选校验分别归辛、P2.3，本包不把主 Room 名册自动拷给 Topic。Request 来源读取已准入 `request` 记录的 `question` 与 `blockers` 字段，以及每个阻塞对象的冻结版本；这个只读形状是辛的接线接口，不是另一套 Request 生命周期。
+Topic 的 `participants` 是本 Project 已有 `room_selection` 记录的精确引用，记录的 `room_id` 指向 `chat::topic_id(project, command_key)`，不能拿另一间 Room 的选入记录代替；空名册也需确认。选入记录的创建与候选校验分别归辛、P2.3，本包不把主 Room 名册自动拷给 Topic。Request 来源读取已准入 `request` 记录的 `question` 与 `blockers` 字段，以及每个阻塞对象的冻结版本；这个只读形状是辛的接线接口，不是另一套 Request 生命周期。
 
 本批为双入口提供 `normalize_human_action`，尚没有 Workbench 按钮或 Matrix 客户端插件。AppService 收到的原始事件只作观测，不直接准入命令；结构化动作须经该函数校验，再交确认与命令入口。默认没有身份映射与动作允许项，普通消息、反应、服务和 bridge bot 都不会因此获得 human 权限。
 

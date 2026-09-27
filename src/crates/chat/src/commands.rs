@@ -29,6 +29,14 @@ fn command_key(input: &Input) -> store::ObjectKey {
     )
 }
 
+/// Lets the roster owner (package 辛) prepare selections for this exact new Room.
+pub fn topic_id(project: &str, command_key: &str) -> String {
+    format!(
+        "topic-{}",
+        bytes_sha256(format!("{project}:{command_key}").as_bytes())
+    )
+}
+
 pub fn replay(store: &Store, input: &Input) -> Result<Option<Plan>> {
     let Some(r) = store.get(&command_key(input))? else {
         return Ok(None);
@@ -198,20 +206,20 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
                     "confirmed brief sources differ from verified sources",
                 ));
             }
-            // Roster references must already be selected for this Project. Selection itself is 辛.
+            let id = topic_id(&project, &input.key);
+            // Selection itself is 辛; existing selections from another Room are not inherited.
             for participant in &participants {
                 if participant.key.scope != Scope::Project(project.clone())
                     || participant.key.kind != "room_selection"
                 {
                     return Err(invalid("Room roster needs exact Project selection records"));
                 }
-                at(store, participant)?;
+                let selection: Value = decode(&at(store, participant)?)?;
+                if selection["room_id"] != id {
+                    return Err(invalid("selection belongs to another Room"));
+                }
             }
             let (_, main) = main_binding(store, &project)?;
-            let id = format!(
-                "topic-{}",
-                bytes_sha256(format!("{project}:{}", input.key).as_bytes())
-            );
             let room = Room {
                 project_id: project.clone(),
                 id: id.clone(),

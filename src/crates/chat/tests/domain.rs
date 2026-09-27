@@ -356,6 +356,33 @@ fn stale_cross_project_unconfirmed_roster_and_bot_writes_rejected() {
 }
 
 #[test]
+fn topic_roster_cannot_inherit_another_rooms_selection() {
+    let mut e = Env::new();
+    let (origin, source) = e.source("A");
+    let mut input = e.topic("roster", origin, std::slice::from_ref(&source));
+    for (selection_id, owner_room, accepted) in [
+        ("other", main_binding(&e.store, "A").unwrap().1.id, false),
+        ("own", topic_id("A", "roster"), true),
+    ] {
+        let selection = value_record(
+            key(Scope::Project("A".into()), "room_selection", selection_id),
+            1,
+            &json!({"room_id":owner_room}),
+        )
+        .unwrap();
+        let r = reference(&selection);
+        e.put(selection);
+        if let Action::CreateTopic { participants, .. } = &mut input.action {
+            *participants = vec![r];
+        }
+        assert_eq!(
+            prepare(&e.store, input.clone(), vec![source.clone()]).is_ok(),
+            accepted
+        );
+    }
+}
+
+#[test]
 fn rebind_keeps_old_event_reference() {
     let mut e = Env::new();
     let (_, source) = e.source("A");
