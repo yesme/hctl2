@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(clap::Args)]
-pub(super) struct Write {
+pub(crate) struct Write {
     #[arg(long)]
     input: PathBuf,
     #[arg(long)]
@@ -97,6 +97,16 @@ async fn execute(command: TaskCommand, root: &Path, as_json: bool) -> Result<(),
         TaskCommand::Resume(w) => ("resume", w),
         TaskCommand::Withdraw(w) => ("withdraw", w),
     };
+    write(root, as_json, "task", kind, w).await
+}
+
+pub(crate) async fn write(
+    root: &Path,
+    as_json: bool,
+    namespace: &str,
+    kind: &str,
+    w: Write,
+) -> Result<(), String> {
     let mut action: Value =
         serde_json::from_slice(&std::fs::read(w.input).map_err(io)?).map_err(|e| e.to_string())?;
     let object = action.as_object_mut().ok_or("input must be an object")?;
@@ -107,7 +117,7 @@ async fn execute(command: TaskCommand, root: &Path, as_json: bool) -> Result<(),
     let payload = json!({"key":w.key,"action":action})
         .to_string()
         .into_bytes();
-    let operation = format!("task.{kind}");
+    let operation = format!("{namespace}.{kind}");
     let mut client = client(root).await?;
     if let Some(token) = w.preview_token {
         let r = client
@@ -117,7 +127,7 @@ async fn execute(command: TaskCommand, root: &Path, as_json: bool) -> Result<(),
                 }),
                 operation,
                 payload,
-                command_id: format!("task:{}", w.key),
+                command_id: format!("{namespace}:{}", w.key),
                 idempotency_key: w.key,
                 preview_token: token,
             })
@@ -161,7 +171,12 @@ fn present(error: Option<proto::Error>, as_json: bool) {
         std::process::exit(1);
     }
 }
-async fn query_task(root: &Path, as_json: bool, kind: &str, payload: Value) -> Result<(), String> {
+pub(crate) async fn query_task(
+    root: &Path,
+    as_json: bool,
+    kind: &str,
+    payload: Value,
+) -> Result<(), String> {
     let r = client(root)
         .await?
         .query(QueryRequest {

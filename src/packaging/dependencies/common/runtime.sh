@@ -91,6 +91,7 @@ prepare_runtime() {
     mkdir -p \
         "$P0_CONFIG_DIR/process-compose" \
         "$P0_CONFIG_DIR/herdr" \
+        "$P0_CONFIG_DIR/appservices" \
         "$P0_DATA_DIR/tuwunel" \
         "$P0_DATA_DIR/gitea" \
         "$P0_DATA_DIR/vikunja" \
@@ -101,6 +102,7 @@ prepare_runtime() {
     chmod 700 \
         "$P0_ROOT" "$P0_CONFIG_DIR" "$P0_CONFIG_DIR/process-compose" \
         "$P0_CONFIG_DIR/herdr" "$P0_DATA_DIR" "$P0_DATA_DIR/tuwunel" \
+        "$P0_CONFIG_DIR/appservices" \
         "$P0_DATA_DIR/gitea" \
         "$P0_DATA_DIR/vikunja" "$P0_DATA_DIR/dagu" "$P0_DATA_DIR/herdr" \
         "$P0_RUNTIME_DIR" "$P0_RUNTIME_DIR/herdr"
@@ -131,6 +133,7 @@ prepare_runtime() {
             '[global]' \
             'server_name = "hctl2.localhost"' \
             "database_path = \"$P0_DATA_DIR/tuwunel\"" \
+            "appservice_dir = \"$P0_CONFIG_DIR/appservices\"" \
             'address = ["127.0.0.1"]' \
             "port = $TUWUNEL_PORT" \
             'allow_registration = true' \

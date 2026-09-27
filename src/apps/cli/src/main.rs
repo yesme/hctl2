@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod repo;
+mod room;
 mod task;
 
 use std::path::{Path, PathBuf};
@@ -54,6 +55,8 @@ enum Command {
     Repo(repo::RepoCommand),
     #[command(subcommand)]
     Task(task::TaskCommand),
+    #[command(subcommand)]
+    Room(room::RoomCommand),
 }
 
 #[derive(Subcommand)]
@@ -119,6 +122,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
     match command {
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
+        Command::Room(command) => room::dispatch(command, root, json).await,
         Command::Init => {
             std::fs::create_dir_all(root).map_err(io)?;
             print_out(

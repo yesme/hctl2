@@ -58,6 +58,14 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_rooms(&self) -> impl std::future::Future<Output = ()> + Send + use<> {
+        crate::chat::reconcile(
+            Arc::clone(&self.store),
+            Arc::clone(&self.services),
+            self.root.clone(),
+            Arc::clone(&self.operations),
+        )
+    }
     /// Network reads are fenced by Store generation/change counters, not a long-held
     /// global operation guard. A stopped provider cannot stall unrelated commands.
     pub(crate) fn reconcile_task_sources(
@@ -230,11 +238,16 @@ impl Control for ControlService {
         }
         let result = match req.kind.as_str() {
             "repo.list" | "repo.show" | "task.list" | "task.show" | "task.sources"
-            | "task.board" => {
+            | "task.board" | "room.list" | "room.show" | "room.timeline" | "room.event"
+            | "room.reference" | "room.draft" | "room.view_state" | "room.sync" => {
                 let store = Arc::clone(&self.store);
                 let kind = req.kind.clone();
+                let services = Arc::clone(&self.services);
+                let root = self.root.clone();
                 match tokio::task::spawn_blocking(move || {
-                    if kind.starts_with("task.") {
+                    if kind.starts_with("room.") {
+                        crate::chat::query(&store, &services, &root, &kind, &payload)
+                    } else if kind.starts_with("task.") {
                         crate::tasks::query(&store, &kind, &payload)
                     } else {
                         crate::repositories::query(&store, &kind, &payload)
@@ -316,7 +329,10 @@ impl Control for ControlService {
             return Ok(preview_err(error));
         }
         let dangerous = is_dangerous(&req.operation);
-        let details = if req.operation.starts_with("repo.") || req.operation.starts_with("task.") {
+        let details = if req.operation.starts_with("repo.")
+            || req.operation.starts_with("task.")
+            || req.operation.starts_with("room.")
+        {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
                 Err(err) => return Ok(preview_err(err)),
@@ -332,7 +348,9 @@ impl Control for ControlService {
             };
             match tokio::task::spawn_blocking(move || {
                 let _guard = guard;
-                if operation.starts_with("task.") {
+                if operation.starts_with("room.") {
+                    crate::chat::preview(&store, &services, &root, &operation, &payload)
+                } else if operation.starts_with("task.") {
                     crate::tasks::preview(&store, &services, &root, &operation, &payload)
                 } else {
                     crate::repositories::preview(&store, &operation, &payload)
@@ -354,7 +372,10 @@ impl Control for ControlService {
             json!({"operation":req.operation,"dangerous":dangerous})
         };
         let base_token = preview_token(&req.operation, &req.payload, &req.command_id);
-        let token = if req.operation.starts_with("repo.") || req.operation.starts_with("task.") {
+        let token = if req.operation.starts_with("repo.")
+            || req.operation.starts_with("task.")
+            || req.operation.starts_with("room.")
+        {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
             base_token
@@ -397,6 +418,33 @@ impl Control for ControlService {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
         }
         let mut details = json!({});
+        if req.operation == "chat.view_state" {
+            let operation = Arc::clone(&self.operations).lock_owned().await;
+            let payload = match json_bytes(&req.payload) {
+                Ok(value) => value,
+                Err(e) => return Ok(submit_err(e, 0)),
+            };
+            let shared = Arc::clone(&self.store);
+            let services = Arc::clone(&self.services);
+            let root = self.root.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let _operation = operation;
+                crate::chat::set_view_state(&shared, &services, &root, &payload)
+            })
+            .await;
+            return Ok(match result {
+                Ok(Ok(value)) => Response::new(SubmitResponse {
+                    error: None,
+                    result: value.to_string().into_bytes(),
+                    event_seq: self.seq.load(Ordering::Acquire),
+                }),
+                Ok(Err(e)) => submit_err(present(&e), 0),
+                Err(_) => submit_err(
+                    error("CHAT_UNAVAILABLE", "view-state worker failed", "retry_read"),
+                    0,
+                ),
+            });
+        }
         if is_dangerous(&req.operation) {
             let previews = self.previews.lock().await;
             let matched = previews.iter().find(|preview| {
@@ -435,6 +483,18 @@ impl Control for ControlService {
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
             let _guard = guard;
+            if operation.starts_with("room.") {
+                return crate::chat::submit(
+                    &store,
+                    &operations,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
             if operation.starts_with("task.") {
                 return crate::tasks::submit(
                     &store,
@@ -801,6 +861,7 @@ fn is_dangerous(operation: &str) -> bool {
     matches!(operation, "restore.apply" | "services.restore")
         || operation.starts_with("repo.")
         || operation.starts_with("task.")
+        || operation.starts_with("room.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {

@@ -5,12 +5,18 @@ load("//build/tools:xz.bzl", "XZ_DIRECTORY")
 oncall("hctl2")
 
 CONTROL_DEPS = [
+    "root//crates/chat:chat",
     "root//crates/foundation:foundation",
     "root//crates/proto:proto",
     "root//crates/repo:repo",
     "root//crates/store:store",
     "root//crates/task:task",
     "root//third-party/rust:serde_json",
+    "root//third-party/rust:axum",
+    "root//third-party/rust:reqwest",
+    "root//third-party/rust:ruma",
+    "root//third-party/rust:rusqlite",
+    "root//third-party/rust:serde",
     "root//third-party/rust:tokio",
     "root//third-party/rust:tokio-stream",
     "root//third-party/rust:tonic",
@@ -29,7 +35,7 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":unit_test", ":boundary_test", ":services_test", ":task_native_test"],
+    tests = [":unit_test", ":boundary_test", ":services_test", ":task_native_test", ":chat_native_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -119,9 +125,24 @@ filegroup(
         "library": ":control[clippy.txt]",
         "services": ":services_test[clippy.txt]",
         "task_native": ":task_native_test[clippy.txt]",
+        "chat_native": ":chat_native_test[clippy.txt]",
         "unit": ":unit_test[clippy.txt]",
     },
     labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "chat_native_test",
+    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    crate_root = "src/lib.rs",
+    deps = CONTROL_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "HCTL2_TEST_TUWUNEL": "$(location root//packaging/dependencies:tuwunel)",
+    },
+    rustc_flags = HCTL2_RUSTC_FLAGS + ["--cfg=hctl_chat_native"],
+    labels = CI_INTEGRATION,
     visibility = ["PUBLIC"],
 )
 

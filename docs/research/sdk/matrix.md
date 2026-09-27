@@ -147,3 +147,20 @@ Tuwunel 的 `rate_limited` 默认 false，bot 不受该项限流，AppService �
 | 低内存 / RocksDB 备份 / 托管生命周期 | 未验 | 交付文档第 3 项明确留到 B1 |
 
 09-06 源码核对里「ruma 已处理 `user_id` 查询参数」在本次假冒发送上成立。注册仍走文件目录，不另造管理 REST。决定维持：homeserver 用钉定 Tuwunel `v1.9.0 / 5b366914`，客户端类型层仍是 ruma `0.16.0`。
+
+### 2026-09-28 · P2.2 己实现复核
+
+**决定维持：ruma 0.16.0，配 reqwest 0.13.4 与 axum 0.8.9；Tuwunel 使用 lock 中的 1.9.0 制品。** 本包只接随包回环服务，reqwest 关闭默认 feature、仅开 blocking；远程 TLS 不在这次能力声明内。对象说明见 [reqwest](../libs/reqwest.md#决定建议) 与 [axum](../libs/axum.md#决定建议)。本条追加实现证据，不改前文历史结论。
+
+注册直接使用 ruma 的 `RegistrationInit / Registration / Namespaces`，写成 YAML 可读的 JSON；出站使用 `OutgoingRequestAppserviceExt`，不自拼 Matrix URL 或 `user_id`。入站事务用 ruma 解析，axum 负责路由和体积上限，SQLite 负责可删除收件观测的事务去重，确认持久化后返回 200 `{}`。不引入 matrix-sdk 的客户端状态库或加密栈。为恢复客户端派生状态按需调用 Matrix sync / account data，不代表引入 matrix-sdk 的后台同步引擎。
+
+| 观察 | 证据与边界 |
+| --- | --- |
+| 锁定原生服务的账号、建房、发送、增量同步与 CJK 正文 | `root//apps/control:chat_native_test`；重复发送同一事务键得到同一事件，重取正文摘要不变，客户端草稿互不串写 |
+| 明文判定与隔离 | 原生服务临时允许加密以测反例：已加密房拒读写，另一明文房仍可单独 sync；服务停机报不可用，不当作未加密 |
+| 建房没有原生幂等键 | 关联 alias 加初始 state 回读；未知意图找不到关联房间时保持未知，不自动重建。公开 alias 查询不能证明 AppService 注册已生效，因此建房还校验认证身份 |
+| 原生服务先于控制面启动 | `root//packaging/release:room-cli-test` 先启动随包 Tuwunel，再由 control 物化 AppService、只重启 Tuwunel 加载注册；注册未加载时不派发建房写入 |
+| 重启与恢复到另一目录 | 同一 CLI 测试覆盖控制面/服务重启、删除聊天缓存、甲的离线备份恢复以及原生服务备份/恢复；AppService 监听器重载恢复的地址和令牌，草稿与冻结源分别校验 |
+| Room 与确认提要 | CLI 经 Preview / Submit 创建、重投、关闭 Topic；人工补写冻结后仍可读，后续主 Room 消息不流入 Topic；Request 无 Message 的来源正例由 `root//crates/chat:domain_test` 验证 |
+
+以上为 macOS arm64 本机结果；Linux 由 PR 的原生目标复跑，不把本机结果推广为三平台通过。低内存压力与完整 B1「Repo → 两 Project → Room / Task」仍由辛收口。Workbench 的 IME、真实按钮双入口与 Invocation / Context 尚未实现。

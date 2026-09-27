@@ -1,0 +1,347 @@
+mod matrix;
+pub use matrix::Client as MatrixClient;
+mod config;
+mod drafting;
+mod queries;
+mod runtime;
+pub(crate) use config::private_write as write_private_config;
+use drafting::draft;
+#[cfg(test)]
+use drafting::select;
+pub(super) use queries::{query, set_view_state};
+pub(super) use runtime::{reconcile, serve};
+mod inbox;
+#[cfg(test)]
+mod tests;
+
+use crate::services::Supervisor;
+use chat::{
+    Action, DraftInput, Input, Origin, Plan, Result, Room, Selection, Source, SourceText, invalid,
+    reject,
+};
+use serde_json::{Value, json};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+use store::{
+    Actor, ActorSource, Command, Expected, Reference, Scope, Store, TrustedActor, Version,
+};
+use tokio::sync::Mutex;
+type Shared = Arc<Mutex<Option<Store>>>;
+
+fn access<T>(shared: &Shared, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+    let mut slot = shared.blocking_lock();
+    f(slot
+        .as_mut()
+        .ok_or_else(|| reject("STORE_NOT_READY", "store not ready", "check_status"))?)
+}
+fn client(services: &Supervisor) -> Result<matrix::Client> {
+    let (server, token) = config::load(services)?;
+    matrix::Client::new(server, token)
+}
+
+/// Project creation (package 辛) freezes this connection when admitting its main Room.
+pub fn configured_server(services: &Supervisor) -> Result<chat::Server> {
+    Ok(config::load(services)?.0)
+}
+fn observations(root: &Path) -> inbox::Inbox {
+    inbox::Inbox {
+        root: root.into(),
+        token: String::new(),
+    }
+}
+fn bound(room: &Room) -> Result<&str> {
+    room.matrix_room_id.as_deref().ok_or_else(|| {
+        reject(
+            "ROOM_PENDING",
+            "Room creation not confirmed",
+            "resume_original_command",
+        )
+    })
+}
+fn guard(client: &matrix::Client, root: &Path, room: &Room, external: &str) -> Result<()> {
+    if room.server.binding != client.server.binding || room.server.url != client.server.url {
+        return Err(reject(
+            "CHAT_BINDING_CHANGED",
+            "chat deployment differs from frozen binding",
+            "rebind_chat_server",
+        ));
+    }
+    let result = client.guard(external);
+    observations(root).health(&room.id, result.as_ref().err().map(|e| e.code))?;
+    result
+}
+fn input(operation: &str, payload: &Value) -> Result<Input> {
+    let input: Input = serde_json::from_value(payload.clone())?;
+    if operation != format!("room.{}", payload["action"]["kind"].as_str().unwrap_or("")) {
+        return Err(invalid("Room operation and action disagree"));
+    }
+    Ok(input)
+}
+
+fn resolve(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    action: &Action,
+) -> Result<Vec<SourceText>> {
+    match action {
+        Action::CreateTopic {
+            project_id,
+            origin,
+            brief,
+            ..
+        } => {
+            access(shared, |s| chat::origin_checks(s, project_id, origin))?;
+            match origin {
+                Origin::Request { request, blockers } => {
+                    access(shared, |s| chat::request_texts(s, request, blockers))
+                }
+                Origin::MainRoom { room_id, .. } => {
+                    let (r, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
+                    let client = client(services)?;
+                    let external = bound(&room)?;
+                    guard(&client, root, &room, external)?;
+                    brief
+                        .sources
+                        .iter()
+                        .map(|source| {
+                            let Source::Message {
+                                binding, event_id, ..
+                            } = source
+                            else {
+                                return Err(invalid("main Room source must be a Message"));
+                            };
+                            if *binding != chat::reference(&r) {
+                                return Err(chat::stale());
+                            }
+                            let source_text = matrix::source_text(
+                                binding.clone(),
+                                &client.event(external, event_id)?,
+                            )?;
+                            if source_text.source != *source {
+                                return Err(reject(
+                                    "SOURCE_CHANGED",
+                                    "Message differs from previewed content",
+                                    "preview_again",
+                                ));
+                            }
+                            Ok(source_text)
+                        })
+                        .collect()
+                }
+            }
+        }
+        Action::Freeze {
+            project_id,
+            room_id,
+            version,
+            event_id,
+        } => {
+            let (r, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
+            if r.version != *version {
+                return Err(chat::stale());
+            }
+            let client = client(services)?;
+            guard(&client, root, &room, bound(&room)?)?;
+            Ok(vec![matrix::source_text(
+                chat::reference(&r),
+                &client.event(bound(&room)?, event_id)?,
+            )?])
+        }
+        Action::Rebind {
+            project_id,
+            room_id,
+            matrix_room_id,
+            ..
+        } => {
+            let (_, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
+            let client = client(services)?;
+            if client.server.binding != room.server.binding {
+                return Err(chat::stale());
+            }
+            client.guard(matrix_room_id)?;
+            Ok(vec![])
+        }
+        Action::Send {
+            project_id,
+            room_id,
+            ..
+        } => {
+            let (_, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
+            guard(&client(services)?, root, &room, bound(&room)?)?;
+            Ok(vec![])
+        }
+        Action::Close { .. } | Action::Resume { .. } => Ok(vec![]),
+    }
+}
+
+pub(super) fn preview(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    operation: &str,
+    payload: &Value,
+) -> Result<Value> {
+    let input = input(operation, payload)?;
+    if let Some(plan) = access(shared, |s| chat::replay(s, &input))? {
+        return Ok(serde_json::to_value(plan)?);
+    }
+    let stamp = access(shared, |s| Ok(s.read_stamp()))?;
+    let sources = resolve(shared, services, root, &input.action)?;
+    access(shared, |s| {
+        if s.read_stamp() != stamp {
+            return Err(chat::stale());
+        }
+        Ok(serde_json::to_value(chat::prepare(s, input, sources)?)?)
+    })
+}
+
+pub(super) fn submit(
+    shared: &Shared,
+    operations: &Mutex<()>,
+    services: &Supervisor,
+    root: &Path,
+    actor: &TrustedActor,
+    request: &proto::SubmitRequest,
+    details: &Value,
+) -> Result<Value> {
+    let input = input(
+        &request.operation,
+        &serde_json::from_slice(&request.payload)?,
+    )?;
+    if request.command_id != format!("room:{}", input.key) || request.idempotency_key != input.key {
+        return Err(invalid("Room command envelope key mismatch"));
+    }
+    let plan: Plan = serde_json::from_value(details.clone())?;
+    if serde_json::to_value(&input)? != serde_json::to_value(&plan.input)? {
+        return Err(chat::stale());
+    }
+    let replay = access(shared, |s| chat::replay(s, &input))?.is_some();
+    let stamp = access(shared, |s| Ok(s.read_stamp()))?;
+    if !replay {
+        let sources = resolve(shared, services, root, &input.action)?;
+        if serde_json::to_value(&sources)? != serde_json::to_value(&plan.source_texts)? {
+            return Err(chat::stale());
+        }
+    }
+    let _operation = operations.blocking_lock();
+    let mut result = access(shared, |s| {
+        if s.read_stamp() != stamp {
+            return Err(chat::stale());
+        }
+        chat::admit(s, actor, plan)
+    })?;
+    if let Action::Rebind { room_id, .. } = &input.action {
+        observations(root).health(room_id, None)?;
+    }
+    if let Some(id) = result["effect_id"].as_str().map(str::to_owned) {
+        match drive(shared, services, root, actor, &id) {
+            Ok(receipt) => {
+                result["state"] = json!("confirmed");
+                result["receipt"] = receipt;
+            }
+            Err(e) => {
+                result["state"] = json!("pending_or_unknown");
+                result["error"] =
+                    json!({"code":e.code,"message":e.message,"recovery_action":e.recovery_action});
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn drive(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    actor: &TrustedActor,
+    id: &str,
+) -> Result<Value> {
+    let (effect, state) = access(shared, |s| s.effect(id))?;
+    let room: Room = serde_json::from_value(effect.input["room"].clone())?;
+    if state == store::EffectState::Confirmed {
+        return access(shared, |s| {
+            Ok(chat::decode::<Value>(&chat::required(
+                s,
+                &chat::key(effect.permission_scope, "room_effect_receipt", id),
+            )?)?)
+        });
+    }
+    let client = client(services)?;
+    if room.server.binding != client.server.binding || room.server.url != client.server.url {
+        return Err(chat::stale());
+    }
+    let pending = state == store::EffectState::Pending;
+    // Check current local authority before first dispatch. Unknown writes retain the original
+    // target and key; readback never retargets a newer Room binding.
+    if pending {
+        access(shared, |s| {
+            let (_, current) = chat::room(s, &room.project_id, &room.id)?;
+            chat::writable(s, &current)?;
+            let project = chat::required(
+                s,
+                &chat::key(effect.permission_scope.clone(), "project", &room.project_id),
+            )?;
+            chat::active_project(s, &room.project_id, project.version)?;
+            if current.matrix_room_id != room.matrix_room_id
+                || current.server.binding != room.server.binding
+            {
+                return Err(chat::stale());
+            }
+            s.resume_pending_effect(s.generation(), id, true)?;
+            Ok(())
+        })?;
+    }
+    let receipt = match effect.operation.as_str() {
+        "chat.create" => {
+            client.create_with_dispatch(&room, &effect.idempotency_key, pending, || {
+                access(shared, |s| {
+                    s.begin_effect(s.generation(), id)?;
+                    Ok(())
+                })
+            })?
+        }
+        "chat.send" => {
+            guard(&client, root, &room, bound(&room)?)?;
+            let body = effect.input["body"]
+                .as_str()
+                .ok_or_else(|| invalid("send body missing"))?;
+            if !pending
+                && let Some(receipt) =
+                    client.read_sent(bound(&room)?, &effect.idempotency_key, body)?
+            {
+                return access(shared, |s| chat::confirm(s, actor, id, receipt));
+            }
+            access(shared, |s| {
+                let (_, current) = chat::room(s, &room.project_id, &room.id)?;
+                chat::writable(s, &current)?;
+                let project = chat::required(
+                    s,
+                    &chat::key(effect.permission_scope.clone(), "project", &room.project_id),
+                )?;
+                chat::active_project(s, &room.project_id, project.version)?;
+                if current.matrix_room_id != room.matrix_room_id {
+                    return Err(chat::stale());
+                }
+                Ok(())
+            })?;
+            if pending {
+                access(shared, |s| {
+                    s.begin_effect(s.generation(), id)?;
+                    Ok(())
+                })?;
+            }
+            client.send(bound(&room)?, &effect.idempotency_key, body)?
+        }
+        _ => return Err(invalid("not a chat effect")),
+    };
+    access(shared, |s| {
+        // A verified alias may predate this sender attempt. Record delivery before confirmation.
+        if s.effect(id)?.1 == store::EffectState::Pending {
+            s.begin_effect(s.generation(), id)?;
+        }
+        chat::confirm(s, actor, id, receipt)
+    })
+}

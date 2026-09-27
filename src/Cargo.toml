@@ -3,6 +3,7 @@ members = [
     "apps/cli",
     "apps/control",
     "apps/tool",
+    "crates/chat",
     "crates/facts",
     "crates/foundation",
     "crates/proto",
@@ -14,6 +15,9 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
+reqwest = { version = "=0.13.4", default-features = false, features = ["blocking"] }
+ruma = { version = "=0.16.0", default-features = false, features = ["client-api-c", "appservice-api-s", "events", "rand"] }
 clap = { version = "4.6.6", features = ["derive"] }
 hyper-util = { version = "0.1.19", features = ["tokio"] }
 keyring = "4.2.0"

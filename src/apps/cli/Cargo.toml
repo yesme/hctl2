@@ -26,6 +26,7 @@ tower.workspace = true
 workspace = true
 
 [dev-dependencies]
+chat = { path = "../../crates/chat" }
 foundation = { path = "../../crates/foundation" }
 repo = { path = "../../crates/repo" }
 store = { path = "../../crates/store" }

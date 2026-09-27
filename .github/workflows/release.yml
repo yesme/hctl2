@@ -240,14 +240,16 @@ jobs:
       - name: Test complete offline install and lifecycle (fast xz preset)
         if: ${{ github.event_name == 'pull_request' }}
         run: >-
-          ./buck2 test root//packaging/release:complete-test
+          ./buck2 test --build-default-info root//packaging/release:complete-test
+          root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
           --config hctl2.xz_preset=fast
 
       - name: Test complete offline install and lifecycle
         if: ${{ github.event_name != 'pull_request' }}
         run: >-
-          ./buck2 test root//packaging/release:complete-test
+          ./buck2 test --build-default-info root//packaging/release:complete-test
+          root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
 
       - name: Stop Buck2 action cache

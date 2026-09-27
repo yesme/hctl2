@@ -1,0 +1,4 @@
+# Build script only checks optional RUMA_* environment overrides; use upstream defaults.
+buildscript.run = false
+precise_srcs = false
+cargo_env = ["CARGO_MANIFEST_DIR"]

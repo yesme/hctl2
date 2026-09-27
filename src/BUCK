@@ -23,6 +23,7 @@ export_file(
 filegroup(
     name = "clippy",
     srcs = {
+        "chat": "root//crates/chat:clippy",
         "cli": "root//apps/cli:clippy",
         "control": "root//apps/control:clippy",
         "facts": "root//crates/facts:clippy",
