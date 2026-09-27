@@ -56,9 +56,9 @@ P2.2 长在 P2.1 上：全部业务命令走甲的命令内核与两半存储，
 ### 己 · 聊天端口与 Room（Grok）
 
 - **目标**：control 以 AppService 接 Tuwunel，Project 主 Room 与 Topic Room 的建、绑、读、关。
-- **范围**：AppService 注册与虚拟用户（ruma）；建房不开加密、绑定前回读加密状态；Room–Server Binding；按事件 ID 读正文、事务 ID 幂等写入、断线后带游标重同步；治理引用只按事件 ID 冻结、引用时冻结摘要；「创建 Topic Room」命令与预览——两种来源（本 Project 主 Room 的 Message；本 Project 的 Request 及其冻结的阻塞对象与版本），提要按缘起与目标、已定事实与决定理由、分歧与待答、所需约束与材料、来源列清、已定与未定分开，预览可删减 / 补充 / 去敏，确认版本与摘要冻结进命令，提要正文经甲存为治理材料；自动归纳未配置时显式报告、人工补写替代；「关闭 Topic Room」；主 Room 后续消息不自动进 Topic；chat server 不可用或房间事后加密时依赖当前回读的命令 fail closed、标需要关注，换绑到未加密房间恢复；Matrix 房间升级换 ID 后换绑不改 Room 身份；bridge bot 同形事件拒绝为 human 来源；`hctl2 room list|show` 与 Topic 的创建 / 关闭子命令（命名 for agent）。**不做**：Room Invocation 与派工（P2.3）、Context 交付（子）、自动归纳。
+- **范围**：AppService 注册与虚拟用户（ruma）；建房不开加密、绑定前回读加密状态；Room–Server Binding；按事件 ID 读正文、事务 ID 幂等写入、断线后带游标重同步；治理引用只按事件 ID 冻结、引用时冻结摘要；「创建 Topic Room」命令与预览——两种来源（本 Project 主 Room 的 Message；本 Project 的 Request 及其冻结的阻塞对象与版本），提要按缘起与目标、已定事实与决定理由、分歧与待答、所需约束与材料、来源列清、已定与未定分开，预览可删减 / 补充 / 去敏，确认版本与摘要冻结进命令，提要正文经甲存为治理材料；自动归纳未配置时显式报告、人工补写替代；**提要草稿（v0.18.12 增补，所有者 2026-09-28）**：按 `spec/project.md` §Room 与消息 由系统自身起草，本包做未配置 small-brain 的一档——按回复关系、提及、Request 关联或人指定的起止消息机械选入逐字原文片段，不分节、不生成文字，仍报告自动归纳未配置；来源范围核对、未读来源列出与起草观测记录同做；配置 small-brain 后的分节与改写只留接口；「关闭 Topic Room」；主 Room 后续消息不自动进 Topic；chat server 不可用或房间事后加密时依赖当前回读的命令 fail closed、标需要关注，换绑到未加密房间恢复；Matrix 房间升级换 ID 后换绑不改 Room 身份；bridge bot 同形事件拒绝为 human 来源；`hctl2 room list|show` 与 Topic 的创建 / 关闭子命令（命名 for agent）。**不做**：Room Invocation 与派工（P2.3）、Context 交付（子）、small-brain 引擎接入（引擎待 [`06`](./06-small-brain-engine-research.md) 调研）。
 - **依据**：`spec/project.md` §Room 与消息、§Repo 注册与 Project 归档（创建 Topic Room 段）、§场景约束；`spec/connections.md` §Room–Server Binding；`spec/system.md` §安全策略面「房间隐私与保留」；`docs/research/sdk/matrix.md` 复核记录、`matrix-homeserver.md`；chat 探针结果。
-- **失败用例（CT-PROJECT 现行行）**：普通 Topic 因未填完成条件或结案理由不能创建或关闭失败；关闭 Topic 后关联 Request 被解决、Task 被取消失败；前情提要缺正文或精确来源、把未决写成已定、复制整段主 Room 历史或继承原授权失败；创建预览的删减 / 补充 / 去敏未反映到确认版本失败；主 Room 新消息自动流入已建 Topic 失败；以同 Project 的精确 Request 与冻结阻塞对象创建 Topic 应通过、因缺主 Room 消息拒绝或补造消息来源失败；自动归纳未配置却报已完成失败；chat server 不可用时依赖当前回读的命令 fail closed、不依赖的已接纳事实照常；Room–Server Binding 只接受未加密房间，事后加密 fail closed 并标需要关注，换绑恢复；普通消息、反应或自动化不能成为命令；同一 Matrix 动作两条路径生成相同命令摘要，HCTL 服务或 bridge bot 的同形事件拒绝；Matrix 房间升级换 ID 后换绑不改 Room 身份、旧引用与 digest 仍可校验；CJK 输入 / 结构化引用 / 草稿游标未读 / 并发流隔离行与 Room 历史可恢复行（#272 展开版）。
+- **失败用例（CT-PROJECT 现行行）**：普通 Topic 因未填完成条件或结案理由不能创建或关闭失败；关闭 Topic 后关联 Request 被解决、Task 被取消失败；前情提要缺正文或精确来源、把未决写成已定、复制整段主 Room 历史或继承原授权失败；创建预览的删减 / 补充 / 去敏未反映到确认版本失败；主 Room 新消息自动流入已建 Topic 失败；以同 Project 的精确 Request 与冻结阻塞对象创建 Topic 应通过、因缺主 Room 消息拒绝或补造消息来源失败；自动归纳未配置却报已完成失败；chat server 不可用时依赖当前回读的命令 fail closed、不依赖的已接纳事实照常；Room–Server Binding 只接受未加密房间，事后加密 fail closed 并标需要关注，换绑恢复；普通消息、反应或自动化不能成为命令；同一 Matrix 动作两条路径生成相同命令摘要，HCTL 服务或 bridge bot 的同形事件拒绝；Matrix 房间升级换 ID 后换绑不改 Room 身份、旧引用与 digest 仍可校验；CJK 输入 / 结构化引用 / 草稿游标未读 / 并发流隔离行与 Room 历史可恢复行（#272 展开版）；v0.18.12 新增的两行提要草稿用例——模型 Participant 书写或改写、未经确认生效、未配置 small-brain 却生成文字或分节或按正文选材、机械选入报成自动归纳已完成、原文片段不逐字一致、改写句来源指针不由组装器赋予、越界来源、未读来源未列出、缺起草观测记录。
 - **依赖**：甲；乙；丁（Tuwunel）；chat 探针。
 
 ### 庚 · 任务源端口与 Task 影子（Codex）
@@ -92,7 +92,7 @@ P2.2 长在 P2.1 上：全部业务命令走甲的命令内核与两半存储，
 1. 席位：**已定（所有者 2026-09-21）**——写代码尽量给 Codex，Fable 也可以写，Grok 做评审。四包戊、己、庚、辛缺省由 Codex 写，评审席位 Fable 与 Grok（Fable 写的包由 Codex 与 Grok 审；GLM 可作第三席）。代价：原来的「戊 → 己 ∥ 庚 → 辛」变成单线顺序，戊先、辛末，己与庚互不依赖、谁先由所有者按需要定。
 2. Vikunja 加绑时机沿 01 §十二（B2 之后、P2 出门前），本阶段不接——请确认。
 3. 前情提要在本阶段只做人工提要与「自动归纳未配置」的显式报告；自动选材与生成是接手清单留的实现设计题，另案——请确认不进 P2.2。
-   **所有者 2026-09-28 改判**：做自动版；第一步只挑不写（从原消息里挑出相关的、分进五节，不生成文字），配置了小模型才改写；起草是系统自身的能力，由控制面按配置调用引擎，不交给 Room 里的参与者（同日更正，早先「调用模型可以由参与者完成」一句不再成立）。草稿的格式和给人确认前控制面查什么，与用哪种引擎无关，另写设计，所有者落盘后给己新的指针版任务书，§四 己「不做：自动归纳」一句届时改写；持续建议、@ 时的缺口、前情提要起草三件活的引擎调研见 [`06-small-brain-engine-research.md`](./06-small-brain-engine-research.md)。
+   **所有者 2026-09-28 改判**：做自动版；第一步只挑不写（从原消息里挑出相关的、分进五节，不生成文字），配置了小模型才改写；起草是系统自身的能力，由控制面按配置调用引擎，不交给 Room 里的参与者（同日更正，早先「调用模型可以由参与者完成」一句不再成立）。草稿的格式和给人确认前控制面查什么，与用哪种引擎无关，另写设计：已落 v0.18.12（#291，所有者 2026-09-28「可以落了」），§四 己已按它改写，合入后给己新的指针版任务书；持续建议、@ 时的缺口、前情提要起草三件活的引擎调研见 [`06-small-brain-engine-research.md`](./06-small-brain-engine-research.md)。
 
 ## 七、轻审怎么审本文
 
