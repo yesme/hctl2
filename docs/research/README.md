@@ -5,7 +5,7 @@
 > 规则：本目录只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。条目是产物（Task 交付的 Artifact）：钉定 commit / 版本与许可，发布后正文不改，只在文末追加复核记录；中间过程与备忘在 `.memo/`。<br>
 > 组织方式：本文按**产品类别**给总览（回答"它是什么"）；各条目文件内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。这两个分类维度互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
 
-目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md)、[`build-tools/`](./build-tools/README.md) 和 [`lineage/`](./lineage/README.md)。
+目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md)、[`build-tools/`](./build-tools/README.md)、[`lineage/`](./lineage/README.md) 和 [`models/`](./models/README.md)。`models/` 收控制面自己调用的判断模型与本地推理，不收 Room 里参与者用的编码代理。
 
 ## 引用准入
 
@@ -150,6 +150,11 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [github-actions-incremental-validation.md](./build-tools/github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | E-TOOL-GHA-REVALIDATION | ⑥ 机械后端与基础设施 | 采用平台原生 workflow 证据；快进更新增量验证，失败时全量回退 |
 | [sdk/matrix.md · P2.2 复核](./sdk/matrix.md#2026-09-06--p22-appservice-实际调用面) | Tuwunel AppService 注册、虚拟用户与加密回读 | E-SDK-MATRIX | ⑥ 机械后端与基础设施 | 采用 SDK：ruma 0.16.0，精确 features 与原生身份方法已核到源码 |
 | [sdk/vikunja.md · P2.2 复核](./sdk/vikunja.md#2026-09-06--p22-映射条件写入与生成实验) | Vikunja 2.5.0 的分组映射、条件写反例与生成实验 | E-SDK-VIKUNJA | ⑥ 机械后端与基础设施 | 服务采用二进制；progenitor 0.14.0 直接生成失败，暂缓采用；任务写入无 If-Match 保护 |
+| [small-brain-engines-20260928.md](./small-brain-engines-20260928.md) | Room 三件轻量判断与短总结的引擎对照 | E-SMALL-BRAIN | ④ Context 管理 | 缺省维持机械规则；Jev 仅参考行为；本地运行方式暂缓到标注之后 |
+| [models/jev.md](./models/jev.md) | TypeSafe Jev 1.13 | E-SMALL-BRAIN | ④ Context 管理 | 仅参考行为。无访问权限，准确率未实测 |
+| [models/llama-cpp.md](./models/llama-cpp.md) | llama.cpp b11222 | E-SMALL-BRAIN | ④ Context 管理 | 采用二进制，仅在用户打开小模型之后；不进缺省安装包 |
+| [models/qwen2.5.md](./models/qwen2.5.md) | 通义千问 2.5 1.5B / 7B | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。中文生成模型的第一族候选，权重缺省不下载 |
+| [models/bge-m3.md](./models/bge-m3.md) | BAAI bge-m3 | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。只比较相似度，不判断该不该开新 Topic |
 
 ## 已选外部服务的运维与资源占用
 
