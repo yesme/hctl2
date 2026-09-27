@@ -13,11 +13,12 @@
 | `03-repo-identity-discussion.md` | Fable | Repo 稳定身份的讨论底稿：Fable 的原理解（所有者判「理解问题很大」）与待聊的问题；已随 C 批撤题 |
 | `04-p21-kickoff.md` | Fable | P2.1 开工书：v0.18.3 之后的约束变化落到哪个包、三包任务书（v0.18.11）、给 Codex 的第一包、待所有者定 |
 | `05-p22-kickoff.md` | Fable | P2.2 开工书：落到戊己庚辛的裁决、四包任务书（v0.18.11）、顺序与前置、给 Codex 的第一包（指针版）、待所有者定 |
+| `06-small-brain-engine-research.md` | Fable | 引擎调研任务书：持续建议、@ 时的缺口、前情提要起草三件活各用什么引擎（Jev、本地小模型、本地嵌入模型、机械规则），Grok 写，GLM 与 Fable 审 |
 
 | 级 | 工作包 | 状态 |
 | --- | --- | --- |
 | P2.1（旧 B0） | 0a/0b/0c 研究（已完成）→ 甲 控制面存储（两半）与命令内核 → 乙 进程与客户端边界 → 丁 托管生命周期与收口（丙已撤销，见 §十二） | **已收口 2026-09-20**：开工书 `04` #271；甲 Codex #276、乙 Grok #279、丁 Grok #282 已合（各有评审与作者说明）；打包压缩与 Gitea / tea 制品锁定 Codex #278 已合。修正：丁把 `hctl2 start` 写成同时拉起 Gitea，所有者 09-21 指出混淆了纯本地仓库与外部平台 clone，改为按首次消费（Fable #285）。遗留：Gitea / tea 源码未进源码伴随包（所有者已选 a，Codex 在做） |
-| P2.2（旧 B1） | 1a 研究复核（已完成）→ 戊 Repo 注册（三选一，已解冻）→ 己 聊天端口（等 chat 探针）∥ 庚 任务源端口（平台 issues 先，本地任务服务器可加绑）→ 辛 Project 与 Request、收口 | 开工书 `05` 已合 #273；chat 探针已完成 #274；戊 Codex #287 已合；庚 Codex #288 已收齐 Fable 与 Grok 独立审并修正，分支 `codex/p22-task-source` 待本次 CI 与合入。接口与 CT 对照见 [Repo 实现说明](../../../src/crates/repo/README.md)及 [Task 实现说明](../../../src/crates/task/README.md)。Project 创建与全 B1 恢复验收仍由辛串起。席位按所有者 2026-09-21 裁定：四包都由 Codex 写、Fable 与 Grok 审，顺序改为单线（见 `05` §六） |
+| P2.2（旧 B1） | 1a 研究复核（已完成）→ 戊 Repo 注册（三选一，已解冻）→ 己 聊天端口（等 chat 探针）∥ 庚 任务源端口（平台 issues 先，本地任务服务器可加绑）→ 辛 Project 与 Request、收口 | 开工书 `05` 已合 #273；chat 探针已完成 #274；戊 Codex #287 已合；庚 Codex #288 已合。己：所有者 2026-09-28 把前情提要改为自动版（第一步只挑不写，配置了小模型才改写，见 `05` §六第 3 项），草稿格式与控制面检查的设计待落，落后给 Codex 新的指针版任务书；三件轻量判断与总结活的引擎调研交 Grok（`06`）。接口与 CT 对照见 [Repo 实现说明](../../../src/crates/repo/README.md)及 [Task 实现说明](../../../src/crates/task/README.md)。Project 创建与全 B1 恢复验收仍由辛串起。席位按所有者 2026-09-21 裁定：四包都由 Codex 写、Fable 与 Grok 审，顺序改为单线（见 `05` §六） |
 | P2.3 / P2.4（旧 B2） | 2a/2b 研究 → 壬 Agency 端口、癸 Participant 与调用、子 Context、丑 Repo 模块、寅 Task 完成 → 卯 收口 | 未开始 |
 | P2.5（旧 B4/B5）与自举等级 A1–A4 | 入口见 `01` §四、§十 | 未开始 |
 
