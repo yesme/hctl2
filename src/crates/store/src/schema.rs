@@ -6,7 +6,7 @@ use rusqlite_migration::{M, Migrations};
 
 use crate::{Result, StoreError};
 
-pub(crate) const VERSION: u32 = 3;
+pub(crate) const VERSION: u32 = 4;
 const APPLICATION_ID: u32 = 1_213_372_018;
 
 const IDENTITY: &str = "
@@ -81,11 +81,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_main_room ON objects(project_id) WHERE kin
 CREATE UNIQUE INDEX IF NOT EXISTS one_task_per_entity ON objects(project_id,entity_key) WHERE kind='task' AND entity_key IS NOT NULL;
 ";
 
+const REJECTED_EFFECT: &str = "
+CREATE TABLE outbox_v4 (
+ intent_id TEXT PRIMARY KEY,
+ command_key TEXT NOT NULL REFERENCES commands(idempotency_key) DEFERRABLE INITIALLY DEFERRED,
+ intent TEXT NOT NULL, conflict_key TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('pending','unknown','confirmed','cancelled','rejected')),
+ generation INTEGER NOT NULL, confirmation TEXT
+);
+INSERT INTO outbox_v4 SELECT * FROM outbox;
+DROP TABLE outbox;
+ALTER TABLE outbox_v4 RENAME TO outbox;
+CREATE UNIQUE INDEX unresolved_effect ON outbox(conflict_key) WHERE state IN ('pending','unknown');
+";
+
 pub(crate) fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(IDENTITY),
         M::up(CORE).foreign_key_check(),
         M::up(CANCEL_PENDING).foreign_key_check(),
+        M::up(REJECTED_EFFECT).foreign_key_check(),
     ])
 }
 

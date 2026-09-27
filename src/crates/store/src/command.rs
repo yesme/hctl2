@@ -88,12 +88,20 @@ pub enum EffectState {
     Confirmed,
     /// Human withdrew a never-dispatched intent; no external result is asserted.
     Cancelled,
+    /// The adapter proved that the platform rejected the original write.
+    Rejected,
 }
 
 /// A caller's verified observation of the original target, never an instruction to resend.
 pub enum Readback {
     Unknown,
     Confirmed {
+        binding: Reference,
+        target: String,
+        input_digest: String,
+        result: Value,
+    },
+    Rejected {
         binding: Reference,
         target: String,
         input_digest: String,
@@ -316,7 +324,7 @@ impl CommandTransaction<'_> {
         }
         match readback {
             Readback::Unknown => {
-                if state != EffectState::Confirmed {
+                if !matches!(state, EffectState::Confirmed | EffectState::Rejected) {
                     self.tx
                         .execute("UPDATE outbox SET state='unknown' WHERE intent_id=?1", [id])?;
                 }
@@ -326,7 +334,18 @@ impl CommandTransaction<'_> {
                 target,
                 input_digest,
                 result,
+            }
+            | Readback::Rejected {
+                binding,
+                target,
+                input_digest,
+                result,
             } => {
+                let final_state = if matches!(readback, Readback::Rejected { .. }) {
+                    EffectState::Rejected
+                } else {
+                    EffectState::Confirmed
+                };
                 if *binding != intent.binding
                     || *target != intent.target
                     || *input_digest != intent.input_digest
@@ -341,14 +360,15 @@ impl CommandTransaction<'_> {
                     return Err(StoreError::invalid("effect has never entered delivery"));
                 }
                 let encoded = serde_json::to_string(result)?;
-                if state == EffectState::Confirmed {
+                if matches!(state, EffectState::Confirmed | EffectState::Rejected) {
                     let old: String = self.tx.query_row(
                         "SELECT confirmation FROM outbox WHERE intent_id=?1",
                         [id],
                         |r| r.get(0),
                     )?;
-                    if canonical_json_sha256(&serde_json::from_str(&old)?)?
-                        != canonical_json_sha256(result)?
+                    if state != final_state
+                        || canonical_json_sha256(&serde_json::from_str(&old)?)?
+                            != canonical_json_sha256(result)?
                     {
                         return Err(StoreError::new(
                             "READBACK_MISMATCH",
@@ -358,8 +378,16 @@ impl CommandTransaction<'_> {
                     }
                 } else {
                     self.tx.execute(
-                        "UPDATE outbox SET state='confirmed',confirmation=?1 WHERE intent_id=?2",
-                        params![encoded, id],
+                        "UPDATE outbox SET state=?1,confirmation=?2 WHERE intent_id=?3",
+                        params![
+                            if final_state == EffectState::Rejected {
+                                "rejected"
+                            } else {
+                                "confirmed"
+                            },
+                            encoded,
+                            id
+                        ],
                     )?;
                 }
             }
@@ -589,6 +617,7 @@ pub(crate) fn effect(conn: &Connection, id: &str) -> Result<(EffectIntent, Effec
         "unknown" => EffectState::Unknown,
         "confirmed" => EffectState::Confirmed,
         "cancelled" => EffectState::Cancelled,
+        "rejected" => EffectState::Rejected,
         _ => return Err(StoreError::invalid("invalid effect state")),
     };
     Ok((serde_json::from_str(&intent)?, state))

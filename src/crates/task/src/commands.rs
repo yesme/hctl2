@@ -5,12 +5,15 @@ use serde_json::{Value, json};
 use store::{Command, Expected, Reference, Scope, Store, TrustedActor, Version};
 
 pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<Value> {
-    let scopes = plan
+    let mut scopes = plan
         .records
         .iter()
         .map(|r| r.key.scope.clone())
         .chain(plan.effects.iter().map(|e| e.permission_scope.clone()))
         .collect::<Vec<_>>();
+    for id in &plan.cancel_effects {
+        scopes.push(store.effect(id)?.0.permission_scope);
+    }
     let actor = owner(actor, scopes)?;
     let input = serde_json::to_value(&plan.input)?;
     let ck = command_key(store, &plan.input.key);
@@ -64,14 +67,17 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
                 backend_projection_digest: if let ContractOrigin::Backend { snapshot, .. } =
                     &adoption.origin
                 {
-                    let snap: Snapshot = decode(&required(store, &snapshot.key)?)?;
-                    Some(contract_projection(card(
-                        &snap,
-                        &t.entity
-                            .as_ref()
-                            .ok_or_else(stale)?
-                            .immutable_external_entity_id,
-                    )?)?)
+                    let snap = crate::planning::snapshot_at(store, snapshot)?;
+                    Some(contract_projection(
+                        store,
+                        card(
+                            &snap,
+                            &t.entity
+                                .as_ref()
+                                .ok_or_else(stale)?
+                                .immutable_external_entity_id,
+                        )?,
+                    )?)
                 } else {
                     None
                 },

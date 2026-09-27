@@ -18,6 +18,42 @@ pub(crate) struct Hosted {
     credential_ref: String,
 }
 impl Hosted {
+    /// Reuse an explicitly provisioned connection. Observing a source must not start
+    /// a stopped service, create an account, or replace a missing credential.
+    pub fn existing(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
+        let (install, state) = services.gitea_paths().ok_or_else(|| {
+            reject(
+                "PLATFORM_NOT_INSTALLED",
+                "hosted Gitea not installed",
+                "install_package",
+            )
+        })?;
+        let url = hosted_url(&state.join("config/gitea/app.ini"))?;
+        let credential_ref = format!("gitea:{control_id}:admin");
+        let token = SecretStore::detect("hctl2", root.join("secrets"))
+            .get(&credential_ref)
+            .map_err(|_| {
+                reject(
+                    "CREDENTIAL_UNAVAILABLE",
+                    "stored Gitea credential unavailable",
+                    "restore_secret_store",
+                )
+            })?;
+        let token = String::from_utf8(token).map_err(|_| {
+            reject(
+                "CREDENTIAL_UNAVAILABLE",
+                "invalid stored Gitea token",
+                "restore_secret_store",
+            )
+        })?;
+        Ok(Self {
+            tea: install.join("libexec/hctl2/tea"),
+            url,
+            username: format!("hctl-{}", &control_id[..16.min(control_id.len())]),
+            token,
+            credential_ref,
+        })
+    }
     #[cfg(test)]
     pub(crate) fn fixture(tea: PathBuf, url: String, username: String, token: String) -> Self {
         Self {
@@ -59,29 +95,7 @@ impl Hosted {
             std::thread::sleep(Duration::from_millis(100));
         }
         let config = state.join("config/gitea/app.ini");
-        let text = std::fs::read_to_string(&config)?;
-        let url = text
-            .lines()
-            .find_map(|l| l.strip_prefix("ROOT_URL = "))
-            .ok_or_else(|| {
-                reject(
-                    "PLATFORM_CONFIG",
-                    "Gitea ROOT_URL missing",
-                    "inspect_services_config",
-                )
-            })?
-            .trim()
-            .trim_end_matches('/')
-            .to_owned();
-        if !url.starts_with("http://127.0.0.1:")
-            || url["http://127.0.0.1:".len()..].parse::<u16>().is_err()
-        {
-            return Err(reject(
-                "PLATFORM_CONFIG",
-                "unexpected hosted Gitea address",
-                "inspect_services_config",
-            ));
-        }
+        let url = hosted_url(&config)?;
         let gitea = install.join("libexec/hctl2/gitea");
         let username = format!("hctl-{}", &control_id[..16.min(control_id.len())]);
         let admin = || {
@@ -225,12 +239,18 @@ impl Hosted {
             .find(|l| l.starts_with("HTTP/"))
             .and_then(|l| l.split_whitespace().nth(1))
             .and_then(|s| s.parse::<u16>().ok());
-        if status == Some(404) {
+        if status == Some(404) && method == "GET" {
             return Ok(None);
         }
         if !output.status.success() || !status.is_some_and(|s| (200..300).contains(&s)) {
             return Err(reject(
-                "PLATFORM_UNAVAILABLE",
+                if method != "GET" && matches!(status, Some(401 | 403 | 404)) {
+                    "NATIVE_REJECTED"
+                } else if method != "GET" && status == Some(409) {
+                    "NATIVE_CONFLICT"
+                } else {
+                    "PLATFORM_UNAVAILABLE"
+                },
                 format!(
                     "tea API {method} {path} not confirmed (HTTP {status:?}, exit {:?})",
                     output.status.code()
@@ -352,6 +372,33 @@ pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<Platfo
         credential_ref: String::new(), // gh owns its credential store; no copied token.
     })
 }
+fn hosted_url(config: &Path) -> Result<String> {
+    let text = std::fs::read_to_string(config)?;
+    let url = text
+        .lines()
+        .find_map(|l| l.strip_prefix("ROOT_URL = "))
+        .ok_or_else(|| {
+            reject(
+                "PLATFORM_CONFIG",
+                "Gitea ROOT_URL missing",
+                "inspect_services_config",
+            )
+        })?
+        .trim()
+        .trim_end_matches('/')
+        .to_owned();
+    if !url.starts_with("http://127.0.0.1:")
+        || url["http://127.0.0.1:".len()..].parse::<u16>().is_err()
+    {
+        return Err(reject(
+            "PLATFORM_CONFIG",
+            "unexpected hosted Gitea address",
+            "inspect_services_config",
+        ));
+    }
+    Ok(url)
+}
+
 fn numeric_id(value: &Value) -> Result<String> {
     value
         .as_u64()

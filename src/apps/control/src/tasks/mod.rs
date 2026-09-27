@@ -1,4 +1,5 @@
 //! Task transport, provider I/O and recovery; Store locks cover only short transactions.
+mod github;
 mod provider;
 use crate::services::Supervisor;
 use serde_json::{Value, json};
@@ -32,10 +33,48 @@ fn read(
     root: &Path,
     rid: &str,
     id: &str,
+    action: Option<&Action>,
 ) -> Result<(Source, Snapshot)> {
-    let (r, src, control) = access(shared, |s| {
+    let (r, src, control, stamp, previous, entity) = access(shared, |s| {
         let (r, src) = task::source(s, rid, id)?;
-        Ok((r, src, s.control_id().to_owned()))
+        let entity = match action {
+            Some(Action::Claim { entity_id, .. }) => Some(entity_id.clone()),
+            Some(
+                Action::Adopt {
+                    project_id,
+                    task_id,
+                    ..
+                }
+                | Action::Update {
+                    project_id,
+                    task_id,
+                    ..
+                }
+                | Action::Move {
+                    project_id,
+                    task_id,
+                    ..
+                }
+                | Action::DeleteCard {
+                    project_id,
+                    task_id,
+                    ..
+                },
+            ) => task::task(s, project_id, task_id)?
+                .1
+                .entity
+                .map(|e| e.immutable_external_entity_id),
+            _ => None,
+        };
+        let previous = task::latest(s, &src).ok().map(|(_, snap)| snap);
+        Ok((
+            r,
+            src,
+            s.control_id().to_owned(),
+            s.read_stamp(),
+            previous,
+            entity,
+        ))
     })?;
     if !src.active {
         return Err(reject(
@@ -44,10 +83,29 @@ fn read(
             "reconnect_source",
         ));
     }
-    let result = provider::Client::connect(&src, root, &control, services)
-        .and_then(|c| c.snapshot(&src, task::reference(&r)));
+    let result = provider::Client::connect(&src, root, &control, services).and_then(|c| {
+        match (&previous, entity) {
+            (Some(previous), Some(entity))
+                if previous
+                    .cards
+                    .iter()
+                    .any(|c| c.entity.immutable_external_entity_id == entity) =>
+            {
+                c.refresh_card(&src, previous, &entity)
+            }
+            _ => c.snapshot(&src, task::reference(&r)),
+        }
+    });
     match result {
-        Ok(snap) => Ok((src, snap)),
+        Ok(snap) => {
+            access(shared, |s| {
+                if s.read_stamp() != stamp {
+                    return Err(task::stale());
+                }
+                task::observe(s, &src, snap.clone())
+            })?;
+            Ok((src, snap))
+        }
         Err(e) => {
             let failed = Snapshot {
                 source: task::reference(&r),
@@ -57,7 +115,12 @@ fn read(
                 cards: vec![],
                 stable_groups: vec![],
             };
-            access(shared, |s| task::observe(s, &src, failed))?;
+            access(shared, |s| {
+                if s.read_stamp() != stamp {
+                    return Err(task::stale());
+                }
+                task::observe(s, &src, failed)
+            })?;
             Err(e)
         }
     }
@@ -101,16 +164,7 @@ pub(super) fn preview(
     }
     // Explicit source refresh is also an observation, never an implicit contract adoption.
     if let Some((rid, id)) = access(shared, |s| task::source_id_for_action(s, &input.action))? {
-        let (src, snap) = read(shared, services, root, &rid, &id)?;
-        access(shared, |s| {
-            let unchanged = task::latest(s, &src).ok().is_some_and(|(_, old)| {
-                task::content_digest(&old).ok() == task::content_digest(&snap).ok()
-            });
-            if !unchanged || matches!(input.action, Action::Refresh { .. }) {
-                task::observe(s, &src, snap)?;
-            }
-            Ok(())
-        })?;
+        read(shared, services, root, &rid, &id, Some(&input.action))?;
     }
     let mut plan = access(shared, |s| task::prepare(s, input))?;
     if matches!(plan.input.action, Action::Connect { .. }) {
@@ -131,14 +185,16 @@ pub(super) fn preview(
 
 pub(super) fn submit(
     shared: &Shared,
+    operations: &Mutex<()>,
     services: &Supervisor,
     root: &Path,
     actor: &TrustedActor,
     request: &proto::SubmitRequest,
-    payload: &Value,
     details: &Value,
 ) -> Result<Value> {
-    let input = input(&request.operation, payload)?;
+    let payload = serde_json::from_slice(&request.payload)?;
+    let input = input(&request.operation, &payload)?;
+    let generation = access(shared, |s| Ok(s.generation()))?;
     if request.idempotency_key != input.key || request.command_id != format!("task:{}", input.key) {
         return Err(reject(
             "INVALID_INPUT",
@@ -154,13 +210,18 @@ pub(super) fn submit(
     if !replay
         && let Some((rid, id)) = access(shared, |s| task::source_id_for_action(s, &input.action))?
     {
-        let (src, current) = read(shared, services, root, &rid, &id)?;
-        let old = access(shared, |s| task::latest(s, &src))?.1;
-        if task::content_digest(&old)? != task::content_digest(&current)? {
-            access(shared, |s| task::observe(s, &src, current))?;
-            return Err(task::stale());
-        }
+        read(shared, services, root, &rid, &id, Some(&input.action))?;
     }
+    // Only actual writes serialize with restore/service maintenance. Polls and the
+    // current read above do not hold this guard while traversing a board.
+    let _guard = operations.blocking_lock();
+    access(shared, |s| {
+        if s.generation() == generation {
+            Ok(())
+        } else {
+            Err(task::stale())
+        }
+    })?;
     let mut result = access(shared, |s| task::admit(s, actor, plan))?;
     if let Some(id) = result["effect_id"].as_str().map(str::to_owned) {
         if let Err(e) = drive(shared, services, root, actor, &id) {
@@ -186,6 +247,13 @@ fn drive(
     id: &str,
 ) -> Result<()> {
     let (e, state) = access(shared, |s| s.effect(id))?;
+    if state == EffectState::Rejected {
+        return Err(reject(
+            "PROVIDER_REJECTED",
+            "original attempt was rejected by the platform",
+            "refresh_and_preview",
+        ));
+    }
     if matches!(state, EffectState::Confirmed | EffectState::Cancelled) {
         return Ok(());
     }
@@ -196,13 +264,63 @@ fn drive(
     })?;
     // Bootstrap/connect failure occurs before uncertainty, so the untouched intent stays Pending.
     let client = provider::Client::connect(&src, root, &control, services)?;
-    let (intent, send) = access(shared, |s| task::begin(s, actor, id))?;
-    let observed = client.effect(&src, &intent, send)?;
-    access(shared, |s| task::confirm(s, id, &observed))?;
+    let observed = client.effect_with_dispatch(
+        &src,
+        &e,
+        state == EffectState::Pending,
+        || {
+            access(shared, |s| {
+                if !task::begin(s, actor, id)?.1 {
+                    return Err(task::stale());
+                }
+                Ok(())
+            })
+        },
+        |evidence| access(shared, |s| task::reject_effect(s, id, evidence)),
+    )?;
+    access(shared, |s| {
+        // The desired result can already exist before dispatch. Authorize the original
+        // intent before confirming that readback, without sending a redundant write.
+        task::begin(s, actor, id)?;
+        task::confirm(s, id, &observed)
+    })?;
     // Refresh every binding to this entity, including the other Project's projection.
-    let (sr, _) = access(shared, |s| task::source(s, rid, sid))?;
-    let snap = client.snapshot(&src, task::reference(&sr))?;
-    access(shared, |s| task::observe(s, &src, snap))?;
+    let (sr, previous, stamp) = access(shared, |s| {
+        Ok((
+            task::source(s, rid, sid)?.0,
+            task::latest(s, &src).ok().map(|(_, snap)| snap),
+            s.read_stamp(),
+        ))
+    })?;
+    let snap = if let Some(previous) = previous {
+        if previous.cards.iter().any(|c| c.entity == observed.entity) {
+            client.refresh_card(
+                &src,
+                &previous,
+                &observed.entity.immutable_external_entity_id,
+            )?
+        } else {
+            // A newly created card is the only addition; no need to refetch other cards.
+            let mut snap = previous;
+            snap.source = task::reference(&sr);
+            snap.cards.push(observed);
+            snap.cards.sort_by(|a, b| {
+                a.entity
+                    .immutable_external_entity_id
+                    .cmp(&b.entity.immutable_external_entity_id)
+            });
+            snap
+        }
+    } else {
+        client.snapshot(&src, task::reference(&sr))?
+    };
+    access(shared, |s| {
+        if s.read_stamp() == stamp {
+            task::observe(s, &src, snap)
+        } else {
+            Ok(())
+        }
+    })?;
     Ok(())
 }
 
@@ -237,16 +355,111 @@ pub(super) fn query(shared: &Shared, kind: &str, payload: &Value) -> Result<Valu
 }
 
 /// Periodic read-only reconciliation. No pending writes are resent by this loop.
-pub(super) fn reconcile(shared: &Shared, services: &Supervisor, root: &Path) -> Result<()> {
+pub(super) fn reconcile(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    poller: &mut Poller,
+) -> Result<()> {
     let sources = access(shared, |s| s.list("task_source"))?;
     for r in sources {
         let src: Source = task::decode(&r)?;
         if !src.active {
             continue;
         }
-        if let Ok((src, snap)) = read(shared, services, root, &src.repo_id, &src.id) {
-            access(shared, |s| task::observe(s, &src, snap))?;
-        }
+        poller.read(shared, services, root, &src)?;
     }
     Ok(())
+}
+
+#[derive(Default)]
+pub(super) struct Poller {
+    entries: std::collections::BTreeMap<String, PollEntry>,
+}
+struct PollEntry {
+    generation: store::WriterGeneration,
+    binding: store::Reference,
+    client: provider::Client,
+    full_at: u64,
+}
+impl Poller {
+    fn read(
+        &mut self,
+        shared: &Shared,
+        services: &Supervisor,
+        root: &Path,
+        src: &Source,
+    ) -> Result<()> {
+        let (src, binding, control, stamp, previous) = access(shared, |s| {
+            let (r, current) = task::source(s, &src.repo_id, &src.id)?;
+            let previous = task::latest(s, &current).ok().map(|(_, snap)| snap);
+            Ok((
+                current,
+                task::reference(&r),
+                s.control_id().to_owned(),
+                s.read_stamp(),
+                previous,
+            ))
+        })?;
+        if !src.active {
+            return Ok(());
+        }
+        let src = &src;
+        let id = format!("{}:{}", src.repo_id, src.id);
+        if self
+            .entries
+            .get(&id)
+            .is_some_and(|e| e.generation != stamp.0 || e.binding != binding)
+        {
+            self.entries.remove(&id);
+        }
+        let result: Result<Snapshot> = (|| {
+            if !self.entries.contains_key(&id) {
+                self.entries.insert(
+                    id.clone(),
+                    PollEntry {
+                        generation: stamp.0,
+                        binding: binding.clone(),
+                        client: provider::Client::connect(src, root, &control, services)?,
+                        full_at: 0,
+                    },
+                );
+            }
+            let entry = self.entries.get_mut(&id).unwrap();
+            let full = task::now().saturating_sub(entry.full_at) >= 900 || previous.is_none();
+            let snap = entry.client.snapshot_since(
+                src,
+                binding.clone(),
+                if full { None } else { previous.as_ref() },
+            )?;
+            if full {
+                entry.full_at = task::now();
+            }
+            Ok(snap)
+        })();
+        let snap = match result {
+            Ok(snap) => snap,
+            Err(e) => {
+                // A restored Gitea credential must be picked up on the next read;
+                // rate-limit feedback on GitHub must instead survive between polls.
+                if src.candidate.provider == "gitea_issues" {
+                    self.entries.remove(&id);
+                }
+                Snapshot {
+                    source: binding,
+                    observed_at: task::now(),
+                    complete: false,
+                    error: Some(e.code.into()),
+                    cards: vec![],
+                    stable_groups: vec![],
+                }
+            }
+        };
+        access(shared, |s| {
+            if s.read_stamp() != stamp {
+                return Ok(());
+            } // Another writer/read won; discard stale network results.
+            task::observe(s, src, snap)
+        })
+    }
 }

@@ -1,13 +1,19 @@
 //! Pinned gh/tea native APIs. An adapter returns observations; it cannot select a Project.
 use crate::{scm::Hosted, services::Supervisor};
 use serde_json::{Value, json};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+#[cfg(all(test, hctl_task_native))]
 use std::process::Command;
 use store::{ExternalEntity, Reference};
 use task::{Card, Dependencies, Group, GroupKind, Result, Snapshot, Source, reject};
 
 pub(super) enum Client {
-    Github { gh: PathBuf, host: String },
+    Github {
+        gh: PathBuf,
+        host: String,
+        reads: RefCell<super::github::Reads>,
+    },
     Gitea(Hosted),
 }
 impl Client {
@@ -18,7 +24,7 @@ impl Client {
         services: &Supervisor,
     ) -> Result<Self> {
         if src.candidate.provider == "gitea_issues" {
-            let hosted = Hosted::connect(root, control_id, services)?;
+            let hosted = Hosted::existing(root, control_id, services)?;
             if hosted.url != src.platform.instance {
                 return Err(reject(
                     "PLATFORM_CHANGED",
@@ -37,10 +43,7 @@ impl Client {
                 .unwrap_or_else(|| "gh".into());
             let gh = foundation::git::resolve_executable(&requested)
                 .ok_or_else(|| reject("PROVIDER_UNAVAILABLE", "gh unavailable", "install_gh"))?;
-            Ok(Self::Github {
-                gh,
-                host: src.platform.instance.clone(),
-            })
+            Ok(Self::github(gh, src.platform.instance.clone()))
         } else {
             Err(reject(
                 "PROVIDER_UNSUPPORTED",
@@ -52,45 +55,8 @@ impl Client {
     pub fn api(&self, method: &str, path: &str, body: Option<Value>) -> Result<Option<Value>> {
         match self {
             Self::Gitea(h) => h.api(method, path, body),
-            Self::Github { gh, host } => {
-                let mut cmd = Command::new(gh);
-                cmd.env("GH_PROMPT_DISABLED", "1")
-                    .env("NO_COLOR", "1")
-                    .env_remove("GH_DEBUG")
-                    .args(["api", "--include", "--hostname", host, "--method", method]);
-                if body.is_some() {
-                    cmd.args(["--input", "-"]);
-                }
-                cmd.arg(path);
-                let out = repo::git::run(&mut cmd, body.map(|v| v.to_string().into_bytes()))?;
-                let text = String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n");
-                let (headers, body) = text.split_once("\n\n").ok_or_else(|| {
-                    reject(
-                        "PROVIDER_RESPONSE",
-                        "missing GitHub HTTP headers",
-                        "retry_read",
-                    )
-                })?;
-                let status = headers
-                    .lines()
-                    .next()
-                    .and_then(|s| s.split_whitespace().nth(1))
-                    .and_then(|s| s.parse::<u16>().ok());
-                if status == Some(404) {
-                    return Ok(None);
-                }
-                if !out.status.success() || !status.is_some_and(|s| (200..300).contains(&s)) {
-                    return Err(reject(
-                        "PROVIDER_UNAVAILABLE",
-                        format!("GitHub {method} failed (HTTP {status:?})"),
-                        "read_back_original_intent",
-                    ));
-                }
-                Ok(Some(if body.trim().is_empty() {
-                    Value::Null
-                } else {
-                    serde_json::from_str(body)?
-                }))
+            Self::Github { gh, host, reads } => {
+                reads.borrow_mut().api(gh, host, method, path, body)
             }
         }
     }
@@ -160,6 +126,15 @@ impl Client {
         Ok(repo["permissions"]["admin"].as_bool() == Some(true))
     }
     pub fn snapshot(&self, src: &Source, binding: Reference) -> Result<Snapshot> {
+        self.snapshot_since(src, binding, None)
+    }
+
+    pub fn snapshot_since(
+        &self,
+        src: &Source,
+        binding: Reference,
+        previous: Option<&Snapshot>,
+    ) -> Result<Snapshot> {
         let base = format!("repos/{}", src.platform.full_name);
         let repo = self.repository(src)?;
         let mut groups = vec![];
@@ -174,16 +149,38 @@ impl Client {
                 });
             }
         }
-        let mut cards = vec![];
-        for raw in self.list(&format!("{base}/issues?state=all&type=issues"))? {
+        // Native `since` narrows the issue list. A periodic full scan remains necessary:
+        // deletions and relation changes are not promised to advance updated_at.
+        let since = previous.and_then(since_cursor);
+        let mut cards = if since.is_some() {
+            previous.unwrap().cards.clone()
+        } else {
+            vec![]
+        };
+        let path = format!(
+            "{base}/issues?state=all&type=issues{}",
+            since
+                .as_ref()
+                .map(|s| format!("&since={s}"))
+                .unwrap_or_default()
+        );
+        for raw in self.list(&path)? {
             if raw.get("pull_request").is_some_and(|v| !v.is_null()) {
                 continue;
             }
             let mut c = normalize(src, raw)?;
+            if since.is_some()
+                && cards
+                    .iter()
+                    .any(|old| old.entity == c.entity && old.raw == c.raw && !old.tombstone)
+            {
+                continue;
+            }
             c.dependencies = self.dependencies(src, c.number, &repo)?;
             if c.raw["comments"].as_u64().unwrap_or(0) > 0 {
                 c.comments = self.list(&format!("{base}/issues/{}/comments", c.number))?;
             }
+            cards.retain(|old| old.entity != c.entity);
             cards.push(c);
         }
         cards.sort_by(|a, b| {
@@ -200,6 +197,52 @@ impl Client {
             cards,
             stable_groups: groups,
         })
+    }
+
+    /// Commands concerning one existing card do not traverse unrelated issues.
+    pub fn refresh_card(
+        &self,
+        src: &Source,
+        previous: &Snapshot,
+        entity_id: &str,
+    ) -> Result<Snapshot> {
+        let repo = self.repository(src)?;
+        let original = previous
+            .cards
+            .iter()
+            .find(|c| c.entity.immutable_external_entity_id == entity_id)
+            .ok_or_else(|| {
+                reject(
+                    "CARD_NOT_OBSERVED",
+                    "card not in the current source snapshot",
+                    "refresh_source",
+                )
+            })?;
+        let mut card = match self.read_card(src, original)? {
+            Some(mut c) => {
+                c.dependencies = self.dependencies(src, c.number, &repo)?;
+                if c.raw["comments"].as_u64().unwrap_or(0) > 0 {
+                    c.comments = self.list(&format!(
+                        "repos/{}/issues/{}/comments",
+                        src.platform.full_name, c.number
+                    ))?;
+                }
+                c
+            }
+            None => {
+                let mut c = original.clone();
+                c.tombstone = true;
+                c
+            }
+        };
+        // An exact known entity is required above, including across redirects.
+        card.entity = original.entity.clone();
+        let mut snapshot = previous.clone();
+        if let Some(old) = snapshot.cards.iter_mut().find(|c| c.entity == card.entity) {
+            *old = card;
+        }
+        snapshot.observed_at = task::now();
+        Ok(snapshot)
     }
     fn dependencies(&self, src: &Source, number: u64, repo: &Value) -> Result<Dependencies> {
         let base = format!("repos/{}/issues/{number}", src.platform.full_name);
@@ -253,7 +296,20 @@ impl Client {
             }
         }
     }
+    #[cfg(test)]
     pub fn effect(&self, src: &Source, e: &store::EffectIntent, send: bool) -> Result<Card> {
+        self.effect_with_dispatch(src, e, send, || Ok(()), |_| Ok(()))
+    }
+
+    /// Mark the intent as possibly sent only after all read-only checks have passed.
+    pub fn effect_with_dispatch(
+        &self,
+        src: &Source,
+        e: &store::EffectIntent,
+        send: bool,
+        before_send: impl FnOnce() -> Result<()>,
+        mut rejected: impl FnMut(Value) -> Result<()>,
+    ) -> Result<Card> {
         self.repository(src)?;
         let write = &e.input["write"];
         let base = format!("repos/{}/issues", src.platform.full_name);
@@ -285,11 +341,14 @@ impl Client {
                 return Ok(c);
             }
             if send {
-                let _ = self.api(
+                self.ready_to_send()?;
+                before_send()?;
+                let result = self.api(
                     "POST",
                     &base,
                     Some(json!({"title":write["title"],"body":write["body"]})),
                 );
+                check_rejection(&result, false, json!({"matching_cards":[]}), &mut rejected)?;
             }
             return find()?.ok_or_else(unknown);
         }
@@ -310,17 +369,20 @@ impl Client {
                 return Ok(c);
             }
             if send {
-                match self {
+                self.ready_to_send()?;
+                before_send()?;
+                let result = match self {
                     Self::Gitea(_) => {
-                        let _ = self.api("DELETE", &path, None);
+                        self.api("DELETE", &path, None)
                     }
                     Self::Github { .. } => {
-                        let _ = self.api("POST", "graphql", Some(json!({
+                        self.api("POST", "graphql", Some(json!({
                             "query": "mutation($id:ID!){deleteIssue(input:{issueId:$id}){clientMutationId}}",
                             "variables": {"id":original.entity.immutable_external_entity_id}
-                        })));
+                        })))
                     }
-                }
+                };
+                check_rejection(&result, false, json!({"card":current}), &mut rejected)?;
             }
             if self.read_card(src, &original)?.is_none() {
                 let mut c = original;
@@ -332,24 +394,41 @@ impl Client {
         let current = current.ok_or_else(unknown)?;
         let fields = &write["fields"];
         if let Some(comment) = fields["comment"].as_str() {
-            let found = || -> Result<bool> {
-                Ok(self
+            let found = || -> Result<Option<Value>> {
+                let matching = self
                     .list(&format!("{path}/comments"))?
-                    .iter()
-                    .any(|v| v["body"].as_str() == Some(comment)))
+                    .into_iter()
+                    .filter(|v| v["body"].as_str() == Some(comment))
+                    .collect::<Vec<_>>();
+                if matching.len() > 1 {
+                    return Err(unknown());
+                }
+                Ok(matching.into_iter().next())
             };
-            if found()? {
-                return Ok(current);
+            if let Some(comment) = found()? {
+                let mut card = current;
+                card.comments = vec![comment];
+                return Ok(card);
             }
             if send {
-                let _ = self.api(
+                self.ready_to_send()?;
+                before_send()?;
+                let result = self.api(
                     "POST",
                     &format!("{path}/comments"),
                     Some(json!({"body":comment})),
                 );
+                check_rejection(
+                    &result,
+                    false,
+                    json!({"card":current,"matching_comments":[]}),
+                    &mut rejected,
+                )?;
             }
-            if found()? {
-                return self.read_card(src, &original)?.ok_or_else(unknown);
+            if let Some(comment) = found()? {
+                let mut card = self.read_card(src, &original)?.ok_or_else(unknown)?;
+                card.comments = vec![comment];
+                return Ok(card);
             }
             return Err(unknown());
         }
@@ -381,11 +460,48 @@ impl Client {
                     json!(original.content_version.ok_or_else(unknown)?),
                 );
             }
-            let _ = self.api("PATCH", &path, Some(Value::Object(body)));
+            // Gitea's content_version is only atomic for body. A mixed PATCH can
+            // change a title before a later 409; do not declare that attempt rejected.
+            let atomic_body = matches!(self, Self::Gitea(_))
+                && body.len() == 2
+                && body.contains_key("body")
+                && body.contains_key("content_version");
+            self.ready_to_send()?;
+            before_send()?;
+            let result = self.api("PATCH", &path, Some(Value::Object(body)));
+            check_rejection(&result, atomic_body, json!({"card":current}), &mut rejected)?;
         }
         let c = self.read_card(src, &original)?.ok_or_else(unknown)?;
         if matches(&c) { Ok(c) } else { Err(unknown()) }
     }
+
+    fn ready_to_send(&self) -> Result<()> {
+        match self {
+            Self::Github { reads, .. } => reads.borrow().ready(),
+            Self::Gitea(_) => Ok(()),
+        }
+    }
+}
+
+fn check_rejection(
+    response: &Result<Option<Value>>,
+    atomic_body: bool,
+    prior_read: Value,
+    rejected: &mut impl FnMut(Value) -> Result<()>,
+) -> Result<()> {
+    if let Err(error) = response
+        && (error.code == "NATIVE_REJECTED" || atomic_body && error.code == "NATIVE_CONFLICT")
+    {
+        rejected(
+            json!({"provider_error":{"code":error.code,"message":error.message},"prior_read":prior_read}),
+        )?;
+        return Err(reject(
+            "PROVIDER_REJECTED",
+            error.message.clone(),
+            "refresh_and_preview",
+        ));
+    }
+    Ok(())
 }
 
 fn unknown() -> task::StoreError {
@@ -394,6 +510,41 @@ fn unknown() -> task::StoreError {
         "original write not confirmed; retry reads it without resending",
         "resume_effect",
     )
+}
+
+fn since_cursor(snapshot: &Snapshot) -> Option<String> {
+    let times = snapshot
+        .cards
+        .iter()
+        .filter(|c| !c.tombstone)
+        .map(|c| c.remote_revision.as_str())
+        .collect::<Vec<_>>();
+    let first = *times.first()?;
+    // Preserve the provider's timezone; do not implement date conversion. If the
+    // provider changes its representation, fall back to a complete read instead.
+    let valid = |time: &str| {
+        time.is_ascii()
+            && (time.len() == 20 || time.len() == 25)
+            && time.bytes().enumerate().all(|(i, b)| match i {
+                4 | 7 => b == b'-',
+                10 => b == b'T',
+                13 | 16 | 22 => b == b':',
+                19 => {
+                    if time.len() == 20 {
+                        b == b'Z'
+                    } else {
+                        b == b'+' || b == b'-'
+                    }
+                }
+                _ => b.is_ascii_digit(),
+            })
+    };
+    if !valid(first) || times.iter().any(|t| !valid(t) || t[19..] != first[19..]) {
+        return None;
+    }
+    let latest = times.into_iter().max()?;
+    // Overlap the last minute so two edits sharing a timestamp are not skipped.
+    Some(format!("{}00{}", &latest[..17], &latest[19..]).replace('+', "%2B"))
 }
 fn id(value: &Value) -> Result<String> {
     value

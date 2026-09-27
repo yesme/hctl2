@@ -678,6 +678,160 @@ fn stale_snapshot_and_illegal_moves_fail_and_offline_is_not_empty() {
 }
 
 #[test]
+fn identical_observation_preserves_versions_and_an_existing_preview() {
+    let mut e = Env::new();
+    e.attach("A", None);
+    e.observe("card", false);
+    let id = e.claim("A");
+    let (r, t) = task(&e.store, "A", &id).unwrap();
+    let plan = prepare(
+        &e.store,
+        Input {
+            key: "move-stable".into(),
+            action: Action::Move {
+                project_id: "A".into(),
+                task_id: id.clone(),
+                version: r.version,
+                state_version: t.state_version,
+                stage: "closed".into(),
+                rank: None,
+                relative_source_id: None,
+            },
+        },
+    )
+    .unwrap();
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (snapshot_record, mut snapshot) = latest(&e.store, &src).unwrap();
+    // A heartbeat is not a new backend revision, even after the old 60-second TTL.
+    snapshot.observed_at += 120;
+    let stamp = e.store.read_stamp();
+    observe(&mut e.store, &src, snapshot).unwrap();
+    assert_eq!(e.store.read_stamp(), stamp);
+    assert_eq!(
+        latest(&e.store, &src).unwrap().0.version,
+        snapshot_record.version
+    );
+    assert_eq!(task(&e.store, "A", &id).unwrap().0.version, r.version);
+    admit(&mut e.store, &actor(), plan).unwrap();
+}
+
+#[test]
+fn withdraw_unsent_intent_releases_card_without_cancelling_task_but_unknown_stays_reserved() {
+    let mut e = Env::new();
+    e.attach("A", None);
+    e.attach("B", None);
+    e.observe("card", false);
+    let a = e.claim("A");
+    let b = e.claim("B");
+    let movement = |s: &Store, project: &str, id: &str| {
+        let (r, t) = task(s, project, id).unwrap();
+        Action::Move {
+            project_id: project.into(),
+            task_id: id.into(),
+            version: r.version,
+            state_version: t.state_version,
+            stage: "closed".into(),
+            rank: None,
+            relative_source_id: None,
+        }
+    };
+    let action = movement(&e.store, "A", &a);
+    let result = apply(&mut e.store, "first", action).unwrap();
+    let effect = result["effect_id"].as_str().unwrap().to_owned();
+    let action = movement(&e.store, "B", &b);
+    assert_eq!(
+        apply(&mut e.store, "second-blocked", action)
+            .unwrap_err()
+            .code,
+        "EFFECT_CONFLICT"
+    );
+    apply(
+        &mut e.store,
+        "withdraw",
+        Action::Withdraw {
+            effect_id: effect.clone(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        e.store.effect(&effect).unwrap().1,
+        store::EffectState::Cancelled
+    );
+    assert_eq!(task(&e.store, "A", &a).unwrap().1.lifecycle, "open");
+    let action = movement(&e.store, "B", &b);
+    let result = apply(&mut e.store, "second", action).unwrap();
+    let effect = result["effect_id"].as_str().unwrap();
+    let withdrawal = prepare(
+        &e.store,
+        Input {
+            key: "withdraw-race".into(),
+            action: Action::Withdraw {
+                effect_id: effect.into(),
+            },
+        },
+    )
+    .unwrap();
+    begin(&mut e.store, &actor(), effect).unwrap();
+    assert_eq!(
+        admit(&mut e.store, &actor(), withdrawal).unwrap_err().code,
+        "READBACK_REQUIRED"
+    );
+    assert_eq!(
+        apply(
+            &mut e.store,
+            "withdraw-unknown",
+            Action::Withdraw {
+                effect_id: effect.into()
+            }
+        )
+        .unwrap_err()
+        .code,
+        "READBACK_REQUIRED"
+    );
+    let action = movement(&e.store, "A", &a);
+    assert_eq!(
+        apply(&mut e.store, "still-blocked", action)
+            .unwrap_err()
+            .code,
+        "EFFECT_CONFLICT"
+    );
+}
+
+#[test]
+fn another_card_changes_without_reversioning_this_task_or_breaking_its_contract_origin() {
+    let mut e = Env::new();
+    e.attach("A", None);
+    e.observe("card", false);
+    let id = e.claim("A");
+    let (r, t) = task(&e.store, "A", &id).unwrap();
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (_, mut snap) = latest(&e.store, &src).unwrap();
+    let mut other = snap.cards[0].clone();
+    other.entity.immutable_external_entity_id = "other".into();
+    other.number = 2;
+    snap.cards.push(other);
+    observe(&mut e.store, &src, snap).unwrap();
+    assert_eq!(task(&e.store, "A", &id).unwrap().0.version, r.version);
+    let mut adoption = e.local_contract("A");
+    adoption.origin = ContractOrigin::Backend {
+        snapshot: t.snapshot.unwrap(),
+        state_version: t.state_version,
+    };
+    apply(
+        &mut e.store,
+        "adopt-still-current",
+        Action::Adopt {
+            project_id: "A".into(),
+            project_version: 1,
+            task_id: id,
+            version: r.version,
+            adoption,
+        },
+    )
+    .unwrap();
+}
+
+#[test]
 fn adoption_grades_project_scope_and_backend_version_are_checked() {
     let mut e = Env::new();
     e.attach("A", None);
@@ -834,7 +988,7 @@ fn create_material_outbox_retry_is_one_revision_and_unknown_is_read_only() {
     assert_eq!(tasks(&e.store).unwrap().len(), 1);
     assert_eq!(e.store.list("task_revision").unwrap().len(), 1);
     let mut altered = serde_json::to_value(
-        &prepare(
+        prepare(
             &e.store,
             Input {
                 key: "create".into(),
@@ -882,6 +1036,59 @@ fn source_contract_drift_is_pending_but_stage_change_is_projection_only() {
     let (_, t) = task(&e.store, "A", &id).unwrap();
     assert!(t.pending_contract.is_none());
     assert_eq!(t.lifecycle, "open");
+    let (r, t) = task(&e.store, "A", &id).unwrap();
+    let result = apply(
+        &mut e.store,
+        "comment",
+        Action::Update {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+            state_version: t.state_version,
+            fields: Fields {
+                title: None,
+                body: None,
+                comment: Some("status update".into()),
+            },
+        },
+    )
+    .unwrap();
+    let effect_id = result["effect_id"].as_str().unwrap();
+    let (intent, _) = begin(&mut e.store, &actor(), effect_id).unwrap();
+    let (_, mut snapshot) = latest(&e.store, &src).unwrap();
+    let mut observed = snapshot.cards[0].clone();
+    observed.comments = vec![json!({"id":8,"body":intent.input["write"]["fields"]["comment"]})];
+    snapshot.cards[0] = observed.clone();
+    // Observation may win the race against delivery confirmation.
+    observe(&mut e.store, &src, snapshot.clone()).unwrap();
+    assert!(
+        task(&e.store, "A", &id)
+            .unwrap()
+            .1
+            .pending_contract
+            .is_some()
+    );
+    confirm(&mut e.store, effect_id, &observed).unwrap();
+    observe(&mut e.store, &src, snapshot.clone()).unwrap();
+    assert!(
+        task(&e.store, "A", &id)
+            .unwrap()
+            .1
+            .pending_contract
+            .is_none()
+    );
+    // A copied marker is not proof of an HCTL write. Keep this distinct native comment.
+    let mut copy = snapshot.cards[0].comments[0].clone();
+    copy["id"] = json!(9);
+    snapshot.cards[0].comments.push(copy);
+    observe(&mut e.store, &src, snapshot).unwrap();
+    assert!(
+        task(&e.store, "A", &id)
+            .unwrap()
+            .1
+            .pending_contract
+            .is_some()
+    );
     e.observe("new title", false);
     let (_, t) = task(&e.store, "A", &id).unwrap();
     assert!(t.pending_contract.is_some());

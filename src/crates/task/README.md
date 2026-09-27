@@ -52,7 +52,9 @@ hctl2 task show PROJECT_ID TASK_ID
 
 `update` 支持标题、正文或追加评论；评论与其他字段分次提交。`move` 支持 issues 的 open / closed 阶段；两家此绑定均未声明看板排序能力，带 rank 或跨源相对位置返回类型化拒绝，不模拟本地排序。`cancel` 只取消并归档本 Task。`delete-card` 是另一次预览确认：列出本控制面全部同卡 Task、各自 Project / 生命周期 / 活动 Run；`active_run_choices` 表示逐一确认这些 Run 继续运行的后果，不授予停止它们的权限。
 
-`refresh` 显式读取源；控制面每 60 秒对已接入的活跃源对账，不依赖公网 webhook。`set-active` 带源记录 `version` 停用或重新启用；保留既有实体映射。`resume` 带 `effect_id` 恢复原外部意图，不重新选择目标。写命令均沿用上述预览、相同输入加 token 的两步形状；重复原 key 返回原领域结果。
+`refresh` 显式完整读取源；控制面每 60 秒按 `since` 增量对账，每 15 分钟完整核对删除和关系变化，不依赖公网 webhook。GitHub GET 使用 ETag，304 才复用内容，限流按 Retry-After / reset 退避。具体卡片命令只回读该卡，不爬整块看板。相同观测不写事件、不使预览失效；另一张卡变化也不推进本 Task 的版本。提交仍做当前回读，不靠旧 Snapshot 的时间戳代替。
+
+`set-active` 带源记录 `version` 停用或重新启用；保留既有实体映射。`resume` 带 `effect_id` 恢复原外部意图，不重新选择目标；`withdraw` 带 `effect_id`，只撤回从未发送的意图，不取消 Task，不接受 Unknown。写命令均沿用上述预览、相同输入加 token 的两步形状；重复原 key 返回原领域结果。
 
 查询和观察型写入结果都是 stdout JSON；外部步骤错误保留已准入的 Task / effect，附 `error.code`、`recovery_action` 与实际 `effect_state`，CLI 非零退出。未就绪、拒绝、结果未知不报成功。
 
@@ -62,13 +64,15 @@ GitHub 使用现有 gh 登录；Gitea 1.27.3 经随包 tea 0.15.1 的 `api`，�
 
 两家写前回读、写后核目标和字段。Gitea 的 `content_version` 数据库条件更新只覆盖正文；标题 / 状态与正文混合 PATCH 不是原子事务，因此能力声明另列 `conditional_fields=["body"]`，不会把整次 PATCH 说成原子比较并更新。GitHub 不声明条件更新。具体证据见 [Gitea 复核](../../../docs/research/gitea.md#2026-09-21--任务源写入条件的范围复核)。
 
-领域记录与 outbox 先同事务持久化，再执行外部步骤。创建与评论携带控制面、Task 和输入摘要的关联标记；结果未知只按原标记回读，不再次 POST。未知写入继续占冲突范围；卡片已被人改到不能证明原结果时，返回未知，不凭相似内容猜成功。调用者可显式重试原命令或 `resume`，后台轮询不重发写入。
+领域记录与 outbox 先同事务持久化，再执行外部步骤。所有发送前读取、字段冲突与权限检查先完成，紧靠写请求才进入 Unknown。创建与评论携带控制面、Task 和输入摘要的关联标记；结果未知只按原标记回读，不再次 POST。未知写入继续占冲突范围；卡片已被人改到不能证明原结果时，返回未知，不凭相似内容猜成功。调用者可显式重试原命令或 `resume`，后台轮询不重发写入。
+
+平台的明确权限 / 目标拒绝（401/403/404），以及 Gitea 单独正文条件更新的 409，保存原目标回读与拒绝响应，进入 Rejected 并释放冲突范围，重放仍返回拒绝而非成功。混合 PATCH 的 409、未核实的 422、GraphQL errors、超时与 5xx 不直接当未生效；原目标读得出准确结果才确认，否则 Unknown。未知写入没有“无条件放弃”出口。确认结果含平台修订时间和评论实体；契约投影只排除已确认写回的精确评论，复制标记或修改评论仍触发待采纳。
 
 创建已发出但尚未确认时，对账及人工认领都保留原 Task 的位置，不再生成第二个 Task。取消会撤销尚未发送的意图；未知意图保留以待回读。删除在准入和未发送意图恢复时重核受影响集合，新增绑定 Task / Run 会拒绝旧确认。
 
 后端不可用时保留最后观测并标不完整，按源看板不会显示成空板；依赖当前回读的动作拒绝。源 stage、标题、分组或依赖变化不改 Task 归属、契约或生命周期；契约相关字段变化产生待采纳提示。停用源不阻止独立的本地契约采纳，后端来源采纳仍要求当前回读。依赖只存在 Snapshot 的 parent / children / blocked_by / blocking 四字段；Gitea 没有核实的父子接口时前两项为空，不另建依赖对象。
 
-Task 外部调用与 Repo、服务维护、恢复共用现有运维锁；Store 仅在短事务期间占用，查询不等待网络。客户端断开后阻塞工作仍持锁。此锁不声称排除平台原生客户端或另一个控制面的写入。
+后台和普通预览网络读取不占全局运维锁；读前后核写者代次与 SQLite 写入计数，期间发生写入或恢复则丢弃旧观测。明确接源的引导及实际外部写入仍与 Repo、服务维护、恢复共用运维锁；Store 只在短事务期间占用。Gitea 对账复用原地址和凭据，不调用 consume 或账号引导，停掉的服务保持停止；明确接源与 Repo 注册才可引导服务。此锁不声称排除平台原生客户端或另一个控制面的写入。
 
 ## 验证与 CT 对照
 
@@ -85,10 +89,10 @@ Task 外部调用与 Repo、服务维护、恢复共用现有运维锁；Store �
 | 同卡两 Project 独立认领与契约；A/B 观测写回 | `domain_test`：同卡两个 Task、A 采纳不改 B、同一标题观测进两边、不推进 lifecycle；provider 写回回读后刷新全部绑定。原生 Done 触发完成留 P2.4 |
 | 取消与单独删卡、A/B 活动 Run 后果 | `domain_test`：未确认删除拒绝、漏 Run 处理选择拒绝、A 取消不删卡也不取消 B、B 活动 Run 拒绝取消；新绑定使旧删卡预览失效；原生测试：删除回读 tombstone |
 | 验收项带等级 | `domain_test`：缺 grade 反序列化拒绝，空验收项拒绝；等级证据与凭证验收留 P2.4 |
-| 正文保存 / 准入崩溃与建卡确认丢失 | `domain_test`：保存材料后重开 Store 同命令仅一 Revision；待确认创建不被重复认领、Pending 取消、Unknown 仅回读；`task_cli_test`：真实 daemon 重启后重复命令仅一次 POST |
+| 正文保存 / 准入崩溃与建卡确认丢失 | `domain_test`：保存材料后重开 Store 同命令仅一 Revision；待确认创建不被重复认领、Pending 取消、Unknown 仅回读；`task_cli_test`：POST 已生效但返回 503、回读暂不可见，真实 daemon 重启后原命令确认且总共一次 POST；403 拒绝释放冲突范围后另一 Project 可提交 |
 | 后端无条件写入未确认不报成功 | `unit_test`：tea 退出码 0 但 HTTP 503、响应丢失后按精确标记回读只 POST 一次；原卡被转移至不同实体拒绝。`task_native_test`：建卡、条件冲突、标题与正文版本差异、评论幂等与删除 |
 | Start / Complete、Run reducer、Vikunja Done、证据等级、候选交付与完成凭证各行 | 按开工书留 P2.3 / P2.4，不把本批领域测试记成这些行为已经交付 |
 
 Buck 目标：`root//crates/task:{task,domain_test,clippy}`；`root//apps/control:{unit_test,task_native_test,boundary_test,services_test,clippy}`；`root//apps/cli:{task_cli_test,cli_test,clippy}`。根 `root//:clippy` 包含 Task。原生 Gitea 测试消费 lock.json 已有四平台制品，在私有临时目录运行回环服务；不下载另一套版本，不启动开发者已有实例。
 
-CLI 测试运行真实 CLI 与 daemon，只有 gh 是子进程夹具；原生 Gitea 测试不使用该夹具。已有 `root//packaging/release:complete-test` 继续验证完整安装包、原生服务生命周期及 Repo 注册。Project 创建与全 B1 的两个主 Room 恢复验收由辛串起，不在这里假报完成。
+CLI 测试运行真实 CLI 与 daemon，只有 gh 是子进程夹具；原生 Gitea 测试不使用该夹具。`root//packaging/release:complete-test` 验证完整安装包、原生服务生命周期、Repo 注册，另验证原生 Gitea 接源、刷新，以及手动停服务后读取不重新启动。Project 创建与全 B1 的两个主 Room 恢复验收由辛串起，不在这里假报完成。

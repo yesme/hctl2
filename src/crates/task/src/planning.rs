@@ -202,15 +202,27 @@ pub fn latest(store: &Store, source: &Source) -> Result<(Record, Snapshot)> {
         || snap.source != reference(&binding)
         || !snap.complete
         || snap.error.is_some()
-        || now().saturating_sub(snap.observed_at) > 60
     {
         return Err(reject(
             "READBACK_REQUIRED",
-            "source unavailable, incomplete or older than 60 seconds",
+            "source unavailable or incomplete; the transport must read before admission",
             "refresh_source",
         ));
     }
     Ok((r, snap))
+}
+
+pub(crate) fn snapshot_at(store: &Store, reference: &Reference) -> Result<Snapshot> {
+    let current = required(store, &reference.key)?;
+    if crate::reference(&current) == *reference {
+        return decode(&current);
+    }
+    let record = store
+        .versions(&reference.key)?
+        .into_iter()
+        .find(|r| crate::reference(r) == *reference)
+        .ok_or_else(stale)?;
+    decode(&record)
 }
 
 pub(crate) fn card<'a>(snapshot: &'a Snapshot, entity_id: &str) -> Result<&'a Card> {
@@ -292,17 +304,23 @@ fn check_contract(
             }
             let (_, src) = source(store, &task.repo_id, &task.source_id)?;
             let (r, snap) = latest(store, &src)?;
-            if reference(&r) != *snapshot {
+            if r.key != snapshot.key {
                 return Err(stale());
             }
-            card(
-                &snap,
-                &task
-                    .entity
-                    .as_ref()
-                    .ok_or_else(stale)?
-                    .immutable_external_entity_id,
-            )?;
+            let frozen = snapshot_at(store, snapshot)?;
+            let entity = &task
+                .entity
+                .as_ref()
+                .ok_or_else(stale)?
+                .immutable_external_entity_id;
+            if frozen.source != snap.source
+                || !frozen.complete
+                || frozen.error.is_some()
+                || serde_json::to_value(card(&frozen, entity)?)?
+                    != serde_json::to_value(card(&snap, entity)?)?
+            {
+                return Err(stale());
+            }
             plan.check(&r);
         }
     }
@@ -909,6 +927,21 @@ pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
                 return Err(stale());
             }
             p.result = json!({"effect_id":effect_id,"state":state});
+        }
+        Action::Withdraw { effect_id } => {
+            let (e, state) = store.effect(effect_id)?;
+            if !e.operation.starts_with("task.") {
+                return Err(stale());
+            }
+            if state != store::EffectState::Pending {
+                return Err(reject(
+                    "READBACK_REQUIRED",
+                    "only an unsent intent can be withdrawn",
+                    "resume_effect",
+                ));
+            }
+            p.cancel_effects.push(effect_id.clone());
+            p.result = json!({"withdrawn_effect_id":effect_id,"state":"cancelled"});
         }
     }
     Ok(p)

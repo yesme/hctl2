@@ -47,10 +47,12 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
     }
     let k = key(Scope::Repo(src.repo_id.clone()), "task_snapshot", &src.id);
     let old = store.get(&k)?;
+    let previous: Option<Snapshot> = old.as_ref().map(decode).transpose()?;
     if !snap.complete {
         // Preserve last observations on failures. Consumers still see the incomplete flag.
-        if let Some(r) = &old {
-            snap.cards = decode::<Snapshot>(r)?.cards;
+        if let Some(previous) = &previous {
+            snap.cards = previous.cards.clone();
+            snap.stable_groups = previous.stable_groups.clone();
         }
     } else if let Some(r) = &old {
         for mut c in decode::<Snapshot>(r)?.cards {
@@ -60,17 +62,45 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
             }
         }
     }
-    let record = value_record(k, old.map_or(1, |r| r.version + 1), &snap)?;
-    let mut changes = vec![record.clone()];
+    let unchanged = match &previous {
+        Some(previous) => {
+            previous.source == snap.source && content_digest(previous)? == content_digest(&snap)?
+        }
+        None => false,
+    };
+    let record = if unchanged {
+        old.clone().unwrap()
+    } else {
+        value_record(k, old.as_ref().map_or(1, |r| r.version + 1), &snap)?
+    };
+    let mut changes = if unchanged {
+        vec![]
+    } else {
+        vec![record.clone()]
+    };
     let mut scopes = vec![Scope::Repo(src.repo_id.clone())];
     for (r, mut t) in tasks(store)?
         .into_iter()
-        .filter(|(_, t)| t.source_id == src.id)
+        .filter(|(_, t)| t.source_id == src.id && t.repo_id == src.repo_id)
     {
         let found = t
             .entity
             .as_ref()
             .and_then(|e| snap.cards.iter().find(|c| &c.entity == e));
+        let old_card = previous.as_ref().and_then(|previous| {
+            t.entity
+                .as_ref()
+                .and_then(|e| previous.cards.iter().find(|c| &c.entity == e))
+        });
+        let same_card = t.snapshot.is_some()
+            && previous.as_ref().is_some_and(|previous| {
+                previous.source == snap.source
+                    && previous.complete == snap.complete
+                    && previous.error == snap.error
+            })
+            && serde_json::to_value(old_card)? == serde_json::to_value(found)?;
+        let old_attention = t.needs_attention;
+        let old_pending = t.pending_contract.clone();
         t.needs_attention =
             !snap.complete || snap.error.is_some() || found.is_none_or(|c| c.tombstone);
         if let Some(expected) = t
@@ -79,12 +109,19 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
             .and_then(|r| r.backend_projection_digest.as_ref())
         {
             t.pending_contract = match found {
-                Some(c) if !c.tombstone && contract_projection(c)? != *expected => {
-                    Some(reference(&record))
+                Some(c) if !c.tombstone && contract_projection(store, c)? != *expected => {
+                    if same_card {
+                        old_pending.clone().or_else(|| Some(reference(&record)))
+                    } else {
+                        Some(reference(&record))
+                    }
                 }
                 _ => None,
             };
             t.needs_attention |= t.pending_contract.is_some();
+        }
+        if same_card && t.needs_attention == old_attention && t.pending_contract == old_pending {
+            continue;
         }
         t.snapshot = Some(reference(&record));
         t.state_version += 1;
@@ -170,6 +207,19 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
             }
         }
     }
+    if changes.is_empty() {
+        return Ok(());
+    }
+    // New approved mappings may claim cards even when the source content is unchanged.
+    // Use a fresh snapshot record as that transaction's compare-and-swap target.
+    let record = if unchanged {
+        let mut record = record;
+        record.version += 1;
+        changes.push(record.clone());
+        record
+    } else {
+        record
+    };
     let actor = observer(reference(&sr), scopes);
     let cmd = command(
         &actor,
@@ -268,7 +318,7 @@ pub fn confirm(store: &mut Store, effect_id: &str, observed: &Card) -> Result<()
     }
     t.entity = Some(observed.entity.clone());
     t.number = Some(observed.number);
-    t.needs_attention = false;
+    t.needs_attention = observed.tombstone || t.pending_contract.is_some();
     let r = value_record(old.key, old.version + 1, &t)?;
     let identity = required(
         store,
@@ -296,6 +346,16 @@ pub fn confirm(store: &mut Store, effect_id: &str, observed: &Card) -> Result<()
     store.submit(store.generation(), &actor, &cmd, None, |tx| {
         tx.put(&r)?;
         tx.put(&identity)?;
+        let own_comments = if e.input["write"]["fields"]["comment"].is_string() {
+            observed.comments.clone()
+        } else {
+            vec![]
+        };
+        tx.put(&value_record(
+            key(e.permission_scope.clone(), "task_effect_result", effect_id),
+            1,
+            &json!({"outcome":"confirmed","card":observed,"own_comments":own_comments}),
+        )?)?;
         tx.confirm_effect(
             effect_id,
             &Readback::Confirmed {
@@ -306,6 +366,32 @@ pub fn confirm(store: &mut Store, effect_id: &str, observed: &Card) -> Result<()
             },
         )?;
         Ok(json!({"confirmed":effect_id}))
+    })?;
+    Ok(())
+}
+
+/// Adapter-only evidence: a failed read or absence is not a rejection receipt.
+pub fn reject_effect(store: &mut Store, id: &str, evidence: Value) -> Result<()> {
+    let (e, _) = store.effect(id)?;
+    let record = value_record(
+        key(e.permission_scope.clone(), "task_effect_result", id),
+        1,
+        &evidence,
+    )?;
+    let actor = observer(e.owner.clone(), vec![e.permission_scope.clone()]);
+    let cmd = command(&actor, &record, "task.rejected", evidence.clone())?;
+    store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        tx.confirm_effect(
+            id,
+            &Readback::Rejected {
+                binding: e.binding.clone(),
+                target: e.target.clone(),
+                input_digest: e.input_digest.clone(),
+                result: evidence.clone(),
+            },
+        )?;
+        tx.put(&record)?;
+        Ok(json!({"rejected":id}))
     })?;
     Ok(())
 }
@@ -421,9 +507,32 @@ pub fn content_digest(snap: &Snapshot) -> Result<String> {
     )?))
 }
 
-pub fn contract_projection(card: &Card) -> Result<String> {
+pub fn contract_projection(store: &Store, card: &Card) -> Result<String> {
+    // A marker alone is forgeable. Exclude only exact comments recorded in the
+    // adapter's confirmed readback, including their native IDs and original contents.
+    let mut own_comments = vec![];
+    for record in store.list("task_effect_result")? {
+        let value: Value = decode(&record)?;
+        if value["outcome"] == "confirmed" {
+            let observed: Card = serde_json::from_value(value["card"].clone())?;
+            if observed.entity == card.entity {
+                own_comments.extend(
+                    value["own_comments"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
+        }
+    }
+    let comments = card
+        .comments
+        .iter()
+        .filter(|comment| !own_comments.contains(comment))
+        .collect::<Vec<_>>();
     // Stages, health and relation changes do not create contract drift.
     Ok(canonical_json_sha256(
-        &json!({"title":card.title,"body":card.body,"comments":card.comments}),
+        &json!({"title":card.title,"body":card.body,"comments":comments}),
     )?)
 }

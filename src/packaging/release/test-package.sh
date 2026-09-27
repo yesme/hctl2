@@ -180,6 +180,27 @@ empty_full_name="$("$HCTL2_JQ" -er '.registration.observed.full_name' <<<"$empty
 empty_id="$("$HCTL2_JQ" -er '.registration.repo_id' <<<"$empty_created")"
 [[ -z "$(git --git-dir="$b0_root/services/data/gitea/gitea-repositories/$empty_full_name.git" for-each-ref)" ]] || die "empty registration invented a ref"
 wait_consumed_available gitea
+# Exercise the installed task-source route with the real registered Gitea. Project
+# creation remains package 辛; do not seed private database records in a release test.
+task_source_input="$test_root/task-source.json"
+"$HCTL2_JQ" -n --arg repo "$repo_id" \
+    '{repo_id:$repo,candidate_id:"gitea_issues",consent:true,make_default:false}' >"$task_source_input"
+task_preview="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" task connect --input "$task_source_input" --key package-task-source)"
+task_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$task_preview")"
+task_source="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" task connect --input "$task_source_input" --key package-task-source --preview-token "$task_token")"
+task_source_id="$("$HCTL2_JQ" -er '.source_id' <<<"$task_source")"
+"$HCTL2_JQ" -n --arg repo "$repo_id" --arg source "$task_source_id" \
+    '{repo_id:$repo,source_id:$source}' >"$test_root/task-refresh.json"
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" task refresh --input "$test_root/task-refresh.json" --key package-task-refresh | \
+    "$HCTL2_JQ" -e '.preview_token | length > 0' >/dev/null
+HCTL2_INSTALL_ROOT="$contract_prefix/lib/hctl2/$PACKAGE_ID" HCTL2_STATE_ROOT="$b0_root/services" \
+    "$contract_prefix/bin/hctl2-services" stop gitea
+if "$contract_prefix/bin/hctl2" --json --root "$b0_root" task refresh --input "$test_root/task-refresh.json" --key package-task-offline >"$test_root/task-offline.json"; then
+    die "Task observation restarted a stopped Gitea or reported a successful read"
+fi
+"$HCTL2_JQ" -e '.error.code | length > 0' "$test_root/task-offline.json" >/dev/null
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" services status | \
+    "$HCTL2_JQ" -e '.hosted[] | select(.name == "gitea") | .available == false' >/dev/null
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
 if HCTL2_INSTALL_ROOT="$contract_prefix/lib/hctl2/$PACKAGE_ID" \

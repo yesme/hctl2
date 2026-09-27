@@ -248,6 +248,10 @@ pub enum Action {
     Resume {
         effect_id: String,
     },
+    /// Withdraw an intent that has never been dispatched; the Task remains open.
+    Withdraw {
+        effect_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

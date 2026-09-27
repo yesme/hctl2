@@ -23,6 +23,7 @@ pub(super) enum TaskCommand {
     DeleteCard(Write),
     Refresh(Write),
     Resume(Write),
+    Withdraw(Write),
     List {
         #[arg(long)]
         project_id: Option<String>,
@@ -94,6 +95,7 @@ async fn execute(command: TaskCommand, root: &Path, as_json: bool) -> Result<(),
         TaskCommand::DeleteCard(w) => ("delete_card", w),
         TaskCommand::Refresh(w) => ("refresh", w),
         TaskCommand::Resume(w) => ("resume", w),
+        TaskCommand::Withdraw(w) => ("withdraw", w),
     };
     let mut action: Value =
         serde_json::from_slice(&std::fs::read(w.input).map_err(io)?).map_err(|e| e.to_string())?;

@@ -45,7 +45,7 @@ fn find_optional(dir: &Path, needle: &str) -> Option<PathBuf> {
 }
 
 #[test]
-fn native_gitea_pagination_conditionals_dependencies_comments_delete_and_recovery() {
+fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
     let downloads = PathBuf::from(env!("HCTL2_TEST_SCM_DOWNLOADS"));
     let platform = if cfg!(target_os = "linux") {
         "linux-amd64"
@@ -196,7 +196,7 @@ fn native_gitea_pagination_conditionals_dependencies_comments_delete_and_recover
         &format!("repos/owner/repo/issues/{}", first.number),
         Some(json!({"title":"overwrite","content_version":first.content_version})),
     );
-    assert!(stale.is_err());
+    assert!(stale.unwrap_err().message.contains("HTTP Some(409)"));
     let dep = client
         .api(
             "POST",
@@ -205,6 +205,8 @@ fn native_gitea_pagination_conditionals_dependencies_comments_delete_and_recover
         )
         .unwrap()
         .unwrap();
+    let before_relation = client.read_card(&src, &first).unwrap().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     client
         .api(
             "POST",
@@ -212,13 +214,30 @@ fn native_gitea_pagination_conditionals_dependencies_comments_delete_and_recover
             Some(json!({"owner":"owner","repo":"repo","index":dep["number"]})),
         )
         .unwrap();
+    let after_relation = client.read_card(&src, &first).unwrap().unwrap();
+    eprintln!(
+        "Gitea 1.27.3 dependency updated_at: {} -> {}",
+        before_relation.remote_revision, after_relation.remote_revision
+    );
     let comment = super::tests::effect(
         "task.update",
         json!({"card":edited,"fields":{"comment":"hello <!-- hctl2:control:task:comment -->"}}),
     );
     client.effect(&src, &comment, true).unwrap();
     client.effect(&src, &comment, false).unwrap();
-    let snap = client.snapshot(&src, binding).unwrap();
+    let snap = client.snapshot(&src, binding.clone()).unwrap();
+    assert!(
+        since_cursor(&snap).is_some(),
+        "native timezone must support incremental polling"
+    );
+    assert_eq!(
+        client
+            .snapshot_since(&src, binding, Some(&snap))
+            .unwrap()
+            .cards
+            .len(),
+        2
+    );
     assert_eq!(snap.cards.len(), 2);
     let card = snap
         .cards

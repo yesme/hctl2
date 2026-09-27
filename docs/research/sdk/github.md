@@ -201,3 +201,11 @@ gh 固定的是客户端，不是远端 API 行为。2.99.0 源码的 REST 默�
   - webhook：仓库 hook 建到不可达地址也回 201；投递记录接口 `GET /repos/{o}/{r}/hooks/{id}/deliveries` 与 `…/deliveries/{id}` 保留失败投递的完整请求，头有 `X-Github-Event`、`X-Github-Delivery`、`X-Hub-Signature-256`，载荷有 `action` 与 `issue.node_id`，事件 `ping`、`issues/edited`、`issue_comment/created` 都在。失败投递可回查，也可按文档用 `POST …/deliveries/{id}/attempts` 重放（未试）。`projects_v2_item` 事件按文档只在组织级 webhook 与 GitHub App 上有，用户级 Project 没有 webhook（未试）。
   - 轮询：`gh issue list --state all --search 'updated:>=<日期>' --json id,number,updatedAt` 可用且已排除 PR；REST `issues?state=all&since=…` 含 PR，靠 `pull_request` 字段区分。
   - 与 Gitea 的差别已在 `gitea.md` 09-17 复核记录里对照：GitHub 没有条件写入，Gitea 有 `content_version`；两家都有子任务与阻塞依赖。
+
+## 2026-09-28 · #288 评审后的读取与限流复核
+
+决定建议：继续用随包 gh 2.99.0，不另加 SDK。按 [REST 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api) 和 [仓库 Issues 参数](https://docs.github.com/en/rest/issues/issues#list-repository-issues)，用 `since` 分页读取变化卡、GET 的 ETag / If-None-Match 核当前版本，304 才复用已收字节，不用 `gh api --cache` 代替当前回读。采集剩余额度、reset、Retry-After；429 与限流型 403 退避，普通 403 不误判成限流。
+
+P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完整核对，显式刷新也完整读取；当前卡片命令不逐卡遍历全板。时间游标重叠最后一分钟，避免同秒变化漏读；没有统一可比较的时间格式则完整读。完整核对保留删除、关系变化的兜底，不把依赖 API 的变化必然推进 issue 更新时间写成保证。
+
+本轮没有在个人远端写测试卡。gh 子进程夹具核了条件头与 304、429 后不再发请求、多页增量、20 张未变卡仅六个读请求、权限拒绝以及已写但丢确认后的重启回读。GraphQL HTTP 200 带 errors 不当成功，也不一律认定未执行；只有能够证明拒绝的响应才释放冲突范围。

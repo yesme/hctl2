@@ -58,29 +58,28 @@ pub struct ControlService {
 }
 
 impl ControlService {
-    /// Daemon-owned polling; its guard is shared with restoration and provider writes.
+    /// Network reads are fenced by Store generation/change counters, not a long-held
+    /// global operation guard. A stopped provider cannot stall unrelated commands.
     pub(crate) fn reconcile_task_sources(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
         let store = Arc::clone(&self.store);
         let services = Arc::clone(&self.services);
-        let operations = Arc::clone(&self.operations);
         let root = self.root.clone();
         async move {
+            let mut poller = crate::tasks::Poller::default();
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                let Ok(guard) = Arc::clone(&operations).try_lock_owned() else {
-                    continue;
-                };
                 let (store, services, root) =
                     (Arc::clone(&store), Arc::clone(&services), root.clone());
-                let _ = tokio::task::spawn_blocking(move || {
-                    let _guard = guard;
-                    crate::tasks::reconcile(&store, &services, &root)
+                poller = tokio::task::spawn_blocking(move || {
+                    let _ = crate::tasks::reconcile(&store, &services, &root, &mut poller);
+                    poller
                 })
-                .await;
+                .await
+                .unwrap_or_default();
             }
         }
     }
@@ -326,7 +325,11 @@ impl Control for ControlService {
             let operation = req.operation.clone();
             let services = Arc::clone(&self.services);
             let root = self.root.clone();
-            let guard = Arc::clone(&self.operations).lock_owned().await;
+            let guard = if operation.starts_with("repo.") || operation == "task.connect" {
+                Some(Arc::clone(&self.operations).lock_owned().await)
+            } else {
+                None
+            };
             match tokio::task::spawn_blocking(move || {
                 let _guard = guard;
                 if operation.starts_with("task.") {
@@ -421,15 +424,13 @@ impl Control for ControlService {
         let store = Arc::clone(&self.store);
         let operation = req.operation.clone();
         let root = self.root.clone();
-        let guard = if operation.starts_with("repo.")
-            || operation.starts_with("task.")
-            || operation == "restore.apply"
-        {
+        let guard = if operation.starts_with("repo.") || operation == "restore.apply" {
             Some(Arc::clone(&self.operations).lock_owned().await)
         } else {
             None
         };
         let services = Arc::clone(&self.services);
+        let operations = Arc::clone(&self.operations);
         let repo_request = req.clone();
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
@@ -437,11 +438,11 @@ impl Control for ControlService {
             if operation.starts_with("task.") {
                 return crate::tasks::submit(
                     &store,
+                    &operations,
                     &services,
                     &root,
                     &actor,
                     &repo_request,
-                    &payload,
                     &details,
                 )
                 .map_err(|err| present(&err));
