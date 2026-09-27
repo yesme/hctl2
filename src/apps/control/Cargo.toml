@@ -19,6 +19,7 @@ proto = { path = "../../crates/proto" }
 repo = { path = "../../crates/repo" }
 serde_json.workspace = true
 store = { path = "../../crates/store" }
+task = { path = "../../crates/task" }
 tokio.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true

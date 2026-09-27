@@ -49,3 +49,7 @@ Linear 和 GitHub 提供外部字段的写入权威，也是没有 Workbench 时
 | Vikunja | `RelationKind`：subtask、parenttask、related、duplicateof、duplicates、blocking、blocked、precedes、follows、copiedfrom、copiedto | `PUT /tasks/{id}/relations`、`DELETE /tasks/{id}/relations/{kind}/{other}` | 源码 `pkg/models/task_relation.go`（main 分支） |
 
 结论：四家都有阻塞与父子两种语义，HCTL 的投影只取这两种，治理只用阻塞；其余关系种类不投影。
+
+## 2026-09-21 · Gitea 依赖范围复核
+
+收窄上节结论：Gitea 1.27.3 的已核 API 支持阻塞双向查询（`dependencies` / `blocks`），没有本包可消费的父子接口，不能用「四家都有父子」声明它的能力。任务源 Snapshot 保持四个投影字段，Gitea 的 parent / children 为空，不从阻塞关系推造父子。证据与锁定原生二进制测试见 [Gitea 任务源复核](./gitea.md#2026-09-21--任务源写入条件的范围复核)；其余三家的本次结论未重验。

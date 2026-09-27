@@ -58,6 +58,32 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    /// Network reads are fenced by Store generation/change counters, not a long-held
+    /// global operation guard. A stopped provider cannot stall unrelated commands.
+    pub(crate) fn reconcile_task_sources(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let store = Arc::clone(&self.store);
+        let services = Arc::clone(&self.services);
+        let root = self.root.clone();
+        async move {
+            let mut poller = crate::tasks::Poller::default();
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let (store, services, root) =
+                    (Arc::clone(&store), Arc::clone(&services), root.clone());
+                poller = tokio::task::spawn_blocking(move || {
+                    let _ = crate::tasks::reconcile(&store, &services, &root, &mut poller);
+                    poller
+                })
+                .await
+                .unwrap_or_default();
+            }
+        }
+    }
+
     #[must_use]
     pub fn new(
         root: PathBuf,
@@ -203,11 +229,16 @@ impl Control for ControlService {
             return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
         let result = match req.kind.as_str() {
-            "repo.list" | "repo.show" => {
+            "repo.list" | "repo.show" | "task.list" | "task.show" | "task.sources"
+            | "task.board" => {
                 let store = Arc::clone(&self.store);
                 let kind = req.kind.clone();
                 match tokio::task::spawn_blocking(move || {
-                    crate::repositories::query(&store, &kind, &payload)
+                    if kind.starts_with("task.") {
+                        crate::tasks::query(&store, &kind, &payload)
+                    } else {
+                        crate::repositories::query(&store, &kind, &payload)
+                    }
                 })
                 .await
                 {
@@ -285,15 +316,27 @@ impl Control for ControlService {
             return Ok(preview_err(error));
         }
         let dangerous = is_dangerous(&req.operation);
-        let details = if req.operation.starts_with("repo.") {
+        let details = if req.operation.starts_with("repo.") || req.operation.starts_with("task.") {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
                 Err(err) => return Ok(preview_err(err)),
             };
             let store = Arc::clone(&self.store);
             let operation = req.operation.clone();
+            let services = Arc::clone(&self.services);
+            let root = self.root.clone();
+            let guard = if operation.starts_with("repo.") || operation == "task.connect" {
+                Some(Arc::clone(&self.operations).lock_owned().await)
+            } else {
+                None
+            };
             match tokio::task::spawn_blocking(move || {
-                crate::repositories::preview(&store, &operation, &payload)
+                let _guard = guard;
+                if operation.starts_with("task.") {
+                    crate::tasks::preview(&store, &services, &root, &operation, &payload)
+                } else {
+                    crate::repositories::preview(&store, &operation, &payload)
+                }
             })
             .await
             {
@@ -311,7 +354,7 @@ impl Control for ControlService {
             json!({"operation":req.operation,"dangerous":dangerous})
         };
         let base_token = preview_token(&req.operation, &req.payload, &req.command_id);
-        let token = if req.operation.starts_with("repo.") {
+        let token = if req.operation.starts_with("repo.") || req.operation.starts_with("task.") {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
             base_token
@@ -387,10 +430,23 @@ impl Control for ControlService {
             None
         };
         let services = Arc::clone(&self.services);
+        let operations = Arc::clone(&self.operations);
         let repo_request = req.clone();
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
             let _guard = guard;
+            if operation.starts_with("task.") {
+                return crate::tasks::submit(
+                    &store,
+                    &operations,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
             if operation.starts_with("repo.") {
                 return crate::repositories::submit(
                     &store,
@@ -742,7 +798,9 @@ fn run_operation(
 }
 
 fn is_dangerous(operation: &str) -> bool {
-    matches!(operation, "restore.apply" | "services.restore") || operation.starts_with("repo.")
+    matches!(operation, "restore.apply" | "services.restore")
+        || operation.starts_with("repo.")
+        || operation.starts_with("task.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {

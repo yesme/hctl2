@@ -50,6 +50,7 @@ fn old_schema_upgrades_before_ready_and_identity_does_not_change() {
             Ok(())
         }),
         M::up(CANCEL_PENDING),
+        M::up(REJECTED_EFFECT),
     ]);
     let store = Store::open_migrations(&temp.0, status.clone(), &plan).unwrap();
     assert!(seen.load(Ordering::SeqCst));
@@ -70,7 +71,7 @@ fn v2_upgrade_preserves_unknown_effect_and_its_conflict_scope() {
     drop(conn);
     let store = Store::open(&temp.0).unwrap();
     assert_eq!(store.control_id(), old.0);
-    assert_eq!(inspect(&store.conn).unwrap(), 3);
+    assert_eq!(inspect(&store.conn).unwrap(), VERSION);
     assert_eq!(store.pending_effects().unwrap(), vec!["e"]);
     let row: (String, String, Option<String>) = store
         .conn

@@ -463,6 +463,110 @@ fn cancelling_unsent_effect_is_atomic_terminal_and_does_not_confirm_it() {
 }
 
 #[test]
+fn platform_rejection_is_exact_immutable_and_releases_conflict_after_restart() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    let e = effect("e");
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("create", key("object")),
+            None,
+            |tx| {
+                tx.enqueue_effect(&e)?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
+    store.begin_effect(store.generation(), "e").unwrap();
+    let result = json!({"status":403,"prior_read":{"id":"original"}});
+    assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("bad-target", key("object")),
+            None,
+            |tx| {
+                tx.confirm_effect(
+                    "e",
+                    &Readback::Rejected {
+                        binding: e.binding.clone(),
+                        target: "other".into(),
+                        input_digest: e.input_digest.clone(),
+                        result: result.clone(),
+                    },
+                )?;
+                Ok(json!(null))
+            },
+        ),
+        "READBACK_MISMATCH",
+    );
+    assert_eq!(store.effect("e").unwrap().1, EffectState::Unknown);
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("rejected", key("object")),
+            None,
+            |tx| {
+                tx.confirm_effect(
+                    "e",
+                    &Readback::Rejected {
+                        binding: e.binding.clone(),
+                        target: e.target.clone(),
+                        input_digest: e.input_digest.clone(),
+                        result: result.clone(),
+                    },
+                )?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
+    drop(store);
+    let mut store = temp.store();
+    assert_eq!(store.effect("e").unwrap().1, EffectState::Rejected);
+    assert!(store.pending_effects().unwrap().is_empty());
+    assert_code(
+        store.begin_effect(store.generation(), "e"),
+        "READBACK_REQUIRED",
+    );
+    assert_code(
+        store.submit(
+            store.generation(),
+            &actor(),
+            &command("turn-success", key("object")),
+            None,
+            |tx| {
+                tx.confirm_effect(
+                    "e",
+                    &Readback::Confirmed {
+                        binding: e.binding.clone(),
+                        target: e.target.clone(),
+                        input_digest: e.input_digest.clone(),
+                        result: result.clone(),
+                    },
+                )?;
+                Ok(json!(null))
+            },
+        ),
+        "READBACK_MISMATCH",
+    );
+    store
+        .submit(
+            store.generation(),
+            &actor(),
+            &command("new", key("object")),
+            None,
+            |tx| {
+                tx.enqueue_effect(&effect("new"))?;
+                Ok(json!(null))
+            },
+        )
+        .unwrap();
+}
+
+#[test]
 fn duplicate_transport_delivery_keeps_one_effect_and_the_frozen_idempotency_key() {
     let temp = Temp::new();
     let mut store = temp.store();

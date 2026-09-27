@@ -10,9 +10,12 @@
 | `crates/repo/src/registry.rs` | 复用 `store` 的命令、版本比较与 outbox；`require_active` 给后续 Project / Task / Run 准入调用 |
 | `crates/repo/src/git.rs` | 宿主 Git 的只读检查、独立副本、选定 ref 的首次交付与回读 |
 | `apps/control/src/repositories/` | RPC 编排、随包 gh / tea / Gitea CLI；事务外运行外部步骤 |
+| `apps/control/src/scm.rs` | Repo 与 Task 共用的平台连接、GitHub 身份回读及 Gitea 凭据；不承载 Task 命令 |
 | `apps/cli/src/repo.rs` | `hctl2 repo register / list / show`，经控制面提交，不直接改存储 |
 
 己、庚、辛分别建自己的模块，不往 `repositories/` 加 Room、Task、Project 命令。庚读取已确认的候选、显式选择与平台 Binding 后建立 `task_source` 绑定；辛调用 `require_active` 后关联 Repo。这里没有实现它们的业务命令或平台换绑。`prepared.sources` 是冻结预览，`sources` 是当前观测；后者随 Issues 能力变化刷新，不改冻结输入。目前每种平台只返回一个候选，候选 ID 暂取 provider 名，`recommended` 为真；庚增加多源选择时可扩展，推荐本身不等于已绑定。`repo list` 跳过 P2.1 尚无注册内容的占位记录。
+
+庚的接入与失败用例见 [Task 实现说明](../task/README.md)；复用本包的 `SourceCandidate` 和已确认的 `default_source`，没有另一份候选协议。
 
 注册 ID 来自控制面身份和命令幂等键，不从目录、URL 或提交内容算身份。同一命令只产生同一登记；不同的显式登记不按内容去重。
 

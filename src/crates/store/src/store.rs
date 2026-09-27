@@ -147,6 +147,12 @@ impl Store {
     pub fn generation(&self) -> WriterGeneration {
         self.generation
     }
+
+    /// A conservative fence for observations read outside the database lock. SQLite's
+    /// counter includes rolled-back writes too; false conflicts are safe to retry.
+    pub fn read_stamp(&self) -> (WriterGeneration, u64) {
+        (self.generation, self.conn.total_changes())
+    }
     pub fn startup_status(&self) -> StartupStatus {
         self.status.clone()
     }

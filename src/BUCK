@@ -30,6 +30,7 @@ filegroup(
         "proto": "root//crates/proto:clippy",
         "repo": "root//crates/repo:clippy",
         "store": "root//crates/store:clippy",
+        "task": "root//crates/task:clippy",
         "tool": "root//apps/tool:clippy",
     },
     labels = CI_FULL,
