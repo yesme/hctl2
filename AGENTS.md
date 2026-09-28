@@ -2,6 +2,8 @@
 
 > 面向在本 repo 干活的所有编码 harness（Codex、Claude Code、Grok、Kimi、GLM…）。本文件管"怎么工作"；当前生效的具体约束在 [CONSTRAINTS.md](./CONSTRAINTS.md)，开工先读，冲突时以它为准。
 
+@CONSTRAINTS.md
+
 ## 三条纪律
 
 1. **指令是累积的，不是替换的。** human 的指令之间默认是"考虑 A、也考虑 B，给出综合方案"的叠加关系；新指令不作废旧指令。只有 human 显式说"之前的不算、重来"才清零。动手前先复述当前生效的约束集（进 PR 的工作写在 PR 描述里），不要只盯最后一条消息。
@@ -16,6 +18,12 @@
   - PR **新增脚本或第一方工具**（`.sh/.bash/.py/.pl/.rb/.js/.mjs/.cjs/.ts` 新文件，或 `src/build/tools/` 下的新文件）时，调研节不得以「不适用」开头——你选了自建，说明这个问题恰恰适用，写清查过什么、为何仍要自建；
   - PR **改动三方依赖**（`src/third-party/`、`Cargo.lock`、`package.json`/各类 lockfile）时，调研节必须引用 `docs/research/` 下的对象文件，对应纪律三的"先落 `docs/research/`，再写代码"。
 - 这三个字段是给 human 审的杠杆：human 靠它们抓方向，不必通读整个 diff。填敷衍等于把病藏起来，迟早在评审里爆掉。
+
+## 分支与同步
+
+- 每个 harness 在自己的 `~/workspace/hctl2-<harness>` worktree 里干活，家分支是 `<harness>/main-<os>`（`mac` 或 `ubuntu`，两台机器不共用）。家分支的 upstream 是同名远端分支，不是 `origin/main`；`origin/main` 是同步基线。布局与由来见 [ubuntu-multi-harness-worktree-setup](./.memo/notes/ubuntu-multi-harness-worktree-setup-20260822a.md)。
+- `git status` 只跟 upstream 比，显示已同步不代表跟上了 `main`。`./run <harness>` 启动前会先 fetch，再把家分支快进到 `origin/main`；它提示没同步（有本地提交、有未提交改动、fetch 失败）时，先处理再干活。没经过 `./run` 启动、或会话已经跑了很久时，自己跑 `git fetch --prune origin && git merge --ff-only origin/main`，不用 `git pull`（它拉的是自己的远端分支）。同步后 AGENTS.md 或 CONSTRAINTS.md 有变化就重读。
+- 开 PR 的分支从 `origin/main` 起：`git switch --no-track -c <harness>/<topic> origin/main`，再 `git push -u origin HEAD`。不加 `--no-track`，upstream 会被设成 `origin/main`。只推自己的分支，不推 `main`。
 
 ## Repo 地图
 
