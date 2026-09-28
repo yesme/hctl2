@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: run <agent> [--print|--session-id] [-- extra args...]
+Usage: run <agent> [--print|--session-id|--no-sync] [-- extra args...]
        run --help
        run help
 
@@ -11,43 +11,56 @@ Agents:
   agy      Antigravity CLI
   claude   Claude Code
   codex    OpenAI Codex
+  deepseek DeepSeek via omp
   glm      GLM via opencode
   grok     Grok Build (xAI)
   kimi     Kimi Code
+  minimax  MiniMax Code
   muse     Muse Code
+  qwen     Qwen via Qoder CLI
 
 Worktrees:
   agy      ~/workspace/hctl2-agy
   claude   ~/workspace/hctl2-claude
   codex    ~/workspace/hctl2-codex
+  deepseek ~/workspace/hctl2-deepseek
   glm      ~/workspace/hctl2-glm
   grok     ~/workspace/hctl2-grok
   kimi     ~/workspace/hctl2-kimi
+  minimax  ~/workspace/hctl2-minimax
   muse     ~/workspace/hctl2-muse
+  qwen     ~/workspace/hctl2-qwen
 
 Options:
   --print, --dry-run  print cd + command without launching
   --session-id        print the selected persisted session id
+  --no-sync           skip the pre-launch fast-forward to origin/main
   --                  pass remaining args to the target CLI
 
 Session ids:
   macOS
-    agy     30876bc1-f249-4569-b4cd-1a671577017d
-    claude  197c3f1e-7e43-46b4-a228-26a497574897
-    codex   01a027ea-f719-7a00-b833-2a587b2a05ac
-    glm     ses_fd816ff58ffew9OZpjG0y62oc6
-    grok    01a027e9-a557-7cf1-ac64-878cb7208851
-    kimi    session_e96e0466-cdf7-4790-870f-20ae8b6e862b
-    muse    01a08ce4-5760-7673-abc1-edc3de391284
+    agy      30876bc1-f249-4569-b4cd-1a671577017d
+    claude   197c3f1e-7e43-46b4-a228-26a497574897
+    codex    01a027ea-f719-7a00-b833-2a587b2a05ac
+    deepseek -
+    glm      ses_fd816ff58ffew9OZpjG0y62oc6
+    grok     01a027e9-a557-7cf1-ac64-878cb7208851
+    kimi     session_e96e0466-cdf7-4790-870f-20ae8b6e862b
+    minimax  -
+    muse     01a08ce4-5760-7673-abc1-edc3de391284
+    qwen     -
 
   Ubuntu
-    agy     702ce8fd-5edb-4847-a2fc-d64d346e26ec
-    claude  2ec5c59a-3a19-4a2d-bb13-9e15b27a8227
-    codex   01a0323b-aa8e-7cc1-ae36-2edf4235924b
-    glm     ses_fcdc15286ffemJbNe8YfvztD91
-    grok    01a03240-17b3-7003-95ab-a8c9100d96b6
-    kimi    session_891005b1-7f90-401f-aef7-b79a8d6d5737
-    muse    01a0be5b-2145-7840-864b-f9632f2df984
+    agy      c56d1e4d-9efc-4fea-a730-f40b5a9a5c65
+    claude   0a0f76a9-0fff-4495-8682-ff7b61dca6b4
+    codex    01a0e972-feb8-7562-9f37-5741175c456c
+    deepseek 01a0e987-936a-73d6-a671-269e178fb7d5
+    glm      ses_f167ca207ffeWkQBeksNkcSjFo
+    grok     01a0e980-c22c-7cb2-85f1-ec27f2ba0716
+    kimi     session_9cb83e83-3adf-4a4c-b354-bc8db0572579
+    minimax  mvs_10a70eac3ad9485abc2471f39da69467
+    muse     01a0e981-5fe8-71f3-898c-8bb01bd7ff10
+    qwen     c32d605f-5c34-4748-ac64-1c7c4584cf73
 
 Examples:
   ./run claude
@@ -62,6 +75,41 @@ die() {
   exit 1
 }
 
+note() {
+  echo "run: $*" >&2
+}
+
+# Fast-forward the harness branch to origin/main before the harness loads
+# AGENTS.md / CONSTRAINTS.md. Never blocks the launch: offline, detached,
+# dirty or diverged worktrees are reported and left untouched.
+sync_worktree() {
+  local branch counts behind ahead
+  branch="$(git symbolic-ref --quiet --short HEAD)" || {
+    note "detached HEAD; not syncing"
+    return 0
+  }
+  if ! GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o ConnectTimeout=10" \
+      git fetch --quiet --prune origin; then
+    note "fetch failed; launching $branch at $(git rev-parse --short HEAD) unsynced"
+    return 0
+  fi
+  counts="$(git rev-list --left-right --count origin/main...HEAD)" || {
+    note "origin/main not found; not syncing"
+    return 0
+  }
+  read -r behind ahead <<<"$counts"
+  ((behind)) || return 0
+  if ((ahead)); then
+    note "$branch: $ahead local commit(s), $behind behind origin/main; review and rebase manually"
+  elif ! git diff --quiet HEAD --; then
+    note "$branch: $behind behind origin/main, but tracked files are modified; not syncing"
+  elif git merge --ff-only --quiet origin/main; then
+    note "$branch: fast-forwarded $behind commit(s) to origin/main"
+  else
+    note "$branch: fast-forward to origin/main failed; launching unsynced"
+  fi
+}
+
 quote_cmd() {
   local part
   printf '%q' "$1"
@@ -74,6 +122,7 @@ quote_cmd() {
 
 agent=""
 print_only=0
+sync=1
 session_only=0
 extra=()
 
@@ -81,6 +130,7 @@ while (($#)); do
   case "$1" in
     --print|--dry-run) print_only=1 ;;
     --session-id) session_only=1 ;;
+    --no-sync) sync=0 ;;
     -h|--help|help) usage; exit 0 ;;
     --)
       shift
@@ -115,7 +165,7 @@ case "$agent" in
     workdir="$workspace/hctl2-agy"
     case "$platform" in
       macos)  session="30876bc1-f249-4569-b4cd-1a671577017d" ;;
-      ubuntu) session="702ce8fd-5edb-4847-a2fc-d64d346e26ec" ;;
+      ubuntu) session="c56d1e4d-9efc-4fea-a730-f40b5a9a5c65" ;;
     esac
     cmd=(agy --dangerously-skip-permissions --conversation "$session")
     ;;
@@ -123,7 +173,7 @@ case "$agent" in
     workdir="$workspace/hctl2-claude"
     case "$platform" in
       macos)  session="197c3f1e-7e43-46b4-a228-26a497574897" ;;
-      ubuntu) session="2ec5c59a-3a19-4a2d-bb13-9e15b27a8227" ;;
+      ubuntu) session="0a0f76a9-0fff-4495-8682-ff7b61dca6b4" ;;
     esac
     cmd=(claude --dangerously-skip-permissions --resume "$session")
     ;;
@@ -131,15 +181,23 @@ case "$agent" in
     workdir="$workspace/hctl2-codex"
     case "$platform" in
       macos)  session="01a027ea-f719-7a00-b833-2a587b2a05ac" ;;
-      ubuntu) session="01a0323b-aa8e-7cc1-ae36-2edf4235924b" ;;
+      ubuntu) session="01a0e972-feb8-7562-9f37-5741175c456c" ;;
     esac
     cmd=(codex --dangerously-bypass-approvals-and-sandbox -C "$workdir" resume "$session")
+    ;;
+  deepseek)
+    workdir="$workspace/hctl2-deepseek"
+    case "$platform" in
+      macos)  die "no macOS session recorded for $agent" ;;
+      ubuntu) session="01a0e987-936a-73d6-a671-269e178fb7d5" ;;
+    esac
+    cmd=(omp --auto-approve --resume "$session")
     ;;
   glm)
     workdir="$workspace/hctl2-glm"
     case "$platform" in
       macos)  session="ses_fd816ff58ffew9OZpjG0y62oc6" ;;
-      ubuntu) session="ses_fcdc15286ffemJbNe8YfvztD91" ;;
+      ubuntu) session="ses_f167ca207ffeWkQBeksNkcSjFo" ;;
     esac
     cmd=(opencode -s "$session" "$workdir")
     ;;
@@ -147,7 +205,7 @@ case "$agent" in
     workdir="$workspace/hctl2-grok"
     case "$platform" in
       macos)  session="01a027e9-a557-7cf1-ac64-878cb7208851" ;;
-      ubuntu) session="01a03240-17b3-7003-95ab-a8c9100d96b6" ;;
+      ubuntu) session="01a0e980-c22c-7cb2-85f1-ec27f2ba0716" ;;
     esac
     cmd=(grok --always-approve --resume "$session")
     ;;
@@ -155,17 +213,33 @@ case "$agent" in
     workdir="$workspace/hctl2-kimi"
     case "$platform" in
       macos)  session="session_e96e0466-cdf7-4790-870f-20ae8b6e862b" ;;
-      ubuntu) session="session_891005b1-7f90-401f-aef7-b79a8d6d5737" ;;
+      ubuntu) session="session_9cb83e83-3adf-4a4c-b354-bc8db0572579" ;;
     esac
     cmd=(kimi --yolo -S "$session")
+    ;;
+  minimax)
+    workdir="$workspace/hctl2-minimax"
+    case "$platform" in
+      macos)  die "no macOS session recorded for $agent" ;;
+      ubuntu) session="mvs_10a70eac3ad9485abc2471f39da69467" ;;
+    esac
+    cmd=(mcode --session "$session")
     ;;
   muse)
     workdir="$workspace/hctl2-muse"
     case "$platform" in
       macos)  session="01a08ce4-5760-7673-abc1-edc3de391284" ;;
-      ubuntu) session="01a0be5b-2145-7840-864b-f9632f2df984" ;;
+      ubuntu) session="01a0e981-5fe8-71f3-898c-8bb01bd7ff10" ;;
     esac
     cmd=(muse --yolo resume "$session")
+    ;;
+  qwen)
+    workdir="$workspace/hctl2-qwen"
+    case "$platform" in
+      macos)  die "no macOS session recorded for $agent" ;;
+      ubuntu) session="c32d605f-5c34-4748-ac64-1c7c4584cf73" ;;
+    esac
+    cmd=(qoderclicn --dangerously-skip-permissions --resume "$session")
     ;;
   *)
     die "unknown agent: $agent"
@@ -200,16 +274,22 @@ fi
 [[ -d "$workdir" ]] || die "worktree not found: $workdir"
 command -v "${cmd[0]}" >/dev/null 2>&1 || die "command not found: ${cmd[0]}"
 cd "$workdir"
+if ((sync)); then
+  sync_worktree
+fi
 
 if [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" =~ [Uu][Tt][Ff]-?8 ]]; then
   case "$agent" in
     agy)    term_title="HCTL2 · 🛠 𝕬𝖓𝖙𝖎𝖌𝖗𝖆𝖛𝖎𝖙𝖞" ;;
     claude) term_title="HCTL2 · ✴️ 𝑪𝒍𝒂𝒖𝒅𝒆" ;;
     codex)  term_title="HCTL2 · ❄️ 𝗖𝗼𝗱𝗲𝘅" ;;
+    deepseek) term_title="HCTL2 · 🐋 𝘿𝙚𝙚𝙥𝙎𝙚𝙚𝙠" ;;
     glm)    term_title="HCTL2 · 🔳 🅶🅻🅼" ;;
     grok)   term_title="HCTL2 · 🛰️ 𝐆𝐫𝐨𝐤" ;;
     kimi)   term_title="HCTL2 · 🎹 𝕂𝕚𝕞𝕚" ;;
+    minimax) term_title="HCTL2 · 〽️ 𝘔𝘪𝘯𝘪𝘔𝘢𝘹" ;;
     muse)   term_title="HCTL2 · 🥨 𝓜𝓾𝓼𝓮" ;;
+    qwen)   term_title="HCTL2 · 🌀 𝚀𝚠𝚎𝚗" ;;
     *)      term_title="HCTL2 · $agent" ;;
   esac
 else
@@ -217,10 +297,13 @@ else
     agy)    term_title="HCTL2 · Antigravity" ;;
     claude) term_title="HCTL2 · Claude" ;;
     codex)  term_title="HCTL2 · Codex" ;;
+    deepseek) term_title="HCTL2 · DeepSeek" ;;
     glm)    term_title="HCTL2 · GLM" ;;
     grok)   term_title="HCTL2 · Grok" ;;
     kimi)   term_title="HCTL2 · Kimi" ;;
+    minimax) term_title="HCTL2 · MiniMax" ;;
     muse)   term_title="HCTL2 · Muse" ;;
+    qwen)   term_title="HCTL2 · Qwen" ;;
     *)      term_title="HCTL2 · $agent" ;;
   esac
 fi
