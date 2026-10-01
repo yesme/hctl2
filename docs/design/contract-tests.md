@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.18.12<br>
+> 状态：验证文档 · 草案 v0.19.0<br>
 > 本文列出十一族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。[参考用例 S1](./scenarios/S1-multi-unit.md)、[S2](./scenarios/S2-rough-road.md) 与 [S3](./scenarios/S3-user-journey.md) 引用本表用例的描述文本，不引用会随插入变化的序号。本轮按[体验基线](../user-experience/README.md#基础用户体验)同步：S1 保留四个 Project，新路径由 S3 串联。本表是待实现与执行的行为验收要求；文档检查通过不证明这些行为已通过。
@@ -19,6 +19,8 @@
 - Run 的 Request 在主 Room 没有相关 Message：以同 Project 的精确 Request、冻结阻塞对象与版本及确认提要创建 Topic 应通过，因缺主 Room Message 拒绝或补造消息来源时失败；来源的 Project 或阻塞版本不符仍准入时失败；关闭该 Topic 不解决原 Request；不配置模型时，机械草稿摘取该 Request 已有的问题原文并保留 Request 与冻结阻塞版本的引用，因没有 Message 拒绝该草稿或补造消息来源时失败
 - Topic Room 首次调用只给原聊天链接、不交付可重读的提要，或以提要代替契约时失败；自动归纳未配置或失败却报告自动建议已完成时失败，人工补写不算自动能力通过
 - Room 的 Project 归属或消息所属 Room 被引用动作改写时失败；同根因 Request 重复创建仍去重，Topic 讨论的结论未提交原动作不解决 Request
+- Topic Room 可从主 Room 或另一间 Topic Room 的 Message 创建，缺省挂在来源 Room 之下（按 Request 升级时挂在主 Room 之下）：只允许从主 Room 创建时失败；控制面另存一份 Room 上下级关系，或以自存副本覆盖 chat server 回读结果时失败；改挂走治理命令、改挂后出处被改写或消息随之搬动时失败；chat server 不提供层级或读不到时上下级字段为空而其他命令照常，因此拒绝创建、关闭或调用时失败；chat server 给出多个上级时不以正式（canonical）的一个为上级时失败；关闭上级 Room 连带关闭下级时失败
+- 一间 Room 只有一条时间线和一层讨论串：同一 Room 对不同参与者给出不同的当前时间线、出现原地分叉或嵌套讨论串时失败；讨论串里的消息不能按事件 ID 被治理引用，或引用规则与主时间线不同时失败
 - 待你处理按现有事项去重：同一 Request 在 Room/Task/Run 出现被计三次、缺对象/原因/动作后果/未处理影响/返回入口、普通进度或可忽略建议计入数字、阅读面板即解决事项时失败；另一客户端完成后仍显示待办、处理失败却移除条目、处理历史从原处消失时失败
 - 待处理来源分别注入：目标为当前用户的开放 Request、冻结要求本人确认的待处理发布评审意图、存在待本人采纳的契约变化的 Task、无 Run 占用且已有明确关联当前 Task Revision 的已准入 ChangeSet Revision 或已发布 Artifact Revision 的开放 Task、已超时且等待本人取消或替代的过渡态 Run；漏项、把已确认意图或仅打开过的 Trigger Preview 列为待办时失败；其他人待答的 Request、无权确认完成的 Task 计给当前用户，或 Request 已承接同一验收动作仍重复计 Task 时失败
 - Context 可解释、Room 历史可恢复（chat server 重同步 + 治理引用与冻结 digest 完整）：任取一份已交付 Bundle 的一条条目，不能追溯到根 Manifest 里的精确来源引用与 version/digest，或 Manifest 缺 selection-policy 版本、freshness、coverage、known gaps、权限与预算任一项时失败；后续消息、索引变化、Harness 自行召回或另一消费者的 Bundle 改写了已冻结的 Manifest 或 Bundle 记录时失败；删除本地全部消息缓存、全文索引与纪要缓存后，从 chat server 重同步加治理记录（引用、认领、Request 关联、游标）重建，已冻结引用的事件与摘要不能再解析或校验、重建后事实与删除前不同、或 HCTL 自己的副本被当作消息 ground truth 时失败；重同步进行中把缓存冒充当前事实、不显示重同步中或需要关注时失败；房间升级换 ID 后的引用校验见「Matrix 房间升级换 ID 后…」行
@@ -267,6 +269,7 @@
 - 单 Project Overview 是可重建的只读投影，不产生新场景、写状态或独立导航入口，不能替代主 Room 与「待你处理」；跨 Project 的「需要关注」汇总若提供，保留各 Project 来源与授权、不归并事项；「需要关注」标记本身不增加「待你处理」条目；Change 场景仍归 Repo，Overview 只投影它：读 Overview 解决 Request 或提交发布时失败，只有「需要关注」标记、没有待本人处理事项的对象增加待处理计数时失败
 - 打开入口固定控制面、Repo 与 Project：同 Repo 多 Project 被合成一个入口、未选择就进入另一 Project、重试创建出第二个主 Room 时失败；必要时拉起本机控制面，尚未交付的远程连接入口隐藏或安全拒绝
 - 进入 Project 默认打开自己的 Project Room，点击相邻“待你处理”标记打开面板；两者混用、Rooms 重列主 Room、初始 Rooms 不为空、Rooms/Kanbans/Runs 被排成必须逐层进入的包含链时失败；deep link 保留返回路径
+- 左侧 Rooms 是平铺列表，列出本 Project 全部 Topic Room（含挂在其他 Topic Room 之下的）：下级 Room 只能逐层展开树才找得到时失败；Room 的树形视图是另开的原生视角，不替代平铺列表
 - 同一 Request ID 跨 Room/Task/Run 聚合去重；面板上的动作经原模块 Preview/Submit，直接写投影状态或不校验已被其他客户端处理的版本时失败
 - 「创建 Topic Room」预览允许删减、补充、去敏并显示来源回链；忽略建议却创建 Room、接受建议反而另建 Project、未独立确认本 Room 名册时失败
 - Trigger Preview 展示实际执行者、Context/Skill、权限、预算和 fan-out

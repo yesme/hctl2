@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.12<br>
+> 状态：交付文档（非规范） · 草案 v0.19.0<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -202,5 +202,7 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
 ## 未决问题
+
+Room 树与 Run DAG 的原生视角怎么画（左侧平铺视角已定，见[导航](../user-experience/04-project-navigation.md#rooms只列-topic-rooms)）：先调研信息可视化研究与业界做法、落 `docs/research/`，再出设计；起点见 [Room 树备忘](../../.memo/design/room-tree-20261001.md)。
 
 持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付——留待实现设计，不改约束，出处见[接手清单](../user-experience/open-questions.md#旧讨论怎样接手)。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。

@@ -56,6 +56,8 @@ Project Apollo 是工作名称，Repo 地址说明它当前关联的代码来源
 
 Rooms 是 Topic Rooms 列表，初始为空；Project Room 由 Project 名称进入，不在列表里重复出现。每间 Topic Room 有自己的主题、消息与 Participant 名单，可以与主 Room 使用相同的选人方式。
 
+Topic Room 也可以从另一间 Topic Room 展开，Room 之间因此组成一棵以主 Room 为根的树。导航分两个视角（所有者 2026-10-01）：左侧是**平铺视角**，Rooms 把全部 Topic Room 拍平列出，不要求逐层展开；选中一类对象后，在右侧打开它的**原生视角**，Room 看树，Run 看 DAG。原生视角具体怎么画还没有定，先调研信息可视化与业界做法再设计，见[交付文档未决问题](../design/delivery.md#未决问题)。
+
 从聊天展开的 Topic Room 以本 Project 主 Repo Room 的相关讨论构造前情提要；Participant 读这份开场材料就能开始后续讨论，不以读完原 Room 历史为前提。出处用于追溯，前情提要承接背景，后续会话各自独立；完整流程见 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。已有 Request 升级为 Topic 时，提要根据请求及所阻塞的工作准备，不要求主 Room 已有讨论。
 
 新 Topic 不创建新 Project。旧 Scoped Room 的讨论用途并入 Topic Room，不为临时澄清和普通讨论再造两个并列产品概念。若一个 Topic 真承接了需要回复的事项，可以显示这种关联；不是所有 Topic 一出生就有 Task、Run 或预定交付物。承接未解决 Request 的房间仍有闲置关注提醒，但不是另一份待办；普通 Topic 没有这项提醒。
