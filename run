@@ -48,7 +48,7 @@ Session ids:
     kimi     session_e96e0466-cdf7-4790-870f-20ae8b6e862b
     minimax  -
     muse     01a08ce4-5760-7673-abc1-edc3de391284
-    qwen     -
+    qwen     34e94a5f-73b1-4e95-ba6d-b83f2e4f006e
 
   Ubuntu
     agy      c56d1e4d-9efc-4fea-a730-f40b5a9a5c65
@@ -236,7 +236,7 @@ case "$agent" in
   qwen)
     workdir="$workspace/hctl2-qwen"
     case "$platform" in
-      macos)  die "no macOS session recorded for $agent" ;;
+      macos)  session="34e94a5f-73b1-4e95-ba6d-b83f2e4f006e" ;;
       ubuntu) session="c32d605f-5c34-4748-ac64-1c7c4584cf73" ;;
     esac
     cmd=(qoderclicn --dangerously-skip-permissions --resume "$session")
