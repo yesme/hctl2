@@ -33,7 +33,7 @@ Project 是当前关联一个 Repo 的顶层工作范围，Topic Room 是其中�
 | `cloud_ctl` | `gl-jstui` | `cloud_jstui_01` | 这个 Project 的主 Room 及其名册 |
 | `cloud_ctl` | `gh-jssdk` | `cloud_jssdk_01` | 这个 Project 的主 Room 及其名册；与 `mac_ctl` 中使用同一 Repo 的两个 Project 分别归属各自 Control |
 
-四个标签都是各自 Project 的主 Repo Room，也就是本目录所称的 Project Room，分别见 [C1](./open-questions.md#c1cloud-用例的-room-位置)、[C2](./open-questions.md#c2mac-用例的-room-位置)。每个新 Project 的 Rooms 初始为空；后来展开 Topic 时按 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)从本 Project 主 Room 的相关讨论构造前情提要。
+四个标签都是各自 Project 的主 Repo Room，也就是本目录所称的 Project Room，分别见 [C1](./open-questions.md#c1cloud-用例的-room-位置)、[C2](./open-questions.md#c2mac-用例的-room-位置)。每个新 Project 的 Rooms 初始为空；后来展开 Topic 时按 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)从来源 Room（本 Project 主 Room 或另一间 Topic Room）的相关讨论构造前情提要。
 
 每个 Room 分别选人；随后建立 Run 时，也为该 Run 独立选择施工与评审 Participant，不把 Room 名单直接当成 Run 名单。同 Project 的 Room 可以引用同一 Task 或 Run，引用不搬动原消息、Task 或 Run 的归属；完整关系见 [04](./04-project-navigation.md#松散耦合具体意味着什么)。
 

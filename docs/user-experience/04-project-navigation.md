@@ -1,8 +1,8 @@
 # Project 入口与 Rooms / Kanbans / Runs
 
 > 状态：所有者已确认的体验与组织结构；对应约束与验收随 #257 同步，不是产品已实现的报告。<br>
-> 日期：2026-09-19<br>
-> 来源：所有者 09-18 的导航提议、09-19 的侧栏示意、归属说明、待处理入口与 C2 确认，以及随后按此修订体验目录的要求；原话见文末。
+> 日期：2026-09-19；2026-10-01 补 Room 树与两个视角<br>
+> 来源：所有者 09-18 的导航提议、09-19 的侧栏示意、归属说明、待处理入口与 C2 确认，以及随后按此修订体验目录的要求；2026-10-01 的 Room 树与导航两个视角；原话见文末。
 
 **Project 是顶层工作范围，每个 Project 当前关联一个 Repo；同一 Control 可以为同一 Repo 建多个 Project。** 点击一个 Project 的名称进入它自己的唯一主 Room。本目录把这间主 Room 称为 Project Room，所有者所说的主 Repo Room 指同一间；不是同一 Repo 的所有 Project 共用一间。每个 Project 下的 Rooms、Kanbans、Runs 是并列入口；内容归属固定，引用可以交叉。
 
@@ -56,7 +56,9 @@ Project Apollo 是工作名称，Repo 地址说明它当前关联的代码来源
 
 Rooms 是 Topic Rooms 列表，初始为空；Project Room 由 Project 名称进入，不在列表里重复出现。每间 Topic Room 有自己的主题、消息与 Participant 名单，可以与主 Room 使用相同的选人方式。
 
-从聊天展开的 Topic Room 以本 Project 主 Repo Room 的相关讨论构造前情提要；Participant 读这份开场材料就能开始后续讨论，不以读完原 Room 历史为前提。出处用于追溯，前情提要承接背景，后续会话各自独立；完整流程见 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。已有 Request 升级为 Topic 时，提要根据请求及所阻塞的工作准备，不要求主 Room 已有讨论。
+Topic Room 也可以从另一间 Topic Room 展开，Room 之间因此组成一棵以主 Room 为根的树。导航分两个视角（所有者 2026-10-01）：左侧是**平铺视角**，Rooms 把全部 Topic Room 拍平列出，不要求逐层展开；选中一类对象后，在右侧打开它的**原生视角**，Room 看树，Run 看 DAG。原生视角具体怎么画还没有定，先调研信息可视化与业界做法再设计，见[交付文档未决问题](../design/delivery.md#未决问题)。
+
+从聊天展开的 Topic Room 以来源 Room（本 Project 主 Repo Room 或另一间 Topic Room）的相关讨论构造前情提要；Participant 读这份开场材料就能开始后续讨论，不以读完原 Room 历史为前提。出处用于追溯，前情提要承接背景，后续会话各自独立；完整流程见 [T1](./02-user-journey.md#t1聊天归纳接受或忽略-topic-建议)。已有 Request 升级为 Topic 时，提要根据请求及所阻塞的工作准备，不要求主 Room 已有讨论。
 
 新 Topic 不创建新 Project。旧 Scoped Room 的讨论用途并入 Topic Room，不为临时澄清和普通讨论再造两个并列产品概念。若一个 Topic 真承接了需要回复的事项，可以显示这种关联；不是所有 Topic 一出生就有 Task、Run 或预定交付物。承接未解决 Request 的房间仍有闲置关注提醒，但不是另一份待办；普通 Topic 没有这项提醒。
 
@@ -195,3 +197,11 @@ Project Apollo (Repo: github.com/yesme/apollo-mission-decrypt) ← 点这里右�
 > 可观测性非常重要：AI越能自组织、用户越需要可观测性 － 例如，可以看到harness在干什么
 
 出处 [群体智能三原则](../../.memo/log/2026-09-19-群体智能三原则.md)（所有者 2026-09-19）；三条原则的整理见[备忘](../../.memo/design/intent-entry-principles-20260919.md)。上文「组织层可观测」按此补写；归纳机制不在本轮。
+
+### 2026-10-01：Room 组织成树与两个视角
+
+> 我觉得『房间之间的关系』应该是matrix原生的，正如kanban里的task之间的关系是kanban原生的 - 只有跨模块之间的映射关系，才是hctl-control记录的内容。
+
+> 从视觉上说，可以有两个视角 - 平铺视角和原生视角。平铺视角里，所有的objects (roomA, roomB, roomC) 都是拍平的列表（就在我们UI的左侧导航栏），而如果选择了总类（比如repo room），可以在右侧（找个方式）打开原生的树/DAG视角。具体怎么做留个TODO。这是个经典的infovisualization问题，在UX领域应该已经有人深度研究过了。我们不reinvent the wheel. 我们先调研和学习。
+
+出处 [Room 树对话](../../.memo/log/2026-10-01-room-树.md)（所有者 2026-10-01，第三段第 1、4 点）；整理与落地见 [Room 树备忘](../../.memo/design/room-tree-20261001.md)。上文「Rooms：只列 Topic Rooms」的两个视角按此补写；原生视角的画法待调研。

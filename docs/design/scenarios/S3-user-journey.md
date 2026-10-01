@@ -1,6 +1,6 @@
 # 参考用例 S3：Project 用户路径
 
-> 状态：验证文档 · 草案 v0.18.12<br>
+> 状态：验证文档 · 草案 v0.19.0<br>
 > 日期：2026-09-19<br>
 > 定位：把所有者已确认的[用户流程](../../user-experience/02-user-journey.md)与[导航和组织结构](../../user-experience/04-project-navigation.md)落实为可失败的验收路径，不另写一份需求或增加执行机制。CT 引用[矩阵](../contract-tests.md)的描述文本；以下是验收要求，不是已经执行的测试报告。
 
@@ -32,6 +32,7 @@ Project A、B 使用同一 Control、同一 Repo；除注明外，都只操作 A
 | S3.T8 / T3 | 为 A 的 Task 填模板并登记 W，注入响应丢失后重试，切页再回来；编辑成 W2，尚未批准开工；另注入登记失败、Task 与 Project 不符，以及不带 Task 的合法登记 | 关联随 Run 模块登记准入，Task 可找回 W/W2；重试不重复、失败不留关联、跨 Project 拒绝，不带 Task 可登记。旧版不覆盖，保存不启 Run；无显式跳过声明时仍需默认读回，模板不免授权 | [Workflow 与 Run 授权](../spec/run.md#workflow-与-run-授权)；CT-RUN「保存计划只登记并关联 Workflow Revision」「施工图确无来源 Room 时」 |
 | S3.T9 / T3 无 Run 路径 | 各例从开放文档 Task T、当前契约 R2 只需精确文档和人验收、无 Run 占用且无候选的初态独立开始；分别注入获准单次调用准入的 ChangeSet Revision、人工封存准入的 ChangeSet Revision、人工发布的 Artifact Revision，均明确关联 T/R2；另注入普通文件、未准入提案、无 Task 关联、只关联另一 Task 或 T/R1 的产出 | 三种有效交付均可从待处理面板回到 T，由有权用户按原完成命令验收；反例不计，人工交付不补造 Invocation，准入不自动完成。需要合入的另走原集成流程，不强行建 Run、不增加预览次数 | [Task 写入约束](../spec/task.md#写入约束)；CT-TASK「候选交付按准入记录判定」「验收契约未要求代码集成」、CT-PRODUCT「无 Run 路径、有契约的 Task、默认发布策略」 |
 | S3.T10 / 既有 Request 升级路径 | A 的 Run 发出缺输入的 Request，主 Room 无相关消息；人以请求与冻结阻塞对象准备提要并创建 Topic，另试错误 Project/阻塞版本；以缺省配置将本房间与普通 Topic 都置为闲置 15 天（Request 截止晚于观察时点），再分别测试解决 Request 与关闭房间 | 合法创建不要求或伪造主 Room 消息，错来源拒绝；仅承接开放 Request 的活跃房间进需要关注，不另增待办；解决 Request 后无此提醒，关闭 Room 不解决 Request。普通 Topic 不被提醒或强制结案 | [Topic 创建与消息](../spec/project.md#room-与消息)、[Request](../spec/project.md#request)；CT-PROJECT「Run 的 Request 在主 Room 没有相关 Message」「两间活跃 Topic 同样闲置 15 天」 |
+| S3.T11 / Room 树（2026-10-01） | A 的 Topic Room X 里讨论出子话题，人从 X 的消息开出 Topic Y；随后有人在 Matrix 客户端把 Y 改挂到另一间 Topic Z 下，又把 Y 同时挂回 X 下，两个上级都不标正式；最后关闭 Z | Y 的提要取自 X 的选定消息，出处冻结为 X 及精确消息，X 之后的消息不自动进入 Y；Y 缺省挂在 X 下，并出现在左侧平铺的 Rooms 里；改挂后上级字段按回读变为 Z，出处仍是 X，消息不动；两个上级都投影；关闭 Z 不关闭 Y。控制面另存层级、改挂改写出处、只能逐层展开才找到 Y、丢掉一个上级，或关闭 Z 连带关闭 Y 即失败 | [Room 与消息](../spec/project.md#room-与消息)、[导航](../../user-experience/04-project-navigation.md#rooms只列-topic-rooms)；CT-PROJECT「Topic Room 可从主 Room 或另一间 Topic Room 的 Message 创建」「挂靠按回读投影」「挂靠不带来继承」，CT-WORKBENCH-IA「左侧 Rooms 是平铺列表」 |
 
 ## 三、Run 观察与异常
 

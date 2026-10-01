@@ -48,11 +48,11 @@
 
 用户接受后，可以确认主题并按同样的方式选择 Participant，建立新的 Topic Room；它出现在当前 Project 的 Rooms 中。忽略则不创建。新 Room 的名单独立选定，可以参考主 Room 的阵容，不自动继承整份会话和授权；未来 TAMP 推荐见[分别选入](./04-project-navigation.md#participant-分别选入)。
 
-**从聊天展开的新 Topic Room 创立时，从本 Project 主 Repo Room（本目录称 Project Room）的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
+**从聊天展开的新 Topic Room 创立时，从来源 Room——本 Project 主 Repo Room（本目录称 Project Room）或另一间 Topic Room——的相关讨论构造一份前情提要，作为新 Room 的开场材料。Participant 阅读这份提要，就能接上此前讨论、开始后续协作，不必先翻完原 Room 的长篇历史。** 提要在新 Room 中保留，人与 Participant 都能随时重读。
 
 提要说清话题为什么产生、要解决什么、已确定的事实与决定及其理由、仍存在的分歧和待答问题，以及开展讨论所需的约束与材料。已定与未定分开呈现；用户可以查看并纠正。原消息与材料的出处供需要时追溯，不能用一串链接代替本应写清的前情。
 
-提要承接的是创建时的相关背景，不是整个主 Room 的会话副本。此后的讨论在 Topic Room 内继续；主 Room 的后续发言不自动混进新 Room，确需补充时再明确带入。前情提要不替代实际做事时要查阅的代码或专业材料，也不因带入背景就带入原 Room 的授权。
+提要承接的是创建时的相关背景，不是整个来源 Room 的会话副本。此后的讨论在 Topic Room 内继续；来源 Room 的后续发言不自动混进新 Room，确需补充时再明确带入。前情提要不替代实际做事时要查阅的代码或专业材料，也不因带入背景就带入原 Room 的授权。
 
 主 Room 与 Topic Room 都可以继续讨论。新 Topic 不产生新 Project，引用原讨论也不把原消息从旧 Room 搬走。
 

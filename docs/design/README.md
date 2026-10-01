@@ -1,6 +1,6 @@
 # HCTL2 设计地图
 
-> 状态：规范性索引 · 草案 v0.18.12<br>
+> 状态：规范性索引 · 草案 v0.19.0<br>
 > 日期：2026-08-31
 
 本文描述当前对象结构。Project、Repo（仓库）、Topic 的含义与三列表导航依据所有者确认的[基础用户体验](../user-experience/README.md#基础用户体验)；对应的约束和验收路径已同步，产品实现与实测结果仍须按[交付文档](./delivery.md)分别验证。
@@ -35,7 +35,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 flowchart TD
     R["Repo（Repo 模块）"] -->|每个 Project 关联一个 Repo；同一 Control 可多个| P["Project 0..N"]
     P --> PR["Project Room（一个 Project 一个主 Room）"]
-    P --> TP["Topic Room 0..N"]
+    PR -->|挂靠归 chat server，可多层| TP["Topic Room 0..N"]
     P --> T["Task 0..N"]
     P --> RN["Run 0..N"]
     T --> TR["Task Revision 只追加"]
