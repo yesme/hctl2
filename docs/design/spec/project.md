@@ -59,17 +59,17 @@ Room 名册是这个 Room 的规划者名单。选人发生两次、各自独立
 
 Room 名册换人只影响将来的调用，不改写活动 Invocation。主 Room 与 Topic Room 都从各自名册选人；没有选入记录的调用不准入；控制面内部的纯计算不是调用，不进本节。
 
-从本 Project 的任一 Room（主 Room 或某间 Topic Room）展开话题使用「创建 Topic Room」命令，不创建另一个 Project。创建预览提供可查看、删减、补充和去敏的前情提要，说明话题缘起与目标、已定事实与决定的理由、分歧与待答问题、所需约束与材料，并列明相关来源；已定与未定分开。命令固定本 Project、经确认的提要正文及摘要、精确来源：从聊天展开时引用来源 Room 的 Message；按 [Request 应答路径](#request)升级时引用本 Project 的 Request 及其冻结的阻塞对象与版本，可补充相关 Message，但不要求先在主 Room 发消息。来源 Room 与精确来源合称新 Room 的出处，是治理事实，此后不改写；新 Room 缺省挂在来源 Room 之下（按 Request 升级时挂在主 Room 之下），挂靠与出处分开，见[Room 与消息](#room-与消息)。命令的外部动作是在 chat server 建房间并写入缺省挂靠；来源 Room 尚未承载下级时，先为它建立承载层级的 Space（Matrix 中只有 Space 能有子节点）。这些写入按[外部权威副作用](./system.md#外部权威副作用)先持久化意图、以稳定关联键回读，结果未知时不重建第二个房间或 Space。承载 Space 是回读事实，不进 Room–Server Binding。创建准入核对来源的 Project、引用与版本；只带创建时选定的背景，不复制整段会话或继承原授权。来源 Room 后续消息不自动进入新 Topic Room。
+从本 Project 的任一 Room（主 Room 或某间 Topic Room）展开话题使用「创建 Topic Room」命令，不创建另一个 Project。创建预览提供可查看、删减、补充和去敏的前情提要，说明话题缘起与目标、已定事实与决定的理由、分歧与待答问题、所需约束与材料，并列明相关来源；已定与未定分开。命令固定本 Project、经确认的提要正文及摘要、精确来源：从聊天展开时引用来源 Room 的 Message；按 [Request 应答路径](#request)升级时引用本 Project 的 Request 及其冻结的阻塞对象与版本，可补充相关 Message，但不要求先在主 Room 发消息。本次的精确来源就是新 Room 的出处：从聊天展开时是来源 Room 与所引 Message，按 Request 升级时是 Request 及其冻结的阻塞对象与版本（相关 Message 可选）；出处是治理事实，此后不改写，改挂也不改变它。新 Room 缺省挂在来源 Room 之下（按 Request 升级时挂在主 Room 之下），挂靠与出处分开，见[Room 与消息](#room-与消息)。命令的外部动作是在 chat server 建房间并写入缺省挂靠；来源 Room 尚未承载下级时，先为它建立承载层级的 Space（Matrix 中只有 Space 能有子节点）。这些写入按[外部权威副作用](./system.md#外部权威副作用)先持久化意图、以稳定关联键回读，结果未知时不重建第二个房间或 Space。承载 Space 是回读事实，不进 Room–Server Binding：消息仍在 Binding 所指的聊天房间，Space 只承载组织；投影时把承载 Space 与它的聊天房间识别为同一个 HCTL Room，不把一个 Room 的聊天房间投影成它自己的下级。创建准入核对来源的 Project、引用与版本；只带创建时选定的背景，不复制整段会话或继承原授权。来源 Room 后续消息不自动进入新 Topic Room。
 
 ## Room 与消息
 
 Room 分为每个 Project 唯一的 Project Room，以及该 Project 内零到多间 Topic Room。Topic Room 承接普通话题和复杂 Request 的讨论；普通 Topic 不以完成条件、结论回填或结案理由为创建、关闭的前置，也不因闲置自动进入“待你处理”。人可以关闭 Topic Room（关闭即该 Room 已归档；随 Project 归档则转为只读，不是第四种状态）；关闭不解决关联 Request，不取消或删除 Task、Run，也不解除其授权与截止条件。实际事项仍按原模块规则处理，其待处理入口保留；讨论结论只有经原类型化动作准入才改变目标。
 
-Topic Room 挂在主 Room 或另一间 Topic Room 之下，同一 Project 的 Room 通常组成以主 Room 为根的树。挂靠是 chat server 的原生语义（Matrix 的 Space 层级），归 chat server 持有；HCTL 认得它但不另存：适配器从 chat server 读取，把读到的全部上级与下级投影为只读的「上级 Room」「下级 Room」字段。chat server 标出的正式（canonical）上级只作展示提示，不据此删去其余上级；只有恰好一个上级时才称它为树上的父节点。改挂走 content 写入通道，按 chat server 能力写入、以回读为准，不走治理命令，不改写出处，也不搬动消息。
+Topic Room 挂在主 Room 或另一间 Topic Room 之下，同一 Project 的 Room 通常组成以主 Room 为根的树。挂靠是 chat server 的原生语义（Matrix 的 Space 层级），归 chat server 持有；HCTL 认得它但不另存权威副本（可重建的投影缓存不算）：适配器从 chat server 读取，把读到的全部上级与下级投影为只读的「上级 Room」「下级 Room」字段。chat server 标出的正式（canonical）上级只作展示提示，不据此删去其余上级；只有恰好一个上级时才称它为树上的父节点。改挂走 content 写入通道，按 chat server 能力写入、以回读为准，不走治理命令，不改写出处，也不搬动消息。
 
 以下读数不进上级字段，也不阻拦其他命令：chat server 不提供层级语义或读不到时，字段为空；回读成环时，环上的挂靠按读不到处理，并标为需要关注；上级不属于本 Project，或解析不到 HCTL Room 时，跨 Project 的挂靠不设计，该上级只作外部链接显示，Room 标为需要关注，不改归属、不自动改挂。
 
-挂靠只是组织关系，不带来继承：名册、授权、成员资格与加入规则都不沿上下级传递，能进上级不等于能进下级。调整成员、改授权、关闭或转只读，都由控制面按 Room 逐间执行。关闭一间 Topic Room 不关闭它的下级。Project 归档时，按 Room 归属而不按层级读数，把本 Project 每间未关闭的 Topic Room 转为只读。
+挂靠只是组织关系，不带来继承：名册、授权、成员资格与加入规则都不沿上下级传递，能进上级不等于能进下级。调整成员、改授权、关闭或转只读，都由控制面按 Room 逐间执行；HCTL 发起的多房间动作逐间投递并回读，部分失败时不报全体成功。Matrix 客户端仍按各房间自己的权限操作。关闭一间 Topic Room 不关闭它的下级。Project 归档时，按 Room 归属而不按层级读数，把本 Project 每间未关闭的 Topic Room 转为只读。
 
 一间 Room 只有一条时间线，外加一层讨论串（Matrix 的 m.thread）：讨论串所有成员可见、不能嵌套，其中的消息仍是本 Room 的 Message，按事件 ID 引用，规则与主时间线相同。不做 Room 内的原地分叉，也不按参与者给出不同的当前时间线；要换方向讨论，就创建新的 Topic Room，以前情提要承接背景，可在提要里引用当时的精确版本（如 ChangeSet Revision）。分支只分叉讨论，不分叉已经发生的事。
 
@@ -194,7 +194,7 @@ mention 的解析必须确定性：`@` 目标只按本 Room 名册里的规划�
 | Room | Matrix room / Slack channel | HCTL Room 身份、出处与治理在控制面，上下级挂靠归 chat server；明文准入与事后降级见[Room 与消息](#room-与消息) |
 | 消息 | Matrix event | 消息 content 本体就是 chat server 上的 Matrix event（编辑/撤回是新事件；非 Matrix 平台的消息经 homeserver 桥接生态落为 Matrix event）；HCTL 治理事件只在控制面存储追加，以事件 ID 精确引用消息，不占领域对象名额 |
 | mention | @mention | HCTL 的 `@` 解析目标是本 Room 名册里的规划者或职责而非平台账号，且必须经 Trigger Preview 准入 |
-| Topic Room | 子频道 / Matrix 子 Space | 差异：归固定 Project、独立选人，以经确认的提要及消息或 Request 来源开场；可挂在主 Room 或另一间 Topic Room 之下；关联事项仍经各自命令处理，不因关 Room 完成。Matrix Space 只承载挂靠，不能承载出处、名册、授权或加入规则，也不保证层级无环、只有一个上级 |
+| Topic Room | 子频道 / 独立的 Matrix 聊天房间，有下级时另关联承载层级的 Space | 差异：归固定 Project、独立选人，以经确认的提要及消息或 Request 来源开场；可挂在主 Room 或另一间 Topic Room 之下；关联事项仍经各自命令处理，不因关 Room 完成。Matrix Space 只承载挂靠，不能承载出处、名册、授权或加入规则，也不保证层级无环、只有一个上级 |
 | 讨论串 | Matrix thread（m.thread）/ Slack thread | 一层、所有成员可见，不是分支；换方向另开 Topic Room |
 | Room–Server Binding 与聊天端口的 Port–Provider Binding | Matrix 房间 ID / AppService 注册与 homeserver 配置 | 差异：前者指认一个 Room 的 content 家在哪个房间，后者指认 chat server 连接；chat server 拥有消息历史，但不拥有 Room 身份与治理；非 Matrix 平台桥接是 homeserver 生态的事，不是 HCTL 端口 |
 | Participant | 平台成员 / bot 账号 | 差异：Participant 是逻辑档案，外部账号只是映射之一 |
