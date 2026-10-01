@@ -42,7 +42,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 | Project Room（主 Room） | Project 的日常讨论；用户从 Project 名称进入的主 Room | 创建 Project 时建立；Project 归档后只读 |
 | Topic Room | 在同一 Project 内围绕一个话题独立讨论，也可关联 Request；挂在主 Room 或另一间 Topic Room 之下 | 由人关闭，不连带关闭下级；关联对象各按自己的规则推进 |
 
-一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run；承接未解决 Request 的房间仍保留闲置关注提醒。同一 Project 的 Room 因此组成一棵以主 Room 为根的树：出处（从哪里开出）是治理事实，记在控制面、不改写；挂在谁下面是 chat server 的原生层级，可以改挂，HCTL 只读投影，依据见[对象之间的关系归原生系统](./architecture.md#对象之间的关系)。分支只分叉讨论，不分叉已经发生的事：一间 Room 里只有一条时间线和一层讨论串，没有原地分叉；要换方向就开新的 Topic Room。精确边界见[约束附录](./spec/project.md#room-与消息)。
+一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run；承接未解决 Request 的房间仍保留闲置关注提醒。同一 Project 的 Room 因此组成一棵以主 Room 为根的树：出处（从哪里开出）是治理事实，记在控制面、不改写；挂在谁下面是 chat server 的原生层级，可以改挂，HCTL 只读投影，依据见[对象之间的关系归原生系统](./architecture.md#对象之间的关系)。讨论可以分叉，世界只有一份（[设计原则 19](./vision.md#设计原则)）：一间 Room 里只有一条时间线和一层讨论串，没有原地分叉；要换方向就开新的 Topic Room。精确边界见[约束附录](./spec/project.md#room-与消息)。
 
 ## Room 场景
 
