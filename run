@@ -42,7 +42,7 @@ Session ids:
     agy      30876bc1-f249-4569-b4cd-1a671577017d
     claude   197c3f1e-7e43-46b4-a228-26a497574897
     codex    01a027ea-f719-7a00-b833-2a587b2a05ac
-    deepseek -
+    deepseek 01a0f80a-f89b-724e-aa8c-a77aef0339cb
     glm      ses_fd816ff58ffew9OZpjG0y62oc6
     grok     01a027e9-a557-7cf1-ac64-878cb7208851
     kimi     session_e96e0466-cdf7-4790-870f-20ae8b6e862b
@@ -188,7 +188,7 @@ case "$agent" in
   deepseek)
     workdir="$workspace/hctl2-deepseek"
     case "$platform" in
-      macos)  die "no macOS session recorded for $agent" ;;
+      macos)  session="01a0f80a-f89b-724e-aa8c-a77aef0339cb" ;;
       ubuntu) session="01a0e987-936a-73d6-a671-269e178fb7d5" ;;
     esac
     cmd=(omp --auto-approve --resume "$session")
