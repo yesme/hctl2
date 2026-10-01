@@ -46,7 +46,7 @@ Session ids:
     glm      ses_fd816ff58ffew9OZpjG0y62oc6
     grok     01a027e9-a557-7cf1-ac64-878cb7208851
     kimi     session_e96e0466-cdf7-4790-870f-20ae8b6e862b
-    minimax  -
+    minimax  mvs_0086208ee21a435391daf10863c6f549
     muse     01a08ce4-5760-7673-abc1-edc3de391284
     qwen     34e94a5f-73b1-4e95-ba6d-b83f2e4f006e
 
@@ -220,7 +220,7 @@ case "$agent" in
   minimax)
     workdir="$workspace/hctl2-minimax"
     case "$platform" in
-      macos)  die "no macOS session recorded for $agent" ;;
+      macos)  session="mvs_0086208ee21a435391daf10863c6f549" ;;
       ubuntu) session="mvs_10a70eac3ad9485abc2471f39da69467" ;;
     esac
     cmd=(mcode --session "$session")
