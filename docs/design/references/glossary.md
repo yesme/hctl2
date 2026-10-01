@@ -24,8 +24,9 @@
 | Repo | 仓库 | 人登记的逻辑仓库与声明的平台绑定；也是第五个领域模块的名字，拥有仓库登记、变更集与写租约、集成意图与凭证 | [Repo](../repo.md)、[spec/repo](../spec/repo.md) |
 | Project | 项目 | 关联一个 Repo 的具名工作范围；同 Repo 可有多个 Project，各自保存工作与授权 | [Project](../project.md) |
 | Room | 聊天室 | 持久的多参与者协作空间，分 Project Room（主 Room；所有者与用户流程说的『主 Repo Room』指同一间，不是另一种 Room）与 Topic Room；也是 Project 模块的场景名 | [Project](../project.md#room-场景) |
-| Topic Room | 主题聊天室 | Project 内围绕话题或 Request 展开的独立讨论空间；挂在主 Room 或另一间 Topic Room 之下，挂靠归 chat server | [spec/project](../spec/project.md#room-与消息) |
+| Topic Room | 主题聊天室 | Project 内围绕话题或 Request 展开的独立讨论空间；出处（从哪里开出）记在控制面、不改写，挂在主 Room 或另一间 Topic Room 之下，挂靠归 chat server、可以改挂 | [spec/project](../spec/project.md#room-与消息) |
 | 前情提要 | — | Topic Room 开场时可反复读取的背景正文与来源 | [spec/project](../spec/project.md#room-与消息) |
+| 讨论串 | — | Room 内一层、所有成员可见的旁支讨论（对应 Matrix thread），不是分支；换方向另开 Topic Room | [spec/project](../spec/project.md#room-与消息) |
 | 待你处理 | — | Project 内已有记录中等待当前用户处理的事项投影 | [spec/project](../spec/project.md#待你处理) |
 | Participant | 参与者 | 第四个领域模块；也指被选进某个 Room（作规划者）或某个 Run 席位（作施工者）的一位工种实例，只存在于被选进的地方；人不是 Participant | [Participant](../participant.md) |
 | Request | 请求卡 | 向指定人或角色索取信息、授权或决定的一级对象 | [spec/project](../spec/project.md#request) |

@@ -35,7 +35,7 @@ HCTL2 只有五个领域模块：Project、Task、Run、Participant（参与者�
 flowchart TD
     R["Repo（Repo 模块）"] -->|每个 Project 关联一个 Repo；同一 Control 可多个| P["Project 0..N"]
     P --> PR["Project Room（一个 Project 一个主 Room）"]
-    P --> TP["Topic Room 0..N"]
+    PR -->|挂靠归 chat server，可多层| TP["Topic Room 0..N"]
     P --> T["Task 0..N"]
     P --> RN["Run 0..N"]
     T --> TR["Task Revision 只追加"]

@@ -76,7 +76,7 @@ Project · Room             Task · Kanban              Run · Workflow         
 理想的完整旅程是：
 
 1. 用户选择一个仓库（Repo），创建或打开具名的 Project，进入它自己的主 Room，邀请 Participant 讨论；同一仓库可以有多个 Project。
-2. 值得单独讨论的话题，带着人确认的前情提要和来源进入 Topic Room，另选参与者，不必重读主 Room 的长篇聊天。
+2. 值得单独讨论的话题，带着人确认的前情提要和来源进入 Topic Room，另选参与者，不必重读来源 Room 的长篇聊天。
 3. 用户在主 Room 或 Topic Room 中塑形目标、范围和验收标准，把承诺提炼成 Task；Rooms、Kanbans、Runs 在 Project 中并列呈现。
 4. 简单工作由人完成，或通过一次有边界的 Room Invocation（从聊天室发起的单次调用）完成；它不需要 Run。
 5. 需要持久自动施工时，用户先批准 Workflow（施工图），再显式启动 Run，授予有边界的自主权。批准施工图与开工是两条治理记录，复用现成施工图时可以在一次预览里同时提交。
