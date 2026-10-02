@@ -2,10 +2,13 @@ use std::process::Command;
 
 #[test]
 fn binary_prints_english_help() {
-    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
-        .arg("--help")
-        .output()
-        .expect("hctl2-tool must start");
+    let output = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
+    .arg("--help")
+    .output()
+    .expect("hctl2-tool must start");
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help output must be UTF-8");
@@ -15,10 +18,13 @@ fn binary_prints_english_help() {
 
 #[test]
 fn binary_prints_its_version() {
-    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
-        .arg("--version")
-        .output()
-        .expect("hctl2-tool must start");
+    let output = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
+    .arg("--version")
+    .output()
+    .expect("hctl2-tool must start");
 
     assert!(output.status.success());
     assert_eq!(
@@ -29,10 +35,13 @@ fn binary_prints_its_version() {
 
 #[test]
 fn binary_reports_a_structured_startup_error() {
-    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
-        .arg("not-a-command")
-        .output()
-        .expect("hctl2-tool must start");
+    let output = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
+    .arg("not-a-command")
+    .output()
+    .expect("hctl2-tool must start");
 
     assert!(!output.status.success());
     assert!(
@@ -44,19 +53,22 @@ fn binary_reports_a_structured_startup_error() {
 
 #[test]
 fn wait_prints_one_structured_timeout_record() {
-    let output = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
-        .args([
-            "wait",
-            "--deadline",
-            "0",
-            "path-digest",
-            "--path",
-            "missing",
-            "--sha256",
-            "0000000000000000000000000000000000000000000000000000000000000000",
-        ])
-        .output()
-        .expect("hctl2-tool must start");
+    let output = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
+    .args([
+        "wait",
+        "--deadline",
+        "0",
+        "path-digest",
+        "--path",
+        "missing",
+        "--sha256",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+    ])
+    .output()
+    .expect("hctl2-tool must start");
 
     assert_eq!(output.status.code(), Some(5));
     let stdout = String::from_utf8(output.stdout).expect("record must be UTF-8");

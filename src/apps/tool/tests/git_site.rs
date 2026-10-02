@@ -866,7 +866,10 @@ fn materialize(fixture: &Fixture, root: &Path, change_set_ref: &str, baseline: &
 }
 
 fn tool() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
+    Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
 }
 
 fn git<I, S>(repository: Option<&Path>, arguments: I) -> Output
