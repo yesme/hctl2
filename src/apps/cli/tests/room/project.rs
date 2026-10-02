@@ -84,9 +84,9 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
         );
         let event = sent["receipt"]["event_id"].as_str().unwrap();
         let draft=f.query("draft",json!({"project_id":p,"project_version":1,"origin":{"kind":"room","room_id":main,"binding_version":show["binding"]["version"]},"selection":{"kind":"events","event_ids":[event]}}));
-        let sources: Vec<Value> = draft["draft"]["fragments"]
+        let sources: Vec<Value> = draft["fragments"]
             .as_array()
-            .unwrap()
+            .unwrap_or_else(|| panic!("draft has no fragments: {draft}"))
             .iter()
             .map(|t| t["source"].clone())
             .collect();
