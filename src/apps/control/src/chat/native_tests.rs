@@ -171,6 +171,50 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         .attach(&space, child.matrix_room_id.as_deref().unwrap(), false)
         .unwrap();
     let child_space = client.ensure_carrier(&child).unwrap();
+    // Crash one step earlier: wrapper attachment exists but its pointer is not yet stored.
+    // Recovery must not mistake the wrapper itself for an old external parent.
+    let mut interrupted = chat::Room {
+        id: "interrupted-carrier".into(),
+        ..room.clone()
+    };
+    interrupted.matrix_room_id = Some(
+        client
+            .create(&interrupted, "interrupted-room", true)
+            .unwrap()["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .into(),
+    );
+    let carrier_key = format!(
+        "carrier:{}:{}:{}",
+        interrupted.project_id,
+        interrupted.id,
+        interrupted.matrix_room_id.as_deref().unwrap()
+    );
+    let wrapper = client
+        .create_native(&interrupted, &carrier_key, true, false, || Ok(()))
+        .unwrap()["matrix_room_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    client
+        .attach(
+            &wrapper,
+            interrupted.matrix_room_id.as_deref().unwrap(),
+            true,
+        )
+        .unwrap();
+    assert_eq!(client.ensure_carrier(&interrupted).unwrap(), wrapper);
+    assert!(
+        !client.room_state(&wrapper).unwrap().iter().any(|event| {
+            event["type"] == "m.space.child"
+                && event["state_key"] == wrapper
+                && event["content"]["via"]
+                    .as_array()
+                    .is_some_and(|via| !via.is_empty())
+        }),
+        "recovering the wrapper must not create a self-edge"
+    );
     let child_state = client
         .room_state(child.matrix_room_id.as_deref().unwrap())
         .unwrap();

@@ -87,6 +87,10 @@ impl Client {
                 let parent = event["state_key"]
                     .as_str()
                     .ok_or_else(|| invalid("invalid Space parent"))?;
+                // A retry may find our own wrapper before its pointer was stored.
+                if parent == id {
+                    continue;
+                }
                 self.attach(parent, id, event["content"]["canonical"] == true)?;
                 self.put_state(parent, "m.space.child", bound(room)?, json!({}))?;
                 // Clear the old reverse edge only after the replacement is readable.
