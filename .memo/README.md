@@ -47,7 +47,7 @@
 | `design/grok-ci-cadence-20260828a.md` | C 已落地；发行整包是否继续挡 PR，以及 A/B/D 是否调整 workflow 与保护 |
 | `design/codex-build-optimization-20260831.md` | 已拍板 · 第一、二批已落地，第三批待开始 |
 | `design/scm-module-20260906/02-attribution-gate.md` | 提交署名关卡：仓库设置只留 merge commit 并让合并提交带 PR 描述（所有者改）；`src/agency/attribution/` 移植、PR contract 检查、AGENTS.md 一节交 Codex 实现 |
-| `design/p2-control-20260906/` | 已拍板四项与里程碑重切；Repo 稳定身份（§五第 3 项）待长聊，`03-repo-identity-discussion.md` 是底稿；六份前置研究交 Codex（`02-research-brief.md`）；交付文档重切 PR 待开 |
+| `design/p2-control-20260906/` | P2.1 与 P2.2 的前三包已合入；余下工作按 `07-demo-kickoff.md` 的九个包推进（所有者 2026-10-03 拍板），演示 3 之后先做 Run 还是 Workbench 待所有者定；Repo 稳定身份一题已随 C 批撤销 |
 | `design/case-study-20260907/` | 所有者用例（#191）反推的单元模型（01 v3）、治理正文（03 v5，已拍板）、验证器（04 v2）、改写规矩（05 v2）、A0 方案（06，已合 #209）、Repo Instance（07 v4，已对齐）、改写施工图（08）；改写顺序：一致性修正批 → R 小批 → A → C → B → D，所有者按 08 的节点与判据推进 |
 | `design/intent-entry-principles-20260919.md` | 已拍板 · 待落地：所有者的三条原则（意图入口、分类在后台、可观测性）与主笔判断、Codex 评述的采与收窄；三处落点（愿景一条原则、体验组织层来源链、交付总账加一项）与一个要出方案的机制（Room 级缺省施工图「归纳」）；待定的只有归纳方案何时开 |
 | `design/room-judgment-20261002.md` | 已拍板 · 待落地：判断点九条（机械优先、然后 sysone、然后人；流程判断与警觉题；先召回再判断；标注与迭代；警觉题不作 Gate 席位）；§五 第一批做哪个判断点待拍板 |
