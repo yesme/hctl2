@@ -32,6 +32,7 @@
 5. **这一段先不做的**见 §七。
 6. **编号。** 包与批次用数字、罗马数字或英文字母，不用天干地支。旧任务书里的天干标题不回改，本文只在指向它们时照抄。
 7. **看板的理解。** 原话：「要区分source和UI。如果source是SCM的issues，或者专门的系统如Linear/JIRA，那么在hctl上就是yet another UI/client - 因为source的源体也有自己的UI。如果开发者想在看板source之外再用自己『本地』的source，那么就应该用Vikunja作为后台。」这与 `spec/task.md` §契约与来源 一致：卡片内容以任务源为准，HCTL 只多存承诺身份、验收契约与完成凭证；不改约束。
+8. **各家自己盯 PR。** 所有者同日补充，原话：「大家都会监控PR，有comments了可以自己看，不用再等我贴过来」。起因是 #302 的评审回来之后，主笔没有自己去看，等所有者来转告。落法见 §六。
 
 ## 三、三次演示
 
@@ -216,16 +217,40 @@
 规矩：
 
 - 每个包的两位审阅者里，至少一位是 Codex 或 Grok。新审阅者的意见拿来和他们对照。
-- 开工提示词由 Fable 给指针版；评审与复核的提示词由作者贴在 PR 里，所有者照贴。
+- 开工提示词由 Fable 给指针版。评审提示词由作者贴在 PR 里，所有者把它贴给两位审阅者，一包只贴这一次。
+- 开了 PR 之后各家自己盯，不等所有者转告：作者定时查看评论与 CI，评审到了自己处理、写处理说明，条件满足就合；审阅者发完意见后，定时查看作者的处理说明，自己复核。所有者只在开工和开审时各贴一次提示词，之后只收结果。
+- 哪家 harness 做不到一直等着（一轮对话里等不了那么久），如实报告，由所有者催一次；不要假装在盯。
 - 合入与两轮规则见 §二 第 4 条。
 - 小活一次只放一个，不占主线。
 
 模型：新模型没有本库证据，只定一条规则。写代码、审代码用各家的主力档，flash 档只跑机械小活。Antigravity 用 gemini-3.8-flash。Kimi 的 K3 留给设计评审和演示走查。DeepSeek 与 MiniMax 哪一档写代码更稳，没有依据，先用所有者平时用的那档，看结果再调。
 
-小活的头两件：
+小活的头两件，编号 A、B。
 
-- **MiniMax**：CI 小补丁。给工作流加整体超时；Clippy 有诊断就判失败。#287 那次 macOS 作业挂了 40 分钟，缺的就是整体超时。Codex 审。
-- **Antigravity**：调研「Room 树和 Run 图在界面上怎么画」的业界做法，落 `docs/research/`。这是 Workbench 的前置（`delivery.md` §未决问题）。Fable 审。之后每次演示完，由它照真实命令写一份演示手册，Grok 照着重跑来验。
+### 小活 A · CI 整体超时与 Clippy 关卡（MiniMax 写，Codex 审）
+
+- **现状**：`.github/workflows/` 下的工作流都没有设 `timeout-minutes`。#287 那次 macOS 作业挂了 40 多分钟，只能手工取消。`root//:clippy` 只把诊断写进产物文件（各目标的 `clippy.txt`），文件不为空 CI 也不失败。
+- **要做的**：
+  - 给每个工作流的每个 job 加整体超时。取值按近期实际耗时留余量，依据写进 PR 描述（用 `gh run list` 查近十次的耗时）。
+  - 加一道检查：Clippy 的诊断产物只要不为空，CI 就失败，并把诊断打印出来。
+  - 先确认当前 main 是零诊断。不是零就把诊断列出来报给所有者，不在这个包里顺手改业务代码。
+- **规矩**：构建动作走 Buck2 原生目标，能用 Buck 目标或测试表达的不另写脚本；改工作流要过 actionlint 与 `root//build/tests:validation_range_test`；在 `docs/research/build-tools/github-actions-incremental-validation.md` 文末追加一条复核记录。
+- **不做**：不动路径筛选、缓存与平台矩阵。
+- **分支**：`minimax/ci-timeout-clippy`。
+
+### 小活 B · 调研：Room 树和 Run 图在界面上怎么画（Antigravity 写，Fable 审）
+
+- **为什么做**：这是 Workbench 的前置。`delivery.md` §未决问题 写明，Room 树与 Run 图的原生视角要先调研信息可视化研究与业界做法，再出设计。起点是 [`room-tree-20261001.md`](../room-tree-20261001.md)。
+- **交付物**：研究根目录一份跨候选对照 `docs/research/tree-and-dag-views-<完成日期>.md`，并在 `docs/research/README.md` 的条目索引加一行。格式照 [`02-research-brief.md`](./02-research-brief.md) §通用要求。
+- **要回答的**：
+  1. 有层级的聊天空间怎么导航：Matrix 客户端的 Space、Slack、Discord、Zulip 一类产品，平铺列表与树各在什么时候用，层级深了怎么办。
+  2. 有向无环图怎么看：GitHub Actions、Dagu、Airflow、Argo、Buildkite 一类产品怎么画运行图，节点多了怎么折叠，怎么从图跳到单个节点的日志。
+  3. 信息可视化研究对树和图的导航有哪些可引用的结论，比如缩进列表、节点连线图、面包屑、焦点加上下文。
+  4. 对 HCTL 的建议：只列候选画法和各自的取舍，不替所有者做决定。
+- **规矩**：每条结论给出处链接和读取日期；没亲眼核对过的写「未核实」，不编数字；只写调研，不写代码，不改设计文档。
+- **分支**：`agy/tree-dag-views`。
+
+之后每次演示完，由 Antigravity 照真实命令写一份演示手册，Grok 照着重跑来验。
 
 这两家看三样：是否一次过，有没有多做，报告是否如实。
 
@@ -251,16 +276,16 @@
 第 1 包，给 Codex：
 
 ```
-你在 yesme/hctl2 做「第 1 包 · Project、名册、Request」（P2.2 的最后一包）。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 1 包；任务书是同目录 05-p22-kickoff.md §四 里标题为「辛 · Project 与 Request」的一节（先读 05 的 §一、§二，与 04-p21-kickoff.md §二、§五）。任务书写于 v0.18.11，与现行约束不一致处以约束为准。主 Room 的接线见 src/crates/chat/README.md。分支 codex/p22-project-request，base main，一个 PR；评审席位 Grok 与 GLM 各自独立审；两席都写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PROJECT、CT-REPO 各行）、没按任务书做的地方及原因。
+你在 yesme/hctl2 做「第 1 包 · Project、名册、Request」（P2.2 的最后一包）。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 1 包；任务书是同目录 05-p22-kickoff.md §四 里标题为「辛 · Project 与 Request」的一节（先读 05 的 §一、§二，与 04-p21-kickoff.md §二、§五）。任务书写于 v0.18.11，与现行约束不一致处以约束为准。主 Room 的接线见 src/crates/chat/README.md。分支 codex/p22-project-request，base main，一个 PR；评审席位 Grok 与 GLM 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：评审到了自己处理并写处理说明；两席都写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PROJECT、CT-REPO 各行）、没按任务书做的地方及原因。
 ```
 
 第 2 包，给 Codex，第 1 包合入后发：
 
 ```
-你在 yesme/hctl2 做「第 2 包 · Agency 服务骨架与端口」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 2 包与 §五（先读 §一 到 §三）。本包还要给第 3、4、5 包定框架，写在对应 crate 的 README。分支 codex/agency-port，base main，一个 PR；评审席位 Grok 与 DeepSeek 各自独立审；两席都写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PARTICIPANT、CT-CONNECTION 各行）、给后面三个包留的任务说明在哪、没按开工书做的地方及原因。
+你在 yesme/hctl2 做「第 2 包 · Agency 服务骨架与端口」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 2 包与 §五（先读 §一 到 §三）。本包还要给第 3、4、5 包定框架，写在对应 crate 的 README。分支 codex/agency-port，base main，一个 PR；评审席位 Grok 与 DeepSeek 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：评审到了自己处理并写处理说明；两席都写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PARTICIPANT、CT-CONNECTION 各行）、给后面三个包留的任务说明在哪、没按开工书做的地方及原因。
 ```
 
-之后各包的开工提示词，在前一包合入后由 Fable 给。
+之后各包的开工提示词，在前一包合入后由 Fable 给。两件小活的提示词指向 §六 的任务说明。
 
 ## 九、轻审怎么审本文
 
