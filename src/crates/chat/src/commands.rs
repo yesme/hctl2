@@ -219,12 +219,38 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
                     return Err(invalid("selection belongs to another Room"));
                 }
             }
-            let (_, main) = main_binding(store, &project)?;
+            let (parent_binding, parent) = match &origin {
+                Origin::Room { room_id, .. } => crate::room(store, &project, room_id)?,
+                Origin::Request { .. } => main_binding(store, &project)?,
+            };
+            if parent.matrix_room_id.is_none() {
+                return Err(reject(
+                    "ROOM_PENDING",
+                    "source Room is not bound",
+                    "resume_original_command",
+                ));
+            }
+            plan.checks.push(Check {
+                key: parent_binding.key,
+                version: Some(parent_binding.version),
+            });
+            for source in &plan.source_texts {
+                if let Source::Message { binding, .. } = &source.source {
+                    let current = required(store, &binding.key)?;
+                    if reference(&current) != *binding {
+                        return Err(stale());
+                    }
+                    plan.checks.push(Check {
+                        key: current.key,
+                        version: Some(current.version),
+                    });
+                }
+            }
             let room = Room {
                 project_id: project.clone(),
                 id: id.clone(),
                 name,
-                server: main.server,
+                server: parent.server.clone(),
                 matrix_room_id: None,
                 participants,
                 brief: None,
@@ -237,7 +263,7 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
                 reference(&identity),
                 &input.key,
                 "chat.create",
-                json!({"room":room}),
+                json!({"room":room,"parent":parent}),
             )?);
             plan.records.extend([identity, binding]);
             plan.result = json!({"room_id":id,"project_id":project,"state":"pending","effect_id":plan.effects[0].intent_id});
@@ -301,13 +327,14 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
             room_id,
             version,
             body,
+            thread_root,
             ..
         } => {
             let (r, room) = room(store, &project, &room_id)?;
             if r.version != version {
                 return Err(stale());
             }
-            writable(store, &room)?;
+            let identity = writable(store, &room)?;
             if room.matrix_room_id.is_none() || body.is_empty() {
                 return Err(invalid("bound Room and nonempty message required"));
             }
@@ -317,13 +344,10 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
             });
             plan.effects.push(effect(
                 &room,
-                Reference {
-                    key: key(p.key.scope.clone(), "room", &room_id),
-                    version: Version::State(1),
-                },
+                reference(&identity),
                 &input.key,
                 "chat.send",
-                json!({"room":room,"body":body}),
+                json!({"room":room,"body":body,"thread_root":thread_root}),
             )?);
             plan.result =
                 json!({"room_id":room_id,"effect_id":plan.effects[0].intent_id,"state":"pending"});
@@ -449,6 +473,11 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
         materials.push(material);
     }
     for (i, source) in plan.source_texts.iter().enumerate() {
+        let id = canonical_json_sha256(&serde_json::to_value(&source.source)?)?;
+        let k = key(scope.clone(), "chat_source_reference", &id);
+        if store.get(&k)?.is_some() {
+            continue;
+        }
         let material = store.save_material(
             store.generation(),
             &actor,
@@ -457,8 +486,6 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
             &format!("source-{i}"),
             source.body.as_bytes(),
         )?;
-        let id = canonical_json_sha256(&serde_json::to_value(&source.source)?)?;
-        let k = key(scope.clone(), "chat_source_reference", &id);
         if store.get(&k)?.is_none() {
             let mut record = value_record(k, 1, &source.source)?;
             record.materials.push(material.clone());

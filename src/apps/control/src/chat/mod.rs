@@ -4,8 +4,9 @@ mod config;
 mod drafting;
 mod queries;
 mod runtime;
+pub(super) mod tree;
 pub(crate) use config::private_write as write_private_config;
-use drafting::draft;
+pub(super) use drafting::draft;
 #[cfg(test)]
 use drafting::select;
 pub(super) use queries::{query, set_view_state};
@@ -65,7 +66,7 @@ fn guard(client: &matrix::Client, root: &Path, room: &Room, external: &str) -> R
         return Err(reject(
             "CHAT_BINDING_CHANGED",
             "chat deployment differs from frozen binding",
-            "rebind_chat_server",
+            "check_chat_binding",
         ));
     }
     let result = client.guard(external);
@@ -96,9 +97,27 @@ fn resolve(
             access(shared, |s| chat::origin_checks(s, project_id, origin))?;
             match origin {
                 Origin::Request { request, blockers } => {
-                    access(shared, |s| chat::request_texts(s, request, blockers))
+                    let mut texts = access(shared, |s| chat::request_texts(s, request, blockers))?;
+                    for source in &brief.sources {
+                        if matches!(source, Source::Message { .. }) {
+                            texts
+                                .push(resolve_message(shared, services, root, project_id, source)?);
+                        }
+                    }
+                    // Preserve the confirmed source order, including optional Messages.
+                    brief
+                        .sources
+                        .iter()
+                        .map(|s| {
+                            texts
+                                .iter()
+                                .find(|t| t.source == *s)
+                                .cloned()
+                                .ok_or_else(|| invalid("unverified Request source"))
+                        })
+                        .collect()
                 }
-                Origin::MainRoom { room_id, .. } => {
+                Origin::Room { room_id, .. } => {
                     let (r, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
                     let client = client(services)?;
                     let external = bound(&room)?;
@@ -170,11 +189,52 @@ fn resolve(
             ..
         } => {
             let (_, room) = access(shared, |s| chat::room(s, project_id, room_id))?;
-            guard(&client(services)?, root, &room, bound(&room)?)?;
+            let client = client(services)?;
+            guard(&client, root, &room, bound(&room)?)?;
+            if let Action::Send {
+                thread_root: Some(root),
+                ..
+            } = action
+            {
+                client.thread_root(bound(&room)?, root)?;
+            }
             Ok(vec![])
         }
         Action::Close { .. } | Action::Resume { .. } => Ok(vec![]),
     }
+}
+
+fn resolve_message(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    project: &str,
+    source: &Source,
+) -> Result<SourceText> {
+    let Source::Message {
+        binding, event_id, ..
+    } = source
+    else {
+        return Err(invalid("Message required"));
+    };
+    if binding.key.scope != Scope::Project(project.into()) || binding.key.kind != "room_binding" {
+        return Err(invalid("Message belongs to another Project"));
+    }
+    let (r, room) = access(shared, |s| chat::room(s, project, &binding.key.id))?;
+    if chat::reference(&r) != *binding {
+        return Err(chat::stale());
+    }
+    let client = client(services)?;
+    guard(&client, root, &room, bound(&room)?)?;
+    let text = matrix::source_text(binding.clone(), &client.event(bound(&room)?, event_id)?)?;
+    if text.source != *source {
+        return Err(reject(
+            "SOURCE_CHANGED",
+            "Message content differs",
+            "preview_again",
+        ));
+    }
+    Ok(text)
 }
 
 pub(super) fn preview(
@@ -295,25 +355,92 @@ fn drive(
         })?;
     }
     let receipt = match effect.operation.as_str() {
-        "chat.create" => {
-            client.create_with_dispatch(&room, &effect.idempotency_key, pending, || {
-                access(shared, |s| {
+        "chat.carrier" => {
+            guard(&client, root, &room, bound(&room)?)?;
+            access(shared, |s| {
+                let (_, current) = chat::room(s, &room.project_id, &room.id)?;
+                chat::writable(s, &current)?;
+                let p = chat::required(
+                    s,
+                    &chat::key(effect.permission_scope.clone(), "project", &room.project_id),
+                )?;
+                chat::active_project(s, &room.project_id, p.version)?;
+                if current.matrix_room_id != room.matrix_room_id
+                    || current.server.binding != room.server.binding
+                {
+                    return Err(chat::stale());
+                }
+                if pending {
                     s.begin_effect(s.generation(), id)?;
+                }
+                Ok(())
+            })?;
+            json!({"space_id":client.ensure_carrier(&room)?})
+        }
+        "chat.create" => {
+            let parent: Option<Room> = effect
+                .input
+                .get("parent")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()?;
+            if let Some(parent) = &parent {
+                guard(&client, root, parent, bound(parent)?)?;
+            }
+            let mark = || {
+                access(shared, |s| {
+                    let (_, current) = chat::room(s, &room.project_id, &room.id)?;
+                    chat::writable(s, &current)?;
+                    let p = chat::required(
+                        s,
+                        &chat::key(effect.permission_scope.clone(), "project", &room.project_id),
+                    )?;
+                    chat::active_project(s, &room.project_id, p.version)?;
+                    if current
+                        .matrix_room_id
+                        .is_some_and(|r| room.matrix_room_id.as_ref() != Some(&r))
+                    {
+                        return Err(chat::stale());
+                    }
+                    if let Some(parent) = &parent {
+                        let (_, current_parent) = chat::room(s, &room.project_id, &parent.id)?;
+                        if current_parent.matrix_room_id != parent.matrix_room_id
+                            || current_parent.server.binding != parent.server.binding
+                        {
+                            return Err(chat::stale());
+                        }
+                    }
+                    if s.effect(id)?.1 == store::EffectState::Pending {
+                        s.begin_effect(s.generation(), id)?;
+                    }
                     Ok(())
                 })
-            })?
+            };
+            let receipt =
+                client.create_with_dispatch(&room, &effect.idempotency_key, pending, mark)?;
+            if let Some(parent) = &parent {
+                mark()?;
+                let child = receipt["matrix_room_id"]
+                    .as_str()
+                    .ok_or_else(|| invalid("child room missing"))?;
+                let completion = json!({"command":effect.idempotency_key,"parent_room_id":parent.id,"project_id":room.project_id});
+                match client.state(child, "io.hctl2.topic_creation") {
+                    Ok(value) if value == completion => (),
+                    Ok(_) => return Err(invalid("Topic creation marker differs")),
+                    Err(e) if e.code == "CHAT_NOT_FOUND" => {
+                        let space = client.ensure_carrier(parent)?;
+                        client.attach(&space, child, true)?;
+                        client.put_state(child, "io.hctl2.topic_creation", "", completion)?;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            receipt
         }
         "chat.send" => {
             guard(&client, root, &room, bound(&room)?)?;
             let body = effect.input["body"]
                 .as_str()
                 .ok_or_else(|| invalid("send body missing"))?;
-            if !pending
-                && let Some(receipt) =
-                    client.read_sent(bound(&room)?, &effect.idempotency_key, body)?
-            {
-                return access(shared, |s| chat::confirm(s, actor, id, receipt));
-            }
             access(shared, |s| {
                 let (_, current) = chat::room(s, &room.project_id, &room.id)?;
                 chat::writable(s, &current)?;
@@ -333,7 +460,12 @@ fn drive(
                     Ok(())
                 })?;
             }
-            client.send(bound(&room)?, &effect.idempotency_key, body)?
+            client.send_thread(
+                bound(&room)?,
+                &effect.idempotency_key,
+                body,
+                effect.input["thread_root"].as_str(),
+            )?
         }
         _ => return Err(invalid("not a chat effect")),
     };

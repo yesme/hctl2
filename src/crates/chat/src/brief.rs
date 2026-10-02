@@ -1,6 +1,6 @@
 use crate::*;
 use foundation::{bytes_sha256, canonical_json};
-use store::{Record, RecordData, Reference, RoomKind, Scope, Store, Version};
+use store::{Record, RecordData, Reference, Scope, Store, Version};
 
 pub const MECHANICAL_RULE: &str = "hctl2.brief.verbatim.v1: structural selection; exact source fields; no sections or generated text";
 
@@ -55,21 +55,12 @@ pub fn at(store: &Store, reference: &Reference) -> Result<Record> {
 
 pub fn origin_checks(store: &Store, project: &str, origin: &Origin) -> Result<Vec<Check>> {
     match origin {
-        Origin::MainRoom {
+        Origin::Room {
             room_id,
             binding_version,
         } => {
             let (binding, _) = room(store, project, room_id)?;
-            let r = required(store, &key(Scope::Project(project.into()), "room", room_id))?;
-            if binding.version != *binding_version
-                || !matches!(
-                    r.data,
-                    RecordData::Room {
-                        room_kind: RoomKind::Main,
-                        ..
-                    }
-                )
-            {
+            if binding.version != *binding_version {
                 return Err(stale());
             }
             Ok(vec![Check {
@@ -90,7 +81,17 @@ pub fn origin_checks(store: &Store, project: &str, origin: &Origin) -> Result<Ve
                 ));
             }
             for blocker in blockers {
-                if blocker.key.scope != Scope::Project(project.into()) {
+                let p = required(
+                    store,
+                    &key(Scope::Project(project.into()), "project", project),
+                )?;
+                let repo_scope = match p.data {
+                    RecordData::Project { repo_id, .. } => Scope::Repo(repo_id),
+                    _ => return Err(invalid("Project required")),
+                };
+                if blocker.key.scope != Scope::Project(project.into())
+                    && blocker.key.scope != repo_scope
+                {
                     return Err(invalid("blocker belongs to another Project"));
                 }
             }
@@ -141,13 +142,26 @@ pub fn validate_sources(project: &str, origin: &Origin, sources: &[SourceText]) 
                     content_digest,
                     event_id,
                 },
-                Origin::MainRoom {
+                Origin::Room {
                     room_id,
                     binding_version,
                 },
             ) => {
                 binding.key == key(Scope::Project(project.into()), "room_binding", room_id)
                     && binding.version == Version::State(*binding_version)
+                    && !event_id.is_empty()
+                    && *content_digest == bytes_sha256(source.body.as_bytes())
+            }
+            (
+                Source::Message {
+                    binding,
+                    event_id,
+                    content_digest,
+                },
+                Origin::Request { .. },
+            ) => {
+                binding.key.scope == Scope::Project(project.into())
+                    && binding.key.kind == "room_binding"
                     && !event_id.is_empty()
                     && *content_digest == bytes_sha256(source.body.as_bytes())
             }
@@ -160,7 +174,6 @@ pub fn validate_sources(project: &str, origin: &Origin, sources: &[SourceText]) 
             ) => {
                 (reference == request || blockers.contains(reference))
                     && *content_digest == bytes_sha256(source.body.as_bytes())
-                    && reference.key.scope == Scope::Project(project.into())
             }
             _ => false,
         };

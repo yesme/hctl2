@@ -198,6 +198,12 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
                 Ok(json!({}))
             })
             .unwrap();
+        if project == "B" {
+            // Crash window: committed/marked unknown, but no native createRoom sent yet.
+            store
+                .begin_effect(store.generation(), &effect.intent_id)
+                .unwrap();
+        }
         mains.push((records[0].key.id.clone(), effect.intent_id));
     }
     drop(store);
@@ -250,7 +256,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         sent["receipt"]
     );
     let event = sent["receipt"]["event_id"].as_str().unwrap();
-    let draft = f.query("draft",json!({"project_id":"A","project_version":1,"origin":{"kind":"main_room","room_id":a,"binding_version":version},"selection":{"kind":"events","event_ids":[event,"$missing"]}}));
+    let draft = f.query("draft",json!({"project_id":"A","project_version":1,"origin":{"kind":"room","room_id":a,"binding_version":version},"selection":{"kind":"events","event_ids":[event,"$missing"]}}));
     assert_eq!(draft["automatic_summary"], "not_configured");
     assert_eq!(draft["fragments"][0]["excerpt"], send["body"]);
     assert_eq!(draft["unread"].as_array().unwrap().len(), 1);
@@ -262,13 +268,87 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         2
     );
     let source = draft["fragments"][0]["source"].clone();
-    let topic = json!({"project_id":"A","project_version":1,"name":"独立话题","origin":{"kind":"main_room","room_id":a,"binding_version":version},"brief":{"context_and_goal":"人的去敏与补写","settled_facts_and_reasons":[],"disagreements_and_questions":["未定"],"constraints_and_materials":[],"sources":[source]},"participants":[],"roster_confirmed":true});
+    let topic = json!({"project_id":"A","project_version":1,"name":"独立话题","origin":{"kind":"room","room_id":a,"binding_version":version},"brief":{"context_and_goal":"人的去敏与补写","settled_facts_and_reasons":[],"disagreements_and_questions":["未定"],"constraints_and_materials":[],"sources":[source]},"participants":[],"roster_confirmed":true});
     let created = f.accepted("create-topic", "topic-1", &topic);
     assert_eq!(
         f.accepted("create-topic", "topic-1", &topic)["room_id"],
         created["room_id"]
     );
     let topic_id = created["room_id"].as_str().unwrap();
+    assert_eq!(created["state"], "confirmed");
+    let topic_show = f.show("A", topic_id);
+    assert_eq!(topic_show["hierarchy"]["parents"][0]["room_id"], *a);
+    let topic_version = topic_show["binding"]["version"].as_i64().unwrap();
+    let topic_message = f.accepted("send", "topic-send", &json!({"project_id":"A","room_id":topic_id,"version":topic_version,"body":"Topic 里的新方向"}));
+    let topic_event = topic_message["receipt"]["event_id"].as_str().unwrap();
+    let (ok, topic_event_data) = f.run(&["room", "event", "A", topic_id, topic_event]);
+    assert!(ok, "{topic_event_data}");
+    let nested_input = json!({"project_id":"A","project_version":1,"name":"Topic 下的话题","origin":{"kind":"room","room_id":topic_id,"binding_version":topic_version},"brief":{"context_and_goal":"新方向","settled_facts_and_reasons":[],"disagreements_and_questions":[],"constraints_and_materials":[],"sources":[topic_event_data["source"]["source"]]},"participants":[],"roster_confirmed":true});
+    let nested = f.accepted("create-topic", "nested-topic", &nested_input);
+    assert_eq!(nested["state"], "confirmed");
+    let nested_id = nested["room_id"].as_str().unwrap();
+    let before_move = f.show("A", nested_id);
+    assert_eq!(before_move["hierarchy"]["parents"][0]["room_id"], topic_id);
+    let (ok, _) = f.run(&["room", "hierarchy", "A", nested_id]);
+    assert!(ok);
+    // The wrapper is native readback, never part of the Room binding.
+    let topic_space = f.show("A", topic_id)["hierarchy"]["carrier_space_id"].clone();
+    let moved = f.query("reparent", json!({"project_id":"A","room_id":nested_id,"binding_version":before_move["binding"]["version"],"parent_room_id":a,"parent_binding_version":version,"old_space_ids":[topic_space]}));
+    assert_eq!(moved["state"], "confirmed");
+    let after_move = f.show("A", nested_id);
+    assert_eq!(after_move["hierarchy"]["parents"][0]["room_id"], *a);
+    assert_eq!(after_move["room"]["origin"], before_move["room"]["origin"]);
+    assert_eq!(
+        after_move["binding"]["version"],
+        before_move["binding"]["version"]
+    );
+    assert_eq!(
+        f.accepted("create-topic", "nested-topic", &nested_input)["room_id"],
+        nested_id
+    );
+    assert_eq!(
+        f.show("A", nested_id)["hierarchy"]["parents"][0]["room_id"],
+        *a
+    );
+    let reply = f.accepted("send", "thread-send", &json!({"project_id":"A","room_id":topic_id,"version":topic_version,"body":"同一 Room 的讨论串","thread_root":topic_event}));
+    let reply_id = reply["receipt"]["event_id"].as_str().unwrap();
+    let (_, thread_source) = f.run(&["room", "event", "A", topic_id, reply_id]);
+    assert_eq!(thread_source["source"]["source"]["event_id"], reply_id);
+    assert!(!f.command("send", "nested-thread", &json!({"project_id":"A","room_id":topic_id,"version":topic_version,"body":"不能嵌套","thread_root":reply_id})).0);
+    let range = f.query("draft", json!({"project_id":"A","project_version":1,"origin":{"kind":"room","room_id":topic_id,"binding_version":topic_version},"selection":{"kind":"range","start":topic_event,"end":reply_id}}));
+    assert_eq!(range["fragments"].as_array().unwrap().len(), 2);
+    let thread = f.query("draft", json!({"project_id":"A","project_version":1,"origin":{"kind":"room","room_id":topic_id,"binding_version":topic_version},"selection":{"kind":"thread","event_id":topic_event}}));
+    assert_eq!(thread["fragments"].as_array().unwrap().len(), 2);
+    let draft_file = root.join("query.json");
+    let args = [
+        "room",
+        "draft",
+        "--key",
+        "repeat-draft",
+        "--input",
+        draft_file.to_str().unwrap(),
+    ];
+    let (ok, repeated) = f.run(&args);
+    assert!(ok, "{repeated}");
+    let (ok, replayed) = f.run(&args);
+    assert!(ok, "{replayed}");
+    assert_eq!(repeated, replayed);
+    let mut leaf_input = topic.clone();
+    leaf_input["name"] = json!("另一间独立 Room");
+    let leaf = f.accepted("create-topic", "leaf-topic", &leaf_input);
+    let leaf_id = leaf["room_id"].as_str().unwrap();
+    let leaf_before = f.show("A", leaf_id);
+    assert!(leaf_before["hierarchy"]["carrier_space_id"].is_null());
+    let main_space = f.show("A", a)["hierarchy"]["carrier_space_id"].clone();
+    let moved_to_leaf = f.query("reparent", json!({"project_id":"A","room_id":nested_id,"binding_version":before_move["binding"]["version"],"parent_room_id":leaf_id,"parent_binding_version":leaf_before["binding"]["version"],"old_space_ids":[main_space]}));
+    assert_eq!(moved_to_leaf["state"], "confirmed");
+    let after_leaf = f.show("A", leaf_id);
+    assert!(after_leaf["hierarchy"]["carrier_space_id"].is_string());
+    assert_eq!(after_leaf["binding"], leaf_before["binding"]);
+    assert_eq!(
+        f.show("A", nested_id)["hierarchy"]["parents"][0]["room_id"],
+        leaf_id
+    );
     let frozen = f.query("reference", json!({"project_id":"A","source":source}));
     let view = json!({"project_id":"A","room_id":a,"binding_version":version,"client_id":"desktop","draft":"尚未发送","read_cursor":event});
     f.query("save-view-state", view);
@@ -281,7 +361,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["type"] == "m.room.message")
+            .any(|e| e["content"]["body"] == "后续消息不流入 Topic")
     );
     let closed = f.show("A", topic_id);
     assert_eq!(closed["brief"]["context_and_goal"], "人的去敏与补写");
@@ -289,6 +369,12 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         "close",
         "close-topic",
         &json!({"project_id":"A","room_id":topic_id,"version":closed["binding"]["version"]}),
+    );
+    let nested_after_close = f.show("A", nested_id);
+    assert_eq!(nested_after_close["identity"]["data"]["state"], "active");
+    assert_eq!(
+        nested_after_close["room"]["origin"],
+        before_move["room"]["origin"]
     );
     assert!(!f.command("send","closed-send",&json!({"project_id":"A","room_id":topic_id,"version":closed["binding"]["version"].as_i64().unwrap()+1,"body":"no"})).0);
     assert!(f.run(&["stop"]).0);
@@ -314,7 +400,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
             .as_array()
             .unwrap()
             .len(),
-        3
+        5
     );
     let (ok, _) = f.run(&["room", "event", "B", &mains[1].0, event]);
     assert!(!ok, "event in A must not be accepted as B's event");

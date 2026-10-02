@@ -42,7 +42,8 @@ pub enum Source {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Origin {
-    MainRoom {
+    #[serde(alias = "main_room")]
+    Room {
         room_id: String,
         binding_version: i64,
     },
@@ -115,6 +116,8 @@ pub enum Action {
         room_id: String,
         version: i64,
         body: String,
+        #[serde(default)]
+        thread_root: Option<String>,
     },
     Freeze {
         project_id: String,
@@ -162,10 +165,24 @@ pub struct Plan {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Selection {
-    Events { event_ids: Vec<String> },
-    Range { start: String, end: String },
-    Replies { event_id: String },
-    Mentions { user_id: String },
+    Events {
+        event_ids: Vec<String>,
+    },
+    Range {
+        start: String,
+        end: String,
+    },
+    Replies {
+        event_id: String,
+    },
+    Thread {
+        event_id: String,
+    },
+    Mentions {
+        user_id: String,
+        #[serde(default)]
+        after: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -175,6 +192,9 @@ pub struct DraftInput {
     pub project_version: i64,
     pub origin: Origin,
     pub selection: Option<Selection>,
+    /// Optional exact Message references when upgrading a Request.
+    #[serde(default)]
+    pub messages: Vec<Source>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

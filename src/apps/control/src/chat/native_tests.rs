@@ -124,17 +124,183 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         client.create(&room, "creation-one", false).unwrap(),
         created
     );
+    let recovered = client.create(&room, "unknown-command", false).unwrap();
     assert_eq!(
-        client
-            .create(&room, "unknown-command", false)
-            .unwrap_err()
-            .code,
-        "RESULT_UNKNOWN"
+        client.create(&room, "unknown-command", false).unwrap(),
+        recovered
+    );
+    // Lost public alias: the creator's native joined-room inventory still recovers
+    // the exact initial marker, rather than creating another message room.
+    client
+        .request(ruma::api::client::alias::delete_alias::v3::Request::new(
+            ruma::RoomAliasId::parse(format!(
+                "#hctl2_{}:{}",
+                foundation::bytes_sha256(b"unknown-command"),
+                room.server.server_name
+            ))
+            .unwrap(),
+        ))
+        .unwrap();
+    assert_eq!(
+        client.create(&room, "unknown-command", false).unwrap(),
+        recovered
     );
     let external = created["matrix_room_id"].as_str().unwrap();
+    let mut bound_main = room.clone();
+    bound_main.matrix_room_id = Some(external.into());
+    let space = client.ensure_carrier(&bound_main).unwrap();
+    assert_eq!(client.ensure_carrier(&bound_main).unwrap(), space);
+    assert!(client.state(&space, "m.room.create").unwrap()["type"] == "m.space");
+    let mut child = chat::Room {
+        id: "topic".into(),
+        name: "话题".into(),
+        ..room.clone()
+    };
+    child.matrix_room_id = Some(
+        client.create(&child, "child-command", true).unwrap()["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .into(),
+    );
+    client
+        .attach(&space, child.matrix_room_id.as_deref().unwrap(), false)
+        .unwrap();
+    let child_space = client.ensure_carrier(&child).unwrap();
+    let mut grandchild = chat::Room {
+        id: "nested".into(),
+        ..room.clone()
+    };
+    grandchild.matrix_room_id = Some(
+        client.create(&grandchild, "nested-command", true).unwrap()["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .into(),
+    );
+    client
+        .attach(
+            &child_space,
+            grandchild.matrix_room_id.as_deref().unwrap(),
+            false,
+        )
+        .unwrap();
+    let rooms = vec![bound_main.clone(), child.clone(), grandchild.clone()];
+    let projection = crate::chat::tree::project_hierarchy(&client, &rooms);
+    assert_eq!(projection["nested"].parents[0]["room_id"], "topic");
+    assert_eq!(projection["topic"].parents[0]["room_id"], "main");
+    assert!(!projection["main"].children.contains(&"main".into()));
+    // A fresh projection has no cache. Both non-canonical and both canonical parents survive.
+    for canonical in [false, true] {
+        client
+            .attach(
+                &space,
+                grandchild.matrix_room_id.as_deref().unwrap(),
+                canonical,
+            )
+            .unwrap();
+        client
+            .attach(
+                &child_space,
+                grandchild.matrix_room_id.as_deref().unwrap(),
+                canonical,
+            )
+            .unwrap();
+        assert_eq!(
+            crate::chat::tree::project_hierarchy(&client, &rooms)["nested"]
+                .parents
+                .len(),
+            2
+        );
+    }
+    client.attach(&child_space, external, false).unwrap();
+    let cyclic = crate::chat::tree::project_hierarchy(&client, &rooms);
+    assert!(cyclic["main"].needs_attention && cyclic["topic"].needs_attention);
+    assert!(cyclic["main"].parents.is_empty());
+    client
+        .put_state(&child_space, "m.space.child", external, json!({}))
+        .unwrap();
+    client
+        .put_state(external, "m.space.parent", &child_space, json!({}))
+        .unwrap();
+    let foreign = chat::Room {
+        project_id: "other-project".into(),
+        id: "foreign".into(),
+        ..room.clone()
+    };
+    let mut foreign = foreign;
+    foreign.matrix_room_id = Some(
+        client.create(&foreign, "foreign", true).unwrap()["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .into(),
+    );
+    let foreign_space = client.ensure_carrier(&foreign).unwrap();
+    client
+        .attach(
+            &foreign_space,
+            grandchild.matrix_room_id.as_deref().unwrap(),
+            false,
+        )
+        .unwrap();
+    let foreign_projection = crate::chat::tree::project_hierarchy(&client, &rooms);
+    assert_eq!(foreign_projection["nested"].parents.len(), 2);
+    assert!(
+        foreign_projection["nested"]
+            .external_links
+            .contains(&foreign_space)
+    );
+    assert!(foreign_projection["nested"].needs_attention);
+    let inaccessible = Client::new(room.server.clone(), "invalid-token".into()).unwrap();
+    let partial = crate::chat::tree::project_hierarchy(&inaccessible, &rooms);
+    assert!(
+        partial
+            .values()
+            .all(|r| r.parents.is_empty() && r.children.is_empty() && r.needs_attention)
+    );
     let sent = client
         .send(external, "txn-one", "日本語与中文 e\u{301} / é")
         .unwrap();
+    let reply = client
+        .send_thread(
+            external,
+            "thread-1",
+            "讨论串回复",
+            Some(sent["event_id"].as_str().unwrap()),
+        )
+        .unwrap();
+    assert!(
+        client
+            .send_thread(
+                external,
+                "nested-thread",
+                "不能嵌套",
+                Some(reply["event_id"].as_str().unwrap())
+            )
+            .is_err()
+    );
+    let thread_source = source_text(
+        Reference {
+            key: chat::key(store::Scope::Project("p".into()), "room_binding", "main"),
+            version: store::Version::State(1),
+        },
+        &client
+            .event(external, reply["event_id"].as_str().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(thread_source.excerpt, "讨论串回复");
+    assert_eq!(
+        client
+            .thread_events(external, sent["event_id"].as_str().unwrap())
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        client
+            .context(external, sent["event_id"].as_str().unwrap())
+            .unwrap()["end"]
+            .is_string()
+    );
     assert_eq!(
         client
             .send(external, "txn-one", "日本語与中文 e\u{301} / é")
@@ -171,7 +337,11 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         .collect();
     assert_eq!(
         ids,
-        vec![sent["event_id"].clone(), second["event_id"].clone()]
+        vec![
+            sent["event_id"].clone(),
+            reply["event_id"].clone(),
+            second["event_id"].clone()
+        ]
     );
     client
         .set_view_state(
@@ -244,6 +414,46 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
     native.child.kill().unwrap();
     native.child.wait().unwrap();
     assert_eq!(client.guard(external).unwrap_err().code, "CHAT_UNAVAILABLE");
+    // Native transaction IDs remain idempotent after a real server restart.
+    let log = std::fs::File::create(root.join("restart.log")).unwrap();
+    native.child = Command::new(find(Path::new(env!("HCTL2_TEST_TUWUNEL"))).unwrap())
+        .arg("--config")
+        .arg(&config)
+        .stdout(Stdio::from(log.try_clone().unwrap()))
+        .stderr(Stdio::from(log))
+        .spawn()
+        .unwrap();
+    for _ in 0..300 {
+        if client.guard(other_id).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let retained = client
+        .send(other_id, "restart-transaction", "重启前后唯一")
+        .unwrap();
+    native.child.kill().unwrap();
+    native.child.wait().unwrap();
+    let log = std::fs::File::create(root.join("restart2.log")).unwrap();
+    native.child = Command::new(find(Path::new(env!("HCTL2_TEST_TUWUNEL"))).unwrap())
+        .arg("--config")
+        .arg(&config)
+        .stdout(Stdio::from(log.try_clone().unwrap()))
+        .stderr(Stdio::from(log))
+        .spawn()
+        .unwrap();
+    for _ in 0..300 {
+        if client.guard(other_id).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        client
+            .send(other_id, "restart-transaction", "重启前后唯一")
+            .unwrap(),
+        retained
+    );
     shutdown_tx.send(()).unwrap();
     http.join().unwrap();
 }

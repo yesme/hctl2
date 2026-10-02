@@ -239,7 +239,7 @@ impl Control for ControlService {
         let result = match req.kind.as_str() {
             "repo.list" | "repo.show" | "task.list" | "task.show" | "task.sources"
             | "task.board" | "room.list" | "room.show" | "room.timeline" | "room.event"
-            | "room.reference" | "room.draft" | "room.view_state" | "room.sync" => {
+            | "room.reference" | "room.hierarchy" | "room.view_state" | "room.sync" => {
                 let store = Arc::clone(&self.store);
                 let kind = req.kind.clone();
                 let services = Arc::clone(&self.services);
@@ -418,7 +418,10 @@ impl Control for ControlService {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
         }
         let mut details = json!({});
-        if req.operation == "chat.view_state" {
+        if matches!(
+            req.operation.as_str(),
+            "chat.view_state" | "chat.draft" | "chat.reparent"
+        ) {
             let operation = Arc::clone(&self.operations).lock_owned().await;
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -427,9 +430,24 @@ impl Control for ControlService {
             let shared = Arc::clone(&self.store);
             let services = Arc::clone(&self.services);
             let root = self.root.clone();
+            let operation_name = req.operation.clone();
+            let key = req.idempotency_key.clone();
             let result = tokio::task::spawn_blocking(move || {
                 let _operation = operation;
-                crate::chat::set_view_state(&shared, &services, &root, &payload)
+                match operation_name.as_str() {
+                    "chat.draft" => crate::chat::draft(
+                        &shared,
+                        &services,
+                        &root,
+                        serde_json::from_value(payload)?,
+                        &actor,
+                        &key,
+                    ),
+                    "chat.reparent" => {
+                        crate::chat::tree::reparent(&shared, &services, &root, &payload, &actor)
+                    }
+                    _ => crate::chat::set_view_state(&shared, &services, &root, &payload),
+                }
             })
             .await;
             return Ok(match result {
@@ -440,7 +458,11 @@ impl Control for ControlService {
                 }),
                 Ok(Err(e)) => submit_err(present(&e), 0),
                 Err(_) => submit_err(
-                    error("CHAT_UNAVAILABLE", "view-state worker failed", "retry_read"),
+                    error(
+                        "CHAT_UNAVAILABLE",
+                        "chat content worker failed",
+                        "retry_original_action",
+                    ),
                     0,
                 ),
             });

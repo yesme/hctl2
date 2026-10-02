@@ -11,6 +11,10 @@ pub(super) enum RoomCommand {
         project_id: String,
         room_id: String,
     },
+    Hierarchy {
+        project_id: String,
+        room_id: String,
+    },
     Timeline {
         project_id: String,
         room_id: String,
@@ -37,10 +41,16 @@ pub(super) enum RoomCommand {
         #[arg(long)]
         input: PathBuf,
     },
+    Reparent {
+        #[arg(long)]
+        input: PathBuf,
+    },
     /// Structural source selection. Does not create a Room or dispatch a Participant.
     Draft {
         #[arg(long)]
         input: PathBuf,
+        #[arg(long)]
+        key: Option<String>,
     },
     /// Query a frozen reference, including when the original event was redacted.
     Reference {
@@ -82,6 +92,18 @@ async fn execute(command: RoomCommand, root: &Path, as_json: bool) -> Result<(),
                 root,
                 as_json,
                 "room.show",
+                json!({"project_id":project_id,"room_id":room_id}),
+            )
+            .await;
+        }
+        RoomCommand::Hierarchy {
+            project_id,
+            room_id,
+        } => {
+            return query_task(
+                root,
+                as_json,
+                "room.hierarchy",
                 json!({"project_id":project_id,"room_id":room_id}),
             )
             .await;
@@ -139,33 +161,28 @@ async fn execute(command: RoomCommand, root: &Path, as_json: bool) -> Result<(),
             .await;
         }
         RoomCommand::SaveViewState { input } => {
-            let value: Value = serde_json::from_slice(&std::fs::read(input).map_err(io)?)
-                .map_err(|e| e.to_string())?;
-            let r = client(root)
-                .await?
-                .submit(SubmitRequest {
-                    protocol: Some(Protocol {
-                        version: PROTOCOL.into(),
-                    }),
-                    operation: "chat.view_state".into(),
-                    payload: value.to_string().into_bytes(),
-                    ..Default::default()
-                })
-                .await
-                .map_err(|e| e.to_string())?
-                .into_inner();
-            if let Some(e) = r.error {
-                print_out(
-                    as_json,
-                    json!({"error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}),
-                );
-                std::process::exit(1);
-            }
-            print_out(as_json, bytes_json(&r.result)?);
-            return Ok(());
+            return content_submit(root, as_json, "chat.view_state", input, String::new()).await;
         }
-        RoomCommand::Draft { input } => {
-            return query_file(root, as_json, "room.draft", input).await;
+        RoomCommand::Reparent { input } => {
+            return content_submit(root, as_json, "chat.reparent", input, String::new()).await;
+        }
+        RoomCommand::Draft { input, key } => {
+            return content_submit(
+                root,
+                as_json,
+                "chat.draft",
+                input,
+                key.unwrap_or_else(|| {
+                    format!(
+                        "draft-{}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    )
+                }),
+            )
+            .await;
         }
         RoomCommand::Reference { input } => {
             return query_file(root, as_json, "room.reference", input).await;
@@ -178,6 +195,40 @@ async fn execute(command: RoomCommand, root: &Path, as_json: bool) -> Result<(),
         RoomCommand::Resume(w) => ("resume", w),
     };
     write(root, as_json, "room", kind, w).await
+}
+
+async fn content_submit(
+    root: &Path,
+    as_json: bool,
+    operation: &str,
+    input: PathBuf,
+    key: String,
+) -> Result<(), String> {
+    let value: Value =
+        serde_json::from_slice(&std::fs::read(input).map_err(io)?).map_err(|e| e.to_string())?;
+    let r = client(root)
+        .await?
+        .submit(SubmitRequest {
+            protocol: Some(Protocol {
+                version: PROTOCOL.into(),
+            }),
+            operation: operation.into(),
+            idempotency_key: key,
+            payload: value.to_string().into_bytes(),
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .into_inner();
+    if let Some(e) = r.error {
+        print_out(
+            as_json,
+            json!({"error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}),
+        );
+        std::process::exit(1);
+    }
+    print_out(as_json, bytes_json(&r.result)?);
+    Ok(())
 }
 async fn query_file(root: &Path, as_json: bool, kind: &str, path: PathBuf) -> Result<(), String> {
     let payload =

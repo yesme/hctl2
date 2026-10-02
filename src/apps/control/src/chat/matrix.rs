@@ -61,7 +61,7 @@ impl Client {
         })
     }
 
-    fn request<R>(&self, request: R) -> Result<R::IncomingResponse>
+    pub(super) fn request<R>(&self, request: R) -> Result<R::IncomingResponse>
     where
         R: OutgoingRequest<PathBuilder = VersionHistory>,
         for<'a> R::Authentication: AuthScheme<Input<'a> = SendAccessToken<'a>>,
@@ -175,7 +175,7 @@ impl Client {
         }
     }
 
-    fn state(&self, room: &str, event_type: &str) -> Result<Value> {
+    pub(super) fn state(&self, room: &str, event_type: &str) -> Result<Value> {
         let r = self.request(get_state_event_for_key::v3::Request::new(
             room_id(room)?,
             StateEventType::from(event_type),
@@ -209,6 +209,17 @@ impl Client {
         dispatch: bool,
         before_dispatch: impl FnOnce() -> Result<()>,
     ) -> Result<Value> {
+        self.create_native(room, command, false, dispatch, before_dispatch)
+    }
+
+    pub(super) fn create_native(
+        &self,
+        room: &chat::Room,
+        command: &str,
+        space: bool,
+        dispatch: bool,
+        before_dispatch: impl FnOnce() -> Result<()>,
+    ) -> Result<Value> {
         // Alias lookup is public on some homeservers. It alone cannot prove that the
         // AppService registration has loaded, so check authenticated identity first.
         let identity = self.request(ruma::api::client::account::whoami::v3::Request::new())?;
@@ -220,27 +231,50 @@ impl Client {
         match self.request(get_alias::v3::Request::new(
             alias.parse().map_err(|_| invalid("invalid room alias"))?,
         )) {
-            Ok(r) => return self.creation_readback(room, r.room_id.as_str(), &correlation),
+            Ok(r) => return self.creation_readback(room, r.room_id.as_str(), &correlation, space),
             Err(e) if e.code == "CHAT_NOT_FOUND" => (),
             Err(e) => return Err(e),
         }
         if !dispatch {
-            return Err(reject(
-                "RESULT_UNKNOWN",
-                "original room creation has no verified readback",
-                "resume_original_command",
-            ));
+            // Creation joins the sender. An unavailable or unreadable inventory is not absence.
+            let joined =
+                self.request(ruma::api::client::membership::joined_rooms::v3::Request::new())?;
+            for id in joined.joined_rooms {
+                match self.state(id.as_str(), "io.hctl2.creation") {
+                    Ok(marker) if marker["command"] == correlation => {
+                        return self.creation_readback(room, id.as_str(), &correlation, space);
+                    }
+                    Ok(_) => (),
+                    Err(e) if e.code == "CHAT_NOT_FOUND" => (),
+                    Err(e) => return Err(e),
+                }
+            }
         }
         let mut request = create_room::v3::Request::new();
         request.name = Some(room.name.clone());
         request.room_alias_name = Some(format!("hctl2_{correlation}"));
         request.preset = Some(create_room::v3::RoomPreset::PrivateChat);
+        if space {
+            request.creation_content = Some(ruma::serde::Raw::from_json_string(
+                json!({"type":"m.space"}).to_string(),
+            )?);
+        }
         request.initial_state.push(ruma::serde::Raw::from_json_string(json!({
             "type":"io.hctl2.creation","state_key":"","content":{"command":correlation,"room":room.id,"project":room.project_id}
         }).to_string())?);
         before_dispatch()?;
-        let response = self.request(request)?;
-        self.creation_readback(room, response.room_id.as_str(), &correlation)
+        match self.request(request) {
+            Ok(response) => {
+                self.creation_readback(room, response.room_id.as_str(), &correlation, space)
+            }
+            Err(e) if e.code == "CHAT_ALIAS_EXISTS" => {
+                let r = self.request(get_alias::v3::Request::new(
+                    alias.parse().map_err(|_| invalid("invalid alias"))?,
+                ))?;
+                self.creation_readback(room, r.room_id.as_str(), &correlation, space)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn creation_readback(
@@ -248,8 +282,12 @@ impl Client {
         room: &chat::Room,
         external: &str,
         correlation: &str,
+        space: bool,
     ) -> Result<Value> {
         self.guard(external)?;
+        if (self.state(external, "m.room.create")?["type"] == "m.space") != space {
+            return Err(invalid("creation readback has wrong room type"));
+        }
         let marker = self.state(external, "io.hctl2.creation")?;
         if marker != json!({"command":correlation,"room":room.id,"project":room.project_id}) {
             return Err(reject(
@@ -267,8 +305,38 @@ impl Client {
     }
 
     pub fn send(&self, room: &str, txn: &str, body: &str) -> Result<Value> {
+        self.send_thread(room, txn, body, None)
+    }
+
+    pub(super) fn thread_root(&self, room: &str, root: &str) -> Result<Value> {
+        let event = self.event(room, root)?;
+        if event["type"] != "m.room.message"
+            || event["content"]["m.relates_to"]["rel_type"] == "m.thread"
+        {
+            return Err(invalid(
+                "thread root must be a timeline Message, not a nested thread",
+            ));
+        }
+        Ok(event)
+    }
+
+    pub(super) fn send_thread(
+        &self,
+        room: &str,
+        txn: &str,
+        body: &str,
+        root: Option<&str>,
+    ) -> Result<Value> {
         self.guard(room)?;
-        let content = RoomMessageEventContent::text_plain(body);
+        let mut content = RoomMessageEventContent::text_plain(body);
+        if let Some(root) = root {
+            self.thread_root(room, root)?;
+            content.relates_to = Some(ruma::events::room::message::Relation::Thread(
+                ruma::events::relation::Thread::without_fallback(
+                    root.parse().map_err(|_| invalid("invalid root event ID"))?,
+                ),
+            ));
+        }
         let response = self.request(send_message_event::v3::Request::new(
             room_id(room)?,
             txn.into(),
@@ -276,7 +344,7 @@ impl Client {
         )?)?;
         // Native Matrix transaction ID provides retry/readback; never create a new key on retry.
         let event = self.event(room, response.event_id.as_str())?;
-        if event["content"]["body"] != body {
+        if event["content"] != serde_json::to_value(&content)? {
             return Err(reject(
                 "CHAT_CONTENT_MISMATCH",
                 "send readback differs",
@@ -286,42 +354,6 @@ impl Client {
         Ok(
             json!({"event_id":response.event_id,"content_digest":bytes_sha256(&canonical_json(&event["content"])?) }),
         )
-    }
-
-    pub fn read_sent(&self, room: &str, txn: &str, body: &str) -> Result<Option<Value>> {
-        let mut cursor = None;
-        for _ in 0..100 {
-            let page = self.timeline(room, cursor.clone())?;
-            let events = page["events"]
-                .as_array()
-                .ok_or_else(|| invalid("invalid timeline"))?;
-            for event in events {
-                if event["unsigned"]["transaction_id"] == txn
-                    && event["sender"] == self.server.sender
-                {
-                    if event["content"]["body"] != body {
-                        return Err(reject(
-                            "CHAT_CONTENT_MISMATCH",
-                            "transaction content differs",
-                            "inspect_room",
-                        ));
-                    }
-                    return Ok(Some(
-                        json!({"event_id":event["event_id"],"content_digest":bytes_sha256(&canonical_json(&event["content"])?) }),
-                    ));
-                }
-            }
-            let next = page["next"].as_str().map(str::to_owned);
-            if events.is_empty() || next.is_none() || next == cursor {
-                return Ok(None);
-            }
-            cursor = next;
-        }
-        Err(reject(
-            "RESULT_UNKNOWN",
-            "send readback window exhausted",
-            "inspect_room",
-        ))
     }
 
     pub fn event(&self, room: &str, event: &str) -> Result<Value> {
@@ -339,8 +371,16 @@ impl Client {
 
     /// One server-ordered page. Cursor is opaque; timestamps and IDs never sort the timeline.
     pub fn timeline(&self, room: &str, from: Option<String>) -> Result<Value> {
+        self.page(room, from, false)
+    }
+
+    pub(super) fn page(&self, room: &str, from: Option<String>, backwards: bool) -> Result<Value> {
         self.guard(room)?;
-        let mut request = get_message_events::v3::Request::forward(room_id(room)?);
+        let mut request = if backwards {
+            get_message_events::v3::Request::backward(room_id(room)?)
+        } else {
+            get_message_events::v3::Request::forward(room_id(room)?)
+        };
         request.from = from;
         request.limit = 100_u32.into();
         let response = self.request(request)?;
@@ -350,6 +390,47 @@ impl Client {
             .map(|e| serde_json::from_str::<Value>(e.json().get()))
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(json!({"events":events,"start":response.start,"next":response.end,"current":true}))
+    }
+
+    pub(super) fn context(&self, room: &str, event: &str) -> Result<Value> {
+        self.guard(room)?;
+        let mut request = ruma::api::client::context::get_context::v3::Request::new(
+            room_id(room)?,
+            event.parse().map_err(|_| invalid("invalid event ID"))?,
+        );
+        request.limit = 0_u32.into();
+        let response = self.request(request)?;
+        Ok(json!({"start":response.start,"end":response.end}))
+    }
+
+    pub(super) fn thread_events(&self, room: &str, root: &str) -> Result<Vec<Value>> {
+        self.thread_root(room, root)?;
+        let mut events = vec![];
+        let mut cursor = None;
+        for _ in 0..100 {
+            let mut request =
+                ruma::api::client::relations::get_relating_events_with_rel_type::v1::Request::new(
+                    room_id(room)?,
+                    root.parse().map_err(|_| invalid("invalid event ID"))?,
+                    ruma::events::relation::RelationType::Thread,
+                );
+            request.dir = ruma::api::Direction::Forward;
+            request.from = cursor.clone();
+            request.limit = Some(100_u32.into());
+            let page = self.request(request)?;
+            for event in page.chunk {
+                events.push(serde_json::from_str(event.json().get())?);
+            }
+            if page.next_batch.is_none() || page.next_batch == cursor {
+                return Ok(events);
+            }
+            cursor = page.next_batch;
+        }
+        Err(reject(
+            "CHAT_HISTORY_LIMIT",
+            "thread selection exceeds request budget",
+            "select_event_ids",
+        ))
     }
 
     /// Incremental resync uses a homeserver cursor, not a control-side event ordering.
@@ -461,7 +542,7 @@ pub(super) fn source_text(binding: Reference, event: &Value) -> Result<SourceTex
     })
 }
 
-fn room_id(room: &str) -> Result<OwnedRoomId> {
+pub(super) fn room_id(room: &str) -> Result<OwnedRoomId> {
     room.parse().map_err(|_| invalid("invalid Matrix room ID"))
 }
 fn unavailable() -> store::StoreError {

@@ -24,6 +24,7 @@ fn actor() -> TrustedActor {
         source: ActorSource::DirectClient,
         permission_scope: vec![
             Scope::Control,
+            Scope::Repo("same-repo".into()),
             Scope::Project("A".into()),
             Scope::Project("B".into()),
         ],
@@ -131,7 +132,7 @@ impl Env {
         let (r, room) = main_binding(&self.store, project).unwrap();
         let body = "{\"body\":\"尚未确定 é 与 é\",\"msgtype\":\"m.text\"}".to_owned();
         (
-            Origin::MainRoom {
+            Origin::Room {
                 room_id: room.id,
                 binding_version: r.version,
             },
@@ -234,7 +235,8 @@ fn independent_main_rooms_topic_human_edits_retry_close_and_restart() {
                     project_id: "A".into(),
                     room_id: id.into(),
                     version: closed.version,
-                    body: "must not send".into()
+                    body: "must not send".into(),
+                    thread_root: None
                 }
             },
             vec![]
@@ -318,6 +320,117 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
     assert!(origin_checks(&e.store, "A", &wrong).is_err());
     assert!(origin_checks(&e.store, "B", &origin).is_err());
     assert!(validate_sources("A", &origin, &sources[..1]).is_err());
+    let (_, message) = e.source("A");
+    let mut supplemented = sources.clone();
+    supplemented.push(message);
+    assert!(
+        prepare(
+            &e.store,
+            e.topic("supplemented", origin.clone(), &supplemented),
+            supplemented.clone()
+        )
+        .is_ok()
+    );
+    let (_, foreign) = e.source("B");
+    supplemented.push(foreign);
+    assert!(
+        prepare(
+            &e.store,
+            e.topic("foreign-message", origin.clone(), &supplemented),
+            supplemented
+        )
+        .is_err()
+    );
+    let shared = value_record(
+        key(Scope::Repo("same-repo".into()), "write_lease", "lease"),
+        1,
+        &json!({"state":"waiting"}),
+    )
+    .unwrap();
+    e.put(shared.clone());
+    let req = value_record(
+        key(Scope::Project("A".into()), "request", "repo-blocker"),
+        1,
+        &RequestSource {
+            question: "等待共享租约".into(),
+            blockers: vec![reference(&shared)],
+        },
+    )
+    .unwrap();
+    e.put(req.clone());
+    assert!(
+        origin_checks(
+            &e.store,
+            "A",
+            &Origin::Request {
+                request: reference(&req),
+                blockers: vec![reference(&shared)]
+            }
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster() {
+    let mut e = Env::new();
+    let (origin, source) = e.source("A");
+    let input = e.topic("parent", origin, &[source.clone()]);
+    let plan = prepare(&e.store, input, vec![source]).unwrap();
+    let parent = admit(&mut e.store, &actor(), plan).unwrap();
+    let parent_id = parent["room_id"].as_str().unwrap();
+    let effect_id = parent["effect_id"].as_str().unwrap();
+    e.store
+        .begin_effect(e.store.generation(), effect_id)
+        .unwrap();
+    confirm(
+        &mut e.store,
+        &actor(),
+        effect_id,
+        json!({"matrix_room_id":"!parent:hctl2.localhost"}),
+    )
+    .unwrap();
+    let (r, _) = room(&e.store, "A", parent_id).unwrap();
+    let text = SourceText {
+        source: Source::Message {
+            binding: reference(&r),
+            event_id: "$topic-event".into(),
+            content_digest: bytes_sha256(b"topic"),
+        },
+        body: "topic".into(),
+        excerpt: "topic".into(),
+    };
+    let origin = Origin::Room {
+        room_id: parent_id.into(),
+        binding_version: r.version,
+    };
+    let plan = prepare(
+        &e.store,
+        e.topic("nested", origin.clone(), &[text.clone()]),
+        vec![text],
+    )
+    .unwrap();
+    assert_eq!(plan.effects[0].input["parent"]["id"], parent_id);
+    let child = admit(&mut e.store, &actor(), plan).unwrap();
+    let child_id = child["room_id"].as_str().unwrap();
+    let close = prepare(
+        &e.store,
+        Input {
+            key: "parent-close".into(),
+            action: Action::Close {
+                project_id: "A".into(),
+                room_id: parent_id.into(),
+                version: r.version,
+            },
+        },
+        vec![],
+    )
+    .unwrap();
+    admit(&mut e.store, &actor(), close).unwrap();
+    let (_, child) = room(&e.store, "A", child_id).unwrap();
+    assert!(writable(&e.store, &child).is_ok());
+    assert_eq!(child.origin, Some(origin));
+    assert!(child.participants.is_empty());
 }
 
 #[test]

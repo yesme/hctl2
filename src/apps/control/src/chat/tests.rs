@@ -26,13 +26,14 @@ fn mechanical_selection_uses_server_order_relations_and_mentions_not_body() {
             }
         )
         .unwrap(),
-        vec!["$a"]
+        vec!["$z", "$a"]
     );
     assert_eq!(
         select(
             &events,
             &Selection::Mentions {
-                user_id: "@human:test".into()
+                user_id: "@human:test".into(),
+                after: None
             }
         )
         .unwrap(),
@@ -142,5 +143,30 @@ fn remote_or_redirectable_configuration_is_rejected() {
             sender: "@hctl2_control:local".into(),
         };
         assert!(matrix::Client::new(server, "secret".into()).is_err());
+    }
+}
+
+#[test]
+fn cycle_edges_are_omitted_without_hiding_valid_multiple_parents() {
+    use std::collections::BTreeMap;
+    for canonical in [false, true] {
+        let mut nodes = ["main", "a", "b", "child"]
+            .map(|id| (id.into(), tree::Hierarchy::default()))
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        let edges = [
+            ("main", "a"),
+            ("a", "b"),
+            ("b", "a"),
+            ("a", "child"),
+            ("main", "child"),
+        ]
+        .into_iter()
+        .map(|(p, c)| ((p.into(), c.into()), canonical))
+        .collect();
+        tree::project_edges(&mut nodes, &edges);
+        assert_eq!(nodes["child"].parents.len(), 2);
+        assert!(nodes["a"].needs_attention && nodes["b"].needs_attention);
+        assert!(nodes["b"].parents.is_empty());
     }
 }

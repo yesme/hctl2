@@ -23,14 +23,6 @@ pub(crate) fn query(
             Ok(json!({"rooms":rooms}))
         });
     }
-    if kind == "room.draft" {
-        return draft(
-            shared,
-            services,
-            root,
-            serde_json::from_value(payload.clone())?,
-        );
-    }
     let project = payload["project_id"]
         .as_str()
         .ok_or_else(|| invalid("project_id required"))?;
@@ -85,9 +77,12 @@ pub(crate) fn query(
                     .transpose()
             })?;
             Ok(
-                json!({"binding":record,"room":room,"brief":brief,"identity":state,"health":observations(root).state(id)?}),
+                json!({"binding":record,"room":room,"brief":brief,"identity":state,"health":observations(root).state(id)?,"hierarchy":hierarchy(shared, services, project, id)?}),
             )
         }
+        "room.hierarchy" => Ok(serde_json::to_value(hierarchy(
+            shared, services, project, id,
+        )?)?),
         "room.view_state" => {
             let client = client(services)?;
             guard(&client, root, &room, bound(&room)?)?;
@@ -134,6 +129,28 @@ pub(crate) fn query(
         }
     })?;
     Ok(result)
+}
+
+fn hierarchy(
+    shared: &Shared,
+    services: &Supervisor,
+    project: &str,
+    id: &str,
+) -> Result<tree::Hierarchy> {
+    let rooms = access(shared, |s| {
+        s.list("room_binding")?
+            .iter()
+            .filter(|r| r.key.scope == Scope::Project(project.into()))
+            .map(chat::decode::<Room>)
+            .collect::<Result<Vec<_>>>()
+    })?;
+    let result = client(services)
+        .map(|c| tree::project_hierarchy(&c, &rooms))
+        .unwrap_or_default();
+    Ok(result.get(id).cloned().unwrap_or(tree::Hierarchy {
+        needs_attention: true,
+        ..Default::default()
+    }))
 }
 
 pub(crate) fn set_view_state(
