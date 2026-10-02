@@ -261,3 +261,45 @@ Sugiyama、Tagawa 与 Toda（1981）[[S2]](#ref-s2) 提出的分层有向图绘�
 8. **Slack 与 Discord 内部真实线程使用比例**：未核实。两家商业公司未公开其企业/社区用户中通过侧滑面板阅读 thread 相比直接在频道阅读的具体转化率或流失率指标。
 9. **万级超大规模 DAG 画布在前端 Canvas/SVG 中的极限 FPS 衰减曲线**：未核实。Airflow 与 Argo 官方文档未提供超过 10,000 个动态任务实例时的 DOM 节点渲染与内存开销实测数据表；在 HCTL2 中，单次 Run 规模由 Workflow Revision 决定（通常在几十到数百节点范围内），暂不触及万级极限。
 10. **Cinny 上游后续版本对多层 Space 树的开发排期**：未核实。Cinny 官方仓库暂无明确承诺在哪个具体版本中补齐多层 Space 大纲树展开面板。
+
+
+---
+
+## 复核记录
+
+### 2026-10-03 · Fable 修正复核（PR #304 审阅意见闭环）
+
+依据 PR #304 审阅者 Fable 的修正复核意见（见 issue comment 5961839889），按研究目录规矩（发布后正文不改，在文末追加复核记录），对正文中三处未核实内容与节名引用作出逐条作废与修正声明：
+
+1. **§二.1 表格中三行未核实内容的来源修正与作废**：
+   - **GitHub Actions 行**：
+     - 正文原句「矢量 SVG 横向分层图（Sugiyama 拓扑，依赖 `needs:` 关系）」「矩阵任务折叠为下拉卡片」作废。
+     - 更正为：官方文档页面仅核验了「按 `needs:` 关系绘制工作流图」以及「点击 Job 查看日志」；其底层是否为矢量 SVG / Sugiyama 拓扑，以及矩阵任务是否折叠为下拉卡片，官方文档该页均无文字记载，标记为**未核实**。
+     - 依据：[GitHub Actions 官方文档：Using the visualization graph](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/monitoring-workflows/using-the-visualization-graph)（2026-10-03 核对）。
+   - **Dagu 行**：
+     - 正文原句「Mermaid / 矢量节点连线」「点击 Step 弹出详情浮层/抽屉」以及接口路径 `GET /api/v1/dag-runs/{name}/{dagRunId}/steps/{stepName}/log` 作废；正文依据中断言「本库的 workflow-engines.md 与源码」作废。
+     - 更正为：经核对，本库 [`docs/research/workflow-engines.md`](./workflow-engines.md) 与 [`docs/research/sdk/dagu.md`](./sdk/dagu.md) 均未记载上述三项内容（`sdk/dagu.md` 中实际记录的接口为 `.../steps/{stepName}/status`）。Dagu Web UI 的前端渲染技术形式、点击弹层/抽屉交互细节以及日志接口，在此次调研中均标记为**未核实**。
+     - 依据：核对本库既有调研文件 [`docs/research/workflow-engines.md`](./workflow-engines.md) 与 [`docs/research/sdk/dagu.md`](./sdk/dagu.md) 原文，如实将未记载项归入未核实。
+   - **Argo Workflows 行**：
+     - 正文原句「矢量图画布」「支持大图缩放」及行尾标注的「（2026-10-03 核对）」作废。
+     - 更正为：Argo Workflows 的图形渲染技术、画布缩放及日志交互在本次调研中未核验到有效文档文字，整行全部特征均标记为**未核实**，并移除行尾的「2026-10-03 核对」字样。
+     - 依据：官方 walk-through 页面未核对到具体渲染架构描述，来源页上没有的内容不编造，全行归入未核实。
+
+2. **三处文件节名与出处对齐**：
+   - **04-project-navigation.md 节名**：
+     - 正文 §背景与既有事实 第 1 项引用的「`docs/user-experience/04-project-navigation.md` §左侧 Rooms 列表」作废。
+     - 更正为：[`docs/user-experience/04-project-navigation.md`](../user-experience/04-project-navigation.md) §Rooms：只列 Topic Rooms。
+     - 依据：核对源文件小节标题原文。
+   - **spec/run.md 节名**：
+     - 正文 §背景与既有事实 第 4 项引用的「`docs/design/spec/run.md` §Workflow Revision 与规范」作废。
+     - 更正为：[`docs/design/spec/run.md`](../design/spec/run.md) §Workflow 与 Run 授权。
+     - 依据：核对源文件小节标题原文。
+   - **Cinny 压平多层 Space 的实测证据出处**：
+     - 正文 §一.1 表格 Cinny 行及 §证据与出处核对 第 7 项中指引的「见 `room-tree-20261001.md` §五」作废。
+     - 更正为：实测证据出处为 [`.memo/log/2026-10-01-room-树.md`](../../.memo/log/2026-10-01-room-树.md)，以及 [`docs/design/delivery.md`](../design/delivery.md) §开工前限时验证 第 3 项脚注。
+     - 依据：核对 [`.memo/design/room-tree-20261001.md`](../../.memo/design/room-tree-20261001.md)，其 §五 仅为任务落地清单，真正的测试事实记录在 log 原文与 delivery.md 脚注。
+
+3. **Run 施工图节点模型与对象术语纠正**：
+   - 正文 §背景与既有事实 第 4 项原句「图节点包含 Step、Obligation、Seat 与 Gate」作废。
+   - 更正为：图上的节点是 **Workflow Node**；运行时每个外部节点对应 **Obligation**，其下有 **Seat** 与 **Attempt**；**Gate** 是评审关卡。规范中没有「Step」这一核心对象；正文候选 D1、D2 等处使用的「Step」仅作界面展示习惯用语，其实际指代 Workflow Node。
+   - 依据：[`docs/design/spec/run.md`](../design/spec/run.md) §对象。
