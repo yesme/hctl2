@@ -3,7 +3,7 @@
 > 说明：所有者 2026-10-02 汇总的原始调研材料，收录问题描述与 GPT、Grok、Claude 三家结论。正文原样保留，只把各级标题整体降一级，挂在本文件标题下；三家各自的口误、推测与聊天残句（如 Grok 节末两段、Claude 节末两段）一并保留。文中「账本」是 mu 的 ledger 及各家当时用词，按 CONSTRAINTS 对 `.memo` 历史用词不改<br>
 > 状态：未裁决 · 只记录，「Room 阶段的判断要不要按 mu 这套机制走」尚未讨论定<br>
 > 基线：hctl2 main @ `d58b547`（草案 v0.19.0）；mu @ `8dfebe3`<br>
-> 去向：核对过的事实与三家分歧见 [`docs/research/harness/mu.md`](../../docs/research/harness/mu.md)；Room 判断点候选待讨论收敛后另起 `.memo/design/`
+> 去向：核对过的事实与三家分歧见 [`docs/research/harness/mu.md`](../../docs/research/harness/mu.md)；讨论收敛后的结论见 [`../design/room-judgment-20261002.md`](../design/room-judgment-20261002.md)
 
 ## 问题描述
 
