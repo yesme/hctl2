@@ -16,13 +16,20 @@ impl Drop for Temp {
     }
 }
 fn run(root: &Path, args: &[&str]) -> (bool, Value) {
-    let out = Command::new(env!("CARGO_BIN_EXE_hctl2"))
-        .env("HCTL2_CONTROL_BIN", env!("CARGO_BIN_EXE_hctl2-control"))
-        .env("HCTL2_GH", root.join("gh"))
-        .args(["--json", "--root", root.to_str().unwrap()])
-        .args(args)
-        .output()
-        .unwrap();
+    let out = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2")
+            .expect("CARGO_BIN_EXE_hctl2 must be set to run this test"),
+    )
+    .env(
+        "HCTL2_CONTROL_BIN",
+        std::env::var("CARGO_BIN_EXE_hctl2-control")
+            .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
+    )
+    .env("HCTL2_GH", root.join("gh"))
+    .args(["--json", "--root", root.to_str().unwrap()])
+    .args(args)
+    .output()
+    .unwrap();
     (out.status.success(),serde_json::from_slice(&out.stdout).unwrap_or_else(|_|json!({"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)})))
 }
 fn cmd(root: &Path, kind: &str, key: &str, action: Value) -> Value {

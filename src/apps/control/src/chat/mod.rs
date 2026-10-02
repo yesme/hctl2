@@ -95,7 +95,7 @@ fn resolve(
             ..
         } => {
             access(shared, |s| chat::origin_checks(s, project_id, origin))?;
-            match origin {
+            match origin.as_ref() {
                 Origin::Request { request, blockers } => {
                     let mut texts = access(shared, |s| chat::request_texts(s, request, blockers))?;
                     for source in &brief.sources {
@@ -337,10 +337,10 @@ fn drive_using(
     let room: Room = serde_json::from_value(effect.input["room"].clone())?;
     if state == store::EffectState::Confirmed {
         return access(shared, |s| {
-            Ok(chat::decode::<Value>(&chat::required(
+            chat::decode::<Value>(&chat::required(
                 s,
                 &chat::key(effect.permission_scope, "room_effect_receipt", id),
-            )?)?)
+            )?)
         });
     }
     if state == store::EffectState::Cancelled {

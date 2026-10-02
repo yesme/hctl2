@@ -17,7 +17,7 @@ pub(crate) fn draft(
         "brief_observation",
         &id,
     );
-    if let Some(record) = access(shared, |s| Ok(s.get(&observation_key)?))? {
+    if let Some(record) = access(shared, |s| s.get(&observation_key))? {
         let observation: Value = chat::decode(&record)?;
         if observation["input"] != serde_json::to_value(&input)? {
             return Err(reject(

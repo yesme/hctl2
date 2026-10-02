@@ -83,7 +83,10 @@ impl Fixture {
         tree: &str,
         target: &str,
     ) -> Command {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"));
+        let mut command = Command::new(
+            std::env::var("CARGO_BIN_EXE_hctl2-tool")
+                .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+        );
         isolate_git(&mut command);
         command.args(["integrate", "--repo"]).arg(&self.repo).args([
             "--commit",
@@ -844,7 +847,10 @@ fn sha256_repository_and_linked_worktree_share_retry_identity() {
     let arguments = command.get_args().map(OsStr::to_owned).collect::<Vec<_>>();
     let mut rewritten = arguments;
     rewritten[2] = other.into_os_string();
-    command = Command::new(env!("CARGO_BIN_EXE_hctl2-tool"));
+    command = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    );
     isolate_git(&mut command);
     let second = record(command.args(rewritten).output().unwrap(), 0);
     assert_eq!(second["status"], "already_applied");

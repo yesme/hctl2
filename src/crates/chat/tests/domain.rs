@@ -154,14 +154,14 @@ impl Env {
                 project_id: "A".into(),
                 project_version: 1,
                 name: "只讨论".into(),
-                origin,
-                brief: Brief {
+                origin: Box::new(origin),
+                brief: Box::new(Brief {
                     context_and_goal: "人的补写，敏感信息已删".into(),
                     settled_facts_and_reasons: vec![],
                     disagreements_and_questions: vec!["结论未定".into()],
                     constraints_and_materials: vec![],
                     sources: sources.iter().map(|s| s.source.clone()).collect(),
-                },
+                }),
                 participants: vec![],
                 roster_confirmed: true,
             },
@@ -254,7 +254,7 @@ fn close_cancels_only_undispatched_creation_and_retains_unknown_readback() {
         let (origin, source) = e.source("A");
         let plan = prepare(
             &e.store,
-            e.topic("unfinished", origin, &[source.clone()]),
+            e.topic("unfinished", origin, std::slice::from_ref(&source)),
             vec![source],
         )
         .unwrap();
@@ -331,7 +331,7 @@ fn stale_close_does_not_cancel_creation_or_archive_room() {
     let (origin, source) = e.source("A");
     let plan = prepare(
         &e.store,
-        e.topic("stale-close", origin, &[source.clone()]),
+        e.topic("stale-close", origin, std::slice::from_ref(&source)),
         vec![source],
     )
     .unwrap();
@@ -500,7 +500,7 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
 fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster() {
     let mut e = Env::new();
     let (origin, source) = e.source("A");
-    let input = e.topic("parent", origin, &[source.clone()]);
+    let input = e.topic("parent", origin, std::slice::from_ref(&source));
     let plan = prepare(&e.store, input, vec![source]).unwrap();
     let parent = admit(&mut e.store, &actor(), plan).unwrap();
     let parent_id = parent["room_id"].as_str().unwrap();
@@ -531,7 +531,7 @@ fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster()
     };
     let plan = prepare(
         &e.store,
-        e.topic("nested", origin.clone(), &[text.clone()]),
+        e.topic("nested", origin.clone(), std::slice::from_ref(&text)),
         vec![text],
     )
     .unwrap();

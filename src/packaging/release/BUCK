@@ -46,3 +46,20 @@ filegroup(
     labels = CI_RELEASE,
     visibility = ["PUBLIC"],
 )
+
+# The clippy run writes room-cli-test's diagnostics to a report and succeeds
+# either way, and this package is only built by the release workflow, so
+# nothing downstream of :room-cli-clippy would ever fail on a non-empty report.
+# It needs the same gate the first-party targets get in
+# root//build/tests:clippy_clean_test. The report stays out of the root
+# filegroup on purpose: this package carries the complete offline payload, which
+# Code CI must not build, and CI_RELEASE keeps Buck2 Change Detector from
+# selecting this test for the Code matrix.
+sh_test(
+    name = "room-cli-clippy-clean-test",
+    test = "//build/tests:check-clippy-clean.sh",
+    env = {"CLIPPY_REPORTS": "$(location :room-cli-clippy)"},
+    labels = CI_RELEASE,
+    test_rule_timeout_ms = 120000,
+    visibility = ["PUBLIC"],
+)

@@ -30,12 +30,18 @@ impl Drop for Temp {
     }
 }
 
+// Read at run time, not compile time: the Clippy pass compiles these tests
+// without the test rule's env, so `env!` would fail the whole Clippy report
+// before it could say anything about lints.
 fn hctl2() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_hctl2"))
+    PathBuf::from(std::env::var("CARGO_BIN_EXE_hctl2").expect("CARGO_BIN_EXE_hctl2 must be set"))
 }
 
 fn control() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_hctl2-control"))
+    PathBuf::from(
+        std::env::var("CARGO_BIN_EXE_hctl2-control")
+            .expect("CARGO_BIN_EXE_hctl2-control must be set"),
+    )
 }
 
 fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {

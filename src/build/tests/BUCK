@@ -4,6 +4,39 @@ load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
 
 oncall("hctl2")
 
+# Shared with root//packaging/release:room-cli-clippy-clean-test, which gates the
+# report of a release-only target. The gate script is one file either way; only
+# the report set it is pointed at differs.
+export_file(
+    name = "check-clippy-clean.sh",
+    src = "check_clippy_clean.sh",
+    visibility = ["PUBLIC"],
+)
+
+# Clippy's own run writes diagnostics to a report file and still succeeds, so
+# this test is what turns a non-empty report into a build failure. The reports
+# reach it as the filegroup's directory output, which keeps every entry at
+# <crate>/<key>: a flat copy by basename would let one package's empty
+# `unit_test` hide another's dirty one, since three packages have that target.
+sh_test(
+    name = "clippy_clean_test",
+    test = "check_clippy_clean.sh",
+    env = {"CLIPPY_REPORTS": "$(location root//:clippy)"},
+    labels = CI_FAST,
+    test_rule_timeout_ms = 120000,
+)
+
+# The live gate only sees paths Buck2 chose, so it cannot cover the report shapes
+# that would break the gate itself. These fixtures drive it directly.
+sh_test(
+    name = "clippy_clean_fixtures_test",
+    test = "check_clippy_clean_fixtures.sh",
+    env = {"GATE_SCRIPT": "$(location :check-clippy-clean.sh)"},
+    labels = CI_FAST,
+    resources = [":check-clippy-clean.sh"],
+    test_rule_timeout_ms = 120000,
+)
+
 sh_test(
     name = "xz_test",
     test = "check_xz.sh",

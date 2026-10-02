@@ -384,13 +384,12 @@ fn materialization_rejects_missing_baseline_changed_baseline_and_unwritable_root
 
     let readonly = fixture.root.join("readonly");
     fs::create_dir(&readonly).expect("readonly root");
-    let mut permissions = fs::metadata(&readonly).expect("metadata").permissions();
+    let original = fs::metadata(&readonly).expect("metadata").permissions();
+    let mut permissions = original.clone();
     permissions.set_readonly(true);
     fs::set_permissions(&readonly, permissions).expect("set readonly");
     let rejected = materialize(&fixture, &readonly, "CS-readonly", &fixture.first_commit);
-    let mut permissions = fs::metadata(&readonly).expect("metadata").permissions();
-    permissions.set_readonly(false);
-    fs::set_permissions(&readonly, permissions).expect("restore permissions");
+    fs::set_permissions(&readonly, original).expect("restore permissions");
     assert_error_code(rejected, "HCTL2_TOOL_WORKTREE_ROOT_UNWRITABLE");
 
     assert_error_code(
@@ -867,7 +866,10 @@ fn materialize(fixture: &Fixture, root: &Path, change_set_ref: &str, baseline: &
 }
 
 fn tool() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_hctl2-tool"))
+    Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2-tool")
+            .expect("CARGO_BIN_EXE_hctl2-tool must be set to run this test"),
+    )
 }
 
 fn git<I, S>(repository: Option<&Path>, arguments: I) -> Output
