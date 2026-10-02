@@ -605,17 +605,17 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
                         project_id: main.project_id.clone(),
                         project_version: 1,
                         name: outcome.into(),
-                        origin: Origin::Room {
+                        origin: Box::new(Origin::Room {
                             room_id: main.id.clone(),
                             binding_version: 1,
-                        },
-                        brief: chat::Brief {
+                        }),
+                        brief: Box::new(chat::Brief {
                             context_and_goal: "恢复验证".into(),
                             settled_facts_and_reasons: vec![],
                             disagreements_and_questions: vec![],
                             constraints_and_materials: vec![],
                             sources: vec![source.source.clone()],
-                        },
+                        }),
                         participants: vec![],
                         roster_confirmed: true,
                     },
@@ -741,17 +741,17 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
                     project_id: main.project_id.clone(),
                     project_version: 1,
                     name: "carrier parent".into(),
-                    origin: Origin::Room {
+                    origin: Box::new(Origin::Room {
                         room_id: main.id.clone(),
                         binding_version: 1,
-                    },
-                    brief: chat::Brief {
+                    }),
+                    brief: Box::new(chat::Brief {
                         context_and_goal: "恢复验证".into(),
                         settled_facts_and_reasons: vec![],
                         disagreements_and_questions: vec![],
                         constraints_and_materials: vec![],
                         sources: vec![source.source.clone()],
-                    },
+                    }),
                     participants: vec![],
                     roster_confirmed: true,
                 },
@@ -766,7 +766,7 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
     let id = created["room_id"].as_str().unwrap();
     let (binding, parent) = access(&shared, |s| chat::room(s, &main.project_id, id)).unwrap();
     let effect = tree::carrier_intent(&shared, &actor, &parent).unwrap();
-    access(&shared, |s| Ok(s.begin_effect(s.generation(), &effect)?)).unwrap();
+    access(&shared, |s| s.begin_effect(s.generation(), &effect)).unwrap();
     let space = client.ensure_carrier(&parent).unwrap();
     assert_eq!(
         access(&shared, |s| Ok(s.effect(&effect)?.1)).unwrap(),

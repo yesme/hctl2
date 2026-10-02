@@ -187,6 +187,7 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
             roster_confirmed,
             ..
         } => {
+            let (origin, brief) = (*origin, *brief);
             if project_version != p.version {
                 return Err(stale());
             }

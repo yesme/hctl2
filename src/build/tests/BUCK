@@ -4,6 +4,19 @@ load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
 
 oncall("hctl2")
 
+# Clippy's own run writes diagnostics to a report file and still succeeds, so
+# this test is what turns a non-empty report into a build failure. The reports
+# reach it as the filegroup's directory output, which keeps every entry at
+# <crate>/<key>: a flat copy by basename would let one package's empty
+# `unit_test` hide another's dirty one, since three packages have that target.
+sh_test(
+    name = "clippy_clean_test",
+    test = "check_clippy_clean.sh",
+    env = {"CLIPPY_REPORTS": "$(location root//:clippy)"},
+    labels = CI_FAST,
+    test_rule_timeout_ms = 120000,
+)
+
 sh_test(
     name = "xz_test",
     test = "check_xz.sh",
