@@ -106,7 +106,7 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
 - **依据**：`spec/project.md` v0.19.2 §Repo 注册与 Project 归档 里「创建 Topic Room」一段新加的两句（开场消息、邀请名单）与 §Room 与消息 里承载 Space 成员那句；`contract-tests.md` CT-PROJECT 对应的两行。现有接线：`src/crates/chat/README.md`、`src/crates/project/README.md`。
 - **要做的**，三件：
   1. `room create-topic` 建成房间后，由 control 把经确认的提要正文与来源作为开场消息发进新房间。事务 ID 幂等，重试不发第二条；控制面保存的材料仍是权威，`room show` 的 `brief` 不变。
-  2. `room create-topic` 的预览列出要邀请的聊天成员；缺省是来源 Room（按 Request 升级时是主 Room）当前的人类聊天成员——不在 control 应用服务命名空间里、也不是 control 自己账号的成员；输入可删减、补充。逐人投递并回读，部分失败照 `project members` 的规矩报逐房间结果与 `ROOMS_PARTIAL`。
+  2. `room create-topic` 的预览列出要邀请的聊天成员；缺省是来源 Room（按 Request 升级时是主 Room）当前的人类聊天成员——不在 control 应用服务命名空间里、也不是 control 自己账号的成员；输入可删减、补充，只邀确认名单上的人，删掉的不邀。逐人投递并回读，部分失败照 `project members` 的规矩报逐房间结果与 `ROOMS_PARTIAL`。
   3. 承载 Space 的成员跟主 Room 走：新建承载 Space 时邀请主 Room 当前的人类聊天成员；`project members` 对主 Room 的邀请与移除，同步到本 Project 全部承载 Space。Space 成员不进名册，不改加入规则（仍是 invite）。
 - **失败用例**：CT-PROJECT 那两行逐条落到测试；原生测试（`chat_native_test`）加三条：建 Topic 后房间第一条消息与确认的提要一致、人类成员在邀请列表而 control 与数字参与者账号不在、Space 成员随主 Room 同步；B1（`room-cli-test`）加一段，用人类账号的视角核房间与 Space 成员。
 - **不做**：人类身份与聊天账号的绑定（控制面不知道「跑命令的这个人」是哪个聊天账号，缺省名单从来源 Room 的成员来，不从命令的 actor 来）；Workbench；改加入规则。
