@@ -24,6 +24,7 @@ jobs:
   changes:
     name: Path filter
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       code: ${{ steps.paths.outputs.code }}
       buck: ${{ steps.targets.outputs.buck }}
@@ -294,6 +295,10 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
+    # Slowest matrix entry measured 15.3 min (macOS x86_64, full first-party
+    # target set); 45 keeps ~3x headroom. #287 needed a manual cancel for a
+    # hang past 40 min, so that is now a failure rather than a queue cost.
+    timeout-minutes: 45
     env:
       BUCK_CONSOLE: simple
       # The repository's own bazel-remote REAPI cache (src/buck2 `local` mode);
@@ -384,6 +389,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-24.04
+    # Measured 17 s; the job's real cost is `rustup toolchain install`, which a
+    # cold runner pays in minutes.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: src
@@ -409,6 +417,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-24.04
+    # Measured 9 s; a cold runner still has to install DotSlash and open a
+    # Buck2 graph before the doc tests run.
+    timeout-minutes: 15
     env:
       BUCK_CONSOLE: simple
       HCTL2_BUCK2_CACHE: 0
@@ -440,6 +451,8 @@ jobs:
     needs: [changes, buck, cargo-parity, docs-check]
     if: always()
     runs-on: ubuntu-24.04
+    # Pure aggregation of `needs` results; measured 4 s.
+    timeout-minutes: 5
     steps:
       - name: Aggregate required jobs
         env:

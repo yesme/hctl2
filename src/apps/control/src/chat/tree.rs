@@ -210,10 +210,10 @@ fn read_hierarchy(client: &Client, rooms: &[Room]) -> (BTreeMap<String, Hierarch
                     }
                 }
                 Some("m.space.child") => {
-                    if let Some(child) = mapping.get(external) {
-                        if child != id {
-                            edges.entry((id.clone(), child.clone())).or_insert(false);
-                        }
+                    if let Some(child) = mapping.get(external)
+                        && child != id
+                    {
+                        edges.entry((id.clone(), child.clone())).or_insert(false);
                     }
                 }
                 _ => (),

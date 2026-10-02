@@ -66,14 +66,21 @@ impl Fixture {
         (Self { root, payload }, port)
     }
     fn run(&self, args: &[&str]) -> (bool, Value) {
-        let out = Command::new(env!("CARGO_BIN_EXE_hctl2"))
-            .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
-            .env("HCTL2_INSTALL_ROOT", &self.payload)
-            .env("HCTL2_CONTROL_BIN", env!("CARGO_BIN_EXE_hctl2-control"))
-            .args(["--json", "--root", self.root.to_str().unwrap()])
-            .args(args)
-            .output()
-            .unwrap();
+        let out = Command::new(
+            std::env::var("CARGO_BIN_EXE_hctl2")
+                .expect("CARGO_BIN_EXE_hctl2 must be set to run this test"),
+        )
+        .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
+        .env("HCTL2_INSTALL_ROOT", &self.payload)
+        .env(
+            "HCTL2_CONTROL_BIN",
+            std::env::var("CARGO_BIN_EXE_hctl2-control")
+                .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
+        )
+        .args(["--json", "--root", self.root.to_str().unwrap()])
+        .args(args)
+        .output()
+        .unwrap();
         (out.status.success(), serde_json::from_slice(&out.stdout).unwrap_or_else(|_| json!({"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)})))
     }
     fn query(&self, kind: &str, input: Value) -> Value {

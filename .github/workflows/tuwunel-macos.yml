@@ -30,6 +30,10 @@ jobs:
             buck_target: macos_arm64
             package_target: macos-aarch64
     runs-on: ${{ matrix.runner }}
+    # Unobserved: this workflow has never run (workflow_dispatch only). It
+    # builds a full native asset with the Buck2 cache off, so the cold compile
+    # is the long pole rather than anything the steps above it do.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: src

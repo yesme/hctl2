@@ -453,10 +453,7 @@ fn conflict_details(output: &[u8]) -> Result<Value, ToolError> {
     let path_record =
         |path: &[u8]| json!({"path": String::from_utf8_lossy(path), "path_bytes": path});
     let mut messages = Vec::new();
-    loop {
-        let Some(count) = fields.next() else {
-            break;
-        };
+    while let Some(count) = fields.next() {
         if count.is_empty() {
             break;
         }

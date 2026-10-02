@@ -94,8 +94,12 @@ pub enum Action {
         project_id: String,
         project_version: i64,
         name: String,
-        origin: Origin,
-        brief: Brief,
+        // Boxed so one rare variant does not set the size of every action:
+        // Input holds an Action inline, so an unboxed Brief and Origin would be
+        // paid by every event. Serde is transparent through Box, so the
+        // persisted JSON shape is unchanged.
+        origin: Box<Origin>,
+        brief: Box<Brief>,
         /// Confirmation of this Room's own selection; no implicit inherited roster.
         participants: Vec<Reference>,
         roster_confirmed: bool,

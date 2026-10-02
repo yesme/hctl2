@@ -923,21 +923,6 @@ fn uid() -> u32 {
     rustix::process::geteuid().as_raw()
 }
 
-#[cfg(test)]
-mod uid_tests {
-    #[test]
-    fn native_effective_uid_matches_service_launcher() {
-        let output = std::process::Command::new("id").arg("-u").output().unwrap();
-        assert!(output.status.success());
-        let expected: u32 = String::from_utf8(output.stdout)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        assert_eq!(super::uid(), expected);
-    }
-}
-
 fn parse_consumed(bytes: &[u8]) -> Result<Vec<String>, String> {
     let value = serde_json::from_slice::<Value>(bytes)
         .map_err(|error| format!("consumed record is not JSON: {error}"))?;
@@ -1016,4 +1001,19 @@ fn replace_tree(from: &Path, to: &Path) -> Result<(), String> {
 
 fn io(error: std::io::Error) -> String {
     error.to_string()
+}
+
+#[cfg(test)]
+mod uid_tests {
+    #[test]
+    fn native_effective_uid_matches_service_launcher() {
+        let output = std::process::Command::new("id").arg("-u").output().unwrap();
+        assert!(output.status.success());
+        let expected: u32 = String::from_utf8(output.stdout)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(super::uid(), expected);
+    }
 }
