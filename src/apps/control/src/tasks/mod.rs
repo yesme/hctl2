@@ -336,7 +336,9 @@ pub(super) fn query(shared: &Shared, kind: &str, payload: &Value) -> Result<Valu
         ),
         "task.show" => {
             let (r, t) = task::task(s, field(payload, "project_id")?, field(payload, "task_id")?)?;
-            Ok(json!({"version":r.version,"data":t}))
+            Ok(
+                json!({"version":r.version,"data":t,"request_blockers":task::request_blockers(s,&t.project_id,&t.id)?.into_iter().map(|(_,b)|b).collect::<Vec<_>>()}),
+            )
         }
         "task.sources" => Ok(
             json!({"items":s.list("task_source")?,"references":s.list("task_source_reference")?,"defaults":s.list("task_default_source")?}),

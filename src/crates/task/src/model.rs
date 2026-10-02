@@ -161,6 +161,16 @@ pub struct Task {
     pub run_occupancy: Option<Value>,
 }
 
+/// Task-owned waiting state; Project owns the referenced Request lifecycle.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestBlocker {
+    pub owner: Reference,
+    pub request_id: String,
+    pub waiting: bool,
+    pub delivery: Option<String>,
+    pub outcome: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Fields {

@@ -72,7 +72,8 @@ pub struct Reference {
 }
 
 impl Reference {
-    pub(crate) fn validate(&self) -> Result<()> {
+    /// Domain reducers validate frozen references before preparing a command.
+    pub fn validate(&self) -> Result<()> {
         self.key.validate()?;
         match &self.version {
             Version::State(n) => safe_version(*n),

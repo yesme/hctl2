@@ -15,7 +15,10 @@ pub(crate) fn query(
                 .into_iter()
                 .filter(|r| project.is_none_or(|p| r.key.scope == Scope::Project(p.into())))
                 .map(|r| {
-                    let room: Room = chat::decode(&r)?;
+                    let Scope::Project(project) = &r.key.scope else {
+                        return Err(invalid("Room Project missing"));
+                    };
+                    let (_, room) = chat::room(s, project, &r.key.id)?;
                     let health = observations(root).state(&room.id)?;
                     Ok(json!({"binding":r,"room":room,"health":health}))
                 })

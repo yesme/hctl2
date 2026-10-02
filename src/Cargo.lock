@@ -512,6 +512,7 @@ dependencies = [
  "chat",
  "clap",
  "foundation",
+ "project",
  "proto",
  "repo",
  "reqwest",
@@ -1672,6 +1673,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "project"
+version = "0.0.0"
+dependencies = [
+ "chat",
+ "foundation",
+ "repo",
+ "serde",
+ "serde_json",
+ "store",
+ "task",
 ]
 
 [[package]]

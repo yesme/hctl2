@@ -1,4 +1,6 @@
-//! Real CLI, daemon and packaged Tuwunel. Project creation is a fixture until 辛.
+//! Real CLI, daemon and packaged Tuwunel; the Project package adds native B1.
+#[path = "room/project.rs"]
+mod project;
 use chat::{Server, key, main_room, reference};
 use serde_json::{Value, json};
 use std::{
@@ -26,6 +28,43 @@ impl Drop for Fixture {
     }
 }
 impl Fixture {
+    fn packaged(name: &str) -> (Self, u16) {
+        let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let archive = find(Path::new(env!("HCTL2_TEST_DEPENDENCY_PACKAGE")), |p| {
+            p.file_name()
+                .unwrap()
+                .to_str()
+                .is_some_and(|n| n.ends_with(".tar.xz") && !n.contains("-sources"))
+        })
+        .unwrap();
+        let extract = root.join("install");
+        std::fs::create_dir(&extract).unwrap();
+        assert!(
+            Command::new("tar")
+                .args(["-xf"])
+                .arg(archive)
+                .arg("-C")
+                .arg(&extract)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
+        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = socket.local_addr().unwrap().port();
+        drop(socket);
+        let scm = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let scm_port = scm.local_addr().unwrap().port();
+        drop(scm);
+        let versions = payload.join("lib/hctl2/services/versions.sh");
+        let text = std::fs::read_to_string(&versions)
+            .unwrap()
+            .replace("6167", &port.to_string())
+            .replace("3000", &scm_port.to_string());
+        std::fs::write(versions, text).unwrap();
+        (Self { root, payload }, port)
+    }
     fn run(&self, args: &[&str]) -> (bool, Value) {
         let out = Command::new(
             std::env::var("CARGO_BIN_EXE_hctl2")
@@ -52,15 +91,18 @@ impl Fixture {
         value
     }
     fn command(&self, kind: &str, key: &str, input: &Value) -> (bool, Value) {
+        self.command_ns("room", kind, key, input)
+    }
+    fn command_ns(&self, namespace: &str, kind: &str, key: &str, input: &Value) -> (bool, Value) {
         let path = self.root.join("command.json");
         std::fs::write(&path, input.to_string()).unwrap();
         let p = path.to_str().unwrap();
-        let (ok, preview) = self.run(&["room", kind, "--key", key, "--input", p]);
+        let (ok, preview) = self.run(&[namespace, kind, "--key", key, "--input", p]);
         if !ok {
             return (ok, preview);
         }
         self.run(&[
-            "room",
+            namespace,
             kind,
             "--key",
             key,
@@ -97,41 +139,8 @@ fn find(root: &Path, predicate: impl Fn(&Path) -> bool + Copy) -> Option<PathBuf
 }
 #[test]
 fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
-    let root = std::env::temp_dir().join(format!("hctl-room-cli-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    let archive = find(Path::new(env!("HCTL2_TEST_DEPENDENCY_PACKAGE")), |p| {
-        p.file_name()
-            .unwrap()
-            .to_str()
-            .is_some_and(|n| n.ends_with(".tar.xz") && !n.contains("-sources"))
-    })
-    .unwrap();
-    let extract = root.join("install");
-    std::fs::create_dir(&extract).unwrap();
-    assert!(
-        Command::new("tar")
-            .args(["-xf"])
-            .arg(archive)
-            .arg("-C")
-            .arg(&extract)
-            .status()
-            .unwrap()
-            .success()
-    );
-    let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
-    let f = Fixture {
-        root: root.clone(),
-        payload,
-    };
-    let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = socket.local_addr().unwrap().port();
-    drop(socket);
-    // Private test installation only: allocate a port instead of competing for the product default.
-    let versions = f.payload.join("lib/hctl2/services/versions.sh");
-    let text = std::fs::read_to_string(&versions)
-        .unwrap()
-        .replace("6167", &port.to_string());
-    std::fs::write(versions, text).unwrap();
+    let (f, port) = Fixture::packaged("room");
+    let root = f.root.clone();
     let mut store = Store::open(&root).unwrap();
     let server = Server {
         binding: store::Reference {

@@ -185,6 +185,106 @@ impl Client {
         Ok(serde_json::from_str(r.event_or_content.get())?)
     }
 
+    pub(super) fn members(
+        &self,
+        room: &str,
+        users: &[String],
+        invite: bool,
+        allow_write: bool,
+    ) -> Result<Value> {
+        self.guard(room)?;
+        let mut observed = vec![];
+        for user in users {
+            let user_id: OwnedUserId = user
+                .parse()
+                .map_err(|_| invalid("invalid Matrix user ID"))?;
+            let read = || -> Result<Value> {
+                let response = self.request(get_state_event_for_key::v3::Request::new(
+                    room_id(room)?,
+                    StateEventType::RoomMember,
+                    user.clone(),
+                ))?;
+                Ok(serde_json::from_str(response.event_or_content.get())?)
+            };
+            let before = match read() {
+                Ok(v) => v,
+                Err(e) if e.code == "CHAT_NOT_FOUND" => json!({"membership":"leave"}),
+                Err(e) => return Err(e),
+            };
+            let membership = before["membership"].as_str().unwrap_or("");
+            let needs_write = (invite && !["invite", "join"].contains(&membership))
+                || (!invite && ["invite", "join"].contains(&membership));
+            if needs_write && !allow_write {
+                return Err(reject(
+                    "RESULT_UNKNOWN",
+                    "original membership result cannot be established",
+                    "read_back_original_intent",
+                ));
+            }
+            if invite && !["invite", "join"].contains(&membership) {
+                self.request(
+                    ruma::api::client::membership::invite_user::v3::Request::new(
+                        room_id(room)?,
+                        ruma::api::client::membership::invite_user::v3::InviteUserId::new(user_id)
+                            .into(),
+                    ),
+                )?;
+            } else if !invite && ["invite", "join"].contains(&membership) {
+                self.request(ruma::api::client::membership::kick_user::v3::Request::new(
+                    room_id(room)?,
+                    user_id,
+                ))?;
+            }
+            let after = match read() {
+                Ok(v) => v,
+                Err(e) if !invite && e.code == "CHAT_NOT_FOUND" => json!({"membership":"leave"}),
+                Err(e) => return Err(e),
+            };
+            let membership = after["membership"].as_str().unwrap_or("");
+            if (invite && !["invite", "join"].contains(&membership))
+                || (!invite && !["leave", "ban"].contains(&membership))
+            {
+                return Err(reject(
+                    "CHAT_CONTENT_MISMATCH",
+                    "membership readback differs",
+                    "read_back_original_intent",
+                ));
+            }
+            observed.push(json!({"user_id":user,"membership":membership}));
+        }
+        Ok(json!({"room_id":room,"members":observed}))
+    }
+
+    /// Current native timeline, in server order. The newest event timestamp is
+    /// sufficient for idle detection; lack of access is not an empty timeline.
+    pub(super) fn last_activity(&self, room: &str) -> Result<Option<u64>> {
+        let mut cursor = None;
+        for _ in 0..64 {
+            let page = self.page(room, cursor.clone(), true)?;
+            let events = page["events"]
+                .as_array()
+                .ok_or_else(|| invalid("timeline page missing"))?;
+            for event in events {
+                if matches!(
+                    event["type"].as_str(),
+                    Some("m.room.message" | "m.room.create")
+                ) {
+                    return Ok(event["origin_server_ts"].as_u64().map(|ms| ms / 1000));
+                }
+            }
+            let next = page["next"].as_str().map(str::to_owned);
+            if events.is_empty() || next.is_none() || next == cursor {
+                return Ok(None);
+            }
+            cursor = next;
+        }
+        Err(reject(
+            "CHAT_HISTORY_INCOMPLETE",
+            "idle interval cannot be established from bounded history",
+            "inspect_room",
+        ))
+    }
+
     pub fn guard(&self, room: &str) -> Result<()> {
         // A successful room-state read distinguishes absent encryption from inaccessible room.
         self.state(room, "m.room.create")?;

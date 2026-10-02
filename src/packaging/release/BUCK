@@ -21,7 +21,7 @@ complete_release(name = "complete")
 # This test consumes the real offline payload; keep compression/source archives out of Code CI.
 rust_test(
     name = "room-cli-test",
-    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs"},
+    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs"},
     crate_root = "room.rs",
     deps = [
         "root//crates/chat:chat",

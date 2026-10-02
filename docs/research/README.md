@@ -158,6 +158,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [models/llama-cpp.md](./models/llama-cpp.md) | llama.cpp b11222 | E-SMALL-BRAIN | ④ Context 管理 | 运行方式已选 llama.cpp；启用等可打分样本。两个平台都没有启动过 |
 | [models/qwen2.5.md](./models/qwen2.5.md) | 通义千问：3.5 的 2B 与 9B 为第一候选，2.5 为后备 | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。本版只交千问这一族；本目录样本不能打分，权重缺省不下载 |
 | [models/bge-m3.md](./models/bge-m3.md) | BAAI bge-m3 | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。只比较相似度，不判断该不该开新 Topic。本目录样本不能打分 |
+| [tree-and-dag-views-20261003.md](./tree-and-dag-views-20261003.md) | Room 树和 Run 图在界面上的导航与可视化候选 | E-VIEW-TREE-DAG | 跨候选归纳 | 仅参考行为 |
 
 ## 已选外部服务的运维与资源占用
 

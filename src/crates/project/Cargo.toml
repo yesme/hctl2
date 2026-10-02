@@ -1,0 +1,21 @@
+[package]
+name = "project"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Project settings, Room selections and typed Request lifecycle"
+
+[dependencies]
+chat = { path = "../chat" }
+foundation = { path = "../foundation" }
+repo = { path = "../repo" }
+store = { path = "../store" }
+task = { path = "../task" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

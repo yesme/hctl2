@@ -151,6 +151,30 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         recovered
     );
     let external = created["matrix_room_id"].as_str().unwrap();
+    let users = vec!["@hctl2_worker:hctl2.localhost".to_owned()];
+    assert_eq!(
+        client
+            .members(external, &users, true, false)
+            .unwrap_err()
+            .code,
+        "RESULT_UNKNOWN"
+    );
+    assert_eq!(
+        client.members(external, &users, true, true).unwrap()["members"][0]["membership"],
+        "invite"
+    );
+    assert_eq!(
+        client.members(external, &users, true, false).unwrap()["members"][0]["membership"],
+        "invite"
+    );
+    assert_eq!(
+        client.members(external, &users, false, true).unwrap()["members"][0]["membership"],
+        "leave"
+    );
+    assert_eq!(
+        client.members(external, &users, false, false).unwrap()["members"][0]["membership"],
+        "leave"
+    );
     let mut bound_main = room.clone();
     bound_main.matrix_room_id = Some(external.into());
     let space = client.ensure_carrier(&bound_main).unwrap();
@@ -385,6 +409,14 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
     let frozen = source_text(binding.clone(), &event).unwrap();
     let before = client.sync(None).unwrap();
     let second = client.send(external, "txn-two", "第二条").unwrap();
+    assert_eq!(
+        client.last_activity(external).unwrap(),
+        client
+            .event(external, second["event_id"].as_str().unwrap())
+            .unwrap()["origin_server_ts"]
+            .as_u64()
+            .map(|ms| ms / 1000)
+    );
     let after = client
         .sync(Some(before["next_batch"].as_str().unwrap().into()))
         .unwrap();

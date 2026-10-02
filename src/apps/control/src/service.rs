@@ -58,6 +58,23 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_projects(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let store = Arc::clone(&self.store);
+        let actor = owner_actor(rustix::process::getuid().as_raw());
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                let (store, actor) = (Arc::clone(&store), TrustedActor(actor.0.clone()));
+                let _ =
+                    tokio::task::spawn_blocking(move || crate::projects::reconcile(&store, &actor))
+                        .await;
+            }
+        }
+    }
     pub(crate) fn reconcile_rooms(&self) -> impl std::future::Future<Output = ()> + Send + use<> {
         crate::chat::reconcile(
             Arc::clone(&self.store),
@@ -237,15 +254,42 @@ impl Control for ControlService {
             return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
         let result = match req.kind.as_str() {
-            "repo.list" | "repo.show" | "task.list" | "task.show" | "task.sources"
-            | "task.board" | "room.list" | "room.show" | "room.timeline" | "room.event"
-            | "room.reference" | "room.hierarchy" | "room.view_state" | "room.sync" => {
+            "repo.list"
+            | "repo.show"
+            | "task.list"
+            | "task.show"
+            | "task.sources"
+            | "task.board"
+            | "room.list"
+            | "room.show"
+            | "room.timeline"
+            | "room.event"
+            | "room.reference"
+            | "room.hierarchy"
+            | "room.view_state"
+            | "room.sync"
+            | "project.list"
+            | "project.show"
+            | "project.overview"
+            | "project.pending"
+            | "project.archive_blockers"
+            | "project.roster"
+            | "project.attention"
+            | "request.list"
+            | "request.show"
+            | "pending"
+            | "overview" => {
                 let store = Arc::clone(&self.store);
                 let kind = req.kind.clone();
                 let services = Arc::clone(&self.services);
                 let root = self.root.clone();
                 match tokio::task::spawn_blocking(move || {
-                    if kind.starts_with("room.") {
+                    if kind.starts_with("project.")
+                        || kind.starts_with("request.")
+                        || matches!(kind.as_str(), "pending" | "overview")
+                    {
+                        crate::projects::query(&store, &services, &actor, &kind, &payload)
+                    } else if kind.starts_with("room.") {
                         crate::chat::query(&store, &services, &root, &kind, &payload)
                     } else if kind.starts_with("task.") {
                         crate::tasks::query(&store, &kind, &payload)
@@ -260,8 +304,6 @@ impl Control for ControlService {
                     Err(_) => return Ok(invalid_query("Repo query worker failed")),
                 }
             }
-            "pending" => json!({"items": []}),
-            "overview" => json!({"projection":"overview","placeholder":true}),
             "get" | "versions" => {
                 return Ok(invalid_query(
                     "get/versions are internal store APIs and are not public Query",
@@ -318,9 +360,10 @@ impl Control for ControlService {
         &self,
         request: Request<PreviewRequest>,
     ) -> Result<Response<PreviewResponse>, Status> {
-        if let Err(error) = self.require_owner(&request) {
-            return Ok(preview_err(error));
-        }
+        let actor = match self.require_owner(&request) {
+            Ok(actor) => actor,
+            Err(error) => return Ok(preview_err(error)),
+        };
         let req = request.into_inner();
         if let Some(error) = Self::protocol_error(protocol(&req.protocol)) {
             return Ok(preview_err(error));
@@ -332,6 +375,7 @@ impl Control for ControlService {
         let details = if req.operation.starts_with("repo.")
             || req.operation.starts_with("task.")
             || req.operation.starts_with("room.")
+            || req.operation.starts_with("project.")
         {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -348,7 +392,9 @@ impl Control for ControlService {
             };
             match tokio::task::spawn_blocking(move || {
                 let _guard = guard;
-                if operation.starts_with("room.") {
+                if operation.starts_with("project.") {
+                    crate::projects::preview(&store, &services, &actor, &operation, &payload)
+                } else if operation.starts_with("room.") {
                     crate::chat::preview(&store, &services, &root, &operation, &payload)
                 } else if operation.starts_with("task.") {
                     crate::tasks::preview(&store, &services, &root, &operation, &payload)
@@ -375,6 +421,7 @@ impl Control for ControlService {
         let token = if req.operation.starts_with("repo.")
             || req.operation.starts_with("task.")
             || req.operation.starts_with("room.")
+            || req.operation.starts_with("project.")
         {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
@@ -505,6 +552,18 @@ impl Control for ControlService {
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
             let _guard = guard;
+            if operation.starts_with("project.") {
+                return crate::projects::submit(
+                    &store,
+                    &operations,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
             if operation.starts_with("room.") {
                 return crate::chat::submit(
                     &store,
@@ -884,6 +943,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("repo.")
         || operation.starts_with("task.")
         || operation.starts_with("room.")
+        || operation.starts_with("project.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {
