@@ -69,6 +69,8 @@
 | 术语与验证 | [术语表](../design/references/glossary.md#核心产品词)、[S1 映射](../design/scenarios/S1-multi-unit.md#四不变量)、[契约测试](../design/contract-tests.md) | 保留 CT-REPO 的同 Repo 两个 Project 分别授权及 CT-PRODUCT 的四 Project 多机走查；纠正 S1 §二/§四/§五和矩阵导言把两个 Project 误判为两间 Topic Room 的说明。CT-PROJECT 的主 Room 创建、来源提升、闲置回填，CT-TASK 的看板与分组、CT-WORKBENCH-IA 的入口按实际变化对齐；S1.I3 的 Room 唯一范围改为每 Project |
 | 决策史与版本 | [决策史](../design/references/decision-history.md#当前设计) | 正式收敛时记录 Project 入口、Room 分类与 Source 导航等实际变化，保留同 Repo 多 Project，不把取消它写成转折。随实际约束变化更新版本与可失败用例；本轮已扩为体验澄清与场景验收同步，更新到 v0.18.7 |
 
+上表按 #257 当时的同步状态保留。v0.19.0（#296）起，聊天展开的来源扩到本 Project 任一 Room，Topic Room 可以挂在另一间 Topic Room 之下，见 [Room 与消息](../design/spec/project.md#room-与消息)。
+
 **共享 Source 的验收走查：** C2 的两个 Mac Project 若都选择同 Repo 的 GitHub Issues，会读到同一 Source 的卡片。所有者随后明确 [Project 是独立 Namespace](./04-project-navigation.md#2026-09-19project-独立-namespace)：[Task 实体映射](../design/spec/task.md#契约与来源)的唯一范围由 Control 收窄为各 Project 内；双方分别认领可各得自己的 Task，契约、Run、授权与验收独立，外部卡仍只有一张。S3.P5 配对验证，不把新建独立 Task 当成搬动既有 Task。Fable 在 [#257 评审](https://github.com/yesme/hctl2/pull/257#issuecomment-5734517467)举的两个 Repo 接同一个 Linear team 是用例外的另一例，不能把它冒充原文；同 Repo 两个 Project 则已有 C2 的明确依据。
 
 ## 旧讨论怎样接手

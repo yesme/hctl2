@@ -1,6 +1,6 @@
 # 交付、验证与自举
 
-> 状态：交付文档（非规范） · 草案 v0.18.12<br>
+> 状态：交付文档（非规范） · 草案 v0.19.0<br>
 > 日期：2026-09-02
 
 > 本文定义“交付什么、按什么顺序建、怎样证明”；对象和状态以[约束层](./spec/README.md)的五个模块约束为准，端到端步骤按[连接约束](./spec/connections.md)验收。本文属验证文档：可引用约束层词汇以指认被验证的约束条款，但不重定义它们。
@@ -146,7 +146,7 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 2. **Agency（本地参考实现内部采用 Herdr，已拍板）**：固定基线为 [`v0.8.2`](https://github.com/herdrdev/herdr/releases/tag/v0.8.2)（Apache-2.0；HCTL 当前消费 macOS/Linux × arm64/x86_64 官方单二进制）。本地 Agency 参考实现内部采用 Herdr 按规格启动 Harness、持有进程、PTY 和终端会话并提供 API 与原生 TUI；参考实现自己承担配对认证、租户隔离、票据校验与转发（职责、形态候选与判据见[本地 Agency 参考实现](#本地-agency-参考实现)），不另写一套终端运行服务。
    P0 验证版本协商，workspace/tab/pane/terminal 创建与定位，输入与 resize，观察与断线重连，停止与退出状态，以及恢复等级能否如实翻译。已确认的限制包括：原生输入不经 HCTL 输入租约、API 与原生 controller 可交错写入、事件 ring 没有公开 sequence/gap、退出和停止回读不足。
    这些功能在补齐前按低信任或不支持处理，不在 HCTL 内另写终端服务。源码、API、macOS RSS 与历史运行时对照数据见 [Herdr 运行服务验证记录](../research/runtime/agency-runtime-validation-20260829.md)。
-3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读，均按 Chat 端口调用面核对。
+3. **chat server（Tuwunel，已拍板；Continuwuity 为备选）**：账号与房间管理、AppService 注册和事件投递、按事件 ID 读取正文及房间加密状态回读，均按 Chat 端口调用面核对。Room 层级（v0.19.0）的实现层脚注：Matrix 中只有 Space 能有子节点，有下级的 Room 在 Matrix 侧多一个承载 Space，房间数最多约翻倍；Tuwunel 的层级接口单次最多读 10 层，更深的分次读取，读不全的部分按「读不到」处理；随包的 Cinny 把多层 Space 压成一层显示、没有讨论串面板，Workbench 就位前在它里面看不到完整的树。
    事务 ID、事件顺序与重同步沿用 Matrix homeserver 约束；低内存配置、RocksDB/media 备份和托管生命周期留到 B1 产品化。结论见 [homeserver 选型证据](../research/matrix-homeserver.md#e-l4-matrix-homeserver)及[运维与资源占用](../research/README.md#已选外部服务的运维与资源占用)。
 4. **task server（Vikunja，已拍板）**：卡片与分组读写、稳定归属回读、条件写入、webhook/轮询变化观测和实体 ID 均按 Task 端口调用面核对；排序与看板语义沿用 Vikunja；探针、备份恢复和托管生命周期在首次加绑它之前完成（B2 之后、P2 出门之前），git-bug 只保留为重开选型时的对照，结论与固定源码证据见 [任务后端复审](../research/task-backends.md#e-l3-vikunja)。
 5. **远端任务后端**：GitHub Issues 是外部平台仓库的缺省任务源，其调用面按首次消费在 P2.2 使用前完成运行验证（复核记录见 [sdk/github.md](../research/sdk/github.md)）；Linear 的身份、字段权威、outbox/readback、限流和 tombstone 验证按需在 P2 出门前完成——约束未押注它，双向适配是五项中最贵的一项。
@@ -202,5 +202,7 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 任何采用、移植或 vendor 的外部源码都必须固定已审阅 commit，核验目标文件及依赖许可证，保留 license/copyright/attribution 与修改记录，并用 HCTL contract tests 隔离上游漂移；任一项缺失即不得进入分发产物。
 
 ## 未决问题
+
+Room 树与 Run DAG 的原生视角怎么画（左侧平铺视角已定，见[导航](../user-experience/04-project-navigation.md#rooms只列-topic-rooms)）：先调研信息可视化研究与业界做法、落 `docs/research/`，再出设计；起点见 [Room 树备忘](../../.memo/design/room-tree-20261001.md)。
 
 持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付——留待实现设计，不改约束，出处见[接手清单](../user-experience/open-questions.md#旧讨论怎样接手)。已裁决条目的去向见[决策史小修订台账](./references/decision-history.md#小修订台账)；安全相关的取值（Room 的隐私与保留、远程连接的认证与传输）不再是未决问题，是[安全策略面](./spec/system.md#安全策略面)各策略点的当前缺省与后续取值；多主机执行现场的编排沿租户模型不另造对象；Windows 与多用户见[明确不做](#明确不做)。
