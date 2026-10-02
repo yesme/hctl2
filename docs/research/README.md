@@ -153,6 +153,11 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [github-actions-incremental-validation.md](./build-tools/github-actions-incremental-validation.md) | GitHub Actions 增量重验证 | E-TOOL-GHA-REVALIDATION | ⑥ 机械后端与基础设施 | 采用平台原生 workflow 证据；快进更新增量验证，失败时全量回退 |
 | [sdk/matrix.md · P2.2 复核](./sdk/matrix.md#2026-09-06--p22-appservice-实际调用面) | Tuwunel AppService 注册、虚拟用户与加密回读 | E-SDK-MATRIX | ⑥ 机械后端与基础设施 | 采用 SDK：ruma 0.16.0，精确 features 与原生身份方法已核到源码 |
 | [sdk/vikunja.md · P2.2 复核](./sdk/vikunja.md#2026-09-06--p22-映射条件写入与生成实验) | Vikunja 2.5.0 的分组映射、条件写反例与生成实验 | E-SDK-VIKUNJA | ⑥ 机械后端与基础设施 | 服务采用二进制；progenitor 0.14.0 直接生成失败，暂缓采用；任务写入无 If-Match 保护 |
+| [small-brain-engines-20260928.md](./small-brain-engines-20260928.md) | Room 三件轻量判断与短总结的引擎对照 | E-SMALL-BRAIN | ④ Context 管理 | 缺省维持机械规则；模型只留形状，准确率未实测 |
+| [models/jev.md](./models/jev.md) | TypeSafe Jev 1.13 | E-SMALL-BRAIN | ④ Context 管理 | 仅参考行为。无访问权限，准确率未实测。本目录样本不能打分 |
+| [models/llama-cpp.md](./models/llama-cpp.md) | llama.cpp b11222 | E-SMALL-BRAIN | ④ Context 管理 | 运行方式已选 llama.cpp；启用等可打分样本。两个平台都没有启动过 |
+| [models/qwen2.5.md](./models/qwen2.5.md) | 通义千问：3.5 的 2B 与 9B 为第一候选，2.5 为后备 | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。本版只交千问这一族；本目录样本不能打分，权重缺省不下载 |
+| [models/bge-m3.md](./models/bge-m3.md) | BAAI bge-m3 | E-SMALL-BRAIN | ④ Context 管理 | 暂缓。只比较相似度，不判断该不该开新 Topic。本目录样本不能打分 |
 
 ## 已选外部服务的运维与资源占用
 

@@ -118,6 +118,6 @@
 ## 补记（2026-10-02）
 
 - mu（Pi 分叉，以 Jev 为主后端的判断内核）的调研见 [`docs/research/harness/mu.md`](../../../docs/research/harness/mu.md)，三家原始结论见 [`.memo/notes/mu-research-raw-20261002.md`](../../notes/mu-research-raw-20261002.md)；所有者要求先记录，是否按它的机制走未定。
-- Pi v0.99.0 原生的分类模型与本机 `llama-cpp-classify` 见 [`harness-access.md` 复核记录](../../../docs/research/harness-access.md#复核记录)，与 #290 `models/llama-cpp.md`「不提供只准选这些选项的约束」一句相关。
+- Pi v0.99.0 原生的分类模型与本机 `llama-cpp-classify` 见 [`harness-access.md` 复核记录](../../../docs/research/harness-access.md#复核记录)。#290 收口后 `models/llama-cpp.md` 写明可以用 GBNF 或 JSON schema 约束输出；Pi 那条路径是读标签 token 的概率。两件事都留着。
 - 所有者随后与主笔讨论收敛，结论见 [`../room-judgment-20261002.md`](../room-judgment-20261002.md)：机械判断优先、然后 sysone、然后人；本任务书三件活的引擎问题并入该备忘 §五、§六。
 - GPT 指出本任务书 B 的缺口边界前后不一：§二写「上次收到信息以来」，§四样本写「上次发言到这次被点名」。哪个为准待定，未改正文。
