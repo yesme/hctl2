@@ -609,12 +609,11 @@ fn resolution_delivery_recovers_exactly_once_and_project_updates_do_not_rewrite_
         serde_json::to_value(before.revision).unwrap(),
         serde_json::to_value(after.revision).unwrap()
     );
-    assert_eq!(
+    assert!(
         definition(&e.store, &e.b)
             .unwrap()
             .settings
-            .publish_review_requires_confirmation,
-        true
+            .publish_review_requires_confirmation
     );
     assert_eq!(replay(&e.store, &input).unwrap().unwrap().result, result);
 }
@@ -875,17 +874,17 @@ fn idle_request_topic_attention_is_not_pending_and_discussion_does_not_answer() 
             project_id: a.clone(),
             project_version: 1,
             name: "discussion".into(),
-            origin: chat::Origin::Request {
+            origin: Box::new(chat::Origin::Request {
                 request: reference(&r),
                 blockers: request.blockers.clone(),
-            },
-            brief: chat::Brief {
+            }),
+            brief: Box::new(chat::Brief {
                 context_and_goal: "clarify".into(),
                 settled_facts_and_reasons: vec![],
                 disagreements_and_questions: vec![],
                 constraints_and_materials: vec![],
                 sources,
-            },
+            }),
             participants: vec![],
             roster_confirmed: true,
         },
