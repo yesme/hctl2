@@ -80,7 +80,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | --- | --- | --- | --- | --- |
 | [harness-access.md](./harness-access.md) | OpenCode、Pi 与 Kimi Code | E-L1-HARNESS-ACCESS | ① Coding Harness | 适配协议 |
 | [deepseek-harness.md](./harness/deepseek-harness.md) | DeepSeek Harness / Cordis | E-L1-DEEPSEEK-HARNESS | ① Coding Harness | 仅参考行为 |
-| [mu.md](./harness/mu.md) | mu（Pi 分叉，判断内核 kyrn-judge） | E-L1-MU | ① Coding Harness | 暂缓：只记录，判断机制是否借用待讨论 |
+| [mu.md](./harness/mu.md) | mu（Pi 分叉，判断内核 `packages/kyrn-judge`） | E-L1-MU | ① Coding Harness | 暂缓：只记录，判断机制是否借用待讨论 |
 | [first-tree.md](./workbench/first-tree.md) | First Tree | E-L4-FIRST-TREE | ② Agent 协作平台 | 移植有边界的组件 |
 | [claude-tag.md](./workbench/claude-tag.md) | Claude Tag | E-L4-CLAUDE-TAG | ② Agent 协作平台 | 仅参考行为 |
 | [grok-bot.md](./workbench/grok-bot.md) | Grok Bot 与 Grok Build | E-GROK-BOT | ② Agent 协作平台 | 仅参考行为 |
