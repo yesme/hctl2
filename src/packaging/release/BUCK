@@ -34,6 +34,7 @@ rust_test(
         "CARGO_BIN_EXE_hctl2": "$(location root//apps/cli:hctl2)",
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
+        "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
     },
     labels = CI_RELEASE,
     rustc_flags = HCTL2_RUSTC_FLAGS,

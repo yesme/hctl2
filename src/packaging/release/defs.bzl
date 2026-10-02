@@ -1,7 +1,8 @@
 load("//build/rules:ci.bzl", "CI_INTEGRATION", "CI_PLATFORM", "CI_RELEASE")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
-load("//packaging/dependencies:defs.bzl", "XZ_PRESET")
+load("//build/tools:zstd.bzl", "ZSTD_VERSION")
+load("//packaging/dependencies:defs.bzl", "ZSTD_PRESET")
 
 _SYFT_VERSION = "1.51.1"
 _SYFT_ASSETS = {
@@ -68,20 +69,23 @@ export HCTL2_DEPENDENCY_SOURCE_ROOT="$source_root/packaging/dependencies"
 export HCTL2_SYFT="$source_root/tools/syft/syft"
 export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
 export HCTL2_XZ_VERSION="{xz_version}"
-export HCTL2_XZ_PRESET="{xz_preset}"
+export HCTL2_ZSTD_ROOT="$source_root/tools/zstd"
+export HCTL2_ZSTD_VERSION="{zstd_version}"
+export HCTL2_ZSTD_PRESET="{zstd_preset}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 bash "$source_root/packaging/release/assemble.sh" \
   --first-party "$source_root/first-party" \
   --agency-skills "$source_root/agency/skills" \
-  --dependencies "$source_root/dependencies/{package_id}.tar.xz" \
-  --sources "$source_root/dependencies/{package_id}-sources.tar.xz" \
+  --dependencies "$source_root/dependencies/{package_id}.tar.zst" \
+  --sources "$source_root/dependencies/{package_id}-sources.tar.zst" \
   --output "$output_root"
 """.format(
         package_id = package_id,
         xz_directory = XZ_DIRECTORY,
         xz_version = XZ_VERSION,
-        xz_preset = XZ_PRESET,
+        zstd_version = ZSTD_VERSION,
+        zstd_preset = ZSTD_PRESET,
     )
 
 def _platform_select(values: dict):
@@ -126,6 +130,7 @@ def complete_release(name: str):
             "packaging/release/install.sh": "install.sh",
             "product/Cargo.toml": "root//:Cargo.toml",
             "tools/xz": "root//build/tools:xz",
+            "tools/zstd": "root//build/tools:zstd-bin",
             "tools/syft": _platform_select({
                 target: ":syft-{}".format(target)
                 for target in _SYFT_ASSETS
@@ -151,6 +156,7 @@ def complete_release(name: str):
             "HCTL2_DEPENDENCY_SOURCE_ROOT": "$(location root//packaging/dependencies:test-support)",
             "HCTL2_TOOLBOX_TEST": "$(location :test-toolbox.sh)",
             "HCTL2_JQ": "$(location root//build/tools:jq-bin)",
+            "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
         },
         resources = [
             ":{}".format(name),
@@ -158,6 +164,7 @@ def complete_release(name: str):
             "root//packaging/dependencies:test-support",
             "root//packaging/dependencies:scm-downloads",
             ":test-toolbox.sh",
+            "root//build/tools:zstd-bin",
         ],
         labels = CI_INTEGRATION,
         run_test_separately = True,
