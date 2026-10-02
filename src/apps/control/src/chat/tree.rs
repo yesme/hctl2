@@ -89,6 +89,8 @@ impl Client {
                     .ok_or_else(|| invalid("invalid Space parent"))?;
                 self.attach(parent, id, event["content"]["canonical"] == true)?;
                 self.put_state(parent, "m.space.child", bound(room)?, json!({}))?;
+                // Clear the old reverse edge only after the replacement is readable.
+                self.put_state(bound(room)?, "m.space.parent", parent, json!({}))?;
             }
         }
         // A native pointer joins the wrapper to the message room, not a Binding revision.
@@ -137,6 +139,14 @@ pub(super) struct Hierarchy {
 /// All immediate state edges are read independently. No recursive hierarchy endpoint or
 /// ten-level response limit is allowed to turn into a product depth limit.
 pub(super) fn project_hierarchy(client: &Client, rooms: &[Room]) -> BTreeMap<String, Hierarchy> {
+    let (mut result, edges) = read_hierarchy(client, rooms);
+    project_edges(&mut result, &edges);
+    result
+}
+
+type NativeEdges = BTreeMap<(String, String), bool>;
+
+fn read_hierarchy(client: &Client, rooms: &[Room]) -> (BTreeMap<String, Hierarchy>, NativeEdges) {
     let mut result: BTreeMap<_, _> = rooms
         .iter()
         .map(|r| (r.id.clone(), Hierarchy::default()))
@@ -206,8 +216,26 @@ pub(super) fn project_hierarchy(client: &Client, rooms: &[Room]) -> BTreeMap<Str
             }
         }
     }
-    project_edges(&mut result, &edges);
-    result
+    (result, edges)
+}
+
+fn reaches(edges: &NativeEdges, start: &str, target: &str) -> bool {
+    let mut pending = vec![start.to_owned()];
+    let mut seen = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if id == target {
+            return true;
+        }
+        if seen.insert(id.clone()) {
+            pending.extend(
+                edges
+                    .keys()
+                    .filter(|(parent, _)| *parent == id)
+                    .map(|(_, child)| child.clone()),
+            );
+        }
+    }
+    false
 }
 
 pub(super) fn project_edges(
@@ -216,24 +244,7 @@ pub(super) fn project_edges(
 ) {
     // An edge is on a cycle exactly when its child can already reach its parent.
     for ((parent, child), canonical) in edges {
-        let mut pending = vec![child.clone()];
-        let mut seen = BTreeSet::new();
-        let mut cycle = false;
-        while let Some(id) = pending.pop() {
-            if id == *parent {
-                cycle = true;
-                break;
-            }
-            if seen.insert(id.clone()) {
-                pending.extend(
-                    edges
-                        .keys()
-                        .filter(|(p, _)| *p == id)
-                        .map(|(_, c)| c.clone()),
-                );
-            }
-        }
-        if cycle {
+        if reaches(edges, child, parent) {
             result.get_mut(parent).unwrap().needs_attention = true;
             result.get_mut(child).unwrap().needs_attention = true;
         } else {
@@ -255,6 +266,16 @@ pub(crate) fn reparent(
     root: &Path,
     payload: &Value,
     actor: &TrustedActor,
+) -> Result<Value> {
+    reparent_using(shared, root, payload, actor, || client(services))
+}
+
+pub(super) fn reparent_using(
+    shared: &Shared,
+    root: &Path,
+    payload: &Value,
+    actor: &TrustedActor,
+    connect: impl FnOnce() -> Result<Client>,
 ) -> Result<Value> {
     let project = payload["project_id"]
         .as_str()
@@ -283,7 +304,7 @@ pub(crate) fn reparent(
         Ok((room, parent))
     })?;
     let old: Vec<String> = serde_json::from_value(payload["old_space_ids"].clone())?;
-    let client = client(services)?;
+    let client = connect()?;
     guard(&client, root, &rooms.0, bound(&rooms.0)?)?;
     guard(&client, root, &rooms.1, bound(&rooms.1)?)?;
     let project_rooms = access(shared, |s| {
@@ -293,9 +314,18 @@ pub(crate) fn reparent(
             .map(chat::decode::<Room>)
             .collect::<Result<Vec<_>>>()
     })?;
-    let allowed = project_rooms
-        .iter()
-        .filter_map(|r| client.carrier(r).ok().flatten())
+    let (hierarchy, edges) = read_hierarchy(&client, &project_rooms);
+    // Use raw native edges, including those omitted from the display as cyclic.
+    if reaches(&edges, id, parent) {
+        return Err(reject(
+            "CHAT_HIERARCHY_CYCLE",
+            "target Room is a descendant of this Room",
+            "choose_other_parent",
+        ));
+    }
+    let allowed = hierarchy
+        .values()
+        .filter_map(|projection| projection.carrier_space_id.clone())
         .collect::<BTreeSet<_>>();
     if old.iter().any(|id| !allowed.contains(id)) {
         return Err(invalid(
@@ -303,10 +333,19 @@ pub(crate) fn reparent(
         ));
     }
     let space = match client.carrier(&rooms.1)? {
-        Some(id) => id,
+        Some(id) => {
+            let effect = carrier_intent_id(&rooms.1)?;
+            if access(shared, |s| Ok(s.pending_effects()?.contains(&effect)))? {
+                let receipt = drive_using(shared, root, actor, &effect, || Ok(client.clone()))?;
+                if receipt["space_id"] != id {
+                    return Err(invalid("carrier readback differs"));
+                }
+            }
+            id
+        }
         None => {
             let id = carrier_intent(shared, actor, &rooms.1)?;
-            drive(shared, services, root, actor, &id)?["space_id"]
+            drive_using(shared, root, actor, &id, || Ok(client.clone()))?["space_id"]
                 .as_str()
                 .ok_or_else(|| invalid("carrier readback missing"))?
                 .to_owned()
@@ -336,14 +375,18 @@ pub(crate) fn reparent(
     )
 }
 
-fn carrier_intent(shared: &Shared, actor: &TrustedActor, room: &Room) -> Result<String> {
+fn carrier_intent_id(room: &Room) -> Result<String> {
+    Ok(format!(
+        "chat:carrier:{}",
+        foundation::bytes_sha256(carrier_key(room)?.as_bytes())
+    ))
+}
+
+pub(super) fn carrier_intent(shared: &Shared, actor: &TrustedActor, room: &Room) -> Result<String> {
     access(shared, |s| {
         let actor = chat::owner(actor, &room.project_id)?;
         let identity = chat::writable(s, room)?;
-        let id = format!(
-            "chat:carrier:{}",
-            foundation::bytes_sha256(carrier_key(room)?.as_bytes())
-        );
+        let id = carrier_intent_id(room)?;
         let input = json!({"room":room});
         let command = Command {
             command_id: id.clone(),

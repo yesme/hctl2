@@ -508,6 +508,19 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
         operation: "room.command".into(),
         input,
     };
+    let mut cancel = vec![];
+    if let Action::Close { room_id, .. } = &plan.input.action {
+        let identity = key(scope.clone(), "room", room_id);
+        for id in store.pending_effects()? {
+            let (effect, state) = store.effect(&id)?;
+            if effect.owner.key == identity
+                && effect.operation == "chat.create"
+                && state == store::EffectState::Pending
+            {
+                cancel.push(id);
+            }
+        }
+    }
     store.submit(store.generation(), &actor, &command, None, |tx| {
         for check in &plan.checks {
             if tx.get(&check.key)?.as_ref().map(|r| r.version) != check.version {
@@ -519,6 +532,9 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
         }
         for r in &plan.records {
             tx.put(r)?;
+        }
+        for id in &cancel {
+            tx.cancel_pending_effect(id)?;
         }
         for e in &plan.effects {
             tx.enqueue_effect(e)?;

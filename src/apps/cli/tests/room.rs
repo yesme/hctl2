@@ -289,6 +289,13 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     let nested_id = nested["room_id"].as_str().unwrap();
     let before_move = f.show("A", nested_id);
     assert_eq!(before_move["hierarchy"]["parents"][0]["room_id"], topic_id);
+    let cyclic_move = root.join("cyclic-move.json");
+    std::fs::write(&cyclic_move, json!({"project_id":"A","room_id":a,"binding_version":version,"parent_room_id":nested_id,"parent_binding_version":before_move["binding"]["version"],"old_space_ids":[]}).to_string()).unwrap();
+    let (ok, rejected) = f.run(&["room", "reparent", "--input", cyclic_move.to_str().unwrap()]);
+    assert!(!ok, "HCTL must not introduce a native cycle: {rejected}");
+    assert_eq!(rejected["error"]["code"], "CHAT_HIERARCHY_CYCLE");
+    assert_eq!(f.show("A", a)["hierarchy"]["parents"], json!([]));
+    assert!(f.show("A", nested_id)["hierarchy"]["carrier_space_id"].is_null());
     let (ok, _) = f.run(&["room", "hierarchy", "A", nested_id]);
     assert!(ok);
     // The wrapper is native readback, never part of the Room binding.

@@ -1,9 +1,14 @@
 //! Native Tuwunel in an isolated directory; no mutations of the developer's chat server.
 use super::*;
+use crate::chat::{access, drive_using, tree};
+use chat::{Action, Input, Origin, Room};
 use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::Arc,
 };
+use store::{Actor, ActorSource, Expected, Scope, Store, TrustedActor};
+use tokio::sync::Mutex;
 struct Native {
     root: PathBuf,
     child: Child,
@@ -166,6 +171,25 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         .attach(&space, child.matrix_room_id.as_deref().unwrap(), false)
         .unwrap();
     let child_space = client.ensure_carrier(&child).unwrap();
+    let child_state = client
+        .room_state(child.matrix_room_id.as_deref().unwrap())
+        .unwrap();
+    let old_parent = child_state
+        .iter()
+        .find(|event| event["type"] == "m.space.parent" && event["state_key"] == space)
+        .unwrap();
+    assert!(
+        old_parent["content"]["via"]
+            .as_array()
+            .is_none_or(Vec::is_empty)
+    );
+    assert!(child_state.iter().any(|event| {
+        event["type"] == "m.space.parent"
+            && event["state_key"] == child_space
+            && event["content"]["via"]
+                .as_array()
+                .is_some_and(|via| !via.is_empty())
+    }));
     let mut grandchild = chat::Room {
         id: "nested".into(),
         ..room.clone()
@@ -380,6 +404,7 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(root.join("cache/chat-inbox.sqlite").exists());
+    recovery_regressions(&root, &client, &bound_main, &frozen);
     let mut encryption = ruma::api::client::state::send_state_event::v3::Request::new_raw(
         room_id(external).unwrap(),
         StateEventType::RoomEncryption,
@@ -456,4 +481,294 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
     );
     shutdown_tx.send(()).unwrap();
     http.join().unwrap();
+}
+
+fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &SourceText) {
+    use store::{EffectState, ProjectSettings, Record, RecordData, RoomKind, RoomState};
+    let scope = Scope::Project(main.project_id.clone());
+    let actor = TrustedActor(Actor {
+        principal: "owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, scope.clone()],
+        authority: None,
+    });
+    let mut store = Store::open(&root.join("recovery-control")).unwrap();
+    let project_data = RecordData::Project {
+        repo_id: "fixture-repo".into(),
+        settings: ProjectSettings {
+            publish_review_requires_confirmation: true,
+            selection_policy: json!({}),
+        },
+        archived: false,
+    };
+    let project = Record {
+        key: chat::key(scope.clone(), "project", &main.project_id),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &serde_json::to_value(&project_data).unwrap(),
+        )
+        .unwrap(),
+        data: project_data,
+        sources: vec![],
+        materials: vec![],
+    };
+    let identity_data = RecordData::Room {
+        room_kind: RoomKind::Main,
+        state: RoomState::Active,
+    };
+    let identity = Record {
+        key: chat::key(scope.clone(), "room", &main.id),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &serde_json::to_value(&identity_data).unwrap(),
+        )
+        .unwrap(),
+        data: identity_data,
+        sources: vec![],
+        materials: vec![],
+    };
+    let binding =
+        chat::value_record(chat::key(scope.clone(), "room_binding", &main.id), 1, main).unwrap();
+    let command = store::Command {
+        command_id: "seed-recovery".into(),
+        idempotency_key: "seed-recovery".into(),
+        actor: actor.0.clone(),
+        target: project.key.clone(),
+        expected: Expected::Absent,
+        binding: main.server.binding.clone(),
+        input_digest: store::Command::digest_input("fixture", &json!({})).unwrap(),
+        operation: "fixture".into(),
+        input: json!({}),
+    };
+    store
+        .submit(store.generation(), &actor, &command, None, |tx| {
+            for record in [&project, &identity, &binding] {
+                tx.put(record)?;
+            }
+            Ok(json!({}))
+        })
+        .unwrap();
+    let shared = Arc::new(Mutex::new(Some(store)));
+    // Missing, partial and complete native results all retain the original intent.
+    // Closing never permits a new create or completion write, even after first dispatch.
+    for outcome in ["cancelled", "absent", "partial", "complete"] {
+        let result = access(&shared, |s| {
+            let plan = chat::prepare(
+                s,
+                Input {
+                    key: outcome.into(),
+                    action: Action::CreateTopic {
+                        project_id: main.project_id.clone(),
+                        project_version: 1,
+                        name: outcome.into(),
+                        origin: Origin::Room {
+                            room_id: main.id.clone(),
+                            binding_version: 1,
+                        },
+                        brief: chat::Brief {
+                            context_and_goal: "恢复验证".into(),
+                            settled_facts_and_reasons: vec![],
+                            disagreements_and_questions: vec![],
+                            constraints_and_materials: vec![],
+                            sources: vec![source.source.clone()],
+                        },
+                        participants: vec![],
+                        roster_confirmed: true,
+                    },
+                },
+                vec![source.clone()],
+            )?;
+            chat::admit(s, &actor, plan)
+        })
+        .unwrap();
+        let id = result["room_id"].as_str().unwrap();
+        let effect_id = result["effect_id"].as_str().unwrap();
+        let effect = access(&shared, |s| {
+            if outcome != "cancelled" {
+                s.begin_effect(s.generation(), effect_id)?;
+            }
+            Ok(s.effect(effect_id)?.0)
+        })
+        .unwrap();
+        let original: Room = serde_json::from_value(effect.input["room"].clone()).unwrap();
+        let native_result = if matches!(outcome, "partial" | "complete") {
+            Some(
+                client
+                    .create(&original, &effect.idempotency_key, true)
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+        if outcome == "complete" {
+            let external = native_result.as_ref().unwrap()["matrix_room_id"]
+                .as_str()
+                .unwrap();
+            let space = client.ensure_carrier(main).unwrap();
+            client.attach(&space, external, true).unwrap();
+            client
+                .put_state(external, "io.hctl2.topic_creation", "", json!({"command":effect.idempotency_key,"parent_room_id":main.id,"project_id":main.project_id}))
+                .unwrap();
+        }
+        access(&shared, |s| {
+            let plan = chat::prepare(
+                s,
+                Input {
+                    key: format!("close-{outcome}"),
+                    action: Action::Close {
+                        project_id: main.project_id.clone(),
+                        room_id: id.into(),
+                        version: 1,
+                    },
+                },
+                vec![],
+            )?;
+            chat::admit(s, &actor, plan)
+        })
+        .unwrap();
+        let inventory = || {
+            let mut rooms = client
+                .request(ruma::api::client::membership::joined_rooms::v3::Request::new())
+                .unwrap()
+                .joined_rooms;
+            rooms.sort();
+            rooms
+        };
+        let before = inventory();
+        let driven = if outcome == "cancelled" {
+            drive_using(&shared, root, &actor, effect_id, || {
+                panic!("cancelled intent must not connect")
+            })
+        } else {
+            drive_using(&shared, root, &actor, effect_id, || Ok(client.clone()))
+        };
+        let expected = match outcome {
+            "cancelled" => {
+                assert_eq!(driven.unwrap_err().code, "EFFECT_CANCELLED");
+                EffectState::Cancelled
+            }
+            "complete" => {
+                assert_eq!(driven.unwrap(), native_result.unwrap());
+                EffectState::Confirmed
+            }
+            _ => {
+                assert_eq!(driven.unwrap_err().code, "RESULT_UNKNOWN");
+                if let Some(receipt) = native_result {
+                    assert_eq!(
+                        client
+                            .state(
+                                receipt["matrix_room_id"].as_str().unwrap(),
+                                "io.hctl2.topic_creation"
+                            )
+                            .unwrap_err()
+                            .code,
+                        "CHAT_NOT_FOUND"
+                    );
+                }
+                EffectState::Unknown
+            }
+        };
+        assert_eq!(
+            inventory(),
+            before,
+            "readback must not create more native Rooms"
+        );
+        access(&shared, |s| {
+            assert_eq!(s.effect(effect_id)?.1, expected);
+            assert!(matches!(
+                chat::required(s, &chat::key(scope.clone(), "room", id))?.data,
+                RecordData::Room {
+                    state: RoomState::Archived,
+                    ..
+                }
+            ));
+            Ok(())
+        })
+        .unwrap();
+    }
+    // Crash after the native carrier pointer is stored but before outbox confirmation.
+    // A new reparent must finish the old intent rather than merely using its Space.
+    let created = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "carrier-parent".into(),
+                action: Action::CreateTopic {
+                    project_id: main.project_id.clone(),
+                    project_version: 1,
+                    name: "carrier parent".into(),
+                    origin: Origin::Room {
+                        room_id: main.id.clone(),
+                        binding_version: 1,
+                    },
+                    brief: chat::Brief {
+                        context_and_goal: "恢复验证".into(),
+                        settled_facts_and_reasons: vec![],
+                        disagreements_and_questions: vec![],
+                        constraints_and_materials: vec![],
+                        sources: vec![source.source.clone()],
+                    },
+                    participants: vec![],
+                    roster_confirmed: true,
+                },
+            },
+            vec![source.clone()],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let effect_id = created["effect_id"].as_str().unwrap();
+    drive_using(&shared, root, &actor, effect_id, || Ok(client.clone())).unwrap();
+    let id = created["room_id"].as_str().unwrap();
+    let (binding, parent) = access(&shared, |s| chat::room(s, &main.project_id, id)).unwrap();
+    let effect = tree::carrier_intent(&shared, &actor, &parent).unwrap();
+    access(&shared, |s| Ok(s.begin_effect(s.generation(), &effect)?)).unwrap();
+    let space = client.ensure_carrier(&parent).unwrap();
+    assert_eq!(
+        access(&shared, |s| Ok(s.effect(&effect)?.1)).unwrap(),
+        EffectState::Unknown
+    );
+    let main_space = client.carrier(main).unwrap().unwrap();
+    let payload = json!({"project_id":main.project_id,"room_id":main.id,"parent_room_id":id,"binding_version":1,"parent_binding_version":binding.version,"old_space_ids":[]});
+    // Native clients can create cycles. Display projection hides those edges;
+    // a write must still reject the descendant using the unfiltered native graph.
+    client.attach(&space, &main_space, false).unwrap();
+    let projected = tree::project_hierarchy(client, &[main.clone(), parent.clone()]);
+    assert!(projected[&main.id].parents.is_empty());
+    assert!(projected[id].parents.is_empty());
+    assert_eq!(
+        tree::reparent_using(&shared, root, &payload, &actor, || Ok(client.clone()))
+            .unwrap_err()
+            .code,
+        "CHAT_HIERARCHY_CYCLE"
+    );
+    assert_eq!(
+        access(&shared, |s| Ok(s.effect(&effect)?.1)).unwrap(),
+        EffectState::Unknown
+    );
+    client
+        .put_state(&space, "m.space.child", &main_space, json!({}))
+        .unwrap();
+    client
+        .put_state(&main_space, "m.space.parent", &space, json!({}))
+        .unwrap();
+    // Remove the original parent edge before a valid reverse reparent.
+    // Immutable origin is unaffected by these native content writes.
+    client
+        .put_state(&main_space, "m.space.child", &space, json!({}))
+        .unwrap();
+    client
+        .put_state(&space, "m.space.parent", &main_space, json!({}))
+        .unwrap();
+    for _ in 0..2 {
+        let receipt =
+            tree::reparent_using(&shared, root, &payload, &actor, || Ok(client.clone())).unwrap();
+        assert_eq!(receipt["state"], "confirmed");
+        assert_eq!(receipt["space_id"], space);
+        assert_eq!(
+            access(&shared, |s| Ok(s.effect(&effect)?.1)).unwrap(),
+            EffectState::Confirmed
+        );
+        assert_eq!(client.ensure_carrier(&parent).unwrap(), space);
+    }
 }

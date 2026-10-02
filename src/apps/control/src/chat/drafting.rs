@@ -89,7 +89,7 @@ pub(crate) fn draft(
                 }
                 _ => {
                     let external = bound(&room)?;
-                    let (mut events, mut cursor, backwards, stop) = match selection {
+                    let (events, cursor, backwards, stop) = match selection {
                         Selection::Range { start, end } => (
                             vec![client.event(external, end)?],
                             client.context(external, end)?["start"]
@@ -119,31 +119,10 @@ pub(crate) fn draft(
                         ),
                         _ => (vec![], None, true, None),
                     };
-                    for page in 0..100 {
-                        if stop.is_some_and(|id| events.iter().any(|e| e["event_id"] == id)) {
-                            break;
-                        }
-                        let result = client.page(external, cursor.clone(), backwards)?;
-                        let chunk = result["events"]
-                            .as_array()
-                            .ok_or_else(|| invalid("invalid timeline"))?;
-                        events.extend(chunk.clone());
-                        let next = result["next"].as_str().map(str::to_owned);
-                        if chunk.is_empty() || next.is_none() || next == cursor {
-                            break;
-                        }
-                        if page == 99 {
-                            return Err(reject(
-                                "CHAT_HISTORY_LIMIT",
-                                "narrow mechanical source range",
-                                "select_event_ids",
-                            ));
-                        }
-                        cursor = next;
-                    }
-                    if backwards {
-                        events.reverse();
-                    }
+                    let events =
+                        collect_window(events, cursor, backwards, stop, |cursor, direction| {
+                            client.page(external, cursor, direction)
+                        })?;
                     select(&events, selection)?
                 }
             };
@@ -153,6 +132,45 @@ pub(crate) fn draft(
         }
     };
     finish_draft(shared, input, actor, &id, sources, unread, stamp)
+}
+
+pub(super) fn collect_window(
+    mut events: Vec<Value>,
+    mut cursor: Option<String>,
+    backwards: bool,
+    stop: Option<&str>,
+    mut fetch: impl FnMut(Option<String>, bool) -> Result<Value>,
+) -> Result<Vec<Value>> {
+    for page in 0..100 {
+        if stop.is_some_and(|id| events.iter().any(|e| e["event_id"] == id)) {
+            break;
+        }
+        let result = fetch(cursor.clone(), backwards)?;
+        let chunk = result["events"]
+            .as_array()
+            .ok_or_else(|| invalid("invalid timeline"))?;
+        events.extend(chunk.clone());
+        let next = result["next"].as_str().map(str::to_owned);
+        if stop.is_some_and(|id| events.iter().any(|event| event["event_id"] == id))
+            || chunk.is_empty()
+            || next.is_none()
+            || next == cursor
+        {
+            break;
+        }
+        if page == 99 {
+            return Err(reject(
+                "CHAT_HISTORY_LIMIT",
+                "narrow mechanical source range",
+                "select_event_ids",
+            ));
+        }
+        cursor = next;
+    }
+    if backwards {
+        events.reverse();
+    }
+    Ok(events)
 }
 
 fn source_events(

@@ -26,6 +26,7 @@ use store::Reference;
 
 const MAX_RESPONSE: u64 = 8 * 1024 * 1024;
 
+#[derive(Clone)]
 pub struct Client {
     pub server: Server,
     token: String,
@@ -220,36 +221,11 @@ impl Client {
         dispatch: bool,
         before_dispatch: impl FnOnce() -> Result<()>,
     ) -> Result<Value> {
-        // Alias lookup is public on some homeservers. It alone cannot prove that the
-        // AppService registration has loaded, so check authenticated identity first.
-        let identity = self.request(ruma::api::client::account::whoami::v3::Request::new())?;
-        if identity.user_id.as_str() != self.server.sender {
-            return Err(invalid("AppService identity mismatch"));
+        if let Some(receipt) = self.lookup_creation(room, command, space, !dispatch)? {
+            return Ok(receipt);
         }
         let correlation = bytes_sha256(command.as_bytes());
         let alias = format!("#hctl2_{correlation}:{}", self.server.server_name);
-        match self.request(get_alias::v3::Request::new(
-            alias.parse().map_err(|_| invalid("invalid room alias"))?,
-        )) {
-            Ok(r) => return self.creation_readback(room, r.room_id.as_str(), &correlation, space),
-            Err(e) if e.code == "CHAT_NOT_FOUND" => (),
-            Err(e) => return Err(e),
-        }
-        if !dispatch {
-            // Creation joins the sender. An unavailable or unreadable inventory is not absence.
-            let joined =
-                self.request(ruma::api::client::membership::joined_rooms::v3::Request::new())?;
-            for id in joined.joined_rooms {
-                match self.state(id.as_str(), "io.hctl2.creation") {
-                    Ok(marker) if marker["command"] == correlation => {
-                        return self.creation_readback(room, id.as_str(), &correlation, space);
-                    }
-                    Ok(_) => (),
-                    Err(e) if e.code == "CHAT_NOT_FOUND" => (),
-                    Err(e) => return Err(e),
-                }
-            }
-        }
         let mut request = create_room::v3::Request::new();
         request.name = Some(room.name.clone());
         request.room_alias_name = Some(format!("hctl2_{correlation}"));
@@ -275,6 +251,53 @@ impl Client {
             }
             Err(e) => Err(e),
         }
+    }
+
+    /// Read only: a closed Room's unknown creation must not dispatch a new native write.
+    pub(super) fn lookup_creation(
+        &self,
+        room: &chat::Room,
+        command: &str,
+        space: bool,
+        inventory: bool,
+    ) -> Result<Option<Value>> {
+        // Alias lookup is public on some homeservers. It alone cannot prove that the
+        // AppService registration has loaded, so check authenticated identity first.
+        let identity = self.request(ruma::api::client::account::whoami::v3::Request::new())?;
+        if identity.user_id.as_str() != self.server.sender {
+            return Err(invalid("AppService identity mismatch"));
+        }
+        let correlation = bytes_sha256(command.as_bytes());
+        let alias = format!("#hctl2_{correlation}:{}", self.server.server_name);
+        match self.request(get_alias::v3::Request::new(
+            alias.parse().map_err(|_| invalid("invalid room alias"))?,
+        )) {
+            Ok(r) => {
+                return self
+                    .creation_readback(room, r.room_id.as_str(), &correlation, space)
+                    .map(Some);
+            }
+            Err(e) if e.code == "CHAT_NOT_FOUND" => (),
+            Err(e) => return Err(e),
+        }
+        if inventory {
+            // Creation joins the sender. An unavailable or unreadable inventory is not absence.
+            let joined =
+                self.request(ruma::api::client::membership::joined_rooms::v3::Request::new())?;
+            for id in joined.joined_rooms {
+                match self.state(id.as_str(), "io.hctl2.creation") {
+                    Ok(marker) if marker["command"] == correlation => {
+                        return self
+                            .creation_readback(room, id.as_str(), &correlation, space)
+                            .map(Some);
+                    }
+                    Ok(_) => (),
+                    Err(e) if e.code == "CHAT_NOT_FOUND" => (),
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        Ok(None)
     }
 
     fn creation_readback(

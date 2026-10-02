@@ -248,6 +248,131 @@ fn independent_main_rooms_topic_human_edits_retry_close_and_restart() {
 }
 
 #[test]
+fn close_cancels_only_undispatched_creation_and_retains_unknown_readback() {
+    for attempted in [false, true] {
+        let mut e = Env::new();
+        let (origin, source) = e.source("A");
+        let plan = prepare(
+            &e.store,
+            e.topic("unfinished", origin, &[source.clone()]),
+            vec![source],
+        )
+        .unwrap();
+        let created = admit(&mut e.store, &actor(), plan).unwrap();
+        let id = created["room_id"].as_str().unwrap();
+        let effect = created["effect_id"].as_str().unwrap();
+        if attempted {
+            e.store.begin_effect(e.store.generation(), effect).unwrap();
+        }
+        let close = prepare(
+            &e.store,
+            Input {
+                key: "close-unfinished".into(),
+                action: Action::Close {
+                    project_id: "A".into(),
+                    room_id: id.into(),
+                    version: 1,
+                },
+            },
+            vec![],
+        )
+        .unwrap();
+        admit(&mut e.store, &actor(), close.clone()).unwrap();
+        assert_eq!(
+            e.store.effect(effect).unwrap().1,
+            if attempted {
+                store::EffectState::Unknown
+            } else {
+                store::EffectState::Cancelled
+            }
+        );
+        assert_eq!(
+            e.store
+                .pending_effects()
+                .unwrap()
+                .contains(&effect.to_owned()),
+            attempted
+        );
+        // Replay must not resurrect a cancelled create or change the archived identity.
+        admit(&mut e.store, &actor(), close).unwrap();
+        let identity = required(&e.store, &key(Scope::Project("A".into()), "room", id)).unwrap();
+        assert!(matches!(
+            identity.data,
+            RecordData::Room {
+                state: RoomState::Archived,
+                ..
+            }
+        ));
+        if attempted {
+            confirm(
+                &mut e.store,
+                &actor(),
+                effect,
+                json!({"matrix_room_id":"!original:hctl2.localhost"}),
+            )
+            .unwrap();
+            assert_eq!(
+                e.store.effect(effect).unwrap().1,
+                store::EffectState::Confirmed
+            );
+            assert_eq!(
+                required(&e.store, &identity.key).unwrap().version,
+                identity.version
+            );
+        } else {
+            assert!(e.store.begin_effect(e.store.generation(), effect).is_err());
+        }
+    }
+}
+
+#[test]
+fn stale_close_does_not_cancel_creation_or_archive_room() {
+    let mut e = Env::new();
+    let (origin, source) = e.source("A");
+    let plan = prepare(
+        &e.store,
+        e.topic("stale-close", origin, &[source.clone()]),
+        vec![source],
+    )
+    .unwrap();
+    let created = admit(&mut e.store, &actor(), plan).unwrap();
+    let id = created["room_id"].as_str().unwrap();
+    let effect = created["effect_id"].as_str().unwrap();
+    let close = prepare(
+        &e.store,
+        Input {
+            key: "stale-close-command".into(),
+            action: Action::Close {
+                project_id: "A".into(),
+                room_id: id.into(),
+                version: 1,
+            },
+        },
+        vec![],
+    )
+    .unwrap();
+    let (binding, current) = room(&e.store, "A", id).unwrap();
+    e.put(value_record(binding.key, 2, &current).unwrap());
+    assert_eq!(
+        admit(&mut e.store, &actor(), close).unwrap_err().code,
+        "VERSION_CONFLICT"
+    );
+    assert_eq!(
+        e.store.effect(effect).unwrap().1,
+        store::EffectState::Pending
+    );
+    assert!(matches!(
+        required(&e.store, &key(Scope::Project("A".into()), "room", id))
+            .unwrap()
+            .data,
+        RecordData::Room {
+            state: RoomState::Active,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn mechanical_draft_is_verbatim_unsectioned_and_cannot_masquerade_as_summary() {
     let e = Env::new();
     let (_, source) = e.source("A");

@@ -52,11 +52,11 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 
 `draft.json` 声明 `project_id`、`project_version`、`origin` 与机械 `selection`。来源为 `kind: room`（兼容旧输入 `main_room`）或 `request`。聊天选材支持事件 ID、起止范围、含根消息的回复关系、原生讨论串和协议 mentions；范围从终点的原生 context 游标反向读，回复/带 `after` 的 mentions 从锚点向后读，不从最早消息找近期窗口，也不扫描正文找关键词。Request 路径不要求 Message，可用 `messages` 补充精确相关消息。响应只含逐字片段、精确来源、未读来源、规则引用和摘要，`automatic_summary` 为 `not_configured`。起草走非危险 Submit，以调用者身份记录结论；相同 `--key` 重试读同一冻结结果，不写成 Query。正文存 Git 材料，`brief_observation` 保存引用及摘要。未读来源的空摘要表示未知，不伪造源内容。
 
-`reparent.json` 带 Project、Room、目标上级 Room、双方 `binding_version` 和明确要移除的 `old_space_ids`；旧 Space 必须能回读为本 Project 的 Room。空旧集合只新增挂靠，不声称原生操作具有跨房间原子性。目标仍是叶子时，先保存创建 Space 的原意图再执行。`send` 可带 `thread_root`，不带时是主时间线消息。
+`reparent.json` 带 Project、Room、目标上级 Room、双方 `binding_version` 和明确要移除的 `old_space_ids`；旧 Space 必须能回读为本 Project 的 Room。空旧集合只新增挂靠，不声称原生操作具有跨房间原子性。目标仍是叶子时，先保存创建 Space 的原意图再执行；原生指针已写、意图尚未确认时，先回读原意图。改挂按原生边检查，目标是自己的下级则拒绝，不用已过滤环边的展示结果作判据。`send` 可带 `thread_root`，不带时是主时间线消息。
 
 `topic.json` 的字段对应 `Action::CreateTopic`（CLI 加 `kind`）：`project_id`、`project_version`、`name`、`origin`、`brief`、`participants`、`roster_confirmed`。`brief` 用五个字段分别表达缘起与目标、已定事实与理由、分歧与待答、约束与材料、精确来源。人可编辑四类正文，系统只核来源范围与版本，不拿逐字摘录规则拒绝人的补写。预览不创建 Room；确认后冻结编辑版，不自动接入主 Room 后续消息。
 
-其他写入口是 `close`、`rebind`、`send`、`freeze`、`resume`，使用同一 `--key / --input / --preview-token` 形式。`save-view-state` 只写派生客户端状态，无治理命令记录。失败输出 stdout JSON 的 `error.code` 与 `recovery_action`，退出码非零。
+其他写入口是 `close`、`rebind`、`send`、`freeze`、`resume`，使用同一 `--key / --input / --preview-token` 形式。关闭尚未建成的 Topic 在同一事务撤回未发送的建房意图；已发送但结果未知的保留，关闭后只回读，不补建房或挂靠。`save-view-state` 只写派生客户端状态，无治理命令记录。失败输出 stdout JSON 的 `error.code` 与 `recovery_action`，退出码非零。
 
 ## Buck 目标与 CT-PROJECT 对照
 
@@ -64,7 +64,7 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 | --- | --- | --- |
 | 创建 Project 同时建立它唯一的主 Room | 夹具调用事务辅助函数，同键一间，同 Repo 两 Project 两间；D、R | 实际 Project 命令及待确认 Repo 前置归辛 |
 | 主 Room 与 Topic Room 均可按本次授权发起调用 | 未实现 | Invocation / Execution Spec 归 P2.3 |
-| 普通 Topic Room 因未填完成条件而不能创建或关闭 | 无完成条件能建关；关后 Request 版本不变、不能发送；D、R | Task/Run 联动与待处理入口归其业务包 |
+| 普通 Topic Room 因未填完成条件而不能创建或关闭 | 无完成条件能建关；关后 Request 版本不变、不能发送；未发送建房撤回、未知建房只回读、过期关闭不撤回；D、N、R | Task/Run 联动与待处理入口归其业务包 |
 | 两间活跃 Topic 同样闲置 15 天 | 未实现 | Request 闲置提醒归辛 |
 | 有非终态 Run 等时归档 Project 拒绝 | 活跃 Project 是写入前置；D | Project 归档/恢复及跨模块阻塞清单归辛 |
 | CJK 输入、结构化引用、草稿/游标/未读、并发流隔离 | CJK、原生顺序、事务重投、客户端 account data、冻结引用与恢复；D、N、R | IME、Execution Chat / Share to Room、真实双客户端并发与未读恢复全链尚未验 |
@@ -74,8 +74,8 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 | Run 的 Request 在主 Room 没有相关 Message | 精确 Request/冻结阻塞版本无消息能建，旧版/外 Project 拒绝；可附本 Project 消息、外 Project 消息拒绝；D | Request 创建/解决命令与其运行草稿接线归辛；适配器已接只读形状 |
 | Topic Room 首次调用只给原聊天链接 | 可读确认提要与未配置状态；R | 首次调用 Bundle 交付归子 |
 | Room 的 Project 归属或消息所属 Room 被引用动作改写 | 跨 Project 引用拒绝、Topic 关闭不解决 Request；D、R | 同根因 Request 去重归辛 |
-| Topic Room 可从主 Room 或另一间 Topic Room 的 Message 创建 | 嵌套 Topic、缺省父节点、Space 唯一、别名缺失回读、未知建房恢复、改挂不改出处/Binding、重复创建不复原改挂、缓存可丢弃；N、R | Request 缺省父节点由领域计划验证；真实 Matrix 客户端 UI 未验 |
-| 挂靠按回读投影 | 双非 canonical/双 canonical、环、外 Project、鉴权失败字段空且标关注；N、U | 仅声明本地 Matrix 能力，不支持其他聊天协议；跨 server 层级未验 |
+| Topic Room 可从主 Room 或另一间 Topic Room 的 Message 创建 | 嵌套 Topic、缺省父节点、Space 唯一、清除旧双向边、别名缺失回读、未知建房恢复、承载指针确认前恢复、改挂不改出处/Binding、重复创建不复原改挂、缓存可丢弃；N、R | Request 缺省父节点由领域计划验证；真实 Matrix 客户端 UI 未验 |
+| 挂靠按回读投影 | 双非 canonical/双 canonical、环、外 Project、鉴权失败字段空且标关注；HCTL 成环改挂拒绝，已有环不因展示过滤漏判；N、U、R | 仅声明本地 Matrix 能力，不支持其他聊天协议；跨 server 层级未验 |
 | 挂靠不带来继承 | 独立名册、禁止借其他 Room 的选入记录、关闭不级联；D、R；原生私有房间权限未复制 | 多房间成员/权限调整 API、Project 全体归档归辛；成员拒绝路径尚未实测 |
 | 一间 Room 只有一条时间线和一层讨论串 | 原生 m.thread、拒嵌套、事件 ID 与正文冻结、主时间线含串消息；N、R | Workbench 讨论串 UI 与所有成员同时读取未验 |
 | 待你处理按现有事项去重 | 未实现 | 聚合投影与业务动作归辛及后续包 |

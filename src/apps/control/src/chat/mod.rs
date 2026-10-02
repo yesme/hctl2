@@ -303,7 +303,11 @@ pub(super) fn submit(
                 result["receipt"] = receipt;
             }
             Err(e) => {
-                result["state"] = json!("pending_or_unknown");
+                result["state"] = json!(if e.code == "EFFECT_CANCELLED" {
+                    "cancelled"
+                } else {
+                    "pending_or_unknown"
+                });
                 result["error"] =
                     json!({"code":e.code,"message":e.message,"recovery_action":e.recovery_action});
             }
@@ -319,6 +323,16 @@ fn drive(
     actor: &TrustedActor,
     id: &str,
 ) -> Result<Value> {
+    drive_using(shared, root, actor, id, || client(services))
+}
+
+fn drive_using(
+    shared: &Shared,
+    root: &Path,
+    actor: &TrustedActor,
+    id: &str,
+    connect: impl FnOnce() -> Result<matrix::Client>,
+) -> Result<Value> {
     let (effect, state) = access(shared, |s| s.effect(id))?;
     let room: Room = serde_json::from_value(effect.input["room"].clone())?;
     if state == store::EffectState::Confirmed {
@@ -329,11 +343,60 @@ fn drive(
             )?)?)
         });
     }
-    let client = client(services)?;
+    if state == store::EffectState::Cancelled {
+        return Err(reject(
+            "EFFECT_CANCELLED",
+            "unsent Room creation was cancelled",
+            "inspect_room",
+        ));
+    }
+    let client = connect()?;
     if room.server.binding != client.server.binding || room.server.url != client.server.url {
         return Err(chat::stale());
     }
     let pending = state == store::EffectState::Pending;
+    if state == store::EffectState::Unknown && effect.operation == "chat.create" {
+        let active = access(shared, |s| {
+            let identity = chat::required(s, &effect.owner.key)?;
+            Ok(matches!(
+                identity.data,
+                store::RecordData::Room {
+                    state: store::RoomState::Active,
+                    ..
+                }
+            ))
+        })?;
+        if !active {
+            let receipt = client
+                .lookup_creation(&room, &effect.idempotency_key, false, true)?
+                .ok_or_else(|| {
+                    reject(
+                        "RESULT_UNKNOWN",
+                        "closed Room creation has no confirmed native result",
+                        "read_back_original_intent",
+                    )
+                })?;
+            if let Some(parent) = effect.input.get("parent") {
+                let expected = json!({"command":effect.idempotency_key,"parent_room_id":parent["id"],"project_id":room.project_id});
+                let external = receipt["matrix_room_id"]
+                    .as_str()
+                    .ok_or_else(|| invalid("child room missing"))?;
+                match client.state(external, "io.hctl2.topic_creation") {
+                    Ok(marker) if marker == expected => (),
+                    Ok(_) => return Err(invalid("Topic creation marker differs")),
+                    Err(e) if e.code == "CHAT_NOT_FOUND" => {
+                        return Err(reject(
+                            "RESULT_UNKNOWN",
+                            "closed Topic creation is not fully confirmed",
+                            "read_back_original_intent",
+                        ));
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            return access(shared, |s| chat::confirm(s, actor, id, receipt));
+        }
+    }
     // Check current local authority before first dispatch. Unknown writes retain the original
     // target and key; readback never retargets a newer Room binding.
     if pending {

@@ -52,6 +52,49 @@ fn mechanical_selection_uses_server_order_relations_and_mentions_not_body() {
 }
 
 #[test]
+fn mechanical_window_accepts_last_budget_page_but_never_truncates_unbounded_selection() {
+    for (stop, anchor_page, expected) in [
+        (Some("$start"), 100, true),
+        (Some("$start"), 101, false),
+        (None, 100, false),
+    ] {
+        let mut fetched = 0;
+        let result = drafting::collect_window(
+            vec![json!({"event_id":"$end"})],
+            Some("cursor-0".into()),
+            true,
+            stop,
+            |_, backwards| {
+                assert!(backwards);
+                fetched += 1;
+                let event = if fetched == anchor_page {
+                    "$start".into()
+                } else {
+                    format!("$event-{fetched}")
+                };
+                Ok(json!({"events":[{"event_id":event}],"next":format!("cursor-{fetched}")}))
+            },
+        );
+        assert_eq!(result.is_ok(), expected);
+        assert_eq!(fetched, 100, "never request page 101");
+        if let Ok(events) = result {
+            assert_eq!(events.first().unwrap()["event_id"], "$start");
+            assert_eq!(events.last().unwrap()["event_id"], "$end");
+        } else {
+            assert_eq!(result.unwrap_err().code, "CHAT_HISTORY_LIMIT");
+        }
+    }
+    // Replies / mentions without a stop event are complete only when the native cursor ends.
+    let mut fetched = 0;
+    assert!(drafting::collect_window(vec![], None, false, None, |_, direction| {
+        assert!(!direction);
+        fetched += 1;
+        Ok(json!({"events":[{"event_id":format!("$event-{fetched}")}],"next":if fetched == 100 { None } else { Some(format!("cursor-{fetched}")) }}))
+    }).is_ok());
+    assert_eq!(fetched, 100);
+}
+
+#[test]
 fn same_structured_action_has_same_input_and_bridge_or_missing_actor_rejected() {
     let binding = Reference {
         key: chat::key(Scope::Control, "chat_server", "local"),
