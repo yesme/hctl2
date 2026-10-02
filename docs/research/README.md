@@ -5,7 +5,7 @@
 > 规则：本目录只说明可行性和复用边界，不定义 HCTL 的领域模型或产品路线。条目是产物（Task 交付的 Artifact）：钉定 commit / 版本与许可，发布后正文不改，只在文末追加复核记录；中间过程与备忘在 `.memo/`。<br>
 > 组织方式：本文按**产品类别**给总览（回答"它是什么"）；各条目文件内的研究标签沿用原始脉络记录**证据层级**（回答"我们在哪一层借它"）：L4 → Project / Chat Room，L3 → Task / Kanban，L2 → Run / Workflow，L1 → Harness / Terminal。这两个分类维度互相独立：一个产品重心在 Terminal 的产品可以贡献 L3 证据，反之亦然。
 
-目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md)、[`build-tools/`](./build-tools/README.md) 和 [`lineage/`](./lineage/README.md)。
+目录规则：研究根目录只放跨候选的归纳、选型汇总、方法论和总索引；以单个产品或项目为对象的 case 放进同层同类子目录。同一 case 的补充源码审计、实测或复核记录与主条目放在一起。当前单案目录为 [`workbench/`](./workbench/README.md)、[`harness/`](./harness/README.md)、[`context/`](./context/README.md)、[`runtime/`](./runtime/README.md)、[`remote-control/`](./remote-control/README.md)、[`build-tools/`](./build-tools/README.md)、[`lineage/`](./lineage/README.md) 和 [`models/`](./models/README.md)。`models/` 收控制面自己调用的判断模型与本地推理，不收 Room 里参与者用的编码代理。
 
 ## 引用准入
 
@@ -81,6 +81,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [harness-access.md](./harness-access.md) | OpenCode、Pi 与 Kimi Code | E-L1-HARNESS-ACCESS | ① Coding Harness | 适配协议 |
 | [deepseek-harness.md](./harness/deepseek-harness.md) | DeepSeek Harness / Cordis | E-L1-DEEPSEEK-HARNESS | ① Coding Harness | 仅参考行为 |
 | [mu.md](./harness/mu.md) | mu（Pi 分叉，判断内核 `packages/kyrn-judge`） | E-L1-MU | ① Coding Harness | 暂缓：只记录，判断机制是否借用待讨论 |
+| [models/clm-8b.md](./models/clm-8b.md) | CLM-8B（冻结 Qwen3-8B 加可训练投影头） | E-MODEL-CLM | 判断模型 | 暂缓：开源可自部署，只训小头；要 GPU，中文未见评测 |
+| [models/laya.md](./models/laya.md) | Laya v0.3.23 | E-MODEL-LAYA | 判断模型 | 暂缓：本机 CPU 可跑；零样本弱，要靠微调 |
 | [first-tree.md](./workbench/first-tree.md) | First Tree | E-L4-FIRST-TREE | ② Agent 协作平台 | 移植有边界的组件 |
 | [claude-tag.md](./workbench/claude-tag.md) | Claude Tag | E-L4-CLAUDE-TAG | ② Agent 协作平台 | 仅参考行为 |
 | [grok-bot.md](./workbench/grok-bot.md) | Grok Bot 与 Grok Build | E-GROK-BOT | ② Agent 协作平台 | 仅参考行为 |
