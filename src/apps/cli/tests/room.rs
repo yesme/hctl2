@@ -4,8 +4,9 @@ mod project;
 use chat::{Server, key, main_room, reference};
 use serde_json::{Value, json};
 use std::{
+    fs::File,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::Duration,
 };
 use store::{
@@ -31,19 +32,43 @@ impl Fixture {
     fn packaged(name: &str) -> (Self, u16) {
         let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let archive = find(Path::new(env!("HCTL2_TEST_DEPENDENCY_PACKAGE")), |p| {
-            p.file_name()
-                .unwrap()
-                .to_str()
-                .is_some_and(|n| n.ends_with(".tar.xz") && !n.contains("-sources"))
-        })
+        let archive = find(
+            Path::new(
+                &std::env::var("HCTL2_TEST_DEPENDENCY_PACKAGE")
+                    .expect("HCTL2_TEST_DEPENDENCY_PACKAGE must be set to run this test"),
+            ),
+            |p| {
+                p.file_name()
+                    .unwrap()
+                    .to_str()
+                    .is_some_and(|n| n.ends_with(".tar.zst") && !n.contains("-sources"))
+            },
+        )
         .unwrap();
         let extract = root.join("install");
         std::fs::create_dir(&extract).unwrap();
+        // The archive is a zstd frame; decompress with the pinned tool instead
+        // of relying on the host tar's decoder, then unpack the tar.
+        let zstd = Path::new(
+            &std::env::var("HCTL2_ZSTD_ROOT")
+                .expect("HCTL2_ZSTD_ROOT must be set to run this test"),
+        )
+        .join("bin/zstd");
+        let tar_file = root.join("payload.tar");
+        let tar_out = File::create(&tar_file).unwrap();
+        assert!(
+            Command::new(&zstd)
+                .arg("-dc")
+                .arg(&archive)
+                .stdout(Stdio::from(tar_out))
+                .status()
+                .unwrap()
+                .success()
+        );
         assert!(
             Command::new("tar")
                 .args(["-xf"])
-                .arg(archive)
+                .arg(&tar_file)
                 .arg("-C")
                 .arg(&extract)
                 .status()

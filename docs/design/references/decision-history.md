@@ -398,6 +398,13 @@ D 批按所有者 2026-09-15 的 [#230 拍板](https://github.com/yesme/hctl2/pu
 
 本版放开了「Topic Room 只能从主 Room 开出」这一限制（v0.18.7 统一 Topic 开场时写定的来源范围）。这与 v0.18.7 的扁平化不冲突：那次撤掉的是跨层级的包含（Repo Room → Project → Scoped Room），这次的树只在同一 Project 的 Rooms 内部，Rooms、Kanbans、Runs 仍然并列。对话原文见 [log](../../../.memo/log/2026-10-01-room-树.md)，结论与过程见 [Room 树备忘](../../../.memo/design/room-tree-20261001.md)。
 
+<a id="40-发行包压缩换-zstd"></a>
+## 40. 发行包压缩从 xz 换成 zstd（2026-10-03）
+
+2026-10-03，所有者把 §35 里 2026-09-07 的打包压缩裁定改判：压缩只发生一次、解压在每次安装都要发生，所以用编码时间与体积换解码时间，取 zstd 最高档位 `--ultra -22 --long=27`，归档名 `.tar.xz` → `.tar.zst`，`.sha256` 旁文件随名走。本机实测（macOS arm64 全部锁定制品打成 665 MB tar）：xz -9 -T0 为 163.8 MB / 64.5 s 编码 / 5.9 s 解包，zstd -22 为 172.3 MB（+5.2%）/ 159 s / 0.7 s；源包体积持平、编码快一倍。
+
+zstd CLI 从上游源码在打包 action 里现编，不随包分发：上游只发源码与 Windows 制品，而 pkgx 的预编译包依赖 zlib / liblzma / liblz4 三个同门 `@rpath` 库。代价是构建宿主需要 C 编译器与 `make`。钉定的 xz 保留，用途收窄为解开 Gitea 上游的 `.xz` 下载制品。对照、来源与回归测试见 [zstd.md](../../research/build-tools/zstd.md)，xz 的复核记录同步记下作废的两句。
+
 <a id="35-小修订台账"></a>
 ## 小修订台账
 
