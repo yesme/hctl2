@@ -1,6 +1,6 @@
 # 判断点：机械优先，然后 sysone，然后人
 
-> 状态：已拍板 · 待落地 · §二 九条由所有者 2026-10-02 逐条确认；§五 第一批做哪个判断点待拍板<br>
+> 状态：已拍板 · 待落地 · §二 九条由所有者 2026-10-02 逐条确认；§五 第一批做哪个判断点待拍板，开工排在演示 3 之后（所有者 2026-10-03，见 [`p2-control-20260906/07-demo-kickoff.md`](./p2-control-20260906/07-demo-kickoff.md) §七）<br>
 > 基线：main @ `d58b547`（草案 v0.19.0）<br>
 > 去向：候选落点见 §六（愿景原则 6、Project/Context 规范、契约测试与决策史）；新判断器的调研先落 `docs/research/`；mu 的证据见 [`docs/research/harness/mu.md`](../../docs/research/harness/mu.md)，三家原始结论见 [`../notes/mu-research-raw-20261002.md`](../notes/mu-research-raw-20261002.md)
 
