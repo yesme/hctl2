@@ -215,7 +215,7 @@ case "$agent" in
       macos)  session="session_e96e0466-cdf7-4790-870f-20ae8b6e862b" ;;
       ubuntu) session="session_9cb83e83-3adf-4a4c-b354-bc8db0572579" ;;
     esac
-    cmd=(kimi --yolo -S "$session")
+    cmd=(kimi --auto -S "$session")
     ;;
   minimax)
     workdir="$workspace/hctl2-minimax"
