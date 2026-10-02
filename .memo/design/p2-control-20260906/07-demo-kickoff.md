@@ -124,7 +124,7 @@
   - 连接票据的签发。
   - `hctl2 profession …`、`room roster …`、`invocation list|show|preview|start|cancel|retry`、`terminal inspect|attach|replay`。
   - 本包交付只读调用的全链；写入型调用的租约与封存在第 6 包接上。
-- **依据**：`spec/project.md` §Room Invocation；`spec/connections.md` §Project / Run → Participant：从授权到派工、§Participant → Project / Run：结果准入、§失败与恢复；`spec/participant.md`；CT-PROJECT、CT-PARTICIPANT、CT-CONNECTION 的相关行。
+- **依据**：`spec/project.md` §Room Invocation、§场景约束（派工预览的内容、提及解析、模型的提及只算建议）；`spec/connections.md` §Project / Run → Participant：从授权到派工、§Participant → Project / Run：结果准入、§失败与恢复；`spec/participant.md`；CT-PROJECT、CT-PARTICIPANT、CT-CONNECTION 的相关行。
 - **做完**：演示 2。
 
 ### 第 6 包 · 变更与合入
@@ -165,7 +165,7 @@
 
 - **范围**：
   - 在试验仓库上按纵向切片 A 全程走通：两条平台路径各一次，两家 harness 各一次，改的是真实的非文档代码。
-  - 缺省路径人只预览两次：合入与完成。
+  - 缺省路径人只预览两次：合入与完成。打开了「发布评审须人显式确认」开关的 Project 多一次发布预览，单独验收（CT-PRODUCT）。
   - 重启 control、Agency 与用到的内容系统后，状态一致，不重复外部副作用。
   - harness 的环境取不到控制面凭据；声明了执行加固的配置按声明生效，施加不了就不启动。
   - 接进完整包测试。
@@ -202,7 +202,7 @@
 
 | 席位 | 这一段做什么 | 依据（本库里的表现） |
 | --- | --- | --- |
-| Claude Code | 设计文档、开工书、状态板；三次演示的验收 | — |
+| Claude Code（即 Fable 席） | 设计文档、开工书、状态板；三次演示的验收 | — |
 | Codex | 定框架；写第 1、2、5、6 包；审别家的包 | 存储内核、Repo 注册、任务源、聊天与 Room 树四个大包都是它写的，评审意见都是一轮改完 |
 | Grok | 写第 3、9 包；审 Codex 的包 | #292 里独立找到三个问题，含一个崩溃恢复窗口；P2.1 的守护进程与托管服务是它写的 |
 | GLM | 写第 4 包；审第 1、6、8 包 | P2.1 的评审都实际跑了测试，#282 查出完整包测试其实是红的 |
