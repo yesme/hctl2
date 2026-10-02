@@ -23,8 +23,9 @@ fi
 
 dirty=$(find "$reports_root" -type f -size +0 | sort)
 if [ -n "$dirty" ]; then
-    # Report paths come from target and filegroup keys, which carry no whitespace.
-    for report in $dirty; do
+    # A report path may carry whitespace, so read the list line by line instead
+    # of splitting it on IFS, which would silently drop diagnostics.
+    printf '%s\n' "$dirty" | while IFS= read -r report; do
         printf 'Clippy diagnostics in %s:\n' "${report#"$reports_root"/}" >&2
         cat "$report" >&2
         echo >&2

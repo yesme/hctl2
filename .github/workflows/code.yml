@@ -296,8 +296,8 @@ jobs:
         include: ${{ fromJSON(needs.changes.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
     # Slowest matrix entry measured 15.3 min (macOS x86_64, full first-party
-    # target set); 45 keeps ~3x headroom and still stops a wedged build long
-    # before the 40+ min hang #287 needed a manual cancel for.
+    # target set); 45 keeps ~3x headroom. #287 needed a manual cancel for a
+    # hang past 40 min, so that is now a failure rather than a queue cost.
     timeout-minutes: 45
     env:
       BUCK_CONSOLE: simple
