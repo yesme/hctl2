@@ -53,6 +53,28 @@ fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
 }
 
 #[test]
+fn project_and_request_local_failures_are_stdout_json_and_nonzero() {
+    let temp = Temp::new();
+    for namespace in ["project", "request"] {
+        let (ok, stdout, _) = run(
+            &temp.0,
+            &[
+                namespace,
+                "create",
+                "--key",
+                "bad",
+                "--input",
+                temp.0.join("absent.json").to_str().unwrap(),
+            ],
+        );
+        assert!(!ok);
+        let value: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(value["error"]["code"], "PROJECT_COMMAND_FAILED");
+        assert!(value["error"]["recovery_action"].is_string());
+    }
+}
+
+#[test]
 fn init_start_status_doctor_backup_restore_round_trip() {
     let temp = Temp::new();
     let root = temp.0.as_path();

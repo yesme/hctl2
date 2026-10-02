@@ -29,6 +29,7 @@ filegroup(
         "facts": "root//crates/facts:clippy",
         "foundation": "root//crates/foundation:clippy",
         "proto": "root//crates/proto:clippy",
+        "project": "root//crates/project:clippy",
         "repo": "root//crates/repo:clippy",
         "store": "root//crates/store:clippy",
         "task": "root//crates/task:clippy",

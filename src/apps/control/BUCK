@@ -8,6 +8,7 @@ CONTROL_DEPS = [
     "root//crates/chat:chat",
     "root//crates/foundation:foundation",
     "root//crates/proto:proto",
+    "root//crates/project:project",
     "root//crates/repo:repo",
     "root//crates/store:store",
     "root//crates/task:task",

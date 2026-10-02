@@ -8,6 +8,7 @@ members = [
     "crates/foundation",
     "crates/proto",
     "crates/proto/codegen",
+    "crates/project",
     "crates/repo",
     "crates/store",
     "crates/task",

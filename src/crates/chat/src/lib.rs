@@ -80,7 +80,10 @@ pub fn room(store: &Store, project: &str, id: &str) -> Result<(Record, Room)> {
         store,
         &key(Scope::Project(project.into()), "room_binding", id),
     )?;
-    let room = decode(&record)?;
+    let mut room: Room = decode(&record)?;
+    if let Some(roster) = store.get(&key(record.key.scope.clone(), "room_roster", id))? {
+        room.participants = decode(&roster)?;
+    }
     Ok((record, room))
 }
 pub fn active_project(store: &Store, project: &str, version: i64) -> Result<Record> {

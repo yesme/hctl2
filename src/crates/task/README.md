@@ -18,7 +18,7 @@
 
 本批只把已注册平台的 issues 候选变成绑定，注册目前每种平台返回一个候选；第二源引用的准入已可用并有领域测试，端到端接第二家任务服务器仍等 Vikunja / Linear 后续包。辛负责创建 Project：本包拒绝不存在、未激活 Repo 下或已归档的 Project。测试预置 Project，不为产品增加绕过辛的命令。
 
-辛可读取 `task_state.pending_contract` 与 `needs_attention` 组装自己的投影；这里不实现 Request。P2.3 接 Run 时使用同 Project 的 `run` 记录（当前检查 `task_id`、`lifecycle`）及 Task 的 `run_occupancy`；未知 Run 形状按非终态处理。契约采纳不改 Run，取消检查活动 Run，删源卡只确认影响而不取消任一 Run。
+Project 模块读取 `task_state.pending_contract` 与 `needs_attention` 组装自己的投影。Task 只保存来源侧 `RequestBlocker`，Project 独占 Request 生命周期；`prepare_request_adoption` 复用同一契约 reducer，`materialize / apply` 供唯一投递接收方在现有事务内准入，普通采纳不能绕过开放 Request。P2.3 接 Run 时使用同 Project 的 `run` 记录（当前检查 `task_id`、`lifecycle`）及 Task 的 `run_occupancy`；未知 Run 形状按非终态处理。契约采纳不改 Run，取消检查活动 Run，删源卡只确认影响而不取消任一 Run。
 
 ## CLI
 

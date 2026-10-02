@@ -4,6 +4,7 @@
 
 pub mod chat;
 mod identity;
+mod projects;
 mod repositories;
 mod scm;
 mod service;
@@ -83,12 +84,14 @@ impl Daemon {
         );
         let polling = service.reconcile_task_sources();
         let room_polling = service.reconcile_rooms();
+        let project_polling = service.reconcile_projects();
         let chat = chat::serve(self.root.clone(), hosted, Arc::clone(&self.store));
         tokio::select! {
             result = serve_listener(listener, service) => result,
             _ = polling => Ok(()),
             _ = chat => Ok(()),
             _ = room_polling => Ok(()),
+            _ = project_polling => Ok(()),
         }
     }
 }

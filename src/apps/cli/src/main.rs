@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod project;
 mod repo;
 mod room;
 mod task;
@@ -57,6 +58,10 @@ enum Command {
     Task(task::TaskCommand),
     #[command(subcommand)]
     Room(room::RoomCommand),
+    #[command(subcommand)]
+    Project(project::ProjectCommand),
+    #[command(subcommand)]
+    Request(project::RequestCommand),
 }
 
 #[derive(Subcommand)]
@@ -123,6 +128,8 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
         Command::Room(command) => room::dispatch(command, root, json).await,
+        Command::Project(command) => project::project(command, root, json).await,
+        Command::Request(command) => project::request(command, root, json).await,
         Command::Init => {
             std::fs::create_dir_all(root).map_err(io)?;
             print_out(

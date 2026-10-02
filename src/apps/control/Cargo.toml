@@ -18,6 +18,7 @@ chat = { path = "../../crates/chat" }
 clap.workspace = true
 foundation = { path = "../../crates/foundation" }
 proto = { path = "../../crates/proto" }
+project = { path = "../../crates/project" }
 repo = { path = "../../crates/repo" }
 reqwest.workspace = true
 ruma.workspace = true

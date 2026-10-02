@@ -316,7 +316,7 @@ pub(super) fn submit(
     Ok(result)
 }
 
-fn drive(
+pub(crate) fn drive(
     shared: &Shared,
     services: &Supervisor,
     root: &Path,
@@ -530,6 +530,24 @@ fn drive_using(
                 effect.input["thread_root"].as_str(),
             )?
         }
+        "chat.members" => {
+            guard(&client, root, &room, bound(&room)?)?;
+            if pending {
+                access(shared, |s| {
+                    s.begin_effect(s.generation(), id)?;
+                    Ok(())
+                })?;
+            }
+            let users: Vec<String> = serde_json::from_value(effect.input["users"].clone())?;
+            client.members(
+                bound(&room)?,
+                &users,
+                effect.input["invite"]
+                    .as_bool()
+                    .ok_or_else(|| invalid("membership action missing"))?,
+                pending,
+            )?
+        }
         _ => return Err(invalid("not a chat effect")),
     };
     access(shared, |s| {
@@ -539,4 +557,12 @@ fn drive_using(
         }
         chat::confirm(s, actor, id, receipt)
     })
+}
+
+pub(crate) fn last_activity(services: &Supervisor, room: &Room) -> Result<Option<u64>> {
+    let client = client(services)?;
+    if client.server.binding != room.server.binding {
+        return Err(chat::stale());
+    }
+    client.last_activity(bound(room)?)
 }

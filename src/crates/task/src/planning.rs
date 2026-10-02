@@ -398,6 +398,60 @@ fn add_effect(
 }
 
 pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
+    prepare_inner(store, input, None)
+}
+
+pub fn request_blockers(
+    store: &Store,
+    project: &str,
+    task: &str,
+) -> Result<Vec<(Record, RequestBlocker)>> {
+    store
+        .list("task_request_blocker")?
+        .into_iter()
+        .filter(|r| r.key.scope == Scope::Project(project.into()))
+        .map(|r| Ok((r.clone(), decode::<RequestBlocker>(&r)?)))
+        .collect::<Result<Vec<_>>>()
+        .map(|items| {
+            items
+                .into_iter()
+                .filter(|(_, b)| b.owner.key.id == task)
+                .collect()
+        })
+}
+
+/// Project resolves a Task-owned blocker through the existing adoption reducer.
+/// It supplies the exact waiting record, not an arbitrary bypass flag from a client.
+pub fn prepare_request_adoption(store: &Store, input: Input, blocker: &Record) -> Result<Plan> {
+    let waiting: RequestBlocker = decode(blocker)?;
+    let Action::Adopt {
+        project_id,
+        task_id,
+        version,
+        ..
+    } = &input.action
+    else {
+        return Err(reject(
+            "INVALID_INPUT",
+            "Request action is not contract adoption",
+            "correct_input",
+        ));
+    };
+    if blocker.key.kind != "task_request_blocker"
+        || blocker.key.scope != Scope::Project(project_id.clone())
+        || store.get(&blocker.key)?.as_ref().map(|r| r.version) != Some(blocker.version)
+        || waiting.owner.key != key(blocker.key.scope.clone(), "task_state", task_id)
+        || waiting.owner.version != Version::State(*version)
+        || !waiting.waiting
+        || waiting.delivery.is_some()
+        || waiting.outcome.is_some()
+    {
+        return Err(stale());
+    }
+    prepare_inner(store, input, Some(&waiting.request_id))
+}
+
+fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result<Plan> {
     if input.key.trim().is_empty() {
         return Err(reject(
             "INVALID_INPUT",
@@ -705,6 +759,19 @@ pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
             if *version != r.version {
                 return Err(stale());
             }
+            for (_, blocker) in request_blockers(store, project_id, task_id)? {
+                if blocker.owner == reference(&r)
+                    && blocker.waiting
+                    && blocker.outcome.is_none()
+                    && answering != Some(blocker.request_id.as_str())
+                {
+                    return Err(reject(
+                        "REQUEST_REQUIRED",
+                        "answer the existing contract Request",
+                        "resolve_request",
+                    ));
+                }
+            }
             check_contract(store, &mut p, project_id, Some(&t), adoption)?;
             let (_, src) = source(store, &t.repo_id, &t.source_id)?;
             let (sr, _) = approved_source(store, &mut p, project_id, &src.repo_id, &src.id)?;
@@ -943,6 +1010,20 @@ pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
             p.cancel_effects.push(effect_id.clone());
             p.result = json!({"withdrawn_effect_id":effect_id,"state":"cancelled"});
         }
+    }
+    // Exact Project authorization survives subsequent default/policy updates.
+    // Claim has no contract yet, but already creates a Project-owned Task.
+    for record in p
+        .records
+        .iter_mut()
+        .filter(|r| r.key.kind == "task" && r.version == 1)
+    {
+        let project_id = match &record.key.scope {
+            Scope::Project(id) => id,
+            _ => continue,
+        };
+        let accepted = required(store, &key(record.key.scope.clone(), "project", project_id))?;
+        record.sources.push(reference(&accepted));
     }
     Ok(p)
 }

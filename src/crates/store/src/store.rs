@@ -274,6 +274,30 @@ impl Store {
             .collect()
     }
 
+    /// Read admitted activity in one existing scope, using event order rather
+    /// than wall-clock timestamps. Public callers still choose the permitted scope.
+    pub fn recent_versions(&self, scope: &Scope, limit: u32) -> Result<Vec<(i64, Record)>> {
+        self.status.require_ready()?;
+        let scope = serde_json::to_value(scope)?;
+        let mut query = self.conn.prepare(
+            "SELECT sequence,record FROM events WHERE json_extract(record,'$.key.scope.kind')=?1 AND coalesce(json_extract(record,'$.key.scope.id'),'')=?2 ORDER BY sequence DESC LIMIT ?3",
+        )?;
+        query
+            .query_map(
+                params![
+                    scope["kind"].as_str(),
+                    scope["id"].as_str().unwrap_or(""),
+                    limit
+                ],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+            )?
+            .map(|r| {
+                let (sequence, record) = r?;
+                Ok((sequence, serde_json::from_str(&record)?))
+            })
+            .collect()
+    }
+
     pub fn rebuild_projections(&mut self, generation: WriterGeneration) -> Result<()> {
         self.check_writer(generation)?;
         rebuild(&mut self.conn)
