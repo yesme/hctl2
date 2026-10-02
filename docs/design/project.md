@@ -1,6 +1,6 @@
 # Project 与 Room
 
-> 状态：规范性（架构层） · 草案 v0.18.11<br>
+> 状态：规范性（架构层） · 草案 v0.19.0<br>
 > 日期：2026-09-02
 
 > 本文是 Project 模块的设计正文：它为什么存在、拥有什么、按什么规则运转。精确对象、状态机与写入约束见[约束附录](./spec/project.md)；模块交接见[连接约束](./spec/connections.md)，共享机制见[系统边界](./spec/system.md)。
@@ -32,7 +32,7 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 - HCTL 房间对控制面明文可读；端到端加密的绑定前置、降级与换绑恢复见[Project 约束](./spec/project.md#room-与消息)。
 - Memo 经显式提炼、预览并发布后成为长期知识；正文保存不等于发布，按[存储约束](./spec/system.md#控制面自己的存储)准入。
 - 单次调用适合一次性的研究、比较或范围明确的写入；需要持久重试、候选切换或评审关卡时则创建 [Run](./run.md)。
-- 创建 Topic Room 时，先确认一份可独立阅读的前情提要与精确来源，可删减、补充、去敏；聊天话题取自主 Room，Request 升级取自请求及所阻塞的工作，不要求先在主 Room 发消息。之后的主 Room 聊天不会自动流入 Topic Room。
+- 创建 Topic Room 时，先确认一份可独立阅读的前情提要与精确来源，可删减、补充、去敏；草稿由系统起草，缺省只挑原文、不改写，配置了能生成文字的小模型才改写（见[前情提要](./context.md#前情提要房间的滚动上下文)）；聊天话题取自来源 Room（主 Room 或某间 Topic Room），Request 升级取自请求及所阻塞的工作，不要求先在主 Room 发消息。之后来源 Room 的聊天不会自动流入新 Topic Room。
 - Project/Room 历史独立于客户端与运行时存活。
 
 ## Room 类型
@@ -40,15 +40,15 @@ Project 模块保存“为什么做、依据是什么、谁在参与”的长期
 | Room | 作用 | 生命周期 |
 | --- | --- | --- |
 | Project Room（主 Room） | Project 的日常讨论；用户从 Project 名称进入的主 Room | 创建 Project 时建立；Project 归档后只读 |
-| Topic Room | 在同一 Project 内围绕一个话题独立讨论，也可关联 Request | 由人关闭；关联对象各按自己的规则推进 |
+| Topic Room | 在同一 Project 内围绕一个话题独立讨论，也可关联 Request；挂在主 Room 或另一间 Topic Room 之下 | 由人关闭，不连带关闭下级；关联对象各按自己的规则推进 |
 
-一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run；承接未解决 Request 的房间仍保留闲置关注提醒。精确边界见[约束附录](./spec/project.md#room-与消息)。
+一个控制面可以为同一 Repo（仓库）创建多个 Project，各有自己的主 Room。每个 Room 独立选人；普通 Topic Room 不要求先约定结论或回填动作，关闭讨论也不等于解决 Request、取消 Task 或终止 Run；承接未解决 Request 的房间仍保留闲置关注提醒。同一 Project 的 Room 因此组成一棵以主 Room 为根的树：出处（从哪里开出）是治理事实，记在控制面、不改写；挂在谁下面是 chat server 的原生层级，可以改挂，HCTL 只读投影，依据见[对象之间的关系归原生系统](./architecture.md#对象之间的关系)。讨论可以分叉，世界只有一份（[设计原则 19](./vision.md#设计原则)）：一间 Room 里只有一条时间线和一层讨论串，没有原地分叉；要换方向就开新的 Topic Room。精确边界见[约束附录](./spec/project.md#room-与消息)。
 
 ## Room 场景
 
 Room 是 Project 的主要操作场景——它就是聊天室。Workbench 左侧点击 Project 名打开主 Room，旁边的“待你处理”打开待处理面板；Rooms、Kanbans、Runs 是并列入口，彼此通过引用联系（见[导航与交互](../user-experience/04-project-navigation.md)）。Room 提供：
 
-- 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；
+- 消息顺序由 chat server 的线性时间线统一给出，不靠客户端时间戳或渲染顺序；旁支话题用一层讨论串，所有成员可见；
 - `@` 本 Room 名册里的规划者或职责——施工者不在 Room 里被 @，要和正在执行的施工者说话，进绑定那次执行的 Execution Chat；/ 类型化动作、$ Skill（技能包）、`#` 文件/Artifact/消息引用；
 - 并发单次调用的独立流、取消和结果卡；
 - Request、Project 概览、Task/Run 里程碑和需要关注投影；

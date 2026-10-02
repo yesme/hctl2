@@ -22,7 +22,6 @@ filegroup(
     srcs = glob([
         "README.md",
         "AGENTS.md",
-        "CLAUDE.md",
         "CONSTRAINTS.md",
         "WRITING-GUIDE.md",
         "LICENSE",

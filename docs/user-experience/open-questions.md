@@ -58,7 +58,7 @@
 | 工作边界与命名 | [三面架构 §单元与连接](../design/architecture.md#单元与连接)、[设计地图](../design/README.md#对象关系)、[Project 约束](../design/spec/project.md#对象)、[Repo 约束](../design/spec/repo.md#repo-注册) | Project 作为工作范围，Repo 保留代码职责；保留同 Control、同 Repo 多 Project 及各自授权，只凭 Control 与 Repo 不能确定是哪份工作。Q2 另起本地工作才登记新 Repo，普通的同 Repo 新 Project 不需要另一份 Repo 身份 |
 | 架构中的场景与容器 | [场景与系统](../design/architecture.md#场景与系统)、[5×3 归属矩阵](../design/architecture.md#53-归属矩阵) | 对齐表后“一个 Repo 一个 Repo Room、一个 Project 一个 Project Room”两级聊天容器，以及“一仓一张合并板、Project 是分组”的旧叙述；按 Source 进入看板不改变内容仍归各任务源的分责 |
 | 内容归属与引用 | [Project 约束](../design/spec/project.md#repo-注册与-project-归档)、[Task 约束](../design/spec/task.md#对象)、[连接约束](../design/spec/connections.md#连接模型) | 既有内容不换 Project；消息不换 Room；Task 不换 Source；同 Project 的交叉引用不迁移归属、不自动改变承诺与授权 |
-| Room 创建、分类与入口 | [Project 正文](../design/project.md#room-类型)、[Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room 与消息](../design/spec/project.md#room-与消息) | 对齐登记 Repo 另建仓库级 Room、无 Project 的 Repo Room 及来源提升的旧路径；唯一性按每个 Project 的主 Room，不按 Repo 把多个 Project 的主 Room 合成一间。聊天派生的 Topic Room 用本 Project 主 Room 的前情提要开场；Request 升级则引用请求及其阻塞对象。提要的选材范围与生成方式留给实现设计 |
+| Room 创建、分类与入口 | [Project 正文](../design/project.md#room-类型)、[Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room 与消息](../design/spec/project.md#room-与消息) | 对齐登记 Repo 另建仓库级 Room、无 Project 的 Repo Room 及来源提升的旧路径；唯一性按每个 Project 的主 Room，不按 Repo 把多个 Project 的主 Room 合成一间。聊天派生的 Topic Room 用本 Project 主 Room 的前情提要开场；Request 升级则引用请求及其阻塞对象。提要的选材范围与生成方式已按所有者 2026-09-28 裁定落到 [Room 与消息](../design/spec/project.md#room-与消息)（v0.18.12）：系统自身起草，缺省只挑不写，配置了小模型才改写；起草所用引擎待[引擎调研](../../.memo/design/p2-control-20260906/06-small-brain-engine-research.md) |
 | 主 Room 的调用范围 | [Repo 注册与 Project 归档](../design/spec/project.md#repo-注册与-project-归档)、[Room Invocation](../design/spec/project.md#room-invocation) | 替换旧 `repo_scope` 只读、`project_scope` 可携带写入规则的区分，让主 Room 和 Topic Room 都能走 T3 的有边界调用；合并房间不自动授予写权限，仍按具体调用的批准范围做事 |
 | Topic 的关闭与闲置提示 | [Room 与消息](../design/spec/project.md#room-与消息)、[交付 §运行默认值](../design/delivery.md#运行默认值) | Scoped Room 的用途并入 Topic Room，但冻结完成条件、回填与结案理由、闲置 14 天提示不能整体套给普通 Topic。承接开放 Request 的 Topic 保留旧闲置关注提醒，普通话题不适用，不给所有 Topic 强加结案手续；真正待办按已有 Request 或对象状态投影，处理仍走原命令 |
 | 待人处理入口 | [Project 正文](../design/project.md#room-场景)、[Run 正文](../design/run.md#workflow-场景) | 按 [04](./04-project-navigation.md#待你处理从-project-标记进入)对齐 Project 标记与待处理面板；汇总已有事项，处理历史留在原处；普通进度与确需人处理的请求分开 |
@@ -69,13 +69,15 @@
 | 术语与验证 | [术语表](../design/references/glossary.md#核心产品词)、[S1 映射](../design/scenarios/S1-multi-unit.md#四不变量)、[契约测试](../design/contract-tests.md) | 保留 CT-REPO 的同 Repo 两个 Project 分别授权及 CT-PRODUCT 的四 Project 多机走查；纠正 S1 §二/§四/§五和矩阵导言把两个 Project 误判为两间 Topic Room 的说明。CT-PROJECT 的主 Room 创建、来源提升、闲置回填，CT-TASK 的看板与分组、CT-WORKBENCH-IA 的入口按实际变化对齐；S1.I3 的 Room 唯一范围改为每 Project |
 | 决策史与版本 | [决策史](../design/references/decision-history.md#当前设计) | 正式收敛时记录 Project 入口、Room 分类与 Source 导航等实际变化，保留同 Repo 多 Project，不把取消它写成转折。随实际约束变化更新版本与可失败用例；本轮已扩为体验澄清与场景验收同步，更新到 v0.18.7 |
 
+上表按 #257 当时的同步状态保留。v0.19.0（#296）起，聊天展开的来源扩到本 Project 任一 Room，Topic Room 可以挂在另一间 Topic Room 之下，见 [Room 与消息](../design/spec/project.md#room-与消息)。
+
 **共享 Source 的验收走查：** C2 的两个 Mac Project 若都选择同 Repo 的 GitHub Issues，会读到同一 Source 的卡片。所有者随后明确 [Project 是独立 Namespace](./04-project-navigation.md#2026-09-19project-独立-namespace)：[Task 实体映射](../design/spec/task.md#契约与来源)的唯一范围由 Control 收窄为各 Project 内；双方分别认领可各得自己的 Task，契约、Run、授权与验收独立，外部卡仍只有一张。S3.P5 配对验证，不把新建独立 Task 当成搬动既有 Task。Fable 在 [#257 评审](https://github.com/yesme/hctl2/pull/257#issuecomment-5734517467)举的两个 Repo 接同一个 Linear team 是用例外的另一例，不能把它冒充原文；同 Repo 两个 Project 则已有 C2 的明确依据。
 
 ## 旧讨论怎样接手
 
 09-17/18 各 Harness 的同题备忘已归档，文件头逐项写明哪些判断被覆盖、哪些仍成立。C2 已纠正前轮的过度核销：同 Control、同 Repo 开多个 Project 不是过时结论，把 Mac 两个 Project 改成 Topic Room 才是误读。当前需求读本目录，原文仍供溯源；不按旧拍板表逐项追问，也不将整篇建议算作所有者裁决。
 
-持续建议的触发与费用控制、提要的选材范围与生成方式、图形观察能力怎样交付，仍需主笔安排实现设计；模板与读回沿用既有批准规则，#257 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
+持续建议的触发与费用控制、图形观察能力怎样交付，仍需主笔安排实现设计，其中持续建议的引擎与触发并入[引擎调研](../../.memo/design/p2-control-20260906/06-small-brain-engine-research.md)；提要的选材范围与生成方式已于 v0.18.12 落到 [Room 与消息](../design/spec/project.md#room-与消息)；模板与读回沿用既有批准规则，#257 已同步引用及反例。本轮已明确目标体验，没有拍定旧稿提出的特定机制或排期。[旧主笔稿 §六](../../.memo/design/user-path-20260917.md#六请所有者拍板)的模板跳过读回、[K3 稿 §五](../../.memo/design/user-path-alignment-20260918.md#五需要怎么改)的显式不挂平台第三选项，都只是历史候选，不进入本轮已定体验。
 
 [F 批 PR #246](https://github.com/yesme/hctl2/pull/246)原来讨论 Task 的 Project 归属可变，以及实体到 Task 在整个 Control 内唯一。两项前提已由所有者 09-19 的固定归属与独立 Namespace 确认取代：现为各 Project 自己认领 Task，唯一范围是 Project 内（见[决策史 §38](../design/references/decision-history.md#38-体验澄清project-各自主-roomtopic-与多源入口v0187)）。同 Repo 多 Project 仍成立，不能用“这一层已删除”作理由；F 批已由作者与所有者于 2026-09-19 决定归档：#246 改为方案备忘的归档 PR 并合入（`fc2aad8`），前提被 v0.18.7 取代。
 
