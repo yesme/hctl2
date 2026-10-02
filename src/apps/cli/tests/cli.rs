@@ -32,8 +32,7 @@ impl Drop for Temp {
 
 // Read at run time, not compile time: the Clippy pass compiles these tests
 // without the test rule's env, so `env!` would fail the whole Clippy report
-// before it could say anything about lints. Cargo sets the same variables for
-// the test process.
+// before it could say anything about lints.
 fn hctl2() -> PathBuf {
     PathBuf::from(std::env::var("CARGO_BIN_EXE_hctl2").expect("CARGO_BIN_EXE_hctl2 must be set"))
 }
