@@ -222,6 +222,7 @@ jobs:
           src/build/tools/shellcheck-bin --severity=error -x \
             src/buck2 \
             src/build/ci/affected-targets \
+            src/build/ci/clippy-coverage \
             src/build/tools/install-dotslash \
             src/packaging/dependencies/hctl2-services
 
@@ -232,6 +233,13 @@ jobs:
             echo 'hctl2-services accepted an argument for status' >&2
             exit 1
           fi
+
+      - name: Check every Clippy report has a reader
+        if: steps.paths.outputs.code == 'true'
+        env:
+          BUCK_CONSOLE: simple
+          HCTL2_BUCK2_CACHE: 0
+        run: src/build/ci/clippy-coverage
 
       - name: Select impacted Buck targets with BTD
         id: btd
