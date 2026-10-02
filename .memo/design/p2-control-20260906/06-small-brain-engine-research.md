@@ -114,3 +114,9 @@
 ```
 你在 yesme/hctl2 做一份调研：Room 里三件轻量判断与总结的活各用什么引擎。任务书：main 上 .memo/design/p2-control-20260906/06-small-brain-engine-research.md（§一到 §六是要求，§七是起点清单，自行核实）。分支 grok/small-brain-engines，base main，一个 PR，不自合；样本整理好后报所有者，由所有者转 Fable 标注，标注到齐再跑；评审席位 GLM 与 Fable 各自独立审，修正项改完后由你合、合前报所有者。回报：PR 编号、分支、交付文件清单、每件活的建议、哪些实测了、哪些标了未实测。
 ```
+
+## 补记（2026-10-02）
+
+- mu（Pi 分叉，以 Jev 为主后端的判断内核）的调研见 [`docs/research/harness/mu.md`](../../../docs/research/harness/mu.md)，三家原始结论见 [`.memo/notes/mu-research-raw-20261002.md`](../../notes/mu-research-raw-20261002.md)；所有者要求先记录，是否按它的机制走未定。
+- Pi v0.99.0 原生的分类模型与本机 `llama-cpp-classify` 见 [`harness-access.md` 复核记录](../../../docs/research/harness-access.md#复核记录)，与 #290 `models/llama-cpp.md`「不提供只准选这些选项的约束」一句相关。
+- GPT 指出本任务书 B 的缺口边界前后不一：§二写「上次收到信息以来」，§四样本写「上次发言到这次被点名」。哪个为准待定，未改正文。

@@ -31,7 +31,7 @@
 
 ### ① Coding Harness · 编码代理本体
 
-HCTL2 驱动 Coding Harness，借 OpenCode、Pi、Kimi Code 的接入协议以及 DeepSeek Harness、Grok Build 的架构边界，不借其产品模型；文件、证据编号与复用决策见[条目索引](#条目索引)。
+HCTL2 驱动 Coding Harness，借 OpenCode、Pi、Kimi Code 的接入协议以及 DeepSeek Harness、Grok Build 的架构边界，不借其产品模型；mu 的判断内核只记录、暂缓；文件、证据编号与复用决策见[条目索引](#条目索引)。
 
 ### ② Agent 协作平台 · 人机混合协作系统
 
@@ -80,6 +80,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | --- | --- | --- | --- | --- |
 | [harness-access.md](./harness-access.md) | OpenCode、Pi 与 Kimi Code | E-L1-HARNESS-ACCESS | ① Coding Harness | 适配协议 |
 | [deepseek-harness.md](./harness/deepseek-harness.md) | DeepSeek Harness / Cordis | E-L1-DEEPSEEK-HARNESS | ① Coding Harness | 仅参考行为 |
+| [mu.md](./harness/mu.md) | mu（Pi 分叉，判断内核 kyrn-judge） | E-L1-MU | ① Coding Harness | 暂缓：只记录，判断机制是否借用待讨论 |
 | [first-tree.md](./workbench/first-tree.md) | First Tree | E-L4-FIRST-TREE | ② Agent 协作平台 | 移植有边界的组件 |
 | [claude-tag.md](./workbench/claude-tag.md) | Claude Tag | E-L4-CLAUDE-TAG | ② Agent 协作平台 | 仅参考行为 |
 | [grok-bot.md](./workbench/grok-bot.md) | Grok Bot 与 Grok Build | E-GROK-BOT | ② Agent 协作平台 | 仅参考行为 |
