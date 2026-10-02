@@ -1,0 +1,215 @@
+use super::*;
+use std::collections::BTreeMap;
+
+#[test]
+fn mechanical_selection_uses_server_order_relations_and_mentions_not_body() {
+    let events = vec![
+        json!({"event_id":"$z","type":"m.room.message","origin_server_ts":100,"content":{"body":"@human word"}}),
+        json!({"event_id":"$a","type":"m.room.message","origin_server_ts":1,"content":{"body":"different","m.relates_to":{"m.in_reply_to":{"event_id":"$z"}},"m.mentions":{"user_ids":["@human:test"]}}}),
+    ];
+    assert_eq!(
+        select(
+            &events,
+            &Selection::Range {
+                start: "$z".into(),
+                end: "$a".into()
+            }
+        )
+        .unwrap(),
+        vec!["$z", "$a"]
+    );
+    assert_eq!(
+        select(
+            &events,
+            &Selection::Replies {
+                event_id: "$z".into()
+            }
+        )
+        .unwrap(),
+        vec!["$z", "$a"]
+    );
+    assert_eq!(
+        select(
+            &events,
+            &Selection::Mentions {
+                user_id: "@human:test".into(),
+                after: None
+            }
+        )
+        .unwrap(),
+        vec!["$a"]
+    );
+    assert!(
+        select(
+            &events,
+            &Selection::Range {
+                start: "$a".into(),
+                end: "$z".into()
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn mechanical_window_accepts_last_budget_page_but_never_truncates_unbounded_selection() {
+    for (stop, anchor_page, expected) in [
+        (Some("$start"), 100, true),
+        (Some("$start"), 101, false),
+        (None, 100, false),
+    ] {
+        let mut fetched = 0;
+        let result = drafting::collect_window(
+            vec![json!({"event_id":"$end"})],
+            Some("cursor-0".into()),
+            true,
+            stop,
+            |_, backwards| {
+                assert!(backwards);
+                fetched += 1;
+                let event = if fetched == anchor_page {
+                    "$start".into()
+                } else {
+                    format!("$event-{fetched}")
+                };
+                Ok(json!({"events":[{"event_id":event}],"next":format!("cursor-{fetched}")}))
+            },
+        );
+        assert_eq!(result.is_ok(), expected);
+        assert_eq!(fetched, 100, "never request page 101");
+        if let Ok(events) = result {
+            assert_eq!(events.first().unwrap()["event_id"], "$start");
+            assert_eq!(events.last().unwrap()["event_id"], "$end");
+        } else {
+            assert_eq!(result.unwrap_err().code, "CHAT_HISTORY_LIMIT");
+        }
+    }
+    // Replies / mentions without a stop event are complete only when the native cursor ends.
+    let mut fetched = 0;
+    assert!(drafting::collect_window(vec![], None, false, None, |_, direction| {
+        assert!(!direction);
+        fetched += 1;
+        Ok(json!({"events":[{"event_id":format!("$event-{fetched}")}],"next":if fetched == 100 { None } else { Some(format!("cursor-{fetched}")) }}))
+    }).is_ok());
+    assert_eq!(fetched, 100);
+}
+
+#[test]
+fn same_structured_action_has_same_input_and_bridge_or_missing_actor_rejected() {
+    let binding = Reference {
+        key: chat::key(Scope::Control, "chat_server", "local"),
+        version: Version::State(1),
+    };
+    let policy = chat::IdentityPolicy {
+        binding,
+        humans: BTreeMap::from([
+            ("@alice:test".into(), "owner".into()),
+            ("@bridge:test".into(), "owner".into()),
+        ]),
+        service_users: vec!["@bridge:test".into()],
+        allowed_actions: vec!["close".into()],
+    };
+    let event = json!({"type":"io.hctl2.action","sender":"@alice:test","event_id":"$act","content":{
+        "target":{"key":{"scope":{"kind":"project","id":"p"},"kind":"room_binding","id":"topic"},"version":{"state":2}},
+        "action":{"kind":"close","project_id":"p","room_id":"topic","version":2}}});
+    let direct = chat::normalize_human_action(&policy, "p", &event).unwrap();
+    let provider = chat::normalize_human_action(&policy, "p", &event).unwrap();
+    assert_eq!(direct.digest, provider.digest);
+    assert_eq!(
+        serde_json::to_value(direct.input).unwrap(),
+        serde_json::to_value(provider.input).unwrap()
+    );
+    for sender in ["@bridge:test", "@hctl2_control:test", "@unmapped:test"] {
+        let mut bad = event.clone();
+        bad["sender"] = json!(sender);
+        assert!(chat::normalize_human_action(&policy, "p", &bad).is_err());
+    }
+    let mut ordinary = event.clone();
+    ordinary["type"] = json!("m.room.message");
+    assert!(chat::normalize_human_action(&policy, "p", &ordinary).is_err());
+    let mut wrong_target = event.clone();
+    wrong_target["content"]["target"]["key"]["id"] = json!("other");
+    assert!(chat::normalize_human_action(&policy, "p", &wrong_target).is_err());
+    let mut missing = event;
+    missing["content"].as_object_mut().unwrap().remove("target");
+    assert!(chat::normalize_human_action(&policy, "p", &missing).is_err());
+}
+
+#[test]
+fn inbox_durable_duplicate_conflict_corruption_and_no_governance_command() {
+    let root = std::env::temp_dir().join(format!(
+        "hctl-inbox-{}-{}",
+        std::process::id(),
+        ruma::TransactionId::new()
+    ));
+    let inbox = observations(&root);
+    let event = json!({"event_id":"$event","room_id":"!room:test","type":"m.room.message","content":{"body":"hello","number":1.5}});
+    let body = json!({"events":[event]}).to_string();
+    inbox
+        .accept("txn", body.as_bytes(), std::slice::from_ref(&event))
+        .unwrap();
+    observations(&root)
+        .accept("txn", body.as_bytes(), &[event])
+        .unwrap();
+    assert_eq!(
+        inbox
+            .accept("txn", b"{\"events\":[]}", &[])
+            .unwrap_err()
+            .code,
+        "INBOX_CONFLICT"
+    );
+    assert!(!root.join("control.sqlite").exists());
+    std::fs::write(root.join("cache/chat-inbox.sqlite"), b"corrupt").unwrap();
+    assert!(
+        observations(&root)
+            .accept("new", b"{\"events\":[]}", &[])
+            .is_err()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn remote_or_redirectable_configuration_is_rejected() {
+    for url in [
+        "https://127.0.0.1:8008",
+        "http://example.com",
+        "http://127.0.0.1:8008/path",
+        "http://user@127.0.0.1:8008",
+    ] {
+        let server = chat::Server {
+            binding: Reference {
+                key: chat::key(Scope::Control, "chat_server", "local"),
+                version: Version::State(1),
+            },
+            url: url.into(),
+            server_name: "local".into(),
+            sender: "@hctl2_control:local".into(),
+        };
+        assert!(matrix::Client::new(server, "secret".into()).is_err());
+    }
+}
+
+#[test]
+fn cycle_edges_are_omitted_without_hiding_valid_multiple_parents() {
+    use std::collections::BTreeMap;
+    for canonical in [false, true] {
+        let mut nodes = ["main", "a", "b", "child"]
+            .map(|id| (id.into(), tree::Hierarchy::default()))
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        let edges = [
+            ("main", "a"),
+            ("a", "b"),
+            ("b", "a"),
+            ("a", "child"),
+            ("main", "child"),
+        ]
+        .into_iter()
+        .map(|(p, c)| ((p.into(), c.into()), canonical))
+        .collect();
+        tree::project_edges(&mut nodes, &edges);
+        assert_eq!(nodes["child"].parents.len(), 2);
+        assert!(nodes["a"].needs_attention && nodes["b"].needs_attention);
+        assert!(nodes["b"].parents.is_empty());
+    }
+}

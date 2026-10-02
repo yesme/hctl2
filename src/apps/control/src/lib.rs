@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod chat;
 mod identity;
 mod repositories;
 mod scm;
@@ -64,9 +65,6 @@ impl Daemon {
         tokio::task::spawn_blocking(move || match Store::open_with_status(&root, status) {
             Ok(opened) => {
                 *store.blocking_lock() = Some(opened);
-                if let Err(error) = hosted_open.ensure_up() {
-                    hosted_open.set_last_error(error);
-                }
             }
             Err(error) => {
                 hosted_open.set_last_error(format!(
@@ -81,12 +79,16 @@ impl Daemon {
             self.status.clone(),
             Arc::clone(&self.store),
             Arc::clone(&self.open_error),
-            hosted,
+            Arc::clone(&hosted),
         );
         let polling = service.reconcile_task_sources();
+        let room_polling = service.reconcile_rooms();
+        let chat = chat::serve(self.root.clone(), hosted, Arc::clone(&self.store));
         tokio::select! {
             result = serve_listener(listener, service) => result,
             _ = polling => Ok(()),
+            _ = chat => Ok(()),
+            _ = room_polling => Ok(()),
         }
     }
 }

@@ -233,6 +233,38 @@ impl Supervisor {
         self.ensure_up_inner()
     }
 
+    /// Load a newly provisioned native AppService registration even when Tuwunel was
+    /// already started manually. Other processes in the shared project are left alone.
+    pub(crate) fn ensure_chat_up(&self, registration_digest: &str) -> Result<(), String> {
+        let _guard = self.serialized();
+        let marker = self.state_root().join("config/appservice-loaded");
+        let changed = fs::read_to_string(&marker).ok().as_deref() != Some(registration_digest);
+        let running = self.health("tuwunel").running;
+        self.ensure_up_inner()?;
+        if changed
+            && running
+            && let Backend::Packaged {
+                install_root,
+                services_bin,
+            } = &self.backend
+        {
+            let mut cmd = Command::new(services_bin);
+            cmd.env("HCTL2_INSTALL_ROOT", install_root);
+            self.apply_state_env(&mut cmd);
+            if !cmd
+                .args(["restart", "tuwunel"])
+                .status()
+                .map_err(io)?
+                .success()
+            {
+                return Err("Tuwunel AppService reload failed".into());
+            }
+        }
+        crate::chat::write_private_config(&marker, registration_digest.as_bytes())
+            .map_err(|e| e.message)?;
+        Ok(())
+    }
+
     fn ensure_up_inner(&self) -> Result<(), String> {
         let (names, record_error) = match self.consumed_names() {
             Ok(names) => (names, None),
@@ -739,6 +771,10 @@ impl Supervisor {
 
     /// Native platform adapter uses the exact installation and state selected by lifecycle.
     pub(crate) fn gitea_paths(&self) -> Option<(PathBuf, PathBuf)> {
+        self.packaged_paths()
+    }
+
+    pub(crate) fn packaged_paths(&self) -> Option<(PathBuf, PathBuf)> {
         match &self.backend {
             Backend::Packaged { install_root, .. } => {
                 Some((install_root.clone(), self.state_root()))
@@ -882,13 +918,24 @@ fn packaged_pc_socket(state: &Path) -> PathBuf {
 }
 
 fn uid() -> u32 {
-    Command::new("id")
-        .arg("-u")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .and_then(|text| text.trim().parse().ok())
-        .unwrap_or(0)
+    // A native read needs neither a child process nor output pipes. In particular,
+    // status polling must not wait for EOF on a pipe inherited by a hosted daemon.
+    rustix::process::geteuid().as_raw()
+}
+
+#[cfg(test)]
+mod uid_tests {
+    #[test]
+    fn native_effective_uid_matches_service_launcher() {
+        let output = std::process::Command::new("id").arg("-u").output().unwrap();
+        assert!(output.status.success());
+        let expected: u32 = String::from_utf8(output.stdout)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_eq!(super::uid(), expected);
+    }
 }
 
 fn parse_consumed(bytes: &[u8]) -> Result<Vec<String>, String> {

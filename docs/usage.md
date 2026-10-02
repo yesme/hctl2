@@ -258,6 +258,8 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 安装后提供 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services`。`hctl2 start` 拉起控制面，并按首次消费经 Process Compose 拉起随包服务：Tuwunel 是每个 Project 主 Room 的落点，随 start 拉起；Gitea 不随 start 拉起：`hctl2 services consume gitea` 把它记为已消费并拉起，之后随 start 一起起；`hctl2 repo register` 注册纯本地仓库（或显式选本地平台）时已接入该入口，并在就绪后建仓与交付初始代码，身份确认后激活 Repo。命令、输入与恢复例子见 [Repo 注册说明](../src/crates/repo/README.md#cli)。GitHub 等外部平台的克隆绑来源平台，不会拉起 Gitea。已消费集合记在控制面数据目录的 `hosted-consumed.json`，随 `hctl2 services backup` 一起备份、随 `restore` 写回；`hctl2 services status` 列出每个托管组件的 `consumed` 与健康。control 不等所有服务探针通过才接受控制面命令。缺省数据目录与 `hctl2-services` 相同（`~/.local/state/hctl2` 或 `$XDG_STATE_HOME/hctl2`）；只有 `hctl2 --root DIR` 才把服务状态放到 `DIR/services`。运行 `hctl2-services start` 仍会启动全部随包组件（Tuwunel、Cinny、Gitea、Vikunja、Dagu、Herdr），请与 `hctl2 start` 共用同一状态根，避免抢端口。`hctl2 stop` 停掉本控制面拉起的 Tuwunel 与 Gitea；若没有别的组件在跑，会把 Process Compose 项目 `down` 掉，否则本体可按 `--keep-project` 留下。Tuwunel 与 Cinny 共同组成 Chatroom。Vikunja 不随 `hctl2 start` 拉起。
 
+Room 端口的当前命令和确认流程见 [Chat 实现说明](../src/crates/chat/README.md#cli-示例与提要)：`hctl2 room list|show` 读取已建立的 Room，`draft` 机械选入原文，`create-topic|close|rebind|send|freeze|resume` 经预览确认执行。本阶段尚未提供 Project 创建命令，主 Room 的业务入口由 P2.2 辛接线；不要把端口已实现当作完整 Project 使用路径已交付。
+
 ## 制作外部子系统包
 
 这一节面向发布与打包开发者，不是最终用户安装步骤。日常组包消费上游官方制品和 HCTL2 托管的 macOS Tuwunel 预编译制品；版本、URL、SHA-256 和 target identity 统一由 `packaging/dependencies/lock.json` 锁定。进入 `src/`，显式选择平台并运行 Buck：
