@@ -207,6 +207,20 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
                 ));
             }
             let id = topic_id(&project, &input.key);
+            let roster_key = key(p.key.scope.clone(), "room_roster", &id);
+            let roster = store.get(&roster_key)?;
+            if let Some(roster) = &roster {
+                let selected: Vec<Reference> = decode(roster)?;
+                if selected != participants {
+                    return Err(invalid(
+                        "confirmed roster differs from the selected records",
+                    ));
+                }
+            }
+            plan.checks.push(Check {
+                key: roster_key,
+                version: roster.as_ref().map(|r| r.version),
+            });
             // Selection itself is 辛; existing selections from another Room are not inherited.
             for participant in &participants {
                 if participant.key.scope != Scope::Project(project.clone())
@@ -452,6 +466,9 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
     let scope = Scope::Project(plan.input.action.project_id().into());
     let mut materials = vec![];
     if let Action::CreateTopic { brief, .. } = &plan.input.action {
+        let id = topic_id(plan.input.action.project_id(), &plan.input.key);
+        plan.records.push(value_record(key(scope.clone(), "room_created", &id), 1,
+            &json!({"created_at":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs()}))?);
         let material = store.save_material(
             store.generation(),
             &actor,
