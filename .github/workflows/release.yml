@@ -23,6 +23,8 @@ jobs:
   changes:
     name: Release path filter
     runs-on: ubuntu-24.04
+    # Measured 13 s; non-PR events also run the full package classification.
+    timeout-minutes: 10
     outputs:
       release: ${{ steps.paths.outputs.release }}
       platform_matrix: ${{ steps.platforms.outputs.matrix }}
@@ -174,6 +176,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
+    # Slowest matrix entry measured 23.0 min (macOS x86_64); 60 leaves room for
+    # the xz -9 pass the full package ends with, whose cost grows with the tree.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: src
@@ -292,6 +297,8 @@ jobs:
     needs: [changes, package]
     if: always()
     runs-on: ubuntu-24.04
+    # Pure aggregation of `needs` results; measured 9 s.
+    timeout-minutes: 5
     steps:
       - name: Aggregate complete package jobs
         env:
@@ -316,6 +323,9 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     needs: package
     runs-on: ubuntu-24.04
+    # Unobserved: skipped in all ten recent runs, so no measured baseline.
+    # Download plus upload of the per-platform artifacts is the long pole.
+    timeout-minutes: 30
     permissions:
       contents: write
 
