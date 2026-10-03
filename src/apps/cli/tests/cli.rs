@@ -59,6 +59,29 @@ fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
 }
 
 #[test]
+fn secret_backend_setting_persists_and_unknown_values_are_rejected() {
+    let temp = Temp::new();
+    let root = temp.0.as_path();
+    let (ok, stdout, stderr) = run(root, &["init", "--secret-backend", "user-file"]);
+    assert!(ok, "init {stderr} {stdout}");
+    // Recorded by init, picked up by a later start that does not repeat the flag.
+    let (ok, stdout, stderr) = run(root, &["start"]);
+    assert!(ok, "start {stderr} {stdout}");
+    let (ok, stdout, stderr) = run(root, &["status"]);
+    assert!(ok, "status {stderr} {stdout}");
+    assert!(
+        stdout.contains("\"credential_storage\":\"user-file\""),
+        "the recorded backend must survive a restart: {stdout}"
+    );
+    // An unknown backend is a usage error, not a silent fallback to the default.
+    let other = Temp::new();
+    let (ok, _, stderr) = run(&other.0, &["init", "--secret-backend", "keychain"]);
+    assert!(!ok, "init must reject an unknown backend: {stderr}");
+    let (ok, _, stderr) = run(&other.0, &["start", "--secret-backend", "keychain"]);
+    assert!(!ok, "start must reject an unknown backend: {stderr}");
+}
+
+#[test]
 fn project_and_request_local_failures_are_stdout_json_and_nonzero() {
     let temp = Temp::new();
     for namespace in ["project", "request"] {
@@ -86,12 +109,16 @@ fn init_start_status_doctor_backup_restore_round_trip() {
     let root = temp.0.as_path();
     let (ok, stdout, stderr) = run(root, &["init"]);
     assert!(ok, "init {stderr} {stdout}");
-    let (ok, stdout, stderr) = run(root, &["start"]);
+    let (ok, stdout, stderr) = run(root, &["start", "--secret-backend", "user-file"]);
     assert!(ok, "start {stderr} {stdout}");
     let (ok, stdout, stderr) = run(root, &["status"]);
     assert!(ok, "status {stderr} {stdout}");
     assert!(stdout.contains("control_id"), "{stdout}");
     assert!(stdout.contains("local-owner"), "{stdout}");
+    assert!(
+        stdout.contains("\"credential_storage\":\"user-file\""),
+        "status must report the configured backend: {stdout}"
+    );
     let (ok, stdout, stderr) = run(root, &["doctor"]);
     assert!(ok, "doctor {stderr} {stdout}");
     assert!(stdout.contains("secret_backend"), "{stdout}");
@@ -149,7 +176,13 @@ fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_no
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)
-        .args(["--root", root.to_str().unwrap(), "start"])
+        .args([
+            "--root",
+            root.to_str().unwrap(),
+            "start",
+            "--secret-backend",
+            "user-file",
+        ])
         .output()
         .unwrap();
     assert!(
@@ -203,7 +236,7 @@ fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_no
 fn repo_abandon_before_dispatch_releases_target_and_resume_never_restarts_it() {
     let temp = Temp::new();
     let root = &temp.0;
-    let (ok, out, err) = run(root, &["start"]);
+    let (ok, out, err) = run(root, &["start", "--secret-backend", "user-file"]);
     assert!(ok, "{out} {err}");
     let input = root.join("register.json");
     std::fs::write(

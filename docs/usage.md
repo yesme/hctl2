@@ -260,6 +260,8 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 Room 端口的当前命令和确认流程见 [Chat 实现说明](../src/crates/chat/README.md#cli-示例与提要)：`hctl2 room list|show` 读取已建立的 Room，`draft` 机械选入原文，`create-topic|close|rebind|send|freeze|resume` 经预览确认执行。本阶段尚未提供 Project 创建命令，主 Room 的业务入口由 P2.2 辛接线；不要把端口已实现当作完整 Project 使用路径已交付。
 
+密钥后端缺省沿用「有钥匙串就用钥匙串、没有就退到用户目录下的 0600 文件」。要显式选一种，在 `hctl2 init` 或 `hctl2 start` 上加 `--secret-backend system-keyring|user-file`：它记进控制面数据目录的 `control.json`，之后每次 start 都按它执行；`hctl2 status` 的 `policy.credential_storage` 报告实际在用的那一种。无屏幕会话（CI、纯终端）建议 `user-file`：`system-keyring` 在 macOS 上每次读都要求授权，弹不出来就直接失败。选项与配置形状见 [control 说明](../src/apps/control/README.md#密钥后端)。
+
 ## 制作外部子系统包
 
 这一节面向发布与打包开发者，不是最终用户安装步骤。日常组包消费上游官方制品和 HCTL2 托管的 macOS Tuwunel 预编译制品；版本、URL、SHA-256 和 target identity 统一由 `packaging/dependencies/lock.json` 锁定。进入 `src/`，显式选择平台并运行 Buck：
