@@ -1,9 +1,13 @@
 [workspace]
 members = [
+    "agency",
     "apps/cli",
     "apps/control",
     "apps/tool",
     "crates/chat",
+    "crates/agency-proto",
+    "crates/context",
+    "crates/participant",
     "crates/facts",
     "crates/foundation",
     "crates/proto",
@@ -22,6 +26,7 @@ ruma = { version = "=0.16.0", default-features = false, features = ["client-api-
 rustix = { version = "=1.1.5", features = ["process"] }
 clap = { version = "4.6.6", features = ["derive"] }
 hyper-util = { version = "0.1.19", features = ["tokio"] }
+hmac = "=0.13.0"
 keyring = "4.2.0"
 notify = "8.2.0"
 pbjson = "0.9.0"

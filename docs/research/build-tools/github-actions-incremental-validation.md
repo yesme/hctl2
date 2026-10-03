@@ -72,3 +72,5 @@ GitHub 的临时测试 merge 可能已经包含稍后才进入 PR 分支的 base
 CI 触发另修：`.gitattributes` 为第一方源码 Markdown 声明 `hctl-doc=src`，第三方及构建产物排除。沿用现有属性到 profile 的映射。删除退役词检查器对已删除 `materialize_repo_tree.sh` 的回退，缺树直接失败并指向 Buck 输入。
 
 本机已验：单独构建 `src_docs_tree` 成功，查询与物化目录均含 19 份 Markdown，路径保留；执行实际 workflow 的覆盖步骤通过。删掉汇总的 chat 引用后，覆盖步骤退出 1，差异指出 `src/crates/chat/README.md`；注入退役词 `RuntimeBackend` 后，`profile-src` 退出 32 并指出该 README。撤回后各自恢复通过。既有夹具补漏包、空集、查询失败、额外三方输入与 README / Skill 的 profile 选择；退役词夹具补嵌套 README、缺树与空扫描。`profile-src`、`profile-all`、`validation_range_test` 与 #310 的覆盖夹具合计 16 项通过，actionlint 与 CI 同范围 shellcheck 通过。未验：新关卡的远端耗时与两平台行为，待本 PR；本机未重建完整发行包。
+
+- 2026-10-03 · Agency 独立服务加入已有 Buck 原生目标集。新增包在 `src/agency`，不是 `apps` 或 `crates` 的子包；Code 的周期全量集合与 BTD 失败回退集合增加 `root//agency/...`，避免只编 Clippy 报告而没有运行端口测试。现有增量选择、缓存与两平台 PR 矩阵不变，不增加脚本。公开端口与完整安装包仍由原生 target 验证。
