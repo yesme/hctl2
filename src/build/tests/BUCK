@@ -39,6 +39,23 @@ sh_test(
 )
 
 sh_test(
+    name = "clippy_coverage_fixtures_test",
+    test = "check_clippy_coverage_fixtures.sh",
+    env = {
+        "CLIPPY_COVERAGE": "$(location root//:clippy_coverage)",
+        "RELEASE_WORKFLOW": "$(location repo//:release_workflow_yml)",
+        "JQ_BIN": "$(location root//build/tools:jq-bin)",
+    },
+    resources = [
+        "root//:clippy_coverage",
+        "repo//:release_workflow_yml",
+        "root//build/tools:jq-bin",
+    ],
+    labels = CI_FAST,
+    test_rule_timeout_ms = 120000,
+)
+
+sh_test(
     name = "xz_test",
     test = "check_xz.sh",
     env = {

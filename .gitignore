@@ -1,5 +1,8 @@
 # Local scratch; evidence audits are curated under docs/research/, design under docs/design/.
 .tmp/
 buck-out/
+# Finder re-creates this whenever a directory under src/ is opened in a file
+# browser; it is never a project file.
+.DS_Store
 # Local Buck2 config (remote cache endpoints); the project root is the repository root.
 .buckconfig.local

@@ -1,0 +1,293 @@
+#!/bin/sh
+# Every Clippy report in the Buck graph needs a reader, and the graph is the only
+# authority on which reports exist. root//:clippy is the hand-written list in
+# src/BUCK, so a new package can define a `clippy` filegroup and never be gated:
+# nothing would notice, and its diagnostics would stay unread forever.
+#
+# Keep the static aggregate and existing CI target selection. Buck owns the
+# actual target list; uquery lets this check compare it with the aggregate.
+#
+# Readers declare a report, test target, executable and scheduler. Code's
+# scheduler consumes ci:fast; Release uses explicit workflow arguments, not
+# ci:release. Verify the relevant wiring before counting a report as covered.
+#
+# Read-only: it queries the graph and compares sets. It never builds.
+set -eu
+
+usage() {
+    cat <<'EOF'
+Check that every Clippy report in the Buck graph has a verified reader.
+
+Usage:
+  clippy-coverage
+  clippy-coverage --help
+
+Exits non-zero when a report exists that no verified reader covers, when a
+declared gate does not exist, does not read its declared report, does not run
+its declared test, or is absent from its scheduler, when scheduler syntax
+cannot be verified, when the
+aggregator lists a report that no longer exists, or when a graph query fails.
+Fails closed.
+EOF
+}
+
+case "${1:-}" in
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    '')
+        ;;
+    *)
+        printf 'error: unknown argument: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# The Buck project root is the repository root, so this script sits in the
+# workspace cell: $project_root is src/ and $repo_root is the checkout.
+project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+repo_root=$(CDPATH= cd -- "$project_root/.." && pwd)
+cd "$project_root"
+
+jq_bin="$project_root/build/tools/jq-bin"
+
+# The scheduler column names the two existing CI paths, not a Buck label.
+readers='
+root//:clippy root//build/tests:clippy_clean_test root//build/tests/check_clippy_clean.sh code
+root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test root//build/tests:check-clippy-clean.sh release
+'
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-clippy-coverage.XXXXXX")
+trap 'rm -rf -- "$work"' EXIT
+
+failures=0
+note_failure() {
+    printf '%s\n' "$1" >&2
+    failures=$((failures + 1))
+}
+
+# Lists one attribute of one target, expanding it into one value per line. Both
+# list and label-map shapes occur: srcs is a map from output name to label, and
+# an object has to be expanded over its values, not kept as one item. A missing
+# target makes uquery exit non-zero, which the caller turns into a named failure
+# rather than a crash.
+attribute_list() {
+    ./buck2 uquery --output-attribute "^$2\$" "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
+    "$jq_bin" -r --arg target "$1" --arg key "$2" \
+        '.[$target][$key] | if type == "array" or type == "object" then .[] | if type == "string" then . else error("non-string member") end else error("missing or invalid attribute") end' \
+        <"$work/attr.json"
+}
+
+# Reads exactly one env key of the gate last fetched. This is a keyed lookup,
+# never a sweep over the whole env map: dumping every value would let any
+# variable stand in for CLIPPY_REPORTS, and would turn an unrelated variable
+# into a second line that fakes a mismatch. A missing key, or a value that is
+# not a plain string, reads empty and is rejected by the caller.
+env_clippy_reports() {
+    "$jq_bin" -r --arg target "$1" \
+        '.[$target].env.CLIPPY_REPORTS | if type == "string" then . else "" end' \
+        <"$work/gate.json"
+}
+
+# The executable the gate runs, read the same keyed way.
+gate_test() {
+    "$jq_bin" -r --arg target "$1" \
+        '.[$target].test | if type == "string" then . else "" end' \
+        <"$work/gate.json"
+}
+
+# Code's incremental selector consumes ci:fast. Release does not consume a
+# label, so membership in ci:release is not checked as scheduling evidence.
+gate_has_label() {
+    "$jq_bin" -r --arg target "$1" --arg want "$2" \
+        'if any(.[$target].labels[]?; . == $want) then "yes" else "" end' \
+        <"$work/gate.json"
+}
+
+# The labels the gate does carry, for saying what it would take to fix it.
+gate_labels() {
+    "$jq_bin" -r --arg target "$1" '.[$target].labels // [] | .[]' <"$work/gate.json"
+}
+
+# One graph query per gate.
+fetch_gate() {
+    ./buck2 uquery --output-attribute '^(env|test|labels)$' "$1" \
+        >"$work/gate.json" 2>"$work/gate.err"
+}
+
+# A hand-written format assertion, not a general YAML or shell parser. Accept
+# the two owned step names, a single folded command and PR/non-PR conditions.
+# Unsupported shapes fail instead of guessing. Comments, another step, `build`
+# instead of `test`, and --exclude cannot stand in for a scheduled test.
+# Returns 0 for verified wiring, 1 for a recognized scheduling omission, and 2
+# when the format cannot be verified. Both failures still block the check.
+release_selects_gate() {
+    awk -v gate="$1" '
+        function check_step(   expected, pr, non_pr, n, words, i, hits, platform, config) {
+            if (!wanted) return
+            seen[wanted]++
+            pr = "        if: ${{ github.event_name == '\''pull_request'\'' }}"
+            non_pr = "        if: ${{ github.event_name != '\''pull_request'\'' }}"
+            expected = wanted == 1 ? "==" : "!="
+            if ((condition != pr && condition != non_pr) || !folded) {
+                unsupported = 1; return
+            }
+            if (condition != "        if: ${{ github.event_name " expected " '\''pull_request'\'' }}") not_scheduled = 1
+            gsub(/\$\{\{ matrix\.buck_target \}\}/, "PLATFORM", command)
+            n = split(command, words, / +/)
+            if (words[1] == "./buck2" && words[2] == "build") { not_scheduled = 1; return }
+            if (words[1] != "./buck2" || words[2] != "test" || words[3] != "--build-default-info") {
+                unsupported = 1; return
+            }
+            for (i = 4; i <= n; i++) {
+                if (words[i] == "--target-platforms" && words[i+1] == "root//build/platforms:PLATFORM") { platform++; i++ }
+                else if (words[i] == "--config" && words[i+1] == "hctl2.zstd_preset=fast") { config++; i++ }
+                else if (words[i] ~ /^root\/\/[A-Za-z0-9_\/.-]*:[A-Za-z0-9_.-]+$/) { if (words[i] == gate) hits++ }
+                else unsupported = 1
+            }
+            if (hits == 0) not_scheduled = 1
+            if (hits > 1 || platform != 1 || config != (wanted == 1 ? 1 : 0)) unsupported = 1
+        }
+        /^  package:$/ { package = 1; next }
+        package && /^  [A-Za-z0-9_-]+:/ { check_step(); wanted = 0; package = 0 }
+        !package { next }
+        /^      - / {
+            check_step(); wanted = 0; condition = ""; command = ""; folded = 0; in_run = 0
+            if ($0 == "      - name: Test complete offline install and lifecycle (fast zstd preset)") wanted = 1
+            if ($0 == "      - name: Test complete offline install and lifecycle") wanted = 2
+            next
+        }
+        wanted && /^        if:/ { condition = $0; next }
+        wanted && $0 == "        run: >-" { folded = 1; in_run = 1; next }
+        wanted && in_run && /^          / { sub(/^          /, ""); command = command (command == "" ? "" : " ") $0; next }
+        wanted && $0 !~ /^[[:space:]]*(#|$)/ { unsupported = 1 }
+        END {
+            check_step()
+            if (unsupported || seen[1] != 1 || seen[2] != 1) exit 2
+            exit (not_scheduled ? 1 : 0)
+        }
+    ' "$repo_root/.github/workflows/release.yml"
+}
+
+# --- every report that exists in the graph ---------------------------------
+# A filegroup in the root cell whose name ends in `clippy` is a report set.
+# Toolchain filegroups such as toolchains//:clippy_dist_* live in another cell
+# and are not matched by root//... in the first place.
+./buck2 uquery 'kind("filegroup", root//...)' >"$work/all"
+grep -E ':[^/]*clippy$' "$work/all" | sort -u >"$work/reports" || true
+
+if [ ! -s "$work/reports" ]; then
+    printf 'no Clippy report found in the graph; the check would pass vacuously\n' >&2
+    exit 1
+fi
+
+# --- verify each declared reader ------------------------------------------
+# Redirection, not a pipe: the loop must run in this shell so a bad
+# declaration can exit and the failure count can accumulate.
+printf '%s\n' "$readers" >"$work/readers"
+: >"$work/verified"
+while read -r report gate executable scheduler extra; do
+    case "$report" in
+        '' | '#'*) continue ;;
+    esac
+    if [ -z "$scheduler" ] || [ -n "$extra" ]; then
+        printf 'malformed reader declaration for %s: expected "<report> <gate> <test> <scheduler>"\n' "$report" >&2
+        exit 1
+    fi
+
+    if ! fetch_gate "$gate"; then
+        note_failure "cannot query declared gate: $gate (declared as reading $report)"
+        cat "$work/gate.err" >&2
+        continue
+    fi
+    env_value=$(env_clippy_reports "$gate")
+    expected="\$(location $report)"
+    if [ "$env_value" != "$expected" ]; then
+        note_failure "gate $gate does not read $report: CLIPPY_REPORTS is ${env_value:-<unset>}, expected $expected"
+        continue
+    fi
+    # A gate that runs some other script reads nothing, however correct its
+    # env is: the env only matters if this is the process that consumes it.
+    actual_test=$(gate_test "$gate")
+    if [ "$actual_test" != "$executable" ]; then
+        note_failure "gate $gate runs ${actual_test:-<no test>}, expected $executable"
+        continue
+    fi
+    case "$scheduler" in
+        code)
+            if [ "$(gate_has_label "$gate" ci:fast)" != yes ]; then
+                note_failure "gate $gate has no ci:fast label for Code selection: $(gate_labels "$gate" | tr '\n' ' ')"
+                continue
+            fi
+            ;;
+        release)
+            release_status=0
+            release_selects_gate "$gate" || release_status=$?
+            case "$release_status" in
+                0) ;;
+                1)
+                    note_failure "Release PR and non-PR test steps must both schedule $gate: a recognized command or condition omits it"
+                    continue
+                    ;;
+                *)
+                    note_failure "cannot verify Release workflow shape for $gate; scheduling is unknown, not proved absent"
+                    printf '%s\n' 'Expected package job steps named "Test complete offline install and lifecycle (fast zstd preset)" and "Test complete offline install and lifecycle", complementary PR conditions, run: >-, a 10-space command body starting ./buck2 test --build-default-info, target arguments, --target-platforms, and the PR fast preset. Update the format assertion and its fixtures when changing this shape.' >&2
+                    continue
+                    ;;
+            esac
+            ;;
+        *) note_failure "unknown scheduler: $scheduler"; continue ;;
+    esac
+    printf '%s\n' "$report" >>"$work/verified"
+done <"$work/readers"
+
+# A verified report covers itself, and if it is a list of other clippy
+# reports (the aggregator), it covers those too. Expanding here is what lets
+# root//:clippy's 11 members count without listing them again. The file is
+# created up front: when nothing verifies, the loop below never runs and
+# `sort` would otherwise be handed a path that does not exist.
+: >"$work/read"
+while IFS= read -r report; do
+    printf '%s\n' "$report" >>"$work/read"
+    if ! members=$(attribute_list "$report" srcs); then
+        printf 'cannot query report members: %s\n' "$report" >&2
+        cat "$work/attr.err" >&2
+        exit 1
+    fi
+    printf '%s\n' "$members" | grep -E ':[^/]*clippy$' >>"$work/read" || true
+done <"$work/verified"
+sort -u -o "$work/read" "$work/read"
+
+# --- a report nothing reads ------------------------------------------------
+missing=$(comm -23 "$work/reports" "$work/read")
+if [ -n "$missing" ]; then
+    note_failure 'Clippy report with no verified reader:'
+    printf '%s\n' "$missing" | while IFS= read -r report; do
+        printf '  %s\n' "$report" >&2
+    done
+    cat >&2 <<'EOF'
+
+Add the package to root//:clippy in src/BUCK so the Code gate reads it, or, if
+the report must stay out of Code CI, declare it in src/build/ci/clippy-coverage
+next to the gate that does read it.
+EOF
+fi
+
+# --- a list entry that is no longer a report -------------------------------
+stale=$(comm -13 "$work/reports" "$work/read")
+if [ -n "$stale" ]; then
+    note_failure 'a declared or listed target is not a Clippy report in the graph:'
+    printf '%s\n' "$stale" | while IFS= read -r report; do
+        printf '  %s\n' "$report" >&2
+    done
+    printf 'Drop the stale line from src/BUCK or from the reader list.\n' >&2
+fi
+
+if [ "$failures" -ne 0 ]; then
+    exit 1
+fi
+
+printf '%s Clippy reports, all read by a verified gate.\n' "$(wc -l <"$work/reports" | tr -d ' ')"
