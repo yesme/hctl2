@@ -4,19 +4,12 @@
 # src/BUCK, so a new package can define a `clippy` filegroup and never be gated:
 # nothing would notice, and its diagnostics would stay unread forever.
 #
-# The list itself cannot be derived. `filegroup.srcs` has to be a static label
-# map at graph-load time and BUCK/Starlark cannot enumerate targets (`glob()`
-# matches files, and it does not cross a package boundary either), so the shape
-# that works is: a hand-written list, plus a check that reads the graph and
-# refuses to accept the list on trust.
+# Keep the static aggregate and existing CI target selection. Buck owns the
+# actual target list; uquery lets this check compare it with the aggregate.
 #
-# Readers are declared below and *verified*, not just listed. Each row is
-# "<report> <gate> <test> <label>"; the gate must exist, its CLIPPY_REPORTS must
-# be $(location <report>), it must run that test, and it must carry the label
-# that gets it scheduled. A declaration that fails any of those is rejected —
-# otherwise the declaration would be a comment, and the one report Code CI must
-# not build would be the one with no real reader. A gate that runs the wrong
-# script, or that CI never selects, reads nothing however correct its env is.
+# Readers declare a report, test target, executable and scheduler. Code's
+# scheduler consumes ci:fast; Release uses explicit workflow arguments, not
+# ci:release. Verify the relevant wiring before counting a report as covered.
 #
 # Read-only: it queries the graph and compares sets. It never builds.
 set -eu
@@ -31,7 +24,7 @@ Usage:
 
 Exits non-zero when a report exists that no verified reader covers, when a
 declared gate does not exist, does not read its declared report, does not run
-its declared test, or lacks the label that makes CI select it, when the
+its declared test, or is absent from its scheduler, when the
 aggregator lists a report that no longer exists, or when a graph query fails.
 Fails closed.
 EOF
@@ -55,23 +48,15 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # The Buck project root is the repository root, so this script sits in the
 # workspace cell: $project_root is src/ and $repo_root is the checkout.
 project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+repo_root=$(CDPATH= cd -- "$project_root/.." && pwd)
 cd "$project_root"
 
 jq_bin="$project_root/build/tools/jq-bin"
 
-# The declared readers, one row per reader: "<report> <gate> <test> <label>".
-# All four are verified against the graph, because a report with no reader is
-# also what a reader that never runs looks like:
-#   - the gate must exist;
-#   - its CLIPPY_REPORTS must be exactly $(location <report>);
-#   - its test executable must be the shared checker, so a gate cannot keep
-#     the right env while running some other, always-passing script;
-#   - it must carry <label>, the label that gets it selected for CI
-#     (affected-targets filters on ci:fast / ci:platform), so a gate that
-#     nobody schedules is not counted as a reader either.
+# The scheduler column names the two existing CI paths, not a Buck label.
 readers='
-root//:clippy root//build/tests:clippy_clean_test root//build/tests/check_clippy_clean.sh ci:fast
-root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test root//build/tests:check-clippy-clean.sh ci:release
+root//:clippy root//build/tests:clippy_clean_test root//build/tests/check_clippy_clean.sh code
+root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test root//build/tests:check-clippy-clean.sh release
 '
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-clippy-coverage.XXXXXX")
@@ -91,7 +76,7 @@ note_failure() {
 attribute_list() {
     ./buck2 uquery --output-attribute "^$2\$" "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
     "$jq_bin" -r --arg target "$1" --arg key "$2" \
-        '.[$target][$key] | if . == null then [] elif type == "array" or type == "object" then [.[]] else [.] end | .[]' \
+        '.[$target][$key] | if type == "array" or type == "object" then .[] | if type == "string" then . else error("non-string member") end else error("missing or invalid attribute") end' \
         <"$work/attr.json"
 }
 
@@ -113,8 +98,8 @@ gate_test() {
         <"$work/gate.json"
 }
 
-# Whether the gate carries the label that gets it selected for CI. Membership
-# only: a target may carry several labels and their order is not meaningful.
+# Code's incremental selector consumes ci:fast. Release does not consume a
+# label, so membership in ci:release is not checked as scheduling evidence.
 gate_has_label() {
     "$jq_bin" -r --arg target "$1" --arg want "$2" \
         'if any(.[$target].labels[]?; . == $want) then "yes" else "" end' \
@@ -126,10 +111,51 @@ gate_labels() {
     "$jq_bin" -r --arg target "$1" '.[$target].labels // [] | .[]' <"$work/gate.json"
 }
 
-# One graph query per gate, answered once and read three times.
+# One graph query per gate.
 fetch_gate() {
     ./buck2 uquery --output-attribute '^(env|test|labels)$' "$1" \
         >"$work/gate.json" 2>"$work/gate.err"
+}
+
+# Check only the two owned Release steps, not arbitrary YAML or shell. Accept
+# the existing single folded command and complementary PR/non-PR conditions.
+# Unsupported shapes fail instead of guessing. Comments, another step, `build`
+# instead of `test`, and --exclude cannot stand in for a scheduled test.
+release_selects_gate() {
+    awk -v gate="$1" '
+        function check_step(   expected, n, words, i, hits, platform, config) {
+            if (!wanted) return
+            expected = wanted == 1 ? "==" : "!="
+            if (condition != "        if: ${{ github.event_name " expected " '\''pull_request'\'' }}" || !folded) {
+                bad = 1; return
+            }
+            gsub(/\$\{\{ matrix\.buck_target \}\}/, "PLATFORM", command)
+            n = split(command, words, / +/)
+            if (words[1] != "./buck2" || words[2] != "test" || words[3] != "--build-default-info") bad = 1
+            for (i = 4; i <= n; i++) {
+                if (words[i] == "--target-platforms" && words[i+1] == "root//build/platforms:PLATFORM") { platform++; i++ }
+                else if (words[i] == "--config" && words[i+1] == "hctl2.zstd_preset=fast") { config++; i++ }
+                else if (words[i] ~ /^root\/\/[A-Za-z0-9_\/.-]*:[A-Za-z0-9_.-]+$/) { if (words[i] == gate) hits++ }
+                else bad = 1
+            }
+            if (hits != 1 || platform != 1 || config != (wanted == 1 ? 1 : 0)) bad = 1
+            seen[wanted]++
+        }
+        /^  package:$/ { package = 1; next }
+        package && /^  [A-Za-z0-9_-]+:/ { check_step(); wanted = 0; package = 0 }
+        !package { next }
+        /^      - / {
+            check_step(); wanted = 0; condition = ""; command = ""; folded = 0; in_run = 0
+            if ($0 == "      - name: Test complete offline install and lifecycle (fast zstd preset)") wanted = 1
+            if ($0 == "      - name: Test complete offline install and lifecycle") wanted = 2
+            next
+        }
+        wanted && /^        if:/ { condition = $0; next }
+        wanted && $0 == "        run: >-" { folded = 1; in_run = 1; next }
+        wanted && in_run && /^          / { sub(/^          /, ""); command = command (command == "" ? "" : " ") $0; next }
+        wanted && $0 !~ /^[[:space:]]*(#|$)/ { bad = 1 }
+        END { check_step(); exit (bad || seen[1] != 1 || seen[2] != 1) }
+    ' "$repo_root/.github/workflows/release.yml"
 }
 
 # --- every report that exists in the graph ---------------------------------
@@ -149,35 +175,18 @@ fi
 # declaration can exit and the failure count can accumulate.
 printf '%s\n' "$readers" >"$work/readers"
 : >"$work/verified"
-while IFS= read -r line; do
-    case "$line" in
+while read -r report gate executable scheduler extra; do
+    case "$report" in
         '' | '#'*) continue ;;
     esac
-    report=${line%% *}
-    rest=${line#* }
-    gate=${rest%% *}
-    rest=${rest#* }
-    executable=${rest%% *}
-    label=${rest#* }
-    # Exactly four non-empty fields: three separators, and no field collapsed
-    # to nothing (which a doubled or edge space would show).
-    spaces=$(printf '%s' "$line" | tr -cd ' ' | wc -c | tr -d ' ')
-    case "$line" in
-        *'  '* | [' ']* | *[' '])
-            malformed=1
-            ;;
-        *)
-            [ "$spaces" -eq 3 ] || malformed=1
-            ;;
-    esac
-    if [ -n "${malformed:-}" ]; then
-        unset malformed
-        printf 'malformed reader declaration, expected "<report> <gate> <test> <label>": %s\n' "$line" >&2
+    if [ -z "$scheduler" ] || [ -n "$extra" ]; then
+        printf 'malformed reader declaration for %s: expected "<report> <gate> <test> <scheduler>"\n' "$report" >&2
         exit 1
     fi
 
     if ! fetch_gate "$gate"; then
-        note_failure "declared gate does not exist: $gate (declared as reading $report)"
+        note_failure "cannot query declared gate: $gate (declared as reading $report)"
+        cat "$work/gate.err" >&2
         continue
     fi
     env_value=$(env_clippy_reports "$gate")
@@ -193,13 +202,21 @@ while IFS= read -r line; do
         note_failure "gate $gate runs ${actual_test:-<no test>}, expected $executable"
         continue
     fi
-    # And a gate CI never selects is not a reader either: affected-targets
-    # keeps only ci:fast / ci:platform, so a missing label means the report
-    # is never built or checked on an ordinary incremental run.
-    if [ "$(gate_has_label "$gate" "$label")" != yes ]; then
-        note_failure "gate $gate has no $label label, so CI never selects it: labels are $(gate_labels "$gate" | tr '\n' ' ' | sed 's/ $//')"
-        continue
-    fi
+    case "$scheduler" in
+        code)
+            if [ "$(gate_has_label "$gate" ci:fast)" != yes ]; then
+                note_failure "gate $gate has no ci:fast label for Code selection: $(gate_labels "$gate" | tr '\n' ' ')"
+                continue
+            fi
+            ;;
+        release)
+            if ! release_selects_gate "$gate"; then
+                note_failure "Release PR and non-PR test steps must both schedule $gate with the supported command and conditions"
+                continue
+            fi
+            ;;
+        *) note_failure "unknown scheduler: $scheduler"; continue ;;
+    esac
     printf '%s\n' "$report" >>"$work/verified"
 done <"$work/readers"
 
@@ -211,9 +228,12 @@ done <"$work/readers"
 : >"$work/read"
 while IFS= read -r report; do
     printf '%s\n' "$report" >>"$work/read"
-    if members=$(attribute_list "$report" srcs 2>/dev/null); then
-        printf '%s\n' "$members" | grep -E ':[^/]*clippy$' >>"$work/read" || true
+    if ! members=$(attribute_list "$report" srcs); then
+        printf 'cannot query report members: %s\n' "$report" >&2
+        cat "$work/attr.err" >&2
+        exit 1
     fi
+    printf '%s\n' "$members" | grep -E ':[^/]*clippy$' >>"$work/read" || true
 done <"$work/verified"
 sort -u -o "$work/read" "$work/read"
 

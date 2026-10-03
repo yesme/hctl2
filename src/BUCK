@@ -9,6 +9,12 @@ export_file(
 )
 
 export_file(
+    name = "clippy_coverage",
+    src = "build/ci/clippy-coverage",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
     name = "Cargo.toml",
     src = "Cargo.toml",
     visibility = ["PUBLIC"],
