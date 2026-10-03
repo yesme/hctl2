@@ -17,18 +17,38 @@ pub(crate) struct Hosted {
     pub token: String,
     credential_ref: String,
 }
+
+/// Where the packaged Gitea lives. Resolved once per command so the native admin CLI and
+/// the connection read the same coordinates.
+pub(crate) struct HostedPaths {
+    pub install: PathBuf,
+    pub gitea: PathBuf,
+    pub config: PathBuf,
+    pub work_path: PathBuf,
+}
+
+pub(crate) fn hosted_paths(services: &Supervisor) -> Result<HostedPaths> {
+    let (install, state) = services.gitea_paths().ok_or_else(|| {
+        reject(
+            "PLATFORM_NOT_INSTALLED",
+            "hosted Gitea requires an installed package",
+            "install_package",
+        )
+    })?;
+    Ok(HostedPaths {
+        gitea: install.join("libexec/hctl2/gitea"),
+        config: state.join("config/gitea/app.ini"),
+        work_path: state.join("data/gitea"),
+        install,
+    })
+}
+
 impl Hosted {
     /// Reuse an explicitly provisioned connection. Observing a source must not start
     /// a stopped service, create an account, or replace a missing credential.
     pub fn existing(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
-        let (install, state) = services.gitea_paths().ok_or_else(|| {
-            reject(
-                "PLATFORM_NOT_INSTALLED",
-                "hosted Gitea not installed",
-                "install_package",
-            )
-        })?;
-        let url = hosted_url(&state.join("config/gitea/app.ini"))?;
+        let paths = hosted_paths(services)?;
+        let url = hosted_url(&paths.config)?;
         let credential_ref = format!("gitea:{control_id}:admin");
         let token = SecretStore::detect("hctl2", root.join("secrets"))
             .get(&credential_ref)
@@ -47,7 +67,7 @@ impl Hosted {
             )
         })?;
         Ok(Self {
-            tea: install.join("libexec/hctl2/tea"),
+            tea: paths.install.join("libexec/hctl2/tea"),
             url,
             username: format!("hctl-{}", &control_id[..16.min(control_id.len())]),
             token,
@@ -65,13 +85,7 @@ impl Hosted {
         }
     }
     pub fn connect(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
-        let (install, state) = services.gitea_paths().ok_or_else(|| {
-            reject(
-                "PLATFORM_NOT_INSTALLED",
-                "hosted Gitea requires an installed package",
-                "install_package",
-            )
-        })?;
+        let paths = hosted_paths(services)?;
         services
             .consume("gitea")
             .map_err(|e| reject(e.code, e.message, e.recovery_action))?;
@@ -94,19 +108,9 @@ impl Hosted {
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        let config = state.join("config/gitea/app.ini");
-        let url = hosted_url(&config)?;
-        let gitea = install.join("libexec/hctl2/gitea");
+        let url = hosted_url(&paths.config)?;
         let username = format!("hctl-{}", &control_id[..16.min(control_id.len())]);
-        let admin = || {
-            let mut cmd = Command::new(&gitea);
-            cmd.arg("--config")
-                .arg(&config)
-                .arg("--work-path")
-                .arg(state.join("data/gitea"))
-                .args(["admin", "user"]);
-            cmd
-        };
+        let admin = || gitea_admin_user(&paths);
         let users = run(admin().arg("list"), None)?;
         if !users.status.success() {
             return Err(reject(
@@ -115,9 +119,7 @@ impl Hosted {
                 "inspect_gitea_log",
             ));
         }
-        let exists = String::from_utf8_lossy(&users.stdout)
-            .lines()
-            .any(|l| l.split_whitespace().nth(1) == Some(&username));
+        let exists = account_listed(&users.stdout, &username);
         if !exists {
             let created = run(
                 admin().args([
@@ -191,7 +193,7 @@ impl Hosted {
             }
         };
         let hosted = Self {
-            tea: install.join("libexec/hctl2/tea"),
+            tea: paths.install.join("libexec/hctl2/tea"),
             url,
             username,
             token,
@@ -325,6 +327,120 @@ impl Hosted {
             credential_ref: self.credential_ref.clone(),
         }))
     }
+    /// Grant an existing platform account collaboration on a repository control owns.
+    /// Reads before writing and reads back after: a lost response is resolved by reading
+    /// the original grant, never by sending a second one.
+    pub(crate) fn grant_collaborator(
+        &self,
+        full_name: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<()> {
+        let endpoint = format!("repos/{full_name}/collaborators/{username}");
+        if self.api("GET", &endpoint, None)?.is_some() {
+            return Ok(());
+        }
+        self.api("PUT", &endpoint, Some(json!({"permission":permission})))?;
+        self.api("GET", &endpoint, None)?.ok_or_else(|| {
+            reject(
+                "PLATFORM_READBACK",
+                "collaborator grant not confirmed by readback",
+                "read_back_original_intent",
+            )
+        })?;
+        Ok(())
+    }
+}
+
+/// An ordinary (non-administrative) platform account for a local human.
+pub(crate) struct HumanAccount {
+    pub username: String,
+    pub created: bool,
+    /// Set only for an account this call created. Gitea prints it once and cannot return it
+    /// again; it is never logged, never stored, and only reaches the caller's stdout.
+    pub initial_password: Option<String>,
+}
+
+/// Ensure a human account on the hosted platform, reusing one that already exists.
+///
+/// Reuse is the only option for an existing account: its password is not recoverable, so
+/// this returns no `initial_password` and the human keeps whatever credential they have.
+/// `--must-change-password` is deliberately left at Gitea's default (true for individual
+/// users), so a freshly minted password is an initial one, not a permanent secret.
+pub(crate) fn ensure_human_account(paths: &HostedPaths, username: &str) -> Result<HumanAccount> {
+    let admin = || gitea_admin_user(paths);
+    let listed = run(admin().arg("list"), None)?;
+    if !listed.status.success() {
+        return Err(reject(
+            "PLATFORM_BOOTSTRAP",
+            "cannot list hosted platform accounts",
+            "inspect_gitea_log",
+        ));
+    }
+    if account_listed(&listed.stdout, username) {
+        return Ok(HumanAccount {
+            username: username.into(),
+            created: false,
+            initial_password: None,
+        });
+    }
+    let created = run(
+        admin().args([
+            "create",
+            "--username",
+            username,
+            "--email",
+            &format!("{username}@localhost"),
+            "--random-password",
+            "--random-password-length",
+            "40",
+        ]),
+        None,
+    )?;
+    if !created.status.success() {
+        return Err(reject(
+            "PLATFORM_BOOTSTRAP",
+            "cannot create hosted human account",
+            "inspect_gitea_log",
+        ));
+    }
+    // Gitea prints the generated password before it creates the user, so it is only
+    // trustworthy once the command itself succeeded.
+    let initial_password = String::from_utf8_lossy(&created.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("generated random password is '"))
+        .and_then(|rest| rest.strip_suffix('\''))
+        .filter(|password| !password.is_empty())
+        .ok_or_else(|| {
+            reject(
+                "PLATFORM_BOOTSTRAP",
+                "account created but its initial password could not be read; reset it with the native admin CLI",
+                "inspect_gitea_log",
+            )
+        })?
+        .to_owned();
+    Ok(HumanAccount {
+        username: username.into(),
+        created: true,
+        initial_password: Some(initial_password),
+    })
+}
+
+fn gitea_admin_user(paths: &HostedPaths) -> Command {
+    let mut cmd = Command::new(&paths.gitea);
+    cmd.arg("--config")
+        .arg(&paths.config)
+        .arg("--work-path")
+        .arg(&paths.work_path)
+        .args(["admin", "user"]);
+    cmd
+}
+
+/// `gitea admin user list` prints one account per line with the username in the second column.
+fn account_listed(stdout: &[u8], username: &str) -> bool {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .any(|line| line.split_whitespace().nth(1) == Some(username))
 }
 
 pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<PlatformObservation> {

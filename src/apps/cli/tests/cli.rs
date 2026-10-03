@@ -240,3 +240,86 @@ fn repo_abandon_before_dispatch_releases_target_and_resume_never_restarts_it() {
     assert_ne!(second["registration"]["repo_id"], id);
     assert_eq!(second["registration"]["lifecycle"], "pending");
 }
+
+#[test]
+fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
+    let temp = Temp::new();
+    let root = &temp.0;
+    let gh = root.join("gh-fixture");
+    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
+    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let out = Command::new(hctl2())
+        .env("HCTL2_CONTROL_BIN", control())
+        .env("HCTL2_GH", &gh)
+        .args(["--root", root.to_str().unwrap(), "start"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let input = root.join("register.json");
+    std::fs::write(&input,r#"{"name":"external","origin":"external","platform":"github","instance":"github.com","platform_repo_id":"12","platform_path":"a/b","default_source":"github_issues"}"#).unwrap();
+    let (ok, external) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "external"],
+    );
+    assert!(ok, "{external}");
+    let external_id = external["registration"]["repo_id"].as_str().unwrap();
+    std::fs::write(
+        &input,
+        r#"{"name":"local","origin":"local","platform":"local","platform_path":"reusable"}"#,
+    )
+    .unwrap();
+    // This harness has no installed Gitea package, so the local registration stays pending.
+    let (ok, local) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "local"],
+    );
+    assert!(!ok, "{local}");
+    assert_eq!(local["error"]["code"], "PLATFORM_NOT_INSTALLED");
+    assert_eq!(local["registration"]["lifecycle"], "pending");
+    let local_id = local["registration"]["repo_id"].as_str().unwrap();
+
+    // GitHub keeps its own accounts: control creates accounts only on the hosted platform.
+    let (ok, out, err) = run(
+        root,
+        &[
+            "repo",
+            "grant",
+            "--repo-id",
+            external_id,
+            "--username",
+            "alice",
+            "--key",
+            "grant-external",
+        ],
+    );
+    assert!(!ok, "{out} {err}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["error"]["code"],
+        "INVALID_INPUT"
+    );
+
+    // A pending registration has no platform repository to collaborate on yet.
+    let (ok, out, err) = run(
+        root,
+        &[
+            "repo",
+            "grant",
+            "--repo-id",
+            local_id,
+            "--username",
+            "alice",
+            "--key",
+            "grant-pending",
+        ],
+    );
+    assert!(!ok, "{out} {err}");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["error"]["code"],
+        "REPO_PENDING"
+    );
+}
