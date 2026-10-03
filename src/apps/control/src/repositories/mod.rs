@@ -61,14 +61,16 @@ pub(super) fn preview(shared: &SharedStore, operation: &str, payload: &Value) ->
         require_hosted(&reg)?;
         let username = human_username(payload)?;
         let permission = collaborator_permission(payload)?;
-        Ok(json!({"registration":reg,"dangerous":true,"operation":operation,
+        Ok(
+            json!({"registration":reg,"dangerous":true,"operation":operation,
             "username":username,"permission":permission,
             "effects":[
                 format!("ensure an ordinary platform account named {username}, reusing one that already exists"),
                 "print an initial password once, and only when this call created the account",
                 format!("grant {permission} collaboration on the registered platform repository"),
             ],
-            "platform_account_mapping_recorded":false}))
+            "platform_account_mapping_recorded":false}),
+        )
     } else {
         let reg = access(shared, |store| repo::get(store, field(payload, "repo_id")?))?;
         Ok(
@@ -144,8 +146,7 @@ pub(super) fn submit(
             })?;
             let paths = platform::hosted_paths(services)?;
             let account = platform::ensure_human_account(&paths, username)?;
-            if let Err(error) =
-                hosted.grant_collaborator(&observed.full_name, username, permission)
+            if let Err(error) = hosted.grant_collaborator(&observed.full_name, username, permission)
             {
                 // The account can outlive a failed grant. A freshly printed initial password
                 // is discarded rather than carried in an error body, so say that it was.
@@ -419,12 +420,7 @@ mod tests {
     fn a_username_that_would_reshape_the_platform_path_never_reaches_the_platform() {
         // The username is interpolated into repos/{full}/collaborators/{username}, so a
         // path-shaped name is rejected here rather than by the platform after the request.
-        for username in [
-            "alice",
-            "alice.smith",
-            "alice-smith_1",
-            &"a".repeat(40),
-        ] {
+        for username in ["alice", "alice.smith", "alice-smith_1", &"a".repeat(40)] {
             assert_eq!(
                 human_username(&json!({"username":username})).unwrap(),
                 username
@@ -474,9 +470,6 @@ mod tests {
                 "{permission} must be refused"
             );
         }
-        assert_eq!(
-            code(collaborator_permission(&json!({}))),
-            "INVALID_INPUT"
-        );
+        assert_eq!(code(collaborator_permission(&json!({}))), "INVALID_INPUT");
     }
 }

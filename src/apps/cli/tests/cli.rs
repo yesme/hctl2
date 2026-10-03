@@ -262,7 +262,10 @@ fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
 
     let input = root.join("register.json");
     std::fs::write(&input,r#"{"name":"external","origin":"external","platform":"github","instance":"github.com","platform_repo_id":"12","platform_path":"a/b","default_source":"github_issues"}"#).unwrap();
-    let (ok, external) = register(root, &["--input", input.to_str().unwrap(), "--key", "external"]);
+    let (ok, external) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "external"],
+    );
     assert!(ok, "{external}");
     let external_id = external["registration"]["repo_id"].as_str().unwrap();
     std::fs::write(
@@ -271,7 +274,10 @@ fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
     )
     .unwrap();
     // This harness has no installed Gitea package, so the local registration stays pending.
-    let (ok, local) = register(root, &["--input", input.to_str().unwrap(), "--key", "local"]);
+    let (ok, local) = register(
+        root,
+        &["--input", input.to_str().unwrap(), "--key", "local"],
+    );
     assert!(!ok, "{local}");
     assert_eq!(local["error"]["code"], "PLATFORM_NOT_INSTALLED");
     assert_eq!(local["registration"]["lifecycle"], "pending");

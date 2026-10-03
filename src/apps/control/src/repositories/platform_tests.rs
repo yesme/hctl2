@@ -124,7 +124,8 @@ fn fixture_paths(dir: &Path) -> HostedPaths {
 
 #[test]
 fn human_account_is_created_once_and_a_failed_create_leaks_no_password() {
-    let temp = Temp(std::env::temp_dir().join(format!("hctl2-human-account-{}", std::process::id())));
+    let temp =
+        Temp(std::env::temp_dir().join(format!("hctl2-human-account-{}", std::process::id())));
     let _ = std::fs::remove_dir_all(&temp.0);
     std::fs::create_dir_all(&temp.0).unwrap();
     write_gitea_fixture(&temp.0.join("gitea-fixture"));
@@ -247,4 +248,3 @@ fn collaborator_grant_is_confirmed_by_readback_and_not_sent_twice() {
         .unwrap();
     assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xxx");
 }
-
