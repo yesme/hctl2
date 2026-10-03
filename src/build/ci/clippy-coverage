@@ -75,12 +75,27 @@ note_failure() {
     failures=$((failures + 1))
 }
 
-# Reads one attribute of one target. A missing target makes uquery exit
-# non-zero, which the caller turns into a named failure rather than a crash.
-attribute() {
+# Lists one attribute of one target, expanding it into one value per line. Both
+# list and label-map shapes occur: srcs is a map from output name to label, and
+# an object has to be expanded over its values, not kept as one item. A missing
+# target makes uquery exit non-zero, which the caller turns into a named failure
+# rather than a crash.
+attribute_list() {
     ./buck2 uquery --output-attribute "^$2\$" "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
     "$jq_bin" -r --arg target "$1" --arg key "$2" \
-        '.[$target][$key] | if . == null then "" elif type == "object" or type == "array" then (.[]) else . end' \
+        '.[$target][$key] | if . == null then [] elif type == "array" or type == "object" then [.[]] else [.] end | .[]' \
+        <"$work/attr.json"
+}
+
+# Reads exactly one env key of one target. This is a keyed lookup, never a
+# sweep over the whole env map: dumping every value would let any variable
+# stand in for CLIPPY_REPORTS, and would turn an unrelated variable into a
+# second line that fakes a mismatch. A missing key, or a value that is not a
+# plain string, reads empty and is rejected by the caller.
+env_clippy_reports() {
+    ./buck2 uquery --output-attribute '^env$' "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
+    "$jq_bin" -r --arg target "$1" \
+        '.[$target].env.CLIPPY_REPORTS | if type == "string" then . else "" end' \
         <"$work/attr.json"
 }
 
@@ -112,7 +127,7 @@ while IFS= read -r line; do
         exit 1
     fi
 
-    if ! env_value=$(attribute "$gate" env); then
+    if ! env_value=$(env_clippy_reports "$gate"); then
         note_failure "declared gate does not exist: $gate (declared as reading $report)"
         continue
     fi
@@ -129,7 +144,7 @@ done <"$work/readers"
 # root//:clippy's 11 members count without listing them again.
 while IFS= read -r report; do
     printf '%s\n' "$report" >>"$work/read"
-    if members=$(attribute "$report" srcs 2>/dev/null); then
+    if members=$(attribute_list "$report" srcs 2>/dev/null); then
         printf '%s\n' "$members" | grep -E ':[^/]*clippy$' >>"$work/read" || true
     fi
 done <"$work/verified"

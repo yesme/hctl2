@@ -234,8 +234,10 @@ jobs:
             exit 1
           fi
 
+      # No `code` filter on purpose: this check queries root//..., so its scope
+      # is the whole graph. A PR that only touches src/packaging/ is code=false
+      # and can still add a Clippy report that no gate reads.
       - name: Check every Clippy report has a reader
-        if: steps.paths.outputs.code == 'true'
         env:
           BUCK_CONSOLE: simple
           HCTL2_BUCK2_CACHE: 0
