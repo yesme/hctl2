@@ -373,6 +373,13 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
         )
         .unwrap();
         assert!(s.effect("activate:dispatch-intent").is_err());
+        assert_eq!(
+            s.effect("prepare:dispatch-intent")
+                .unwrap()
+                .0
+                .idempotency_key,
+            prepare.spec.document.idempotency_key
+        );
         (intent, owner)
     };
     let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &intent)

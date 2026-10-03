@@ -195,6 +195,8 @@ fn write(
             tx.bind_secret(&reference(record), &record.key.id)?;
         }
         if operation == "dispatch.prepare" {
+            let intent: Value = decode(record)?;
+            let spec: Sealed<ExecutionSpec> = serde_json::from_value(intent["spec"].clone())?;
             tx.enqueue_effect(&store::EffectIntent {
                 intent_id: format!("prepare:{}", record.key.id),
                 owner: record.sources[0].clone(),
@@ -205,7 +207,7 @@ fn write(
                 permission_scope: record.key.scope.clone(),
                 input: command.input.clone(),
                 input_digest: Command::digest_input("agency.prepare", &command.input)?,
-                idempotency_key: record.key.id.clone(),
+                idempotency_key: spec.document.idempotency_key,
             })?;
         }
         Ok(json!({"record":record}))
