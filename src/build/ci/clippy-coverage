@@ -1,33 +1,37 @@
 #!/bin/sh
-# Every Clippy report in the Buck graph needs a reader, and root//:clippy is the
-# reader for the first-party packages. That membership list is hand-written in
+# Every Clippy report in the Buck graph needs a reader, and the graph is the only
+# authority on which reports exist. root//:clippy is the hand-written list in
 # src/BUCK, so a new package can define a `clippy` filegroup and never be gated:
-# nothing in the graph would notice, and its diagnostics would stay unread
-# forever. This script reads the graph instead of trusting the list, so
-# forgetting to add a package is a failure rather than a silent gap.
+# nothing would notice, and its diagnostics would stay unread forever.
 #
-# Reports outside root//:clippy are the deliberate exception. The release
-# package carries the complete offline payload, which Code CI must not build, so
-# its report is read by a gate of its own in the Release workflow. Each such
-# report is listed below with the gate that reads it: a new one needs either a
-# line there or a line in src/BUCK, and this script cannot tell the difference
-# between "deliberately elsewhere" and "forgotten".
+# The list itself cannot be derived. `filegroup.srcs` has to be a static label
+# map at graph-load time and BUCK/Starlark cannot enumerate targets (`glob()`
+# matches files, and it does not cross a package boundary either), so the shape
+# that works is: a hand-written list, plus a check that reads the graph and
+# refuses to accept the list on trust.
 #
-# Read-only: it queries the graph and compares sets. It never builds, so it adds
-# no runner minutes beyond the query itself.
+# Readers are declared below and *verified*, not just listed. Each pair is
+# "<report> <gate>"; the gate must exist and its CLIPPY_REPORTS must be
+# $(location <report>). A declaration whose gate is missing, or whose gate reads
+# a different report set, is rejected — otherwise the declaration would be a
+# comment, and the one report Code CI must not build would be the one with no
+# real reader.
+#
+# Read-only: it queries the graph and compares sets. It never builds.
 set -eu
 
 usage() {
     cat <<'EOF'
-Check that every Clippy report in the Buck graph has a reader.
+Check that every Clippy report in the Buck graph has a verified reader.
 
 Usage:
   clippy-coverage
   clippy-coverage --help
 
-Exits non-zero when a report exists that neither root//:clippy nor a declared
-gate covers, when root//:clippy lists a report that no longer exists, or when
-the graph query fails. Fails closed.
+Exits non-zero when a report exists that no verified reader covers, when a
+declared gate does not exist or does not read its declared report, when the
+aggregator lists a report that no longer exists, or when a graph query fails.
+Fails closed.
 EOF
 }
 
@@ -49,71 +53,115 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # The Buck project root is the repository root, so this script sits in the
 # workspace cell: $project_root is src/ and $repo_root is the checkout.
 project_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-repo_root=$(CDPATH= cd -- "$project_root/.." && pwd)
 cd "$project_root"
 
-aggregator='root//:clippy'
+jq_bin="$project_root/build/tools/jq-bin"
 
-# Reports read by a gate other than root//:clippy: "<report> <gate>".
-other_readers='
+# The declared readers, one "<report> <gate>" pair per line. A report with no
+# line here must be a srcs member of root//:clippy, which is why the aggregator
+# and the gate that reads it are both listed: verifying that pair is what makes
+# the aggregator's 11 members count as covered.
+readers='
+root//:clippy root//build/tests:clippy_clean_test
 root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test
 '
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-clippy-coverage.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 
-# Every filegroup in the root cell whose name ends in `clippy` is a report set.
-# The aggregator is the hand-written list itself, not a report, so it is out.
+failures=0
+note_failure() {
+    printf '%s\n' "$1" >&2
+    failures=$((failures + 1))
+}
+
+# Reads one attribute of one target. A missing target makes uquery exit
+# non-zero, which the caller turns into a named failure rather than a crash.
+attribute() {
+    ./buck2 uquery --output-attribute "^$2\$" "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
+    "$jq_bin" -r --arg target "$1" --arg key "$2" \
+        '.[$target][$key] | if . == null then "" elif type == "object" or type == "array" then (.[]) else . end' \
+        <"$work/attr.json"
+}
+
+# --- every report that exists in the graph ---------------------------------
+# A filegroup in the root cell whose name ends in `clippy` is a report set.
 # Toolchain filegroups such as toolchains//:clippy_dist_* live in another cell
 # and are not matched by root//... in the first place.
 ./buck2 uquery 'kind("filegroup", root//...)' >"$work/all"
-grep -E ':[^/]*clippy$' "$work/all" | grep -vxF "$aggregator" | sort -u >"$work/reports" || true
-
-# What the aggregator lists, read back from the graph rather than from src/BUCK
-# text, so a formatting change in the file cannot silently change the answer.
-./buck2 uquery --output-attribute '^srcs$' "$aggregator" >"$work/covered.json"
-"$project_root/build/tools/jq-bin" -r --arg aggregator "$aggregator" \
-    '.[$aggregator].srcs | .[]' <"$work/covered.json" | sort -u >"$work/covered"
-
-printf '%s\n' "$other_readers" | awk 'NF { print $1 }' | sort -u >"$work/elsewhere"
-cat "$work/covered" "$work/elsewhere" | sort -u >"$work/read"
+grep -E ':[^/]*clippy$' "$work/all" | sort -u >"$work/reports" || true
 
 if [ ! -s "$work/reports" ]; then
     printf 'no Clippy report found in the graph; the check would pass vacuously\n' >&2
     exit 1
 fi
 
-failures=0
+# --- verify each declared reader ------------------------------------------
+# Redirection, not a pipe: the loop must run in this shell so a bad
+# declaration can exit and the failure count can accumulate.
+printf '%s\n' "$readers" >"$work/readers"
+: >"$work/verified"
+while IFS= read -r line; do
+    case "$line" in
+        '' | '#'*) continue ;;
+    esac
+    report=${line%% *}
+    gate=${line#* }
+    if [ "$gate" = "$line" ]; then
+        printf 'malformed reader declaration, expected "<report> <gate>": %s\n' "$line" >&2
+        exit 1
+    fi
 
+    if ! env_value=$(attribute "$gate" env); then
+        note_failure "declared gate does not exist: $gate (declared as reading $report)"
+        continue
+    fi
+    expected="\$(location $report)"
+    if [ "$env_value" != "$expected" ]; then
+        note_failure "gate $gate does not read $report: CLIPPY_REPORTS is ${env_value:-<unset>}, expected $expected"
+        continue
+    fi
+    printf '%s\n' "$report" >>"$work/verified"
+done <"$work/readers"
+
+# A verified report covers itself, and if it is a list of other clippy
+# reports (the aggregator), it covers those too. Expanding here is what lets
+# root//:clippy's 11 members count without listing them again.
+while IFS= read -r report; do
+    printf '%s\n' "$report" >>"$work/read"
+    if members=$(attribute "$report" srcs 2>/dev/null); then
+        printf '%s\n' "$members" | grep -E ':[^/]*clippy$' >>"$work/read" || true
+    fi
+done <"$work/verified"
+sort -u -o "$work/read" "$work/read"
+
+# --- a report nothing reads ------------------------------------------------
 missing=$(comm -23 "$work/reports" "$work/read")
 if [ -n "$missing" ]; then
-    failures=$((failures + 1))
-    printf 'Clippy report with no reader:\n' >&2
+    note_failure 'Clippy report with no verified reader:'
     printf '%s\n' "$missing" | while IFS= read -r report; do
         printf '  %s\n' "$report" >&2
     done
     cat >&2 <<'EOF'
 
 Add the package to root//:clippy in src/BUCK so the Code gate reads it, or, if
-the report must stay out of Code CI, list it in src/build/ci/clippy-coverage
+the report must stay out of Code CI, declare it in src/build/ci/clippy-coverage
 next to the gate that does read it.
 EOF
 fi
 
-# A member that is no longer a report means the aggregator is stale: the package
-# was renamed or removed and the line outlived it.
-stale=$(comm -13 "$work/reports" "$work/covered")
+# --- a list entry that is no longer a report -------------------------------
+stale=$(comm -13 "$work/reports" "$work/read")
 if [ -n "$stale" ]; then
-    failures=$((failures + 1))
-    printf 'root//:clippy lists a target that is not a Clippy report in the graph:\n' >&2
+    note_failure 'a declared or listed target is not a Clippy report in the graph:'
     printf '%s\n' "$stale" | while IFS= read -r report; do
         printf '  %s\n' "$report" >&2
     done
-    printf 'Remove the stale line from src/BUCK.\n' >&2
+    printf 'Drop the stale line from src/BUCK or from the reader list.\n' >&2
 fi
 
 if [ "$failures" -ne 0 ]; then
     exit 1
 fi
 
-printf '%s Clippy reports, all with a reader.\n' "$(wc -l <"$work/reports" | tr -d ' ')"
+printf '%s Clippy reports, all read by a verified gate.\n' "$(wc -l <"$work/reports" | tr -d ' ')"
