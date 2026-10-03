@@ -161,6 +161,7 @@ sh_test(
     test = "check_validation_range.sh",
     env = {
         "CODE_WORKFLOW": "$(location repo//:code_workflow_yml)",
+        "GIT_ATTRIBUTES": "$(location repo//:git_attributes)",
         "RELEASE_WORKFLOW": "$(location repo//:release_workflow_yml)",
         "JQ_BIN": "$(location root//build/tools:jq-bin)",
         "AFFECTED_TARGETS": "$(location root//:affected_targets)",
@@ -168,6 +169,7 @@ sh_test(
     labels = CI_FAST,
     resources = [
         "repo//:code_workflow_yml",
+        "repo//:git_attributes",
         "repo//:release_workflow_yml",
         "root//build/tools:jq-bin",
         "root//:affected_targets",

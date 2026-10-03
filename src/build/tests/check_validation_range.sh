@@ -16,11 +16,13 @@ script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 repo_root="$(CDPATH= cd -- "$script_dir/../../.." && pwd)"
 code_workflow="${CODE_WORKFLOW:-$repo_root/.github/workflows/code.yml}"
 release_workflow="${RELEASE_WORKFLOW:-$repo_root/.github/workflows/release.yml}"
+git_attributes="${GIT_ATTRIBUTES:-$repo_root/.gitattributes}"
 jq_bin="${JQ_BIN:-$script_dir/../tools/jq-bin}"
 affected_targets="${AFFECTED_TARGETS:-$script_dir/../ci/affected-targets}"
 
 [[ -f "$code_workflow" ]] || { echo "missing workflow: $code_workflow" >&2; exit 1; }
 [[ -f "$release_workflow" ]] || { echo "missing workflow: $release_workflow" >&2; exit 1; }
+[[ -f "$git_attributes" ]] || { echo "missing attributes: $git_attributes" >&2; exit 1; }
 [[ -f "$jq_bin" ]] || { echo "missing pinned jq: $jq_bin" >&2; exit 1; }
 [[ -f "$affected_targets" ]] || { echo "missing target selector: $affected_targets" >&2; exit 1; }
 command -v dotslash >/dev/null || { echo "dotslash must be on PATH for the stand-in gh (the step itself runs without it)" >&2; exit 1; }
@@ -85,7 +87,7 @@ git -C "$repo" config user.email test@example.invalid
 git -C "$repo" config user.name test
 git -C "$repo" config commit.gpgsign false
 mkdir -p "$repo/docs/design" "$repo/src/agency/skills/hctl2-shaping"
-printf '/docs/** hctl-doc=design\n' > "$repo/.gitattributes"
+cp "$git_attributes" "$repo/.gitattributes"
 echo base > "$repo/docs/design/a.md"
 echo base > "$repo/src/agency/skills/hctl2-shaping/SKILL.md"
 git -C "$repo" add -A
@@ -518,6 +520,77 @@ for event in pull_request push schedule workflow_dispatch; do
     check_platforms release "$work/steps/release-platforms.sh" "$event" "$expected"
 done
 note "PASS platform matrices: pull_request 2 platforms, other events 3, both workflows"
+
+# Source documentation must select its own profile, including root README and
+# Skills; vendored Markdown must not be pulled into first-party doc checks.
+for doc in src/README.md src/crates/chat/README.md src/agency/skills/hctl2-shaping/SKILL.md src/third-party/rust/README.md; do
+    previous_head="$(git -C "$repo" rev-parse HEAD)"
+    mkdir -p "$repo/$(dirname "$doc")"
+    echo 'source documentation fixture' > "$repo/$doc"
+    git -C "$repo" add "$doc"
+    git -C "$repo" commit -q -m "documentation profile fixture: $doc"
+    STEP_VALIDATION_BASE="$previous_head"
+    STEP_HEAD_COMMIT="$(git -C "$repo" rev-parse HEAD)"
+    export STEP_VALIDATION_BASE STEP_HEAD_COMMIT
+    run_step code-paths pull_request synchronize "$previous_head" fixture "" || true
+    if [[ "$doc" = src/third-party/* ]]; then
+        expect 'vendored Markdown does not select doc checks' "$(output_value docs)" false
+        expect 'vendored Markdown has no doc profile' "$(output_value doc_targets)" ''
+    else
+        expect "$doc selects doc checks" "$(output_value docs)" true
+        expect "$doc selects only profile-src" "$(output_value doc_targets)" root//build/docs:profile-src
+    fi
+done
+
+# Execute the actual read-only coverage step. Only Buck's input query is a
+# stand-in; Git provides the real tracked inventory of the fixture repository.
+extract_step "$code_workflow" 'Check source Markdown coverage' > "$work/steps/src-docs.sh"
+[[ -s "$work/steps/src-docs.sh" ]] || { echo 'missing source Markdown coverage step' >&2; exit 1; }
+cat > "$repo/src/buck2" <<'BUCK'
+#!/bin/sh
+set -eu
+test "$#" = 2
+test "$1" = uquery
+test "$2" = 'inputs(deps(root//:src_docs_tree))'
+test "${FAKE_DOC_QUERY_FAIL:-0}" = 0
+cat "$FAKE_DOC_INPUTS"
+BUCK
+chmod +x "$repo/src/buck2"
+git -C "$repo" -c core.quotepath=false ls-files -- 'src/*.md' 'src/**/*.md' \
+    ':!:src/third-party/**' ':!:src/buck-out/**' ':!:src/target/**' > "$work/src-docs-all"
+run_doc_scope() {
+    (cd "$repo" && RUNNER_TEMP="$runner_tmp" FAKE_DOC_INPUTS="$1" \
+        FAKE_DOC_QUERY_FAIL="${2:-0}" "$BASH" "$work/steps/src-docs.sh") > "$log" 2>&1
+}
+if run_doc_scope "$work/src-docs-all"; then
+    note 'PASS source Markdown coverage accepts the complete declared set'
+else
+    fail 'source Markdown coverage rejects the complete declared set'
+fi
+grep -v '^src/crates/chat/' "$work/src-docs-all" > "$work/src-docs-missing"
+if run_doc_scope "$work/src-docs-missing"; then
+    fail 'source Markdown coverage accepts a missing package'
+else
+    expect_log 'source Markdown coverage names the missing file' 'src/crates/chat/README\.md'
+fi
+: > "$work/src-docs-empty"
+if run_doc_scope "$work/src-docs-empty"; then
+    fail 'source Markdown coverage accepts empty declared inputs'
+else
+    note 'PASS source Markdown coverage rejects empty declared inputs'
+fi
+if run_doc_scope "$work/src-docs-all" 1; then
+    fail 'source Markdown coverage swallows a failed Buck query'
+else
+    note 'PASS source Markdown coverage fails when the Buck query fails'
+fi
+cp "$work/src-docs-all" "$work/src-docs-extra"
+echo 'src/third-party/rust/README.md' >> "$work/src-docs-extra"
+if run_doc_scope "$work/src-docs-extra"; then
+    fail 'source Markdown coverage accepts a vendored input'
+else
+    expect_log 'source Markdown coverage rejects the vendored input' 'src/third-party/rust/README\.md'
+fi
 
 if [ "$failures" -ne 0 ]; then
     echo "check_validation_range: FAILED ($failures)" >&2

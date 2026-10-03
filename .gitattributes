@@ -11,5 +11,10 @@ src/third-party/rust/BUCK whitespace=-blank-at-eof
 /docs/design/delivery.md hctl-doc=delivery
 /docs/usage.md hctl-doc=delivery
 /docs/research/** hctl-doc=research
+# Source-side Markdown uses only the retired-name check, not design prose rules.
+/src/**/*.md hctl-doc=src
+/src/third-party/** !hctl-doc
+/src/buck-out/** !hctl-doc
+/src/target/** !hctl-doc
 /.memo/** hctl-doc=memo
 /.memo/review/** hctl-doc=memo-review

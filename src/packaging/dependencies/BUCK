@@ -2,6 +2,13 @@ load(":defs.bzl", "declare_external_dependencies")
 
 oncall("hctl2")
 
+# Export this package's Markdown; the root glob stops at BUCK boundaries.
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
 filegroup(
     name = "service_lifecycle_sources",
     srcs = glob([

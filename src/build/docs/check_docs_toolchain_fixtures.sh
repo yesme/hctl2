@@ -6,6 +6,8 @@ set -euo pipefail
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 lint="${DOC_STYLE_LINT:-$script_dir/doc_style_lint.pl}"
+dead_name_checker="${DEAD_NAME_CHECKER:-$script_dir/check_dead_names.sh}"
+dead_names_file="${DEAD_NAMES_FILE:-$script_dir/dead_names.txt}"
 vocab="${SPEC_VOCABULARY:-$script_dir/testdata/spec-vocabulary.md}"
 names_file="${IMPLEMENTATION_NAMES:-$script_dir/implementation_names.txt}"
 docs_tree="${DOCS_TREE:-}"
@@ -20,6 +22,8 @@ if [ -z "$pr_contract" ]; then
 fi
 
 [[ -f "$lint" ]] || { echo "missing checker: $lint" >&2; exit 1; }
+[[ -f "$dead_name_checker" ]] || { echo "missing retired-name checker: $dead_name_checker" >&2; exit 1; }
+[[ -f "$dead_names_file" ]] || { echo "missing retired names: $dead_names_file" >&2; exit 1; }
 [[ -f "$vocab" ]] || { echo "missing vocabulary fixture: $vocab" >&2; exit 1; }
 [[ -f "$names_file" ]] || { echo "missing implementation names: $names_file" >&2; exit 1; }
 [[ -f "$pr_contract" ]] || { echo "missing PR contract workflow: $pr_contract" >&2; exit 1; }
@@ -99,6 +103,28 @@ expect_fail_matching() {
 
 empty_allow="$work/empty.allowlist"
 : >"$empty_allow"
+
+# Retired-name checks read the materialized source-relative paths, including
+# nested package READMEs. The scanner cannot infer a package missing from its
+# input tree; the workflow's coverage comparison checks that separately.
+tree="$work/src-dead-name"
+mkdir -p "$tree/crates/chat"
+printf '# source docs\n' > "$tree/README.md"
+printf 'RuntimeBackend\n' > "$tree/crates/chat/README.md"
+expect_fail_matching 'retired name in a nested package README is rejected' \
+    "FAIL crates/chat/README.md:1: retired name 'RuntimeBackend'" \
+    bash "$dead_name_checker" "$tree" "$dead_names_file" "$empty_allow"
+printf '# clean package docs\n' > "$tree/crates/chat/README.md"
+expect_pass 'clean nested package README passes' \
+    bash "$dead_name_checker" "$tree" "$dead_names_file" "$empty_allow"
+expect_fail_matching 'missing doc tree names the Buck input rather than a deleted script' \
+    'use the Buck docs_tree/src_docs_tree input' \
+    bash "$dead_name_checker" "$work/missing-doc-tree" "$dead_names_file" "$empty_allow"
+tree="$work/empty-src-tree"
+mkdir -p "$tree/README.md"
+expect_fail_matching 'empty Markdown scope cannot pass vacuously' \
+    'empty scan scope; refusing to pass vacuously' \
+    bash "$dead_name_checker" "$tree" "$dead_names_file" "$empty_allow"
 
 # --- layer-terms -----------------------------------------------------------
 tree="$work/layer-fp-code"

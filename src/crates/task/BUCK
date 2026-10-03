@@ -3,6 +3,13 @@ load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2
 
 oncall("hctl2")
 
+# Export this package's Markdown; the root glob stops at BUCK boundaries.
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
 DEPS = [
     "root//crates/foundation:foundation",
     "root//crates/repo:repo",

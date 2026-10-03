@@ -7,6 +7,13 @@ load("//build/rules:ci.bzl", "CI_DOCS")
 
 oncall("hctl2")
 
+# Export this package's Markdown; the root glob stops at BUCK boundaries.
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
 filegroup(
     name = "configs",
     srcs = glob(["*.txt", "*.allowlist"]),
@@ -14,7 +21,7 @@ filegroup(
 
 filegroup(
     name = "fixture_inputs",
-    srcs = glob(["testdata/**", "doc_style_lint.pl", "implementation_names.txt", "*.allowlist"]),
+    srcs = glob(["testdata/**", "doc_style_lint.pl", "implementation_names.txt", "check_dead_names.sh", "dead_names.txt", "*.allowlist"]),
 )
 
 sh_test(
@@ -161,6 +168,8 @@ sh_test(
     test = "check_docs_toolchain_fixtures.sh",
     env = {
         "DOC_STYLE_LINT": "$(location :fixture_inputs)/doc_style_lint.pl",
+        "DEAD_NAME_CHECKER": "$(location :fixture_inputs)/check_dead_names.sh",
+        "DEAD_NAMES_FILE": "$(location :fixture_inputs)/dead_names.txt",
         "SPEC_VOCABULARY": "$(location :fixture_inputs)/testdata/spec-vocabulary.md",
         "IMPLEMENTATION_NAMES": "$(location :fixture_inputs)/implementation_names.txt",
         "DOCS_TREE": "$(location repo//:docs_tree)",
@@ -223,6 +232,12 @@ test_suite(
     name = "profile-research",
     labels = CI_DOCS,
     tests = [":check_links"],
+)
+
+test_suite(
+    name = "profile-src",
+    labels = CI_DOCS,
+    tests = [":check_dead_names_src"],
 )
 
 test_suite(

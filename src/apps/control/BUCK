@@ -4,6 +4,13 @@ load("//build/tools:xz.bzl", "XZ_DIRECTORY")
 
 oncall("hctl2")
 
+# Export this package's Markdown; the root glob stops at BUCK boundaries.
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
 CONTROL_DEPS = [
     "root//crates/chat:chat",
     "root//crates/foundation:foundation",
