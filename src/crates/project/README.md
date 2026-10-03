@@ -63,13 +63,13 @@ hctl2 request show PROJECT_ID REQUEST_ID
 
 | 现行 CT-PROJECT / CT-REPO 条目（按内容定位） | 本包失败输入与证据 | 未覆盖及原因 |
 | --- | --- | --- |
-| 创建 Project 与唯一主 Room；同 Repo 两 Project；待确认 Repo 拒绝 | D：outbox 冲突回滚无半个 Project、同 key 重投、第二 Project 独立、待确认 Repo 拒绝；B1：实际注册与两主 Room | 本地 B1 的 Keychain 写入问题见 PR 实测记录，不冒称已通过 |
+| 创建 Project 与唯一主 Room；同 Repo 两 Project；待确认 Repo 拒绝 | D：outbox 冲突回滚无半个 Project、同 key 重投、第二 Project 独立、待确认 Repo 拒绝；B1：实际注册与两主 Room | 本地 B1 的 Keychain 写入问题见 PR 实测记录，不冒称已通过；「未选 Participant 不能查看主 Room」这一失败情形要等派工包有数字参与者才能测，归第 5 包 |
 | Project 归档拒绝清单与 Repo 所属阻塞；恢复不复活终态 | D：逐类阻塞、Repo 租约、预览后新增 Room / effect、关闭 Topic 保留；不读取 Matrix 树 | 未来真实 Run / Invocation / 租约形状在各包接入时再验 |
 | Room 归属不变、Request 去重；讨论不解决 Request | D：跨 Project 拒绝、同根去重与取代、关闭 Topic 不改 Request；Chat 原有 D / R | 普通 Topic 提要内容语义校验仍沿 Chat README 的未覆盖项 |
 | 闲置 15 天的开放 Request Topic，普通 Topic 不提醒 | D：13 / 15 天、未读、普通 / 已解决 Topic；N：当前原生消息时间回读 | UI 标记未实现 |
 | 挂靠不继承；多房间部分失败不报全体成功；归档不依赖层级 | D：独立不可改写名册、跨 Project / 重复目标拒绝、归档全体 Room；N：原生成员邀请与移除、重复回读 | 真实多房间部分拒绝、权限等级调整与 UI 未验 |
 | 待你处理去重、四问与返回入口、其他人不计、只读查询不解决 | D：单 Request 一项、Task 同动作去重、其他人不计、处理后退出、读前后完全一致；B1：Request 经公共 CLI 解决重试 | 其余三类来源归后续包 |
-| Request 无 Message 升级 Topic、机械提要、关闭不解决 | D：真实 Request 记录供 Chat reducer 创建 / 关闭、归属与版本检查 | 原生 Request Topic 机械草稿在 Chat 已有路径；完整来源链需后续 Context 交付 |
+| Request 无 Message 升级 Topic、机械提要、关闭不解决 | D：真实 Request 记录供 Chat reducer 创建 / 关闭、归属与版本检查 | Chat D：Request Topic 机械草稿在 Chat 已有路径；完整来源链需后续 Context 交付 |
 | Project 版本更新不改已接受约束、名册换人不回写旧记录 | D：保存旧选入与 Binding、Task Revision 接受版本冻结、改缺省后原 Request delivery 可确认 | 调用 / Run 已冻结设置和候选校验由派工包接入 |
 | Request 比较并交换、唯一投递、崩溃重试、截止不伪造 Task 终态 | D：来源在 Submit / 回执前变化拒绝，Unknown 后重新开库仅一回执一 Revision，旧 Task 预览不能绕过新 Request，过期旧来源不挡其他截止 | Run / Invocation 的来源 builder 与接收方尚未实现 |
 | CT-REPO 其余注册、平台绑定、集成与评审行 | 原 Repo 测试与完整安装包测试保留；本包不改 Repo reducer | 变更 / 发布评审 / 集成仍按任务书后续包交付 |

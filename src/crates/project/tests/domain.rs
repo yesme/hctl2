@@ -298,6 +298,45 @@ impl Env {
         )
         .unwrap()
     }
+    fn create_topic(
+        &mut self,
+        k: &str,
+        origin: chat::Origin,
+        texts: Vec<chat::SourceText>,
+    ) -> String {
+        let input = chat::Input {
+            key: k.into(),
+            action: chat::Action::CreateTopic {
+                project_id: self.a.clone(),
+                project_version: project(&self.store, &self.a).unwrap().version,
+                name: k.into(),
+                origin: Box::new(origin),
+                brief: Box::new(chat::Brief {
+                    context_and_goal: "clarify".into(),
+                    settled_facts_and_reasons: vec![],
+                    disagreements_and_questions: vec![],
+                    constraints_and_materials: vec![],
+                    sources: texts.iter().map(|t| t.source.clone()).collect(),
+                }),
+                participants: vec![],
+                roster_confirmed: true,
+            },
+        };
+        let plan = chat::prepare(&self.store, input, texts).unwrap();
+        let result = chat::admit(&mut self.store, &actor(), plan).unwrap();
+        let effect = result["effect_id"].as_str().unwrap();
+        self.store
+            .begin_effect(self.store.generation(), effect)
+            .unwrap();
+        chat::confirm(
+            &mut self.store,
+            &actor(),
+            effect,
+            json!({"matrix_room_id":format!("!{k}:hctl2.localhost")}),
+        )
+        .unwrap();
+        result["room_id"].as_str().unwrap().into()
+    }
 }
 
 #[test]
@@ -945,6 +984,126 @@ fn idle_request_topic_attention_is_not_pending_and_discussion_does_not_answer() 
         RequestState::Open
     );
     assert_eq!(pending(&e.store, &a, &actor()).unwrap(), before);
+}
+
+#[test]
+fn ordinary_topic_does_not_trigger_idle_attention() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let task = e.claim(&a);
+    let req = e.create_request("ask", e.spec(&task));
+    let request_id = req["request_id"].as_str().unwrap();
+    let r = required(
+        &e.store,
+        &key(Scope::Project(a.clone()), "request", request_id),
+    )
+    .unwrap();
+    let request: Request = decode(&r).unwrap();
+    let texts = chat::request_texts(&e.store, &reference(&r), &request.blockers).unwrap();
+    let request_topic = e.create_topic(
+        "request-topic",
+        chat::Origin::Request {
+            request: reference(&r),
+            blockers: request.blockers,
+        },
+        texts,
+    );
+    let (binding, main) = chat::main_binding(&e.store, &a).unwrap();
+    let body = json!({"body":"ordinary discussion","msgtype":"m.text"}).to_string();
+    let ordinary_topic = e.create_topic(
+        "ordinary-topic",
+        chat::Origin::Room {
+            room_id: main.id,
+            binding_version: binding.version,
+        },
+        vec![chat::SourceText {
+            source: chat::Source::Message {
+                binding: reference(&binding),
+                event_id: "$ordinary".into(),
+                content_digest: foundation::bytes_sha256(body.as_bytes()),
+            },
+            body,
+            excerpt: "ordinary discussion".into(),
+        }],
+    );
+    let now = task::now();
+    for room_id in [&request_topic, &ordinary_topic] {
+        let identity =
+            required(&e.store, &key(Scope::Project(a.clone()), "room", room_id)).unwrap();
+        assert!(matches!(
+            identity.data,
+            store::RecordData::Room {
+                room_kind: store::RoomKind::Topic,
+                state: RoomState::Active,
+            }
+        ));
+    }
+    let activity = BTreeMap::from([
+        (request_topic.clone(), Some(now)),
+        (ordinary_topic, Some(now)),
+    ]);
+    // Both Topics have the same readable activity time; only the Request Topic qualifies.
+    let items = attention(&e.store, &a, now + 15 * 86400, &activity).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["room_id"], request_topic);
+}
+
+#[test]
+fn resolved_request_topic_does_not_trigger_idle_attention() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let task = e.claim(&a);
+    let req = e.create_request("ask", e.spec(&task));
+    let request_id = req["request_id"].as_str().unwrap().to_owned();
+    let r = required(
+        &e.store,
+        &key(Scope::Project(a.clone()), "request", &request_id),
+    )
+    .unwrap();
+    let request: Request = decode(&r).unwrap();
+    let texts = chat::request_texts(&e.store, &reference(&r), &request.blockers).unwrap();
+    let topic = e.create_topic(
+        "request-topic",
+        chat::Origin::Request {
+            request: reference(&r),
+            blockers: request.blockers,
+        },
+        texts,
+    );
+    let now = task::now();
+    let activity = BTreeMap::from([(topic.clone(), Some(now))]);
+    let idle_at = now + 15 * 86400;
+    let before = attention(&e.store, &a, idle_at, &activity).unwrap();
+    assert_eq!(before.len(), 1);
+    assert_eq!(before[0]["room_id"], topic);
+    e.apply(
+        "answer",
+        Action::ResolveRequest {
+            project_id: a.clone(),
+            request_id: request_id.clone(),
+            version: r.version,
+            adoption: e.adoption(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        requests(&e.store, &a).unwrap()[0].1.state,
+        RequestState::Resolved
+    );
+    let identity = required(&e.store, &key(Scope::Project(a.clone()), "room", &topic)).unwrap();
+    assert!(matches!(
+        identity.data,
+        store::RecordData::Room {
+            state: RoomState::Active,
+            ..
+        }
+    ));
+    // The Room stays active and equally idle; resolving its Request alone removes the reminder.
+    assert!(
+        attention(&e.store, &a, idle_at, &activity)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
