@@ -10,12 +10,13 @@
 # that works is: a hand-written list, plus a check that reads the graph and
 # refuses to accept the list on trust.
 #
-# Readers are declared below and *verified*, not just listed. Each pair is
-# "<report> <gate>"; the gate must exist and its CLIPPY_REPORTS must be
-# $(location <report>). A declaration whose gate is missing, or whose gate reads
-# a different report set, is rejected — otherwise the declaration would be a
-# comment, and the one report Code CI must not build would be the one with no
-# real reader.
+# Readers are declared below and *verified*, not just listed. Each row is
+# "<report> <gate> <test> <label>"; the gate must exist, its CLIPPY_REPORTS must
+# be $(location <report>), it must run that test, and it must carry the label
+# that gets it scheduled. A declaration that fails any of those is rejected —
+# otherwise the declaration would be a comment, and the one report Code CI must
+# not build would be the one with no real reader. A gate that runs the wrong
+# script, or that CI never selects, reads nothing however correct its env is.
 #
 # Read-only: it queries the graph and compares sets. It never builds.
 set -eu
@@ -29,7 +30,8 @@ Usage:
   clippy-coverage --help
 
 Exits non-zero when a report exists that no verified reader covers, when a
-declared gate does not exist or does not read its declared report, when the
+declared gate does not exist, does not read its declared report, does not run
+its declared test, or lacks the label that makes CI select it, when the
 aggregator lists a report that no longer exists, or when a graph query fails.
 Fails closed.
 EOF
@@ -57,13 +59,19 @@ cd "$project_root"
 
 jq_bin="$project_root/build/tools/jq-bin"
 
-# The declared readers, one "<report> <gate>" pair per line. A report with no
-# line here must be a srcs member of root//:clippy, which is why the aggregator
-# and the gate that reads it are both listed: verifying that pair is what makes
-# the aggregator's 11 members count as covered.
+# The declared readers, one row per reader: "<report> <gate> <test> <label>".
+# All four are verified against the graph, because a report with no reader is
+# also what a reader that never runs looks like:
+#   - the gate must exist;
+#   - its CLIPPY_REPORTS must be exactly $(location <report>);
+#   - its test executable must be the shared checker, so a gate cannot keep
+#     the right env while running some other, always-passing script;
+#   - it must carry <label>, the label that gets it selected for CI
+#     (affected-targets filters on ci:fast / ci:platform), so a gate that
+#     nobody schedules is not counted as a reader either.
 readers='
-root//:clippy root//build/tests:clippy_clean_test
-root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test
+root//:clippy root//build/tests:clippy_clean_test root//build/tests/check_clippy_clean.sh ci:fast
+root//packaging/release:room-cli-clippy root//packaging/release:room-cli-clippy-clean-test root//build/tests:check-clippy-clean.sh ci:release
 '
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/hctl2-clippy-coverage.XXXXXX")
@@ -87,16 +95,41 @@ attribute_list() {
         <"$work/attr.json"
 }
 
-# Reads exactly one env key of one target. This is a keyed lookup, never a
-# sweep over the whole env map: dumping every value would let any variable
-# stand in for CLIPPY_REPORTS, and would turn an unrelated variable into a
-# second line that fakes a mismatch. A missing key, or a value that is not a
-# plain string, reads empty and is rejected by the caller.
+# Reads exactly one env key of the gate last fetched. This is a keyed lookup,
+# never a sweep over the whole env map: dumping every value would let any
+# variable stand in for CLIPPY_REPORTS, and would turn an unrelated variable
+# into a second line that fakes a mismatch. A missing key, or a value that is
+# not a plain string, reads empty and is rejected by the caller.
 env_clippy_reports() {
-    ./buck2 uquery --output-attribute '^env$' "$1" >"$work/attr.json" 2>"$work/attr.err" || return 1
     "$jq_bin" -r --arg target "$1" \
         '.[$target].env.CLIPPY_REPORTS | if type == "string" then . else "" end' \
-        <"$work/attr.json"
+        <"$work/gate.json"
+}
+
+# The executable the gate runs, read the same keyed way.
+gate_test() {
+    "$jq_bin" -r --arg target "$1" \
+        '.[$target].test | if type == "string" then . else "" end' \
+        <"$work/gate.json"
+}
+
+# Whether the gate carries the label that gets it selected for CI. Membership
+# only: a target may carry several labels and their order is not meaningful.
+gate_has_label() {
+    "$jq_bin" -r --arg target "$1" --arg want "$2" \
+        'if any(.[$target].labels[]?; . == $want) then "yes" else "" end' \
+        <"$work/gate.json"
+}
+
+# The labels the gate does carry, for saying what it would take to fix it.
+gate_labels() {
+    "$jq_bin" -r --arg target "$1" '.[$target].labels // [] | .[]' <"$work/gate.json"
+}
+
+# One graph query per gate, answered once and read three times.
+fetch_gate() {
+    ./buck2 uquery --output-attribute '^(env|test|labels)$' "$1" \
+        >"$work/gate.json" 2>"$work/gate.err"
 }
 
 # --- every report that exists in the graph ---------------------------------
@@ -121,19 +154,50 @@ while IFS= read -r line; do
         '' | '#'*) continue ;;
     esac
     report=${line%% *}
-    gate=${line#* }
-    if [ "$gate" = "$line" ]; then
-        printf 'malformed reader declaration, expected "<report> <gate>": %s\n' "$line" >&2
+    rest=${line#* }
+    gate=${rest%% *}
+    rest=${rest#* }
+    executable=${rest%% *}
+    label=${rest#* }
+    # Exactly four non-empty fields: three separators, and no field collapsed
+    # to nothing (which a doubled or edge space would show).
+    spaces=$(printf '%s' "$line" | tr -cd ' ' | wc -c | tr -d ' ')
+    case "$line" in
+        *'  '* | [' ']* | *[' '])
+            malformed=1
+            ;;
+        *)
+            [ "$spaces" -eq 3 ] || malformed=1
+            ;;
+    esac
+    if [ -n "${malformed:-}" ]; then
+        unset malformed
+        printf 'malformed reader declaration, expected "<report> <gate> <test> <label>": %s\n' "$line" >&2
         exit 1
     fi
 
-    if ! env_value=$(env_clippy_reports "$gate"); then
+    if ! fetch_gate "$gate"; then
         note_failure "declared gate does not exist: $gate (declared as reading $report)"
         continue
     fi
+    env_value=$(env_clippy_reports "$gate")
     expected="\$(location $report)"
     if [ "$env_value" != "$expected" ]; then
         note_failure "gate $gate does not read $report: CLIPPY_REPORTS is ${env_value:-<unset>}, expected $expected"
+        continue
+    fi
+    # A gate that runs some other script reads nothing, however correct its
+    # env is: the env only matters if this is the process that consumes it.
+    actual_test=$(gate_test "$gate")
+    if [ "$actual_test" != "$executable" ]; then
+        note_failure "gate $gate runs ${actual_test:-<no test>}, expected $executable"
+        continue
+    fi
+    # And a gate CI never selects is not a reader either: affected-targets
+    # keeps only ci:fast / ci:platform, so a missing label means the report
+    # is never built or checked on an ordinary incremental run.
+    if [ "$(gate_has_label "$gate" "$label")" != yes ]; then
+        note_failure "gate $gate has no $label label, so CI never selects it: labels are $(gate_labels "$gate" | tr '\n' ' ' | sed 's/ $//')"
         continue
     fi
     printf '%s\n' "$report" >>"$work/verified"
@@ -141,7 +205,10 @@ done <"$work/readers"
 
 # A verified report covers itself, and if it is a list of other clippy
 # reports (the aggregator), it covers those too. Expanding here is what lets
-# root//:clippy's 11 members count without listing them again.
+# root//:clippy's 11 members count without listing them again. The file is
+# created up front: when nothing verifies, the loop below never runs and
+# `sort` would otherwise be handed a path that does not exist.
+: >"$work/read"
 while IFS= read -r report; do
     printf '%s\n' "$report" >>"$work/read"
     if members=$(attribute_list "$report" srcs 2>/dev/null); then
