@@ -24,7 +24,8 @@ Usage:
 
 Exits non-zero when a report exists that no verified reader covers, when a
 declared gate does not exist, does not read its declared report, does not run
-its declared test, or is absent from its scheduler, when the
+its declared test, or is absent from its scheduler, when scheduler syntax
+cannot be verified, when the
 aggregator lists a report that no longer exists, or when a graph query fails.
 Fails closed.
 EOF
@@ -117,29 +118,38 @@ fetch_gate() {
         >"$work/gate.json" 2>"$work/gate.err"
 }
 
-# Check only the two owned Release steps, not arbitrary YAML or shell. Accept
-# the existing single folded command and complementary PR/non-PR conditions.
+# A hand-written format assertion, not a general YAML or shell parser. Accept
+# the two owned step names, a single folded command and PR/non-PR conditions.
 # Unsupported shapes fail instead of guessing. Comments, another step, `build`
 # instead of `test`, and --exclude cannot stand in for a scheduled test.
+# Returns 0 for verified wiring, 1 for a recognized scheduling omission, and 2
+# when the format cannot be verified. Both failures still block the check.
 release_selects_gate() {
     awk -v gate="$1" '
-        function check_step(   expected, n, words, i, hits, platform, config) {
+        function check_step(   expected, pr, non_pr, n, words, i, hits, platform, config) {
             if (!wanted) return
+            seen[wanted]++
+            pr = "        if: ${{ github.event_name == '\''pull_request'\'' }}"
+            non_pr = "        if: ${{ github.event_name != '\''pull_request'\'' }}"
             expected = wanted == 1 ? "==" : "!="
-            if (condition != "        if: ${{ github.event_name " expected " '\''pull_request'\'' }}" || !folded) {
-                bad = 1; return
+            if ((condition != pr && condition != non_pr) || !folded) {
+                unsupported = 1; return
             }
+            if (condition != "        if: ${{ github.event_name " expected " '\''pull_request'\'' }}") not_scheduled = 1
             gsub(/\$\{\{ matrix\.buck_target \}\}/, "PLATFORM", command)
             n = split(command, words, / +/)
-            if (words[1] != "./buck2" || words[2] != "test" || words[3] != "--build-default-info") bad = 1
+            if (words[1] == "./buck2" && words[2] == "build") { not_scheduled = 1; return }
+            if (words[1] != "./buck2" || words[2] != "test" || words[3] != "--build-default-info") {
+                unsupported = 1; return
+            }
             for (i = 4; i <= n; i++) {
                 if (words[i] == "--target-platforms" && words[i+1] == "root//build/platforms:PLATFORM") { platform++; i++ }
                 else if (words[i] == "--config" && words[i+1] == "hctl2.zstd_preset=fast") { config++; i++ }
                 else if (words[i] ~ /^root\/\/[A-Za-z0-9_\/.-]*:[A-Za-z0-9_.-]+$/) { if (words[i] == gate) hits++ }
-                else bad = 1
+                else unsupported = 1
             }
-            if (hits != 1 || platform != 1 || config != (wanted == 1 ? 1 : 0)) bad = 1
-            seen[wanted]++
+            if (hits == 0) not_scheduled = 1
+            if (hits > 1 || platform != 1 || config != (wanted == 1 ? 1 : 0)) unsupported = 1
         }
         /^  package:$/ { package = 1; next }
         package && /^  [A-Za-z0-9_-]+:/ { check_step(); wanted = 0; package = 0 }
@@ -153,8 +163,12 @@ release_selects_gate() {
         wanted && /^        if:/ { condition = $0; next }
         wanted && $0 == "        run: >-" { folded = 1; in_run = 1; next }
         wanted && in_run && /^          / { sub(/^          /, ""); command = command (command == "" ? "" : " ") $0; next }
-        wanted && $0 !~ /^[[:space:]]*(#|$)/ { bad = 1 }
-        END { check_step(); exit (bad || seen[1] != 1 || seen[2] != 1) }
+        wanted && $0 !~ /^[[:space:]]*(#|$)/ { unsupported = 1 }
+        END {
+            check_step()
+            if (unsupported || seen[1] != 1 || seen[2] != 1) exit 2
+            exit (not_scheduled ? 1 : 0)
+        }
     ' "$repo_root/.github/workflows/release.yml"
 }
 
@@ -210,10 +224,20 @@ while read -r report gate executable scheduler extra; do
             fi
             ;;
         release)
-            if ! release_selects_gate "$gate"; then
-                note_failure "Release PR and non-PR test steps must both schedule $gate with the supported command and conditions"
-                continue
-            fi
+            release_status=0
+            release_selects_gate "$gate" || release_status=$?
+            case "$release_status" in
+                0) ;;
+                1)
+                    note_failure "Release PR and non-PR test steps must both schedule $gate: a recognized command or condition omits it"
+                    continue
+                    ;;
+                *)
+                    note_failure "cannot verify Release workflow shape for $gate; scheduling is unknown, not proved absent"
+                    printf '%s\n' 'Expected package job steps named "Test complete offline install and lifecycle (fast zstd preset)" and "Test complete offline install and lifecycle", complementary PR conditions, run: >-, a 10-space command body starting ./buck2 test --build-default-info, target arguments, --target-platforms, and the PR fast preset. Update the format assertion and its fixtures when changing this shape.' >&2
+                    continue
+                    ;;
+            esac
             ;;
         *) note_failure "unknown scheduler: $scheduler"; continue ;;
     esac

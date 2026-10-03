@@ -74,12 +74,12 @@ mutate_graph() {
     "$jq_bin" --arg root "$root_gate" --arg release "$release_gate" --arg gate "${gate:-}" "$1" "$FIXTURE_GRAPH" >"$work/next.json"
     mv "$work/next.json" "$FIXTURE_GRAPH"
 }
-expect() { # name success/failure diagnostic
+expect() { # name success/failure diagnostic [forbidden diagnostic]
     cases=$((cases + 1))
     status=0
     sh "$checkout/src/build/ci/clippy-coverage" >"$work/output" 2>&1 || status=$?
     if { [ "$2" = success ] && [ "$status" -eq 0 ]; } || { [ "$2" = failure ] && [ "$status" -ne 0 ]; }; then
-        if grep -Fq -- "$3" "$work/output"; then
+        if grep -Fq -- "$3" "$work/output" && { [ "$#" -lt 4 ] || ! grep -Fq -- "$4" "$work/output"; }; then
             printf 'PASS %s\n' "$1"
             return
         fi
@@ -159,7 +159,7 @@ for occurrence in 1 2; do
 done
 reset
 sed '/^          root\/\/packaging\/release:room-cli-clippy-clean-test$/s/^          /          # /' "$release_workflow" >"$checkout/.github/workflows/release.yml"
-expect 'a comment is not a scheduled test' failure 'must both schedule'
+expect 'a comment cannot prove scheduling' failure 'cannot verify Release workflow shape'
 reset
 sed 's/\.\/buck2 test --build-default-info/\.\/buck2 build --build-default-info/g' "$release_workflow" >"$checkout/.github/workflows/release.yml"
 expect 'building is not running a gate' failure 'must both schedule'
@@ -168,7 +168,35 @@ sed "s/event_name != 'pull_request'/event_name == 'pull_request'/g" "$release_wo
 expect 'both event paths must be covered' failure 'must both schedule'
 reset
 sed '/^          root\/\/packaging\/release:room-cli-clippy-clean-test$/s/$/ --exclude ci:release/' "$release_workflow" >"$checkout/.github/workflows/release.yml"
-expect 'an exclusion cannot masquerade as scheduling' failure 'must both schedule'
+expect 'an exclusion cannot masquerade as scheduling' failure 'cannot verify Release workflow shape'
+
+# Harmless YAML changes remain unsupported, but must not be diagnosed as a
+# proven scheduling omission. Keep the narrow assertion rather than growing
+# it into another YAML parser.
+reset
+awk '
+    function flush() { if (folded) { print "        run: " body; folded = 0 } }
+    $0 == "        run: >-" { folded = 1; body = ""; next }
+    folded && /^          / { sub(/^          /, ""); body = body (body == "" ? "" : " ") $0; next }
+    { flush(); print }
+    END { flush() }
+' "$release_workflow" >"$checkout/.github/workflows/release.yml"
+expect 'single-line run is unknown, not absent' failure 'cannot verify Release workflow shape' 'must both schedule'
+reset
+awk '
+    /^      - / { wanted = ($0 ~ /- name: Test complete offline install and lifecycle/) }
+    wanted && /^          / { print "  " $0; next }
+    { print }
+' "$release_workflow" >"$checkout/.github/workflows/release.yml"
+expect '12-space body is unknown, not absent' failure 'cannot verify Release workflow shape' 'must both schedule'
+reset
+awk '
+    /^      - name: Test complete offline install and lifecycle/ {
+        print; print "        env:"; print "          COVERAGE_FORMAT_PROBE: present"; next
+    }
+    { print }
+' "$release_workflow" >"$checkout/.github/workflows/release.yml"
+expect 'extra env is unknown, not absent' failure 'cannot verify Release workflow shape' 'must both schedule'
 reset
 expect 'restored workflow' success '3 Clippy reports'
 
