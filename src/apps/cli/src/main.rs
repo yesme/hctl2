@@ -259,6 +259,8 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
 /// Records the secret backend in `<root>/control.json`, the file control reads.
 /// Unknown keys are preserved so the file can grow beyond this setting.
 fn write_secret_backend(root: &Path, backend: &str) -> Result<(), String> {
+    // `start` creates the root itself, so recording a setting cannot assume it exists.
+    std::fs::create_dir_all(root).map_err(io)?;
     let path = root.join("control.json");
     let mut config = match std::fs::read(&path) {
         Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
@@ -270,11 +272,15 @@ fn write_secret_backend(root: &Path, backend: &str) -> Result<(), String> {
         .as_object_mut()
         .ok_or_else(|| format!("{}: configuration must be a JSON object", path.display()))?;
     object.insert("secret_backend".to_owned(), json!(backend));
-    std::fs::write(
-        &path,
-        serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?,
-    )
-    .map_err(io)
+    let bytes = serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?;
+    // Written the way the secret store writes its own file: temporary file, synced,
+    // then renamed — an interrupted write cannot leave a half-parsed configuration.
+    let temporary = root.join(format!("control.json.tmp.{}", std::process::id()));
+    let mut file = std::fs::File::create(&temporary).map_err(io)?;
+    std::io::Write::write_all(&mut file, &bytes).map_err(io)?;
+    file.sync_all().map_err(io)?;
+    drop(file);
+    std::fs::rename(&temporary, &path).map_err(io)
 }
 
 async fn start_daemon(root: &Path) -> Result<(), String> {

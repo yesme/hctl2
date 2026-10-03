@@ -82,6 +82,24 @@ fn secret_backend_setting_persists_and_unknown_values_are_rejected() {
 }
 
 #[test]
+fn start_records_the_backend_on_a_root_that_does_not_exist_yet() {
+    // `start` creates the root itself, so recording a setting cannot assume the
+    // directory is already there.
+    let temp = Temp::new();
+    let root = temp.0.join("fresh");
+    let (ok, stdout, stderr) = run(&root, &["start", "--secret-backend", "user-file"]);
+    assert!(ok, "start on a fresh root: {stderr} {stdout}");
+    let (ok, stdout, stderr) = run(&root, &["status"]);
+    assert!(ok, "status: {stderr} {stdout}");
+    assert!(
+        stdout.contains("\"credential_storage\":\"user-file\""),
+        "the recorded backend must apply to the daemon that just started: {stdout}"
+    );
+    let (ok, _, stderr) = run(&root, &["stop"]);
+    assert!(ok, "stop: {stderr}");
+}
+
+#[test]
 fn project_and_request_local_failures_are_stdout_json_and_nonzero() {
     let temp = Temp::new();
     for namespace in ["project", "request"] {
