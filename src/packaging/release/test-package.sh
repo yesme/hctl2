@@ -47,6 +47,9 @@ case "$test_root" in
     *) die "unsafe release test directory: $test_root" ;;
 esac
 cleanup_release_test() {
+    if [[ -n "${agency_root:-}" && -x "${contract_prefix:-}/bin/agency" ]]; then
+        "$contract_prefix/bin/agency" --root "$agency_root" stop >/dev/null 2>&1 || true
+    fi
     if [[ -n "${b0_root:-}" && -x "${contract_prefix:-}/bin/hctl2" ]]; then
         "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null 2>&1 || true
     fi
@@ -59,6 +62,7 @@ release_root="$test_root/$PACKAGE_ID"
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"
 [[ -x "$release_root/payload/bin/hctl2" ]] || die "release is missing hctl2"
 [[ -x "$release_root/payload/bin/hctl2-control" ]] || die "release is missing hctl2-control"
+[[ -x "$release_root/payload/bin/agency" ]] || die "release is missing agency"
 [[ -x "$release_root/payload/libexec/hctl2/herdr" ]] || die "release is missing Herdr"
 [[ -x "$release_root/payload/libexec/hctl2/process-compose" ]] || \
     die "release is missing Process Compose"
@@ -89,7 +93,7 @@ grep -F 'FileName: libexec/hctl2/gh' "$release_root/payload/share/hctl2/SBOM.spd
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"
 "$release_root/install.sh" --prefix "$contract_prefix"
-for command in hctl2-tool hctl2 hctl2-control hctl2-services; do
+for command in hctl2-tool hctl2 hctl2-control hctl2-services agency; do
     [[ -L "$contract_prefix/bin/$command" ]] || die "installer did not link $command"
 done
 "$contract_prefix/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
@@ -110,6 +114,14 @@ printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
     die "hctl2 start did not report a ready control: $b0_status"
 b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/p')"
 [[ -n "$b0_id" ]] || die "could not read control_id from status: $b0_status"
+# Agency consumption is explicit, and its shared service outlives this control.
+agency_root="$test_root/agency"
+if ! "$contract_prefix/bin/hctl2" --json --root "$b0_root" agency pair \
+    --binding-id package-agency --agency-root "$agency_root" --key package-agency >"$test_root/agency-pair.json"; then
+    die "Agency pairing failed: $(<"$test_root/agency-pair.json")"
+fi
+grep -F '"paired":true' "$test_root/agency-pair.json" >/dev/null || die "Agency pairing failed"
+"$contract_prefix/bin/agency" --root "$agency_root" status >/dev/null
 wait_consumed_available() {
     local name="$1"
     local attempt
@@ -202,6 +214,7 @@ fi
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" services status | \
     "$HCTL2_JQ" -e '.hosted[] | select(.name == "gitea") | .available == false' >/dev/null
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
+"$contract_prefix/bin/agency" --root "$agency_root" status >/dev/null || die "control stop stopped shared Agency"
 sleep 2
 if HCTL2_INSTALL_ROOT="$contract_prefix/lib/hctl2/$PACKAGE_ID" \
     HCTL2_STATE_ROOT="$b0_root/services" \

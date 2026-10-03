@@ -18,6 +18,8 @@ hctl2-<version>-<target>.SHA256SUMS
 
 运行包是给最终用户的单一离线安装包；源码伴随包保持外部许可证与可复现性所需的对应源码；SPDX、release manifest、sidecar 和平台命名的 `SHA256SUMS` 记录实际发行内容。GitHub tag 流水线还为全部文件生成 artifact attestation，并在三平台完成后统一发布。
 
+第一方可执行文件是 `hctl2-tool`、`hctl2`、`hctl2-control` 与独立 `agency`。Agency 随包安装，但普通控制面启动不消费它；首次显式配对才拉起。安装包测试核对独立启停与控制面停止后 Agency 仍可访问。
+
 ## 本地构建
 
 在 `src/` 用一个目标产出完整发行目录：

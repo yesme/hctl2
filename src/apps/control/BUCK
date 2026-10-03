@@ -12,6 +12,8 @@ filegroup(
 )
 
 CONTROL_DEPS = [
+    "root//crates/agency-proto:agency_proto",
+    "root//crates/participant:participant",
     "root//crates/chat:chat",
     "root//crates/foundation:foundation",
     "root//crates/proto:proto",

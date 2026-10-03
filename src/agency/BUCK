@@ -1,3 +1,5 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
 oncall("hctl2")
 
 # Export this package's Markdown; the root glob stops at BUCK boundaries.
@@ -12,5 +14,100 @@ filegroup(
 filegroup(
     name = "skills",
     srcs = glob(["skills/**"]),
+    visibility = ["PUBLIC"],
+)
+
+DEPS = [
+    "root//crates/agency-proto:agency_proto",
+    "root//third-party/rust:rusqlite",
+    "root//third-party/rust:serde",
+    "root//third-party/rust:serde_json",
+    "root//third-party/rust:tokio",
+    "root//third-party/rust:tokio-stream",
+    "root//third-party/rust:tonic",
+]
+
+CLI_DEPS = [
+    ":service",
+    "root//crates/agency-proto:agency_proto",
+    "root//third-party/rust:clap",
+    "root//third-party/rust:serde_json",
+    "root//third-party/rust:tokio",
+]
+
+rust_library(
+    name = "service",
+    crate = "agency",
+    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    tests = [":port_test", ":control_port_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "agency",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = CLI_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    tests = [":cli_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "cli_test",
+    srcs = ["src/main.rs"],
+    crate_root = "src/main.rs",
+    deps = CLI_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "port_test",
+    srcs = ["tests/port.rs"],
+    crate_root = "tests/port.rs",
+    deps = [":service"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "control_port_test",
+    srcs = ["tests/port.rs"],
+    crate_root = "tests/port.rs",
+    deps = [":service", "root//apps/control:control", "root//crates/participant:participant", "root//crates/store:store"] + DEPS,
+    features = ["control_port_test"],
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "library": ":service[clippy.txt]",
+        "binary": ":agency[clippy.txt]",
+        "cli": ":cli_test[clippy.txt]",
+        "port": ":port_test[clippy.txt]",
+        "control_port": ":control_port_test[clippy.txt]",
+    },
+    labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
