@@ -228,6 +228,27 @@ pub enum SecretBackend {
     UserFile,
 }
 
+impl SecretBackend {
+    /// The configuration and status spelling of this backend.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SystemKeyring => "system-keyring",
+            Self::UserFile => "user-file",
+        }
+    }
+
+    /// Parses the configuration spelling; unknown values are a configuration error.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "system-keyring" => Some(Self::SystemKeyring),
+            "user-file" => Some(Self::UserFile),
+            _ => None,
+        }
+    }
+}
+
 /// System-keyring-first secret storage with the owner-approved 0600 file fallback.
 pub struct SecretStore {
     service: String,
@@ -263,6 +284,43 @@ impl SecretStore {
             service: service.into(),
             fallback_root,
             backend: SecretBackend::UserFile,
+        }
+    }
+
+    /// Resolves an explicitly configured backend, or keeps the detected default.
+    ///
+    /// `None` is the default configuration: the system keyring when this machine has
+    /// one, the private file otherwise. An explicit `system-keyring` never silently
+    /// degrades to the file backend — an unusable keyring is a configuration error,
+    /// because falling back would move secrets without the operator asking for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `system-keyring` was requested but this machine has no
+    /// usable system keyring.
+    pub fn select(
+        service: impl Into<String>,
+        fallback_root: PathBuf,
+        requested: Option<SecretBackend>,
+    ) -> Result<Self, FoundationError> {
+        let service = service.into();
+        match requested {
+            None => Ok(Self::detect(service, fallback_root)),
+            Some(SecretBackend::UserFile) => Ok(Self::user_file(service, fallback_root)),
+            Some(SecretBackend::SystemKeyring) => {
+                if keyring::Entry::store_status().is_ok() {
+                    Ok(Self {
+                        service,
+                        fallback_root,
+                        backend: SecretBackend::SystemKeyring,
+                    })
+                } else {
+                    Err(FoundationError::Secret(
+                        "system-keyring is configured but this machine has no usable system keyring"
+                            .to_owned(),
+                    ))
+                }
+            }
         }
     }
 
@@ -433,8 +491,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ExclusiveFileLock, FoundationError, SearchIndex, backup_sqlite, canonical_json,
-        canonical_json_sha256,
+        ExclusiveFileLock, FoundationError, SearchIndex, SecretBackend, SecretStore, backup_sqlite,
+        canonical_json, canonical_json_sha256,
     };
 
     fn temporary_directory(name: &str) -> PathBuf {
@@ -658,6 +716,33 @@ mod tests {
             ["memo-1"]
         );
         drop(index);
+        fs::remove_dir_all(directory).expect("fixture must be removed");
+    }
+
+    #[test]
+    fn secret_backend_names_round_trip() {
+        for backend in [SecretBackend::SystemKeyring, SecretBackend::UserFile] {
+            assert_eq!(SecretBackend::parse(backend.as_str()), Some(backend));
+        }
+        assert_eq!(SecretBackend::parse("keychain"), None);
+    }
+
+    #[test]
+    fn configured_user_file_needs_no_system_keyring() {
+        let directory = temporary_directory("secrets-user-file");
+        let store = SecretStore::select(
+            "hctl2-test",
+            directory.clone(),
+            Some(SecretBackend::UserFile),
+        )
+        .expect("the user-file backend must not depend on a keyring");
+        assert_eq!(store.backend(), SecretBackend::UserFile);
+        store.set("account", b"value").expect("write must succeed");
+        assert_eq!(
+            store.get("account").expect("read must succeed"),
+            b"value",
+            "the configured backend must round-trip the secret"
+        );
         fs::remove_dir_all(directory).expect("fixture must be removed");
     }
 }
