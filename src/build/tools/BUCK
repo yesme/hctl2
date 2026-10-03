@@ -1,8 +1,24 @@
 load(":xz.bzl", "declare_xz")
+load(":zstd.bzl", "declare_zstd")
 
 oncall("hctl2")
 
 declare_xz()
+declare_zstd()
+
+# The pinned zstd CLI, built from the source archive above on the build host.
+# Output layout: bin/zstd, plus the upstream LICENSE and COPYING.
+native.genrule(
+    name = "zstd-bin",
+    srcs = {
+        "src": ":zstd-src",
+        "zstd-build.sh": "zstd-build.sh",
+    },
+    bash = "bash \"$PWD/$SRCDIR/zstd-build.sh\"",
+    out = "hctl2-zstd",
+    cacheable = True,
+    visibility = ["PUBLIC"],
+)
 
 export_file(
     name = "process-compose-bin",

@@ -50,3 +50,10 @@ Linux ELF 依赖 glibc（最高要求 GLIBC_2.17）和 liblzma；制品的 RPATH
 - 多线程一致性回归比较同一份 3 MiB 输入、同一 1 MiB 块大小下的 `-T+1` 与 `-T2`；它不是在不同核数机器上逐字节比较完整安装包。三平台完整安装测试验证的是归档完整性与安装、服务生命周期，不应将它报告为完整包的跨机字节一致性证明。
 - 2026-09-21 · 预设开关：`compress_archive` 改读 `HCTL2_XZ_PRESET`，`release` = `-9`（缺省，发布制品，所有者 09-07 裁定不变），`fast` = `-1`（只给 pull_request 的验证构建，产物安装、测试但不发布），其他取值（含显式空串）直接报错不退回，只有未设置才等于 `release`。取值由 Buck 配置 `hctl2.xz_preset` 经两个打包 genrule 的命令注入，CI 只在 pull_request 事件传 `--config hctl2.xz_preset=fast`。`check_xz.sh` 加五条：缺省与显式 `-9` 字节相同、`fast` 往返一致、在可压缩数据上 `fast` 与显式 `-1` 字节相同且与 `-9` 不同（抓「fast 又退回 -9」）、未知预设被拒、空串被拒。`-T0 --no-adjust` 与环境隔离不随预设变。
 
+
+### 2026-10-03 · 归档压缩改用 zstd（所有者裁定）
+
+- 发行包与源码伴随包的压缩从 xz `-9 -T0` 换成 zstd `--ultra -22 --long=27 -T0`，归档名 `.tar.xz` → `.tar.zst`；实测对照、来源与回归测试见 [`zstd.md`](./zstd.md)。
+- 本文件其余内容仍然有效的地方：pkgx 三平台制品与摘要照旧钉定，**xz 工具保留**，用途收窄为解开 Gitea 上游的 `.xz` 下载制品（`run_xz -dc … > gitea`）。上面「安装包和源码伴随包用 `xz -9 -T0`」「用户通过系统 `tar -xJf` 解包」两句随之作废，正文不改、以本条为准。
+- `check_xz.sh` 删去预设与 `compress_archive` 相关断言（这些移到 `check_zstd.sh`），保留版本错配、环境隔离、往返解压、缺工具与截断流拒绝。
+- 预设开关改名：`HCTL2_XZ_PRESET` / `hctl2.xz_preset` → `HCTL2_ZSTD_PRESET` / `hctl2.zstd_preset`。

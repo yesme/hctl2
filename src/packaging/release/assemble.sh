@@ -14,6 +14,7 @@ readonly HCTL2_PRODUCT_ROOT HCTL2_DEPENDENCY_SOURCE_ROOT
 # shellcheck source=../dependencies/common/build.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 require_pinned_xz
+require_pinned_zstd
 
 usage() {
     printf '%s\n' \
@@ -84,7 +85,7 @@ validate_archive_layout() {
             "$expected_root" | "$expected_root"/*) ;;
             *) die "archive entry is outside $expected_root: $entry" ;;
         esac
-    done < <(tar -tJf "$archive")
+    done < <(run_zstd -dc "$archive" | tar -tf -)
 }
 
 format_spdx_time() {
@@ -187,9 +188,9 @@ hctl2_version="$(read_hctl2_version "$HCTL2_PRODUCT_ROOT/Cargo.toml")"
 [[ -n "$hctl2_version" ]] || die "could not read HCTL2 workspace version"
 package_id="hctl2-$hctl2_version-$target"
 source_package_id="$package_id-sources"
-[[ "$(basename -- "$dependencies_archive")" == "$package_id.tar.xz" ]] || \
+[[ "$(basename -- "$dependencies_archive")" == "$package_id.tar.zst" ]] || \
     die "dependency archive does not match first-party target: $dependencies_archive"
-[[ "$(basename -- "$sources_archive")" == "$source_package_id.tar.xz" ]] || \
+[[ "$(basename -- "$sources_archive")" == "$source_package_id.tar.zst" ]] || \
     die "source archive does not match first-party target: $sources_archive"
 validate_archive_layout "$dependencies_archive" "$package_id"
 validate_archive_layout "$sources_archive" "$source_package_id"
@@ -200,7 +201,7 @@ case "$build_dir" in
     *) die "unsafe release build directory: $build_dir" ;;
 esac
 trap 'find "${build_dir:?}" -depth -delete' EXIT
-tar -xJf "$dependencies_archive" -C "$build_dir"
+run_zstd -dc "$dependencies_archive" | tar -xf - -C "$build_dir"
 package_root="$build_dir/$package_id"
 payload_root="$package_root/payload"
 
@@ -266,8 +267,8 @@ write_checksum_manifest "$payload_root" share/hctl2/PAYLOAD.sha256 bin lib libex
 write_checksum_manifest "$package_root" MANIFEST.sha256 \
     README.md SOURCES.md USAGE.md install.sh payload
 
-runtime_output="$output_dir/$package_id.tar.xz"
-sources_output="$output_dir/$source_package_id.tar.xz"
+runtime_output="$output_dir/$package_id.tar.zst"
+sources_output="$output_dir/$source_package_id.tar.zst"
 sbom_output="$output_dir/$sbom_name"
 release_manifest="$output_dir/$package_id.release.tsv"
 checksum_manifest="$output_dir/$package_id.SHA256SUMS"

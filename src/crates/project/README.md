@@ -80,8 +80,8 @@ D = `root//crates/project:domain_test`（连用 Task / Chat reducer）；N = `ro
 ```sh
 cd src
 ./buck2 test root//crates/project:domain_test root//crates/task:domain_test root//crates/chat:domain_test root//apps/control:boundary_test root//apps/control:chat_native_test root//apps/cli:cli_test root//apps/cli:task_cli_test root//build/docs/...
-./buck2 test root//packaging/release:room-cli-test --config hctl2.xz_preset=fast
-./buck2 build root//:clippy root//packaging/release:room-cli-clippy --config hctl2.xz_preset=fast
+./buck2 test root//packaging/release:room-cli-test --config hctl2.zstd_preset=fast
+./buck2 build root//:clippy root//packaging/release:room-cli-clippy --config hctl2.zstd_preset=fast
 ```
 
 新 crate / target 为 `root//crates/project:{project,domain_test,clippy}`；Control 和 CLI 使用既有 target，完整包 B1 纳入 Release 目标，不让普通 Code 检查重复制作完整包。没有新三方依赖或脚本。

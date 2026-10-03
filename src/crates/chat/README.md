@@ -113,8 +113,8 @@ CT-WORKBENCH-IA 新增的平铺 Topic 列表行：`room list --project-id` 返�
 ```bash
 cd src
 ./buck2 test root//crates/chat:domain_test root//apps/control:unit_test
-./buck2 test root//apps/control:chat_native_test root//packaging/release:room-cli-test --config hctl2.xz_preset=fast
-./buck2 build root//crates/chat:clippy root//apps/control:clippy root//apps/cli:clippy --config hctl2.xz_preset=fast
+./buck2 test root//apps/control:chat_native_test root//packaging/release:room-cli-test --config hctl2.zstd_preset=fast
+./buck2 build root//crates/chat:clippy root//apps/control:clippy root//apps/cli:clippy --config hctl2.zstd_preset=fast
 ```
 
 `domain_test` 不联网；`chat_native_test` 用锁定 Tuwunel 制品；`room-cli-test` 解包真实依赖包，走公共 CLI → daemon → 原生服务。完整包测试及其 `room-cli-clippy` 跟随 Release 工作流，普通 Code 检查不因此制作完整包。它们不操作开发者现有房间或默认控制面根。

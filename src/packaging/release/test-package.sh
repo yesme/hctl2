@@ -29,14 +29,14 @@ source "$HCTL2_BUILD_METADATA"
 # shellcheck source=../dependencies/common/build.sh
 source "$HCTL2_DEPENDENCY_SOURCE_ROOT/common/build.sh"
 
-archives=("$RELEASE_OUTPUT_DIRECTORY"/hctl2-*-"$HCTL2_TARGET_ID".tar.xz)
+archives=("$RELEASE_OUTPUT_DIRECTORY"/hctl2-*-"$HCTL2_TARGET_ID".tar.zst)
 if [[ "${#archives[@]}" -ne 1 || ! -f "${archives[0]}" ]]; then
     die "expected exactly one complete release archive for $HCTL2_TARGET_ID"
 fi
 ARCHIVE="${archives[0]}"
-PACKAGE_ID="$(basename -- "$ARCHIVE" .tar.xz)"
+PACKAGE_ID="$(basename -- "$ARCHIVE" .tar.zst)"
 SOURCE_PACKAGE_ID="$PACKAGE_ID-sources"
-SOURCE_ARCHIVE="$RELEASE_OUTPUT_DIRECTORY/$SOURCE_PACKAGE_ID.tar.xz"
+SOURCE_ARCHIVE="$RELEASE_OUTPUT_DIRECTORY/$SOURCE_PACKAGE_ID.tar.zst"
 readonly ARCHIVE PACKAGE_ID SOURCE_ARCHIVE SOURCE_PACKAGE_ID
 
 [[ -f "$SOURCE_ARCHIVE" ]] || die "source package is missing: $SOURCE_ARCHIVE"
@@ -53,7 +53,7 @@ cleanup_release_test() {
     find "${test_root:?}" -depth -delete
 }
 trap cleanup_release_test EXIT
-tar -xJf "$ARCHIVE" -C "$test_root"
+run_zstd -dc "$ARCHIVE" | tar -xf - -C "$test_root"
 release_root="$test_root/$PACKAGE_ID"
 
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"

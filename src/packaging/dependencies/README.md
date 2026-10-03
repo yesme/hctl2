@@ -20,7 +20,7 @@ Buck 从 `lock.json` 为选定平台生成只读的 `build-metadata.sh`；脚本
 
 `lock.json` 的 `download_only` 锁 Gitea 1.27.3（`.xz`）与 tea 0.15.1（单二进制）的 Linux / macOS × x86_64 / arm64 制品。`./buck2 build root//packaging/dependencies:scm-downloads` 只下载并校验八份 SHA-256；运行包另按目标选入对应二进制，Gitea 由 `hctl2-services` 管理。Linux arm64 未因此成为发布目标。`common.gitea_source` 与 `common.tea_source` 锁同版本源码归档，随源码伴随包交付。
 
-HCTL2 两份归档使用锁定的 [xz 5.8.4](../../../docs/research/build-tools/xz.md) `-9 -T0`，沿用 tar 的时间与排序归一化。已有上游下载格式及托管的 Tuwunel `.tar.gz` 不变。
+HCTL2 两份归档使用锁定的 [zstd 1.5.7](../../../docs/research/build-tools/zstd.md) `--ultra -22 -T0`（在打包 action 里从上游源码现编，不随包分发），沿用 tar 的时间与排序归一化；钉定的 xz 5.8.4 仍在，只用于解开 Gitea 上游的 `.xz` 下载制品。已有上游下载格式及托管的 Tuwunel `.tar.gz` 不变。
 
 三个发布 target 都要求原生构建，不在另一架构上伪装交叉构建：
 
@@ -50,13 +50,13 @@ Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构
 开发机由 loopback `bazel-remote` 在各 worktree 之间共享标准 REAPI CAS/action results。CI 不持久化本地 REAPI 数据或 `buck-out`；macOS 正常发布直接下载约 33–36 MiB 的 Tuwunel 压缩包并由 Buck 校验 SHA-256，不再用约 0.5–1 GiB 的 cache 掩盖源码编译。导出的目录包含：
 
 ```text
-hctl2-<version>-<target>.tar.xz
-hctl2-<version>-<target>.tar.xz.sha256
-hctl2-<version>-<target>-sources.tar.xz
-hctl2-<version>-<target>-sources.tar.xz.sha256
+hctl2-<version>-<target>.tar.zst
+hctl2-<version>-<target>.tar.zst.sha256
+hctl2-<version>-<target>-sources.tar.zst
+hctl2-<version>-<target>-sources.tar.zst.sha256
 ```
 
-Linux 构建只需基本归档工具和用于解开 Tuwunel 官方包的 `dpkg-deb`，不需要 Rust 或 C toolchain，也不调用 `apt-get`。Static Web Server 和 Herdr 都使用上游静态二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
+Linux 构建只需基本归档工具与用于解开 Tuwunel 官方包的 `dpkg-deb`；组包与解包不需要 Rust 或 C toolchain，但压缩归档用的 zstd 现在在打包 action 里从源码现编（`src/build/tools/zstd-build.sh`），所以构建宿主需要一个 C 编译器与 `make`。Static Web Server 和 Herdr 都使用上游静态二进制；其他动态链接产物仍必须使用支持范围内最旧的 glibc 构建基线。
 
 macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必要的动态库路径并做 ad-hoc 签名。Tuwunel 的 HCTL2 托管包同时携带原生构建环境、feature 集和许可证；Buck 固定下载地址与 SHA-256，并验证目标架构和最低系统版本。需要更新该制品时，显式配置 `hctl2.tuwunel_native_build=1` 才会启用 `tuwunel-native-build`，下载 Rust 1.95.0 官方组件、调用 Cargo，并记录 Xcode/SDK 身份和非系统 dylib；`tuwunel-native-archive` 把声明输出制作成待发布压缩包，手动触发的 `Tuwunel macOS assets` workflow 会在两种原生 runner 上执行这两个目标。默认配置下这些目标不兼容，不会被 `root//...` 请求。Herdr 与 Static Web Server 直接使用上游目标架构二进制。产品最低基线为 **macOS 15**；兼容性检查同时识别现代 `LC_BUILD_VERSION` 和 Intel 链接器仍可能生成的 `LC_VERSION_MIN_MACOSX`，任何随包 Mach-O 都不得要求高于这个基线。发布包会把非系统 dylib 改写为 `@loader_path`、做 ad-hoc 签名，并拒绝残留 `/opt/homebrew`、`/usr/local`、`@rpath` 或构建缓存路径的依赖。
 
@@ -81,7 +81,7 @@ macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必�
 把 `<target>` 换成下载包名中的目标：
 
 ```bash
-tar -xJf hctl2-0.0.0-<target>.tar.xz
+tar --zstd -xf hctl2-0.0.0-<target>.tar.zst
 cd hctl2-0.0.0-<target>
 ./install.sh
 ~/.local/bin/hctl2-services start
