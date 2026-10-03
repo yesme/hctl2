@@ -1,16 +1,18 @@
 load(":lock.json", LOCK = "value")
 load("//build/rules:ci.bzl", "CI_INTEGRATION")
 load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
+load("//build/tools:zstd.bzl", "ZSTD_VERSION")
 
 _MACOS_SDK_VERSION = read_config("hctl2", "macos_sdk_version", "unavailable")
 _MACOS_XCODE_BUILD = read_config("hctl2", "macos_xcode_build", "unavailable")
 _MACOS_XCODE_VERSION = read_config("hctl2", "macos_xcode_version", "unavailable")
 _TUWUNEL_NATIVE_BUILD = read_config("hctl2", "tuwunel_native_build", "0")
 
-# `release` (xz -9) ships; `fast` (xz -1) is for pull-request verification only.
-# CI passes `-c hctl2.xz_preset=fast` on pull_request; every other event keeps
-# the default, so published and post-merge artifacts are always `release`.
-XZ_PRESET = read_config("hctl2", "xz_preset", "release")
+# `release` (zstd --ultra -22) ships; `fast` (zstd -12) is for pull-request
+# verification only. CI passes `-c hctl2.zstd_preset=fast` on pull_request;
+# every other event keeps the default, so published and post-merge artifacts
+# are always `release`.
+ZSTD_PRESET = read_config("hctl2", "zstd_preset", "release")
 
 _COMPONENT_PREFIXES = {
     "cinny": "CINNY",
@@ -375,6 +377,7 @@ def _package_sources(package_sources: dict) -> dict:
         "release/LICENSE": "repo//:LICENSE",
         "release/USAGE.md": "repo//:usage",
         "tools/xz": "root//build/tools:xz",
+        "tools/zstd": "root//build/tools:zstd-bin",
         "downloads/gitea.xz": _platform_select({
             target: ":{}".format(_asset_target_name(target, "gitea"))
             for target in LOCK["targets"]
@@ -430,7 +433,9 @@ export HCTL2_LICENSE_FILE="$source_root/release/LICENSE"
 export HCTL2_USAGE_FILE="$source_root/release/USAGE.md"
 export HCTL2_XZ_ROOT="$source_root/tools/xz/{xz_directory}"
 export HCTL2_XZ_VERSION="{xz_version}"
-export HCTL2_XZ_PRESET="{xz_preset}"
+export HCTL2_ZSTD_ROOT="$source_root/tools/zstd"
+export HCTL2_ZSTD_VERSION="{zstd_version}"
+export HCTL2_ZSTD_PRESET="{zstd_preset}"
 export SOURCE_DATE_EPOCH="$HCTL2_SOURCE_DATE_EPOCH"
 
 init_build_environment
@@ -440,7 +445,8 @@ assemble_dependency_package
         platform = spec["os"],
         xz_directory = XZ_DIRECTORY,
         xz_version = XZ_VERSION,
-        xz_preset = XZ_PRESET,
+        zstd_version = ZSTD_VERSION,
+        zstd_preset = ZSTD_PRESET,
     )
 
 def declare_external_dependencies(build_sources: dict, package_sources: dict, test_sources: dict):
@@ -572,11 +578,13 @@ def declare_external_dependencies(build_sources: dict, package_sources: dict, te
         env = {
             "HCTL2_BUILD_METADATA": "$(location :metadata)",
             "HCTL2_DEPENDENCY_SOURCE_ROOT": "$(location :test-support)",
+            "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
         },
         resources = [
             ":metadata",
             ":package",
             ":test-support",
+            "root//build/tools:zstd-bin",
         ],
         labels = CI_INTEGRATION,
         run_test_separately = True,

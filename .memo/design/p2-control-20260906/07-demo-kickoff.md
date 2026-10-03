@@ -1,7 +1,7 @@
 # 演示线开工书：九个包，从聊天到合入
 
-> 状态：已拍板 · 所有者 2026-10-03「落」；§二 各项为所有者同日裁定<br>
-> 基线：main @ `cdb6c66`（草案 v0.19.0；本文所在的 PR 把基线升到 v0.19.1）<br>
+> 状态：已拍板 · 所有者 2026-10-03「落」；§二 各项为所有者同日裁定；第 1 包 #307 已合，演示 1 已验收（§三，所有者同日裁「按建议来」）<br>
+> 基线：main @ `cdb6c66`（草案 v0.19.0；本文所在的 PR 把基线升到 v0.19.1）；演示 1 验收后 main @ `a075a66`，验收 PR 把基线升到 v0.19.2<br>
 > 去向：`src/apps/*`、`src/crates/*`、`src/agency`；`docs/design/delivery.md` §本地 Agency 参考实现（形态已定）；不改约束层<br>
 > 读法：先读 [`README.md`](./README.md) 状态板，再读本文 §三、§四。旧任务书在 [`01-plan.md`](./01-plan.md) 与 [`05-p22-kickoff.md`](./05-p22-kickoff.md)，与本文不一致处以本文和现行约束为准
 
@@ -46,6 +46,29 @@
 
 写入型调用（改代码并封存）要到第 6 包才接上，所以演示 2 是只读的。
 
+### 演示 1 验收 · 2026-10-03
+
+Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一套，照上表四步手工走完；命令与看到的东西逐条记在 [`2026-10-03-演示1验收.md`](../../log/2026-10-03-演示1验收.md)。
+
+| 步骤 | 结果 |
+| --- | --- |
+| 用命令建 Project | 通过。注册仓库、两步确认、`project create`，Project 与主 Room 一次事务建出，重投同一 key 返回同一个 |
+| 在 Cinny 里看到主 Room | 通过。`project members` 邀请后，人类账号看到「Apollo」与自己发的消息（核的是 Cinny 用的同一套 Matrix 接口，没用眼睛看屏幕） |
+| 开 Topic、带前情提要 | 通过，带缺口。草稿是逐字片段、报「未配置自动归纳」；Topic 建出并挂在主 Room 的承载 Space 下；提要作为材料可反复读 |
+| 平台 issue 认领成 Task | 通过，带缺口。`connect / attach / refresh / claim` 后 Task 开出，和 issue 对得上 |
+| 重启后都还在 | 通过。`kill -KILL` control、停全部服务、`hctl2 start`，约 1 秒恢复，10 个查询重启前后逐字节一致，未发送草稿也在 |
+
+缺口（都不违反当时的约束，是「人用 Cinny 看」时的问题）：
+
+1. 开 Topic 的人自己不在 Topic 房间里，要再跑一次 `project members` 才看得到。
+2. 人不在承载 Space 里，Cinny 把主 Room 和 Topic 显示成两间平铺的房间，看不到树。
+3. Topic 房间里是空的：提要只存在控制面，没有发进房间。
+4. 人没有进本地 Gitea 的路：control 建的仓库是私有的，人没有账号也没有协作权，hctl2 没有命令给人开。
+5. 钥匙串：新构建的 control 二进制每次读令牌都弹授权框；没屏幕的会话直接失败（Codex 本机 B1 红就是这个）。代码里有不碰钥匙串的私有文件后端，没有开关。
+6. 小的：`hctl2 start` 不拉 Cinny，停过要手动起；第一个注册的人成为 Tuwunel 管理员。
+
+所有者裁定（2026-10-03「就按你的建议来吧」）：1、2、3 合成一题「人在聊天客户端里看到什么」，三条缺省写进约束（v0.19.2，`spec/project.md` §Repo 注册与 Project 归档「创建 Topic Room」一段、§Room 与消息 承载 Space 一句；CT-PROJECT 两行）：Topic 建成后把确认的提要作为开场消息发进房间；按预览确认的名单邀请聊天成员，缺省是来源 Room 的人类成员；承载 Space 的成员跟主 Room 走。代码改动是第 1 包的补丁 1a（§四）。4、5 各是一件小活（§六 的 D、E）。6 不做。另按 §六 原定，演示 1 的手册由 Antigravity 写、Grok 重跑（小活 C）。
+
 ## 四、九个包
 
 | # | 内容 | 写 | 审 | 依赖 | 旧任务书里的名字 |
@@ -75,7 +98,19 @@
 
 - **任务书**：`05-p22-kickoff.md` §四 里标题为「辛 · Project 与 Request」的一节，写于 v0.18.11；与 v0.19.0 约束不一致处以约束为准。
 - **v0.19.0 带来的增量**：Project 归档按 Room 归属逐间转只读，不按层级读数；多房间动作逐间投递并回读，部分失败不报全体成功（`spec/project.md` §Room 与消息）。
-- **做完**：P2.2 收口，演示 1。
+- **做完**：P2.2 收口，演示 1。已合 #307；演示 1 验收见 §三。
+
+### 第 1 包的补丁 · 1a · 人在聊天客户端里看到什么（GLM 写，Grok、Qwen 审）
+
+- **为什么做**：§三 演示 1 验收的缺口 1、2、3。人在 Cinny 里看不到自己开的 Topic、看不到树、Topic 房间里没有提要。
+- **依据**：`spec/project.md` v0.19.2 §Repo 注册与 Project 归档 里「创建 Topic Room」一段新加的两句（开场消息、邀请名单）与 §Room 与消息 里承载 Space 成员那句；`contract-tests.md` CT-PROJECT 对应的两行。现有接线：`src/crates/chat/README.md`、`src/crates/project/README.md`。
+- **要做的**，三件：
+  1. `room create-topic` 建成房间后，由 control 把经确认的提要正文与来源作为开场消息发进新房间。事务 ID 幂等，重试不发第二条；控制面保存的材料仍是权威，`room show` 的 `brief` 不变。
+  2. `room create-topic` 的预览列出要邀请的聊天成员；缺省是来源 Room（按 Request 升级时是主 Room）当前的人类聊天成员——不在 control 应用服务命名空间里、也不是 control 自己账号的成员；输入可删减、补充，只邀确认名单上的人，删掉的不邀。逐人投递并回读，部分失败照 `project members` 的规矩报逐房间结果与 `ROOMS_PARTIAL`。
+  3. 承载 Space 的成员跟主 Room 走：新建承载 Space 时邀请主 Room 当前的人类聊天成员；`project members` 对主 Room 的邀请与移除，同步到本 Project 全部承载 Space。Space 成员不进名册，不改加入规则（仍是 invite）。
+- **失败用例**：CT-PROJECT 那两行逐条落到测试；原生测试（`chat_native_test`）加三条：建 Topic 后房间第一条消息与确认的提要一致、人类成员在邀请列表而 control 与数字参与者账号不在、Space 成员随主 Room 同步；B1（`room-cli-test`）加一段，用人类账号的视角核房间与 Space 成员。
+- **不做**：人类身份与聊天账号的绑定（控制面不知道「跑命令的这个人」是哪个聊天账号，缺省名单从来源 Room 的成员来，不从命令的 actor 来）；Workbench；改加入规则。
+- **分支**：`glm/topic-opening-and-space-members`，base main，一个 PR。和第 2 包并行：本包改 `crates/chat`、`crates/project`、`apps/control/src/chat`，第 2 包在 `src/agency` 与新端口，不碰同一文件。两轮修不完交回 Codex。
 
 ### 第 2 包 · Agency 服务骨架与端口
 
@@ -248,11 +283,34 @@
   3. 信息可视化研究对树和图的导航有哪些可引用的结论，比如缩进列表、节点连线图、面包屑、焦点加上下文。
   4. 对 HCTL 的建议：只列候选画法和各自的取舍，不替所有者做决定。
 - **规矩**：每条结论给出处链接和读取日期；没亲眼核对过的写「未核实」，不编数字；只写调研，不写代码，不改设计文档。
-- **分支**：`agy/tree-dag-views`。
+- **分支**：`agy/tree-dag-views`。已合 #304、#305。
 
 之后每次演示完，由 Antigravity 照真实命令写一份演示手册，Grok 照着重跑来验。
 
-这两家看三样：是否一次过，有没有多做，报告是否如实。
+这两家看三样：是否一次过，有没有多做，报告是否如实。小活 B 的观察：不是一次过（第一版把没核过的来源标成核过），范围没多做，改得快，有一次没等「可合」就合了；之后的提示词都写明「评论里没有『可合』不许合入，『修正后可合』不算」。
+
+演示 1 之后的三件，编号 C、D、E。同一家一次只做一件：Antigravity 先 C 后 E，MiniMax 等 A 合入后做 D。
+
+### 小活 C · 演示 1 的手册（Antigravity 写，Grok 重跑）
+
+- **交付物**：`docs/demos/demo-1.md`（新目录），从 `docs/usage.md` 加一行链接。照 [`2026-10-03-演示1验收.md`](../../log/2026-10-03-演示1验收.md) 的顺序写：构建、安装、起服务、注册人类账号、四步、重启核对。每条命令给完整命令行与输入 JSON，输出只写要看哪几个字段。
+- **规矩**：每条命令自己真跑一遍；要手工绕的（人进 Gitea、Cinny 要单独起）如实写「目前要手工做」，不写成已经有命令；跑不通的写「跑不通」并留原样输出，不编。不改代码、不改设计文档。
+- **验**：Grok 照手册在干净目录从零跑一遍，哪一步跑不通写在 PR 评论里；都跑通才「可合」。
+- **分支**：`agy/demo-1-manual`。
+
+### 小活 D · 密钥后端开关（MiniMax 写，Codex 审）
+
+- **现状**：`SecretStore::detect`（`src/crates/foundation/src/lib.rs`）只要系统钥匙串可用就用它，没有办法显式选私有文件后端；`user_file` 构造函数已经存在，注释写明它是获准的后端。后果见 §三 缺口 5。
+- **要做的**：给 control 加一个显式设置，选 `system-keyring` 或 `user-file`（落在 control 的配置里，`hctl2 init` 或 `hctl2 start` 能指定；缺省不变，仍是有钥匙串就用钥匙串）；`hctl2 status` 的 `policy.credential_storage` 如实报告实际在用的后端；`room-cli-test` 等原生测试显式用 `user-file`，不再碰开发者的钥匙串；`docs/usage.md` 加一句怎么选；`docs/research/libs/keyring.md` 文末追加一条复核记录。
+- **规矩**：不改安全策略面的约束（密钥进 secret store；私有文件后端本来就是获准的）；不把缺省改成文件；不加新依赖；选项名和配置形状自己定，写进 README。
+- **分支**：`minimax/secret-backend-switch`，小活 A 合入后开。
+
+### 小活 E · 人进本地 Gitea（Antigravity 写，Codex 审）
+
+- **现状**：control 用自己的管理员账号在本地 Gitea 建仓库，仓库私有；人没有账号，也没有协作权，hctl2 没有命令给人开。验收时是用包里的 `gitea admin user create` 和 control 的管理员令牌手工做的，见 [`2026-10-03-演示1验收.md`](../../log/2026-10-03-演示1验收.md) 第 4 步。
+- **要做的**：一条公共命令（挂在 `hctl2 repo` 或 `hctl2 services` 下，自己定），输入用户名，为本机的人在本地 Gitea 建账号（已存在就复用）并给 control 建的那个仓库协作权；两步确认；令牌或初始密码按安全策略面处理，不进日志，不打印到普通 stdout 以外的地方；原生测试加一条。
+- **规矩**：复用 control 已有的 `gitea admin` 与平台适配器路径（`src/apps/control/src/scm.rs`），不自写 HTTP 客户端；不碰 GitHub 路径；不改约束。
+- **分支**：`agy/gitea-human-account`，小活 C 合入后开。两轮修不完交回 Codex。
 
 ## 七、先不做的与之后的
 
@@ -285,7 +343,37 @@
 你在 yesme/hctl2 做「第 2 包 · Agency 服务骨架与端口」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 2 包与 §五（先读 §一 到 §三）。本包还要给第 3、4、5 包定框架，写在对应 crate 的 README。分支 codex/agency-port，base main，一个 PR；评审席位 Grok 与 DeepSeek 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：评审到了自己处理并写处理说明；两席都写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PARTICIPANT、CT-CONNECTION 各行）、给后面三个包留的任务说明在哪、没按开工书做的地方及原因。
 ```
 
-之后各包的开工提示词，在前一包合入后由 Fable 给。两件小活的提示词指向 §六 的任务说明。
+第 1 包的补丁 1a，给 GLM，可与第 2 包同时发：
+
+```
+你在 yesme/hctl2 做「第 1 包的补丁 1a · 人在聊天客户端里看到什么」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四「第 1 包的补丁 · 1a」（先读 §一 到 §三，§三 末尾的演示 1 验收说明了为什么要做）。约束是 docs/design/spec/project.md（v0.19.2）里「创建 Topic Room」一段与 §Room 与消息 里承载 Space 成员那句；失败用例在 docs/design/contract-tests.md CT-PROJECT 对应的两行。现有接线看 src/crates/chat/README.md 与 src/crates/project/README.md。分支 glm/topic-opening-and-space-members，base main，一个 PR；评审席位 Grok 与 Qwen 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：评审到了自己处理并写处理说明；两席都写「可合」且 CI 绿后由你合，合后报所有者。两轮修不完交回 Codex。回报：PR 编号、分支、改了哪些 crate 与 target、失败用例清单（对照 CT-PROJECT 那两行）、没按开工书做的地方及原因。
+```
+
+小活 C，给 Antigravity，现在可发：
+
+```
+你在 yesme/hctl2 做「小活 C · 演示 1 的手册」。任务说明：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §六 小活 C；照着写的实录是 .memo/log/2026-10-03-演示1验收.md。每条命令自己真跑一遍，跑不通的如实写「目前要手工做」或「跑不通」，不编输出。分支 agy/demo-1-manual，base main，一个 PR；Grok 照手册从零重跑来验，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告；评论里没有「可合」不许合入，「修正后可合」不算；Grok 写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、手册路径、哪几步要手工做、哪几步没跑通。
+```
+
+小活 D，给 MiniMax，小活 A 合入后发：
+
+```
+你在 yesme/hctl2 做「小活 D · 密钥后端开关」。任务说明：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §六 小活 D；起因见 .memo/log/2026-10-03-演示1验收.md「钥匙串」一节。分支 minimax/secret-backend-switch，base main，一个 PR；Codex 审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告；评论里没有「可合」不许合入，「修正后可合」不算；Codex 写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、开关怎么用、哪些测试改成了不碰钥匙串、没按任务说明做的地方及原因。
+```
+
+小活 E，给 Antigravity，小活 C 合入后发：
+
+```
+你在 yesme/hctl2 做「小活 E · 人进本地 Gitea」。任务说明：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §六 小活 E；起因见 .memo/log/2026-10-03-演示1验收.md 第 4 步。分支 agy/gitea-human-account，base main，一个 PR；Codex 审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告；评论里没有「可合」不许合入，「修正后可合」不算；Codex 写「可合」且 CI 绿后由你合，合后报所有者。两轮修不完交回 Codex。回报：PR 编号、分支、命令怎么用、失败用例、没按任务说明做的地方及原因。
+```
+
+Kimi 对演示 1 的契约走查（§三 的规矩），现在可发：
+
+```
+你在 yesme/hctl2 做演示 1 的契约覆盖走查，不改文件、不开 PR。先 git fetch origin，读 main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §三（含末尾的演示 1 验收），再读 docs/design/contract-tests.md 的 CT-PROJECT 与 CT-REPO 两节。对照 #307 的 PR 描述里「CT-PROJECT / CT-REPO 失败用例对照」那张表，以及 src/crates/project/README.md「Buck 与 CT 对照」一节，逐行回答：这一行 PR 说覆盖了，代码和测试里是否真有对应的失败用例；说没覆盖的，理由是否成立。只列对不上的行，每行写：CT 原文位置、PR 怎么说、你看到的。写在 #307 的评论里，以「Kimi · 演示 1 · CT 走查」开头。
+```
+
+之后各包的开工提示词，在前一包合入后由 Fable 给。
 
 ## 九、轻审怎么审本文
 

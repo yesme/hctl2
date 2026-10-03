@@ -38,22 +38,51 @@ require_pinned_xz() {
     [[ "$actual" == "$expected" ]] || die "xz/liblzma version mismatch: $actual"
 }
 
-# HCTL2_XZ_PRESET selects the compression preset. `release` (-9) is the shipped
-# artifact and the default; `fast` (-1) is only for pull-request verification
-# builds, whose archives are installed and exercised but never published.
-xz_preset_flag() {
+# The pinned zstd CLI is build-only: it writes the release archives and never
+# ships (docs/research/build-tools/zstd.md). The pinned xz above stays for
+# unpacking Gitea's upstream .xz download.
+run_zstd() {
+    : "${HCTL2_ZSTD_ROOT:?Buck must declare the zstd tool input}"
+    # ZSTD_CLEVEL and ZSTD_NBTHREADS let the caller's environment decide what
+    # the tool produces; unset them so only the declared flags count.
+    env -u ZSTD_CLEVEL -u ZSTD_NBTHREADS "$HCTL2_ZSTD_ROOT/bin/zstd" "$@"
+}
+
+require_pinned_zstd() {
+    local actual
+    local expected
+    : "${HCTL2_ZSTD_VERSION:?Buck must provide the pinned zstd version}"
+    actual="$(LC_ALL=C run_zstd --version)" || die "could not run pinned zstd"
+    expected="*** Zstandard CLI (64-bit) v$HCTL2_ZSTD_VERSION, by Yann Collet ***"
+    [[ "$actual" == "$expected" ]] || die "zstd version mismatch: $actual"
+}
+
+# HCTL2_ZSTD_PRESET selects the compression preset. `release` (--ultra -22) is
+# the shipped artifact: compression happens once per release while every install
+# decompresses, so the archive buys decode time with encode time and size — the
+# measured trade-off is in docs/research/build-tools/zstd.md. `fast` (-12) is
+# only for pull-request verification builds, whose archives are installed and
+# exercised but never published.
+zstd_preset_flags() {
     # Unset means release; an explicit empty value is a mistake, not a default.
-    case "${HCTL2_XZ_PRESET-release}" in
-        release) printf -- '-9' ;;
-        fast) printf -- '-1' ;;
-        *) die "unsupported HCTL2_XZ_PRESET: '${HCTL2_XZ_PRESET-}'" ;;
+    case "${HCTL2_ZSTD_PRESET-release}" in
+        release) printf '%s\n' --ultra -22 --long=27 ;;
+        fast) printf '%s\n' -12 ;;
+        *) die "unsupported HCTL2_ZSTD_PRESET: '${HCTL2_ZSTD_PRESET-}'" ;;
     esac
 }
 
 compress_archive() {
     local preset
-    preset="$(xz_preset_flag)"
-    run_xz "$preset" -T0 --no-adjust -c
+    local flags=()
+    # A bad preset must fail here, not fall through to zstd's default level: the
+    # command substitution's status is returned explicitly because errexit stays
+    # off when a caller uses this function inside a condition.
+    preset="$(zstd_preset_flags)" || return 1
+    # The preset is a fixed, whitespace-separated flag list: split it on purpose.
+    # shellcheck disable=SC2206
+    flags=($preset)
+    run_zstd "${flags[@]}" -T0 -c
 }
 
 hash_file() {

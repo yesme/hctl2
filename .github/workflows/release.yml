@@ -240,19 +240,19 @@ jobs:
           --out "$RUNNER_TEMP/hctl2-release"
 
       # Pull-request packages are installed and exercised but never published,
-      # so they use the fast xz preset; main, tags, schedule and dispatch keep
-      # the shipped `release` preset (xz -9).
+      # so they use the fast zstd preset; main, tags, schedule and dispatch keep
+      # the shipped `release` preset (zstd --ultra -22).
       # room-cli-clippy-clean-test is the gate over room-cli's clippy report:
       # the clippy run writes that report and succeeds either way, so without
       # the test a diagnostic in it would never fail anything.
-      - name: Test complete offline install and lifecycle (fast xz preset)
+      - name: Test complete offline install and lifecycle (fast zstd preset)
         if: ${{ github.event_name == 'pull_request' }}
         run: >-
           ./buck2 test --build-default-info root//packaging/release:complete-test
           root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           root//packaging/release:room-cli-clippy-clean-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
-          --config hctl2.xz_preset=fast
+          --config hctl2.zstd_preset=fast
 
       - name: Test complete offline install and lifecycle
         if: ${{ github.event_name != 'pull_request' }}

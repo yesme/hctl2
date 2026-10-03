@@ -1,6 +1,7 @@
 load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_VERSION")
 load("//build/tools:xz.bzl", "XZ_DIRECTORY", "XZ_VERSION")
+load("//build/tools:zstd.bzl", "ZSTD_VERSION")
 
 oncall("hctl2")
 
@@ -47,6 +48,22 @@ sh_test(
     },
     resources = [
         "root//build/tools:xz",
+        "root//packaging/dependencies:service_lifecycle_sources",
+    ],
+    labels = CI_FAST,
+    test_rule_timeout_ms = 120000,
+)
+
+sh_test(
+    name = "zstd_test",
+    test = "check_zstd.sh",
+    env = {
+        "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
+        "HCTL2_ZSTD_VERSION": ZSTD_VERSION,
+        "PACKAGING_HELPERS": "$(location root//packaging/dependencies:service_lifecycle_sources)",
+    },
+    resources = [
+        "root//build/tools:zstd-bin",
         "root//packaging/dependencies:service_lifecycle_sources",
     ],
     labels = CI_FAST,

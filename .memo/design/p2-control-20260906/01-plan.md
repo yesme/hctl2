@@ -206,3 +206,9 @@ B2 是所有者可以在 Trigger Preview 里第一次看到完整身份链的地
 E 批、S 批、#257、G 批与 #263 之后的变化怎样落到各工作包，以及 P2.1 三包按 v0.18.11 写细的任务书，见 [`04-p21-kickoff.md`](./04-p21-kickoff.md)；本文正文与 §十二 不改。
 
 P2.2 四包（戊己庚辛）按 v0.18.11 的任务书见 [`05-p22-kickoff.md`](./05-p22-kickoff.md)。
+
+## 十四、2026-10-03 补记：发行包压缩换 zstd
+
+§十一 的「打包压缩」条（安装包从 gzip 换 xz `-9 -T0`）由所有者 2026-10-03 改判：压缩只发生一次、解压发生在每次安装，所以改用 zstd 最高档位 `--ultra -22 --long=27 -T0` 换解码时间。实测对照（运行包 +5.2% 体积、解包 5.9 s → 0.7 s；源包体积持平、编码快一倍）与留档见 [`docs/research/build-tools/zstd.md`](../../../docs/research/build-tools/zstd.md)，xz 的复核记录同步收窄其剩余用途。
+
+落点：新增 `src/build/tools/zstd.bzl` 与 `zstd-build.sh`（从上游源码在打包 action 里现编，需构建机有 `make` 与 C 编译器）、`root//build/tools:zstd-bin`、两个打包 genrule 的工具输入与 `hctl2.zstd_preset`（原 `hctl2.xz_preset`）、归档名 `.tar.xz` → `.tar.zst`（`.sha256` 旁文件随名走）、解包一律经钉定 zstd（不再用 `tar -xJf` / `tar -tJf`）、`check_zstd.sh` 接进 `src/build/tests`。Gitea 上游的 `.xz` 下载制品仍需 xz，工具保留。本文正文与 §十一 不改，以本条为准。
