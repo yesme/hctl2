@@ -243,6 +243,30 @@ jobs:
           HCTL2_BUCK2_CACHE: 0
         run: src/build/ci/clippy-coverage
 
+      # Compare Git's inventory with declared inputs: a package omitted from
+      # src_docs_tree cannot be noticed by the test that receives only that tree.
+      - name: Check source Markdown coverage
+        env:
+          BUCK_CONSOLE: simple
+          HCTL2_BUCK2_CACHE: 0
+        run: |
+          set -euo pipefail
+          scope=$(mktemp -d "$RUNNER_TEMP/hctl2-src-docs.XXXXXX")
+          trap 'rm -rf -- "$scope"' EXIT
+          export LC_ALL=C
+          git -c core.quotepath=false ls-files -- 'src/*.md' 'src/**/*.md' \
+            ':!:src/third-party/**' ':!:src/buck-out/**' ':!:src/target/**' \
+            | sort -u > "$scope/expected"
+          src/buck2 uquery 'inputs(deps(root//:src_docs_tree))' \
+            | sort -u > "$scope/declared"
+          test -s "$scope/expected"
+          if ! cmp -s "$scope/expected" "$scope/declared"; then
+            echo 'source Markdown missing from Buck inputs, or unexpected inputs:' >&2
+            diff -u "$scope/expected" "$scope/declared" >&2 || true
+            exit 1
+          fi
+          printf '%s source Markdown files, all declared.\n' "$(wc -l < "$scope/declared" | tr -d ' ')"
+
       - name: Select impacted Buck targets with BTD
         id: btd
         if: steps.paths.outputs.code == 'true' && github.event_name == 'pull_request'

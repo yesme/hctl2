@@ -3,6 +3,13 @@ load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2
 
 oncall("hctl2")
 
+# Export this package's Markdown; the root glob stops at BUCK boundaries.
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
 export_file(
     name = "control_proto",
     src = "proto/hctl2/control/v1/control.proto",

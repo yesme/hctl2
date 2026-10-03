@@ -44,6 +44,12 @@ export_file(
 )
 
 export_file(
+    name = "git_attributes",
+    src = ".gitattributes",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
     name = "release_workflow_yml",
     src = ".github/workflows/release.yml",
     visibility = ["PUBLIC"],

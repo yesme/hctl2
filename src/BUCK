@@ -46,13 +46,29 @@ filegroup(
 )
 
 # First-party Markdown under src/ (skills, packaging and workspace READMEs),
-# scanned by the dead-name check alongside repo//:docs_tree. Vendored trees and
-# build outputs are not first-party text.
+# scanned by the dead-name check alongside repo//:docs_tree. Each nested BUCK
+# package exports its own glob. Preserve source-relative paths for exemptions;
+# CI compares the transitive inputs with Git to reject a missing package.
 filegroup(
     name = "src_docs_tree",
-    srcs = glob(
-        ["README.md", "**/*.md"],
-        exclude = ["third-party/**", "buck-out/**", "target/**"],
-    ),
+    srcs = {
+        path: path
+        for path in glob(
+            ["README.md", "**/*.md"],
+            exclude = ["third-party/**", "buck-out/**", "target/**"],
+        )
+    } | {
+        "agency": "root//agency:docs",
+        "apps/control": "root//apps/control:docs",
+        "build/docs": "root//build/docs:docs",
+        "crates/chat": "root//crates/chat:docs",
+        "crates/project": "root//crates/project:docs",
+        "crates/proto": "root//crates/proto:docs",
+        "crates/repo": "root//crates/repo:docs",
+        "crates/store": "root//crates/store:docs",
+        "crates/task": "root//crates/task:docs",
+        "packaging/dependencies": "root//packaging/dependencies:docs",
+        "packaging/release": "root//packaging/release:docs",
+    },
     visibility = ["PUBLIC"],
 )

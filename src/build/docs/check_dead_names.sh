@@ -15,13 +15,7 @@ names_file="${2:?usage: check_dead_names.sh <repo_tree_root> <dead_names.txt> [a
 allowlist="${3:-}"
 
 if [ ! -e "$tree/README.md" ]; then
-    if [ -x "build/docs/materialize_repo_tree.sh" ]; then
-        echo "note: $tree missing; auto-running build/docs/materialize_repo_tree.sh" >&2
-        build/docs/materialize_repo_tree.sh >&2
-    fi
-fi
-if [ ! -e "$tree/README.md" ]; then
-    echo "repo tree not found at $tree — run src/build/docs/materialize_repo_tree.sh first" >&2
+    echo "doc tree missing README.md at $tree — use the Buck docs_tree/src_docs_tree input" >&2
     exit 1
 fi
 

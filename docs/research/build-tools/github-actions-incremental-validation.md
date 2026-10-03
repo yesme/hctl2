@@ -57,3 +57,18 @@ GitHub 的临时测试 merge 可能已经包含稍后才进入 PR 分支的 base
   - 源码文档的另案发现：Buck `glob` 递归，但不跨包边界。同深度、同文件名的探针中，无 BUCK 祖先的文件被匹配，有 BUCK 祖先的文件不被匹配；“glob 不递归”的归因撤回。现有 `src_docs_tree` 只收入 19 份第一方 Markdown 中的 3 份，漏掉 16 份。该缺口不在 #310 的修复范围。
 - 2026-10-03 · Codex 接手 #310：`ci:fast` 由 `affected-targets` 读取；`ci:release` 只是分类，Release 关卡由 workflow 的两条显式测试命令调度。有标签不能证明会执行。修正采用 [Buck2 原生 uquery](https://buck2.build/docs/users/query/uquery/) 核图，另用手写的窄格式断言核本库 Release 两个既定步骤的条件和测试参数，不是通用 YAML 解析器，也不是调度器。它只认当前的步骤名、PR / 非 PR 条件、单条折叠 `buck2 test` 命令、正文缩进与参数集合；这些写法改变时，格式断言及其用例需同步更新。新增回归用例走原生 `sh_test`，使用固定图回答与 workflow 副本，覆盖丢目标、错环境变量、错脚本、调度遗漏和查询失败。源码文档覆盖缺口另包处理。已验：31 个固定图与 workflow 变异用例通过；`validation_range_test` 加 `profile-all` 共 16 项通过；actionlint（从仓库根读取配置）与 shellcheck 通过。干净临时工作树的真实图为 13 个报告集；仅删掉 PR 步骤的 Release 关卡参数即退出 1，恢复后退出 0。远端已验（`dd50dfd`）：Code 在 Linux x86_64 与 macOS arm64 各跑 31 个用例；Release 两平台各实际执行完整包、Room CLI 与其诊断关卡三项测试，PR 使用 fast zstd 预设；全部通过。未验：macOS x86_64，本次按 PR 两平台规则未运行。
 - 2026-10-03 · MiniMax 对 #310 接手提交 `dd50dfd` 的复审：实查真实构建图与 workflow，结论可合，两条 P2 已接受。格式断言内部区分“已核实”“识别到调度遗漏”“格式无法核实”，后两者仍阻断；单行 `run`、正文缩进增加和额外 env 不再误报成“未被调度”，而是明确说明调度未知及当前支持的写法。补三个反例，断言失败且不出现遗漏调度的诊断。本地已验：34 个用例及 `validation_range_test`、`profile-all` 共 16 项通过。该修正不扩大接受的 workflow 写法，不引入 YAML 依赖。未验：本次修正的新提交远端 CI，推送后跟踪。
+
+
+### 2026-10-03 · src 侧 Markdown 的检查范围与触发
+
+基线 `2b7f8ef`：Git 跟踪的第一方 `src/**/*.md` 为 19 份，`inputs(deps(root//:src_docs_tree))` 只列 3 份；16 份漏检分布在 11 个子包。三份 Skill 在同一个 Agency 包。交接书的 21 份、13 包不适用于此基线。
+
+原生做法：`glob` 会递归，但只枚举当前 BUCK 包拥有的文件。按官方 [包边界](https://buck2.build/docs/concepts/build_file/)与 [filegroup](https://buck2.build/docs/prelude/rules/core/filegroup/)机制，各子包声明 Markdown 文件组，根文件组按目录名汇总。保留相对 `src/` 的原路径，同名 README 不覆盖，既有豁免仍按原路径匹配。检查复用原生 `sh_test`，新增 `profile-src` 只选原来的退役词检查，不扩大其他 13 项文档检查的范围。
+
+取舍：保留显式包清单，不造动态汇总规则或收集脚本。同包新增 Markdown 由 `glob` 自动纳入；新增包要声明并接入汇总。将检查改为 CI 直接扫描工作树会失去独立 Buck 测试入口和声明输入。`HCTL2_BUCK2_CACHE=0` 只关闭 REAPI 缓存连接，不取消依赖跟踪与输入物化，不能据此认定声明输入没有价值。
+
+为避免显式清单再次漏包，已有 Code 路径检查 job 比较 Git 跟踪的第一方 Markdown 与 Buck [uquery 的 inputs / deps](https://buck2.build/docs/users/query/uquery/)返回的传递输入。双方非空且逐路径一致才通过；查询失败或漏包直接失败。该步骤只核输入集合，不构建，不重写检查器或目标选择。
+
+CI 触发另修：`.gitattributes` 为第一方源码 Markdown 声明 `hctl-doc=src`，第三方及构建产物排除。沿用现有属性到 profile 的映射。删除退役词检查器对已删除 `materialize_repo_tree.sh` 的回退，缺树直接失败并指向 Buck 输入。
+
+本机已验：单独构建 `src_docs_tree` 成功，查询与物化目录均含 19 份 Markdown，路径保留；执行实际 workflow 的覆盖步骤通过。删掉汇总的 chat 引用后，覆盖步骤退出 1，差异指出 `src/crates/chat/README.md`；注入退役词 `RuntimeBackend` 后，`profile-src` 退出 32 并指出该 README。撤回后各自恢复通过。既有夹具补漏包、空集、查询失败、额外三方输入与 README / Skill 的 profile 选择；退役词夹具补嵌套 README、缺树与空扫描。`profile-src`、`profile-all`、`validation_range_test` 与 #310 的覆盖夹具合计 16 项通过，actionlint 与 CI 同范围 shellcheck 通过。未验：新关卡的远端耗时与两平台行为，待本 PR；本机未重建完整发行包。
