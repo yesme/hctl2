@@ -160,7 +160,7 @@ jobs:
           fi
 
           if printf '%s\n' "$changed" | grep -qE \
-            '^(src/(apps|crates)/.*(\.rs|Cargo\.toml)$|src/(Cargo\.lock|Cargo\.toml|reindeer\.toml|rustfmt\.toml|rust-toolchain\.toml)$|src/third-party/rust/BUCK$|\.github/workflows/code\.yml$)'; then
+            '^(src/(apps|crates|agency)/.*(\.rs|Cargo\.toml)$|src/(Cargo\.lock|Cargo\.toml|reindeer\.toml|rustfmt\.toml|rust-toolchain\.toml)$|src/third-party/rust/BUCK$|\.github/workflows/code\.yml$)'; then
             echo "cargo=true" >> "$GITHUB_OUTPUT"
           else
             echo "cargo=false" >> "$GITHUB_OUTPUT"

@@ -1,5 +1,6 @@
 //! Shared public contract; no control storage or runtime implementation.
 #![forbid(unsafe_code)]
+pub mod bytes_base64;
 pub mod client;
 pub mod context;
 pub mod model;

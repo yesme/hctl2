@@ -116,12 +116,21 @@ b0_id="$(printf '%s\n' "$b0_status" | sed -n 's/.*"control_id":"\([^"]*\)".*/\1/
 [[ -n "$b0_id" ]] || die "could not read control_id from status: $b0_status"
 # Agency consumption is explicit, and its shared service outlives this control.
 agency_root="$test_root/agency"
+[[ ! -e "$agency_root" ]] || die "ordinary control start created an unconsumed Agency"
 if ! "$contract_prefix/bin/hctl2" --json --root "$b0_root" agency pair \
     --binding-id package-agency --agency-root "$agency_root" --key package-agency >"$test_root/agency-pair.json"; then
     die "Agency pairing failed: $(<"$test_root/agency-pair.json")"
 fi
 grep -F '"paired":true' "$test_root/agency-pair.json" >/dev/null || die "Agency pairing failed"
 "$contract_prefix/bin/agency" --root "$agency_root" status >/dev/null
+# Owner maintenance is independent of the running control's five-second reconcile.
+"$contract_prefix/bin/agency" --root "$agency_root" stop >/dev/null
+sleep 6
+if "$contract_prefix/bin/agency" --root "$agency_root" status >/dev/null 2>&1; then
+    die "control reconciliation restarted an owner-stopped Agency"
+fi
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" status | "$HCTL2_JQ" -e '.ready == true' >/dev/null
+"$contract_prefix/bin/agency" --root "$agency_root" start >/dev/null
 wait_consumed_available() {
     local name="$1"
     local attempt
@@ -240,6 +249,17 @@ repo_token="$("$HCTL2_JQ" -er '.preview_token' <<<"$repo_preview")"
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" stop >/dev/null || true
 sleep 2
 
+# The independent service is owned by this test, not by control stop or its trap.
+"$contract_prefix/bin/agency" --root "$agency_root" stop >/dev/null
+agency_stopped=0
+for _ in {1..100}; do
+    if ! "$contract_prefix/bin/agency" --root "$agency_root" status >/dev/null 2>&1; then
+        agency_stopped=1
+        break
+    fi
+    sleep 0.05
+done
+[[ "$agency_stopped" -eq 1 ]] || die "independent Agency did not stop"
 find "$test_root" -depth -delete
 trap - EXIT
 

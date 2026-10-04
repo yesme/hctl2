@@ -20,6 +20,7 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
+base64 = "=0.22.1"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["blocking"] }
 ruma = { version = "=0.16.0", default-features = false, features = ["client-api-c", "appservice-api-s", "events", "rand"] }

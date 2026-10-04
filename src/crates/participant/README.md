@@ -10,6 +10,8 @@
 
 ## 第 5 包任务说明
 
+当前端口只核授权归属者的精确记录版本；完整领域授权仍未接线。第 5 包在恢复 Pending 前传入真实的授权判定，不沿用端口中的 `still_authorized=true`；Unknown / Confirmed 的回读和字节保全不发新授权，但后续激活、输入与准入另核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
+
 依据：[演示线开工书第 5 包](../../../.memo/design/p2-control-20260906/07-demo-kickoff.md#第-5-包--派工)、[从授权到派工](../../../docs/design/spec/connections.md#project--run--participant从授权到派工)、[结果准入](../../../docs/design/spec/connections.md#participant--project--run结果准入)。
 
 | 文件 | 要补什么 |

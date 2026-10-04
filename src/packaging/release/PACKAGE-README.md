@@ -1,6 +1,6 @@
 # HCTL2 离线安装包
 
-这个归档是面向最终用户的完整 HCTL2 安装包，包含 Buck2 构建的第一方命令（`hctl2`、`hctl2-control`、`hctl2-tool`）、四个执行面依赖、随包 Gitea 与 tea、Cinny 浏览器客户端、Static Web Server、Process Compose、GitHub CLI、声明式服务配置、许可证、校验清单和 SPDX SBOM。
+这个归档是面向最终用户的完整 HCTL2 安装包，包含 Buck2 构建的第一方命令（`hctl2`、`hctl2-control`、`hctl2-tool`、`agency`）、四个执行面依赖、随包 Gitea 与 tea、Cinny 浏览器客户端、Static Web Server、Process Compose、GitHub CLI、声明式服务配置、许可证、校验清单和 SPDX SBOM。
 
 先校验下载目录中的 SHA-256 sidecar，再解压并安装：
 
@@ -13,5 +13,7 @@ cd hctl2-<version>-<target>
 默认安装到 `~/.local`；可以用 `./install.sh --prefix /absolute/path` 指定其他绝对路径。安装器会先验证完整 payload，再以版本目录原子落盘，并维护 `hctl2`、`hctl2-control`、`hctl2-tool` 与 `hctl2-services` 命令链接。Herdr 由 `hctl2-services` 管理，不作为 HCTL2 自建命令安装。`hctl2 start` 会带起 control，并经 Process Compose 拉起 Tuwunel；Gitea 由 `hctl2 services consume gitea` 拉起并记为已消费（P2.2 戊在注册纯本地仓库时调用；本包只提供入口）。
 
 `USAGE.md` 是完整中文使用说明；`SOURCES.md` 指向同版本、同目标平台的源码伴随包。`payload/share/hctl2/SBOM.spdx`、`first-party.tsv`、`dependencies.tsv` 与 `PAYLOAD.sha256` 可用于审计实际交付内容。`payload/share/hctl2/agency/skills/` 是本地 Agency 参考实现随包分发的技能目录（harness 原生格式，每个子目录一个 Skill，第三方来源的许可证随目录）。
+
+完整包另安装 `agency` 命令链接。Agency 首次显式配对时启动，独立 `start/status/stop`；control 的停止和周期核对不启停它。
 
 macOS 自动构建产物使用 ad-hoc 签名保证本地内容闭包可执行；面向公开下载的 Developer ID 签名与 notarization 必须在确定性组装完成后的发布环境执行。

@@ -50,10 +50,12 @@ pub struct Entry {
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Delivery {
     Inline {
+        #[serde(with = "crate::bytes_base64")]
         bytes: Vec<u8>,
     },
     /// Delivered bytes accompany the public source ref. Runtime chooses its own local path.
     Pointer {
+        #[serde(with = "crate::bytes_base64")]
         bytes: Vec<u8>,
         relative_name: String,
     },

@@ -8,6 +8,21 @@ pub const PROTOCOL: &str = "hctl2.agency.v1";
 pub const MAX_DOCUMENT: usize = 4 * 1024 * 1024;
 pub type Result<T> = std::result::Result<T, PortError>;
 
+/// Compare credentials through the MAC SDK's constant-time verification.
+pub fn credential_matches(supplied: &str, expected: &str) -> bool {
+    let Ok(mut proof) = Hmac::<Sha256>::new_from_slice(supplied.as_bytes()) else {
+        return false;
+    };
+    let Ok(mut verifier) = Hmac::<Sha256>::new_from_slice(expected.as_bytes()) else {
+        return false;
+    };
+    proof.update(b"hctl2.agency.credential.v1");
+    verifier.update(b"hctl2.agency.credential.v1");
+    verifier
+        .verify_slice(&proof.finalize().into_bytes())
+        .is_ok()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PortError {
@@ -370,10 +385,12 @@ pub struct DispatchAction {
     pub writer_generation: u64,
     pub idempotency_key: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pair {
     pub control_id: String,
+    /// Chosen and persisted by the client before the first RPC; proves replay ownership.
+    pub tenant_key: String,
 }
 /// Secret-bearing response: deliberately no Debug or Serialize logging helper.
 #[derive(Clone, Serialize, Deserialize)]
@@ -455,6 +472,7 @@ pub struct Lease {
 pub struct Input {
     pub ticket: Ticket,
     pub idempotency_key: String,
+    #[serde(with = "crate::bytes_base64")]
     pub bytes: Vec<u8>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -500,6 +518,7 @@ pub struct ProposalHeader {
 pub struct Proposal {
     pub header: ProposalHeader,
     pub schema: String,
+    #[serde(with = "crate::bytes_base64")]
     pub output: Vec<u8>,
     pub content_digest: String,
     pub outputs: Vec<ProposalOutput>,

@@ -11,6 +11,7 @@ genrule(
     labels = CI_FAST,
 )
 DEPS = [
+    "root//third-party/rust:base64", "root//third-party/rust:rustix",
     "root//third-party/rust:hmac", "root//third-party/rust:pbjson",
     "root//third-party/rust:prost", "root//third-party/rust:serde",
     "root//third-party/rust:serde_json", "root//third-party/rust:serde_json_canonicalizer",

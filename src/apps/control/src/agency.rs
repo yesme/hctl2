@@ -16,6 +16,17 @@ fn err(e: PortError) -> StoreError {
 fn secrets(root: &Path) -> SecretStore {
     SecretStore::user_file("agency-pairing", root.join("secrets"))
 }
+fn optional_secret(root: &Path, account: &str) -> store::Result<Option<Vec<u8>>> {
+    match secrets(root).get(account) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(foundation::FoundationError::Io(error))
+            if error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
 pub fn paired_client(root: &Path, binding: &str) -> store::Result<Client> {
     let bytes = secrets(root).get(binding)?;
     let pairing: Pairing = serde_json::from_slice(&bytes)?;
@@ -68,17 +79,60 @@ pub async fn submit(
             agency_proto::client::admin_endpoint(&agency_root).map_err(err)?,
             bootstrap,
         );
-        let (control_id, generation) = {
+        // Serialize first-pair credential creation across concurrent clients of this writer.
+        let (control_id, generation, tenant_key) = {
             let state = shared.lock().await;
             let store = state.as_ref().ok_or_else(|| invalid("store not ready"))?;
-            (store.control_id().to_owned(), store.generation())
+            let previous: Option<Pairing> = optional_secret(root, id)?
+                .map(|bytes| serde_json::from_slice(&bytes))
+                .transpose()?;
+            let socket_directory =
+                agency_proto::client::socket_directory(&agency_root).map_err(err)?;
+            if previous.as_ref().is_some_and(|pairing| {
+                Path::new(&pairing.endpoint).parent() != Some(socket_directory.as_path())
+            }) {
+                return Err(reject(
+                    "BINDING_IMMUTABLE",
+                    "a different provider requires a new binding ID",
+                    "accept_new_binding",
+                ));
+            }
+            let account = format!(
+                "tenant:{}:{}",
+                store.control_id(),
+                agency_proto::hash(agency_root.canonicalize()?.as_os_str().as_encoded_bytes())
+            );
+            let tenant_key = match optional_secret(root, &account)? {
+                Some(bytes) => String::from_utf8(bytes)
+                    .map_err(|_| invalid("stored tenant credential invalid"))?,
+                None => {
+                    let key = if let Some(pairing) = previous {
+                        pairing.key
+                    } else {
+                        agency_proto::client::new_credential().map_err(err)?
+                    };
+                    secrets(root).set(&account, key.as_bytes())?;
+                    key
+                }
+            };
+            (
+                store.control_id().to_owned(),
+                store.generation(),
+                tenant_key,
+            )
         };
         let pairing: Pairing = admin
-            .call("pair", &Pair { control_id })
+            .call(
+                "pair",
+                &Pair {
+                    control_id,
+                    tenant_key,
+                },
+            )
             .await
             .map_err(err)?;
         let client = Client::new(pairing.endpoint.clone().into(), pairing.key.clone());
-        if let Ok(bytes) = secrets(root).get(id) {
+        if let Some(bytes) = optional_secret(root, id)? {
             let previous: Pairing = serde_json::from_slice(&bytes)?;
             if previous.endpoint != pairing.endpoint || previous.key != pairing.key {
                 return Err(reject(
@@ -199,6 +253,104 @@ fn text<'a>(payload: &'a Value, key: &str) -> store::Result<&'a str> {
         .ok_or_else(|| invalid(format!("missing {key}")))
 }
 
+fn stored_rejection(store: &Store, effect: &store::EffectIntent) -> store::Result<StoreError> {
+    let record = store
+        .get(&participant::key(
+            effect.owner.key.scope.clone(),
+            "dispatch_rejection",
+            &effect.intent_id,
+        ))?
+        .ok_or_else(|| invalid("rejected dispatch lacks its stored refusal"))?;
+    let error: PortError = participant::decode(&record)?;
+    Ok(err(error))
+}
+
+async fn finish_rejection(
+    shared: &Arc<Mutex<Option<Store>>>,
+    actor: &TrustedActor,
+    generation: store::WriterGeneration,
+    effect: &store::EffectIntent,
+    error: &PortError,
+) -> store::Result<()> {
+    let mut lock = shared.lock().await;
+    let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
+    let target = participant::key(
+        effect.owner.key.scope.clone(),
+        "dispatch_rejection",
+        &effect.intent_id,
+    );
+    let input = serde_json::to_value(error)?;
+    let command = store::Command {
+        command_id: format!("refusal:{}", effect.intent_id),
+        idempotency_key: format!("refusal:{}", effect.intent_id),
+        actor: actor.0.clone(),
+        target: target.clone(),
+        expected: store::Expected::Absent,
+        binding: effect.binding.clone(),
+        input_digest: store::Command::digest_input("dispatch.rejected", &input)?,
+        operation: "dispatch.rejected".into(),
+        input,
+    };
+    let record = participant::value(target, 1, error)?;
+    store.submit(generation, actor, &command, None, |tx| {
+        tx.confirm_effect(
+            &effect.intent_id,
+            &store::Readback::Rejected {
+                binding: effect.binding.clone(),
+                target: effect.target.clone(),
+                input_digest: effect.input_digest.clone(),
+                result: serde_json::to_value(error)?,
+            },
+        )?;
+        tx.put(&record)?;
+        Ok(json!({"rejected":error}))
+    })?;
+    Ok(())
+}
+
+async fn dispatch_reply<T>(
+    result: std::result::Result<T, agency_proto::client::CallFailure>,
+    shared: &Arc<Mutex<Option<Store>>>,
+    actor: &TrustedActor,
+    generation: store::WriterGeneration,
+    effect: &store::EffectIntent,
+    state: store::EffectState,
+) -> store::Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(agency_proto::client::CallFailure::ResponseError(error))
+            if state == store::EffectState::Pending
+                && refusal_before_effect(effect, &error.code) =>
+        {
+            finish_rejection(shared, actor, generation, effect, &error).await?;
+            Err(err(error))
+        }
+        // A lookup refusal says nothing about whether the original write took place.
+        Err(error) => Err(err(error.into_error())),
+    }
+}
+
+fn refusal_before_effect(effect: &store::EffectIntent, code: &str) -> bool {
+    matches!(
+        code,
+        "PAIRING_REQUIRED" | "PROTOCOL_MISMATCH" | "WRITER_STALE" | "DEADLINE_EXPIRED"
+    ) || (effect.operation == "agency.prepare"
+        && matches!(
+            code,
+            "CAPABILITY_MISSING"
+                | "PROFESSION_CHANGED"
+                | "SKILL_MISSING"
+                | "SKILL_DIGEST_MISMATCH"
+                | "BUNDLE_MISMATCH"
+                | "DIGEST_MISMATCH"
+                | "DELIVERY_DIGEST_MISMATCH"
+                | "MATERIAL_NOT_DELIVERED"
+                | "BUDGET_EXCEEDED"
+                | "IDEMPOTENCY_CONFLICT"
+        ))
+        || (effect.operation == "agency.activate" && code == "DISPATCH_NOT_FOUND")
+}
+
 /// Package 5 calls this only after persisting its authorized owner and dispatch intent.
 /// An unknown prepare is read back by key, not submitted a second time.
 pub async fn deliver_prepare(
@@ -213,21 +365,24 @@ pub async fn deliver_prepare(
     let bundle: agency_proto::Sealed<agency_proto::context::Bundle> =
         serde_json::from_value(original["bundle"].clone())?;
     let client = paired_client(root, &spec.document.binding.id)?;
-    let (generation, state) = {
+    let (generation, effect, state) = {
         let mut lock = shared.lock().await;
         let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
         let id = format!("prepare:{}", intent.key.id);
         let (effect, state) = store.effect(&id)?;
+        if state == store::EffectState::Rejected {
+            return Err(stored_rejection(store, &effect)?);
+        }
         if state == store::EffectState::Pending {
             current_owner(store, &effect.owner)?;
             store.resume_pending_effect(store.generation(), &id, true)?;
             store.begin_effect(store.generation(), &id)?;
         }
-        (store.generation(), state)
+        (store.generation(), effect, state)
     };
     let result = if state == store::EffectState::Pending {
         client
-            .call::<_, agency_proto::Dispatch>(
+            .call_outcome::<_, agency_proto::Dispatch>(
                 "prepare",
                 &agency_proto::Prepare {
                     spec: spec.clone(),
@@ -239,7 +394,7 @@ pub async fn deliver_prepare(
             .await
     } else {
         client
-            .call(
+            .call_outcome(
                 "lookup",
                 &agency_proto::Lookup {
                     idempotency_key: spec.document.idempotency_key.clone(),
@@ -247,7 +402,7 @@ pub async fn deliver_prepare(
             )
             .await
     };
-    let dispatch = result.map_err(err)?;
+    let dispatch = dispatch_reply(result, shared, actor, generation, &effect, state).await?;
     let mut lock = shared.lock().await;
     let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
     if store.generation() != generation {
@@ -275,6 +430,14 @@ pub async fn deliver_activation(
         let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
         let effect_id = format!("activate:{intent_id}");
         let (effect, state) = store.effect(&effect_id)?;
+        if effect.target != d.reference || effect.binding.key.id != d.binding.id {
+            return Err(invalid(
+                "activation intent differs from dispatch target or binding",
+            ));
+        }
+        if state == store::EffectState::Rejected {
+            return Err(stored_rejection(store, &effect)?);
+        }
         if state == store::EffectState::Confirmed {
             let receipt = store
                 .get(&participant::key(
@@ -294,7 +457,7 @@ pub async fn deliver_activation(
     };
     let result = if state == store::EffectState::Pending {
         client
-            .call(
+            .call_outcome(
                 "activate",
                 &agency_proto::DispatchAction {
                     dispatch: d.reference.clone(),
@@ -335,7 +498,8 @@ pub async fn deliver_activation(
         }
         Ok(trace.dispatch)
     };
-    let actual: agency_proto::Dispatch = result.map_err(err)?;
+    let actual: agency_proto::Dispatch =
+        dispatch_reply(result, shared, actor, generation, &effect, state).await?;
     if actual.owner != d.owner
         || actual.spec_digest != d.spec_digest
         || actual.bundle_digest != d.bundle_digest
@@ -516,7 +680,7 @@ pub async fn observe_dispatch(
     }
 }
 
-/// Restart restores only this control's consumed provider and fences only its tenant.
+/// Reconciliation probes and fences this tenant; only explicit consumption starts Agency.
 pub async fn reconcile(shared: &Arc<Mutex<Option<Store>>>, root: &Path) -> store::Result<()> {
     let (bindings, generation) = {
         let lock = shared.lock().await;
@@ -528,11 +692,6 @@ pub async fn reconcile(shared: &Arc<Mutex<Option<Store>>>, root: &Path) -> store
     let mut first_error = None;
     for binding in bindings {
         let result = async {
-            let bytes = secrets(root).get(&format!("{}:local-root", binding.key.id))?;
-            let local = PathBuf::from(
-                String::from_utf8(bytes).map_err(|_| invalid("Agency deployment path invalid"))?,
-            );
-            ensure_local(&local).await?;
             let _: Value = paired_client(root, &binding.key.id)?
                 .call(
                     "fence",

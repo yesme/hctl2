@@ -240,10 +240,19 @@ impl Tenant {
         let id = dispatch.reference.clone();
         std::thread::spawn(move || {
             for e in running.events {
+                let exited = matches!(&e, RuntimeEvent::Exited { .. });
                 if let Err(error) = tenant.record(&id, e) {
                     let _ = tenant.record(&id, RuntimeEvent::ProtocolError(error.code));
                     let _ = tenant.stop_private(&id);
-                    break;
+                    // Drain through Exited even if persistence failed; do not strand the runtime.
+                }
+                if exited {
+                    tenant
+                        .state
+                        .lock()
+                        .expect("tenant mutex")
+                        .sessions
+                        .remove(&id);
                 }
             }
         });
@@ -274,7 +283,7 @@ impl Tenant {
                 payload,
                 source,
             } => {
-                event(&state.db, id, &kind, payload, source)?;
+                event(&state.db, id, &format!("runtime:{kind}"), payload, source)?;
             }
             RuntimeEvent::Proposal {
                 schema,
@@ -327,6 +336,18 @@ impl Tenant {
                 if bytes.len() > MAX_DOCUMENT - 1024 {
                     return Err(PortError::invalid(
                         "result exceeds transport envelope budget",
+                    ));
+                }
+                let existing: i64 = sql(tx.query_row(
+                    "SELECT COALESCE(SUM(length(body)+1),0) FROM results WHERE dispatch=?1",
+                    [id],
+                    |r| r.get(0),
+                ))?;
+                let existing = usize::try_from(existing)
+                    .map_err(|_| PortError::invalid("invalid aggregate result size"))?;
+                if existing.saturating_add(bytes.len()).saturating_add(2) > MAX_DOCUMENT - 1024 {
+                    return Err(PortError::invalid(
+                        "aggregate results exceed transport budget; paged result retrieval is not installed",
                     ));
                 }
                 sql(tx.execute(
@@ -637,7 +658,9 @@ impl Tenant {
         let mut events = Vec::new();
         // Leave room for the dispatch and transport envelope. A count-only page can
         // exceed gRPC's byte limit and make every replay of that cursor fail.
-        let mut remaining = MAX_DOCUMENT - canonical(&dispatch)?.len() - 1024;
+        let mut remaining = MAX_DOCUMENT
+            .saturating_sub(canonical(&dispatch)?.len())
+            .saturating_sub(1024);
         for bytes in rows {
             let bytes = sql(bytes)?;
             if bytes.len() + 1 > remaining {

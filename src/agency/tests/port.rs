@@ -19,23 +19,31 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Rig {
     root: PathBuf,
     admin: Client,
+    pairing: Client,
     handle: tokio::task::JoinHandle<Result<()>>,
 }
 impl Rig {
     async fn new(script: &str) -> Self {
+        Self::with_runtime(Arc::new(ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec!["-c".into(), script.into()],
+        })))
+        .await
+    }
+    async fn with_runtime(runtime: Arc<dyn Runtime>) -> Self {
         let root = PathBuf::from(format!(
             "/tmp/agency-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let runtime: Arc<dyn Runtime> = Arc::new(ScriptRuntime::new(ScriptConfig {
-            program: "/bin/sh".into(),
-            arguments: vec!["-c".into(), script.into()],
-        }));
         let service = Agency::open(&root, runtime).unwrap();
         let admin = Client::new(
             agency_proto::client::admin_endpoint(&root).unwrap(),
             Agency::bootstrap_key(&root).unwrap(),
+        );
+        let pairing = Client::new(
+            agency_proto::client::admin_endpoint(&root).unwrap(),
+            std::fs::read_to_string(root.join("pair.key")).unwrap(),
         );
         let handle = tokio::spawn(agency::serve(service));
         for _ in 0..100 {
@@ -43,6 +51,7 @@ impl Rig {
                 return Self {
                     root,
                     admin,
+                    pairing,
                     handle,
                 };
             }
@@ -52,11 +61,12 @@ impl Rig {
     }
     async fn pair(&self, id: &str) -> (Client, String) {
         let pair: Pairing = self
-            .admin
+            .pairing
             .call(
                 "pair",
                 &Pair {
                     control_id: id.into(),
+                    tenant_key: agency_proto::client::new_credential().unwrap(),
                 },
             )
             .await
@@ -78,8 +88,11 @@ impl Rig {
         let _: Value = self.admin.call("shutdown", &json!({})).await.unwrap();
         self.handle.await.unwrap().unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-        std::fs::remove_dir_all(agency_proto::client::socket_directory(&self.root).unwrap())
-            .unwrap();
+        assert!(
+            !agency_proto::client::socket_directory(&self.root)
+                .unwrap()
+                .exists()
+        );
         std::fs::remove_dir_all(&self.root).unwrap();
     }
     async fn restart(mut self, script: &str) -> Self {
@@ -250,6 +263,376 @@ async fn terminal(client: &Client, d: &Dispatch, key: &str) -> Trace {
 }
 const RESULT: &str = "read -r init; printf '%s\n' '{\"type\":\"result\",\"schema\":\"test.result.v1\",\"output\":\"answer\"}'";
 
+#[tokio::test]
+async fn prepare_and_prepared_activation_reject_expired_deadline() {
+    let rig = Rig::new(RESULT).await;
+    let (client, _) = rig.pair("expiry").await;
+    let mut expired = request(&client, "expired-prepare").await;
+    expired.spec.document.deadline_ms = now() - 1;
+    expired.spec = Sealed::new(expired.spec.document).unwrap();
+    assert_eq!(
+        client
+            .call::<_, Dispatch>("prepare", &expired)
+            .await
+            .unwrap_err()
+            .code,
+        "DEADLINE_EXPIRED"
+    );
+    let mut req = request(&client, "expired-activation").await;
+    req.spec.document.deadline_ms = now() + 200;
+    req.spec = Sealed::new(req.spec.document).unwrap();
+    let d: Dispatch = client.call("prepare", &req).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert_eq!(
+        client
+            .call::<_, Dispatch>(
+                "activate",
+                &DispatchAction {
+                    dispatch: d.reference.clone(),
+                    writer_generation: 1,
+                    idempotency_key: "activate".into()
+                }
+            )
+            .await
+            .unwrap_err()
+            .code,
+        "DEADLINE_EXPIRED"
+    );
+    let results: Vec<Proposal> = client
+        .call(
+            "results",
+            &ResultQuery {
+                dispatch: d.reference,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(results.is_empty());
+    rig.close().await;
+}
+
+#[tokio::test]
+async fn concurrent_takeover_has_one_winner_and_revoked_lease_cannot_return() {
+    let rig = Rig::new("read -r init; exec sleep 30").await;
+    let (client, key) = rig.pair("cas").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "cas").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let lease = |id: &str, expected: Option<String>| Lease {
+        ticket: ticket(&d, &key, vec![Permission::Takeover], Some(id)),
+        expected_lease: expected,
+        new_lease: id.into(),
+    };
+    let a = lease("a", None);
+    let b = lease("b", None);
+    let (a_result, b_result) = tokio::join!(
+        client.call::<_, Value>("lease", &a),
+        client.call::<_, Value>("lease", &b)
+    );
+    let winner = match (a_result, b_result) {
+        (Ok(_), Err(e)) => {
+            assert_eq!(e.code, "LEASE_CONFLICT");
+            "a"
+        }
+        (Err(e), Ok(_)) => {
+            assert_eq!(e.code, "LEASE_CONFLICT");
+            "b"
+        }
+        result => panic!("expected one CAS winner: {result:?}"),
+    };
+    let _: Value = client
+        .call("lease", &lease("replacement", Some(winner.into())))
+        .await
+        .unwrap();
+    assert_eq!(
+        client
+            .call::<_, Value>("lease", &lease(winner, Some("replacement".into())))
+            .await
+            .unwrap_err()
+            .code,
+        "LEASE_REUSED"
+    );
+    rig.close().await;
+}
+
+#[tokio::test]
+async fn original_pairing_proof_replays_after_service_restart() {
+    let rig = Rig::new(RESULT).await;
+    let input = Pair {
+        control_id: "stable".into(),
+        tenant_key: agency_proto::client::new_credential().unwrap(),
+    };
+    let original: Pairing = rig.pairing.call("pair", &input).await.unwrap();
+    let rig = rig.restart(RESULT).await;
+    let again: Pairing = rig.pairing.call("pair", &input).await.unwrap();
+    assert_eq!(original.endpoint, again.endpoint);
+    assert!(credential_matches(&original.key, &again.key));
+    rig.close().await;
+}
+
+#[tokio::test]
+async fn unsafe_socket_directory_and_socket_mode_are_rejected_before_credentials() {
+    use std::os::unix::fs::PermissionsExt;
+    let rig = Rig::new(RESULT).await;
+    let socket = agency_proto::client::admin_endpoint(&rig.root).unwrap();
+    let directory = socket.parent().unwrap();
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        rig.admin
+            .call::<_, Value>("catalog", &json!({}))
+            .await
+            .unwrap_err()
+            .code,
+        "UNSAFE_ENDPOINT"
+    );
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o666)).unwrap();
+    assert_eq!(
+        rig.admin
+            .call::<_, Value>("catalog", &json!({}))
+            .await
+            .unwrap_err()
+            .code,
+        "UNSAFE_ENDPOINT"
+    );
+    std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+    rig.close().await;
+}
+
+struct BlockingRuntime {
+    entered: std::sync::mpsc::Sender<()>,
+    release: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+    writes: Arc<AtomicU64>,
+}
+
+struct BurstRuntime;
+struct BurstSession(std::sync::mpsc::Sender<agency::runtime::RuntimeEvent>);
+impl agency::runtime::Session for BurstSession {
+    fn input(&mut self, _: &[u8]) -> Result<()> {
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<()> {
+        let _ = self.0.send(agency::runtime::RuntimeEvent::Exited {
+            code: None,
+            requested_stop: true,
+        });
+        Ok(())
+    }
+}
+impl Runtime for BurstRuntime {
+    fn catalog(&self) -> Result<Catalog> {
+        ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec![],
+        })
+        .catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        let (events, receiver) = std::sync::mpsc::channel();
+        for _ in 0..2 {
+            events
+                .send(agency::runtime::RuntimeEvent::Proposal {
+                    schema: "test.bytes.v1".into(),
+                    bytes: vec![255; 2 * 1024 * 1024],
+                    source: EvidenceLevel::Narrated,
+                })
+                .unwrap();
+        }
+        Ok(agency::runtime::Running {
+            session: Arc::new(std::sync::Mutex::new(Box::new(BurstSession(events)))),
+            events: receiver,
+        })
+    }
+}
+
+#[tokio::test]
+async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_after_error() {
+    let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
+    let (client, key) = rig.pair("budget").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "budget").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let mut exited = false;
+    for _ in 0..100 {
+        let trace: Trace = client
+            .call(
+                "observe",
+                &Observe {
+                    ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                    after: 0,
+                },
+            )
+            .await
+            .unwrap();
+        if trace.events.iter().any(|event| event.kind == "stopped") {
+            assert_eq!(trace.dispatch.state, DispatchState::CannotFulfill);
+            assert!(
+                trace
+                    .events
+                    .iter()
+                    .any(|event| event.kind == "protocol_error")
+            );
+            exited = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(exited, "record failure must not drop the exit event");
+    let results: Vec<Proposal> = client
+        .call(
+            "results",
+            &ResultQuery {
+                dispatch: d.reference,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].output, vec![255; 2 * 1024 * 1024]);
+    assert!(canonical(&results).unwrap().len() < MAX_DOCUMENT);
+    rig.close().await;
+}
+struct BlockingSession {
+    entered: std::sync::mpsc::Sender<()>,
+    release: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
+    writes: Arc<AtomicU64>,
+    events: std::sync::mpsc::Sender<agency::runtime::RuntimeEvent>,
+}
+impl agency::runtime::Session for BlockingSession {
+    fn input(&mut self, _: &[u8]) -> Result<()> {
+        self.writes.fetch_add(1, Ordering::Relaxed);
+        self.entered.send(()).unwrap();
+        self.release
+            .lock()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+        Err(PortError::new(
+            "TEST_REPLY_LOST",
+            "fixture lost input reply",
+            "readback",
+        ))
+    }
+    fn stop(&mut self) -> Result<()> {
+        let _ = self.events.send(agency::runtime::RuntimeEvent::Exited {
+            code: None,
+            requested_stop: true,
+        });
+        Ok(())
+    }
+}
+impl Runtime for BlockingRuntime {
+    fn catalog(&self) -> Result<Catalog> {
+        ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec![],
+        })
+        .catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        let (events, receiver) = std::sync::mpsc::channel();
+        Ok(agency::runtime::Running {
+            session: Arc::new(std::sync::Mutex::new(Box::new(BlockingSession {
+                entered: self.entered.clone(),
+                release: Arc::clone(&self.release),
+                writes: Arc::clone(&self.writes),
+                events,
+            }))),
+            events: receiver,
+        })
+    }
+}
+
+#[tokio::test]
+async fn blocked_tenant_input_does_not_block_other_prepare_and_unknown_is_not_resent() {
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let writes = Arc::new(AtomicU64::new(0));
+    let rig = Rig::with_runtime(Arc::new(BlockingRuntime {
+        entered: entered_tx,
+        release: Arc::new(std::sync::Mutex::new(release_rx)),
+        writes: Arc::clone(&writes),
+    }))
+    .await;
+    let (client, key) = rig.pair("blocked").await;
+    let (other, _) = rig.pair("independent").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "blocked").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let _: Value = client
+        .call(
+            "lease",
+            &Lease {
+                ticket: ticket(&d, &key, vec![Permission::Takeover], Some("input")),
+                expected_lease: None,
+                new_lease: "input".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let input = Input {
+        ticket: ticket(&d, &key, vec![Permission::Input], Some("input")),
+        idempotency_key: "once".into(),
+        bytes: b"hello".to_vec(),
+    };
+    let task = tokio::spawn({
+        let client = client.clone();
+        let input = input.clone();
+        async move { client.call::<_, Value>("input", &input).await }
+    });
+    tokio::task::spawn_blocking(move || {
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap()
+    })
+    .await
+    .unwrap();
+    let other_request = request(&other, "independent").await;
+    let other_reply = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        other.call::<_, Dispatch>("prepare", &other_request),
+    )
+    .await;
+    // Release even on assertion failure so the fixture cannot strand the test.
+    release_tx.send(()).unwrap();
+    assert_eq!(other_reply.unwrap().unwrap().state, DispatchState::Prepared);
+    assert_eq!(
+        task.await.unwrap().unwrap_err().code,
+        "INPUT_RESPONSE_UNKNOWN"
+    );
+    let replay: Value = client.call("input", &input).await.unwrap();
+    assert_eq!(replay["delivery"], "unknown");
+    let mut changed = input;
+    changed.ticket.claims.id = "new-ticket".into();
+    changed.ticket = Ticket::sign(changed.ticket.claims, key.as_bytes()).unwrap();
+    assert_eq!(
+        client
+            .call::<_, Value>("input", &changed)
+            .await
+            .unwrap_err()
+            .code,
+        "IDEMPOTENCY_CONFLICT"
+    );
+    assert_eq!(writes.load(Ordering::Relaxed), 1);
+    rig.close().await;
+}
+
 #[cfg(feature = "control_port_test")]
 #[tokio::test]
 async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack() {
@@ -274,6 +657,22 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
     .await
     .unwrap();
     assert_eq!(pair["paired"], true);
+    let different = Rig::new(RESULT).await;
+    assert_eq!(
+        control::agency::submit(
+            &shared,
+            &root,
+            "agency.pair",
+            &json!({"binding_id":"binding","agency_root":different.root}),
+            &actor,
+            "changed-provider"
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "BINDING_IMMUTABLE"
+    );
+    different.close().await;
     assert_eq!(
         control::agency::submit(
             &shared,
@@ -382,10 +781,24 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
         );
         (intent, owner)
     };
+    // Crash after Agency accepts prepare but before control receives the reply.
+    {
+        let mut lock = shared.lock().await;
+        let s = lock.as_mut().unwrap();
+        let generation = s.generation();
+        s.begin_effect(generation, "prepare:dispatch-intent")
+            .unwrap();
+        assert_eq!(
+            s.effect("prepare:dispatch-intent").unwrap().1,
+            store::EffectState::Unknown
+        );
+    }
+    let prepared: Dispatch = client.call("prepare", &prepare).await.unwrap();
     let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &intent)
         .await
         .unwrap();
-    // A lost prepare reply is resolved by lookup of the original key, not a second start.
+    assert_eq!(dispatch.key.id, prepared.reference);
+    // Confirmed prepare replay returns the same stored mapping.
     let again = control::agency::deliver_prepare(&shared, &root, &actor, &intent)
         .await
         .unwrap();
@@ -489,6 +902,19 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
     rig.handle.await.unwrap().unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
     assert_eq!(
+        control::agency::reconcile(&shared, &root)
+            .await
+            .unwrap_err()
+            .code,
+        "AGENCY_UNREACHABLE"
+    );
+    assert!(
+        rig.admin
+            .call::<_, Value>("catalog", &json!({}))
+            .await
+            .is_err()
+    );
+    assert_eq!(
         control::agency::observe_dispatch(&shared, &root, &actor, &dispatch, 0)
             .await
             .unwrap_err()
@@ -504,7 +930,11 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
     );
     drop(lock);
     drop(shared);
-    std::fs::remove_dir_all(agency_proto::client::socket_directory(&rig.root).unwrap()).unwrap();
+    assert!(
+        !agency_proto::client::socket_directory(&rig.root)
+            .unwrap()
+            .exists()
+    );
     std::fs::remove_dir_all(&rig.root).unwrap();
 }
 
@@ -527,6 +957,229 @@ async fn deadline_stops_fixture_without_revoking_result_observation() {
             .any(|e| e.payload["code"] == "DEADLINE_EXPIRED")
     );
     assert!(!trace.gap);
+    rig.close().await;
+}
+
+#[cfg(feature = "control_port_test")]
+async fn authorized_intent(
+    shared: &Arc<tokio::sync::Mutex<Option<store::Store>>>,
+    actor: &store::TrustedActor,
+    client: &Client,
+    id: &str,
+    change: impl FnOnce(&mut ExecutionSpec),
+) -> (store::Record, Prepare) {
+    let mut req = request(client, id).await;
+    req.spec.document.owner.id = id.into();
+    req.bundle.document.consumer = req.spec.document.owner.clone();
+    req.bundle = Sealed::new(req.bundle.document).unwrap();
+    req.spec.document.bundle.digest = req.bundle.digest.clone();
+    let mut lock = shared.lock().await;
+    let store = lock.as_mut().unwrap();
+    let binding = store
+        .get(&participant::key(
+            store::Scope::Control,
+            "agency_binding",
+            "binding",
+        ))
+        .unwrap()
+        .unwrap();
+    req.spec.document.binding = participant::frozen(&binding);
+    change(&mut req.spec.document);
+    req.spec = Sealed::new(req.spec.document).unwrap();
+    let owner = participant::value(
+        participant::key(
+            store::Scope::Project("project".into()),
+            "authorized_invocation",
+            id,
+        ),
+        1,
+        &json!({"state":"authorized"}),
+    )
+    .unwrap();
+    let command = store::Command {
+        command_id: format!("authorize:{id}"),
+        idempotency_key: format!("authorize:{id}"),
+        actor: actor.0.clone(),
+        target: owner.key.clone(),
+        expected: store::Expected::Absent,
+        binding: participant::reference(&owner),
+        operation: "test.authorize".into(),
+        input: json!({}),
+        input_digest: store::Command::digest_input("test.authorize", &json!({})).unwrap(),
+    };
+    store
+        .submit(store.generation(), actor, &command, None, |tx| {
+            tx.put(&owner)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+    let intent = participant::prepare_dispatch(
+        store,
+        actor,
+        id,
+        &participant::reference(&owner),
+        &req.spec,
+        &req.bundle,
+    )
+    .unwrap();
+    (intent, req)
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_distinguishes_definitive_refusal_from_unknown_readback() {
+    use store::{Actor, ActorSource, Scope, Store, TrustedActor};
+    let rig = Rig::new(RESULT).await;
+    let root = rig.root.join("control");
+    let actor = TrustedActor(Actor {
+        principal: "human".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, Scope::Project("project".into())],
+        authority: None,
+    });
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(Store::open(&root).unwrap())));
+    control::agency::submit(
+        &shared,
+        &root,
+        "agency.pair",
+        &json!({"binding_id":"binding","agency_root":rig.root}),
+        &actor,
+        "pair",
+    )
+    .await
+    .unwrap();
+    let client = control::agency::paired_client(&root, "binding").unwrap();
+    let candidate = request(&client, "candidate").await;
+    control::agency::submit(
+        &shared,
+        &root,
+        "profession.accept",
+        &json!({"binding_id":"binding","profession":candidate.spec.document.profession.reference}),
+        &actor,
+        "accept",
+    )
+    .await
+    .unwrap();
+    let (refused, _) = authorized_intent(&shared, &actor, &client, "refused", |s| {
+        s.required_capabilities.secure_input = true
+    })
+    .await;
+    for _ in 0..2 {
+        assert_eq!(
+            control::agency::deliver_prepare(&shared, &root, &actor, &refused)
+                .await
+                .unwrap_err()
+                .code,
+            "CAPABILITY_MISSING"
+        );
+        let lock = shared.lock().await;
+        let store = lock.as_ref().unwrap();
+        assert_eq!(
+            store.effect("prepare:refused").unwrap().1,
+            store::EffectState::Rejected
+        );
+        assert!(store.effect("activate:refused").is_err());
+    }
+    // A decoded storage error is not proof of rejection; commit-stage failures can be ambiguous.
+    let tenant_path = std::fs::read_dir(rig.root.join("tenants"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("tenant.sqlite");
+    let fault = rusqlite::Connection::open(tenant_path).unwrap();
+    fault.execute_batch("CREATE TRIGGER fail_prepare BEFORE INSERT ON dispatches BEGIN SELECT RAISE(FAIL,'injected storage failure'); END;").unwrap();
+    let (storage_unknown, storage_request) =
+        authorized_intent(&shared, &actor, &client, "storage-error", |_| {}).await;
+    assert_eq!(
+        control::agency::deliver_prepare(&shared, &root, &actor, &storage_unknown)
+            .await
+            .unwrap_err()
+            .code,
+        "AGENCY_ERROR"
+    );
+    assert_eq!(
+        shared
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .effect("prepare:storage-error")
+            .unwrap()
+            .1,
+        store::EffectState::Unknown
+    );
+    fault.execute_batch("DROP TRIGGER fail_prepare;").unwrap();
+    drop(fault);
+    let _: Dispatch = client.call("prepare", &storage_request).await.unwrap();
+    control::agency::deliver_prepare(&shared, &root, &actor, &storage_unknown)
+        .await
+        .unwrap();
+    let (expired, _) = authorized_intent(&shared, &actor, &client, "expired", |s| {
+        s.deadline_ms = now() + 250
+    })
+    .await;
+    let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &expired)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    for _ in 0..2 {
+        assert_eq!(
+            control::agency::deliver_activation(&shared, &root, &actor, "expired", &dispatch)
+                .await
+                .unwrap_err()
+                .code,
+            "DEADLINE_EXPIRED"
+        );
+        assert_eq!(
+            shared
+                .lock()
+                .await
+                .as_ref()
+                .unwrap()
+                .effect("activate:expired")
+                .unwrap()
+                .1,
+            store::EffectState::Rejected
+        );
+    }
+    let (unknown, req) = authorized_intent(&shared, &actor, &client, "unknown", |_| {}).await;
+    {
+        let mut lock = shared.lock().await;
+        let store = lock.as_mut().unwrap();
+        store
+            .begin_effect(store.generation(), "prepare:unknown")
+            .unwrap();
+    }
+    assert_eq!(
+        control::agency::deliver_prepare(&shared, &root, &actor, &unknown)
+            .await
+            .unwrap_err()
+            .code,
+        "DISPATCH_NOT_FOUND"
+    );
+    assert_eq!(
+        shared
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .effect("prepare:unknown")
+            .unwrap()
+            .1,
+        store::EffectState::Unknown
+    );
+    let actual: Dispatch = client.call("prepare", &req).await.unwrap();
+    assert_eq!(
+        control::agency::deliver_prepare(&shared, &root, &actor, &unknown)
+            .await
+            .unwrap()
+            .key
+            .id,
+        actual.reference
+    );
+    drop(shared);
     rig.close().await;
 }
 
@@ -649,7 +1302,11 @@ async fn observation_pages_fit_transport_without_losing_large_events() {
         if !trace.events.is_empty() {
             pages += 1;
         }
-        count += trace.events.iter().filter(|e| e.kind == "large").count();
+        count += trace
+            .events
+            .iter()
+            .filter(|e| e.kind == "runtime:large")
+            .count();
         after = trace.cursor;
         if trace.complete && trace.dispatch.state == DispatchState::ResultReturned {
             break;
@@ -663,8 +1320,29 @@ async fn observation_pages_fit_transport_without_losing_large_events() {
 #[tokio::test]
 async fn tenant_namespace_and_credential_are_isolated() {
     let rig = Rig::new(RESULT).await;
-    let (a, _) = rig.pair("a").await;
+    let (a, a_key) = rig.pair("a").await;
     let (b, _) = rig.pair("b").await;
+    let intruder = Pair {
+        control_id: "a".into(),
+        tenant_key: agency_proto::client::new_credential().unwrap(),
+    };
+    assert_eq!(
+        rig.pairing
+            .call::<_, Pairing>("pair", &intruder)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "TENANT_EXISTS"
+    );
+    assert_eq!(
+        rig.pairing
+            .call::<_, Value>("shutdown", &json!({}))
+            .await
+            .unwrap_err()
+            .code,
+        "PAIRING_REQUIRED"
+    );
     let d: Dispatch = a
         .call("prepare", &request(&a, "same-key").await)
         .await
@@ -687,11 +1365,12 @@ async fn tenant_namespace_and_credential_are_isolated() {
         .unwrap();
     assert_eq!(db.state, DispatchState::Prepared);
     let pair: Pairing = rig
-        .admin
+        .pairing
         .call(
             "pair",
             &Pair {
                 control_id: "a".into(),
+                tenant_key: a_key,
             },
         )
         .await
@@ -708,7 +1387,8 @@ async fn tenant_namespace_and_credential_are_isolated() {
         b.call::<_, Pairing>(
             "pair",
             &Pair {
-                control_id: "c".into()
+                control_id: "c".into(),
+                tenant_key: agency_proto::client::new_credential().unwrap(),
             }
         )
         .await
@@ -723,6 +1403,19 @@ async fn tenant_namespace_and_credential_are_isolated() {
 async fn mismatched_material_capability_and_profession_fail_before_activation() {
     let rig = Rig::new(RESULT).await;
     let (client, _) = rig.pair("a").await;
+    let mut consumer = request(&client, "wrong-consumer").await;
+    consumer.bundle.document.consumer.id = "another-invocation".into();
+    consumer.bundle = Sealed::new(consumer.bundle.document).unwrap();
+    consumer.spec.document.bundle.digest = consumer.bundle.digest.clone();
+    consumer.spec = Sealed::new(consumer.spec.document).unwrap();
+    assert_eq!(
+        client
+            .call::<_, Dispatch>("prepare", &consumer)
+            .await
+            .unwrap_err()
+            .code,
+        "BUNDLE_MISMATCH"
+    );
     let mut req = request(&client, "material").await;
     if let Delivery::Inline { bytes } = &mut req.bundle.document.entries[0].delivery {
         bytes.push(1);
@@ -911,6 +1604,20 @@ async fn old_writer_is_fenced_without_destroying_pending_results_or_other_tenant
         .code,
         "WRITER_STALE"
     );
+    assert_eq!(
+        a.call::<_, Value>(
+            "input",
+            &Input {
+                ticket: ticket(&d, &key, vec![Permission::Input], Some("old")),
+                idempotency_key: "old-writer-input".into(),
+                bytes: b"do not deliver".to_vec(),
+            }
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "WRITER_STALE"
+    );
     let results: Vec<Proposal> = a
         .call(
             "results",
@@ -986,7 +1693,7 @@ async fn cursor_gap_and_unknown_event_are_explicit() {
         trace
             .events
             .iter()
-            .any(|e| e.kind == "new_vendor_event" && e.source == EvidenceLevel::Narrated)
+            .any(|e| e.kind == "runtime:new_vendor_event" && e.source == EvidenceLevel::Narrated)
     );
     let gap: Trace = client
         .call(

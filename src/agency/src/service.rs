@@ -26,6 +26,7 @@ use tonic::{Request, Response, Status};
 pub struct Agency {
     root: PathBuf,
     key: String,
+    pair_key: String,
     registry: Mutex<Connection>,
     tenants: Mutex<HashMap<String, Arc<Tenant>>>,
     runtime: Arc<dyn Runtime>,
@@ -81,6 +82,18 @@ impl Agency {
             sql(db.execute("INSERT INTO settings VALUES('bootstrap',?1)", [&key]))?;
             key
         };
+        let pair_key: Option<String> = sql(db
+            .query_row("SELECT value FROM settings WHERE key='pairing'", [], |r| {
+                r.get(0)
+            })
+            .optional())?;
+        let pair_key = if let Some(key) = pair_key {
+            key
+        } else {
+            let key = nonce()?;
+            sql(db.execute("INSERT INTO settings VALUES('pairing',?1)", [&key]))?;
+            key
+        };
         let mut rows = sql(db.prepare("SELECT id,key FROM tenants"))?;
         let entries =
             sql(rows.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))))?
@@ -95,12 +108,13 @@ impl Agency {
         let mut credential = private_file(&root.join("pair.key"))?;
         use std::io::Write;
         credential.set_len(0)?;
-        credential.write_all(key.as_bytes())?;
+        credential.write_all(pair_key.as_bytes())?;
         credential.sync_all()?;
         let (shutdown, _) = watch::channel(false);
         Ok(Arc::new(Self {
             root,
             key,
+            pair_key,
             registry: Mutex::new(db),
             tenants: Mutex::new(tenants),
             runtime,
@@ -109,7 +123,7 @@ impl Agency {
         }))
     }
     pub fn bootstrap_key(root: &Path) -> Result<String> {
-        // A local owner uses this only for explicit pairing. Never delivered to an executor.
+        // Service-owner credential: never handed to a control client for pairing.
         let db = sql(Connection::open_with_flags(
             root.join("registry.sqlite"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -122,6 +136,7 @@ impl Agency {
     }
     fn pair(self: &Arc<Self>, input: Pair) -> Result<Pairing> {
         nonempty(&input.control_id)?;
+        digest(&input.tenant_key)?;
         let mut db = self.registry.lock().expect("registry mutex");
         let tx = sql(db.transaction())?;
         let found: Option<(String, String)> = sql(tx
@@ -132,9 +147,16 @@ impl Agency {
             )
             .optional())?;
         let (id, key, new) = if let Some((id, key)) = found {
+            if !credential_matches(&input.tenant_key, &key) {
+                return Err(PortError::new(
+                    "TENANT_EXISTS",
+                    "existing tenant requires its current credential",
+                    "recover_original_pairing_credential",
+                ));
+            }
             (id, key, false)
         } else {
-            (nonce()?, nonce()?, true)
+            (nonce()?, input.tenant_key, true)
         };
         let root = self.root.join("tenants").join(&id);
         let endpoint =
@@ -174,39 +196,28 @@ struct Rpc {
     tenant: Option<Arc<Tenant>>,
 }
 impl Rpc {
-    fn authorize(&self, request: &Request<wire::Call>) -> Result<()> {
-        let expected = self.tenant.as_ref().map_or(&self.agency.key, |t| &t.key);
+    fn authorize(&self, request: &Request<wire::Call>, method: &str) -> Result<()> {
         let supplied = request
             .metadata()
             .get("x-agency-key")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        // Use the MAC library's constant-time verification, not a secret string comparison.
-        let claims = TicketClaims {
-            id: "authenticate".into(),
-            actor: String::new(),
-            dispatch: String::new(),
-            owner: Owner {
-                project: String::new(),
-                kind: OwnerKind::RoomInvocation,
-                id: String::new(),
-                generation: 0,
-            },
-            spec_digest: String::new(),
-            writer_generation: 0,
-            permissions: vec![],
-            input_lease: None,
-            expires_ms: 0,
+        let authorized = match &self.tenant {
+            Some(tenant) => credential_matches(supplied, &tenant.key),
+            None if method == "pair" => credential_matches(supplied, &self.agency.pair_key),
+            None if method == "catalog" => {
+                credential_matches(supplied, &self.agency.pair_key)
+                    || credential_matches(supplied, &self.agency.key)
+            }
+            None => credential_matches(supplied, &self.agency.key),
         };
-        Ticket::sign(claims, supplied.as_bytes())?
-            .verify(expected.as_bytes())
-            .map_err(|_| {
-                PortError::new(
-                    "PAIRING_REQUIRED",
-                    "paired credential required",
-                    "pair_control",
-                )
-            })?;
+        if !authorized {
+            return Err(PortError::new(
+                "PAIRING_REQUIRED",
+                "endpoint credential required",
+                "pair_control",
+            ));
+        }
         if request.get_ref().protocol != PROTOCOL {
             return Err(PortError::new(
                 "PROTOCOL_MISMATCH",
@@ -224,7 +235,7 @@ impl Rpc {
         request: Request<wire::Call>,
         method: &'static str,
     ) -> std::result::Result<Response<wire::Reply>, Status> {
-        if let Err(e) = self.authorize(&request) {
+        if let Err(e) = self.authorize(&request, method) {
             return Ok(response(Err(e)));
         }
         let rpc = self.clone();
@@ -304,7 +315,12 @@ methods!(
 );
 
 fn bind(path: &Path) -> Result<tokio::net::UnixListener> {
+    agency_proto::client::validate_socket_directory(
+        path.parent()
+            .ok_or_else(|| PortError::invalid("socket parent"))?,
+    )?;
     if path.exists() {
+        agency_proto::client::validate_socket(path)?;
         if !std::fs::symlink_metadata(path)?.file_type().is_socket() {
             return Err(PortError::invalid("endpoint path is not a socket"));
         }
@@ -334,7 +350,13 @@ fn spawn_server(listener: tokio::net::UnixListener, rpc: Rpc) {
 }
 pub async fn serve(agency: Arc<Agency>) -> Result<()> {
     let sockets = agency_proto::client::socket_directory(&agency.root)?;
-    private_dir(&sockets)?;
+    use std::os::unix::fs::DirBuilderExt;
+    match std::fs::DirBuilder::new().mode(0o700).create(&sockets) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.into()),
+    }
+    agency_proto::client::validate_socket_directory(&sockets)?;
     let main = bind(&sockets.join("admin.sock"))?;
     let tenants = agency
         .tenants
@@ -354,10 +376,10 @@ pub async fn serve(agency: Arc<Agency>) -> Result<()> {
         );
     }
     let mut shutdown = agency.shutdown.subscribe();
-    tonic::transport::Server::builder()
+    let result = tonic::transport::Server::builder()
         .add_service(
             AgencyServer::new(Rpc {
-                agency,
+                agency: Arc::clone(&agency),
                 tenant: None,
             })
             .max_decoding_message_size(MAX_DOCUMENT),
@@ -366,5 +388,22 @@ pub async fn serve(agency: Arc<Agency>) -> Result<()> {
             let _ = shutdown.changed().await;
         })
         .await
-        .map_err(|e| PortError::new("AGENCY_TRANSPORT", e.to_string(), "restart_agency"))
+        .map_err(|e| PortError::new("AGENCY_TRANSPORT", e.to_string(), "restart_agency"));
+    if result.is_ok() {
+        let mut paths = vec![sockets.join("admin.sock")];
+        paths.extend(
+            agency
+                .tenants
+                .lock()
+                .expect("tenants mutex")
+                .keys()
+                .map(|id| sockets.join(format!("{}.sock", &id[..20]))),
+        );
+        for path in paths {
+            agency_proto::client::validate_socket(&path)?;
+            std::fs::remove_file(path)?;
+        }
+        std::fs::remove_dir(&sockets)?;
+    }
+    result
 }

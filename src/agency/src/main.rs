@@ -4,7 +4,7 @@ use agency::{
 };
 use agency_proto::{PortError, Result, client::Client};
 use clap::{Parser, Subcommand};
-use std::{path::PathBuf, sync::Arc};
+use std::{os::unix::process::CommandExt, path::PathBuf, sync::Arc};
 
 #[derive(Parser)]
 #[command(name = "agency", version, about = "Independent local Agency service")]
@@ -71,6 +71,7 @@ async fn run(args: Args) -> Result<()> {
                 command.arg("--script-config").arg(config);
             }
             command
+                .process_group(0)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
