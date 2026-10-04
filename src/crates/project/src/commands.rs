@@ -282,6 +282,14 @@ pub fn prepare(
                 version: *roster_version,
             });
             let next = roster_version.map_or(1, |v| v + 1);
+            let validated = participant::selection::validate_roster(
+                store,
+                existing.as_ref().ok_or_else(stale)?,
+                selections,
+            )?;
+            for dependency in &validated.dependencies {
+                checked(&mut plan, dependency);
+            }
             let mut refs = vec![];
             for (index, s) in selections.iter().enumerate() {
                 validate_selection(s, room_id)?;
@@ -297,7 +305,7 @@ pub fn prepare(
                 plan.records.push(record);
             }
             plan.records.push(value_record(roster_key, next, &refs)?);
-            plan.result = json!({"room_id":room_id,"roster_version":next,"selections":refs,"candidate_validation":"deferred_to_p23"});
+            plan.result = json!({"room_id":room_id,"roster_version":next,"selections":refs,"candidate_validation":"accepted_catalog_and_project_policy","optional_skill_degradations":validated.optional_skill_degradations});
         }
         Action::Members {
             project_version,

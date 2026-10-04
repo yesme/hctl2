@@ -216,7 +216,7 @@ pub(crate) fn query(
                     .map(|r| chat::at(s, r))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(
-                    json!({"participants":room.participants,"selections":selections,"candidate_validation":"deferred_to_p23"}),
+                    json!({"participants":room.participants,"selections":selections,"candidate_validation":"see_selection_command_and_dispatch_preview"}),
                 )
             }
             _ => Err(invalid("unknown Project query")),

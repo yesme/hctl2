@@ -13,6 +13,7 @@ filegroup(
 DEPS = [
     "root//crates/chat:chat",
     "root//crates/foundation:foundation",
+    "root//crates/participant:participant",
     "root//crates/repo:repo",
     "root//crates/store:store",
     "root//crates/task:task",
@@ -37,7 +38,7 @@ rust_test(
     name = "domain_test",
     srcs = glob(["tests/**/*.rs"]),
     crate_root = "tests/domain.rs",
-    deps = [":project"] + DEPS,
+    deps = [":project", "root//crates/agency-proto:agency_proto"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env(),
     labels = CI_FAST,

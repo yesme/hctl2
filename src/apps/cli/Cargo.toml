@@ -31,6 +31,7 @@ context = { path = "../../crates/context" }
 chat = { path = "../../crates/chat" }
 control = { path = "../control" }
 foundation = { path = "../../crates/foundation" }
+participant = { path = "../../crates/participant" }
 repo = { path = "../../crates/repo" }
 store = { path = "../../crates/store" }
 task = { path = "../../crates/task" }

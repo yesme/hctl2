@@ -19,7 +19,7 @@
 
 归档按 Project 归属列出全部 Room，与 Matrix 层级读数无关。开放 Room 转只读，Task / Request 不改生命周期；它们的写命令由 Project 的只读前置拒绝。恢复只复原本次归档转只读的 Room，预先关闭或只读的 Room 不复活。非终态 Run、写入型 Invocation、活动租约、未决意图与副作用拒绝归档；Repo 范围的对象按来源 / 归属者或明确 `project_id` 关联。未来模块需沿此形状接入检查，未知状态保守视为未决，本包不声称已经实现这些模块。
 
-Room 名册与 Matrix 成员不是同一件事。`select` 冻结连接约束里的选入字段，只更新该 Room 的名册引用，不改外部 Binding。既有选入记录不回写。可先选入精确 `chat::topic_id(project_id, topic_command_key)`，再创建 Topic；创建核对确认的名册版本。候选可用性、Project 选人策略执行、必需 Skill 的未知等级拒派及活动 Invocation / Run 冻结由后续派工包接上，本包不派工。
+Room 名册与 Matrix 成员不是同一件事。`select` 冻结连接约束里的选入字段，只更新该 Room 的名册引用，不改外部 Binding。既有选入记录不回写。可先选入精确 `chat::topic_id(project_id, topic_command_key)`，再创建 Topic；创建核对确认的名册版本。第 5 包主体首批已接入接受目录、Project 选人策略、Profile 与 Skill 核验，依赖版本在名册事务中再核；optional Skill 缺失在预览结果中列出。Invocation / Run 冻结与实际激活仍未接线，详见 [Participant 的实现范围](../participant/README.md#第-5-包主体--选入校验与-worker-profile)。本批不派工。
 
 `members` 明确列出本 Project 的 Room Binding 引用和 Matrix 用户 ID，逐房间写原生成员状态并回读；不沿 Space 推断继承。部分失败返回逐房间结果、`ROOMS_PARTIAL` 与非零退出，已成功部分不伪称回滚。重试沿原 effect，邀请 / 移除先回读当前成员状态；Unknown 只回读，不能证明原结果时不重发。权限等级调整未提供公共命令，后续若接入须复用逐房间结果规则。补丁 1a（v0.19.2）：目标为主 Room 时，同一意图的投递把同样的邀请 / 移除同步到本 Project 全部承载 Space（逐 Space 回读；这是 content，不进名册、不改加入规则）。
 
@@ -70,7 +70,7 @@ hctl2 request show PROJECT_ID REQUEST_ID
 | 挂靠不继承；多房间部分失败不报全体成功；归档不依赖层级 | D：独立不可改写名册、跨 Project / 重复目标拒绝、归档全体 Room；N：原生成员邀请与移除、重复回读 | 真实多房间部分拒绝、权限等级调整与 UI 未验 |
 | 待你处理去重、四问与返回入口、其他人不计、只读查询不解决 | D：单 Request 一项、Task 同动作去重、其他人不计、处理后退出、读前后完全一致；B1：Request 经公共 CLI 解决重试 | 其余三类来源归后续包 |
 | Request 无 Message 升级 Topic、机械提要、关闭不解决 | D：真实 Request 记录供 Chat reducer 创建 / 关闭、归属与版本检查 | Chat D：Request Topic 机械草稿在 Chat 已有路径；完整来源链需后续 Context 交付 |
-| Project 版本更新不改已接受约束、名册换人不回写旧记录 | D：保存旧选入与 Binding、Task Revision 接受版本冻结、改缺省后原 Request delivery 可确认 | 调用 / Run 已冻结设置和候选校验由派工包接入 |
+| Project 版本更新不改已接受约束、名册换人不回写旧记录 | D：保存旧选入与 Binding、Task Revision 接受版本冻结、改缺省后原 Request delivery 可确认；第 5 包首批再测真实候选与旧 Profile 引用 | 活动调用 / Run 的冻结设置仍待派工与 Run 接线 |
 | Request 比较并交换、唯一投递、崩溃重试、截止不伪造 Task 终态 | D：来源在 Submit / 回执前变化拒绝，Unknown 后重新开库仅一回执一 Revision，旧 Task 预览不能绕过新 Request，过期旧来源不挡其他截止 | Run / Invocation 的来源 builder 与接收方尚未实现 |
 | CT-REPO 其余注册、平台绑定、集成与评审行 | 原 Repo 测试与完整安装包测试保留；本包不改 Repo reducer | 变更 / 发布评审 / 集成仍按任务书后续包交付 |
 | CT-PROJECT 其余 Invocation、Context、Memo、模型、派发与审计行 | 本包不派工、不发布 Memo；Chat / Task 已有回归目标保留 | 第 2–7 包及 Workbench，不标本包完成 |
@@ -85,3 +85,11 @@ cd src
 ```
 
 新 crate / target 为 `root//crates/project:{project,domain_test,clippy}`；Control 和 CLI 使用既有 target，完整包 B1 纳入 Release 目标，不让普通 Code 检查重复制作完整包。没有新三方依赖或脚本。
+
+## 第 5 包后半段任务说明
+
+`Selection` / `Skill` 保留原 JSON 形状，从 Participant crate 重导出；Project 继续拥有 Room 名册及其写入事务。后半段的 `room roster` 命令复用 `Action::Select`，不另造名册存储或改变 Binding。候选字段、只读 Profile 范围和策略格式见 [Participant 接口说明](../participant/README.md#第-5-包主体--选入校验与-worker-profile)。
+
+输入：`project_id / project_version / room_id / topic_command_key? / roster_version? / selections`，以及命令幂等 key。`prepare` 返回 `Plan`，结果含新 `roster_version`、选入引用、候选校验结论和 `optional_skill_degradations`；`admit` 提交经预览确认的计划，旧 Project、Room 或名册版本拒绝。已有 `project select` 的 CLI / RPC 接法可以直接复用。`project.roster` 展示记录，不重新授予派工资格；历史名册是否已执行候选校验，应看原选入命令，当前派工仍须预览。
+
+Invocation 的 list / cancel / retry、状态读取和 Terminal 接口在主体下一份 PR 补齐后列出，不在本批写占位处理函数。后半段只接命令与只读投影；状态合法边、冻结、准入、幂等和恢复仍调用主体 reducer。验收落 CT-PROJECT 的名册 / 提及 / Invocation 行，CT-PARTICIPANT 的身份与连接行，不把名册提交成功当作派工成功。
