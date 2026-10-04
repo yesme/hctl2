@@ -16,31 +16,8 @@ pub struct Definition {
     pub settings: ProjectSettings,
 }
 
-/// Immutable selection, independent of Matrix membership and the external binding.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Selection {
-    pub room_id: String,
-    pub selected_item: Reference,
-    pub profession: Reference,
-    pub profession_digest: String,
-    pub agency: Reference,
-    pub required_skills: Vec<Skill>,
-    pub optional_skills: Vec<Skill>,
-    pub worker_profiles: Vec<Reference>,
-    pub responsibility: String,
-    pub permission: Value,
-    pub budget: Value,
-    pub display_name: String,
-    pub persona_tags: Vec<String>,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Skill {
-    pub reference: Reference,
-    /// None is the explicit unknown grade; required unknown is not dispatchable.
-    pub digest: Option<String>,
-}
+// Candidate schema is shared with Participant; Room records still belong to Project.
+pub use participant::selection::{Selection, Skill};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
