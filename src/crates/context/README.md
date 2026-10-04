@@ -1,21 +1,59 @@
-# Context 组装框架
+# Context 组装（第 4 包）
 
-本 crate 只定第 4 包的类型和接口，还没有选材器、来源读取器或 CLI 实现。共享记录来自 `agency-proto::context`；不复制一套 Bundle 类型。Buck：`root//crates/context:context`、`:clippy`。
+本 crate 提供本地选材、组装、冻结与读取。记录复用 `agency-proto::context`，没有第二套 Manifest / Bundle 类型。组装不调用模型、不生成纪要、不压缩。没有 tokenizer 时，计量字段为 `None`。
 
-## 第 4 包任务说明
+## 模块与接线
 
-依据：[演示线开工书第 4 包](../../../.memo/design/p2-control-20260906/07-demo-kickoff.md#第-4-包--context-组装)、[Context 约束](../../../docs/design/spec/project.md#contextmemo-与-artifact)。
-
-| 文件 | 要补什么 |
+| 文件 | 职责 |
 | --- | --- |
-| `src/lib.rs` | 保留 `Sources::exact`、`Assembler::assemble`、`AssemblyRequest` 和 `Assembly` 作为公共接口 |
-| `src/sources.rs` | Room、Task 评论与评审评论的来源适配；评审读取先留接口，第 6 包接上 |
-| `src/assembler.rs` | 本地选材、排序、权限过滤、三档交付与计量；不调用模型、不生成纪要 |
-| `src/records.rs` | Manifest / Bundle 的控制面保存与冻结引用，复用 Store 的材料与事务接口 |
-| `apps/control/src/context.rs`、`apps/cli/src/context.rs` | `context show|preview` 接线，网络读取留事务外 |
+| `src/selection.rs` | `select_context(SelectionRequest)` 接收精确消费者、消费 Room、可选 Task 与预算。Topic 只选自己的已确认前情提要及其中的来源列表，不按来源所在 Room 搜集所有 Topic。Manifest ID 由完整冻结输入的规范摘要生成，新增来源或权限答案变化会得到新 ID。 |
+| `src/sources.rs` | Room 线读取已准入材料。Task 线按 Project 内的 Task 定位 Repo、已接入的源、当前完整 Snapshot 与绑定卡片，只交付这张卡的整条评论线，不交付整个看板。来源版本变化返回 `SOURCE_VERSION_CHANGED`；评审评论线未接线时返回 `REVIEW_LINE_NOT_CONFIGURED`。 |
+| `src/assembler.rs` | 校验冻结的权限摘要与预算，稳定内容在前。预算内内联，超限转为携带精确字节副本的 Pointer，分片建议在条目说明中；必需材料不静默丢弃，也不退为 Recall。指针使用安全相对名，不携带生产者目录。 |
+| `src/records.rs` | 保存前核对封存摘要、交付字节、Manifest 引用、Project、策略与完整来源集合。正文先保存，准入和记录写入在同一事务中。同 ID 同内容重放，同 ID 异内容拒绝；读取时复核封存摘要与已准入材料。 |
+| `apps/control/src/context_query.rs` | 只读 `context.preview` / `context.show`；RPC 外层 Query 白名单已接通。保留类型化错误与恢复动作。 |
+| `apps/cli` | `hctl2 context preview --input ctx.json`；`hctl2 context show PROJECT --manifest-id ID --bundle-id ID`。 |
 
-Manifest 固定目的、范围、来源版本、策略、时效、覆盖、缺口、Skill、权限与预算。Bundle 固定消费者、渲染器、tokenizer、脱敏、压缩链与计量。`Sources::exact` 返回精确版本和字节；版本不符不能装成旧预览。没有可用 tokenizer 时如实表示未计量，不编 token 数字；若需要调整本包占位的计量字段，说明兼容改法。
+Buck：`root//crates/context:{context,domain_test,clippy}`。
 
-必需离线材料不能退成代取。Pointer 交付是精确字节加执行侧相对文件名，不是生产者机器的目录；Agency 自己决定私有落点。代取的 grant 类型已留，真实通道在组装与派工接线时落实，未具备时不能把必需项发成 Recall。
+## 第 5 包调用约定
 
-失败用例落原生 Buck 测试：来源版本变化、权限与预算变化使旧预览失效；实际字节摘要不符；必需离线材料未交付；不同消费者不能混包；重复 Pointer 文件名拒绝。对照 CT-PROJECT、CT-CONNECTION 的 Context 行，不用「有摘要」替代「材料可用」。
+`SelectionRequest.consumer` 是已有的 `Owner`：Project、`room_invocation` / `run_attempt`、ID、精确代次。派工端负责提供真实归属者；组装器不创建 Invocation，也不把 Room ID 冒充消费执行。
+
+`room_id` 指消费上下文的 Room；`task_id` 是这个 Project 内显式选择的 Task。没有 Task 就不混入任务评论。Task 来源校验复用 `task::source`、`task::latest` 与 Project 的来源准入记录。Task 评论引用的 `revision` 保存规范 JSON：Task、Snapshot、来源准入与源绑定的精确引用、版本和摘要；`digest` 覆盖这些身份与评论。Snapshot 位置和摘要可直接检查，不只有一个无法追溯的合成摘要。
+
+CLI 预览输入示例：
+
+```json
+{
+  "project_id": "P",
+  "room_id": "topic-1",
+  "task_id": "T",
+  "consumer": {"project": "P", "kind": "room_invocation", "id": "invocation-1", "generation": 1},
+  "budget": 65536
+}
+```
+
+`task_id`、`consumer`、`budget` 可省略。未指定消费者时只读预览使用 `preview` 标识，不签发授权、不创建消费执行；预算缺省为 65536。`select_room_manifest` 是同样的只读便利入口。保存由库接口 `save_assembly` 提供，CLI 预览不保存。
+
+当前权限答案是 Project 已准入来源集合的占位，不是正式派工授权。Store 读取仍校验调用者的 Project 范围，不能靠输入的 Manifest 自授读权。第 5 包须接入真实权限策略和授权校验，再冻结 Execution Spec、交付并核对实际字节。
+
+## CT 对照（本包范围）
+
+| CT 现行条款 | 已验证 | 未实现或后续接线 |
+| --- | --- | --- |
+| 来源可解释、必备字段齐全 | D：缺字段拒绝；N：真实 chat 命令创建 Topic，选自己的前情提要与来源，另一 Topic 不混入；Task 评论保留精确 Snapshot 引用和摘要 | 在线当前窗口、显式 Artifact / Memo / Skill 的选材由第 5 包接入 |
+| 必需材料交付、摘要核对 | D：必需 Recall、篡改副本、重新封存坏字节、错误 Manifest、重复条目替掉必需来源均拒绝；超限 Pointer 保留字节 | Agency 派发前最后核对由第 5 包接入 |
+| 材料集合不授整库读权 | N：跨 Project 权限不足拒绝；同名源跨 Repo 不串读，只读取所选 Task 的卡片评论 | 正式权限策略未实现；占位明示 |
+| 来源、权限或预算变化使旧预览失效 | D：来源版本、权限、预算变化；N：Task Snapshot 更新使旧引用失效，不完整 Snapshot 拒绝 | 在线读取变化由派工链接入 |
+| 每个消费者独立冻结，旧记录不改写 | N：同 Manifest 两消费者分别保存与读取；同 ID 异内容拒绝；代次变化独立保存；新增 Topic 后再次预览能保存，旧 Manifest 仍可读 | — |
+| CLI 查询可用、错误可观察 | C：真实 control RPC 读冻结包；preview 返回领域错误而非未知 Query；消费者 Project 不匹配拒绝；D：坏封存摘要、准入副本与记录不符、缺材料引用拒绝读回 | 有效选材路径由 N 覆盖；未运行真实 chat server |
+| 评审评论线不当授权 | D：未接线返回类型化错误 | 精确平台评审评论读取由第 6 包接入 |
+| 压缩来源与证据保护 | 本包不产生压缩条目 | 压缩引擎未实现，不声称已测 |
+| 保留策略与丢弃事实 | Bundle 携带保留至归属者终态且准入窗口关闭的策略名 | 实际保留与清理未实现 |
+| token 计量与 Pointer 名 | D：无 tokenizer 时计量为 `None`；Pointer 名碰撞拒绝 | 实数 token 计量未实现 |
+
+D = `tests/domain.rs`；N = `tests/native.rs`，两者由 `root//crates/context:domain_test` 运行。C = `root//apps/cli:cli_test`。
+
+## 范围收窄
+
+当前讨论窗口仍在 chat server，未从在线时间线读取。没有确认前情提要、也没有显式 Task 的 Room 会返回 `SOURCE_UNAVAILABLE`，不冒充上下文齐全。第 5 包须把在线窗口、显式材料和必需 Skill 接入既有 `Sources` / `Manifest`，并按约束的来源顺序选择。平台评审评论线按开工书留到第 6 包。本包不新增约束或共享对象。

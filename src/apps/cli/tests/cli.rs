@@ -59,6 +59,116 @@ fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
 }
 
 #[test]
+fn context_queries_reach_rpc_and_show_verified_frozen_bytes() {
+    use agency_proto::{FrozenRef, Owner, OwnerKind, hash};
+    use context::{
+        Assembler, AssemblyRequest, LocalAssembler, Manifest, MemorySources, SourceKind,
+    };
+    use serde_json::json;
+    let temp = Temp::new();
+    let root = temp.0.as_path();
+    assert!(run(root, &["init", "--secret-backend", "user-file"]).0);
+    let actor = store::TrustedActor(store::Actor {
+        principal: "owner".into(),
+        source: store::ActorSource::DirectClient,
+        permission_scope: vec![store::Scope::Control, store::Scope::Project("A".into())],
+        authority: None,
+    });
+    let source = FrozenRef {
+        id: "chat_source_reference/fixture".into(),
+        revision: "1".into(),
+        digest: hash(b"fixture"),
+    };
+    let permitted = vec![source.id.clone()];
+    let mut sources = MemorySources::new();
+    sources.push(SourceKind::Room, source.clone(), b"frozen CLI material");
+    let manifest = Manifest {
+        id: "cli-manifest".into(),
+        purpose: "RPC fixture".into(),
+        scope: "project A".into(),
+        parent: None,
+        sources: vec![source.clone()],
+        selection_policy: source.clone(),
+        freshness: "frozen".into(),
+        coverage: "fixture".into(),
+        known_gaps: vec![],
+        required_skills: vec![],
+        permission_digest: context::permission_digest(&permitted),
+        redaction: source,
+        budget: 1024,
+    };
+    let assembly = LocalAssembler {
+        permitted: permitted.into_iter().collect(),
+        budget: 1024,
+    }
+    .assemble(
+        &sources,
+        AssemblyRequest {
+            manifest,
+            consumer: Owner {
+                project: "A".into(),
+                kind: OwnerKind::RoomInvocation,
+                id: "invoke-cli".into(),
+                generation: 2,
+            },
+        },
+    )
+    .unwrap();
+    {
+        let mut store = store::Store::open(root).unwrap();
+        context::save_assembly(&mut store, &actor, "A", "cli-context-fixture", &assembly).unwrap();
+    }
+    assert!(run(root, &["start"]).0);
+    let (ok, out, err) = run(
+        root,
+        &[
+            "context",
+            "show",
+            "A",
+            "--manifest-id",
+            "cli-manifest",
+            "--bundle-id",
+            &assembly.bundle.document.id,
+        ],
+    );
+    assert!(ok, "{out} {err}");
+    let shown: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let bundle: agency_proto::Sealed<context::Bundle> =
+        serde_json::from_value(shown["bundle"].clone()).unwrap();
+    bundle.verify().unwrap();
+    assert_eq!(bundle, assembly.bundle);
+    let input = root.join("preview-input.json");
+    std::fs::write(
+        &input,
+        serde_json::to_vec(&json!({"project_id":"A","room_id":"missing-room"})).unwrap(),
+    )
+    .unwrap();
+    let (ok, out, _) = run(
+        root,
+        &["context", "preview", "--input", input.to_str().unwrap()],
+    );
+    assert!(!ok);
+    let error: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(error["error"]["code"], "NOT_FOUND");
+    assert!(!out.contains("unknown query"));
+    std::fs::write(
+        &input,
+        serde_json::to_vec(
+            &json!({"project_id":"A","room_id":"missing-room","consumer":{
+        "project":"B","kind":"room_invocation","id":"i","generation":1}}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (ok, out, _) = run(
+        root,
+        &["context", "preview", "--input", input.to_str().unwrap()],
+    );
+    assert!(!ok);
+    assert!(out.contains("consumer Project differs"), "{out}");
+}
+
+#[test]
 fn secret_backend_setting_persists_and_unknown_values_are_rejected() {
     let temp = Temp::new();
     let root = temp.0.as_path();

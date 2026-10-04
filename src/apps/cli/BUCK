@@ -31,7 +31,12 @@ rust_test(
     name = "cli_test",
     srcs = ["tests/cli.rs"],
     crate_root = "tests/cli.rs",
-    deps = ["root//third-party/rust:serde_json"],
+    deps = [
+        "root//crates/agency-proto:agency_proto",
+        "root//crates/context:context",
+        "root//crates/store:store",
+        "root//third-party/rust:serde_json",
+    ],
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env() | {
         "CARGO_BIN_EXE_hctl2": "$(location :hctl2)",
