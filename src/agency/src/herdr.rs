@@ -314,9 +314,10 @@ pub fn socket_path(state: &Path) -> PathBuf {
 }
 
 /// Run `command` in a new workspace pane and return the pane text that contains `marker`.
-/// If `command` contains `marker`, this refuses before creating a pane or sending text.
-/// The terminal echoes the typed command, so a marker written in the command is not
-/// program output. Print the marker in pieces, and make that print the last step.
+/// This refuses before creating a pane or sending text when `command` contains `marker`,
+/// or any control character other than newline. Tab is a control character and is refused.
+/// The terminal echoes typed text, and backspace or delete can assemble a marker that
+/// was not in the original command. Print the marker in pieces, and make that print the last step.
 /// After a pane id exists, the pane is closed on both success and failure.
 pub fn run_command(
     client: &Client,
@@ -331,6 +332,11 @@ pub fn run_command(
     if command.contains(marker) {
         return Err(PortError::invalid(
             "command contains the marker; print it in pieces so the echo is not the output",
+        ));
+    }
+    if command.chars().any(|c| c.is_control() && c != '\n') {
+        return Err(PortError::invalid(
+            "command contains a control character other than newline; tab is included",
         ));
     }
     let created = client.call(

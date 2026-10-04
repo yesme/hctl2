@@ -141,6 +141,38 @@ fn a_command_containing_the_marker_is_rejected_before_it_runs() {
 }
 
 #[test]
+fn a_backspace_in_the_command_is_rejected_before_it_runs() {
+    reject_control_before_herdr('\u{8}');
+}
+
+#[test]
+fn a_delete_in_the_command_is_rejected_before_it_runs() {
+    reject_control_before_herdr('\u{7f}');
+}
+
+fn reject_control_before_herdr(control: char) {
+    let (cred, exec) = scratch(&format!("control{:02x}", control as u32));
+    let server = Server::start(
+        &binary(),
+        &herdr::state_dir(&exec, &cred).unwrap(),
+        &cred,
+        &exec,
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let command = format!("sleep 3; touch codexdone; : HCTL2X{control}DONE");
+    let started = Instant::now();
+    let error = herdr::run_command(&client, &exec, "control", &command, "HCTL2DONE").unwrap_err();
+    assert_eq!(error.code, "INVALID_INPUT");
+    assert!(error.message.contains("control character"));
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(!exec.join("codexdone").exists());
+    client.ping().unwrap();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
 fn a_missing_marker_closes_the_pane() {
     let (cred, exec) = scratch("nomark");
     let server = Server::start(
