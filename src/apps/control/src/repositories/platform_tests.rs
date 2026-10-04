@@ -149,24 +149,26 @@ fn retry_bootstrap_keeps_the_last_failure_and_respects_the_deadline() {
 
 #[test]
 fn retry_bootstrap_does_not_retry_a_failure_it_cannot_fix() {
-    // A foreign instance holding Gitea's port answers 401 and is worth waiting out; a
-    // rejected credential is not.
+    // The identity loop retries `PLATFORM_UNAVAILABLE` (another instance answering the
+    // port) and passes everything else straight out. `CREDENTIAL_UNAVAILABLE` is what
+    // this call site reports for an account that really is missing, so it must not be
+    // retried.
     let attempts = std::cell::Cell::new(0);
     let error = retry_bootstrap(
         Instant::now() + Duration::from_secs(5),
         || -> Result<()> {
             attempts.set(attempts.get() + 1);
             Err(reject(
-                "NATIVE_REJECTED",
-                "rejected",
-                "read_back_original_intent",
+                "CREDENTIAL_UNAVAILABLE",
+                "platform account missing",
+                "restore_secret_store",
             ))
         },
         |error| error.code == "PLATFORM_UNAVAILABLE",
         || {},
     )
     .unwrap_err();
-    assert_eq!(error.code, "NATIVE_REJECTED");
+    assert_eq!(error.code, "CREDENTIAL_UNAVAILABLE");
     assert_eq!(attempts.get(), 1);
 }
 
@@ -421,4 +423,183 @@ fn collaborator_grant_writes_the_requested_permission_and_confirms_it_by_readbac
     assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xxxxx");
     assert_eq!(held("bob"), "read");
     assert_eq!(held("alice"), "write");
+}
+
+/// A packaged layout with stubbed native clients, for driving `Hosted::connect` itself.
+///
+/// `gitea_paths()` answers only for the packaged backend, so bootstrap tests build one
+/// over directories they own: `bin/hctl2-services`, the process-compose probe client,
+/// the Gitea admin CLI and `tea`, plus the `services/` state tree `connect` reads.
+struct PackageFixture {
+    root: PathBuf,
+    install: PathBuf,
+    control_id: String,
+}
+
+impl PackageFixture {
+    /// `first_admin_call_fails` stages the not-yet-migrated database; the marker file
+    /// `gitea.ready` decides which call is which. `first_api_call_is_foreign` stages
+    /// another instance holding the port, answering 401 for our token; the marker
+    /// `tea.ours` decides when our instance answers.
+    fn new(name: &str, first_admin_call_fails: bool, first_api_call_is_foreign: bool) -> Self {
+        let control_id = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let root =
+            std::env::temp_dir().join(format!("hctl2-bootstrap-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let install = root.join("pkg");
+        let state = root.join("services");
+        for dir in ["bin", "libexec/hctl2"] {
+            std::fs::create_dir_all(install.join(dir)).unwrap();
+        }
+        std::fs::create_dir_all(state.join("config/gitea")).unwrap();
+        std::fs::create_dir_all(state.join("data/gitea")).unwrap();
+        std::fs::write(
+            state.join("config/gitea/app.ini"),
+            "ROOT_URL = http://127.0.0.1:3001/\n",
+        )
+        .unwrap();
+        // Pinned file backend: a bootstrap test must not touch a developer keychain.
+        std::fs::write(
+            root.join("control.json"),
+            "{\"secret_backend\": \"user-file\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            install.join("libexec/hctl2/tea.user"),
+            format!("hctl-{}", &control_id[..16]),
+        )
+        .unwrap();
+        if !first_admin_call_fails {
+            std::fs::write(install.join("libexec/hctl2/gitea.ready"), "").unwrap();
+        }
+        if !first_api_call_is_foreign {
+            std::fs::write(install.join("libexec/hctl2/tea.ours"), "").unwrap();
+        }
+        write_bootstrap_stub(
+            &install.join("bin/hctl2-services"),
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$0.calls\"\nexit 0\n",
+        );
+        write_bootstrap_stub(
+            &install.join("libexec/hctl2/process-compose"),
+            "#!/bin/sh\nprintf '[{\"name\":\"gitea\",\"is_running\":true,\"is_ready\":\"Ready\",\"pid\":4242}]\\n'\n",
+        );
+        write_bootstrap_stub(
+            &install.join("libexec/hctl2/gitea"),
+            "#!/bin/sh\nsub=\"$7\"\ncase \"$sub\" in\n\
+             \x20 list)\n\
+             \x20   if [ -f \"$0.ready\" ]; then\n\
+             \x20     printf 'ID\\tUsername\\tEmail\\tIsActive\\tIsAdmin\\n'\n\
+             \x20     exit 0\n\
+             \x20   fi\n\
+             \x20   : > \"$0.ready\"\n\
+             \x20   printf 'Command error: SQL logic error: no such table: user (1)\\n' >&2\n\
+             \x20   exit 1\n\
+             \x20   ;;\n\
+             \x20 create)\n\
+             \x20   exit 0\n\
+             \x20   ;;\n\
+             \x20 generate-access-token)\n\
+             \x20   printf '%s\\n' 0123456789abcdef0123456789abcdef01234567\n\
+             \x20   ;;\n\
+             esac\nexit 0\n",
+        );
+        write_bootstrap_stub(
+            &install.join("libexec/hctl2/tea"),
+            "#!/bin/sh\n\
+             if [ -f \"$0.ours\" ]; then\n\
+             \x20 printf 'HTTP/1.1 200 OK\\n' >&2\n\
+             \x20 printf '{\"login\":\"%s\",\"is_admin\":true}\\n' \"$(cat \"$0.user\")\"\n\
+             \x20 exit 0\n\
+             fi\n\
+             : > \"$0.ours\"\n\
+             printf 'HTTP/1.1 401 Unauthorized\\n' >&2\n\
+             printf '{}\\n'\nexit 0\n",
+        );
+        Self {
+            root,
+            install,
+            control_id: control_id.to_owned(),
+        }
+    }
+
+    fn supervisor(&self) -> Supervisor {
+        Supervisor::packaged_for_test(self.root.clone(), self.install.clone())
+    }
+
+    fn calls(&self) -> String {
+        std::fs::read_to_string(self.install.join("bin/hctl2-services.calls")).unwrap()
+    }
+}
+
+fn write_bootstrap_stub(path: &Path, body: &str) {
+    std::fs::write(path, body).unwrap();
+    let mut permissions = std::fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(path, permissions).unwrap();
+}
+
+#[test]
+fn connect_waits_out_an_admin_cli_that_is_not_ready_yet() {
+    // The packaged lifecycle test caught this: the supervisor's probe passes while the
+    // first migration is still running, so `admin user list` answers `no such table:
+    // user`. `connect` must ask this root's admin interface again — through the packaged
+    // launcher — instead of failing the whole registration.
+    let fixture = PackageFixture::new("admin-wait", true, false);
+    let hosted =
+        Hosted::connect(&fixture.root, &fixture.control_id, &fixture.supervisor()).unwrap();
+    assert_eq!(
+        hosted.username,
+        format!("hctl-{}", &fixture.control_id[..16])
+    );
+    let calls = fixture.calls();
+    assert!(calls.contains("start --no-wait gitea"), "{calls}");
+    let _ = std::fs::remove_dir_all(&fixture.root);
+}
+
+#[test]
+fn both_entry_points_report_the_configuration_problem_itself() {
+    // `scm.rs` used to fold every configuration failure into one fixed sentence, which
+    // hid what to fix (a bad backend name, a non-object file). The original message must
+    // reach the caller from both entry points, with the code unchanged.
+    let fixture = PackageFixture::new("config-message", false, false);
+    std::fs::write(
+        fixture.root.join("control.json"),
+        "{\"secret_backend\": \"keychain\"}\n",
+    )
+    .unwrap();
+    let connect = match Hosted::connect(&fixture.root, &fixture.control_id, &fixture.supervisor()) {
+        Ok(_) => panic!("a bad configuration must fail the bootstrap"),
+        Err(error) => error,
+    };
+    let existing = match Hosted::existing(&fixture.root, &fixture.control_id, &fixture.supervisor())
+    {
+        Ok(_) => panic!("a bad configuration must fail the reuse path"),
+        Err(error) => error,
+    };
+    for error in [connect, existing] {
+        assert_eq!(error.code, "CREDENTIAL_UNAVAILABLE");
+        assert!(
+            error.message.contains("unknown secret_backend 'keychain'"),
+            "the original configuration message must survive: {}",
+            error.message
+        );
+    }
+    let _ = std::fs::remove_dir_all(&fixture.root);
+}
+
+#[test]
+fn connect_waits_out_a_foreign_instance_and_replaces_it() {
+    // A token minted in this root's database is rejected (401) by whatever else holds the
+    // Gitea port. `connect` must wait that out, restart its own instance so it takes the
+    // port back, and only then accept the API answer.
+    let fixture = PackageFixture::new("api-wait", false, true);
+    let hosted =
+        Hosted::connect(&fixture.root, &fixture.control_id, &fixture.supervisor()).unwrap();
+    assert_eq!(hosted.token.len(), 40);
+    let calls = fixture.calls();
+    assert!(
+        calls.contains("restart gitea"),
+        "the instance holding the port must be replaced: {calls}"
+    );
+    let _ = std::fs::remove_dir_all(&fixture.root);
 }
