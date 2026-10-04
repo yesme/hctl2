@@ -91,8 +91,8 @@ fn two_dispatches_start_together_on_one_herdr() {
 }
 
 #[test]
-fn a_marker_inside_the_command_is_not_the_echo() {
-    let (cred, exec) = scratch("echo");
+fn a_split_marker_printed_last_is_program_output() {
+    let (cred, exec) = scratch("split");
     let server = Server::start(
         &binary(),
         &herdr::state_dir(&exec, &cred).unwrap(),
@@ -105,14 +105,37 @@ fn a_marker_inside_the_command_is_not_the_echo() {
     let text = herdr::run_command(
         &client,
         &exec,
-        "echo",
-        "sleep 2; printf HCTL2DONE; touch executed",
+        "split",
+        "sleep 2; touch executed; printf '%s%s\\n' HCTL2 DONE",
         "HCTL2DONE",
     )
     .unwrap();
     assert!(started.elapsed() >= Duration::from_millis(1500));
-    assert!(text.matches("HCTL2DONE").count() > 1);
+    assert!(text.contains("HCTL2DONE"));
     assert!(exec.join("executed").exists());
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_command_containing_the_marker_is_rejected_before_it_runs() {
+    let (cred, exec) = scratch("reject");
+    let server = Server::start(
+        &binary(),
+        &herdr::state_dir(&exec, &cred).unwrap(),
+        &cred,
+        &exec,
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let command = "sleep 2\n# HCTL2MULTILINE\nprintf '%s%s\\n' HCTL2 MULTILINE\ntouch executed";
+    let started = Instant::now();
+    let error =
+        herdr::run_command(&client, &exec, "reject", command, "HCTL2MULTILINE").unwrap_err();
+    assert_eq!(error.code, "INVALID_INPUT");
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert!(!exec.join("executed").exists());
+    client.ping().unwrap();
     let _ = std::fs::remove_dir_all(&cred);
     let _ = std::fs::remove_dir_all(&exec);
 }

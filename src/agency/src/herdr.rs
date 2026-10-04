@@ -313,10 +313,11 @@ pub fn socket_path(state: &Path) -> PathBuf {
         .join("herdr.sock")
 }
 
-/// Run `command` in a new workspace pane and return the pane text.
-/// A line counts as program output only when it contains `marker` and not
-/// `command`, so the echoed command and its prompt redraw do not match.
-/// After the pane id exists, the pane is closed on both success and failure.
+/// Run `command` in a new workspace pane and return the pane text that contains `marker`.
+/// If `command` contains `marker`, this refuses before creating a pane or sending text.
+/// The terminal echoes the typed command, so a marker written in the command is not
+/// program output. Print the marker in pieces, and make that print the last step.
+/// After a pane id exists, the pane is closed on both success and failure.
 pub fn run_command(
     client: &Client,
     cwd: &Path,
@@ -326,6 +327,11 @@ pub fn run_command(
 ) -> Result<String> {
     if marker.is_empty() {
         return Err(PortError::invalid("marker is empty"));
+    }
+    if command.contains(marker) {
+        return Err(PortError::invalid(
+            "command contains the marker; print it in pieces so the echo is not the output",
+        ));
     }
     let created = client.call(
         "workspace.create",
@@ -351,31 +357,31 @@ pub fn run_command(
             "pane.send_text",
             json!({"pane_id": open.pane, "text": format!("{command}\n")}),
         )?;
-        // The pane echoes the command and may wrap that line. A program line
-        // contains the marker and none of the command's other words.
-        let words = command_words_outside_marker(command, marker);
-        if command.contains(marker) && words.is_empty() {
-            return Err(PortError::invalid(
-                "marker is the whole command, so program output cannot be told from the echo",
+        let matched = open
+            .client
+            .call(
+                "pane.wait_for_output",
+                json!({
+                    "pane_id": open.pane,
+                    "source": "recent",
+                    "match": {"type": "substring", "value": marker},
+                    "timeout_ms": 8000
+                }),
+            )
+            .map_err(|error| PortError::new("HERDR_OUTPUT_MISSING", error.message, "read_pane"))?;
+        let text = matched
+            .pointer("/read/text")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        if !text.contains(marker) {
+            return Err(PortError::new(
+                "HERDR_OUTPUT_MISSING",
+                "pane output did not contain the marker",
+                "read_pane",
             ));
         }
-        let deadline = Instant::now() + Duration::from_secs(8);
-        let mut text = String::new();
-        while Instant::now() < deadline {
-            text = pane_text(open.client, &open.pane)?;
-            if text
-                .lines()
-                .any(|line| line.contains(marker) && words.iter().all(|word| !line.contains(word)))
-            {
-                return Ok(text);
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        Err(PortError::new(
-            "HERDR_OUTPUT_MISSING",
-            format!("pane output did not contain program text {marker}: {text}"),
-            "read_pane",
-        ))
+        Ok(text)
     })();
     let closed = open.close();
     match (outcome, closed) {
@@ -388,28 +394,6 @@ pub fn run_command(
             &exec.recovery_action,
         )),
     }
-}
-
-fn command_words_outside_marker(command: &str, marker: &str) -> Vec<String> {
-    command
-        .split(marker)
-        .flat_map(|part| part.split(|c: char| !c.is_ascii_alphanumeric()))
-        .filter(|word| word.len() >= 3 && !marker.contains(word))
-        .map(str::to_owned)
-        .collect()
-}
-
-fn pane_text(client: &Client, pane: &str) -> Result<String> {
-    let recent = client.call(
-        "pane.read",
-        json!({"pane_id": pane, "source": "recent", "lines": 200}),
-    )?;
-    Ok(recent
-        .pointer("/read/text")
-        .or_else(|| recent.get("text"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_owned())
 }
 
 struct OpenPane<'a> {
