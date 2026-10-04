@@ -50,13 +50,7 @@ impl Hosted {
         let url = hosted_url(&paths.config)?;
         let credential_ref = format!("gitea:{control_id}:admin");
         let token = crate::config::secret_store(root)
-            .map_err(|_| {
-                reject(
-                    "CREDENTIAL_UNAVAILABLE",
-                    "stored Gitea credential unavailable",
-                    "restore_secret_store",
-                )
-            })?
+            .map_err(|message| reject("CREDENTIAL_UNAVAILABLE", message, "restore_secret_store"))?
             .get(&credential_ref)
             .map_err(|_| {
                 reject(
@@ -172,13 +166,8 @@ impl Hosted {
                 ));
             }
         }
-        let secrets = crate::config::secret_store(root).map_err(|_| {
-            reject(
-                "CREDENTIAL_UNAVAILABLE",
-                "stored Gitea credential unavailable",
-                "restore_secret_store",
-            )
-        })?;
+        let secrets = crate::config::secret_store(root)
+            .map_err(|message| reject("CREDENTIAL_UNAVAILABLE", message, "restore_secret_store"))?;
         let credential_ref = format!("gitea:{control_id}:admin");
         let token = match secrets.get(&credential_ref) {
             Ok(bytes) => String::from_utf8(bytes).map_err(|_| {
@@ -254,6 +243,12 @@ impl Hosted {
                 // An instance that lost the port race stays alive without a listener, so
                 // starting it again changes nothing: it needs a restart, rate-limited so
                 // the port has time to free up in between.
+                //
+                // A revoked token (rather than another instance answering) reports the
+                // same 401, so this path restarts a healthy Gitea too. The restart's own
+                // error is dropped and the loop stays bounded by the deadline, but a
+                // restart that never reaches readiness spends up to ~120s inside the
+                // service launcher before the deadline is looked at again.
                 if restarted.is_none_or(|last| last.elapsed() >= GITEA_RESTART_INTERVAL) {
                     let _ = services.restart("gitea");
                     restarted = Some(Instant::now());

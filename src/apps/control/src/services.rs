@@ -146,6 +146,25 @@ impl Supervisor {
         }
     }
 
+    /// A packaged-shaped supervisor over caller-provided directories.
+    ///
+    /// `gitea_paths` answers only for the packaged backend, so the bootstrap tests need
+    /// a packaged backend without a real installation; this builds one from directories
+    /// the test owns.
+    #[cfg(test)]
+    pub(crate) fn packaged_for_test(root: PathBuf, install_root: PathBuf) -> Self {
+        let services_bin = install_root.join("bin/hctl2-services");
+        Self {
+            root,
+            backend: Backend::Packaged {
+                install_root,
+                services_bin,
+            },
+            last_error: Mutex::new(None),
+            ops: Mutex::new(()),
+        }
+    }
+
     fn serialized(&self) -> std::sync::MutexGuard<'_, ()> {
         self.ops.lock().unwrap_or_else(|poison| poison.into_inner())
     }
