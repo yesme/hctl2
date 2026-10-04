@@ -94,6 +94,15 @@ fn linux(
                 "build_agency",
             )
         })?;
+    // Spawn resolves a relative program path against current_dir. Callers then
+    // move the child into the execution directory, so the helper must be absolute.
+    let helper = std::fs::canonicalize(&helper).map_err(|error| {
+        PortError::new(
+            "CONFINE_HELPER_MISSING",
+            format!("{}: {error}", helper.display()),
+            "build_agency",
+        )
+    })?;
     let mut cmd = Command::new(helper);
     cmd.arg("--confine")
         .arg(credential_root)

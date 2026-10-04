@@ -468,7 +468,13 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
         let page: ResultPage = client.call("results", &query).await.unwrap();
-        if page.proposals.is_empty() {
+        if page.proposals.is_empty()
+            || (pages.is_empty() && page.complete && page.proposals.len() < 2)
+        {
+            // The second proposal may still be committing. A complete page of one
+            // is not yet the durable result set.
+            after = None;
+            pages.clear();
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             continue;
         }
