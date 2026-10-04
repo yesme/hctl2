@@ -78,6 +78,16 @@ fn input(operation: &str, payload: &Value) -> Result<Input> {
     if operation != format!("room.{}", payload["action"]["kind"].as_str().unwrap_or("")) {
         return Err(invalid("Room operation and action disagree"));
     }
+    if let Action::CreateTopic {
+        invites: Some(list),
+        ..
+    } = &input.action
+    {
+        for user in list {
+            ruma::UserId::parse(user)
+                .map_err(|_| invalid("invite list entries must be valid Matrix user IDs"))?;
+        }
+    }
     Ok(input)
 }
 
@@ -404,33 +414,42 @@ pub(super) fn submit(
                 }
             }
         }
+        // `invites` stays the confirmed list; per-target outcomes live beside
+        // it with the user named, and a create failure is not overwritten by
+        // the partial marker.
         let ids = result["invite_effect_ids"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        let mut invites = vec![];
-        for id in ids {
+        let users: Vec<String> =
+            serde_json::from_value(result["invites"].clone()).unwrap_or_default();
+        let mut outcomes = vec![];
+        for (index, id) in ids.iter().enumerate() {
             let id = id.as_str().ok_or_else(|| invalid("effect ID missing"))?;
+            let user = users.get(index).cloned().unwrap_or_default();
             if !confirmed {
-                invites.push(json!({"effect_id":id,"delivery":"pending_or_unknown"}));
+                outcomes
+                    .push(json!({"effect_id":id,"user_id":user,"delivery":"pending_or_unknown"}));
                 failed = true;
                 continue;
             }
             match drive(shared, services, root, actor, id) {
-                Ok(receipt) => {
-                    invites.push(json!({"effect_id":id,"delivery":"confirmed","receipt":receipt}))
-                }
+                Ok(receipt) => outcomes.push(
+                    json!({"effect_id":id,"user_id":user,"delivery":"confirmed","receipt":receipt}),
+                ),
                 Err(e) => {
                     failed = true;
-                    invites.push(json!({"effect_id":id,"delivery":"pending_or_unknown","error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}));
+                    outcomes.push(json!({"effect_id":id,"user_id":user,"delivery":"pending_or_unknown","error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}));
                 }
             }
         }
-        if !invites.is_empty() || result.get("opening_effect_id").is_some() {
-            result["invites"] = json!(invites);
+        if !outcomes.is_empty() || result.get("opening_effect_id").is_some() {
+            result["invite_results"] = json!(outcomes);
             if failed {
                 result["delivery"] = json!("partial");
-                result["error"] = json!({"code":"ROOMS_PARTIAL","message":"not all Topic openers confirmed","recovery_action":"resume_original_command"});
+                if result.get("error").is_none() {
+                    result["error"] = json!({"code":"ROOMS_PARTIAL","message":"not all Topic openers confirmed","recovery_action":"resume_original_command"});
+                }
             } else if confirmed {
                 result["delivery"] = json!("confirmed");
             }
@@ -494,19 +513,95 @@ fn project_carrier_spaces(
 }
 
 /// Carrier Space membership follows the main Room. Converging with a
-/// read-before-write invite is the creation requirement and heals drift.
+/// read-before-write invite is the creation requirement and heals drift, so it
+/// writes on every attempt — including retries of an intent that already
+/// entered delivery. It never re-sends a membership that native state already
+/// shows, which is what makes the write safe to repeat.
 fn converge_space_membership(
     shared: &Shared,
     client: &matrix::Client,
     project: &str,
     space: &str,
     managed_prefix: &str,
-    allow_write: bool,
 ) -> Result<()> {
     let (_, main) = access(shared, |s| chat::main_binding(s, project))?;
     let humans = human_members(client, bound(&main)?, &main.server.sender, managed_prefix)?;
-    client.members(space, &humans, true, allow_write)?;
+    client.members(space, &humans, true, true)?;
     Ok(())
+}
+
+/// A Topic closed while its opening or invite intents were in delivery can
+/// never resend. Resolve the unknown intent from native readback: what arrived
+/// is confirmed; what did not is recorded as undelivered.
+fn closed_room_readback(
+    shared: &Shared,
+    client: &matrix::Client,
+    effect: &store::EffectIntent,
+    room: &Room,
+) -> Result<Option<Value>> {
+    let archived = access(shared, |s| {
+        Ok(matches!(
+            chat::required(
+                s,
+                &chat::key(Scope::Project(room.project_id.clone()), "room", &room.id),
+            )?
+            .data,
+            store::RecordData::Room {
+                state: store::RoomState::Archived,
+                ..
+            }
+        ))
+    })?;
+    if !archived {
+        return Ok(None);
+    }
+    let (_, current) = access(shared, |s| chat::room(s, &room.project_id, &room.id))?;
+    let external = current.matrix_room_id.as_deref();
+    let receipt = match effect.operation.as_str() {
+        "chat.opening" => {
+            let body = effect.input["body"].as_str().unwrap_or("");
+            let delivered = external.and_then(|external| {
+                let timeline = client.timeline(external, None).ok()?;
+                timeline["events"]
+                    .as_array()?
+                    .iter()
+                    .rev()
+                    .find(|event| {
+                        event["type"] == "m.room.message" && event["content"]["body"] == json!(body)
+                    })
+                    .map(|event| event["event_id"].clone())
+            });
+            json!({"room_closed":true,"delivered":delivered.is_some(),"event_id":delivered})
+        }
+        "chat.members" => {
+            let users: Vec<String> = serde_json::from_value(effect.input["users"].clone())?;
+            let invite = effect.input["invite"].as_bool().unwrap_or(true);
+            let members: Vec<Value> = users
+                .iter()
+                .map(|user| {
+                    let observed = external.and_then(|external| {
+                        client.member_state(external).ok().and_then(|states| {
+                            states
+                                .into_iter()
+                                .find(|(member, _)| member == user)
+                                .map(|(_, membership)| membership)
+                        })
+                    });
+                    let delivered = observed.as_deref().is_some_and(|membership| {
+                        if invite {
+                            ["invite", "join"].contains(&membership)
+                        } else {
+                            ["leave", "ban"].contains(&membership)
+                        }
+                    });
+                    json!({"user_id":user,"membership":observed,"delivered":delivered})
+                })
+                .collect();
+            json!({"room_closed":true,"members":members})
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(receipt))
 }
 
 pub(crate) fn drive(
@@ -636,14 +731,7 @@ fn drive_using(
                 Ok(())
             })?;
             let space = client.ensure_carrier(&room)?;
-            converge_space_membership(
-                shared,
-                &client,
-                &room.project_id,
-                &space,
-                managed_prefix,
-                pending,
-            )?;
+            converge_space_membership(shared, &client, &room.project_id, &space, managed_prefix)?;
             json!({"space_id":space})
         }
         "chat.create" => {
@@ -703,7 +791,6 @@ fn drive_using(
                             &room.project_id,
                             &space,
                             managed_prefix,
-                            pending,
                         )?;
                         client.attach(&space, child, true)?;
                         client.put_state(child, "io.hctl2.topic_creation", "", completion)?;
@@ -714,6 +801,11 @@ fn drive_using(
             receipt
         }
         "chat.opening" => {
+            if state == store::EffectState::Unknown
+                && let Some(receipt) = closed_room_readback(shared, &client, &effect, &room)?
+            {
+                return access(shared, |s| chat::confirm(s, actor, id, receipt));
+            }
             let (_, current) = bound_current(shared, &client, &room)?;
             let external = bound(&current)?;
             guard(&client, root, &current, external)?;
@@ -760,6 +852,11 @@ fn drive_using(
             )?
         }
         "chat.members" => {
+            if state == store::EffectState::Unknown
+                && let Some(receipt) = closed_room_readback(shared, &client, &effect, &room)?
+            {
+                return access(shared, |s| chat::confirm(s, actor, id, receipt));
+            }
             let target = if room.matrix_room_id.is_some() {
                 room.clone()
             } else {
@@ -784,7 +881,10 @@ fn drive_using(
             if main.id == target.id {
                 let mut spaces = vec![];
                 for space in project_carrier_spaces(shared, &client, &room.project_id)? {
-                    let result = client.members(&space, &users, invite, pending)?;
+                    // Space membership is derived content that follows the main
+                    // Room; it converges with read-before-write on every attempt
+                    // instead of inheriting the main write's read-only retry.
+                    let result = client.members(&space, &users, invite, true)?;
                     spaces.push(result);
                 }
                 if !spaces.is_empty() {

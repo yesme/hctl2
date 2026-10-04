@@ -813,3 +813,69 @@ fn topic_invites_freeze_the_confirmed_list_and_render_the_opening_message() {
         "INVALID_INPUT"
     );
 }
+
+#[test]
+fn closing_a_topic_withdraws_pending_opening_and_invite_intents() {
+    let mut e = Env::new();
+    let (origin, source) = e.source("A");
+    let input = Input {
+        key: "closing-invites".into(),
+        action: Action::CreateTopic {
+            project_id: "A".into(),
+            project_version: 1,
+            name: "关闭前".into(),
+            origin: Box::new(origin),
+            brief: Box::new(Brief {
+                context_and_goal: "关闭前".into(),
+                settled_facts_and_reasons: vec![],
+                disagreements_and_questions: vec![],
+                constraints_and_materials: vec![],
+                sources: vec![source.source.clone()],
+            }),
+            participants: vec![],
+            roster_confirmed: true,
+            invites: Some(vec!["@alice:hctl2.localhost".to_owned()]),
+        },
+    };
+    let plan = prepare(&e.store, input, vec![source.clone()], vec![]).unwrap();
+    let result = admit(&mut e.store, &actor(), plan).unwrap();
+    let pending_before: Vec<String> = e
+        .store
+        .pending_effects()
+        .unwrap()
+        .into_iter()
+        .filter(|id| {
+            let (effect, _) = e.store.effect(id).unwrap();
+            effect.intent_id == result["effect_id"]
+                || effect.intent_id == result["opening_effect_id"]
+                || result["invite_effect_ids"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|value| value.as_str() == Some(effect.intent_id.as_str()))
+        })
+        .collect();
+    assert_eq!(pending_before.len(), 3, "create, opening and one invite");
+    let close = prepare(
+        &e.store,
+        Input {
+            key: "close-closing-invites".into(),
+            action: Action::Close {
+                project_id: "A".into(),
+                room_id: result["room_id"].as_str().unwrap().to_owned(),
+                version: 1,
+            },
+        },
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    admit(&mut e.store, &actor(), close).unwrap();
+    for id in pending_before {
+        assert_eq!(
+            e.store.effect(&id).unwrap().1,
+            store::EffectState::Cancelled,
+            "closing must withdraw the unsent opening and invite: {id}"
+        );
+    }
+}

@@ -171,11 +171,22 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
         "topic-human-view",
         json!({"project_id":main_project,"project_version":1,"name":"人的视角","origin":{"kind":"room","room_id":main_room,"binding_version":f.show(main_project, main_room)["binding"]["version"]},"brief":human_brief,"participants":[],"roster_confirmed":true}),
     );
-    let invited: Vec<&str> = human_topic["invites"]
+    assert_eq!(
+        human_topic["invites"],
+        json!([human_id]),
+        "the confirmed list keeps naming users: {}",
+        human_topic["invites"]
+    );
+    let invited: Vec<&str> = human_topic["invite_results"]
         .as_array()
         .unwrap()
         .iter()
-        .flat_map(|entry| entry["receipt"]["members"].as_array().unwrap().iter())
+        .flat_map(|entry| {
+            entry["receipt"]["members"]
+                .as_array()
+                .unwrap_or_else(|| panic!("invite entry without receipt: {entry}"))
+                .iter()
+        })
         .map(|member| member["user_id"].as_str().unwrap())
         .collect();
     assert_eq!(
@@ -184,7 +195,15 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
         "the joined human is the default invite list"
     );
     assert_eq!(human_topic["opening"]["delivery"], json!("confirmed"));
-    assert_eq!(human_topic["invites"][0]["delivery"], json!("confirmed"));
+    assert_eq!(
+        human_topic["invite_results"][0]["user_id"],
+        json!(human_id),
+        "per-target outcomes name their user"
+    );
+    assert_eq!(
+        human_topic["invite_results"][0]["delivery"],
+        json!("confirmed")
+    );
     let human_topic_room = human_topic["room_id"].as_str().unwrap().to_owned();
     let topic_external =
         f.show(main_project, &human_topic_room)["binding"]["data"]["value"]["matrix_room_id"]

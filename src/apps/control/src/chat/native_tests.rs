@@ -1057,6 +1057,11 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
         .map(|v| v.as_str().unwrap().to_owned())
         .collect();
     assert_eq!(invite_ids.len(), 2);
+    let result_brief = access(&shared, |s| {
+        let (_, room) = chat::room(s, "p", result["room_id"].as_str().unwrap())?;
+        Ok(room.brief)
+    })
+    .unwrap();
     // Create first; the opening drive before it would only report pending.
     drive_using(&shared, &root, &actor, &create, "@hctl2_", || {
         Ok(client.clone())
@@ -1093,21 +1098,21 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
         drive_using(&shared, &root, &actor, id, "@hctl2_", || Ok(client.clone())).unwrap();
     }
     let topic_members = client.member_state(&topic_external).unwrap();
-    let membership = |user: &str| -> Option<String> {
-        topic_members
-            .iter()
-            .find(|(member, _)| member == user)
-            .map(|(_, state)| state.clone())
-    };
-    for user in [&alice_id, &bob_id] {
-        assert_eq!(membership(user).as_deref(), Some("invite"), "{user}");
-    }
-    for user in [
-        "@hctl2_control:hctl2.localhost",
-        "@hctl2_worker:hctl2.localhost",
-    ] {
-        assert_ne!(membership(user).as_deref(), Some("invite"), "{user}");
-    }
+    // The exact member set: the creator joined, the two confirmed humans are
+    // invited, and nobody else — not the control account's invite, not the
+    // managed worker that sits in the source Room.
+    assert_eq!(
+        topic_members,
+        vec![
+            (alice_id.clone(), "invite".to_owned()),
+            (bob_id.clone(), "invite".to_owned()),
+            (
+                "@hctl2_control:hctl2.localhost".to_owned(),
+                "join".to_owned()
+            ),
+        ],
+        "confirmed list only: removed and non-human members must be absent"
+    );
     // Carrier Space of the main Room carries the humans; a later main-Room
     // invite syncs to every carrier Space of the Project.
     let main_space = client.carrier(&bound_main).unwrap().unwrap();
@@ -1120,8 +1125,21 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     client
         .members(&main_external, std::slice::from_ref(&carol_id), true, true)
         .unwrap();
+    // An invited-but-not-joined human already counts as a current member.
+    let with_carol_invited =
+        human_members(&client, &main_external, &main.server.sender, "@hctl2_").unwrap();
+    assert!(with_carol_invited.contains(&carol_id));
     client.human_join(&carol_token, &main_external).unwrap();
-    // The topic gains a child so its own carrier Space exists too.
+    // The topic gains a child so its own carrier Space exists too. The nested
+    // creation is driven from the unknown state with a new human already in the
+    // main Room: the carrier converge must still write on retry, not refuse.
+    let (dave_id, dave_token) = client
+        .human_register("dave", "pw-dave", "test-registration")
+        .unwrap();
+    client
+        .members(&main_external, std::slice::from_ref(&dave_id), true, true)
+        .unwrap();
+    client.human_join(&dave_token, &main_external).unwrap();
     let topic_room_id = result["room_id"].as_str().unwrap().to_owned();
     let topic_binding_version = access(&shared, |s| {
         let (binding, _) = chat::room(s, "p", &topic_room_id)?;
@@ -1171,6 +1189,8 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     })
     .unwrap();
     let nested_create = nested["effect_id"].as_str().unwrap().to_owned();
+    // Enter delivery before driving: every retry from here is unknown-state.
+    access(&shared, |s| s.begin_effect(s.generation(), &nested_create)).unwrap();
     drive_using(&shared, &root, &actor, &nested_create, "@hctl2_", || {
         Ok(client.clone())
     })
@@ -1227,4 +1247,292 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
             "Space {space} did not follow the main Room invite"
         );
     }
+    // The Space converged during an unknown-state create retry — the first
+    // Topic's carrier, which the nested creation materialized — must contain
+    // the human who joined the main Room before the retry, without any
+    // `project members` operation mentioning them: creation-time convergence
+    // takes the main Room's current humans, not a stale list, and writes even
+    // though the intent is in the unknown state.
+    let first_topic_room = access(&shared, |s| {
+        let (_, room) = chat::room(s, "p", &topic_room_id)?;
+        Ok(room)
+    })
+    .unwrap();
+    let retried_space = client.carrier(&first_topic_room).unwrap().unwrap();
+    let retried_space_members =
+        human_members(&client, &retried_space, &main.server.sender, "@hctl2_").unwrap();
+    assert!(
+        retried_space_members.contains(&dave_id),
+        "the carrier converged on an unknown-state retry must take current humans: {retried_space_members:?}"
+    );
+    // Sync, not convergence: a new human joins after every Space already
+    // exists; only the `project members` invite can put them into the Spaces.
+    let (erin_id, erin_token) = client
+        .human_register("erin", "pw-erin", "test-registration")
+        .unwrap();
+    client
+        .members(&main_external, std::slice::from_ref(&erin_id), true, true)
+        .unwrap();
+    client.human_join(&erin_token, &main_external).unwrap();
+    let members_sync = |key: &str, invite: bool, user: &str| {
+        let outcome = access(&shared, |s| {
+            let plan = project::prepare(
+                s,
+                project::Input {
+                    key: key.into(),
+                    action: project::Action::Members {
+                        project_id: "p".into(),
+                        project_version: 1,
+                        rooms: vec![{
+                            let (binding, _) = chat::room(s, "p", "main")?;
+                            chat::reference(&binding)
+                        }],
+                        users: vec![user.to_owned()],
+                        invite,
+                    },
+                },
+                None,
+                &actor,
+                0,
+            )?;
+            project::admit(s, &actor, plan)
+        })
+        .unwrap();
+        let effect = outcome["effect_ids"][0].as_str().unwrap().to_owned();
+        drive_using(&shared, &root, &actor, &effect, "@hctl2_", || {
+            Ok(client.clone())
+        })
+        .unwrap()
+    };
+    members_sync("members-erin-invite", true, &erin_id);
+    let main_state = client.member_state(&main_external).unwrap();
+    assert!(
+        main_state
+            .iter()
+            .any(|(member, state)| member == &erin_id && state == "join")
+    );
+    for space in &spaces {
+        let members = human_members(&client, space, &main.server.sender, "@hctl2_").unwrap();
+        assert!(
+            members.contains(&erin_id),
+            "Space {space} missed the sync-only invite"
+        );
+    }
+    // Space membership does not open Topic Rooms.
+    let first_topic_members = client.member_state(&topic_external).unwrap();
+    assert!(
+        !first_topic_members
+            .iter()
+            .any(|(member, _)| member == &erin_id),
+        "entering a carrier Space must not invite anyone into a Topic Room"
+    );
+    // Removal side: the same operation on the main Room removes from every
+    // carrier Space as well.
+    members_sync("members-erin-remove", false, &erin_id);
+    let main_state = client.member_state(&main_external).unwrap();
+    assert!(
+        !main_state.iter().any(
+            |(member, state)| member == &erin_id && matches!(state.as_str(), "join" | "invite")
+        )
+    );
+    for space in &spaces {
+        let members = human_members(&client, space, &main.server.sender, "@hctl2_").unwrap();
+        assert!(
+            !members.contains(&erin_id),
+            "Space {space} missed the synced removal"
+        );
+    }
+    // The stored brief material is untouched by the opening projection.
+    let brief_after = access(&shared, |s| {
+        let (binding, room) = chat::room(s, "p", &topic_room_id)?;
+        Ok((binding.version, room.brief))
+    })
+    .unwrap();
+    let brief_at_admit = result_brief.clone();
+    assert_eq!(
+        brief_after.1, brief_at_admit,
+        "the stored brief is authoritative and unchanged"
+    );
+}
+
+/// A Topic closed while its opening was in delivery resolves the unknown
+/// intent by readback instead of failing forever: what arrived is confirmed,
+/// what never left is recorded as undelivered.
+#[test]
+fn native_closed_topic_resolves_unknown_opening_by_readback() {
+    use store::{ProjectSettings, Record, RecordData, RoomKind, RoomState};
+    let (_native, port, root) = spawn_tuwunel("closed-opening");
+    let server = Server {
+        binding: Reference {
+            key: chat::key(store::Scope::Control, "chat_server", "test"),
+            version: store::Version::State(1),
+        },
+        url: format!("http://127.0.0.1:{port}"),
+        server_name: "hctl2.localhost".into(),
+        sender: "@hctl2_control:hctl2.localhost".into(),
+    };
+    let client = Client::new(server.clone(), "as-test-secret".into()).unwrap();
+    let main = chat::Room {
+        project_id: "p".into(),
+        id: "main".into(),
+        name: "主房间".into(),
+        server,
+        matrix_room_id: None,
+        participants: vec![],
+        brief: None,
+        origin: None,
+    };
+    let scope = Scope::Project("p".into());
+    let actor = TrustedActor(Actor {
+        principal: "owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, scope.clone()],
+        authority: None,
+    });
+    let mut store = Store::open(&root.join("closed-control")).unwrap();
+    let project = Record {
+        key: chat::key(scope.clone(), "project", "p"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &json!({"repo_id":"fixture-repo","archived":false}),
+        )
+        .unwrap(),
+        data: RecordData::Project {
+            repo_id: "fixture-repo".into(),
+            settings: ProjectSettings {
+                publish_review_requires_confirmation: true,
+                selection_policy: json!({}),
+            },
+            archived: false,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let identity = Record {
+        key: chat::key(scope.clone(), "room", "main"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &json!({"room_kind":"main","state":"active"}),
+        )
+        .unwrap(),
+        data: RecordData::Room {
+            room_kind: RoomKind::Main,
+            state: RoomState::Active,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let created = client.create(&main, "closed-main", true).unwrap();
+    let main_external = created["matrix_room_id"].as_str().unwrap().to_owned();
+    let mut bound_main = main.clone();
+    bound_main.matrix_room_id = Some(main_external.clone());
+    let binding = chat::value_record(
+        chat::key(scope.clone(), "room_binding", "main"),
+        1,
+        &bound_main,
+    )
+    .unwrap();
+    let command = store::Command {
+        command_id: "seed-closed".into(),
+        idempotency_key: "seed-closed".into(),
+        actor: actor.0.clone(),
+        target: project.key.clone(),
+        expected: Expected::Absent,
+        binding: main.server.binding.clone(),
+        input_digest: store::Command::digest_input("fixture", &json!({})).unwrap(),
+        operation: "fixture".into(),
+        input: json!({}),
+    };
+    store
+        .submit(store.generation(), &actor, &command, None, |tx| {
+            for record in [&project, &identity, &binding] {
+                tx.put(record)?;
+            }
+            Ok(json!({}))
+        })
+        .unwrap();
+    let shared = Arc::new(Mutex::new(Some(store)));
+    let sent = client
+        .send(&main_external, "closed-source", "来源")
+        .unwrap();
+    let event = client
+        .event(&main_external, sent["event_id"].as_str().unwrap())
+        .unwrap();
+    let source = source_text(
+        Reference {
+            key: chat::key(scope.clone(), "room_binding", "main"),
+            version: store::Version::State(1),
+        },
+        &event,
+    )
+    .unwrap();
+    let result = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "closed-topic".into(),
+                action: Action::CreateTopic {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    name: "将关闭".into(),
+                    origin: Box::new(Origin::Room {
+                        room_id: "main".into(),
+                        binding_version: 1,
+                    }),
+                    brief: Box::new(chat::Brief {
+                        context_and_goal: "关闭前".into(),
+                        settled_facts_and_reasons: vec![],
+                        disagreements_and_questions: vec![],
+                        constraints_and_materials: vec![],
+                        sources: vec![source.source.clone()],
+                    }),
+                    participants: vec![],
+                    roster_confirmed: true,
+                    invites: Some(vec![]),
+                },
+            },
+            vec![source.clone()],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let create = result["effect_id"].as_str().unwrap().to_owned();
+    let opening = result["opening_effect_id"].as_str().unwrap().to_owned();
+    drive_using(&shared, &root, &actor, &create, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    // The opening entered delivery, then the Topic closed before it was sent.
+    access(&shared, |s| s.begin_effect(s.generation(), &opening)).unwrap();
+    let close = access(&shared, |s| {
+        let (binding, _) = chat::room(s, "p", result["room_id"].as_str().unwrap())?;
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "close-unknown-opening".into(),
+                action: Action::Close {
+                    project_id: "p".into(),
+                    room_id: result["room_id"].as_str().unwrap().to_owned(),
+                    version: binding.version,
+                },
+            },
+            vec![],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    assert!(close.is_object());
+    let receipt = drive_using(&shared, &root, &actor, &opening, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    assert_eq!(receipt["room_closed"], json!(true));
+    assert_eq!(receipt["delivered"], json!(false), "{receipt}");
+    assert_eq!(
+        access(&shared, |s| Ok(s.effect(&opening)?.1)).unwrap(),
+        store::EffectState::Confirmed,
+        "the reconcile loop must not retry a closed Room's opening forever"
+    );
 }
