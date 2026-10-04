@@ -38,11 +38,11 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | 结果查询 | 多份成果按游标分页；`complete` 只在已存结果取完且派工不再 Running 时为真 | 3a 已做 |
 | `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取 | 3a 已做 |
 | `src/catalog.rs`、脚本目录 | 摘要用程序文件或 `SKILL.md` 字节；`verification` 留空 | 3a 已做 |
-| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent`；实际能力随接单返回 | 脚本执行体已有；真 harness 由 3b |
-| `src/herdr.rs` | 沿锁定 SDK 持有 Herdr 私有句柄；恢复与观测归一 | 3b |
-| `src/harness/codex.rs`、`claude_code.rs` | 启动、钩子、终局、等待与复用；不把物理身份交给 control | 3b |
-| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 3b。接上，或者不带 |
-| `tests/runtime.rs` | 锁定 Herdr 制品的真实会话；两家 harness 有凭据就实测，没有就标未验证 | 3a 只覆盖凭据根与摘要；会话由 3b |
+| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent`；实际能力随接单返回 | 脚本执行体已有；Herdr pane 由 3b |
+| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。一个 Agency 一个服务。pane 里跑确定性程序，结果作为 Proposal | 3b 已做 |
+| `src/harness/codex.rs`、`claude_code.rs` | 最低版本 0.153.4 / 2.1.263。冒烟不通过不上架。不把物理身份交给 control | 3b：版本门已做；真实会话未验证 |
+| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 3b 不带 |
+| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；并发两个派工；凭据根；派工终局 | 3b 已做 |
 
 3b 的验收（所有者裁定）：
 

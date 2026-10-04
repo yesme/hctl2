@@ -9,9 +9,13 @@ use std::{
 };
 
 pub fn execution_dir(credential_root: &Path, dispatch: &str) -> Result<PathBuf> {
-    let credential_root = credential_root
-        .canonicalize()
-        .unwrap_or_else(|_| credential_root.to_path_buf());
+    let credential_root = credential_root.canonicalize().map_err(|_| {
+        PortError::new(
+            "CREDENTIAL_ROOT_UNRESOLVED",
+            "credential root cannot be canonicalized",
+            "choose_credential_root",
+        )
+    })?;
     let digest = &agency_proto::hash(credential_root.as_os_str().as_encoded_bytes())[..20];
     let parent = PathBuf::from("/tmp").join(format!("hctl2-exec-{digest}"));
     let dir = parent.join(dispatch);
@@ -35,9 +39,13 @@ pub fn command(
     exec_root: &Path,
     credential_root: &Path,
 ) -> Result<Command> {
-    let credential_root = credential_root
-        .canonicalize()
-        .unwrap_or_else(|_| credential_root.to_path_buf());
+    let credential_root = credential_root.canonicalize().map_err(|_| {
+        PortError::new(
+            "CREDENTIAL_ROOT_UNRESOLVED",
+            "credential root cannot be canonicalized",
+            "choose_credential_root",
+        )
+    })?;
     if exec_root.starts_with(&credential_root) {
         return Err(PortError::new(
             "EXECUTION_ROOT_UNSAFE",
@@ -62,6 +70,30 @@ fn scheme_literal(path: &str) -> Result<String> {
 
 /// Landlock allows a whole directory tree. An ancestor of the credential root
 /// cannot be allowed, because the credential directory cannot be carved back out.
+/// Linux serve refuses a credential root that sits inside a Landlock allow directory.
+pub fn refuse_covered_credential_root(credential_root: &Path) -> Result<()> {
+    let credential_root = credential_root.canonicalize().map_err(|_| {
+        PortError::new(
+            "CREDENTIAL_ROOT_UNRESOLVED",
+            "credential root cannot be canonicalized",
+            "choose_credential_root",
+        )
+    })?;
+    for dir in [
+        "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
+    ] {
+        let allow = Path::new(dir);
+        if allow.is_dir() && allowed_tree_contains_credential(allow, &credential_root) {
+            return Err(PortError::new(
+                "CREDENTIAL_ROOT_COVERED",
+                format!("credential root is inside the allowed directory {dir}"),
+                "move_credential_root",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn allowed_tree_contains_credential(allow: &Path, credential: &Path) -> bool {
     credential.starts_with(allow) || allow.starts_with(credential)
 }

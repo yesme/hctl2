@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 pub mod catalog;
 pub mod confine;
+pub mod harness;
+pub mod herdr;
 pub mod runtime;
 pub mod service;
 mod storage;

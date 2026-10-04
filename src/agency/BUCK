@@ -106,6 +106,27 @@ rust_test(
 )
 
 rust_test(
+    name = "herdr_test",
+    srcs = ["tests/herdr.rs"],
+    crate_root = "tests/herdr.rs",
+    deps = [":service"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {
+        "HCTL2_CONFINE_BIN": "$(location :agency)",
+        "HCTL2_LOCKED_HERDR": select({
+            "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
+            "prelude//os:macos": select({
+                "prelude//cpu:arm64": "$(location root//packaging/dependencies:asset_macos_arm64_herdr)",
+                "prelude//cpu:x86_64": "$(location root//packaging/dependencies:asset_macos_x86_64_herdr)",
+            }),
+        }),
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
     name = "control_port_test",
     srcs = ["tests/port.rs"],
     crate_root = "tests/port.rs",
@@ -127,6 +148,7 @@ filegroup(
         "runtime": ":runtime_test[clippy.txt]",
         "port": ":port_test[clippy.txt]",
         "control_port": ":control_port_test[clippy.txt]",
+        "herdr": ":herdr_test[clippy.txt]",
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],

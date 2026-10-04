@@ -55,6 +55,26 @@ fn restrict(work: &Path, credential: &Path) -> io::Result<()> {
         .create()
         .map_err(io_err)?;
     ruleset = add(ruleset, work, full)?;
+    if let Some(extra) = env::var_os("HCTL2_CONFINE_ALLOW") {
+        for item in extra.to_string_lossy().split('\n') {
+            if item.is_empty() {
+                continue;
+            }
+            let path = Path::new(item);
+            if !path.exists() {
+                continue;
+            }
+            let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+            if agency::confine::allowed_tree_contains_credential(&path, credential) {
+                return Err(Error::other(format!(
+                    "credential root is inside allowed path {}",
+                    path.display()
+                )));
+            }
+            let access = if path.is_dir() { full } else { read_exec };
+            ruleset = add(ruleset, &path, access)?;
+        }
+    }
     for dir in [
         "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
     ] {

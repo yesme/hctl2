@@ -57,6 +57,7 @@ fn main() {
 async fn run(args: Args) -> Result<()> {
     match args.command {
         Command::Serve { script_config } => {
+            agency::confine::refuse_covered_credential_root(&args.root)?;
             let config = if let Some(path) = script_config {
                 Some(serde_json::from_slice::<ScriptConfig>(&std::fs::read(
                     path,
@@ -66,6 +67,8 @@ async fn run(args: Args) -> Result<()> {
             };
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
+            } else if let Some(binary) = std::env::var_os("HCTL2_LOCKED_HERDR") {
+                Arc::new(agency::herdr::HerdrRuntime::new(binary.into()))
             } else {
                 Arc::new(Unconfigured)
             };

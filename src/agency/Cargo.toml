@@ -25,6 +25,7 @@ workspace = true
 
 [features]
 control_port_test = []
+herdr_native = []
 
 [dev-dependencies]
 control = { path = "../apps/control" }

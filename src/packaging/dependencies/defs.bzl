@@ -34,6 +34,7 @@ def _declare_http_file(name: str, asset: dict):
         out = asset["filename"],
         urls = [asset["url"]],
         sha256 = asset["sha256"],
+        visibility = ["PUBLIC"],
     )
 
 def _rust_component_url(component: str, triple: str) -> str:
