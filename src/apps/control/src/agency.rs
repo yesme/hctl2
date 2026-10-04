@@ -575,6 +575,28 @@ pub async fn preserve_results(
     actor: &TrustedActor,
     dispatch: &store::Record,
 ) -> store::Result<usize> {
+    preserve_results_inner(shared, root, actor, dispatch, None).await
+}
+
+/// Stops before sending acknowledgement number `acknowledgement` (the first is 1).
+/// Earlier proposals stay stored and acknowledged. The next `preserve_results` continues.
+pub async fn preserve_results_failing_before_acknowledgement(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &store::Record,
+    acknowledgement: usize,
+) -> store::Result<usize> {
+    preserve_results_inner(shared, root, actor, dispatch, Some(acknowledgement)).await
+}
+
+async fn preserve_results_inner(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &store::Record,
+    fail_before_acknowledgement: Option<usize>,
+) -> store::Result<usize> {
     let d: agency_proto::Dispatch = participant::decode(dispatch)?;
     let client = paired_client(root, &d.binding.id)?;
     let mut after = None;
@@ -587,6 +609,9 @@ pub async fn preserve_results(
             break;
         }
         for proposal in &page.proposals {
+            if fail_before_acknowledgement == Some(count + 1) {
+                return Err(invalid("preservation acknowledgement stopped"));
+            }
             {
                 let mut lock = shared.lock().await;
                 let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
@@ -613,8 +638,8 @@ pub async fn preserve_results(
                 )
                 .await
                 .map_err(err)?;
+            count += 1;
         }
-        count += page.proposals.len();
         if page.complete {
             break;
         }

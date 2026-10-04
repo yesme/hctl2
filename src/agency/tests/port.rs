@@ -1168,25 +1168,41 @@ async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate
     }
     assert_eq!(pages.len(), 2);
     assert!(pages[1].complete);
+    let first = &pages[0].proposals[0];
+    let stopped = control::agency::preserve_results_failing_before_acknowledgement(
+        &shared, &root, &actor, &dispatch, 2,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(stopped.code, "INVALID_INPUT");
+    {
+        let lock = shared.lock().await;
+        let store = lock.as_ref().unwrap();
+        assert_eq!(store.list("proposal_inbox").unwrap().len(), 1);
+        let stored = store
+            .get(&participant::key(
+                Scope::Project("project".into()),
+                "proposal_inbox",
+                &first.header.proposal_id,
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.read_material(&actor, &stored.materials[0]).unwrap(),
+            first.output
+        );
+    }
+    let first_page: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
+        .await
+        .unwrap();
+    assert!(first_page.proposals[0].preserved);
     assert_eq!(
         control::agency::preserve_results(&shared, &root, &actor, &dispatch)
             .await
             .unwrap(),
         2
     );
-    let second = &pages[1].proposals[0];
-    let rejected = client
-        .call::<_, Value>(
-            "preserve",
-            &Preservation {
-                dispatch: running.reference.clone(),
-                proposal_id: second.header.proposal_id.clone(),
-                content_digest: "not-the-digest".into(),
-            },
-        )
-        .await
-        .unwrap_err();
-    assert_eq!(rejected.code, "PRESERVATION_MISMATCH");
     assert_eq!(
         control::agency::preserve_results(&shared, &root, &actor, &dispatch)
             .await
