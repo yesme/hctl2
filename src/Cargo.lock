@@ -498,6 +498,7 @@ dependencies = [
  "control",
  "foundation",
  "hyper-util",
+ "participant",
  "proto",
  "repo",
  "serde_json",
@@ -1758,8 +1759,10 @@ dependencies = [
 name = "project"
 version = "0.0.0"
 dependencies = [
+ "agency-proto",
  "chat",
  "foundation",
+ "participant",
  "repo",
  "serde",
  "serde_json",

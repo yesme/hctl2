@@ -1,3 +1,7 @@
+use agency_proto::{
+    Capabilities, Catalog, EvidenceLevel, FrozenRef, Profession, SkillClaim, SkillVerification,
+    hash,
+};
 use project::*;
 use serde_json::{Value, json};
 use std::{
@@ -42,6 +46,123 @@ fn def(name: &str) -> Definition {
             publish_review_requires_confirmation: true,
             selection_policy: json!({}),
         },
+    }
+}
+
+fn accepted_selection(
+    e: &mut Env,
+    room: &str,
+    name: &str,
+    available: bool,
+    verification: Option<SkillVerification>,
+) -> Selection {
+    let harness = FrozenRef {
+        id: "script".into(),
+        revision: "1".into(),
+        digest: hash(b"script"),
+    };
+    let skill = SkillClaim {
+        reference: FrozenRef {
+            id: "method".into(),
+            revision: "1".into(),
+            digest: hash(b"skill"),
+        },
+        required: true,
+        verification,
+    };
+    let profession = Profession {
+        reference: FrozenRef {
+            id: name.into(),
+            revision: "1".into(),
+            digest: hash(name.as_bytes()),
+        },
+        harness: harness.clone(),
+        model: "fixture".into(),
+        persona: "researcher".into(),
+        terms: "read only".into(),
+        default_role: "planner".into(),
+        skills: vec![skill.clone()],
+        capabilities: Capabilities::default(),
+    };
+    let binding = participant::accept_binding(
+        &mut e.store,
+        &actor(),
+        &format!("pair-{name}"),
+        participant::Binding {
+            id: name.into(),
+            protocol: agency_proto::PROTOCOL.into(),
+            catalog: Catalog {
+                professions: vec![profession.clone()],
+                harnesses: vec![harness.clone()],
+                skills: if available {
+                    vec![skill.clone()]
+                } else {
+                    vec![]
+                },
+            },
+        },
+    )
+    .unwrap();
+    let accepted = participant::accept_profession(
+        &mut e.store,
+        &actor(),
+        &format!("accept-{name}"),
+        name,
+        &profession,
+    )
+    .unwrap();
+    let profile = participant::profiles::WorkerProfile {
+        harness,
+        model: "fixture".into(),
+        mode: "read_only".into(),
+        permissions: vec!["context.read".into()],
+        environment: vec![],
+        required_capabilities: Capabilities::default(),
+        max_context_bytes: 65536,
+    };
+    let plan = participant::profiles::prepare_profile(
+        &e.store,
+        participant::profiles::ProfileInput {
+            key: format!("profile-{name}"),
+            action: participant::profiles::ProfileAction::Create {
+                id: name.into(),
+                profile,
+            },
+        },
+        &actor(),
+    )
+    .unwrap();
+    let result = participant::profiles::admit_profile(&mut e.store, &actor(), plan).unwrap();
+    Selection {
+        room_id: room.into(),
+        selected_item: reference(&accepted),
+        profession: reference(&accepted),
+        profession_digest: profession.reference.digest,
+        agency: reference(&binding),
+        required_skills: vec![Skill {
+            reference: Reference {
+                key: key(Scope::Control, "skill", &skill.reference.id),
+                version: Version::Revision(skill.reference.digest),
+            },
+            digest: None,
+        }],
+        optional_skills: vec![],
+        worker_profiles: vec![serde_json::from_value(result["revision"].clone()).unwrap()],
+        responsibility: "research".into(),
+        permission: json!({"allow":["context.read"]}),
+        budget: json!({"max_bytes":65536}),
+        display_name: "researcher".into(),
+        persona_tags: vec![],
+    }
+}
+fn select_action(project: &str, room: &str, selections: Vec<Selection>) -> Action {
+    Action::Select {
+        project_id: project.into(),
+        project_version: 1,
+        room_id: room.into(),
+        topic_command_key: None,
+        roster_version: None,
+        selections,
     }
 }
 struct Env {
@@ -780,32 +901,49 @@ fn archive_preview_catches_new_rooms_and_pending_external_effects() {
 }
 
 #[test]
-fn roster_is_independent_immutable_and_does_not_revise_external_binding() {
+fn roster_rejects_unaccepted_candidates_instead_of_storing_placeholder_refs() {
     let mut e = Env::new();
     let a = e.a.clone();
-    let (binding, room) = chat::main_binding(&e.store, &a).unwrap();
+    let (_, room) = chat::main_binding(&e.store, &a).unwrap();
     let r = |kind: &str| Reference {
         key: key(Scope::Control, kind, kind),
         version: Version::State(1),
     };
-    let selection = Selection {
-        room_id: room.id.clone(),
-        selected_item: r("profession_instance"),
-        profession: r("profession"),
-        profession_digest: "a".repeat(64),
-        agency: r("agency"),
-        required_skills: vec![Skill {
-            reference: r("skill"),
-            digest: None,
-        }],
-        optional_skills: vec![],
-        worker_profiles: vec![r("worker_profile")],
-        responsibility: "reviewer".into(),
-        permission: json!({}),
-        budget: json!({}),
-        display_name: "reviewer".into(),
-        persona_tags: vec![],
-    };
+    let result = e.apply(
+        "unaccepted-candidate",
+        Action::Select {
+            project_id: a,
+            project_version: 1,
+            room_id: room.id.clone(),
+            topic_command_key: None,
+            roster_version: None,
+            selections: vec![Selection {
+                room_id: room.id,
+                selected_item: r("profession"),
+                profession: r("profession"),
+                profession_digest: "a".repeat(64),
+                agency: r("agency_binding"),
+                required_skills: vec![],
+                optional_skills: vec![],
+                worker_profiles: vec![r("worker_profile_revision")],
+                responsibility: "research".into(),
+                permission: json!({"allow": ["context.read"]}),
+                budget: json!({"max_bytes": 65536}),
+                display_name: "researcher".into(),
+                persona_tags: vec![],
+            }],
+        },
+    );
+    assert_eq!(result.unwrap_err().code, "CANDIDATE_NOT_ACCEPTED");
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn roster_is_independent_immutable_and_does_not_revise_external_binding() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let (binding, room) = chat::main_binding(&e.store, &a).unwrap();
+    let selection = accepted_selection(&mut e, &room.id, "planner", true, None);
     let first = e
         .apply(
             "select",
@@ -987,6 +1125,397 @@ fn idle_request_topic_attention_is_not_pending_and_discussion_does_not_answer() 
         RequestState::Open
     );
     assert_eq!(pending(&e.store, &a, &actor()).unwrap(), before);
+}
+
+#[test]
+fn required_skill_missing_or_mismatched_readback_is_not_accepted() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let missing = accepted_selection(&mut e, &room, "missing-skill", false, None);
+    assert_eq!(
+        e.apply("missing", select_action(&a, &room, vec![missing]))
+            .unwrap_err()
+            .code,
+        "SKILL_MISSING"
+    );
+    let report = SkillVerification {
+        source: EvidenceLevel::Unmediated,
+        report: FrozenRef {
+            id: "verify".into(),
+            revision: "1".into(),
+            digest: hash(b"report"),
+        },
+        readback_digest: hash(b"other skill"),
+    };
+    let mismatch = accepted_selection(&mut e, &room, "bad-readback", true, Some(report));
+    // Even digest=None (unknown) cannot hide a verification mismatch.
+    assert_eq!(
+        e.apply("mismatch", select_action(&a, &room, vec![mismatch]))
+            .unwrap_err()
+            .code,
+        "SKILL_DIGEST_MISMATCH"
+    );
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn unknown_skill_cannot_be_upgraded_by_user_input_or_narrated_report() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let mut unknown = accepted_selection(&mut e, &room, "unknown", true, None);
+    unknown.required_skills[0].digest = Some(hash(b"skill"));
+    assert_eq!(
+        e.apply("invent-known", select_action(&a, &room, vec![unknown]))
+            .unwrap_err()
+            .code,
+        "SKILL_UNKNOWN"
+    );
+    let report = SkillVerification {
+        source: EvidenceLevel::Narrated,
+        report: FrozenRef {
+            id: "verify".into(),
+            revision: "1".into(),
+            digest: hash(b"report"),
+        },
+        readback_digest: hash(b"skill"),
+    };
+    let mut narrated = accepted_selection(&mut e, &room, "narrated", true, Some(report));
+    narrated.required_skills[0].digest = Some(hash(b"skill"));
+    assert_eq!(
+        e.apply("narrated-known", select_action(&a, &room, vec![narrated]))
+            .unwrap_err()
+            .code,
+        "SKILL_UNKNOWN"
+    );
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn verified_skill_and_missing_optional_skill_can_be_selected_without_inventing_proof() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let report = SkillVerification {
+        source: EvidenceLevel::Unmediated,
+        report: FrozenRef {
+            id: "verify".into(),
+            revision: "1".into(),
+            digest: hash(b"report"),
+        },
+        readback_digest: hash(b"skill"),
+    };
+    let mut selected = accepted_selection(&mut e, &room, "verified", true, Some(report));
+    selected.required_skills[0].digest = Some(hash(b"skill"));
+    selected.optional_skills.push(Skill {
+        reference: Reference {
+            key: key(Scope::Control, "skill", "optional"),
+            version: Version::Revision(hash(b"optional")),
+        },
+        digest: None,
+    });
+    let result = e
+        .apply("select-verified", select_action(&a, &room, vec![selected]))
+        .unwrap();
+    assert_eq!(
+        result["optional_skill_degradations"][0]["selection_index"],
+        0
+    );
+    assert_eq!(
+        result["optional_skill_degradations"][0]["reference"]["key"]["id"],
+        "optional"
+    );
+    let record =
+        participant::selection::resolve_room_candidate(&e.store, &a, &room, "research").unwrap();
+    let selected: Selection = participant::decode(&record).unwrap();
+    assert_eq!(selected.required_skills[0].digest, Some(hash(b"skill")));
+    assert_eq!(selected.optional_skills[0].digest, None);
+}
+
+#[test]
+fn changed_profession_wrong_profile_and_capability_shortfall_reject_before_roster_write() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let original = accepted_selection(&mut e, &room, "profile-check", true, None);
+    let mut changed = original.clone();
+    changed.profession_digest = hash(b"other terms");
+    assert_eq!(
+        e.apply("wrong-terms", select_action(&a, &room, vec![changed]))
+            .unwrap_err()
+            .code,
+        "PROFESSION_CHANGED"
+    );
+    for (name, model, required, code) in [
+        (
+            "model",
+            "other",
+            Capabilities::default(),
+            "PROFILE_MISMATCH",
+        ),
+        (
+            "capability",
+            "fixture",
+            Capabilities {
+                exact_attach: true,
+                ..Capabilities::default()
+            },
+            "CAPABILITY_MISSING",
+        ),
+    ] {
+        let mut selected = original.clone();
+        let mut profile = participant::profiles::profile_at(&e.store, &selected.worker_profiles[0])
+            .unwrap()
+            .1;
+        profile.model = model.into();
+        profile.required_capabilities = required;
+        let p = participant::profiles::prepare_profile(
+            &e.store,
+            participant::profiles::ProfileInput {
+                key: name.into(),
+                action: participant::profiles::ProfileAction::Create {
+                    id: name.into(),
+                    profile,
+                },
+            },
+            &actor(),
+        )
+        .unwrap();
+        let result = participant::profiles::admit_profile(&mut e.store, &actor(), p).unwrap();
+        selected.worker_profiles =
+            vec![serde_json::from_value(result["revision"].clone()).unwrap()];
+        assert_eq!(
+            e.apply(name, select_action(&a, &room, vec![selected]))
+                .unwrap_err()
+                .code,
+            code
+        );
+    }
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn project_policy_checks_agency_profession_permissions_and_budget() {
+    for (name, policy, code) in [
+        (
+            "agency",
+            json!({"allowed_agencies":[]}),
+            "SELECTION_POLICY_DENIED",
+        ),
+        (
+            "profession",
+            json!({"allowed_professions":[]}),
+            "SELECTION_POLICY_DENIED",
+        ),
+        (
+            "permission",
+            json!({"permissions":[]}),
+            "SELECTION_POLICY_DENIED",
+        ),
+        (
+            "budget",
+            json!({"max_context_bytes":1}),
+            "SELECTION_POLICY_DENIED",
+        ),
+    ] {
+        let mut e = Env::new();
+        let a = e.a.clone();
+        let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+        let selected = accepted_selection(&mut e, &room, name, true, None);
+        let mut project =
+            required(&e.store, &key(Scope::Project(a.clone()), "project", &a)).unwrap();
+        if let store::RecordData::Project { settings, .. } = &mut project.data {
+            settings.selection_policy = policy;
+        }
+        project.version += 1;
+        project.revision_digest =
+            foundation::canonical_json_sha256(&serde_json::to_value(&project.data).unwrap())
+                .unwrap();
+        e.seed(project);
+        let mut action = select_action(&a, &room, vec![selected]);
+        if let Action::Select {
+            project_version, ..
+        } = &mut action
+        {
+            *project_version = 2;
+        }
+        assert_eq!(e.apply(name, action).unwrap_err().code, code, "{name}");
+        assert!(e.store.list("room_roster").unwrap().is_empty());
+    }
+}
+
+#[test]
+fn mention_resolution_uses_exact_room_records_not_names_and_rejects_ambiguous_tags() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let one = accepted_selection(&mut e, &room, "one", true, None);
+    let two = accepted_selection(&mut e, &room, "two", true, None);
+    let result = e
+        .apply("two-candidates", select_action(&a, &room, vec![one, two]))
+        .unwrap();
+    let refs: Vec<Reference> = serde_json::from_value(result["selections"].clone()).unwrap();
+    assert_eq!(
+        participant::selection::resolve_room_candidate(&e.store, &a, &room, "research")
+            .unwrap_err()
+            .code,
+        "CANDIDATE_AMBIGUOUS"
+    );
+    assert_eq!(
+        participant::selection::resolve_room_candidate(&e.store, &a, &room, "researcher")
+            .unwrap_err()
+            .code,
+        "CANDIDATE_NOT_FOUND"
+    );
+    assert_eq!(
+        participant::selection::resolve_room_candidate(&e.store, &a, &room, &refs[0].key.id)
+            .unwrap()
+            .key,
+        refs[0].key
+    );
+    let other = chat::main_binding(&e.store, &e.b).unwrap().1.id;
+    assert_eq!(
+        participant::selection::resolve_room_candidate(&e.store, &e.b, &other, &refs[0].key.id)
+            .unwrap_err()
+            .code,
+        "CANDIDATE_NOT_FOUND"
+    );
+}
+
+#[test]
+fn profile_pointer_update_does_not_change_a_selection_preview_or_its_frozen_revision() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let selected = accepted_selection(&mut e, &room, "profile-update", true, None);
+    let old = selected.worker_profiles[0].clone();
+    let prepared = prepare(
+        &e.store,
+        Input {
+            key: "select-old-profile".into(),
+            action: select_action(&a, &room, vec![selected]),
+        },
+        None,
+        &actor(),
+        task::now(),
+    )
+    .unwrap();
+    let mut profile = participant::profiles::profile_at(&e.store, &old).unwrap().1;
+    profile.max_context_bytes = 1024;
+    let p = participant::profiles::prepare_profile(
+        &e.store,
+        participant::profiles::ProfileInput {
+            key: "update-profile".into(),
+            action: participant::profiles::ProfileAction::Update {
+                id: "profile-update".into(),
+                version: 1,
+                profile,
+            },
+        },
+        &actor(),
+    )
+    .unwrap();
+    participant::profiles::admit_profile(&mut e.store, &actor(), p).unwrap();
+    admit(&mut e.store, &actor(), prepared).unwrap();
+    let record =
+        participant::selection::resolve_room_candidate(&e.store, &a, &room, "research").unwrap();
+    let selected: Selection = participant::decode(&record).unwrap();
+    assert_eq!(selected.worker_profiles, vec![old]);
+}
+
+#[test]
+fn selection_preview_rejects_a_changed_project_policy_without_writing_a_roster() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let selected = accepted_selection(&mut e, &room, "policy-change", true, None);
+    let plan = prepare(
+        &e.store,
+        Input {
+            key: "before-policy-change".into(),
+            action: select_action(&a, &room, vec![selected]),
+        },
+        None,
+        &actor(),
+        task::now(),
+    )
+    .unwrap();
+    let mut definition = def("A");
+    definition.settings.selection_policy = json!({"allowed_agencies":[]});
+    e.apply(
+        "change-policy",
+        Action::Update {
+            project_id: a,
+            version: 1,
+            definition,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        admit(&mut e.store, &actor(), plan).unwrap_err().code,
+        "VERSION_CONFLICT"
+    );
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn selection_does_not_expand_profile_permissions_or_context_budget() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let original = accepted_selection(&mut e, &room, "scope", true, None);
+    for (name, permission, budget) in [
+        (
+            "permissions",
+            json!({"allow":[]}),
+            json!({"max_bytes":65536}),
+        ),
+        (
+            "budget",
+            json!({"allow":["context.read"]}),
+            json!({"max_bytes":65535}),
+        ),
+    ] {
+        let mut selected = original.clone();
+        selected.permission = permission;
+        selected.budget = budget;
+        assert_eq!(
+            e.apply(name, select_action(&a, &room, vec![selected]))
+                .unwrap_err()
+                .code,
+            "PROFILE_SCOPE_EXCEEDED"
+        );
+    }
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+}
+
+#[test]
+fn same_harness_can_be_selected_twice_but_duplicate_profile_candidates_are_rejected() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let one = accepted_selection(&mut e, &room, "same-harness-1", true, None);
+    let two = accepted_selection(&mut e, &room, "same-harness-2", true, None);
+    let mut duplicate = one.clone();
+    duplicate
+        .worker_profiles
+        .push(duplicate.worker_profiles[0].clone());
+    assert_eq!(
+        e.apply(
+            "duplicate-profile",
+            select_action(&a, &room, vec![duplicate])
+        )
+        .unwrap_err()
+        .code,
+        "INVALID_INPUT"
+    );
+    let result = e
+        .apply("same-harness", select_action(&a, &room, vec![one, two]))
+        .unwrap();
+    let refs: Vec<Reference> = serde_json::from_value(result["selections"].clone()).unwrap();
+    assert_eq!(refs.len(), 2);
+    assert_ne!(refs[0], refs[1]);
 }
 
 #[test]

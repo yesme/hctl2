@@ -1,5 +1,7 @@
 //! Control-side binding, frozen roster acceptance and dispatch records. No runtime dependency.
 #![forbid(unsafe_code)]
+pub mod profiles;
+pub mod selection;
 use agency_proto::{
     Catalog, Dispatch, ExecutionSpec, FrozenRef, PortError, Profession, Proposal, Sealed, Trace,
     hash,
