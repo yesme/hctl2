@@ -939,6 +939,68 @@ fn roster_rejects_unaccepted_candidates_instead_of_storing_placeholder_refs() {
 }
 
 #[test]
+fn roster_rejects_profession_accepted_from_another_agency_even_with_identical_catalogs() {
+    let mut e = Env::new();
+    let project = e.a.clone();
+    let room = chat::main_binding(&e.store, &project).unwrap().1.id;
+    let original = accepted_selection(&mut e, &room, "agency-a", true, None);
+    let accepted_a = e.store.get(&original.profession.key).unwrap().unwrap();
+    let profession: Profession = participant::decode(&accepted_a).unwrap();
+    let binding_a = e.store.get(&original.agency.key).unwrap().unwrap();
+    let mut binding_b: participant::Binding = participant::decode(&binding_a).unwrap();
+    // Keep every catalog field identical so only the acceptance source differs.
+    binding_b.id = "agency-b".into();
+    let binding_b =
+        participant::accept_binding(&mut e.store, &actor(), "pair-b", binding_b).unwrap();
+    let accepted_b =
+        participant::accept_profession(&mut e.store, &actor(), "accept-b", "agency-b", &profession)
+            .unwrap();
+    assert_ne!(reference(&accepted_a), reference(&accepted_b));
+    assert!(!accepted_a.sources.contains(&reference(&binding_b)));
+    let before = serde_json::to_value(chat::room(&e.store, &project, &room).unwrap().0).unwrap();
+    prepare(
+        &e.store,
+        Input {
+            key: "matching-a-preview".into(),
+            action: select_action(&project, &room, vec![original.clone()]),
+        },
+        None,
+        &actor(),
+        task::now(),
+    )
+    .unwrap();
+
+    let mut mismatched = original;
+    mismatched.agency = reference(&binding_b);
+    assert_eq!(
+        e.apply(
+            "wrong-acceptance-source",
+            select_action(&project, &room, vec![mismatched.clone()]),
+        )
+        .unwrap_err()
+        .code,
+        "PROFESSION_CHANGED"
+    );
+    assert!(e.store.list("room_roster").unwrap().is_empty());
+    assert!(e.store.list("room_selection").unwrap().is_empty());
+    assert_eq!(
+        serde_json::to_value(chat::room(&e.store, &project, &room).unwrap().0).unwrap(),
+        before
+    );
+
+    // The same candidate succeeds when it names B's own acceptance record.
+    mismatched.profession = reference(&accepted_b);
+    mismatched.selected_item = mismatched.profession.clone();
+    e.apply(
+        "matching-b",
+        select_action(&project, &room, vec![mismatched]),
+    )
+    .unwrap();
+    assert_eq!(e.store.list("room_roster").unwrap().len(), 1);
+    assert_eq!(e.store.list("room_selection").unwrap().len(), 1);
+}
+
+#[test]
 fn roster_is_independent_immutable_and_does_not_revise_external_binding() {
     let mut e = Env::new();
     let a = e.a.clone();

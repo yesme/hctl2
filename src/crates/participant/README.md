@@ -26,7 +26,7 @@ Project 的 `selection_policy` 初版接受 `allowed_agencies`（Binding ID）�
 
 | 本批覆盖的 CT 内容 | 会失败的输入与目标 | 留给主体下一批 |
 | --- | --- | --- |
-| 工种、Profile 与选人策略 | P：虚构引用、条款摘要错、Profile 模型不符、能力缺项、超出策略或选入上限、预览后政策更新 | 实际派工配置和终局状态 |
+| 工种、Profile 与选人策略 | P：虚构引用、同目录工种从 A 家接受却选 B 家、条款摘要错、Profile 模型不符、能力缺项、超出策略或选入上限、预览后政策更新 | 实际派工配置和终局状态；目录成员检查在正常接受与不可变绑定路径下未单独测到 |
 | Skill 申报与核验 | P：required 缺失、回读摘要不符、unknown 或转述伪装 known；optional 缺失的降级输出 | Execution Spec 的 activated 状态与实际装载 |
 | 名册独立、精确提及 | P：别的 Room 的记录、模糊显示名、重复职责；同 Harness 两条记录仍独立 | human 批准建议、Run 席位与模型不得发起调用 |
 | 精确版本与重放 | W：旧预览、篡改预览、不同 actor / 输入重投；P：Profile 指针更新不回写旧记录 | Invocation / Attempt 的冻结与替代 |
@@ -35,6 +35,10 @@ Project 的 `selection_policy` 初版接受 `allowed_agencies`（Binding ID）�
 W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_test`；C = `root//apps/cli:cli_test`。本批没有新三方依赖、脚本或 Agency 运行时。
 
 ## 第 5 包任务说明
+
+主体下一批（5b）先接 Profile 创建的 control Preview / Submit 与最少 CLI，复用 `prepare_profile / admit_profile`。真实主链按「配对 Agency → 接受工种 → 人确认创建只读 Profile → 选入名册 → Invocation 预览 / 启动 / 查看」起步，不靠测试直接写 Store，也不等后半段。Profile 更新 CLI 和只读查询留后半段。
+
+5b 同时接两处选入补齐：Project 创建 / 更新时按 `SelectionPolicy` 解析策略，让未知字段在保存前失败；新选入记录的 `sources` 带上精确 Worker Profile Revision，方便沿来源链读取，既有不可变选入记录不回写。分别在 Project 的 `domain_test` 补失败输入与来源引用断言。
 
 当前端口只核授权归属者的精确记录版本；完整领域授权仍未接线。第 5 包在恢复 Pending 前传入真实的授权判定，不沿用端口中的 `still_authorized=true`；Unknown / Confirmed 的回读和字节保全不发新授权，但后续激活、输入与准入另核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
 
@@ -62,5 +66,5 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 | --- | --- | --- |
 | `profession` | 复用既有接受目录、`accept_profession` 与 `agency.profession.list`；输入 Binding ID 和精确 Profession，输出接受记录；不得靠显示名重建身份 | CT-PARTICIPANT 工种冻结与名册独立 |
 | `room roster` | 复用 Project `prepare / admit` 的 `Action::Select` 和 `project.roster`；输入 Project / Room 与预期版本、`Selection[]`，输出不可变引用与 optional 降级项 | CT-PROJECT 选人策略、CT-PARTICIPANT Room / Run 独立身份 |
-| Profile 创建 / 更新入口（若接） | `ProfileInput {key, action: create / update}` → `ProfilePlan` → 确认后 `admit_profile`；输出指针版本与精确 Revision。可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
+| Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线由 5b 先做；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
 | Invocation list / cancel / retry、Terminal inspect / attach / replay | 本批不虚设 API；下一份主体 PR 定义状态机、取消 / 重试与票据后，在对应 README 补接线表。后半段只作命令与只读展示，不复制 reducer | CT-PROJECT Invocation 合法边；CT-PARTICIPANT 终端权限；CT-CONNECTION 失败恢复 |
