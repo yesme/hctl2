@@ -38,14 +38,14 @@ fn exec() -> io::Result<()> {
     let rest: Vec<_> = args.collect();
     let credential = Path::new(&credential).canonicalize()?;
     let work = env::current_dir()?.canonicalize()?;
-    if work.starts_with(&credential) {
-        return Err(Error::other("work directory is inside the credential root"));
+    if work.starts_with(&credential) || credential.starts_with(&work) {
+        return Err(Error::other("work directory overlaps the credential root"));
     }
-    restrict(&work)?;
+    restrict(&work, &credential)?;
     Err(Command::new(program).args(rest).exec())
 }
 
-fn restrict(work: &Path) -> io::Result<()> {
+fn restrict(work: &Path, credential: &Path) -> io::Result<()> {
     let abi = ABI::V1;
     let read_exec = AccessFs::from_read(abi);
     let full = AccessFs::from_all(abi);
@@ -59,9 +59,17 @@ fn restrict(work: &Path) -> io::Result<()> {
         "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
     ] {
         let path = Path::new(dir);
-        if path.is_dir() {
-            ruleset = add(ruleset, path, read_exec)?;
+        if !path.is_dir() {
+            continue;
         }
+        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if agency::confine::allowed_tree_contains_credential(&path, credential) {
+            return Err(Error::other(format!(
+                "credential root is inside allowed path {}",
+                path.display()
+            )));
+        }
+        ruleset = add(ruleset, &path, read_exec)?;
     }
     let status = ruleset.restrict_self().map_err(io_err)?;
     if !matches!(status.ruleset, RulesetStatus::FullyEnforced) {

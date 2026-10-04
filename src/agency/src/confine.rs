@@ -52,6 +52,20 @@ pub fn command(
     }
 }
 
+/// Scheme strings treat `\` as an escape. A raw backslash would deny a different path.
+fn scheme_literal(path: &str) -> Result<String> {
+    if path.contains('\n') || path.contains('\0') {
+        return Err(PortError::invalid("credential path cannot be embedded"));
+    }
+    Ok(path.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Landlock allows a whole directory tree. An ancestor of the credential root
+/// cannot be allowed, because the credential directory cannot be carved back out.
+pub fn allowed_tree_contains_credential(allow: &Path, credential: &Path) -> bool {
+    credential.starts_with(allow) || allow.starts_with(credential)
+}
+
 fn macos(
     program: &Path,
     arguments: &[String],
@@ -59,10 +73,7 @@ fn macos(
     credential_root: &Path,
 ) -> Result<Command> {
     let profile = exec_root.join("credential.sb");
-    let cred = credential_root.display().to_string();
-    if cred.contains('"') || cred.contains('\n') {
-        return Err(PortError::invalid("credential path cannot be embedded"));
-    }
+    let cred = scheme_literal(&credential_root.display().to_string())?;
     fs::write(
         &profile,
         format!(

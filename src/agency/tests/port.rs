@@ -229,6 +229,47 @@ fn ticket(d: &Dispatch, key: &str, permissions: Vec<Permission>, lease: Option<&
     )
     .unwrap()
 }
+#[tokio::test]
+async fn a_blocked_execution_directory_ends_as_cannot_fulfill() {
+    let rig = Rig::new("printf '{\"schema\":\"s\",\"bytes\":\"\"}\\n'").await;
+    let (client, key) = rig.pair("blocked").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "blocked").await)
+        .await
+        .unwrap();
+    let exec = agency::confine::execution_dir(&rig.root, &d.reference).unwrap();
+    std::fs::remove_dir(&exec).unwrap();
+    std::fs::File::create(&exec).unwrap();
+    let activated = activate(&client, &d).await;
+    assert_eq!(activated.state, DispatchState::CannotFulfill);
+    let again = activate(&client, &d).await;
+    assert_eq!(again.state, DispatchState::CannotFulfill);
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference.clone()))
+        .await
+        .unwrap();
+    assert!(page.complete);
+    assert!(page.proposals.is_empty());
+    let trace: Trace = client
+        .call(
+            "observe",
+            &Observe {
+                ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                after: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        trace
+            .events
+            .iter()
+            .any(|event| event.kind == "cannot_fulfill")
+    );
+    let _ = std::fs::remove_file(&exec);
+    rig.close().await;
+}
+
 async fn activate(client: &Client, d: &Dispatch) -> Dispatch {
     client
         .call(
@@ -1013,6 +1054,181 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .exists()
     );
     std::fs::remove_dir_all(&rig.root).unwrap();
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate() {
+    use store::{Actor, ActorSource, Scope, Store, TrustedActor};
+    let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
+    let root = rig.root.join("control");
+    let actor = TrustedActor(Actor {
+        principal: "human".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, Scope::Project("project".into())],
+        authority: None,
+    });
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(Store::open(&root).unwrap())));
+    control::agency::submit(
+        &shared,
+        &root,
+        "agency.pair",
+        &json!({"binding_id":"pages","agency_root":rig.root}),
+        &actor,
+        "pair-pages",
+    )
+    .await
+    .unwrap();
+    let client = control::agency::paired_client(&root, "pages").unwrap();
+    let mut prepare = request(&client, "page-dispatch").await;
+    control::agency::submit(
+        &shared,
+        &root,
+        "profession.accept",
+        &json!({"binding_id":"pages","profession":prepare.spec.document.profession.reference}),
+        &actor,
+        "accept-pages",
+    )
+    .await
+    .unwrap();
+    let (intent, _owner) = {
+        let mut lock = shared.lock().await;
+        let store = lock.as_mut().unwrap();
+        let binding = store
+            .get(&participant::key(Scope::Control, "agency_binding", "pages"))
+            .unwrap()
+            .unwrap();
+        prepare.spec.document.binding = participant::frozen(&binding);
+        prepare.spec = Sealed::new(prepare.spec.document).unwrap();
+        let owner = participant::value(
+            participant::key(
+                Scope::Project("project".into()),
+                "authorized_invocation",
+                "invocation",
+            ),
+            1,
+            &json!({"state":"authorized"}),
+        )
+        .unwrap();
+        let command = store::Command {
+            command_id: "seed-page-owner".into(),
+            idempotency_key: "seed-page-owner".into(),
+            actor: actor.0.clone(),
+            target: owner.key.clone(),
+            expected: store::Expected::Absent,
+            binding: participant::reference(&owner),
+            operation: "test.authorize".into(),
+            input: json!({}),
+            input_digest: store::Command::digest_input("test.authorize", &json!({})).unwrap(),
+        };
+        store
+            .submit(store.generation(), &actor, &command, None, |tx| {
+                tx.put(&owner)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+        let intent = participant::prepare_dispatch(
+            store,
+            &actor,
+            "page-intent",
+            &participant::reference(&owner),
+            &prepare.spec,
+            &prepare.bundle,
+        )
+        .unwrap();
+        (intent, owner)
+    };
+    let prepared: Dispatch = client.call("prepare", &prepare).await.unwrap();
+    let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &intent)
+        .await
+        .unwrap();
+    assert_eq!(dispatch.key.id, prepared.reference);
+    let running =
+        control::agency::deliver_activation(&shared, &root, &actor, "page-intent", &dispatch)
+            .await
+            .unwrap();
+    let mut pages = Vec::new();
+    let mut after = None;
+    for _ in 0..100 {
+        let mut query = ResultQuery::of(running.reference.clone());
+        query.after = after.clone();
+        let page: ResultPage = client.call("results", &query).await.unwrap();
+        if page.proposals.is_empty() {
+            after = None;
+            pages.clear();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            continue;
+        }
+        let done = page.complete;
+        after = page.cursor.clone();
+        pages.push(page);
+        if done {
+            break;
+        }
+    }
+    assert_eq!(pages.len(), 2);
+    assert!(pages[1].complete);
+    assert_eq!(
+        control::agency::preserve_results(&shared, &root, &actor, &dispatch)
+            .await
+            .unwrap(),
+        2
+    );
+    let second = &pages[1].proposals[0];
+    let rejected = client
+        .call::<_, Value>(
+            "preserve",
+            &Preservation {
+                dispatch: running.reference.clone(),
+                proposal_id: second.header.proposal_id.clone(),
+                content_digest: "not-the-digest".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.code, "PRESERVATION_MISMATCH");
+    assert_eq!(
+        control::agency::preserve_results(&shared, &root, &actor, &dispatch)
+            .await
+            .unwrap(),
+        2
+    );
+    {
+        let lock = shared.lock().await;
+        let store = lock.as_ref().unwrap();
+        assert_eq!(store.list("proposal_inbox").unwrap().len(), 2);
+        for page in &pages {
+            let proposal = &page.proposals[0];
+            let stored = store
+                .get(&participant::key(
+                    Scope::Project("project".into()),
+                    "proposal_inbox",
+                    &proposal.header.proposal_id,
+                ))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                store.read_material(&actor, &stored.materials[0]).unwrap(),
+                proposal.output
+            );
+        }
+    }
+    let reread: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
+        .await
+        .unwrap();
+    assert!(reread.proposals[0].preserved);
+    let follow: ResultPage = client
+        .call(
+            "results",
+            &ResultQuery::of(running.reference.clone())
+                .after(reread.proposals[0].header.proposal_id.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(follow.proposals[0].preserved);
+    rig.close().await;
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[tokio::test]

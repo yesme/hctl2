@@ -208,26 +208,25 @@ impl Tenant {
             .and_then(|parent| parent.parent())
             .unwrap_or(self.root.as_path())
             .to_path_buf();
-        let exec_root = crate::confine::execution_dir(&credential_root, &dispatch.reference)?;
-        let running =
-            match self
-                .runtime
+        let running = match (|| {
+            let exec_root = crate::confine::execution_dir(&credential_root, &dispatch.reference)?;
+            self.runtime
                 .start(&request.spec, &request.bundle, &exec_root, &credential_root)
-            {
-                Ok(running) => running,
-                Err(e) => {
-                    dispatch.state = DispatchState::CannotFulfill;
-                    put_dispatch(&state.db, &dispatch)?;
-                    event(
-                        &state.db,
-                        &dispatch.reference,
-                        "cannot_fulfill",
-                        serde_json::json!({"code":e.code}),
-                        EvidenceLevel::AdapterEvent,
-                    )?;
-                    return Ok(dispatch);
-                }
-            };
+        })() {
+            Ok(running) => running,
+            Err(e) => {
+                dispatch.state = DispatchState::CannotFulfill;
+                put_dispatch(&state.db, &dispatch)?;
+                event(
+                    &state.db,
+                    &dispatch.reference,
+                    "cannot_fulfill",
+                    serde_json::json!({"code":e.code}),
+                    EvidenceLevel::AdapterEvent,
+                )?;
+                return Ok(dispatch);
+            }
+        };
         state
             .sessions
             .insert(dispatch.reference.clone(), running.session);

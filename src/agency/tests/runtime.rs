@@ -87,6 +87,53 @@ fn execution_directory_rejects_a_path_that_is_not_an_owned_directory() {
 }
 
 #[test]
+fn an_allowed_ancestor_is_treated_as_covering_the_credential_root() {
+    assert!(confine::allowed_tree_contains_credential(
+        std::path::Path::new("/opt"),
+        std::path::Path::new("/opt/hctl2-agency")
+    ));
+    assert!(!confine::allowed_tree_contains_credential(
+        std::path::Path::new("/bin"),
+        std::path::Path::new("/tmp/agency-test")
+    ));
+}
+
+#[test]
+fn a_backslash_in_the_credential_path_is_still_unreadable() {
+    let cred = std::env::temp_dir().join(format!("hctl2-cred\\box-{}", std::process::id()));
+    let exec = std::env::temp_dir().join(format!("hctl2-exec-slash-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    std::fs::create_dir_all(&cred).unwrap();
+    std::fs::create_dir_all(&exec).unwrap();
+    std::fs::write(cred.join("pair.key"), "secret-credential").unwrap();
+    let cred = cred.canonicalize().unwrap();
+    let script = format!(
+        "if /bin/cat '{}' >/dev/null 2>&1; then echo READ_OK; else echo READ_DENIED; fi",
+        cred.join("pair.key").display()
+    );
+    let program = PathBuf::from("/bin/sh");
+    let mut child = confine::command(&program, &["-c".into(), script], &exec, &cred).unwrap();
+    confine::scrub(&mut child, &exec);
+    let output = child
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        text.contains("READ_DENIED"),
+        "status {:?} stdout {} stderr {}",
+        output.status,
+        text,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!text.contains("secret-credential"));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
 fn execution_directory_is_outside_the_credential_root() {
     let cred = std::env::temp_dir().join(format!("hctl2-agency-root-{}", std::process::id()));
     std::fs::create_dir_all(&cred).unwrap();
