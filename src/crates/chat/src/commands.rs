@@ -308,6 +308,9 @@ pub fn prepare(
                 "body":opening_body,
                 "brief_digest":canonical_json_sha256(&serde_json::to_value(&brief)?)?,
             });
+            let create_effect_id = plan.effects[0].intent_id.clone();
+            let mut opening_input = opening_input;
+            opening_input["create_effect"] = json!(create_effect_id);
             let opening_id = suffix_effect_id(&room, &input.key, "opening");
             let mut opening = effect(
                 &room,
@@ -322,7 +325,12 @@ pub fn prepare(
             plan.effects.push(opening);
             let mut invite_ids = vec![];
             for user in &confirmed {
-                let invite_input = json!({"room":room,"users":[user],"invite":true});
+                let invite_input = json!({
+                    "room":room,
+                    "users":[user],
+                    "invite":true,
+                    "create_effect":create_effect_id,
+                });
                 let invite_id = suffix_effect_id(
                     &room,
                     &input.key,

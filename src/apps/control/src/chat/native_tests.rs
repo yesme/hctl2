@@ -1,6 +1,6 @@
 //! Native Tuwunel in an isolated directory; no mutations of the developer's chat server.
 use super::*;
-use crate::chat::{access, drive_using, human_members, tree};
+use crate::chat::{access, drive_using, enqueue_space_member_intents, human_members, tree};
 use chat::{Action, Input, Origin, Room};
 use std::{
     path::{Path, PathBuf},
@@ -20,6 +20,16 @@ impl Drop for Native {
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
+fn drive_with(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    id: &str,
+    connect: impl Fn() -> Result<Client>,
+) -> Result<Value> {
+    drive_using(shared, root, actor, id, "@hctl2_", &connect)
+}
+
 fn find(root: &Path) -> Option<PathBuf> {
     for e in std::fs::read_dir(root).ok()? {
         let p = e.ok()?.path();
@@ -720,13 +730,11 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
         };
         let before = inventory();
         let driven = if outcome == "cancelled" {
-            drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
+            drive_with(&shared, root, &actor, effect_id, || {
                 panic!("cancelled intent must not connect")
             })
         } else {
-            drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
-                Ok(client.clone())
-            })
+            drive_with(&shared, root, &actor, effect_id, || Ok(client.clone()))
         };
         let expected = match outcome {
             "cancelled" => {
@@ -806,10 +814,7 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
     })
     .unwrap();
     let effect_id = created["effect_id"].as_str().unwrap();
-    drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
-        Ok(client.clone())
-    })
-    .unwrap();
+    drive_with(&shared, root, &actor, effect_id, || Ok(client.clone())).unwrap();
     let id = created["room_id"].as_str().unwrap();
     let (binding, parent) = access(&shared, |s| chat::room(s, &main.project_id, id)).unwrap();
     let effect = tree::carrier_intent(&shared, &actor, &parent).unwrap();
@@ -1063,11 +1068,8 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     })
     .unwrap();
     // Create first; the opening drive before it would only report pending.
-    drive_using(&shared, &root, &actor, &create, "@hctl2_", || {
-        Ok(client.clone())
-    })
-    .unwrap();
-    let receipt = drive_using(&shared, &root, &actor, &opening_effect, "@hctl2_", || {
+    drive_with(&shared, &root, &actor, &create, || Ok(client.clone())).unwrap();
+    let receipt = drive_with(&shared, &root, &actor, &opening_effect, || {
         Ok(client.clone())
     })
     .unwrap();
@@ -1079,7 +1081,7 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     .expect("created Topic is bound")
     .to_owned();
     // Retry sends no second opening: same event, same first timeline entry.
-    let replayed = drive_using(&shared, &root, &actor, &opening_effect, "@hctl2_", || {
+    let replayed = drive_with(&shared, &root, &actor, &opening_effect, || {
         Ok(client.clone())
     })
     .unwrap();
@@ -1095,7 +1097,7 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     assert_eq!(messages[0]["content"]["body"], json!(opening));
     // Invites: each human is invited, control and the managed worker are not.
     for id in &invite_ids {
-        drive_using(&shared, &root, &actor, id, "@hctl2_", || Ok(client.clone())).unwrap();
+        drive_with(&shared, &root, &actor, id, || Ok(client.clone())).unwrap();
     }
     let topic_members = client.member_state(&topic_external).unwrap();
     // The exact member set: the creator joined, the two confirmed humans are
@@ -1191,9 +1193,13 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     let nested_create = nested["effect_id"].as_str().unwrap().to_owned();
     // Enter delivery before driving: every retry from here is unknown-state.
     access(&shared, |s| s.begin_effect(s.generation(), &nested_create)).unwrap();
-    drive_using(&shared, &root, &actor, &nested_create, "@hctl2_", || {
-        Ok(client.clone())
-    })
+    drive_with(
+        &shared,
+        &root,
+        &actor,
+        &nested_create,
+        || Ok(client.clone()),
+    )
     .unwrap();
     // A real `project members` invite on the main Room now syncs the new
     // human into every carrier Space of the Project.
@@ -1219,7 +1225,7 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
     })
     .unwrap();
     let members_effect = members_result["effect_ids"][0].as_str().unwrap().to_owned();
-    drive_using(&shared, &root, &actor, &members_effect, "@hctl2_", || {
+    drive_with(&shared, &root, &actor, &members_effect, || {
         Ok(client.clone())
     })
     .unwrap();
@@ -1299,10 +1305,7 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
         })
         .unwrap();
         let effect = outcome["effect_ids"][0].as_str().unwrap().to_owned();
-        drive_using(&shared, &root, &actor, &effect, "@hctl2_", || {
-            Ok(client.clone())
-        })
-        .unwrap()
+        drive_with(&shared, &root, &actor, &effect, || Ok(client.clone())).unwrap()
     };
     members_sync("members-erin-invite", true, &erin_id);
     let main_state = client.member_state(&main_external).unwrap();
@@ -1326,6 +1329,43 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
             .any(|(member, _)| member == &erin_id),
         "entering a carrier Space must not invite anyone into a Topic Room"
     );
+    // Crash window: gina's main-Room write confirmed and her Space intents
+    // were persisted, but only one Space intent was driven before the
+    // "crash". Recovery delivers the other Space without touching the main
+    // Room write, and each target reports its own outcome.
+    let (gina_id, gina_token) = client
+        .human_register("gina", "pw-gina", "test-registration")
+        .unwrap();
+    client
+        .members(&main_external, std::slice::from_ref(&gina_id), true, true)
+        .unwrap();
+    client.human_join(&gina_token, &main_external).unwrap();
+    let gina_ids = enqueue_space_member_intents(
+        &shared,
+        &actor,
+        "p",
+        &spaces,
+        std::slice::from_ref(&gina_id),
+        true,
+    )
+    .unwrap();
+    assert_eq!(gina_ids.len(), spaces.len());
+    // Drive only the first; the second remains pending, then delivers.
+    let connect = || Ok(client.clone());
+    drive_with(&shared, &root, &actor, &gina_ids[0], connect).unwrap();
+    assert_eq!(
+        access(&shared, |s| s.effect(&gina_ids[1])).unwrap().1,
+        store::EffectState::Pending
+    );
+    let connect = || Ok(client.clone());
+    drive_with(&shared, &root, &actor, &gina_ids[1], connect).unwrap();
+    for space in &spaces {
+        let members = human_members(&client, space, &main.server.sender, "@hctl2_").unwrap();
+        assert!(
+            members.contains(&gina_id),
+            "Space {space} missed the recovered delivery"
+        );
+    }
     // Removal side: the same operation on the main Room removes from every
     // carrier Space as well.
     members_sync("members-erin-remove", false, &erin_id);
@@ -1499,10 +1539,7 @@ fn native_closed_topic_resolves_unknown_opening_by_readback() {
     .unwrap();
     let create = result["effect_id"].as_str().unwrap().to_owned();
     let opening = result["opening_effect_id"].as_str().unwrap().to_owned();
-    drive_using(&shared, &root, &actor, &create, "@hctl2_", || {
-        Ok(client.clone())
-    })
-    .unwrap();
+    drive_with(&shared, &root, &actor, &create, || Ok(client.clone())).unwrap();
     // The opening entered delivery, then the Topic closed before it was sent.
     access(&shared, |s| s.begin_effect(s.generation(), &opening)).unwrap();
     let close = access(&shared, |s| {
@@ -1524,15 +1561,348 @@ fn native_closed_topic_resolves_unknown_opening_by_readback() {
     })
     .unwrap();
     assert!(close.is_object());
-    let receipt = drive_using(&shared, &root, &actor, &opening, "@hctl2_", || {
-        Ok(client.clone())
-    })
-    .unwrap();
+    let receipt = drive_with(&shared, &root, &actor, &opening, || Ok(client.clone())).unwrap();
     assert_eq!(receipt["room_closed"], json!(true));
     assert_eq!(receipt["delivered"], json!(false), "{receipt}");
     assert_eq!(
         access(&shared, |s| Ok(s.effect(&opening)?.1)).unwrap(),
         store::EffectState::Confirmed,
         "the reconcile loop must not retry a closed Room's opening forever"
+    );
+}
+
+/// A rebind after creation must not retarget the Topic's opening message or
+/// invites: unknown intents replay to the external room recorded in the
+/// creation receipt, and a pending intent refuses with stale instead.
+#[test]
+fn native_rebind_keeps_topic_intents_on_the_original_target() {
+    use store::{ProjectSettings, Record, RecordData, RoomKind, RoomState};
+    let (_native, port, root) = spawn_tuwunel("rebind-target");
+    let server = Server {
+        binding: Reference {
+            key: chat::key(store::Scope::Control, "chat_server", "test"),
+            version: store::Version::State(1),
+        },
+        url: format!("http://127.0.0.1:{port}"),
+        server_name: "hctl2.localhost".into(),
+        sender: "@hctl2_control:hctl2.localhost".into(),
+    };
+    let client = Client::new(server.clone(), "as-test-secret".into()).unwrap();
+    let (frank_id, _) = client
+        .human_register("frank", "pw-frank", "test-registration")
+        .unwrap();
+    let main = chat::Room {
+        project_id: "p".into(),
+        id: "main".into(),
+        name: "主房间".into(),
+        server: server.clone(),
+        matrix_room_id: None,
+        participants: vec![],
+        brief: None,
+        origin: None,
+    };
+    let scope = Scope::Project("p".into());
+    let actor = TrustedActor(Actor {
+        principal: "owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, scope.clone()],
+        authority: None,
+    });
+    let mut store = Store::open(&root.join("rebind-control")).unwrap();
+    let project = Record {
+        key: chat::key(scope.clone(), "project", "p"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &json!({"repo_id":"fixture-repo","archived":false}),
+        )
+        .unwrap(),
+        data: RecordData::Project {
+            repo_id: "fixture-repo".into(),
+            settings: ProjectSettings {
+                publish_review_requires_confirmation: true,
+                selection_policy: json!({}),
+            },
+            archived: false,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let identity = Record {
+        key: chat::key(scope.clone(), "room", "main"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(
+            &json!({"room_kind":"main","state":"active"}),
+        )
+        .unwrap(),
+        data: RecordData::Room {
+            room_kind: RoomKind::Main,
+            state: RoomState::Active,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let created = client.create(&main, "rebind-main", true).unwrap();
+    let main_external = created["matrix_room_id"].as_str().unwrap().to_owned();
+    let mut bound_main = main.clone();
+    bound_main.matrix_room_id = Some(main_external.clone());
+    let binding = chat::value_record(
+        chat::key(scope.clone(), "room_binding", "main"),
+        1,
+        &bound_main,
+    )
+    .unwrap();
+    let command = store::Command {
+        command_id: "seed-rebind".into(),
+        idempotency_key: "seed-rebind".into(),
+        actor: actor.0.clone(),
+        target: project.key.clone(),
+        expected: Expected::Absent,
+        binding: main.server.binding.clone(),
+        input_digest: store::Command::digest_input("fixture", &json!({})).unwrap(),
+        operation: "fixture".into(),
+        input: json!({}),
+    };
+    store
+        .submit(store.generation(), &actor, &command, None, |tx| {
+            for record in [&project, &identity, &binding] {
+                tx.put(record)?;
+            }
+            Ok(json!({}))
+        })
+        .unwrap();
+    let shared = Arc::new(Mutex::new(Some(store)));
+    let sent = client
+        .send(&main_external, "rebind-source", "来源")
+        .unwrap();
+    let event = client
+        .event(&main_external, sent["event_id"].as_str().unwrap())
+        .unwrap();
+    let source = source_text(
+        Reference {
+            key: chat::key(scope.clone(), "room_binding", "main"),
+            version: store::Version::State(1),
+        },
+        &event,
+    )
+    .unwrap();
+    let brief = chat::Brief {
+        context_and_goal: "换绑后仍在原房间".into(),
+        settled_facts_and_reasons: vec![],
+        disagreements_and_questions: vec![],
+        constraints_and_materials: vec![],
+        sources: vec![source.source.clone()],
+    };
+    let opening = chat::opening_body(&brief);
+    let result = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "rebind-topic".into(),
+                action: Action::CreateTopic {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    name: "换绑话题".into(),
+                    origin: Box::new(Origin::Room {
+                        room_id: "main".into(),
+                        binding_version: 1,
+                    }),
+                    brief: Box::new(brief.clone()),
+                    participants: vec![],
+                    roster_confirmed: true,
+                    invites: Some(vec![frank_id.clone()]),
+                },
+            },
+            vec![source.clone()],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let create = result["effect_id"].as_str().unwrap().to_owned();
+    let opening_effect = result["opening_effect_id"].as_str().unwrap().to_owned();
+    let invite_effect = result["invite_effect_ids"][0].as_str().unwrap().to_owned();
+    drive_with(&shared, &root, &actor, &create, || Ok(client.clone())).unwrap();
+    let topic_room_id = result["room_id"].as_str().unwrap().to_owned();
+    let original = access(&shared, |s| {
+        let (_, room) = chat::room(s, "p", &topic_room_id)?;
+        Ok(room.matrix_room_id.expect("bound"))
+    })
+    .unwrap();
+    // Both follow-on intents entered delivery (responses lost).
+    access(&shared, |s| s.begin_effect(s.generation(), &opening_effect)).unwrap();
+    access(&shared, |s| s.begin_effect(s.generation(), &invite_effect)).unwrap();
+    // A legal rebind moves the binding to another native room on the server.
+    let spare = chat::Room {
+        project_id: "p".into(),
+        id: format!("spare-{topic_room_id}"),
+        name: "备用".into(),
+        server: server.clone(),
+        matrix_room_id: None,
+        participants: vec![],
+        brief: None,
+        origin: None,
+    };
+    let spare_created = client.create(&spare, "rebind-spare", true).unwrap();
+    let retargeted = spare_created["matrix_room_id"].as_str().unwrap().to_owned();
+    let binding_version = access(&shared, |s| {
+        let (binding, _) = chat::room(s, "p", &topic_room_id)?;
+        Ok(binding.version)
+    })
+    .unwrap();
+    access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "rebind-move".into(),
+                action: Action::Rebind {
+                    project_id: "p".into(),
+                    room_id: topic_room_id.clone(),
+                    version: binding_version,
+                    matrix_room_id: retargeted.clone(),
+                },
+            },
+            vec![],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let _ = retargeted;
+    // Unknown intents replay to the original room: the opening message and
+    // the invite both land in the creation target, never in the new binding.
+    let receipt = drive_with(&shared, &root, &actor, &opening_effect, || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    assert!(receipt["event_id"].is_string(), "{receipt}");
+    let original_messages = client.timeline(&original, None).unwrap();
+    let bodies: Vec<&Value> = original_messages["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["type"] == "m.room.message")
+        .map(|e| &e["content"]["body"])
+        .collect();
+    assert_eq!(bodies, vec![&json!(opening)]);
+    let retarget_messages = client.timeline(&retargeted, None).unwrap();
+    assert!(
+        !retarget_messages["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["type"] == "m.room.message"),
+        "the rebind target must not receive the opening"
+    );
+    drive_with(
+        &shared,
+        &root,
+        &actor,
+        &invite_effect,
+        || Ok(client.clone()),
+    )
+    .unwrap();
+    let original_members = client.member_state(&original).unwrap();
+    assert!(
+        original_members
+            .iter()
+            .any(|(member, state)| member == &frank_id && state == "invite")
+    );
+    let retarget_members = client.member_state(&retargeted).unwrap();
+    assert!(
+        !retarget_members
+            .iter()
+            .any(|(member, _)| member == &frank_id),
+        "the rebind target must not receive the invite"
+    );
+    // A pending intent whose creation target no longer matches the binding
+    // refuses with stale instead of writing to the new room.
+    let spare2 = chat::Room {
+        project_id: "p".into(),
+        id: format!("spare2-{topic_room_id}"),
+        name: "备用二".into(),
+        server: server.clone(),
+        matrix_room_id: None,
+        participants: vec![],
+        brief: None,
+        origin: None,
+    };
+    let spare2_created = client.create(&spare2, "rebind-spare-2", true).unwrap();
+    let retargeted2 = spare2_created["matrix_room_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let second = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "rebind-topic-2".into(),
+                action: Action::CreateTopic {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    name: "第二条".into(),
+                    origin: Box::new(Origin::Room {
+                        room_id: "main".into(),
+                        binding_version: 1,
+                    }),
+                    brief: Box::new(chat::Brief {
+                        context_and_goal: "第二".into(),
+                        settled_facts_and_reasons: vec![],
+                        disagreements_and_questions: vec![],
+                        constraints_and_materials: vec![],
+                        sources: vec![source.source.clone()],
+                    }),
+                    participants: vec![],
+                    roster_confirmed: true,
+                    invites: Some(vec![]),
+                },
+            },
+            vec![source.clone()],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let second_create = second["effect_id"].as_str().unwrap().to_owned();
+    let second_opening = second["opening_effect_id"].as_str().unwrap().to_owned();
+    drive_with(
+        &shared,
+        &root,
+        &actor,
+        &second_create,
+        || Ok(client.clone()),
+    )
+    .unwrap();
+    let second_room = second["room_id"].as_str().unwrap().to_owned();
+    let second_binding_version = access(&shared, |s| {
+        let (binding, _) = chat::room(s, "p", &second_room)?;
+        Ok(binding.version)
+    })
+    .unwrap();
+    access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "rebind-move-2".into(),
+                action: Action::Rebind {
+                    project_id: "p".into(),
+                    room_id: second_room.clone(),
+                    version: second_binding_version,
+                    matrix_room_id: retargeted2,
+                },
+            },
+            vec![],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    assert_eq!(
+        drive_with(&shared, &root, &actor, &second_opening, || {
+            Ok(client.clone())
+        })
+        .unwrap_err()
+        .code,
+        "VERSION_CONFLICT",
+        "a pending opening must refuse after a rebind, not retarget"
     );
 }

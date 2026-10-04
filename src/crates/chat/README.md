@@ -85,7 +85,7 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 | 挂靠不带来继承 | 独立名册、禁止借其他 Room 的选入记录、关闭不级联；D、R；原生私有房间权限未复制 | 多房间成员/权限调整 API、Project 全体归档归辛；成员拒绝路径尚未实测 |
 | 一间 Room 只有一条时间线和一层讨论串 | 原生 m.thread、拒嵌套、事件 ID 与正文冻结、主时间线含串消息；N、R | Workbench 讨论串 UI 与所有成员同时读取未验 |
 | Topic 建成后开场消息与确认名单逐人投递（v0.19.2 行） | 开场消息与 `opening_body` 逐字一致且仅一条；unknown 态重发走同一事务 ID（N）；缺省名单=来源/主 Room 人类成员（控制面与 `@hctl2_` 排除，B1 走主 Room 来源；非主来源与 Request 来源的缺省计算走同一条 `default_topic_invites` 路径，未单独做原生用例）；删减者不邀、名单外不邀（域测试断言意图，N 断言真房间成员回读）；逐人回读；`brief` 在开场后不变（N） | `ROOMS_PARTIAL` 输出与 `invite_defaults` 漂移判 stale 只有代码路径、未注入故障用例；「邀请不进名册/不带授权」无专门负例（全 diff 不写 `room_selection` 与权限记录——代码有、未测） |
-| 承载 Space 成员跟主 Room 走（v0.19.2 行） | 新建 Space 邀请主 Room 人类成员；主 Room 邀请与移除均同步到全部承载 Space（逐 Space 回读，各有原生用例；同步用例在全部 Space 已存在后加入新人，区分同步与创建期收敛）；进 Space 不自动进 Topic Room（N）；收敛与同步在 unknown 重试时恒可写（先读后写幂等，N 有重试用例） | 「Space 成员不进名册/不带授权」无专门负例（同上，代码有、未测） |
+| 承载 Space 成员跟主 Room 走（v0.19.2 行） | 新建 Space 邀请主 Room 人类成员；主 Room 邀请与移除均同步到全部承载 Space，每个 Space 是独立意图与回执（N：主 Room 独立结案、逐 Space 意图、半途崩溃后未投递的 Space 恢复投递）；进 Space 不自动进 Topic Room（N）；换绑后开场/邀请仍投原目标（N）；关闭房间未决意图按只读回读结算（N） | 「Space 成员不进名册/不带授权」无专门负例（同上，代码有、未测）；Space 持续失败（被踢出/被删）只挡该 Space 的同步，未注入原生故障 |
 | 待你处理按现有事项去重 | 未实现 | 聚合投影与业务动作归辛及后续包 |
 | 待处理来源分别注入 | 未实现 | 五类事项随业务包逐项接入 |
 | Context 可解释、Room 历史可恢复 | 丢聊天缓存、重同步与冻结源重读、异目录恢复；N、R | Manifest / Bundle 解释与纪要索引归子 |

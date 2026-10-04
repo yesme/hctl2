@@ -344,9 +344,8 @@ pub(super) fn reparent_using(
         Some(id) => {
             let effect = carrier_intent_id(&rooms.1)?;
             if access(shared, |s| Ok(s.pending_effects()?.contains(&effect)))? {
-                let receipt = drive_using(shared, root, actor, &effect, managed_prefix, || {
-                    Ok(client.clone())
-                })?;
+                let connect = || Ok(client.clone());
+                let receipt = drive_using(shared, root, actor, &effect, managed_prefix, &connect)?;
                 if receipt["space_id"] != id {
                     return Err(invalid("carrier readback differs"));
                 }
@@ -355,9 +354,8 @@ pub(super) fn reparent_using(
         }
         None => {
             let id = carrier_intent(shared, actor, &rooms.1)?;
-            drive_using(shared, root, actor, &id, managed_prefix, || {
-                Ok(client.clone())
-            })?["space_id"]
+            let connect = || Ok(client.clone());
+            drive_using(shared, root, actor, &id, managed_prefix, &connect)?["space_id"]
                 .as_str()
                 .ok_or_else(|| invalid("carrier readback missing"))?
                 .to_owned()
