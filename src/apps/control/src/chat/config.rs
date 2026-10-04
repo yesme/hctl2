@@ -149,3 +149,35 @@ pub(crate) fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
     fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
+
+/// Literal user-id prefix managed by this control's AppService registration
+/// (the `@hctl2_` namespace). Members inside it are digital participants, not
+/// the human members a Topic invite list defaults to.
+pub(super) fn managed_user_prefix(services: &Supervisor) -> Result<String> {
+    let path = path(services)?;
+    let registration: Registration = serde_json::from_slice(&fs::read(&path).map_err(|_| {
+        reject(
+            "CHAT_NOT_CONFIGURED",
+            "AppService registration unavailable",
+            "restart_control",
+        )
+    })?)?;
+    let pattern = registration
+        .namespaces
+        .users
+        .iter()
+        .find(|namespace| namespace.exclusive)
+        .map(|namespace| namespace.regex.as_str())
+        .unwrap_or("^@hctl2_");
+    let literal: String = pattern
+        .strip_prefix('^')
+        .unwrap_or(pattern)
+        .chars()
+        .take_while(|c| !".[]()*+?{}|$^\\".contains(*c))
+        .collect();
+    if literal.starts_with('@') && literal.len() > 1 {
+        Ok(literal)
+    } else {
+        Ok("@hctl2_".into())
+    }
+}

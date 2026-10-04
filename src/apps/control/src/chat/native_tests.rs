@@ -1,6 +1,6 @@
 //! Native Tuwunel in an isolated directory; no mutations of the developer's chat server.
 use super::*;
-use crate::chat::{access, drive_using, tree};
+use crate::chat::{access, drive_using, human_members, tree};
 use chat::{Action, Input, Origin, Room};
 use std::{
     path::{Path, PathBuf},
@@ -35,10 +35,9 @@ fn find(root: &Path) -> Option<PathBuf> {
     None
 }
 
-#[test]
-fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
+fn spawn_tuwunel(name: &str) -> (Native, u16, PathBuf) {
     let root = std::env::temp_dir().join(format!(
-        "hctl-chat-native-{}-{}",
+        "hctl-chat-{name}-{}-{}",
         std::process::id(),
         ruma::TransactionId::new()
     ));
@@ -57,7 +56,7 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         token: "hs-test-secret".into(),
     };
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let http = std::thread::spawn(move || {
+    let _http = std::thread::spawn(move || {
         tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(async move {
@@ -72,6 +71,7 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
                 .unwrap();
             });
     });
+    std::mem::forget(shutdown_tx);
     let config = root.join("tuwunel.toml");
     std::fs::write(&config,format!("[global]\nserver_name = \"hctl2.localhost\"\ndatabase_path = \"{}/data\"\nappservice_dir = \"{}/appservices\"\naddress = [\"127.0.0.1\"]\nport = {port}\nallow_federation = false\nallow_registration = true\nregistration_token = \"test-registration\"\nallow_encryption = true\nlog_colors = false\nlog_journald = false\n",root.display(),root.display())).unwrap();
     let log = std::fs::File::create(root.join("server.log")).unwrap();
@@ -99,6 +99,12 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
+    (native, port, root)
+}
+
+#[test]
+fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
+    let (mut native, port, root) = spawn_tuwunel("native");
     let server = Server {
         binding: Reference {
             key: chat::key(store::Scope::Control, "chat_server", "test"),
@@ -516,6 +522,7 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
     native.child.wait().unwrap();
     assert_eq!(client.guard(external).unwrap_err().code, "CHAT_UNAVAILABLE");
     // Native transaction IDs remain idempotent after a real server restart.
+    let config = root.join("tuwunel.toml");
     let log = std::fs::File::create(root.join("restart.log")).unwrap();
     native.child = Command::new(find(Path::new(env!("HCTL2_TEST_TUWUNEL"))).unwrap())
         .arg("--config")
@@ -555,8 +562,6 @@ fn native_matrix_create_send_resync_freeze_account_data_and_encryption() {
             .unwrap(),
         retained
     );
-    shutdown_tx.send(()).unwrap();
-    http.join().unwrap();
 }
 
 fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &SourceText) {
@@ -650,9 +655,11 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
                         }),
                         participants: vec![],
                         roster_confirmed: true,
+                        invites: None,
                     },
                 },
                 vec![source.clone()],
+                vec![],
             )?;
             chat::admit(s, &actor, plan)
         })
@@ -698,6 +705,7 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
                     },
                 },
                 vec![],
+                vec![],
             )?;
             chat::admit(s, &actor, plan)
         })
@@ -712,11 +720,13 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
         };
         let before = inventory();
         let driven = if outcome == "cancelled" {
-            drive_using(&shared, root, &actor, effect_id, || {
+            drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
                 panic!("cancelled intent must not connect")
             })
         } else {
-            drive_using(&shared, root, &actor, effect_id, || Ok(client.clone()))
+            drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
+                Ok(client.clone())
+            })
         };
         let expected = match outcome {
             "cancelled" => {
@@ -786,15 +796,20 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
                     }),
                     participants: vec![],
                     roster_confirmed: true,
+                    invites: None,
                 },
             },
             vec![source.clone()],
+            vec![],
         )?;
         chat::admit(s, &actor, plan)
     })
     .unwrap();
     let effect_id = created["effect_id"].as_str().unwrap();
-    drive_using(&shared, root, &actor, effect_id, || Ok(client.clone())).unwrap();
+    drive_using(&shared, root, &actor, effect_id, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
     let id = created["room_id"].as_str().unwrap();
     let (binding, parent) = access(&shared, |s| chat::room(s, &main.project_id, id)).unwrap();
     let effect = tree::carrier_intent(&shared, &actor, &parent).unwrap();
@@ -813,9 +828,11 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
     assert!(projected[&main.id].parents.is_empty());
     assert!(projected[id].parents.is_empty());
     assert_eq!(
-        tree::reparent_using(&shared, root, &payload, &actor, || Ok(client.clone()))
-            .unwrap_err()
-            .code,
+        tree::reparent_using(&shared, root, &payload, &actor, "@hctl2_", || Ok(
+            client.clone()
+        ))
+        .unwrap_err()
+        .code,
         "CHAT_HIERARCHY_CYCLE"
     );
     assert_eq!(
@@ -837,8 +854,10 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
         .put_state(&space, "m.space.parent", &main_space, json!({}))
         .unwrap();
     for _ in 0..2 {
-        let receipt =
-            tree::reparent_using(&shared, root, &payload, &actor, || Ok(client.clone())).unwrap();
+        let receipt = tree::reparent_using(&shared, root, &payload, &actor, "@hctl2_", || {
+            Ok(client.clone())
+        })
+        .unwrap();
         assert_eq!(receipt["state"], "confirmed");
         assert_eq!(receipt["space_id"], space);
         assert_eq!(
@@ -846,5 +865,366 @@ fn recovery_regressions(root: &Path, client: &Client, main: &Room, source: &Sour
             EffectState::Confirmed
         );
         assert_eq!(client.ensure_carrier(&parent).unwrap(), space);
+    }
+}
+
+/// Patch 1a: what a person sees in the chat client. A created Topic Room
+/// receives the confirmed brief as its opening message (idempotent), the
+/// confirmed human invite list is delivered per person, and carrier Space
+/// membership follows the main Room.
+#[test]
+fn native_topic_opening_invites_and_space_members_follow_main_room() {
+    use store::{ProjectSettings, Record, RecordData, RoomKind, RoomState};
+    let (_native, port, root) = spawn_tuwunel("topic-opening");
+    let server = Server {
+        binding: Reference {
+            key: chat::key(store::Scope::Control, "chat_server", "test"),
+            version: store::Version::State(1),
+        },
+        url: format!("http://127.0.0.1:{port}"),
+        server_name: "hctl2.localhost".into(),
+        sender: "@hctl2_control:hctl2.localhost".into(),
+    };
+    let client = Client::new(server.clone(), "as-test-secret".into()).unwrap();
+    // Humans register through the shared token and join the main Room.
+    let (alice_id, alice_token) = client
+        .human_register("alice", "pw-alice", "test-registration")
+        .unwrap();
+    let (bob_id, bob_token) = client
+        .human_register("bob", "pw-bob", "test-registration")
+        .unwrap();
+    let main = chat::Room {
+        project_id: "p".into(),
+        id: "main".into(),
+        name: "主房间".into(),
+        server: server.clone(),
+        matrix_room_id: None,
+        participants: vec![],
+        brief: None,
+        origin: None,
+    };
+    let scope = Scope::Project("p".into());
+    let actor = TrustedActor(Actor {
+        principal: "owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, scope.clone()],
+        authority: None,
+    });
+    let mut store = Store::open(&root.join("opening-control")).unwrap();
+    let project = Record {
+        key: chat::key(scope.clone(), "project", "p"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(&json!({
+            "repo_id":"fixture-repo","archived":false
+        }))
+        .unwrap(),
+        data: RecordData::Project {
+            repo_id: "fixture-repo".into(),
+            settings: ProjectSettings {
+                publish_review_requires_confirmation: true,
+                selection_policy: json!({}),
+            },
+            archived: false,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let identity = Record {
+        key: chat::key(scope.clone(), "room", "main"),
+        version: 1,
+        revision_digest: foundation::canonical_json_sha256(&json!({
+            "room_kind":"main","state":"active"
+        }))
+        .unwrap(),
+        data: RecordData::Room {
+            room_kind: RoomKind::Main,
+            state: RoomState::Active,
+        },
+        sources: vec![],
+        materials: vec![],
+    };
+    let created = client.create(&main, "opening-main", true).unwrap();
+    let main_external = created["matrix_room_id"].as_str().unwrap().to_owned();
+    let mut bound_main = main.clone();
+    bound_main.matrix_room_id = Some(main_external.clone());
+    let binding = chat::value_record(
+        chat::key(scope.clone(), "room_binding", "main"),
+        1,
+        &bound_main,
+    )
+    .unwrap();
+    let command = store::Command {
+        command_id: "seed-opening".into(),
+        idempotency_key: "seed-opening".into(),
+        actor: actor.0.clone(),
+        target: project.key.clone(),
+        expected: Expected::Absent,
+        binding: main.server.binding.clone(),
+        input_digest: store::Command::digest_input("fixture", &json!({})).unwrap(),
+        operation: "fixture".into(),
+        input: json!({}),
+    };
+    store
+        .submit(store.generation(), &actor, &command, None, |tx| {
+            for record in [&project, &identity, &binding] {
+                tx.put(record)?;
+            }
+            Ok(json!({}))
+        })
+        .unwrap();
+    client
+        .members(
+            &main_external,
+            &[alice_id.clone(), bob_id.clone()],
+            true,
+            true,
+        )
+        .unwrap();
+    client.human_join(&alice_token, &main_external).unwrap();
+    client.human_join(&bob_token, &main_external).unwrap();
+    // A managed digital participant joins too; it must not become a default.
+    assert_eq!(
+        client.register_virtual_user("hctl2_worker").unwrap(),
+        "@hctl2_worker:hctl2.localhost"
+    );
+    client
+        .members(
+            &main_external,
+            &["@hctl2_worker:hctl2.localhost".to_owned()],
+            true,
+            true,
+        )
+        .unwrap();
+    let shared = Arc::new(Mutex::new(Some(store)));
+    let defaults = human_members(&client, &main_external, &main.server.sender, "@hctl2_").unwrap();
+    assert_eq!(
+        defaults,
+        vec![alice_id.clone(), bob_id.clone()],
+        "default invite list is the human members; control and managed accounts are not"
+    );
+    // One human message is the brief source.
+    let sent = client
+        .send(&main_external, "opening-source", "原始讨论")
+        .unwrap();
+    let event = client
+        .event(&main_external, sent["event_id"].as_str().unwrap())
+        .unwrap();
+    let binding_reference = Reference {
+        key: chat::key(scope.clone(), "room_binding", "main"),
+        version: store::Version::State(1),
+    };
+    let source = source_text(binding_reference, &event).unwrap();
+    let brief = chat::Brief {
+        context_and_goal: "开场提要：确认后的正文".into(),
+        settled_facts_and_reasons: vec!["已定：方向一致".into()],
+        disagreements_and_questions: vec![],
+        constraints_and_materials: vec![],
+        sources: vec![source.source.clone()],
+    };
+    let opening = chat::opening_body(&brief);
+    let result = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "topic-opening".into(),
+                action: Action::CreateTopic {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    name: "开场话题".into(),
+                    origin: Box::new(Origin::Room {
+                        room_id: "main".into(),
+                        binding_version: 1,
+                    }),
+                    brief: Box::new(brief.clone()),
+                    participants: vec![],
+                    roster_confirmed: true,
+                    invites: None,
+                },
+            },
+            vec![source.clone()],
+            vec![alice_id.clone(), bob_id.clone()],
+        )?;
+        assert_eq!(plan.invites, vec![alice_id.clone(), bob_id.clone()]);
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let create = result["effect_id"].as_str().unwrap().to_owned();
+    let opening_effect = result["opening_effect_id"].as_str().unwrap().to_owned();
+    let invite_ids: Vec<String> = result["invite_effect_ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(invite_ids.len(), 2);
+    // Create first; the opening drive before it would only report pending.
+    drive_using(&shared, &root, &actor, &create, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    let receipt = drive_using(&shared, &root, &actor, &opening_effect, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    let topic_external = access(&shared, |s| {
+        let (_, room) = chat::room(s, "p", result["room_id"].as_str().unwrap())?;
+        Ok(room.matrix_room_id)
+    })
+    .unwrap()
+    .expect("created Topic is bound")
+    .to_owned();
+    // Retry sends no second opening: same event, same first timeline entry.
+    let replayed = drive_using(&shared, &root, &actor, &opening_effect, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    assert_eq!(replayed, receipt);
+    let timeline = client.timeline(&topic_external, None).unwrap();
+    let messages: Vec<&Value> = timeline["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["type"] == "m.room.message")
+        .collect();
+    assert_eq!(messages.len(), 1, "exactly one opening message");
+    assert_eq!(messages[0]["content"]["body"], json!(opening));
+    // Invites: each human is invited, control and the managed worker are not.
+    for id in &invite_ids {
+        drive_using(&shared, &root, &actor, id, "@hctl2_", || Ok(client.clone())).unwrap();
+    }
+    let topic_members = client.member_state(&topic_external).unwrap();
+    let membership = |user: &str| -> Option<String> {
+        topic_members
+            .iter()
+            .find(|(member, _)| member == user)
+            .map(|(_, state)| state.clone())
+    };
+    for user in [&alice_id, &bob_id] {
+        assert_eq!(membership(user).as_deref(), Some("invite"), "{user}");
+    }
+    for user in [
+        "@hctl2_control:hctl2.localhost",
+        "@hctl2_worker:hctl2.localhost",
+    ] {
+        assert_ne!(membership(user).as_deref(), Some("invite"), "{user}");
+    }
+    // Carrier Space of the main Room carries the humans; a later main-Room
+    // invite syncs to every carrier Space of the Project.
+    let main_space = client.carrier(&bound_main).unwrap().unwrap();
+    let space_members =
+        human_members(&client, &main_space, &main.server.sender, "@hctl2_").unwrap();
+    assert!(space_members.contains(&alice_id) && space_members.contains(&bob_id));
+    let (carol_id, carol_token) = client
+        .human_register("carol", "pw-carol", "test-registration")
+        .unwrap();
+    client
+        .members(&main_external, std::slice::from_ref(&carol_id), true, true)
+        .unwrap();
+    client.human_join(&carol_token, &main_external).unwrap();
+    // The topic gains a child so its own carrier Space exists too.
+    let topic_room_id = result["room_id"].as_str().unwrap().to_owned();
+    let topic_binding_version = access(&shared, |s| {
+        let (binding, _) = chat::room(s, "p", &topic_room_id)?;
+        Ok(binding.version)
+    })
+    .unwrap();
+    let opening_event = client
+        .event(&topic_external, receipt["event_id"].as_str().unwrap())
+        .unwrap();
+    let topic_source = source_text(
+        Reference {
+            key: chat::key(scope.clone(), "room_binding", &topic_room_id),
+            version: store::Version::State(topic_binding_version),
+        },
+        &opening_event,
+    )
+    .unwrap();
+    let nested = access(&shared, |s| {
+        let plan = chat::prepare(
+            s,
+            Input {
+                key: "nested-opening".into(),
+                action: Action::CreateTopic {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    name: "嵌套话题".into(),
+                    origin: Box::new(Origin::Room {
+                        room_id: topic_room_id.clone(),
+                        binding_version: topic_binding_version,
+                    }),
+                    brief: Box::new(chat::Brief {
+                        context_and_goal: "嵌套".into(),
+                        settled_facts_and_reasons: vec![],
+                        disagreements_and_questions: vec![],
+                        constraints_and_materials: vec![],
+                        sources: vec![topic_source.source.clone()],
+                    }),
+                    participants: vec![],
+                    roster_confirmed: true,
+                    invites: Some(vec![]),
+                },
+            },
+            vec![topic_source.clone()],
+            vec![],
+        )?;
+        chat::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let nested_create = nested["effect_id"].as_str().unwrap().to_owned();
+    drive_using(&shared, &root, &actor, &nested_create, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    // A real `project members` invite on the main Room now syncs the new
+    // human into every carrier Space of the Project.
+    let (main_binding_record, _) = access(&shared, |s| chat::room(s, "p", "main")).unwrap();
+    let members_result = access(&shared, |s| {
+        let plan = project::prepare(
+            s,
+            project::Input {
+                key: "members-sync".into(),
+                action: project::Action::Members {
+                    project_id: "p".into(),
+                    project_version: 1,
+                    rooms: vec![chat::reference(&main_binding_record)],
+                    users: vec![carol_id.clone()],
+                    invite: true,
+                },
+            },
+            None,
+            &actor,
+            0,
+        )?;
+        project::admit(s, &actor, plan)
+    })
+    .unwrap();
+    let members_effect = members_result["effect_ids"][0].as_str().unwrap().to_owned();
+    drive_using(&shared, &root, &actor, &members_effect, "@hctl2_", || {
+        Ok(client.clone())
+    })
+    .unwrap();
+    let rooms = access(&shared, |s| {
+        s.list("room_binding")?
+            .iter()
+            .filter(|r| r.key.scope == Scope::Project("p".into()))
+            .map(chat::decode::<Room>)
+            .collect::<Result<Vec<_>>>()
+    })
+    .unwrap();
+    let mut spaces = vec![];
+    for room in &rooms {
+        if room.matrix_room_id.is_some()
+            && let Some(space) = client.carrier(room).unwrap()
+        {
+            spaces.push(space);
+        }
+    }
+    assert!(spaces.len() >= 2, "main and topic carriers both exist");
+    for space in &spaces {
+        let members = human_members(&client, space, &main.server.sender, "@hctl2_").unwrap();
+        assert!(
+            members.contains(&carol_id),
+            "Space {space} did not follow the main Room invite"
+        );
     }
 }

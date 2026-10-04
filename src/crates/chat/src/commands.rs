@@ -140,7 +140,15 @@ pub fn main_room(
     Ok((vec![identity, binding], effect))
 }
 
-pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Result<Plan> {
+/// `default_invites` is the control layer's preview-time reading of the source
+/// Room's (Request path: main Room's) current human chat members. The domain
+/// layer never invents membership; `None` input freezes this list.
+pub fn prepare(
+    store: &Store,
+    input: Input,
+    source_texts: Vec<SourceText>,
+    default_invites: Vec<String>,
+) -> Result<Plan> {
     if input.key.trim().is_empty() {
         return Err(invalid("command key is required"));
     }
@@ -154,6 +162,8 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
         records: vec![],
         effects: vec![],
         source_texts,
+        invite_defaults: vec![],
+        invites: vec![],
         result: json!({}),
     };
     let p = required(
@@ -185,6 +195,7 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
             brief,
             participants,
             roster_confirmed,
+            invites,
             ..
         } => {
             let (origin, brief) = (*origin, *brief);
@@ -280,8 +291,74 @@ pub fn prepare(store: &Store, input: Input, source_texts: Vec<SourceText>) -> Re
                 "chat.create",
                 json!({"room":room,"parent":parent}),
             )?);
+            // The confirmed invite list is frozen here: removed members get no
+            // effect and nobody outside the list does. Sorted and deduplicated
+            // so retries and previews compare equal.
+            let mut confirmed: Vec<String> = invites.unwrap_or_else(|| default_invites.clone());
+            for user in &confirmed {
+                if !plausible_user_id(user) {
+                    return Err(invalid("invite list entries must be Matrix user IDs"));
+                }
+            }
+            confirmed.sort_unstable();
+            confirmed.dedup();
+            let opening_body = crate::opening_body(&brief);
+            let opening_input = json!({
+                "room":room,
+                "body":opening_body,
+                "brief_digest":canonical_json_sha256(&serde_json::to_value(&brief)?)?,
+            });
+            let opening_id = suffix_effect_id(&room, &input.key, "opening");
+            let mut opening = effect(
+                &room,
+                reference(&identity),
+                &input.key,
+                "chat.opening",
+                opening_input,
+            )?;
+            opening.intent_id = opening_id.clone();
+            opening.idempotency_key = opening_id.clone();
+            opening.conflict_scope = format!("chat:{}:{}:opening", room.project_id, room.id);
+            plan.effects.push(opening);
+            let mut invite_ids = vec![];
+            for user in &confirmed {
+                let invite_input = json!({"room":room,"users":[user],"invite":true});
+                let invite_id = suffix_effect_id(
+                    &room,
+                    &input.key,
+                    &format!("invite:{}", bytes_sha256(user.as_bytes())),
+                );
+                let mut invite = effect(
+                    &room,
+                    reference(&identity),
+                    &input.key,
+                    "chat.members",
+                    invite_input,
+                )?;
+                invite.intent_id = invite_id.clone();
+                invite.idempotency_key = invite_id.clone();
+                invite.conflict_scope = format!(
+                    "chat:{}:{}:invite:{}",
+                    room.project_id,
+                    room.id,
+                    bytes_sha256(user.as_bytes())
+                );
+                invite_ids.push(invite_id);
+                plan.effects.push(invite);
+            }
+            plan.invite_defaults = default_invites;
+            plan.invites = confirmed;
             plan.records.extend([identity, binding]);
-            plan.result = json!({"room_id":id,"project_id":project,"state":"pending","effect_id":plan.effects[0].intent_id});
+            plan.result = json!({
+                "room_id":id,
+                "project_id":project,
+                "state":"pending",
+                "effect_id":plan.effects[0].intent_id,
+                "opening_effect_id":opening_id,
+                "invites":plan.invites,
+                "invite_defaults":plan.invite_defaults,
+                "invite_effect_ids":invite_ids,
+            });
         }
         Action::Close {
             room_id, version, ..
@@ -532,7 +609,10 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
         for id in store.pending_effects()? {
             let (effect, state) = store.effect(&id)?;
             if effect.owner.key == identity
-                && effect.operation == "chat.create"
+                && matches!(
+                    effect.operation.as_str(),
+                    "chat.create" | "chat.opening" | "chat.members"
+                )
                 && state == store::EffectState::Pending
             {
                 cancel.push(id);
@@ -616,4 +696,21 @@ pub fn confirm(store: &mut Store, actor: &TrustedActor, id: &str, result: Value)
         tx.put(&value_record(ck, 1, &result)?)?;
         Ok(result.clone())
     })
+}
+
+fn plausible_user_id(user: &str) -> bool {
+    let Some(rest) = user.strip_prefix('@') else {
+        return false;
+    };
+    match rest.split_once(':') {
+        Some((local, domain)) => !local.is_empty() && !domain.is_empty(),
+        None => false,
+    }
+}
+
+fn suffix_effect_id(room: &Room, input_key: &str, suffix: &str) -> String {
+    format!(
+        "chat:{}",
+        bytes_sha256(format!("{}:{input_key}:{suffix}", room.project_id).as_bytes())
+    )
 }

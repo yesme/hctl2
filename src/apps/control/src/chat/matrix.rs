@@ -8,7 +8,7 @@ use ruma::api::client::{
     membership::join_room_by_id,
     message::{get_message_events, send_message_event},
     room::{create_room, get_room_event},
-    state::get_state_event_for_key,
+    state::{get_state_event_for_key, get_state_events},
 };
 use ruma::{
     OwnedRoomId, OwnedUserId,
@@ -185,7 +185,7 @@ impl Client {
         Ok(serde_json::from_str(r.event_or_content.get())?)
     }
 
-    pub(super) fn members(
+    pub fn members(
         &self,
         room: &str,
         users: &[String],
@@ -679,3 +679,186 @@ fn unavailable() -> store::StoreError {
 #[cfg(all(test, hctl_chat_native))]
 #[path = "native_tests.rs"]
 mod native_tests;
+
+impl Client {
+    /// Current membership of every user in a room, from native state. Only
+    /// `join` and `invite` count as members for projection purposes.
+    pub fn member_state(&self, room: &str) -> Result<Vec<(String, String)>> {
+        self.guard(room)?;
+        let mut members: Vec<(String, String)> = self
+            .request(get_state_events::v3::Request::new(room_id(room)?))?
+            .room_state
+            .into_iter()
+            .filter_map(|event| {
+                let value: Value = serde_json::from_str(event.json().get()).ok()?;
+                if value["type"] != "m.room.member" {
+                    return None;
+                }
+                let user = value["state_key"].as_str()?.to_owned();
+                let membership = value["content"]["membership"].as_str()?.to_owned();
+                Some((user, membership))
+            })
+            .collect();
+        members.sort();
+        Ok(members)
+    }
+
+    /// Plain client-server calls for human accounts. They never use the
+    /// AppService identity; the token is the human's own.
+    fn human_call(&self, token: &str, method: &str, path: &str, body: Value) -> Result<Value> {
+        let response = self
+            .client
+            .request(
+                reqwest::Method::from_bytes(method.as_bytes()).unwrap(),
+                format!("{}{path}", self.server.url),
+            )
+            .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_vec(&body)?)
+            .send()
+            .map_err(|_| unavailable())?;
+        let status = response.status();
+        let value: Value = serde_json::from_slice(&response.bytes().map_err(|_| unavailable())?)
+            .map_err(|_| unavailable())?;
+        if !status.is_success() {
+            return Err(reject(
+                "CHAT_PERMISSION_DENIED",
+                format!(
+                    "human call failed: {}",
+                    value["errcode"].as_str().unwrap_or("unknown")
+                ),
+                "check_chat_account",
+            ));
+        }
+        Ok(value)
+    }
+
+    /// Register a human account with the shared registration token (UIA),
+    /// returning `(user_id, access_token)`.
+    pub fn human_register(
+        &self,
+        localpart: &str,
+        password: &str,
+        registration_token: &str,
+    ) -> Result<(String, String)> {
+        // A first call without auth answers 401 with a UIA session; the
+        // registration-token flow completes on the second call.
+        let mut auth = json!({"type":"m.login.registration_token","token":registration_token});
+        let challenge = self
+            .client
+            .post(format!("{}/_matrix/client/v3/register", self.server.url))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::to_vec(
+                &json!({"username":localpart,"password":password}),
+            )?)
+            .send()
+            .map_err(|_| unavailable())?;
+        if !challenge.status().is_success()
+            && let Ok(value) =
+                serde_json::from_slice::<Value>(&challenge.bytes().unwrap_or_default())
+            && let Some(session) = value["session"].as_str()
+        {
+            auth["session"] = json!(session);
+        }
+        let body = json!({"username":localpart,"password":password,"auth":auth});
+        let value = self.human_call("", "POST", "/_matrix/client/v3/register", body)?;
+        Ok((
+            value["user_id"]
+                .as_str()
+                .ok_or_else(|| invalid("register response missing user_id"))?
+                .into(),
+            value["access_token"]
+                .as_str()
+                .ok_or_else(|| invalid("register response missing access_token"))?
+                .into(),
+        ))
+    }
+
+    /// Log a human account in, returning `(user_id, access_token)`.
+    pub fn human_login(&self, localpart: &str, password: &str) -> Result<(String, String)> {
+        let body = json!({
+            "type":"m.login.password",
+            "identifier":{"type":"m.id.user","user":localpart},
+            "password":password
+        });
+        let value = self.human_call("", "POST", "/_matrix/client/v3/login", body)?;
+        Ok((
+            value["user_id"]
+                .as_str()
+                .ok_or_else(|| invalid("login response missing user_id"))?
+                .into(),
+            value["access_token"]
+                .as_str()
+                .ok_or_else(|| invalid("login response missing access_token"))?
+                .into(),
+        ))
+    }
+
+    /// A human joins a room by ID or alias; returns the joined room ID.
+    pub fn human_join(&self, token: &str, room: &str) -> Result<String> {
+        let value = self.human_call(
+            token,
+            "POST",
+            &format!("/_matrix/client/v3/join/{room}"),
+            json!({}),
+        );
+        match value {
+            Ok(v) => Ok(v["room_id"]
+                .as_str()
+                .ok_or_else(|| invalid("join response missing room_id"))?
+                .into()),
+            Err(e) => {
+                if e.code == "CHAT_PERMISSION_DENIED" {
+                    // path variant quotes the room id
+                    let encoded = room.replace('!', "%21").replace(':', "%3A");
+                    let v = self.human_call(
+                        token,
+                        "POST",
+                        &format!("/_matrix/client/v3/join/{encoded}"),
+                        json!({}),
+                    )?;
+                    Ok(v["room_id"]
+                        .as_str()
+                        .ok_or_else(|| invalid("join response missing room_id"))?
+                        .into())
+                } else {
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    /// Read the visible timeline tail as a human, for view assertions.
+    pub fn human_messages(&self, token: &str, room: &str) -> Result<Value> {
+        let room = room.replace('!', "%21").replace(':', "%3A");
+        self.human_call(
+            token,
+            "GET",
+            &format!("/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=50"),
+            json!(null),
+        )
+    }
+
+    /// Read one state event as a human, for view assertions in tests.
+    pub fn human_state(
+        &self,
+        token: &str,
+        room: &str,
+        event_type: &str,
+        state_key: &str,
+    ) -> Result<Value> {
+        let room = room.replace('!', "%21").replace(':', "%3A");
+        let key = state_key.replace('@', "%40").replace(':', "%3A");
+        let value = self.human_call(
+            token,
+            "GET",
+            &format!("/_matrix/client/v3/rooms/{room}/state/{event_type}/{key}"),
+            json!(null),
+        );
+        match value {
+            Ok(v) => Ok(v),
+            Err(e) if e.code == "CHAT_PERMISSION_DENIED" => Ok(json!({"membership":"unknown"})),
+            Err(e) => Err(e),
+        }
+    }
+}

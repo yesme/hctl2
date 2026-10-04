@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 use store::{
-    Actor, ActorSource, Command, Expected, Reference, Scope, Store, TrustedActor, Version,
+    Actor, ActorSource, Command, Expected, Record, Reference, Scope, Store, TrustedActor, Version,
 };
 use tokio::sync::Mutex;
 type Shared = Arc<Mutex<Option<Store>>>;
@@ -82,6 +82,71 @@ fn input(operation: &str, payload: &Value) -> Result<Input> {
 }
 
 fn resolve(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    action: &Action,
+) -> Result<(Vec<SourceText>, Vec<String>)> {
+    if let Action::CreateTopic { .. } = action {
+        let texts = resolve_topic_sources(shared, services, root, action)?;
+        let defaults = default_topic_invites(shared, services, root, action)?;
+        return Ok((texts, defaults));
+    }
+    Ok((
+        resolve_topic_sources(shared, services, root, action)?,
+        vec![],
+    ))
+}
+
+/// Human chat members of a bound Room: joined or invited, excluding the
+/// control account and every AppService-managed digital participant.
+pub(super) fn human_members(
+    client: &matrix::Client,
+    external: &str,
+    sender: &str,
+    managed_prefix: &str,
+) -> Result<Vec<String>> {
+    let mut humans: Vec<String> = client
+        .member_state(external)?
+        .into_iter()
+        .filter(|(user, membership)| {
+            ["join", "invite"].contains(&membership.as_str())
+                && user != sender
+                && !user.starts_with(managed_prefix)
+        })
+        .map(|(user, _)| user)
+        .collect();
+    humans.sort();
+    humans.dedup();
+    Ok(humans)
+}
+
+/// The previewed default invite list: human members of the source Room
+/// (Request path: the main Room).
+fn default_topic_invites(
+    shared: &Shared,
+    services: &Supervisor,
+    root: &Path,
+    action: &Action,
+) -> Result<Vec<String>> {
+    let Action::CreateTopic {
+        project_id, origin, ..
+    } = action
+    else {
+        return Ok(vec![]);
+    };
+    let (binding, room) = match origin.as_ref() {
+        Origin::Room { room_id, .. } => access(shared, |s| chat::room(s, project_id, room_id))?,
+        Origin::Request { .. } => access(shared, |s| chat::main_binding(s, project_id))?,
+    };
+    let _ = binding;
+    let client = client(services)?;
+    guard(&client, root, &room, bound(&room)?)?;
+    let prefix = config::managed_user_prefix(services)?;
+    human_members(&client, bound(&room)?, &room.server.sender, &prefix)
+}
+
+fn resolve_topic_sources(
     shared: &Shared,
     services: &Supervisor,
     root: &Path,
@@ -249,12 +314,17 @@ pub(super) fn preview(
         return Ok(serde_json::to_value(plan)?);
     }
     let stamp = access(shared, |s| Ok(s.read_stamp()))?;
-    let sources = resolve(shared, services, root, &input.action)?;
+    let (sources, default_invites) = resolve(shared, services, root, &input.action)?;
     access(shared, |s| {
         if s.read_stamp() != stamp {
             return Err(chat::stale());
         }
-        Ok(serde_json::to_value(chat::prepare(s, input, sources)?)?)
+        Ok(serde_json::to_value(chat::prepare(
+            s,
+            input,
+            sources,
+            default_invites,
+        )?)?)
     })
 }
 
@@ -281,8 +351,11 @@ pub(super) fn submit(
     let replay = access(shared, |s| chat::replay(s, &input))?.is_some();
     let stamp = access(shared, |s| Ok(s.read_stamp()))?;
     if !replay {
-        let sources = resolve(shared, services, root, &input.action)?;
+        let (sources, default_invites) = resolve(shared, services, root, &input.action)?;
         if serde_json::to_value(&sources)? != serde_json::to_value(&plan.source_texts)? {
+            return Err(chat::stale());
+        }
+        if serde_json::to_value(&default_invites)? != serde_json::to_value(&plan.invite_defaults)? {
             return Err(chat::stale());
         }
     }
@@ -313,7 +386,127 @@ pub(super) fn submit(
             }
         }
     }
+    // A created Topic Room gains its opening message and its confirmed invite
+    // list. Each target is its own persisted effect with readback; partial
+    // failure reports per-target results instead of pretending success.
+    if matches!(input.action, Action::CreateTopic { .. }) {
+        let confirmed = result["state"] == json!("confirmed");
+        let mut failed = false;
+        if confirmed && let Some(opening) = result["opening_effect_id"].as_str().map(str::to_owned)
+        {
+            match drive(shared, services, root, actor, &opening) {
+                Ok(receipt) => {
+                    result["opening"] = json!({"delivery":"confirmed","receipt":receipt})
+                }
+                Err(e) => {
+                    failed = true;
+                    result["opening"] = json!({"delivery":"pending_or_unknown","error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}});
+                }
+            }
+        }
+        let ids = result["invite_effect_ids"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let mut invites = vec![];
+        for id in ids {
+            let id = id.as_str().ok_or_else(|| invalid("effect ID missing"))?;
+            if !confirmed {
+                invites.push(json!({"effect_id":id,"delivery":"pending_or_unknown"}));
+                failed = true;
+                continue;
+            }
+            match drive(shared, services, root, actor, id) {
+                Ok(receipt) => {
+                    invites.push(json!({"effect_id":id,"delivery":"confirmed","receipt":receipt}))
+                }
+                Err(e) => {
+                    failed = true;
+                    invites.push(json!({"effect_id":id,"delivery":"pending_or_unknown","error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}));
+                }
+            }
+        }
+        if !invites.is_empty() || result.get("opening_effect_id").is_some() {
+            result["invites"] = json!(invites);
+            if failed {
+                result["delivery"] = json!("partial");
+                result["error"] = json!({"code":"ROOMS_PARTIAL","message":"not all Topic openers confirmed","recovery_action":"resume_original_command"});
+            } else if confirmed {
+                result["delivery"] = json!("confirmed");
+            }
+        }
+    }
     Ok(result)
+}
+
+/// Topic creation effects freeze the Room before it is bound. Resolve the
+/// current record at drive time and enforce the same local authority checks.
+fn bound_current(shared: &Shared, client: &matrix::Client, room: &Room) -> Result<(Record, Room)> {
+    access(shared, |s| {
+        let (binding, current) = chat::room(s, &room.project_id, &room.id)?;
+        chat::writable(s, &current)?;
+        let project = chat::required(
+            s,
+            &chat::key(
+                Scope::Project(room.project_id.clone()),
+                "project",
+                &room.project_id,
+            ),
+        )?;
+        chat::active_project(s, &room.project_id, project.version)?;
+        if current.server.binding != client.server.binding
+            || current.server.url != client.server.url
+            || room
+                .matrix_room_id
+                .as_deref()
+                .is_some_and(|r| current.matrix_room_id.as_deref() != Some(r))
+        {
+            return Err(chat::stale());
+        }
+        Ok((binding, current))
+    })
+}
+
+/// All carrier Spaces of one Project, from current native reads.
+fn project_carrier_spaces(
+    shared: &Shared,
+    client: &matrix::Client,
+    project: &str,
+) -> Result<Vec<String>> {
+    let rooms = access(shared, |s| {
+        s.list("room_binding")?
+            .iter()
+            .filter(|r| r.key.scope == Scope::Project(project.into()))
+            .map(chat::decode::<Room>)
+            .collect::<Result<Vec<_>>>()
+    })?;
+    let mut spaces = vec![];
+    for room in &rooms {
+        if room.matrix_room_id.is_some()
+            && let Some(space) = client.carrier(room)?
+        {
+            spaces.push(space);
+        }
+    }
+    spaces.sort();
+    spaces.dedup();
+    Ok(spaces)
+}
+
+/// Carrier Space membership follows the main Room. Converging with a
+/// read-before-write invite is the creation requirement and heals drift.
+fn converge_space_membership(
+    shared: &Shared,
+    client: &matrix::Client,
+    project: &str,
+    space: &str,
+    managed_prefix: &str,
+    allow_write: bool,
+) -> Result<()> {
+    let (_, main) = access(shared, |s| chat::main_binding(s, project))?;
+    let humans = human_members(client, bound(&main)?, &main.server.sender, managed_prefix)?;
+    client.members(space, &humans, true, allow_write)?;
+    Ok(())
 }
 
 pub(crate) fn drive(
@@ -323,7 +516,10 @@ pub(crate) fn drive(
     actor: &TrustedActor,
     id: &str,
 ) -> Result<Value> {
-    drive_using(shared, root, actor, id, || client(services))
+    let managed_prefix = config::managed_user_prefix(services)?;
+    drive_using(shared, root, actor, id, &managed_prefix, || {
+        client(services)
+    })
 }
 
 fn drive_using(
@@ -331,6 +527,7 @@ fn drive_using(
     root: &Path,
     actor: &TrustedActor,
     id: &str,
+    managed_prefix: &str,
     connect: impl FnOnce() -> Result<matrix::Client>,
 ) -> Result<Value> {
     let (effect, state) = access(shared, |s| s.effect(id))?;
@@ -408,7 +605,7 @@ fn drive_using(
                 &chat::key(effect.permission_scope.clone(), "project", &room.project_id),
             )?;
             chat::active_project(s, &room.project_id, project.version)?;
-            if current.matrix_room_id != room.matrix_room_id
+            if (room.matrix_room_id.is_some() && current.matrix_room_id != room.matrix_room_id)
                 || current.server.binding != room.server.binding
             {
                 return Err(chat::stale());
@@ -438,7 +635,16 @@ fn drive_using(
                 }
                 Ok(())
             })?;
-            json!({"space_id":client.ensure_carrier(&room)?})
+            let space = client.ensure_carrier(&room)?;
+            converge_space_membership(
+                shared,
+                &client,
+                &room.project_id,
+                &space,
+                managed_prefix,
+                pending,
+            )?;
+            json!({"space_id":space})
         }
         "chat.create" => {
             let parent: Option<Room> = effect
@@ -491,6 +697,14 @@ fn drive_using(
                     Ok(_) => return Err(invalid("Topic creation marker differs")),
                     Err(e) if e.code == "CHAT_NOT_FOUND" => {
                         let space = client.ensure_carrier(parent)?;
+                        converge_space_membership(
+                            shared,
+                            &client,
+                            &room.project_id,
+                            &space,
+                            managed_prefix,
+                            pending,
+                        )?;
                         client.attach(&space, child, true)?;
                         client.put_state(child, "io.hctl2.topic_creation", "", completion)?;
                     }
@@ -498,6 +712,21 @@ fn drive_using(
                 }
             }
             receipt
+        }
+        "chat.opening" => {
+            let (_, current) = bound_current(shared, &client, &room)?;
+            let external = bound(&current)?;
+            guard(&client, root, &current, external)?;
+            let body = effect.input["body"]
+                .as_str()
+                .ok_or_else(|| invalid("opening body missing"))?;
+            if pending {
+                access(shared, |s| {
+                    s.begin_effect(s.generation(), id)?;
+                    Ok(())
+                })?;
+            }
+            client.send_thread(external, &effect.idempotency_key, body, None)?
         }
         "chat.send" => {
             guard(&client, root, &room, bound(&room)?)?;
@@ -531,7 +760,12 @@ fn drive_using(
             )?
         }
         "chat.members" => {
-            guard(&client, root, &room, bound(&room)?)?;
+            let target = if room.matrix_room_id.is_some() {
+                room.clone()
+            } else {
+                bound_current(shared, &client, &room)?.1
+            };
+            guard(&client, root, &target, bound(&target)?)?;
             if pending {
                 access(shared, |s| {
                     s.begin_effect(s.generation(), id)?;
@@ -539,14 +773,25 @@ fn drive_using(
                 })?;
             }
             let users: Vec<String> = serde_json::from_value(effect.input["users"].clone())?;
-            client.members(
-                bound(&room)?,
-                &users,
-                effect.input["invite"]
-                    .as_bool()
-                    .ok_or_else(|| invalid("membership action missing"))?,
-                pending,
-            )?
+            let invite = effect.input["invite"]
+                .as_bool()
+                .ok_or_else(|| invalid("membership action missing"))?;
+            let mut receipt = client.members(bound(&target)?, &users, invite, pending)?;
+            // Main-Room membership is mirrored by every carrier Space of the
+            // Project, each with its own readback; a failure leaves the effect
+            // unresolved for a safe read-back retry.
+            let (_, main) = access(shared, |s| chat::main_binding(s, &room.project_id))?;
+            if main.id == target.id {
+                let mut spaces = vec![];
+                for space in project_carrier_spaces(shared, &client, &room.project_id)? {
+                    let result = client.members(&space, &users, invite, pending)?;
+                    spaces.push(result);
+                }
+                if !spaces.is_empty() {
+                    receipt["spaces"] = json!(spaces);
+                }
+            }
+            receipt
         }
         _ => return Err(invalid("not a chat effect")),
     };

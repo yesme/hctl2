@@ -164,6 +164,7 @@ impl Env {
                 }),
                 participants: vec![],
                 roster_confirmed: true,
+                invites: None,
             },
         }
     }
@@ -178,7 +179,7 @@ fn independent_main_rooms_topic_human_edits_retry_close_and_restart() {
     );
     let (origin, source) = e.source("A");
     let input = e.topic("topic", origin, std::slice::from_ref(&source));
-    let plan = prepare(&e.store, input.clone(), vec![source.clone()]).unwrap();
+    let plan = prepare(&e.store, input.clone(), vec![source.clone()], vec![]).unwrap();
     assert_eq!(
         e.store.list("room").unwrap().len(),
         2,
@@ -204,6 +205,7 @@ fn independent_main_rooms_topic_human_edits_retry_close_and_restart() {
                 version: binding.version,
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();
@@ -239,6 +241,7 @@ fn independent_main_rooms_topic_human_edits_retry_close_and_restart() {
                     thread_root: None
                 }
             },
+            vec![],
             vec![]
         )
         .unwrap_err()
@@ -256,6 +259,7 @@ fn close_cancels_only_undispatched_creation_and_retains_unknown_readback() {
             &e.store,
             e.topic("unfinished", origin, std::slice::from_ref(&source)),
             vec![source],
+            vec![],
         )
         .unwrap();
         let created = admit(&mut e.store, &actor(), plan).unwrap();
@@ -274,6 +278,7 @@ fn close_cancels_only_undispatched_creation_and_retains_unknown_readback() {
                     version: 1,
                 },
             },
+            vec![],
             vec![],
         )
         .unwrap();
@@ -333,6 +338,7 @@ fn stale_close_does_not_cancel_creation_or_archive_room() {
         &e.store,
         e.topic("stale-close", origin, std::slice::from_ref(&source)),
         vec![source],
+        vec![],
     )
     .unwrap();
     let created = admit(&mut e.store, &actor(), plan).unwrap();
@@ -348,6 +354,7 @@ fn stale_close_does_not_cancel_creation_or_archive_room() {
                 version: 1,
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();
@@ -417,7 +424,7 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
         "要不要继续？"
     );
     let input = e.topic("request-topic", origin.clone(), &sources);
-    let plan = prepare(&e.store, input, sources.clone()).unwrap();
+    let plan = prepare(&e.store, input, sources.clone(), vec![]).unwrap();
     let result = admit(&mut e.store, &actor(), plan).unwrap();
     let room_id = result["room_id"].as_str().unwrap();
     let plan = prepare(
@@ -430,6 +437,7 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
                 version: 1,
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();
@@ -452,7 +460,8 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
         prepare(
             &e.store,
             e.topic("supplemented", origin.clone(), &supplemented),
-            supplemented.clone()
+            supplemented.clone(),
+            vec![]
         )
         .is_ok()
     );
@@ -462,7 +471,8 @@ fn request_without_messages_has_exact_frozen_blockers_and_keeps_request_open() {
         prepare(
             &e.store,
             e.topic("foreign-message", origin.clone(), &supplemented),
-            supplemented
+            supplemented,
+            vec![]
         )
         .is_err()
     );
@@ -501,7 +511,7 @@ fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster()
     let mut e = Env::new();
     let (origin, source) = e.source("A");
     let input = e.topic("parent", origin, std::slice::from_ref(&source));
-    let plan = prepare(&e.store, input, vec![source]).unwrap();
+    let plan = prepare(&e.store, input, vec![source], vec![]).unwrap();
     let parent = admit(&mut e.store, &actor(), plan).unwrap();
     let parent_id = parent["room_id"].as_str().unwrap();
     let effect_id = parent["effect_id"].as_str().unwrap();
@@ -533,6 +543,7 @@ fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster()
         &e.store,
         e.topic("nested", origin.clone(), std::slice::from_ref(&text)),
         vec![text],
+        vec![],
     )
     .unwrap();
     assert_eq!(plan.effects[0].input["parent"]["id"], parent_id);
@@ -548,6 +559,7 @@ fn topic_can_be_source_and_closing_parent_does_not_close_child_or_share_roster()
                 version: r.version,
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();
@@ -569,13 +581,14 @@ fn stale_cross_project_unconfirmed_roster_and_bot_writes_rejected() {
     {
         *roster_confirmed = false;
     }
-    assert!(prepare(&e.store, input, vec![source.clone()]).is_err());
+    assert!(prepare(&e.store, input, vec![source.clone()], vec![]).is_err());
     let (_, foreign) = e.source("B");
     assert!(validate_sources("A", &origin, &[foreign]).is_err());
     let plan = prepare(
         &e.store,
         e.topic("stale", origin, std::slice::from_ref(&source)),
         vec![source],
+        vec![],
     )
     .unwrap();
     let mut bot = actor();
@@ -614,7 +627,7 @@ fn topic_roster_cannot_inherit_another_rooms_selection() {
             *participants = vec![r];
         }
         assert_eq!(
-            prepare(&e.store, input.clone(), vec![source.clone()]).is_ok(),
+            prepare(&e.store, input.clone(), vec![source.clone()], vec![]).is_ok(),
             accepted
         );
     }
@@ -634,7 +647,7 @@ fn rebind_keeps_old_event_reference() {
             event_id: "$original".into(),
         },
     };
-    let plan = prepare(&e.store, freeze, vec![source.clone()]).unwrap();
+    let plan = prepare(&e.store, freeze, vec![source.clone()], vec![]).unwrap();
     admit(&mut e.store, &actor(), plan).unwrap();
     let old = e.store.list("chat_source_reference").unwrap()[0].clone();
     let plan = prepare(
@@ -648,6 +661,7 @@ fn rebind_keeps_old_event_reference() {
                 matrix_room_id: "!upgraded:hctl2.localhost".into(),
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();
@@ -667,4 +681,135 @@ fn rebind_keeps_old_event_reference() {
         .matrix_room_id
         .unwrap();
     assert!(unique_binding(&e.store, &main.id, &other).is_err());
+}
+
+#[test]
+fn topic_invites_freeze_the_confirmed_list_and_render_the_opening_message() {
+    let e = Env::new();
+    let (origin, source) = e.source("A");
+    let brief = Brief {
+        context_and_goal: "目标：确认名单与开场消息".into(),
+        settled_facts_and_reasons: vec!["已定：缺省名单来自来源 Room 的人类成员".into()],
+        disagreements_and_questions: vec!["待答：无".into()],
+        constraints_and_materials: vec![],
+        sources: vec![source.source.clone()],
+    };
+    let body = opening_body(&brief);
+    assert!(body.contains("话题与目标\n目标：确认名单与开场消息"));
+    assert!(body.contains("- 已定：缺省名单来自来源 Room 的人类成员"));
+    let Source::Message {
+        binding, event_id, ..
+    } = &source.source
+    else {
+        panic!("message source required");
+    };
+    let rendered_source = format!("- 消息：房间绑定 {}，事件 {event_id}", binding.key.id);
+    assert!(body.contains(&rendered_source), "{body}");
+    let input = |invites: Option<Vec<String>>, key: &str| Input {
+        key: key.into(),
+        action: Action::CreateTopic {
+            project_id: "A".into(),
+            project_version: 1,
+            name: "邀请".into(),
+            origin: Box::new(origin.clone()),
+            brief: Box::new(brief.clone()),
+            participants: vec![],
+            roster_confirmed: true,
+            invites,
+        },
+    };
+    // Explicit confirmed list governs: removed defaults get no effect,
+    // additions are included, nobody outside the list is invited.
+    let plan = prepare(
+        &e.store,
+        input(
+            Some(vec![
+                "@carol:hctl2.localhost".into(),
+                "@alice:hctl2.localhost".into(),
+                "@alice:hctl2.localhost".into(),
+            ]),
+            "invite-list",
+        ),
+        vec![source.clone()],
+        vec![
+            "@alice:hctl2.localhost".into(),
+            "@bob:hctl2.localhost".into(),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        plan.invites,
+        vec![
+            "@alice:hctl2.localhost".to_owned(),
+            "@carol:hctl2.localhost".to_owned(),
+        ],
+        "confirmed list is sorted, deduplicated and exactly what was submitted"
+    );
+    assert_eq!(
+        plan.invite_defaults,
+        vec![
+            "@alice:hctl2.localhost".to_owned(),
+            "@bob:hctl2.localhost".to_owned(),
+        ]
+    );
+    let members: Vec<&store::EffectIntent> = plan
+        .effects
+        .iter()
+        .filter(|effect| effect.operation == "chat.members")
+        .collect();
+    assert_eq!(members.len(), 2, "one effect per confirmed member");
+    let invited: Vec<String> = members
+        .iter()
+        .map(|effect| effect.input["users"][0].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(invited, plan.invites);
+    assert!(!invited.contains(&"@bob:hctl2.localhost".to_owned()));
+    // Every invite effect targets exactly this Room with its own conflict
+    // scope, so independent retries cannot block each other.
+    for effect in members {
+        assert_eq!(
+            effect.input["room"]["id"],
+            json!(plan.result["room_id"]),
+            "invite effects target the new Room snapshot"
+        );
+        assert!(effect.conflict_scope.contains(":invite:"));
+    }
+    // The opening message effect carries the deterministic rendering and a
+    // stable key, ordered after creation in the same transaction.
+    let opening: Vec<&store::EffectIntent> = plan
+        .effects
+        .iter()
+        .filter(|effect| effect.operation == "chat.opening")
+        .collect();
+    assert_eq!(opening.len(), 1);
+    assert_eq!(opening[0].input["body"], json!(body));
+    assert_eq!(
+        plan.result["opening_effect_id"],
+        json!(opening[0].intent_id)
+    );
+    assert_eq!(
+        plan.effects[0].operation, "chat.create",
+        "creation is dispatched first"
+    );
+    // Default list when the input carries none.
+    let plan = prepare(
+        &e.store,
+        input(None, "invite-default"),
+        vec![source.clone()],
+        vec!["@alice:hctl2.localhost".into()],
+    )
+    .unwrap();
+    assert_eq!(plan.invites, vec!["@alice:hctl2.localhost".to_owned()]);
+    // Invalid user IDs are rejected instead of silently dropped.
+    assert_eq!(
+        prepare(
+            &e.store,
+            input(Some(vec!["not-a-user".into()]), "invite-invalid"),
+            vec![source.clone()],
+            vec![],
+        )
+        .unwrap_err()
+        .code,
+        "INVALID_INPUT"
+    );
 }

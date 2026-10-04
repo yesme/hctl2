@@ -30,6 +30,12 @@ Topic 的 `participants` 是本 Project 已有 `room_selection` 记录的精确�
 
 Topic 可以从本 Project 任一 Room 开出，缺省挂在来源 Room 下；Request 路径挂在主 Room 下，并可附本 Project 的相关消息。出处与确认提要在控制面固定，挂靠在 Matrix 固定。非叶 Room 多一个原生承载 Space，Space ID 不进 Room–Server Binding；自身消息房间不投影成自身下级。Space 创建意图先准入，再联网写入。创建完成的原生标记防止重试把后来改过的挂靠复原。
 
+补丁 1a（v0.19.2 两句约束）：
+
+- 房间建成后，control 把经确认的提要正文与来源渲染成开场消息发进新房间（`brief.rs::opening_body` 是唯一渲染器，测试与实现共用）。开场消息是同事务准入的独立外部意图（`chat.opening`，稳定关联键，重试不发第二条）；材料仍是权威，`room show` 的 `brief` 不变。
+- 创建预览列出邀请名单：缺省是来源 Room（Request 路径是主 Room）当前的人类聊天成员——不属于控制面账号、也不在 AppService 命名空间（`@hctl2_` 前缀，从注册文件派生）里的成员。输入 `invites` 可删减、补充；最终名单在计划里冻结，逐人一条 `chat.members` 意图（每人独立冲突域），逐人投递并回读，部分失败报逐目标结果与 `ROOMS_PARTIAL`，不报全体成功。
+- 承载 Space 的聊天成员跟主 Room 走：新建或补投承载 Space 时，把主 Room 当前的人类成员邀请进 Space（先读后写、幂等收敛）；`project members` 对主 Room 的邀请与移除，在同一意图的投递里同步到本 Project 全部承载 Space（逐 Space 回读，失败按未知回读重试）。Space 成员是 content，不进名册、不带来授权，加入规则仍是 invite。关闭 Topic 会一并撤回未发送的开场与逐人邀请意图。
+
 `room hierarchy` 按本 Project 全部 Room 的即时 state 读取投影，不递归调用有 10 层响应限制的 hierarchy 接口，不用本地权威副本。多个上级全部保留，canonical 只作提示；环边不显示、标需要关注；外 Project 或未知上级列为外部链接；读不到的字段为空，不阻拦关闭等无关命令。`room reparent` 是 content Submit，不更改出处、绑定或消息；原生双向 state 写入逐项回读，部分失败明确返回 `partial`。挂靠不复制名册、授权、成员或加入规则，关闭不级联。Project 全体归档与多房间成员/权限业务动作仍由辛接线，不在本包冒充完成。
 
 讨论串使用原生 `m.thread`；发送拒绝把讨论串消息作为另一个讨论串的根，消息仍按所在 Room 的事件 ID 冻结。Room 列表 API 是平铺查询，不以树代替全量入口；Workbench 的列表和原生视图尚未实现。
@@ -78,6 +84,8 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 | 挂靠按回读投影 | 双非 canonical/双 canonical、环、外 Project、鉴权失败字段空且标关注；HCTL 成环改挂拒绝，已有环不因展示过滤漏判；N、U、R | 仅声明本地 Matrix 能力，不支持其他聊天协议；跨 server 层级未验 |
 | 挂靠不带来继承 | 独立名册、禁止借其他 Room 的选入记录、关闭不级联；D、R；原生私有房间权限未复制 | 多房间成员/权限调整 API、Project 全体归档归辛；成员拒绝路径尚未实测 |
 | 一间 Room 只有一条时间线和一层讨论串 | 原生 m.thread、拒嵌套、事件 ID 与正文冻结、主时间线含串消息；N、R | Workbench 讨论串 UI 与所有成员同时读取未验 |
+| Topic 建成后开场消息与确认名单逐人投递（v0.19.2 行） | 开场消息与 `opening_body` 逐字一致且仅一条、重试幂等；缺省名单=来源/主 Room 人类成员（控制面与 `@hctl2_` 排除）、删减者不邀、名单外不邀；逐人回读、部分失败 `ROOMS_PARTIAL`；N、B1 | 邀请误当名册/授权的负例由「名册不可改写」「Space 不进名册」既有用例与代码路径覆盖，未单独做 UI 断言 |
+| 承载 Space 成员跟主 Room 走（v0.19.2 行） | 新建 Space 邀请主 Room 人类成员；主 Room 邀请/移除同步到全部承载 Space（逐 Space 回读）；N、B1 | 移除路径的 Space 同步由 members 语义对称覆盖（同一 `chat.members` 意图 invite=false），原生用例只做了邀请侧 |
 | 待你处理按现有事项去重 | 未实现 | 聚合投影与业务动作归辛及后续包 |
 | 待处理来源分别注入 | 未实现 | 五类事项随业务包逐项接入 |
 | Context 可解释、Room 历史可恢复 | 丢聊天缓存、重同步与冻结源重读、异目录恢复；N、R | Manifest / Bundle 解释与纪要索引归子 |

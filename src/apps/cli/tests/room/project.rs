@@ -12,7 +12,7 @@ fn project_definition(name: &str) -> Value {
 }
 #[test]
 fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart() {
-    let (f, _) = Fixture::packaged("project-b1");
+    let (f, port) = Fixture::packaged("project-b1");
     assert!(f.run(&["start"]).0);
     let input = json!({"name":"b1","origin":"local","platform":"local","platform_path":"b1","default_source":"gitea_issues"});
     let registered = accepted(&f, "repo", "register", "register-b1", input);
@@ -108,6 +108,118 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
             json!({"project_id":p,"project_version":1,"source_id":source,"approved_scope":platform_id,"consent":true}),
         );
     }
+    // Patch 1a, from a human account's own view: a Topic created after the
+    // human joined the main Room invites them by default, carries the
+    // confirmed brief as its opening message, and the carrier Space follows
+    // the main Room's membership.
+    let registration_token =
+        std::fs::read_to_string(f.root.join("services/config/tuwunel-registration-token")).unwrap();
+    let registration =
+        std::fs::read_to_string(f.root.join("services/config/appservices/hctl2.yaml")).unwrap();
+    let as_token = serde_json::from_str::<Value>(&registration).unwrap()["as_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let server = chat::Server {
+        binding: store::Reference {
+            key: chat::key(store::Scope::Control, "chat_server", "packaged"),
+            version: store::Version::State(1),
+        },
+        url: format!("http://127.0.0.1:{port}"),
+        server_name: "hctl2.localhost".into(),
+        sender: "@hctl2_control:hctl2.localhost".into(),
+    };
+    let matrix = control::MatrixClient::new(server, as_token).unwrap();
+    let (human_id, human_token) = matrix
+        .human_register("b1human", "b1-password", registration_token.trim())
+        .unwrap();
+    let (main_project, main_room) = &projects[0];
+    let main_binding = f.show(main_project, main_room)["binding"].clone();
+    accepted(
+        &f,
+        "project",
+        "members",
+        "members-human",
+        json!({"project_id":main_project,"project_version":1,"rooms":[{"key":main_binding["key"],"version":{"state":main_binding["version"]}}],"users":[human_id],"invite":true}),
+    );
+    let main_external =
+        f.show(main_project, main_room)["binding"]["data"]["value"]["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    matrix.human_join(&human_token, &main_external).unwrap();
+    // One human-visible message in the main Room is the Topic's source.
+    let human_send = accepted(
+        &f,
+        "room",
+        "send",
+        "send-human-view",
+        json!({"project_id":main_project,"room_id":main_room,"version":f.show(main_project, main_room)["binding"]["version"],"body":"人的视角来源消息"}),
+    );
+    let human_event = human_send["receipt"]["event_id"].as_str().unwrap();
+    let human_digest = {
+        let content = json!({"body":"人的视角来源消息","msgtype":"m.text"});
+        let canonical = foundation::canonical_json(&content).unwrap();
+        foundation::bytes_sha256(&canonical)
+    };
+    let source_json = json!({"kind":"message","binding":{"key":main_binding["key"],"version":{"state":main_binding["version"]}},"event_id":human_event,"content_digest":human_digest});
+    let human_brief = json!({"context_and_goal":"人的视角","settled_facts_and_reasons":[],"disagreements_and_questions":[],"constraints_and_materials":[],"sources":[source_json]});
+    let human_topic = accepted(
+        &f,
+        "room",
+        "create-topic",
+        "topic-human-view",
+        json!({"project_id":main_project,"project_version":1,"name":"人的视角","origin":{"kind":"room","room_id":main_room,"binding_version":f.show(main_project, main_room)["binding"]["version"]},"brief":human_brief,"participants":[],"roster_confirmed":true}),
+    );
+    let invited: Vec<&str> = human_topic["invites"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|entry| entry["receipt"]["members"].as_array().unwrap().iter())
+        .map(|member| member["user_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        invited,
+        vec![human_id.as_str()],
+        "the joined human is the default invite list"
+    );
+    assert_eq!(human_topic["opening"]["delivery"], json!("confirmed"));
+    assert_eq!(human_topic["invites"][0]["delivery"], json!("confirmed"));
+    let human_topic_room = human_topic["room_id"].as_str().unwrap().to_owned();
+    let topic_external =
+        f.show(main_project, &human_topic_room)["binding"]["data"]["value"]["matrix_room_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    matrix.human_join(&human_token, &topic_external).unwrap();
+    let messages = matrix
+        .human_messages(&human_token, &topic_external)
+        .unwrap();
+    let bodies: Vec<&Value> = messages["chunk"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["type"] == "m.room.message")
+        .map(|e| &e["content"]["body"])
+        .collect();
+    let brief_struct: chat::Brief = serde_json::from_value(human_brief.clone()).unwrap();
+    assert_eq!(
+        bodies.last(),
+        Some(&&json!(chat::opening_body(&brief_struct))),
+        "the human sees the confirmed brief as the opening message"
+    );
+    let hierarchy = f.run(&["room", "hierarchy", main_project, main_room]);
+    assert!(hierarchy.0, "{:?}", hierarchy.1);
+    let space = hierarchy.1["carrier_space_id"].as_str().unwrap();
+    matrix.human_join(&human_token, space).unwrap();
+    let space_membership = matrix
+        .human_state(&human_token, space, "m.room.member", &human_id)
+        .unwrap();
+    assert_eq!(
+        space_membership["membership"],
+        json!("join"),
+        "the carrier Space membership follows the main Room"
+    );
     let created = accepted(
         &f,
         "task",
