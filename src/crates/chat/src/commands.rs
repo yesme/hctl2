@@ -654,6 +654,17 @@ pub fn admit(store: &mut Store, actor: &TrustedActor, mut plan: Plan) -> Result<
 }
 
 pub fn confirm(store: &mut Store, actor: &TrustedActor, id: &str, result: Value) -> Result<Value> {
+    confirm_with_effects(store, actor, id, result, &[])
+}
+
+/// Confirmation and its authorized follow-on work share one transaction.
+pub fn confirm_with_effects(
+    store: &mut Store,
+    actor: &TrustedActor,
+    id: &str,
+    result: Value,
+    followups: &[EffectIntent],
+) -> Result<Value> {
     let (effect, state) = store.effect(id)?;
     if state == store::EffectState::Confirmed {
         return Ok(result);
@@ -696,6 +707,9 @@ pub fn confirm(store: &mut Store, actor: &TrustedActor, id: &str, result: Value)
     };
     store.submit(store.generation(), &actor, &command, None, |tx| {
         tx.confirm_effect(id, &readback)?;
+        for intent in followups {
+            tx.enqueue_effect(intent)?;
+        }
         if effect.operation == "chat.create" {
             let mut next = value_record(binding.key.clone(), binding.version + 1, &current)?;
             next.materials = binding.materials.clone();

@@ -1,6 +1,6 @@
 //! Native Tuwunel in an isolated directory; no mutations of the developer's chat server.
 use super::*;
-use crate::chat::{access, drive_using, enqueue_space_member_intents, human_members, tree};
+use crate::chat::{access, bound, drive_using, enqueue_space_member_intents, human_members, tree};
 use chat::{Action, Input, Origin, Room};
 use std::{
     path::{Path, PathBuf},
@@ -28,6 +28,464 @@ fn drive_with(
     connect: impl Fn() -> Result<Client>,
 ) -> Result<Value> {
     drive_using(shared, root, actor, id, "@hctl2_", &connect)
+}
+
+// Limit the additional real servers; the older native fixtures run concurrently too.
+static MEMBERSHIP_SERVER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct MembershipFixture {
+    _native: Native,
+    root: PathBuf,
+    shared: Arc<Mutex<Option<Store>>>,
+    actor: TrustedActor,
+    client: Client,
+    rooms: Vec<Room>,
+    spaces: Vec<String>,
+    user: String,
+    _server_guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl MembershipFixture {
+    fn new(name: &str) -> Self {
+        use store::{ProjectSettings, RecordData, RoomKind, RoomState};
+        let server_guard = MEMBERSHIP_SERVER.lock().unwrap_or_else(|e| e.into_inner());
+        let (native, port, root) = spawn_tuwunel(name);
+        let server = Server {
+            binding: Reference {
+                key: chat::key(Scope::Control, "chat_server", "test"),
+                version: store::Version::State(1),
+            },
+            url: format!("http://127.0.0.1:{port}"),
+            server_name: "hctl2.localhost".into(),
+            sender: "@hctl2_control:hctl2.localhost".into(),
+        };
+        let client = Client::new(server.clone(), "as-test-secret".into()).unwrap();
+        let (user, _) = client
+            .human_register("alice", "pw-alice", "test-registration")
+            .unwrap();
+        let scope = Scope::Project("p".into());
+        let actor = TrustedActor(Actor {
+            principal: "owner".into(),
+            source: ActorSource::DirectClient,
+            permission_scope: vec![Scope::Control, scope.clone()],
+            authority: None,
+        });
+        let mut store = Store::open(&root.join("membership-control")).unwrap();
+        let project_data = RecordData::Project {
+            repo_id: "fixture-repo".into(),
+            settings: ProjectSettings {
+                publish_review_requires_confirmation: true,
+                selection_policy: json!({}),
+            },
+            archived: false,
+        };
+        let mut records = vec![store::Record {
+            key: chat::key(scope.clone(), "project", "p"),
+            version: 1,
+            revision_digest: foundation::canonical_json_sha256(
+                &serde_json::to_value(&project_data).unwrap(),
+            )
+            .unwrap(),
+            data: project_data,
+            sources: vec![],
+            materials: vec![],
+        }];
+        let mut rooms = vec![];
+        let mut spaces = vec![];
+        for (id, kind) in [("main", RoomKind::Main), ("topic", RoomKind::Topic)] {
+            let mut room = Room {
+                project_id: "p".into(),
+                id: id.into(),
+                name: id.into(),
+                server: server.clone(),
+                matrix_room_id: None,
+                participants: vec![],
+                brief: None,
+                origin: None,
+            };
+            room.matrix_room_id = Some(
+                client
+                    .create(&room, &format!("fixture-{id}"), true)
+                    .unwrap()["matrix_room_id"]
+                    .as_str()
+                    .unwrap()
+                    .into(),
+            );
+            spaces.push(client.ensure_carrier(&room).unwrap());
+            let data = RecordData::Room {
+                room_kind: kind,
+                state: RoomState::Active,
+            };
+            records.push(store::Record {
+                key: chat::key(scope.clone(), "room", id),
+                version: 1,
+                revision_digest: foundation::canonical_json_sha256(
+                    &serde_json::to_value(&data).unwrap(),
+                )
+                .unwrap(),
+                data,
+                sources: vec![],
+                materials: vec![],
+            });
+            records.push(
+                chat::value_record(chat::key(scope.clone(), "room_binding", id), 1, &room).unwrap(),
+            );
+            rooms.push(room);
+        }
+        let command = store::Command {
+            command_id: "membership-fixture".into(),
+            idempotency_key: "membership-fixture".into(),
+            actor: actor.0.clone(),
+            target: records[0].key.clone(),
+            expected: Expected::Absent,
+            binding: server.binding,
+            input_digest: store::Command::digest_input("fixture", &json!({})).unwrap(),
+            operation: "fixture".into(),
+            input: json!({}),
+        };
+        store
+            .submit(store.generation(), &actor, &command, None, |tx| {
+                for record in &records {
+                    tx.put(record)?;
+                }
+                Ok(json!({}))
+            })
+            .unwrap();
+        Self {
+            _native: native,
+            root,
+            shared: Arc::new(Mutex::new(Some(store))),
+            actor,
+            client,
+            rooms,
+            spaces,
+            user,
+            _server_guard: server_guard,
+        }
+    }
+
+    fn admit_members(&self, key: &str, invite: bool) -> String {
+        let outcome = access(&self.shared, |s| {
+            let (binding, _) = chat::room(s, "p", "main")?;
+            let plan = project::prepare(
+                s,
+                project::Input {
+                    key: key.into(),
+                    action: project::Action::Members {
+                        project_id: "p".into(),
+                        project_version: 1,
+                        rooms: vec![chat::reference(&binding)],
+                        users: vec![self.user.clone()],
+                        invite,
+                    },
+                },
+                None,
+                &self.actor,
+                0,
+            )?;
+            project::admit(s, &self.actor, plan)
+        })
+        .unwrap();
+        outcome["effect_ids"][0].as_str().unwrap().to_owned()
+    }
+
+    fn members(&self, key: &str, invite: bool) -> (String, Result<Value>) {
+        let id = self.admit_members(key, invite);
+        let receipt = drive_with(&self.shared, &self.root, &self.actor, &id, || {
+            Ok(self.client.clone())
+        });
+        (id, receipt)
+    }
+
+    fn assert_membership(&self, external: &str, present: bool) {
+        let states = self.client.member_state(external).unwrap();
+        assert_eq!(
+            states
+                .iter()
+                .any(|(user, state)| user == &self.user
+                    && ["join", "invite"].contains(&state.as_str())),
+            present,
+            "{external}: {states:?}"
+        );
+    }
+
+    fn assert_topic_unchanged(&self) {
+        self.assert_membership(bound(&self.rooms[1]).unwrap(), false);
+        assert!(access(&self.shared, |s| Ok(s.list("room_selection")?.is_empty())).unwrap());
+        let (_, topic) = access(&self.shared, |s| chat::room(s, "p", "topic")).unwrap();
+        assert!(topic.participants.is_empty());
+    }
+
+    fn reopen_and_recover(&self) {
+        drop(self.shared.blocking_lock().take());
+        *self.shared.blocking_lock() =
+            Some(Store::open(&self.root.join("membership-control")).unwrap());
+        for id in access(&self.shared, |s| s.pending_effects()).unwrap() {
+            let _ = drive_with(&self.shared, &self.root, &self.actor, &id, || {
+                Ok(self.client.clone())
+            });
+        }
+    }
+}
+
+#[test]
+fn native_space_members_repeat_operations_do_not_reuse_confirmed_receipts() {
+    let f = MembershipFixture::new("space-repeat");
+    let mut ids = vec![];
+    for (key, invite) in [
+        ("invite-1", true),
+        ("remove-1", false),
+        ("invite-2", true),
+        ("remove-2", false),
+    ] {
+        let (id, receipt) = f.members(key, invite);
+        let receipt = receipt.unwrap();
+        assert_eq!(
+            access(&f.shared, |s| s.effect(&id)).unwrap().1,
+            store::EffectState::Confirmed
+        );
+        for target in receipt["spaces"].as_array().unwrap() {
+            let child = target["receipt"]["space_effect_id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            assert!(
+                !ids.contains(&child),
+                "different operations reused a Space intent"
+            );
+            assert_eq!(
+                access(&f.shared, |s| Ok(
+                    s.effect(&child)?.0.input["member_effect"].clone()
+                ))
+                .unwrap(),
+                json!(id)
+            );
+            ids.push(child);
+        }
+        // Replaying this exact primary intent returns the same child references.
+        assert_eq!(f.members(key, invite).1.unwrap(), receipt);
+        f.assert_membership(bound(&f.rooms[0]).unwrap(), invite);
+        for space in &f.spaces {
+            f.assert_membership(space, invite);
+        }
+        f.assert_topic_unchanged();
+    }
+}
+
+#[test]
+fn native_space_discovery_failure_keeps_main_confirmed_and_recovers_after_restart() {
+    let f = MembershipFixture::new("space-discovery");
+    let external = bound(&f.rooms[1]).unwrap();
+    f.client
+        .put_state(
+            external,
+            "io.hctl2.carrier",
+            "",
+            json!({"space_id":"!missing:hctl2.localhost"}),
+        )
+        .unwrap();
+    let (id, receipt) = f.members("invite-discovery", true);
+    let receipt = receipt.expect("a failed carrier must not fail the confirmed main write");
+    assert_eq!(receipt["space_delivery"], "partial");
+    assert_eq!(
+        access(&f.shared, |s| s.effect(&id)).unwrap().1,
+        store::EffectState::Confirmed
+    );
+    f.assert_membership(&f.spaces[0], true);
+    f.assert_membership(&f.spaces[1], false);
+    assert!(
+        receipt["spaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["delivery"] != "confirmed")
+    );
+    f.client
+        .put_state(
+            external,
+            "io.hctl2.carrier",
+            "",
+            json!({"space_id":f.spaces[1]}),
+        )
+        .unwrap();
+    f.reopen_and_recover();
+    f.assert_membership(&f.spaces[1], true);
+}
+
+#[test]
+fn native_space_enqueue_conflict_keeps_main_confirmed_and_retains_retry() {
+    let f = MembershipFixture::new("space-conflict");
+    let old = enqueue_space_member_intents(
+        &f.shared,
+        &f.actor,
+        "p",
+        "old-invite",
+        &f.spaces[1..],
+        std::slice::from_ref(&f.user),
+        true,
+    )
+    .unwrap();
+    access(&f.shared, |s| s.begin_effect(s.generation(), &old[0])).unwrap();
+    let (id, receipt) = f.members("remove-conflict", false);
+    let receipt = receipt.expect("Space admission conflict must not fail the main write");
+    assert_eq!(receipt["space_delivery"], "partial");
+    assert_eq!(
+        access(&f.shared, |s| s.effect(&id)).unwrap().1,
+        store::EffectState::Confirmed
+    );
+    assert!(
+        receipt["spaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["delivery"] != "confirmed")
+    );
+    // The old unknown invite resolves first; the later remove must still have
+    // a durable route to admission and delivery without creating another command.
+    f.reopen_and_recover();
+    for space in &f.spaces {
+        f.assert_membership(space, false);
+    }
+    let receipt = drive_with(&f.shared, &f.root, &f.actor, &id, || Ok(f.client.clone())).unwrap();
+    assert_eq!(
+        receipt["space_delivery"], "confirmed",
+        "original command replay must expose recovered targets"
+    );
+    f.assert_topic_unchanged();
+}
+
+#[test]
+fn native_space_delivery_rejection_is_partial_and_recovers_without_new_command() {
+    let f = MembershipFixture::new("space-rejected");
+    f.client
+        .request(ruma::api::client::membership::ban_user::v3::Request::new(
+            room_id(&f.spaces[1]).unwrap(),
+            f.user.parse().unwrap(),
+        ))
+        .unwrap();
+    let (id, receipt) = f.members("invite-rejected", true);
+    let receipt = receipt.unwrap();
+    assert_eq!(receipt["space_delivery"], "partial");
+    assert_eq!(
+        access(&f.shared, |s| s.effect(&id)).unwrap().1,
+        store::EffectState::Confirmed
+    );
+    assert!(
+        receipt["spaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["error"]["code"] == "CHAT_PERMISSION_DENIED")
+    );
+    f.assert_membership(&f.spaces[0], true);
+    f.assert_membership(&f.spaces[1], false);
+    f.client
+        .request(ruma::api::client::membership::unban_user::v3::Request::new(
+            room_id(&f.spaces[1]).unwrap(),
+            f.user.parse().unwrap(),
+        ))
+        .unwrap();
+    f.reopen_and_recover();
+    let receipt = drive_with(&f.shared, &f.root, &f.actor, &id, || Ok(f.client.clone())).unwrap();
+    assert_eq!(receipt["space_delivery"], "confirmed");
+    for space in &f.spaces {
+        f.assert_membership(space, true);
+    }
+    f.assert_topic_unchanged();
+}
+
+#[test]
+fn native_late_discovery_cannot_undo_a_newer_membership_operation() {
+    let f = MembershipFixture::new("space-order");
+    let external = bound(&f.rooms[1]).unwrap();
+    f.client
+        .put_state(
+            external,
+            "io.hctl2.carrier",
+            "",
+            json!({"space_id":"!missing:hctl2.localhost"}),
+        )
+        .unwrap();
+    let (invite, _) = f.members("ordered-invite", true);
+    let (remove, receipt) = f.members("ordered-remove", false);
+    assert_eq!(receipt.unwrap()["space_delivery"], "partial");
+    for id in [&invite, &remove] {
+        assert_eq!(
+            access(&f.shared, |s| s.effect(id)).unwrap().1,
+            store::EffectState::Confirmed
+        );
+    }
+    f.assert_membership(&f.spaces[0], false);
+    f.client
+        .put_state(
+            external,
+            "io.hctl2.carrier",
+            "",
+            json!({"space_id":f.spaces[1]}),
+        )
+        .unwrap();
+    f.reopen_and_recover();
+    for space in &f.spaces {
+        f.assert_membership(space, false);
+    }
+    assert_eq!(
+        drive_with(&f.shared, &f.root, &f.actor, &remove, || Ok(f
+            .client
+            .clone()))
+        .unwrap()["space_delivery"],
+        "confirmed"
+    );
+}
+
+#[test]
+fn native_main_confirmation_and_sync_continuations_are_atomic() {
+    let f = MembershipFixture::new("space-atomic");
+    let id = f.admit_members("atomic-invite", true);
+    access(&f.shared, |s| s.begin_effect(s.generation(), &id)).unwrap();
+    let result = f
+        .client
+        .members(
+            bound(&f.rooms[0]).unwrap(),
+            std::slice::from_ref(&f.user),
+            true,
+            true,
+        )
+        .unwrap();
+    let error = access(&f.shared, |s| {
+        let (effect, _) = s.effect(&id)?;
+        let mut followups = crate::chat::space_members::followups(s, &effect)?;
+        // A late failing enqueue must roll back the main receipt AND the
+        // earlier successful continuation enqueue in the same transaction.
+        followups[1].conflict_scope = followups[0].conflict_scope.clone();
+        chat::confirm_with_effects(s, &f.actor, &id, result.clone(), &followups)
+    })
+    .unwrap_err();
+    assert_eq!(error.code, "EFFECT_CONFLICT");
+    access(&f.shared, |s| {
+        let (effect, state) = s.effect(&id)?;
+        assert_eq!(state, store::EffectState::Unknown);
+        assert!(
+            s.get(&chat::key(
+                Scope::Project("p".into()),
+                "room_effect_receipt",
+                &id
+            ))?
+            .is_none()
+        );
+        for followup in crate::chat::space_members::followups(s, &effect)? {
+            assert!(!s.has_effect(&followup.intent_id)?);
+        }
+        Ok(())
+    })
+    .unwrap();
+    f.reopen_and_recover();
+    assert_eq!(
+        access(&f.shared, |s| s.effect(&id)).unwrap().1,
+        store::EffectState::Confirmed
+    );
+    for space in &f.spaces {
+        f.assert_membership(space, true);
+    }
 }
 
 fn find(root: &Path) -> Option<PathBuf> {
@@ -1344,6 +1802,7 @@ fn native_topic_opening_invites_and_space_members_follow_main_room() {
         &shared,
         &actor,
         "p",
+        "gina-sync-fixture",
         &spaces,
         std::slice::from_ref(&gina_id),
         true,

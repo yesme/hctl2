@@ -4,6 +4,7 @@ mod config;
 mod drafting;
 mod queries;
 mod runtime;
+mod space_members;
 pub(super) mod tree;
 pub(crate) use config::private_write as write_private_config;
 pub(super) use drafting::draft;
@@ -486,32 +487,6 @@ fn bound_current(shared: &Shared, client: &matrix::Client, room: &Room) -> Resul
     })
 }
 
-/// All carrier Spaces of one Project, from current native reads.
-fn project_carrier_spaces(
-    shared: &Shared,
-    client: &matrix::Client,
-    project: &str,
-) -> Result<Vec<String>> {
-    let rooms = access(shared, |s| {
-        s.list("room_binding")?
-            .iter()
-            .filter(|r| r.key.scope == Scope::Project(project.into()))
-            .map(chat::decode::<Room>)
-            .collect::<Result<Vec<_>>>()
-    })?;
-    let mut spaces = vec![];
-    for room in &rooms {
-        if room.matrix_room_id.is_some()
-            && let Some(space) = client.carrier(room)?
-        {
-            spaces.push(space);
-        }
-    }
-    spaces.sort();
-    spaces.dedup();
-    Ok(spaces)
-}
-
 /// Carrier Space membership follows the main Room. Converging with a
 /// read-before-write invite is the creation requirement and heals drift, so it
 /// writes on every attempt — including retries of an intent that already
@@ -670,12 +645,13 @@ fn closed_room_readback(
 /// One persisted intent per carrier-Space membership write. The intent is
 /// derived content that follows the main Room: it converges read-before-write
 /// and may write on every attempt, including unknown-state retries. Its
-/// conflict scope is per Space and operation, so a permanently failing Space
-/// blocks neither the main Room nor the other Spaces.
+/// conflict scope is per Space. Replays of a primary operation reuse its child
+/// IDs; a later invitation/removal gets fresh IDs even for the same people.
 pub(super) fn enqueue_space_member_intents(
     shared: &Shared,
     actor: &TrustedActor,
     project: &str,
+    member_effect: &str,
     spaces: &[String],
     users: &[String],
     invite: bool,
@@ -689,9 +665,9 @@ pub(super) fn enqueue_space_member_intents(
             let identity = chat::writable(s, &pair.1)?;
             Ok((chat::reference(&identity), pair.1))
         })?;
-        let input = json!({"space":space,"users":users,"invite":invite,"room":main});
+        let input = json!({"space":space,"users":users,"invite":invite,"room":main,"member_effect":member_effect});
         let digest =
-            foundation::bytes_sha256(format!("{}:{:?}:{}", space, users, invite).as_bytes());
+            foundation::canonical_json_sha256(&json!([member_effect, space, users, invite]))?;
         let id = format!("chat:space-members:{digest}");
         let command = Command {
             command_id: id.clone(),
@@ -717,7 +693,7 @@ pub(super) fn enqueue_space_member_intents(
             idempotency_key: id.clone(),
         };
         access(shared, |s| {
-            if s.effect(&id).is_ok() {
+            if s.has_effect(&id)? {
                 return Ok(());
             }
             s.submit(s.generation(), &actor_scoped, &command, None, |tx| {
@@ -754,12 +730,13 @@ fn drive_using(
     let (effect, state) = access(shared, |s| s.effect(id))?;
     let room: Room = serde_json::from_value(effect.input["room"].clone())?;
     if state == store::EffectState::Confirmed {
-        return access(shared, |s| {
+        let receipt = access(shared, |s| {
             chat::decode::<Value>(&chat::required(
                 s,
-                &chat::key(effect.permission_scope, "room_effect_receipt", id),
+                &chat::key(effect.permission_scope.clone(), "room_effect_receipt", id),
             )?)
-        });
+        })?;
+        return space_members::collect(shared, root, actor, receipt, managed_prefix, connect);
     }
     if state == store::EffectState::Cancelled {
         return Err(reject(
@@ -1012,38 +989,38 @@ fn drive_using(
             let replay_allowed =
                 pending || (effect.input.get("create_effect").is_some() && room.id == target.id);
             let mut receipt = client.members(&target_external, &users, invite, replay_allowed)?;
-            // Main-Room membership is mirrored by every carrier Space of the
-            // Project — each Space write is its own persisted intent with its
-            // own state, so a Space that fails or has not been reached never
-            // pins the authoritative main-Room write in the unknown state.
+            // Freeze per-Room discovery work atomically with the main receipt.
+            // Discovery/admission/delivery failures cannot undo that receipt;
+            // every unfinished target remains reachable in the existing outbox.
             let (_, main) = access(shared, |s| chat::main_binding(s, &room.project_id))?;
             if main.id == target.id {
-                let ids = enqueue_space_member_intents(
+                let confirmed = access(shared, |s| {
+                    let followups = space_members::followups(s, &effect)?;
+                    receipt["space_sync_effect_ids"] =
+                        json!(followups.iter().map(|e| &e.intent_id).collect::<Vec<_>>());
+                    chat::confirm_with_effects(s, actor, id, receipt, &followups)
+                })?;
+                let connect = || Ok(client.clone());
+                return space_members::collect(
                     shared,
+                    root,
                     actor,
-                    &room.project_id,
-                    &project_carrier_spaces(shared, &client, &room.project_id)?,
-                    &users,
-                    invite,
-                )?;
-                let mut spaces = vec![];
-                for id in ids {
-                    let connect = || Ok(client.clone());
-                    match drive_using(shared, root, actor, &id, managed_prefix, &connect) {
-                        Ok(result) => spaces.push(json!({"effect_id":id,"delivery":"confirmed","receipt":result})),
-                        Err(e) => spaces.push(json!({
-                            "effect_id":id,
-                            "delivery":"pending_or_unknown",
-                            "error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}
-                        })),
-                    }
-                }
-                if !spaces.is_empty() {
-                    receipt["spaces"] = json!(spaces);
-                }
+                    confirmed,
+                    managed_prefix,
+                    &connect,
+                );
             }
             receipt
         }
+        "chat.space_sync" => space_members::deliver(
+            shared,
+            root,
+            actor,
+            &effect,
+            pending,
+            managed_prefix,
+            &client,
+        )?,
         "chat.space_members" => {
             let space = effect.input["space"]
                 .as_str()
