@@ -100,7 +100,9 @@ pub(crate) fn submit(
             let id = id.as_str().ok_or_else(|| invalid("effect ID missing"))?;
             match crate::chat::drive(shared, services, root, actor, id) {
                 Ok(receipt) => {
-                    outcomes.push(json!({"effect_id":id,"delivery":"confirmed","receipt":receipt}))
+                    let partial = receipt["space_delivery"] == "partial";
+                    failed |= partial;
+                    outcomes.push(json!({"effect_id":id,"delivery":if partial { "partial" } else { "confirmed" },"receipt":receipt}))
                 }
                 Err(e) => {
                     failed = true;

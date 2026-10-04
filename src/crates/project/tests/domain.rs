@@ -320,9 +320,10 @@ impl Env {
                 }),
                 participants: vec![],
                 roster_confirmed: true,
+                invites: None,
             },
         };
-        let plan = chat::prepare(&self.store, input, texts).unwrap();
+        let plan = chat::prepare(&self.store, input, texts, vec![]).unwrap();
         let result = chat::admit(&mut self.store, &actor(), plan).unwrap();
         let effect = result["effect_id"].as_str().unwrap();
         self.store
@@ -926,9 +927,10 @@ fn idle_request_topic_attention_is_not_pending_and_discussion_does_not_answer() 
             }),
             participants: vec![],
             roster_confirmed: true,
+            invites: None,
         },
     };
-    let plan = chat::prepare(&e.store, input, texts).unwrap();
+    let plan = chat::prepare(&e.store, input, texts, vec![]).unwrap();
     let topic = chat::admit(&mut e.store, &actor(), plan).unwrap();
     let effect = topic["effect_id"].as_str().unwrap();
     e.store.begin_effect(e.store.generation(), effect).unwrap();
@@ -975,6 +977,7 @@ fn idle_request_topic_attention_is_not_pending_and_discussion_does_not_answer() 
                 version: binding.version,
             },
         },
+        vec![],
         vec![],
     )
     .unwrap();

@@ -4,7 +4,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use repo::git::run;
-use repo::{PlatformObservation, Registration, Result, reject};
+use repo::{PlatformObservation, Registration, Result, StoreError, reject};
 use serde_json::{Value, json};
 
 use crate::services::Supervisor;
@@ -16,18 +16,38 @@ pub(crate) struct Hosted {
     pub token: String,
     credential_ref: String,
 }
+
+/// Where the packaged Gitea lives. Resolved once per command so the native admin CLI and
+/// the connection read the same coordinates.
+pub(crate) struct HostedPaths {
+    pub install: PathBuf,
+    pub gitea: PathBuf,
+    pub config: PathBuf,
+    pub work_path: PathBuf,
+}
+
+pub(crate) fn hosted_paths(services: &Supervisor) -> Result<HostedPaths> {
+    let (install, state) = services.gitea_paths().ok_or_else(|| {
+        reject(
+            "PLATFORM_NOT_INSTALLED",
+            "hosted Gitea requires an installed package",
+            "install_package",
+        )
+    })?;
+    Ok(HostedPaths {
+        gitea: install.join("libexec/hctl2/gitea"),
+        config: state.join("config/gitea/app.ini"),
+        work_path: state.join("data/gitea"),
+        install,
+    })
+}
+
 impl Hosted {
     /// Reuse an explicitly provisioned connection. Observing a source must not start
     /// a stopped service, create an account, or replace a missing credential.
     pub fn existing(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
-        let (install, state) = services.gitea_paths().ok_or_else(|| {
-            reject(
-                "PLATFORM_NOT_INSTALLED",
-                "hosted Gitea not installed",
-                "install_package",
-            )
-        })?;
-        let url = hosted_url(&state.join("config/gitea/app.ini"))?;
+        let paths = hosted_paths(services)?;
+        let url = hosted_url(&paths.config)?;
         let credential_ref = format!("gitea:{control_id}:admin");
         let token = crate::config::secret_store(root)
             .map_err(|_| {
@@ -53,7 +73,7 @@ impl Hosted {
             )
         })?;
         Ok(Self {
-            tea: install.join("libexec/hctl2/tea"),
+            tea: paths.install.join("libexec/hctl2/tea"),
             url,
             username: format!("hctl-{}", &control_id[..16.min(control_id.len())]),
             token,
@@ -71,17 +91,18 @@ impl Hosted {
         }
     }
     pub fn connect(root: &Path, control_id: &str, services: &Supervisor) -> Result<Self> {
-        let (install, state) = services.gitea_paths().ok_or_else(|| {
-            reject(
-                "PLATFORM_NOT_INSTALLED",
-                "hosted Gitea requires an installed package",
-                "install_package",
-            )
-        })?;
+        let paths = hosted_paths(services)?;
         services
             .consume("gitea")
             .map_err(|e| reject(e.code, e.message, e.recovery_action))?;
-        let deadline = Instant::now() + Duration::from_secs(30);
+        // One deadline for the whole bootstrap: liveness first, then the two checks that
+        // decide whether *this* instance is actually usable.
+        let deadline = Instant::now() + GITEA_BOOTSTRAP_TIMEOUT;
+        // Liveness only. The supervisor's probe is an HTTP GET on Gitea's machine-wide
+        // port, and it is not a usability verdict: `/api/healthz` only pings the
+        // database, so it answers before the first migration creates its tables, and any
+        // other instance holding the port answers it while ours never binds. The admin
+        // CLI and the API checks below are what decide.
         loop {
             if services
                 .snapshot()
@@ -98,32 +119,35 @@ impl Hosted {
                     "retry_registration",
                 ));
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(GITEA_BOOTSTRAP_POLL);
         }
-        let config = state.join("config/gitea/app.ini");
-        let url = hosted_url(&config)?;
-        let gitea = install.join("libexec/hctl2/gitea");
+        let url = hosted_url(&paths.config)?;
         let username = format!("hctl-{}", &control_id[..16.min(control_id.len())]);
-        let admin = || {
-            let mut cmd = Command::new(&gitea);
-            cmd.arg("--config")
-                .arg(&config)
-                .arg("--work-path")
-                .arg(state.join("data/gitea"))
-                .args(["admin", "user"]);
-            cmd
-        };
-        let users = run(admin().arg("list"), None)?;
-        if !users.status.success() {
-            return Err(reject(
-                "PLATFORM_BOOTSTRAP",
-                "cannot list hosted platform accounts",
-                "inspect_gitea_log",
-            ));
-        }
-        let exists = String::from_utf8_lossy(&users.stdout)
-            .lines()
-            .any(|l| l.split_whitespace().nth(1) == Some(&username));
+        let admin = || gitea_admin_user(&paths);
+        // Gate on this root's own admin interface: it opens this root's database, so it
+        // is what proves the first migration finished (`no such table: user` was the
+        // observed failure) and it is unaffected by whichever process holds the port.
+        let users = retry_bootstrap(
+            deadline,
+            || {
+                let output = run(admin().arg("list"), None)?;
+                if output.status.success() {
+                    Ok(output)
+                } else {
+                    Err(reject(
+                        "PLATFORM_BOOTSTRAP",
+                        format!(
+                            "cannot list hosted platform accounts: {}",
+                            native_detail(&output.stderr)
+                        ),
+                        "inspect_gitea_log",
+                    ))
+                }
+            },
+            |_| true,
+            || rearm(services),
+        )?;
+        let exists = account_listed(&users.stdout, &username);
         if !exists {
             let created = run(
                 admin().args([
@@ -203,19 +227,39 @@ impl Hosted {
             }
         };
         let hosted = Self {
-            tea: install.join("libexec/hctl2/tea"),
+            tea: paths.install.join("libexec/hctl2/tea"),
             url,
             username,
             token,
             credential_ref,
         };
-        let who = hosted.api("GET", "user", None)?.ok_or_else(|| {
-            reject(
-                "CREDENTIAL_UNAVAILABLE",
-                "platform account missing",
-                "restore_secret_store",
-            )
-        })?;
+        // The API must answer for the instance just provisioned. A token minted in this
+        // root's database is rejected with 401 by any other instance holding the port,
+        // and a connection ours never accepted reports no status at all; both clear once
+        // the port is ours again, so retry those inside the same deadline.
+        let mut restarted: Option<Instant> = None;
+        let who = retry_bootstrap(
+            deadline,
+            || match hosted.api("GET", "user", None)? {
+                Some(who) => Ok(who),
+                None => Err(reject(
+                    "CREDENTIAL_UNAVAILABLE",
+                    "platform account missing",
+                    "restore_secret_store",
+                )),
+            },
+            |error| error.code == "PLATFORM_UNAVAILABLE",
+            || {
+                let _ = services.ensure_up();
+                // An instance that lost the port race stays alive without a listener, so
+                // starting it again changes nothing: it needs a restart, rate-limited so
+                // the port has time to free up in between.
+                if restarted.is_none_or(|last| last.elapsed() >= GITEA_RESTART_INTERVAL) {
+                    let _ = services.restart("gitea");
+                    restarted = Some(Instant::now());
+                }
+            },
+        )?;
         if who["login"].as_str() != Some(&hosted.username)
             || who["is_admin"].as_bool() != Some(true)
         {
@@ -337,6 +381,124 @@ impl Hosted {
             credential_ref: self.credential_ref.clone(),
         }))
     }
+    /// Grant an existing platform account collaboration on a repository control owns.
+    ///
+    /// The write is never skipped: a collaborator read answers 204 with an empty body, so it
+    /// says the account is listed but not which permission holds, and skipping the write would
+    /// report a permission the platform never received. The write is idempotent, and a lost
+    /// response is still resolved by reading the grant back rather than by assuming it landed.
+    pub(crate) fn grant_collaborator(
+        &self,
+        full_name: &str,
+        username: &str,
+        permission: &str,
+    ) -> Result<()> {
+        let endpoint = format!("repos/{full_name}/collaborators/{username}");
+        self.api("PUT", &endpoint, Some(json!({"permission":permission})))?;
+        self.api("GET", &endpoint, None)?.ok_or_else(|| {
+            reject(
+                "PLATFORM_READBACK",
+                "collaborator grant not confirmed by readback",
+                "read_back_original_intent",
+            )
+        })?;
+        Ok(())
+    }
+}
+
+/// An ordinary (non-administrative) platform account for a local human.
+pub(crate) struct HumanAccount {
+    pub username: String,
+    pub created: bool,
+    /// Set only for an account this call created. Gitea prints it once and cannot return it
+    /// again; it is never logged, never stored, and only reaches the caller's stdout.
+    pub initial_password: Option<String>,
+}
+
+/// Ensure a human account on the hosted platform, reusing one that already exists.
+///
+/// Reuse is the only option for an existing account: its password is not recoverable, so
+/// this returns no `initial_password` and the human keeps whatever credential they have.
+/// `--must-change-password` is deliberately left at Gitea's default (true for individual
+/// users), so a freshly minted password is an initial one, not a permanent secret.
+pub(crate) fn ensure_human_account(paths: &HostedPaths, username: &str) -> Result<HumanAccount> {
+    let admin = || gitea_admin_user(paths);
+    let listed = run(admin().arg("list"), None)?;
+    if !listed.status.success() {
+        return Err(reject(
+            "PLATFORM_BOOTSTRAP",
+            "cannot list hosted platform accounts",
+            "inspect_gitea_log",
+        ));
+    }
+    if account_listed(&listed.stdout, username) {
+        return Ok(HumanAccount {
+            username: username.into(),
+            created: false,
+            initial_password: None,
+        });
+    }
+    let created = run(
+        admin().args([
+            "create",
+            "--username",
+            username,
+            "--email",
+            &format!("{username}@localhost"),
+            "--random-password",
+            "--random-password-length",
+            "40",
+        ]),
+        None,
+    )?;
+    if !created.status.success() {
+        return Err(reject(
+            "PLATFORM_BOOTSTRAP",
+            "cannot create hosted human account",
+            "inspect_gitea_log",
+        ));
+    }
+    // Gitea prints the generated password before it creates the user, so it is only
+    // trustworthy once the command itself succeeded.
+    let initial_password = String::from_utf8_lossy(&created.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("generated random password is '"))
+        .and_then(|rest| rest.strip_suffix('\''))
+        .filter(|password| !password.is_empty())
+        .ok_or_else(|| {
+            reject(
+                "PLATFORM_BOOTSTRAP",
+                "account created but its initial password could not be read; reset it with the native admin CLI",
+                "inspect_gitea_log",
+            )
+        })?
+        .to_owned();
+    Ok(HumanAccount {
+        username: username.into(),
+        created: true,
+        initial_password: Some(initial_password),
+    })
+}
+
+fn gitea_admin_user(paths: &HostedPaths) -> Command {
+    let mut cmd = Command::new(&paths.gitea);
+    cmd.arg("--config")
+        .arg(&paths.config)
+        .arg("--work-path")
+        .arg(&paths.work_path)
+        .args(["admin", "user"]);
+    cmd
+}
+
+/// `gitea admin user list` prints one account per line with the username in the second column,
+/// above a header whose own second column is the literal `Username`.
+fn account_listed(stdout: &[u8], username: &str) -> bool {
+    String::from_utf8_lossy(stdout).lines().any(|line| {
+        let mut columns = line.split_whitespace();
+        // A data row's first column is a numeric id (`cmd/admin_user_list.go:47`), so
+        // dropping the header cannot drop an account.
+        columns.next() != Some("ID") && columns.next() == Some(username)
+    })
 }
 
 pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<PlatformObservation> {
@@ -384,6 +546,59 @@ pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<Platfo
         credential_ref: String::new(), // gh owns its credential store; no copied token.
     })
 }
+/// How long the Gitea bootstrap waits, covering liveness and the two usability checks.
+const GITEA_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Interval of the supervisor-derived liveness poll.
+const GITEA_BOOTSTRAP_POLL: Duration = Duration::from_millis(100);
+
+/// Interval between bootstrap attempts once the process is live.
+const GITEA_BOOTSTRAP_RETRY: Duration = Duration::from_millis(250);
+
+/// Shortest gap between restarts while the API still answers for another instance.
+const GITEA_RESTART_INTERVAL: Duration = Duration::from_secs(3);
+
+/// Retries `attempt` until it succeeds or `deadline` passes, returning the last
+/// failure. `retryable` decides which failures may be retried, and `rearm` runs before
+/// each wait so a component that lost a race can be brought back.
+fn retry_bootstrap<T>(
+    deadline: Instant,
+    mut attempt: impl FnMut() -> Result<T>,
+    retryable: impl Fn(&StoreError) -> bool,
+    mut rearm: impl FnMut(),
+) -> Result<T> {
+    loop {
+        let error = match attempt() {
+            Ok(value) => return Ok(value),
+            Err(error) => error,
+        };
+        if Instant::now() >= deadline || !retryable(&error) {
+            return Err(error);
+        }
+        rearm();
+        std::thread::sleep(GITEA_BOOTSTRAP_RETRY);
+    }
+}
+
+/// Re-requests the start of the consumed components between bootstrap attempts.
+///
+/// Only for the migration phase: a restart there could interrupt the first migration,
+/// so an instance that is still creating its tables is left alone to finish.
+fn rearm(services: &Supervisor) {
+    let _ = services.ensure_up();
+}
+
+/// Last non-empty stderr line of a native command, for the rejection message.
+fn native_detail(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("no diagnostic output")
+        .trim()
+        .to_owned()
+}
+
 fn hosted_url(config: &Path) -> Result<String> {
     let text = std::fs::read_to_string(config)?;
     let url = text
