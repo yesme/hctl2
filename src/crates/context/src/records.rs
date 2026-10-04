@@ -35,9 +35,43 @@ pub fn save_assembly(
         kind: "context_bundle".into(),
         id: assembly.bundle.document.id.clone(),
     };
-    if port_call(|| store.get(&manifest_key))?.is_some()
-        || port_call(|| store.get(&bundle_key))?.is_some()
-    {
+    // Replay is decided per record by content, not by key existence: the
+    // common flow saves one manifest and several per-consumer bundles.
+    let mut replayed_manifest = false;
+    if let Some(existing) = port_call(|| store.get(&manifest_key))? {
+        let existing_digest = sealed_digest(&existing)?;
+        if existing_digest == assembly.manifest.digest {
+            replayed_manifest = true;
+        } else {
+            return Err(PortError::new(
+                "CONTEXT_CONFLICT",
+                format!(
+                    "manifest {} already frozen with different content",
+                    assembly.manifest.document.id
+                ),
+                "use_a_new_manifest_id",
+            ));
+        }
+    }
+    let replayed_bundle = match port_call(|| store.get(&bundle_key))? {
+        Some(existing) => {
+            let existing_digest = sealed_digest(&existing)?;
+            if existing_digest == assembly.bundle.digest {
+                true
+            } else {
+                return Err(PortError::new(
+                    "CONTEXT_CONFLICT",
+                    format!(
+                        "bundle {} already frozen with different content",
+                        assembly.bundle.document.id
+                    ),
+                    "use_a_new_bundle_id",
+                ));
+            }
+        }
+        None => false,
+    };
+    if replayed_manifest && replayed_bundle {
         return Ok(serde_json::json!({
             "manifest_id": assembly.manifest.document.id,
             "bundle_id": assembly.bundle.document.id,
@@ -99,11 +133,18 @@ pub fn save_assembly(
             .map_err(|e| PortError::new(e.code, e.message, e.recovery_action))?,
         operation: "context.assemble".into(),
     };
+    let manifest_record_clone = if replayed_manifest {
+        None
+    } else {
+        Some(manifest_record.clone())
+    };
     let result = port_call(|| {
         store.submit(store.generation(), actor, &command, None, |tx| {
             tx.admit_material(&manifest_material)?;
             tx.admit_material(&bundle_material)?;
-            tx.put(&manifest_record)?;
+            if let Some(record) = &manifest_record_clone {
+                tx.put(record)?;
+            }
             tx.put(&bundle_record)?;
             Ok(serde_json::json!({
                 "manifest_id": assembly.manifest.document.id,
@@ -175,6 +216,12 @@ pub fn bundle_record(
         id: bundle_id.to_owned(),
     };
     port_call(|| store.get(&key))
+}
+
+fn sealed_digest(record: &store::Record) -> Result<String> {
+    let value = record_data_value(record)?;
+    let sealed: Sealed<serde_json::Value> = serde_json::from_value(value)?;
+    Ok(sealed.digest)
 }
 
 fn record_data_value(record: &store::Record) -> Result<Value> {

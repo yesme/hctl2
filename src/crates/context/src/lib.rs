@@ -10,12 +10,13 @@ mod records;
 mod sources;
 
 pub use agency_proto::context::*;
-pub use agency_proto::{FrozenRef, Owner, Result, Sealed};
+pub use agency_proto::{FrozenRef, Owner, PortError, Result, Sealed};
 
-pub use assembler::{Assembler, Assembly, AssemblyRequest, LocalAssembler};
+pub use assembler::{Assembler, Assembly, AssemblyRequest, LocalAssembler, bundle_id};
 pub use records::{bundle_record, manifest_record, read_bundle, read_manifest, save_assembly};
 pub use sources::{
     MemorySources, ReviewComments, StoreSources, frozen_from_record, pack_reference,
+    permission_digest, permitted_source_ids, select_room_manifest,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,19 +24,6 @@ pub enum SourceKind {
     Room,
     TaskComments,
     ReviewComments,
-}
-
-/// One chosen source: the exact frozen reference plus delivery intent.
-#[derive(Clone, Debug)]
-pub struct Selection {
-    pub reference: FrozenRef,
-    pub description: String,
-    /// Every-call material the consumer cannot fetch itself.
-    pub required: bool,
-    /// Must be readable offline: an actual byte copy is delivered and verified.
-    pub offline_required: bool,
-    /// Prefer inline bytes over a pointer when the budget allows.
-    pub prefer_inline: bool,
 }
 
 #[derive(Clone, Debug)]

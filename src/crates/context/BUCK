@@ -13,10 +13,11 @@ filegroup(name = "clippy", srcs = {"library": ":context[clippy.txt]", "domain": 
 rust_test(
     name = "domain_test",
     srcs = glob(["tests/**/*.rs"]),
-    crate_root = "tests/domain.rs",
+    crate_root = "tests/lib.rs",
     deps = [
         ":context",
         "root//crates/agency-proto:agency_proto",
+        "root//crates/chat:chat",
         "root//crates/foundation:foundation",
         "root//crates/store:store",
         "root//third-party/rust:serde_json",

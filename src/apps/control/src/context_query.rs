@@ -1,12 +1,15 @@
 //! `context.preview|show`: read-only queries over the local assembler.
 //!
-//! Preview builds an assembly from a manifest skeleton without saving; show
-//! reads a frozen record. Network reads stay outside any transaction: the
-//! Store-backed source adapter reads governance records and admitted
-//! materials only.
+//! Preview selects mechanically from governance records by object ID
+//! (project + room), assembles without saving, and answers with the manifest
+//! and bundle. Show reads frozen records. The permission policy point is a
+//! placeholder returning the project's admitted sources until package 5
+//! wires real policy.
 
 use chat::invalid;
-use context::{Assembler, AssemblyRequest, LocalAssembler, Manifest, StoreSources};
+use context::{
+    Assembler, AssemblyRequest, LocalAssembler, permitted_source_ids, select_room_manifest,
+};
 use serde_json::{Value, json};
 use store::TrustedActor;
 
@@ -36,28 +39,36 @@ pub(crate) fn query(
 }
 
 fn preview(shared: &Shared, actor: &TrustedActor, payload: &Value) -> store::Result<Value> {
-    let manifest: Manifest = serde_json::from_value(payload["manifest"].clone())
-        .map_err(|e| invalid(format!("manifest: {e}")))?;
-    let permitted: Vec<String> =
-        serde_json::from_value(payload["permitted"].clone()).unwrap_or_default();
-    let budget = payload["budget"].as_u64().unwrap_or(manifest.budget);
-    let assembler = LocalAssembler {
-        permitted: permitted.into_iter().collect(),
-        budget,
-        tokenizer: None,
-        renderer: manifest.redaction.clone(),
-        redaction: manifest.redaction.clone(),
-    };
+    let project = payload["project_id"]
+        .as_str()
+        .ok_or_else(|| invalid("project_id required"))?;
+    let room = payload["room_id"]
+        .as_str()
+        .ok_or_else(|| invalid("room_id required"))?;
+    let budget = payload["budget"].as_u64().unwrap_or(64 * 1024);
     access(shared, |s| {
-        let sources = StoreSources::new(s, actor, &manifest.scope);
-        let consumer = owner_from(payload)?;
+        let (manifest, consumer) =
+            select_room_manifest(s, actor, project, room, budget).map_err(port_error)?;
+        // Permission policy point placeholder: the project's admitted
+        // sources, never the caller's input.
+        let permitted = permitted_source_ids(s, project).map_err(port_error)?;
+        let assembler = LocalAssembler {
+            permitted: permitted.into_iter().collect(),
+            budget,
+        };
         let assembly = assembler
-            .assemble(&sources, AssemblyRequest { manifest, consumer })
-            .map_err(|e| invalid(format!("{}: {}", e.code, e.message)))?;
-        Ok(serde_json::to_value(&(
-            assembly.manifest.document,
-            assembly.bundle.document,
-        ))?)
+            .assemble(
+                &context::StoreSources::new(s, actor, project),
+                AssemblyRequest { manifest, consumer },
+            )
+            .map_err(port_error)?;
+        Ok(json!({
+            "manifest": assembly.manifest.document,
+            "manifest_digest": assembly.manifest.digest,
+            "bundle": assembly.bundle.document,
+            "bundle_digest": assembly.bundle.digest,
+            "permission_policy": "project-admitted-sources (placeholder)",
+        }))
     })
 }
 
@@ -67,24 +78,44 @@ fn show(shared: &Shared, payload: &Value) -> store::Result<Value> {
         .ok_or_else(|| invalid("project_id required"))?;
     access(shared, |s| {
         let manifest = match payload["manifest_id"].as_str() {
-            Some(id) => context::read_manifest(s, project, id).map_err(|e| invalid(e.message))?,
+            Some(id) => context::read_manifest(s, project, id).map_err(port_error)?,
             None => None,
         };
         let bundle = match payload["bundle_id"].as_str() {
-            Some(id) => context::read_bundle(s, project, id).map_err(|e| invalid(e.message))?,
+            Some(id) => context::read_bundle(s, project, id).map_err(port_error)?,
             None => None,
         };
         if manifest.is_none() && bundle.is_none() {
             return Ok(Value::Null);
         }
-        Ok(json!({
-            "manifest": manifest,
-            "bundle": bundle,
-        }))
+        Ok(json!({"manifest": manifest, "bundle": bundle}))
     })
 }
 
-fn owner_from(payload: &Value) -> store::Result<agency_proto::Owner> {
-    serde_json::from_value(payload["consumer"].clone())
-        .map_err(|e| invalid(format!("consumer: {e}")))
+/// Port errors keep their codes and recovery actions at the boundary.
+fn port_error(error: context::PortError) -> store::StoreError {
+    let static_code = match error.code.as_str() {
+        "SOURCE_VERSION_CHANGED" => "SOURCE_VERSION_CHANGED",
+        "PERMISSION_CHANGED" => "PERMISSION_CHANGED",
+        "BUDGET_CHANGED" => "BUDGET_CHANGED",
+        "PERMISSION_DENIED" => "PERMISSION_DENIED",
+        "REVIEW_LINE_NOT_CONFIGURED" => "REVIEW_LINE_NOT_CONFIGURED",
+        "SOURCE_UNAVAILABLE" => "SOURCE_UNAVAILABLE",
+        "CONTEXT_CONFLICT" => "CONTEXT_CONFLICT",
+        _ => "CONTEXT_ASSEMBLY_FAILED",
+    };
+    let recovery = match error.recovery_action.as_str() {
+        "preview_again" => "preview_again",
+        "refresh_source" => "refresh_source",
+        "request_authorization" => "request_authorization",
+        "wait_for_review_wiring" => "wait_for_review_wiring",
+        "open_a_topic_first" => "open_a_topic_first",
+        "use_a_new_manifest_id" | "use_a_new_bundle_id" => "use_a_new_id",
+        _ => "inspect_context_input",
+    };
+    store::StoreError {
+        code: static_code,
+        message: error.message,
+        recovery_action: recovery,
+    }
 }

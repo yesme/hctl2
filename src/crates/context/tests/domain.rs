@@ -49,31 +49,28 @@ fn assembler(permitted: &[&str], budget: u64) -> LocalAssembler {
     LocalAssembler {
         permitted: permitted.iter().map(|id| (*id).to_owned()).collect(),
         budget,
-        tokenizer: None,
-        renderer: reference("renderer/plain", &hash(b"renderer")),
-        redaction: reference("redaction/default", &hash(b"redaction")),
     }
 }
 
 fn permission_digest(permitted: &[&str]) -> String {
-    let mut ids: Vec<&str> = permitted.to_vec();
-    ids.sort_unstable();
-    hash(ids.join("\\0").as_bytes())
+    let ids: Vec<String> = permitted.iter().map(|id| (*id).to_owned()).collect();
+    context::permission_digest(&ids)
 }
 
-/// CT: a bundle entry that cannot be traced to the manifest's exact source
-/// reference and version must fail. Enforced structurally: entries are built
-/// only from manifest sources; this test proves digest mismatch detection.
+/// CT: every entry carries the honest digest of the bytes actually
+/// delivered, and validate_delivery rejects a tampered copy.
 #[test]
-fn delivered_bytes_digest_mismatch_is_rejected() {
-    // The manifest freezes one digest; the source actually returns other
-    // bytes. Assembly must refuse instead of delivering mismatched content.
-    let room = reference("room/main", &hash(b"room bytes"));
+fn entry_digests_record_the_actual_bytes() {
+    let room = reference("chat_source_reference/s1", &hash(b"record data"));
     let mut sources = MemorySources::new();
-    sources.push(SourceKind::Room, room.clone(), b"different bytes");
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
-    let error = assembler
+    sources.push(SourceKind::Room, room.clone(), b"real bytes");
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
+    let assembly = assembler
         .assemble(
             &sources,
             AssemblyRequest {
@@ -81,19 +78,32 @@ fn delivered_bytes_digest_mismatch_is_rejected() {
                 consumer: owner(),
             },
         )
-        .unwrap_err();
-    assert_eq!(error.code, "DELIVERY_DIGEST_MISMATCH");
+        .unwrap();
+    let bundle = assembly.bundle.document;
+    assert_eq!(bundle.entries[0].bytes_digest, hash(b"real bytes"));
+    let mut tampered = bundle.clone();
+    if let agency_proto::context::Delivery::Inline { bytes } = &mut tampered.entries[0].delivery {
+        bytes.clear();
+    }
+    assert_eq!(
+        tampered.validate_delivery().unwrap_err().code,
+        "DELIVERY_DIGEST_MISMATCH"
+    );
 }
 
-/// CT: source version changed since the preview → the old preview is invalid.
-/// In-memory shape: the frozen reference no longer resolves (SOURCE_UNAVAILABLE);
-/// the store adapter's moved-record case is its own test below.
+/// CT: a frozen reference that no longer resolves invalidates the preview.
+/// The store adapter's moved-record case (SOURCE_VERSION_CHANGED) is its own
+/// test below.
 #[test]
-fn source_version_change_invalidates_the_preview() {
-    let room = reference("room/main", &hash(b"version 1"));
+fn unresolvable_source_invalidates_the_preview() {
+    let room = reference("chat_source_reference/gone", &hash(b"version 1"));
     let sources = MemorySources::new();
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/gone"]),
+    );
+    let assembler = assembler(&["chat_source_reference/gone"], 1024);
     let error = assembler
         .assemble(
             &sources,
@@ -109,16 +119,16 @@ fn source_version_change_invalidates_the_preview() {
 /// CT: permission change invalidates an old preview.
 #[test]
 fn permission_change_invalidates_the_preview() {
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), b"room bytes");
     // Manifest frozen with an old permission set; assembler gates a new one.
     let manifest = manifest(
         vec![room],
         1024,
-        &permission_digest(&["room/main", "task_comments/line"]),
+        &permission_digest(&["chat_source_reference/s1", "task_comments/line"]),
     );
-    let assembler = assembler(&["room/main"], 1024);
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     let error = assembler
         .assemble(
             &sources,
@@ -134,11 +144,15 @@ fn permission_change_invalidates_the_preview() {
 /// CT: budget change invalidates an old preview.
 #[test]
 fn budget_change_invalidates_the_preview() {
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), b"room bytes");
-    let manifest = manifest(vec![room], 512, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        512,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     let error = assembler
         .assemble(
             &sources,
@@ -157,11 +171,15 @@ fn budget_change_invalidates_the_preview() {
 #[test]
 fn required_over_budget_degrades_to_pointer_with_copy_never_drops() {
     let big: Vec<u8> = vec![b'x'; 4096];
-    let room = reference("room/main", &hash(&big));
+    let room = reference("chat_source_reference/big", &hash(&big));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), &big);
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/big"]),
+    );
+    let assembler = assembler(&["chat_source_reference/big"], 1024);
     let assembly = assembler
         .assemble(
             &sources,
@@ -208,11 +226,15 @@ fn review_comment_line_reports_not_configured() {
 /// does not validate for consumer B (owner mismatch is a structural break).
 #[test]
 fn bundles_are_per_consumer() {
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), b"room bytes");
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     let mut consumer_a = owner();
     consumer_a.id = "invocation-a".into();
     let mut consumer_b = owner();
@@ -245,11 +267,15 @@ fn bundles_are_per_consumer() {
 /// mandatory text fields are checked by the assembler.
 #[test]
 fn manifest_completeness_is_enforced() {
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let sources = MemorySources::new();
-    let mut manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
+    let mut manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
     manifest.freshness = String::new();
-    let assembler = assembler(&["room/main"], 1024);
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     assert_eq!(
         assembler
             .assemble(
@@ -269,11 +295,15 @@ fn manifest_completeness_is_enforced() {
 /// invented number.
 #[test]
 fn metering_without_tokenizer_is_none() {
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), b"room bytes");
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     let assembly = assembler
         .assemble(
             &sources,
@@ -314,11 +344,15 @@ fn duplicate_pointer_names_rejected_by_delivery_validation() {
 fn saved_assemblies_are_append_only_and_replayable() {
     let mut store = temp_store();
     let actor = TrustedActor(agency_proto_to_store_actor());
-    let room = reference("room/main", &hash(b"room bytes"));
+    let room = reference("chat_source_reference/s1", &hash(b"room bytes"));
     let mut sources = MemorySources::new();
     sources.push(SourceKind::Room, room.clone(), b"room bytes");
-    let manifest = manifest(vec![room], 1024, &permission_digest(&["room/main"]));
-    let assembler = assembler(&["room/main"], 1024);
+    let manifest = manifest(
+        vec![room],
+        1024,
+        &permission_digest(&["chat_source_reference/s1"]),
+    );
+    let assembler = assembler(&["chat_source_reference/s1"], 1024);
     let assembly = assembler
         .assemble(
             &sources,
@@ -345,7 +379,14 @@ fn store_sources_return_exact_bytes_or_stale() {
     let mut store = temp_store();
     let actor = TrustedActor(agency_proto_to_store_actor());
     let scope = Scope::Project("p".into());
-    let record = seeded_record(&mut store, &actor, &scope, "message", "main", b"room body");
+    let record = seeded_record(
+        &mut store,
+        &actor,
+        &scope,
+        "chat_source_reference",
+        "main",
+        b"room body",
+    );
     let frozen = frozen_from_record(&record).unwrap();
     {
         let adapter = context::StoreSources::new(&store, &actor, "p");

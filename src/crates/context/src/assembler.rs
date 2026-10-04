@@ -1,19 +1,17 @@
-//! Local, model-free assembly: selection, ordering, permission and budget
-//! filtering, three-tier delivery and honest metering.
+//! Local, model-free assembly: selection ordering, permission and budget
+//! gates, three-tier delivery and honest (unimplemented) metering.
 
 use crate::{SourceKind, Sources};
 use agency_proto::context::{Bundle, Delivery, Entry, Manifest};
 use agency_proto::{FrozenRef, Owner, PortError, Result, Sealed, hash};
 use std::collections::BTreeSet;
 
-/// A preview request: the manifest skeleton plus the consumer.
 #[derive(Debug)]
 pub struct AssemblyRequest {
     pub manifest: Manifest,
     pub consumer: Owner,
 }
 
-/// The frozen output pair.
 #[derive(Debug)]
 pub struct Assembly {
     pub manifest: Sealed<Manifest>,
@@ -24,29 +22,19 @@ pub trait Assembler {
     fn assemble(&self, sources: &dyn Sources, request: AssemblyRequest) -> Result<Assembly>;
 }
 
-/// The default assembler. `permissions` gates which sources this consumer may
-/// receive (permission digests must match); `budget` bounds inline bytes.
+/// The default assembler. `permitted` is the permission policy point's answer
+/// for this consumer (package 5 wires real policy; the placeholder returns the
+/// project's admitted sources). `budget` bounds inline bytes.
 pub struct LocalAssembler {
-    /// Packed reference ids this consumer may receive; empty = deny all.
     pub permitted: BTreeSet<String>,
-    /// Inline byte budget. Required material over budget degrades to a pointer
-    /// with a shard suggestion, never a silent drop.
     pub budget: u64,
-    /// Configured tokenizer digest; None = un-metered (reported, not invented).
-    pub tokenizer: Option<FrozenRef>,
-    /// Configured renderer reference.
-    pub renderer: FrozenRef,
-    /// Redaction policy reference.
-    pub redaction: FrozenRef,
 }
 
 impl LocalAssembler {
-    fn meter(&self, bytes: &[u8]) -> Option<u64> {
-        // No tokenizer configured: token counts stay None. We do not invent a
-        // bytes/4 heuristic as a token number; byte counts are reported
-        // separately by the entry digests.
-        let _ = bytes;
-        self.tokenizer.as_ref().map(|_| bytes.len() as u64)
+    /// No tokenizer implementation exists in this package: token counts are
+    /// reported as un-metered (None), never invented from byte counts.
+    fn meter(&self) -> Option<u64> {
+        None
     }
 }
 
@@ -56,18 +44,12 @@ impl Assembler for LocalAssembler {
         consumer.validate()?;
         validate_manifest(&manifest)?;
 
-        // Permission gate: every source must be explicitly permitted for this
-        // consumer, and the manifest's permission digest must match ours.
-        let permission_digest = {
-            let mut ids: Vec<&str> = self.permitted.iter().map(String::as_str).collect();
-            ids.sort_unstable();
-            let joined = ids.join("\\0");
-            hash(joined.as_bytes())
-        };
+        let permission_digest =
+            crate::permission_digest(&self.permitted.iter().cloned().collect::<Vec<_>>());
         if manifest.permission_digest != permission_digest {
             return Err(PortError::new(
                 "PERMISSION_CHANGED",
-                "manifest permission set differs from the assembler's gate",
+                "manifest permission set differs from the policy point",
                 "preview_again",
             ));
         }
@@ -79,13 +61,7 @@ impl Assembler for LocalAssembler {
             ));
         }
 
-        // Every selection must trace to a manifest source reference.
-
-        // Stable content first, high-churn later: required before optional.
-        let mut inline_used = 0u64;
-        let mut entries = Vec::new();
-        let mut recalls = Vec::new();
-
+        // Every manifest source must be in the permission set.
         for reference in &manifest.sources {
             if !self.permitted.contains(&reference.id) {
                 return Err(PortError::new(
@@ -97,172 +73,121 @@ impl Assembler for LocalAssembler {
                     "request_authorization",
                 ));
             }
-            let kind = kind_of(&reference.id)?;
-            // Source errors surface unchanged: a moved version is the
-            // adapter's own SOURCE_VERSION_CHANGED; a missing source is
-            // SOURCE_UNAVAILABLE. Wrapping them here would hide which one.
-            let content = sources.exact(kind.clone(), reference)?;
-            let digest = hash(&content.bytes);
-            // The delivered digest must equal the manifest's frozen digest.
-            let manifest_digest = manifest
-                .sources
-                .iter()
-                .find(|source| source.id == reference.id)
-                .map(|source| source.digest.clone())
-                .unwrap_or_default();
-            if digest != manifest_digest {
-                return Err(PortError::new(
-                    "DELIVERY_DIGEST_MISMATCH",
-                    format!(
-                        "source bytes differ from the manifest digest: {}",
-                        reference.id
-                    ),
-                    "preview_again",
-                ));
-            }
-            let required = manifest
-                .required_skills
-                .iter()
-                .any(|skill| skill.id == reference.id);
-            let _ = required;
-            entries.push((reference.clone(), content.bytes, kind));
         }
 
-        // Order: Room lines (stable records) first, task comments second,
-        // review lines last — matching "stable content before churn".
-        entries.sort_by_key(|(reference, _, kind)| order_key(kind, reference));
+        // Fetch every source; adapters verify the frozen version themselves.
+        // Order: stable content first (room lines), high-churn later.
+        let mut fetched = Vec::new();
+        for reference in &manifest.sources {
+            let kind = kind_of(&reference.id)?;
+            let content = sources.exact(kind.clone(), reference)?;
+            fetched.push((reference.clone(), content.bytes, kind));
+        }
+        fetched.sort_by_key(|(reference, _, kind)| order_key(kind, reference));
 
-        let mut delivered = Vec::new();
-        let mut pointers = Vec::new();
-        for (reference, bytes, _kind) in entries {
-            let manifest_entry = manifest
-                .sources
-                .iter()
-                .find(|source| source.id == reference.id);
-            let required = manifest_entry.is_some();
-            let offline = manifest.known_gaps.iter().any(|gap| gap == &reference.id);
-            let description = manifest
-                .coverage
-                .split(';')
-                .find(|_| true)
-                .unwrap_or(&manifest.coverage)
-                .to_owned();
-            let _ = description;
+        let mut inline_used = 0u64;
+        let mut entries = Vec::new();
+        for (reference, bytes, _kind) in fetched {
             let entry_digest = hash(&bytes);
             let over_budget = inline_used + bytes.len() as u64 > self.budget;
-            if required && !over_budget {
-                inline_used += bytes.len() as u64;
-                delivered.push(entry_inline(reference.clone(), bytes.clone(), entry_digest));
-            } else if offline || over_budget {
-                // Degrade to a pointer: exact bytes plus a safe relative name.
-                // The byte copy travels with the pointer so offline reads work.
+            if over_budget {
+                // Required material over budget degrades to a pointer that
+                // carries the exact bytes plus a shard suggestion; it stays
+                // required and is never silently dropped.
                 let name = pointer_name(&reference);
-                delivered.push(entry_pointer(
-                    reference.clone(),
-                    bytes.clone(),
-                    name.clone(),
-                    entry_digest,
-                ));
-                if over_budget && required {
-                    pointers.push(json_shard(&name, bytes.len()));
-                }
+                entries.push(Entry {
+                    source: reference,
+                    description: format!(
+                        "over budget: {} bytes; shard suggestion: split or read the byte copy on demand",
+                        bytes.len()
+                    ),
+                    required: true,
+                    offline_required: true,
+                    delivery: Delivery::Pointer {
+                        bytes,
+                        relative_name: name,
+                    },
+                    bytes_digest: entry_digest,
+                });
             } else {
-                // Optional, within budget, not required: pointer without inline.
-                let name = pointer_name(&reference);
-                delivered.push(entry_pointer(reference.clone(), bytes, name, entry_digest));
+                inline_used += bytes.len() as u64;
+                entries.push(Entry {
+                    source: reference,
+                    description: "frozen room-line source".into(),
+                    required: true,
+                    offline_required: false,
+                    delivery: Delivery::Inline { bytes },
+                    bytes_digest: entry_digest,
+                });
             }
         }
 
-        // Recall entries are recorded but carry no required material.
-        for reference in recalls.drain(..) {
-            delivered.push(Entry {
-                source: reference,
-                description: "recall slot".into(),
-                required: false,
-                offline_required: false,
-                delivery: Delivery::Recall {
-                    grant: manifest.selection_policy.clone(),
-                },
-                bytes_digest: String::new(),
-            });
-        }
-
-        let candidate = self.meter(&delivered_bytes(&delivered));
+        let metered = self.meter();
         let manifest_digest = Sealed::new(&manifest)?.digest;
         let bundle = Bundle {
-            id: format!(
-                "bundle-{}",
-                hash(format!("{}:{}", manifest.id, consumer.id).as_bytes())
-            ),
+            id: bundle_id(&manifest_digest, &consumer),
             manifest: FrozenRef {
                 id: manifest.id.clone(),
                 revision: manifest_digest.clone(),
                 digest: manifest_digest,
             },
-            consumer: consumer.clone(),
-            entries: delivered,
-            renderer: self.renderer.clone(),
-            tokenizer: self.tokenizer.clone().unwrap_or_else(empty_ref),
-            redaction: self.redaction.clone(),
+            consumer,
+            entries,
+            renderer: renderer_ref(),
+            tokenizer: untokenizer_ref(),
+            redaction: manifest.redaction.clone(),
             compression: Vec::new(),
-            candidate_tokens: candidate,
-            selected_tokens: candidate,
-            delivered_tokens: candidate,
+            candidate_tokens: metered,
+            selected_tokens: metered,
+            delivered_tokens: metered,
             permission_digest,
             budget: self.budget,
             retention: "until-owner-terminal".into(),
         };
-        let bundle = bundle_with_digests(bundle)?;
-        let sealed_manifest = Sealed::new(manifest)?;
-        let sealed_bundle = Sealed::new(bundle)?;
-        Ok(Assembly {
-            manifest: sealed_manifest,
-            bundle: sealed_bundle,
-        })
+        bundle.validate_delivery()?;
+        let assembly = Assembly {
+            manifest: Sealed::new(manifest)?,
+            bundle: Sealed::new(bundle)?,
+        };
+        assembly.bundle.verify()?;
+        assembly.manifest.verify()?;
+        Ok(assembly)
     }
 }
 
-fn delivered_bytes(entries: &[Entry]) -> Vec<u8> {
-    entries
-        .iter()
-        .flat_map(|entry| match &entry.delivery {
-            Delivery::Inline { bytes } | Delivery::Pointer { bytes, .. } => bytes.clone(),
-            Delivery::Recall { .. } => Vec::new(),
-        })
-        .collect()
+/// The bundle identity includes the consumer's generation so the next
+/// generation of the same owner never collides with a frozen bundle.
+pub fn bundle_id(manifest_digest: &str, consumer: &Owner) -> String {
+    format!(
+        "bundle-{}",
+        hash(
+            format!(
+                "{manifest_digest}:{}:{:?}:{}:{}",
+                consumer.project, consumer.kind, consumer.id, consumer.generation
+            )
+            .as_bytes()
+        )
+    )
 }
 
-fn json_shard(name: &str, len: usize) -> serde_json::Value {
-    serde_json::json!({"pointer":name,"bytes":len,"suggestion":"shard or read on demand"})
-}
-
-fn entry_inline(reference: FrozenRef, bytes: Vec<u8>, digest: String) -> Entry {
-    Entry {
-        source: reference,
-        description: "required inline".into(),
-        required: true,
-        offline_required: false,
-        delivery: Delivery::Inline { bytes },
-        bytes_digest: digest,
+fn renderer_ref() -> FrozenRef {
+    FrozenRef {
+        id: "renderer/mechanical-v1".into(),
+        revision: "1".into(),
+        digest: hash(b"hctl2.context.renderer.mechanical.v1"),
     }
 }
 
-fn entry_pointer(reference: FrozenRef, bytes: Vec<u8>, name: String, digest: String) -> Entry {
-    Entry {
-        source: reference,
-        description: "pointer with byte copy".into(),
-        required: false,
-        offline_required: true,
-        delivery: Delivery::Pointer {
-            bytes,
-            relative_name: name,
-        },
-        bytes_digest: digest,
+fn untokenizer_ref() -> FrozenRef {
+    FrozenRef {
+        id: "tokenizer/none".into(),
+        revision: "1".into(),
+        digest: hash(b"hctl2.context.tokenizer.none.v1"),
     }
 }
 
 fn pointer_name(reference: &FrozenRef) -> String {
-    let safe = reference
+    let safe: String = reference
         .id
         .chars()
         .map(|c| {
@@ -272,37 +197,20 @@ fn pointer_name(reference: &FrozenRef) -> String {
                 '_'
             }
         })
-        .collect::<String>();
-    format!("{safe}.bin")
-}
-
-fn empty_ref() -> FrozenRef {
-    FrozenRef {
-        id: "none".into(),
-        revision: "none".into(),
-        digest: "0".repeat(64),
-    }
-}
-
-fn bundle_with_digests(mut bundle: Bundle) -> Result<Bundle> {
-    // Recall entries must not claim required material with an empty digest.
-    for entry in &mut bundle.entries {
-        if let Delivery::Recall { .. } = entry.delivery {
-            entry.bytes_digest = hash(&[]);
-        }
-    }
-    bundle.validate_delivery()?;
-    Ok(bundle)
+        .collect();
+    // A short id-hash suffix keeps two sources that sanitize to the same
+    // text from colliding into one file name.
+    let suffix = &hash(reference.id.as_bytes())[..12];
+    format!("{safe}-{suffix}.bin")
 }
 
 fn kind_of(packed: &str) -> Result<SourceKind> {
-    let kind = packed
+    let (kind, _) = packed
         .split_once('/')
-        .map(|(kind, _)| kind)
         .ok_or_else(|| PortError::invalid("reference must be kind/id"))?;
     match kind {
-        "room" | "room_binding" | "message" => Ok(SourceKind::Room),
-        "task_snapshot" | "task_comments" => Ok(SourceKind::TaskComments),
+        crate::sources::ROOM_LINE_KIND => Ok(SourceKind::Room),
+        crate::sources::TASK_SNAPSHOT_KIND => Ok(SourceKind::TaskComments),
         "review_comments" => Ok(SourceKind::ReviewComments),
         other => Err(PortError::invalid(format!("unknown source kind {other}"))),
     }

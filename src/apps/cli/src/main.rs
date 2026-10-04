@@ -103,15 +103,18 @@ enum ServicesCommand {
 
 #[derive(Subcommand)]
 enum ContextCommand {
-    /// Assemble a preview from a manifest JSON file; prints manifest and bundle.
+    /// Assemble a preview by object ID (project + room) without saving.
     Preview {
-        /// Path to the manifest JSON plus permitted list and consumer.
+        /// JSON file: {"project_id": "...", "room_id": "...", "budget": 65536}.
+        #[arg(long, value_name = "INPUT")]
         input: PathBuf,
     },
     /// Show a frozen manifest and/or bundle by id.
     Show {
         project_id: String,
+        #[arg(long, value_name = "ID")]
         manifest_id: Option<String>,
+        #[arg(long, value_name = "ID")]
         bundle_id: Option<String>,
     },
 }
