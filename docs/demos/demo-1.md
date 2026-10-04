@@ -2,7 +2,7 @@
 
 本文记录演示 1「协作现场」的完整操作流程。流程包括环境构建、依赖解包、服务启动、人类账号注册、四步核心业务操作（建项目、进聊天室、开 Topic、认领平台 issue 为 Task），以及停机重启后的数据完整性核对。
 
-本手册中的所有命令均已在本地真实环境完整执行并验证。
+本手册记录本地实跑验证的操作全流程，所有命令与核对字段均已按仓库实际布局（产物在仓库根 `buck-out/`）与步骤核对验证。
 
 ---
 
@@ -22,24 +22,36 @@ cd ..
 ```
 
 构建完成后产物位置：
-- 离线安装包：`src/buck-out/v2/art/root/<hash>/packaging/dependencies/__package__/out/dependency-packages/hctl2-0.0.0-<target>.tar.zst`
-- CLI：`src/buck-out/v2/art/root/<hash>/apps/cli/__hctl2__/hctl2`
-- 控制面守护进程：`src/buck-out/v2/art/root/<hash>/apps/control/__hctl2-control__/hctl2_control`
+- 离线安装包：`buck-out/v2/art/root/<hash>/packaging/dependencies/__package__/out/dependency-packages/hctl2-0.0.0-<target>.tar.zst`
+- CLI：`buck-out/v2/art/root/<hash>/apps/cli/__hctl2__/hctl2`
+- 控制面守护进程：`buck-out/v2/art/root/<hash>/apps/control/__hctl2-control__/hctl2_control`
 
 ### 2. 解包安装与设置环境变量
 
-新建测试工作目录（如 `work`），并在其下解压依赖包 payload：
+新建测试工作目录（建议使用短路径如 `/tmp/d1` 或在仓库根目录下建 `work`），并在其下解压依赖包 payload：
 
 ```bash
-mkdir -p work/pkg work/root
-tar --zstd -xf $(find src/buck-out -name "hctl2-0.0.0-*.tar.zst" | head -n 1) -C work/pkg
+# REPO_ROOT 指向代码仓库根目录（产物位于 $REPO_ROOT/buck-out）
+export REPO_ROOT="$(pwd)"
 
+# WS 为演示工作区根目录。为避免 SUN_LEN 超长及在仓库内产生未跟踪文件，建议使用短路径（如 /tmp/d1 或当前目录）
 export WS="$(pwd)"
+cd "$WS"
+mkdir -p work/pkg work/root
+
+# 解压依赖包（排除 -sources 伴随包）
+tar --zstd -xf $(find "$REPO_ROOT/buck-out" -name "hctl2-0.0.0-*.tar.zst" ! -name '*-sources.tar.zst' | head -n 1) -C work/pkg
+
 export INSTALL_ROOT="$(find "$WS/work/pkg" -name payload -type d | head -n 1)"
 export HCTL2_INSTALL_ROOT="$INSTALL_ROOT"
-export HCTL2_CONTROL_BIN="$(find "$WS/src/buck-out" -name hctl2_control -type f | head -n 1)"
-export CLI="$(find "$WS/src/buck-out" -name hctl2 -type f -perm +111 | head -n 1)"
+export HCTL2_CONTROL_BIN="$(find "$REPO_ROOT/buck-out" -name hctl2_control -type f | head -n 1)"
+export CLI="$(find "$REPO_ROOT/buck-out" -name hctl2 -type f -perm +111 | head -n 1)"
 export ROOT="$WS/work/root"
+
+# 显式校验关键产物，避免因路径为空导致后续步骤静默失败
+[ -d "$INSTALL_ROOT" ] || { echo "INSTALL_ROOT 未找到: $INSTALL_ROOT"; return 1; }
+[ -x "$HCTL2_CONTROL_BIN" ] || { echo "HCTL2_CONTROL_BIN 未找到或不可执行: $HCTL2_CONTROL_BIN"; return 1; }
+[ -x "$CLI" ] || { echo "CLI 未找到或不可执行: $CLI"; return 1; }
 ```
 
 > [!IMPORTANT]
@@ -50,6 +62,12 @@ export ROOT="$WS/work/root"
 ## 二、起服务与注册人类账号
 
 ### 1. 启动控制面与后台服务
+
+> [!TIP]
+> 随包服务端口（Tuwunel 6167 / Cinny 6168 / Gitea 3001）为固定端口。若同机已有正在运行的实例占用端口，`start` 虽返回 0 且 `ready: true`，但被占用的服务其 `available` 与 `running` 将为 `false`（静默失败）。启动前可先确认端口未被占用：
+> ```bash
+> lsof -i :6167 -i :6168 -i :3001
+> ```
 
 通过 CLI 启动守护进程：
 
@@ -123,7 +141,7 @@ export USER_TOKEN="$(echo "$REGISTER_RESP" | jq -r .access_token)"
 mkdir -p work/apollo && cd work/apollo
 git init
 git config user.name "Yesme"
-git config user.email "jacky.chao.wang@gmail.com"
+git config user.email "you@example.com"  # 填入你自己的邮箱
 git commit --allow-empty -m "initial commit"
 cd "$WS"
 ```
@@ -331,31 +349,27 @@ export EVT2="$(echo "$EVT2_JSON" | jq -r .event_id)"
 
 ### 1. 机械选材起草提要
 
-编写 `work/draft.json`（注意：请使用 `'EOF'` 防止 shell 变量展开事件 ID 中的 `$` 符号）：
+编写 `work/draft.json`：
 
 ```bash
-cat << 'EOF' > work/draft.json
+cat << EOF > work/draft.json
 {
-  "project_id": "PROJECT_ID_PLACEHOLDER",
+  "project_id": "$PROJECT_ID",
   "project_version": 1,
   "origin": {
     "kind": "room",
-    "room_id": "MAIN_ROOM_ID_PLACEHOLDER",
+    "room_id": "$MAIN_ROOM_ID",
     "binding_version": 2
   },
   "selection": {
     "kind": "events",
     "event_ids": [
-      "EVT1_PLACEHOLDER",
-      "EVT2_PLACEHOLDER"
+      "$EVT1",
+      "$EVT2"
     ]
   }
 }
 EOF
-sed -i '' "s|PROJECT_ID_PLACEHOLDER|$PROJECT_ID|g" work/draft.json
-sed -i '' "s|MAIN_ROOM_ID_PLACEHOLDER|$MAIN_ROOM_ID|g" work/draft.json
-sed -i '' "s|EVT1_PLACEHOLDER|$EVT1|g" work/draft.json
-sed -i '' "s|EVT2_PLACEHOLDER|$EVT2|g" work/draft.json
 ```
 
 执行起草命令：
@@ -433,7 +447,7 @@ $CLI --json --root "$ROOT" room hierarchy "$PROJECT_ID" "$MAIN_ROOM_ID"
 
 **核对字段**：
 - `carrier_space_id`: 主 Room 的承载 Space ID。
-- `children`: 列表中包含刚建出的 `$TOPIC_ROOM_ID`。
+- `children`: 包含刚建出的 `$TOPIC_ROOM_ID`（注意 `children` 为 Topic Room ID 字符串数组如 `["topic-..."]`，非对象数组）。
 
 ### 4. 查看 Topic 详情与成员邀请
 
@@ -442,9 +456,9 @@ $CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID"
 ```
 
 **核对字段**：
-- `brief`: 包含 `material_id` 与 `byte_digest`，指向材料记录。
+- `room.brief`: 包含 `material_id` 与 `byte_digest`，指向材料记录（顶层 `.brief` 则包含 5 节提要内容文本）。
 - `hierarchy.parents`: 列表中包含父节点主 Room，`canonical: true`。
-- Topic 房间时间线只有建房状态事件，无普通业务消息；成员只有 `@hctl2_control`，人类不在其中。
+- 时间线只有建房与状态事件（共 11 个状态事件，无 `m.room.message` 业务消息）；`m.room.member` 只有一条且 `state_key` 为 `@hctl2_control`（人类尚未加入）。
 
 将人类账号邀入 Topic Room：
 
@@ -474,7 +488,20 @@ TOKEN_T_MEM="$(echo "$PREVIEW_T_MEM" | jq -r .preview_token)"
 $CLI --json --root "$ROOT" project members --input work/members-topic.json --key invite-yesme-topic --preview-token "$TOKEN_T_MEM"
 ```
 
-**核对字段**：`delivery: "confirmed"`。人类账号接收邀请后可在 Cinny 中看到该 Topic Room。
+**核对字段**：`delivery: "confirmed"`。
+
+人类账号接受 Topic Room 邀请（可在 Cinny 界面点击接受，或使用 Matrix 客户端 API）：
+
+```bash
+# 获取 Topic Room 对应的 Matrix 房间 ID
+MATRIX_TOPIC_ROOM="$($CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID" | jq -r .room.native_id)"
+
+# 人类账号接受邀请并加入 Topic 房间
+curl -s -X POST -H "Authorization: Bearer $USER_TOKEN" \
+  "http://127.0.0.1:6167/_matrix/client/v3/rooms/$MATRIX_TOPIC_ROOM/join"
+```
+
+**核对字段**：返回 `{"room_id":"!..."}`。人类账号在 Cinny 中可见并已加入该 Topic Room。
 
 ---
 
@@ -498,12 +525,15 @@ $CLI --json --root "$ROOT" project members --input work/members-topic.json --key
   --must-change-password=false
 ```
 
+> [!NOTE]
+> 此处密码为本地演示环境设置的示例口令；在生产或严谨环境中敏感输入应通过环境变量或交互输入传递，避免明文暴露在命令行参数中。
+
 > [!WARNING]
 > 创建用户必须显式带上 `--must-change-password=false`。Gitea 默认要求非首个用户在首次登录时修改密码，若不带该标志，后续通过 API 开 issue 会被拦截并报错 `HTTP 403 Forbidden: You must change your password`。
 
 #### (2) 获取 Gitea 管理员令牌
 
-- **方式一（交互式桌面环境）**：从 macOS 钥匙串读取控制面存放的令牌：
+- **方式一（交互式桌面环境）**：从 macOS 钥匙串读取控制面存放的令牌（本方式假设密钥后端为系统钥匙串 `system-keyring`，即默认配置；若控制面启动时显式指定了 `--secret-backend user-file`，凭据存放于 `$ROOT/secrets` 下，钥匙串中无此项，请使用方式二；参见 [docs/usage.md](../usage.md#安装完整离线包)）：
   ```bash
   CONTROL_ID="$($CLI --root "$ROOT" status | jq -r .control_id)"
   ADMIN_TOKEN="$(security find-generic-password -s hctl2 -a "gitea:${CONTROL_ID}:admin" -w)"
@@ -646,7 +676,7 @@ export TASK_ID="$(echo "$SUBMIT_T_CLAIM" | jq -r .task_id)"
 ```
 
 **核对字段**：
-- `task_id`: 成功分配 `task-...`。
+- `task_id`: 成功分配（64 位十六进制裸摘要，无 `task-` 前缀，与 `repo_id`、`source_id` 同形）。
 - `task.data.lifecycle`: 应为 `"open"`。
 
 ### 4. 查看 Task 详情
@@ -707,11 +737,12 @@ $CLI --json --root "$ROOT" repo show "$REPO_ID" > work/pre/10_repo_show.json
 kill -KILL $(cat "$ROOT/control.pid")
 $CLI --root "$ROOT" status || echo "control 已断开"
 HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" stop
+HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" status || true
 ```
 
 **核对字段**：
 - `$CLI --root "$ROOT" status` 报告 `transport error`。
-- `hctl2-services status` 报告服务均未运行。
+- `hctl2-services status` 报告 `HCTL2 services are not running.`。
 
 ### 4. 重新启动服务
 
@@ -767,7 +798,7 @@ done
 curl -s -H "Authorization: Bearer $USER_TOKEN" "http://127.0.0.1:6167/_matrix/client/v3/sync" | jq '.rooms.join | keys'
 ```
 
-**核对字段**：主 Room 与 Topic Room 均在列表中。
+**核对字段**：主 Room 与 Topic Room 均在列表中（由于首个注册用户自动成为 Tuwunel 服务器管理员，列表中还包含 Tuwunel 的 Admin Room，共 3 个房间）。
 
 #### (3) Gitea issue #1 回读
 
@@ -780,12 +811,12 @@ curl -s -u yesme:password123 "http://127.0.0.1:3001/api/v1/repos/$ADMIN_USER/apo
 #### (4) 重启后刷新任务源
 
 ```bash
-$CLI --json --root "$ROOT" task refresh --input work/task-refresh.json --key refresh-apollo-after-restart
-TOKEN_POST_REF="$($CLI --json --root "$ROOT" task refresh --input work/task-refresh.json --key refresh-apollo-after-restart | jq -r .preview_token)"
+PREVIEW_POST_REF="$($CLI --json --root "$ROOT" task refresh --input work/task-refresh.json --key refresh-apollo-after-restart)"
+TOKEN_POST_REF="$(echo "$PREVIEW_POST_REF" | jq -r .preview_token)"
 $CLI --json --root "$ROOT" task refresh --input work/task-refresh.json --key refresh-apollo-after-restart --preview-token "$TOKEN_POST_REF"
 ```
 
-**核对字段**：与 Gitea 通信正常，刷新成功。
+**核对字段**：与 Gitea 通信正常，刷新成功（退出码 0）。
 
 ---
 
