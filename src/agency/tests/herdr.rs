@@ -8,7 +8,7 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Command, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 fn binary() -> PathBuf {
@@ -86,6 +86,86 @@ fn two_dispatches_start_together_on_one_herdr() {
     assert_eq!(pipe.servers_started(), 1);
     let pid = pipe.pid().unwrap();
     assert!(process_matches(pid, &binary()));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_marker_inside_the_command_is_not_the_echo() {
+    let (cred, exec) = scratch("echo");
+    let server = Server::start(
+        &binary(),
+        &herdr::state_dir(&exec, &cred).unwrap(),
+        &cred,
+        &exec,
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let started = Instant::now();
+    let text = herdr::run_command(
+        &client,
+        &exec,
+        "echo",
+        "sleep 2; printf HCTL2DONE; touch executed",
+        "HCTL2DONE",
+    )
+    .unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(1500));
+    assert!(text.matches("HCTL2DONE").count() > 1);
+    assert!(exec.join("executed").exists());
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_missing_marker_closes_the_pane() {
+    let (cred, exec) = scratch("nomark");
+    let server = Server::start(
+        &binary(),
+        &herdr::state_dir(&exec, &cred).unwrap(),
+        &cred,
+        &exec,
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let stamp = exec.join("heartbeat");
+    let command = format!(
+        "while true; do date +%s > '{}'; sleep 0.2; done",
+        stamp.display()
+    );
+    let error = herdr::run_command(&client, &exec, "nomark", &command, "HCTL2NEVER").unwrap_err();
+    assert_eq!(error.code, "HERDR_OUTPUT_MISSING");
+    assert!(!error.message.contains("pane close failed"));
+    std::thread::sleep(Duration::from_millis(500));
+    let first = std::fs::read_to_string(&stamp).unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(1000));
+    let second = std::fs::read_to_string(&stamp).unwrap_or_default();
+    assert!(!first.is_empty());
+    assert_eq!(first, second);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_failed_pid_write_leaves_no_herdr() {
+    let (cred, exec) = scratch("pidfail");
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    std::fs::create_dir(state.join("herdr.pid")).unwrap();
+    let error = match Server::start(&binary(), &state, &cred, &exec) {
+        Err(error) => error,
+        Ok(server) => {
+            drop(server);
+            panic!("pid write failure still started Herdr");
+        }
+    };
+    assert_eq!(error.code, "IO_ERROR");
+    let socket = herdr::socket_path(&state);
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(
+        Client::connect(&socket)
+            .and_then(|client| client.ping())
+            .is_err()
+    );
     let _ = std::fs::remove_dir_all(&cred);
     let _ = std::fs::remove_dir_all(&exec);
 }

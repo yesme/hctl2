@@ -39,9 +39,9 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取。Linux 上伪终端需要写 `/dev` 与 `/dev/pts` | 3a 已做；pty 写放行在本管道 |
 | `src/catalog.rs`、脚本目录 | 摘要用程序文件或 `SKILL.md` 字节；`verification` 留空 | 3a 已做 |
 | `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent` | 脚本执行体已有。本管道不把 Herdr 接进 `serve` |
-| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。调用方给出 pane 里的程序。一个管道一个服务。状态目录在执行目录旁边 | 本管道 |
+| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。调用方给出 pane 里的程序。一个管道一个服务。状态目录在执行目录旁边。命令回显不算程序输出。启动失败和 pane 出错都会收掉已经拉起的进程 | 本管道 |
 | `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 不带 |
-| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；两个派工同时启动；凭据根；新目录上的 `serve` 不上架 Herdr | 本管道 |
+| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；两个派工同时启动；凭据根；新目录上的 `serve` 不上架 Herdr。标记写在命令里时要等到程序输出。标记不出现时关掉 pane。pid 写失败后没有存活的 Herdr | 本管道 |
 
 本管道的验收（所有者 2026-10-05 裁定「收窄吧」）：
 

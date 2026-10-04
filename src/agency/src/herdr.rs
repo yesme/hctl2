@@ -56,18 +56,18 @@ impl Client {
         let value: Value = serde_json::from_str(response.trim()).map_err(|_| {
             PortError::new("HERDR_PROTOCOL", "response is not JSON", "retry_herdr_call")
         })?;
-        if value.get("id").and_then(Value::as_str) != Some(id.as_str()) {
-            return Err(PortError::new(
-                "HERDR_PROTOCOL",
-                "response id does not match the request",
-                "retry_herdr_call",
-            ));
-        }
         if let Some(error) = value.get("error") {
             return Err(PortError::new(
                 "HERDR_REJECTED",
                 error.to_string(),
                 "read_herdr_error",
+            ));
+        }
+        if value.get("id").and_then(Value::as_str) != Some(id.as_str()) {
+            return Err(PortError::new(
+                "HERDR_PROTOCOL",
+                "response id does not match the request",
+                "retry_herdr_call",
             ));
         }
         value.get("result").cloned().ok_or_else(|| {
@@ -117,12 +117,12 @@ impl Server {
         })?;
         crate::storage::private_dir(state)?;
         reap_previous(state, &binary);
-        let socket_dir = PathBuf::from("/tmp").join(format!(
-            "hctl2-herdr-{}",
-            &hash(state.as_os_str().as_encoded_bytes())[..20]
-        ));
+        let socket = socket_path(state);
+        let socket_dir = socket
+            .parent()
+            .ok_or_else(|| PortError::invalid("Herdr socket directory is missing"))?
+            .to_path_buf();
         crate::storage::private_dir(&socket_dir)?;
-        let socket = socket_dir.join("herdr.sock");
         let _ = std::fs::remove_file(&socket);
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
@@ -145,9 +145,13 @@ impl Server {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(state.join("server.err"))?);
-        let mut child = child.spawn()?;
-        let pid = child.id();
-        std::fs::write(state.join("herdr.pid"), pid.to_string())?;
+        let child = child.spawn()?;
+        // From here the child must be stopped on every exit except a live Server.
+        let mut stop = StopChild(Some(child));
+        let pid = stop.id();
+        if let Err(error) = std::fs::write(state.join("herdr.pid"), pid.to_string()) {
+            return Err(error.into());
+        }
         let deadline = Instant::now() + Duration::from_secs(15);
         while Instant::now() < deadline {
             if socket.exists()
@@ -156,18 +160,17 @@ impl Server {
                     .is_ok()
             {
                 return Ok(Self {
-                    child,
+                    child: stop.disarm(),
                     socket,
                     state: state.to_path_buf(),
                 });
             }
-            if child.try_wait()?.is_some() {
+            if stop.try_wait()?.is_some() {
                 break;
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        signal_group(pid, "KILL");
-        let _ = child.wait();
+        drop(stop);
         let detail = std::fs::read_to_string(state.join("server.err")).unwrap_or_default();
         Err(PortError::new(
             "HERDR_NOT_READY",
@@ -301,7 +304,19 @@ impl Pipe {
     }
 }
 
-/// Run `command` in a new workspace pane and return the pane text that contains `marker`.
+pub fn socket_path(state: &Path) -> PathBuf {
+    PathBuf::from("/tmp")
+        .join(format!(
+            "hctl2-herdr-{}",
+            &hash(state.as_os_str().as_encoded_bytes())[..20]
+        ))
+        .join("herdr.sock")
+}
+
+/// Run `command` in a new workspace pane and return the pane text.
+/// A line counts as program output only when it contains `marker` and not
+/// `command`, so the echoed command and its prompt redraw do not match.
+/// After the pane id exists, the pane is closed on both success and failure.
 pub fn run_command(
     client: &Client,
     cwd: &Path,
@@ -309,6 +324,9 @@ pub fn run_command(
     command: &str,
     marker: &str,
 ) -> Result<String> {
+    if marker.is_empty() {
+        return Err(PortError::invalid("marker is empty"));
+    }
     let created = client.call(
         "workspace.create",
         json!({"cwd": cwd, "label": label, "focus": false}),
@@ -323,33 +341,124 @@ pub fn run_command(
                 "retry_herdr_call",
             )
         })?;
-    client.call(
-        "pane.send_text",
-        json!({"pane_id": pane, "text": format!("{command}\n")}),
+    let mut open = OpenPane {
+        client,
+        pane: pane.to_owned(),
+        closed: false,
+    };
+    let outcome = (|| {
+        open.client.call(
+            "pane.send_text",
+            json!({"pane_id": open.pane, "text": format!("{command}\n")}),
+        )?;
+        // The pane echoes the command and may wrap that line. A program line
+        // contains the marker and none of the command's other words.
+        let words = command_words_outside_marker(command, marker);
+        if command.contains(marker) && words.is_empty() {
+            return Err(PortError::invalid(
+                "marker is the whole command, so program output cannot be told from the echo",
+            ));
+        }
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut text = String::new();
+        while Instant::now() < deadline {
+            text = pane_text(open.client, &open.pane)?;
+            if text
+                .lines()
+                .any(|line| line.contains(marker) && words.iter().all(|word| !line.contains(word)))
+            {
+                return Ok(text);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        Err(PortError::new(
+            "HERDR_OUTPUT_MISSING",
+            format!("pane output did not contain program text {marker}: {text}"),
+            "read_pane",
+        ))
+    })();
+    let closed = open.close();
+    match (outcome, closed) {
+        (Ok(text), Ok(())) => Ok(text),
+        (Ok(_), Err(close)) => Err(close),
+        (Err(exec), Ok(())) => Err(exec),
+        (Err(exec), Err(close)) => Err(PortError::new(
+            &exec.code,
+            format!("{exec}; pane close failed: {close}"),
+            &exec.recovery_action,
+        )),
+    }
+}
+
+fn command_words_outside_marker(command: &str, marker: &str) -> Vec<String> {
+    command
+        .split(marker)
+        .flat_map(|part| part.split(|c: char| !c.is_ascii_alphanumeric()))
+        .filter(|word| word.len() >= 3 && !marker.contains(word))
+        .map(str::to_owned)
+        .collect()
+}
+
+fn pane_text(client: &Client, pane: &str) -> Result<String> {
+    let recent = client.call(
+        "pane.read",
+        json!({"pane_id": pane, "source": "recent", "lines": 200}),
     )?;
-    let matched = client.call(
-        "pane.wait_for_output",
-        json!({
-            "pane_id": pane,
-            "source": "recent",
-            "match": {"type": "substring", "value": marker},
-            "timeout_ms": 8000
-        }),
-    )?;
-    let text = matched
+    Ok(recent
         .pointer("/read/text")
+        .or_else(|| recent.get("text"))
         .and_then(Value::as_str)
         .unwrap_or("")
-        .to_owned();
-    if !text.contains(marker) {
-        return Err(PortError::new(
-            "HERDR_OUTPUT_MISSING",
-            "pane output did not contain the marker",
-            "read_pane",
-        ));
+        .to_owned())
+}
+
+struct OpenPane<'a> {
+    client: &'a Client,
+    pane: String,
+    closed: bool,
+}
+
+impl OpenPane<'_> {
+    fn close(&mut self) -> Result<()> {
+        if self.closed {
+            return Ok(());
+        }
+        self.closed = true;
+        self.client
+            .call("pane.close", json!({"pane_id": self.pane}))
+            .map(|_| ())
     }
-    client.call("pane.close", json!({"pane_id": pane}))?;
-    Ok(text)
+}
+
+impl Drop for OpenPane<'_> {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
+struct StopChild(Option<Child>);
+
+impl StopChild {
+    fn id(&self) -> u32 {
+        self.0.as_ref().expect("herdr child").id()
+    }
+
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        self.0.as_mut().expect("herdr child").try_wait()
+    }
+
+    fn disarm(mut self) -> Child {
+        self.0.take().expect("herdr child")
+    }
+}
+
+impl Drop for StopChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            signal_group(child.id(), "KILL");
+            let _ = child.wait();
+        }
+    }
 }
 
 fn reap_previous(state: &Path, binary: &Path) {
