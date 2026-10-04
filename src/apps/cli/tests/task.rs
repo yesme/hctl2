@@ -171,7 +171,7 @@ esac
         .unwrap();
     }
     drop(s);
-    assert!(run(&root, &["start"]).0);
+    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
     let source = cmd(
         &root,
         "connect",
@@ -196,7 +196,7 @@ esac
     assert!(run(&root, &["stop"]).0);
     std::thread::sleep(std::time::Duration::from_millis(100));
     std::fs::remove_file(root.join("gh.hide")).unwrap();
-    assert!(run(&root, &["start"]).0);
+    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
     let created = cmd(&root, "create", "create", create.clone());
     assert_eq!(pending["task_id"], created["task_id"]);
     assert_eq!(created["effect_state"], "confirmed");
@@ -233,7 +233,7 @@ esac
     assert_eq!(std::fs::read_to_string(root.join("gh.posts")).unwrap(), "x");
     assert!(run(&root, &["stop"]).0);
     std::thread::sleep(std::time::Duration::from_millis(100));
-    assert!(run(&root, &["start"]).0);
+    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
     let after = cmd(&root, "create", "create", create);
     assert_eq!(after["task_id"], created["task_id"]);
     assert_eq!(std::fs::read_to_string(root.join("gh.posts")).unwrap(), "x");

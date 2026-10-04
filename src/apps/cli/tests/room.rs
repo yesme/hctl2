@@ -264,7 +264,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    assert!(f.run(&["start"]).0);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     for (project, (room, effect)) in ["A", "B"].into_iter().zip(&mains) {
         let input = json!({"project_id":project,"effect_id":effect});
         let mut ready = false;
@@ -429,7 +429,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     std::thread::sleep(Duration::from_millis(200));
     // All disposable chat observations can disappear without losing admitted references.
     std::fs::remove_dir_all(root.join("cache")).unwrap();
-    assert!(f.run(&["start"]).0);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     for _ in 0..60 {
         if f.run(&["room", "view-state", "A", a, "desktop"]).0 {
             break;
@@ -467,7 +467,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     // A new directory imports the control identity before the daemon starts, rather than
     // overwriting an unrelated initialized control. Native services restore through the CLI.
     drop(Store::restore(&restored.root, &backup).unwrap());
-    assert!(restored.run(&["start"]).0);
+    assert!(restored.run(&["start", "--secret-backend", "user-file"]).0);
     let (ok, value) = restored.run(&[
         "services",
         "restore",

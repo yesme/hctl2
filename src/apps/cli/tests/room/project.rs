@@ -13,7 +13,7 @@ fn project_definition(name: &str) -> Value {
 #[test]
 fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart() {
     let (f, port) = Fixture::packaged("project-b1");
-    assert!(f.run(&["start"]).0);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let input = json!({"name":"b1","origin":"local","platform":"local","platform_path":"b1","default_source":"gitea_issues"});
     let registered = accepted(&f, "repo", "register", "register-b1", input);
     let registration = &registered["registration"];
@@ -342,7 +342,7 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
             .unwrap()
             .success()
     );
-    assert!(f.run(&["start"]).0);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let mut ready = false;
     for _ in 0..100 {
         let (ok, view) = f.run(&["room", "view-state", &projects[0].0, &topics[0], "b1"]);
