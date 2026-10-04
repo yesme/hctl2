@@ -31,19 +31,34 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-所有者 2026-10-05 裁定本 PR 只做第 2 包留下的三件事。Herdr 与两家 harness 留在分支 `grok/agency-harness`，3a 合入后再开。
+所有者 2026-10-05 裁定拆成 3a 与 3b。3a 是第 2 包留下的三件事，在本 PR。3b 是真 harness，3a 合入后从 `grok/agency-harness` 另开。
 
-| 留下 | 内容 |
-| --- | --- |
-| 结果分页 | `ResultQuery.after` 与 `ResultPage`。`complete` 只在已存结果取完且派工不再 Running 时为真 |
-| 凭据根 | 执行目录在凭据根外。macOS `sandbox-exec`，Linux `landlock` 0.4.7。限制失败则不启动 |
-| 目录摘要 | 脚本摘要是程序文件字节。Skill 摘要是 `SKILL.md` 字节，`verification` 留空 |
+| 文件 | 要补什么 | 状态 |
+| --- | --- | --- |
+| 结果查询 | 多份成果按游标分页；`complete` 只在已存结果取完且派工不再 Running 时为真 | 3a 已做 |
+| `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取 | 3a 已做 |
+| `src/catalog.rs`、脚本目录 | 摘要用程序文件或 `SKILL.md` 字节；`verification` 留空 | 3a 已做 |
+| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent`；实际能力随接单返回 | 脚本执行体已有；真 harness 由 3b |
+| `src/herdr.rs` | 沿锁定 SDK 持有 Herdr 私有句柄；恢复与观测归一 | 3b |
+| `src/harness/codex.rs`、`claude_code.rs` | 启动、钩子、终局、等待与复用；不把物理身份交给 control | 3b |
+| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 3b。接上，或者不带 |
+| `tests/runtime.rs` | 锁定 Herdr 制品的真实会话；两家 harness 有凭据就实测，没有就标未验证 | 3a 只覆盖凭据根与摘要；会话由 3b |
+
+3b 的验收（所有者裁定）：
+
+1. 用随包锁定的 Herdr 制品（`lock.json` 那一份，协议 20），不用本机 PATH 上的。原生测试里起它，走通 ping、建工作区、在 pane 里起一个确定性的程序、发输入、读回、关闭。这一段不需要凭据，必须实测。
+2. 一次真实派工走得完：任务（执行规格与上下文包里的材料）交给执行体，能判断终局，结果作为 Proposal 交回。两家 harness 的真实会话有凭据就实测，没有就标未验证。
+3. 一个 Agency 一个 Herdr 服务，或 socket 按派工区分；并发两个派工有用例。Herdr 和它拉起的进程在凭据根限制之下，状态目录在凭据根之外，有用例。
+4. 观测按内容去重。`workspace.rs` 真的接上，或者这次不带。
+5. harness 版本用最低版本：Codex CLI 0.153.4、Claude Code 2.1.263。不低于就可以上架。上架前做冒烟检查（能起来、能应答版本、能完成一次最小交互），不通过就不上架并说明原因。工种引用仍记实际版本与二进制摘要。「最低版本」只决定能不能上架。Herdr 不走这条，用随包锁定制品，协议号精确核对。
 
 可预测的执行目录若已存在且不属于当前用户，拒绝并给出 `UNSAFE_ENDPOINT`。没有配置脚本时目录是空的。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 
-脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的，不把未验证的 harness 放进可激活工种。执行目录在凭据根之外，子进程再被挡住凭据根（macOS `sandbox-exec`，Linux 用 Landlock 允许名单，不包含凭据根）。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
+脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
+
+两边挡住凭据根的方式不一样。macOS 的 `sandbox-exec` 只拒绝凭据根，其余路径照常，所以 `--script-config` 里的程序可以放在凭据根以外的任何可执行位置。Linux 的 Landlock 是允许名单：工作目录，以及 `/bin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/dev`、`/proc`、`/opt`。程序若不在这些目录里，会在 `exec` 时失败。子进程的 stderr 接到 null，观测里看得到的是退出码；助手自己的失败原因不会进事件。限制没有完全生效时助手退出，目标程序不会启动。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
 
 | CT-PARTICIPANT / CT-CONNECTION 的行 | 本包失败输入与覆盖 | 后续边界 |
 | --- | --- | --- |
