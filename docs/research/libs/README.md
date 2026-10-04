@@ -12,3 +12,5 @@
 | [`notify.md`](./notify.md) | 文件系统监听 | 采用 SDK：notify 加 debouncer；`wait` 先查后等、事件只触发复查、定时兜底；CI / PR 事实不靠它，走 GitHub API |
 | [`protobuf-rpc.md`](./protobuf-rpc.md) | control 接口生成与本地 RPC | 采用 SDK：prost 0.14.4、tonic 0.14.6、pbjson 0.9.0；采用二进制：protoc 36.1；Unix socket 上的 gRPC |
 | [`sqlite-migrations.md`](./sqlite-migrations.md) | SQLite schema 迁移 | 采用 SDK：rusqlite_migration 2.6.0，兼容现用 rusqlite 0.40.2；先备份、事务升级、失败恢复 |
+| [`hmac.md`](./hmac.md) | Agency 票据认证 | 采用 SDK：hmac 0.13.0 / sha2 0.11.0，恒时验证 |
+| [`base64.md`](./base64.md) | 规范 JSON 任意字节 | 采用 SDK：base64 0.22.1，RFC 4648 标准带填充字符串 |

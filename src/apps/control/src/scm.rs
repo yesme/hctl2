@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use foundation::SecretStore;
 use repo::git::run;
 use repo::{PlatformObservation, Registration, Result, reject};
 use serde_json::{Value, json};
@@ -50,7 +49,14 @@ impl Hosted {
         let paths = hosted_paths(services)?;
         let url = hosted_url(&paths.config)?;
         let credential_ref = format!("gitea:{control_id}:admin");
-        let token = SecretStore::detect("hctl2", root.join("secrets"))
+        let token = crate::config::secret_store(root)
+            .map_err(|_| {
+                reject(
+                    "CREDENTIAL_UNAVAILABLE",
+                    "stored Gitea credential unavailable",
+                    "restore_secret_store",
+                )
+            })?
             .get(&credential_ref)
             .map_err(|_| {
                 reject(
@@ -144,7 +150,13 @@ impl Hosted {
                 ));
             }
         }
-        let secrets = SecretStore::detect("hctl2", root.join("secrets"));
+        let secrets = crate::config::secret_store(root).map_err(|_| {
+            reject(
+                "CREDENTIAL_UNAVAILABLE",
+                "stored Gitea credential unavailable",
+                "restore_secret_store",
+            )
+        })?;
         let credential_ref = format!("gitea:{control_id}:admin");
         let token = match secrets.get(&credential_ref) {
             Ok(bytes) => String::from_utf8(bytes).map_err(|_| {

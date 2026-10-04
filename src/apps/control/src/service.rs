@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use crate::owner_actor;
 use crate::services::{ServiceError, Supervisor};
 use crate::socket_path;
-use foundation::SecretStore;
 use proto::control_server::Control;
 use proto::{
     Error as ProtoError, PreviewRequest, PreviewResponse, QueryRequest, QueryResponse,
@@ -58,6 +57,31 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_agencies(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let store = Arc::clone(&self.store);
+        let root = self.root.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut previous_error = None;
+            loop {
+                interval.tick().await;
+                let error = crate::agency::reconcile(&store, &root).await.err();
+                let code = error.as_ref().map(|e| e.code);
+                if code != previous_error {
+                    if let Some(error) = &error {
+                        eprintln!(
+                            "Agency recovery: {} ({})",
+                            error.code, error.recovery_action
+                        );
+                    }
+                    previous_error = code;
+                }
+            }
+        }
+    }
     pub(crate) fn reconcile_projects(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
@@ -254,6 +278,12 @@ impl Control for ControlService {
             return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
         let result = match req.kind.as_str() {
+            "agency.bindings" | "agency.catalog" | "profession.list" => {
+                match crate::agency::query(&self.store, &self.root, &req.kind, &payload).await {
+                    Ok(value) => value,
+                    Err(e) => return Ok(err_query(&e, 0)),
+                }
+            }
             "repo.list"
             | "repo.show"
             | "task.list"
@@ -463,6 +493,34 @@ impl Control for ControlService {
         }
         if let Some(error) = self.startup_error().await {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
+        }
+        if matches!(req.operation.as_str(), "agency.pair" | "profession.accept") {
+            let payload = match json_bytes(&req.payload) {
+                Ok(p) => p,
+                Err(e) => return Ok(submit_err(e, 0)),
+            };
+            let _operation = self.operations.lock().await;
+            return Ok(
+                match crate::agency::submit(
+                    &self.store,
+                    &self.root,
+                    &req.operation,
+                    &payload,
+                    &actor,
+                    &req.idempotency_key,
+                )
+                .await
+                {
+                    Ok(value) => Response::new(SubmitResponse {
+                        error: None,
+                        result: value.to_string().into_bytes(),
+                        event_seq: self
+                            .emit("submit", json!({"operation":req.operation}))
+                            .await,
+                    }),
+                    Err(e) => submit_err(present(&e), 0),
+                },
+            );
         }
         let mut details = json!({});
         if matches!(
@@ -796,10 +854,16 @@ impl ControlService {
             let Some(store) = slot.as_ref() else {
                 return Err(not_ready_error());
             };
+            // Report the backend actually in use; a configuration this build cannot
+            // satisfy must surface as an error, not as a guessed backend name.
+            let secrets = crate::config::secret_store(&root).map_err(|message| {
+                error("CREDENTIAL_STORAGE_INVALID", message, "fix_control_config")
+            })?;
+            let credential_storage = secrets.backend().as_str();
             Ok(if kind == "doctor" {
-                doctor_payload(store, &root, actor_json, services)
+                doctor_payload(store, &root, actor_json, services, credential_storage)
             } else {
-                status_payload(store, actor_json, services)
+                status_payload(store, actor_json, services, credential_storage)
             })
         })
         .await
@@ -977,37 +1041,42 @@ fn error(code: &str, message: impl Into<String>, recovery: &str) -> ProtoError {
     }
 }
 
-fn status_payload(store: &Store, actor: Value, services: Value) -> Value {
+fn status_payload(store: &Store, actor: Value, services: Value, credential_storage: &str) -> Value {
     json!({
         "ready": true,
         "control_id": store.control_id(),
         "writer_generation": store.generation().0,
         "protocol": PROTOCOL,
         "endpoint": "unix",
-        "policy": policy_values(),
+        "policy": policy_values(credential_storage),
         "actor": actor,
         "services": services,
     })
 }
 
-fn doctor_payload(store: &Store, root: &Path, actor: Value, services: Value) -> Value {
-    let secrets = SecretStore::detect("hctl2", root.join("secrets"));
+fn doctor_payload(
+    store: &Store,
+    root: &Path,
+    actor: Value,
+    services: Value,
+    credential_storage: &str,
+) -> Value {
     json!({
         "ready": true,
         "control_id": store.control_id(),
-        "secret_backend": format!("{:?}", secrets.backend()),
-        "policy": policy_values(),
+        "secret_backend": credential_storage,
+        "policy": policy_values(credential_storage),
         "socket": root.join("control.sock").display().to_string(),
         "actor": actor,
         "services": services,
     })
 }
 
-fn policy_values() -> Value {
+fn policy_values(credential_storage: &str) -> Value {
     json!({
         "endpoint_and_connection": "loopback-unix-owner-only",
         "non_local_transport": "not_offered",
-        "credential_storage": "system-keyring-then-user-file",
+        "credential_storage": credential_storage,
         "client_least_privilege": true,
     })
 }

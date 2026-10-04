@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod agency;
 mod project;
 mod repo;
 mod room;
@@ -35,8 +36,18 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    Init,
-    Start,
+    /// Create the control root; records `--secret-backend` when given.
+    Init {
+        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
+        secret_backend: Option<String>,
+    },
+    /// Start the control daemon; records `--secret-backend` when given.
+    Start {
+        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
+        secret_backend: Option<String>,
+    },
     Stop,
     Status,
     Doctor,
@@ -62,6 +73,8 @@ enum Command {
     Project(project::ProjectCommand),
     #[command(subcommand)]
     Request(project::RequestCommand),
+    #[command(subcommand)]
+    Agency(agency::AgencyCommand),
 }
 
 #[derive(Subcommand)]
@@ -125,20 +138,29 @@ fn default_root() -> PathBuf {
 
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
+        Command::Agency(command) => agency::dispatch(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
         Command::Room(command) => room::dispatch(command, root, json).await,
         Command::Project(command) => project::project(command, root, json).await,
         Command::Request(command) => project::request(command, root, json).await,
-        Command::Init => {
+        Command::Init { secret_backend } => {
             std::fs::create_dir_all(root).map_err(io)?;
+            if let Some(backend) = secret_backend.as_deref() {
+                write_secret_backend(root, backend)?;
+            }
             print_out(
                 json,
                 json!({"root": root.display().to_string(), "initialized": true}),
             );
             Ok(())
         }
-        Command::Start => start_daemon(root).await,
+        Command::Start { secret_backend } => {
+            if let Some(backend) = secret_backend.as_deref() {
+                write_secret_backend(root, backend)?;
+            }
+            start_daemon(root).await
+        }
         Command::Stop => stop_daemon(root).await,
         Command::Status => query(root, json, "status", json!({})).await,
         Command::Doctor => query(root, json, "doctor", json!({})).await,
@@ -236,6 +258,33 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
             Ok(())
         }
     }
+}
+
+/// Records the secret backend in `<root>/control.json`, the file control reads.
+/// Unknown keys are preserved so the file can grow beyond this setting.
+fn write_secret_backend(root: &Path, backend: &str) -> Result<(), String> {
+    // `start` creates the root itself, so recording a setting cannot assume it exists.
+    std::fs::create_dir_all(root).map_err(io)?;
+    let path = root.join("control.json");
+    let mut config = match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
+            .map_err(|error| format!("{}: {error}", path.display()))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({}),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    let object = config
+        .as_object_mut()
+        .ok_or_else(|| format!("{}: configuration must be a JSON object", path.display()))?;
+    object.insert("secret_backend".to_owned(), json!(backend));
+    let bytes = serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?;
+    // Written the way the secret store writes its own file: temporary file, synced,
+    // then renamed — an interrupted write cannot leave a half-parsed configuration.
+    let temporary = root.join(format!("control.json.tmp.{}", std::process::id()));
+    let mut file = std::fs::File::create(&temporary).map_err(io)?;
+    std::io::Write::write_all(&mut file, &bytes).map_err(io)?;
+    file.sync_all().map_err(io)?;
+    drop(file);
+    std::fs::rename(&temporary, &path).map_err(io)
 }
 
 async fn start_daemon(root: &Path) -> Result<(), String> {
