@@ -67,6 +67,16 @@ async fn run(args: Args) -> Result<()> {
             };
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
+            } else if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT") {
+                match agency::launch::installed_herdr(std::path::Path::new(&install))
+                    .and_then(agency::launch::InstalledHerdr::open)
+                {
+                    Ok(runtime) => Arc::new(runtime),
+                    Err(error) => {
+                        eprintln!("herdr not cataloged: {error}");
+                        Arc::new(Unconfigured)
+                    }
+                }
             } else {
                 Arc::new(Unconfigured)
             };

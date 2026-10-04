@@ -134,12 +134,19 @@ impl Server {
             .env(
                 "HCTL2_CONFINE_ALLOW",
                 format!(
-                    "{}\n{}\n{}\n{}",
+                    "{}\n{}\n{}",
                     state.display(),
                     socket_dir.display(),
-                    binary.parent().unwrap_or(binary.as_path()).display(),
                     exec_parent.display()
                 ),
+            )
+            .env(
+                "HCTL2_CONFINE_READ",
+                binary
+                    .parent()
+                    .unwrap_or(binary.as_path())
+                    .display()
+                    .to_string(),
             )
             .process_group(0)
             .stdin(Stdio::null())
@@ -191,7 +198,7 @@ impl Drop for Server {
     }
 }
 
-/// State sits next to the execution directory, outside the credential root.
+/// State is outside the pane's working directory and outside the credential root.
 pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> {
     let credential_root = credential_root.canonicalize().map_err(|_| {
         PortError::new(
@@ -207,11 +214,17 @@ pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> 
             "choose_execution_directory",
         )
     })?;
-    let state = exec_parent.join("herdr-state");
-    if state.starts_with(&credential_root) || credential_root.starts_with(&state) {
+    let parent = exec_parent.parent().unwrap_or(Path::new("/tmp"));
+    let digest = &hash(exec_parent.as_os_str().as_encoded_bytes())[..20];
+    let state = parent.join(format!("hctl2-herdr-state-{digest}"));
+    if state.starts_with(&exec_parent)
+        || exec_parent.starts_with(&state)
+        || state.starts_with(&credential_root)
+        || credential_root.starts_with(&state)
+    {
         return Err(PortError::new(
             "HERDR_STATE_UNSAFE",
-            "Herdr state directory is inside the credential root",
+            "Herdr state directory overlaps the pane directory or the credential root",
             "choose_state_directory",
         ));
     }

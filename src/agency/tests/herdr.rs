@@ -1,6 +1,8 @@
 use agency::{
-    confine,
+    confine, harness,
     herdr::{self, Client, Server},
+    launch,
+    runtime::Runtime,
 };
 use agency_proto::{Catalog, Pair, Pairing, client::Client as PortClient};
 use serde_json::json;
@@ -36,7 +38,8 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
 fn outside_credential(state: &std::path::Path, cred: &std::path::Path, exec: &std::path::Path) {
     let cred = cred.canonicalize().unwrap();
     let exec = exec.canonicalize().unwrap();
-    assert!(state.starts_with(&exec));
+    assert!(!state.starts_with(&exec));
+    assert!(!exec.starts_with(state));
     assert!(!state.starts_with(&cred));
     assert!(!cred.starts_with(state));
 }
@@ -374,6 +377,241 @@ fn a_missing_credential_root_is_not_used_raw() {
     let missing = std::env::temp_dir().join(format!("hctl2-missing-{}", std::process::id()));
     let error = confine::execution_dir(&missing, "dispatch").unwrap_err();
     assert_eq!(error.code, "CREDENTIAL_ROOT_UNRESOLVED");
+}
+
+fn server(
+    name: &str,
+) -> (
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::sync::Arc<Server>,
+) {
+    let (cred, exec) = scratch(name);
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let server = std::sync::Arc::new(Server::start(&binary(), &state, &cred, &exec).unwrap());
+    (cred, exec, state, server)
+}
+
+#[test]
+fn a_script_exit_file_is_the_completion_signal() {
+    let (cred, exec, state, server) = server("exit0");
+    let launch = launch::Launch::start(
+        server,
+        &exec,
+        &state,
+        &cred,
+        "printf '%s\\n' RESULT_OK\nexit 0\n",
+        "ok",
+    )
+    .unwrap();
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert!(finished.stdout.windows(9).any(|item| item == b"RESULT_OK"));
+    let _ = launch.cancel();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_nonzero_script_exit_is_not_success() {
+    let (cred, exec, state, server) = server("exit7");
+    let launch = launch::Launch::start(
+        server,
+        &exec,
+        &state,
+        &cred,
+        "printf '%s\\n' NOPE\nexit 7\n",
+        "bad",
+    )
+    .unwrap();
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 7);
+    let _ = launch.cancel();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn cancel_stops_before_the_exit_file_exists() {
+    let (cred, exec, state, server) = server("cancel");
+    let launch = launch::Launch::start(
+        server,
+        &exec,
+        &state,
+        &cred,
+        "sleep 30\ntouch finished\nexit 0\n",
+        "cancel",
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    launch.cancel().unwrap();
+    assert!(launch.poll_exit().unwrap().is_none());
+    assert!(!exec.join("finished").exists());
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_screen_marker_does_not_finish_a_running_script() {
+    let (cred, exec, state, server) = server("history");
+    let launch = launch::Launch::start(
+        std::sync::Arc::clone(&server),
+        &exec,
+        &state,
+        &cred,
+        "printf '%s\\n' HCTL2DONE\nsleep 3\ntouch finished\nexit 0\n",
+        "history",
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let noise = ": HCTL2XDONE\n^X^^; sleep 3; touch r4done\n: HCTL2XDONE\n^X^^; sleep 3; touch codexdone; printf '%s%s\\n' HCTL2 DONE\n";
+    client
+        .call(
+            "pane.send_text",
+            serde_json::json!({"pane_id": launch.pane(), "text": noise}),
+        )
+        .unwrap();
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(launch.poll_exit().unwrap().is_none());
+    assert!(!exec.join("finished").exists());
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert!(exec.join("finished").exists());
+    let _ = launch.cancel();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn the_pane_program_cannot_write_the_herdr_state_directory() {
+    let (cred, exec, state, server) = server("statedeny");
+    assert!(!state.starts_with(&exec));
+    let body = "mkdir -p herdr-state && touch herdr-state/pwned\ntouch wrote-ok\nexit 0\n";
+    let launch = launch::Launch::start(server, &exec, &state, &cred, body, "statedeny").unwrap();
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert!(exec.join("wrote-ok").exists());
+    assert!(!state.join("pwned").exists());
+    let _ = launch.cancel();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_tampered_install_is_not_the_locked_herdr() {
+    let install = std::env::temp_dir().join(format!("hctl2-install-{}", std::process::id()));
+    let dest = install.join("libexec/hctl2/herdr");
+    let _ = std::fs::remove_dir_all(&install);
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::copy(binary(), &dest).unwrap();
+    assert!(launch::installed_herdr(&install).is_ok());
+    let mut bytes = std::fs::read(&dest).unwrap();
+    bytes[0] ^= 0xff;
+    std::fs::write(&dest, &bytes).unwrap();
+    assert_eq!(
+        launch::installed_herdr(&install).unwrap_err().code,
+        "HERDR_DIGEST_MISMATCH"
+    );
+    let _ = std::fs::remove_dir_all(&install);
+}
+
+#[test]
+fn caller_timeout_is_not_a_successful_exit() {
+    let (cred, exec, state, server) = server("timeout");
+    let launch = launch::Launch::start(
+        server,
+        &exec,
+        &state,
+        &cred,
+        "sleep 30\nexit 0\n",
+        "timeout",
+    )
+    .unwrap();
+    let error = match launch.wait(Duration::from_millis(400)) {
+        Err(error) => error,
+        Ok(_) => panic!("a short timeout was treated as a finished script"),
+    };
+    assert_eq!(error.code, "LAUNCH_TIMEOUT");
+    assert!(launch.poll_exit().unwrap().is_none());
+    launch.cancel().unwrap();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn a_locked_install_smokes_before_it_is_cataloged() {
+    let install = std::env::temp_dir().join(format!("hctl2-install-ok-{}", std::process::id()));
+    let dest = install.join("libexec/hctl2/herdr");
+    let _ = std::fs::remove_dir_all(&install);
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::copy(binary(), &dest).unwrap();
+    let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&dest, permissions).unwrap();
+    let runtime = launch::InstalledHerdr::open(dest).unwrap();
+    let catalog = runtime.catalog().unwrap();
+    assert_eq!(catalog.professions[0].reference.id, "herdr-locked");
+    assert_eq!(catalog.professions[0].reference.revision, "protocol-20");
+    assert_eq!(catalog.harnesses[0].digest.len(), 64);
+    let _ = std::fs::remove_dir_all(&install);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_pane_cannot_write_the_herdr_binary_directory() {
+    let (cred, exec, state, server) = server("bindir");
+    let marker = binary()
+        .parent()
+        .unwrap()
+        .join(format!("hctl2-pwned-{}", std::process::id()));
+    let _ = std::fs::remove_file(&marker);
+    let body = format!("touch '{}' || true\nexit 0\n", marker.display());
+    let launch = launch::Launch::start(server, &exec, &state, &cred, &body, "bindir").unwrap();
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert!(!marker.exists());
+    let _ = launch.cancel();
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+    let _ = std::fs::remove_dir_all(&state);
+}
+
+#[test]
+fn harness_minimums_do_not_start_a_session() {
+    assert!(harness::version_at_least(
+        "2.1.289",
+        harness::CLAUDE_MINIMUM
+    ));
+    assert!(!harness::version_at_least("2.1.0", harness::CLAUDE_MINIMUM));
+    assert!(harness::version_at_least("0.160.0", harness::CODEX_MINIMUM));
+    assert!(!harness::version_at_least(
+        "0.153.3",
+        harness::CODEX_MINIMUM
+    ));
+    if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
+        eprintln!("UNVERIFIED claude session: CI has no harness credential; live flag is unset");
+        eprintln!("UNVERIFIED codex session: the second harness is not run in this package");
+        return;
+    }
+    let session = agency::harness::claude::print_session(
+        "Reply with exactly HCTL2_REAL_OK and do not use tools.\n",
+        Duration::from_secs(120),
+    )
+    .unwrap();
+    assert!(!session.is_error, "{}", session.result);
+    assert!(
+        session.result.contains("HCTL2_REAL_OK"),
+        "{}",
+        session.result
+    );
+    assert!(!session.session_id.is_empty());
 }
 
 fn process_matches(pid: u32, binary: &std::path::Path) -> bool {
