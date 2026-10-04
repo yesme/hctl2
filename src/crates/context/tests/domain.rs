@@ -451,6 +451,114 @@ fn a_duplicate_entry_cannot_replace_another_manifest_source() {
     assert!(store.list("context_bundle").unwrap().is_empty());
 }
 
+#[test]
+fn readback_rejects_bad_seals_and_mismatched_admitted_material() {
+    let mut store = temp_store();
+    let actor = TrustedActor(agency_proto_to_store_actor());
+    let source = reference("chat_source_reference/s1", &hash(b"body"));
+    let mut sources = MemorySources::new();
+    sources.push(SourceKind::Room, source.clone(), b"body");
+    let assembly = assembler(&["chat_source_reference/s1"], 1024)
+        .assemble(
+            &sources,
+            AssemblyRequest {
+                manifest: manifest(
+                    vec![source],
+                    1024,
+                    &permission_digest(&["chat_source_reference/s1"]),
+                ),
+                consumer: owner(),
+            },
+        )
+        .unwrap();
+    context::save_assembly(&mut store, &actor, "p", "readback", &assembly).unwrap();
+    let original = context::bundle_record(&store, "p", &assembly.bundle.document.id)
+        .unwrap()
+        .unwrap();
+    let mut bad = original.clone();
+    if let RecordData::Value { value } = &mut bad.data {
+        value["digest"] = json!("0".repeat(64));
+    }
+    bad.version = 2;
+    put_corrupted_fixture(&mut store, &actor, &bad, None);
+    assert_eq!(
+        context::read_bundle(&store, &actor, "p", &original.key.id)
+            .unwrap_err()
+            .code,
+        "DIGEST_MISMATCH"
+    );
+
+    let material = store
+        .save_material(
+            store.generation(),
+            &actor,
+            &original.key.scope,
+            "corrupt-3",
+            "body",
+            b"{}",
+        )
+        .unwrap();
+    let mut bad = original.clone();
+    bad.version = 3;
+    bad.materials = vec![material.clone()];
+    put_corrupted_fixture(&mut store, &actor, &bad, Some(&material));
+    assert_eq!(
+        context::read_bundle(&store, &actor, "p", &original.key.id)
+            .unwrap_err()
+            .code,
+        "MATERIAL_DIGEST_MISMATCH"
+    );
+    let mut missing = original;
+    missing.version = 4;
+    missing.materials.clear();
+    put_corrupted_fixture(&mut store, &actor, &missing, None);
+    assert_eq!(
+        context::read_bundle(&store, &actor, "p", &missing.key.id)
+            .unwrap_err()
+            .code,
+        "INVALID_INPUT"
+    );
+}
+
+// Deliberately bypass the Context writer's validation to simulate a damaged
+// stored record. Each replacement still uses Store's transaction and CAS.
+fn put_corrupted_fixture(
+    store: &mut Store,
+    actor: &TrustedActor,
+    record: &Record,
+    material: Option<&store::MaterialRef>,
+) {
+    let key = format!("corrupt-{}", record.version);
+    let input = json!({"version":record.version});
+    let command = store::Command {
+        command_id: key.clone(),
+        idempotency_key: key,
+        actor: actor.0.clone(),
+        target: record.key.clone(),
+        expected: store::Expected::Exact(Version::State(record.version - 1)),
+        binding: Reference {
+            key: store::ObjectKey {
+                scope: Scope::Control,
+                kind: "module".into(),
+                id: "context".into(),
+            },
+            version: Version::State(1),
+        },
+        input_digest: store::Command::digest_input("fixture.corrupt", &input).unwrap(),
+        operation: "fixture.corrupt".into(),
+        input,
+    };
+    store
+        .submit(store.generation(), actor, &command, None, |tx| {
+            if let Some(material) = material {
+                tx.admit_material(material)?;
+            }
+            tx.put(record)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+}
+
 /// The store-backed source adapter: version moved → typed stale error; the
 /// admitted material bytes come back exactly.
 #[test]

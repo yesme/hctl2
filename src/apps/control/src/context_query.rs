@@ -138,11 +138,14 @@ fn port_error(error: context::PortError) -> store::StoreError {
         "READBACK_REQUIRED" => "READBACK_REQUIRED",
         "VERSION_CONFLICT" => "VERSION_CONFLICT",
         "MATERIAL_NOT_DELIVERED" => "MATERIAL_NOT_DELIVERED",
+        "MATERIAL_NOT_ADMITTED" => "MATERIAL_NOT_ADMITTED",
         "MATERIAL_DIGEST_MISMATCH" => "MATERIAL_DIGEST_MISMATCH",
+        "DIGEST_MISMATCH" => "DIGEST_MISMATCH",
         "DELIVERY_DIGEST_MISMATCH" => "DELIVERY_DIGEST_MISMATCH",
         "SOURCE_VERSION_CHANGED" => "SOURCE_VERSION_CHANGED",
         "PERMISSION_CHANGED" => "PERMISSION_CHANGED",
         "BUDGET_CHANGED" => "BUDGET_CHANGED",
+        "BUDGET_EXCEEDED" => "BUDGET_EXCEEDED",
         "PERMISSION_DENIED" => "PERMISSION_DENIED",
         "REVIEW_LINE_NOT_CONFIGURED" => "REVIEW_LINE_NOT_CONFIGURED",
         "SOURCE_UNAVAILABLE" => "SOURCE_UNAVAILABLE",
@@ -156,6 +159,11 @@ fn port_error(error: context::PortError) -> store::StoreError {
         "wait_for_review_wiring" => "wait_for_review_wiring",
         "select_context_sources" => "select_context_sources",
         "restore_material" => "restore_material",
+        "restore_or_admit_material" => "restore_or_admit_material",
+        "rebuild_preview" => "rebuild_preview",
+        "rebuild_bundle" => "rebuild_bundle",
+        "deliver_exact_bytes" => "deliver_exact_bytes",
+        "deliver_required_material" => "deliver_required_material",
         "correct_input" => "correct_input",
         "inspect_object" => "inspect_object",
         "use_a_new_manifest_id" | "use_a_new_bundle_id" => "use_a_new_id",
@@ -165,5 +173,17 @@ fn port_error(error: context::PortError) -> store::StoreError {
         code: static_code,
         message: error.message,
         recovery_action: recovery,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn frozen_digest_error_keeps_its_code_and_recovery() {
+        let mut sealed = context::Sealed::new(serde_json::json!({"body":"original"})).unwrap();
+        sealed.document = serde_json::json!({"body":"changed"});
+        let error = super::port_error(sealed.verify().unwrap_err());
+        assert_eq!(error.code, "DIGEST_MISMATCH");
+        assert_eq!(error.recovery_action, "rebuild_preview");
     }
 }
