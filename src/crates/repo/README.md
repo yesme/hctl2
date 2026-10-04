@@ -67,7 +67,7 @@ hctl2 repo grant --repo-id REPO_ID --username alice --key alice-grant
 hctl2 repo grant --repo-id REPO_ID --username alice --key alice-grant --preview-token TOKEN
 ```
 
-`--permission` 取 `read`（缺省）或 `write`，`read` 已足够让人在平台上开 Issue；`admin` 一类的级别不接受。账号已存在就复用、不重置其口令，协作权已回读到就不重发。返回 `{repo_id, full_name, username, account_created, initial_password?, permission}`：`initial_password` 只在本次确实建了账号时出现一次，控制面不存它、不写日志、不进事件流，人自己保管；Gitea 的个人账号默认须改口令，所以它是初始口令而不是长期密钥。只对已激活（`lifecycle: active`）的本地平台注册有效：外部 GitHub 注册拒绝（`INVALID_INPUT`，账号归 GitHub 自己管），待确认注册拒绝（`REPO_PENDING`）。用户名会被拼进平台 API 路径，所以先在控制面按字符集与 `.` 规则校验，不靠平台事后拒绝。
+`--permission` 取 `read`（缺省）或 `write`，`read` 已足够让人在平台上开 Issue；`admin` 一类的级别不接受。账号已存在就复用、不重置其口令；协作权每次都写请求的那个级别再回读确认，因为平台的协作者回读是 204 空正文、读不出当前级别。返回 `{repo_id, full_name, username, account_created, initial_password?, permission}`：`initial_password` 只在本次确实建了账号时出现一次，控制面不存它、不写日志、不进事件流，人自己保管；Gitea 的个人账号默认须改口令，所以它是初始口令而不是长期密钥。只对已激活（`lifecycle: active`）的本地平台注册有效：外部 GitHub 注册拒绝（`INVALID_INPUT`，账号归 GitHub 自己管），待确认注册拒绝（`REPO_PENDING`）。用户名会被拼进平台 API 路径，所以先在控制面按字符集与 `.` 规则校验，不靠平台事后拒绝。
 
 所有 Repo 写命令均先预览。预览冻结输入目录的已提交 HEAD、选定 refs、remote 和可达治理路径；提交前变化则重做预览。初始交付不包含未提交内容，默认只推 HEAD 分支；detached HEAD 使用新平台默认分支 `main`，但若输入已有不同 SHA 的 `main`，拒绝猜测：先检出目标分支，或用 `local.extra_refs` 明确选择原 `refs/heads/main`。其他 refs 用 `local.extra_refs` 显式列出。私有 refs 不推；选中历史包含 `.memo` / `.hctl2` 时拒绝，只有人明确将该历史公开（`local.publish_governance: true`，路径在预览中列出）才继续，不自动改写历史。此路径检查不声称能识别任意文件里的敏感正文。
 
@@ -79,9 +79,9 @@ hctl2 repo grant --repo-id REPO_ID --username alice --key alice-grant --preview-
 
 建仓用冻结的账号、仓库名和注册关联标记；发送前先读、发送后再读。响应丢失后保持原 outbox 未知，重试只查原目标、不再次 POST；同名但关联不符拒绝。Git 交付仅创建不存在的选定 refs，空旧值的 `--force-with-lease` 做创建比较，已有不同值拒绝；回读完整集合才能确认。已交付而确认丢失可只回读，不要求原输入目录仍在。所有带平台凭据的推送都从控制面私有副本执行；不使用输入仓库的配置、hooks 或模板，禁用继承的全局配置与 Git trace。原地选项只在成功后无凭据地改原 remote。
 
-当前由显式重试驱动恢复，不在后台静默重新授权；每次恢复核当前调用者、原授权及冻结材料。平台服务实例、稳定 ID、仓库全名、clone URL 用于核身份，Issues 能力与凭据观测变化不视为换仓。Gitea 尚未验证的评审、合并、保护回读能力声明为不支持；两家均未建立 human 到平台账号的映射，管理员凭据账号不冒充该映射。`repo grant` 建了人的普通账号与协作权，但约束要求的「账号映射照常写进绑定」还没做：绑定里没有这条映射的持久记录，命令重跑的幂等只来自平台侧的先读后写。
+当前由显式重试驱动恢复，不在后台静默重新授权；每次恢复核当前调用者、原授权及冻结材料。平台服务实例、稳定 ID、仓库全名、clone URL 用于核身份，Issues 能力与凭据观测变化不视为换仓。Gitea 尚未验证的评审、合并、保护回读能力声明为不支持；两家均未建立 human 到平台账号的映射，管理员凭据账号不冒充该映射。`repo grant` 建了人的普通账号与协作权，但约束要求的「账号映射照常写进绑定」还没做：绑定里没有这条映射的持久记录，命令重跑的幂等来自平台侧——账号已在就复用，协作权写请求的级别（对同一级别幂等）再回读。
 
-`repo grant` 的外部步骤同样先读后写：账号已在原生 `admin user list` 里就复用，协作权先 GET 回读到就不发 PUT，PUT 之后回读不到授权按 `PLATFORM_READBACK` 拒绝并保留结果未知，不当成功。建账号的原生 CLI 自身失败按 `PLATFORM_BOOTSTRAP` 拒绝——Gitea 先打印生成的口令、再建用户，所以那行口令只在命令整体成功后才可信，失败时既不返回它也不把它写进错误正文。账号建成而授权失败时账号留下来、刚打印的初始口令被丢弃而不进错误正文，错误正文说明这一点；恢复是用原生管理 CLI 重置口令后重跑同一命令，账号已存在即复用。这条命令不写控制面存储：没有新的持久记录，也没有 outbox 阶段。
+`repo grant` 的外部步骤：账号已在原生 `admin user list` 里就复用（表头行不算账号），协作权**总是** PUT 请求的那个级别、再 GET 回读；PUT 之后回读不到授权按 `PLATFORM_READBACK` 拒绝并保留结果未知，不当成功。回读不能替代写、也不能用来跳过写：平台的 GET 对协作者回 204 空正文，正文里没有权限级别，「人在名单上」推不出「级别已是请求值」；写对同一级别幂等，对另一级别改到请求值。建账号的原生 CLI 自身失败按 `PLATFORM_BOOTSTRAP` 拒绝——Gitea 先打印生成的口令、再建用户，所以那行口令只在命令整体成功后才可信，失败时既不返回它也不把它写进错误正文。账号建成而授权失败时账号留下来、刚打印的初始口令被丢弃而不进错误正文，错误正文说明这一点；恢复是用原生管理 CLI 重置口令后重跑同一命令，账号已存在即复用。这条命令不写控制面存储：没有新的持久记录，也没有 outbox 阶段。
 
 放弃保留原目标和已读到的平台仓库；尚未发送的 outbox 同事务标 `cancelled`、释放目标，不伪装外部成功。结果未知仍占用冲突范围。放弃后 `resume` 只回读：确认原仓库残留（交付未知还要核原 refs）后记录事实并释放已确认动作的范围，不建仓、不推送、不激活；查不到不能证明旧请求不会晚到。新登记遇冲突返回 `REGISTRATION_TARGET_BUSY` 和原登记 ID；已存在的残留仍须人清理，不会被新登记接管。原地 remote 更改失败也不回滚已确认的平台交付。
 
@@ -99,6 +99,6 @@ Repo 外部步骤与 `restore.apply`、服务维护串行；Gitea 就绪等待�
 | 同名分支不覆盖、未知只回读、不可用不降级、放弃留残留 | `git_test`：不同目标 SHA 拒绝与重复交付；`registration_test`：未知意图、放弃后回读残留、取消未发送意图后重新登记、能力变而身份不变、恢复时授权与输入重核；`boundary_test`：不可用重试同一 pending；`cli_test`：放弃后 resume 不重启外部步骤、新 key 复用目标；平台适配器测试核 HTTP 失败和关联回读 |
 | 待确认不接受 Project / Task / Run；注册不建 Room | `registration_test`：`require_active` 拒绝、无 Room 记录。后续业务入口尚不存在，不把此守卫测试冒充完整业务验收 |
 | 本地平台检查只声明外部状态写回 | `registration_test` 核 Binding 的 `external_status_only`，不冒充机械证据 |
-| 本地平台账号：管理员给 control，有权的人各一个普通账号（[Repo 约束 §平台绑定与能力声明](../../../docs/design/spec/repo.md#平台绑定与能力声明)） | 平台适配器测试：建账号失败不把已打印的口令当账号、已存在的账号复用且不再建、协作者授权由回读确认且不重发、响应丢失按结果未知；`unit_test`：会改写平台路径的用户名与越权 permission 在接触平台前拒绝；`cli_test`：外部注册与待确认注册都拿不到 preview_token。绑定里的账号映射未实现，见「失败与恢复」 |
+| 本地平台账号：管理员给 control，有权的人各一个普通账号（[Repo 约束 §平台绑定与能力声明](../../../docs/design/spec/repo.md#平台绑定与能力声明)） | 平台适配器测试：建账号失败不把已打印的口令当账号、已存在的账号复用且不再建、`admin user list` 的表头行不当成账号、协作者授权每次都写请求的级别并由回读确认（含已是协作者时改级别）、响应丢失按结果未知；`unit_test`：会改写平台路径的用户名与越权 permission 在接触平台前拒绝；`cli_test`：外部注册与待确认注册都拿不到 preview_token。绑定里的账号映射未实现，见「失败与恢复」 |
 
 Buck 目标：`root//crates/repo:repo`、`:registration_test`、`:git_test`、`:clippy`；复用 `root//apps/control:{unit_test,boundary_test,services_test}`、`root//apps/cli:cli_test`、`root//packaging/release:complete-test`。其余 CT-REPO（写租约、ChangeSet、发布评审、集成、审计公开）不在戊的交付范围。

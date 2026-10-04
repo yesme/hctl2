@@ -93,6 +93,7 @@ fn write_gitea_fixture(path: &Path) {
         r#"#!/bin/sh
 sub="$7"
 if [ "$sub" = list ]; then
+    printf 'ID\tUsername\tEmail\tIsActive\n'
     cat "$0.users" 2>/dev/null
     exit 0
 fi
@@ -170,8 +171,29 @@ fn human_account_is_created_once_and_a_failed_create_leaks_no_password() {
     assert_eq!(std::fs::read_to_string(&creates).unwrap(), "xx");
 }
 
-/// A subprocess fixture for `tea api`: collaborator reads answer from the grants recorded
-/// so far, and a PUT records one only when the fixture is not told to lose the response.
+#[test]
+fn the_account_list_header_is_not_an_account() {
+    // `gitea admin user list` prints a header whose own second column is the literal
+    // `Username` (`cmd/admin_user_list.go:44`), tab-expanded to spaces by `:41`. Reading it
+    // as an account would skip creating an account really named that, and the collaborator
+    // grant would then meet a 422 instead of an account.
+    let tabbed = b"ID\tUsername\tEmail\tIsActive\n2\talice\talice@localhost\ttrue\n";
+    assert!(account_listed(tabbed, "alice"));
+    assert!(!account_listed(tabbed, "Username"));
+    assert!(!account_listed(tabbed, "bob"));
+    let padded =
+        b"ID     Username  Email            IsActive\n2      alice     alice@localhost  true\n";
+    assert!(account_listed(padded, "alice"));
+    assert!(!account_listed(padded, "Username"));
+    // An account really carrying that name is still found.
+    let real = b"ID\tUsername\tEmail\tIsActive\n3\tUsername\tu@localhost\ttrue\n";
+    assert!(account_listed(real, "Username"));
+}
+
+/// A subprocess fixture for `tea api`: a PUT records the account and the permission it was
+/// granted, unless the fixture is told to lose the response, and a collaborator read answers
+/// from the accounts recorded so far. Like the platform, the read names the account only and
+/// never says which permission it holds.
 fn write_tea_fixture(path: &Path) {
     std::fs::write(
         path,
@@ -179,12 +201,13 @@ fn write_tea_fixture(path: &Path) {
 method="$4"
 if [ "$method" = PUT ]; then
     path="$7"
+    body="$(cat)"
 else
     path="$5"
 fi
 name="${path##*/}"
 if [ "$method" = GET ]; then
-    if grep -qx "$name" "$0.grants" 2>/dev/null; then
+    if cut -f1 "$0.grants" 2>/dev/null | grep -qx "$name"; then
         printf 'HTTP/1.1 204 No Content\n' >&2
     else
         printf 'HTTP/1.1 404 Not Found\n' >&2
@@ -194,7 +217,9 @@ if [ "$method" = GET ]; then
 fi
 printf x >> "$0.puts"
 if [ ! -f "$0.lose" ]; then
-    printf '%s\n' "$name" >> "$0.grants"
+    permission="${body#*\"permission\":\"}"
+    permission="${permission%%\"*}"
+    printf '%s\t%s\n' "$name" "$permission" >> "$0.grants"
 fi
 printf 'HTTP/1.1 204 No Content\n' >&2
 exit 0
@@ -205,19 +230,31 @@ exit 0
 }
 
 #[test]
-fn collaborator_grant_is_confirmed_by_readback_and_not_sent_twice() {
+fn collaborator_grant_writes_the_requested_permission_and_confirms_it_by_readback() {
     let temp =
         Temp(std::env::temp_dir().join(format!("hctl2-collaborator-{}", std::process::id())));
     let _ = std::fs::remove_dir_all(&temp.0);
     std::fs::create_dir_all(&temp.0).unwrap();
     write_tea_fixture(&temp.0.join("tea-fixture"));
     let puts = temp.0.join("tea-fixture.puts");
+    let grants = temp.0.join("tea-fixture.grants");
     let hosted = Hosted {
         tea: temp.0.join("tea-fixture"),
         url: "http://127.0.0.1:3000".into(),
         username: "admin".into(),
         token: "fixture-only".into(),
         credential_ref: "fixture".into(),
+    };
+    // The permission the platform is left holding for one account.
+    let held = |name: &str| -> String {
+        std::fs::read_to_string(&grants)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter(|(granted, _)| *granted == name)
+            .map(|(_, permission)| permission.to_owned())
+            .next_back()
+            .unwrap_or_default()
     };
 
     // A lost response is not a grant: the PUT succeeded but the readback cannot confirm it.
@@ -229,22 +266,36 @@ fn collaborator_grant_is_confirmed_by_readback_and_not_sent_twice() {
             .code,
         "PLATFORM_READBACK"
     );
+    assert_eq!(held("alice"), "");
     std::fs::remove_file(temp.0.join("tea-fixture.lose")).unwrap();
 
     hosted
         .grant_collaborator("admin/test", "alice", "read")
         .unwrap();
     assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xx");
+    assert_eq!(held("alice"), "read");
 
-    // An existing grant is read, not re-sent.
+    // Re-running one intent writes again: a readback cannot say which permission holds, so
+    // the write is what makes the reported permission true. Here it changes nothing.
     hosted
         .grant_collaborator("admin/test", "alice", "read")
         .unwrap();
-    assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xx");
-
-    // Another account on the same repository is its own grant.
-    hosted
-        .grant_collaborator("admin/test", "bob", "write")
-        .unwrap();
     assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xxx");
+    assert_eq!(held("alice"), "read");
+
+    // An account already on the list still receives a different requested permission, instead
+    // of keeping the old one while the caller is told the new one.
+    hosted
+        .grant_collaborator("admin/test", "alice", "write")
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xxxx");
+    assert_eq!(held("alice"), "write");
+
+    // Another account on the same repository is its own grant and disturbs neither.
+    hosted
+        .grant_collaborator("admin/test", "bob", "read")
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&puts).unwrap(), "xxxxx");
+    assert_eq!(held("bob"), "read");
+    assert_eq!(held("alice"), "write");
 }

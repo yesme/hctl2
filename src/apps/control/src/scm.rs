@@ -328,8 +328,11 @@ impl Hosted {
         }))
     }
     /// Grant an existing platform account collaboration on a repository control owns.
-    /// Reads before writing and reads back after: a lost response is resolved by reading
-    /// the original grant, never by sending a second one.
+    ///
+    /// The write is never skipped: a collaborator read answers 204 with an empty body, so it
+    /// says the account is listed but not which permission holds, and skipping the write would
+    /// report a permission the platform never received. The write is idempotent, and a lost
+    /// response is still resolved by reading the grant back rather than by assuming it landed.
     pub(crate) fn grant_collaborator(
         &self,
         full_name: &str,
@@ -337,9 +340,6 @@ impl Hosted {
         permission: &str,
     ) -> Result<()> {
         let endpoint = format!("repos/{full_name}/collaborators/{username}");
-        if self.api("GET", &endpoint, None)?.is_some() {
-            return Ok(());
-        }
         self.api("PUT", &endpoint, Some(json!({"permission":permission})))?;
         self.api("GET", &endpoint, None)?.ok_or_else(|| {
             reject(
@@ -436,11 +436,15 @@ fn gitea_admin_user(paths: &HostedPaths) -> Command {
     cmd
 }
 
-/// `gitea admin user list` prints one account per line with the username in the second column.
+/// `gitea admin user list` prints one account per line with the username in the second column,
+/// above a header whose own second column is the literal `Username`.
 fn account_listed(stdout: &[u8], username: &str) -> bool {
-    String::from_utf8_lossy(stdout)
-        .lines()
-        .any(|line| line.split_whitespace().nth(1) == Some(username))
+    String::from_utf8_lossy(stdout).lines().any(|line| {
+        let mut columns = line.split_whitespace();
+        // A data row's first column is a numeric id (`cmd/admin_user_list.go:47`), so
+        // dropping the header cannot drop an account.
+        columns.next() != Some("ID") && columns.next() == Some(username)
+    })
 }
 
 pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<PlatformObservation> {
