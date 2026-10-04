@@ -262,6 +262,8 @@ Room 端口的当前命令和确认流程见 [Chat 实现说明](../src/crates/c
 
 密钥后端缺省沿用「有钥匙串就用钥匙串、没有就退到用户目录下的 0600 文件」。要显式选一种，在 `hctl2 init` 或 `hctl2 start` 上加 `--secret-backend system-keyring|user-file`：它记进控制面数据目录的 `control.json`，之后每次 start 都按它执行；`hctl2 status` 的 `policy.credential_storage` 报告实际在用的那一种。无屏幕会话（CI、纯终端）建议 `user-file`：`system-keyring` 在 macOS 上每次读都要求授权，弹不出来就直接失败。选项与配置形状见 [control 说明](../src/apps/control/README.md#密钥后端)。
 
+完整的端到端操作步骤见[演示 1「协作现场」操作手册](./demos/demo-1.md)。
+
 ## 制作外部子系统包
 
 这一节面向发布与打包开发者，不是最终用户安装步骤。日常组包消费上游官方制品和 HCTL2 托管的 macOS Tuwunel 预编译制品；版本、URL、SHA-256 和 target identity 统一由 `packaging/dependencies/lock.json` 锁定。进入 `src/`，显式选择平台并运行 Buck：

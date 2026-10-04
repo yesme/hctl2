@@ -14,6 +14,7 @@ mod services;
 mod socket;
 mod tasks;
 
+pub use chat::MatrixClient;
 pub use identity::owner_actor;
 pub use service::{ControlService, PROTOCOL};
 pub use services::Supervisor;

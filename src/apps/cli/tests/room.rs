@@ -76,18 +76,36 @@ impl Fixture {
                 .success()
         );
         let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
-        let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = socket.local_addr().unwrap().port();
-        drop(socket);
-        let scm = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let scm_port = scm.local_addr().unwrap().port();
-        drop(scm);
+        // Every packaged service gets a port of its own: these fixtures run on the same
+        // machine as the packaged lifecycle test, and the previous value-based rewrite
+        // ("6167", "3000") silently stopped matching when a packaged default changed —
+        // Gitea's is 3001 now — so two tests could fight over one port. Rewrite the
+        // assignments by name instead.
         let versions = payload.join("lib/hctl2/services/versions.sh");
-        let text = std::fs::read_to_string(&versions)
-            .unwrap()
-            .replace("6167", &port.to_string())
-            .replace("3000", &scm_port.to_string());
-        std::fs::write(versions, text).unwrap();
+        let text = std::fs::read_to_string(&versions).unwrap();
+        let mut ports = std::collections::HashMap::new();
+        let isolated = text
+            .lines()
+            .map(|line| {
+                let Some((name, value)) = line
+                    .strip_prefix("readonly ")
+                    .and_then(|rest| rest.split_once("=\""))
+                else {
+                    return line.to_owned();
+                };
+                if !name.ends_with("_PORT") || !value.ends_with('"') {
+                    return line.to_owned();
+                }
+                let port = free_port();
+                ports.insert(name.to_owned(), port);
+                format!("readonly {name}=\"{port}\"")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&versions, format!("{isolated}\n")).unwrap();
+        let port = ports
+            .remove("TUWUNEL_PORT")
+            .expect("packaged versions.sh must define TUWUNEL_PORT");
         (Self { root, payload }, port)
     }
     fn run(&self, args: &[&str]) -> (bool, Value) {
@@ -148,6 +166,13 @@ impl Fixture {
         value
     }
 }
+fn free_port() -> u16 {
+    let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = socket.local_addr().unwrap().port();
+    drop(socket);
+    port
+}
+
 fn find(root: &Path, predicate: impl Fn(&Path) -> bool + Copy) -> Option<PathBuf> {
     for entry in std::fs::read_dir(root).ok()? {
         let p = entry.ok()?.path();

@@ -492,6 +492,7 @@ version = "0.0.0"
 dependencies = [
  "chat",
  "clap",
+ "control",
  "foundation",
  "hyper-util",
  "proto",

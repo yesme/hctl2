@@ -31,6 +31,7 @@ rust_test(
     mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs"},
     crate_root = "room.rs",
     deps = [
+        "root//apps/control:control",
         "root//crates/chat:chat",
         "root//crates/foundation:foundation",
         "root//crates/store:store",
