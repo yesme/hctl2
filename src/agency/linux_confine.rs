@@ -1,34 +1,17 @@
-//! Linux-only helper. Landlock hides the credential root without a user namespace.
+//! Linux-only helper. The `landlock` crate hides the credential root.
 //! GitHub-hosted runners reject unprivileged `unshare` (`uid_map` EPERM).
+//! The workspace forbids `unsafe_code`, so the system calls stay in that crate.
+use landlock::{
+    ABI, Access, AccessFs, PathBeneath, PathFd, Ruleset, RulesetAttr, RulesetCreatedAttr,
+    RulesetStatus,
+};
 use std::{
-    env, fs,
+    env,
     io::{self, Error},
-    mem::size_of,
-    os::{fd::AsRawFd, unix::process::CommandExt},
+    os::unix::process::CommandExt,
     path::Path,
     process::Command,
 };
-
-const CREATE: i64 = 444;
-const ADD_RULE: i64 = 445;
-const RESTRICT: i64 = 446;
-const RULE_PATH_BENEATH: i64 = 1;
-const READ_EXEC: u64 = 1 | (1 << 2) | (1 << 3);
-const READ_WRITE: u64 = (1 << 13) - 1;
-
-#[repr(C)]
-struct RulesetAttr {
-    handled_access_fs: u64,
-}
-#[repr(C, packed)]
-struct PathBeneath {
-    allowed_access: u64,
-    parent_fd: i32,
-}
-
-unsafe extern "C" {
-    fn syscall(num: i64, ...) -> i64;
-}
 
 pub fn run() -> i32 {
     match exec() {
@@ -59,63 +42,45 @@ fn exec() -> io::Result<()> {
         return Err(Error::other("work directory is inside the credential root"));
     }
     restrict(&work)?;
-    let error = Command::new(program).args(rest).exec();
-    Err(error)
+    Err(Command::new(program).args(rest).exec())
 }
 
 fn restrict(work: &Path) -> io::Result<()> {
-    let attr = RulesetAttr {
-        handled_access_fs: READ_WRITE,
-    };
-    let ruleset = unsafe {
-        syscall(
-            CREATE,
-            &attr as *const RulesetAttr as usize,
-            size_of::<RulesetAttr>(),
-            0usize,
-        )
-    };
-    if ruleset < 0 {
-        return Err(Error::last_os_error());
-    }
-    let mut held = Vec::new();
-    for (path, access) in allow_paths(work) {
-        if !path.exists() {
-            continue;
-        }
-        let file = fs::File::open(&path)?;
-        let rule = PathBeneath {
-            allowed_access: access,
-            parent_fd: file.as_raw_fd(),
-        };
-        let added = unsafe {
-            syscall(
-                ADD_RULE,
-                ruleset,
-                RULE_PATH_BENEATH,
-                &rule as *const PathBeneath as usize,
-                0usize,
-            )
-        };
-        if added < 0 {
-            return Err(Error::last_os_error());
-        }
-        held.push(file);
-    }
-    let restricted = unsafe { syscall(RESTRICT, ruleset, 0usize) };
-    if restricted < 0 {
-        return Err(Error::last_os_error());
-    }
-    drop(held);
-    Ok(())
-}
-
-fn allow_paths(work: &Path) -> Vec<(std::path::PathBuf, u64)> {
-    let mut paths = vec![(work.to_path_buf(), READ_WRITE)];
+    let abi = ABI::V1;
+    let read_exec = AccessFs::from_read(abi);
+    let full = AccessFs::from_all(abi);
+    let mut ruleset = Ruleset::default()
+        .handle_access(full)
+        .map_err(io_err)?
+        .create()
+        .map_err(io_err)?;
+    ruleset = add(ruleset, work, full)?;
     for dir in [
         "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
     ] {
-        paths.push((dir.into(), READ_EXEC));
+        let path = Path::new(dir);
+        if path.is_dir() {
+            ruleset = add(ruleset, path, read_exec)?;
+        }
     }
-    paths
+    let status = ruleset.restrict_self().map_err(io_err)?;
+    if !matches!(status.ruleset, RulesetStatus::FullyEnforced) {
+        return Err(Error::other("landlock was not fully enforced"));
+    }
+    Ok(())
+}
+
+fn add(
+    ruleset: landlock::RulesetCreated,
+    path: &Path,
+    access: landlock::BitFlags<AccessFs>,
+) -> io::Result<landlock::RulesetCreated> {
+    let fd = PathFd::new(path).map_err(io_err)?;
+    ruleset
+        .add_rule(PathBeneath::new(fd, access))
+        .map_err(io_err)
+}
+
+fn io_err(error: impl std::fmt::Display) -> Error {
+    Error::other(error.to_string())
 }

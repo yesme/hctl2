@@ -53,7 +53,10 @@ rust_binary(
     name = "agency",
     srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
-    deps = CLI_DEPS,
+    deps = CLI_DEPS + select({
+        "prelude//os:linux": ["root//third-party/rust:landlock"],
+        "DEFAULT": [],
+    }),
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
@@ -66,7 +69,10 @@ rust_test(
     name = "cli_test",
     srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
-    deps = CLI_DEPS,
+    deps = CLI_DEPS + select({
+        "prelude//os:linux": ["root//third-party/rust:landlock"],
+        "DEFAULT": [],
+    }),
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
