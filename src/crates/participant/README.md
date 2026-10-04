@@ -6,6 +6,8 @@
 
 `accept_binding` 固定公开目录，`accept_profession` 接受精确名册项。`prepare_dispatch` 要求已保存的授权归属者与接受过的工种；它在 Store 事务里保存规格与准备 outbox。`record_dispatch` 同事务保存映射、确认准备与激活 outbox。控制面端口发送外部动作前调用 `begin_effect`；响应未知先回读，不盲目重发。
 
+Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制面写者，再重核原授权并调用 `begin_effect`。Agency 联系不上或代次同步失败时，业务动作仍是未尝试的 Pending，不把服务恢复后的合法派工判为终局拒绝。已是 Unknown 的动作仍只回读，不借这条路径重发。
+
 `preserve_proposal` 保存并回读精确材料，`proposal_inbox` 只是接收与审计，不是 Project / Run 准入。观测、联系不上和无法履约不能自行完成 Task 或 Invocation。Buck：`root//crates/participant:participant`、`:clippy`；完整端口链的测试在 `root//agency:control_port_test`。
 
 ## 第 5 包任务说明

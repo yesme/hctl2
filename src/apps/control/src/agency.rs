@@ -351,6 +351,33 @@ fn refusal_before_effect(effect: &store::EffectIntent, code: &str) -> bool {
         || (effect.operation == "agency.activate" && code == "DISPATCH_NOT_FOUND")
 }
 
+async fn fence_and_begin_effect(
+    shared: &Arc<Mutex<Option<Store>>>,
+    client: &Client,
+    generation: store::WriterGeneration,
+    effect: &store::EffectIntent,
+) -> store::Result<()> {
+    // A restarted control can reach Agency before the periodic writer reconciliation.
+    // Failure here leaves the business action Pending: it has not been attempted.
+    let _: Value = client
+        .call(
+            "fence",
+            &agency_proto::Fence {
+                writer_generation: u64::try_from(generation.0)
+                    .map_err(|_| invalid("writer generation"))?,
+            },
+        )
+        .await
+        .map_err(err)?;
+    let mut lock = shared.lock().await;
+    let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
+    // Recheck authority after the network await, then atomically mark the attempt unknown.
+    current_owner(store, &effect.owner)?;
+    store.resume_pending_effect(generation, &effect.intent_id, true)?;
+    store.begin_effect(generation, &effect.intent_id)?;
+    Ok(())
+}
+
 /// Package 5 calls this only after persisting its authorized owner and dispatch intent.
 /// An unknown prepare is read back by key, not submitted a second time.
 pub async fn deliver_prepare(
@@ -375,12 +402,11 @@ pub async fn deliver_prepare(
         }
         if state == store::EffectState::Pending {
             current_owner(store, &effect.owner)?;
-            store.resume_pending_effect(store.generation(), &id, true)?;
-            store.begin_effect(store.generation(), &id)?;
         }
         (store.generation(), effect, state)
     };
     let result = if state == store::EffectState::Pending {
+        fence_and_begin_effect(shared, &client, generation, &effect).await?;
         client
             .call_outcome::<_, agency_proto::Dispatch>(
                 "prepare",
@@ -450,12 +476,11 @@ pub async fn deliver_activation(
         }
         if state == store::EffectState::Pending {
             current_owner(store, &effect.owner)?;
-            store.resume_pending_effect(store.generation(), &effect_id, true)?;
-            store.begin_effect(store.generation(), &effect_id)?;
         }
         (store.generation(), effect, state)
     };
     let result = if state == store::EffectState::Pending {
+        fence_and_begin_effect(shared, &client, generation, &effect).await?;
         client
             .call_outcome(
                 "activate",

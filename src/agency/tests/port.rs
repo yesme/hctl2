@@ -279,10 +279,13 @@ async fn prepare_and_prepared_activation_reject_expired_deadline() {
         "DEADLINE_EXPIRED"
     );
     let mut req = request(&client, "expired-activation").await;
-    req.spec.document.deadline_ms = now() + 200;
+    req.spec.document.deadline_ms = now() + 5_000;
     req.spec = Sealed::new(req.spec.document).unwrap();
     let d: Dispatch = client.call("prepare", &req).await.unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(
+        req.spec.document.deadline_ms.saturating_sub(now()) + 1,
+    ))
+    .await;
     assert_eq!(
         client
             .call::<_, Dispatch>(
@@ -462,8 +465,9 @@ async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_a
         .unwrap();
     activate(&client, &d).await;
     let mut exited = false;
-    for _ in 0..100 {
-        let trace: Trace = client
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        let result = client
             .call(
                 "observe",
                 &Observe {
@@ -471,8 +475,12 @@ async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_a
                     after: 0,
                 },
             )
-            .await
-            .unwrap();
+            .await;
+        // Observation is read-only; a timed-out query can be read again, unlike an input write.
+        let trace: Trace = match result {
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => continue,
+            result => result.unwrap(),
+        };
         if trace.events.iter().any(|event| event.kind == "stopped") {
             assert_eq!(trace.dispatch.state, DispatchState::CannotFulfill);
             assert!(
@@ -943,11 +951,14 @@ async fn deadline_stops_fixture_without_revoking_result_observation() {
     let rig = Rig::new("read -r init; exec sleep 30").await;
     let (client, key) = rig.pair("control").await;
     let mut request = request(&client, "deadline").await;
-    request.spec.document.deadline_ms = now() + 100;
+    request.spec.document.deadline_ms = now() + 5_000;
     request.spec = Sealed::new(request.spec.document).unwrap();
     let d: Dispatch = client.call("prepare", &request).await.unwrap();
     activate(&client, &d).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(
+        request.spec.document.deadline_ms.saturating_sub(now()) + 1,
+    ))
+    .await;
     let trace = terminal(&client, &d, &key).await;
     assert_eq!(trace.dispatch.state, DispatchState::CannotFulfill);
     assert!(
@@ -1023,6 +1034,132 @@ async fn authorized_intent(
     )
     .unwrap();
     (intent, req)
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_fences_before_delivery_and_keeps_offline_intents_pending() {
+    use store::{Actor, ActorSource, EffectState, Scope, Store, TrustedActor};
+    let rig = Rig::new(RESULT).await;
+    let root = rig.root.join("control");
+    let actor = TrustedActor(Actor {
+        principal: "human".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, Scope::Project("project".into())],
+        authority: None,
+    });
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(Store::open(&root).unwrap())));
+    control::agency::submit(
+        &shared,
+        &root,
+        "agency.pair",
+        &json!({"binding_id":"binding","agency_root":rig.root}),
+        &actor,
+        "pair",
+    )
+    .await
+    .unwrap();
+    let client = control::agency::paired_client(&root, "binding").unwrap();
+    let candidate = request(&client, "candidate").await;
+    control::agency::submit(
+        &shared,
+        &root,
+        "profession.accept",
+        &json!({"binding_id":"binding","profession":candidate.spec.document.profession.reference}),
+        &actor,
+        "accept",
+    )
+    .await
+    .unwrap();
+    let (intent, mut req) =
+        authorized_intent(&shared, &actor, &client, "writer-restart", |_| {}).await;
+    {
+        let mut lock = shared.lock().await;
+        drop(lock.take());
+        *lock = Some(Store::open(&root).unwrap());
+        req.writer_generation = u64::try_from(lock.as_ref().unwrap().generation().0).unwrap();
+    }
+    // A current control writer is still rejected until this tenant learns its new generation.
+    assert_eq!(
+        client
+            .call::<_, Dispatch>("prepare", &req)
+            .await
+            .unwrap_err()
+            .code,
+        "WRITER_STALE"
+    );
+    let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &intent)
+        .await
+        .unwrap();
+    assert_eq!(
+        shared
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .effect("prepare:writer-restart")
+            .unwrap()
+            .1,
+        EffectState::Confirmed
+    );
+    {
+        let mut lock = shared.lock().await;
+        drop(lock.take());
+        *lock = Some(Store::open(&root).unwrap());
+    }
+    let running =
+        control::agency::deliver_activation(&shared, &root, &actor, "writer-restart", &dispatch)
+            .await
+            .unwrap();
+    assert_ne!(running.state, DispatchState::Prepared);
+    assert_eq!(
+        shared
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .effect("activate:writer-restart")
+            .unwrap()
+            .1,
+        EffectState::Confirmed
+    );
+    let (offline_activation, _) =
+        authorized_intent(&shared, &actor, &client, "offline-activation", |_| {}).await;
+    let prepared = control::agency::deliver_prepare(&shared, &root, &actor, &offline_activation)
+        .await
+        .unwrap();
+    let (offline_prepare, _) =
+        authorized_intent(&shared, &actor, &client, "offline-prepare", |_| {}).await;
+    let _: Value = rig.admin.call("shutdown", &json!({})).await.unwrap();
+    rig.handle.await.unwrap().unwrap();
+    assert_eq!(
+        control::agency::deliver_prepare(&shared, &root, &actor, &offline_prepare)
+            .await
+            .unwrap_err()
+            .code,
+        "AGENCY_UNREACHABLE"
+    );
+    assert_eq!(
+        control::agency::deliver_activation(
+            &shared,
+            &root,
+            &actor,
+            "offline-activation",
+            &prepared,
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "AGENCY_UNREACHABLE"
+    );
+    let lock = shared.lock().await;
+    let store = lock.as_ref().unwrap();
+    for effect in ["prepare:offline-prepare", "activate:offline-activation"] {
+        assert_eq!(store.effect(effect).unwrap().1, EffectState::Pending);
+    }
+    drop(lock);
+    drop(shared);
+    std::fs::remove_dir_all(&rig.root).unwrap();
 }
 
 #[cfg(feature = "control_port_test")]
@@ -1116,14 +1253,17 @@ async fn control_distinguishes_definitive_refusal_from_unknown_readback() {
     control::agency::deliver_prepare(&shared, &root, &actor, &storage_unknown)
         .await
         .unwrap();
-    let (expired, _) = authorized_intent(&shared, &actor, &client, "expired", |s| {
-        s.deadline_ms = now() + 250
+    let (expired, req) = authorized_intent(&shared, &actor, &client, "expired", |s| {
+        s.deadline_ms = now() + 5_000
     })
     .await;
     let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &expired)
         .await
         .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(
+        req.spec.document.deadline_ms.saturating_sub(now()) + 1,
+    ))
+    .await;
     for _ in 0..2 {
         assert_eq!(
             control::agency::deliver_activation(&shared, &root, &actor, "expired", &dispatch)
@@ -1286,8 +1426,9 @@ async fn observation_pages_fit_transport_without_losing_large_events() {
     let mut after = 0;
     let mut count = 0;
     let mut pages = 0;
-    for _ in 0..200 {
-        let trace: Trace = client
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
+        let result = client
             .call(
                 "observe",
                 &Observe {
@@ -1295,8 +1436,12 @@ async fn observation_pages_fit_transport_without_losing_large_events() {
                     after,
                 },
             )
-            .await
-            .unwrap();
+            .await;
+        // Do not advance the cursor on an unknown read; the same page can be read safely.
+        let trace: Trace = match result {
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => continue,
+            result => result.unwrap(),
+        };
         assert!(!trace.gap);
         assert!(canonical(&trace).unwrap().len() < MAX_DOCUMENT);
         if !trace.events.is_empty() {
