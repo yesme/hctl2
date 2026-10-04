@@ -141,7 +141,7 @@ impl Hosted {
                 }
             },
             |_| true,
-            || rearm(&services),
+            || rearm(services),
         )?;
         let exists = String::from_utf8_lossy(&users.stdout)
             .lines()
