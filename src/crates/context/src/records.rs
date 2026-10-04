@@ -24,6 +24,32 @@ pub fn save_assembly(
 ) -> Result<Value> {
     assembly.manifest.verify()?;
     assembly.bundle.verify()?;
+    crate::assembler::validate_manifest(&assembly.manifest.document)?;
+    let manifest = &assembly.manifest.document;
+    let bundle = &assembly.bundle.document;
+    bundle.validate_delivery()?;
+    let mut remaining = manifest.sources.clone();
+    for entry in &bundle.entries {
+        let Some(index) = remaining.iter().position(|source| source == &entry.source) else {
+            return Err(PortError::invalid(
+                "Bundle source is repeated or absent from its Manifest",
+            ));
+        };
+        remaining.remove(index);
+    }
+    if bundle.manifest.id != manifest.id
+        || bundle.manifest.digest != assembly.manifest.digest
+        || bundle.manifest.revision != assembly.manifest.digest
+        || bundle.consumer.project != project
+        || bundle.permission_digest != manifest.permission_digest
+        || bundle.budget != manifest.budget
+        || bundle.redaction != manifest.redaction
+        || !remaining.is_empty()
+    {
+        return Err(PortError::invalid(
+            "Bundle does not match its Manifest, Project or frozen policy",
+        ));
+    }
     let scope = Scope::Project(project.to_owned());
     let manifest_key = store::ObjectKey {
         scope: scope.clone(),
@@ -39,7 +65,8 @@ pub fn save_assembly(
     // common flow saves one manifest and several per-consumer bundles.
     let mut replayed_manifest = false;
     if let Some(existing) = port_call(|| store.get(&manifest_key))? {
-        let existing_digest = sealed_digest(&existing)?;
+        let existing_digest =
+            verified_record::<agency_proto::context::Manifest>(store, actor, &existing)?.digest;
         if existing_digest == assembly.manifest.digest {
             replayed_manifest = true;
         } else {
@@ -55,7 +82,8 @@ pub fn save_assembly(
     }
     let replayed_bundle = match port_call(|| store.get(&bundle_key))? {
         Some(existing) => {
-            let existing_digest = sealed_digest(&existing)?;
+            let existing_digest =
+                verified_record::<agency_proto::context::Bundle>(store, actor, &existing)?.digest;
             if existing_digest == assembly.bundle.digest {
                 true
             } else {
@@ -160,6 +188,7 @@ pub fn save_assembly(
 
 pub fn read_manifest(
     store: &Store,
+    actor: &TrustedActor,
     project: &str,
     manifest_id: &str,
 ) -> Result<Option<Sealed<agency_proto::context::Manifest>>> {
@@ -167,14 +196,15 @@ pub fn read_manifest(
     match record {
         None => Ok(None),
         Some(record) => {
-            let value = record_data_value(&record)?;
-            Ok(Some(serde_json::from_value(value)?))
+            let actor = crate::sources::project_actor(actor, project)?;
+            Ok(Some(verified_record(store, &actor, &record)?))
         }
     }
 }
 
 pub fn read_bundle(
     store: &Store,
+    actor: &TrustedActor,
     project: &str,
     bundle_id: &str,
 ) -> Result<Option<Sealed<agency_proto::context::Bundle>>> {
@@ -186,8 +216,11 @@ pub fn read_bundle(
     match port_call(|| store.get(&key))? {
         None => Ok(None),
         Some(record) => {
-            let value = record_data_value(&record)?;
-            Ok(Some(serde_json::from_value(value)?))
+            let actor = crate::sources::project_actor(actor, project)?;
+            let sealed: Sealed<agency_proto::context::Bundle> =
+                verified_record(store, &actor, &record)?;
+            sealed.document.validate_delivery()?;
+            Ok(Some(sealed))
         }
     }
 }
@@ -218,10 +251,36 @@ pub fn bundle_record(
     port_call(|| store.get(&key))
 }
 
-fn sealed_digest(record: &store::Record) -> Result<String> {
+fn verified_record<T>(
+    store: &Store,
+    actor: &TrustedActor,
+    record: &store::Record,
+) -> Result<Sealed<T>>
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
     let value = record_data_value(record)?;
-    let sealed: Sealed<serde_json::Value> = serde_json::from_value(value)?;
-    Ok(sealed.digest)
+    let sealed: Sealed<T> = serde_json::from_value(value.clone())?;
+    sealed.verify()?;
+    if record.materials.len() != 1 {
+        return Err(PortError::invalid(
+            "frozen Context record needs its exact admitted material",
+        ));
+    }
+    if record.materials[0].scope != record.key.scope {
+        return Err(PortError::invalid(
+            "frozen material belongs to another scope",
+        ));
+    }
+    let bytes = port_call(|| store.read_material(actor, &record.materials[0]))?;
+    if serde_json::from_slice::<Value>(&bytes)? != value {
+        return Err(PortError::new(
+            "MATERIAL_DIGEST_MISMATCH",
+            "frozen record differs from its admitted bytes",
+            "restore_material",
+        ));
+    }
+    Ok(sealed)
 }
 
 fn record_data_value(record: &store::Record) -> Result<Value> {

@@ -285,6 +285,8 @@ impl Control for ControlService {
                 }
             }
             "repo.list"
+            | "context.preview"
+            | "context.show"
             | "repo.show"
             | "task.list"
             | "task.show"

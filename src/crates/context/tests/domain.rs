@@ -366,10 +366,89 @@ fn saved_assemblies_are_append_only_and_replayable() {
     assert_eq!(first["replayed"], json!(false));
     let second = context::save_assembly(&mut store, &actor, "p", "ctx-1", &assembly).unwrap();
     assert_eq!(second["replayed"], json!(true));
-    let read = context::read_bundle(&store, "p", &assembly.bundle.document.id)
+    let read = context::read_bundle(&store, &actor, "p", &assembly.bundle.document.id)
         .unwrap()
         .expect("bundle stored");
     read.verify().unwrap();
+}
+
+#[test]
+fn resealing_bad_delivery_or_wrong_manifest_cannot_admit_records() {
+    let mut store = temp_store();
+    let actor = TrustedActor(agency_proto_to_store_actor());
+    let source = reference("chat_source_reference/s1", &hash(b"original"));
+    let mut sources = MemorySources::new();
+    sources.push(SourceKind::Room, source.clone(), b"original");
+    let assembly = assembler(&["chat_source_reference/s1"], 1024)
+        .assemble(
+            &sources,
+            AssemblyRequest {
+                manifest: manifest(
+                    vec![source],
+                    1024,
+                    &permission_digest(&["chat_source_reference/s1"]),
+                ),
+                consumer: owner(),
+            },
+        )
+        .unwrap();
+    let mut bytes = assembly.bundle.document.clone();
+    if let Delivery::Inline { bytes } = &mut bytes.entries[0].delivery {
+        bytes.clear();
+    }
+    let bad = context::Assembly {
+        manifest: assembly.manifest.clone(),
+        bundle: agency_proto::Sealed::new(bytes).unwrap(),
+    };
+    assert_eq!(
+        context::save_assembly(&mut store, &actor, "p", "bad-bytes", &bad)
+            .unwrap_err()
+            .code,
+        "DELIVERY_DIGEST_MISMATCH"
+    );
+    let mut wrong = assembly.bundle.document.clone();
+    wrong.manifest = reference("other-manifest", &hash(b"other"));
+    let bad = context::Assembly {
+        manifest: assembly.manifest,
+        bundle: agency_proto::Sealed::new(wrong).unwrap(),
+    };
+    assert!(context::save_assembly(&mut store, &actor, "p", "bad-link", &bad).is_err());
+    assert!(store.list("context_manifest").unwrap().is_empty());
+    assert!(store.list("context_bundle").unwrap().is_empty());
+}
+
+#[test]
+fn a_duplicate_entry_cannot_replace_another_manifest_source() {
+    let mut store = temp_store();
+    let actor = TrustedActor(agency_proto_to_store_actor());
+    let mut sources = MemorySources::new();
+    let first = reference("chat_source_reference/one", &hash(b"one"));
+    let second = reference("chat_source_reference/two", &hash(b"two"));
+    sources.push(SourceKind::Room, first.clone(), b"one");
+    sources.push(SourceKind::Room, second.clone(), b"two");
+    let permitted = ["chat_source_reference/one", "chat_source_reference/two"];
+    let assembly = assembler(&permitted, 1024)
+        .assemble(
+            &sources,
+            AssemblyRequest {
+                manifest: manifest(vec![first, second], 1024, &permission_digest(&permitted)),
+                consumer: owner(),
+            },
+        )
+        .unwrap();
+    let mut bundle = assembly.bundle.document;
+    bundle.entries[1] = bundle.entries[0].clone();
+    let bad = context::Assembly {
+        manifest: assembly.manifest,
+        bundle: agency_proto::Sealed::new(bundle).unwrap(),
+    };
+    assert_eq!(
+        context::save_assembly(&mut store, &actor, "p", "duplicate-source", &bad)
+            .unwrap_err()
+            .code,
+        "INVALID_INPUT"
+    );
+    assert!(store.list("context_bundle").unwrap().is_empty());
 }
 
 /// The store-backed source adapter: version moved → typed stale error; the
@@ -392,6 +471,15 @@ fn store_sources_return_exact_bytes_or_stale() {
         let adapter = context::StoreSources::new(&store, &actor, "p");
         let content = adapter.exact(SourceKind::Room, &frozen).unwrap();
         assert_eq!(content.bytes, b"room body".to_vec());
+        let mut wrong_version = frozen.clone();
+        wrong_version.revision = hash(b"wrong-version");
+        assert_eq!(
+            adapter
+                .exact(SourceKind::Room, &wrong_version)
+                .unwrap_err()
+                .code,
+            "SOURCE_VERSION_CHANGED"
+        );
     }
     // Move the record: the frozen reference must go stale.
     let mut moved = record.clone();

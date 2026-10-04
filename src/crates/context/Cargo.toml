@@ -10,6 +10,8 @@ agency-proto = { path = "../agency-proto" }
 chat = { path = "../chat" }
 foundation = { path = "../foundation" }
 store = { path = "../store" }
+task = { path = "../task" }
 serde_json.workspace = true
+serde.workspace = true
 [lints]
 workspace = true

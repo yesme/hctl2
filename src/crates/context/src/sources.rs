@@ -1,15 +1,16 @@
 //! Source adapters. Room lines read the frozen `chat_source_reference`
 //! records (with their admitted material bytes); Task-comment lines read the
-//! frozen Task Backend Snapshot records; the platform review-comment line is
+//! selected Task's comments from its complete Task Backend Snapshot; the platform review-comment line is
 //! package 6's wiring and reports not-configured until then.
 
 use crate::{SourceContent, SourceKind, Sources};
-use agency_proto::context::Manifest;
-use agency_proto::{FrozenRef, Owner, PortError, Result, hash};
+use agency_proto::{FrozenRef, PortError, Result, hash};
 use store::{Record, Scope, Store, TrustedActor};
 
 /// Store errors surface as port errors with the same codes.
-fn store_call<T>(call: impl FnOnce() -> std::result::Result<T, store::StoreError>) -> Result<T> {
+pub(crate) fn store_call<T>(
+    call: impl FnOnce() -> std::result::Result<T, store::StoreError>,
+) -> Result<T> {
     call().map_err(|e| PortError::new(e.code, e.message.clone(), e.recovery_action))
 }
 
@@ -41,7 +42,21 @@ pub fn frozen_from_record(record: &Record) -> Result<FrozenRef> {
 
 /// The real record kinds this package reads.
 pub const ROOM_LINE_KIND: &str = "chat_source_reference";
-pub const TASK_SNAPSHOT_KIND: &str = "task_snapshot";
+pub const ROOM_BRIEF_KIND: &str = "room_binding";
+pub const TASK_LINE_KIND: &str = "task_comments";
+
+/// Reuse the authenticated owner's Project access used by chat commands.
+/// Other trusted callers must already carry that Project's permission scope.
+pub(crate) fn project_actor(actor: &TrustedActor, project: &str) -> Result<TrustedActor> {
+    if actor
+        .0
+        .permission_scope
+        .contains(&Scope::Project(project.into()))
+    {
+        return Ok(TrustedActor(actor.0.clone()));
+    }
+    store_call(|| chat::owner(actor, project))
+}
 
 /// Adapter over the control-plane store, scoped to one project.
 pub struct StoreSources<'a> {
@@ -60,10 +75,14 @@ impl<'a> StoreSources<'a> {
     }
 
     fn room_line(&self, reference: &FrozenRef) -> Result<SourceContent> {
-        let (_, id) = split_reference(&reference.id)?;
+        let actor = project_actor(self.actor, &self.project)?;
+        let (kind, id) = split_reference(&reference.id)?;
+        if !matches!(kind.as_str(), ROOM_LINE_KIND | ROOM_BRIEF_KIND) {
+            return Err(PortError::invalid("not a Room source reference"));
+        }
         let key = store::ObjectKey {
             scope: Scope::Project(self.project.clone()),
-            kind: ROOM_LINE_KIND.into(),
+            kind: kind.clone(),
             id,
         };
         let record = store_call(|| self.store.get(&key))?.ok_or_else(|| {
@@ -74,50 +93,135 @@ impl<'a> StoreSources<'a> {
             )
         })?;
         verify_version(&record, reference)?;
-        let material = record.materials.first().ok_or_else(|| {
+        let material = if kind == ROOM_BRIEF_KIND {
+            let room: chat::Room = store_call(|| chat::decode(&record))?;
+            room.brief
+        } else {
+            record.materials.first().cloned()
+        }
+        .ok_or_else(|| {
             PortError::new(
                 "SOURCE_UNAVAILABLE",
                 "admitted material missing",
                 "restore_material",
             )
         })?;
-        let bytes = store_call(|| self.store.read_material(self.actor, material))?;
+        if material.scope != record.key.scope {
+            return Err(PortError::invalid("Room material belongs to another scope"));
+        }
+        let bytes = store_call(|| self.store.read_material(&actor, &material))?;
         Ok(SourceContent {
             reference: reference.clone(),
             bytes,
         })
     }
 
-    fn task_snapshot(&self, reference: &FrozenRef) -> Result<SourceContent> {
-        let (_, id) = split_reference(&reference.id)?;
-        // Snapshots live under the Repo scope; find by kind+id across scopes.
-        let record = store_call(|| self.store.list(TASK_SNAPSHOT_KIND))?
-            .into_iter()
-            .find(|record| record.key.id == id)
+    pub(crate) fn task_line(&self, id: &str) -> Result<SourceContent> {
+        project_actor(self.actor, &self.project)?;
+        let project = store_call(|| {
+            self.store.get(&task::key(
+                Scope::Project(self.project.clone()),
+                "project",
+                &self.project,
+            ))
+        })?
+        .ok_or_else(|| PortError::new("SOURCE_UNAVAILABLE", "Project missing", "refresh_source"))?;
+        let (record, task) = store_call(|| task::task(self.store, &self.project, id))?;
+        let store::RecordData::Project { repo_id, .. } = &project.data else {
+            return Err(PortError::invalid("invalid Project record"));
+        };
+        if task.project_id != self.project || task.repo_id != *repo_id || task.id != id {
+            return Err(PortError::new(
+                "PERMISSION_DENIED",
+                "Task belongs to a different Project or Repo",
+                "request_authorization",
+            ));
+        }
+        let (source_record, source) =
+            store_call(|| task::source(self.store, repo_id, &task.source_id))?;
+        let approval_record = store_call(|| {
+            task::required(
+                self.store,
+                &task::key(
+                    Scope::Project(self.project.clone()),
+                    "task_source_reference",
+                    &task.source_id,
+                ),
+            )
+        })?;
+        let approval: task::SourceReference = store_call(|| task::decode(&approval_record))?;
+        if approval.project_id != self.project
+            || approval.source.key != source_record.key
+            || approval.approved_scope != source.board_scope_stable_id
+            || source.repo_id != *repo_id
+            || source.id != task.source_id
+        {
+            return Err(PortError::new(
+                "PERMISSION_DENIED",
+                "Task source is not approved for this Project",
+                "request_authorization",
+            ));
+        }
+        let (snapshot_record, snapshot) = store_call(|| task::latest(self.store, &source))?;
+        let entity = task.entity.as_ref().ok_or_else(|| {
+            PortError::new(
+                "SOURCE_UNAVAILABLE",
+                "Task has no bound card",
+                "refresh_source",
+            )
+        })?;
+        let card = snapshot
+            .cards
+            .iter()
+            .find(|card| &card.entity == entity && !card.tombstone)
             .ok_or_else(|| {
                 PortError::new(
                     "SOURCE_UNAVAILABLE",
-                    "task snapshot missing",
+                    "bound card is not readable in the complete Snapshot",
                     "refresh_source",
                 )
             })?;
-        verify_version(&record, reference)?;
-        // The snapshot record carries no material; its canonical data JSON is
-        // the delivered bytes.
-        let bytes = foundation::canonical_json(&serde_json::to_value(&record.data)?)
-            .map_err(|e| PortError::invalid(format!("canonical JSON: {e}")))?;
+        // Keep the exact Snapshot locator, version and digest inspectable in
+        // the projection revision; a hash alone would lose its source chain.
+        let identity = serde_json::json!({
+            "task": source_version(&record)?,
+            "snapshot": source_version(&snapshot_record)?,
+            "approval": source_version(&approval_record)?,
+            "binding": source_version(&source_record)?
+        });
+        let revision = String::from_utf8(
+            foundation::canonical_json(&identity).map_err(|e| PortError::invalid(e.to_string()))?,
+        )
+        .map_err(|e| PortError::invalid(e.to_string()))?;
+        let bytes = foundation::canonical_json(&serde_json::to_value(&card.comments)?)
+            .map_err(|e| PortError::invalid(e.to_string()))?;
+        let digest = foundation::canonical_json_sha256(
+            &serde_json::json!({"identity":identity,"comments":card.comments}),
+        )
+        .map_err(|e| PortError::invalid(e.to_string()))?;
         Ok(SourceContent {
-            reference: reference.clone(),
+            reference: FrozenRef {
+                id: pack_reference(TASK_LINE_KIND, id),
+                revision,
+                digest,
+            },
             bytes,
         })
     }
+}
+
+fn source_version(record: &Record) -> Result<serde_json::Value> {
+    Ok(serde_json::json!({
+        "reference": task::reference(record),
+        "digest": frozen_from_record(record)?.digest
+    }))
 }
 
 fn verify_version(record: &Record, reference: &FrozenRef) -> Result<()> {
     let value = serde_json::to_value(&record.data)?;
     let current = foundation::canonical_json_sha256(&value)
         .map_err(|e| PortError::invalid(format!("canonical JSON: {e}")))?;
-    if current != reference.digest {
+    if current != reference.digest || record.revision_digest != reference.revision {
         return Err(PortError::new(
             "SOURCE_VERSION_CHANGED",
             "source revision moved since the preview",
@@ -131,115 +235,29 @@ impl Sources for StoreSources<'_> {
     fn exact(&self, kind: SourceKind, reference: &FrozenRef) -> Result<SourceContent> {
         match kind {
             SourceKind::Room => self.room_line(reference),
-            SourceKind::TaskComments => self.task_snapshot(reference),
+            SourceKind::TaskComments => {
+                let (kind, id) = split_reference(&reference.id)?;
+                if kind != TASK_LINE_KIND {
+                    return Err(PortError::invalid(
+                        "Task comments require a Project-local Task id, not a bare Snapshot id",
+                    ));
+                }
+                let source = self.task_line(&id)?;
+                if source.reference != *reference {
+                    return Err(PortError::new(
+                        "SOURCE_VERSION_CHANGED",
+                        "Task or Snapshot changed since selection",
+                        "preview_again",
+                    ));
+                }
+                Ok(source)
+            }
             SourceKind::ReviewComments => Err(PortError::new(
                 "REVIEW_LINE_NOT_CONFIGURED",
                 "the platform review-comment line is wired in package 6",
                 "wait_for_review_wiring",
             )),
         }
-    }
-}
-
-/// The permission policy point placeholder: every source this project has
-/// admitted. Real permission policy lands with the dispatch package; until
-/// then the assembler's gate uses this set, never the caller's input file.
-pub fn permitted_source_ids(store: &Store, project: &str) -> Result<Vec<String>> {
-    let records = store_call(|| store.list(ROOM_LINE_KIND))?
-        .into_iter()
-        .filter(|record| record.key.scope == Scope::Project(project.to_owned()))
-        .map(|record| Ok(pack_reference(ROOM_LINE_KIND, &record.key.id)))
-        .collect::<Result<Vec<_>>>()?;
-    Ok(records)
-}
-
-/// Mechanical selection from governance records only (no small-brain, no
-/// model): the frozen room-line sources of one Room become the Manifest.
-/// This is the narrowest real path; richer selection order (explicit user
-/// references, current discussion window, artifacts) joins in later packages.
-pub fn select_room_manifest(
-    store: &Store,
-    actor: &TrustedActor,
-    project: &str,
-    room_id: &str,
-    budget: u64,
-) -> Result<(Manifest, Owner)> {
-    let _ = actor;
-    if budget == 0 {
-        return Err(PortError::invalid("budget must be positive"));
-    }
-    let records = store_call(|| store.list(ROOM_LINE_KIND))?;
-    let mut sources = Vec::new();
-    for record in records
-        .into_iter()
-        .filter(|record| record.key.scope == Scope::Project(project.to_owned()))
-    {
-        // Keep only message sources frozen against this Room's binding.
-        // chat stores source records as Value envelopes; unwrap before reading.
-        let data = serde_json::to_value(&record.data)?;
-        let source = data.get("value").unwrap_or(&data);
-        if source["kind"] != "message" {
-            continue;
-        }
-        if source["binding"]["key"]["id"].as_str() != Some(room_id) {
-            continue;
-        }
-        sources.push(frozen_from_record(&record)?);
-    }
-    if sources.is_empty() {
-        return Err(PortError::new(
-            "SOURCE_UNAVAILABLE",
-            "the Room has no frozen admitted sources",
-            "open_a_topic_first",
-        ));
-    }
-    let permitted = permitted_source_ids(store, project)?;
-    let manifest = Manifest {
-        id: format!(
-            "manifest-{}",
-            hash(format!("{project}:{room_id}:{budget}").as_bytes())
-        ),
-        purpose: "deliver the frozen room line".into(),
-        scope: format!("project {project} room {room_id}"),
-        parent: None,
-        sources,
-        selection_policy: mechanical_policy_ref(),
-        freshness: "as of the last admitted room-line record".into(),
-        coverage: "frozen room-line sources admitted for this Room".into(),
-        known_gaps: vec![
-            "current discussion window is not in governance records".into(),
-            "platform review-comment line arrives with package 6".into(),
-        ],
-        required_skills: vec![],
-        permission_digest: permission_digest(&permitted),
-        redaction: default_redaction_ref(),
-        budget,
-    };
-    Ok((manifest, placeholder_consumer(project)))
-}
-
-fn mechanical_policy_ref() -> FrozenRef {
-    FrozenRef {
-        id: "policy/mechanical-v1".into(),
-        revision: "1".into(),
-        digest: hash(b"hctl2.context.mechanical.v1"),
-    }
-}
-
-fn default_redaction_ref() -> FrozenRef {
-    FrozenRef {
-        id: "redaction/none".into(),
-        revision: "1".into(),
-        digest: hash(b"hctl2.context.redaction.none.v1"),
-    }
-}
-
-fn placeholder_consumer(project: &str) -> Owner {
-    Owner {
-        project: project.to_owned(),
-        kind: agency_proto::OwnerKind::RoomInvocation,
-        id: "preview".into(),
-        generation: 1,
     }
 }
 

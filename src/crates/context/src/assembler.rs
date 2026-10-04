@@ -113,7 +113,7 @@ impl Assembler for LocalAssembler {
                 inline_used += bytes.len() as u64;
                 entries.push(Entry {
                     source: reference,
-                    description: "frozen room-line source".into(),
+                    description: "exact source bytes".into(),
                     required: true,
                     offline_required: false,
                     delivery: Delivery::Inline { bytes },
@@ -142,7 +142,7 @@ impl Assembler for LocalAssembler {
             delivered_tokens: metered,
             permission_digest,
             budget: self.budget,
-            retention: "until-owner-terminal".into(),
+            retention: "until-owner-terminal-and-admission-window-closed".into(),
         };
         bundle.validate_delivery()?;
         let assembly = Assembly {
@@ -209,8 +209,8 @@ fn kind_of(packed: &str) -> Result<SourceKind> {
         .split_once('/')
         .ok_or_else(|| PortError::invalid("reference must be kind/id"))?;
     match kind {
-        crate::sources::ROOM_LINE_KIND => Ok(SourceKind::Room),
-        crate::sources::TASK_SNAPSHOT_KIND => Ok(SourceKind::TaskComments),
+        crate::sources::ROOM_LINE_KIND | crate::sources::ROOM_BRIEF_KIND => Ok(SourceKind::Room),
+        crate::sources::TASK_LINE_KIND => Ok(SourceKind::TaskComments),
         "review_comments" => Ok(SourceKind::ReviewComments),
         other => Err(PortError::invalid(format!("unknown source kind {other}"))),
     }
@@ -218,7 +218,8 @@ fn kind_of(packed: &str) -> Result<SourceKind> {
 
 fn order_key(kind: &SourceKind, reference: &FrozenRef) -> (u8, String) {
     let rank = match kind {
-        SourceKind::Room => 0,
+        SourceKind::Room if reference.id.starts_with("room_binding/") => 0,
+        SourceKind::Room => 2,
         SourceKind::TaskComments => 1,
         SourceKind::ReviewComments => 2,
     };
@@ -226,7 +227,7 @@ fn order_key(kind: &SourceKind, reference: &FrozenRef) -> (u8, String) {
 }
 
 /// Manifest completeness: every CT-named mandatory field must be present.
-fn validate_manifest(manifest: &Manifest) -> Result<()> {
+pub(crate) fn validate_manifest(manifest: &Manifest) -> Result<()> {
     agency_proto::nonempty(&manifest.id)?;
     agency_proto::nonempty(&manifest.purpose)?;
     agency_proto::nonempty(&manifest.scope)?;
@@ -234,6 +235,9 @@ fn validate_manifest(manifest: &Manifest) -> Result<()> {
     agency_proto::nonempty(&manifest.coverage)?;
     manifest.selection_policy.validate()?;
     manifest.redaction.validate()?;
+    if let Some(parent) = &manifest.parent {
+        parent.validate()?;
+    }
     agency_proto::digest(&manifest.permission_digest)?;
     if manifest.budget == 0 {
         return Err(PortError::invalid("budget must be positive"));

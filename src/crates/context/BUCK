@@ -4,9 +4,12 @@ oncall("hctl2")
 filegroup(name = "docs", srcs = glob(["**/*.md"]), visibility = ["PUBLIC"])
 rust_library(name = "context", srcs = glob(["src/**/*.rs"]), crate_root = "src/lib.rs", deps = [
         "root//crates/agency-proto:agency_proto",
+        "root//crates/chat:chat",
         "root//crates/foundation:foundation",
         "root//crates/store:store",
+        "root//crates/task:task",
         "root//third-party/rust:serde_json",
+        "root//third-party/rust:serde",
     ],
     edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS, env = hctl2_cargo_env(), labels = CI_FAST, visibility = ["PUBLIC"])
 filegroup(name = "clippy", srcs = {"library": ":context[clippy.txt]", "domain": ":domain_test[clippy.txt]"}, labels = CI_FAST, visibility = ["PUBLIC"])
@@ -20,6 +23,7 @@ rust_test(
         "root//crates/chat:chat",
         "root//crates/foundation:foundation",
         "root//crates/store:store",
+        "root//crates/task:task",
         "root//third-party/rust:serde_json",
     ],
     edition = HCTL2_RUST_EDITION,

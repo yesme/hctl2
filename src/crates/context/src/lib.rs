@@ -7,6 +7,7 @@
 
 mod assembler;
 mod records;
+mod selection;
 mod sources;
 
 pub use agency_proto::context::*;
@@ -14,9 +15,10 @@ pub use agency_proto::{FrozenRef, Owner, PortError, Result, Sealed};
 
 pub use assembler::{Assembler, Assembly, AssemblyRequest, LocalAssembler, bundle_id};
 pub use records::{bundle_record, manifest_record, read_bundle, read_manifest, save_assembly};
+pub use selection::{SelectionRequest, permitted_source_ids, select_context, select_room_manifest};
 pub use sources::{
     MemorySources, ReviewComments, StoreSources, frozen_from_record, pack_reference,
-    permission_digest, permitted_source_ids, select_room_manifest,
+    permission_digest,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
