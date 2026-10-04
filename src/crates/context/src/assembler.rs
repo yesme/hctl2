@@ -219,9 +219,9 @@ fn kind_of(packed: &str) -> Result<SourceKind> {
 fn order_key(kind: &SourceKind, reference: &FrozenRef) -> (u8, String) {
     let rank = match kind {
         SourceKind::Room if reference.id.starts_with("room_binding/") => 0,
-        SourceKind::Room => 2,
-        SourceKind::TaskComments => 1,
-        SourceKind::ReviewComments => 2,
+        SourceKind::Room => 1,
+        SourceKind::TaskComments => 2,
+        SourceKind::ReviewComments => 3,
     };
     (rank, reference.id.clone())
 }

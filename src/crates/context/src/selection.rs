@@ -103,13 +103,20 @@ pub fn select_context(
     }
     let mut manifest = Manifest {
         id: String::new(),
-        purpose: format!("context for Room {} and Task {:?}", request.room_id, request.task_id),
+        purpose: match &request.task_id {
+            Some(task) => format!("context for Room {} and Task {task}", request.room_id),
+            None => format!("context for Room {}", request.room_id),
+        },
         scope: format!("project {project}"),
-        parent: None, sources,
+        parent: None,
+        sources,
         selection_policy: policy_ref("policy/mechanical-v1", b"hctl2.context.mechanical.v1"),
         freshness: "precise admitted versions at selection".into(),
         coverage: "confirmed Topic brief and its sources; explicitly selected Task comments".into(),
-        known_gaps: vec!["online discussion window and additional explicit material selection are dispatch inputs (package 5)".into(), "platform review-comment line arrives with package 6".into()],
+        known_gaps: vec![
+            "online discussion window and additional explicit materials were not selected".into(),
+            "platform review-comment line is not configured".into(),
+        ],
         required_skills: vec![],
         permission_digest: permission_digest(&permitted_source_ids(store, project)?),
         redaction: policy_ref("redaction/none", b"hctl2.context.redaction.none.v1"),

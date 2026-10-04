@@ -91,6 +91,41 @@ fn entry_digests_record_the_actual_bytes() {
     );
 }
 
+#[test]
+fn confirmed_brief_and_frozen_messages_precede_task_comments() {
+    let brief = reference("room_binding/topic", &hash(b"brief"));
+    let message = reference("chat_source_reference/message", &hash(b"message"));
+    let task = reference("task_comments/T", &hash(b"comments"));
+    let mut sources = MemorySources::new();
+    sources.push(SourceKind::Room, brief.clone(), b"brief");
+    sources.push(SourceKind::Room, message.clone(), b"message");
+    sources.push(SourceKind::TaskComments, task.clone(), b"comments");
+    let permitted = [brief.id.as_str(), message.id.as_str(), task.id.as_str()];
+    let assembly = assembler(&permitted, 1024)
+        .assemble(
+            &sources,
+            AssemblyRequest {
+                manifest: manifest(
+                    vec![task.clone(), message.clone(), brief.clone()],
+                    1024,
+                    &permission_digest(&permitted),
+                ),
+                consumer: owner(),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        assembly
+            .bundle
+            .document
+            .entries
+            .into_iter()
+            .map(|entry| entry.source)
+            .collect::<Vec<_>>(),
+        vec![brief, message, task]
+    );
+}
+
 /// CT: a frozen reference that no longer resolves invalidates the preview.
 /// The store adapter's moved-record case (SOURCE_VERSION_CHANGED) is its own
 /// test below.
@@ -638,13 +673,15 @@ fn agency_proto_to_store_actor() -> store::Actor {
 }
 
 fn temp_store() -> Store {
+    static NEXT_STORE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
-        "hctl-context-{}-{}",
+        "hctl-context-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        NEXT_STORE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&root).unwrap();
     Store::open(&root).unwrap()
