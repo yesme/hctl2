@@ -136,8 +136,9 @@ impl Server {
             .env(
                 "HCTL2_CONFINE_ALLOW",
                 format!(
-                    "{}\n{}\n{}",
+                    "{}\n{}\n{}\n{}",
                     state.display(),
+                    socket_dir.display(),
                     binary.parent().unwrap_or(binary.as_path()).display(),
                     exec_parent.display()
                 ),
@@ -379,7 +380,10 @@ impl crate::runtime::Runtime for HerdrRuntime {
             }
             Arc::clone(slot.as_ref().unwrap())
         };
-        let server = shared.get(&state, exec_root.parent().unwrap_or(exec_root))?;
+        let exec_allow = exec_root.parent().filter(|parent| {
+            !crate::confine::allowed_tree_contains_credential(parent, credential_root)
+        });
+        let server = shared.get(&state, exec_allow.unwrap_or(exec_root))?;
         let client = Client::connect(&server.socket)?;
         let tail = &hash(spec.document.idempotency_key.as_bytes())[..12];
         let marker = format!("HCTL2OUT{tail}");
