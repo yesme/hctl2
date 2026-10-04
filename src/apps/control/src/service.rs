@@ -57,6 +57,31 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_agencies(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let store = Arc::clone(&self.store);
+        let root = self.root.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut previous_error = None;
+            loop {
+                interval.tick().await;
+                let error = crate::agency::reconcile(&store, &root).await.err();
+                let code = error.as_ref().map(|e| e.code);
+                if code != previous_error {
+                    if let Some(error) = &error {
+                        eprintln!(
+                            "Agency recovery: {} ({})",
+                            error.code, error.recovery_action
+                        );
+                    }
+                    previous_error = code;
+                }
+            }
+        }
+    }
     pub(crate) fn reconcile_projects(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
@@ -253,6 +278,12 @@ impl Control for ControlService {
             return Ok(err_query_proto(error, self.seq.load(Ordering::Acquire)));
         }
         let result = match req.kind.as_str() {
+            "agency.bindings" | "agency.catalog" | "profession.list" => {
+                match crate::agency::query(&self.store, &self.root, &req.kind, &payload).await {
+                    Ok(value) => value,
+                    Err(e) => return Ok(err_query(&e, 0)),
+                }
+            }
             "repo.list"
             | "repo.show"
             | "task.list"
@@ -462,6 +493,34 @@ impl Control for ControlService {
         }
         if let Some(error) = self.startup_error().await {
             return Ok(submit_err(error, self.seq.load(Ordering::Acquire)));
+        }
+        if matches!(req.operation.as_str(), "agency.pair" | "profession.accept") {
+            let payload = match json_bytes(&req.payload) {
+                Ok(p) => p,
+                Err(e) => return Ok(submit_err(e, 0)),
+            };
+            let _operation = self.operations.lock().await;
+            return Ok(
+                match crate::agency::submit(
+                    &self.store,
+                    &self.root,
+                    &req.operation,
+                    &payload,
+                    &actor,
+                    &req.idempotency_key,
+                )
+                .await
+                {
+                    Ok(value) => Response::new(SubmitResponse {
+                        error: None,
+                        result: value.to_string().into_bytes(),
+                        event_seq: self
+                            .emit("submit", json!({"operation":req.operation}))
+                            .await,
+                    }),
+                    Err(e) => submit_err(present(&e), 0),
+                },
+            );
         }
         let mut details = json!({});
         if matches!(

@@ -160,7 +160,7 @@ jobs:
           fi
 
           if printf '%s\n' "$changed" | grep -qE \
-            '^(src/(apps|crates)/.*(\.rs|Cargo\.toml)$|src/(Cargo\.lock|Cargo\.toml|reindeer\.toml|rustfmt\.toml|rust-toolchain\.toml)$|src/third-party/rust/BUCK$|\.github/workflows/code\.yml$)'; then
+            '^(src/(apps|crates|agency)/.*(\.rs|Cargo\.toml)$|src/(Cargo\.lock|Cargo\.toml|reindeer\.toml|rustfmt\.toml|rust-toolchain\.toml)$|src/third-party/rust/BUCK$|\.github/workflows/code\.yml$)'; then
             echo "cargo=true" >> "$GITHUB_OUTPUT"
           else
             echo "cargo=false" >> "$GITHUB_OUTPUT"
@@ -295,7 +295,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          full_targets='root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party'
+          full_targets='root//agency/... root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party'
           selected_file="$RUNNER_TEMP/hctl2-btd/selected.txt"
 
           if [ "$EVENT_NAME" != pull_request ]; then

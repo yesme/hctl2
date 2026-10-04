@@ -17,6 +17,7 @@ export_file(
 
 rust_binary(
     name = "codegen",
+    visibility = ["PUBLIC"],
     srcs = ["codegen/main.rs"],
     crate_root = "codegen/main.rs",
     deps = [

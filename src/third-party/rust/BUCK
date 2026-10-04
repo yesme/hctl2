@@ -672,6 +672,12 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "base64",
+    actual = ":base64-0.22",
+    visibility = ["PUBLIC"],
+)
+
 http_archive(
     name = "base64-0.22.1.crate",
     sha256 = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6",
@@ -1355,25 +1361,17 @@ cargo.rust_library(
         "alloc",
         "block-api",
         "default",
+        "mac",
         "oid",
     ],
     named_deps = {
         "common": ":crypto-common-0.2",
     },
-    platform = {
-        "linux-arm64": dict(
-            features = ["mac"],
-            deps = [":ctutils-0.4"],
-        ),
-        "linux-x86_64": dict(
-            features = ["mac"],
-            deps = [":ctutils-0.4"],
-        ),
-    },
     visibility = [],
     deps = [
         ":block-buffer-0.12",
         ":const-oid-0.10",
+        ":ctutils-0.4",
     ],
 )
 
@@ -2201,6 +2199,12 @@ cargo.rust_library(
     edition = "2024",
     visibility = [],
     deps = [":hmac-0.13"],
+)
+
+alias(
+    name = "hmac",
+    actual = ":hmac-0.13",
+    visibility = ["PUBLIC"],
 )
 
 http_archive(

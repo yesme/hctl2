@@ -1,0 +1,33 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+oncall("hctl2")
+filegroup(name = "docs", srcs = glob(["**/*.md"]), visibility = ["PUBLIC"])
+export_file(name = "schema", src = "proto/agency.proto", visibility = ["PUBLIC"])
+genrule(
+    name = "generated",
+    srcs = [":schema", "root//build/tools:protoc-bin", "root//crates/proto:codegen"],
+    out = "generated",
+    cmd = 'set -euo pipefail; mkdir -p "$TMP/include"; cp "$(location :schema)" "$TMP/include/agency.proto"; "$(location root//build/tools:protoc-bin)" --include_imports --descriptor_set_out "$TMP/agency.binpb" -I "$TMP/include" agency.proto; "$(location root//crates/proto:codegen)" "$TMP/agency.binpb" "$OUT" hctl2.agency.v1',
+    labels = CI_FAST,
+)
+DEPS = [
+    "root//third-party/rust:base64", "root//third-party/rust:rustix",
+    "root//third-party/rust:hmac", "root//third-party/rust:pbjson",
+    "root//third-party/rust:prost", "root//third-party/rust:serde",
+    "root//third-party/rust:serde_json", "root//third-party/rust:serde_json_canonicalizer",
+    "root//third-party/rust:sha2", "root//third-party/rust:tonic", "root//third-party/rust:tonic-prost",
+    "root//third-party/rust:hyper-util", "root//third-party/rust:tokio", "root//third-party/rust:tower",
+]
+rust_library(
+    name = "agency_proto", crate = "agency_proto", srcs = glob(["src/**/*.rs"]), crate_root = "src/lib.rs",
+    deps = DEPS, edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {"HCTL2_AGENCY_PROTO_OUT": "$(location :generated)"},
+    tests = [":contract_test"], labels = CI_FAST, visibility = ["PUBLIC"],
+)
+rust_test(
+    name = "contract_test", srcs = glob(["src/**/*.rs"]), crate_root = "src/lib.rs", deps = DEPS,
+    edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {"HCTL2_AGENCY_PROTO_OUT": "$(location :generated)"},
+    labels = CI_FAST, visibility = ["PUBLIC"],
+)
+filegroup(name = "clippy", srcs = {"library": ":agency_proto[clippy.txt]", "contract": ":contract_test[clippy.txt]"}, labels = CI_FAST, visibility = ["PUBLIC"])
