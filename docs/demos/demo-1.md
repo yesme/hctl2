@@ -2,7 +2,7 @@
 
 本文记录演示 1「协作现场」的完整操作流程。流程包括环境构建、依赖解包、服务启动、人类账号注册、四步核心业务操作（建项目、进聊天室、开 Topic、认领平台 issue 为 Task），以及停机重启后的数据完整性核对。
 
-本手册记录本地实跑验证的操作全流程，所有命令与核对字段均已按仓库实际布局（产物在仓库根 `buck-out/`）与步骤核对验证。
+本手册记录本地实跑验证的操作全流程，所有步骤、命令与核对字段均已按仓库实际布局（产物在仓库根 `buck-out/`）在本地真实环境全流程执行并通过核对验证。
 
 ---
 
@@ -28,16 +28,16 @@ cd ..
 
 ### 2. 解包安装与设置环境变量
 
-新建测试工作目录（建议使用短路径如 `/tmp/d1` 或在仓库根目录下建 `work`），并在其下解压依赖包 payload：
+新建测试工作目录（建议使用短路径如 `/tmp/d1`，避免在仓库内产生未跟踪文件与超长 socket 路径），并在其下解压依赖包 payload：
 
 ```bash
 # REPO_ROOT 指向代码仓库根目录（产物位于 $REPO_ROOT/buck-out）
 export REPO_ROOT="$(pwd)"
 
-# WS 为演示工作区根目录。为避免 SUN_LEN 超长及在仓库内产生未跟踪文件，建议使用短路径（如 /tmp/d1 或当前目录）
-export WS="$(pwd)"
+# WS 为演示工作区根目录。为避免 SUN_LEN 超长及在仓库内产生未跟踪文件，建议使用独立短路径（如 /tmp/d1）
+export WS="${WS:-/tmp/d1}"
+mkdir -p "$WS/work/pkg" "$WS/work/root"
 cd "$WS"
-mkdir -p work/pkg work/root
 
 # 解压依赖包（排除 -sources 伴随包）
 tar --zstd -xf $(find "$REPO_ROOT/buck-out" -name "hctl2-0.0.0-*.tar.zst" ! -name '*-sources.tar.zst' | head -n 1) -C work/pkg
@@ -49,9 +49,9 @@ export CLI="$(find "$REPO_ROOT/buck-out" -name hctl2 -type f -perm +111 | head -
 export ROOT="$WS/work/root"
 
 # 显式校验关键产物，避免因路径为空导致后续步骤静默失败
-[ -d "$INSTALL_ROOT" ] || { echo "INSTALL_ROOT 未找到: $INSTALL_ROOT"; return 1; }
-[ -x "$HCTL2_CONTROL_BIN" ] || { echo "HCTL2_CONTROL_BIN 未找到或不可执行: $HCTL2_CONTROL_BIN"; return 1; }
-[ -x "$CLI" ] || { echo "CLI 未找到或不可执行: $CLI"; return 1; }
+[ -d "$INSTALL_ROOT" ] || { echo "INSTALL_ROOT 未找到: $INSTALL_ROOT"; return 1 2>/dev/null || exit 1; }
+[ -x "$HCTL2_CONTROL_BIN" ] || { echo "HCTL2_CONTROL_BIN 未找到或不可执行: $HCTL2_CONTROL_BIN"; return 1 2>/dev/null || exit 1; }
+[ -x "$CLI" ] || { echo "CLI 未找到或不可执行: $CLI"; return 1 2>/dev/null || exit 1; }
 ```
 
 > [!IMPORTANT]
@@ -64,10 +64,11 @@ export ROOT="$WS/work/root"
 ### 1. 启动控制面与后台服务
 
 > [!TIP]
-> 随包服务端口（Tuwunel 6167 / Cinny 6168 / Gitea 3001）为固定端口。若同机已有正在运行的实例占用端口，`start` 虽返回 0 且 `ready: true`，但被占用的服务其 `available` 与 `running` 将为 `false`（静默失败）。启动前可先确认端口未被占用：
+> 随包服务端口（Tuwunel 6167 / Cinny 6168 / Gitea 3001）为固定端口。启动前可确认端口未被占用：
 > ```bash
 > lsof -i :6167 -i :6168 -i :3001
 > ```
+> 注意：控制面拉起托管服务 Tuwunel 需要约 2~3 秒探针初始化时间。刚启动时若查询到 `available: false` 或 `ready: false` 属于探针尚未就绪的正常过渡态，等待数秒即可；若持续为 `false` 则需排查端口冲突。
 
 通过 CLI 启动守护进程：
 
@@ -75,9 +76,14 @@ export ROOT="$WS/work/root"
 $CLI --root "$ROOT" start
 ```
 
-检查控制面状态：
+等待 Tuwunel 托管服务探针就绪并检查控制面状态：
 
 ```bash
+for i in $(seq 1 30); do
+  [ "$($CLI --json --root "$ROOT" status 2>/dev/null | jq -r '.services.hosted[] | select(.name=="tuwunel") | .ready')" = "true" ] && break
+  sleep 1
+done
+
 $CLI --json --root "$ROOT" status
 ```
 
@@ -451,6 +457,8 @@ $CLI --json --root "$ROOT" room hierarchy "$PROJECT_ID" "$MAIN_ROOM_ID"
 
 ### 4. 查看 Topic 详情与成员邀请
 
+查看 Topic 详情：
+
 ```bash
 $CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID"
 ```
@@ -458,7 +466,16 @@ $CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID"
 **核对字段**：
 - `room.brief`: 包含 `material_id` 与 `byte_digest`，指向材料记录（顶层 `.brief` 则包含 5 节提要内容文本）。
 - `hierarchy.parents`: 列表中包含父节点主 Room，`canonical: true`。
-- 时间线只有建房与状态事件（共 11 个状态事件，无 `m.room.message` 业务消息）；`m.room.member` 只有一条且 `state_key` 为 `@hctl2_control`（人类尚未加入）。
+
+查看 Topic 时间线事件：
+
+```bash
+$CLI --json --root "$ROOT" room timeline "$PROJECT_ID" "$TOPIC_ROOM_ID"
+```
+
+**核对字段**：
+- 共 11 个建房与状态事件，无 `m.room.message` 业务消息。
+- `m.room.member` 只有一条，其 `state_key` 为 `@hctl2_control:hctl2.localhost`（人类尚未加入）。
 
 将人类账号邀入 Topic Room：
 
@@ -494,7 +511,7 @@ $CLI --json --root "$ROOT" project members --input work/members-topic.json --key
 
 ```bash
 # 获取 Topic Room 对应的 Matrix 房间 ID
-MATRIX_TOPIC_ROOM="$($CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID" | jq -r .room.native_id)"
+MATRIX_TOPIC_ROOM="$($CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID" | jq -r .room.matrix_room_id)"
 
 # 人类账号接受邀请并加入 Topic 房间
 curl -s -X POST -H "Authorization: Bearer $USER_TOKEN" \
@@ -507,68 +524,50 @@ curl -s -X POST -H "Authorization: Bearer $USER_TOKEN" \
 
 ## 六、步骤 4：平台上的 issue 认领成 Task
 
-### 1. 创建 Gitea 人类账号并添加为协作者【目前要手工做】
+### 1. 为人类账号开通 Gitea 权限（两步确认）
 
-控制面以自身生成的管理员账号创建私有仓库。目前 `hctl2` 尚无为人开通本地 Gitea 账号及协作者权限的命令（规划于小活 E 交付）。需手工执行：
+控制面以自身生成的管理员账号创建私有仓库。通过 `hctl2 repo grant` 命令为本机人类在同一本地 Gitea 上创建普通账号（若已存在则复用）并授予已激活 Repo 的协作权（两步确认）。命令输出的初始口令只出现一次，控制面不持久化保存，需由用户自行记录保存：
 
-#### (1) 创建人类账号
+预览授权：
 
 ```bash
-"$INSTALL_ROOT/libexec/hctl2/gitea" \
-  --config "$ROOT/services/config/gitea/app.ini" \
-  --work-path "$ROOT/services/data/gitea" \
-  admin user create \
-  --username yesme \
-  --password password123 \
-  --email yesme@hctl2.localhost \
-  --admin=false \
-  --must-change-password=false
+PREVIEW_GRANT="$($CLI --json --root "$ROOT" repo grant --repo-id "$REPO_ID" --username yesme --permission write --key grant-yesme)"
+TOKEN_GRANT="$(echo "$PREVIEW_GRANT" | jq -r .preview_token)"
 ```
+
+**核对字段**：`preview_token` 为非空字符串。
+
+提交授权：
+
+```bash
+SUBMIT_GRANT="$($CLI --json --root "$ROOT" repo grant --repo-id "$REPO_ID" --username yesme --permission write --key grant-yesme --preview-token "$TOKEN_GRANT")"
+export GITEA_PASSWORD="$(echo "$SUBMIT_GRANT" | jq -r .initial_password)"
+export ADMIN_USER="$(echo "$SUBMIT_GRANT" | jq -r '.full_name | split("/")[0]')"
+```
+
+**核对字段**：
+- `account_created`: 应为 `true`。
+- `initial_password`: 非空初始随机口令（控制面不存，人需妥善保存）。
+- `permission`: 应为 `"write"`。
+- `full_name`: 仓库全名（形如 `hctl-.../apollo`）。
 
 > [!NOTE]
-> 此处密码为本地演示环境设置的示例口令；在生产或严谨环境中敏感输入应通过环境变量或交互输入传递，避免明文暴露在命令行参数中。
-
-> [!WARNING]
-> 创建用户必须显式带上 `--must-change-password=false`。Gitea 默认要求非首个用户在首次登录时修改密码，若不带该标志，后续通过 API 开 issue 会被拦截并报错 `HTTP 403 Forbidden: You must change your password`。
-
-#### (2) 获取 Gitea 管理员令牌
-
-- **方式一（交互式桌面环境）**：从 macOS 钥匙串读取控制面存放的令牌（本方式假设密钥后端为系统钥匙串 `system-keyring`，即默认配置；若控制面启动时显式指定了 `--secret-backend user-file`，凭据存放于 `$ROOT/secrets` 下，钥匙串中无此项，请使用方式二；参见 [docs/usage.md](../usage.md#安装完整离线包)）：
-  ```bash
-  CONTROL_ID="$($CLI --root "$ROOT" status | jq -r .control_id)"
-  ADMIN_TOKEN="$(security find-generic-password -s hctl2 -a "gitea:${CONTROL_ID}:admin" -w)"
-  ```
-- **方式二（无头/终端环境）**：为避免钥匙串权限弹窗在无屏幕会话中挂起，可直接通过 Gitea admin 命令生成管理令牌：
-  ```bash
-  CONTROL_ID="$($CLI --root "$ROOT" status | jq -r .control_id)"
-  ADMIN_USER="hctl-${CONTROL_ID:0:16}"
-  ADMIN_TOKEN="$("$INSTALL_ROOT/libexec/hctl2/gitea" \
-    --config "$ROOT/services/config/gitea/app.ini" \
-    --work-path "$ROOT/services/data/gitea" \
-    admin user generate-access-token \
-    --username "$ADMIN_USER" \
-    --token-name "manual-admin" \
-    --raw)"
-  ```
-
-#### (3) 将人类账号加为仓库协作者
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" -X PUT \
-  -H "Authorization: token $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"permission":"write"}' \
-  "http://127.0.0.1:3001/api/v1/repos/$ADMIN_USER/apollo/collaborators/yesme"
-```
-
-**核对字段**：HTTP 状态码返回 `204`。
+> Gitea 原生规则要求新创建的普通用户在首次登录时修改口令（`MustChangePassword: true`），在此之前 API 调用会被拦截并提示必须改密。人类操作有两种方式：
+> - **方式 A（浏览器界面）**：浏览器访问 `http://127.0.0.1:3001/`，用 `yesme` 与初始口令登录，按页面提示修改为自己的口令（并更新 `export GITEA_PASSWORD="你的新口令"`）。
+> - **方式 B（终端环境）**：在无图形环境或自动化流程中，可通过随包 Gitea 原生工具解除须改密标记，直接使用上述初始口令：
+>   ```bash
+>   "$INSTALL_ROOT/libexec/hctl2/gitea" \
+>     --config "$ROOT/services/config/gitea/app.ini" \
+>     --work-path "$ROOT/services/data/gitea" \
+>     admin user must-change-password --unset --all
+>   ```
 
 ### 2. 人类以自身账号在 Gitea 开 issue #1
 
 通过 Gitea API 提交 issue：
 
 ```bash
-curl -s -X POST -u yesme:password123 \
+curl -s -X POST -u "yesme:$GITEA_PASSWORD" \
   "http://127.0.0.1:3001/api/v1/repos/$ADMIN_USER/apollo/issues" \
   -H "Content-Type: application/json" \
   -d '{"title":"编写项目说明与规范","body":"请为 Apollo 项目撰写 README.md 和初始规划。"}' | jq '{number: .number, title: .title, state: .state}'
@@ -750,9 +749,16 @@ HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" status || t
 $CLI --root "$ROOT" start
 ```
 
-约 1 秒后检查状态：
+等待托管服务探针就绪并检查状态：
 
 ```bash
+for i in $(seq 1 30); do
+  TUWUNEL_READY="$($CLI --json --root "$ROOT" status 2>/dev/null | jq -r '.services.hosted[] | select(.name=="tuwunel") | .ready')"
+  GITEA_READY="$($CLI --json --root "$ROOT" status 2>/dev/null | jq -r '.services.hosted[] | select(.name=="gitea") | .ready')"
+  [ "$TUWUNEL_READY" = "true" ] && [ "$GITEA_READY" = "true" ] && break
+  sleep 1
+done
+
 $CLI --json --root "$ROOT" status
 ```
 
@@ -803,7 +809,7 @@ curl -s -H "Authorization: Bearer $USER_TOKEN" "http://127.0.0.1:6167/_matrix/cl
 #### (3) Gitea issue #1 回读
 
 ```bash
-curl -s -u yesme:password123 "http://127.0.0.1:3001/api/v1/repos/$ADMIN_USER/apollo/issues/1" | jq '{number: .number, title: .title, state: .state}'
+curl -s -u "yesme:$GITEA_PASSWORD" "http://127.0.0.1:3001/api/v1/repos/$ADMIN_USER/apollo/issues/1" | jq '{number: .number, title: .title, state: .state}'
 ```
 
 **核对字段**：`number: 1`，`state: "open"`，`title: "编写项目说明与规范"`。
