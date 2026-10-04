@@ -536,10 +536,35 @@ pub struct ProposalOutput {
     pub dispatch: String,
     pub authorization: FrozenRef,
 }
+/// One page of preserved proposals. `after` is the previous page's cursor.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResultQuery {
     pub dispatch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+impl ResultQuery {
+    pub fn of(dispatch: impl Into<String>) -> Self {
+        Self {
+            dispatch: dispatch.into(),
+            after: None,
+            limit: None,
+        }
+    }
+    pub fn after(mut self, cursor: impl Into<String>) -> Self {
+        self.after = Some(cursor.into());
+        self
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResultPage {
+    pub proposals: Vec<Proposal>,
+    pub cursor: Option<String>,
+    pub complete: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

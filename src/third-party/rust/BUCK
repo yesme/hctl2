@@ -3020,6 +3020,34 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "landlock",
+    actual = ":landlock-0.4",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "landlock-0.4.7.crate",
+    sha256 = "4cca98e95f35b29d469dade6724c6f96cec9236640f745a0e99b0334ec320ab1",
+    strip_prefix = "landlock-0.4.7",
+    urls = ["https://static.crates.io/crates/landlock/0.4.7/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "landlock-0.4",
+    srcs = [":landlock-0.4.7.crate"],
+    crate = "landlock",
+    crate_root = "landlock-0.4.7.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+    deps = [
+        ":enumflags2-0.7",
+        ":libc-0.2",
+        ":thiserror-2",
+    ],
+)
+
 http_archive(
     name = "libc-0.2.189.crate",
     sha256 = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2",
