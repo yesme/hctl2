@@ -1175,28 +1175,40 @@ async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate
     .await
     .unwrap_err();
     assert_eq!(stopped.code, "INVALID_INPUT");
+    let second = &pages[1].proposals[0];
     {
         let lock = shared.lock().await;
         let store = lock.as_ref().unwrap();
-        assert_eq!(store.list("proposal_inbox").unwrap().len(), 1);
-        let stored = store
-            .get(&participant::key(
-                Scope::Project("project".into()),
-                "proposal_inbox",
-                &first.header.proposal_id,
-            ))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            store.read_material(&actor, &stored.materials[0]).unwrap(),
-            first.output
-        );
+        assert_eq!(store.list("proposal_inbox").unwrap().len(), 2);
+        for proposal in [first, second] {
+            let stored = store
+                .get(&participant::key(
+                    Scope::Project("project".into()),
+                    "proposal_inbox",
+                    &proposal.header.proposal_id,
+                ))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                store.read_material(&actor, &stored.materials[0]).unwrap(),
+                proposal.output
+            );
+        }
     }
     let first_page: ResultPage = client
         .call("results", &ResultQuery::of(running.reference.clone()))
         .await
         .unwrap();
     assert!(first_page.proposals[0].preserved);
+    let unacked: ResultPage = client
+        .call(
+            "results",
+            &ResultQuery::of(running.reference.clone())
+                .after(first_page.proposals[0].header.proposal_id.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(!unacked.proposals[0].preserved);
     assert_eq!(
         control::agency::preserve_results(&shared, &root, &actor, &dispatch)
             .await

@@ -578,8 +578,9 @@ pub async fn preserve_results(
     preserve_results_inner(shared, root, actor, dispatch, None).await
 }
 
-/// Stops before sending acknowledgement number `acknowledgement` (the first is 1).
-/// Earlier proposals stay stored and acknowledged. The next `preserve_results` continues.
+/// Test switch. Stops after proposal number `acknowledgement` is stored and before
+/// its acknowledgement is sent. Earlier proposals stay stored and acknowledged.
+#[doc(hidden)]
 pub async fn preserve_results_failing_before_acknowledgement(
     shared: &Arc<Mutex<Option<Store>>>,
     root: &Path,
@@ -609,9 +610,6 @@ async fn preserve_results_inner(
             break;
         }
         for proposal in &page.proposals {
-            if fail_before_acknowledgement == Some(count + 1) {
-                return Err(invalid("preservation acknowledgement stopped"));
-            }
             {
                 let mut lock = shared.lock().await;
                 let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
@@ -626,6 +624,9 @@ async fn preserve_results_inner(
                 if store.read_material(actor, &record.materials[0])? != proposal.output {
                     return Err(invalid("exact preserved bytes cannot be read back"));
                 }
+            }
+            if fail_before_acknowledgement == Some(count + 1) {
+                return Err(invalid("preservation acknowledgement stopped"));
             }
             let _: Value = client
                 .call(

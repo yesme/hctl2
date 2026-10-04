@@ -11,3 +11,7 @@ Landlock 从 Linux 5.13 起可以由普通进程启用。允许名单里不放�
 实现放在 `agency` 可执行文件的 `--confine` 入口，限制当前进程后 `exec` 目标程序。已打开的 stdin 不受这次限制影响。不把这件事声明成目录里的隔离效果。
 
 内核不支持 Landlock，或 `restrict_self` 没有完全生效时，助手以非零状态退出，目标程序不会启动。限制失败不会变成不加限制地运行。
+
+## 复核记录
+
+2026-10-05：ABI V1 的 `from_read` 没有 `WriteFile`。锁定的 Herdr 0.8.2 在这个名单下 `workspace.create` 返回 `failed to openpty`（EACCES），开的是 `/dev/ptmx`。`/dev/pts` 是另一挂载的 devpts，父目录上的规则走不到这个挂载根。`/dev` 与 `/dev/pts` 因此加上 `WriteFile` 和 `MakeChar`，不放开删除和新建普通文件。凭据根落在这两处下面时仍拒绝启动。允许路径规范化失败就报错，不退回原始路径。
