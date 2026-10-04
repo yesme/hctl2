@@ -470,15 +470,15 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let mut pages = Vec::new();
     let mut after = None;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while pages.len() < 2 && std::time::Instant::now() < deadline {
+    while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
         let page: ResultPage = client.call("results", &query).await.unwrap();
         if page.proposals.is_empty()
             || (pages.is_empty() && page.complete && page.proposals.len() < 2)
         {
-            // The second proposal may still be committing. A complete page of one
-            // is not yet the durable result set.
+            // A short page while the dispatch is still running is not the end.
+            // Come back from the first page once the exit has been recorded.
             after = None;
             pages.clear();
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
