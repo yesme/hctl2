@@ -227,6 +227,61 @@ impl Supervisor {
             .map_err(ServiceError::failed)
     }
 
+    /// Restarts one hosted component.
+    ///
+    /// The Gitea bootstrap needs this when an instance came up without taking its port:
+    /// such a process stays alive, so asking for a start again changes nothing and only
+    /// a restart gives it a fresh bind.
+    pub fn restart(&self, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if !self.hosted_names().iter().any(|hosted| hosted == name) {
+            return Err(format!("{name} is not a hosted component"));
+        }
+        let _guard = self.serialized();
+        let result = self.restart_component(name);
+        match &result {
+            Ok(()) => self.clear_last_error(),
+            Err(error) => self.set_last_error(error.clone()),
+        }
+        result
+    }
+
+    fn restart_component(&self, name: &str) -> Result<(), String> {
+        match &self.backend {
+            Backend::Absent => Ok(()),
+            Backend::Packaged {
+                install_root,
+                services_bin,
+            } => {
+                fs::create_dir_all(self.state_root()).map_err(io)?;
+                let mut cmd = Command::new(services_bin);
+                cmd.env("HCTL2_INSTALL_ROOT", install_root);
+                self.apply_state_env(&mut cmd);
+                let status = cmd.args(["restart", name]).status().map_err(io)?;
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("hctl2-services restart {name} failed: {status}"))
+                }
+            }
+            Backend::Fixture { pc_bin, socket, .. } => {
+                if !self.pc_alive() {
+                    return Ok(());
+                }
+                let status = self
+                    .pc_client(pc_bin, socket)
+                    .args(["process", "restart", name])
+                    .status()
+                    .map_err(io)?;
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("process-compose restart {name} failed: {status}"))
+                }
+            }
+        }
+    }
+
     /// Start consumed services without waiting for probes. Store stays available.
     pub fn ensure_up(&self) -> Result<(), String> {
         let _guard = self.serialized();

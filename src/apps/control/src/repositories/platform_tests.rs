@@ -85,6 +85,129 @@ fi
     );
 }
 
+#[test]
+fn retry_bootstrap_waits_out_a_not_yet_migrated_database() {
+    // The packaged lifecycle test caught `no such table: user` because the readiness
+    // probe passed before the first migration finished. The bootstrap must keep asking
+    // this root's own admin interface instead of failing on its first answer.
+    let attempts = std::cell::Cell::new(0);
+    let rearms = std::cell::Cell::new(0);
+    let listed = retry_bootstrap(
+        Instant::now() + Duration::from_secs(5),
+        || {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() < 3 {
+                Err(reject(
+                    "PLATFORM_BOOTSTRAP",
+                    "cannot list hosted platform accounts: Command error: SQL logic error: no such table: user (1)",
+                    "inspect_gitea_log",
+                ))
+            } else {
+                Ok("listed")
+            }
+        },
+        |_| true,
+        || rearms.set(rearms.get() + 1),
+    )
+    .unwrap();
+    assert_eq!(listed, "listed");
+    assert_eq!(attempts.get(), 3);
+    assert_eq!(
+        rearms.get(),
+        2,
+        "every wait re-requests the component start"
+    );
+}
+
+#[test]
+fn retry_bootstrap_keeps_the_last_failure_and_respects_the_deadline() {
+    let started = Instant::now();
+    let error = retry_bootstrap(
+        started + Duration::from_millis(300),
+        || -> Result<()> {
+            Err(reject(
+                "PLATFORM_BOOTSTRAP",
+                "cannot list hosted platform accounts: Command error: SQL logic error: no such table: user (1)",
+                "inspect_gitea_log",
+            ))
+        },
+        |_| true,
+        || {},
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "PLATFORM_BOOTSTRAP");
+    assert!(
+        error.message.contains("no such table: user"),
+        "the native detail must survive: {}",
+        error.message
+    );
+    assert!(
+        started.elapsed() >= Duration::from_millis(300),
+        "retrying stops at the deadline"
+    );
+}
+
+#[test]
+fn retry_bootstrap_does_not_retry_a_failure_it_cannot_fix() {
+    // A foreign instance holding Gitea's port answers 401 and is worth waiting out; a
+    // rejected credential is not.
+    let attempts = std::cell::Cell::new(0);
+    let error = retry_bootstrap(
+        Instant::now() + Duration::from_secs(5),
+        || -> Result<()> {
+            attempts.set(attempts.get() + 1);
+            Err(reject(
+                "NATIVE_REJECTED",
+                "rejected",
+                "read_back_original_intent",
+            ))
+        },
+        |error| error.code == "PLATFORM_UNAVAILABLE",
+        || {},
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "NATIVE_REJECTED");
+    assert_eq!(attempts.get(), 1);
+}
+
+#[test]
+fn retry_bootstrap_waits_out_an_instance_that_is_not_ours() {
+    // `PLATFORM_UNAVAILABLE` is what the API reports when another process on the port
+    // answers for a token minted in this root's database: worth waiting out.
+    let attempts = std::cell::Cell::new(0);
+    let rearms = std::cell::Cell::new(0);
+    let who = retry_bootstrap(
+        Instant::now() + Duration::from_secs(5),
+        || {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() < 3 {
+                Err(reject(
+                    "PLATFORM_UNAVAILABLE",
+                    "tea API GET user not confirmed (HTTP Some(401), exit Some(0))",
+                    "read_back_original_intent",
+                ))
+            } else {
+                Ok("control admin")
+            }
+        },
+        |error| error.code == "PLATFORM_UNAVAILABLE",
+        || rearms.set(rearms.get() + 1),
+    )
+    .unwrap();
+    assert_eq!(who, "control admin");
+    assert_eq!(attempts.get(), 3);
+    assert_eq!(rearms.get(), 2);
+}
+
+#[test]
+fn native_detail_reports_the_last_non_empty_stderr_line() {
+    assert_eq!(native_detail(b""), "no diagnostic output");
+    assert_eq!(
+        native_detail(b"level=warn\n\nCommand error: SQL logic error: no such table: user (1)\n\n"),
+        "Command error: SQL logic error: no such table: user (1)"
+    );
+}
+
 /// A subprocess fixture for the native Gitea admin CLI: `admin user list` reads the
 /// accounts recorded so far, `admin user create` prints a password and then records one.
 fn write_gitea_fixture(path: &Path) {
