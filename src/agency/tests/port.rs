@@ -229,6 +229,47 @@ fn ticket(d: &Dispatch, key: &str, permissions: Vec<Permission>, lease: Option<&
     )
     .unwrap()
 }
+#[tokio::test]
+async fn a_blocked_execution_directory_ends_as_cannot_fulfill() {
+    let rig = Rig::new("printf '{\"schema\":\"s\",\"bytes\":\"\"}\\n'").await;
+    let (client, key) = rig.pair("blocked").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "blocked").await)
+        .await
+        .unwrap();
+    let exec = agency::confine::execution_dir(&rig.root, &d.reference).unwrap();
+    std::fs::remove_dir(&exec).unwrap();
+    std::fs::File::create(&exec).unwrap();
+    let activated = activate(&client, &d).await;
+    assert_eq!(activated.state, DispatchState::CannotFulfill);
+    let again = activate(&client, &d).await;
+    assert_eq!(again.state, DispatchState::CannotFulfill);
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference.clone()))
+        .await
+        .unwrap();
+    assert!(page.complete);
+    assert!(page.proposals.is_empty());
+    let trace: Trace = client
+        .call(
+            "observe",
+            &Observe {
+                ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                after: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        trace
+            .events
+            .iter()
+            .any(|event| event.kind == "cannot_fulfill")
+    );
+    let _ = std::fs::remove_file(&exec);
+    rig.close().await;
+}
+
 async fn activate(client: &Client, d: &Dispatch) -> Dispatch {
     client
         .call(
@@ -301,16 +342,12 @@ async fn prepare_and_prepared_activation_reject_expired_deadline() {
             .code,
         "DEADLINE_EXPIRED"
     );
-    let results: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference,
-            },
-        )
+    let results: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference))
         .await
         .unwrap();
-    assert!(results.is_empty());
+    assert!(results.proposals.is_empty());
+    assert!(results.complete);
     rig.close().await;
 }
 
@@ -437,6 +474,7 @@ impl Runtime for BurstRuntime {
         _: &Sealed<ExecutionSpec>,
         _: &Sealed<Bundle>,
         _: &std::path::Path,
+        _: &std::path::Path,
     ) -> Result<agency::runtime::Running> {
         let (events, receiver) = std::sync::mpsc::channel();
         for _ in 0..2 {
@@ -448,6 +486,12 @@ impl Runtime for BurstRuntime {
                 })
                 .unwrap();
         }
+        events
+            .send(agency::runtime::RuntimeEvent::Exited {
+                code: Some(0),
+                requested_stop: false,
+            })
+            .unwrap();
         Ok(agency::runtime::Running {
             session: Arc::new(std::sync::Mutex::new(Box::new(BurstSession(events)))),
             events: receiver,
@@ -456,11 +500,91 @@ impl Runtime for BurstRuntime {
 }
 
 #[tokio::test]
-async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_after_error() {
+async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
-    let (client, key) = rig.pair("budget").await;
+    let (client, _key) = rig.pair("budget").await;
     let d: Dispatch = client
         .call("prepare", &request(&client, "budget").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let mut pages = Vec::new();
+    let mut after = None;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        let mut query = ResultQuery::of(d.reference.clone());
+        query.after = after.clone();
+        let page: ResultPage = client.call("results", &query).await.unwrap();
+        if page.proposals.is_empty()
+            || (pages.is_empty() && page.complete && page.proposals.len() < 2)
+        {
+            // A short page while the dispatch is still running is not the end.
+            // Come back from the first page once the exit has been recorded.
+            after = None;
+            pages.clear();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            continue;
+        }
+        assert_eq!(page.proposals.len(), 1);
+        assert!(canonical(&page).unwrap().len() < MAX_DOCUMENT);
+        assert_eq!(page.proposals[0].output, vec![255; 2 * 1024 * 1024]);
+        after = page.cursor.clone();
+        let complete = page.complete;
+        pages.push(page);
+        if complete {
+            break;
+        }
+    }
+    assert_eq!(pages.len(), 2);
+    assert!(!pages[0].complete);
+    assert!(pages[1].complete);
+    rig.close().await;
+}
+
+struct FailingBurst;
+impl Runtime for FailingBurst {
+    fn catalog(&self) -> Result<Catalog> {
+        ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec![],
+        })
+        .catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        let (events, receiver) = std::sync::mpsc::channel();
+        events
+            .send(agency::runtime::RuntimeEvent::Proposal {
+                schema: "test.bytes.v1".into(),
+                bytes: vec![1; 64],
+                source: EvidenceLevel::Narrated,
+            })
+            .unwrap();
+        events
+            .send(agency::runtime::RuntimeEvent::Proposal {
+                schema: "test.bytes.v1".into(),
+                bytes: vec![2; 3 * 1024 * 1024],
+                source: EvidenceLevel::Narrated,
+            })
+            .unwrap();
+        Ok(agency::runtime::Running {
+            session: Arc::new(std::sync::Mutex::new(Box::new(BurstSession(events)))),
+            events: receiver,
+        })
+    }
+}
+
+#[tokio::test]
+async fn record_failure_still_reaches_exit_and_keeps_the_accepted_result() {
+    let rig = Rig::with_runtime(Arc::new(FailingBurst)).await;
+    let (client, key) = rig.pair("drain").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "drain").await)
         .await
         .unwrap();
     activate(&client, &d).await;
@@ -476,7 +600,6 @@ async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_a
                 },
             )
             .await;
-        // Observation is read-only; a timed-out query can be read again, unlike an input write.
         let trace: Trace = match result {
             Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => continue,
             result => result.unwrap(),
@@ -495,20 +618,16 @@ async fn aggregate_result_budget_keeps_accepted_bytes_readable_and_drains_exit_a
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     assert!(exited, "record failure must not drop the exit event");
-    let results: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference,
-            },
-        )
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference))
         .await
         .unwrap();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].output, vec![255; 2 * 1024 * 1024]);
-    assert!(canonical(&results).unwrap().len() < MAX_DOCUMENT);
+    assert!(page.complete);
+    assert_eq!(page.proposals.len(), 1);
+    assert_eq!(page.proposals[0].output, vec![1; 64]);
     rig.close().await;
 }
+
 struct BlockingSession {
     entered: std::sync::mpsc::Sender<()>,
     release: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,
@@ -550,6 +669,7 @@ impl Runtime for BlockingRuntime {
         &self,
         _: &Sealed<ExecutionSpec>,
         _: &Sealed<Bundle>,
+        _: &std::path::Path,
         _: &std::path::Path,
     ) -> Result<agency::runtime::Running> {
         let (events, receiver) = std::sync::mpsc::channel();
@@ -828,16 +948,11 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .await
             .unwrap();
     for _ in 0..100 {
-        let result: Vec<Proposal> = client
-            .call(
-                "results",
-                &ResultQuery {
-                    dispatch: running.reference.clone(),
-                },
-            )
+        let result: ResultPage = client
+            .call("results", &ResultQuery::of(running.reference.clone()))
             .await
             .unwrap();
-        if !result.is_empty() {
+        if !result.proposals.is_empty() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -854,16 +969,11 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .unwrap(),
         1
     );
-    let results: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: running.reference.clone(),
-            },
-        )
+    let results: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
         .await
         .unwrap();
-    assert!(results[0].preserved);
+    assert!(results.proposals[0].preserved);
     assert_eq!(
         control::agency::deliver_activation(&shared, &root, &actor, "dispatch-intent", &dispatch)
             .await
@@ -877,7 +987,7 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             s.get(&original_owner.key).unwrap().unwrap().revision_digest,
             original_owner.revision_digest
         );
-        let mut wrong = results[0].clone();
+        let mut wrong = results.proposals[0].clone();
         wrong.outputs[0].owner.project = "another-project".into();
         assert_eq!(
             participant::preserve_proposal(s, &actor, &dispatch, &wrong)
@@ -885,7 +995,7 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
                 .code,
             "PROPOSAL_MISMATCH"
         );
-        let mut direct = results[0].clone();
+        let mut direct = results.proposals[0].clone();
         direct.evidence = EvidenceLevel::Unmediated;
         assert_eq!(
             participant::preserve_proposal(s, &actor, &dispatch, &direct)
@@ -897,7 +1007,7 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .get(&participant::key(
                 Scope::Project("project".into()),
                 "proposal_inbox",
-                &results[0].header.proposal_id,
+                &results.proposals[0].header.proposal_id,
             ))
             .unwrap()
             .unwrap();
@@ -944,6 +1054,197 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .exists()
     );
     std::fs::remove_dir_all(&rig.root).unwrap();
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate() {
+    use store::{Actor, ActorSource, Scope, Store, TrustedActor};
+    let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
+    let root = rig.root.join("control");
+    let actor = TrustedActor(Actor {
+        principal: "human".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, Scope::Project("project".into())],
+        authority: None,
+    });
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(Store::open(&root).unwrap())));
+    control::agency::submit(
+        &shared,
+        &root,
+        "agency.pair",
+        &json!({"binding_id":"pages","agency_root":rig.root}),
+        &actor,
+        "pair-pages",
+    )
+    .await
+    .unwrap();
+    let client = control::agency::paired_client(&root, "pages").unwrap();
+    let mut prepare = request(&client, "page-dispatch").await;
+    control::agency::submit(
+        &shared,
+        &root,
+        "profession.accept",
+        &json!({"binding_id":"pages","profession":prepare.spec.document.profession.reference}),
+        &actor,
+        "accept-pages",
+    )
+    .await
+    .unwrap();
+    let (intent, _owner) = {
+        let mut lock = shared.lock().await;
+        let store = lock.as_mut().unwrap();
+        let binding = store
+            .get(&participant::key(Scope::Control, "agency_binding", "pages"))
+            .unwrap()
+            .unwrap();
+        prepare.spec.document.binding = participant::frozen(&binding);
+        prepare.spec = Sealed::new(prepare.spec.document).unwrap();
+        let owner = participant::value(
+            participant::key(
+                Scope::Project("project".into()),
+                "authorized_invocation",
+                "invocation",
+            ),
+            1,
+            &json!({"state":"authorized"}),
+        )
+        .unwrap();
+        let command = store::Command {
+            command_id: "seed-page-owner".into(),
+            idempotency_key: "seed-page-owner".into(),
+            actor: actor.0.clone(),
+            target: owner.key.clone(),
+            expected: store::Expected::Absent,
+            binding: participant::reference(&owner),
+            operation: "test.authorize".into(),
+            input: json!({}),
+            input_digest: store::Command::digest_input("test.authorize", &json!({})).unwrap(),
+        };
+        store
+            .submit(store.generation(), &actor, &command, None, |tx| {
+                tx.put(&owner)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+        let intent = participant::prepare_dispatch(
+            store,
+            &actor,
+            "page-intent",
+            &participant::reference(&owner),
+            &prepare.spec,
+            &prepare.bundle,
+        )
+        .unwrap();
+        (intent, owner)
+    };
+    let prepared: Dispatch = client.call("prepare", &prepare).await.unwrap();
+    let dispatch = control::agency::deliver_prepare(&shared, &root, &actor, &intent)
+        .await
+        .unwrap();
+    assert_eq!(dispatch.key.id, prepared.reference);
+    let running =
+        control::agency::deliver_activation(&shared, &root, &actor, "page-intent", &dispatch)
+            .await
+            .unwrap();
+    let mut pages = Vec::new();
+    let mut after = None;
+    for _ in 0..100 {
+        let mut query = ResultQuery::of(running.reference.clone());
+        query.after = after.clone();
+        let page: ResultPage = client.call("results", &query).await.unwrap();
+        if page.proposals.is_empty() {
+            after = None;
+            pages.clear();
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            continue;
+        }
+        let done = page.complete;
+        after = page.cursor.clone();
+        pages.push(page);
+        if done {
+            break;
+        }
+    }
+    assert_eq!(pages.len(), 2);
+    assert!(pages[1].complete);
+    let first = &pages[0].proposals[0];
+    let stopped = control::agency::preserve_results_failing_before_acknowledgement(
+        &shared, &root, &actor, &dispatch, 2,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(stopped.code, "INVALID_INPUT");
+    {
+        let lock = shared.lock().await;
+        let store = lock.as_ref().unwrap();
+        assert_eq!(store.list("proposal_inbox").unwrap().len(), 1);
+        let stored = store
+            .get(&participant::key(
+                Scope::Project("project".into()),
+                "proposal_inbox",
+                &first.header.proposal_id,
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.read_material(&actor, &stored.materials[0]).unwrap(),
+            first.output
+        );
+    }
+    let first_page: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
+        .await
+        .unwrap();
+    assert!(first_page.proposals[0].preserved);
+    assert_eq!(
+        control::agency::preserve_results(&shared, &root, &actor, &dispatch)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        control::agency::preserve_results(&shared, &root, &actor, &dispatch)
+            .await
+            .unwrap(),
+        2
+    );
+    {
+        let lock = shared.lock().await;
+        let store = lock.as_ref().unwrap();
+        assert_eq!(store.list("proposal_inbox").unwrap().len(), 2);
+        for page in &pages {
+            let proposal = &page.proposals[0];
+            let stored = store
+                .get(&participant::key(
+                    Scope::Project("project".into()),
+                    "proposal_inbox",
+                    &proposal.header.proposal_id,
+                ))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                store.read_material(&actor, &stored.materials[0]).unwrap(),
+                proposal.output
+            );
+        }
+    }
+    let reread: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
+        .await
+        .unwrap();
+    assert!(reread.proposals[0].preserved);
+    let follow: ResultPage = client
+        .call(
+            "results",
+            &ResultQuery::of(running.reference.clone())
+                .after(reread.proposals[0].header.proposal_id.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(follow.proposals[0].preserved);
+    rig.close().await;
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[tokio::test]
@@ -1371,16 +1672,11 @@ async fn prepare_does_not_execute_and_activation_is_idempotent() {
     let (client, key) = rig.pair("control").await;
     let request = request(&client, "d1").await;
     let d: Dispatch = client.call("prepare", &request).await.unwrap();
-    let results: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference.clone(),
-            },
-        )
+    let results: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference.clone()))
         .await
         .unwrap();
-    assert!(results.is_empty());
+    assert!(results.proposals.is_empty());
     let again: Dispatch = client.call("prepare", &request).await.unwrap();
     assert_eq!(d, again);
     let mut changed = request;
@@ -1398,17 +1694,13 @@ async fn prepare_does_not_execute_and_activation_is_idempotent() {
     activate(&client, &d).await;
     let trace = terminal(&client, &d, &key).await;
     assert_eq!(trace.dispatch.state, DispatchState::ResultReturned);
-    let results: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference,
-            },
-        )
+    let results: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference))
         .await
         .unwrap();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].evidence, EvidenceLevel::Narrated);
+    assert_eq!(results.proposals.len(), 1);
+    assert!(results.complete);
+    assert_eq!(results.proposals[0].evidence, EvidenceLevel::Narrated);
     rig.close().await;
 }
 
@@ -1493,15 +1785,10 @@ async fn tenant_namespace_and_credential_are_isolated() {
         .await
         .unwrap();
     assert_eq!(
-        b.call::<_, Vec<Proposal>>(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference
-            }
-        )
-        .await
-        .unwrap_err()
-        .code,
+        b.call::<_, ResultPage>("results", &ResultQuery::of(d.reference))
+            .await
+            .unwrap_err()
+            .code,
         "DISPATCH_NOT_FOUND"
     );
     let db: Dispatch = b
@@ -1763,16 +2050,11 @@ async fn old_writer_is_fenced_without_destroying_pending_results_or_other_tenant
         .code,
         "WRITER_STALE"
     );
-    let results: Vec<Proposal> = a
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: d.reference.clone(),
-            },
-        )
+    let results: ResultPage = a
+        .call("results", &ResultQuery::of(d.reference.clone()))
         .await
         .unwrap();
-    assert_eq!(results.len(), 1);
+    assert_eq!(results.proposals.len(), 1);
     assert!(
         b.call::<_, Dispatch>("prepare", &request(&b, "d").await)
             .await
@@ -1780,7 +2062,7 @@ async fn old_writer_is_fenced_without_destroying_pending_results_or_other_tenant
     );
     let bad = Preservation {
         dispatch: d.reference.clone(),
-        proposal_id: results[0].header.proposal_id.clone(),
+        proposal_id: results.proposals[0].header.proposal_id.clone(),
         content_digest: hash(b"summary"),
     };
     assert_eq!(
@@ -1788,7 +2070,7 @@ async fn old_writer_is_fenced_without_destroying_pending_results_or_other_tenant
         "PRESERVATION_MISMATCH"
     );
     let good = Preservation {
-        content_digest: results[0].content_digest.clone(),
+        content_digest: results.proposals[0].content_digest.clone(),
         ..bad
     };
     let _: Value = a.call("preserve", &good).await.unwrap();
@@ -1869,27 +2151,20 @@ async fn restart_retains_original_results_and_prepared_dispatch_without_rerun() 
         .unwrap();
     activate(&client, &done).await;
     terminal(&client, &done, &key).await;
-    let before: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: done.reference.clone(),
-            },
-        )
+    let before: ResultPage = client
+        .call("results", &ResultQuery::of(done.reference.clone()))
         .await
         .unwrap();
     let rig = rig.restart(RESULT).await;
-    let after: Vec<Proposal> = client
-        .call(
-            "results",
-            &ResultQuery {
-                dispatch: done.reference.clone(),
-            },
-        )
+    let after: ResultPage = client
+        .call("results", &ResultQuery::of(done.reference.clone()))
         .await
         .unwrap();
-    assert_eq!(canonical(&before).unwrap(), canonical(&after).unwrap());
-    assert!(!after[0].preserved);
+    assert_eq!(
+        canonical(&before.proposals).unwrap(),
+        canonical(&after.proposals).unwrap()
+    );
+    assert!(!after.proposals[0].preserved);
     let trace: Trace = client
         .call(
             "observe",
@@ -1906,8 +2181,8 @@ async fn restart_retains_original_results_and_prepared_dispatch_without_rerun() 
             "preserve",
             &Preservation {
                 dispatch: done.reference,
-                proposal_id: after[0].header.proposal_id.clone(),
-                content_digest: after[0].content_digest.clone(),
+                proposal_id: after.proposals[0].header.proposal_id.clone(),
+                content_digest: after.proposals[0].content_digest.clone(),
             },
         )
         .await

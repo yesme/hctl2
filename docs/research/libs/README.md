@@ -14,3 +14,4 @@
 | [`sqlite-migrations.md`](./sqlite-migrations.md) | SQLite schema 迁移 | 采用 SDK：rusqlite_migration 2.6.0，兼容现用 rusqlite 0.40.2；先备份、事务升级、失败恢复 |
 | [`hmac.md`](./hmac.md) | Agency 票据认证 | 采用 SDK：hmac 0.13.0 / sha2 0.11.0，恒时验证 |
 | [`base64.md`](./base64.md) | 规范 JSON 任意字节 | 采用 SDK：base64 0.22.1，RFC 4648 标准带填充字符串 |
+| [`landlock.md`](./landlock.md) | Linux 上挡住凭据根 | 采用 SDK：`landlock` 0.4.7，ABI V1。工作区禁止 `unsafe_code`，不直接写系统调用。macOS 用 `sandbox-exec` |
