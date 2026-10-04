@@ -14,6 +14,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "agency"
+version = "0.0.0"
+dependencies = [
+ "agency-proto",
+ "clap",
+ "control",
+ "participant",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "store",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+]
+
+[[package]]
+name = "agency-proto"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "hmac",
+ "hyper-util",
+ "pbjson",
+ "prost",
+ "rustix",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "sha2",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tower",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -506,13 +543,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "context"
+version = "0.0.0"
+dependencies = [
+ "agency-proto",
+]
+
+[[package]]
 name = "control"
 version = "0.0.0"
 dependencies = [
+ "agency-proto",
  "axum",
  "chat",
  "clap",
  "foundation",
+ "participant",
  "project",
  "proto",
  "repo",
@@ -1536,6 +1582,17 @@ name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
+
+[[package]]
+name = "participant"
+version = "0.0.0"
+dependencies = [
+ "agency-proto",
+ "foundation",
+ "serde",
+ "serde_json",
+ "store",
+]
 
 [[package]]
 name = "pbjson"

@@ -1,9 +1,13 @@
 [workspace]
 members = [
+    "agency",
     "apps/cli",
     "apps/control",
     "apps/tool",
     "crates/chat",
+    "crates/agency-proto",
+    "crates/context",
+    "crates/participant",
     "crates/facts",
     "crates/foundation",
     "crates/proto",
@@ -16,12 +20,14 @@ members = [
 resolver = "3"
 
 [workspace.dependencies]
+base64 = "=0.22.1"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "json"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["blocking"] }
 ruma = { version = "=0.16.0", default-features = false, features = ["client-api-c", "appservice-api-s", "events", "rand"] }
 rustix = { version = "=1.1.5", features = ["process"] }
 clap = { version = "4.6.6", features = ["derive"] }
 hyper-util = { version = "0.1.19", features = ["tokio"] }
+hmac = "=0.13.0"
 keyring = "4.2.0"
 notify = "8.2.0"
 pbjson = "0.9.0"

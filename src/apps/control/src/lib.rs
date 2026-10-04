@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agency;
 pub mod chat;
 pub mod config;
 mod identity;
@@ -87,8 +88,10 @@ impl Daemon {
         let polling = service.reconcile_task_sources();
         let room_polling = service.reconcile_rooms();
         let project_polling = service.reconcile_projects();
+        let agency_polling = service.reconcile_agencies();
         let chat = chat::serve(self.root.clone(), hosted, Arc::clone(&self.store));
         tokio::select! {
+            () = agency_polling => Ok(()),
             result = serve_listener(listener, service) => result,
             _ = polling => Ok(()),
             _ = chat => Ok(()),

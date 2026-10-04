@@ -29,6 +29,7 @@ def _export_command(target: str) -> str:
         "$(location root//apps/tool:hctl2-tool)",
         "$(location root//apps/cli:hctl2)",
         "$(location root//apps/control:hctl2-control)",
+        "$(location root//agency:agency)",
     ])
 
 def first_party_release(name: str):
@@ -39,6 +40,7 @@ def first_party_release(name: str):
             "hctl2-tool": "root//apps/tool:hctl2-tool",
             "hctl2": "root//apps/cli:hctl2",
             "hctl2-control": "root//apps/control:hctl2-control",
+            "agency": "root//agency:agency",
         },
         out = "hctl2-first-party",
         cmd = select({
