@@ -1,27 +1,41 @@
 //! Package 4's assembler boundary; records are shared with the Agency port.
+//!
+//! Assembly is local and mechanical: no model calls, no summaries, no
+//! compression. Small-brain integration is a later engine concern; here a
+//! missing tokenizer is reported as un-metered, never invented.
 #![forbid(unsafe_code)]
+
+mod assembler;
+mod records;
+mod selection;
+mod sources;
+
 pub use agency_proto::context::*;
-pub use agency_proto::{FrozenRef, Owner, Result, Sealed};
+pub use agency_proto::{FrozenRef, Owner, PortError, Result, Sealed};
+
+pub use assembler::{Assembler, Assembly, AssemblyRequest, LocalAssembler, bundle_id};
+pub use records::{bundle_record, manifest_record, read_bundle, read_manifest, save_assembly};
+pub use selection::{SelectionRequest, permitted_source_ids, select_context, select_room_manifest};
+pub use sources::{
+    MemorySources, ReviewComments, StoreSources, frozen_from_record, pack_reference,
+    permission_digest,
+};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceKind {
     Room,
     TaskComments,
     ReviewComments,
 }
+
+#[derive(Clone, Debug)]
 pub struct SourceContent {
     pub reference: FrozenRef,
     pub bytes: Vec<u8>,
 }
+
 pub trait Sources {
+    /// Exact version and bytes for a frozen reference. A reference whose
+    /// current version differs is an error, never a silent older preview.
     fn exact(&self, kind: SourceKind, reference: &FrozenRef) -> Result<SourceContent>;
-}
-pub struct AssemblyRequest {
-    pub manifest: Manifest,
-    pub consumer: Owner,
-}
-pub struct Assembly {
-    pub manifest: Sealed<Manifest>,
-    pub bundle: Sealed<Bundle>,
-}
-pub trait Assembler {
-    fn assemble(&self, sources: &dyn Sources, request: AssemblyRequest) -> Result<Assembly>;
 }

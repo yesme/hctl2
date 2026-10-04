@@ -11,11 +11,15 @@ description = "Project settings, Room selections and typed Request lifecycle"
 [dependencies]
 chat = { path = "../chat" }
 foundation = { path = "../foundation" }
+participant = { path = "../participant" }
 repo = { path = "../repo" }
 store = { path = "../store" }
 task = { path = "../task" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+agency-proto = { path = "../agency-proto" }
 
 [lints]
 workspace = true

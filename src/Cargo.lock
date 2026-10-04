@@ -491,11 +491,14 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 name = "cli"
 version = "0.0.0"
 dependencies = [
+ "agency-proto",
  "chat",
  "clap",
+ "context",
  "control",
  "foundation",
  "hyper-util",
+ "participant",
  "proto",
  "repo",
  "serde_json",
@@ -548,6 +551,12 @@ name = "context"
 version = "0.0.0"
 dependencies = [
  "agency-proto",
+ "chat",
+ "foundation",
+ "serde",
+ "serde_json",
+ "store",
+ "task",
 ]
 
 [[package]]
@@ -558,6 +567,7 @@ dependencies = [
  "axum",
  "chat",
  "clap",
+ "context",
  "foundation",
  "participant",
  "project",
@@ -1749,8 +1759,10 @@ dependencies = [
 name = "project"
 version = "0.0.0"
 dependencies = [
+ "agency-proto",
  "chat",
  "foundation",
+ "participant",
  "repo",
  "serde",
  "serde_json",

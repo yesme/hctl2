@@ -26,9 +26,12 @@ tower.workspace = true
 workspace = true
 
 [dev-dependencies]
+agency-proto = { path = "../../crates/agency-proto" }
+context = { path = "../../crates/context" }
 chat = { path = "../../crates/chat" }
 control = { path = "../control" }
 foundation = { path = "../../crates/foundation" }
+participant = { path = "../../crates/participant" }
 repo = { path = "../../crates/repo" }
 store = { path = "../../crates/store" }
 task = { path = "../../crates/task" }

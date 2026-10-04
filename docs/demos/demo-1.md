@@ -44,8 +44,8 @@ tar --zstd -xf $(find "$REPO_ROOT/buck-out" -name "hctl2-0.0.0-*.tar.zst" ! -nam
 
 export INSTALL_ROOT="$(find "$WS/work/pkg" -name payload -type d | head -n 1)"
 export HCTL2_INSTALL_ROOT="$INSTALL_ROOT"
-export HCTL2_CONTROL_BIN="$(find "$REPO_ROOT/buck-out" -name hctl2_control -type f | head -n 1)"
-export CLI="$(find "$REPO_ROOT/buck-out" -name hctl2 -type f -perm +111 | head -n 1)"
+export HCTL2_CONTROL_BIN="$(find "$REPO_ROOT/buck-out" -path '*apps/control/__hctl2-control__*' -name hctl2_control -type f | head -n 1)"
+export CLI="$(find "$REPO_ROOT/buck-out" -path '*apps/cli/__hctl2__*' -name hctl2 -type f -perm +111 | head -n 1)"
 export ROOT="$WS/work/root"
 
 # 显式校验关键产物，避免因路径为空导致后续步骤静默失败
@@ -68,12 +68,14 @@ export ROOT="$WS/work/root"
 > ```bash
 > lsof -i :6167 -i :6168 -i :3001
 > ```
-> 注意：控制面拉起托管服务 Tuwunel 需要约 2~3 秒探针初始化时间。刚启动时若查询到 `available: false` 或 `ready: false` 属于探针尚未就绪的正常过渡态，等待数秒即可；若持续为 `false` 则需排查端口冲突。
+> 若在无图形界面环境或需避免钥匙串弹窗，可追加 `--secret-backend user-file` 参数启动（使用私有文件密钥后端）。
+> 
+> 注意：控制面拉起托管服务 Tuwunel 需要约 2~6 秒探针初始化时间。刚启动时若查询到 `available: false` 或 `ready: false` 属于探针尚未就绪的正常过渡态，等待数秒即可；若持续为 `false` 则需排查端口冲突。
 
-通过 CLI 启动守护进程：
+通过 CLI 启动守护进程（无图形环境或需避免钥匙串弹窗时推荐追加 `--secret-backend user-file`）：
 
 ```bash
-$CLI --root "$ROOT" start
+$CLI --root "$ROOT" start --secret-backend user-file
 ```
 
 等待 Tuwunel 托管服务探针就绪并检查控制面状态：
@@ -430,7 +432,10 @@ PREVIEW_TOPIC="$($CLI --json --root "$ROOT" room create-topic --input work/topic
 TOKEN_TOPIC="$(echo "$PREVIEW_TOPIC" | jq -r .preview_token)"
 ```
 
-**核对字段**：`preview_token` 为非空字符串。
+**核对字段**：
+- `preview_token`: 非空字符串。
+- `effect_summary.invite_defaults` 与 `effect_summary.invites`: 包含 `["@yesme:hctl2.localhost"]`（缺省自动带出来源 Room 的人类成员）。
+- `effect_summary.effects`: 包含三项操作 `chat.create`、`chat.opening`、`chat.members`。
 
 提交创建 Topic：
 
@@ -442,8 +447,12 @@ export MATRIX_TOPIC_ROOM="$(echo "$SUBMIT_TOPIC" | jq -r .receipt.matrix_room_id
 
 **核对字段**：
 - `state`: 应为 `"confirmed"`。
+- `delivery`: 应为 `"confirmed"`。
 - `room_id`: 分配出 Topic Room ID `topic-...`。
 - `receipt.matrix_room_id`: 在 Tuwunel 上对应创建的 Matrix 房间 ID。
+- `opening.delivery`: 应为 `"confirmed"`，且 `opening.receipt` 带 `event_id` 与 `content_digest`（经确认的前情提要作为开场消息成功投递）。
+- `invites`: 包含 `["@yesme:hctl2.localhost"]`。
+- `invite_results[0]`: `delivery: "confirmed"`，`receipt.members` 包含 `{"membership":"invite","user_id":"@yesme:hctl2.localhost"}`。
 
 ### 3. 查看 Room 层级树
 
@@ -455,7 +464,7 @@ $CLI --json --root "$ROOT" room hierarchy "$PROJECT_ID" "$MAIN_ROOM_ID"
 - `carrier_space_id`: 主 Room 的承载 Space ID。
 - `children`: 包含刚建出的 `$TOPIC_ROOM_ID`（注意 `children` 为 Topic Room ID 字符串数组如 `["topic-..."]`，非对象数组）。
 
-### 4. 查看 Topic 详情与成员邀请
+### 4. 查看 Topic 详情与时间线
 
 查看 Topic 详情：
 
@@ -467,58 +476,79 @@ $CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID"
 - `room.brief`: 包含 `material_id` 与 `byte_digest`，指向材料记录（顶层 `.brief` 则包含 5 节提要内容文本）。
 - `hierarchy.parents`: 列表中包含父节点主 Room，`canonical: true`。
 
-查看 Topic 时间线事件：
+查看人加入前的 Topic 时间线事件：
 
 ```bash
 $CLI --json --root "$ROOT" room timeline "$PROJECT_ID" "$TOPIC_ROOM_ID"
 ```
 
 **核对字段**：
-- 共 11 个建房与状态事件，无 `m.room.message` 业务消息。
-- `m.room.member` 只有一条，其 `state_key` 为 `@hctl2_control:hctl2.localhost`（人类尚未加入）。
+- 共 13 个事件：
+  - 10 个建房与状态事件（`m.room.create`、`m.room.power_levels`、`m.room.join_rules`、`m.room.history_visibility`、`m.room.guest_access`、`m.room.canonical_alias`、`m.room.name`、`m.space.parent`、`io.hctl2.creation`、`io.hctl2.topic_creation`）；
+  - 2 个成员事件（`@hctl2_control:hctl2.localhost` 加入，以及 `@yesme:hctl2.localhost` 被邀请）；
+  - 1 个 `m.room.message` 消息事件（control 账号发送的开场消息）。
 
-将人类账号邀入 Topic Room：
-
-```bash
-TOPIC_BINDING_KEY="$($CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID" | jq -c .binding.key)"
-cat << EOF > work/members-topic.json
-{
-  "project_id": "$PROJECT_ID",
-  "project_version": 1,
-  "rooms": [
-    {
-      "key": $TOPIC_BINDING_KEY,
-      "version": {
-        "state": 2
-      }
-    }
-  ],
-  "users": [
-    "@yesme:hctl2.localhost"
-  ],
-  "invite": true
-}
-EOF
-
-PREVIEW_T_MEM="$($CLI --json --root "$ROOT" project members --input work/members-topic.json --key invite-yesme-topic)"
-TOKEN_T_MEM="$(echo "$PREVIEW_T_MEM" | jq -r .preview_token)"
-$CLI --json --root "$ROOT" project members --input work/members-topic.json --key invite-yesme-topic --preview-token "$TOKEN_T_MEM"
-```
-
-**核对字段**：`delivery: "confirmed"`。
-
-人类账号接受 Topic Room 邀请（可在 Cinny 界面点击接受，或使用 Matrix 客户端 API）：
+人类账号接受 Topic Room 邀请（建 Topic 时人类成员已根据来源 Room 名单缺省自动被邀请，不需要单独执行 `project members`；`project members` 仅用于后续增减成员）：
 
 ```bash
 # 获取 Topic Room 对应的 Matrix 房间 ID
 MATRIX_TOPIC_ROOM="$($CLI --json --root "$ROOT" room show "$PROJECT_ID" "$TOPIC_ROOM_ID" | jq -r .room.matrix_room_id)"
 
-# 人类账号接受邀请并加入 Topic 房间
+# 人类账号接受邀请并加入 Topic 房间（可在 Cinny 界面点击接受，或使用 Matrix 客户端 API）
 curl -s -X POST -H "Authorization: Bearer $USER_TOKEN" \
   "http://127.0.0.1:6167/_matrix/client/v3/rooms/$MATRIX_TOPIC_ROOM/join"
 ```
 
 **核对字段**：返回 `{"room_id":"!..."}`。人类账号在 Cinny 中可见并已加入该 Topic Room。
+
+人类账号回读 Topic 房间开场消息与加入后的时间线：
+
+```bash
+# 读取开场消息正文
+curl -s -H "Authorization: Bearer $USER_TOKEN" \
+  "http://127.0.0.1:6167/_matrix/client/v3/rooms/$MATRIX_TOPIC_ROOM/messages?dir=b&limit=10" | jq -r '.chunk[] | select(.type=="m.room.message") | .content.body'
+```
+
+**核对字段**：
+- 开场消息正文包含「话题与目标」（起草项目说明文档）、「已定事实与理由」（- 已确定先做 README）以及「来源」两行（主 Room 对应事件编号）。提要中为空的分歧与约束两节不出现在正文中。
+
+查看人类加入后的时间线事件：
+
+```bash
+$CLI --json --root "$ROOT" room timeline "$PROJECT_ID" "$TOPIC_ROOM_ID"
+```
+
+**核对字段**：
+- 共 14 个事件（在先前的 13 个事件基础上新增人类账号加入的 `m.room.member` 事件）。
+
+### 5. 人类账号加入承载 Space 并在客户端查看层级树
+
+承载 Space 的成员跟随主 Room 同步。建 Space 时主 Room 的人类成员已收到承载 Space 邀请。人类账号接受邀请加入 Space 后，聊天客户端（Cinny）即可在左侧栏展示 Space 树形层级结构：
+
+```bash
+# 获取主 Room 的承载 Space ID
+CARRIER_SPACE_ID="$($CLI --json --root "$ROOT" room hierarchy "$PROJECT_ID" "$MAIN_ROOM_ID" | jq -r .carrier_space_id)"
+
+# 人类账号接受邀请并加入承载 Space
+curl -s -X POST -H "Authorization: Bearer $USER_TOKEN" \
+  "http://127.0.0.1:6167/_matrix/client/v3/rooms/$CARRIER_SPACE_ID/join"
+```
+
+**核对字段**：返回 `{"room_id":"!..."}`。
+
+通过 Matrix Space 层级树 API 查询：
+
+```bash
+curl -s -H "Authorization: Bearer $USER_TOKEN" \
+  "http://127.0.0.1:6167/_matrix/client/v1/rooms/$CARRIER_SPACE_ID/hierarchy" | jq '.rooms[] | {name: .name, room_type: .room_type, num_joined_members: .num_joined_members}'
+```
+
+**核对字段**：
+- 返回 3 个房间节点：
+  1. Space 节点（`name: "Apollo"`，`room_type: "m.space"`）；
+  2. 主 Room 节点（`name: "Apollo"`，`room_type: null`）；
+  3. Topic Room 节点（`name: "README 起草"`，`room_type: null`）。
+- 主 Room 与 Topic Room 均挂在该 Space 节点之下；在 Cinny 界面中，左侧栏将层级化展示 Apollo 空间及其子房间，不再平铺显示。
 
 ---
 
@@ -552,15 +582,16 @@ export ADMIN_USER="$(echo "$SUBMIT_GRANT" | jq -r '.full_name | split("/")[0]')"
 - `full_name`: 仓库全名（形如 `hctl-.../apollo`）。
 
 > [!NOTE]
-> Gitea 原生规则要求新创建的普通用户在首次登录时修改口令（`MustChangePassword: true`），在此之前 API 调用会被拦截并提示必须改密。人类操作有两种方式：
-> - **方式 A（浏览器界面）**：浏览器访问 `http://127.0.0.1:3001/`，用 `yesme` 与初始口令登录，按页面提示修改为自己的口令（并更新 `export GITEA_PASSWORD="你的新口令"`）。
-> - **方式 B（终端环境）**：在无图形环境或自动化流程中，可通过随包 Gitea 原生工具解除须改密标记，直接使用上述初始口令：
->   ```bash
->   "$INSTALL_ROOT/libexec/hctl2/gitea" \
->     --config "$ROOT/services/config/gitea/app.ini" \
->     --work-path "$ROOT/services/data/gitea" \
->     admin user must-change-password --unset --all
->   ```
+> - 若该 Gitea 用户此前已创建（例如多次重跑本步骤或复用环境），则命令会复用既有账号，返回 `account_created: false` 且 `initial_password: null`，`permission` 仍然正确更新为 `"write"`，无需再次改密，直接使用既有密码即可。
+> - Gitea 原生规则要求新创建的普通用户在首次登录时修改口令（`MustChangePassword: true`），在此之前 API 调用会被拦截并提示必须改密。人类操作有两种方式：
+>   - **方式 A（浏览器界面）**：浏览器访问 `http://127.0.0.1:3001/`，用 `yesme` 与初始口令登录，按页面提示修改为自己的口令（并更新 `export GITEA_PASSWORD="你的新口令"`）。
+>   - **方式 B（终端环境）**：在无图形环境或自动化流程中，可通过随包 Gitea 原生工具解除须改密标记，直接使用上述初始口令：
+>     ```bash
+>     "$INSTALL_ROOT/libexec/hctl2/gitea" \
+>       --config "$ROOT/services/config/gitea/app.ini" \
+>       --work-path "$ROOT/services/data/gitea" \
+>       admin user must-change-password --unset --all
+>     ```
 
 ### 2. 人类以自身账号在 Gitea 开 issue #1
 
@@ -641,7 +672,7 @@ TOKEN_T_REF="$(echo "$PREVIEW_T_REF" | jq -r .preview_token)"
 $CLI --json --root "$ROOT" task refresh --input work/task-refresh.json --key refresh-apollo --preview-token "$TOKEN_T_REF"
 ```
 
-**核对字段**：返回成功回执。
+**核对字段**：返回成功回执（包含 `repo_id` 与 `source_id`）。
 
 #### (4) 查看看板
 
@@ -746,7 +777,8 @@ HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" status || t
 ### 4. 重新启动服务
 
 ```bash
-$CLI --root "$ROOT" start
+$CLI --root "$ROOT" start --secret-backend user-file
+# 或按默认启动：$CLI --root "$ROOT" start
 ```
 
 等待托管服务探针就绪并检查状态：
@@ -804,7 +836,7 @@ done
 curl -s -H "Authorization: Bearer $USER_TOKEN" "http://127.0.0.1:6167/_matrix/client/v3/sync" | jq '.rooms.join | keys'
 ```
 
-**核对字段**：主 Room 与 Topic Room 均在列表中（由于首个注册用户自动成为 Tuwunel 服务器管理员，列表中还包含 Tuwunel 的 Admin Room，共 3 个房间）。
+**核对字段**：列表中共包含 4 个房间（主 Room、Topic Room、承载 Space 房间，以及首个注册用户自动成为 Tuwunel 服务器管理员所在的 Admin Room）。
 
 #### (3) Gitea issue #1 回读
 

@@ -59,6 +59,313 @@ fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
 }
 
 #[test]
+fn project_select_cli_checks_real_candidates_and_admits_only_confirmed_preview() {
+    use agency_proto::{Capabilities, Catalog, FrozenRef, Profession, hash};
+    use participant::profiles::{
+        ProfileAction, ProfileInput, WorkerProfile, admit_profile, prepare_profile,
+    };
+    use participant::{key, reference, value};
+    use serde_json::{Value, json};
+    use store::{
+        Actor, ActorSource, Command as StoreCommand, Expected, RecordData, Scope, TrustedActor,
+    };
+
+    let temp = Temp::new();
+    let root = &temp.0;
+    assert!(run(root, &["init", "--secret-backend", "user-file"]).0);
+    let actor = TrustedActor(Actor {
+        principal: "owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control, Scope::Project("P".into())],
+        authority: None,
+    });
+    // Only the preconditions are seeded. The selection command below uses the real CLI and RPC.
+    let selection = {
+        let mut store = store::Store::open(root).unwrap();
+        let harness = FrozenRef {
+            id: "script".into(),
+            revision: "1".into(),
+            digest: hash(b"script"),
+        };
+        let profession = Profession {
+            reference: FrozenRef {
+                id: "research".into(),
+                revision: "1".into(),
+                digest: hash(b"research"),
+            },
+            harness: harness.clone(),
+            model: "fixture".into(),
+            persona: "planner".into(),
+            terms: "read only".into(),
+            default_role: "planner".into(),
+            skills: vec![],
+            capabilities: Capabilities::default(),
+        };
+        let binding = participant::accept_binding(
+            &mut store,
+            &actor,
+            "fixture-pair",
+            participant::Binding {
+                id: "script-agency".into(),
+                protocol: agency_proto::PROTOCOL.into(),
+                catalog: Catalog {
+                    professions: vec![profession.clone()],
+                    harnesses: vec![harness.clone()],
+                    skills: vec![],
+                },
+            },
+        )
+        .unwrap();
+        let accepted = participant::accept_profession(
+            &mut store,
+            &actor,
+            "fixture-profession",
+            "script-agency",
+            &profession,
+        )
+        .unwrap();
+        let profile = prepare_profile(
+            &store,
+            ProfileInput {
+                key: "fixture-profile".into(),
+                action: ProfileAction::Create {
+                    id: "research".into(),
+                    profile: WorkerProfile {
+                        harness,
+                        model: "fixture".into(),
+                        mode: "read_only".into(),
+                        permissions: vec!["context.read".into()],
+                        environment: vec![],
+                        required_capabilities: Capabilities::default(),
+                        max_context_bytes: 65536,
+                    },
+                },
+            },
+            &actor,
+        )
+        .unwrap();
+        let profile = admit_profile(&mut store, &actor, profile).unwrap();
+        let mut project = value(
+            key(Scope::Project("P".into()), "project", "P"),
+            1,
+            &json!({}),
+        )
+        .unwrap();
+        project.data = RecordData::Project {
+            repo_id: "repo-fixture".into(),
+            archived: false,
+            settings: store::ProjectSettings {
+                selection_policy: json!({}),
+                publish_review_requires_confirmation: false,
+            },
+        };
+        let mut room = value(
+            key(Scope::Project("P".into()), "room", "main"),
+            1,
+            &json!({}),
+        )
+        .unwrap();
+        room.data = RecordData::Room {
+            room_kind: store::RoomKind::Main,
+            state: store::RoomState::Active,
+        };
+        let seed = StoreCommand {
+            command_id: "fixture-project".into(),
+            idempotency_key: "fixture-project".into(),
+            actor: actor.0.clone(),
+            target: project.key.clone(),
+            expected: Expected::Absent,
+            binding: reference(&project),
+            operation: "fixture".into(),
+            input: json!({}),
+            input_digest: StoreCommand::digest_input("fixture", &json!({})).unwrap(),
+        };
+        let room_binding = value(
+            key(Scope::Project("P".into()), "room_binding", "main"),
+            1,
+            &json!({"project_id":"P","id":"main","name":"Main","server":{
+                "binding":{"key":key(Scope::Control,"chat_server","fixture"),"version":store::Version::State(1)},"url":"http://127.0.0.1:8008",
+                "server_name":"fixture","sender":"@control:fixture"},
+                "matrix_room_id":"!main:fixture","participants":[],"brief":null,"origin":null}),
+        )
+        .unwrap();
+        store
+            .submit(store.generation(), &actor, &seed, None, |tx| {
+                tx.put(&project)?;
+                tx.put(&room)?;
+                tx.put(&room_binding)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+        json!({"room_id":"main","selected_item":reference(&accepted),"profession":reference(&accepted),
+            "profession_digest":profession.reference.digest,"agency":reference(&binding),
+            "required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],
+            "responsibility":"research","permission":{"allow":["context.read"]},
+            "budget":{"max_bytes":65536},"display_name":"researcher","persona_tags":[]})
+    };
+    let (ok, out, err) = run(root, &["start"]);
+    assert!(ok, "{out} {err}");
+    let input = root.join("selection.json");
+    let action = json!({"project_id":"P","project_version":1,"room_id":"main",
+        "topic_command_key":null,"roster_version":null,"selections":[selection]});
+    let mut bad = action.clone();
+    bad["selections"][0]["agency"]["key"]["id"] = json!("never-accepted");
+    std::fs::write(&input, serde_json::to_vec(&bad).unwrap()).unwrap();
+    let args = [
+        "project",
+        "select",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "select-one",
+    ];
+    let (ok, out, err) = run(root, &args);
+    assert!(!ok, "{out} {err}");
+    let rejected: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(rejected["error"]["code"], "CANDIDATE_NOT_ACCEPTED");
+    assert_eq!(rejected["error"]["recovery_action"], "accept_candidate");
+    std::fs::write(&input, serde_json::to_vec(&action).unwrap()).unwrap();
+    let (ok, out, err) = run(root, &args);
+    assert!(ok, "{out} {err}");
+    let preview: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        preview["effect_summary"]["result"]["candidate_validation"],
+        "accepted_catalog_and_project_policy"
+    );
+    let (ok, out, err) = run(root, &["project", "roster", "P", "main"]);
+    assert!(ok, "{out} {err}");
+    assert!(
+        serde_json::from_str::<Value>(&out).unwrap()["selections"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let mut confirmed = args.to_vec();
+    confirmed.extend([
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, out, err) = run(root, &confirmed);
+    assert!(ok, "{out} {err}");
+    let admitted: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(admitted["roster_version"], 1);
+    let (ok, out, err) = run(root, &["project", "roster", "P", "main"]);
+    assert!(ok, "{out} {err}");
+    let roster: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(roster["selections"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn context_queries_reach_rpc_and_show_verified_frozen_bytes() {
+    use agency_proto::{FrozenRef, Owner, OwnerKind, hash};
+    use context::{
+        Assembler, AssemblyRequest, LocalAssembler, Manifest, MemorySources, SourceKind,
+    };
+    use serde_json::json;
+    let temp = Temp::new();
+    let root = temp.0.as_path();
+    assert!(run(root, &["init", "--secret-backend", "user-file"]).0);
+    let actor = store::TrustedActor(store::Actor {
+        principal: "owner".into(),
+        source: store::ActorSource::DirectClient,
+        permission_scope: vec![store::Scope::Control, store::Scope::Project("A".into())],
+        authority: None,
+    });
+    let source = FrozenRef {
+        id: "chat_source_reference/fixture".into(),
+        revision: "1".into(),
+        digest: hash(b"fixture"),
+    };
+    let permitted = vec![source.id.clone()];
+    let mut sources = MemorySources::new();
+    sources.push(SourceKind::Room, source.clone(), b"frozen CLI material");
+    let manifest = Manifest {
+        id: "cli-manifest".into(),
+        purpose: "RPC fixture".into(),
+        scope: "project A".into(),
+        parent: None,
+        sources: vec![source.clone()],
+        selection_policy: source.clone(),
+        freshness: "frozen".into(),
+        coverage: "fixture".into(),
+        known_gaps: vec![],
+        required_skills: vec![],
+        permission_digest: context::permission_digest(&permitted),
+        redaction: source,
+        budget: 1024,
+    };
+    let assembly = LocalAssembler {
+        permitted: permitted.into_iter().collect(),
+        budget: 1024,
+    }
+    .assemble(
+        &sources,
+        AssemblyRequest {
+            manifest,
+            consumer: Owner {
+                project: "A".into(),
+                kind: OwnerKind::RoomInvocation,
+                id: "invoke-cli".into(),
+                generation: 2,
+            },
+        },
+    )
+    .unwrap();
+    {
+        let mut store = store::Store::open(root).unwrap();
+        context::save_assembly(&mut store, &actor, "A", "cli-context-fixture", &assembly).unwrap();
+    }
+    assert!(run(root, &["start"]).0);
+    let (ok, out, err) = run(
+        root,
+        &[
+            "context",
+            "show",
+            "A",
+            "--manifest-id",
+            "cli-manifest",
+            "--bundle-id",
+            &assembly.bundle.document.id,
+        ],
+    );
+    assert!(ok, "{out} {err}");
+    let shown: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let bundle: agency_proto::Sealed<context::Bundle> =
+        serde_json::from_value(shown["bundle"].clone()).unwrap();
+    bundle.verify().unwrap();
+    assert_eq!(bundle, assembly.bundle);
+    let input = root.join("preview-input.json");
+    std::fs::write(
+        &input,
+        serde_json::to_vec(&json!({"project_id":"A","room_id":"missing-room"})).unwrap(),
+    )
+    .unwrap();
+    let (ok, out, _) = run(
+        root,
+        &["context", "preview", "--input", input.to_str().unwrap()],
+    );
+    assert!(!ok);
+    let error: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(error["error"]["code"], "NOT_FOUND");
+    assert!(!out.contains("unknown query"));
+    std::fs::write(
+        &input,
+        serde_json::to_vec(
+            &json!({"project_id":"A","room_id":"missing-room","consumer":{
+        "project":"B","kind":"room_invocation","id":"i","generation":1}}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (ok, out, _) = run(
+        root,
+        &["context", "preview", "--input", input.to_str().unwrap()],
+    );
+    assert!(!ok);
+    assert!(out.contains("consumer Project differs"), "{out}");
+}
+
+#[test]
 fn secret_backend_setting_persists_and_unknown_values_are_rejected() {
     let temp = Temp::new();
     let root = temp.0.as_path();
