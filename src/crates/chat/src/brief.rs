@@ -195,3 +195,56 @@ pub fn validate_sources(project: &str, origin: &Origin, sources: &[SourceText]) 
     }
     Ok(())
 }
+
+/// Deterministic opening-message text for a confirmed Topic brief. The stored
+/// material stays authoritative; this projection only repeats it, so tests can
+/// compare the room's first message against the same renderer.
+pub fn opening_body(brief: &Brief) -> String {
+    fn section(out: &mut String, title: &str, lines: &[String]) {
+        if lines.is_empty() {
+            return;
+        }
+        out.push_str(title);
+        out.push('\n');
+        for line in lines {
+            out.push_str("- ");
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+    let mut body = String::new();
+    body.push_str("话题与目标\n");
+    body.push_str(&brief.context_and_goal);
+    body.push_str("\n\n");
+    section(
+        &mut body,
+        "已定事实与理由",
+        &brief.settled_facts_and_reasons,
+    );
+    section(&mut body, "分歧与待答", &brief.disagreements_and_questions);
+    section(&mut body, "约束与材料", &brief.constraints_and_materials);
+    if !brief.sources.is_empty() {
+        body.push_str("来源\n");
+        for source in &brief.sources {
+            match source {
+                Source::Message {
+                    binding, event_id, ..
+                } => {
+                    body.push_str("- 消息：房间绑定 ");
+                    body.push_str(&binding.key.id);
+                    body.push_str("，事件 ");
+                    body.push_str(event_id);
+                }
+                Source::Object { reference, .. } => {
+                    body.push_str("- 对象：");
+                    body.push_str(&reference.key.kind);
+                    body.push(' ');
+                    body.push_str(&reference.key.id);
+                }
+            }
+            body.push('\n');
+        }
+    }
+    body
+}

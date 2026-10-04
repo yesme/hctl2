@@ -11,6 +11,7 @@ P2.2 己的实现说明；依据 [Project 的 Room 与消息](../../../docs/desi
 | `src/actions.rs` | 结构化 human 动作的共同归一化入口；按精确身份、绑定允许清单、目标与版本生成同一个键和摘要 |
 | `../../apps/control/src/chat/` | ruma 协议类型 + reqwest 出站；axum AppService 接收；来源回读、草稿观测、投递与恢复 |
 | `../../apps/control/src/chat/tree.rs` | Matrix 承载 Space、原生挂靠回读与 content 改挂；不保存权威层级 |
+| `../../apps/control/src/chat/space_members.rs` | 主 Room 成员确认后的逐 Room 同步续办；复用 outbox 保留发现、入队或投递失败的补投入口 |
 | `../../apps/cli/src/room.rs` | `hctl2 room`，走已有 Query / Preview / Submit，不直接写存储 |
 
 辛创建 Project 时调用 `chat::main_room(project, server, name, command_key)`，把返回的 Room 记录与外部意图放进创建 Project 的同一事务，再由己的投递器建原生房间。函数不建 Project、不联网；同 Project 的主 Room ID 固定，数据库唯一索引再拒绝第二间。另一个 Project 即使指同 Repo，也得到独立主 Room。`Server` 的绑定与端点来自 AppService 配置，不含令牌。
@@ -29,6 +30,12 @@ Topic 的 `participants` 是本 Project 已有 `room_selection` 记录的精确�
 - AppService 令牌保存在生命周期管理的私有注册文件；控制面先写注册再启服务，已有 Tuwunel 进程只重启该组件以加载新注册，不停止其他组件。服务备份包含原生数据与注册配置；恢复后监听器重载回调与令牌。收件去重、消息观测和健康信息在可删除的 `cache/chat-inbox.sqlite`，收到事务持久化后才回 200。
 
 Topic 可以从本 Project 任一 Room 开出，缺省挂在来源 Room 下；Request 路径挂在主 Room 下，并可附本 Project 的相关消息。出处与确认提要在控制面固定，挂靠在 Matrix 固定。非叶 Room 多一个原生承载 Space，Space ID 不进 Room–Server Binding；自身消息房间不投影成自身下级。Space 创建意图先准入，再联网写入。创建完成的原生标记防止重试把后来改过的挂靠复原。
+
+补丁 1a（v0.19.2 两句约束）：
+
+- 房间建成后，control 把经确认的提要正文与来源渲染成开场消息发进新房间（`brief.rs::opening_body` 是唯一渲染器，测试与实现共用）。开场消息是同事务准入的独立外部意图（`chat.opening`，稳定关联键，重试不发第二条）；材料仍是权威，`room show` 的 `brief` 不变。
+- 创建预览列出邀请名单：缺省是来源 Room（Request 路径是主 Room）当前的人类聊天成员——不属于控制面账号、也不在 AppService 命名空间（`@hctl2_` 前缀，从注册文件派生）里的成员；`invite` 态（已邀请未加入）也计为当前成员，是刻意取的超集。输入 `invites` 可删减、补充；最终名单在计划里冻结，逐人一条 `chat.members` 意图（每人独立冲突域），逐人投递并回读，部分失败报逐目标结果与 `ROOMS_PARTIAL`，不报全体成功。
+- 承载 Space 的聊天成员跟主 Room 走：新建或补投承载 Space 时，把主 Room 当前的人类成员邀请进 Space（先读后写、幂等收敛）。`project members` 的主 Room 写入独立结案，确认事务同时把逐 Room 的同步续办写进既有 outbox；发现、入队或投递失败只影响该目标，未完成目标仍有持久记录。实际 Space 写入各有独立意图与回执，ID 带上触发它的主成员意图；同次重试复用 ID，后来再邀请或移除得到新 ID。失败返回逐目标结果与 `ROOMS_PARTIAL`，后台恢复或原命令重试可补投；同一承载 Room 的续办按先后处理，避免旧邀请晚到覆盖新移除。Space 成员是 content，不进名册、不带来授权，加入规则仍是 invite。关闭 Topic 会一并撤回未发送的开场与逐人邀请意图。
 
 `room hierarchy` 按本 Project 全部 Room 的即时 state 读取投影，不递归调用有 10 层响应限制的 hierarchy 接口，不用本地权威副本。多个上级全部保留，canonical 只作提示；环边不显示、标需要关注；外 Project 或未知上级列为外部链接；读不到的字段为空，不阻拦关闭等无关命令。`room reparent` 是 content Submit，不更改出处、绑定或消息；原生双向 state 写入逐项回读，部分失败明确返回 `partial`。挂靠不复制名册、授权、成员或加入规则，关闭不级联。Project 全体归档与多房间成员/权限业务动作仍由辛接线，不在本包冒充完成。
 
@@ -78,6 +85,8 @@ hctl2 room create-topic --key topic-1 --input topic.json --preview-token PREVIEW
 | 挂靠按回读投影 | 双非 canonical/双 canonical、环、外 Project、鉴权失败字段空且标关注；HCTL 成环改挂拒绝，已有环不因展示过滤漏判；N、U、R | 仅声明本地 Matrix 能力，不支持其他聊天协议；跨 server 层级未验 |
 | 挂靠不带来继承 | 独立名册、禁止借其他 Room 的选入记录、关闭不级联；D、R；原生私有房间权限未复制 | 多房间成员/权限调整 API、Project 全体归档归辛；成员拒绝路径尚未实测 |
 | 一间 Room 只有一条时间线和一层讨论串 | 原生 m.thread、拒嵌套、事件 ID 与正文冻结、主时间线含串消息；N、R | Workbench 讨论串 UI 与所有成员同时读取未验 |
+| Topic 建成后开场消息与确认名单逐人投递（v0.19.2 行） | 开场消息与 `opening_body` 逐字一致且仅一条；unknown 态重发走同一事务 ID（N）；缺省名单=来源/主 Room 人类成员（控制面与 `@hctl2_` 排除，B1 走主 Room 来源；非主来源与 Request 来源的缺省计算走同一条 `default_topic_invites` 路径，未单独做原生用例）；删减者不邀、名单外不邀（域测试断言意图，N 断言真房间成员回读）；逐人回读；`brief` 在开场后不变（N） | `ROOMS_PARTIAL` 输出与 `invite_defaults` 漂移判 stale 只有代码路径、未注入故障用例；「邀请不进名册/不带授权」无专门负例（全 diff 不写 `room_selection` 与权限记录——代码有、未测） |
+| 承载 Space 成员跟主 Room 走（v0.19.2 行） | 新建 Space 邀请主 Room 人类成员；邀请→移除→再邀请→再移除各有新意图，同次重试不增意图；原生 carrier 读失败、Space 入队冲突、原生封禁拒邀均不拖住主 Room 或健康目标，修复后重新打开 Store 并从待决 outbox 补投；旧发现晚到不覆盖新移除；确认主意图与记录续办同事务，入队失败全部回滚；Space 成员不进 Topic Room、不增加其选入记录（N）；换绑后开场/邀请仍投原目标（N）；关闭房间未决意图按只读回读结算（N） | 权限记录没有专门负例，不冒充「不带授权」已测；原生被删 Space、进程强杀以及异目录恢复尚未分别验证，本批恢复用例是真实 Store 关闭后重新打开 |
 | 待你处理按现有事项去重 | 未实现 | 聚合投影与业务动作归辛及后续包 |
 | 待处理来源分别注入 | 未实现 | 五类事项随业务包逐项接入 |
 | Context 可解释、Room 历史可恢复 | 丢聊天缓存、重同步与冻结源重读、异目录恢复；N、R | Manifest / Bundle 解释与纪要索引归子 |
