@@ -6,6 +6,12 @@
 
 准备 / 激活 / 保全 RPC 由已有 Store outbox / inbox 接线，实际调用与失败语义见 [Participant](../../crates/participant/README.md)。端口观测不产生领域结果，联系不上不撤销授权。Agency 自己的 journal 与成果由自己恢复；控制面备份不替代它。运行时、Context 与 Invocation 三包各占自己的文件。
 
+## Worker Profile 创建入口（第 5b 包首段）
+
+`profiles.rs` 把 `profile.create` 接到既有 Preview / Submit 和 Participant 的 `prepare_profile / admit_profile`。预览 token 绑定原输入和方案；提交校验 `command_id = profile:KEY` 与 `idempotency_key = KEY`，actor 来自连接。没有新 RPC、执行服务或配对凭据通道。这里只建定义，不调用 Agency，也不创建 Invocation。
+
+最少 CLI：`hctl2 profile create --input profile.json --key KEY` 先预览，同一命令加 `--preview-token TOKEN` 确认。文件是 `{"id":"research","profile":{…}}`，其中 Profile 的字段见 [Participant README](../../crates/participant/README.md#第-5-包主体--选入校验与-worker-profile)。创建后精确引用在 `revision`，选人时填入 `worker_profiles`。更新命令和只读查询留第 5 包后半段；下一段主体接 Invocation 与四步启动，不由本入口代替。
+
 ## 控制服务
 
 P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进制仍是 `hctl2-control`。监听控制面数据目录下仅归属者可访问的 Unix socket（`control.sock`，模式 0600），对外提供 `hctl2.control.v1` 的 Query / Preview / Submit / Subscribe。存储打开在工作线程上，与 RPC 并发；`STORE_NOT_READY` 与 `UPGRADE_IN_PROGRESS` 把 `store` 的 `code` / `message` / `recovery_action` 原样放到错误对象里。

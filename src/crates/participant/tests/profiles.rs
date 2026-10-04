@@ -77,6 +77,28 @@ fn input(key: &str, action: ProfileAction) -> ProfileInput {
 }
 
 #[test]
+fn malformed_harness_is_local_invalid_input_not_an_agency_failure() {
+    let e = Env::new();
+    let mut bad = profile();
+    bad.harness.digest = "not-a-digest".into();
+    let error = prepare_profile(
+        &e.store,
+        input(
+            "bad-harness",
+            ProfileAction::Create {
+                id: "research".into(),
+                profile: bad,
+            },
+        ),
+        &actor(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "INVALID_INPUT");
+    assert_eq!(error.recovery_action, "correct_input");
+    assert!(e.store.list("worker_profile_revision").unwrap().is_empty());
+}
+
+#[test]
 fn update_moves_only_pointer_and_keeps_old_revision_usable() {
     let mut e = Env::new();
     let original = e.create();

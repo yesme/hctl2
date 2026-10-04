@@ -319,6 +319,101 @@ async fn dangerous_submit_without_preview_is_rejected_ordinary_is_not() {
 }
 
 #[tokio::test]
+async fn profile_create_requires_preview_and_matching_envelope_and_action() {
+    use serde_json::json;
+    let temp = Temp::new();
+    let store = Store::open(&temp.0).unwrap();
+    let status = store.startup_status();
+    let shared = Arc::new(Mutex::new(Some(store)));
+    let server = spawn_service(temp.0.clone(), status, Arc::clone(&shared)).await;
+    let mut client = connect(&temp.0).await;
+    let payload = json!({"key":"create", "action":{"kind":"create","id":"research", "profile":{
+        "harness":{"id":"script","revision":"1","digest":"a".repeat(64)},"model":"fixture",
+        "mode":"read_only","permissions":["context.read"],"environment":[],
+        "required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}})
+    .to_string()
+    .into_bytes();
+    let mut request = SubmitRequest {
+        protocol: Some(proto()),
+        operation: "profile.create".into(),
+        payload: payload.clone(),
+        command_id: "profile:create".into(),
+        idempotency_key: "create".into(),
+        preview_token: String::new(),
+    };
+    let denied = client.submit(request.clone()).await.unwrap().into_inner();
+    assert_eq!(denied.error.unwrap().code, "PREVIEW_REQUIRED");
+    let preview = client
+        .preview(PreviewRequest {
+            protocol: Some(proto()),
+            operation: request.operation.clone(),
+            payload: payload.clone(),
+            command_id: "preview".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(preview.error.is_none(), "{:?}", preview.error);
+    request.preview_token = preview.preview_token;
+    request.idempotency_key = "wrong-key".into();
+    let denied = client.submit(request.clone()).await.unwrap().into_inner();
+    assert_eq!(denied.error.unwrap().code, "INVALID_INPUT");
+    request.idempotency_key = "create".into();
+    request.command_id = "wrong-id".into();
+    assert_eq!(
+        client
+            .submit(request.clone())
+            .await
+            .unwrap()
+            .into_inner()
+            .error
+            .unwrap()
+            .code,
+        "INVALID_INPUT"
+    );
+    assert!(
+        shared
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .list("worker_profile_revision")
+            .unwrap()
+            .is_empty()
+    );
+    request.command_id = "profile:create".into();
+    let submitted = client.submit(request).await.unwrap().into_inner();
+    assert!(submitted.error.is_none(), "{:?}", submitted.error);
+    let mut mismatched: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    mismatched["action"]["kind"] = json!("update");
+    mismatched["action"]["version"] = json!(1);
+    let denied = client
+        .preview(PreviewRequest {
+            protocol: Some(proto()),
+            operation: "profile.create".into(),
+            payload: mismatched.to_string().into_bytes(),
+            command_id: "bad-preview".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(denied.error.unwrap().code, "INVALID_INPUT");
+    let denied = client
+        .preview(PreviewRequest {
+            protocol: Some(proto()),
+            operation: "profile.update".into(),
+            payload,
+            command_id: "unsupported-preview".into(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(denied.error.unwrap().code, "INVALID_INPUT");
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
 async fn get_and_versions_are_not_public_query() {
     let temp = Temp::new();
     let _server = spawn_daemon(temp.0.clone()).await;
