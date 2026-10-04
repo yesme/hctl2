@@ -106,7 +106,8 @@ test_packaged_toolbox "$contract_prefix/bin/hctl2-tool"
 # B0: control + consumed services restart without changing storage identity.
 # Must run before $test_root is deleted; the installer prefix lives under it.
 b0_root="$test_root/b0-control"
-"$contract_prefix/bin/hctl2" --json --root "$b0_root" init >/dev/null
+# Explicit disposable-test credentials; production defaults remain unchanged (#314).
+"$contract_prefix/bin/hctl2" --json --root "$b0_root" init --secret-backend user-file >/dev/null
 "$contract_prefix/bin/hctl2" --json --root "$b0_root" start >/dev/null
 b0_status="$("$contract_prefix/bin/hctl2" --json --root "$b0_root" status)"
 printf '%s\n' "$b0_status" | grep -F '"ready":true' >/dev/null || \
