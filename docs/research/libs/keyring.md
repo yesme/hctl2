@@ -67,3 +67,4 @@
 ## 复核记录
 
 - 2026-09-04 所有者裁决：**照 gh CLI 的做法**——探测到系统钥匙串就用钥匙串（macOS Keychain、Windows 凭据管理器、Linux Secret Service）；探测不到（无桌面会话的 Linux 等）就退到用户目录下 0600 权限的文件，`hctl2 doctor` 提示当前用的是哪一种。systemd 凭据留作可选加固，不当入场券；内核 keyutils 只作会话缓存，不当持久后端。安全边界退到「同一 OS 用户」，与约束层「未启用加固时 Harness 与同 OS 用户其他进程同一信任域」一致。
+- 2026-10-03 补记（小活 D）：探测式缺省不变，新增显式设置。配置键 `secret_backend` 写在控制面数据目录的 `<root>/control.json`，由 `hctl2 init|start --secret-backend system-keyring|user-file` 写入；未知取值由命令行拒绝，不静默退回缺省。显式选 `system-keyring` 而本机没有可用钥匙串时，control **启动即失败**，不改道到文件——这条与「换后端不搬运已有条目」一起写进 [`src/apps/control/README.md` §密钥后端](../../../src/apps/control/README.md)。`status`/`doctor` 从写死的 `system-keyring-then-user-file` 改为报告**实际在用**的后端；原生测试（`cli_test`、`task_cli_test`、`room-cli-test`）显式用 `user-file`，不再碰开发机的钥匙串。起因是演示 1 验收的缺口 5：新构建的 control 每次读令牌都弹授权框，无屏幕会话直接失败（`User interaction is not allowed`）。
