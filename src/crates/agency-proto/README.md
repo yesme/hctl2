@@ -24,7 +24,7 @@ Buck：`root//crates/agency-proto:generated`、`:agency_proto`、`:contract_test
 - `Trace.complete` 只表示当前页已追到持久游标；`gap=true` 时不能当作完整历史，也不表示执行成功。
 - `Input.bytes`、`Proposal.output` 与交付材料的字节在 JSON 中使用 RFC 4648 标准带填充 Base64 字符串；内容摘要覆盖原始字节。公共字段支持任意字节，可信脚本成果帧只提供 UTF-8 文本。4 MiB 上限仍包括整个编码后的信封。
 - `Client::call_outcome` 区分对端错误答复与没有答复。适配器只对原动作的前置校验拒绝结为 rejected；存储故障与回读拒绝不能证明原动作没发生。输入重试保留原票据和原 key，换票据是不同请求，不自动重发未知输入。
-- 本版结果查询没有分页。服务端在保存前限制整批结果的总编码预算，超限报告无法履约、已有结果仍可取。第 3 包接多成果运行时前补分页，不把参考脚本的一份成果限制当成领域规则。
+- 结果查询按提案 id 游标分页（`ResultQuery.after`，`ResultPage.complete`）。单份成果仍受传输信封限制；多份成果可以分次取回。
 
 ## 第 3、4、5 包共同接法
 

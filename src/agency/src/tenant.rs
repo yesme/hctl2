@@ -202,25 +202,32 @@ impl Tenant {
         }
         dispatch.state = DispatchState::Running;
         put_dispatch(&state.db, &dispatch)?;
-        let running = match self.runtime.start(
-            &request.spec,
-            &request.bundle,
-            &self.root.join("work").join(&dispatch.reference),
-        ) {
-            Ok(running) => running,
-            Err(e) => {
-                dispatch.state = DispatchState::CannotFulfill;
-                put_dispatch(&state.db, &dispatch)?;
-                event(
-                    &state.db,
-                    &dispatch.reference,
-                    "cannot_fulfill",
-                    serde_json::json!({"code":e.code}),
-                    EvidenceLevel::AdapterEvent,
-                )?;
-                return Ok(dispatch);
-            }
-        };
+        let credential_root = self
+            .root
+            .parent()
+            .and_then(|parent| parent.parent())
+            .unwrap_or(self.root.as_path())
+            .to_path_buf();
+        let exec_root = crate::confine::execution_dir(&credential_root, &dispatch.reference)?;
+        let running =
+            match self
+                .runtime
+                .start(&request.spec, &request.bundle, &exec_root, &credential_root)
+            {
+                Ok(running) => running,
+                Err(e) => {
+                    dispatch.state = DispatchState::CannotFulfill;
+                    put_dispatch(&state.db, &dispatch)?;
+                    event(
+                        &state.db,
+                        &dispatch.reference,
+                        "cannot_fulfill",
+                        serde_json::json!({"code":e.code}),
+                        EvidenceLevel::AdapterEvent,
+                    )?;
+                    return Ok(dispatch);
+                }
+            };
         state
             .sessions
             .insert(dispatch.reference.clone(), running.session);
@@ -333,21 +340,9 @@ impl Tenant {
                     preserved: false,
                 };
                 let bytes = canonical(&proposal)?;
-                if bytes.len() > MAX_DOCUMENT - 1024 {
+                if bytes.len() > MAX_DOCUMENT - 4096 {
                     return Err(PortError::invalid(
                         "result exceeds transport envelope budget",
-                    ));
-                }
-                let existing: i64 = sql(tx.query_row(
-                    "SELECT COALESCE(SUM(length(body)+1),0) FROM results WHERE dispatch=?1",
-                    [id],
-                    |r| r.get(0),
-                ))?;
-                let existing = usize::try_from(existing)
-                    .map_err(|_| PortError::invalid("invalid aggregate result size"))?;
-                if existing.saturating_add(bytes.len()).saturating_add(2) > MAX_DOCUMENT - 1024 {
-                    return Err(PortError::invalid(
-                        "aggregate results exceed transport budget; paged result retrieval is not installed",
                     ));
                 }
                 sql(tx.execute(
@@ -685,24 +680,70 @@ impl Tenant {
             complete,
         })
     }
-    pub(crate) fn results(&self, input: ResultQuery) -> Result<Vec<Proposal>> {
+    pub(crate) fn results(&self, input: ResultQuery) -> Result<ResultPage> {
         let state = self.state.lock().expect("tenant mutex");
         get_dispatch(&state.db, &input.dispatch)?;
         let mut stmt = sql(state
             .db
-            .prepare("SELECT body,preserved FROM results WHERE dispatch=?1 ORDER BY rowid"))?;
+            .prepare("SELECT id,body,preserved FROM results WHERE dispatch=?1 ORDER BY rowid"))?;
         let rows = sql(stmt.query_map([&input.dispatch], |r| {
-            Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, bool>(1)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Vec<u8>>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
         }))?
         .collect::<rusqlite::Result<Vec<_>>>();
-        sql(rows)?
-            .into_iter()
-            .map(|(bytes, preserved)| {
-                let mut p: Proposal = serde_json::from_slice(&bytes)?;
-                p.preserved = preserved;
-                Ok(p)
-            })
-            .collect()
+        let rows = sql(rows)?;
+        let limit = input.limit.unwrap_or(16).clamp(1, 32) as usize;
+        let mut seen = input.after.is_none();
+        let mut proposals = Vec::new();
+        let mut complete = true;
+        for (id, bytes, preserved) in rows {
+            if let Some(after) = &input.after {
+                if !seen {
+                    if &id == after {
+                        seen = true;
+                    }
+                    continue;
+                }
+            }
+            if proposals.len() == limit {
+                complete = false;
+                break;
+            }
+            let mut proposal: Proposal = serde_json::from_slice(&bytes)?;
+            proposal.preserved = preserved;
+            let mut trial = proposals.clone();
+            trial.push(proposal.clone());
+            let page = ResultPage {
+                proposals: trial,
+                cursor: Some(proposal.header.proposal_id.clone()),
+                complete: false,
+            };
+            match canonical(&page) {
+                Ok(bytes) if bytes.len() + 1024 <= MAX_DOCUMENT => proposals.push(proposal),
+                _ if !proposals.is_empty() => {
+                    complete = false;
+                    break;
+                }
+                Ok(_) => proposals.push(proposal),
+                Err(error) => return Err(error),
+            }
+        }
+        if input.after.is_some() && !seen {
+            return Err(PortError::new(
+                "RESULT_CURSOR_UNKNOWN",
+                "result cursor does not name a stored proposal",
+                "read_result_page",
+            ));
+        }
+        let cursor = proposals.last().map(|p| p.header.proposal_id.clone());
+        Ok(ResultPage {
+            proposals,
+            cursor,
+            complete,
+        })
     }
     pub(crate) fn lookup(&self, input: Lookup) -> Result<Dispatch> {
         let state = self.state.lock().expect("tenant mutex");

@@ -67,3 +67,7 @@ Agency 参考实现的运行时。HCTL 的 Agency adapter 通过 Herdr 的本地
 - 旧 crate：[crates.io herdr 0.1.0](https://crates.io/crates/herdr)（AGPL，非 SDK）
 - 生成器：[typify crates.io](https://crates.io/crates/typify)（0.7.0，Apache-2.0）· [typify 工作区 Cargo.toml（schemars 0.8.22）](https://github.com/oxidecomputer/typify/blob/v0.7.0/Cargo.toml) · [issue #579 2020-12 计划](https://github.com/oxidecomputer/typify/issues/579) · [issue #828 `$defs` 引用](https://github.com/oxidecomputer/typify/issues/828)
 - 本仓库：[Herdr 条目](../runtime/herdr.md) · [运行服务验证记录](../runtime/agency-runtime-validation-20260829.md) · [部件矩阵](../component-matrix-20260902.md)
+
+## 复核记录
+
+- **2026-10-05**：第 3 包的私有客户端只接受协议 20（锁定 Herdr 0.8.2 的 `herdr api schema --json`）。本机协议 22 的二进制不进入可激活目录。传输仍是手写 NDJSON，用到 `ping`、`workspace.create`、`agent.start`、`pane.send_text`、`pane.read`、`pane.close`。typify 全量生成没有做：调研里写明 2020-12 schema 与 typify 0.7 的缺口还在。物理 pane 与 socket 留在 Agency 进程内。

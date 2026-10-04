@@ -577,44 +577,53 @@ pub async fn preserve_results(
 ) -> store::Result<usize> {
     let d: agency_proto::Dispatch = participant::decode(dispatch)?;
     let client = paired_client(root, &d.binding.id)?;
-    let results: Vec<agency_proto::Proposal> = client
-        .call(
-            "results",
-            &agency_proto::ResultQuery {
-                dispatch: d.reference.clone(),
-            },
-        )
-        .await
-        .map_err(err)?;
-    for proposal in &results {
-        {
-            let mut lock = shared.lock().await;
-            let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
-            participant::preserve_proposal(store, actor, dispatch, proposal)?;
-            let record = store
-                .get(&participant::key(
-                    dispatch.key.scope.clone(),
-                    "proposal_inbox",
-                    &proposal.header.proposal_id,
-                ))?
-                .ok_or_else(|| invalid("preservation not committed"))?;
-            if store.read_material(actor, &record.materials[0])? != proposal.output {
-                return Err(invalid("exact preserved bytes cannot be read back"));
-            }
+    let mut after = None;
+    let mut count = 0usize;
+    loop {
+        let mut query = agency_proto::ResultQuery::of(d.reference.clone());
+        query.after = after.clone();
+        let page: agency_proto::ResultPage = client.call("results", &query).await.map_err(err)?;
+        if page.proposals.is_empty() {
+            break;
         }
-        let _: Value = client
-            .call(
-                "preserve",
-                &agency_proto::Preservation {
-                    dispatch: d.reference.clone(),
-                    proposal_id: proposal.header.proposal_id.clone(),
-                    content_digest: proposal.content_digest.clone(),
-                },
-            )
-            .await
-            .map_err(err)?;
+        for proposal in &page.proposals {
+            {
+                let mut lock = shared.lock().await;
+                let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
+                participant::preserve_proposal(store, actor, dispatch, proposal)?;
+                let record = store
+                    .get(&participant::key(
+                        dispatch.key.scope.clone(),
+                        "proposal_inbox",
+                        &proposal.header.proposal_id,
+                    ))?
+                    .ok_or_else(|| invalid("preservation not committed"))?;
+                if store.read_material(actor, &record.materials[0])? != proposal.output {
+                    return Err(invalid("exact preserved bytes cannot be read back"));
+                }
+            }
+            let _: Value = client
+                .call(
+                    "preserve",
+                    &agency_proto::Preservation {
+                        dispatch: d.reference.clone(),
+                        proposal_id: proposal.header.proposal_id.clone(),
+                        content_digest: proposal.content_digest.clone(),
+                    },
+                )
+                .await
+                .map_err(err)?;
+        }
+        count += page.proposals.len();
+        if page.complete {
+            break;
+        }
+        after = page.cursor;
+        if after.is_none() {
+            break;
+        }
     }
-    Ok(results.len())
+    Ok(count)
 }
 fn now_ms() -> u64 {
     u64::try_from(

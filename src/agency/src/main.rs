@@ -48,7 +48,7 @@ async fn run(args: Args) -> Result<()> {
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
             } else {
-                Arc::new(Unconfigured)
+                Arc::new(agency::harness::Installed::discover(skills_dir()))
             };
             let service = Agency::open(&args.root, runtime)?;
             if let Some(config) = &config {
@@ -110,27 +110,8 @@ async fn status(root: &std::path::Path) -> Result<serde_json::Value> {
         .call("catalog", &serde_json::json!({}))
         .await
 }
-struct Unconfigured;
-impl agency::runtime::Runtime for Unconfigured {
-    fn catalog(&self) -> Result<agency_proto::Catalog> {
-        Ok(agency_proto::Catalog {
-            professions: vec![],
-            harnesses: vec![],
-            skills: vec![],
-        })
-    }
-    fn start(
-        &self,
-        _: &agency_proto::Sealed<agency_proto::ExecutionSpec>,
-        _: &agency_proto::Sealed<agency_proto::context::Bundle>,
-        _: &std::path::Path,
-    ) -> Result<agency::runtime::Running> {
-        Err(PortError::new(
-            "RUNTIME_NOT_CONFIGURED",
-            "no execution runtime installed",
-            "configure_agency_runtime",
-        ))
-    }
+fn skills_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HCTL2_AGENCY_SKILLS").map(std::path::PathBuf::from)
 }
 
 #[cfg(test)]
