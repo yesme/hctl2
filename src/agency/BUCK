@@ -51,7 +51,7 @@ rust_library(
 
 rust_binary(
     name = "agency",
-    srcs = ["src/main.rs"],
+    srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
     deps = CLI_DEPS,
     edition = HCTL2_RUST_EDITION,
@@ -64,7 +64,7 @@ rust_binary(
 
 rust_test(
     name = "cli_test",
-    srcs = ["src/main.rs"],
+    srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
     deps = CLI_DEPS,
     edition = HCTL2_RUST_EDITION,
@@ -81,7 +81,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -93,7 +93,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -106,7 +106,7 @@ rust_test(
     features = ["control_port_test"],
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )

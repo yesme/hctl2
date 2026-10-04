@@ -27,10 +27,29 @@ enum Command {
     Status,
     Stop,
 }
-#[tokio::main]
-async fn main() {
-    let args = Args::parse();
-    if let Err(e) = run(args).await {
+#[cfg(target_os = "linux")]
+#[path = "../linux_confine.rs"]
+mod linux_confine;
+
+fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--confine") {
+        #[cfg(target_os = "linux")]
+        std::process::exit(linux_confine::run());
+        #[cfg(not(target_os = "linux"))]
+        {
+            eprintln!("confine helper is only built for Linux");
+            std::process::exit(1);
+        }
+    }
+    let result = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(async {
+            let args = Args::parse();
+            run(args).await
+        });
+    if let Err(e) = result {
         println!("{}", serde_json::json!({"error":e}));
         std::process::exit(1);
     }

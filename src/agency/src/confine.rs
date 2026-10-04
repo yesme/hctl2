@@ -79,29 +79,26 @@ fn macos(
 fn linux(
     program: &Path,
     arguments: &[String],
-    exec_root: &Path,
+    _exec_root: &Path,
     credential_root: &Path,
 ) -> Result<Command> {
-    let script = exec_root.join("hide-credentials.sh");
-    fs::write(
-        &script,
-        "#!/bin/sh\nset -eu\ncred=$1\nshift\nif [ \"$1\" = -- ]; then shift; fi\nmount -t tmpfs -o mode=000,nosuid,nodev tmpfs \"$cred\"\nunset HCTL2_CONFINE_CREDENTIAL_ROOT\nexec \"$@\"\n",
-    )?;
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o700))?;
-    let mut cmd = Command::new("/usr/bin/unshare");
-    cmd.args([
-        "--user",
-        "--map-root-user",
-        "--mount",
-        "--propagation",
-        "private",
-        "--",
-        "/bin/sh",
-    ])
-    .arg(&script)
-    .arg(credential_root)
-    .arg("--")
-    .arg(program);
+    // The helper applies Landlock, then execs. User namespaces are not available
+    // on the Linux CI runners.
+    let helper = std::env::var_os("HCTL2_CONFINE_BIN")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
+        .ok_or_else(|| {
+            PortError::new(
+                "CONFINE_HELPER_MISSING",
+                "Linux credential confinement helper is not configured",
+                "build_agency",
+            )
+        })?;
+    let mut cmd = Command::new(helper);
+    cmd.arg("--confine")
+        .arg(credential_root)
+        .arg("--")
+        .arg(program);
     cmd.args(arguments);
     Ok(cmd)
 }

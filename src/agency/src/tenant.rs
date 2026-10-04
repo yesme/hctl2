@@ -700,13 +700,13 @@ impl Tenant {
         let mut proposals = Vec::new();
         let mut complete = true;
         for (id, bytes, preserved) in rows {
-            if let Some(after) = &input.after {
-                if !seen {
-                    if &id == after {
-                        seen = true;
-                    }
-                    continue;
+            if let Some(after) = &input.after
+                && !seen
+            {
+                if &id == after {
+                    seen = true;
                 }
+                continue;
             }
             if proposals.len() == limit {
                 complete = false;
