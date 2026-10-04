@@ -387,6 +387,13 @@ impl Store {
         crate::command::effect(&self.conn, id)
     }
 
+    pub fn has_effect(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .prepare("SELECT 1 FROM outbox WHERE intent_id=?1")?
+            .exists([id])?)
+    }
+
     /// Before attempting delivery, persist uncertainty. A crashed sender must read back, not resend.
     pub fn begin_effect(&mut self, generation: WriterGeneration, id: &str) -> Result<EffectIntent> {
         self.check_writer(generation)?;

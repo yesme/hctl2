@@ -103,6 +103,12 @@ pub enum Action {
         /// Confirmation of this Room's own selection; no implicit inherited roster.
         participants: Vec<Reference>,
         roster_confirmed: bool,
+        /// Confirmed chat-member invite list. `None` takes the previewed
+        /// default: the source Room's (Request path: main Room's) current
+        /// human members. An explicit list is the confirmed list — removed
+        /// members are not invited and nobody outside it is.
+        #[serde(default)]
+        invites: Option<Vec<String>>,
     },
     Close {
         project_id: String,
@@ -161,6 +167,13 @@ pub struct Plan {
     pub records: Vec<Record>,
     pub effects: Vec<EffectIntent>,
     pub source_texts: Vec<SourceText>,
+    /// Default invite list computed by the control layer at preview time:
+    /// human chat members of the source Room (Request path: the main Room).
+    #[serde(default)]
+    pub invite_defaults: Vec<String>,
+    /// Final confirmed invite list frozen into per-person effects.
+    #[serde(default)]
+    pub invites: Vec<String>,
     pub result: serde_json::Value,
 }
 
