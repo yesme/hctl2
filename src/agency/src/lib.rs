@@ -1,5 +1,7 @@
 //! Independent Agency. Its only first-party dependency is the public port contract.
 #![forbid(unsafe_code)]
+pub mod catalog;
+pub mod confine;
 pub mod runtime;
 pub mod service;
 mod storage;

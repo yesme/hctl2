@@ -20,6 +20,7 @@ filegroup(
 DEPS = [
     "root//crates/agency-proto:agency_proto",
     "root//third-party/rust:rusqlite",
+    "root//third-party/rust:rustix",
     "root//third-party/rust:serde",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:tokio",
@@ -45,15 +46,18 @@ rust_library(
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
     labels = CI_FAST,
-    tests = [":port_test", ":control_port_test"],
+    tests = [":port_test", ":control_port_test", ":runtime_test"],
     visibility = ["PUBLIC"],
 )
 
 rust_binary(
     name = "agency",
-    srcs = ["src/main.rs"],
+    srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
-    deps = CLI_DEPS,
+    deps = CLI_DEPS + select({
+        "prelude//os:linux": ["root//third-party/rust:landlock"],
+        "DEFAULT": [],
+    }),
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
@@ -64,12 +68,27 @@ rust_binary(
 
 rust_test(
     name = "cli_test",
-    srcs = ["src/main.rs"],
+    srcs = ["src/main.rs", "linux_confine.rs"],
     crate_root = "src/main.rs",
-    deps = CLI_DEPS,
+    deps = CLI_DEPS + select({
+        "prelude//os:linux": ["root//third-party/rust:landlock"],
+        "DEFAULT": [],
+    }),
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "runtime_test",
+    srcs = ["tests/runtime.rs"],
+    crate_root = "tests/runtime.rs",
+    deps = [":service"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -81,7 +100,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -94,7 +113,7 @@ rust_test(
     features = ["control_port_test"],
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -105,6 +124,7 @@ filegroup(
         "library": ":service[clippy.txt]",
         "binary": ":agency[clippy.txt]",
         "cli": ":cli_test[clippy.txt]",
+        "runtime": ":runtime_test[clippy.txt]",
         "port": ":port_test[clippy.txt]",
         "control_port": ":control_port_test[clippy.txt]",
     },

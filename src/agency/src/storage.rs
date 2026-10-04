@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::{
     fs::{self, File, OpenOptions},
     io::Read,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::Path,
 };
 
@@ -21,9 +21,23 @@ pub(crate) fn sql<T>(r: rusqlite::Result<T>) -> Result<T> {
     r.map_err(|e| DbError::from(e).0)
 }
 pub(crate) fn private_dir(path: &Path) -> Result<()> {
-    fs::create_dir_all(path)?;
-    if fs::symlink_metadata(path)?.file_type().is_symlink() {
-        return Err(PortError::invalid("data directory is a symlink"));
+    if path.exists() {
+        let metadata = fs::symlink_metadata(path)?;
+        if metadata.file_type().is_symlink() {
+            return Err(PortError::invalid("data directory is a symlink"));
+        }
+        if !metadata.is_dir() || metadata.uid() != rustix::process::geteuid().as_raw() {
+            return Err(PortError::new(
+                "UNSAFE_ENDPOINT",
+                "directory is not owned by this user",
+                "choose_execution_directory",
+            ));
+        }
+    } else {
+        fs::create_dir_all(path)?;
+        if fs::symlink_metadata(path)?.file_type().is_symlink() {
+            return Err(PortError::invalid("data directory is a symlink"));
+        }
     }
     fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     Ok(())

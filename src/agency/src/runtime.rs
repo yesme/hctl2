@@ -10,7 +10,7 @@ use std::{
     os::unix::process::ExitStatusExt,
     os::unix::{fs::PermissionsExt, net::UnixStream},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{Arc, Mutex, mpsc},
 };
 
@@ -47,7 +47,8 @@ pub trait Runtime: Send + Sync {
         &self,
         spec: &Sealed<ExecutionSpec>,
         bundle: &Sealed<Bundle>,
-        private_root: &Path,
+        exec_root: &Path,
+        credential_root: &Path,
     ) -> Result<Running>;
 }
 
@@ -74,8 +75,8 @@ fn reference(id: &str, digest: String) -> FrozenRef {
 }
 impl Runtime for ScriptRuntime {
     fn catalog(&self) -> Result<Catalog> {
-        // Private configuration affects the fingerprint, but its paths are not public fields.
-        let config_digest = hash(&canonical(&self.config)?);
+        // The fingerprint covers the program file. A missing file is not a locked version.
+        let config_digest = crate::catalog::file_digest(&self.config.program)?;
         let harness = reference("script-protocol-fixture", config_digest.clone());
         let capabilities = Capabilities {
             input: true,
@@ -106,6 +107,7 @@ impl Runtime for ScriptRuntime {
         spec: &Sealed<ExecutionSpec>,
         bundle: &Sealed<Bundle>,
         root: &Path,
+        credential_root: &Path,
     ) -> Result<Running> {
         crate::storage::private_dir(root)?;
         let materials = root.join("materials");
@@ -135,17 +137,18 @@ impl Runtime for ScriptRuntime {
         // would hold the tenant's input fence indefinitely and prevent cancellation.
         let (mut stdin, child_stdin) = UnixStream::pair()?;
         stdin.set_write_timeout(Some(std::time::Duration::from_millis(250)))?;
-        let mut child = Command::new(&self.config.program)
-            .args(&self.config.arguments)
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("HOME", root)
-            .env("LANG", "C.UTF-8")
-            .current_dir(root)
+        let mut child = crate::confine::command(
+            &self.config.program,
+            &self.config.arguments,
+            root,
+            credential_root,
+        )?;
+        crate::confine::scrub(&mut child, root);
+        child
             .stdin(Stdio::from(std::os::fd::OwnedFd::from(child_stdin)))
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
+            .stderr(Stdio::null());
+        let mut child = child.spawn()?;
         let mut initial = canonical(&serde_json::json!({"spec":spec,"bundle":bundle}))?;
         initial.push(b'\n');
         if let Err(e) = stdin.write_all(&initial) {
