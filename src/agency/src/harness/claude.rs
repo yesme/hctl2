@@ -58,10 +58,10 @@ pub fn print_session(prompt: &str, timeout: Duration) -> Result<Session> {
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        if let Some(id) = value.get("session_id").and_then(Value::as_str) {
-            if session_id.is_empty() {
-                session_id = id.to_owned();
-            }
+        if let Some(id) = value.get("session_id").and_then(Value::as_str)
+            && session_id.is_empty()
+        {
+            session_id = id.to_owned();
         }
         if value.get("type").and_then(Value::as_str) == Some("result") {
             let event_session = value
