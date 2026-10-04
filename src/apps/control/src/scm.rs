@@ -4,7 +4,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use repo::git::run;
-use repo::{PlatformObservation, Registration, Result, reject};
+use repo::{PlatformObservation, Registration, Result, StoreError, reject};
 use serde_json::{Value, json};
 
 use crate::services::Supervisor;
@@ -81,7 +81,14 @@ impl Hosted {
         services
             .consume("gitea")
             .map_err(|e| reject(e.code, e.message, e.recovery_action))?;
-        let deadline = Instant::now() + Duration::from_secs(30);
+        // One deadline for the whole bootstrap: liveness first, then the two checks that
+        // decide whether *this* instance is actually usable.
+        let deadline = Instant::now() + GITEA_BOOTSTRAP_TIMEOUT;
+        // Liveness only. The supervisor's probe is an HTTP GET on Gitea's machine-wide
+        // port, and it is not a usability verdict: `/api/healthz` only pings the
+        // database, so it answers before the first migration creates its tables, and any
+        // other instance holding the port answers it while ours never binds. The admin
+        // CLI and the API checks below are what decide.
         loop {
             if services
                 .snapshot()
@@ -98,7 +105,7 @@ impl Hosted {
                     "retry_registration",
                 ));
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(GITEA_BOOTSTRAP_POLL);
         }
         let config = state.join("config/gitea/app.ini");
         let url = hosted_url(&config)?;
@@ -113,14 +120,29 @@ impl Hosted {
                 .args(["admin", "user"]);
             cmd
         };
-        let users = run(admin().arg("list"), None)?;
-        if !users.status.success() {
-            return Err(reject(
-                "PLATFORM_BOOTSTRAP",
-                "cannot list hosted platform accounts",
-                "inspect_gitea_log",
-            ));
-        }
+        // Gate on this root's own admin interface: it opens this root's database, so it
+        // is what proves the first migration finished (`no such table: user` was the
+        // observed failure) and it is unaffected by whichever process holds the port.
+        let users = retry_bootstrap(
+            deadline,
+            || {
+                let output = run(admin().arg("list"), None)?;
+                if output.status.success() {
+                    Ok(output)
+                } else {
+                    Err(reject(
+                        "PLATFORM_BOOTSTRAP",
+                        format!(
+                            "cannot list hosted platform accounts: {}",
+                            native_detail(&output.stderr)
+                        ),
+                        "inspect_gitea_log",
+                    ))
+                }
+            },
+            |_| true,
+            || rearm(&services),
+        )?;
         let exists = String::from_utf8_lossy(&users.stdout)
             .lines()
             .any(|l| l.split_whitespace().nth(1) == Some(&username));
@@ -209,13 +231,33 @@ impl Hosted {
             token,
             credential_ref,
         };
-        let who = hosted.api("GET", "user", None)?.ok_or_else(|| {
-            reject(
-                "CREDENTIAL_UNAVAILABLE",
-                "platform account missing",
-                "restore_secret_store",
-            )
-        })?;
+        // The API must answer for the instance just provisioned. A token minted in this
+        // root's database is rejected with 401 by any other instance holding the port,
+        // and a connection ours never accepted reports no status at all; both clear once
+        // the port is ours again, so retry those inside the same deadline.
+        let mut restarted: Option<Instant> = None;
+        let who = retry_bootstrap(
+            deadline,
+            || match hosted.api("GET", "user", None)? {
+                Some(who) => Ok(who),
+                None => Err(reject(
+                    "CREDENTIAL_UNAVAILABLE",
+                    "platform account missing",
+                    "restore_secret_store",
+                )),
+            },
+            |error| error.code == "PLATFORM_UNAVAILABLE",
+            || {
+                let _ = services.ensure_up();
+                // An instance that lost the port race stays alive without a listener, so
+                // starting it again changes nothing: it needs a restart, rate-limited so
+                // the port has time to free up in between.
+                if restarted.is_none_or(|last| last.elapsed() >= GITEA_RESTART_INTERVAL) {
+                    let _ = services.restart("gitea");
+                    restarted = Some(Instant::now());
+                }
+            },
+        )?;
         if who["login"].as_str() != Some(&hosted.username)
             || who["is_admin"].as_bool() != Some(true)
         {
@@ -384,6 +426,59 @@ pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<Platfo
         credential_ref: String::new(), // gh owns its credential store; no copied token.
     })
 }
+/// How long the Gitea bootstrap waits, covering liveness and the two usability checks.
+const GITEA_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Interval of the supervisor-derived liveness poll.
+const GITEA_BOOTSTRAP_POLL: Duration = Duration::from_millis(100);
+
+/// Interval between bootstrap attempts once the process is live.
+const GITEA_BOOTSTRAP_RETRY: Duration = Duration::from_millis(250);
+
+/// Shortest gap between restarts while the API still answers for another instance.
+const GITEA_RESTART_INTERVAL: Duration = Duration::from_secs(3);
+
+/// Retries `attempt` until it succeeds or `deadline` passes, returning the last
+/// failure. `retryable` decides which failures may be retried, and `rearm` runs before
+/// each wait so a component that lost a race can be brought back.
+fn retry_bootstrap<T>(
+    deadline: Instant,
+    mut attempt: impl FnMut() -> Result<T>,
+    retryable: impl Fn(&StoreError) -> bool,
+    mut rearm: impl FnMut(),
+) -> Result<T> {
+    loop {
+        let error = match attempt() {
+            Ok(value) => return Ok(value),
+            Err(error) => error,
+        };
+        if Instant::now() >= deadline || !retryable(&error) {
+            return Err(error);
+        }
+        rearm();
+        std::thread::sleep(GITEA_BOOTSTRAP_RETRY);
+    }
+}
+
+/// Re-requests the start of the consumed components between bootstrap attempts.
+///
+/// Only for the migration phase: a restart there could interrupt the first migration,
+/// so an instance that is still creating its tables is left alone to finish.
+fn rearm(services: &Supervisor) {
+    let _ = services.ensure_up();
+}
+
+/// Last non-empty stderr line of a native command, for the rejection message.
+fn native_detail(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("no diagnostic output")
+        .trim()
+        .to_owned()
+}
+
 fn hosted_url(config: &Path) -> Result<String> {
     let text = std::fs::read_to_string(config)?;
     let url = text
