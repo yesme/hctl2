@@ -54,6 +54,23 @@ pub(super) fn preview(shared: &SharedStore, operation: &str, payload: &Value) ->
             "effects":["record pending Repo", "read/create declared platform", "deliver only frozen refs", "activate only after readback"],
             "in_place":prepared.request.local.as_ref().is_some_and(|l| l.in_place),
             "requires_identity_confirmation":prepared.platform == Platform::Local}))
+    } else if operation == "repo.grant" {
+        let reg = access(shared, |store| {
+            repo::require_active(store, field(payload, "repo_id")?)
+        })?;
+        require_hosted(&reg)?;
+        let username = human_username(payload)?;
+        let permission = collaborator_permission(payload)?;
+        Ok(
+            json!({"registration":reg,"dangerous":true,"operation":operation,
+            "username":username,"permission":permission,
+            "effects":[
+                format!("ensure an ordinary platform account named {username}, reusing one that already exists"),
+                "print an initial password once, and only when this call created the account",
+                format!("grant {permission} collaboration on the registered platform repository"),
+            ],
+            "platform_account_mapping_recorded":false}),
+        )
     } else {
         let reg = access(shared, |store| repo::get(store, field(payload, "repo_id")?))?;
         Ok(
@@ -113,6 +130,48 @@ pub(super) fn submit(
             })?
         }
         "repo.resume" => access(shared, |store| repo::get(store, field(payload, "repo_id")?))?,
+        "repo.grant" => {
+            let id = field(payload, "repo_id")?;
+            let username = human_username(payload)?;
+            let permission = collaborator_permission(payload)?;
+            let reg = access(shared, |store| repo::require_active(store, id))?;
+            require_hosted(&reg)?;
+            let hosted = platform::Hosted::connect(root, &reg.config.control_id, services)?;
+            let observed = hosted.repository(&reg, false)?.ok_or_else(|| {
+                reject(
+                    "PLATFORM_UNAVAILABLE",
+                    "registered platform repository missing",
+                    "read_back_original_intent",
+                )
+            })?;
+            let paths = platform::hosted_paths(services)?;
+            let account = platform::ensure_human_account(&paths, username)?;
+            if let Err(error) = hosted.grant_collaborator(&observed.full_name, username, permission)
+            {
+                // The account can outlive a failed grant. A freshly printed initial password
+                // is discarded rather than carried in an error body, so say that it was.
+                return Err(if account.created {
+                    reject(
+                        error.code,
+                        format!(
+                            "{}; account {username} now exists and its initial password was discarded, reset it with the native admin CLI before retrying",
+                            error.message
+                        ),
+                        error.recovery_action,
+                    )
+                } else {
+                    error
+                });
+            }
+            return Ok(json!({
+                "repo_id": reg.repo_id,
+                "full_name": observed.full_name,
+                "username": account.username,
+                "account_created": account.created,
+                "initial_password": account.initial_password,
+                "permission": permission,
+            }));
+        }
         "repo.confirm" | "repo.abandon" => {
             let id = field(payload, "repo_id")?;
             let expected = payload["version"].as_i64().ok_or_else(|| {
@@ -299,4 +358,118 @@ fn field<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
         .as_str()
         .filter(|s| !s.trim().is_empty())
         .ok_or_else(|| reject("INVALID_INPUT", format!("missing {field}"), "correct_input"))
+}
+
+/// Only the hosted local platform has accounts control creates; GitHub keeps its own.
+fn require_hosted(reg: &Registration) -> Result<()> {
+    if reg.prepared.platform == Platform::Local {
+        Ok(())
+    } else {
+        Err(reject(
+            "INVALID_INPUT",
+            "collaboration is only granted on the hosted local platform",
+            "correct_input",
+        ))
+    }
+}
+
+/// The username is interpolated into a platform API path, so it is restricted here instead
+/// of relying on the platform to reject a path-shaped name after the fact.
+fn human_username(payload: &Value) -> Result<&str> {
+    let username = field(payload, "username")?;
+    let valid = username.len() <= 40
+        && username
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        && !username.starts_with('.')
+        && !username.ends_with('.')
+        && !username.contains("..");
+    if valid {
+        Ok(username)
+    } else {
+        Err(reject(
+            "INVALID_INPUT",
+            "username must be at most 40 characters of ASCII letters, digits, '-', '_' or '.', without a leading, trailing or doubled '.'",
+            "correct_input",
+        ))
+    }
+}
+
+fn collaborator_permission(payload: &Value) -> Result<&str> {
+    let permission = field(payload, "permission")?;
+    if matches!(permission, "read" | "write") {
+        Ok(permission)
+    } else {
+        Err(reject(
+            "INVALID_INPUT",
+            "permission must be read or write",
+            "correct_input",
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn code(result: Result<&str>) -> &'static str {
+        result.unwrap_err().code
+    }
+
+    #[test]
+    fn a_username_that_would_reshape_the_platform_path_never_reaches_the_platform() {
+        // The username is interpolated into repos/{full}/collaborators/{username}, so a
+        // path-shaped name is rejected here rather than by the platform after the request.
+        for username in ["alice", "alice.smith", "alice-smith_1", &"a".repeat(40)] {
+            assert_eq!(
+                human_username(&json!({"username":username})).unwrap(),
+                username
+            );
+        }
+        for username in [
+            "a/b",
+            "../alice",
+            "alice/../admin",
+            ".alice",
+            "alice.",
+            "al..ice",
+            &"a".repeat(41),
+            "al ice",
+            "alicé",
+            "",
+        ] {
+            assert_eq!(
+                code(human_username(&json!({"username":username}))),
+                "INVALID_INPUT",
+                "{username} must be refused"
+            );
+        }
+        // Missing and blank are refused by `field`, not by the charset rule.
+        assert_eq!(code(human_username(&json!({}))), "INVALID_INPUT");
+        assert_eq!(
+            code(human_username(&json!({"username":"  "}))),
+            "INVALID_INPUT"
+        );
+    }
+
+    #[test]
+    fn collaboration_permission_is_read_or_write_and_nothing_else() {
+        assert_eq!(
+            collaborator_permission(&json!({"permission":"read"})).unwrap(),
+            "read"
+        );
+        assert_eq!(
+            collaborator_permission(&json!({"permission":"write"})).unwrap(),
+            "write"
+        );
+        // `admin` would hand over the repository; `owner` is not a Gitea collaborator level.
+        for permission in ["admin", "owner", "READ", "none", ""] {
+            assert_eq!(
+                code(collaborator_permission(&json!({"permission":permission}))),
+                "INVALID_INPUT",
+                "{permission} must be refused"
+            );
+        }
+        assert_eq!(code(collaborator_permission(&json!({}))), "INVALID_INPUT");
+    }
 }
