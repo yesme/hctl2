@@ -20,5 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
     let root = args.root.unwrap_or_else(control::default_root);
     std::fs::create_dir_all(&root)?;
+    // Resolve the configured secret backend before serving: a configuration this
+    // machine cannot satisfy (an explicit system-keyring with no keyring) is a
+    // startup error, not something to discover on the first credential read.
+    control::config::secret_store(&root).map_err(std::io::Error::other)?;
     Daemon::new(root).serve().await
 }

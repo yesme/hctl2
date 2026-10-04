@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use crate::owner_actor;
 use crate::services::{ServiceError, Supervisor};
 use crate::socket_path;
-use foundation::SecretStore;
 use proto::control_server::Control;
 use proto::{
     Error as ProtoError, PreviewRequest, PreviewResponse, QueryRequest, QueryResponse,
@@ -855,10 +854,16 @@ impl ControlService {
             let Some(store) = slot.as_ref() else {
                 return Err(not_ready_error());
             };
+            // Report the backend actually in use; a configuration this build cannot
+            // satisfy must surface as an error, not as a guessed backend name.
+            let secrets = crate::config::secret_store(&root).map_err(|message| {
+                error("CREDENTIAL_STORAGE_INVALID", message, "fix_control_config")
+            })?;
+            let credential_storage = secrets.backend().as_str();
             Ok(if kind == "doctor" {
-                doctor_payload(store, &root, actor_json, services)
+                doctor_payload(store, &root, actor_json, services, credential_storage)
             } else {
-                status_payload(store, actor_json, services)
+                status_payload(store, actor_json, services, credential_storage)
             })
         })
         .await
@@ -1036,37 +1041,42 @@ fn error(code: &str, message: impl Into<String>, recovery: &str) -> ProtoError {
     }
 }
 
-fn status_payload(store: &Store, actor: Value, services: Value) -> Value {
+fn status_payload(store: &Store, actor: Value, services: Value, credential_storage: &str) -> Value {
     json!({
         "ready": true,
         "control_id": store.control_id(),
         "writer_generation": store.generation().0,
         "protocol": PROTOCOL,
         "endpoint": "unix",
-        "policy": policy_values(),
+        "policy": policy_values(credential_storage),
         "actor": actor,
         "services": services,
     })
 }
 
-fn doctor_payload(store: &Store, root: &Path, actor: Value, services: Value) -> Value {
-    let secrets = SecretStore::detect("hctl2", root.join("secrets"));
+fn doctor_payload(
+    store: &Store,
+    root: &Path,
+    actor: Value,
+    services: Value,
+    credential_storage: &str,
+) -> Value {
     json!({
         "ready": true,
         "control_id": store.control_id(),
-        "secret_backend": format!("{:?}", secrets.backend()),
-        "policy": policy_values(),
+        "secret_backend": credential_storage,
+        "policy": policy_values(credential_storage),
         "socket": root.join("control.sock").display().to_string(),
         "actor": actor,
         "services": services,
     })
 }
 
-fn policy_values() -> Value {
+fn policy_values(credential_storage: &str) -> Value {
     json!({
         "endpoint_and_connection": "loopback-unix-owner-only",
         "non_local_transport": "not_offered",
-        "credential_storage": "system-keyring-then-user-file",
+        "credential_storage": credential_storage,
         "client_least_privilege": true,
     })
 }

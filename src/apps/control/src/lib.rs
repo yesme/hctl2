@@ -4,6 +4,7 @@
 
 pub mod agency;
 pub mod chat;
+pub mod config;
 mod identity;
 mod projects;
 mod repositories;
