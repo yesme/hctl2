@@ -88,7 +88,7 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
 | 8 | 命令行的人读输出 | Qwen | Grok、Kimi、GLM 里两席，开包时定 | 7 | 新增 |
 | 9 | 端到端收口 | Grok | Claude、Codex | 8 | 卯 |
 
-「审」列在 2026-10-04 按四梯队规则重排（§二 第 10 条、§六）；第 1 包已按原席位合入，不回改。进度（2026-10-05）：第 2 包已合（#317）；第 3 包 #323 评审后拆成 3a、3b（§二 第 13 条）；第 4 包等 GLM 做完 #318 的第二轮后开（分支 `glm/context-assembly`），与第 3 包并行（§二 第 12 条）。
+「审」列在 2026-10-04 按四梯队规则重排（§二 第 10 条、§六）；第 1 包已按原席位合入，不回改。进度（2026-10-05）：第 2 包已合（#317）；第 3 包 #323 评审后拆成 3a、3b（§二 第 13 条）；#318 交回 Codex 收尾后，GLM 转做第 4 包（分支 `glm/context-assembly`，10-05 已发提示词），与第 3 包并行（§二 第 12 条）。
 
 和原计划比，调了四处：
 
@@ -107,7 +107,7 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
 - **v0.19.0 带来的增量**：Project 归档按 Room 归属逐间转只读，不按层级读数；多房间动作逐间投递并回读，部分失败不报全体成功（`spec/project.md` §Room 与消息）。
 - **做完**：P2.2 收口，演示 1。已合 #307；演示 1 验收见 §三。
 
-### 第 1 包的补丁 · 1a · 人在聊天客户端里看到什么（GLM 写，Claude、Codex 审）
+### 第 1 包的补丁 · 1a · 人在聊天客户端里看到什么（GLM 写，Codex 接手收尾；Claude、Kimi 审）
 
 - **为什么做**：§三 演示 1 验收的缺口 1、2、3。人在 Cinny 里看不到自己开的 Topic、看不到树、Topic 房间里没有提要。
 - **依据**：`spec/project.md` v0.19.2 §Repo 注册与 Project 归档 里「创建 Topic Room」一段新加的两句（开场消息、邀请名单）与 §Room 与消息 里承载 Space 成员那句；`contract-tests.md` CT-PROJECT 对应的两行。现有接线：`src/crates/chat/README.md`、`src/crates/project/README.md`。
@@ -118,6 +118,7 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
 - **失败用例**：CT-PROJECT 那两行逐条落到测试；原生测试（`chat_native_test`）加三条：建 Topic 后房间第一条消息与确认的提要一致、人类成员在邀请列表而 control 与数字参与者账号不在、Space 成员随主 Room 同步；B1（`room-cli-test`）加一段，用人类账号的视角核房间与 Space 成员。
 - **不做**：人类身份与聊天账号的绑定（控制面不知道「跑命令的这个人」是哪个聊天账号，缺省名单从来源 Room 的成员来，不从命令的 actor 来）；Workbench；改加入规则。
 - **分支**：`glm/topic-opening-and-space-members`，base main，一个 PR。和第 2 包并行：本包改 `crates/chat`、`crates/project`、`apps/control/src/chat`，第 2 包在 `src/agency` 与新端口，不碰同一文件。两轮修不完交回 Codex。
+- **接手**（所有者 2026-10-05：「交回codex吧，glm去做第四包」）：#318 两轮没收住。第一轮两席各提 P1，GLM 改了 Claude 的、漏了 Codex 的；第二轮按 Codex 的口径把换绑钉原目标、逐 Space 独立意图都做了，但新写的那段里两席又一致找到两条 P1（Space 意图的 ID 不含触发它的那次操作，同样的操作做第二次被静默跳过；一个 Space 卡住后入新意图的冲突会把主意图拖成 unknown）。按 §二 第 4 条由 Codex 在原分支上追加提交收尾，评审席改为 Claude 与 Kimi。GLM 做下来的部分都留着。
 
 ### 第 2 包 · Agency 服务骨架与端口
 
@@ -427,7 +428,7 @@ Kimi 对演示 1 的契约走查（§三 的规矩），现在可发：
 你在 yesme/hctl2 做「第 3 包 · Agency 运行时与两家 harness」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 3 包与 §五（先读 §一 到 §三；§二 第 10、11 条是评审与合入的规矩）。代码级任务说明在 src/agency/README.md「第 3 包任务说明」，接口与边界看 src/crates/agency-proto/README.md。第 2 包（#317）留给本包的事也在这两份 README 里：启用多成果运行时之前补结果分页；目录摘要要用真实二进制摘要或锁定版本；执行环境放到凭据根之外并实测访问限制。分支 grok/agency-runtime，base main，一个 PR；评审席位 Claude 与 Codex 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：评审到了自己处理并写处理说明，行内评论也算评审意见；评审期间不改写已推送的历史，修正用新提交追加；两席都对同一个提交写「可合」且 CI 绿后由你合，合后报所有者。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PARTICIPANT 里执行体与终端的各行）、哪些是真实会话实测过的、哪些因环境里没有凭据而标了未验证、没按开工书做的地方及原因。
 ```
 
-第 4 包，给 GLM，它做完 #318 的第二轮后发，与第 3 包并行：
+第 4 包，给 GLM，#318 交回 Codex 后发（2026-10-05；实际发出的那条另加了三句自查：对照表每行落到会红的测试、推完确认 CI 真的跑了、所有评审席的意见都要回），与第 3 包并行：
 
 ```
 你在 yesme/hctl2 做「第 4 包 · Context 组装」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 4 包（先读 §一 到 §三；§二 第 10、11、12 条是评审、合入与并行的规矩）。代码级任务说明在 src/crates/context/README.md「第 4 包任务说明」，记录类型在 src/crates/agency-proto/src/context.rs，接口与边界看 src/crates/agency-proto/README.md。本包与第 3 包（Grok，分支 grok/agency-runtime，改 src/agency）同时进行、互不依赖：不要改 src/agency 下的文件；需要动共享的 agency-proto 类型时先在 PR 里说明，尽量只加不改。分支 glm/context-assembly，base main，一个 PR；评审席位 Claude 与 Codex 各自独立审，评审提示词由你贴在 PR 里。开了 PR 之后自己盯评论与 CI，不等所有者转告：分支与 main 冲突时 CI 不会跑，先把 main 并进来；评审到了自己处理并写处理说明，行内评论也算评审意见；评审期间不改写已推送的历史，修正用新提交追加；两席都对同一个提交写「可合」且 CI 绿后由你合，合后报所有者。两轮修不完交回 Codex。回报：PR 编号、分支、crate 与 target 清单、失败用例清单（对照 CT-PROJECT、CT-CONNECTION 里 Context 的各行，逐条写是实测还是「代码有、未测」）、没按开工书做的地方及原因。
