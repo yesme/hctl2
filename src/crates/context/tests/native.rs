@@ -124,9 +124,10 @@ fn topic_created_through_chat_previews_with_source_bytes() {
             }),
             participants: vec![],
             roster_confirmed: true,
+            invites: Some(vec![]),
         },
     };
-    let plan = chat::prepare(&store, input, vec![source_text]).unwrap();
+    let plan = chat::prepare(&store, input, vec![source_text], vec![]).unwrap();
     let created = chat::admit(&mut store, &trusted, plan).unwrap();
     let topic_room = created["room_id"].as_str().unwrap().to_owned();
 
