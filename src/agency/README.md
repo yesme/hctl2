@@ -31,26 +31,26 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-所有者 2026-10-05 裁定拆成 3a 与 3b。3a 是第 2 包留下的三件事，在本 PR。3b 是真 harness，3a 合入后从 `grok/agency-harness` 另开。
+所有者 2026-10-05 裁定拆成 3a 与 3b。3a 已合（#323）。本分支是 3b，同日稍后收窄成 Herdr 管道。真 harness 另开一包，不在这里做。
 
 | 文件 | 要补什么 | 状态 |
 | --- | --- | --- |
 | 结果查询 | 多份成果按游标分页；`complete` 只在已存结果取完且派工不再 Running 时为真 | 3a 已做 |
-| `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取 | 3a 已做 |
+| `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取。Linux 上伪终端需要写 `/dev` 与 `/dev/pts` | 3a 已做；pty 写放行在本管道 |
 | `src/catalog.rs`、脚本目录 | 摘要用程序文件或 `SKILL.md` 字节；`verification` 留空 | 3a 已做 |
-| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent`；实际能力随接单返回 | 脚本执行体已有；Herdr pane 由 3b |
-| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。一个 Agency 一个服务。pane 里跑确定性程序，结果作为 Proposal | 3b 已做 |
-| `src/harness/codex.rs`、`claude_code.rs` | 最低版本 0.153.4 / 2.1.263。冒烟不通过不上架。不把物理身份交给 control | 3b：版本门已做；真实会话未验证 |
-| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 3b 不带 |
-| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；并发两个派工；凭据根；派工终局 | 3b 已做 |
+| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent` | 脚本执行体已有。本管道不把 Herdr 接进 `serve` |
+| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。调用方给出 pane 里的程序。一个管道一个服务。状态目录在执行目录旁边 | 本管道 |
+| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 不带 |
+| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；两个派工同时启动；凭据根；新目录上的 `serve` 不上架 Herdr | 本管道 |
 
-3b 的验收（所有者裁定）：
+本管道的验收（所有者 2026-10-05 裁定「收窄吧」）：
 
-1. 用随包锁定的 Herdr 制品（`lock.json` 那一份，协议 20），不用本机 PATH 上的。原生测试里起它，走通 ping、建工作区、在 pane 里起一个确定性的程序、发输入、读回、关闭。这一段不需要凭据，必须实测。
-2. 一次真实派工走得完：任务（执行规格与上下文包里的材料）交给执行体，能判断终局，结果作为 Proposal 交回。两家 harness 的真实会话有凭据就实测，没有就标未验证。
-3. 一个 Agency 一个 Herdr 服务，或 socket 按派工区分；并发两个派工有用例。Herdr 和它拉起的进程在凭据根限制之下，状态目录在凭据根之外，有用例。
-4. 观测按内容去重。`workspace.rs` 真的接上，或者这次不带。
-5. harness 版本用最低版本：Codex CLI 0.153.4、Claude Code 2.1.263。不低于就可以上架。上架前做冒烟检查（能起来、能应答版本、能完成一次最小交互），不通过就不上架并说明原因。工种引用仍记实际版本与二进制摘要。「最低版本」只决定能不能上架。Herdr 不走这条，用随包锁定制品，协议号精确核对。
+1. Linux 与 macOS 上 `herdr_test` 都通过。受限的 Herdr 能开 pane。
+2. 写死的 `printf` 不在正式路径里。`serve` 不因为 `HCTL2_LOCKED_HERDR` 上架工种。pane 里跑什么由调用方给，确定性小程序留在测试里。
+3. 两个派工同时经 Herdr 启动，只起一个 Herdr 进程，两边各自拿回自己的输出。
+4. pane 里读不到凭据根，两个平台都有用例。状态目录在凭据根之外，并跟执行目录放在一起。
+5. 新目录上直接 `serve` 能起。布局检查只在 Linux 上做。不改安装目录里制品的权限。异常退出留下的 Herdr 下次启动时收掉。关 pane 的错误要交回。允许路径规范化失败不退回原始路径。
+6. 真 harness、把任务交给执行体并作为 Proposal 交回、按安装目录核摘要后上架，都挪到下一包。
 
 可预测的执行目录若已存在且不属于当前用户，拒绝并给出 `UNSAFE_ENDPOINT`。没有配置脚本时目录是空的。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
 
@@ -58,7 +58,7 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
 
-两边挡住凭据根的方式不一样。macOS 的 `sandbox-exec` 只拒绝凭据根，其余路径照常，所以 `--script-config` 里的程序可以放在凭据根以外的任何可执行位置。Linux 的 Landlock 是允许名单：工作目录，以及 `/bin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/dev`、`/proc`、`/opt`。凭据根若落在其中某个目录下面，这一布局无法从允许名单里挖掉，启动会被拒绝，不会把那个祖先目录放行。程序若不在这些目录里，会在 `exec` 时失败。macOS 的配置把凭据路径写成 Scheme 字面量，反斜杠会先转义，避免拒绝指到另一条路径。子进程的 stderr 接到 null，观测里看得到的是退出码；助手自己的失败原因不会进事件。限制没有完全生效时助手退出，目标程序不会启动。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
+两边挡住凭据根的方式不一样。macOS 的 `sandbox-exec` 只拒绝凭据根，其余路径照常，所以 `--script-config` 里的程序可以放在凭据根以外的任何可执行位置，布局检查也不在 macOS 上做。Linux 的 Landlock 是允许名单：工作目录，以及 `/bin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/dev`、`/proc`、`/opt`。`/dev` 和单独挂载的 `/dev/pts` 另外允许写文件和创建字符设备，pane 要读写伪终端，shell 也要把输出写到 `/dev/null`；删除和新建普通文件仍然不放行。凭据根若落在这些目录下面，这一布局无法从允许名单里挖掉，启动会被拒绝，不会把那个祖先目录放行。程序若不在这些目录里，会在 `exec` 时失败。macOS 的配置把凭据路径写成 Scheme 字面量，反斜杠会先转义，避免拒绝指到另一条路径。子进程的 stderr 接到 null，观测里看得到的是退出码；助手自己的失败原因不会进事件。限制没有完全生效时助手退出，目标程序不会启动。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
 
 | CT-PARTICIPANT / CT-CONNECTION 的行 | 本包失败输入与覆盖 | 后续边界 |
 | --- | --- | --- |

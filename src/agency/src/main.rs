@@ -67,8 +67,6 @@ async fn run(args: Args) -> Result<()> {
             };
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
-            } else if let Some(binary) = std::env::var_os("HCTL2_LOCKED_HERDR") {
-                Arc::new(agency::herdr::HerdrRuntime::new(binary.into()))
             } else {
                 Arc::new(Unconfigured)
             };

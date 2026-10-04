@@ -71,14 +71,14 @@ fn scheme_literal(path: &str) -> Result<String> {
 /// Landlock allows a whole directory tree. An ancestor of the credential root
 /// cannot be allowed, because the credential directory cannot be carved back out.
 /// Linux serve refuses a credential root that sits inside a Landlock allow directory.
+/// macOS denies the credential root by path, so a root under `/opt` stays usable.
+/// A directory that does not exist yet is judged from its existing ancestor.
+/// A canonicalize failure is an error; the raw path is not used.
 pub fn refuse_covered_credential_root(credential_root: &Path) -> Result<()> {
-    let credential_root = credential_root.canonicalize().map_err(|_| {
-        PortError::new(
-            "CREDENTIAL_ROOT_UNRESOLVED",
-            "credential root cannot be canonicalized",
-            "choose_credential_root",
-        )
-    })?;
+    if !cfg!(target_os = "linux") {
+        return Ok(());
+    }
+    let credential_root = intended_path(credential_root)?;
     for dir in [
         "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
     ] {
@@ -98,6 +98,37 @@ pub fn allowed_tree_contains_credential(allow: &Path, credential: &Path) -> bool
     credential.starts_with(allow) || allow.starts_with(credential)
 }
 
+fn intended_path(path: &Path) -> Result<PathBuf> {
+    if path.exists() {
+        return path.canonicalize().map_err(|_| unresolved_credential());
+    }
+    let mut pending = Vec::new();
+    let mut cursor = path;
+    while !cursor.exists() {
+        let Some(name) = cursor.file_name() else {
+            return Err(unresolved_credential());
+        };
+        pending.push(name.to_os_string());
+        match cursor.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => cursor = parent,
+            _ => cursor = Path::new("."),
+        }
+    }
+    let mut resolved = cursor.canonicalize().map_err(|_| unresolved_credential())?;
+    for name in pending.iter().rev() {
+        resolved.push(name);
+    }
+    Ok(resolved)
+}
+
+fn unresolved_credential() -> PortError {
+    PortError::new(
+        "CREDENTIAL_ROOT_UNRESOLVED",
+        "credential root cannot be canonicalized",
+        "choose_credential_root",
+    )
+}
+
 fn macos(
     program: &Path,
     arguments: &[String],
@@ -106,6 +137,8 @@ fn macos(
 ) -> Result<Command> {
     let profile = exec_root.join("credential.sb");
     let cred = scheme_literal(&credential_root.display().to_string())?;
+    // A previous start leaves this file mode 0400. Unlink uses the directory, not that mode.
+    let _ = fs::remove_file(&profile);
     fs::write(
         &profile,
         format!(

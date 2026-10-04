@@ -1,19 +1,19 @@
 //! Private Herdr client for the locked 0.8.2 binary (protocol 20).
-//! Pane and socket ids stay in this process.
+//! Pane and socket ids stay in this process. The caller supplies the pane
+//! program. This module does not register a profession or read a bundle.
 use crate::confine;
-use agency_proto::{
-    Capabilities, Catalog, EvidenceLevel, ExecutionSpec, PortError, Profession, Result, Sealed,
-    context::Bundle, hash,
-};
+use agency_proto::{PortError, Result, hash};
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
     io::{BufRead, BufReader, Write},
-    os::unix::fs::PermissionsExt,
     os::unix::net::UnixStream,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Child, Stdio},
-    sync::{Arc, Mutex, mpsc},
+    process::{Child, Command, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -116,6 +116,7 @@ impl Server {
             )
         })?;
         crate::storage::private_dir(state)?;
+        reap_previous(state, &binary);
         let socket_dir = PathBuf::from("/tmp").join(format!(
             "hctl2-herdr-{}",
             &hash(state.as_os_str().as_encoded_bytes())[..20]
@@ -123,9 +124,6 @@ impl Server {
         crate::storage::private_dir(&socket_dir)?;
         let socket = socket_dir.join("herdr.sock");
         let _ = std::fs::remove_file(&socket);
-        let mut permissions = std::fs::metadata(&binary)?.permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&binary, permissions)?;
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
         child
@@ -143,10 +141,13 @@ impl Server {
                     exec_parent.display()
                 ),
             )
+            .process_group(0)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(state.join("server.err"))?);
         let mut child = child.spawn()?;
+        let pid = child.id();
+        std::fs::write(state.join("herdr.pid"), pid.to_string())?;
         let deadline = Instant::now() + Duration::from_secs(15);
         while Instant::now() < deadline {
             if socket.exists()
@@ -165,7 +166,7 @@ impl Server {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        let _ = child.kill();
+        signal_group(pid, "KILL");
         let _ = child.wait();
         let detail = std::fs::read_to_string(state.join("server.err")).unwrap_or_default();
         Err(PortError::new(
@@ -174,31 +175,112 @@ impl Server {
             "use_locked_herdr",
         ))
     }
+
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let _ = self.child.kill();
+        signal_group(self.child.id(), "KILL");
         let _ = self.child.wait();
     }
 }
 
-pub struct SharedServer {
-    binary: PathBuf,
-    credential_root: PathBuf,
-    server: Mutex<Option<Arc<Server>>>,
+/// State sits next to the execution directory, outside the credential root.
+pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> {
+    let credential_root = credential_root.canonicalize().map_err(|_| {
+        PortError::new(
+            "CREDENTIAL_ROOT_UNRESOLVED",
+            "credential root cannot be canonicalized",
+            "choose_credential_root",
+        )
+    })?;
+    let exec_parent = exec_parent.canonicalize().map_err(|_| {
+        PortError::new(
+            "EXECUTION_ROOT_UNSAFE",
+            "execution directory cannot be canonicalized",
+            "choose_execution_directory",
+        )
+    })?;
+    let state = exec_parent.join("herdr-state");
+    if state.starts_with(&credential_root) || credential_root.starts_with(&state) {
+        return Err(PortError::new(
+            "HERDR_STATE_UNSAFE",
+            "Herdr state directory is inside the credential root",
+            "choose_state_directory",
+        ));
+    }
+    crate::storage::private_dir(&state)?;
+    Ok(state)
 }
 
-impl SharedServer {
-    pub fn new(binary: PathBuf, credential_root: PathBuf) -> Self {
-        Self {
+/// One Herdr process for every pane started through this pipe.
+pub struct Pipe {
+    binary: PathBuf,
+    credential_root: PathBuf,
+    exec_parent: PathBuf,
+    state: PathBuf,
+    server: Mutex<Option<Arc<Server>>>,
+    started: AtomicUsize,
+}
+
+impl Pipe {
+    pub fn open(binary: &Path, credential_root: &Path, exec_parent: &Path) -> Result<Self> {
+        let binary = binary.canonicalize().map_err(|_| {
+            PortError::new(
+                "HERDR_BINARY_MISSING",
+                format!("locked Herdr binary is not at {}", binary.display()),
+                "use_locked_herdr",
+            )
+        })?;
+        let state = state_dir(exec_parent, credential_root)?;
+        Ok(Self {
             binary,
-            credential_root,
+            credential_root: credential_root.canonicalize().map_err(|_| {
+                PortError::new(
+                    "CREDENTIAL_ROOT_UNRESOLVED",
+                    "credential root cannot be canonicalized",
+                    "choose_credential_root",
+                )
+            })?,
+            exec_parent: exec_parent.canonicalize().map_err(|_| {
+                PortError::new(
+                    "EXECUTION_ROOT_UNSAFE",
+                    "execution directory cannot be canonicalized",
+                    "choose_execution_directory",
+                )
+            })?,
+            state,
             server: Mutex::new(None),
-        }
+            started: AtomicUsize::new(0),
+        })
     }
 
-    pub fn get(&self, state: &Path, exec_parent: &Path) -> Result<Arc<Server>> {
+    pub fn state(&self) -> &Path {
+        &self.state
+    }
+
+    pub fn servers_started(&self) -> usize {
+        self.started.load(Ordering::SeqCst)
+    }
+
+    pub fn pid(&self) -> Option<u32> {
+        self.server
+            .lock()
+            .expect("herdr server")
+            .as_ref()
+            .map(|server| server.pid())
+    }
+
+    pub fn run(&self, label: &str, command: &str, marker: &str) -> Result<String> {
+        let server = self.ensure()?;
+        let client = Client::connect(&server.socket)?;
+        run_command(&client, &self.exec_parent, label, command, marker)
+    }
+
+    fn ensure(&self) -> Result<Arc<Server>> {
         let mut slot = self.server.lock().expect("herdr server");
         if let Some(server) = slot.as_ref()
             && Client::connect(&server.socket)
@@ -209,21 +291,17 @@ impl SharedServer {
         }
         let server = Arc::new(Server::start(
             &self.binary,
-            state,
+            &self.state,
             &self.credential_root,
-            exec_parent,
+            &self.exec_parent,
         )?);
+        self.started.fetch_add(1, Ordering::SeqCst);
         *slot = Some(Arc::clone(&server));
         Ok(server)
     }
 }
 
-/// Run a deterministic command in a new workspace pane and return the pane text
-/// that contains `marker`.
-pub fn observe_once(seen: &mut HashSet<String>, text: &str) -> bool {
-    seen.insert(text.to_owned())
-}
-
+/// Run `command` in a new workspace pane and return the pane text that contains `marker`.
 pub fn run_command(
     client: &Client,
     cwd: &Path,
@@ -274,198 +352,53 @@ pub fn run_command(
     Ok(text)
 }
 
-pub struct HerdrRuntime {
-    binary: PathBuf,
-    sessions: Mutex<Option<Arc<SharedServer>>>,
-}
-
-impl HerdrRuntime {
-    pub fn new(binary: PathBuf) -> Self {
-        Self {
-            binary,
-            sessions: Mutex::new(None),
+fn reap_previous(state: &Path, binary: &Path) {
+    let Ok(text) = std::fs::read_to_string(state.join("herdr.pid")) else {
+        return;
+    };
+    let Ok(pid) = text.trim().parse::<u32>() else {
+        return;
+    };
+    if pid == 0 || !still_running_binary(pid, binary) {
+        return;
+    }
+    signal_group(pid, "TERM");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline && still_running_binary(pid, binary) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if still_running_binary(pid, binary) {
+        signal_group(pid, "KILL");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && still_running_binary(pid, binary) {
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
-
-    pub fn running_servers(&self) -> usize {
-        usize::from(self.sessions.lock().expect("herdr runtime").is_some())
-    }
-
-    pub fn catalog(&self) -> Result<Catalog> {
-        let digest = crate::catalog::file_digest(&self.binary)?;
-        let harness = agency_proto::FrozenRef {
-            id: "herdr-shell".into(),
-            revision: format!("protocol-{PROTOCOL}"),
-            digest,
-        };
-        let profession = Profession {
-            reference: harness.clone(),
-            harness: harness.clone(),
-            model: "none".into(),
-            persona: "locked Herdr pane".into(),
-            terms: "deterministic program in a Herdr pane; not a model harness".into(),
-            default_role: "worker".into(),
-            skills: vec![],
-            capabilities: Capabilities {
-                input: true,
-                stop: true,
-                ..Capabilities::default()
-            },
-        };
-        Ok(Catalog {
-            professions: vec![profession],
-            harnesses: vec![harness],
-            skills: crate::catalog::skill_claims(Path::new("skills")).unwrap_or_default(),
-        })
-    }
 }
 
-struct Live {
-    _server: Arc<Server>,
-    pane: String,
-    client: Client,
+fn still_running_binary(pid: u32, binary: &Path) -> bool {
+    let Ok(output) = Command::new("/bin/ps")
+        .args(["-ww", "-p", &pid.to_string(), "-o", "stat=,command="])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let line = String::from_utf8_lossy(&output.stdout);
+    let stat = line.split_whitespace().next().unwrap_or("");
+    if stat.is_empty() || stat.starts_with('Z') {
+        return false;
+    }
+    line.contains(&binary.display().to_string())
 }
 
-impl crate::runtime::Session for Live {
-    fn input(&mut self, bytes: &[u8]) -> Result<()> {
-        let text = std::str::from_utf8(bytes).map_err(|_| {
-            PortError::new("INPUT_NOT_TEXT", "pane input is UTF-8 text", "send_text")
-        })?;
-        self.client.call(
-            "pane.send_text",
-            json!({"pane_id": self.pane, "text": text}),
-        )?;
-        Ok(())
-    }
-    fn stop(&mut self) -> Result<()> {
-        let _ = self
-            .client
-            .call("pane.close", json!({"pane_id": self.pane}));
-        Ok(())
-    }
-}
-
-impl crate::runtime::Runtime for HerdrRuntime {
-    fn catalog(&self) -> Result<Catalog> {
-        HerdrRuntime::catalog(self)
-    }
-    fn start(
-        &self,
-        spec: &Sealed<ExecutionSpec>,
-        _bundle: &Sealed<Bundle>,
-        exec_root: &Path,
-        credential_root: &Path,
-    ) -> Result<crate::runtime::Running> {
-        let state = credential_root
-            .parent()
-            .unwrap_or(credential_root)
-            .join(format!(
-                "herdr-state-{}",
-                &hash(credential_root.as_os_str().as_encoded_bytes())[..12]
-            ));
-        if state.starts_with(credential_root) {
-            return Err(PortError::new(
-                "HERDR_STATE_UNSAFE",
-                "Herdr state directory is inside the credential root",
-                "choose_state_directory",
-            ));
-        }
-        let shared = {
-            let mut slot = self.sessions.lock().expect("herdr runtime");
-            if slot.is_none() {
-                *slot = Some(Arc::new(SharedServer::new(
-                    self.binary.clone(),
-                    credential_root.to_path_buf(),
-                )));
-            }
-            Arc::clone(slot.as_ref().unwrap())
-        };
-        let exec_allow = exec_root.parent().filter(|parent| {
-            !crate::confine::allowed_tree_contains_credential(parent, credential_root)
-        });
-        let server = shared.get(&state, exec_allow.unwrap_or(exec_root))?;
-        let client = Client::connect(&server.socket)?;
-        let tail = &hash(spec.document.idempotency_key.as_bytes())[..12];
-        let marker = format!("HCTL2OUT{tail}");
-        let command = format!("printf '%s%s\\n' HCTL2 OUT{tail}");
-        let created = client.call(
-            "workspace.create",
-            json!({"cwd": exec_root, "label": spec.document.idempotency_key, "focus": false}),
-        )?;
-        let pane = created
-            .pointer("/root_pane/pane_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                PortError::new(
-                    "HERDR_PROTOCOL",
-                    "workspace has no pane",
-                    "retry_herdr_call",
-                )
-            })?
-            .to_owned();
-        client.call(
-            "pane.send_text",
-            json!({"pane_id": pane, "text": format!("{command}\n")}),
-        )?;
-        let (tx, rx) = mpsc::sync_channel(16);
-        let watch = client.socket.clone();
-        let pane_watch = pane.clone();
-        let marker_watch = marker.clone();
-        std::thread::spawn(move || {
-            let client = Client { socket: watch };
-            let matched = client.call(
-                "pane.wait_for_output",
-                json!({
-                    "pane_id": pane_watch,
-                    "source": "recent",
-                    "match": {"type": "substring", "value": marker_watch},
-                    "timeout_ms": 8000
-                }),
-            );
-            let mut seen = HashSet::new();
-            match matched {
-                Ok(value) => {
-                    let text = value
-                        .pointer("/read/text")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned();
-                    if observe_once(&mut seen, &text) {
-                        let _ = tx.send(crate::runtime::RuntimeEvent::Observation {
-                            kind: "pane".into(),
-                            payload: json!({"text": text}),
-                            source: EvidenceLevel::Narrated,
-                        });
-                    }
-                    let _ = tx.send(crate::runtime::RuntimeEvent::Proposal {
-                        schema: "herdr.pane.v1".into(),
-                        bytes: marker_watch.into_bytes(),
-                        source: EvidenceLevel::AdapterEvent,
-                    });
-                    let _ = tx.send(crate::runtime::RuntimeEvent::Exited {
-                        code: Some(0),
-                        requested_stop: false,
-                    });
-                }
-                Err(error) => {
-                    let _ = tx.send(crate::runtime::RuntimeEvent::ProtocolError(error.code));
-                    let _ = tx.send(crate::runtime::RuntimeEvent::Exited {
-                        code: None,
-                        requested_stop: false,
-                    });
-                }
-            }
-            let _ = client.call("pane.close", json!({"pane_id": pane_watch}));
-        });
-        let _ = command;
-        let _ = marker;
-        Ok(crate::runtime::Running {
-            session: Arc::new(Mutex::new(Box::new(Live {
-                _server: server,
-                pane,
-                client: Client::connect(&client.socket)?,
-            }))),
-            events: rx,
-        })
-    }
+fn signal_group(pid: u32, signal: &str) {
+    let _ = Command::new("/bin/kill")
+        .args(["-s", signal, "--", &format!("-{pid}")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
