@@ -79,6 +79,8 @@
 - 小活 D（密钥后端开关）改派 DeepSeek，现在可开；小活 E（人进本地 Gitea）改派 Qwen，C 合入后开。
 - GLM 写代码只接 1a 与第 4 包，评审席不变；Antigravity 只做小活 C 与之后的演示手册。
 
+2026-10-04 补：所有者定了四个梯队的评审规则（Claude / Codex；Grok / Kimi / GLM；Qwen / DeepSeek；Antigravity / MiniMax，第 N 层写、第 N-1 层审），MiniMax 的 D、E 二审席取消，它和 Antigravity 改做第 1 层所写代码的陪审；E 没有等 C。现行席位以 `07-demo-kickoff.md` §二 第 10 条与 §六 为准，上面三条只记 10-03 当晚的裁定。
+
 ## 五、没裁的建议
 
 Fable 提了、所有者没有表态的，留在这里，不是决定：
