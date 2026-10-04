@@ -17,6 +17,7 @@ agency-proto = { path = "../../crates/agency-proto" }
 participant = { path = "../../crates/participant" }
 axum.workspace = true
 chat = { path = "../../crates/chat" }
+context = { path = "../../crates/context" }
 clap.workspace = true
 foundation = { path = "../../crates/foundation" }
 proto = { path = "../../crates/proto" }

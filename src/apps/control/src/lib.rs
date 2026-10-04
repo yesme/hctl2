@@ -5,6 +5,7 @@
 pub mod agency;
 pub mod chat;
 pub mod config;
+mod context_query;
 mod identity;
 mod projects;
 mod repositories;
