@@ -1,5 +1,13 @@
 # control · 本地控制守护进程
 
+## Agency 端口（演示线第 2 包）
+
+`src/agency.rs` 只消费共享合同，独立服务代码在 `src/agency`。`hctl2 agency pair|bindings|catalog|accept` 提供本地配对与冻结工种入口；派工业务命令留第 5 包。首次配对拉起随包的 `agency`，以后控制面重启只恢复自己的消费和写者栅栏，不停止共用 Agency。配对端口与密钥放 SecretStore 的私有文件后端，不进入治理记录或备份。
+
+准备 / 激活 / 保全 RPC 由已有 Store outbox / inbox 接线，实际调用与失败语义见 [Participant](../../crates/participant/README.md)。端口观测不产生领域结果，联系不上不撤销授权。Agency 自己的 journal 与成果由自己恢复；控制面备份不替代它。运行时、Context 与 Invocation 三包各占自己的文件。
+
+## 控制服务
+
 P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进制仍是 `hctl2-control`。监听控制面数据目录下仅归属者可访问的 Unix socket（`control.sock`，模式 0600），对外提供 `hctl2.control.v1` 的 Query / Preview / Submit / Subscribe。存储打开在工作线程上，与 RPC 并发；`STORE_NOT_READY` 与 `UPGRADE_IN_PROGRESS` 把 `store` 的 `code` / `message` / `recovery_action` 原样放到错误对象里。
 
 `TrustedActor` 由 Unix 连接的 `peer_cred.uid` 构造（`local-owner:<uid>` / DirectClient / Control），并与 socket 文件所有者比对，不从客户端字段反序列化。运维入口是 `status`、`doctor`、`export`、`backup`、`restore`。危险动作 `restore.apply` 必须先 Preview。P2.2 的 Repo、Task、Room 与 [Project / Request](../../crates/project/README.md)业务命令均沿此边界接入；Project 预览冻结输入、来源与版本，提交复用 Store 事务，网络读取和写入在事务外进行。

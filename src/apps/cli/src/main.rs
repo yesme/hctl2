@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod agency;
 mod project;
 mod repo;
 mod room;
@@ -72,6 +73,8 @@ enum Command {
     Project(project::ProjectCommand),
     #[command(subcommand)]
     Request(project::RequestCommand),
+    #[command(subcommand)]
+    Agency(agency::AgencyCommand),
 }
 
 #[derive(Subcommand)]
@@ -135,6 +138,7 @@ fn default_root() -> PathBuf {
 
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
+        Command::Agency(command) => agency::dispatch(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
         Command::Room(command) => room::dispatch(command, root, json).await,
