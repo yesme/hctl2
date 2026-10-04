@@ -36,6 +36,11 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Build a Context assembly preview without saving it.
+    Context {
+        #[command(subcommand)]
+        command: ContextCommand,
+    },
     /// Create the control root; records `--secret-backend` when given.
     Init {
         /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
@@ -97,6 +102,21 @@ enum ServicesCommand {
 }
 
 #[derive(Subcommand)]
+enum ContextCommand {
+    /// Assemble a preview from a manifest JSON file; prints manifest and bundle.
+    Preview {
+        /// Path to the manifest JSON plus permitted list and consumer.
+        input: PathBuf,
+    },
+    /// Show a frozen manifest and/or bundle by id.
+    Show {
+        project_id: String,
+        manifest_id: Option<String>,
+        bundle_id: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum BackupCommand {
     Create { path: PathBuf },
     Verify { path: PathBuf },
@@ -136,9 +156,32 @@ fn default_root() -> PathBuf {
     }
 }
 
+async fn context_cli(command: ContextCommand, root: &Path, as_json: bool) -> Result<(), String> {
+    match command {
+        ContextCommand::Preview { input } => {
+            let body = std::fs::read(&input).map_err(io)?;
+            let value: Value =
+                serde_json::from_slice(&body).map_err(|e| format!("{}: {e}", input.display()))?;
+            task::query_task(root, as_json, "context.preview", value).await
+        }
+        ContextCommand::Show {
+            project_id,
+            manifest_id,
+            bundle_id,
+        } => task::query_task(
+            root,
+            as_json,
+            "context.show",
+            json!({"project_id": project_id, "manifest_id": manifest_id, "bundle_id": bundle_id}),
+        )
+        .await,
+    }
+}
+
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
         Command::Agency(command) => agency::dispatch(command, root, json).await,
+        Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
         Command::Room(command) => room::dispatch(command, root, json).await,

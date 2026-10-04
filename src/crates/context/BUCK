@@ -2,6 +2,28 @@ load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
 oncall("hctl2")
 filegroup(name = "docs", srcs = glob(["**/*.md"]), visibility = ["PUBLIC"])
-rust_library(name = "context", srcs = ["src/lib.rs"], crate_root = "src/lib.rs", deps = ["root//crates/agency-proto:agency_proto"],
+rust_library(name = "context", srcs = glob(["src/**/*.rs"]), crate_root = "src/lib.rs", deps = [
+        "root//crates/agency-proto:agency_proto",
+        "root//crates/foundation:foundation",
+        "root//crates/store:store",
+        "root//third-party/rust:serde_json",
+    ],
     edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS, env = hctl2_cargo_env(), labels = CI_FAST, visibility = ["PUBLIC"])
-filegroup(name = "clippy", srcs = {"library": ":context[clippy.txt]"}, labels = CI_FAST, visibility = ["PUBLIC"])
+filegroup(name = "clippy", srcs = {"library": ":context[clippy.txt]", "domain": ":domain_test[clippy.txt]"}, labels = CI_FAST, visibility = ["PUBLIC"])
+rust_test(
+    name = "domain_test",
+    srcs = glob(["tests/**/*.rs"]),
+    crate_root = "tests/domain.rs",
+    deps = [
+        ":context",
+        "root//crates/agency-proto:agency_proto",
+        "root//crates/foundation:foundation",
+        "root//crates/store:store",
+        "root//third-party/rust:serde_json",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)

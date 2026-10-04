@@ -319,6 +319,8 @@ impl Control for ControlService {
                         || matches!(kind.as_str(), "pending" | "overview")
                     {
                         crate::projects::query(&store, &services, &actor, &kind, &payload)
+                    } else if kind.starts_with("context.") {
+                        crate::context_query::query(&store, &actor, &kind, &payload)
                     } else if kind.starts_with("room.") {
                         crate::chat::query(&store, &services, &root, &kind, &payload)
                     } else if kind.starts_with("task.") {
