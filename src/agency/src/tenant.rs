@@ -682,7 +682,7 @@ impl Tenant {
     }
     pub(crate) fn results(&self, input: ResultQuery) -> Result<ResultPage> {
         let state = self.state.lock().expect("tenant mutex");
-        get_dispatch(&state.db, &input.dispatch)?;
+        let dispatch = get_dispatch(&state.db, &input.dispatch)?;
         let mut stmt = sql(state
             .db
             .prepare("SELECT id,body,preserved FROM results WHERE dispatch=?1 ORDER BY rowid"))?;
@@ -737,6 +737,12 @@ impl Tenant {
                 "result cursor does not name a stored proposal",
                 "read_result_page",
             ));
+        }
+        // `complete` means this page reached the end of the stored results and the
+        // dispatch is no longer running. A caller that stops at `complete` while the
+        // dispatch is still running would miss a result that has not been written yet.
+        if dispatch.state == DispatchState::Running {
+            complete = false;
         }
         let cursor = proposals.last().map(|p| p.header.proposal_id.clone());
         Ok(ResultPage {

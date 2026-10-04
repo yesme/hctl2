@@ -31,22 +31,19 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-运行时、会话与 Harness 适配都写在 Agency 门后。控制面不导入这些文件。复用 Herdr 的终端、多人观察、工作树与会话能力，不另写 PTY 多路复用器。
+所有者 2026-10-05 裁定本 PR 只做第 2 包留下的三件事。Herdr 与两家 harness 留在分支 `grok/agency-harness`，3a 合入后再开。
 
-| 文件 | 要补什么 |
+| 留下 | 内容 |
 | --- | --- |
-| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent`；实际能力随接单返回 |
-| `src/herdr.rs` | 沿锁定 SDK 生成类型，持有 Herdr 私有句柄；恢复与观测归一 |
-| `src/harness/codex.rs`、`claude_code.rs` | 启动、钩子、终局、等待与复用；不把物理身份交给 control |
-| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 |
-| `src/catalog.rs` | 精确工种、Harness 与可装载 Skill；直报核验和只有申报分开 |
-| `tests/runtime.rs` | 锁定 Herdr 与两家真实会话，凭据不足如实标未核 |
+| 结果分页 | `ResultQuery.after` 与 `ResultPage`。`complete` 只在已存结果取完且派工不再 Running 时为真 |
+| 凭据根 | 执行目录在凭据根外。macOS `sandbox-exec`，Linux `landlock` 0.4.7。限制失败则不启动 |
+| 目录摘要 | 脚本摘要是程序文件字节。Skill 摘要是 `SKILL.md` 字节，`verification` 留空 |
 
-本包的脚本接口是测试基准，可调整私有运行时接口，但不另造控制面会话身份。真实 Harness 先只声明已验证的 native interactive 路径；逐项审批未验不激活。完整停止与子进程隔离、会话恢复、工作树独立性、模型拿不到 control / human 凭据、工具报告归到原授权，均由第 3 包实测。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
+可预测的执行目录若已存在且不属于当前用户，拒绝并给出 `UNSAFE_ENDPOINT`。没有配置脚本时目录是空的。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 
-脚本目录摘要覆盖程序文件字节。两家 harness 与 Herdr 以锁定版本对照本机二进制：对不上就不上架为可激活工种。执行目录在凭据根之外，子进程再被挡住凭据根（macOS `sandbox-exec`，Linux 用 Landlock 允许名单，不包含凭据根）。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
+脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的，不把未验证的 harness 放进可激活工种。执行目录在凭据根之外，子进程再被挡住凭据根（macOS `sandbox-exec`，Linux 用 Landlock 允许名单，不包含凭据根）。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
 
 | CT-PARTICIPANT / CT-CONNECTION 的行 | 本包失败输入与覆盖 | 后续边界 |
 | --- | --- | --- |

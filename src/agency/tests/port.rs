@@ -445,6 +445,12 @@ impl Runtime for BurstRuntime {
                 })
                 .unwrap();
         }
+        events
+            .send(agency::runtime::RuntimeEvent::Exited {
+                code: Some(0),
+                requested_stop: false,
+            })
+            .unwrap();
         Ok(agency::runtime::Running {
             session: Arc::new(std::sync::Mutex::new(Box::new(BurstSession(events)))),
             events: receiver,
@@ -493,6 +499,94 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     assert!(pages[1].complete);
     rig.close().await;
 }
+
+struct FailingBurst;
+impl Runtime for FailingBurst {
+    fn catalog(&self) -> Result<Catalog> {
+        ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec![],
+        })
+        .catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        let (events, receiver) = std::sync::mpsc::channel();
+        events
+            .send(agency::runtime::RuntimeEvent::Proposal {
+                schema: "test.bytes.v1".into(),
+                bytes: vec![1; 64],
+                source: EvidenceLevel::Narrated,
+            })
+            .unwrap();
+        events
+            .send(agency::runtime::RuntimeEvent::Proposal {
+                schema: "test.bytes.v1".into(),
+                bytes: vec![2; 3 * 1024 * 1024],
+                source: EvidenceLevel::Narrated,
+            })
+            .unwrap();
+        Ok(agency::runtime::Running {
+            session: Arc::new(std::sync::Mutex::new(Box::new(BurstSession(events)))),
+            events: receiver,
+        })
+    }
+}
+
+#[tokio::test]
+async fn record_failure_still_reaches_exit_and_keeps_the_accepted_result() {
+    let rig = Rig::with_runtime(Arc::new(FailingBurst)).await;
+    let (client, key) = rig.pair("drain").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "drain").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let mut exited = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < deadline {
+        let result = client
+            .call(
+                "observe",
+                &Observe {
+                    ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                    after: 0,
+                },
+            )
+            .await;
+        let trace: Trace = match result {
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => continue,
+            result => result.unwrap(),
+        };
+        if trace.events.iter().any(|event| event.kind == "stopped") {
+            assert_eq!(trace.dispatch.state, DispatchState::CannotFulfill);
+            assert!(
+                trace
+                    .events
+                    .iter()
+                    .any(|event| event.kind == "protocol_error")
+            );
+            exited = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(exited, "record failure must not drop the exit event");
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference))
+        .await
+        .unwrap();
+    assert!(page.complete);
+    assert_eq!(page.proposals.len(), 1);
+    assert_eq!(page.proposals[0].output, vec![1; 64]);
+    rig.close().await;
+}
+
 struct BlockingSession {
     entered: std::sync::mpsc::Sender<()>,
     release: Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>,

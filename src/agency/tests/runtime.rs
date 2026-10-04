@@ -1,5 +1,5 @@
 use agency::{
-    catalog, confine, herdr,
+    catalog, confine,
     runtime::{Runtime, ScriptConfig, ScriptRuntime},
 };
 use agency_proto::hash;
@@ -59,48 +59,6 @@ fn confined_child_cannot_read_the_credential_root() {
 }
 
 #[test]
-fn installed_harness_versions_are_reported_when_they_differ_from_the_lock() {
-    for (name, locked) in [
-        ("codex", catalog::CODEX_VERSION),
-        ("claude", catalog::CLAUDE_VERSION),
-    ] {
-        let Some(path) = std::env::var_os("PATH").and_then(|path| {
-            std::env::split_paths(&path).find_map(|dir| {
-                let candidate = dir.join(name);
-                candidate.is_file().then_some(candidate)
-            })
-        }) else {
-            eprintln!("UNVERIFIED {name}: binary not on PATH");
-            continue;
-        };
-        match catalog::describe(&path, locked) {
-            Ok(binary) if binary.locked => eprintln!("VERIFIED {name} {}", binary.version),
-            Ok(binary) => eprintln!(
-                "UNVERIFIED {name}: measured {} locked {locked}",
-                binary.version
-            ),
-            Err(error) => eprintln!("UNVERIFIED {name}: {}", error.message),
-        }
-    }
-    match std::env::var_os("HCTL2_HERDR")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("PATH").and_then(|path| {
-                std::env::split_paths(&path).find_map(|dir| {
-                    let candidate = dir.join("herdr");
-                    candidate.is_file().then_some(candidate)
-                })
-            })
-        }) {
-        Some(path) => match herdr::locked_protocol(&path) {
-            Ok(protocol) => eprintln!("VERIFIED herdr protocol {protocol}"),
-            Err(error) => eprintln!("UNVERIFIED herdr: {}", error.message),
-        },
-        None => eprintln!("UNVERIFIED herdr: binary not on PATH"),
-    }
-}
-
-#[test]
 fn skill_claims_hash_the_skill_file_and_leave_verification_unknown() {
     let dir = std::env::temp_dir().join(format!("hctl2-skills-{}", std::process::id()));
     let skill = dir.join("hctl2-shaping");
@@ -114,54 +72,18 @@ fn skill_claims_hash_the_skill_file_and_leave_verification_unknown() {
 }
 
 #[test]
-fn hctl2_tool_inspect_reports_through_the_adapter_when_installed() {
-    let tool = std::env::var_os("HCTL2_TOOL")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("PATH").and_then(|path| {
-                std::env::split_paths(&path).find_map(|dir| {
-                    let candidate = dir.join("hctl2-tool");
-                    candidate.is_file().then_some(candidate)
-                })
-            })
-        });
-    let Some(tool) = tool else {
-        eprintln!("UNVERIFIED hctl2-tool: binary not on PATH");
-        return;
-    };
-    let repo = std::env::temp_dir().join(format!("hctl2-tool-repo-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&repo);
-    std::fs::create_dir_all(&repo).unwrap();
-    let git = std::process::Command::new("git")
-        .args(["init"])
-        .current_dir(&repo)
-        .env("GIT_AUTHOR_NAME", "hctl")
-        .env("GIT_AUTHOR_EMAIL", "hctl@localhost")
-        .env("GIT_COMMITTER_NAME", "hctl")
-        .env("GIT_COMMITTER_EMAIL", "hctl@localhost")
-        .status();
-    if git.map(|s| !s.success()).unwrap_or(true) {
-        eprintln!("UNVERIFIED hctl2-tool: git init failed");
-        let _ = std::fs::remove_dir_all(&repo);
-        return;
-    }
-    let output = std::process::Command::new(&tool)
-        .args(["repo", "inspect", "--path"])
-        .arg(&repo)
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin")
-        .env("HOME", &repo)
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "stdout {} stderr {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_ne!(output.stdout, b"");
-    eprintln!("VERIFIED hctl2-tool repo inspect");
-    let _ = std::fs::remove_dir_all(&repo);
+fn execution_directory_rejects_a_path_that_is_not_an_owned_directory() {
+    let cred = std::env::temp_dir().join(format!("hctl2-owned-root-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cred);
+    std::fs::create_dir_all(&cred).unwrap();
+    let exec = confine::execution_dir(&cred, "dispatch").unwrap();
+    std::fs::remove_dir(&exec).unwrap();
+    std::fs::File::create(&exec).unwrap();
+    let error = confine::execution_dir(&cred, "dispatch").unwrap_err();
+    assert_eq!(error.code, "UNSAFE_ENDPOINT");
+    let _ = std::fs::remove_file(&exec);
+    let _ = std::fs::remove_dir_all(exec.parent().unwrap());
+    let _ = std::fs::remove_dir_all(&cred);
 }
 
 #[test]

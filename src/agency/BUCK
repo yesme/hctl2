@@ -20,6 +20,7 @@ filegroup(
 DEPS = [
     "root//crates/agency-proto:agency_proto",
     "root//third-party/rust:rusqlite",
+    "root//third-party/rust:rustix",
     "root//third-party/rust:serde",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:tokio",
