@@ -1,0 +1,23 @@
+syntax = "proto3";
+package hctl2.agency.v1;
+
+// Frozen domain documents are exact RFC 8785 bytes, not ProtoJSON.
+// Tenant selection is fixed by the paired endpoint, never by a request field.
+message Call { string protocol = 1; bytes document = 2; }
+message Error { string code = 1; string message = 2; string recovery_action = 3; }
+message Reply { bytes document = 1; Error error = 2; }
+service Agency {
+  rpc Pair(Call) returns (Reply);
+  rpc Catalog(Call) returns (Reply);
+  rpc Prepare(Call) returns (Reply);
+  rpc Lookup(Call) returns (Reply);
+  rpc Activate(Call) returns (Reply);
+  rpc Fence(Call) returns (Reply);
+  rpc Lease(Call) returns (Reply);
+  rpc Input(Call) returns (Reply);
+  rpc Stop(Call) returns (Reply);
+  rpc Observe(Call) returns (Reply);
+  rpc Results(Call) returns (Reply);
+  rpc Preserve(Call) returns (Reply);
+  rpc Shutdown(Call) returns (Reply);
+}

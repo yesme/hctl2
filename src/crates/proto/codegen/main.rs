@@ -11,6 +11,7 @@ fn main() -> io::Result<()> {
     let mut args = env::args().skip(1);
     let descriptor = PathBuf::from(args.next().expect("descriptor path"));
     let out_dir = PathBuf::from(args.next().expect("output directory"));
+    let package = args.next().unwrap_or_else(|| "hctl2.control.v1".into());
     fs::create_dir_all(&out_dir)?;
     let bytes = fs::read(&descriptor)?;
     let fds = prost_types::FileDescriptorSet::decode(bytes.as_slice())
@@ -23,11 +24,11 @@ fn main() -> io::Result<()> {
     pbjson_build::Builder::new()
         .out_dir(&out_dir)
         .register_descriptors(&bytes)?
-        .build(&[".hctl2.control.v1"])?;
+        .build(&[&format!(".{package}")])?;
     let mut manifest = fs::File::create(out_dir.join("mod.rs"))?;
     writeln!(
         manifest,
-        "include!(\"hctl2.control.v1.rs\");\ninclude!(\"hctl2.control.v1.serde.rs\");"
+        "include!(\"{package}.rs\");\ninclude!(\"{package}.serde.rs\");"
     )?;
     Ok(())
 }

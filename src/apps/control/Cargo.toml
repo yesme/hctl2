@@ -13,6 +13,8 @@ name = "hctl2-control"
 path = "src/main.rs"
 
 [dependencies]
+agency-proto = { path = "../../crates/agency-proto" }
+participant = { path = "../../crates/participant" }
 axum.workspace = true
 chat = { path = "../../crates/chat" }
 clap.workspace = true

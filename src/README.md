@@ -12,6 +12,9 @@
 - [`crates/task`](crates/task/README.md)：P2.2 庚的任务源引用、认领、Task 影子、契约采纳与外部写回；GitHub 经 gh、本地 Gitea 经 tea，不包含 Task 完成。
 - [`crates/chat`](crates/chat/README.md)：P2.2 己的 Room、版本化聊天绑定、前情提要、冻结引用与命令；控制面以 ruma / AppService 接随包 Tuwunel，不包含 Invocation 或模型引擎。
 - [`crates/proto`](crates/proto/README.md)：Query / Preview / Submit / Subscribe 的 Protobuf 合同，由钉定 protoc 与 Buck 生成。
+- [`crates/agency-proto`](crates/agency-proto/README.md)：Agency 独立端口合同、冻结规格、Context 类型、票据与结果提案。
+- [`crates/participant`](crates/participant/README.md)：控制面接受工种、派工映射与结果保全；包含第 5 包的任务说明，不包含 Invocation 业务。
+- [`crates/context`](crates/context/README.md)：第 4 包的组装接口与任务说明；本包尚未实现选材器与 Context CLI。
 - [`apps/control`](apps/control/)：归属者 Unix socket 上的 control 守护进程，对外命令为 `hctl2-control`。
 - [`apps/cli`](apps/cli/)：公共 CLI，经该 socket 说话，不直接写控制面存储；对外命令为 `hctl2`。
 
@@ -25,7 +28,7 @@ Agent / Terminal 的进程、PTY 和终端会话直接交给外部运行服务 H
 
 `packaging/release` 由 Buck2 导出第一方二进制和 manifest，校验并消费外部运行包与源码包，确定性地生成三平台完整用户安装包、checksums、SPDX SBOM 与 release manifest。它只在子系统边界组装，不改写外部项目的原生构建方式。
 
-`agency` 是发布包自带的本地 Agency 参考实现：参与者供给方的第一方实现，目前只有 harness 原生格式的技能目录（`root//agency:skills`），可用性申报与 control 适配器待建；进程、PTY、终端会话与 TUI 由 Herdr 提供。设计见 [Participant 与 Terminal](../docs/design/participant.md#agency-与执行体)。
+[`agency`](agency/README.md) 是发布包自带的独立本地 Agency 服务（`root//agency:agency`），有自己的存储、配对租户和生命周期。第 2 包用可信脚本验证端口；第 3 包接 Herdr 与真实 Harness，任务说明在该 README。技能目录仍由 `root//agency:skills` 随包交付。设计见 [Participant 与 Terminal](../docs/design/participant.md#agency-与执行体)。
 
 Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二进制提供，并由 Process Compose 启停；HCTL2 不实现 HTTP 服务器，也不要求最终用户安装 Python 或 Node.js。`testing/cinny` 记录这个 Chatroom 浏览器客户端的人工验收边界；Cinny 不是 HCTL2 Workbench，也不是第五个执行面依赖。
 
@@ -35,7 +38,7 @@ Cinny 的静态内容由离线包内锁定的官方 `static-web-server` 单二�
 
 ```bash
 ./buck2 test --build-default-info \
-  root//apps/... root//crates/... root//build/tests/... \
+  root//agency/... root//apps/... root//crates/... root//build/tests/... \
   root//:clippy root//packaging/release:first-party
 ```
 
