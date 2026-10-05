@@ -265,10 +265,11 @@ fn run_job(
         });
         return Ok(());
     }
+    let marker = format!("HCTL2_DISPATCH_{}", job.spec.digest);
     write_json(
         &dir.join("job.json"),
         &json!({"id":job.spec.document.idempotency_key,"digest":job.spec.digest,
-        "permissions":job.spec.document.permissions,"text":job.text.trim()}),
+        "permissions":job.spec.document.permissions,"text":job.text,"marker":marker}),
     )?;
     for name in ["started.json", "returned.json", "rejected.json"] {
         match fs::remove_file(dir.join(name)) {
@@ -302,10 +303,10 @@ fn run_job(
             return Ok(());
         }
         let session = native.as_mut().expect("native session");
-        match session.client.call(
-            "agent.prompt",
-            json!({"target":session.pane,"text":job.text}),
-        ) {
+        match session
+            .client
+            .call("agent.prompt", json!({"target":session.pane,"text":marker}))
+        {
             Ok(_) => break,
             Err(error) if !recovered && rejected_before_delivery(&error) => {
                 // Only Herdr's explicit pre-queue rejection permits a retry.
@@ -349,7 +350,7 @@ fn run_job(
         }
         if let Some(started) = read_json(&dir.join("started.json"))? {
             check_job(&started, job, &session.id)?;
-            if started["text"].as_str() != Some(job.text.trim()) {
+            if started["text"].as_str() != Some(job.text.as_str()) {
                 return Err(PortError::new(
                     "STANDBY_PROMPT_MISMATCH",
                     "native turn did not receive this dispatch's text",

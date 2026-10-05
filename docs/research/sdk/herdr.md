@@ -164,3 +164,13 @@ macOS arm64，Herdr 0.9.3、Claude Code 2.1.289。Buck 原生 `root//agency:herd
 核对仍钉官方 0.9.3 [`queue_agent_prompt`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/app/api/agents.rs)：`agent_not_found` 与 `agent_not_ready` 都在正文入 PTY 队列之前返回，后者也包括原 agent 已不是前台进程的情形。只有这两种原生错误能证明本次正文没送出；笼统的 I/O 错误不能。在 #362 的评审里，轮间杀掉 Claude 后第一次派工被拒、再下一次才恢复；实现前新增的杀进程用例复现了这个缺口。恢复后的单次投递与真实历史还需验证。
 
 **同日 · 修复后复核**：确定性夹具在首轮交回后被 `SIGKILL`，紧接着的派工经 `--resume` 交回，投递记录精确只有 `BEFORE_DEATH`、`AFTER_DEATH` 各一次（Buck Build ID `5ebe806c-39fd-4d50-8ee4-e7a1484deaec`）。真实 Claude Code 2.1.289 在两轮间被 `SIGTERM`，下一次派工一次交回 `RESTORED_ONCE`，观测 `resumed=true`，保留原生 Session ID `c737310a-7b33-48f6-b225-15405fca0166`，进程换成新 PID。该真实用例同时核过早取消、早截止后的下一轮输入，1 条通过，耗时 20.22 秒；不是重发已投递的旧轮。真实 Linux 与 Intel Mac 登录会话仍未验证。
+
+### 同日 · 3d 标记提交后的真实会话
+
+**决定建议：Herdr 仍持有 Claude 会话，`agent.prompt` 只投单行标记；正文由会话级原生 `prompt.submit` 注入。** 这替代此前直接粘贴正文的交法与首尾空白处理，不改变复用键、排队、权限或续接边界。所有者裁决及原生接口依据见 [Harness 钩子复核](../harness-hooks-20260903.md#同日--3d-派工正文绕开输入框)。不使用屏幕标记判断结束，不过滤人在终端里的原生 `!` 或 `/` 命令。
+
+macOS arm64 的 Aqua 用户会话运行 Buck 构建的同一测试产物，Herdr 仍是官方 0.9.3、协议 22，Claude Code 为 2.1.289。五条真实用例通过：Runtime、独立 Agency 服务端口、长正文提交、早停止后的长正文与轮间退出恢复、连续两轮与闲置续接。`live_` 还选中一条确定性 FIFO 用例，合计 6 过、0 失败，100.79 秒；运行退出码为 0。长任务要求归纳 22 条笔记并求和，不是原样回标记；取得归纳与 `SUM=253`。4907 字节单行、CRLF / 制表符 / 首尾空白均逐字到达；`!touch` 不创建文件，`/clear` 后仍能答出第一次的词。标记只在输入框内，模型收到原始任务文字。
+
+早取消与早截止后，各交 23 行新正文，`turn.start.text` 逐字一致，各得到 `NEXT_TOTAL=253`，PID `38385` 不变。随后真实进程 `SIGTERM`，下一次派工经原生 `--resume` 返回 `RESTORED_ONCE`，Session ID `638eef77-a554-4732-9f7b-93937105c5cb` 不变。独立闲置用例的两轮 PID `60690` 相同；回收后 PID `79978`，仍是 Session `1327ae2a-0f7e-4751-99d4-ef072fdbba5b`，答出原测试词。原始输出贴在 #362 的第三轮处理说明与描述中。
+
+没有直接修改全局配置或登录材料；只自动确认所有者已授权的 Agency 执行目录。原生插件测试 8 条与默认 Agency 测试 115 条另跑通过，默认略过的真实用例不计入。真实 Linux、macOS x86_64 会话仍未验证；GitHub Actions 当时为平台故障，不能用本机成功代称 CI 通过。

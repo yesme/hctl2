@@ -45,13 +45,13 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 `serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按 Buck 声明的 `lock.json` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种记实际版本与二进制摘要。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
 
-Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY，用 `agent.prompt` 提交 Bundle 的文字，不把正文敲进 shell。同一选入记录复用一个会话，派工按 FIFO 逐轮执行；不同租户、Binding、Project 或选入记录不共用。复用键取这些对象的 ID，不取版本或摘要，记录更新不换会话。每轮结果按本次派工键、Spec 摘要、原生 Session ID 与 Turn ID 配对。原生插件的 `turn.complete` 给最终回答与 `answer / refusal / aborted / error`；子代理事件不算主调用结果。回答与拒绝原文交回一条 Proposal、一次 `TurnReturned`，证据为 adapter_event；错误与打断不伪报回答。不看终端空闲或进程退出判这一轮结束。
+Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.prompt` 只交本次派工的固定标记，原生插件在 `prompt.submit` 核对标记后注入冻结正文。正文不经过输入框，不变成粘贴附件或原生命令。同一选入记录复用一个会话，派工按 FIFO 逐轮执行；不同租户、Binding、Project 或选入记录不共用。复用键取这些对象的 ID，不取版本或摘要，记录更新不换会话。每轮结果按本次派工键、Spec 摘要、原生 Session ID 与 Turn ID 配对。原生插件的 `turn.complete` 给最终回答与 `answer / refusal / aborted / error`；子代理事件不算主调用结果。回答与拒绝原文交回一条 Proposal、一次 `TurnReturned`，证据为 adapter_event；错误与打断不伪报回答。不看终端空闲或进程退出判这一轮结束。
 
 本包只允许带 `context.read` 的只读 Bundle 派工，每次都重新检查自己的 Spec。工具列表为空、MCP 严格限制；不承诺访问任意工作副本或上一次派工留下的权限。写租约、评审发布策略及其余权限在本实现中拒绝，写入型调用留第 9 包。会话历史复用不证明旧授权有效。
 
 官方 SessionStart 资产由安装器放在 Agency 私有目录，用会话级 `--settings` 引用；Claude 插件只通过 `--plugin-dir` 加载。保留用户 HOME、PATH、USER，不向 Claude 设置 `CLAUDE_CONFIG_DIR`，不复制登录材料、不直接编辑全局设置。按所有者授权，只自动确认 Agency 准备的执行目录的原生信任提示，允许 Claude 保存该目录的信任记录；不跳过工具权限检查。
 
-单次停止或截止先用原生 Esc 打断当前轮，等结构化打断事件，留下会话。Claude 可能把早取消的正文放回输入框；下一次派工用原生 `prompt.edit` 替换旧草稿，保留本次输入的后续片段。`prompt.submit` 在模型接收前拒绝不匹配的正文，Runtime 再核 `turn.start.text`；只按原生提交去掉首尾空白，内部文字不变。三秒内无法确认打断则原生关闭 pane，报告会话已关闭，不伪报正常回答。
+单次停止或截止先用原生 Esc 打断当前轮，等结构化打断事件，留下会话。Claude 可能把早取消的输入放回输入框；下一次派工用原生 `prompt.edit` 替换旧草稿，保留本次标记的后续片段。`prompt.submit` 拒绝不匹配的标记，再原样注入正文；Runtime 逐字核 `turn.start.text`，首尾空白、换行和制表符都保留。不拦人的原生 `!` 或 `/` 操作；不能归到派工的模型轮不会交成派工结果。三秒内无法确认打断则原生关闭 pane，报告会话已关闭，不伪报正常回答。
 
 `HCTL2_AGENCY_IDLE_MS` 是 Agency 自己的正整数毫秒配置，缺省五分钟；只在无当前轮时关闭闲置 pane。下次派工用 Claude `--resume` 接原会话；失败则起新会话，观测明确记 `resume_failed`。进程在两轮间退出时，Herdr 的 `agent_not_found` / `agent_not_ready` 明确表示正文尚未投递，当前派工可续接后重试一次；传输错误或 `agent_prompt_failed` 不盲重投。续接启动之后再检查取消与截止，已停止的派工不送正文。Agency 停止先收各会话，再原生 `server.stop` 收私有 Herdr。只存续接标识，不自存对话或管理 harness 进程。
 

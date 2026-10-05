@@ -12,21 +12,24 @@ export function register(on) {
     const key = current.id + ':' + current.digest;
     if (e.inputText && draft !== key) {
       draft = key;
-      // Early Esc restores the cancelled prompt. Replace its draft within
-      // the native edit; do not discard later chunks of this same paste.
+      // Only a short Agency marker enters the composer. Clear a restored
+      // draft, but retain subsequent chunks of this marker.
       return next({...e, text: '', cursor: 0, start: 0, end: 0});
     }
     return next(e);
   });
   on('prompt.submit', async ($, e, next) => {
     const current = JSON.parse(await $.fs.read(root + '/job.json'));
-    if (e.text.trim() !== current.text) {
+    if (e.text.trim() !== current.marker) {
       await $.fs.write(root + '/rejected.json', JSON.stringify({
         job: current.id, digest: current.digest, session: await $.session.id(),
       }));
       return {drop: 'Agency prompt does not match this dispatch'};
     }
-    return next(e);
+    draft = undefined;
+    // Inject after the composer has interpreted its input, so task bytes
+    // are a user request, not a pasted attachment or a native command.
+    return next({...e, text: current.text});
   });
   on('turn.start', async ($, e, next) => {
     if (e.agentId !== undefined) return next(e);

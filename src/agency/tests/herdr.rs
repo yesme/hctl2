@@ -1623,6 +1623,48 @@ fn standby_cancel_interrupts_only_the_turn_and_next_dispatch_reuses_the_session(
 }
 
 #[test]
+fn standby_only_a_marker_enters_the_composer_and_task_bytes_are_preserved() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-marker");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let state = turn_state(&exec, &cred, &sealed_spec("marker", now_ms() + 60_000));
+    let long_line = "plain task ".repeat(700);
+    let task = "  Summarize the notes.\r\n".to_owned() + &"\tplain note  \r\n".repeat(22);
+    for (index, text) in [
+        task.as_str(),
+        long_line.as_str(),
+        "!touch /not-executed",
+        "/clear",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let spec = sealed_spec(&format!("marker-{index}"), now_ms() + 60_000);
+        let mut running = runtime
+            .start(&spec, &sealed_bundle(text), &exec, &cred)
+            .unwrap();
+        let events = collect(&mut running, Duration::from_secs(35));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, RuntimeEvent::TurnReturned))
+                .count(),
+            1,
+            "task case {index}"
+        );
+        let started: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
+        assert_eq!(started["text"], format!("{text}\n"));
+        let submitted = std::fs::read_to_string(state.join("composer.log")).unwrap();
+        let input: String = serde_json::from_str(submitted.lines().last().unwrap()).unwrap();
+        assert_eq!(input, format!("HCTL2_DISPATCH_{}", spec.digest));
+        assert!(!input.contains(text));
+    }
+    runtime.shutdown().unwrap();
+}
+
+#[test]
 fn standby_early_stop_never_resubmits_the_cancelled_prompt() {
     use agency::runtime::RuntimeEvent;
     let (cred, root, exec) = standby_root("standby-early-stop");
@@ -1668,10 +1710,11 @@ fn standby_early_stop_never_resubmits_the_cancelled_prompt() {
             RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
         )));
         wait_for(&state.join("draft-restored"));
+        let text = "  ONLY_NEXT_PROMPT\r\n".to_owned() + &"\tnew note  \r\n".repeat(22);
         let mut next = runtime
             .start(
                 &sealed_spec(&format!("after-{key}"), now_ms() + 30_000),
-                &sealed_bundle("ONLY_NEXT_PROMPT"),
+                &sealed_bundle(&text),
                 &exec,
                 &cred,
             )
@@ -1684,10 +1727,10 @@ fn standby_early_stop_never_resubmits_the_cancelled_prompt() {
                 _ => None,
             })
             .collect();
-        assert_eq!(bytes, [b"ONLY_NEXT_PROMPT".as_slice()]);
+        assert_eq!(bytes, [text.trim().as_bytes()]);
         let started: serde_json::Value =
             serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
-        assert_eq!(started["text"], "ONLY_NEXT_PROMPT");
+        assert_eq!(started["text"], format!("{text}\n"));
         assert_eq!(
             pid,
             native_pid(&state),
@@ -1753,7 +1796,7 @@ fn standby_a_dead_between_turns_harness_is_resumed_before_the_next_delivery() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(delivered, ["BEFORE_DEATH", "AFTER_DEATH"]);
+    assert_eq!(delivered, ["BEFORE_DEATH\n", "AFTER_DEATH\n"]);
     runtime.shutdown().unwrap();
 }
 
@@ -1903,8 +1946,11 @@ fn live_early_stop_keeps_only_the_next_prompt_and_idle_death_resumes_once() {
             e,
             RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
         )));
-        let text = "Reply exactly NEXT_TOKEN and nothing else.";
-        let (next, bundle) = prepare(&format!("after-{key}"), text, now_ms() + 120_000);
+        let text = "Sum the values below. Reply only NEXT_TOTAL=<sum>, without tools.\n".to_owned()
+            + &(1..=22)
+                .map(|n| format!("Note {n}: value={n}.\n"))
+                .collect::<String>();
+        let (next, bundle) = prepare(&format!("after-{key}"), &text, now_ms() + 120_000);
         let mut running = runtime.start(&next, &bundle, &exec, &cred).unwrap();
         let events = collect(&mut running, Duration::from_secs(120));
         let answers: Vec<_> = events
@@ -1914,14 +1960,14 @@ fn live_early_stop_keeps_only_the_next_prompt_and_idle_death_resumes_once() {
                 _ => None,
             })
             .collect();
-        assert_eq!(answers, [b"NEXT_TOKEN".as_slice()]);
+        assert_eq!(answers, [b"NEXT_TOTAL=253".as_slice()]);
         let started: serde_json::Value =
             serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
-        assert_eq!(started["text"], text);
+        assert_eq!(started["text"], format!("{text}\n"));
         assert_eq!(real_claude_pid(&state), pid);
         eprintln!(
-            "LIVE {key} -> next turn: PID {pid}, native text={}, answer=NEXT_TOKEN",
-            started["text"]
+            "LIVE {key} -> long next turn: PID {pid}, bytes={}, byte-exact=true, answer=NEXT_TOTAL=253",
+            text.len() + 1
         );
     }
     let before: serde_json::Value =
@@ -1960,6 +2006,106 @@ fn live_early_stop_keeps_only_the_next_prompt_and_idle_death_resumes_once() {
         "LIVE idle harness death: same native Session {}, next dispatch returned RESTORED_ONCE",
         after["session"]
     );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+#[ignore = "UNVERIFIED: requires a logged-in Claude session and HCTL2_HARNESS_LIVE=1"]
+fn live_dispatch_injects_long_tasks_and_command_shaped_text_without_composer_rewriting() {
+    use agency::runtime::RuntimeEvent;
+    assert!(std::env::var_os("HCTL2_HARNESS_LIVE").is_some());
+    let located = Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
+        .unwrap();
+    let claude = PathBuf::from(String::from_utf8(located.stdout).unwrap().trim());
+    let (cred, root, exec) = standby_root("live-marker");
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let profession = runtime.catalog().unwrap().professions.remove(0);
+    let state = turn_state(&exec, &cred, &sealed_spec("marker", now_ms() + 120_000));
+    let run = |key: &str, text: &str| {
+        let bundle = sealed_bundle(text);
+        let mut spec = sealed_spec(key, now_ms() + 120_000).document;
+        spec.profession = profession.clone();
+        spec.bundle.digest = bundle.digest.clone();
+        let spec = agency_proto::Sealed::new(spec).unwrap();
+        let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
+        let events = collect(&mut running, Duration::from_secs(120));
+        let answers: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                RuntimeEvent::Proposal { bytes, .. } => {
+                    Some(String::from_utf8(bytes.clone()).unwrap())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(answers.len(), 1, "{key}: no unique answer");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, RuntimeEvent::TurnReturned))
+                .count(),
+            1
+        );
+        let started: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
+        assert_eq!(
+            started["text"],
+            format!("{text}\n"),
+            "{key}: native turn bytes changed"
+        );
+        eprintln!(
+            "LIVE body={key}, bytes={}, byte-exact=true, answer={}",
+            text.len() + 1,
+            answers[0]
+        );
+        answers.into_iter().next().unwrap()
+    };
+    assert_eq!(
+        run(
+            "remember",
+            "Remember HCTL3D_COPPER_627 for later. Reply only HCTL3D_COPPER_627."
+        ),
+        "HCTL3D_COPPER_627"
+    );
+    let pid = real_claude_pid(&state);
+    let session = std::fs::read(state.join("resume.json")).unwrap();
+    let task = "Summarize the common goal of these notes in one short sentence. Then compute the sum of values and report SUM=<number>. Do not ask questions or use tools.\n".to_owned()
+        + &(1..=22).map(|n| format!("Note {n}: Improve cache reuse. Value={n}.\n")).collect::<String>();
+    let answer = run("long-task", &task);
+    assert!(
+        answer.to_lowercase().contains("cache") && answer.contains("SUM=253"),
+        "task was not performed: {answer}"
+    );
+    let single = "Summarize the following repeated statement in one short sentence, then write LINE_READ. Do not use tools: ".to_owned()
+        + &"The cache should avoid rebuilding dependencies. ".repeat(100);
+    let answer = run("long-line", &single);
+    assert!(answer.to_lowercase().contains("cache") && answer.contains("LINE_READ"));
+    assert_eq!(
+        run(
+            "whitespace",
+            "  Compute 19+23 and reply only TOTAL=<result>.\r\n\tDo not use tools.  \r\n  "
+        ),
+        "TOTAL=42"
+    );
+    let touched = root.join("not-created-by-bang");
+    run("bang", &format!("!touch {}", touched.display()));
+    assert!(
+        !touched.exists(),
+        "task text passed through native shell mode"
+    );
+    run("clear", "/clear");
+    assert_eq!(
+        run(
+            "recall-after-clear",
+            "What codeword did I give in my first message? Reply only that word, without tools."
+        ),
+        "HCTL3D_COPPER_627"
+    );
+    assert_eq!(pid, real_claude_pid(&state));
+    assert_eq!(session, std::fs::read(state.join("resume.json")).unwrap());
+    eprintln!("LIVE marker delivery: same PID {pid}, /clear did not clear the native conversation");
     runtime.shutdown().unwrap();
 }
 
@@ -2205,7 +2351,7 @@ fn standby_queued_cancellation_never_delivers_the_next_prompt() {
     );
     assert_eq!(
         std::fs::read_to_string(state.join("delivered.txt")).unwrap(),
-        "wait"
+        "wait\n"
     );
     runtime.shutdown().unwrap();
 }

@@ -114,15 +114,33 @@ fn main() {
             if input.is_empty() {
                 continue;
             }
-            let text = String::from_utf8(std::mem::take(&mut input)).unwrap();
+            let submitted = String::from_utf8(std::mem::take(&mut input)).unwrap();
+            let mut composer = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(root.join("composer.log"))
+                .unwrap();
+            writeln!(composer, "{}", serde_json::to_string(&submitted).unwrap()).unwrap();
             let job: Value =
                 serde_json::from_slice(&fs::read(root.join("job.json")).unwrap()).unwrap();
+            if Some(submitted.trim()) != job["marker"].as_str() {
+                write(
+                    root,
+                    "rejected.json",
+                    json!({"session":id,"job":job["id"],"digest":job["digest"]}),
+                );
+                continue;
+            }
+            // Model the native submit hook. The real generated plugin has
+            // separate Claude-native tests; this is not its implementation.
+            draft.clear();
+            let text = job["text"].as_str().unwrap().to_owned();
             count += 1;
             let turn = format!("turn-{count}");
             event(
                 root,
                 "started.json",
-                json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn,"text":text.trim()}),
+                json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn,"text":text}),
             );
             fs::write(root.join("delivered.txt"), &text).unwrap();
             let mut delivered = OpenOptions::new()
