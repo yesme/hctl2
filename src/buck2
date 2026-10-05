@@ -114,6 +114,12 @@ case "${HCTL2_BUCK2_CACHE:-local}" in
         ;;
 esac
 
+# This machine's .buckconfig.local points Buck at NativeLink. Starting the
+# old bazel-remote store here would only refill a cache nothing reads.
+if [ -f "$project_root/../.buckconfig.local" ]; then
+    exec "$buck2_bin" "$@"
+fi
+
 cache_root=${HCTL2_BUCK2_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi}
 cache_data_dir=$cache_root/data
 cache_state_dir=$cache_root/state
