@@ -1034,7 +1034,12 @@ fi
     #[test]
     fn a_stuck_gh_is_unreadable_within_the_limit_and_leaves_no_process() {
         let directory = temporary_directory("stuck-gh");
-        let program = write_executable(&directory, "gh-stuck", "#!/bin/sh\nexec sleep 31.4164\n");
+        let marker = run_marker(4164);
+        let program = write_executable(
+            &directory,
+            "gh-stuck",
+            &format!("#!/bin/sh\nexec sleep {marker}\n"),
+        );
         let started = Instant::now();
         let mut command = Command::new(&program);
         let error =
@@ -1046,8 +1051,20 @@ fi
             started.elapsed()
         );
         assert_eq!(error["error"], "command timed out");
-        assert_no_process_with("31.4164");
+        assert_no_process_with(&marker);
         fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
     }
 
     /// Fails while a live process still carries `marker` on its command line; the

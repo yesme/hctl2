@@ -402,6 +402,18 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
     );
 }
 
+/// A marker unique to this run and to the call site: the leftover check looks
+/// for it, and the same test file compiles into several test binaries, so a
+/// constant would let one binary see the other's process.
+fn run_marker(base: u64) -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock follows the epoch")
+        .as_nanos()
+        % 1_000;
+    format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
+}
+
 /// Fails while a live process still carries `marker` on its command line; the
 /// kill at the deadline clears the process table a moment later, so the check
 /// retries and prints what it still sees.
@@ -435,7 +447,8 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     let dir = std::env::temp_dir().join(format!("hctl2-repo-stuck-{nanos}"));
     std::fs::create_dir(&dir).unwrap();
     let program = dir.join("hang.sh");
-    std::fs::write(&program, "#!/bin/sh\nexec sleep 31.4165\n").unwrap();
+    let marker = run_marker(4165);
+    std::fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let started = Instant::now();
     let error = repo::git::run_for(
@@ -446,6 +459,6 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     .expect_err("stuck provider command");
     assert!(started.elapsed() < std::time::Duration::from_secs(7));
     assert_eq!(error.code, "RESULT_UNKNOWN");
-    assert_no_process_with("31.4165");
+    assert_no_process_with(&marker);
     std::fs::remove_dir_all(dir).unwrap();
 }

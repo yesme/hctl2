@@ -349,7 +349,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hctl2-material-stuck-{nanos}"));
         fs::create_dir(&dir).unwrap();
         let program = dir.join("hang.sh");
-        fs::write(&program, "#!/bin/sh\nexec sleep 31.4166\n").unwrap();
+        let marker = run_marker(4166);
+        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
         let started = Instant::now();
         let mut command = Command::new("/bin/sh");
@@ -363,8 +364,20 @@ mod tests {
         );
         assert_eq!(error.code, "MATERIAL_UNAVAILABLE");
         assert!(error.message.contains("timed out"), "{}", error.message);
-        assert_no_process_with("31.4166");
+        assert_no_process_with(&marker);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
     }
 
     /// Fails while a live process still carries `marker` on its command line; the

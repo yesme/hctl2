@@ -322,6 +322,18 @@ mod tests {
         panic!("pid {pid} still present");
     }
 
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
+    }
+
     /// Fails while any live process carries `marker` on its command line.
     ///
     /// A pid file needs the stand-in to survive until its first write, which a
@@ -387,7 +399,8 @@ mod tests {
     #[test]
     fn a_stuck_command_ends_as_timed_out_and_leaves_no_process() {
         let dir = temp_dir("stuck");
-        let program = script(&dir, "#!/bin/sh\nexec sleep 31.4159\n");
+        let marker = run_marker(4159);
+        let program = script(&dir, &format!("#!/bin/sh\nexec sleep {marker}\n"));
         let limit = Duration::from_secs(3);
         let started = Instant::now();
         let end = run_bounded(&mut Command::new(&program), None, limit).expect("spawn");
@@ -397,7 +410,7 @@ mod tests {
             started.elapsed()
         );
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_no_process_with("31.4159");
+        assert_no_process_with(&marker);
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -445,27 +458,29 @@ mod tests {
     #[test]
     fn exited_parent_with_stdout_holder_times_out_and_leaves_no_process() {
         let dir = temp_dir("hold-stdout");
-        let program = script(&dir, "#!/bin/sh\nsleep 31.4160 &\nexit 0\n");
+        let marker = run_marker(4160);
+        let program = script(&dir, &format!("#!/bin/sh\nsleep {marker} &\nexit 0\n"));
         let limit = Duration::from_secs(2);
         let end = call_within(limit, move || {
             run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_no_process_with("31.4160");
+        assert_no_process_with(&marker);
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
     fn unread_stdin_over_the_pipe_buffer_times_out_and_leaves_no_process() {
         let dir = temp_dir("unread-stdin");
-        let program = script(&dir, "#!/bin/sh\nexec sleep 31.4161\n");
+        let marker = run_marker(4161);
+        let program = script(&dir, &format!("#!/bin/sh\nexec sleep {marker}\n"));
         let limit = Duration::from_secs(3);
         let payload = vec![0_u8; 1024 * 1024];
         let end = call_within(limit, move || {
             run_bounded(&mut Command::new(&program), Some(&payload), limit).expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_no_process_with("31.4161");
+        assert_no_process_with(&marker);
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -504,14 +519,19 @@ mod tests {
     #[test]
     fn a_stuck_command_that_left_a_pipe_holder_leaves_no_process() {
         let dir = temp_dir("stuck-holder");
-        let program = script(&dir, "#!/bin/sh\nsleep 31.4162 &\nexec sleep 31.4163\n");
+        let holder = run_marker(4162);
+        let stuck = run_marker(4163);
+        let program = script(
+            &dir,
+            &format!("#!/bin/sh\nsleep {holder} &\nexec sleep {stuck}\n"),
+        );
         let limit = Duration::from_secs(3);
         let end = call_within(limit, move || {
             run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_no_process_with("31.4162");
-        assert_no_process_with("31.4163");
+        assert_no_process_with(&holder);
+        assert_no_process_with(&stuck);
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
