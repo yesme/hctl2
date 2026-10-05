@@ -7,6 +7,7 @@ pub mod herdr;
 pub mod launch;
 pub mod runtime;
 pub mod service;
+mod standby;
 mod storage;
 mod tenant;
 pub use service::{Agency, serve};

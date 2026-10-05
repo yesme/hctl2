@@ -40,7 +40,7 @@ CLI_DEPS = [
 rust_library(
     name = "service",
     crate = "agency",
-    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    srcs = glob(["src/**/*.rs", "src/harness/turn.js"], exclude = ["src/main.rs"]),
     crate_root = "src/lib.rs",
     deps = DEPS,
     edition = HCTL2_RUST_EDITION,
@@ -53,7 +53,7 @@ rust_library(
 
 rust_test(
     name = "unit_test",
-    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    srcs = glob(["src/**/*.rs", "src/harness/turn.js"], exclude = ["src/main.rs"]),
     crate_root = "src/lib.rs",
     deps = DEPS,
     edition = HCTL2_RUST_EDITION,
@@ -120,13 +120,14 @@ rust_test(
 
 rust_test(
     name = "herdr_test",
-    srcs = ["tests/herdr.rs"],
+    srcs = ["tests/herdr.rs", "tests/turn.test.ts"],
     crate_root = "tests/herdr.rs",
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | {
         "HCTL2_CONFINE_BIN": "$(location :agency)",
+        "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
         "HCTL2_LOCKED_HERDR": select({
             "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
             "prelude//os:macos": select({
@@ -137,6 +138,17 @@ rust_test(
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "standby_fixture",
+    srcs = ["tests/standby_fixture.rs"],
+    crate_root = "tests/standby_fixture.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
 )
 
 rust_test(
@@ -163,6 +175,7 @@ filegroup(
         "port": ":port_test[clippy.txt]",
         "control_port": ":control_port_test[clippy.txt]",
         "herdr": ":herdr_test[clippy.txt]",
+        "standby_fixture": ":standby_fixture[clippy.txt]",
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],

@@ -298,7 +298,7 @@ pub enum WaitEnd {
     Stopped,
     TimedOut,
 }
-fn sh_quote(path: &Path) -> String {
+pub(crate) fn sh_quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
@@ -379,13 +379,32 @@ pub struct InstalledHerdr {
     profession_digest: String,
     slot: Mutex<Option<Arc<Server>>>,
     starts: AtomicUsize,
-    script: Arc<LaunchScript>,
-    claude_result: bool,
+    script: Option<Arc<LaunchScript>>,
+    pool: Option<crate::standby::Pool>,
     read_paths: Vec<PathBuf>,
 }
 
 impl InstalledHerdr {
     pub fn open(binary: PathBuf, claude: &Path) -> Result<Self> {
+        let idle = match std::env::var("HCTL2_AGENCY_IDLE_MS") {
+            Ok(value) => value
+                .parse::<u64>()
+                .ok()
+                .filter(|n| *n > 0)
+                .map(Duration::from_millis)
+                .ok_or_else(|| {
+                    PortError::invalid("HCTL2_AGENCY_IDLE_MS must be a positive integer")
+                })?,
+            Err(std::env::VarError::NotPresent) => Duration::from_secs(300),
+            Err(_) => return Err(PortError::invalid("HCTL2_AGENCY_IDLE_MS is not UTF-8")),
+        };
+        Self::open_with_idle(binary, claude, idle)
+    }
+
+    pub fn open_with_idle(binary: PathBuf, claude: &Path, idle: Duration) -> Result<Self> {
+        if idle.is_zero() {
+            return Err(PortError::invalid("standby idle duration must be positive"));
+        }
         let claude = claude.canonicalize()?;
         let read_paths = vec![
             claude
@@ -412,8 +431,8 @@ impl InstalledHerdr {
             profession_digest: digest,
             slot: Mutex::new(None),
             starts: AtomicUsize::new(0),
-            script: Arc::new(move |_spec, bundle, exec| claude_script(&claude, bundle, exec)),
-            claude_result: true,
+            script: None,
+            pool: Some(crate::standby::Pool::new(claude, idle)),
             read_paths,
         })
     }
@@ -429,8 +448,8 @@ impl InstalledHerdr {
             profession_digest: "test".into(),
             slot: Mutex::new(None),
             starts: AtomicUsize::new(0),
-            script: Arc::new(script),
-            claude_result: false,
+            script: Some(Arc::new(script)),
+            pool: None,
             read_paths: vec![],
         }
     }
@@ -477,6 +496,23 @@ impl InstalledHerdr {
             parent,
             &self.read_paths,
         )?);
+        if self.pool.is_some() {
+            // Herdr's own installer, redirected privately. Never export this
+            // variable to Claude: that would hide the user's native login.
+            let integration = server.state.join("claude-integration");
+            crate::storage::private_dir(&integration)?;
+            let output = std::process::Command::new(&self.binary)
+                .args(["integration", "install", "claude"])
+                .env("CLAUDE_CONFIG_DIR", &integration)
+                .output()?;
+            if !output.status.success() {
+                return Err(PortError::new(
+                    "HERDR_INTEGRATION_FAILED",
+                    String::from_utf8_lossy(&output.stderr),
+                    "inspect_native_integration",
+                ));
+            }
+        }
         self.starts.fetch_add(1, Ordering::SeqCst);
         *slot = Some(Arc::clone(&server));
         Ok(server)
@@ -535,22 +571,6 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
     result
 }
 
-fn claude_script(claude: &Path, bundle: &Bundle, exec: &Path) -> Result<String> {
-    let prompt = exec.join("prompt.txt");
-    fs::write(&prompt, task_text(bundle)?)?;
-    let home = std::env::var("HOME").unwrap_or_default();
-    let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
-    let user = std::env::var("USER").unwrap_or_default();
-    Ok(format!(
-        "export HOME={home}\nexport PATH={path}\nexport USER={user}\nunset CLAUDE_CONFIG_DIR\nexec {claude} -p --output-format stream-json --verbose --permission-mode dontAsk < {prompt}\n",
-        home = sh_quote(Path::new(&home)),
-        path = sh_quote(Path::new(&path)),
-        user = sh_quote(Path::new(&user)),
-        claude = sh_quote(claude),
-        prompt = sh_quote(&prompt),
-    ))
-}
-
 struct HerdrSession {
     launch: Arc<Launch>,
 }
@@ -572,6 +592,7 @@ impl Session for HerdrSession {
 
 impl Runtime for InstalledHerdr {
     fn shutdown(&self) -> Result<()> {
+        let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
         let mut slot = self.slot.lock().expect("herdr");
         if let Some(server) = slot.as_ref() {
             // Detached event readers may still hold Arc<Server> when the Agency
@@ -579,7 +600,7 @@ impl Runtime for InstalledHerdr {
             Client::connect(&server.socket)?.call("server.stop", json!({}))?;
             *slot = None;
         }
-        Ok(())
+        pooled.map(|_| ())
     }
 
     fn catalog(&self) -> Result<Catalog> {
@@ -598,9 +619,7 @@ impl Runtime for InstalledHerdr {
             harness: harness.clone(),
             model: "none".into(),
             persona: "claude code".into(),
-            terms:
-                "the adapter writes the launch script; bundle text is the task, not a shell program"
-                    .into(),
+            terms: "read-only Bundle dispatch; native Claude turns in a selection-local Herdr session; no tool input or write lease".into(),
             default_role: "worker".into(),
             skills: vec![],
             capabilities: Capabilities {
@@ -624,8 +643,15 @@ impl Runtime for InstalledHerdr {
         credential_root: &Path,
     ) -> Result<Running> {
         fs::create_dir_all(exec_root)?;
-        let body = (self.script)(&spec.document, &bundle.document, exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
+        if let Some(pool) = &self.pool {
+            return pool.submit(server, spec, bundle, exec_root, credential_root);
+        }
+        let body = (self.script.as_ref().expect("test adapter"))(
+            &spec.document,
+            &bundle.document,
+            exec_root,
+        )?;
         let state = server.state.clone();
         let launch = Launch::start(
             server,
@@ -638,13 +664,28 @@ impl Runtime for InstalledHerdr {
         let shared = Arc::new(launch);
         let waiter = Arc::clone(&shared);
         let timeout = remaining(spec.document.deadline_ms);
-        let claude_result = self.claude_result;
         let (tx, rx) = std::sync::mpsc::sync_channel(8);
-        std::thread::spawn(move || dispatch_events(waiter, timeout, claude_result, tx));
+        std::thread::spawn(move || dispatch_events(waiter, timeout, tx));
         Ok(Running {
             session: Arc::new(Mutex::new(Box::new(HerdrSession { launch: shared }))),
             events: rx,
         })
+    }
+    fn start_for_tenant(
+        &self,
+        tenant: &Path,
+        spec: &Sealed<ExecutionSpec>,
+        bundle: &Sealed<Bundle>,
+        exec_root: &Path,
+        credential_root: &Path,
+    ) -> Result<Running> {
+        if let Some(pool) = &self.pool {
+            fs::create_dir_all(exec_root)?;
+            let server = self.ensure(exec_root, credential_root)?;
+            pool.submit(server, spec, bundle, exec_root, tenant)
+        } else {
+            self.start(spec, bundle, exec_root, credential_root)
+        }
     }
 }
 
@@ -655,11 +696,9 @@ fn remaining(deadline_ms: u64) -> Duration {
 fn dispatch_events(
     launch: Arc<Launch>,
     timeout: Duration,
-    claude_result: bool,
     tx: std::sync::mpsc::SyncSender<RuntimeEvent>,
 ) {
     let deadline = Instant::now() + timeout;
-    let mut returned = false;
     loop {
         if launch.stopped.load(Ordering::SeqCst) {
             let _ = tx.send(RuntimeEvent::Exited {
@@ -673,7 +712,7 @@ fn dispatch_events(
             let (stdout, stderr) = launch.output()?;
             Ok((stdout, stderr, exited))
         })();
-        let (stdout, stderr, exited) = match observed {
+        let (stdout, _stderr, exited) = match observed {
             Ok(value) => value,
             Err(error) => {
                 let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
@@ -687,61 +726,10 @@ fn dispatch_events(
                 return;
             }
         };
-        if claude_result && !returned {
-            // The file may end midway through a JSONL record. Only complete records count.
-            let complete = stdout
-                .iter()
-                .rposition(|b| *b == b'\n')
-                .map_or(0, |i| i + 1);
-            match crate::harness::claude::result_from_jsonl(&String::from_utf8_lossy(
-                &stdout[..complete],
-            )) {
-                Ok(session) if !session.is_error => {
-                    let _ = tx.send(RuntimeEvent::Proposal {
-                        schema: "claude.result.v1".into(),
-                        bytes: session.result.into_bytes(),
-                        source: EvidenceLevel::AdapterEvent,
-                    });
-                    let _ = tx.send(RuntimeEvent::TurnReturned);
-                    returned = true;
-                }
-                Ok(session) => {
-                    let _ = tx.send(RuntimeEvent::Observation {
-                        kind: "runtime:harness_failure".into(),
-                        payload: json!({"code":"HARNESS_RESULT_ERROR","message":session.result}),
-                        source: EvidenceLevel::AdapterEvent,
-                    });
-                    let _ = tx.send(RuntimeEvent::ProtocolError("HARNESS_RESULT_ERROR".into()));
-                    if launch.close().is_ok() {
-                        let _ = tx.send(RuntimeEvent::Exited {
-                            code: launch.exit_code().ok().flatten(),
-                            requested_stop: false,
-                        });
-                    }
-                    return;
-                }
-                Err(error) if error.code == "HARNESS_RESULT_MISSING" && !exited => {}
-                Err(error) => {
-                    let _ = tx.send(RuntimeEvent::Observation {
-                        kind:"runtime:harness_failure".into(),
-                        payload:json!({"code":error.code,"message":String::from_utf8_lossy(&stderr).chars().take(4096).collect::<String>()}),
-                        source:EvidenceLevel::AdapterEvent,
-                    });
-                    let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
-                    if launch.close().is_ok() {
-                        let _ = tx.send(RuntimeEvent::Exited {
-                            code: launch.exit_code().ok().flatten(),
-                            requested_stop: false,
-                        });
-                    }
-                    return;
-                }
-            }
-        }
         if exited {
             let code = launch.exit_code().ok().flatten();
             // Only the explicit script fixture uses stdout-at-exit; no real harness takes this branch.
-            if !claude_result && code == Some(0) {
+            if code == Some(0) {
                 let _ = tx.send(RuntimeEvent::Proposal {
                     schema: "adapter.stdout.v1".into(),
                     bytes: stdout,
@@ -757,9 +745,7 @@ fn dispatch_events(
             return;
         }
         if Instant::now() >= deadline {
-            if !returned {
-                let _ = tx.send(RuntimeEvent::DeadlineReached);
-            }
+            let _ = tx.send(RuntimeEvent::DeadlineReached);
             match launch.close() {
                 Ok(()) => {
                     let _ = tx.send(RuntimeEvent::Exited {
@@ -777,7 +763,7 @@ fn dispatch_events(
     }
 }
 
-fn task_text(bundle: &Bundle) -> Result<String> {
+pub(crate) fn task_text(bundle: &Bundle) -> Result<String> {
     let mut text = String::new();
     for entry in &bundle.entries {
         let bytes = match &entry.delivery {

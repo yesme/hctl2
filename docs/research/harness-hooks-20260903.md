@@ -177,3 +177,39 @@ Herdr（v0.8.2，master @ `0f8ad12`）只在 PTY 里拉起 harness，钩子由�
 **决定建议：维持适配原生钩子与权限协议；复核版本为 Claude Code `2.1.263`、Codex CLI `0.153.4`、Gemini CLI `0.58.0`。推翻 §决定建议第 2 条中「钉一个逐项询问模式就能覆盖每次调用」的实施假设，不推翻三家接入。** 三家基础模式各有自动放行范围，单向 JSONL 也不自动提供审批回复通道；各家具体差异、钉定证据及 Codex 枚举拼写见[适配器研究 §「逐项询问」的实际限制](./harness-adapters.md#逐项询问的实际限制)。
 
 P2.3 按实际工具、参数、有效配置核验询问与拒绝覆盖，再冻结 Execution Spec；不要把未收到权限请求解释为所有操作已被检查。三条双向路径和审批被拒、取消、缺终局、通道断开、精确会话恢复仍是待执行的验收，清单见[适配器研究 §边界与取舍](./harness-adapters.md#边界与取舍)。本次复核只补实现前提，不改变约束或把源码核对写成真实会话通过。
+
+### 2026-10-06 · Claude 常驻会话的一轮结束
+
+**决定建议：3d 采用 Claude Code 原生插件的 `turn.start` / `turn.complete`，以 Turn ID 配对，取 `answer` 与 `reason`；不靠屏幕、退出或单个 Stop 钩子。插件只通过该会话的 `--plugin-dir` 加载，不全局安装。最低功能版本是 2.1.287；本机实测 2.1.289，Herdr 是官方 0.9.3。** 这不改变派工、结果准入与 Task 完成的权威，只换一轮原始输出的取得方式。
+
+[官方插件创建说明](https://code.claude.com/docs/en/plugins/mods/create) 给出版本门槛与会话级加载方式。[事件说明](https://code.claude.com/docs/en/plugins/mods/events#follow-a-turn) 和本机加载插件时生成的原生类型一致：`turn.start` 给本轮 ID；`turn.complete` 给相同 ID、最终回答、持续时间、是否被打断与结束原因。2.1.289 的 `TurnCompleteReason` 是 `answer / aborted / refusal / error`。子代理也有完成事件，另带 `agentId`，不能交成主调用的结果。本机原生类型文件 SHA-256 为 `6116f6c69db6e3c5b5433eaa7283dcb15e2ee98c91ff47166e87d4d05d45378b`；在线类型可能早于本机版本，以该版本生成文件与实际事件为准。插件采用原生 API，不需要 Node.js 运行时或另一个执行服务。
+
+此前只核 `Stop` 不足以判一轮结束。[官方 Stop 说明](https://code.claude.com/docs/en/hooks#stop) 允许其他钩子继续同一轮；被人打断时不发 Stop，API 错误另发 StopFailure。本机先运行一个原生 Stop 续做钩子，再运行会话插件：同一 Prompt ID 的两个 Stop 分别给 `HCTL3D_INTERMEDIATE`、`HCTL3D_FINAL`，插件只发一次 `turn.complete`，取得后者。原生会话记录中的 `turn_duration` 同样出现在最终钩子之后，但它不是公开稳定的结束接口，本次不选它。`Notification.agent_completed` 只针对终端打开 Agent View 时的后台会话，不是普通交互轮的替代。
+
+取消探针用 Herdr 的 `agent.send_keys` 发 Esc。原生事件为 `reason=aborted`、`isAborted=true`，Turn ID 与起始事件一致，会话仍能继续。没有把按键成功、终端空闲或会话恢复当作旧授权仍有效。生产接线仍需按本次 Execution Spec 限权、排队与取消隔离；该部分尚未验证。首次探针误用不存在的 jq 路径，只有钩子报错，不算续做证据；修正路径后重跑才得到上述两个 Stop 与一个最终事件。
+
+私有安装 Herdr SessionStart 资产、原生目录信任、常驻与 `--resume` 的实测及未验证范围见 [Herdr 复核](./sdk/herdr.md#2026-10-06--3d-常驻会话前置核验)。本次没有修改用户全局设置或论文、设计、约束正文。
+
+**同日 · 3d 接线复核**：生产 Runtime 已用原生 `turn.start` / `turn.complete`，以派工键、Spec 摘要、Session ID、Turn ID 配对；子代理事件过滤后不参与主轮结算。Aqua 下的三条真实测试分别走 Runtime、独立 Agency 服务端口、同进程两轮与闲置后的 `--resume`，均交回原文。测试与失败边界见 [Herdr 3d 实测](./sdk/herdr.md#同日--3d-runtime-与服务端口实测)。错误、取消和截止的确定性用例不伪报 Proposal；单次停止不宣称物理进程退出。脚本插件仅为原生事件到现有派工端口的适配，不替代 Claude 或 Herdr 的运行时。
+
+### 同日 · 3d 早取消后的输入隔离
+
+**决定建议：沿用 Claude 原生 Mods，用 `prompt.edit` 在新派工首次粘贴时替换旧草稿，保留同一派工后续粘贴片段；`prompt.submit` 核正文，不一致就在模型接收前拒绝。Runtime 再核 `turn.start.text`，不以派工键相同代替正文一致。** Claude 2.1.289 早取消会把输入放回提示框，这由 #362 的真实评审复现；只收到 `aborted` 不能证明下一轮输入为空。
+
+[官方 Mods 参考](https://code.claude.com/docs/en/plugins/mods/reference#events) 与上面钉定的本机类型提供 `prompt.edit` 的原草稿、替换范围、插入文字，以及 `prompt.submit` 的 `{drop}`。清理在原生编辑动作内发生，不发额外 Ctrl+C，不改用户键位，不关闭可继续的会话。`turn.start.text` 是原生提示框提交处理后的正文；本实现按原生提交的首尾空白处理核对，正文内部的换行、空格和制表符保留。
+
+测试复用 Claude 自带的 `claude plugin test` / `claude-code/testing`，不引入 Node 或另一个 JS 运行时。实现前，在原插件上跑三条原生插件测试，旧草稿替换与提交不一致拒绝两条失败，分片粘贴保留通过（Buck Build ID `53bc8a90-d89b-49f2-9055-0e368524e547`）。这只证明原插件的缺口与测试能失败；修复后的真实取消、截止和下一轮仍需另跑。
+
+**同日 · 修复后复核**：原生插件三条测试全部通过（Buck Build ID `349a414e-a268-43b4-8ffc-37b3ed9bbf54`），加载的是 Runtime 实际生成的插件，不是另写一份模拟实现。Aqua 下经受限 Runtime 的真实 Claude 会话，在热身后分别早取消与早截止；两次下一轮的 `turn.start.text` 都只含 `Reply exactly NEXT_TOKEN and nothing else.`，各交一条 `NEXT_TOKEN`，同一 PID `41544` 未重启。实际进程退出后的首轮恢复同见 [Herdr 复核](./sdk/herdr.md#同日--3d-轮间退出的恢复边界)。没有给用户全局配置写入代码，也没有增加工具权限。
+
+### 同日 · 3d 派工正文绕开输入框
+
+**决定建议：按所有者确认的 #365 §二第 24 条与 3d 第 6 条，Herdr `agent.prompt` 只交 Agency 为本次派工生成的单行标记；Claude 原生 `prompt.submit` 核对标记后，以 `next({...e, text})` 注入已冻结的正文。正文保留全部字节，包括首尾空白；Runtime 继续逐字核对 `turn.start.text`。** 不换运行时，不改 Herdr，不安装全局插件，不过滤人在终端里的原生 `!` 或 `/` 命令。
+
+[官方 Mods 参考](https://code.claude.com/docs/en/plugins/mods/reference#events) 当前对应 Claude Code 2.1.289，明确允许提交钩子改写 `text`。#362 中 Claude 的第二轮真实会话探测与更正表明：粘贴长正文会变成 `pasted_content`，旧逐字比对会拒收；简单请求有时仍会执行，不能说所有粘贴都不执行，但像任务的长正文会反问。其本地对照用原生提交钩子替换标记后，正文原样到达模型，早取消后的长正文不再混入旧输入。以上是评审席证据，作者本轮原生测试与真实会话见下方复核，不把该对照实验本身当成生产验收通过。
+
+本轮用 Claude 自带 `plugin test` 测实际生成的插件，另用确定性夹具核终端只收到标记、正文与结果关联正确。真实会话需覆盖长任务、几 KB 单行、Windows 换行与空白、`!`、`/clear`、早取消与早截止后大段正文。`!` 与 `/` 的风险定级已由所有者撤回；它们在此仅检验派工正文没有走原生命令解释路径，不是禁止人的原生操作。
+
+**同日 · 作者复核**：原插件上先跑新增原生用例，8 条中 5 条失败、3 条通过（Buck Build ID `0635aa87-5591-4820-b10b-3ca448a4e68c`）；旧 Runtime 跑只交标记、保真正文的新增用例失败（`03a5df75-b588-4cf6-b5ee-b2e41c24d90c`）。按上述交法改后，实际生成插件的原生测试 8 / 8 通过（`097ea8ab-32cf-4096-a22c-5a871bd9dc16`）。夹具另核同次标记分片、错误标记拒收、早停止后长正文、原始换行保留；Agency 默认 115 条通过（`0192177d-fa95-4bca-aefd-baaa7dfe895c`），没有把真实登录用例的略过算成通过。
+
+真实 Claude Code 2.1.289 经 Herdr 0.9.3 的受限 Runtime 收到 23 行、1018 字节的任务，交回笔记共同目标及 `SUM=253`；4907 字节单行交回归纳与 `LINE_READ`；含 CRLF、制表符和首尾空白的 73 字节正文交回 `TOTAL=42`。各次 `turn.start.text` 与 Runtime 从冻结 Bundle 渲染出的文字逐字相同，包括渲染器原有的末尾换行。`!touch` 没有创建文件；`/clear` 后仍答出首次记下的词，同一 PID `12297`。早取消、早截止后的 23 行下一轮都只有新正文，各答 `NEXT_TOTAL=253`，同一 PID `38385`。这些观察核的是派工文字，不是对人原生命令的过滤。完整运行与未验证范围见 [Herdr 复核](./sdk/herdr.md#同日--3d-标记提交后的真实会话)。

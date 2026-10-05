@@ -366,7 +366,24 @@ async fn a_later_event_gap_does_not_revoke_the_returned_turn() {
         .await
         .unwrap();
     activate(&client, &dispatch).await;
-    let trace = terminal(&client, &dispatch, &key).await;
+    let mut trace = terminal(&client, &dispatch, &key).await;
+    // A returned turn is terminal before later observations are drained.
+    // Wait for this fixture's final event, not for the earlier state change.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while !trace.events.iter().any(|e| e.kind == "stopped") {
+        assert!(std::time::Instant::now() < deadline, "final event missing");
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        trace = client
+            .call(
+                "observe",
+                &Observe {
+                    ticket: ticket(&dispatch, &key, vec![Permission::Observe], None),
+                    after: 0,
+                },
+            )
+            .await
+            .unwrap();
+    }
     assert_eq!(trace.dispatch.state, DispatchState::ResultReturned);
     assert!(
         !trace.complete,

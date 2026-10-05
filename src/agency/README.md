@@ -31,30 +31,39 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-所有者 2026-10-05 把第 3 包拆成 3a、3b、3c。3a 已合（#323），3b（Herdr 管道）已合（#328）。3c（#335）接入一家 Claude Code 的非交互 print 调用；不把测试程序当工种上架。
+3a（#323）、3b（#328）、3c（#335）已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话，删除生产路径的 print 调用；脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d。
 
 | 文件 | 当前职责 |
 | --- | --- |
-| `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端。共用一个服务，不同派工各有 pane；状态与 socket 目录在执行目录之外 |
-| `src/launch.rs` | 原生 `layout.apply` 用 argv 启动固定脚本，Herdr 实际持有 Claude 进程与 PTY。Claude JSONL 的同会话 `result` 到达就交回一轮输出；`pane.exited` 与退出码只作观测 |
-| `src/harness/claude.rs` | 解析同一次 Claude 会话的 JSONL `result`；成功结果才交 Proposal，错误或缺少结果报告协议错误 |
-| `src/main.rs` | `HCTL2_INSTALL_ROOT/libexec/hctl2/herdr` 核摘要；实际受限路径上的 Claude 版本与启动冒烟决定是否上架；失败原因留在 `serve.err` |
-| `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及它的子进程。程序读不到 Agency 凭据；状态在执行目录之外，逐 pane 拒写状态是未实现的策略点；Linux 二进制目录仅可读和执行 |
-| `tests/herdr.rs` | 真实锁定制品、进程归属、输出先于退出、错误 / 取消 / 截止、不同目录并发、凭据拒读、安装与冒烟；Runtime 和真实服务端口的 Claude 会话单独开关 |
+| `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
+| `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架只读工种 |
+| `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
+| `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
+| `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
+| `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及子进程读取凭据根；Linux 二进制目录只读、可执行 |
+| `tests/herdr.rs`、`tests/standby_fixture.rs` | 原生 Herdr 回归与结构化测试夹具；真实 Claude 会话另设开关 |
 
-`serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，先核随包 Herdr 的摘要，再执行终端冒烟与受限的 `claude --version`；Claude Code 最低 2.1.263，通过后工种记实际版本和二进制摘要。Herdr 的摘要直接从 Buck 声明的 `lock.json` 编入，不手抄三平台常量。`HCTL2_CLAUDE` 可指定实际 Claude 路径，否则从 PATH 找。`agency start` 保留启动诊断，并给有界冒烟留出等待时间；冒烟失败不阻止空目录的 Agency 端口启动。
+`serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按 Buck 声明的 `lock.json` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种记实际版本与二进制摘要。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
 
-Bundle 是任务文字，不是 shell 程序。适配器把文字写入执行目录，通过 stdin 交给 `claude -p --output-format stream-json --verbose --permission-mode dontAsk`。保留所有者的 HOME、PATH、USER，清除 `CLAUDE_CONFIG_DIR`，不复制登录材料。Herdr 原生启动固定文件，不把正文打进交互式 shell。Claude 自己的 JSONL 写入本次调用的私有文件，完整 `result` 到达即发 Proposal，再记 `TurnReturned`；错误保留原因，缺结果退出报告协议错误。输出交回时会话可以还活着，显式停止或到冻结截止时用原生 `pane.close` 收掉；退出码只作观测。
+Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.prompt` 只交本次派工的固定标记，原生插件在 `prompt.submit` 核对标记后注入冻结正文。正文不经过输入框，不变成粘贴附件或原生命令。同一选入记录复用一个会话，派工按 FIFO 逐轮执行；不同租户、Binding、Project 或选入记录不共用。复用键取这些对象的 ID，不取版本或摘要，记录更新不换会话。每轮结果按本次派工键、Spec 摘要、原生 Session ID 与 Turn ID 配对。原生插件的 `turn.complete` 给最终回答与 `answer / refusal / aborted / error`；子代理事件不算主调用结果。回答与拒绝原文交回一条 Proposal、一次 `TurnReturned`，证据为 adapter_event；错误与打断不伪报回答。不看终端空闲或进程退出判这一轮结束。
 
-这是 Herdr 持有的非交互 print 适配，不承诺会话复用、Agent 检测、原生输入、exact attach 或会话恢复。当前只激活 stop，不激活 input。一轮输出原样交回，证据为 adapter_event；不升级成工具直报，不据此判 Task 完成，也不代 sysone 判断或生成物验收。输出文件与 Herdr 状态均在执行目录之外，但官方版没有逐 pane 防篡改，恶意伪造属于未实现的策略点。选择与源码依据见 [Herdr 复核记录](../../docs/research/sdk/herdr.md#复核记录)。
+本包只允许带 `context.read` 的只读 Bundle 派工，每次都重新检查自己的 Spec。工具列表为空、MCP 严格限制；不承诺访问任意工作副本或上一次派工留下的权限。写租约、评审发布策略及其余权限在本实现中拒绝，写入型调用留第 9 包。会话历史复用不证明旧授权有效。
 
-停止单次派工用原生 `pane.close`，保留共用服务。`agency stop` 先停各 Session，再用原生 `server.stop` 关闭这家 Agency 私有的 Herdr；不依赖后台事件线程在进程退出前恰好完成析构。真实端口用例检查停服务后三秒内私有 Herdr 不再运行。
+官方 SessionStart 资产由安装器放在 Agency 私有目录，用会话级 `--settings` 引用；Claude 插件只通过 `--plugin-dir` 加载。保留用户 HOME、PATH、USER，不向 Claude 设置 `CLAUDE_CONFIG_DIR`，不复制登录材料、不直接编辑全局设置。按所有者授权，只自动确认 Agency 准备的执行目录的原生信任提示，允许 Claude 保存该目录的信任记录；不跳过工具权限检查。
 
-真实会话用已有 Buck 目标运行：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`，覆盖 Runtime 与 `agency start → pair → prepare → activate → results`。默认用 Rust 原生 `ignore` 标明未验证，不计为通过；真实验证要同时选择这些用例并设开关。服务须在可使用 Harness 登录材料的用户会话中运行；macOS 图形会话与 Background 会话访问钥匙串的结果可能不同。Linux 登录材料的允许路径未在本包放宽，真实 Linux 会话仍未验证。
+单次停止或截止先用原生 Esc 打断当前轮，等结构化打断事件，留下会话。Claude 可能把早取消的输入放回输入框；下一次派工用原生 `prompt.edit` 替换旧草稿，保留本次标记的后续片段。`prompt.submit` 拒绝不匹配的标记，再原样注入正文；Runtime 逐字核 `turn.start.text`，首尾空白、换行和制表符都保留。不拦人的原生 `!` 或 `/` 操作；不能归到派工的模型轮不会交成派工结果。三秒内无法确认打断则原生关闭 pane，报告会话已关闭，不伪报正常回答。
 
-Codex CLI 的第二家接入、钩子、工具直报、工作副本管理、待命与恢复留后续包。最低版本常量仍为 Codex CLI 0.153.4，不代表已经上架或验收。
+`HCTL2_AGENCY_IDLE_MS` 是 Agency 自己的正整数毫秒配置，缺省五分钟；只在无当前轮时关闭闲置 pane。下次派工用 Claude `--resume` 接原会话；失败则起新会话，观测明确记 `resume_failed`。进程在两轮间退出时，Herdr 的 `agent_not_found` / `agent_not_ready` 明确表示正文尚未投递，当前派工可续接后重试一次；传输错误或 `agent_prompt_failed` 不盲重投。续接启动之后再检查取消与截止，已停止的派工不送正文。Agency 停止先收各会话，再原生 `server.stop` 收私有 Herdr。只存续接标识，不自存对话或管理 harness 进程。
 
-可预测的执行目录若已存在且不属于当前用户，拒绝并给出 `UNSAFE_ENDPOINT`。没有配置脚本时目录是空的。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
+只激活 stop，不上架 input，不提供终端接管或 exact attach。一轮返回不是 Task 完成，不代 sysone 判断或生成物验收。状态目录在执行目录之外，但官方版没有逐 pane 防篡改，恶意伪造仍是未实现的策略点。依据与实现前实测见 [Herdr 复核](../../docs/research/sdk/herdr.md#复核记录) 与 [Claude 钩子复核](../../docs/research/harness-hooks-20260903.md#2026-10-06--claude-常驻会话的一轮结束)。
+
+默认 `root//agency:herdr_test` 跑确定性夹具；真实用例用 Rust 原生 `ignore` 标未验证。开真实验证：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`。macOS 上测试进程须在可访问登录钥匙串的 Aqua 会话；如果 Buck daemon 属于 Background，先用 Buck 构建，再在 Aqua 中运行同一产物。测试环境另需 Buck 声明的 `HCTL2_LOCKED_HERDR`、`HCTL2_CONFINE_BIN`、`HCTL2_STANDBY_FIXTURE`。真实 Linux 登录会话仍未验证，不放宽其登录材料路径。
+
+夹具模拟原生界面的草稿恢复，不执行插件。`tests/turn.test.ts` 另用 Claude 自带的 `claude plugin test` 测实际生成插件；本机执行 `root//agency:herdr_test -- --test-arg=native_mod_ --test-arg=--include-ignored --test-arg=--nocapture`，需要已安装 Claude，不需要登录。CI 没有原生 Claude，默认略过；改插件后须另跑这组与真实会话用例。
+
+当前限制：目录信任自动确认只识别英文界面；测试目录的信任记录由 Claude 原生保存，不自动删除。失效的续接标识可能等到三十秒启动时限才改用新会话。Herdr 关闭 pane 本身失败时，该选入记录的工作线程可能退出，后续请求报 `STANDBY_UNAVAILABLE`，须恢复 Runtime；不把关闭失败报成已回收。
+
+第二家 Harness、工具直报、工作副本管理与模型字段留后续包。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 
