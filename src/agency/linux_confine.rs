@@ -83,6 +83,29 @@ fn restrict(work: &Path, credential: &Path) -> io::Result<()> {
             ruleset = add(ruleset, &path, access)?;
         }
     }
+    if let Some(extra) = env::var_os("HCTL2_CONFINE_READ") {
+        for item in extra.to_string_lossy().split('\n') {
+            if item.is_empty() {
+                continue;
+            }
+            let path = Path::new(item);
+            if !path.exists() {
+                continue;
+            }
+            let path = path.canonicalize().map_err(|error| {
+                Error::other(format!(
+                    "allowed path {item} cannot be canonicalized: {error}"
+                ))
+            })?;
+            if agency::confine::allowed_tree_contains_credential(&path, credential) {
+                return Err(Error::other(format!(
+                    "credential root is inside allowed path {}",
+                    path.display()
+                )));
+            }
+            ruleset = add(ruleset, &path, read_exec)?;
+        }
+    }
     for (dir, access) in [
         ("/bin", read_exec),
         ("/usr", read_exec),

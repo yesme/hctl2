@@ -100,7 +100,7 @@ cd hctl2-0.0.0-<target>
 | Cinny | 4.12.6 | `http://127.0.0.1:6168/` |
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
-| Herdr | 0.8.2 | owner-only Unix socket；协议版本 20 |
+| Herdr | 0.9.3 | owner-only Unix socket；协议版本 22 |
 | Gitea | 1.27.3 | `http://127.0.0.1:3001` |
 
 所有 listener 都绑定 loopback。Cinny 与 Tuwunel 合在一起是 Chatroom 解决方案，不另增一类运行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。Cinny 只允许连接随包 Tuwunel，并启用 hash router 适配内部静态服务。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。

@@ -67,6 +67,14 @@ async fn run(args: Args) -> Result<()> {
             };
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
+            } else if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT") {
+                match catalog_installed_harness(std::path::Path::new(&install)) {
+                    Ok(runtime) => Arc::new(runtime),
+                    Err(error) => {
+                        eprintln!("harness not cataloged: {error}");
+                        Arc::new(Unconfigured)
+                    }
+                }
             } else {
                 Arc::new(Unconfigured)
             };
@@ -84,28 +92,37 @@ async fn run(args: Args) -> Result<()> {
                 );
                 return Ok(());
             }
-            std::fs::create_dir_all(&args.root)?;
+            let log_path = args.root.join("serve.err");
+            let log = Agency::start_log(&args.root)?;
             let mut command = std::process::Command::new(std::env::current_exe()?);
             command.arg("--root").arg(&args.root).arg("serve");
             if let Some(config) = script_config {
                 command.arg("--script-config").arg(config);
             }
-            command
+            let mut child = command
                 .process_group(0)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stderr(log)
                 .spawn()?;
-            for _ in 0..100 {
+            // Herdr startup and two confined probes are bounded independently.
+            // Do not give up before those probes can finish; retain their reasons.
+            for _ in 0..1200 {
                 if let Ok(value) = status(&args.root).await {
                     println!("{value}");
                     return Ok(());
+                }
+                if child.try_wait()?.is_some() {
+                    break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
             Err(PortError::new(
                 "AGENCY_NOT_READY",
-                "local Agency did not become ready",
+                format!(
+                    "local Agency did not become ready; see {}",
+                    log_path.display()
+                ),
                 "run_agency_serve",
             ))
         }
@@ -130,6 +147,38 @@ async fn status(root: &std::path::Path) -> Result<serde_json::Value> {
         .call("catalog", &serde_json::json!({}))
         .await
 }
+fn catalog_installed_harness(install: &std::path::Path) -> Result<agency::launch::InstalledHerdr> {
+    let binary = agency::launch::installed_herdr(install)?;
+    let claude = std::env::var_os("HCTL2_CLAUDE")
+        .map(std::path::PathBuf::from)
+        .or_else(claude_on_path)
+        .ok_or_else(|| {
+            PortError::new(
+                "HARNESS_NOT_STARTED",
+                "claude is not on PATH and HCTL2_CLAUDE is unset",
+                "install_claude_code",
+            )
+        })?;
+    agency::launch::InstalledHerdr::open(binary, &claude)
+}
+
+fn claude_on_path() -> Option<std::path::PathBuf> {
+    let output = std::process::Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let path = text.lines().next()?.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(path))
+    }
+}
+
 struct Unconfigured;
 impl agency::runtime::Runtime for Unconfigured {
     fn catalog(&self) -> Result<agency_proto::Catalog> {

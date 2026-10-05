@@ -375,6 +375,28 @@ impl Tenant {
                 ))?;
                 sql(tx.commit())?;
             }
+            RuntimeEvent::TurnReturned => {
+                let tx = sql(state.db.transaction())?;
+                let has_result: bool = sql(tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM results WHERE dispatch=?1)",
+                    [id],
+                    |r| r.get(0),
+                ))?;
+                if dispatch.state == DispatchState::Running && has_result {
+                    dispatch.state = DispatchState::ResultReturned;
+                    put_dispatch(&tx, &dispatch)?;
+                    event(
+                        &tx,
+                        id,
+                        "turn_returned",
+                        serde_json::json!({}),
+                        EvidenceLevel::AdapterEvent,
+                    )?;
+                } else if !has_result {
+                    return Err(PortError::invalid("turn returned without a result"));
+                }
+                sql(tx.commit())?;
+            }
             RuntimeEvent::Exited {
                 code,
                 requested_stop,
@@ -384,7 +406,7 @@ impl Tenant {
                     [id],
                     |r| r.get(0),
                 ))?;
-                if dispatch.state != DispatchState::CannotFulfill {
+                if dispatch.state == DispatchState::Running {
                     dispatch.state = crate::runtime::final_state(has_result, code, requested_stop);
                 }
                 put_dispatch(&state.db, &dispatch)?;
@@ -407,8 +429,11 @@ impl Tenant {
                 state.sessions.remove(id);
             }
             RuntimeEvent::ProtocolError(reason) => {
-                dispatch.state = DispatchState::CannotFulfill;
-                put_dispatch(&state.db, &dispatch)?;
+                // A later observation gap does not revoke an already returned turn.
+                if dispatch.state == DispatchState::Running {
+                    dispatch.state = DispatchState::CannotFulfill;
+                    put_dispatch(&state.db, &dispatch)?;
+                }
                 event(
                     &state.db,
                     id,

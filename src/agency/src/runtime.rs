@@ -25,6 +25,8 @@ pub enum RuntimeEvent {
         bytes: Vec<u8>,
         source: EvidenceLevel,
     },
+    /// The harness returned this turn; neither task acceptance nor physical exit.
+    TurnReturned,
     Exited {
         code: Option<i32>,
         requested_stop: bool,
@@ -43,6 +45,10 @@ pub struct Running {
 /// All physical handles remain in the implementation. Return actual promised effects.
 pub trait Runtime: Send + Sync {
     fn catalog(&self) -> Result<Catalog>;
+    /// Stop private runtime services when the Agency itself is shutting down.
+    fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
     fn start(
         &self,
         spec: &Sealed<ExecutionSpec>,
@@ -288,10 +294,10 @@ enum Frame {
     },
 }
 
-pub(crate) fn final_state(has_result: bool, code: Option<i32>, stopped: bool) -> DispatchState {
+pub(crate) fn final_state(has_result: bool, _code: Option<i32>, stopped: bool) -> DispatchState {
     if stopped {
         DispatchState::Cancelled
-    } else if has_result && code == Some(0) {
+    } else if has_result {
         DispatchState::ResultReturned
     } else {
         DispatchState::CannotFulfill

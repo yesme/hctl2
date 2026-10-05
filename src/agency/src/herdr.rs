@@ -1,4 +1,4 @@
-//! Private Herdr client for the locked 0.8.2 binary (protocol 20).
+//! Private Herdr client for the locked 0.9.3 binary (protocol 22).
 //! Pane and socket ids stay in this process. The caller supplies the pane
 //! program. This module does not register a profession or read a bundle.
 use crate::confine;
@@ -17,7 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const PROTOCOL: u32 = 20;
+pub const PROTOCOL: u32 = 22;
 
 pub struct Client {
     socket: PathBuf,
@@ -108,6 +108,16 @@ impl Server {
         credential_root: &Path,
         exec_parent: &Path,
     ) -> Result<Self> {
+        Self::start_with_read(binary, state, credential_root, exec_parent, &[])
+    }
+
+    pub(crate) fn start_with_read(
+        binary: &Path,
+        state: &Path,
+        credential_root: &Path,
+        exec_parent: &Path,
+        read_paths: &[PathBuf],
+    ) -> Result<Self> {
         let binary = binary.canonicalize().map_err(|_| {
             PortError::new(
                 "HERDR_BINARY_MISSING",
@@ -123,6 +133,25 @@ impl Server {
             .ok_or_else(|| PortError::invalid("Herdr socket directory is missing"))?
             .to_path_buf();
         crate::storage::private_dir(&socket_dir)?;
+        let mut read_paths = read_paths.to_vec();
+        read_paths.push(
+            binary
+                .parent()
+                .ok_or_else(|| PortError::invalid("Herdr has no parent"))?
+                .to_path_buf(),
+        );
+        if cfg!(target_os = "linux") {
+            let helper = std::env::var_os("HCTL2_CONFINE_BIN")
+                .map(PathBuf::from)
+                .unwrap_or(std::env::current_exe()?);
+            read_paths.push(
+                helper
+                    .canonicalize()?
+                    .parent()
+                    .ok_or_else(|| PortError::invalid("helper has no parent"))?
+                    .to_path_buf(),
+            );
+        }
         let _ = std::fs::remove_file(&socket);
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
@@ -134,12 +163,19 @@ impl Server {
             .env(
                 "HCTL2_CONFINE_ALLOW",
                 format!(
-                    "{}\n{}\n{}\n{}",
+                    "{}\n{}\n{}",
                     state.display(),
                     socket_dir.display(),
-                    binary.parent().unwrap_or(binary.as_path()).display(),
                     exec_parent.display()
                 ),
+            )
+            .env(
+                "HCTL2_CONFINE_READ",
+                read_paths
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             )
             .process_group(0)
             .stdin(Stdio::null())
@@ -174,7 +210,7 @@ impl Server {
         let detail = std::fs::read_to_string(state.join("server.err")).unwrap_or_default();
         Err(PortError::new(
             "HERDR_NOT_READY",
-            format!("locked Herdr server did not answer protocol 20: {detail}"),
+            format!("locked Herdr server did not answer protocol {PROTOCOL}: {detail}"),
             "use_locked_herdr",
         ))
     }
@@ -191,7 +227,7 @@ impl Drop for Server {
     }
 }
 
-/// State sits next to the execution directory, outside the credential root.
+/// State is outside the pane's working directory and outside the credential root.
 pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> {
     let credential_root = credential_root.canonicalize().map_err(|_| {
         PortError::new(
@@ -207,11 +243,17 @@ pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> 
             "choose_execution_directory",
         )
     })?;
-    let state = exec_parent.join("herdr-state");
-    if state.starts_with(&credential_root) || credential_root.starts_with(&state) {
+    let parent = exec_parent.parent().unwrap_or(Path::new("/tmp"));
+    let digest = &hash(credential_root.as_os_str().as_encoded_bytes())[..20];
+    let state = parent.join(format!("hctl2-herdr-state-{digest}"));
+    if state.starts_with(&exec_parent)
+        || exec_parent.starts_with(&state)
+        || state.starts_with(&credential_root)
+        || credential_root.starts_with(&state)
+    {
         return Err(PortError::new(
             "HERDR_STATE_UNSAFE",
-            "Herdr state directory is inside the credential root",
+            "Herdr state directory overlaps the pane directory or the credential root",
             "choose_state_directory",
         ));
     }

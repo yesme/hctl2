@@ -308,6 +308,83 @@ async fn terminal(client: &Client, d: &Dispatch, key: &str) -> Trace {
 }
 const RESULT: &str = "read -r init; printf '%s\n' '{\"type\":\"result\",\"schema\":\"test.result.v1\",\"output\":\"answer\"}'";
 
+struct TurnThenLost;
+struct FinishedSession;
+impl agency::runtime::Session for FinishedSession {
+    fn input(&mut self, _: &[u8]) -> Result<()> {
+        Err(PortError::invalid("fixture takes no input"))
+    }
+    fn stop(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+impl Runtime for TurnThenLost {
+    fn catalog(&self) -> Result<Catalog> {
+        ScriptRuntime::new(ScriptConfig {
+            program: "/bin/sh".into(),
+            arguments: vec![],
+        })
+        .catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        use agency::runtime::RuntimeEvent;
+        let (tx, events) = std::sync::mpsc::sync_channel(4);
+        for event in [
+            RuntimeEvent::Proposal {
+                schema: "claude.result.v1".into(),
+                bytes: b"one turn, not Task acceptance".to_vec(),
+                source: EvidenceLevel::AdapterEvent,
+            },
+            RuntimeEvent::TurnReturned,
+            RuntimeEvent::ProtocolError("HERDR_EVENTS_LOST".into()),
+            RuntimeEvent::Exited {
+                code: None,
+                requested_stop: false,
+            },
+        ] {
+            tx.send(event).unwrap();
+        }
+        Ok(agency::runtime::Running {
+            session: Arc::new(std::sync::Mutex::new(Box::new(FinishedSession))),
+            events,
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_later_event_gap_does_not_revoke_the_returned_turn() {
+    let rig = Rig::with_runtime(Arc::new(TurnThenLost)).await;
+    let (client, key) = rig.pair("turn-then-lost").await;
+    let dispatch: Dispatch = client
+        .call("prepare", &request(&client, "turn-then-lost").await)
+        .await
+        .unwrap();
+    activate(&client, &dispatch).await;
+    let trace = terminal(&client, &dispatch, &key).await;
+    assert_eq!(trace.dispatch.state, DispatchState::ResultReturned);
+    assert!(
+        !trace.complete,
+        "the later event gap must still be reported"
+    );
+    assert!(trace.events.iter().any(|e| e.kind == "protocol_error"));
+    let results: ResultPage = client
+        .call("results", &ResultQuery::of(dispatch.reference))
+        .await
+        .unwrap();
+    assert_eq!(results.proposals.len(), 1);
+    assert_eq!(
+        results.proposals[0].output,
+        b"one turn, not Task acceptance"
+    );
+    rig.close().await;
+}
+
 #[tokio::test]
 async fn prepare_and_prepared_activation_reject_expired_deadline() {
     let rig = Rig::new(RESULT).await;

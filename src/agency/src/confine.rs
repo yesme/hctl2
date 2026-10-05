@@ -91,7 +91,7 @@ pub fn command(
     }
 }
 
-/// Scheme strings treat `\` as an escape. A raw backslash would deny a different path.
+/// Scheme strings treat `\\` as an escape. A raw backslash would deny a different path.
 fn scheme_literal(path: &str) -> Result<String> {
     if path.contains('\n') || path.contains('\0') {
         return Err(PortError::invalid("credential path cannot be embedded"));
