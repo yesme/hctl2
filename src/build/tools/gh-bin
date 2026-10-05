@@ -1,46 +1,46 @@
 #!/usr/bin/env dotslash
 
 {
-  "name": "gh-2.99.0",
+  "name": "gh-2.102.0",
   "platforms": {
     "linux-x86_64": {
-      "size": 14930607,
+      "size": 15319960,
       "hash": "sha256",
-      "digest": "ed4960225d2833e04a61590d9fa2b5773d147f3aa375459e5466a40c102f3832",
+      "digest": "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386",
       "format": "tar.gz",
-      "path": "gh_2.99.0_linux_amd64/bin/gh",
+      "path": "gh_2.102.0_linux_amd64/bin/gh",
       "providers": [{
-        "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_linux_amd64.tar.gz"
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz"
       }]
     },
     "macos-x86_64": {
-      "size": 15586528,
+      "size": 15995994,
       "hash": "sha256",
-      "digest": "70c05750c75df9465bc73b994e8bc379243bb494271f1b51f54ead2e19e45471",
+      "digest": "b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3",
       "format": "zip",
-      "path": "gh_2.99.0_macOS_amd64/bin/gh",
+      "path": "gh_2.102.0_macOS_amd64/bin/gh",
       "providers": [{
-        "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_amd64.zip"
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_amd64.zip"
       }]
     },
     "macos-aarch64": {
-      "size": 14001348,
+      "size": 14359983,
       "hash": "sha256",
-      "digest": "94d4bd7e88563a9cb414e651e88acc4f1728a87476752460906d824230748d37",
+      "digest": "da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e",
       "format": "zip",
-      "path": "gh_2.99.0_macOS_arm64/bin/gh",
+      "path": "gh_2.102.0_macOS_arm64/bin/gh",
       "providers": [{
-        "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_arm64.zip"
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_arm64.zip"
       }]
     },
     "windows-x86_64": {
-      "size": 15101526,
+      "size": 15512013,
       "hash": "sha256",
-      "digest": "ea040d0ba03176440d13481caf67f742236c3b38ce1d4442a9da37e9bb98d8f2",
+      "digest": "ae64e556ecc240b200f7eba60d550e4bb60d78e860e69dd88c449405b86067f4",
       "format": "zip",
-      "path": "gh_2.99.0_windows_amd64/bin/gh.exe",
+      "path": "gh_2.102.0_windows_amd64/bin/gh.exe",
       "providers": [{
-        "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_windows_amd64.zip"
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_windows_amd64.zip"
       }]
     }
   }

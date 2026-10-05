@@ -24,6 +24,7 @@ dependencies = [
  "participant",
  "rusqlite",
  "rusqlite_migration",
+ "rustix",
  "serde",
  "serde_json",
  "store",
@@ -2679,6 +2680,7 @@ dependencies = [
  "clap",
  "facts",
  "foundation",
+ "rustix",
  "serde_json",
 ]
 
