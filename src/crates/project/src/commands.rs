@@ -66,6 +66,10 @@ fn validate_definition(value: &Definition) -> Result<()> {
             "name, object policies and declared role assignments required",
         ));
     }
+    serde_json::from_value::<participant::selection::SelectionPolicy>(
+        value.settings.selection_policy.clone(),
+    )
+    .map_err(|error| invalid(format!("invalid selection policy: {error}")))?;
     Ok(())
 }
 
@@ -282,6 +286,9 @@ pub fn prepare(
                 version: *roster_version,
             });
             let next = roster_version.map_or(1, |v| v + 1);
+            for selected in selections {
+                validate_selection(selected, room_id)?;
+            }
             let validated = participant::selection::validate_roster(
                 store,
                 existing.as_ref().ok_or_else(stale)?,
@@ -292,7 +299,6 @@ pub fn prepare(
             }
             let mut refs = vec![];
             for (index, s) in selections.iter().enumerate() {
-                validate_selection(s, room_id)?;
                 let selection_id = format!("{room_id}:{next}:{index}");
                 let mut record =
                     value_record(key(scope.clone(), "room_selection", &selection_id), 1, s)?;
@@ -301,6 +307,7 @@ pub fn prepare(
                     s.profession.clone(),
                     s.agency.clone(),
                 ];
+                record.sources.extend(s.worker_profiles.iter().cloned());
                 refs.push(reference(&record));
                 plan.records.push(record);
             }
@@ -403,7 +410,6 @@ fn validate_selection(s: &Selection, room_id: &str) -> Result<()> {
     if s.room_id != room_id
         || s.responsibility.trim().is_empty()
         || s.display_name.trim().is_empty()
-        || s.worker_profiles.is_empty()
         || !s.permission.is_object()
         || !s.budget.is_object()
     {

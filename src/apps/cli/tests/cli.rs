@@ -1,5 +1,8 @@
 //! CLI wiring for init/start/status/doctor/export/backup/restore against a live daemon.
 
+#[path = "cli/profile.rs"]
+mod profile;
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;

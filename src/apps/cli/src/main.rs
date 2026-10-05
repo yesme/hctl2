@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod agency;
+mod profile;
 mod project;
 mod repo;
 mod room;
@@ -80,6 +81,8 @@ enum Command {
     Request(project::RequestCommand),
     #[command(subcommand)]
     Agency(agency::AgencyCommand),
+    #[command(subcommand)]
+    Profile(profile::ProfileCommand),
 }
 
 #[derive(Subcommand)]
@@ -184,6 +187,7 @@ async fn context_cli(command: ContextCommand, root: &Path, as_json: bool) -> Res
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
         Command::Agency(command) => agency::dispatch(command, root, json).await,
+        Command::Profile(command) => profile::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,
