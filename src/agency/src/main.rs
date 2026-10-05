@@ -57,6 +57,7 @@ fn main() {
 async fn run(args: Args) -> Result<()> {
     match args.command {
         Command::Serve { script_config } => {
+            agency::confine::refuse_covered_credential_root(&args.root)?;
             let config = if let Some(path) = script_config {
                 Some(serde_json::from_slice::<ScriptConfig>(&std::fs::read(
                     path,

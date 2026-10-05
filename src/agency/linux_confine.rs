@@ -49,27 +49,67 @@ fn restrict(work: &Path, credential: &Path) -> io::Result<()> {
     let abi = ABI::V1;
     let read_exec = AccessFs::from_read(abi);
     let full = AccessFs::from_all(abi);
+    // openpty writes /dev/ptmx. /dev/pts is a separate devpts mount, so a rule
+    // on /dev does not cover the slave. Write and character-device creation
+    // stay on those two trees; unlink and regular-file creation stay denied.
+    let device = read_exec | AccessFs::WriteFile | AccessFs::MakeChar;
     let mut ruleset = Ruleset::default()
         .handle_access(full)
         .map_err(io_err)?
         .create()
         .map_err(io_err)?;
     ruleset = add(ruleset, work, full)?;
-    for dir in [
-        "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", "/proc", "/opt",
+    if let Some(extra) = env::var_os("HCTL2_CONFINE_ALLOW") {
+        for item in extra.to_string_lossy().split('\n') {
+            if item.is_empty() {
+                continue;
+            }
+            let path = Path::new(item);
+            if !path.exists() {
+                continue;
+            }
+            let path = path.canonicalize().map_err(|error| {
+                Error::other(format!(
+                    "allowed path {item} cannot be canonicalized: {error}"
+                ))
+            })?;
+            if agency::confine::allowed_tree_contains_credential(&path, credential) {
+                return Err(Error::other(format!(
+                    "credential root is inside allowed path {}",
+                    path.display()
+                )));
+            }
+            let access = if path.is_dir() { full } else { read_exec };
+            ruleset = add(ruleset, &path, access)?;
+        }
+    }
+    for (dir, access) in [
+        ("/bin", read_exec),
+        ("/usr", read_exec),
+        ("/lib", read_exec),
+        ("/lib64", read_exec),
+        ("/etc", read_exec),
+        ("/dev", device),
+        ("/dev/pts", device),
+        ("/proc", read_exec),
+        ("/opt", read_exec),
     ] {
         let path = Path::new(dir);
         if !path.is_dir() {
             continue;
         }
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let path = path.canonicalize().map_err(|error| {
+            Error::other(format!(
+                "allowed path {dir} cannot be canonicalized: {error}"
+            ))
+        })?;
         if agency::confine::allowed_tree_contains_credential(&path, credential) {
             return Err(Error::other(format!(
                 "credential root is inside allowed path {}",
                 path.display()
             )));
         }
-        ruleset = add(ruleset, &path, read_exec)?;
+        ruleset = add(ruleset, &path, access)?;
     }
     let status = ruleset.restrict_self().map_err(io_err)?;
     if !matches!(status.ruleset, RulesetStatus::FullyEnforced) {
