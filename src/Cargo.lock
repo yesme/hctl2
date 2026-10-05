@@ -23,6 +23,7 @@ dependencies = [
  "landlock",
  "participant",
  "rusqlite",
+ "rusqlite_migration",
  "rustix",
  "serde",
  "serde_json",

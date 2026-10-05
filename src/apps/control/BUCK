@@ -88,6 +88,7 @@ rust_test(
     crate_root = "tests/boundary.rs",
     deps = [
         ":control",
+        "root//crates/agency-proto:agency_proto",
         "root//crates/proto:proto",
         "root//crates/store:store",
         "root//third-party/rust:hyper-util",

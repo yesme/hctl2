@@ -20,6 +20,7 @@ filegroup(
 DEPS = [
     "root//crates/agency-proto:agency_proto",
     "root//third-party/rust:rusqlite",
+    "root//third-party/rust:rusqlite_migration",
     "root//third-party/rust:rustix",
     "root//third-party/rust:serde",
     "root//third-party/rust:serde_json",
@@ -46,7 +47,19 @@ rust_library(
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env(),
     labels = CI_FAST,
-    tests = [":port_test", ":control_port_test", ":runtime_test"],
+    tests = [":unit_test", ":port_test", ":control_port_test", ":runtime_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "unit_test",
+    srcs = glob(["src/**/*.rs"], exclude = ["src/main.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
 
@@ -143,6 +156,7 @@ filegroup(
     name = "clippy",
     srcs = {
         "library": ":service[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
         "binary": ":agency[clippy.txt]",
         "cli": ":cli_test[clippy.txt]",
         "runtime": ":runtime_test[clippy.txt]",

@@ -63,6 +63,13 @@ case "${1:-}" in
         if [ -n "$cc_bin" ]; then
             set -- "--config" "hctl2.cc=$cc_bin" "$@"
         fi
+        # read_config does not see .buckconfig.local. Forward the opt-in so
+        # the execution platform can turn on remote execution on this machine.
+        if [ -f "$project_root/../.buckconfig.local" ] &&
+            grep -q '^remote_execution *= *true$' "$project_root/../.buckconfig.local"
+        then
+            set -- "--config" "hctl2.remote_execution=true" "$@"
+        fi
         set -- "$buck_command" "$@"
         ;;
 esac
@@ -106,6 +113,12 @@ case "${HCTL2_BUCK2_CACHE:-local}" in
         exit 2
         ;;
 esac
+
+# This machine's .buckconfig.local points Buck at NativeLink. Starting the
+# old bazel-remote store here would only refill a cache nothing reads.
+if [ -f "$project_root/../.buckconfig.local" ]; then
+    exec "$buck2_bin" "$@"
+fi
 
 cache_root=${HCTL2_BUCK2_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/hctl2/buck2-reapi}
 cache_data_dir=$cache_root/data
