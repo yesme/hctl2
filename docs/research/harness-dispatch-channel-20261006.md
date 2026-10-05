@@ -24,7 +24,7 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 
 | Harness（本机或文档版本） | 不经输入框交正文 | 改写提交文字的钩子 | 一轮结束与回答 | 只对一次启动、不动全局配置 | 续接 | 结构化接口还有没有交互 pane | Herdr 进程名 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Codex CLI 0.160.1 | 有。`codex exec` 与 app-server `turn/start` 把正文当参数 | 没有替换字段。`UserPromptSubmit` 只能追加 developer context 或阻断 | `turn.completed`；回答在 `item.completed` 的 `agent_message`，也在会话 jsonl 的 assistant `output_text` | 单次 `-c` 覆盖配置、不写文件。钩子在 `~/.codex` 或项目 `.codex`，要信任 | `thread/resume`、`codex exec resume`、`codex resume` | exec 没有交互 pane。TUI 才是 pane | `codex` |
+| Codex CLI 0.160.1 | 有。`codex exec` 与 app-server `turn/start` 把正文当参数 | 没有替换字段。`UserPromptSubmit` 只能追加 developer context 或阻断 | `turn.completed`；回答在 `item.completed` 的 `agent_message`，也在会话 jsonl 的 assistant `output_text` | 单次 `-c` 覆盖配置、不写文件。钩子在 `~/.codex` 或项目 `.codex`，要信任 | `thread/resume`、`codex exec resume`、`codex resume`、`codex resume --remote` | exec 没有 pane。`codex resume --remote` 连到同一个 app-server 时，界面会画出另一个客户端的 `turn/start`。不带 `--remote` 的 TUI 仍是输入框 | `codex` |
 | Grok Build 1.0.46 | 有。`grok -p` 与 `grok agent stdio` 的 `session/prompt` | 未查到能替换正文的输出字段。钩子能追加上下文、拒绝工具、拦住 Stop | headless 的 json / streaming-json；ACP 的 `session/update` | 单次 `--allow` / `--deny` / `--cwd`。钩子目录是 `~/.grok/hooks` 与项目 `.grok/hooks` | `--resume`、`-c`、ACP `session/load` | `grok agent stdio` 官方文档说是没有交互界面的 ACP。TUI 另开 | `grok`、`grok-build` |
 | Antigravity CLI `agy` 1.2.17 | 有。`--print` / `--prompt`，stdin 可作 `stream-json` | 未查到 | `--output-format json` 或 `stream-json` | 单次 `--model`、`--mode`、`--conversation`。配置根未查到 | `--continue`、`--conversation <id>` | `--print` 的帮助写明非交互。交互 TUI 是默认路径 | `agy`、`antigravity` |
 | Kimi Code 2.1.1 | 有。`kimi -p` 与 `kimi acp` | 未查到替换字段。`UserPromptSubmit` 官方文档说返回文本附加到上下文，或阻断本轮 | `Stop`；`--output-format stream-json` 的 Assistant 消息；另有 `TurnStarted` | `KIMI_CODE_HOME` 可整份挪走。钩子默认在用户配置。单次 `--skills-dir`、`--model` | `--session`、`-c` | `-p` 与 `acp` 的帮助都写明不开 TUI | `kimi` |
@@ -47,9 +47,15 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 
 1. **交法。** 实测：正文是 exec 的参数，不是在 TUI 输入框里敲的。官方文档说 app-server 用 `thread/start` 打开线程，再用 `turn/start` 提交 `user input`。源码里看到 `UserPromptSubmit` 的命令输出 schema 只有 `additionalContext`、阻断用的 `decision: block` 和通用的 `continue`；没有替换 `prompt` 的字段。官方文档说纯文本 stdout 会变成额外的 developer context。所以 Codex 做不到 Claude 那种「提交前把标记换成正文」。
 2. **结束与回答。** 实测见上。子代理：官方文档有 `SubagentStart` / `SubagentStop`，matcher 看 `agent_type`。这次记录里没有子代理事件。
-3. **一次启动。** 本机帮助：`-c` 覆盖本会从 `~/.codex/config.toml` 读到的值，不写回文件。钩子文件在用户目录或项目 `.codex`，非托管命令钩子要先信任。没有看到只给这一次加载、又能改写正文的插件目录。
-4. **续接。** 官方文档说 `thread/resume` 按线程 id 接着写。本机帮助有 `codex exec resume` 与 `codex resume`。这一轮没有再开第二次对话。
-5. **pane。** 实测：exec 写完 JSON 就退出，没有交互界面。Herdr 认的是进程名 `codex` 的交互会话；`agent.prompt` 仍把文字交进那个 pane。结构化 exec / app-server 与那个 pane 不是同一条路。
+3. **一次启动。** 本机帮助：`-c` 覆盖本会从 `~/.codex/config.toml` 读到的值，不写回文件。钩子文件在用户目录或项目 `.codex`，非托管命令钩子要先信任。本机 `codex plugin --help`（0.160.1）的子命令是 `add`、`list`、`marketplace`、`remove`：从 marketplace 安装，或卸载并删掉本地缓存。没有看到只给这一次加载、又能改写已提交正文的子命令。
+4. **续接。** 官方文档说 `thread/resume` 按线程 id 接着写。本机帮助有 `codex exec resume` 与 `codex resume`。`codex resume` 也接受 `--remote`。exec 那一轮没有再开第二次对话；`--remote` 的续接见下面。
+5. **pane。** 实测：exec 写完 JSON 就退出，没有交互界面。不带 `--remote` 的 TUI 仍把人敲的字收进输入框；Herdr 的 `agent.prompt` 走的是这条。把 TUI 连到 app-server 之后，界面和 `turn/start` 可以是同一条线程，见下面。
+
+**`--remote` 与 daemon。** 本机帮助（0.160.1）：`codex --remote <ADDR>` 把 TUI 连到 app-server，地址可以是 `ws://`、`wss://`、`unix://`、`unix://PATH`。`codex agents` 的帮助写着浏览共享的本地 app-server daemon 上的会话，它也接受 `--remote`。这次没有另开 `codex agents` 的界面。`codex app-server daemon` 的子命令有 `bootstrap`、`start`、`restart`、`update`、`enable-remote-control`、`disable-remote-control`、`stop`、`version`。`bootstrap` 的帮助写着为 SSH 场景安装持久的本地管理，可选 `--remote-control`。`start` 的帮助写着若尚未运行则启动。官方文档把 `codex app-server --listen` 配 `codex --remote` 写成连上 TUI 的做法，并写明 app-server 主要用于开发和调试，可能不经通知就变。
+
+1. **另一个客户端 `turn/start`，界面显示不显示。** 实测：显示。一次性 `codex app-server --listen ws://127.0.0.1:<port>`，`CODEX_HOME` 指到 `/tmp` 下的临时目录，里面只有复制来的 `auth.json` 和 `config.toml`，测完删除。先 `thread/start`（`sandbox` 为 `read-only`，`approvalPolicy` 为 `never`）。这一刻还没有 rollout：`codex resume <threadId> --remote` 退出，错误是 `thread/resume failed: no rollout found`（JSON-RPC -32600）。再由第一个客户端 `turn/start`，正文要求只回 `HCTL_REMOTE_A`。这一轮的 RPC 收到 `turn/completed`，临时目录里出现一份 rollout。然后 `codex resume <threadId> --remote ws://127.0.0.1:<port>` 留在界面上，屏幕上有第一轮的用户正文和 `HCTL_REMOTE_A`。另一个 WebSocket 客户端对同一 `threadId` `turn/start`，正文要求只回 `HCTL_REMOTE_B`。界面上出现了这句用户正文，状态行是 Working，也出现了 `HCTL_REMOTE_B`；窗口标题一度是 `Return HCTL_REMOTE_B`。第二客户端这条连接上没有读到 `turn/completed`。空的 `codex --remote`（不 resume）能停住，当时 `thread/list` 是 0 条，没有对那个空界面发 `turn/start`。`codex resume --remote` 再加 `--sandbox` 会被拒绝：`Permission overrides are not supported when resuming a remote task.` 沙箱写在 `thread/start` 和 `turn/start` 上。线程 id 是 `01a10e6f-27fb-7232-a382-1890d21314c4`。
+2. **Herdr 认不认 `--remote`。** 实测：认进程名。resume 那次的 `comm` 是 `codex`，参数是 `codex resume <threadId> --remote ws://127.0.0.1:<port>`。另一次空的 `codex --remote ws://127.0.0.1:<port>` 也是 `comm` 为 `codex`，并且一直活着。源码里看到 Herdr 0.9.3（`7b116c05`）的 `lookup_agent` 只认 basename `codex`，没有按 `--remote` 排除。没有把这个进程放进 Herdr pane，屏幕状态规则未实测。
+3. **daemon 怎么起、装在哪、动不动全局配置。** 本机已经有一个托管 daemon。这次没有 `start`、`stop`、`bootstrap`，也没有 `enable-remote-control`。`codex app-server daemon version` 打印 `status` 为 running，`backend` 为 `pid`，`managedCodexPath` 为 `~/.codex/packages/app-server-daemon/current/bin/codex`，版本 0.160.1，socket 为 `~/.codex/app-server-control/app-server-control.sock`。进程命令行是该包 `releases/0.160.1-aarch64-apple-darwin/bin/codex app-server --listen unix:// --managed-daemon`，同目录还有 `pid-update-loop` 和 `codex-code-mode-host`。`~/Library/LaunchAgents` 里没有名字带 codex 或 openai 的 plist。界面那一轮连的不是这个托管进程，而是临时 `CODEX_HOME` 上的一次性 `--listen`。跑完后真实 `~/.codex` 的 `config.toml`、`auth.json`、`hooks.json`、`.codex-global-state.json` 哈希未变，`sessions/2026/10/06` 没有新的 rollout，托管进程的 pid 未变。`bootstrap` 会不会改全局配置：未实测。帮助只说明它要安装持久管理。
 
 ### Grok Build
 
@@ -137,9 +143,11 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 
 ## 决定建议
 
-第二家 harness（Codex）不要照搬 Claude 的「输入框里交标记，再用钩子换成正文」。Codex 的 `UserPromptSubmit` 换不了正文，只能追加 developer context 或阻断。正文走 app-server 的 `turn/start`，或等价的 `codex exec`：参数就是正文，会话记录里的 `input_text` 与参数逐字相同，一轮结束看 `turn.completed` 和 assistant 的 `output_text`。
+第二家 harness（Codex）不要照搬 Claude 的「输入框里交标记，再用钩子换成正文」。Codex 的 `UserPromptSubmit` 换不了正文，只能追加 developer context 或阻断。正文走 app-server 的 `turn/start`，或等价的 `codex exec`：参数就是正文。exec 那一轮里，会话记录的 `input_text` 与参数逐字相同，结束看 `turn.completed` 和 assistant 的 `output_text`。
 
-交互 pane 是另一条路。Herdr `--kind codex` 认得 TUI，`agent.prompt` 仍进输入框，3d 在 Claude 上已经避开的那类问题会再出现。建议不要把「数据交正文」和「pane 里看交互」合成一个安装步骤。`herdr integration install codex` 已负责会话身份和恢复，不必为交正文再做一条同类命令。若所有者以后要在 pane 里看 Codex，沿用这条已有安装；交正文仍走 app-server。
+交互 pane 可以接到同一条线程上，不必再做一条安装命令。本机实测：一次性 `codex app-server --listen` 上，第一轮 `turn/start` 把 rollout 写出来之后，`codex resume <threadId> --remote` 的界面画出了另一个客户端随后的 `turn/start`。进程名仍是 `codex`，Herdr 0.9.3 按这个名字认。建议 pane 里跑连着这个 app-server 的 `codex --remote`（要看已经打开的线程就用 `codex resume <id> --remote`），正文由另一个客户端 `turn/start`。`herdr integration install codex` 仍只负责会话身份和恢复。沙箱写在 `thread/start` 和 `turn/start` 上；`resume --remote` 不接受 `--sandbox`。线程要等第一次 `turn/start` 写出 rollout，之前 `resume --remote` 会因找不到 rollout 退出。
+
+默认启动仍是分开的。`herdr agent start --kind codex` 拉起的是不带 `--remote` 的 TUI，`agent.prompt` 仍进输入框。这次没有测那个不带 `--remote` 的界面会不会看到 app-server 上的轮次。也不必为了交正文去跑 `daemon bootstrap`：一次性 `--listen` 就够，而且没有改真实的 `~/.codex` 配置。本机那个已经在跑的托管 daemon 装在 `~/.codex/packages/app-server-daemon`，这次没有往它里面交 turn。
 
 这是建议，不代替所有者决定开哪一包、谁写。
 
@@ -149,6 +157,7 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 | --- | --- | --- | --- |
 | Codex CLI | 本机 0.160.1 | 实测 | 2026-10-06，一轮 `codex exec --json`；会话 `rollout-2026-10-06T06-07-45-*.jsonl` 的 user `input_text` 与参数逐字相同 |
 | Codex app-server / hooks | 文档页 2026-10-06 读取；schema 为仓库 main 上的 `user-prompt-submit.command.output.schema.json` | 官方文档说；源码里看到 | [App Server](https://developers.openai.com/codex/app-server)、[Hooks](https://developers.openai.com/codex/hooks)、[schema](https://github.com/openai/codex/blob/main/codex-rs/hooks/schema/generated/user-prompt-submit.command.output.schema.json) |
+| Codex `--remote` / daemon | 本机 0.160.1；Herdr 源码 `7b116c05` | 实测；源码里看到；官方文档说 | 2026-10-06。临时 `CODEX_HOME` 上一次性 `--listen`。线程 `01a10e6f-27fb-7232-a382-1890d21314c4`：第一轮 `turn/start` 之后 `codex resume --remote` 的界面画出第二客户端的 `HCTL_REMOTE_B`。托管 daemon 只读了 `daemon version` 和进程命令行，没有 bootstrap。`codex plugin --help` 见 Codex 一节第 3 问 |
 | Grok Build | 本机 1.0.46；文档为 `xai-org/grok-build` main 与 docs.x.ai | 本机帮助；官方文档说 | [headless](https://docs.x.ai/build/cli/headless-scripting.md)、[hooks 指南](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/custom-hooks.md) |
 | Antigravity CLI | 本机 `agy` 1.2.17 | 本机帮助 | 钩子与配置根未查到 |
 | Kimi Code | 本机 2.1.1；文档页标 2026-09-24 | 本机帮助；官方文档说 | [Hooks](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/hooks.html) |
@@ -160,4 +169,4 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 | Pi | 未安装 | 未查到 | 只确认 Herdr 认进程名 |
 | Herdr | 0.9.3，`7b116c05bfda646af39d2524c54e70c751f57ee8` | 源码里看到 | `src/detect/mod.rs` 的 `Agent` 与 `lookup_agent` |
 
-实测没有改任何一家的全局配置，没有打印凭据，没有碰 `~/.local/state/hctl2`。Codex 以外没有开登录会话。
+实测没有改任何一家的全局配置，没有打印凭据，没有碰 `~/.local/state/hctl2`。Codex 的 `--remote` 一轮用的是临时 `CODEX_HOME`；真实 `~/.codex` 的 `config.toml`、`auth.json`、`hooks.json`、`.codex-global-state.json` 哈希未变。Codex 以外没有开登录会话。
