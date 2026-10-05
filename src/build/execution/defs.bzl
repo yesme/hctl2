@@ -1,3 +1,29 @@
+def _executor_config():
+    # Off unless this machine's .buckconfig.local opts in. The committed
+    # default stays local execution plus the shared cache.
+    # .buckconfig.local is invisible to read_config, so src/buck2 passes this
+    # as --config when that file sets remote_execution = true.
+    if read_config("hctl2", "remote_execution", "false") == "true":
+        return CommandExecutorConfig(
+            local_enabled = True,
+            remote_enabled = True,
+            remote_cache_enabled = True,
+            allow_cache_uploads = True,
+            max_cache_upload_mebibytes = 2048,
+            remote_execution_use_case = "buck2-default",
+            remote_execution_properties = {
+                "OSFamily": "macos",
+                "cpu_count": "1",
+            },
+        )
+    return CommandExecutorConfig(
+        local_enabled = True,
+        remote_enabled = False,
+        remote_cache_enabled = True,
+        allow_cache_uploads = True,
+        max_cache_upload_mebibytes = 2048,
+    )
+
 def _local_cache_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = dict()
     constraints.update(ctx.attrs.cpu_configuration[ConfigurationInfo].constraints)
@@ -7,13 +33,7 @@ def _local_cache_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     platform = ExecutionPlatformInfo(
         label = ctx.label.raw_target(),
         configuration = configuration,
-        executor_config = CommandExecutorConfig(
-            local_enabled = True,
-            remote_enabled = False,
-            remote_cache_enabled = True,
-            allow_cache_uploads = True,
-            max_cache_upload_mebibytes = 2048,
-        ),
+        executor_config = _executor_config(),
     )
     return [
         DefaultInfo(),
