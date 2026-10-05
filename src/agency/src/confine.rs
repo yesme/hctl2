@@ -8,16 +8,25 @@ use std::{
     process::Command,
 };
 
-pub fn execution_dir(credential_root: &Path, dispatch: &str) -> Result<PathBuf> {
-    let credential_root = credential_root.canonicalize().map_err(|_| {
-        PortError::new(
-            "CREDENTIAL_ROOT_UNRESOLVED",
-            "credential root cannot be canonicalized",
-            "choose_credential_root",
-        )
-    })?;
+fn parent_and_root(credential_root: &Path) -> Result<(PathBuf, PathBuf)> {
+    let credential_root = credential_root
+        .canonicalize()
+        .map_err(|_| unresolved_credential())?;
     let digest = &agency_proto::hash(credential_root.as_os_str().as_encoded_bytes())[..20];
-    let parent = PathBuf::from("/tmp").join(format!("hctl2-exec-{digest}"));
+    Ok((
+        PathBuf::from("/tmp").join(format!("hctl2-exec-{digest}")),
+        credential_root,
+    ))
+}
+
+/// The directory every execution directory for this credential root sits in. It is
+/// shared: a running Herdr keeps its own state directory beside them.
+pub fn execution_parent(credential_root: &Path) -> Result<PathBuf> {
+    Ok(parent_and_root(credential_root)?.0)
+}
+
+pub fn execution_dir(credential_root: &Path, dispatch: &str) -> Result<PathBuf> {
+    let (parent, credential_root) = parent_and_root(credential_root)?;
     let dir = parent.join(dispatch);
     if dir.starts_with(&credential_root) {
         return Err(PortError::new(
@@ -29,6 +38,28 @@ pub fn execution_dir(credential_root: &Path, dispatch: &str) -> Result<PathBuf> 
     crate::storage::private_dir(&parent)?;
     crate::storage::private_dir(&dir)?;
     Ok(dir)
+}
+
+/// Drop a dispatch's execution directory once its process is reaped, then the
+/// parent if nothing else is in it. A concurrent dispatch or a Herdr state
+/// directory keeps the parent alive, because `remove_dir` needs it empty.
+/// Something that is not a directory under the parent is left alone: `private_dir`
+/// refused to run in it, and this does not delete what it did not create.
+///
+/// The parent is one the caller resolved while the credential root still existed.
+/// Re-resolving it here would fail once that root is gone, which is exactly when a
+/// shutting-down Agency reaps its last child.
+pub fn release_execution_dir(parent: &Path, dispatch: &str) {
+    // `remove_dir_all` takes a path built from a string: only ever one named child
+    // of the parent, never a path that climbs out of it.
+    let mut components = Path::new(dispatch).components();
+    let single = matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none();
+    if !single {
+        return;
+    }
+    let _ = fs::remove_dir_all(parent.join(dispatch));
+    let _ = fs::remove_dir(parent);
 }
 
 /// Build a command whose view cannot read `credential_root`.
