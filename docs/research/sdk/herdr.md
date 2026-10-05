@@ -72,3 +72,47 @@ Agency 参考实现的运行时。HCTL 的 Agency adapter 通过 Herdr 的本地
 
 - **2026-10-05 · 3c 结束与隔离复核（PR #335）**：锁定版的 `pane.exited` 仍没有退出码。退出文件放在执行目录中时，程序能提前写出假退出码。只把文件移到另一目录也不能证明拒写。macOS 实测在已经受限的 Herdr 下再次运行 `sandbox-exec` 返回 71，原因是 `sandbox_apply: Operation not permitted`，不能用嵌套配置补出第二层限制。
 - **同日 · 当前适配选择**：非交互 Claude print 由 Agency 用标准库 `Command` 启动、`Child::try_wait` 取得内核退出状态，stdout / stderr 用原生 Unix socket 成对收取，不从屏幕解析。Herdr 继续持有窗格和 PTY；固定启动脚本只交回该 PTY 的设备路径，Agency 把收取的字节显示到这个终端。真实执行单独应用一次既有 sandbox / Landlock，拒绝 Agency 凭据根、Herdr 状态及 socket 目录；无需新依赖、PTY 实现或服务协议。相比上游持有 Harness 子进程，这是明确的内部适配取舍：本版不承诺该 Harness 是 Herdr 的前台进程，不激活原生交互、exact attach、Herdr Agent 检测或会话恢复。以后启用这些能力须另验，不把终端显示当作进程归属证明。接口依据仍为上面的锁定源码；子进程与退出依据见 [Rust 标准库 Child](https://doc.rust-lang.org/std/process/struct.Child.html)。
+
+### 2026-10-05 · Herdr 0.9.3 的 C3 类型生成实验（PR #335）
+
+所有者已撤销上一条由 Agency 持有 Claude 进程的选择。3c 改用官方 Herdr 0.9.3 持有 Harness 与会话；本次 C3 只核接口类型生成，不代替 3c 的四条验收。
+
+**决定建议：本轮不接入 typify 生成的整套协议类型，保留手写的小范围调用。** typify 0.7.0、0.8.0 都能生成并编译，但生成的 Request 没有按方法选择参数类型，不能替代 Herdr 的正式请求类型。不另写 schema 转换器，也不复制上游整套类型。此前「手写子集不做、失败就复制代码」的候选建议由本次所有者裁定覆盖；3c 仍须升级官方 Herdr，C3 的回退不阻挡它。
+
+#### 基线与做法
+
+- 官方 [Herdr v0.9.3 / 7b116c05](https://github.com/herdrdev/herdr/tree/7b116c05bfda646af39d2524c54e70c751f57ee8) 的 macOS arm64 二进制，SHA-256 `5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157`。本次没有编译或修改 Herdr。
+- 输入用 `herdr api schema --json` / `--output` 导出，两种形式同源。导出文件与该 tag 的 [`herdr-api.schema.json`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/docs/next/api/herdr-api.schema.json) 摘要一致：`9e2af207e9aa8183d4aeca5fde9cc48e7909bb40cdbd7cf21608a6d3ea78075b`。协议 22，schema_version 1；request 有 102 个变体、118 个 `$defs`，success_response / error_response / event / subscription_event 分别有 72 / 1 / 16 / 10 个 `$defs`。
+- 生成器分别钉 [typify 0.7.0](https://github.com/oxidecomputer/typify/tree/v0.7.0) 与 [0.8.0](https://github.com/oxidecomputer/typify/releases/tag/v0.8.0)，关闭 macro 特性；两者使用 schemars 0.8.22。通过 Cargo 解析依赖、Reindeer 生成依赖目标，构建与执行都走临时 Buck2 原生 Rust 目标；rustc 1.98.0。
+- 原样取五个 `schemas` 子文档，各自调用下列官方 API。不改 `$ref`、`const` 或 `oneOf`；输出由 genrule 生成，再用 Rust 目标编译五个模块。生成的正则校验类型需要 `regress`，补齐该依赖后两个版本都编译通过。
+
+```rust
+let schema: schemars::schema::RootSchema =
+    serde_json::from_value(bundle["schemas"][name].clone())?;
+let mut types = typify::TypeSpace::default();
+types.add_root_schema(schema)?;
+let generated = types.to_stream().to_string();
+```
+
+#### 实测结果
+
+| 核验 | 0.7.0 | 0.8.0 | 判定 |
+| --- | --- | --- | --- |
+| 五份 schema 生成、五个模块编译 | 通过 | 通过 | `$defs` 与 Herdr 的引用路径不是本次阻碍；0.7.0 输出共 638,260 字节，含生成的说明 |
+| ping、pane.resize、events.subscribe、agent.prompt 的正常请求 JSON 往返 | 字段保留 | 字段保留 | 只证明字节内容可传回，不证明参数类型选对 |
+| pane.resize / agent.prompt 的 Request 反序列化 | 都选 `Variant0`，参数是 `PingParams` | 同左 | `PingParams` 是通用键值对象，不是该方法的参数类型 |
+| 不存在的方法 `not.a.method` | 接受 | 接受 | 官方 0.9.3 服务实测拒绝，`invalid_request` |
+| pane.resize 的 direction 为 diagonal | 接受 | 接受 | 官方服务实测拒绝，`invalid_request` |
+| agent.prompt 缺少 text | 接受 | 接受 | 官方服务实测拒绝，`invalid_request` |
+| 直接反序列化生成的 PaneResizeParams / AgentPromptParams | 拒绝上述非法参数 | 同左 | 单个参数类型有价值，问题在完整 Request 的方法与参数配对 |
+| 官方服务的 ping、session.snapshot 与三种拒绝响应，经生成类型往返 | 五份响应都保留 | 同左 | 使用独立临时 socket，不接触正在工作的 Herdr 会话 |
+
+原因已核源码：两个版本的 [`convert.rs`（0.7.0）](https://github.com/oxidecomputer/typify/blob/v0.7.0/typify-impl/src/convert.rs)、[`convert.rs`（0.8.0）](https://github.com/oxidecomputer/typify/blob/v0.8.0/typify-impl/src/convert.rs) 都把 `const_value` 去掉再转换。Herdr 的请求恰好用 `method.const` 区分 102 个分支；生成结果变成未标记的枚举，首个宽松的 PingParams 就能接住其他请求。正常往返通过，仍然没有得到预期的接口类型。这不是官方 Herdr 接受了非法请求，也不是字段在传输时丢失。
+
+临时目标为 `root//agency/schema-experiment:experiment` 与 `:roundtrip`，均经 `./buck2 run` 实跑；完整往返的 Build ID 分别为 `3ef813f2-28a5-41ef-971c-61608b80c730`（0.7.0）与 `243b9302-1f4a-483e-a131-158cb8e7a166`（0.8.0），各含请求、反例与真实响应。实验源码与输出留在本机临时目录，临时目标和依赖不进入生产构建。
+
+#### 回退范围与未验证
+
+保留范围是薄 NDJSON 传输、id 配对、协议握手，以及 3c 正式路径实际调用的少量方法和响应字段。它们对照钉定版本的官方类型与 schema，并由原生接口用例核验；不承诺支持 Herdr 的全部方法。没有给生产构建增加 typify、schemars、regress 或一套生成工具。
+
+本次没有做真实订阅事件的生成类型往返，也没有用生成类型调用 Claude；不声称整套协议已验证。C3 到此采用允许的回退。锁文件升级、3b 回归、受限环境里的真实 Claude 派工仍按 3c 四条验收另核，本条不代表 3c 已完成。
