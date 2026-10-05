@@ -32,7 +32,6 @@ fn main() {
     } else {
         resume.unwrap_or_else(|| format!("fixture-{}", std::process::id()))
     };
-    write(root, "session.json", json!({"session":id}));
     fs::write(root.join("harness.pid"), std::process::id().to_string()).unwrap();
     let mut stream = UnixStream::connect(std::env::var_os("HERDR_SOCKET_PATH").unwrap()).unwrap();
     let request = json!({"id":"fixture-start","protocol":22,"method":"pane.report_agent_session","params":{
@@ -59,6 +58,8 @@ fn main() {
             }
         }
     });
+    // Publish native readiness only after the TTY and its input reader exist.
+    write(root, "session.json", json!({"session":id}));
     let mut input = Vec::new();
     let mut paste = false;
     let mut sequence = Vec::new();

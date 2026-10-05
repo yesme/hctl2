@@ -1315,7 +1315,9 @@ fn standby_root(name: &str) -> (PathBuf, PathBuf, PathBuf) {
     (cred, root, exec)
 }
 fn wait_for(path: &std::path::Path) {
-    let timeout = Instant::now() + Duration::from_secs(10);
+    // A cold native session has a 30-second readiness budget. Parallel CI
+    // must not fail its startup after only ten seconds.
+    let timeout = Instant::now() + Duration::from_secs(35);
     while !path.exists() {
         assert!(Instant::now() < timeout, "missing {}", path.display());
         std::thread::sleep(Duration::from_millis(25));
