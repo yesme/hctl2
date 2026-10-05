@@ -164,6 +164,9 @@ fn native_filesystem_type(path: &Path) -> Result<String, ToolError> {
 
     // Linux reports a magic number; macOS reports the type name directly.
     #[cfg(target_os = "linux")]
+    // `__fsword_t` is 32-bit here and CIFS's magic exceeds `i32::MAX`: a
+    // 32-bit target would sign-extend the cast and miss the table. Adding such
+    // a platform means widening `f_type` first; this repository has none.
     let name = linux_filesystem_name(stat.f_type as u64);
 
     #[cfg(target_os = "macos")]
@@ -186,6 +189,22 @@ fn native_filesystem_type(path: &Path) -> Result<String, ToolError> {
     }
     Ok(name)
 }
+
+/// Magics for remote and FUSE filesystems, whose names the rejection list must
+/// contain. The existing test asserts this table and [`linux_filesystem_name`]
+/// agree, so the two spellings cannot drift.
+#[cfg(test)]
+const REMOTE_MAGICS: [(u64, &str); 8] = [
+    (0x6969, "nfs"),
+    (0x517b, "smb"),
+    (0xff53_4d42, "cifs"),
+    (0xfe53_4d42, "smb2"),
+    (0x5346_414f, "afs"),
+    (0x00c3_6400, "ceph"),
+    (0x0102_1997, "9p"),
+    // FUSE and every subtype, including fuseblk and sshfs.
+    (0x6573_5546, "fuse"),
+];
 
 /// Names the filesystem behind a Linux `statfs` magic so the conservative rejection
 /// list keeps matching, spelled the way `stat -f -c %T` used to spell it.
@@ -218,16 +237,31 @@ fn linux_filesystem_name(magic: u64) -> String {
     .to_owned()
 }
 
+/// Every filesystem name a site lock refuses. Linux reaches these through
+/// [`linux_filesystem_name`]; [`NAMES_WITHOUT_A_LINUX_MAGIC`] holds the rest.
+///
+/// coreutils versions report Linux FUSE mounts as fuseblk or fuse, including sshfs.
+/// Reject FUSE conservatively: its type alone cannot establish locality.
+const NONLOCAL_FILESYSTEMS: [&str; 16] = [
+    "nfs", "cifs", "smb", "smb2", "smbfs", "afs", "ceph", "v9fs", "9p", "afpfs", "webdav", "sshfs",
+    "fuse", "fuseblk", "osxfuse", "macfuse",
+];
+
+/// Rejection-list names the Linux magic table cannot spell. On Linux the
+/// filesystem name only comes from [`linux_filesystem_name`], so these are
+/// spellings other kernels report (macOS `f_fstypename`) or synonyms the
+/// conservative list keeps. The split is explicit so the two tables cannot
+/// drift apart: a name in neither one would be rejected on one platform and
+/// accepted on the other.
+const NAMES_WITHOUT_A_LINUX_MAGIC: [&str; 8] = [
+    "smbfs", "v9fs", "afpfs", "webdav", "sshfs", "fuseblk", "osxfuse", "macfuse",
+];
+
 fn is_nonlocal_filesystem(filesystem: &str) -> bool {
     let normalized = filesystem.to_ascii_lowercase();
-    // coreutils versions report Linux FUSE mounts as fuseblk or fuse, including sshfs.
-    // Reject FUSE conservatively: its type alone cannot establish locality.
-    [
-        "nfs", "cifs", "smb", "smb2", "smbfs", "afs", "ceph", "v9fs", "9p", "afpfs", "webdav",
-        "sshfs", "fuse", "fuseblk", "osxfuse", "macfuse",
-    ]
-    .iter()
-    .any(|name| normalized == *name || normalized.starts_with(&format!("{name}.")))
+    NONLOCAL_FILESYSTEMS
+        .iter()
+        .any(|name| normalized == *name || normalized.starts_with(&format!("{name}.")))
 }
 
 #[cfg(test)]
@@ -262,16 +296,7 @@ mod tests {
 
     #[test]
     fn names_linux_filesystem_magics_so_the_rejection_list_still_matches() {
-        for (magic, expected) in [
-            (0x6969_u64, "nfs"),
-            (0x517b, "smb"),
-            (0xff53_4d42, "cifs"),
-            (0xfe53_4d42, "smb2"),
-            (0x5346_414f, "afs"),
-            (0x00c3_6400, "ceph"),
-            (0x0102_1997, "9p"),
-            (0x6573_5546, "fuse"),
-        ] {
+        for (magic, expected) in super::REMOTE_MAGICS {
             let name = linux_filesystem_name(magic);
             assert_eq!(name, expected, "{magic:#x}");
             assert!(is_nonlocal_filesystem(&name), "{magic:#x}");
@@ -292,6 +317,27 @@ mod tests {
                 !is_nonlocal_filesystem(&linux_filesystem_name(magic)),
                 "{magic:#x}"
             );
+        }
+    }
+
+    /// Both platforms must reject the same names: every rejection-list entry is
+    /// either spelled by a Linux magic or declared as one the table cannot
+    /// produce. Add a name to neither table and this fails, instead of the two
+    /// platforms silently disagreeing.
+    #[test]
+    fn every_rejected_name_is_a_magic_name_or_declared_without_one() {
+        for name in super::NONLOCAL_FILESYSTEMS {
+            let by_magic = super::REMOTE_MAGICS
+                .iter()
+                .any(|(_, spelled)| *spelled == name);
+            let declared = super::NAMES_WITHOUT_A_LINUX_MAGIC.contains(&name);
+            assert!(
+                by_magic ^ declared,
+                "{name}: a rejected name needs a Linux magic or a declared absence"
+            );
+        }
+        for name in super::NAMES_WITHOUT_A_LINUX_MAGIC {
+            assert!(super::NONLOCAL_FILESYSTEMS.contains(&name), "{name}");
         }
     }
 
