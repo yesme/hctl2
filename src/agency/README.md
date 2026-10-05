@@ -48,6 +48,8 @@ Bundle 是任务文字，不是 shell 程序。适配器把文字写入执行目
 
 这是 Herdr 持有的非交互 print 适配，不承诺会话复用、Agent 检测、原生输入、exact attach 或会话恢复。当前只激活 stop，不激活 input。一轮输出原样交回，证据为 adapter_event；不升级成工具直报，不据此判 Task 完成，也不代 sysone 判断或生成物验收。输出文件与 Herdr 状态均在执行目录之外，但官方版没有逐 pane 防篡改，恶意伪造属于未实现的策略点。选择与源码依据见 [Herdr 复核记录](../../docs/research/sdk/herdr.md#复核记录)。
 
+停止单次派工用原生 `pane.close`，保留共用服务。`agency stop` 先停各 Session，再用原生 `server.stop` 关闭这家 Agency 私有的 Herdr；不依赖后台事件线程在进程退出前恰好完成析构。真实端口用例检查停服务后三秒内私有 Herdr 不再运行。
+
 真实会话用已有 Buck 目标运行：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`，覆盖 Runtime 与 `agency start → pair → prepare → activate → results`。默认用 Rust 原生 `ignore` 标明未验证，不计为通过；真实验证要同时选择这些用例并设开关。服务须在可使用 Harness 登录材料的用户会话中运行；macOS 图形会话与 Background 会话访问钥匙串的结果可能不同。Linux 登录材料的允许路径未在本包放宽，真实 Linux 会话仍未验证。
 
 Codex CLI 的第二家接入、钩子、工具直报、工作副本管理、待命与恢复留后续包。最低版本常量仍为 Codex CLI 0.153.4，不代表已经上架或验收。

@@ -45,6 +45,10 @@ pub struct Running {
 /// All physical handles remain in the implementation. Return actual promised effects.
 pub trait Runtime: Send + Sync {
     fn catalog(&self) -> Result<Catalog>;
+    /// Stop private runtime services when the Agency itself is shutting down.
+    fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
     fn start(
         &self,
         spec: &Sealed<ExecutionSpec>,

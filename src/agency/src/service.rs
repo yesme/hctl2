@@ -264,6 +264,7 @@ impl Rpc {
                     session.lock().expect("session mutex").stop()?;
                 }
             }
+            self.agency.runtime.shutdown()?;
             let _ = self.agency.shutdown.send(true);
             return canonical(&serde_json::json!({"stop_requested":true}));
         }

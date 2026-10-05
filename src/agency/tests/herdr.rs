@@ -890,9 +890,16 @@ fn live_claude_dispatch_returns_one_turn() {
     );
     eprintln!("Proposal(schema=claude.result.v1, source=adapter_event): {proposal}");
     eprintln!("TurnReturned (not Task completion; does not require process exit)");
+    let herdr_pid = runtime.pid().unwrap();
     running.session.lock().unwrap().stop().unwrap();
     drop(running);
+    runtime.shutdown().unwrap();
     drop(runtime);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && process_matches(herdr_pid, &binary()) {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!process_matches(herdr_pid, &binary()));
     let _ = std::fs::remove_dir_all(&cred);
     let _ = std::fs::remove_dir_all(&exec);
 }
@@ -1632,6 +1639,13 @@ async fn port_turn(name: &str, live: bool) {
         )
         .await
         .unwrap();
+    let exec = confine::execution_dir(&root, &prepared.reference).unwrap();
+    let herdr_state = herdr::state_dir(&exec, &root).unwrap();
+    let herdr_pid: u32 = std::fs::read_to_string(herdr_state.join("herdr.pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     let ticket = Ticket::sign(
         TicketClaims {
             id: "observe".into(),
@@ -1726,6 +1740,27 @@ async fn port_turn(name: &str, live: bool) {
         proposal.schema
     );
     eprintln!("Task acceptance / sysone / artifacts: not evaluated in package 3c");
+    drop(client);
+    drop(pairing);
+    let stopped = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("stop")
+        .output()
+        .unwrap();
+    assert!(
+        stopped.status.success(),
+        "{}",
+        String::from_utf8_lossy(&stopped.stdout)
+    );
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && process_matches(herdr_pid, &herdr) {
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(
+        !process_matches(herdr_pid, &herdr),
+        "Agency stopped but its private Herdr survived"
+    );
 }
 
 #[tokio::test]

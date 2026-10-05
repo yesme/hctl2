@@ -571,6 +571,17 @@ impl Session for HerdrSession {
 }
 
 impl Runtime for InstalledHerdr {
+    fn shutdown(&self) -> Result<()> {
+        let mut slot = self.slot.lock().expect("herdr");
+        if let Some(server) = slot.as_ref() {
+            // Detached event readers may still hold Arc<Server> when the Agency
+            // process exits. Do not rely on their Drop to stop the native server.
+            Client::connect(&server.socket)?.call("server.stop", json!({}))?;
+            *slot = None;
+        }
+        Ok(())
+    }
+
     fn catalog(&self) -> Result<Catalog> {
         let herdr_digest = crate::catalog::file_digest(&self.binary)?;
         let harness = FrozenRef {
