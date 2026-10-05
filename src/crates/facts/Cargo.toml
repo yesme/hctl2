@@ -9,6 +9,7 @@ publish.workspace = true
 description = "Shared readers for HCTL2 external mechanical facts"
 
 [dependencies]
+foundation = { path = "../foundation" }
 notify.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -5,7 +5,9 @@ oncall("hctl2")
 
 FOUNDATION_DEPS = [
     "root//third-party/rust:keyring",
+    "root//third-party/rust:process_control",
     "root//third-party/rust:rusqlite",
+    "root//third-party/rust:rustix",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:serde_json_canonicalizer",
     "root//third-party/rust:sha2",

@@ -1,97 +1,46 @@
 //! Native Git is the only repository engine. Inspection never writes the input copy.
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, Output};
+use std::time::Duration;
+
+use foundation::command::{CommandEnd, run_bounded};
 
 use crate::{LocalInput, LocalSnapshot, Result, reject};
 
-/// Bound child lifetime/output without a shell. A timeout is never evidence of failure to write.
+/// Provider git, gh, and tea commands. A timeout is never evidence of failure to write.
+pub const PROVIDER_COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Bound child lifetime and output without a shell.
 pub fn run(command: &mut Command, input: Option<Vec<u8>>) -> Result<Output> {
-    command
-        .stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|_| {
-        reject(
-            "PROVIDER_UNAVAILABLE",
-            "cannot start required binary",
-            "check_installation",
-        )
-    })?;
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let read = |pipe: Box<dyn Read + Send>| {
-        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let result = pipe
-                .take(16 * 1024 * 1024 + 1)
-                .read_to_end(&mut bytes)
-                .map(|_| bytes);
-            let _ = sender.send(result);
-        });
-        receiver
-    };
-    let out = read(Box::new(stdout));
-    let err = read(Box::new(stderr));
-    if let Some(input) = input {
-        let mut stdin = child.stdin.take().unwrap();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&input);
-        });
-    }
-    let deadline = Instant::now() + Duration::from_secs(90);
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(reject(
-                "RESULT_UNKNOWN",
-                "provider command timed out",
-                "read_back_original_intent",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    let stdout = out
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .map_err(|_| {
-            reject(
-                "RESULT_UNKNOWN",
-                "stdout did not close",
-                "read_back_original_intent",
-            )
-        })??;
-    let stderr = err
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .map_err(|_| {
-            reject(
-                "RESULT_UNKNOWN",
-                "stderr did not close",
-                "read_back_original_intent",
-            )
-        })??;
-    if stdout.len() > 16 * 1024 * 1024 || stderr.len() > 16 * 1024 * 1024 {
-        return Err(reject(
+    run_for(command, input, PROVIDER_COMMAND_TIMEOUT)
+}
+
+/// Same as [`run`] with an explicit limit. Tests use a short limit; production uses
+/// [`PROVIDER_COMMAND_TIMEOUT`].
+pub fn run_for(
+    command: &mut Command,
+    input: Option<Vec<u8>>,
+    time_limit: Duration,
+) -> Result<Output> {
+    match run_bounded(command, input.as_deref(), time_limit) {
+        Ok(CommandEnd::Finished(output)) => Ok(output),
+        Ok(CommandEnd::TimedOut) => Err(reject(
+            "RESULT_UNKNOWN",
+            "provider command timed out",
+            "read_back_original_intent",
+        )),
+        Ok(CommandEnd::OutputLimit) => Err(reject(
             "OUTPUT_LIMIT",
             "provider output exceeded limit",
             "narrow_input",
-        ));
+        )),
+        Err(error) => Err(reject(
+            "PROVIDER_UNAVAILABLE",
+            format!("cannot start required binary: {error}"),
+            "check_installation",
+        )),
     }
-    Ok(Output {
-        status,
-        stdout,
-        stderr,
-    })
 }
 
 pub struct Git {

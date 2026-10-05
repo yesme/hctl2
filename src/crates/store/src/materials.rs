@@ -1,14 +1,29 @@
 use std::ffi::OsString;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::time::Duration;
 
+use foundation::command::{CommandEnd, run_bounded};
 use foundation::{canonical_json, canonical_json_sha256, git};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{digest, nonempty};
 use crate::{Result, Scope, StoreError};
+
+/// Local git plumbing for the material repository, including mirror copy.
+const MATERIAL_COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
+
+fn bounded(
+    mut command: std::process::Command,
+    input: Option<&[u8]>,
+    time_limit: Duration,
+) -> Result<std::process::Output> {
+    match run_bounded(&mut command, input, time_limit)? {
+        CommandEnd::Finished(output) => Ok(output),
+        CommandEnd::TimedOut => Err(missing("material command timed out")),
+        CommandEnd::OutputLimit => Err(missing("material command output exceeded limit")),
+    }
+}
 
 /// Stable control/scope/content reference. No backend path or Git object ID crosses this boundary.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -48,9 +63,9 @@ impl Materials {
         let executable = git::resolve_executable(&requested).ok_or_else(|| {
             StoreError::new("GIT_UNAVAILABLE", "host Git not found", "install_git")
         })?;
-        let output = git::sanitized_command(&executable)
-            .arg("--version")
-            .output()?;
+        let mut version_command = git::sanitized_command(&executable);
+        version_command.arg("--version");
+        let output = bounded(version_command, None, MATERIAL_COMMAND_TIMEOUT)?;
         let version = git::parse_version(&String::from_utf8_lossy(&output.stdout));
         if !output.status.success()
             || !version.is_some_and(|(major, minor, _)| git::version_supported(major, minor))
@@ -66,10 +81,10 @@ impl Materials {
                 return Err(missing("material repository is missing"));
             }
             private_dir(path)?;
-            let output = git::sanitized_command(&executable)
-                .args(["init", "--bare", "--template=", "--object-format=sha1"])
-                .arg(path)
-                .output()?;
+            let mut init = git::sanitized_command(&executable);
+            init.args(["init", "--bare", "--template=", "--object-format=sha1"])
+                .arg(path);
+            let output = bounded(init, None, MATERIAL_COMMAND_TIMEOUT)?;
             if !output.status.success() {
                 return Err(missing("cannot initialize material repository"));
             }
@@ -178,12 +193,12 @@ impl Materials {
 
     pub(crate) fn export(&self, destination: &Path) -> Result<()> {
         // --no-hardlinks makes this a separate backup, never dependent on the live object files.
-        let output = self
-            .command()
+        let mut clone = self.command();
+        clone
             .args(["clone", "--mirror", "--no-hardlinks", "--no-local"])
             .arg(&self.path)
-            .arg(destination)
-            .output()?;
+            .arg(destination);
+        let output = bounded(clone, None, MATERIAL_COMMAND_TIMEOUT)?;
         if !output.status.success() {
             return Err(missing("material backup copy failed"));
         }
@@ -217,14 +232,14 @@ impl Materials {
                 return Err(missing("backup conflicts with immutable material"));
             }
         }
-        let output = self
-            .command()
+        let mut fetch = self.command();
+        fetch
             .arg("-C")
             .arg(&self.path)
             .args(["fetch", "--no-tags", "--no-write-fetch-head"])
             .arg(&source.path)
-            .arg("refs/hctl2/materials/*:refs/hctl2/materials/*")
-            .output()?;
+            .arg("refs/hctl2/materials/*:refs/hctl2/materials/*");
+        let output = bounded(fetch, None, MATERIAL_COMMAND_TIMEOUT)?;
         if !output.status.success() {
             return Err(missing("material restore failed"));
         }
@@ -261,28 +276,9 @@ impl Materials {
     }
 
     pub(crate) fn run(&self, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>> {
-        let mut child = self
-            .command()
-            .arg("-C")
-            .arg(&self.path)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| missing("Git stdin unavailable"))?;
-        if let Some(input) = input
-            && let Err(error) = stdin.write_all(input)
-        {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(error.into());
-        }
-        drop(stdin);
-        let output = child.wait_with_output()?;
+        let mut command = self.command();
+        command.arg("-C").arg(&self.path).args(args);
+        let output = bounded(command, input, MATERIAL_COMMAND_TIMEOUT)?;
         if !output.status.success() {
             return Err(missing(
                 "Git could not resolve or persist the precise material",
@@ -333,4 +329,76 @@ pub(crate) fn sync_tree(path: &Path) -> Result<()> {
     }
     fs::File::open(path)?.sync_all()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    use super::bounded;
+
+    #[test]
+    fn a_stuck_material_command_is_unreadable_within_the_limit() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("hctl2-material-stuck-{nanos}"));
+        fs::create_dir(&dir).unwrap();
+        let program = dir.join("hang.sh");
+        let marker = run_marker(4166);
+        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let started = Instant::now();
+        let mut command = Command::new("/bin/sh");
+        command.arg(&program);
+        let error = bounded(command, None, Duration::from_secs(3))
+            .expect_err("a stuck command must not succeed");
+        assert!(
+            started.elapsed() < Duration::from_secs(7),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(error.code, "MATERIAL_UNAVAILABLE");
+        assert!(error.message.contains("timed out"), "{}", error.message);
+        assert_no_process_with(&marker);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
+    }
+
+    /// Fails while a live process still carries `marker` on its command line; the
+    /// kill at the deadline clears the process table a moment later, so the check
+    /// retries and prints what it still sees.
+    fn assert_no_process_with(marker: &str) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let listed = Command::new("pgrep")
+                .args(["-f", marker])
+                .output()
+                .expect("pgrep");
+            if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&listed.stdout).trim()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
 }

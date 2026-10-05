@@ -89,7 +89,7 @@ grep -F 'FileName: libexec/hctl2/gh' "$release_root/payload/share/hctl2/SBOM.spd
 "$release_root/payload/libexec/hctl2/herdr" --version | grep -F 'herdr ' >/dev/null
 "$release_root/payload/libexec/hctl2/process-compose" version | \
     grep -F 'v1.122.0' >/dev/null
-"$release_root/payload/libexec/hctl2/gh" --version | grep -F 'gh version 2.99.0' >/dev/null
+"$release_root/payload/libexec/hctl2/gh" --version | grep -F 'gh version 2.102.0' >/dev/null
 "$release_root/payload/bin/hctl2-tool" --version | grep -F 'hctl2-tool ' >/dev/null
 contract_prefix="$test_root/prefix"
 "$release_root/install.sh" --prefix "$contract_prefix"

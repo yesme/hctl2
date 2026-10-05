@@ -2,7 +2,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -10,10 +10,17 @@ use std::process::Command;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use foundation::command::{CommandEnd, run_bounded};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+/// GitHub reads go over the network. A stuck `gh` must not wait forever.
+const GH_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// `ps` is a local lookup.
+const PS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A closed set of external mechanical facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -451,12 +458,9 @@ fn observe_path(path: &Path, expected: &str) -> Result<Observation, Value> {
 }
 
 fn observe_process(pid: u32, context: &ReaderContext) -> Result<Observation, Value> {
-    let output = Command::new(&context.ps)
-        .args(["-p", &pid.to_string(), "-o", "pid="])
-        .output()
-        .map_err(
-            |error| json!({ "error": error.to_string(), "program": context.ps.to_string_lossy() }),
-        )?;
+    let mut command = Command::new(&context.ps);
+    command.args(["-p", &pid.to_string(), "-o", "pid="]);
+    let output = finish_external(&mut command, PS_TIMEOUT, &context.ps)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     if output.status.success() && !stdout.trim().is_empty() {
         Ok(Observation::Pending(json!({ "running": true, "pid": pid })))
@@ -477,14 +481,12 @@ fn run_gh_json<I>(context: &ReaderContext, arguments: I) -> Result<Value, Value>
 where
     I: IntoIterator<Item = String>,
 {
-    let output = Command::new(&context.gh)
+    let mut command = Command::new(&context.gh);
+    command
         .args(arguments)
         .env("GH_PROMPT_DISABLED", "1")
-        .env("NO_COLOR", "1")
-        .output()
-        .map_err(
-            |error| json!({ "error": error.to_string(), "program": context.gh.to_string_lossy() }),
-        )?;
+        .env("NO_COLOR", "1");
+    let output = finish_external(&mut command, GH_TIMEOUT, &context.gh)?;
     if !output.status.success() {
         return Err(json!({
             "error": String::from_utf8_lossy(&output.stderr),
@@ -497,6 +499,28 @@ where
             "stdout": String::from_utf8_lossy(&output.stdout)
         })
     })
+}
+
+fn finish_external(
+    command: &mut Command,
+    time_limit: Duration,
+    program: &OsStr,
+) -> Result<std::process::Output, Value> {
+    match run_bounded(command, None, time_limit) {
+        Ok(CommandEnd::Finished(output)) => Ok(output),
+        Ok(CommandEnd::TimedOut) => Err(json!({
+            "error": "command timed out",
+            "program": program.to_string_lossy()
+        })),
+        Ok(CommandEnd::OutputLimit) => Err(json!({
+            "error": "command output exceeded limit",
+            "program": program.to_string_lossy()
+        })),
+        Err(error) => Err(json!({
+            "error": error.to_string(),
+            "program": program.to_string_lossy()
+        })),
+    }
 }
 
 fn poll_interval(fact: &Fact) -> Duration {
@@ -571,7 +595,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
     use std::thread;
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant, SystemTime};
 
     fn temporary_directory(name: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -983,15 +1007,19 @@ fi
     fn process_exit_uses_real_ps_for_an_unused_pid() {
         let unused = (10_000..50_000)
             .find(|pid| {
-                Command::new("ps")
-                    .args(["-p", &pid.to_string(), "-o", "pid="])
-                    .output()
-                    .map(|output| {
-                        !output.status.success()
-                            && output.stdout.is_empty()
-                            && output.stderr.is_empty()
-                    })
-                    .unwrap_or(false)
+                {
+                    let mut command = Command::new("ps");
+                    command.args(["-p", &pid.to_string(), "-o", "pid="]);
+                    super::finish_external(
+                        &mut command,
+                        super::PS_TIMEOUT,
+                        std::ffi::OsStr::new("ps"),
+                    )
+                }
+                .map(|output| {
+                    !output.status.success() && output.stdout.is_empty() && output.stderr.is_empty()
+                })
+                .unwrap_or(false)
             })
             .expect("an unused pid must exist");
         let record = wait_until(
@@ -1001,5 +1029,63 @@ fi
         );
         assert_eq!(record.outcome, Outcome::Established);
         assert_eq!(record.evidence_level, "unmediated");
+    }
+
+    #[test]
+    fn a_stuck_gh_is_unreadable_within_the_limit_and_leaves_no_process() {
+        let directory = temporary_directory("stuck-gh");
+        let marker = run_marker(4164);
+        let program = write_executable(
+            &directory,
+            "gh-stuck",
+            &format!("#!/bin/sh\nexec sleep {marker}\n"),
+        );
+        let started = Instant::now();
+        let mut command = Command::new(&program);
+        let error =
+            super::finish_external(&mut command, Duration::from_secs(3), program.as_os_str())
+                .expect_err("a stuck reader must not succeed");
+        assert!(
+            started.elapsed() < Duration::from_secs(7),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(error["error"], "command timed out");
+        assert_no_process_with(&marker);
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
+    }
+
+    /// Fails while a live process still carries `marker` on its command line; the
+    /// kill at the deadline clears the process table a moment later, so the check
+    /// retries and prints what it still sees.
+    fn assert_no_process_with(marker: &str) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let listed = Command::new("pgrep")
+                .args(["-f", marker])
+                .output()
+                .expect("pgrep");
+            if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&listed.stdout).trim()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }

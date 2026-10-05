@@ -113,7 +113,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用二进制 |
 | [harness-hooks-20260903.md](./harness-hooks-20260903.md) | 八家编码 Harness 的「工具调用前」钩子与 ACP 权限请求 | E-L1-HARNESS-HOOKS | ① Coding Harness | 适配协议：PTY 模式用各家原生钩子、ACP 模式用协议权限请求；白名单与检查入口与 harness 无关 |
 | [harness-adapters.md](./harness-adapters.md) | Claude Code / Codex CLI / Gemini CLI 的无界面事件、终局、会话与审批 | E-L1-HARNESS-ADAPTERS | ① Coding Harness | 适配协议：三家共用骨架；JSONL 观察与双向审批分开声明，钉 2.1.263 / 0.153.4 / 0.58.0 |
-| [sdk/github.md · P2.4 写侧复核](./sdk/github.md#2026-09-06--p24-写侧调用与恢复复核) | gh 发布、合入、正式评审与保护条件 | E-SDK-GITHUB | ⑥ 机械后端与基础设施 | 采用二进制 gh 2.99.0，无本批 SDK 降级项；源头条件写不冒充目标头保证 |
+| [sdk/github.md · P2.4 写侧复核](./sdk/github.md#2026-09-06--p24-写侧调用与恢复复核) | gh 发布、合入、正式评审与保护条件 | E-SDK-GITHUB | ⑥ 机械后端与基础设施 | 采用二进制 gh 2.102.0（2026-10-05 升版），无本批 SDK 降级项；源头条件写不冒充目标头保证 |
 | [sdk/README.md](./sdk/README.md) | 七个供应端客户端层对象（Matrix、Vikunja、Dagu、Herdr、GitHub、Linear，以及作工具箱现场引擎的 Git） | E-SDK-* | ⑥ 机械后端与基础设施 | 官方 SDK > 从接口描述生成 > 手写，逐家判定见子目录 |
 | [sdk/git.md](./sdk/git.md) | Git 现场引擎（宿主二进制） | E-SDK-GIT | ⑥ 机械后端与基础设施 | 采用二进制：宿主 git，下限 2.39，不随包；libgit2 / gitoxide 不进依赖树 |
 | [libs/README.md](./libs/README.md) | 五处通用机制的现成库加文件监听（JCS、文件锁、SQLite 备份、钥匙串、FTS5、notify） | E-LIB-* | ⑥ 机械后端与基础设施 | 采用 SDK，逐项见子目录；outbox / 租约 / 代次维持自研 |
@@ -121,6 +121,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [sqlite-migrations.md](./libs/sqlite-migrations.md) | SQLite 停机迁移 | E-LIB-SQLITE-MIGRATIONS | ⑥ 机械后端与基础设施 | 采用 SDK：rusqlite_migration 2.6.0，一致备份后事务升级 |
 | [libs/hmac.md](./libs/hmac.md) | Agency 票据认证 | E-LIB-HMAC | ⑥ 机械后端与基础设施 | 采用 SDK：hmac 0.13.0 与 sha2 0.11.0，恒时验证 |
 | [libs/base64.md](./libs/base64.md) | Agency 字节字段编码 | E-LIB-BASE64 | ⑥ 机械后端与基础设施 | 采用 SDK：base64 0.22.1，规范带填充字符串 |
+| [libs/process-control.md](./libs/process-control.md) | 外部命令的时限与超时终止 | E-LIB-PROCESS-CONTROL | ⑥ 机械后端与基础设施 | 采用 SDK：process_control 5.2.0；macOS 不用内存上限，输出用 filter 截断 |
 | [runtime/agency-port.md](./runtime/agency-port.md) | 独立 Agency 服务与端口 | E-RUNTIME-AGENCY-PORT | ⑥ 机械后端与基础设施 | 采用 tonic 原生 UDS，SQLite 持久状态；可信脚本仅验证协议 |
 | [process-compose.md](./runtime/process-compose.md) | 随包服务生命周期 | E-RUNTIME-PROCESS-COMPOSE | ⑥ 机械后端与基础设施 | 采用二进制：1.122.0，经现有 UDS、CLI JSON 与组件动作接入 |
 | [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
