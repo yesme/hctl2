@@ -25,7 +25,7 @@ B2 的无 Run 切片需要的操作（备忘第六节），按读、写、映射
 
 | 平台 | 形态 | 评审单位 | 合入接口对源头的校验 | 目标头有没有保证 | 检查与评审的回读 | 官方命令行 |
 | --- | --- | --- | --- | --- | --- | --- |
-| GitHub | 托管 | Pull request | 合并接口 `sha` 参数与 `gh pr merge --match-head-commit` 都校验源头；源头变了拒绝 | 没有「预期目标头不符就拒绝」的参数。分支保护「要求分支与目标同步」只保证候选包含当前主干；合并队列在最新主干上重新验证并排队合入，语义是「接受目标前移、重新验证」 | REST 与 GraphQL：检查（checks、statuses）、正式评审（reviews）、评论线程（review threads 的 resolved 状态）、分支保护条件均可读 | gh，官方，`--json` 白名单字段，随包已钉 v2.99.0 |
+| GitHub | 托管 | Pull request | 合并接口 `sha` 参数与 `gh pr merge --match-head-commit` 都校验源头；源头变了拒绝 | 没有「预期目标头不符就拒绝」的参数。分支保护「要求分支与目标同步」只保证候选包含当前主干；合并队列在最新主干上重新验证并排队合入，语义是「接受目标前移、重新验证」 | REST 与 GraphQL：检查（checks、statuses）、正式评审（reviews）、评论线程（review threads 的 resolved 状态）、分支保护条件均可读 | gh，官方，`--json` 白名单字段，随包已钉 v2.102.0 |
 | GitLab | 托管（gitlab.com）与自建（社区版、企业版） | Merge request | 合并接口与 `glab mr merge --sha` 校验源头：「只在源分支的 HEAD 等于此 SHA 时合并」 | 没有预期目标头参数。合并列车（merge trains）把排队的 MR 与前面的 MR 一起在目标分支上跑流水线、依次合入，前提是启用「合并结果流水线」与「流水线必须成功」；语义同样是「接受目标前移、重新验证」 | REST：批准（approvals）、流水线、讨论线程（discussions 的 resolved）、合并请求设置可读 | glab，GitLab 官方维护，`glab mr view -F json` 与 `--jq`；`glab mr merge` 的文档未列结构化输出，待核 |
 | Gitea | 自建 | Pull request | 合并接口的表单字段 `head_commit_id`（源码 `services/forms/repo_form.go` 的 `MergePullRequestForm`）；`do` 可选 `merge`、`rebase`、`rebase-merge`、`squash`、`fast-forward-only`、`manually-merged`；另有 `merge_when_checks_succeed`、`force_merge` | 没有预期目标头参数；`fast-forward-only` 要求目标能快进到源头，目标前移后快进失败即拒绝——这是一种间接的目标头保证，但只对快进策略成立 | REST：评审（reviews）、提交状态（statuses）、分支保护可读 | tea，Gitea 官方，`pulls create / checkout / review / approve / reject / merge / close / reopen`，全部支持 `-o json` |
 | Forgejo | 自建（Gitea 分支，API 与 Gitea 高度兼容） | Pull request | 同 Gitea 的接口形状，逐版本核对 | 同 Gitea | 同 Gitea | 官方没有自己的命令行；社区的 forgejo-cli（fj）支持创建与合并 PR；tea 是否完全兼容待核 |

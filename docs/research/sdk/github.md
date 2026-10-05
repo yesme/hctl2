@@ -2,7 +2,7 @@
 
 > 状态：调研 · 日期：2026-09-03<br>
 > 类别：⑥ 机械后端与基础设施 · 证据编号：E-SDK-GITHUB<br>
-> 对象：GitHub REST / GraphQL API（github.com）· [octocrab `0.54.1`](https://crates.io/crates/octocrab)（2026-07-24）· [gh CLI `v2.99.0 / d528f20f`](https://github.com/cli/cli/releases/tag/v2.99.0)（2026-09-01）<br>
+> 对象：GitHub REST / GraphQL API（github.com）· [octocrab `0.54.1`](https://crates.io/crates/octocrab)（2026-07-24）· [gh CLI `v2.102.0 / fc4b137c`](https://github.com/cli/cli/releases/tag/v2.102.0)（2026-09-30）<br>
 > 许可证：octocrab MIT OR Apache-2.0；gh MIT；GitHub API 的使用受 GitHub 服务条款约束（不是开源许可）
 
 ## 定位
