@@ -58,7 +58,7 @@ rust_test(
     deps = DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {"HCTL2_DEPENDENCY_LOCK": "$(location root//packaging/dependencies:lock_json)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
