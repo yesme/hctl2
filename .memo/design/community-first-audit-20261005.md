@@ -1,6 +1,6 @@
 # 自建方案盘点：哪些地方没有用社区方案
 
-> 状态：已拍板 · 三份报告已合入，汇总见 §六；所有者 2026-10-05 裁了五项，其中第 3 项（Agency 启停交监督器）待看规模后定
+> 状态：已拍板 · 三份报告已合入，汇总见 §六；所有者 2026-10-05 裁了五项，G1 与 C4 看过规模后同日定；设计层对照报告已出（§六 末）
 > 基线：main @ 97f9a1f（草案 v0.19.2）；汇总时 main 已到草案 v0.19.3
 > 去向：三份报告在 `.memo/review/20261005-community-first/`；汇总与待裁清单写回本文 §六；裁定后该换的各自开包，调研落 `docs/research/`
 
@@ -155,9 +155,9 @@ Codex 这一块就是它正在返工的第 3c 包所在的地方，可以和返�
 
 - **第 1 项**：拆成两件小活，验收用例写在开工书 §六——小活 I（Qwen）：Agency 的数据库迁移与结果分页（C5、C6），顺带收掉 §七 记的两条 Agency 测试问题；小活 J（DeepSeek）：`gh` 升级与文件系统识别（`gh` 2.102.0、C7）。第 1 项里还有一条 G1（控制面调外部命令的时限，换 `process_control`），所有者在第 3 项里把它和 Process Compose 当成了一件，先按下面的规模表再确认一次，确认后另开小活。
 - **第 2 项**：C3 交 Codex，随第 3c 包升级到 Herdr 0.9.3 一起做生成实验（开工书 §四 第 3c 包已注明）。
-- **第 3 项**：待定，见下面的规模表。
-- **第 4 项**：向上游 Tuwunel 提「发布 macOS 制品」的需求。上游开着 issue 与 Discussions，有功能需求模板；查过没有同类的旧 issue。主笔起草，所有者过目后用所有者的账号发。
-- **第 5 项**：主笔做，范围按待裁清单第 5 项：Agency 端口、Context Bundle、Worker Profile 各对一到两个社区同类，只出对照与建议，不改约束。报告放 `.memo/review/20261005-community-first/claude.md`。
+- **第 3 项**：看过下面的规模表后，所有者同日定：「G1 做，C4 先不做」。G1 派成开工书 §六 的小活 K；所有者随后改派 Grok（「要不小活儿K给grok吧？它现在闲着」），按 §二 第 10 条第三档的规矩一轮上限，找问题的一席相应换成 Claude；C4 不做，Agency 的启停代码保持有界，不往完整监督器的方向长，第 3c 包落定后再看。
+- **第 4 项**：向上游 Tuwunel 提「发布 macOS 制品」的需求。上游开着 issue 与 Discussions，有功能需求模板；查过没有同类的旧 issue。主笔起草，所有者过目后改了两处（「不提我们的仓库」「全用英文」），同日以所有者的账号发出：[matrix-construct/tuwunel#622](https://github.com/matrix-construct/tuwunel/issues/622)。上游回应后记在这里。
+- **第 5 项**：主笔做，范围按待裁清单第 5 项：Agency 端口、Context Bundle、Worker Profile 各对一到两个社区同类，只出对照与建议，不改约束。报告放 `.memo/review/20261005-community-first/claude-design-layer.md`（不用 `claude.md`：Mac 的文件系统不分大小写，Claude Code 会把它当成 `CLAUDE.md` 指令文件读进去）。
 
 ### 规模：G1 与 C4
 
@@ -170,3 +170,14 @@ Codex 这一块就是它正在返工的第 3c 包所在的地方，可以和返�
 | 换完之后 | 删掉轮询、终止、线程截断约 60 到 80 行，换成几十行调用；8 处没有时限的调用统一走同一个辅助函数。结果分类（`RESULT_UNKNOWN`）与 16 MiB 计数仍是我们的 | 删掉大部分启停代码；多一份进程配置与启动命令。Agency 按设计是独立服务，Herdr 是它的子进程，交给监督器之后这两层谁管谁要重新定 |
 | 风险 | 库最近一次发版是 2025-09-06（13 个月）；终止要做到不误杀被系统复用的进程号，这正是它的卖点；要在两个平台先测 | 未验证：两个 Agency 并存、父进程退出、旧进程回收；Codex 实测过从后台会话启动的进程读不到 Claude Code 的登录，监督器怎么起会影响这一点 |
 | 主笔的建议 | **做**。收益主要不在删多少行，而在那 8 处现在完全没有时限，`git` 卡住会一直占着单写者 | **先不做**。代码不大，换过去带出的生命周期问题比删掉的代码多；第 3c 包落定之后再看 |
+
+### 设计层对照（第 5 项的结果）
+
+报告：[Claude · 设计层的协议与对象](../review/20261005-community-first/claude-design-layer.md)。对照了 ACP v1、A2A v1、MCP 2026-07-28，以及 Claude Code、Codex 的 agent 定义、Agent Skills、AGENTS.md。
+
+- **三样都留**：Agency 端口、Context Bundle、Worker Profile 承载的是治理语义（多租户配对、冻结与摘要、票据、输入租约、结果保管到确认、游标缺口），三份社区协议都没有。
+- **交给 harness 的那一侧可以借**：上下文交付可用 MCP 与 ACP 共用的内容块（`resource`、`resource_link`）；Worker Profile 落地时可渲染成 Claude Code 的 subagent 文件、Codex 的 agent TOML；名册将来可用 ACP Registry 的条目。现行的 PTY 路线下前一样没有入口，后两样在第二家 harness 接入时做。
+- **和第 3c 包相关**：ACP 有结构化的一轮结束信号（`stopReason`），但它要求客户端把 agent 当子进程、走标准输入输出，和「Herdr 实际持有 harness 与会话」是两条路线；Claude Code 与 Codex 都只能经 Zed、JetBrains 维护的适配器说 ACP；Herdr 已把含「ACP registry adoption」的请求关为不做。所以 3c 的「这一轮答完了」建议用 Herdr 社区版的 agent 状态加 harness 钩子，不引入 ACP。
+- **一处前后不一致**：`docs/research/README.md` 把 ACP 写成「L1 的 Harness 接入标准」，与 `harness-adapters.md` 的决定和现行实现不符，下一次动研究索引时改成「结构化接入路线的标准」。
+
+这一节不需要所有者另裁：「三样都留」与现状一致；3c 的取法属于作者在验收第 2 条里自己定、写进调研记录的事，报告只是给作者的参考；其余几条都标了「将来做」。
