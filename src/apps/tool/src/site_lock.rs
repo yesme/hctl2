@@ -252,7 +252,9 @@ const NONLOCAL_FILESYSTEMS: [&str; 16] = [
 /// spellings other kernels report (macOS `f_fstypename`) or synonyms the
 /// conservative list keeps. The split is explicit so the two tables cannot
 /// drift apart: a name in neither one would be rejected on one platform and
-/// accepted on the other.
+/// accepted on the other. Only the reverse test reads this list, so it is
+/// absent from a production build.
+#[cfg(test)]
 const NAMES_WITHOUT_A_LINUX_MAGIC: [&str; 8] = [
     "smbfs", "v9fs", "afpfs", "webdav", "sshfs", "fuseblk", "osxfuse", "macfuse",
 ];
