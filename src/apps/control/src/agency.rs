@@ -818,9 +818,9 @@ mod tests {
         let mut command = Command::new(&program);
         command.arg(&pidfile);
         let started = Instant::now();
-        let error = super::run_agency_command(command, Duration::from_secs(1))
+        let error = super::run_agency_command(command, Duration::from_secs(3))
             .expect_err("stuck agency start");
-        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(started.elapsed() < Duration::from_secs(7));
         assert_eq!(error.code, "AGENCY_START_TIMEOUT");
         let pid: u32 = fs::read_to_string(&pidfile)
             .unwrap()

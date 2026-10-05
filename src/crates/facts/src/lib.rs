@@ -1044,10 +1044,10 @@ fi
         let mut command = Command::new(&program);
         command.arg(&pidfile);
         let error =
-            super::finish_external(&mut command, Duration::from_secs(1), program.as_os_str())
+            super::finish_external(&mut command, Duration::from_secs(3), program.as_os_str())
                 .expect_err("a stuck reader must not succeed");
         assert!(
-            started.elapsed() < Duration::from_secs(5),
+            started.elapsed() < Duration::from_secs(7),
             "{:?}",
             started.elapsed()
         );

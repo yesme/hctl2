@@ -366,10 +366,10 @@ mod tests {
         let started = Instant::now();
         let mut command = Command::new("/bin/sh");
         command.arg(&program);
-        let error = bounded(command, None, Duration::from_secs(1))
+        let error = bounded(command, None, Duration::from_secs(3))
             .expect_err("a stuck command must not succeed");
         assert!(
-            started.elapsed() < Duration::from_secs(5),
+            started.elapsed() < Duration::from_secs(7),
             "{:?}",
             started.elapsed()
         );

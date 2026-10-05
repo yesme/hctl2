@@ -420,10 +420,10 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     let error = repo::git::run_for(
         Command::new(&program).arg(&pidfile),
         None,
-        std::time::Duration::from_secs(1),
+        std::time::Duration::from_secs(3),
     )
     .expect_err("stuck provider command");
-    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert!(started.elapsed() < std::time::Duration::from_secs(7));
     assert_eq!(error.code, "RESULT_UNKNOWN");
     let pid: u32 = std::fs::read_to_string(&pidfile)
         .unwrap()

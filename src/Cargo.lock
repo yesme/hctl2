@@ -828,6 +828,7 @@ dependencies = [
  "keyring",
  "process_control",
  "rusqlite",
+ "rustix",
  "serde_json",
  "serde_json_canonicalizer",
  "sha2",
