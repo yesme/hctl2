@@ -136,9 +136,8 @@ impl Launch {
         fs::write(
             &runner,
             format!(
-                "#!/bin/sh\ntty > {tty}\nwhile [ ! -f {done} ]; do sleep 0.05; done\n",
+                "#!/bin/sh\ntty > {tty}\nexec sleep 2147483647\n",
                 tty = sh_quote(&report_dir.join("tty")),
-                done = sh_quote(&report_dir.join("done"))
             ),
         )?;
         #[cfg(unix)]
@@ -769,7 +768,7 @@ fn dispatch_events(
             Err(error) => {
                 let _ = tx.send(RuntimeEvent::Observation {
                     kind: "runtime:harness_failure".into(),
-                    payload: json!({"code": error.code, "message": error.message}),
+                    payload: json!({"code": error.code, "message": error.message.chars().take(4096).collect::<String>()}),
                     source: EvidenceLevel::AdapterEvent,
                 });
                 let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
