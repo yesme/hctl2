@@ -435,6 +435,17 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
   4. 两处都是三方依赖的改动，按 PR 契约在调研节引用 `docs/research/` 下的对象文件。
 - **分支**：`deepseek/gh-upgrade-statfs`，从 `origin/main` 起。两席对最终提交都写「可合」、CI 绿之后作者自己合。
 
+### 小活 K · 调外部命令统一加时限（DeepSeek 写，小活 J 合入后开；Grok 找问题，GLM 核验）
+
+- **来由**：自建方案盘点的 G1。所有者 2026-10-05 看过规模后定：「G1 做，C4 先不做」。发现原文见 [`grok.md`](../../review/20261005-community-first/grok.md)「子进程的时限、终止与输出上限」，规模表见 [`community-first-audit-20261005.md`](../community-first-audit-20261005.md) §六「规模：G1 与 C4」。要点：`repo/src/git.rs` 的 `run` 自己轮询、到点按进程号终止、用线程截输出；另有 8 处 `.output()` 完全没有时限（材料库 4、`facts` 3、拉起 `agency` 1），`git` 卡住会一直占着单写者。
+- **验收**（开工前写好，缺一条不算过）：
+  1. **先落调研，再写代码。** 新依赖 `process_control` 先写 `docs/research/libs/process-control.md`：版本 5.2.0、许可、最近一次发版是 2025-09-06 以及为什么仍可接受、新增的传递依赖（`attr_alias`）、它在 macOS 上没有内存上限这一点；PR 的调研节引用它。
+  2. **一个辅助函数，全部调用走它。** 基于 `process_control` 的时限与超时终止（`time_limit` 加 `terminate_for_timeout`），放在哪个 crate 由作者定并写进描述。`repo::git::run`、材料库的 `run` 与四处 `.output()`、`facts` 的三处、拉起 `agency` 的一处都改走它；每一处的时限取多少，列表写进描述。
+  3. **超时的含义不变。** `git`、`gh`、`tea` 超时仍是 `RESULT_UNKNOWN`，不当成写入失败；材料库超时仍报材料不可读；其余各处超时都有类型化的错误，不挂住、不默认成功。
+  4. **原有的保护不丢。** 输出超过 16 MiB 照旧拒绝（用 filter 计数）；要写标准输入的调用照旧先写完再等（材料库、`github.rs` 的请求体）。
+  5. **用例。** 每组调用至少一条「命令卡住」的用例（用 `sleep` 一类的替身），断言在时限内结束、错误类别对、不留进程；一条超过 16 MiB 的用例；一条标准输入顺序的用例。两平台 CI 绿。每席评审至少把一处时限退回去，看对应用例变红。
+- **分支**：`deepseek/subprocess-time-limits`，从 `origin/main` 起，小活 J 合入后开。两席对最终提交都写「可合」、CI 绿之后作者自己合。
+
 ## 七、先不做的与之后的
 
 这一段先不做：
