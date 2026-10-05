@@ -124,3 +124,35 @@ let generated = types.to_stream().to_string();
 - **同日 · 验证边界**：两条真实 Claude 用例默认用 Rust 原生 `ignore` 标明未验证，不计为通过；本机真实验证同时设 live 开关与 `--include-ignored`。当前本机实跑了 macOS arm64；Linux 与 macOS x86_64 的程序回归交 CI，真实登录会话未验证。没有第二家 Harness、原生交互、会话复用或恢复。逐 pane 状态目录防篡改仍未实现。C3 的类型生成回退不变，没有生产生成器依赖。
 - **同日 · 完整包协议检查**：升级后，Linux CI 与本机 macOS 完整包都在旧的 `status server` 文本匹配处失败。0.9.3 的原生输出把 `protocol`、`compatible` 改名为 `private_protocol`、`private_protocol_compatible`；JSON 字段仍是 `protocol`、`compatible`。按钉定版的文本名称更新安装包烟测，保留精确版本、协议、兼容性和 owner-only socket 检查，并补明确的失败信息。依据：[官方状态命令](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/cli/status.rs)。
 - **同日 · 私有服务停止**：本机清理核对发现，Agency 退出时后台事件线程可能仍持有 Server 的引用，靠析构不能保证私有 Herdr 随之停止。真实服务端口用例加入三秒内进程消失断言，先失败、再通过。改为 Agency 关闭各 Session 后调用官方 `server.stop`；失败不报告停止成功。单次派工仍只关自己的 pane，不关闭共用服务。依据：[官方原生停止请求](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/api/server.rs)。没有新写进程监督器。
+
+### 2026-10-06 · 3d 常驻会话前置核验
+
+**决定建议：维持官方 Herdr 0.9.3 / 协议 22，常驻 Claude Code 采用原生交互会话、会话级插件与 `--resume`。一轮结束用 Claude 的 `turn.complete`，不用 Herdr 状态或第一个 `Stop`。插件机制要求 Claude Code 至少 2.1.287，本机验证版本 2.1.289。** 这条是实现前的探针结果，不代表 3d 的五条验收已完成；生产 Runtime、并发排队、闲置回收与每次派工的权限仍需测试。
+
+源码仍钉 `7b116c05bfda646af39d2524c54e70c751f57ee8`。[`AgentStartParams` 与 `AgentPromptParams`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/api/schema/agents.rs) 支持启动参数、目标和正文；[`start_agent`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/app/agents.rs) 用社区的交互命令启动 Claude，`agent.prompt` 向活着的会话提交文字。`agent.prompt` 的等待仍不绑定某一轮，不能用状态 `done` 代替该轮的结构化结果。Claude 的身份由集成报告，工作状态仍含终端检测；两者不作为成果准入依据。
+
+集成安装器的 [`claude_dir`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/integration/env.rs) 遵循 `CLAUDE_CONFIG_DIR`。本机只对安装器设置它，在 Agency 私有目录取得官方 SessionStart 脚本，再通过 Claude 的会话级 `--settings` 引用。Claude 本身不设置这个变量，不复制登录材料。官方脚本 SHA-256 为 `7f117c303ffc1a66975b76dda8189d70b718fc04af4cf7cb11449e4ee5b4ae86`；用户的 `~/.claude/settings.json` 与既有 Herdr 钩子在核验前后摘要不变。原生目录信任提示按所有者授权确认，只针对探针自己准备的目录，允许 Claude 保存该目录的原生信任记录；不直接编辑全局设置，不跳过工具权限。
+
+本机使用独立 socket、独立 Herdr 服务和自己创建的 pane；没有操作正在工作的用户会话。主要观察如下：
+
+| 探针 | 观察 | 边界 |
+| --- | --- | --- |
+| 同一交互会话提交两次 | 先记住测试词，再询问，答出 `HCTL3D_AMBER_914`；Claude PID 两次都是 73675，Herdr 能识别为 Claude | 只证明原生常驻与上下文复用；不是 Runtime 的排队用例 |
+| 关闭 pane，再用 `--resume` | 同一原生 Session ID `f44f02c8-7b3c-4d89-b508-78b157a6c95c` 恢复；重复重启前的询问，答出同一个词 | 一次带“重启”措辞的询问被模型答成不能记住，记录没有删；原生历史已恢复，直接问历史与原样询问均答对 |
+| Stop 钩子要求继续 | 同一 Prompt ID 收到两个 `Stop`，分别是中间回答与最终回答 | 不能把第一个 Stop 当成该轮结束；`stop_hook_active` 也不是“已通过全部钩子” |
+| 原生插件 `turn.complete` | 同一续做探针只收到一次；`reason=answer`、`answer=HCTL3D_FINAL`，与 `turn.start` 的 Turn ID 相同 | 官方会话级 `--plugin-dir`，没有全局安装插件或新运行时 |
+| Herdr 发 Esc 打断 | 原生插件收到同一轮的 `reason=aborted`、`isAborted=true`，Claude 会话继续活着 | Esc 投递确认本身不当作停止完成，须等该轮的原生结束事件 |
+
+插件事件的官方定义与精确版本证据见 [Harness 钩子复核](../harness-hooks-20260903.md#2026-10-06--claude-常驻会话的一轮结束)。这些探针没有验证受限生产 Runtime、FIFO、闲置时限、恢复失败或多租户；不把未验证的项目写成通过。
+
+### 同日 · 3d Runtime 与服务端口实测
+
+采用上面的官方机制，删除生产路径的 Claude print 启动器与 JSONL 解析器。Runtime 只保存续接标识和派工关联；不自存对话、不自己管理 harness 进程。Herdr 私有 API 仍沿 C3 实验允许的回退，手写当前使用的小子集，未引入生成器或新依赖。
+
+macOS arm64，Herdr 0.9.3、Claude Code 2.1.289。Buck 原生 `root//agency:herdr_test` 的确定性测试 44 条通过，另有 3 条真实会话默认 `ignore`。新用例覆盖 FIFO 与逐轮归属、同一选入 ID 的新快照仍复用、租户间同 ID 隔离、逐派工权限拒绝、排队中取消、当前轮打断、截止、错误不交成果、闲置回收、原生续接与失败改用新会话。无法确认打断时关闭 pane，并报告 `session_closed`，不捏造退出码。
+
+设置 `HCTL2_HARNESS_LIVE=1`，在 Aqua 用户会话中运行同一份 Buck 产物，三条真实用例通过：`Runtime::start` 得到 `HCTL2_REAL_OK`；`agency start → pair → prepare → activate → results` 得到 `HCTL2_PORT_REAL_OK`；记词与询问连续两轮用同一个 PID，闲置十秒回收后用 `--resume` 恢复相同原生 Session ID，换了 PID 仍答出 `HCTL3D_AMBER_914`。一轮只交一条 Proposal 与一次 `TurnReturned`；不据此判 Task 完成。复用键按租户、Binding ID、Project、选入 ID 划分，不续用上次派工权限。
+
+失败与修正也记录：第一次启动的目录信任提示先显示、后装输入处理器，两枚连续按键没有完成确认；改为观察选择项再确认，范围仍仅限 Agency 创建的目录。用 Aqua 启动 `buck2 test` 但复用 Background Buck daemon 时，真实 Claude 返回 `authentication_failed`；没有修改登录，而是在 Aqua 中直接运行 Buck 构建的测试产物，三条均通过。原生全局 `settings.json` 的摘要始终为 `9cf9dc693952d4952e3774075421bf98762c8d34ec6bca91e54fe6b551349bc8`；目录信任记录由 Claude 自己保存，符合所有者授权。
+
+真实 Linux 与 macOS x86_64 登录会话未验证，Linux 登录材料及原生历史的允许路径没有放宽。逐 pane 防篡改、原生 input、终端接管、写租约、第二家 harness 不在本包。确定性夹具不作为真实工种上架；两平台回归仍须看本 PR 的 CI。

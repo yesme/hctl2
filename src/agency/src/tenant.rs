@@ -229,8 +229,13 @@ impl Tenant {
         let credential_root = tenant_credential_root(&self.root);
         let running = match (|| {
             let exec_root = crate::confine::execution_dir(&credential_root, &dispatch.reference)?;
-            self.runtime
-                .start(&request.spec, &request.bundle, &exec_root, &credential_root)
+            self.runtime.start_for_tenant(
+                &self.root,
+                &request.spec,
+                &request.bundle,
+                &exec_root,
+                &credential_root,
+            )
         })() {
             Ok(running) => running,
             Err(e) => {
@@ -267,7 +272,10 @@ impl Tenant {
         let id = dispatch.reference.clone();
         std::thread::spawn(move || {
             for e in running.events {
-                let exited = matches!(&e, RuntimeEvent::Exited { .. });
+                let exited = matches!(
+                    &e,
+                    RuntimeEvent::Exited { .. } | RuntimeEvent::DispatchReleased
+                );
                 if let Err(error) = tenant.record(&id, e) {
                     let _ = tenant.record(&id, RuntimeEvent::ProtocolError(error.code));
                     let _ = tenant.stop_private(&id);
@@ -280,9 +288,8 @@ impl Tenant {
                         .expect("tenant mutex")
                         .sessions
                         .remove(&id);
-                    // `Exited` is only sent once the child is reaped, so nothing is
-                    // left running in the execution directory. This runs even when
-                    // persisting the exit failed.
+                    // A pooled harness has its own stable cwd. DispatchReleased
+                    // releases only this dispatch, never its native conversation.
                     crate::confine::release_execution_dir(&tenant.exec_parent, &id);
                 }
             }
@@ -426,6 +433,31 @@ impl Tenant {
                         EvidenceLevel::AdapterEvent,
                     )?;
                 }
+                state.sessions.remove(id);
+            }
+            RuntimeEvent::TurnStopped {
+                requested_stop,
+                session_closed,
+            } => {
+                if dispatch.state == DispatchState::Running {
+                    dispatch.state = if requested_stop {
+                        DispatchState::Cancelled
+                    } else {
+                        DispatchState::CannotFulfill
+                    };
+                    put_dispatch(&state.db, &dispatch)?;
+                }
+                event(
+                    &state.db,
+                    id,
+                    "stopped",
+                    serde_json::json!({
+                        "requested_stop":requested_stop,"session_closed":session_closed
+                    }),
+                    EvidenceLevel::AdapterEvent,
+                )?;
+            }
+            RuntimeEvent::DispatchReleased => {
                 state.sessions.remove(id);
             }
             RuntimeEvent::ProtocolError(reason) => {

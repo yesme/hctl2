@@ -1,8 +1,7 @@
 //! Minimum versions. A harness is cataloged only after a startup smoke check.
 //! Herdr does not use this gate; it uses the locked binary and protocol 22.
-pub mod claude;
-
-pub const CLAUDE_MINIMUM: &str = "2.1.263";
+// Native turn mods are available from this Claude Code version.
+pub const CLAUDE_MINIMUM: &str = "2.1.287";
 pub const CODEX_MINIMUM: &str = "0.153.4";
 
 pub fn version_at_least(actual: &str, minimum: &str) -> bool {

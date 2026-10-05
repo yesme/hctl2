@@ -27,6 +27,13 @@ pub enum RuntimeEvent {
     },
     /// The harness returned this turn; neither task acceptance nor physical exit.
     TurnReturned,
+    /// Native turn interrupted; not evidence that the harness process exited.
+    TurnStopped {
+        requested_stop: bool,
+        session_closed: bool,
+    },
+    /// The pooled runtime no longer uses this dispatch's private execution directory.
+    DispatchReleased,
     Exited {
         code: Option<i32>,
         requested_stop: bool,
@@ -56,6 +63,17 @@ pub trait Runtime: Send + Sync {
         exec_root: &Path,
         credential_root: &Path,
     ) -> Result<Running>;
+    /// Agency-local tenant identity. Never sent to the harness or control port.
+    fn start_for_tenant(
+        &self,
+        _tenant: &Path,
+        spec: &Sealed<ExecutionSpec>,
+        bundle: &Sealed<Bundle>,
+        exec_root: &Path,
+        credential_root: &Path,
+    ) -> Result<Running> {
+        self.start(spec, bundle, exec_root, credential_root)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

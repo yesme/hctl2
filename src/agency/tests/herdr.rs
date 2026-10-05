@@ -808,6 +808,14 @@ fn harness_minimums_do_not_start_a_session() {
         harness::CLAUDE_MINIMUM
     ));
     assert!(!harness::version_at_least("2.1.0", harness::CLAUDE_MINIMUM));
+    assert!(!harness::version_at_least(
+        "2.1.286",
+        harness::CLAUDE_MINIMUM
+    ));
+    assert!(harness::version_at_least(
+        "2.1.287",
+        harness::CLAUDE_MINIMUM
+    ));
     assert!(harness::version_at_least("0.160.0", harness::CODEX_MINIMUM));
     assert!(!harness::version_at_least(
         "0.153.3",
@@ -828,7 +836,7 @@ fn live_claude_dispatch_returns_one_turn() {
         .unwrap();
     let claude = String::from_utf8(claude.stdout).unwrap();
     let claude = std::path::PathBuf::from(claude.trim());
-    let (cred, exec) = scratch("live");
+    let (cred, _root, exec) = standby_root("live");
     let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
     let bundle = sealed_bundle("Reply with exactly HCTL2_REAL_OK and do not use tools.\n");
     let mut document = sealed_spec("live", now_ms() + 120_000).document;
@@ -888,7 +896,7 @@ fn live_claude_dispatch_returns_one_turn() {
         "LIVE claude {} via locked Herdr protocol 22",
         spec.document.profession.reference.revision
     );
-    eprintln!("Proposal(schema=claude.result.v1, source=adapter_event): {proposal}");
+    eprintln!("Proposal(schema=claude.turn.v1, source=adapter_event): {proposal}");
     eprintln!("TurnReturned (not Task completion; does not require process exit)");
     let herdr_pid = runtime.pid().unwrap();
     running.session.lock().unwrap().stop().unwrap();
@@ -1186,7 +1194,7 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
         },
         input_policy: InputPolicy::NoInput,
         permission_digest: agency_proto::hash(b"permissions"),
-        permissions: vec![],
+        permissions: vec!["context.read".into()],
         budget: 1,
         deadline_ms,
         repo: None,
@@ -1249,7 +1257,11 @@ fn collect(
     while Instant::now() < deadline {
         match running.events.recv_timeout(Duration::from_millis(200)) {
             Ok(event) => {
-                let done = matches!(event, agency::runtime::RuntimeEvent::Exited { .. });
+                let done = matches!(
+                    event,
+                    agency::runtime::RuntimeEvent::Exited { .. }
+                        | agency::runtime::RuntimeEvent::DispatchReleased
+                );
                 events.push(event);
                 if done {
                     break;
@@ -1271,258 +1283,587 @@ fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
     })
 }
 
-fn claude_fixture_events(name: &str, jsonl: &str, exit: i32) -> Vec<agency::runtime::RuntimeEvent> {
-    let (cred, exec) = scratch(name);
-    let claude = exec.join("claude-fixture");
-    std::fs::write(&claude, format!(
-        "#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.289 (Claude Code)'; exit 0; fi\ncat > delivered.txt\ncat <<'HCTL_JSONL'\n{jsonl}\nHCTL_JSONL\nexit {exit}\n"
-    )).unwrap();
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
-    let task = "A task, not shell: ' $(touch forged) `touch forged-again`";
-    let mut running = runtime
-        .start(
-            &sealed_spec(name, now_ms() + 20_000),
-            &sealed_bundle(task),
-            &exec,
-            &cred,
-        )
-        .unwrap();
-    let events = collect(&mut running, Duration::from_secs(15));
-    assert_eq!(
-        std::fs::read_to_string(exec.join("delivered.txt")).unwrap(),
-        format!("{task}\n")
-    );
-    assert!(!exec.join("forged").exists());
-    assert!(!exec.join("forged-again").exists());
-    events
-}
-
-#[test]
-fn a_claude_error_result_is_not_a_proposal() {
-    let events = claude_fixture_events(
-        "error-result",
-        r#"{"type":"system","subtype":"init","session_id":"fixture"}
-{"type":"result","subtype":"success","session_id":"fixture","result":"not logged in","is_error":true}"#,
-        0,
-    );
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
-    );
-    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::ProtocolError(code) if code == "HARNESS_RESULT_ERROR")));
-}
-
-#[test]
-fn a_missing_claude_result_is_a_protocol_error() {
-    let events = claude_fixture_events(
-        "missing-result",
-        r#"{"type":"system","subtype":"init","session_id":"fixture"}"#,
-        0,
-    );
-    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::ProtocolError(code) if code == "HARNESS_RESULT_MISSING")));
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
-    );
-}
-
-#[test]
-fn a_failed_claude_exit_preserves_the_reason() {
-    let events = claude_fixture_events(
-        "exit-reason",
-        r#"{"type":"system","subtype":"init","session_id":"fixture"}
-{"type":"result","subtype":"success","session_id":"fixture","result":"not logged in","is_error":true}"#,
-        1,
-    );
-    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::Observation { kind, payload, .. } if kind == "runtime:harness_failure" && payload["message"] == "not logged in")));
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
-    );
-}
-
-#[test]
-fn claude_terminal_requires_matching_identity_and_explicit_success() {
-    let init = r#"{"type":"system","subtype":"init","session_id":"one"}"#;
-    for terminal in [
-        r#"{"type":"result","subtype":"success","is_error":false,"result":"bad"}"#,
-        r#"{"type":"result","subtype":"success","session_id":"two","is_error":false,"result":"bad"}"#,
-        r#"{"type":"result","subtype":"error_max_turns","session_id":"one","is_error":false,"result":"bad"}"#,
-        r#"{"type":"result","subtype":"success","session_id":"one","result":"bad"}"#,
-    ] {
-        let result = harness::claude::result_from_jsonl(&format!("{init}\n{terminal}\n"));
-        assert!(result.is_err() || result.unwrap().is_error, "{terminal}");
-    }
-    let valid = format!(
-        "{init}\n{}\n{}\n",
-        r#"{"type":"result","subtype":"success","session_id":"one","is_error":false,"result":"ok"}"#,
-        r#"{"type":"system","subtype":"tail","session_id":"one"}"#
-    );
-    assert_eq!(
-        harness::claude::result_from_jsonl(&valid).unwrap().result,
-        "ok"
-    );
-}
-
-/// Native JSONL fixture: it deliberately stays alive after returning one turn.
-fn waiting_claude(dir: &std::path::Path, emit_result: bool) -> PathBuf {
+fn waiting_claude(dir: &std::path::Path, _: bool) -> PathBuf {
     let claude = dir.join("waiting-claude");
-    let result = if emit_result {
-        r#"printf '%s\n' '{"type":"result","subtype":"success","session_id":"waiting","result":"still working; not a task completion","is_error":false}'"#
-    } else {
-        ":"
-    };
-    std::fs::write(&claude, format!(
-        "#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.289 (Claude Code)'; exit 0; fi\ncat > delivered.txt\necho $$ > harness.pid\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"waiting\"}}'\n{result}\nsleep 30\ntouch must-not-finish\n"
-    )).unwrap();
+    std::fs::copy(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap(), &claude).unwrap();
     std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
     claude
 }
 
-#[test]
-fn claude_turn_returns_before_exit_and_herdr_owns_the_live_process() {
-    use agency::runtime::RuntimeEvent;
-    let (cred, exec) = scratch("turn-before-exit");
-    let claude = waiting_claude(&exec, true);
-    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
-    let mut running = runtime
-        .start(
-            &sealed_spec("turn", now_ms() + 60_000),
-            &sealed_bundle("do not execute this text"),
-            &exec,
-            &cred,
-        )
-        .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let mut proposal = false;
-    loop {
-        assert!(Instant::now() < deadline, "no turn returned");
-        match running.events.recv_timeout(Duration::from_secs(1)) {
-            Ok(RuntimeEvent::Proposal { bytes, source, .. }) => {
-                assert_eq!(bytes, b"still working; not a task completion");
-                assert_eq!(source, agency_proto::EvidenceLevel::AdapterEvent);
-                proposal = true;
-            }
-            Ok(RuntimeEvent::TurnReturned) => {
-                assert!(proposal);
-                break;
-            }
-            Ok(RuntimeEvent::Exited { .. }) => panic!("turn was held until exit"),
-            Ok(RuntimeEvent::ProtocolError(error)) => panic!("{error}"),
-            _ => {}
-        }
+fn turn_state(
+    exec: &std::path::Path,
+    cred: &std::path::Path,
+    spec: &agency_proto::Sealed<agency_proto::ExecutionSpec>,
+) -> PathBuf {
+    let key = agency_proto::hash(
+        &agency_proto::canonical(&json!([
+            cred,
+            spec.document.binding.id,
+            spec.document.project,
+            spec.document.selection.id
+        ]))
+        .unwrap(),
+    );
+    herdr::state_dir(exec, cred)
+        .unwrap()
+        .join(format!("standby-{key}"))
+}
+fn standby_root(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let (cred, root) = scratch(name);
+    let exec = root.join("dispatches/job");
+    std::fs::create_dir_all(&exec).unwrap();
+    (cred, root, exec)
+}
+fn wait_for(path: &std::path::Path) {
+    let timeout = Instant::now() + Duration::from_secs(10);
+    while !path.exists() {
+        assert!(Instant::now() < timeout, "missing {}", path.display());
+        std::thread::sleep(Duration::from_millis(25));
     }
-    let pid: u32 = std::fs::read_to_string(exec.join("harness.pid"))
+}
+fn native_pid(dir: &std::path::Path) -> u32 {
+    wait_for(&dir.join("harness.pid"));
+    std::fs::read_to_string(dir.join("harness.pid"))
         .unwrap()
         .trim()
         .parse()
+        .unwrap()
+}
+fn standby_alive(pid: u32) -> bool {
+    let out = Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
         .unwrap();
-    assert!(
-        process_matches(pid, &claude),
-        "harness exited before its output was returned"
+    let status = String::from_utf8_lossy(&out.stdout);
+    out.status.success() && !status.trim().is_empty() && !status.trim().starts_with('Z')
+}
+
+fn real_claude_pid(state: &std::path::Path) -> u32 {
+    let out = Command::new("/bin/ps")
+        .args(["-axo", "pid=,command="])
+        .output()
+        .unwrap();
+    let plugin = format!("--plugin-dir {}", state.join("plugin").display());
+    let pids: Vec<u32> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|line| line.contains(&plugin))
+        .map(|line| line.split_whitespace().next().unwrap().parse().unwrap())
+        .collect();
+    assert_eq!(
+        pids.len(),
+        1,
+        "one native Claude process for this selection"
     );
-    // Walk the actual process ancestry: the harness must descend from Herdr, not Agency.
-    let mut ancestor = pid;
-    for _ in 0..8 {
-        if ancestor == runtime.pid().unwrap() {
-            break;
-        }
-        let output = Command::new("/bin/ps")
-            .args(["-p", &ancestor.to_string(), "-o", "ppid="])
-            .output()
-            .unwrap();
-        ancestor = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .parse()
-            .unwrap();
-    }
-    assert_eq!(ancestor, runtime.pid().unwrap());
-    running.session.lock().unwrap().stop().unwrap();
-    let events = collect(&mut running, Duration::from_secs(5));
-    assert!(events.iter().any(|e| matches!(
-        e,
-        RuntimeEvent::Exited {
-            requested_stop: true,
-            ..
-        }
-    )));
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline && process_matches(pid, &claude) {
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    assert!(!process_matches(pid, &claude));
-    assert!(!exec.join("must-not-finish").exists());
+    pids[0]
 }
 
 #[test]
-fn cancelling_claude_before_a_turn_returns_no_proposal() {
+#[ignore = "UNVERIFIED: requires a logged-in Claude session and HCTL2_HARNESS_LIVE=1"]
+fn live_standby_remembers_across_turns_and_native_resume() {
     use agency::runtime::RuntimeEvent;
-    let (cred, exec) = scratch("claude-cancel");
-    let claude = waiting_claude(&exec, false);
-    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
-    let mut running = runtime
-        .start(
-            &sealed_spec("cancel-turn", now_ms() + 60_000),
-            &sealed_bundle("wait"),
-            &exec,
-            &cred,
-        )
+    assert!(std::env::var_os("HCTL2_HARNESS_LIVE").is_some());
+    let claude = Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !exec.join("harness.pid").exists() && Instant::now() < deadline {
+    let claude = PathBuf::from(String::from_utf8(claude.stdout).unwrap().trim());
+    let (cred, _root, exec) = standby_root("live-memory");
+    let runtime =
+        launch::InstalledHerdr::open_with_idle(binary(), &claude, Duration::from_secs(10)).unwrap();
+    let profession = runtime.catalog().unwrap().professions.remove(0);
+    let prepare = |key: &str, text: &str| {
+        let bundle = sealed_bundle(text);
+        let mut document = sealed_spec(key, now_ms() + 120_000).document;
+        document.profession = profession.clone();
+        document.bundle.digest = bundle.digest.clone();
+        (agency_proto::Sealed::new(document).unwrap(), bundle)
+    };
+    let (first, bundle) = prepare(
+        "remember",
+        "Remember the word HCTL3D_AMBER_914 for our later conversation. Reply exactly HCTL3D_AMBER_914, without tools.",
+    );
+    let state = turn_state(&exec, &cred, &first);
+    let run = |spec, bundle| {
+        let mut running = runtime.start(spec, bundle, &exec, &cred).unwrap();
+        let events = collect(&mut running, Duration::from_secs(120));
+        assert!(
+            stdout_has(&events, b"HCTL3D_AMBER_914"),
+            "native answer did not recall the word"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, RuntimeEvent::Proposal { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, RuntimeEvent::TurnReturned))
+                .count(),
+            1
+        );
+        events
+    };
+    run(&first, &bundle);
+    let pid = real_claude_pid(&state);
+    let session: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.join("resume.json")).unwrap()).unwrap();
+    let question =
+        "What word did I ask you to remember earlier? Reply only with that word, without tools.";
+    let (second, bundle) = prepare("recall", question);
+    run(&second, &bundle);
+    assert_eq!(
+        real_claude_pid(&state),
+        pid,
+        "next dispatch must not restart Claude"
+    );
+    let client = Client::connect(&herdr::socket_path(
+        &herdr::state_dir(&exec, &cred).unwrap(),
+    ))
+    .unwrap();
+    let agents = client.call("agent.list", json!({})).unwrap();
+    let native = agents["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["agent_session"]["value"] == session["session"])
+        .unwrap();
+    assert_eq!(native["agent"], "claude");
+    assert_ne!(native["agent_status"], "unknown");
+    let screen = client.call("pane.read", json!({"pane_id":native["pane_id"],"source":"visible","format":"text","strip_ansi":true})).unwrap();
+    assert!(!screen["read"]["text"].as_str().unwrap().trim().is_empty());
+    eprintln!(
+        "LIVE Herdr: agent=claude, status={}, interactive pane has visible output",
+        native["agent_status"]
+    );
+    eprintln!(
+        "LIVE native Claude {}: two turns, same PID {pid}, recalled HCTL3D_AMBER_914",
+        session["session"]
+    );
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while standby_alive(pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(25));
     }
-    assert!(exec.join("harness.pid").exists());
+    assert!(
+        !standby_alive(pid),
+        "idle timeout must reclaim the native pane"
+    );
+    let (third, bundle) = prepare("recall-after-idle", question);
+    let events = run(&third, &bundle);
+    assert!(events.iter().any(|e| matches!(e, RuntimeEvent::Observation{kind,payload,..} if kind=="session_opened" && payload["resumed"]==true && payload["resume_failed"]==false)));
+    let resumed_pid = real_claude_pid(&state);
+    assert_ne!(resumed_pid, pid);
+    let resumed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.join("resume.json")).unwrap()).unwrap();
+    assert_eq!(resumed, session, "Claude owns the same native conversation");
+    eprintln!(
+        "LIVE --resume: new PID {resumed_pid}, same native session, recalled HCTL3D_AMBER_914"
+    );
+    runtime.shutdown().unwrap();
+    assert!(!standby_alive(resumed_pid));
+}
+
+#[test]
+fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
+    let (cred, root, exec) = standby_root("standby-fifo");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let first = sealed_spec("first", now_ms() + 60_000);
+    let mut second = sealed_spec("second", now_ms() + 60_000).document;
+    // Selection identity stays the same when a newer dispatch freezes a
+    // different revision. The worker must not key reuse on old permissions.
+    second.selection.revision = "2".into();
+    second.selection.digest = agency_proto::hash(b"new selection snapshot");
+    let second = agency_proto::Sealed::new(second).unwrap();
+    let state = turn_state(&exec, &cred, &first);
+    let mut a = runtime
+        .start(&first, &sealed_bundle("FIRST_ANSWER"), &exec, &cred)
+        .unwrap();
+    let mut b = runtime
+        .start(&second, &sealed_bundle("SECOND_ANSWER"), &exec, &cred)
+        .unwrap();
+    let left = collect(&mut a, Duration::from_secs(15));
+    let pid = native_pid(&state);
+    let right = collect(&mut b, Duration::from_secs(15));
+    assert!(stdout_has(&left, b"FIRST_ANSWER"));
+    assert!(!stdout_has(&left, b"SECOND_ANSWER"));
+    assert!(stdout_has(&right, b"SECOND_ANSWER"));
+    assert!(!stdout_has(&right, b"FIRST_ANSWER"));
+    for events in [&left, &right] {
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, agency::runtime::RuntimeEvent::TurnReturned))
+                .count(),
+            1
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, agency::runtime::RuntimeEvent::Exited { .. }))
+        );
+    }
+    assert_eq!(pid, native_pid(&state));
+    assert!(standby_alive(pid));
+    let mut ancestor = pid;
+    for _ in 0..10 {
+        if ancestor == runtime.pid().unwrap() {
+            break;
+        }
+        let out = Command::new("/bin/ps")
+            .args(["-p", &ancestor.to_string(), "-o", "ppid="])
+            .output()
+            .unwrap();
+        ancestor = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
+    }
+    assert_eq!(
+        ancestor,
+        runtime.pid().unwrap(),
+        "Herdr must own the harness"
+    );
+    runtime.shutdown().unwrap();
+    assert!(!standby_alive(pid));
+}
+
+#[test]
+fn standby_cancel_interrupts_only_the_turn_and_next_dispatch_reuses_the_session() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-cancel");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("wait", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut running = runtime
+        .start(&spec, &sealed_bundle("wait"), &exec, &cred)
+        .unwrap();
+    wait_for(&state.join("started.json"));
+    let pid = native_pid(&state);
     running.session.lock().unwrap().stop().unwrap();
-    let events = collect(&mut running, Duration::from_secs(5));
+    let events = collect(&mut running, Duration::from_secs(10));
     assert!(events.iter().any(|e| matches!(
         e,
-        RuntimeEvent::Exited {
+        RuntimeEvent::TurnStopped {
             requested_stop: true,
-            ..
+            session_closed: false
         }
     )));
     assert!(!events.iter().any(|e| matches!(
         e,
         RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
     )));
-}
-
-#[test]
-fn dropping_a_runtime_session_closes_its_native_pane() {
-    let (cred, exec) = scratch("drop-session");
-    let claude = waiting_claude(&exec, false);
-    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
-    let running = runtime
+    assert!(standby_alive(pid));
+    let mut next = runtime
         .start(
-            &sealed_spec("drop-session", now_ms() + 60_000),
-            &sealed_bundle("wait"),
+            &sealed_spec("after-cancel", now_ms() + 30_000),
+            &sealed_bundle("AFTER_CANCEL"),
             &exec,
             &cred,
         )
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let pid: u32 = loop {
-        if let Ok(text) = std::fs::read_to_string(exec.join("harness.pid"))
-            && let Ok(pid) = text.trim().parse()
-        {
-            break pid;
+    assert!(stdout_has(
+        &collect(&mut next, Duration::from_secs(10)),
+        b"AFTER_CANCEL"
+    ));
+    assert_eq!(pid, native_pid(&state));
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_error_is_not_a_result_and_expiration_ends_only_its_dispatch() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-errors");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let mut failed = runtime
+        .start(
+            &sealed_spec("error", now_ms() + 60_000),
+            &sealed_bundle("error"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut failed, Duration::from_secs(10));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e,RuntimeEvent::ProtocolError(code) if code=="HARNESS_TURN_ERROR"))
+    );
+    assert!(!events.iter().any(|e| matches!(
+        e,
+        RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
+    )));
+    // Warm the fresh session first: this must exercise an active turn's
+    // deadline, not just expiry while the native session is starting.
+    let warm = sealed_spec("warm", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &warm);
+    let mut ready = runtime
+        .start(&warm, &sealed_bundle("WARM"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut ready, Duration::from_secs(10)),
+        b"WARM"
+    ));
+    let pid = native_pid(&state);
+    let spec = sealed_spec("expired", now_ms() + 3_000);
+    let mut expired = runtime
+        .start(&spec, &sealed_bundle("wait"), &exec, &cred)
+        .unwrap();
+    let events = collect(&mut expired, Duration::from_secs(10));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::DeadlineReached))
+    );
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RuntimeEvent::TurnStopped {
+            requested_stop: false,
+            session_closed: false
         }
-        assert!(Instant::now() < deadline, "harness never started");
-        std::thread::sleep(Duration::from_millis(25));
-    };
-    assert!(process_matches(pid, &claude));
-    drop(running);
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::Proposal { .. }))
+    );
+    let started: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
+    assert_eq!(started["job"], "expired");
+    assert!(
+        standby_alive(pid),
+        "deadline ends the dispatch, not the native conversation"
+    );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_idle_reclaims_then_uses_native_resume_and_participants_are_isolated() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-resume");
+    let claude = waiting_claude(&root, true);
+    let runtime =
+        launch::InstalledHerdr::open_with_idle(binary(), &claude, Duration::from_millis(150))
+            .unwrap();
+    let spec = sealed_spec("before-idle", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut a = runtime
+        .start(&spec, &sealed_bundle("BEFORE_IDLE"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut a, Duration::from_secs(10)),
+        b"BEFORE_IDLE"
+    ));
+    let pid = native_pid(&state);
     let deadline = Instant::now() + Duration::from_secs(3);
-    while Instant::now() < deadline && process_matches(pid, &claude) {
+    while standby_alive(pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(25));
     }
-    assert!(!process_matches(pid, &claude));
-    assert!(!exec.join("must-not-finish").exists());
+    assert!(!standby_alive(pid));
+    let mut b = runtime
+        .start(
+            &sealed_spec("after-idle", now_ms() + 60_000),
+            &sealed_bundle("AFTER_IDLE"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut b, Duration::from_secs(10));
+    assert!(stdout_has(&events, b"AFTER_IDLE"));
+    assert!(events.iter().any(|e|matches!(e,RuntimeEvent::Observation{kind,payload,..} if kind=="session_opened" && payload["resumed"]==true && payload["resume_failed"]==false)));
+    assert_ne!(pid, native_pid(&state));
+    let mut other = spec.document.clone();
+    other.selection.id = "other-selection".into();
+    other.idempotency_key = "other".into();
+    let other = agency_proto::Sealed::new(other).unwrap();
+    let mut c = runtime
+        .start(&other, &sealed_bundle("OTHER"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut c, Duration::from_secs(10)),
+        b"OTHER"
+    ));
+    assert_ne!(state, turn_state(&exec, &cred, &other));
+    assert_ne!(
+        native_pid(&state),
+        native_pid(&turn_state(&exec, &cred, &other))
+    );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_each_dispatch_checks_its_own_permissions() {
+    let (cred, root, exec) = standby_root("standby-permissions");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let mut first = runtime
+        .start(
+            &sealed_spec("allowed", now_ms() + 60_000),
+            &sealed_bundle("ALLOWED"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut first, Duration::from_secs(10)),
+        b"ALLOWED"
+    ));
+    for permissions in [vec![], vec!["context.read".into(), "file.write".into()]] {
+        let mut spec = sealed_spec("forbidden", now_ms() + 60_000).document;
+        spec.permissions = permissions;
+        let error = match runtime.start(
+            &agency_proto::Sealed::new(spec).unwrap(),
+            &sealed_bundle("MUST_NOT_SEND"),
+            &exec,
+            &cred,
+        ) {
+            Ok(_) => panic!("permission leaked"),
+            Err(e) => e,
+        };
+        assert!(["PERMISSION_DENIED", "STANDBY_READONLY"].contains(&error.code.as_str()));
+    }
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_same_selection_ids_in_two_tenants_do_not_share_a_session() {
+    let (cred, root, exec) = standby_root("standby-tenants");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("same-dispatch-key", now_ms() + 60_000);
+    let mut a = runtime
+        .start_for_tenant(
+            &root.join("tenant-a"),
+            &spec,
+            &sealed_bundle("TENANT_A"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let mut b = runtime
+        .start_for_tenant(
+            &root.join("tenant-b"),
+            &spec,
+            &sealed_bundle("TENANT_B"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut a, Duration::from_secs(10)),
+        b"TENANT_A"
+    ));
+    assert!(stdout_has(
+        &collect(&mut b, Duration::from_secs(10)),
+        b"TENANT_B"
+    ));
+    let states: Vec<_> = std::fs::read_dir(herdr::state_dir(&exec, &cred).unwrap())
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("standby-")
+        })
+        .collect();
+    assert_eq!(states.len(), 2);
+    assert_ne!(native_pid(&states[0]), native_pid(&states[1]));
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_queued_cancellation_never_delivers_the_next_prompt() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-queued-stop");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("first", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut first = runtime
+        .start(&spec, &sealed_bundle("wait"), &exec, &cred)
+        .unwrap();
+    wait_for(&state.join("started.json"));
+    let mut queued = runtime
+        .start(
+            &sealed_spec("queued", now_ms() + 60_000),
+            &sealed_bundle("MUST_NOT_SEND"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    queued.session.lock().unwrap().stop().unwrap();
+    first.session.lock().unwrap().stop().unwrap();
+    collect(&mut first, Duration::from_secs(10));
+    let events = collect(&mut queued, Duration::from_secs(10));
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RuntimeEvent::TurnStopped {
+            requested_stop: true,
+            session_closed: false
+        }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::Proposal { .. }))
+    );
+    assert_eq!(
+        std::fs::read_to_string(state.join("delivered.txt")).unwrap(),
+        "wait"
+    );
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_uninterruptible_turn_closes_and_failed_resume_is_reported() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-close");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("stuck", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut stuck = runtime
+        .start(&spec, &sealed_bundle("uninterruptible"), &exec, &cred)
+        .unwrap();
+    wait_for(&state.join("started.json"));
+    let pid = native_pid(&state);
+    stuck.session.lock().unwrap().stop().unwrap();
+    let events = collect(&mut stuck, Duration::from_secs(10));
+    assert!(events.iter().any(|e| matches!(
+        e,
+        RuntimeEvent::TurnStopped {
+            requested_stop: true,
+            session_closed: true
+        }
+    )));
+    assert!(!standby_alive(pid));
+    std::fs::write(
+        state.join("fail-resume"),
+        b"fixture rejects old native session",
+    )
+    .unwrap();
+    let mut next = runtime
+        .start(
+            &sealed_spec("fresh", now_ms() + 60_000),
+            &sealed_bundle("FRESH_ANSWER"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut next, Duration::from_secs(15));
+    assert!(stdout_has(&events, b"FRESH_ANSWER"));
+    assert!(events.iter().any(|e| matches!(e, RuntimeEvent::Observation{kind,payload,..} if kind=="session_opened" && payload["resumed"]==false && payload["resume_failed"]==true)));
+    runtime.shutdown().unwrap();
 }
 
 struct StopAgency {
@@ -1706,13 +2047,18 @@ async fn port_turn(name: &str, live: bool) {
     assert!(output.contains(expected), "{output}");
     if !live {
         assert!(!trace.events.iter().any(|event| event.kind == "stopped"));
-        let exec = confine::execution_dir(&root, &prepared.reference).unwrap();
-        let pid: u32 = std::fs::read_to_string(exec.join("harness.pid"))
+        let state = std::fs::read_dir(&herdr_state)
             .unwrap()
-            .trim()
-            .parse()
+            .map(|e| e.unwrap().path())
+            .find(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("standby-")
+            })
             .unwrap();
-        assert!(process_matches(pid, &claude));
+        let pid = native_pid(&state);
+        assert!(standby_alive(pid));
         let _: Dispatch = client.call("stop", &ticket).await.unwrap();
         let stopped: Trace = client
             .call(
@@ -1739,7 +2085,7 @@ async fn port_turn(name: &str, live: bool) {
         "Proposal(schema={}, evidence=adapter_event): {output}",
         proposal.schema
     );
-    eprintln!("Task acceptance / sysone / artifacts: not evaluated in package 3c");
+    eprintln!("Task acceptance / sysone / artifacts: not evaluated by this runtime");
     drop(client);
     drop(pairing);
     let stopped = Command::new(&agency)
@@ -1794,4 +2140,13 @@ fn process_matches(pid: u32, binary: &std::path::Path) -> bool {
         return false;
     }
     line.contains(&binary.display().to_string())
+        || line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|program| std::fs::canonicalize(program).ok())
+            .is_some_and(|program| {
+                binary
+                    .canonicalize()
+                    .is_ok_and(|expected| program == expected)
+            })
 }

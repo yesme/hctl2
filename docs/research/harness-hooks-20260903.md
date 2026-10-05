@@ -177,3 +177,17 @@ Herdr（v0.8.2，master @ `0f8ad12`）只在 PTY 里拉起 harness，钩子由�
 **决定建议：维持适配原生钩子与权限协议；复核版本为 Claude Code `2.1.263`、Codex CLI `0.153.4`、Gemini CLI `0.58.0`。推翻 §决定建议第 2 条中「钉一个逐项询问模式就能覆盖每次调用」的实施假设，不推翻三家接入。** 三家基础模式各有自动放行范围，单向 JSONL 也不自动提供审批回复通道；各家具体差异、钉定证据及 Codex 枚举拼写见[适配器研究 §「逐项询问」的实际限制](./harness-adapters.md#逐项询问的实际限制)。
 
 P2.3 按实际工具、参数、有效配置核验询问与拒绝覆盖，再冻结 Execution Spec；不要把未收到权限请求解释为所有操作已被检查。三条双向路径和审批被拒、取消、缺终局、通道断开、精确会话恢复仍是待执行的验收，清单见[适配器研究 §边界与取舍](./harness-adapters.md#边界与取舍)。本次复核只补实现前提，不改变约束或把源码核对写成真实会话通过。
+
+### 2026-10-06 · Claude 常驻会话的一轮结束
+
+**决定建议：3d 采用 Claude Code 原生插件的 `turn.start` / `turn.complete`，以 Turn ID 配对，取 `answer` 与 `reason`；不靠屏幕、退出或单个 Stop 钩子。插件只通过该会话的 `--plugin-dir` 加载，不全局安装。最低功能版本是 2.1.287；本机实测 2.1.289，Herdr 是官方 0.9.3。** 这不改变派工、结果准入与 Task 完成的权威，只换一轮原始输出的取得方式。
+
+[官方插件创建说明](https://code.claude.com/docs/en/plugins/mods/create) 给出版本门槛与会话级加载方式。[事件说明](https://code.claude.com/docs/en/plugins/mods/events#follow-a-turn) 和本机加载插件时生成的原生类型一致：`turn.start` 给本轮 ID；`turn.complete` 给相同 ID、最终回答、持续时间、是否被打断与结束原因。2.1.289 的 `TurnCompleteReason` 是 `answer / aborted / refusal / error`。子代理也有完成事件，另带 `agentId`，不能交成主调用的结果。本机原生类型文件 SHA-256 为 `6116f6c69db6e3c5b5433eaa7283dcb15e2ee98c91ff47166e87d4d05d45378b`；在线类型可能早于本机版本，以该版本生成文件与实际事件为准。插件采用原生 API，不需要 Node.js 运行时或另一个执行服务。
+
+此前只核 `Stop` 不足以判一轮结束。[官方 Stop 说明](https://code.claude.com/docs/en/hooks#stop) 允许其他钩子继续同一轮；被人打断时不发 Stop，API 错误另发 StopFailure。本机先运行一个原生 Stop 续做钩子，再运行会话插件：同一 Prompt ID 的两个 Stop 分别给 `HCTL3D_INTERMEDIATE`、`HCTL3D_FINAL`，插件只发一次 `turn.complete`，取得后者。原生会话记录中的 `turn_duration` 同样出现在最终钩子之后，但它不是公开稳定的结束接口，本次不选它。`Notification.agent_completed` 只针对终端打开 Agent View 时的后台会话，不是普通交互轮的替代。
+
+取消探针用 Herdr 的 `agent.send_keys` 发 Esc。原生事件为 `reason=aborted`、`isAborted=true`，Turn ID 与起始事件一致，会话仍能继续。没有把按键成功、终端空闲或会话恢复当作旧授权仍有效。生产接线仍需按本次 Execution Spec 限权、排队与取消隔离；该部分尚未验证。首次探针误用不存在的 jq 路径，只有钩子报错，不算续做证据；修正路径后重跑才得到上述两个 Stop 与一个最终事件。
+
+私有安装 Herdr SessionStart 资产、原生目录信任、常驻与 `--resume` 的实测及未验证范围见 [Herdr 复核](./sdk/herdr.md#2026-10-06--3d-常驻会话前置核验)。本次没有修改用户全局设置或论文、设计、约束正文。
+
+**同日 · 3d 接线复核**：生产 Runtime 已用原生 `turn.start` / `turn.complete`，以派工键、Spec 摘要、Session ID、Turn ID 配对；子代理事件过滤后不参与主轮结算。Aqua 下的三条真实测试分别走 Runtime、独立 Agency 服务端口、同进程两轮与闲置后的 `--resume`，均交回原文。测试与失败边界见 [Herdr 3d 实测](./sdk/herdr.md#同日--3d-runtime-与服务端口实测)。错误、取消和截止的确定性用例不伪报 Proposal；单次停止不宣称物理进程退出。脚本插件仅为原生事件到现有派工端口的适配，不替代 Claude 或 Herdr 的运行时。
