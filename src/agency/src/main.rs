@@ -68,12 +68,10 @@ async fn run(args: Args) -> Result<()> {
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
             } else if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT") {
-                match agency::launch::installed_herdr(std::path::Path::new(&install))
-                    .and_then(agency::launch::InstalledHerdr::open)
-                {
+                match catalog_installed_harness(std::path::Path::new(&install)) {
                     Ok(runtime) => Arc::new(runtime),
                     Err(error) => {
-                        eprintln!("herdr not cataloged: {error}");
+                        eprintln!("harness not cataloged: {error}");
                         Arc::new(Unconfigured)
                     }
                 }
@@ -140,6 +138,38 @@ async fn status(root: &std::path::Path) -> Result<serde_json::Value> {
         .call("catalog", &serde_json::json!({}))
         .await
 }
+fn catalog_installed_harness(install: &std::path::Path) -> Result<agency::launch::InstalledHerdr> {
+    let binary = agency::launch::installed_herdr(install)?;
+    let claude = std::env::var_os("HCTL2_CLAUDE")
+        .map(std::path::PathBuf::from)
+        .or_else(claude_on_path)
+        .ok_or_else(|| {
+            PortError::new(
+                "HARNESS_NOT_STARTED",
+                "claude is not on PATH and HCTL2_CLAUDE is unset",
+                "install_claude_code",
+            )
+        })?;
+    agency::launch::InstalledHerdr::open(binary, &claude)
+}
+
+fn claude_on_path() -> Option<std::path::PathBuf> {
+    let output = std::process::Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let path = text.lines().next()?.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(path))
+    }
+}
+
 struct Unconfigured;
 impl agency::runtime::Runtime for Unconfigured {
     fn catalog(&self) -> Result<agency_proto::Catalog> {

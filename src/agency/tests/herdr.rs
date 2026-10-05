@@ -555,10 +555,17 @@ fn a_locked_install_smokes_before_it_is_cataloged() {
     let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&dest, permissions).unwrap();
-    let runtime = launch::InstalledHerdr::open(dest).unwrap();
+    let claude = stub_claude(&install, "2.1.289");
+    let runtime = launch::InstalledHerdr::open(dest, &claude).unwrap();
     let catalog = runtime.catalog().unwrap();
-    assert_eq!(catalog.professions[0].reference.id, "herdr-locked");
-    assert_eq!(catalog.professions[0].reference.revision, "protocol-20");
+    assert_eq!(catalog.professions[0].reference.id, "claude-code");
+    assert!(
+        !catalog
+            .professions
+            .iter()
+            .any(|item| item.reference.id == "herdr-locked")
+    );
+    assert_eq!(catalog.harnesses[0].revision, "protocol-20");
     assert_eq!(catalog.harnesses[0].digest.len(), 64);
     let _ = std::fs::remove_dir_all(&install);
 }
@@ -600,18 +607,362 @@ fn harness_minimums_do_not_start_a_session() {
         eprintln!("UNVERIFIED codex session: the second harness is not run in this package");
         return;
     }
-    let session = agency::harness::claude::print_session(
-        "Reply with exactly HCTL2_REAL_OK and do not use tools.\n",
-        Duration::from_secs(120),
+    let claude = std::process::Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
+        .unwrap();
+    let claude = String::from_utf8(claude.stdout).unwrap();
+    let claude = std::path::PathBuf::from(claude.trim());
+    let (cred, exec) = scratch("live");
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("live", now_ms() + 120_000);
+    let bundle = sealed_bundle("Reply with exactly HCTL2_REAL_OK and do not use tools.\n");
+    let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
+    let events = collect(&mut running, Duration::from_secs(120));
+    let proposal = events.iter().find_map(|event| match event {
+        agency::runtime::RuntimeEvent::Proposal { bytes, .. } => {
+            Some(String::from_utf8_lossy(bytes).into_owned())
+        }
+        _ => None,
+    });
+    let exited = events.iter().any(|event| {
+        matches!(
+            event,
+            agency::runtime::RuntimeEvent::Exited {
+                code: Some(0),
+                requested_stop: false
+            }
+        )
+    });
+    let proposal = proposal.expect("proposal");
+    assert!(proposal.contains("HCTL2_REAL_OK"), "{proposal}");
+    assert!(exited);
+    drop(running);
+    drop(runtime);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn bundle_text_is_not_executed_as_a_shell_script() {
+    let (cred, exec) = scratch("bundle");
+    let runtime = test_runtime(&binary(), "printf '%s\\n' RESULT_OK\nexit 0\n");
+    let spec = sealed_spec("bundle", now_ms() + 20_000);
+    let bundle = sealed_bundle("not-a-shell-command\n");
+    let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
+    let events = collect(&mut running, Duration::from_secs(15));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        agency::runtime::RuntimeEvent::Proposal { bytes, .. } if bytes.windows(9).any(|item| item == b"RESULT_OK")
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        agency::runtime::RuntimeEvent::Exited {
+            code: Some(0),
+            requested_stop: false
+        }
+    )));
+    drop(running);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_failed_dispatch_exits_on_the_event_channel() {
+    let (cred, exec) = scratch("badstart");
+    let runtime = test_runtime(&binary(), "exit 7\n");
+    let mut running = runtime
+        .start(
+            &sealed_spec("bad", now_ms() + 20_000),
+            &sealed_bundle("not-a-shell-command\n"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(15));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        agency::runtime::RuntimeEvent::Exited { code: Some(7), .. }
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, agency::runtime::RuntimeEvent::Proposal { .. }))
+    );
+    drop(running);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn stopping_a_dispatch_emits_exited_and_drops_herdr() {
+    let (cred, exec) = scratch("stopstart");
+    let runtime = test_runtime(&binary(), "sleep 30\n");
+    let mut running = runtime
+        .start(
+            &sealed_spec("stop", now_ms() + 60_000),
+            &sealed_bundle("not-a-shell-command\n"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let pid = runtime.pid().unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    running.session.lock().expect("session").stop().unwrap();
+    let events = collect(&mut running, Duration::from_secs(5));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        agency::runtime::RuntimeEvent::Exited {
+            requested_stop: true,
+            ..
+        }
+    )));
+    drop(running);
+    drop(runtime);
+    let bin = binary();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && process_matches(pid, &bin) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!process_matches(pid, &bin));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_deadline_is_a_timestamp_and_ends_the_dispatch() {
+    let (cred, exec) = scratch("deadline");
+    let runtime = test_runtime(&binary(), "sleep 30\n");
+    let mut running = runtime
+        .start(
+            &sealed_spec("deadline", now_ms() + 1_200),
+            &sealed_bundle("not-a-shell-command\n"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let started = Instant::now();
+    let events = collect(&mut running, Duration::from_secs(6));
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, agency::runtime::RuntimeEvent::DeadlineReached))
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, agency::runtime::RuntimeEvent::Exited { .. }))
+    );
+    drop(running);
+    drop(runtime);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn two_dispatches_share_one_herdr_server() {
+    let (cred, exec) = scratch("share");
+    let runtime = std::sync::Arc::new(launch::InstalledHerdr::for_test(
+        binary(),
+        |spec, _bundle, _exec| {
+            Ok(format!(
+                "sleep 1\nprintf '%s\\n' {}\nexit 0\n",
+                spec.idempotency_key
+            ))
+        },
+    ));
+    let left = std::sync::Arc::clone(&runtime);
+    let right = std::sync::Arc::clone(&runtime);
+    let cred_left = cred.clone();
+    let cred_right = cred.clone();
+    let exec_left = exec.clone();
+    let exec_right = exec.clone();
+    let (first, second) = std::thread::scope(|scope| {
+        let one = scope.spawn(move || {
+            let mut running = left
+                .start(
+                    &sealed_spec("ONE", now_ms() + 20_000),
+                    &sealed_bundle("not-a-shell-command\n"),
+                    &exec_left,
+                    &cred_left,
+                )
+                .unwrap();
+            collect(&mut running, Duration::from_secs(15))
+        });
+        let two = scope.spawn(move || {
+            let mut running = right
+                .start(
+                    &sealed_spec("TWO", now_ms() + 20_000),
+                    &sealed_bundle("not-a-shell-command\n"),
+                    &exec_right,
+                    &cred_right,
+                )
+                .unwrap();
+            collect(&mut running, Duration::from_secs(15))
+        });
+        (one.join().unwrap(), two.join().unwrap())
+    });
+    assert_eq!(runtime.servers_started(), 1);
+    assert!(stdout_has(&first, b"ONE"));
+    assert!(stdout_has(&second, b"TWO"));
+    drop(runtime);
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+fn test_runtime(binary: &std::path::Path, script: &str) -> launch::InstalledHerdr {
+    let script = script.to_owned();
+    launch::InstalledHerdr::for_test(binary.to_path_buf(), move |_spec, _bundle, _exec| {
+        Ok(script.clone())
+    })
+}
+
+fn stub_claude(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
+    let path = dir.join("claude-stub");
+    std::fs::write(
+        &path,
+        format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
     )
     .unwrap();
-    assert!(!session.is_error, "{}", session.result);
-    assert!(
-        session.result.contains("HCTL2_REAL_OK"),
-        "{}",
-        session.result
-    );
-    assert!(!session.session_id.is_empty());
+    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).unwrap();
+    path
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto::ExecutionSpec> {
+    use agency_proto::{
+        Capabilities, ExecutionSpec, FrozenRef, InputPolicy, Owner, OwnerKind, Profession, Sealed,
+    };
+    let frozen = |id: &str| FrozenRef {
+        id: id.into(),
+        revision: "1".into(),
+        digest: "digest".into(),
+    };
+    Sealed::new(ExecutionSpec {
+        owner: Owner {
+            project: "project".into(),
+            kind: OwnerKind::RoomInvocation,
+            id: "invocation".into(),
+            generation: 1,
+        },
+        project: frozen("project"),
+        selection: frozen("selection"),
+        selection_policy_digest: "digest".into(),
+        profession: Profession {
+            reference: frozen("claude-code"),
+            harness: frozen("herdr"),
+            model: "none".into(),
+            persona: "test".into(),
+            terms: "test".into(),
+            default_role: "worker".into(),
+            skills: vec![],
+            capabilities: Capabilities {
+                stop: true,
+                ..Capabilities::default()
+            },
+        },
+        profile: frozen("profile"),
+        manifest: frozen("manifest"),
+        bundle: frozen("bundle"),
+        binding: frozen("binding"),
+        required_capabilities: Capabilities {
+            stop: true,
+            ..Capabilities::default()
+        },
+        input_policy: InputPolicy::NoInput,
+        permission_digest: "digest".into(),
+        permissions: vec![],
+        budget: 1,
+        deadline_ms,
+        repo: None,
+        base: None,
+        delivery_scope: vec![],
+        write_lease: None,
+        review_publish_policy: None,
+        idempotency_key: key.into(),
+    })
+    .unwrap()
+}
+
+fn sealed_bundle(task: &str) -> agency_proto::Sealed<agency_proto::context::Bundle> {
+    use agency_proto::context::{Bundle, Delivery, Entry};
+    use agency_proto::{FrozenRef, Owner, OwnerKind, Sealed};
+    let frozen = |id: &str| FrozenRef {
+        id: id.into(),
+        revision: "1".into(),
+        digest: "digest".into(),
+    };
+    Sealed::new(Bundle {
+        id: "bundle".into(),
+        manifest: frozen("manifest"),
+        consumer: Owner {
+            project: "project".into(),
+            kind: OwnerKind::RoomInvocation,
+            id: "invocation".into(),
+            generation: 1,
+        },
+        entries: vec![Entry {
+            source: frozen("task"),
+            description: "task".into(),
+            required: true,
+            offline_required: false,
+            delivery: Delivery::Inline {
+                bytes: task.as_bytes().to_vec(),
+            },
+            bytes_digest: "digest".into(),
+        }],
+        renderer: frozen("renderer"),
+        tokenizer: frozen("tokenizer"),
+        redaction: frozen("redaction"),
+        compression: vec![],
+        candidate_tokens: None,
+        selected_tokens: None,
+        delivered_tokens: None,
+        permission_digest: "digest".into(),
+        budget: 1,
+        retention: "test".into(),
+    })
+    .unwrap()
+}
+
+fn collect(
+    running: &mut agency::runtime::Running,
+    timeout: Duration,
+) -> Vec<agency::runtime::RuntimeEvent> {
+    let mut events = Vec::new();
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        match running.events.recv_timeout(Duration::from_millis(200)) {
+            Ok(event) => {
+                let done = matches!(event, agency::runtime::RuntimeEvent::Exited { .. });
+                events.push(event);
+                if done {
+                    break;
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    events
+}
+
+fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
+    events.iter().any(|event| match event {
+        agency::runtime::RuntimeEvent::Proposal { bytes, .. } => {
+            bytes.windows(marker.len()).any(|item| item == marker)
+        }
+        _ => false,
+    })
 }
 
 fn process_matches(pid: u32, binary: &std::path::Path) -> bool {

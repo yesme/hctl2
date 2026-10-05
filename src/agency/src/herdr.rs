@@ -215,7 +215,7 @@ pub fn state_dir(exec_parent: &Path, credential_root: &Path) -> Result<PathBuf> 
         )
     })?;
     let parent = exec_parent.parent().unwrap_or(Path::new("/tmp"));
-    let digest = &hash(exec_parent.as_os_str().as_encoded_bytes())[..20];
+    let digest = &hash(credential_root.as_os_str().as_encoded_bytes())[..20];
     let state = parent.join(format!("hctl2-herdr-state-{digest}"));
     if state.starts_with(&exec_parent)
         || exec_parent.starts_with(&state)
