@@ -27,9 +27,10 @@ note "checking Herdr protocol readback and owner-only socket"
 readonly HERDR_MODE="$(file_mode "$HCTL2_HERDR_SOCKET")"
 ((10#$HERDR_MODE % 100 == 0)) || die "Herdr socket exposes group/other permissions: $HERDR_MODE"
 readonly HERDR_STATUS="$(run_herdr status server)"
-grep -Fx "version: $HERDR_VERSION" <<<"$HERDR_STATUS" >/dev/null
-grep -Fx "protocol: $HERDR_PROTOCOL" <<<"$HERDR_STATUS" >/dev/null
-grep -Fx 'compatible: yes' <<<"$HERDR_STATUS" >/dev/null
+grep -Fx 'status: running' <<<"$HERDR_STATUS" >/dev/null || die "Herdr server is not running"
+grep -Fx "version: $HERDR_VERSION" <<<"$HERDR_STATUS" >/dev/null || die "Herdr server version differs from the lock"
+grep -Fx "private_protocol: $HERDR_PROTOCOL" <<<"$HERDR_STATUS" >/dev/null || die "Herdr server protocol differs from the lock"
+grep -Fx 'private_protocol_compatible: yes' <<<"$HERDR_STATUS" >/dev/null || die "Herdr server protocol is incompatible"
 readonly HERDR_SNAPSHOT="$(run_herdr api snapshot)"
 grep -F "\"protocol\":$HERDR_PROTOCOL" <<<"$HERDR_SNAPSHOT" >/dev/null
 grep -F "\"version\":\"$HERDR_VERSION\"" <<<"$HERDR_SNAPSHOT" >/dev/null

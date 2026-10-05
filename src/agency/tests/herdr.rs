@@ -816,12 +816,12 @@ fn harness_minimums_do_not_start_a_session() {
 }
 
 #[test]
+#[ignore = "UNVERIFIED: requires a logged-in Claude session and HCTL2_HARNESS_LIVE=1"]
 fn live_claude_dispatch_returns_one_turn() {
-    if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
-        eprintln!("UNVERIFIED claude session: CI has no harness credential; live flag is unset");
-        eprintln!("UNVERIFIED codex session: the second harness is not run in this package");
-        return;
-    }
+    assert!(
+        std::env::var_os("HCTL2_HARNESS_LIVE").is_some(),
+        "explicit live validation also requires HCTL2_HARNESS_LIVE=1"
+    );
     let claude = std::process::Command::new("/usr/bin/which")
         .arg("claude")
         .output()
@@ -1734,11 +1734,12 @@ async fn port_returns_a_turn_while_herdr_session_is_alive() {
 }
 
 #[tokio::test]
+#[ignore = "UNVERIFIED: requires a logged-in Claude session and HCTL2_HARNESS_LIVE=1"]
 async fn live_agency_start_pair_and_port_dispatch_return_one_turn() {
-    if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
-        eprintln!("UNVERIFIED live port dispatch: CI has no Claude credentials");
-        return;
-    }
+    assert!(
+        std::env::var_os("HCTL2_HARNESS_LIVE").is_some(),
+        "explicit live validation also requires HCTL2_HARNESS_LIVE=1"
+    );
     port_turn("live-port", true).await;
 }
 
