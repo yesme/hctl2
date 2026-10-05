@@ -99,3 +99,57 @@ jobs:
           fi
 
           exit "$fail"
+
+      - name: Check commit attribution trailers
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # AGENTS.md「提交署名」：harness 产出的每个提交末尾一席一行
+          #   Co-authored-by: <harness> <模型> effort=<档位> <用户号+bot[bot]@users.noreply.github.com>
+          # 邮箱清单与 AGENTS.md 的表一起改。规矩 2026-10-06 落库，之前的提交不查；
+          # GitHub 网页上直接改的提交（提交者是 GitHub）不查。
+          cutoff='2026-10-06T00:00:00+08:00'
+          allowed='281844019+a-claude-code-bot[bot]@users.noreply.github.com
+          281847692+a-chatgpt-codex-bot[bot]@users.noreply.github.com
+          302482056+a-grok-build-bot[bot]@users.noreply.github.com
+          295901900+an-antigravity-cli-bot[bot]@users.noreply.github.com
+          281852327+a-kimi-code-bot[bot]@users.noreply.github.com
+          281849308+a-qwen-qoder-bot[bot]@users.noreply.github.com
+          281851494+a-deepseek-code-bot[bot]@users.noreply.github.com
+          281846436+a-glm-code-bot[bot]@users.noreply.github.com
+          281853025+a-minimax-code-bot[bot]@users.noreply.github.com
+          327610061+a-muse-code-bot[bot]@users.noreply.github.com
+          281848501+a-gemini-cli-bot[bot]@users.noreply.github.com'
+          allowed=$(printf '%s\n' "$allowed" | sed 's/^ *//')
+          pattern='^[Cc]o-[Aa]uthored-[Bb]y: [^<>]+ [^ <>]+ effort=[A-Za-z0-9._-]+ <[0-9]+\+[a-z0-9-]+\[bot\]@users\.noreply\.github\.com>$'
+
+          git fetch --no-tags --prune origin "$BASE_REF"
+          fail=0
+          for sha in $(git rev-list --no-merges --since="$cutoff" "origin/${BASE_REF}..HEAD"); do
+            short=$(git rev-parse --short "$sha")
+            if [ "$(git show -s --format=%ce "$sha")" = "noreply@github.com" ]; then
+              continue
+            fi
+            lines=$(git show -s --format=%B "$sha" | grep -i -E '^Co-authored-by:' || true)
+            if [ -z "$lines" ]; then
+              echo "::error::提交 $short 没有署名行。按 AGENTS.md「提交署名」加一行：Co-authored-by: <harness> <模型> effort=<档位> <bot 邮箱>"
+              fail=1
+              continue
+            fi
+            while IFS= read -r line; do
+              if ! printf '%s\n' "$line" | grep -q -E "$pattern"; then
+                echo "::error::提交 $short 的署名行格式不对：$line"
+                echo "::error::要求：Co-authored-by: <harness> <模型> effort=<档位> <用户号+bot[bot]@users.noreply.github.com>（见 AGENTS.md「提交署名」）"
+                fail=1
+                continue
+              fi
+              email=$(printf '%s' "$line" | sed -E 's/.*<([^>]+)>$/\1/')
+              if ! printf '%s\n' "$allowed" | grep -q -x -F "$email"; then
+                echo "::error::提交 $short 的署名邮箱不在 AGENTS.md 的表里：$email（数字要用 bot 账号的用户号，不是 App ID）"
+                fail=1
+              fi
+            done <<< "$lines"
+          done
+          exit "$fail"
