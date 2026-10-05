@@ -56,6 +56,9 @@ pub fn frozen(r: &Record) -> FrozenRef {
     }
 }
 pub fn port_error(e: PortError) -> StoreError {
+    if e.code == "INVALID_INPUT" {
+        return invalid(e.message);
+    }
     let code = match e.code.as_str() {
         "AGENCY_UNREACHABLE" => "AGENCY_UNREACHABLE",
         "AGENCY_RESPONSE_UNKNOWN" => "AGENCY_RESPONSE_UNKNOWN",

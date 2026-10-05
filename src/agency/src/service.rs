@@ -11,6 +11,7 @@ use agency_proto::{
     *,
 };
 use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite_migration::{M, Migrations};
 use serde::de::DeserializeOwned;
 use std::{
     collections::HashMap,
@@ -22,6 +23,15 @@ use std::{
 use tokio::sync::watch;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
+
+const REGISTRY_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tenants(control_id TEXT PRIMARY KEY,id TEXT UNIQUE NOT NULL,key TEXT NOT NULL);
+";
+
+pub(crate) fn registry_migrations() -> Migrations<'static> {
+    Migrations::new(vec![M::up(REGISTRY_SCHEMA)])
+}
 
 pub struct Agency {
     root: PathBuf,
@@ -65,9 +75,7 @@ impl Agency {
                 "use_existing_agency",
             )
         })?;
-        let db = database(&root.join("registry.sqlite"))?;
-        sql(db.execute_batch("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS tenants(control_id TEXT PRIMARY KEY,id TEXT UNIQUE NOT NULL,key TEXT NOT NULL); PRAGMA user_version=1;"))?;
+        let db = database(&root.join("registry.sqlite"), &registry_migrations())?;
         let key: Option<String> = sql(db
             .query_row(
                 "SELECT value FROM settings WHERE key='bootstrap'",

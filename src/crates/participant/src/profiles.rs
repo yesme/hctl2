@@ -157,6 +157,11 @@ pub fn prepare_profile(
     }
     let (id, expected, profile) = input.action.parts();
     agency_proto::nonempty(id).map_err(crate::port_error)?;
+    if id != id.trim() {
+        return Err(invalid(
+            "profile id must not have leading or trailing whitespace",
+        ));
+    }
     profile.validate()?;
     let pointer_key = key(Scope::Control, "worker_profile", id);
     let old = store.get(&pointer_key)?;

@@ -266,7 +266,11 @@ async fn a_blocked_execution_directory_ends_as_cannot_fulfill() {
             .iter()
             .any(|event| event.kind == "cannot_fulfill")
     );
+    // The blocked path is a regular file this test put there, so the Agency could
+    // not release it as a directory and left the parent it created behind. Remove
+    // what the test caused.
     let _ = std::fs::remove_file(&exec);
+    let _ = std::fs::remove_dir(agency::confine::execution_parent(&rig.root).unwrap());
     rig.close().await;
 }
 
@@ -591,7 +595,17 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
-        let page: ResultPage = client.call("results", &query).await.unwrap();
+        // `results` only reads, and the contract marks a transport timeout retryable
+        // (`readback_original_request`). A loaded machine can push a page of 2 MiB
+        // payloads past the client's fixed timeout, so a polling loop comes back
+        // instead of failing the test.
+        let page: ResultPage = match client.call("results", &query).await {
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                continue;
+            }
+            result => result.unwrap(),
+        };
         if page.proposals.is_empty()
             || (pages.is_empty() && page.complete && page.proposals.len() < 2)
         {
@@ -1025,10 +1039,17 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
             .await
             .unwrap();
     for _ in 0..100 {
-        let result: ResultPage = client
+        let result: ResultPage = match client
             .call("results", &ResultQuery::of(running.reference.clone()))
             .await
-            .unwrap();
+        {
+            // Retryable by contract (`readback_original_request`): `results` only reads.
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                continue;
+            }
+            result => result.unwrap(),
+        };
         if !result.proposals.is_empty() {
             break;
         }
@@ -1229,7 +1250,14 @@ async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate
     for _ in 0..100 {
         let mut query = ResultQuery::of(running.reference.clone());
         query.after = after.clone();
-        let page: ResultPage = client.call("results", &query).await.unwrap();
+        let page: ResultPage = match client.call("results", &query).await {
+            // Retryable by contract (`readback_original_request`): `results` only reads.
+            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                continue;
+            }
+            result => result.unwrap(),
+        };
         if page.proposals.is_empty() {
             after = None;
             pages.clear();
