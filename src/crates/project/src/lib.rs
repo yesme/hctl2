@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+pub mod invocation;
 mod model;
 mod requests;
 mod views;

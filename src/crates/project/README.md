@@ -9,6 +9,7 @@
 | `src/model.rs` | Project 定义、不可改写的 Room 选入记录、类型化 Request 与命令输入 |
 | `src/commands.rs` | 纯读取预览、Project / Room 事务、归档与恢复、名册与多房间动作准入 |
 | `src/requests.rs` | 去重与取代、解决 / 取消 / 截止、唯一投递与接收回执 |
+| `src/invocation.rs`、`src/invocation/lifecycle.rs` | Invocation 的候选预览、只读授权与四步启动第 1 步、状态合法边、撤权与重试前置；Control 主链下一段接 |
 | `src/views.rs` | 阻塞列表、待你处理、Overview 与闲置提醒的只读投影 |
 | `apps/control/src/projects.rs` | Query / Preview / Submit、逐房间外部投递、Request 重启恢复与每 5 秒截止检查 |
 | `apps/cli/src/project.rs` | 公共 `hctl2 project` 与 `hctl2 request` 两步确认入口 |
@@ -19,7 +20,7 @@
 
 归档按 Project 归属列出全部 Room，与 Matrix 层级读数无关。开放 Room 转只读，Task / Request 不改生命周期；它们的写命令由 Project 的只读前置拒绝。恢复只复原本次归档转只读的 Room，预先关闭或只读的 Room 不复活。非终态 Run、写入型 Invocation、活动租约、未决意图与副作用拒绝归档；Repo 范围的对象按来源 / 归属者或明确 `project_id` 关联。未来模块需沿此形状接入检查，未知状态保守视为未决，本包不声称已经实现这些模块。
 
-Room 名册与 Matrix 成员不是同一件事。`select` 冻结连接约束里的选入字段，只更新该 Room 的名册引用，不改外部 Binding。既有选入记录不回写。可先选入精确 `chat::topic_id(project_id, topic_command_key)`，再创建 Topic；创建核对确认的名册版本。第 5 包主体首批已接入接受目录、Project 选人策略、Profile 与 Skill 核验，依赖版本在名册事务中再核；optional Skill 缺失在预览结果中列出。Invocation / Run 冻结与实际激活仍未接线，详见 [Participant 的实现范围](../participant/README.md#第-5-包主体--选入校验与-worker-profile)。本批不派工。
+Room 名册与 Matrix 成员不是同一件事。`select` 冻结连接约束里的选入字段，只更新该 Room 的名册引用，不改外部 Binding。既有选入记录不回写。可先选入精确 `chat::topic_id(project_id, topic_command_key)`，再创建 Topic；创建核对确认的名册版本。第 5 包主体首批已接入接受目录、Project 选人策略、Profile 与 Skill 核验，依赖版本在名册事务中再核；optional Skill 缺失在预览结果中列出。Invocation 授权冻结见下文，实际激活与 Run 仍未接线；候选校验详见 [Participant 的实现范围](../participant/README.md#第-5-包主体--选入校验与-worker-profile)。本批不派工。
 
 `members` 明确列出本 Project 的 Room Binding 引用和 Matrix 用户 ID，逐房间写原生成员状态并回读；不沿 Space 推断继承。部分失败返回逐房间结果、`ROOMS_PARTIAL` 与非零退出，已成功部分不伪称回滚。重试沿原 effect，邀请 / 移除先回读当前成员状态；Unknown 只回读，不能证明原结果时不重发。权限等级调整未提供公共命令，后续若接入须复用逐房间结果规则。补丁 1a（v0.19.2）：目标为主 Room 时，同一意图的投递把同样的邀请 / 移除同步到本 Project 全部承载 Space（逐 Space 回读；这是 content，不进名册、不改加入规则）。
 
@@ -92,4 +93,26 @@ cd src
 
 输入：`project_id / project_version / room_id / topic_command_key? / roster_version? / selections`，以及命令幂等 key。`prepare` 返回 `Plan`，结果含新 `roster_version`、选入引用、候选校验结论和 `optional_skill_degradations`；`admit` 提交经预览确认的计划，旧 Project、Room 或名册版本拒绝。已有 `project select` 的 CLI / RPC 接法可以直接复用。`project.roster` 展示记录，不重新授予派工资格；历史名册是否已执行候选校验，应看原选入命令，当前派工仍须预览。
 
-Invocation 的 list / cancel / retry、状态读取和 Terminal 接口在主体下一份 PR 补齐后列出，不在本批写占位处理函数。后半段只接命令与只读投影；状态合法边、冻结、准入、幂等和恢复仍调用主体 reducer。验收落 CT-PROJECT 的名册 / 提及 / Invocation 行，CT-PARTICIPANT 的身份与连接行，不把名册提交成功当作派工成功。
+Invocation 的领域入口见下节；完整主体合入前不接后半段命令。后半段只接命令与只读投影，不复制 reducer，不把名册提交成功当作派工成功。
+
+## 第 5b 包 · Invocation 领域段
+
+这段交付四步启动的第 1 步，不是演示 2：`invocation::prepare` 读取当前 Project、Room、名册、接受过的工种与 Profile；`start` 重新核对预览，在一个 Store 事务里写授权、Execution Spec、待启动状态、派工意图与 prepare outbox。没有预填 Dispatch，也没有网络调用。Context 先用第 4 包的 `save_assembly` 保存、准入；只保存 Context 不授予派工权。
+
+授权在 `room_invocation`，状态在 `invocation_state`，两者是同一个 Invocation 的存储部分，不是两个业务对象。`state_version` 供状态比较并交换；`invocation_version` 在授权根的引用里，不由状态变化推出。确认激活后，`record_started` 只更新状态。取消、失败或丢失在同一事务里推进状态并使授权失效；待投递动作撤销，已经尝试的动作保留 Unknown，并登记以原派工意图定位的停止与隔离 outbox。这个 outbox 的投递与回读留主链段，当前不声称已经停止或隔离。
+
+`end` 对 human 只接受取消；失败、丢失由带原授权的内部 reducer 提交。它不接受“完成”命令，不从进程退出或屏幕内容推断完成。自动识别丢失、等待输入的 Request 接线、结果准入与完成状态迁移留主链段；本段对全部合法边做确定表测试，不把表测试当各边的业务接线证据。重试仍走 `prepare / start`，使用新 key、新 Invocation 与 Bundle，`retry_of` 留原调用的精确引用；旧调用未终态或未撤权时拒绝。
+
+`prepare` 冻结只读 Profile、Project 版本与选人策略、Room、独立名册、必需 Skill、预算、截止和发布确认缺省。`start` 从它生成 Spec，不能注入更宽权限或换执行者；读取已经准入的 Manifest / Bundle 与材料原文，核实际 consumer、预算、请求正文、必需 Skill 字节和 Topic 提要。token 数未知仍是 `null`。当前 Context 的选材与来源权限由调用方组装器负责；真实在线讨论窗口、来源过滤、Skill 取回和预算预览在主链段接，不把手工测试包当用户入口。
+
+`current_authorization(store, owner, now_ms)` 核原授权、非终态、冻结截止和 Project 状态，不重新套更新后的名册或策略。Control 的 Pending prepare / activate 对正式 `room_invocation` 使用它；测试端口的 `authorized_invocation` 不是领域授权。Unknown 仍只回读。历史 Root 与 Context 保留，不在重放时复活旧授权。
+
+| CT 内容 | 本段会失败的输入（`domain_test`） | 下一段 |
+| --- | --- | --- |
+| CT-PROJECT：human 发起、精确候选、只读调用归 Project | 模型来源、显示名、跨 Room / Project、未获准 Profile、超预算、过期截止 | provider human 事件与批准建议的来源链；CLI preview / start / show |
+| CT-CONNECTION：冻结与四步启动 | 旧预览、未准入 Context、错 consumer、请求或必需 Skill 未送达；outbox 冲突后四类记录均回滚 | 在线选材、真实四步启动、Scope 权限过滤、脚本执行体 |
+| CT-PROJECT / CT-PARTICIPANT：合法边、取消、重试 | 激活未确认、终态复活、取消重投、新调用复用旧 Bundle、普通客户端提交失败 / 丢失 / 完成 | 等待输入、自动失权判定、Proposal 准入；当前未实现业务边不标已覆盖 |
+| CT-CONNECTION：撤权与未知外部结果 | Unknown prepare 后取消仍须保留停止依据；停止 outbox 冲突时撤权和状态一起回滚 | 投递停止、隔离报告与重启恢复 |
+| 活动执行引用原记录 | 换名册或改选人策略后旧 Spec 被改写时失败；运行状态改变使原授权引用变更时失败 | 结果投影、Task 仍开放、连接票据 |
+
+后半段可消费的输入与输出：`invocation::Input {key, project_id, room_id, target, profile, request, budget, deadline_ms, retry_of?}` → `Preview`；`start(Preview, Assembly)` → Invocation ID、原授权引用、`state_version`、prepare effect 与 Spec 摘要；`invocation / lifecycle` 分别读冻结记录与状态；取消用 `End {key, project_id, invocation_id, state_version, outcome: cancelled, reason}` → 撤权与 cleanup_pending。`record_started` 和失败 / 丢失的 reducer 路径不开放成客户端命令。Invocation list、Terminal 与完整查询接口在主链段补齐；验收对应上表，不提前写后半段 CLI。

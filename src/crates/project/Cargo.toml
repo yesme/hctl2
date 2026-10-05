@@ -9,7 +9,9 @@ publish.workspace = true
 description = "Project settings, Room selections and typed Request lifecycle"
 
 [dependencies]
+agency-proto = { path = "../agency-proto" }
 chat = { path = "../chat" }
+context = { path = "../context" }
 foundation = { path = "../foundation" }
 participant = { path = "../participant" }
 repo = { path = "../repo" }
@@ -17,9 +19,6 @@ store = { path = "../store" }
 task = { path = "../task" }
 serde.workspace = true
 serde_json.workspace = true
-
-[dev-dependencies]
-agency-proto = { path = "../agency-proto" }
 
 [lints]
 workspace = true
