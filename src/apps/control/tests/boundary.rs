@@ -333,6 +333,41 @@ async fn profile_create_requires_preview_and_matching_envelope_and_action() {
         "required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}})
     .to_string()
     .into_bytes();
+    for id in [" ", "\t", " research", "research "] {
+        let mut invalid: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+        invalid["action"]["id"] = json!(id);
+        let preview = client
+            .preview(PreviewRequest {
+                protocol: Some(proto()),
+                operation: "profile.create".into(),
+                payload: invalid.to_string().into_bytes(),
+                command_id: "invalid-id-preview".into(),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        let error = preview.error.expect("invalid Profile id must fail preview");
+        assert_eq!(error.code, "INVALID_INPUT", "id: {id:?}");
+        assert_eq!(error.recovery_action, "correct_input", "id: {id:?}");
+        assert!(preview.preview_token.is_empty(), "id: {id:?}");
+    }
+    for kind in [
+        "worker_profile",
+        "worker_profile_revision",
+        "profile_command",
+    ] {
+        assert!(
+            shared
+                .lock()
+                .await
+                .as_ref()
+                .unwrap()
+                .list(kind)
+                .unwrap()
+                .is_empty(),
+            "{kind}"
+        );
+    }
     let mut request = SubmitRequest {
         protocol: Some(proto()),
         operation: "profile.create".into(),

@@ -127,6 +127,17 @@ fn profile_creation_starts_from_a_real_paired_agency_catalog_and_survives_contro
         "worker_profile_revision"
     );
     ok(root, &["stop"]);
+    let socket = root.join("control.sock");
+    for _ in 0..100 {
+        if std::os::unix::net::UnixStream::connect(&socket).is_err() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        std::os::unix::net::UnixStream::connect(&socket).is_err(),
+        "control socket still serving after stop"
+    );
     ok(root, &["start"]);
     let preview = ok(root, &args);
     let mut confirm = args.to_vec();
