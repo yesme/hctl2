@@ -10,7 +10,9 @@ description = "Mechanically tested storage and identity foundations for HCTL2 co
 
 [dependencies]
 keyring.workspace = true
+process_control.workspace = true
 rusqlite.workspace = true
+rustix.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer.workspace = true
 sha2.workspace = true

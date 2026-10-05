@@ -575,6 +575,24 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "attr_alias-0.1.5.crate",
+    sha256 = "f648697f71a7eddd152c1ae26151f580c69635bfcb747574886317877ccf1a5a",
+    strip_prefix = "attr_alias-0.1.5",
+    urls = ["https://static.crates.io/crates/attr_alias/0.1.5/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "attr_alias-0.1",
+    srcs = [":attr_alias-0.1.5.crate"],
+    crate = "attr_alias",
+    crate_root = "attr_alias-0.1.5.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+)
+
+http_archive(
     name = "autocfg-1.5.1.crate",
     sha256 = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53",
     strip_prefix = "autocfg-1.5.1",
@@ -4131,6 +4149,50 @@ buildscript_run(
 )
 
 alias(
+    name = "process_control",
+    actual = ":process_control-5",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "process_control-5.2.0.crate",
+    sha256 = "21ed1a985a1edcf511a65a9927151fab108e72206a2ee3c62f8946ab73dfc33d",
+    strip_prefix = "process_control-5.2.0",
+    urls = ["https://static.crates.io/crates/process_control/5.2.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "process_control-5",
+    srcs = [":process_control-5.2.0.crate"],
+    crate = "process_control",
+    crate_root = "process_control-5.2.0.crate/src/lib.rs",
+    edition = "2021",
+    platform = {
+        "linux-arm64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "macos-arm64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "windows-gnu": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+        "windows-msvc": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+    },
+    visibility = [],
+    deps = [":attr_alias-0.1"],
+)
+
+alias(
     name = "prost",
     actual = ":prost-0.14",
     visibility = ["PUBLIC"],
@@ -7115,6 +7177,7 @@ cargo.rust_library(
         "Win32_System_Diagnostics",
         "Win32_System_Diagnostics_Debug",
         "Win32_System_IO",
+        "Win32_System_JobObjects",
         "Win32_System_Pipes",
         "Win32_System_SystemInformation",
         "Win32_System_SystemServices",

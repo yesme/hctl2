@@ -6,9 +6,13 @@ use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use store::{Store, StoreError, TrustedActor};
 use tokio::sync::Mutex;
+
+/// `agency start` itself waits about five seconds for readiness. This bound sits above that.
+const AGENCY_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn err(e: PortError) -> StoreError {
     participant::port_error(e)
@@ -227,23 +231,43 @@ async fn ensure_local(root: &Path) -> store::Result<()> {
         ));
     }
     let root = root.to_owned();
-    let output = tokio::task::spawn_blocking(move || {
-        std::process::Command::new(binary)
-            .arg("--root")
-            .arg(root)
-            .arg("start")
-            .output()
+    tokio::task::spawn_blocking(move || {
+        let mut command = std::process::Command::new(binary);
+        command.arg("--root").arg(root).arg("start");
+        run_agency_command(command, AGENCY_START_TIMEOUT)
     })
     .await
-    .map_err(|_| invalid("Agency start worker failed"))??;
-    if !output.status.success() {
-        return Err(reject(
+    .map_err(|_| invalid("Agency start worker failed"))?
+}
+
+fn run_agency_command(
+    mut command: std::process::Command,
+    time_limit: Duration,
+) -> store::Result<()> {
+    match foundation::command::run_bounded(&mut command, None, time_limit).map_err(|error| {
+        reject(
             "AGENCY_NOT_READY",
-            "local Agency start failed",
+            format!("cannot start local Agency: {error}"),
             "run_agency_serve",
-        ));
+        )
+    })? {
+        foundation::command::CommandEnd::Finished(output) if output.status.success() => Ok(()),
+        foundation::command::CommandEnd::Finished(output) => Err(reject(
+            "AGENCY_NOT_READY",
+            format!("local Agency start failed ({})", output.status),
+            "run_agency_serve",
+        )),
+        foundation::command::CommandEnd::TimedOut => Err(reject(
+            "AGENCY_START_TIMEOUT",
+            "local Agency start timed out",
+            "run_agency_serve",
+        )),
+        foundation::command::CommandEnd::OutputLimit => Err(reject(
+            "AGENCY_NOT_READY",
+            "local Agency start output exceeded limit",
+            "run_agency_serve",
+        )),
     }
-    Ok(())
 }
 fn text<'a>(payload: &'a Value, key: &str) -> store::Result<&'a str> {
     payload
@@ -770,4 +794,68 @@ pub async fn reconcile(shared: &Arc<Mutex<Option<Store>>>, root: &Path) -> store
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn a_stuck_agency_start_times_out_and_leaves_no_process() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("hctl2-agency-stuck-{nanos}"));
+        fs::create_dir(&dir).unwrap();
+        let program = dir.join("hang.sh");
+        let marker = run_marker(4167);
+        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let command = Command::new(&program);
+        let started = Instant::now();
+        let error = super::run_agency_command(command, Duration::from_secs(3))
+            .expect_err("stuck agency start");
+        assert!(started.elapsed() < Duration::from_secs(7));
+        assert_eq!(error.code, "AGENCY_START_TIMEOUT");
+        assert_no_process_with(&marker);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A marker unique to this run and to the call site: the leftover check
+    /// looks for it, and the same test file compiles into several test
+    /// binaries, so a constant would let one binary see the other's process.
+    fn run_marker(base: u64) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock follows the epoch")
+            .as_nanos()
+            % 1_000;
+        format!("31.{base}{:04}{nanos:03}", std::process::id() % 10_000)
+    }
+
+    /// Fails while a live process still carries `marker` on its command line; the
+    /// kill at the deadline clears the process table a moment later, so the check
+    /// retries and prints what it still sees.
+    fn assert_no_process_with(marker: &str) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let listed = Command::new("pgrep")
+                .args(["-f", marker])
+                .output()
+                .expect("pgrep");
+            if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&listed.stdout).trim()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
 }
