@@ -16,6 +16,7 @@ path = "src/main.rs"
 clap.workspace = true
 facts = { path = "../../crates/facts" }
 foundation = { path = "../../crates/foundation" }
+rustix = { workspace = true, features = ["fs"] }
 serde_json.workspace = true
 
 [lints]

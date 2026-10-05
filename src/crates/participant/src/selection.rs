@@ -60,8 +60,14 @@ pub struct ValidatedRoster {
 }
 
 fn at(store: &Store, target: &Reference, kind: &str) -> store::Result<Record> {
-    if target.key.scope != Scope::Control || target.key.kind != kind {
-        return Err(invalid(format!("{kind} in control scope required")));
+    target.validate()?;
+    if target.key.scope != Scope::Control
+        || target.key.kind != kind
+        || !matches!(target.version, Version::State(_))
+    {
+        return Err(invalid(format!(
+            "{kind} with State version in control scope required"
+        )));
     }
     let record = store.get(&target.key)?.ok_or_else(|| {
         reject(
@@ -93,6 +99,11 @@ pub fn validate_roster(
     let mut dependencies = vec![];
     let mut optional_skill_degradations = vec![];
     for (selection_index, selected) in selections.iter().enumerate() {
+        if selected.worker_profiles.is_empty() {
+            return Err(invalid(
+                "at least one exact Worker Profile candidate required",
+            ));
+        }
         if selected.selected_item != selected.profession {
             return Err(invalid(
                 "selected item must be the exact accepted Profession",

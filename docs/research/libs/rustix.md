@@ -15,3 +15,9 @@
 ## 2026-10-04 · Agency 本地 socket 属主复核
 
 #317 使用同一 **rustix =1.1.5** 的安全 `geteuid()`，在发送凭据前核对 socket 及其父目录的属主、类型与模式。Tokio 的原生 `UnixStream::peer_cred()` 再核对已连接对端 UID，不自写系统调用；已核本机锁定 Tokio 源码 `src/net/unix/stream.rs`。这阻止别的用户抢占可预测路径，不把同一 OS 用户下的可信脚本声称为隔离沙箱。目录不合格时拒绝，而不是改权限后继续。
+
+## 2026-10-05 · 现场锁的文件系统识别复核
+
+`src/apps/tool/src/site_lock.rs` 改用本 crate 的 `fs` 功能（`rustix = { workspace = true, features = ["fs"] }`，`src/third-party/rust/BUCK` 由 Reindeer 再生）里的 `fs::statfs`，取代解析 `mount` 与 `stat` 的人类输出：macOS 读 `f_fstypename`（在 `forbid(unsafe_code)` 下按定长 C 串安全读取），Linux 把 `f_type` 映射回 `stat -f -c %T` 的拼写，未知魔数记 `unknown-<magic>`。保守拒绝清单与 `HCTL2_TOOL_FILESYSTEM_UNREADABLE`／`HCTL2_TOOL_FILESYSTEM_UNSUPPORTED` 错误码不变。
+
+实证（macOS arm64）：把 HFS+ 磁盘映像挂到 `/Volumes/hctl2nested`，卷内仓库的现场锁回执报 `"filesystem": "hfs"`，宿主 APFS 上的仓库报 `"apfs"`——嵌套挂载由内核按路径作答，不再需要最长前缀匹配。Linux 侧由 `unit_test` 的魔数映射用例覆盖，两平台编译在 CI。

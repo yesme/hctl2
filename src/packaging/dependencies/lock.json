@@ -69,8 +69,8 @@
         "source_asset": "dagu_source"
       },
       "gh": {
-        "version": "2.99.0",
-        "source_commit": "d528f20f2ee02f6703773e9f56c90e3c3f5d46b0",
+        "version": "2.102.0",
+        "source_commit": "fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd",
         "source_asset": "gh_source"
       },
       "herdr": {
@@ -155,9 +155,9 @@
       "sha256": "fa04fc2ed8d8ff6cce6e1001cb80746bc7f0b9dc635324fb5b72d87ed4b9603f"
     },
     "gh_source": {
-      "filename": "gh-d528f20f2ee02f6703773e9f56c90e3c3f5d46b0-source.tar.gz",
-      "url": "https://github.com/cli/cli/archive/d528f20f2ee02f6703773e9f56c90e3c3f5d46b0.tar.gz",
-      "sha256": "6c1b21a849182dd95d41ba9e6e034f78e1d58bd5ebaf6a2bab37861331c1d3a9"
+      "filename": "gh-fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd-source.tar.gz",
+      "url": "https://github.com/cli/cli/archive/fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd.tar.gz",
+      "sha256": "78542f85b4c271bc641eba52c14257c9f388d793a114ce97d0fac2bd19035773"
     },
     "process_compose_source": {
       "filename": "process-compose-23b0acacc937d745279fb1551337f4031c4fc865-source.tar.gz",
@@ -200,9 +200,9 @@
           "sha256": "cfadd9606af9ff74d0ea8aef91fd89a831b3c63cf99a95c456fe2fcb3bb0471e"
         },
         "gh": {
-          "filename": "gh_2.99.0_linux_amd64.tar.gz",
-          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_linux_amd64.tar.gz",
-          "sha256": "ed4960225d2833e04a61590d9fa2b5773d147f3aa375459e5466a40c102f3832"
+          "filename": "gh_2.102.0_linux_amd64.tar.gz",
+          "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz",
+          "sha256": "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
         },
         "herdr": {
           "filename": "herdr-linux-x86_64",
@@ -245,9 +245,9 @@
           "sha256": "a7fbed8e194668b9ede73de486f06f706574731ccf58fba1cffa86a1ffe84c18"
         },
         "gh": {
-          "filename": "gh_2.99.0_macOS_amd64.zip",
-          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_amd64.zip",
-          "sha256": "70c05750c75df9465bc73b994e8bc379243bb494271f1b51f54ead2e19e45471"
+          "filename": "gh_2.102.0_macOS_amd64.zip",
+          "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_amd64.zip",
+          "sha256": "b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3"
         },
         "herdr": {
           "filename": "herdr-macos-x86_64",
@@ -290,9 +290,9 @@
           "sha256": "e7343a08bfb42091c2a177cc1a75f7df5a4fc9c256735dfc769b3bed18f2a319"
         },
         "gh": {
-          "filename": "gh_2.99.0_macOS_arm64.zip",
-          "url": "https://github.com/cli/cli/releases/download/v2.99.0/gh_2.99.0_macOS_arm64.zip",
-          "sha256": "94d4bd7e88563a9cb414e651e88acc4f1728a87476752460906d824230748d37"
+          "filename": "gh_2.102.0_macOS_arm64.zip",
+          "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_arm64.zip",
+          "sha256": "da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e"
         },
         "herdr": {
           "filename": "herdr-macos-aarch64",

@@ -12,17 +12,19 @@ Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制�
 
 ## 第 5 包主体 · 选入校验与 Worker Profile
 
-主体分两份 PR 串行交付：本批先提供选入校验与 Profile；下一批接 Invocation 状态机、Context、Agency 四步启动、结果准入、Room 投影与连接票据。本批不创建 Invocation，也不宣称派工或演示 2 已完成。
+主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段接 Profile 创建入口和选入校验的后续项，下一段接 Invocation 状态机、Context、Agency 四步启动、结果准入、Room 投影与连接票据。当前不创建 Invocation，也不宣称派工或演示 2 已完成。
 
 `profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
 
-初版只实现只读配置：`mode = read_only`；权限为 `context.read`、`git.read`、`terminal.observe` 的不重复子集。Profile 不授予治理命令、Task 完成、派工或集成权。`max_context_bytes` 是字节预算，不是 token 估算。`environment` 描述要求的环境属性，不保存 Agency 门后的目录、主机或进程。写入型配置随第 6 包补，以上是本批实现范围，不是新增约束。
+初版只实现只读配置：`mode = read_only`；权限为 `context.read`、`git.read`、`terminal.observe` 的不重复子集。Profile 不授予治理命令、Task 完成、派工或集成权。`max_context_bytes` 是字节预算，不是 token 估算。`environment` 是环境要求的描述文本，不作为连接地址、目录、进程、shell 环境变量或执行加固的声明；当前未验证其满足情况。写入型配置随第 6 包补，以上是本批实现范围，不是新增约束。
 
 `selection::validate_roster` 核接受过的 Binding、工种与条款摘要，Profile 的 Harness / 模型、能力承诺、权限和预算，再核 Skill 的精确内容与核验报告。Skill 引用沿用现有 `Reference` 的 `Revision(content_digest)`；provider revision 由接受目录中的唯一精确项固定，缺项或歧义拒绝。unknown 不升为 known，回读不一致拒绝，optional 缺失返回逐候选的 `optional_skill_degradations`。Skill 正文仍由 Agency 保存。
 
 Project 的 `selection_policy` 初版接受 `allowed_agencies`（Binding ID）、`allowed_professions`（目录项稳定 ID）、`permissions`、`max_context_bytes`。省略表示该维度未另收窄，显式空数组表示不允许任何项；未知字段拒绝。权限格式是 `{"allow":["context.read"]}`，预算格式是 `{"max_bytes":65536}`。Profile 的要求不得超出选入上限。这里只核 Room 选人，不实施 Run 席位多样性或 Gate 计票规则。
 
-校验返回依赖记录，由 Project 的名册事务核精确版本；名册的范围与写入仍归 Project。`resolve_room_candidate(store, project, room, target)` 只在当前 Room 名册里按选入记录 ID 或职责精确解析；零个或多个候选都返回类型化错误，显示名不是路由键。它不创建调用、不授予权限；Invocation 入口另核 human 来源、Project / Room 状态与派工预览。
+校验返回依赖记录，由 Project 的名册事务核精确版本；名册的范围与写入仍归 Project。Binding、接受的工种和 Profile Revision 均不可变，预览之后可自然改变的是 Project 策略、Room 与名册，不是这些定义的原版本。空 Profile 候选由共享校验入口拒绝；工种与 Agency 引用须带 `State` 版本，错误引用类型先报本地 `INVALID_INPUT`。`resolve_room_candidate(store, project, room, target)` 只在当前 Room 名册里按选入记录 ID 或职责精确解析；零个或多个候选都返回类型化错误，显示名不是路由键。它不创建调用、不授予权限；Invocation 入口另核 human 来源、Project / Room 状态与派工预览。
+
+`hctl2 profile create --input profile.json --key KEY` 返回预览。确认时重复同一输入与 key，加 `--preview-token TOKEN`，返回 `profile_id`、指针 `version` 和精确 `revision`。control 复用 `prepare_profile / admit_profile`，从认证连接取 actor；预览不写库，直接提交、改过输入或信封键不匹配均拒绝。Profile 更新与查询命令仍留后半段。`project select` 提交整份 Room 名册，不是增量添加；保留原有候选时，输入的 `selections` 也带上它们。
 
 | 本批覆盖的 CT 内容 | 会失败的输入与目标 | 留给主体下一批 |
 | --- | --- | --- |
@@ -30,15 +32,16 @@ Project 的 `selection_policy` 初版接受 `allowed_agencies`（Binding ID）�
 | Skill 申报与核验 | P：required 缺失、回读摘要不符、unknown 或转述伪装 known；optional 缺失的降级输出 | Execution Spec 的 activated 状态与实际装载 |
 | 名册独立、精确提及 | P：别的 Room 的记录、模糊显示名、重复职责；同 Harness 两条记录仍独立 | human 批准建议、Run 席位与模型不得发起调用 |
 | 精确版本与重放 | W：旧预览、篡改预览、不同 actor / 输入重投；P：Profile 指针更新不回写旧记录 | Invocation / Attempt 的冻结与替代 |
-| 真实 CLI 接线 | C：`project select` 对不存在候选拒绝、预览不写、确认后写一份名册 | 最少的 Invocation preview / start / show 全链 |
+| Profile 创建入口与校验后续项 | C：真实 Agency 配对、接受、Profile 创建与重启重投；W：坏 Harness 报本地错误；P：未知策略、空 Profile、非 State 候选引用、结构错误与精确来源；B：无预览、错误信封与不匹配动作拒绝 | 真实主链上的 Invocation preview / start / show |
+| 真实名册 CLI 接线 | C：`project select` 对不存在候选拒绝、预览不写、确认后写一份名册 | 配对到名册再到 Invocation 的同一实例走查 |
 
-W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_test`；C = `root//apps/cli:cli_test`。本批没有新三方依赖、脚本或 Agency 运行时。
+W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_test`；C = `root//apps/cli:cli_test`；B = `root//apps/control:boundary_test`。当前没有新三方依赖、脚本或 Agency 运行时。
 
 ## 第 5 包任务说明
 
-主体下一批（5b）先接 Profile 创建的 control Preview / Submit 与最少 CLI，复用 `prepare_profile / admit_profile`。真实主链按「配对 Agency → 接受工种 → 人确认创建只读 Profile → 选入名册 → Invocation 预览 / 启动 / 查看」起步，不靠测试直接写 Store，也不等后半段。Profile 更新 CLI 和只读查询留后半段。
+5b 首段已接 Profile 创建的 control Preview / Submit 与最少 CLI，复用 `prepare_profile / admit_profile`。真实主链按「配对 Agency → 接受工种 → 人确认创建只读 Profile → 选入名册 → Invocation 预览 / 启动 / 查看」起步，不靠测试直接写 Store，也不等后半段；最后三种 Invocation 操作由 5b 下一段接。Profile 更新 CLI 和只读查询留后半段。
 
-5b 同时接两处选入补齐：Project 创建 / 更新时按 `SelectionPolicy` 解析策略，让未知字段在保存前失败；新选入记录的 `sources` 带上精确 Worker Profile Revision，方便沿来源链读取，既有不可变选入记录不回写。分别在 Project 的 `domain_test` 补失败输入与来源引用断言。
+5b 首段已接两处选入补齐：Project 创建 / 更新时按 `SelectionPolicy` 解析策略，让未知字段在保存前失败；新选入记录的 `sources` 带上精确 Worker Profile Revision，方便沿来源链读取，既有不可变选入记录不回写。Project 的 `domain_test` 有对应的失败输入与来源引用断言。
 
 当前端口只核授权归属者的精确记录版本；完整领域授权仍未接线。第 5 包在恢复 Pending 前传入真实的授权判定，不沿用端口中的 `still_authorized=true`；Unknown / Confirmed 的回读和字节保全不发新授权，但后续激活、输入与准入另核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
 
@@ -66,5 +69,5 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 | --- | --- | --- |
 | `profession` | 复用既有接受目录、`accept_profession` 与 `agency.profession.list`；输入 Binding ID 和精确 Profession，输出接受记录；不得靠显示名重建身份 | CT-PARTICIPANT 工种冻结与名册独立 |
 | `room roster` | 复用 Project `prepare / admit` 的 `Action::Select` 和 `project.roster`；输入 Project / Room 与预期版本、`Selection[]`，输出不可变引用与 optional 降级项 | CT-PROJECT 选人策略、CT-PARTICIPANT Room / Run 独立身份 |
-| Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线由 5b 先做；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
+| Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线已由 5b 首段提供；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
 | Invocation list / cancel / retry、Terminal inspect / attach / replay | 本批不虚设 API；下一份主体 PR 定义状态机、取消 / 重试与票据后，在对应 README 补接线表。后半段只作命令与只读展示，不复制 reducer | CT-PROJECT Invocation 合法边；CT-PARTICIPANT 终端权限；CT-CONNECTION 失败恢复 |

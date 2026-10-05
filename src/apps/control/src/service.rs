@@ -410,6 +410,7 @@ impl Control for ControlService {
             || req.operation.starts_with("task.")
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
+            || req.operation.starts_with("profile.")
         {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -426,7 +427,9 @@ impl Control for ControlService {
             };
             match tokio::task::spawn_blocking(move || {
                 let _guard = guard;
-                if operation.starts_with("project.") {
+                if operation.starts_with("profile.") {
+                    crate::profiles::preview(&store, &actor, &operation, &payload)
+                } else if operation.starts_with("project.") {
                     crate::projects::preview(&store, &services, &actor, &operation, &payload)
                 } else if operation.starts_with("room.") {
                     crate::chat::preview(&store, &services, &root, &operation, &payload)
@@ -456,6 +459,7 @@ impl Control for ControlService {
             || req.operation.starts_with("task.")
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
+            || req.operation.starts_with("profile.")
         {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
@@ -614,6 +618,10 @@ impl Control for ControlService {
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
             let _guard = guard;
+            if operation.starts_with("profile.") {
+                return crate::profiles::submit(&store, &actor, &repo_request, &details)
+                    .map_err(|err| present(&err));
+            }
             if operation.starts_with("project.") {
                 return crate::projects::submit(
                     &store,
@@ -1012,6 +1020,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("task.")
         || operation.starts_with("room.")
         || operation.starts_with("project.")
+        || operation.starts_with("profile.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {
