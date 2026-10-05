@@ -1034,15 +1034,9 @@ fi
     #[test]
     fn a_stuck_gh_is_unreadable_within_the_limit_and_leaves_no_process() {
         let directory = temporary_directory("stuck-gh");
-        let pidfile = directory.join("pid");
-        let program = write_executable(
-            &directory,
-            "gh-stuck",
-            "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n",
-        );
+        let program = write_executable(&directory, "gh-stuck", "#!/bin/sh\nexec sleep 31.4164\n");
         let started = Instant::now();
         let mut command = Command::new(&program);
-        command.arg(&pidfile);
         let error =
             super::finish_external(&mut command, Duration::from_secs(3), program.as_os_str())
                 .expect_err("a stuck reader must not succeed");
@@ -1052,22 +1046,17 @@ fi
             started.elapsed()
         );
         assert_eq!(error["error"], "command timed out");
-        let pid: u32 = fs::read_to_string(&pidfile)
-            .expect("pid")
-            .trim()
-            .parse()
-            .expect("pid");
-        let mut listed_command = Command::new("ps");
-        listed_command.args(["-p", &pid.to_string(), "-o", "pid="]);
+        let mut listed_command = Command::new("pgrep");
+        listed_command.args(["-f", "31.4164"]);
         let listed = super::finish_external(
             &mut listed_command,
             super::PS_TIMEOUT,
-            std::ffi::OsStr::new("ps"),
+            std::ffi::OsStr::new("pgrep"),
         )
-        .expect("ps");
+        .expect("pgrep");
         assert!(
             listed.stdout.iter().all(u8::is_ascii_whitespace),
-            "pid {pid}"
+            "a process matching the marker is still present"
         );
         fs::remove_dir_all(directory).expect("cleanup");
     }

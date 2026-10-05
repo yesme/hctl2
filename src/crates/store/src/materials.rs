@@ -340,10 +340,6 @@ mod tests {
 
     use super::bounded;
 
-    fn shell_quote(path: &std::path::Path) -> String {
-        format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
-    }
-
     #[test]
     fn a_stuck_material_command_is_unreadable_within_the_limit() {
         let nanos = SystemTime::now()
@@ -353,15 +349,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hctl2-material-stuck-{nanos}"));
         fs::create_dir(&dir).unwrap();
         let program = dir.join("hang.sh");
-        let pidfile = dir.join("pid");
-        fs::write(
-            &program,
-            format!(
-                "#!/bin/sh\necho $$ > {}\nexec sleep 30\n",
-                shell_quote(&pidfile)
-            ),
-        )
-        .unwrap();
+        fs::write(&program, "#!/bin/sh\nexec sleep 31.4166\n").unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
         let started = Instant::now();
         let mut command = Command::new("/bin/sh");
@@ -375,17 +363,12 @@ mod tests {
         );
         assert_eq!(error.code, "MATERIAL_UNAVAILABLE");
         assert!(error.message.contains("timed out"), "{}", error.message);
-        let pid: u32 = fs::read_to_string(&pidfile)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        let mut listed = Command::new("ps");
-        listed.args(["-p", &pid.to_string(), "-o", "pid="]);
-        let listed = bounded(listed, None, Duration::from_secs(5)).expect("ps");
+        let mut listed = Command::new("pgrep");
+        listed.args(["-f", "31.4166"]);
+        let listed = bounded(listed, None, Duration::from_secs(5)).expect("pgrep");
         assert!(
             listed.stdout.iter().all(u8::is_ascii_whitespace),
-            "pid {pid}"
+            "a process matching the marker is still present"
         );
         fs::remove_dir_all(dir).unwrap();
     }

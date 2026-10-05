@@ -1,6 +1,7 @@
 //! One bounded runner for external commands.
 //!
-//! Standard input is written on its own thread. Standard output and standard
+//! Standard input is written on its own thread; a child that closes it early
+//! (`BrokenPipe`) is not a failure to start. Standard output and standard
 //! error are read on their own threads, which count the 16 MiB ceiling.
 //! `process_control` waits and, on timeout, terminates through `waitid` on
 //! macOS and Linux. After the child exits, a pipe that is still open is waited
@@ -45,8 +46,9 @@ pub enum CommandEnd {
 /// # Errors
 ///
 /// Returns an error when the process cannot be spawned, a pipe thread cannot
-/// be started, standard input cannot be written, or the limiter itself fails.
-/// A timeout is [`CommandEnd::TimedOut`], not an error.
+/// be started, standard input cannot be written for a reason other than the
+/// child closing it, or the limiter itself fails. A timeout is
+/// [`CommandEnd::TimedOut`], not an error.
 pub fn run_bounded(
     command: &mut Command,
     input: Option<&[u8]>,
@@ -142,10 +144,12 @@ pub fn run_bounded(
         None => Some(Ok(())),
     };
     let late = stdout_end.is_none() || stderr_end.is_none() || stdin_end.is_none();
-    // The child has exited. A grandchild may still hold a pipe. Signal the
-    // group, then give the readers one grace period so they can leave. The
-    // result stays a timeout: the pipes missed the deadline.
-    if status.is_some() && late {
+    // A pipe that is still open at the deadline has a live holder in the
+    // child's group: a grandchild after the child exited, or one the child
+    // left behind when the deadline terminated it. Signal the group, then
+    // give the readers one grace period so they can leave. The result stays a
+    // timeout: the pipes missed the deadline.
+    if late {
         #[cfg(unix)]
         {
             let _ = rustix::process::kill_process_group(group, rustix::process::Signal::KILL);
@@ -173,7 +177,13 @@ pub fn run_bounded(
         return Ok(CommandEnd::TimedOut);
     }
 
-    if let Some(Err(error)) = stdin_end {
+    // A child that exits without reading its standard input closes the pipe
+    // under the writer thread. That is the child's answer, not a failure to
+    // start it: the status and output read below are still the real result, so
+    // a `BrokenPipe` from the writer is ignored, as the unbounded runner did.
+    if let Some(Err(error)) = stdin_end
+        && error.kind() != io::ErrorKind::BrokenPipe
+    {
         return Err(error);
     }
     let stdout = stdout_end.unwrap_or(Err(io::Error::other(
@@ -312,6 +322,31 @@ mod tests {
         panic!("pid {pid} still present");
     }
 
+    /// Fails while any live process carries `marker` on its command line.
+    ///
+    /// A pid file needs the stand-in to survive until its first write, which a
+    /// process killed at the deadline may not. A marker in the command line is
+    /// true whether or not the process ever got that far.
+    fn assert_no_process_with(marker: &str) {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(2) {
+            let listed = run_bounded(
+                Command::new("pgrep").args(["-f", marker]),
+                None,
+                Duration::from_secs(5),
+            )
+            .expect("pgrep");
+            let CommandEnd::Finished(output) = listed else {
+                panic!("pgrep did not finish");
+            };
+            if output.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("a process matching {marker} is still present");
+    }
+
     fn pid_from(path: &Path) -> u32 {
         fs::read_to_string(path)
             .expect("pid file")
@@ -346,18 +381,17 @@ mod tests {
     #[test]
     fn a_stuck_command_ends_as_timed_out_and_leaves_no_process() {
         let dir = temp_dir("stuck");
-        let pidfile = dir.join("pid");
-        let program = script(&dir, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n");
+        let program = script(&dir, "#!/bin/sh\nexec sleep 31.4159\n");
         let limit = Duration::from_secs(3);
         let started = Instant::now();
-        let end = run_bounded(Command::new(&program).arg(&pidfile), None, limit).expect("spawn");
+        let end = run_bounded(&mut Command::new(&program), None, limit).expect("spawn");
         assert!(
             started.elapsed() < limit + MARGIN,
             "stuck command ran for {:?}",
             started.elapsed()
         );
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_gone(pid_from(&pidfile));
+        assert_no_process_with("31.4159");
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -405,36 +439,27 @@ mod tests {
     #[test]
     fn exited_parent_with_stdout_holder_times_out_and_leaves_no_process() {
         let dir = temp_dir("hold-stdout");
-        let pidfile = dir.join("pid");
-        let program = script(&dir, "#!/bin/sh\nsleep 30 &\necho $! > \"$1\"\nexit 0\n");
+        let program = script(&dir, "#!/bin/sh\nsleep 31.4160 &\nexit 0\n");
         let limit = Duration::from_secs(2);
-        let pidfile_for_call = pidfile.clone();
         let end = call_within(limit, move || {
-            run_bounded(Command::new(&program).arg(&pidfile_for_call), None, limit).expect("spawn")
+            run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_gone(pid_from(&pidfile));
+        assert_no_process_with("31.4160");
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
     #[test]
     fn unread_stdin_over_the_pipe_buffer_times_out_and_leaves_no_process() {
         let dir = temp_dir("unread-stdin");
-        let pidfile = dir.join("pid");
-        let program = script(&dir, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n");
+        let program = script(&dir, "#!/bin/sh\nexec sleep 31.4161\n");
         let limit = Duration::from_secs(3);
         let payload = vec![0_u8; 1024 * 1024];
-        let pidfile_for_call = pidfile.clone();
         let end = call_within(limit, move || {
-            run_bounded(
-                Command::new(&program).arg(&pidfile_for_call),
-                Some(&payload),
-                limit,
-            )
-            .expect("spawn")
+            run_bounded(&mut Command::new(&program), Some(&payload), limit).expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
-        assert_gone(pid_from(&pidfile));
+        assert_no_process_with("31.4161");
         fs::remove_dir_all(dir).expect("cleanup");
     }
 
@@ -467,6 +492,51 @@ mod tests {
             other => panic!("cat did not finish: {other:?}"),
         }
         assert_gone(pid_from(&pidfile));
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn a_stuck_command_that_left_a_pipe_holder_leaves_no_process() {
+        let dir = temp_dir("stuck-holder");
+        let program = script(&dir, "#!/bin/sh\nsleep 31.4162 &\nexec sleep 31.4163\n");
+        let limit = Duration::from_secs(3);
+        let end = call_within(limit, move || {
+            run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
+        });
+        assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
+        assert_no_process_with("31.4162");
+        assert_no_process_with("31.4163");
+        fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn unread_stdin_with_an_immediate_exit_keeps_the_child_answer() {
+        let dir = temp_dir("instant-refusal");
+        let program = script(&dir, "#!/bin/sh\necho refused >&2\nexit 3\n");
+        let payload = vec![0_u8; 1024 * 1024];
+        let started = Instant::now();
+        let end = run_bounded(
+            &mut Command::new(&program),
+            Some(&payload),
+            Duration::from_secs(10),
+        )
+        .expect("spawn");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        match end {
+            CommandEnd::Finished(output) => {
+                assert_eq!(
+                    output.status.code(),
+                    Some(3),
+                    "the child's own status must survive a closed stdin"
+                );
+                assert_eq!(
+                    String::from_utf8_lossy(&output.stderr).trim(),
+                    "refused",
+                    "the child's stderr must survive a closed stdin"
+                );
+            }
+            other => panic!("the child's answer was lost: {other:?}"),
+        }
         fs::remove_dir_all(dir).expect("cleanup");
     }
 }

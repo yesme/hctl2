@@ -413,30 +413,24 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     let dir = std::env::temp_dir().join(format!("hctl2-repo-stuck-{nanos}"));
     std::fs::create_dir(&dir).unwrap();
     let program = dir.join("hang.sh");
-    let pidfile = dir.join("pid");
-    std::fs::write(&program, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n").unwrap();
+    std::fs::write(&program, "#!/bin/sh\nexec sleep 31.4165\n").unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let started = Instant::now();
     let error = repo::git::run_for(
-        Command::new(&program).arg(&pidfile),
+        &mut Command::new(&program),
         None,
         std::time::Duration::from_secs(3),
     )
     .expect_err("stuck provider command");
     assert!(started.elapsed() < std::time::Duration::from_secs(7));
     assert_eq!(error.code, "RESULT_UNKNOWN");
-    let pid: u32 = std::fs::read_to_string(&pidfile)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
-    let listed = Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "pid="])
+    let listed = Command::new("pgrep")
+        .args(["-f", "31.4165"])
         .output()
         .unwrap();
     assert!(
         listed.stdout.iter().all(u8::is_ascii_whitespace),
-        "pid {pid}"
+        "a process matching the marker is still present"
     );
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -812,31 +812,24 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hctl2-agency-stuck-{nanos}"));
         fs::create_dir(&dir).unwrap();
         let program = dir.join("hang.sh");
-        let pidfile = dir.join("pid");
-        fs::write(&program, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n").unwrap();
+        fs::write(&program, "#!/bin/sh\nexec sleep 31.4167\n").unwrap();
         fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
-        let mut command = Command::new(&program);
-        command.arg(&pidfile);
+        let command = Command::new(&program);
         let started = Instant::now();
         let error = super::run_agency_command(command, Duration::from_secs(3))
             .expect_err("stuck agency start");
         assert!(started.elapsed() < Duration::from_secs(7));
         assert_eq!(error.code, "AGENCY_START_TIMEOUT");
-        let pid: u32 = fs::read_to_string(&pidfile)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        let mut probe = Command::new("ps");
-        probe.args(["-p", &pid.to_string(), "-o", "pid="]);
+        let mut probe = Command::new("pgrep");
+        probe.args(["-f", "31.4167"]);
         let probe =
             foundation::command::run_bounded(&mut probe, None, Duration::from_secs(5)).unwrap();
         let foundation::command::CommandEnd::Finished(probe) = probe else {
-            panic!("ps did not finish");
+            panic!("pgrep did not finish");
         };
         assert!(
             probe.stdout.iter().all(u8::is_ascii_whitespace),
-            "pid {pid}"
+            "a process matching the marker is still present"
         );
         fs::remove_dir_all(dir).unwrap();
     }
