@@ -1,6 +1,5 @@
-//! Start a program in a Herdr pane without treating the screen as completion.
-//! The caller's text is a script file. The pane only receives a fixed launcher.
-//! The launcher writes the script's exit code after the script returns.
+//! Non-interactive process supervision with a Herdr-owned display terminal.
+//! Completion comes from the OS child status and protocol stream, never the screen.
 use crate::herdr::{Client, Server};
 use crate::runtime::{Running, Runtime, RuntimeEvent, Session};
 use agency_proto::context::{Bundle, Delivery};
@@ -11,7 +10,14 @@ use agency_proto::{
 use serde_json::json;
 use std::{
     fs,
+    io::{Read, Write},
+    os::unix::{
+        fs::{FileTypeExt, OpenOptionsExt},
+        net::UnixStream,
+        process::{CommandExt, ExitStatusExt},
+    },
     path::{Path, PathBuf},
+    process::{Child, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -22,15 +28,88 @@ use std::{
 pub struct Launch {
     client: Client,
     pane: String,
-    exit_path: PathBuf,
-    stdout_path: PathBuf,
+    process: Mutex<Option<Process>>,
+    report_dir: PathBuf,
+    program: PathBuf,
+    profile: PathBuf,
     stopped: Arc<AtomicBool>,
+    closed: Mutex<bool>,
     _server: Arc<Server>,
+}
+
+struct Process {
+    child: Child,
+    stdout: Capture,
+    stderr: Capture,
+    terminal: fs::File,
+}
+
+struct Capture {
+    stream: UnixStream,
+    bytes: Vec<u8>,
+    eof: bool,
+}
+
+impl Capture {
+    fn drain(&mut self, terminal: &mut fs::File) -> Result<()> {
+        let mut buffer = [0; 8192];
+        // Bound work per poll even when a program produces output indefinitely.
+        for _ in 0..32 {
+            match self.stream.read(&mut buffer) {
+                Ok(0) => {
+                    self.eof = true;
+                    break;
+                }
+                Ok(n) => {
+                    if self.bytes.len() + n > 16 * 1024 * 1024 {
+                        return Err(PortError::new(
+                            "LAUNCH_OUTPUT_LIMIT",
+                            "harness stream exceeds 16 MiB",
+                            "reduce_harness_output",
+                        ));
+                    }
+                    self.bytes.extend_from_slice(&buffer[..n]);
+                    // Display is best effort and is not the result evidence channel.
+                    let _ = terminal.write(&buffer[..n]);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Process {
+    fn drain(&mut self) -> Result<()> {
+        self.stdout.drain(&mut self.terminal)?;
+        self.stderr.drain(&mut self.terminal)
+    }
+    fn code(&mut self) -> Result<Option<i32>> {
+        Ok(self
+            .child
+            .try_wait()?
+            .map(|s| s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))))
+    }
+    fn stop(&mut self) -> Result<()> {
+        if self.child.try_wait()?.is_none() {
+            let status = std::process::Command::new("/bin/kill")
+                .args(["-KILL", "--", &format!("-{}", self.child.id())])
+                .status()?;
+            if !status.success() {
+                self.child.kill()?;
+            }
+            self.child.wait()?;
+        }
+        Ok(())
+    }
 }
 
 pub struct Finished {
     pub code: i32,
     pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 impl Launch {
@@ -42,20 +121,25 @@ impl Launch {
         body: &str,
         label: &str,
     ) -> Result<Self> {
-        let _ = (state_dir, credential_root);
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let program = exec_dir.join(format!("program-{label}-{stamp}.sh"));
-        let exit_path = exec_dir.join(format!("exit-{label}-{stamp}"));
-        let stdout_path = exec_dir.join(format!("stdout-{label}-{stamp}"));
-        let stderr_path = exec_dir.join(format!("stderr-{label}-{stamp}"));
+        if state_dir != server.state {
+            return Err(PortError::invalid(
+                "launch state differs from the live server",
+            ));
+        }
+        let stamp = crate::storage::nonce()?;
+        let program = exec_dir.join(format!("program-{stamp}.sh"));
+        let profile = exec_dir.join(format!("program-{stamp}.sb"));
+        let report_dir = state_dir.join(format!("launch-{stamp}"));
+        crate::storage::private_dir(&report_dir)?;
         fs::write(&program, body)?;
-        let runner = exec_dir.join(format!("runner-{label}-{stamp}.sh"));
+        let runner = report_dir.join("runner.sh");
         fs::write(
             &runner,
-            runner_script(&program, &exit_path, &stdout_path, &stderr_path),
+            format!(
+                "#!/bin/sh\ntty > {tty}\nwhile [ ! -f {done} ]; do sleep 0.05; done\n",
+                tty = sh_quote(&report_dir.join("tty")),
+                done = sh_quote(&report_dir.join("done"))
+            ),
         )?;
         #[cfg(unix)]
         {
@@ -80,18 +164,92 @@ impl Launch {
                 )
             })?
             .to_owned();
-        client.call(
-            "pane.send_text",
-            json!({"pane_id": pane, "text": format!("/bin/sh {}\n", sh_quote(&runner))}),
-        )?;
-        Ok(Self {
+        let launch = Self {
             client,
             pane,
-            exit_path,
-            stdout_path,
+            report_dir,
+            program,
+            profile,
+            process: Mutex::new(None),
             stopped: Arc::new(AtomicBool::new(false)),
+            closed: Mutex::new(false),
             _server: server,
-        })
+        };
+        launch.client.call(
+            "pane.send_text",
+            json!({"pane_id": launch.pane, "text": format!("/bin/sh {}\n", sh_quote(&runner))}),
+        )?;
+        let ready = Instant::now() + Duration::from_secs(5);
+        let tty = loop {
+            if let Ok(text) = fs::read_to_string(launch.report_dir.join("tty")) {
+                let path = PathBuf::from(text.trim());
+                if (path.starts_with("/dev/pts") || path.to_string_lossy().starts_with("/dev/tty"))
+                    && fs::metadata(&path).is_ok_and(|m| m.file_type().is_char_device())
+                {
+                    break path;
+                }
+            }
+            if Instant::now() >= ready {
+                return Err(PortError::new(
+                    "HERDR_TERMINAL_MISSING",
+                    "pane did not supply its terminal",
+                    "retry_herdr_call",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        let terminal = fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+            .open(tty)?;
+        let (stdout, child_stdout) = UnixStream::pair()?;
+        let (stderr, child_stderr) = UnixStream::pair()?;
+        stdout.set_nonblocking(true)?;
+        stderr.set_nonblocking(true)?;
+        let mut command = crate::confine::pane_program(
+            &launch.program,
+            exec_dir,
+            credential_root,
+            state_dir,
+            launch
+                ._server
+                .socket
+                .parent()
+                .ok_or_else(|| PortError::invalid("socket has no parent"))?,
+            &launch.profile,
+        )?;
+        crate::confine::scrub(&mut command, exec_dir);
+        command
+            .env(
+                "HCTL2_CONFINE_READ",
+                launch
+                    ._server
+                    .read_paths
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+            .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(std::os::fd::OwnedFd::from(child_stdout)))
+            .stderr(Stdio::from(std::os::fd::OwnedFd::from(child_stderr)));
+        let child = command.spawn()?;
+        *launch.process.lock().expect("launch process") = Some(Process {
+            child,
+            terminal,
+            stdout: Capture {
+                stream: stdout,
+                bytes: vec![],
+                eof: false,
+            },
+            stderr: Capture {
+                stream: stderr,
+                bytes: vec![],
+                eof: false,
+            },
+        });
+        Ok(launch)
     }
 
     pub fn pane(&self) -> &str {
@@ -102,17 +260,17 @@ impl Launch {
         &self.client
     }
 
-    /// Exit code written by the launcher. Screen text is not consulted.
+    /// Native child status. Files in the program's directory cannot affect it.
     pub fn poll_exit(&self) -> Result<Option<i32>> {
-        if !self.exit_path.is_file() {
+        if self.stopped.load(Ordering::SeqCst) {
             return Ok(None);
         }
-        let text = fs::read_to_string(&self.exit_path)?;
-        let code = text
-            .trim()
-            .parse::<i32>()
-            .map_err(|_| PortError::invalid("launcher exit file is not an integer"))?;
-        Ok(Some(code))
+        let mut process = self.process.lock().expect("launch process");
+        let process = process
+            .as_mut()
+            .ok_or_else(|| PortError::invalid("launch has no process"))?;
+        process.drain()?;
+        process.code()
     }
 
     pub fn wait(&self, timeout: Duration) -> Result<Finished> {
@@ -125,7 +283,7 @@ impl Launch {
             )),
             WaitEnd::TimedOut => Err(PortError::new(
                 "LAUNCH_TIMEOUT",
-                "launcher exit file was not written before the caller timeout",
+                "harness did not exit and close its output before the caller timeout",
                 "raise_timeout_or_cancel",
             )),
         }
@@ -137,12 +295,25 @@ impl Launch {
             if self.stopped.load(Ordering::SeqCst) {
                 return Ok(WaitEnd::Stopped);
             }
-            if let Some(code) = self.poll_exit()? {
-                if self.stopped.load(Ordering::SeqCst) {
-                    return Ok(WaitEnd::Stopped);
+            {
+                let mut process = self.process.lock().expect("launch process");
+                let process = process
+                    .as_mut()
+                    .ok_or_else(|| PortError::invalid("launch has no process"))?;
+                process.drain()?;
+                if let Some(code) = process.code()? {
+                    if self.stopped.load(Ordering::SeqCst) {
+                        return Ok(WaitEnd::Stopped);
+                    }
+                    process.drain()?;
+                    if process.stdout.eof && process.stderr.eof {
+                        return Ok(WaitEnd::Finished(Finished {
+                            code,
+                            stdout: process.stdout.bytes.clone(),
+                            stderr: process.stderr.bytes.clone(),
+                        }));
+                    }
                 }
-                let stdout = fs::read(&self.stdout_path).unwrap_or_default();
-                return Ok(WaitEnd::Finished(Finished { code, stdout }));
             }
             if Instant::now() >= deadline {
                 return Ok(WaitEnd::TimedOut);
@@ -152,10 +323,42 @@ impl Launch {
     }
 
     pub fn cancel(&self) -> Result<()> {
+        self.close()?;
+        let mut guard = self.process.lock().expect("launch process");
+        if let Some(process) = guard.as_mut() {
+            process.stop()?;
+        }
         self.stopped.store(true, Ordering::SeqCst);
-        self.client
-            .call("pane.close", json!({"pane_id": self.pane}))
-            .map(|_| ())
+        Ok(())
+    }
+
+    fn close(&self) -> Result<()> {
+        let mut closed = self.closed.lock().expect("pane close");
+        if !*closed {
+            self.client
+                .call("pane.close", json!({"pane_id": self.pane}))?;
+            *closed = true;
+        }
+        Ok(())
+    }
+
+    fn stop_process(&self) -> Result<()> {
+        if let Some(process) = self.process.lock().expect("launch process").as_mut() {
+            process.stop()?;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Launch {
+    fn drop(&mut self) {
+        let _ = self.close();
+        if let Some(process) = self.process.get_mut().expect("launch process").as_mut() {
+            let _ = process.stop();
+        }
+        let _ = fs::remove_file(&self.program);
+        let _ = fs::remove_file(&self.profile);
+        let _ = fs::remove_dir_all(&self.report_dir);
     }
 }
 
@@ -165,33 +368,25 @@ pub enum WaitEnd {
     TimedOut,
 }
 
-fn runner_script(
-    program: &Path,
-    exit_path: &Path,
-    stdout_path: &Path,
-    stderr_path: &Path,
-) -> String {
-    format!(
-        "#!/bin/sh\nset +e\n/bin/sh {program} >{stdout} 2>{stderr}\ncode=$?\nprintf '%s\\n' \"$code\" > {exit}\nexit \"$code\"\n",
-        program = sh_quote(program),
-        stdout = sh_quote(stdout_path),
-        stderr = sh_quote(stderr_path),
-        exit = sh_quote(exit_path),
-    )
-}
-
 fn sh_quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
 pub fn locked_digest() -> &'static str {
-    if cfg!(target_os = "linux") {
-        "976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4"
+    static LOCK: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+    let lock = LOCK.get_or_init(|| {
+        serde_json::from_str(include_str!(env!("HCTL2_DEPENDENCY_LOCK"))).expect("dependency lock")
+    });
+    let platform = if cfg!(target_os = "linux") {
+        "linux_x86_64"
     } else if cfg!(target_arch = "x86_64") {
-        "ab50262c8190cd7aa9056d249d255c08c328c3e8716de9cfa29db4f131b8e2c1"
+        "macos_x86_64"
     } else {
-        "a5d4f4d504d8b309c91f811050559300faba31258425f53c50852fc96f6ae574"
-    }
+        "macos_arm64"
+    };
+    lock["targets"][platform]["assets"]["herdr"]["sha256"]
+        .as_str()
+        .expect("locked Herdr digest")
 }
 
 pub fn installed_herdr(install_root: &Path) -> Result<PathBuf> {
@@ -232,7 +427,12 @@ pub fn smoke(
     if finished.code != 0 || !finished.stdout.windows(8).any(|item| item == b"smoke-ok") {
         return Err(PortError::new(
             "HERDR_SMOKE_FAILED",
-            format!("smoke exit {} stdout {:?}", finished.code, finished.stdout),
+            format!(
+                "smoke exit {} stdout {:?} stderr {}",
+                finished.code,
+                finished.stdout,
+                String::from_utf8_lossy(&finished.stderr)
+            ),
             "check_locked_herdr",
         ));
     }
@@ -251,11 +451,19 @@ pub struct InstalledHerdr {
     starts: AtomicUsize,
     script: Arc<LaunchScript>,
     claude_result: bool,
+    read_paths: Vec<PathBuf>,
 }
 
 impl InstalledHerdr {
     pub fn open(binary: PathBuf, claude: &Path) -> Result<Self> {
-        let version = command_version(claude)?;
+        let claude = claude.canonicalize()?;
+        let read_paths = vec![
+            claude
+                .parent()
+                .ok_or_else(|| PortError::invalid("Claude has no parent"))?
+                .to_path_buf(),
+        ];
+        let version = smoke_binary(&binary, &claude, &read_paths)?;
         if !crate::harness::version_at_least(&version, crate::harness::CLAUDE_MINIMUM) {
             return Err(PortError::new(
                 "HARNESS_VERSION",
@@ -266,9 +474,7 @@ impl InstalledHerdr {
                 "upgrade_claude",
             ));
         }
-        smoke_binary(&binary)?;
-        let digest = crate::catalog::file_digest(claude)?;
-        let claude = claude.to_path_buf();
+        let digest = crate::catalog::file_digest(&claude)?;
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -278,6 +484,7 @@ impl InstalledHerdr {
             starts: AtomicUsize::new(0),
             script: Arc::new(move |_spec, bundle, exec| claude_script(&claude, bundle, exec)),
             claude_result: true,
+            read_paths,
         })
     }
 
@@ -294,6 +501,7 @@ impl InstalledHerdr {
             starts: AtomicUsize::new(0),
             script: Arc::new(script),
             claude_result: false,
+            read_paths: vec![],
         }
     }
 
@@ -319,14 +527,33 @@ impl InstalledHerdr {
             return Ok(Arc::clone(server));
         }
         let state = crate::herdr::state_dir(exec, credential_root)?;
-        let server = Arc::new(Server::start(&self.binary, &state, credential_root, exec)?);
+        let parent = exec
+            .parent()
+            .ok_or_else(|| PortError::invalid("execution directory has no parent"))?;
+        // Real dispatch directories share a private hctl2-exec-* parent. Never
+        // grant a temporary-directory ancestor that also contains credentials.
+        let parent = if crate::confine::allowed_tree_contains_credential(
+            &parent.canonicalize()?,
+            &credential_root.canonicalize()?,
+        ) {
+            exec
+        } else {
+            parent
+        };
+        let server = Arc::new(Server::start_with_read(
+            &self.binary,
+            &state,
+            credential_root,
+            parent,
+            &self.read_paths,
+        )?);
         self.starts.fetch_add(1, Ordering::SeqCst);
         *slot = Some(Arc::clone(&server));
         Ok(server)
     }
 }
 
-fn smoke_binary(binary: &Path) -> Result<()> {
+fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<String> {
     let root = std::env::temp_dir().join(format!(
         "hctl2-herdr-smoke-{}-{}",
         std::process::id(),
@@ -340,34 +567,42 @@ fn smoke_binary(binary: &Path) -> Result<()> {
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
     let state = crate::herdr::state_dir(&exec, &cred)?;
-    let server = Arc::new(Server::start(binary, &state, &cred, &exec)?);
-    let result = smoke(Arc::clone(&server), &exec, &state, &cred);
+    let server = Arc::new(Server::start_with_read(
+        binary, &state, &cred, &exec, read_paths,
+    )?);
+    let result = (|| {
+        smoke(Arc::clone(&server), &exec, &state, &cred)?;
+        let launch = Launch::start(
+            Arc::clone(&server),
+            &exec,
+            &state,
+            &cred,
+            &format!("{} --version\n", sh_quote(claude)),
+            "harness-smoke",
+        )?;
+        let finished = launch.wait(Duration::from_secs(15))?;
+        let text = String::from_utf8_lossy(&finished.stdout);
+        let version = text.lines().next().unwrap_or("").trim().to_owned();
+        if finished.code != 0 || version.is_empty() {
+            return Err(PortError::new(
+                "HARNESS_SMOKE_FAILED",
+                format!(
+                    "confined Claude --version exit {}: {}",
+                    finished.code,
+                    String::from_utf8_lossy(&finished.stderr)
+                        .chars()
+                        .take(4096)
+                        .collect::<String>()
+                ),
+                "check_harness_installation_and_policy",
+            ));
+        }
+        Ok(version)
+    })();
     drop(server);
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&state);
     result
-}
-
-fn command_version(binary: &Path) -> Result<String> {
-    let output = std::process::Command::new(binary)
-        .arg("--version")
-        .output()
-        .map_err(|error| {
-            PortError::new(
-                "HARNESS_NOT_STARTED",
-                format!("{} did not answer --version: {error}", binary.display()),
-                "install_claude_code",
-            )
-        })?;
-    if !output.status.success() {
-        return Err(PortError::new(
-            "HARNESS_NOT_STARTED",
-            format!("{} --version failed", binary.display()),
-            "install_claude_code",
-        ));
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().next().unwrap_or("").trim().to_owned())
 }
 
 fn claude_script(claude: &Path, bundle: &Bundle, exec: &Path) -> Result<String> {
@@ -375,11 +610,12 @@ fn claude_script(claude: &Path, bundle: &Bundle, exec: &Path) -> Result<String> 
     fs::write(&prompt, task_text(bundle)?)?;
     let home = std::env::var("HOME").unwrap_or_default();
     let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
+    let user = std::env::var("USER").unwrap_or_default();
     Ok(format!(
-        "export HOME={home}\nexport PATH={path}\nexport CLAUDE_CONFIG_DIR={config}\nexec {claude} -p --output-format stream-json --verbose --permission-mode dontAsk < {prompt}\n",
+        "export HOME={home}\nexport PATH={path}\nexport USER={user}\nunset CLAUDE_CONFIG_DIR\nexec {claude} -p --output-format stream-json --verbose --permission-mode dontAsk < {prompt}\n",
         home = sh_quote(Path::new(&home)),
         path = sh_quote(Path::new(&path)),
-        config = sh_quote(&Path::new(&home).join(".claude")),
+        user = sh_quote(Path::new(&user)),
         claude = sh_quote(claude),
         prompt = sh_quote(&prompt),
     ))
@@ -442,8 +678,8 @@ impl Runtime for InstalledHerdr {
     ) -> Result<Running> {
         fs::create_dir_all(exec_root)?;
         let body = (self.script)(&spec.document, &bundle.document, exec_root)?;
-        let state = crate::herdr::state_dir(exec_root, credential_root)?;
         let server = self.ensure(exec_root, credential_root)?;
+        let state = server.state.clone();
         let launch = Launch::start(
             server,
             exec_root,
@@ -484,7 +720,9 @@ fn dispatch_events(
             return;
         }
         Ok(WaitEnd::TimedOut) => {
-            let _ = launch.cancel();
+            // A failed pane RPC must not leave our child running past its deadline.
+            let _ = launch.close();
+            let _ = launch.stop_process();
             let _ = tx.send(RuntimeEvent::DeadlineReached);
             let _ = tx.send(RuntimeEvent::Exited {
                 code: None,
@@ -494,6 +732,8 @@ fn dispatch_events(
         }
         Ok(WaitEnd::Finished(finished)) => finished,
         Err(error) => {
+            let _ = launch.close();
+            let _ = launch.stop_process();
             let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
             let _ = tx.send(RuntimeEvent::Exited {
                 code: None,
@@ -502,6 +742,13 @@ fn dispatch_events(
             return;
         }
     };
+    if let Err(error) = launch.close() {
+        let _ = tx.send(RuntimeEvent::Observation {
+            kind: "runtime:pane_cleanup_failed".into(),
+            payload: json!({"code": error.code, "message": error.message}),
+            source: EvidenceLevel::AdapterEvent,
+        });
+    }
     if ended.code == 0 {
         match proposal_bytes(&ended, claude_result) {
             Ok(bytes) => {
@@ -520,6 +767,11 @@ fn dispatch_events(
                 });
             }
             Err(error) => {
+                let _ = tx.send(RuntimeEvent::Observation {
+                    kind: "runtime:harness_failure".into(),
+                    payload: json!({"code": error.code, "message": error.message}),
+                    source: EvidenceLevel::AdapterEvent,
+                });
                 let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
                 let _ = tx.send(RuntimeEvent::Exited {
                     code: Some(0),
@@ -528,6 +780,15 @@ fn dispatch_events(
             }
         }
     } else {
+        let detail =
+            crate::harness::claude::result_from_jsonl(&String::from_utf8_lossy(&ended.stdout))
+                .map(|session| session.result)
+                .unwrap_or_else(|_| String::from_utf8_lossy(&ended.stderr).into_owned());
+        let _ = tx.send(RuntimeEvent::Observation {
+            kind: "runtime:harness_failure".into(),
+            payload: json!({"exit_code": ended.code, "message": detail.chars().take(4096).collect::<String>()}),
+            source: EvidenceLevel::AdapterEvent,
+        });
         let _ = tx.send(RuntimeEvent::Exited {
             code: Some(ended.code),
             requested_stop: false,

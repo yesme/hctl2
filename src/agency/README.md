@@ -31,26 +31,26 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-所有者 2026-10-05 把第 3 包拆成 3a、3b、3c。3a 已合（#323）。3b（Herdr 管道）已合（#328）。本分支是 3c：先定真实执行的结束判据，再接一家已登录的 harness。
+所有者 2026-10-05 把第 3 包拆成 3a、3b、3c。3a 已合（#323），3b（Herdr 管道）已合（#328）。3c（#335）接入一家 Claude Code 的非交互 print 调用；不把测试程序当工种上架。
 
-| 文件 | 要补什么 | 状态 |
-| --- | --- | --- |
-| 结果查询 | 多份成果按游标分页；`complete` 只在已存结果取完且派工不再 Running 时为真 | 3a 已做 |
-| `src/confine.rs`、`linux_confine.rs` | 执行目录在凭据根外，并挡住读取。Linux 上伪终端需要写 `/dev` 与 `/dev/pts` | 3a 已做；pty 写放行在本管道 |
-| `src/catalog.rs`、脚本目录 | 摘要用程序文件或 `SKILL.md` 字节；`verification` 留空 | 3a 已做 |
-| `src/runtime.rs` | 保留 `Runtime::catalog/start`、`Running`、`Session::input/stop` 和 `RuntimeEvent` | 脚本执行体已有。本管道不把 Herdr 接进 `serve` |
-| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20。调用方给出 pane 里的程序。一个管道一个服务。状态目录在执行目录旁边。命令原文含有标记，或含换行以外的控制字符（制表符也算），都在建 pane 之前拒绝。启动失败和 pane 出错都会收掉已经拉起的进程 | 本管道 |
-| `src/workspace.rs` | 复用 Herdr 和 hctl2-tool 的物化 / 核验；Write Lease 与目标边界照原授权执行 | 不带 |
-| `tests/herdr.rs` | 锁定制品上的 ping、工作区、pane、输入读回、关闭；两个派工同时启动；凭据根；新目录上的 `serve` 不上架 Herdr。标记拆开打印并放在命令最后一步。命令原文含标记，或含退格、删除，则拒绝且不执行。标记不出现时关掉 pane。pid 写失败后没有存活的 Herdr | 本管道 |
+| 文件 | 当前职责 |
+| --- | --- |
+| `src/herdr.rs` | 锁定 Herdr 0.8.2 / 协议 20 的私有客户端。共用一个服务，不同派工各有显示 pane；状态与 socket 目录在执行目录之外 |
+| `src/launch.rs` | Agency 用标准库启动受限子进程，收 stdout / stderr，按 `Child::try_wait` 判断退出。Herdr 持有显示 PTY；屏幕与退出文件不参与结果判定 |
+| `src/harness/claude.rs` | 解析同一次 Claude 会话的 JSONL `result`；成功结果才交 Proposal，错误或缺少结果报告协议错误 |
+| `src/main.rs` | `HCTL2_INSTALL_ROOT/libexec/hctl2/herdr` 核摘要；实际受限路径上的 Claude 版本与启动冒烟决定是否上架；失败原因留在 `serve.err` |
+| `src/confine.rs`、`linux_confine.rs` | 分别限制 Herdr 显示进程和实际程序。程序读不到 Agency 凭据，也写不到 Herdr 状态和 socket 目录；Linux 二进制目录仅可读和执行 |
+| `tests/herdr.rs` | 真实锁定制品、派工正常 / 失败 / 取消 / 截止、不同目录并发、凭据与状态保护、启动失败清理、错误结果和缺少结果；真实 Claude 会话单独开关 |
 
-本管道的验收（所有者 2026-10-05 裁定「收窄吧」）：
+`serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，先核随包 Herdr 的摘要，再执行终端冒烟与受限的 `claude --version`；Claude Code 最低 2.1.263，通过后工种记实际版本和二进制摘要。Herdr 的摘要直接从 Buck 声明的 `lock.json` 编入，不手抄三平台常量。`HCTL2_CLAUDE` 可指定实际 Claude 路径，否则从 PATH 找。`agency start` 保留启动诊断，并给有界冒烟留出等待时间；冒烟失败不阻止空目录的 Agency 端口启动。
 
-1. Linux 与 macOS 上 `herdr_test` 都通过。受限的 Herdr 能开 pane。
-2. 写死的 `printf` 不在正式路径里。`serve` 不因为 `HCTL2_LOCKED_HERDR` 上架工种。pane 里跑什么由调用方给，确定性小程序留在测试里。
-3. 两个派工同时经 Herdr 启动，只起一个 Herdr 进程，两边各自拿回自己的输出。
-4. pane 里读不到凭据根，两个平台都有用例。状态目录在凭据根之外，并跟执行目录放在一起。
-5. 新目录上直接 `serve` 能起。布局检查只在 Linux 上做。不改安装目录里制品的权限。异常退出留下的 Herdr 下次启动时收掉。关 pane 的错误要交回。允许路径规范化失败不退回原始路径。
-6. 真 harness 在 3c。程序跑没跑完看启动器写下的退出码，不看屏幕文字。命令原文落成脚本，pane 里只跑固定的启动命令。正常结束、失败退出、取消各有用例。屏幕上先出现标记时不得结束。随包 Herdr 按 `libexec/hctl2/herdr` 找，sha256 必须等于 `lock.json`，冒烟不过不上架。Claude Code 最低 2.1.263，Codex CLI 最低 0.153.4；没有凭据的真实会话标未验证。状态目录不在 pane 的工作目录里。Linux 上 Herdr 二进制所在目录只给读和执行。等待时长由调用方给。Codex 的真实会话、钩子、待命、`workspace.rs` 这次不带。
+Bundle 是任务文字，不是 shell 程序。适配器把文字写入执行目录，通过 stdin 交给 `claude -p --output-format stream-json --verbose --permission-mode dontAsk`。保留所有者的 HOME、PATH、USER，清除 `CLAUDE_CONFIG_DIR`，不复制登录材料。正常退出还须有同会话的成功 `result` 才发 Proposal；失败保留原因，取消与截止发明确终局。正常和异常结束均清理 pane。
+
+这是非交互适配：实际 Harness 是 Agency 的子进程，不是 Herdr 的前台子进程。Herdr 负责终端显示，不据此声明 Agent 检测、原生输入、exact attach 或会话恢复已实现。选择与 macOS 嵌套 sandbox 的实测限制见 [Herdr 复核记录](../../docs/research/sdk/herdr.md#复核记录)。当前能力只激活 stop，不激活 input。
+
+真实会话用已有 Buck 目标运行：`cd src && HCTL2_HARNESS_LIVE=1 ./buck2 test root//agency:herdr_test -- --exact live_claude_dispatch_returns_proposal_and_exit --nocapture`。不设开关时明确打印未验证，不等于真实会话通过。服务须在可使用 Harness 登录材料的用户会话中运行；macOS 图形会话与 Background 会话访问钥匙串的结果可能不同。Linux 登录材料的允许路径未在本包放宽，真实 Linux 会话仍未验证。
+
+Codex CLI 的第二家接入、钩子、工具直报、工作副本管理、待命与恢复留后续包。最低版本常量仍为 Codex CLI 0.153.4，不代表已经上架或验收。
 
 可预测的执行目录若已存在且不属于当前用户，拒绝并给出 `UNSAFE_ENDPOINT`。没有配置脚本时目录是空的。包 4 的任务说明在 [Context](../crates/context/README.md)，包 5 在 [Participant](../crates/participant/README.md)。
 

@@ -10,6 +10,7 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Command, Stdio},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -394,7 +395,7 @@ fn server(
 }
 
 #[test]
-fn a_script_exit_file_is_the_completion_signal() {
+fn native_process_exit_is_the_completion_signal() {
     let (cred, exec, state, server) = server("exit0");
     let launch = launch::Launch::start(
         server,
@@ -435,7 +436,7 @@ fn a_nonzero_script_exit_is_not_success() {
 }
 
 #[test]
-fn cancel_stops_before_the_exit_file_exists() {
+fn cancel_stops_the_native_process_before_it_finishes() {
     let (cred, exec, state, server) = server("cancel");
     let launch = launch::Launch::start(
         server,
@@ -491,8 +492,11 @@ fn a_screen_marker_does_not_finish_a_running_script() {
 fn the_pane_program_cannot_write_the_herdr_state_directory() {
     let (cred, exec, state, server) = server("statedeny");
     assert!(!state.starts_with(&exec));
-    let body = "mkdir -p herdr-state && touch herdr-state/pwned\ntouch wrote-ok\nexit 0\n";
-    let launch = launch::Launch::start(server, &exec, &state, &cred, body, "statedeny").unwrap();
+    let body = format!(
+        "touch '{}' 2>/dev/null || true\ntouch wrote-ok\nexit 0\n",
+        state.join("pwned").display()
+    );
+    let launch = launch::Launch::start(server, &exec, &state, &cred, &body, "statedeny").unwrap();
     let finished = launch.wait(Duration::from_secs(15)).unwrap();
     assert_eq!(finished.code, 0);
     assert!(exec.join("wrote-ok").exists());
@@ -570,6 +574,213 @@ fn a_locked_install_smokes_before_it_is_cataloged() {
     let _ = std::fs::remove_dir_all(&install);
 }
 
+#[test]
+fn a_confined_harness_smoke_failure_prevents_cataloging() {
+    let (cred, exec) = scratch("smokefail");
+    let claude = exec.join("claude-fixture");
+    // An unrestricted version check succeeds; the actual confined launch must fail.
+    std::fs::write(
+        &claude,
+        "#!/bin/sh\ncase \"$HOME\" in *hctl2-herdr-smoke*) echo confined-install-unavailable >&2; exit 9;; esac\necho '2.1.289 (Claude Code)'\n",
+    ).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        Command::new(&claude)
+            .arg("--version")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let error = match launch::InstalledHerdr::open(binary(), &claude) {
+        Ok(_) => panic!("confined failure was cataloged"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "HARNESS_SMOKE_FAILED");
+    assert!(error.message.contains("confined-install-unavailable"));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn the_native_program_cannot_read_the_credential_root() {
+    let (cred, exec, state, server) = server("native-secret");
+    let body = format!(
+        "if cat '{}' >/dev/null 2>&1; then echo credential-leaked; exit 1; else echo credential-denied; fi\n",
+        cred.join("pair.key").display()
+    );
+    let launch = launch::Launch::start(server, &exec, &state, &cred, &body, "secret").unwrap();
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert_eq!(
+        String::from_utf8(finished.stdout).unwrap(),
+        "credential-denied\n"
+    );
+}
+
+#[test]
+fn a_launch_failure_after_pane_creation_closes_the_pane() {
+    let (cred, exec, state, server) = server("launch-fail");
+    // Remove only this test's credential tree after starting Herdr. The child
+    // setup fails at canonicalization, after its display pane has been created.
+    std::fs::remove_dir_all(&cred).unwrap();
+    assert!(
+        launch::Launch::start(
+            Arc::clone(&server),
+            &exec,
+            &state,
+            &cred,
+            "exit 0\n",
+            "fail"
+        )
+        .is_err()
+    );
+    let workspaces = Client::connect(&server.socket)
+        .unwrap()
+        .call("workspace.list", json!({}))
+        .unwrap();
+    assert!(
+        workspaces["workspaces"].as_array().unwrap().is_empty(),
+        "{workspaces}"
+    );
+}
+
+#[test]
+fn a_completed_dispatch_closes_its_display_pane() {
+    let (cred, exec) = scratch("pane-cleanup");
+    let runtime = test_runtime(&binary(), "echo complete\nexit 0\n");
+    let mut running = runtime
+        .start(
+            &sealed_spec("complete", now_ms() + 10_000),
+            &sealed_bundle("task"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(10));
+    assert!(stdout_has(&events, b"complete"));
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let client = Client::connect(&herdr::socket_path(&state)).unwrap();
+    let workspaces = client.call("workspace.list", json!({})).unwrap();
+    assert!(
+        workspaces["workspaces"].as_array().unwrap().is_empty(),
+        "{workspaces}"
+    );
+}
+
+#[test]
+fn agency_start_keeps_a_failed_catalog_probe_reason() {
+    let (root, install) = scratch("startup-log");
+    let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
+    let started = Command::new(&agency)
+        .args(["--root"])
+        .arg(&root)
+        .arg("start")
+        .env("HCTL2_INSTALL_ROOT", &install)
+        .output()
+        .unwrap();
+    let status = Command::new(&agency)
+        .args(["--root"])
+        .arg(&root)
+        .arg("status")
+        .output()
+        .unwrap();
+    let catalog = paired_catalog(&root);
+    let stopped = Command::new(&agency)
+        .args(["--root"])
+        .arg(&root)
+        .arg("stop")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stdout)
+    );
+    assert!(status.status.success());
+    assert!(stopped.status.success());
+    let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["ready"], true);
+    let catalog = catalog.unwrap();
+    assert!(catalog.professions.is_empty());
+    let reason = std::fs::read_to_string(root.join("serve.err")).unwrap();
+    assert!(reason.contains("HERDR_BINARY_MISSING"), "{reason}");
+    assert_eq!(
+        std::fs::metadata(root.join("serve.err"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+}
+
+fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let client = PortClient::new(
+                agency_proto::client::admin_endpoint(root)?,
+                std::fs::read_to_string(root.join("pair.key"))?,
+            );
+            let pair: Pairing = client
+                .call(
+                    "pair",
+                    &Pair {
+                        control_id: "fixture-control".into(),
+                        tenant_key: agency_proto::client::new_credential()?,
+                    },
+                )
+                .await?;
+            PortClient::new(pair.endpoint.into(), pair.key)
+                .call("catalog", &json!({}))
+                .await
+        })
+}
+
+#[test]
+fn agency_start_and_pair_catalog_the_confined_claude_profession() {
+    let (root, install) = scratch("catalog-start");
+    let dest = install.join("libexec/hctl2/herdr");
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::copy(binary(), &dest).unwrap();
+    let claude = stub_claude(&install, "2.1.289");
+    let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
+    let started = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("start")
+        .env("HCTL2_INSTALL_ROOT", &install)
+        .env("HCTL2_CLAUDE", &claude)
+        .output()
+        .unwrap();
+    let catalog = paired_catalog(&root);
+    let stopped = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("stop")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stdout)
+    );
+    assert!(stopped.status.success());
+    let catalog = catalog.unwrap();
+    assert_eq!(catalog.professions.len(), 1);
+    assert_eq!(catalog.professions[0].reference.id, "claude-code");
+    assert_eq!(
+        catalog.professions[0].reference.revision,
+        "2.1.289 (Claude Code)"
+    );
+    assert_eq!(
+        catalog.professions[0].reference.digest,
+        agency::catalog::file_digest(&claude).unwrap()
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn the_pane_cannot_write_the_herdr_binary_directory() {
@@ -602,6 +813,10 @@ fn harness_minimums_do_not_start_a_session() {
         "0.153.3",
         harness::CODEX_MINIMUM
     ));
+}
+
+#[test]
+fn live_claude_dispatch_returns_proposal_and_exit() {
     if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
         eprintln!("UNVERIFIED claude session: CI has no harness credential; live flag is unset");
         eprintln!("UNVERIFIED codex session: the second harness is not run in this package");
@@ -615,8 +830,13 @@ fn harness_minimums_do_not_start_a_session() {
     let claude = std::path::PathBuf::from(claude.trim());
     let (cred, exec) = scratch("live");
     let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
-    let spec = sealed_spec("live", now_ms() + 120_000);
     let bundle = sealed_bundle("Reply with exactly HCTL2_REAL_OK and do not use tools.\n");
+    let mut document = sealed_spec("live", now_ms() + 120_000).document;
+    document.profession = runtime.catalog().unwrap().professions.remove(0);
+    document.bundle.digest = bundle.digest.clone();
+    let spec = agency_proto::Sealed::new(document).unwrap();
+    spec.document.validate().unwrap();
+    bundle.document.validate_delivery().unwrap();
     let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
     let events = collect(&mut running, Duration::from_secs(120));
     let proposal = events.iter().find_map(|event| match event {
@@ -634,9 +854,30 @@ fn harness_minimums_do_not_start_a_session() {
             }
         )
     });
-    let proposal = proposal.expect("proposal");
+    let proposal = proposal.unwrap_or_else(|| {
+        let reason = events
+            .iter()
+            .filter_map(|event| match event {
+                agency::runtime::RuntimeEvent::Observation { kind, payload, .. } => {
+                    Some(format!("{kind}: {payload}"))
+                }
+                agency::runtime::RuntimeEvent::Exited { code, .. } => {
+                    Some(format!("Exited(code={code:?})"))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        panic!("no proposal: {reason}");
+    });
     assert!(proposal.contains("HCTL2_REAL_OK"), "{proposal}");
     assert!(exited);
+    eprintln!(
+        "LIVE claude {} via locked Herdr protocol 20",
+        spec.document.profession.reference.revision
+    );
+    eprintln!("Proposal(schema=claude.result.v1, source=adapter_event): {proposal}");
+    eprintln!("Exited(code=0, requested_stop=false)");
     drop(running);
     drop(runtime);
     let _ = std::fs::remove_dir_all(&cred);
@@ -776,8 +1017,9 @@ fn two_dispatches_share_one_herdr_server() {
     let right = std::sync::Arc::clone(&runtime);
     let cred_left = cred.clone();
     let cred_right = cred.clone();
-    let exec_left = exec.clone();
-    let exec_right = exec.clone();
+    let exec_left = confine::execution_dir(&cred, "first").unwrap();
+    let exec_right = confine::execution_dir(&cred, "second").unwrap();
+    assert_ne!(exec_left, exec_right);
     let (first, second) = std::thread::scope(|scope| {
         let one = scope.spawn(move || {
             let mut running = left
@@ -809,6 +1051,49 @@ fn two_dispatches_share_one_herdr_server() {
     drop(runtime);
     let _ = std::fs::remove_dir_all(&cred);
     let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_program_cannot_publish_its_own_exit_code() {
+    let (cred, exec, state, server) = server("forge-exit");
+    let body = "for program in program-*.sh; do file=${program#program-}; printf '0\\n' >\"exit-${file%.sh}\"; done\nsleep 2\ntouch actual-finished\nprintf 'REAL_RESULT\\n'\n";
+    let launch = launch::Launch::start(server, &exec, &state, &cred, body, "forge").unwrap();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(launch.poll_exit().unwrap().is_none());
+    assert!(!exec.join("actual-finished").exists());
+    let finished = launch.wait(Duration::from_secs(15)).unwrap();
+    assert_eq!(finished.code, 0);
+    assert!(exec.join("actual-finished").exists());
+    assert!(finished.stdout.windows(11).any(|s| s == b"REAL_RESULT"));
+}
+
+#[test]
+fn a_failed_close_does_not_claim_cancellation_and_can_be_retried() {
+    let (cred, exec, state, server) = server("close-retry");
+    let launch = launch::Launch::start(
+        std::sync::Arc::clone(&server),
+        &exec,
+        &state,
+        &cred,
+        "sleep 30\ntouch must-not-finish\n",
+        "retry",
+    )
+    .unwrap();
+    let offline = server.socket.with_extension("offline");
+    std::fs::rename(&server.socket, &offline).unwrap();
+    let failed = launch.cancel();
+    std::fs::rename(&offline, &server.socket).unwrap();
+    assert!(failed.is_err());
+    assert!(matches!(
+        launch.wait_end(Duration::from_millis(100)).unwrap(),
+        launch::WaitEnd::TimedOut
+    ));
+    launch.cancel().unwrap();
+    assert!(matches!(
+        launch.wait_end(Duration::from_secs(1)).unwrap(),
+        launch::WaitEnd::Stopped
+    ));
+    assert!(!exec.join("must-not-finish").exists());
 }
 
 fn test_runtime(binary: &std::path::Path, script: &str) -> launch::InstalledHerdr {
@@ -845,7 +1130,7 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
     let frozen = |id: &str| FrozenRef {
         id: id.into(),
         revision: "1".into(),
-        digest: "digest".into(),
+        digest: agency_proto::hash(id.as_bytes()),
     };
     Sealed::new(ExecutionSpec {
         owner: Owner {
@@ -856,7 +1141,7 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
         },
         project: frozen("project"),
         selection: frozen("selection"),
-        selection_policy_digest: "digest".into(),
+        selection_policy_digest: agency_proto::hash(b"policy"),
         profession: Profession {
             reference: frozen("claude-code"),
             harness: frozen("herdr"),
@@ -879,7 +1164,7 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
             ..Capabilities::default()
         },
         input_policy: InputPolicy::NoInput,
-        permission_digest: "digest".into(),
+        permission_digest: agency_proto::hash(b"permissions"),
         permissions: vec![],
         budget: 1,
         deadline_ms,
@@ -899,7 +1184,7 @@ fn sealed_bundle(task: &str) -> agency_proto::Sealed<agency_proto::context::Bund
     let frozen = |id: &str| FrozenRef {
         id: id.into(),
         revision: "1".into(),
-        digest: "digest".into(),
+        digest: agency_proto::hash(id.as_bytes()),
     };
     Sealed::new(Bundle {
         id: "bundle".into(),
@@ -918,7 +1203,7 @@ fn sealed_bundle(task: &str) -> agency_proto::Sealed<agency_proto::context::Bund
             delivery: Delivery::Inline {
                 bytes: task.as_bytes().to_vec(),
             },
-            bytes_digest: "digest".into(),
+            bytes_digest: agency_proto::hash(task.as_bytes()),
         }],
         renderer: frozen("renderer"),
         tokenizer: frozen("tokenizer"),
@@ -927,7 +1212,7 @@ fn sealed_bundle(task: &str) -> agency_proto::Sealed<agency_proto::context::Bund
         candidate_tokens: None,
         selected_tokens: None,
         delivered_tokens: None,
-        permission_digest: "digest".into(),
+        permission_digest: agency_proto::hash(b"permissions"),
         budget: 1,
         retention: "test".into(),
     })
@@ -963,6 +1248,103 @@ fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
         }
         _ => false,
     })
+}
+
+fn claude_fixture_events(name: &str, jsonl: &str, exit: i32) -> Vec<agency::runtime::RuntimeEvent> {
+    let (cred, exec) = scratch(name);
+    let claude = exec.join("claude-fixture");
+    std::fs::write(&claude, format!(
+        "#!/bin/sh\nif [ \"$1\" = --version ]; then echo '2.1.289 (Claude Code)'; exit 0; fi\ncat > delivered.txt\ncat <<'HCTL_JSONL'\n{jsonl}\nHCTL_JSONL\nexit {exit}\n"
+    )).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let task = "A task, not shell: ' $(touch forged) `touch forged-again`";
+    let mut running = runtime
+        .start(
+            &sealed_spec(name, now_ms() + 20_000),
+            &sealed_bundle(task),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(15));
+    assert_eq!(
+        std::fs::read_to_string(exec.join("delivered.txt")).unwrap(),
+        format!("{task}\n")
+    );
+    assert!(!exec.join("forged").exists());
+    assert!(!exec.join("forged-again").exists());
+    events
+}
+
+#[test]
+fn a_claude_error_result_is_not_a_proposal() {
+    let events = claude_fixture_events(
+        "error-result",
+        r#"{"type":"system","subtype":"init","session_id":"fixture"}
+{"type":"result","subtype":"success","session_id":"fixture","result":"not logged in","is_error":true}"#,
+        0,
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
+    );
+    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::ProtocolError(code) if code == "HARNESS_RESULT_ERROR")));
+}
+
+#[test]
+fn a_missing_claude_result_is_a_protocol_error() {
+    let events = claude_fixture_events(
+        "missing-result",
+        r#"{"type":"system","subtype":"init","session_id":"fixture"}"#,
+        0,
+    );
+    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::ProtocolError(code) if code == "HARNESS_RESULT_MISSING")));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
+    );
+}
+
+#[test]
+fn a_failed_claude_exit_preserves_the_reason() {
+    let events = claude_fixture_events(
+        "exit-reason",
+        r#"{"type":"system","subtype":"init","session_id":"fixture"}
+{"type":"result","subtype":"success","session_id":"fixture","result":"not logged in","is_error":true}"#,
+        1,
+    );
+    assert!(events.iter().any(|e| matches!(e, agency::runtime::RuntimeEvent::Observation { kind, payload, .. } if kind == "runtime:harness_failure" && payload["message"] == "not logged in")));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, agency::runtime::RuntimeEvent::Proposal { .. }))
+    );
+}
+
+#[test]
+fn claude_terminal_requires_matching_identity_and_explicit_success() {
+    let init = r#"{"type":"system","subtype":"init","session_id":"one"}"#;
+    for terminal in [
+        r#"{"type":"result","subtype":"success","is_error":false,"result":"bad"}"#,
+        r#"{"type":"result","subtype":"success","session_id":"two","is_error":false,"result":"bad"}"#,
+        r#"{"type":"result","subtype":"error_max_turns","session_id":"one","is_error":false,"result":"bad"}"#,
+        r#"{"type":"result","subtype":"success","session_id":"one","result":"bad"}"#,
+    ] {
+        let result = harness::claude::result_from_jsonl(&format!("{init}\n{terminal}\n"));
+        assert!(result.is_err() || result.unwrap().is_error, "{terminal}");
+    }
+    let valid = format!(
+        "{init}\n{}\n{}\n",
+        r#"{"type":"result","subtype":"success","session_id":"one","is_error":false,"result":"ok"}"#,
+        r#"{"type":"system","subtype":"tail","session_id":"one"}"#
+    );
+    assert_eq!(
+        harness::claude::result_from_jsonl(&valid).unwrap().result,
+        "ok"
+    );
 }
 
 fn process_matches(pid: u32, binary: &std::path::Path) -> bool {

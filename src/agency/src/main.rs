@@ -92,28 +92,37 @@ async fn run(args: Args) -> Result<()> {
                 );
                 return Ok(());
             }
-            std::fs::create_dir_all(&args.root)?;
+            let log_path = args.root.join("serve.err");
+            let log = Agency::start_log(&args.root)?;
             let mut command = std::process::Command::new(std::env::current_exe()?);
             command.arg("--root").arg(&args.root).arg("serve");
             if let Some(config) = script_config {
                 command.arg("--script-config").arg(config);
             }
-            command
+            let mut child = command
                 .process_group(0)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                .stderr(log)
                 .spawn()?;
-            for _ in 0..100 {
+            // Herdr startup and two confined probes are bounded independently.
+            // Do not give up before those probes can finish; retain their reasons.
+            for _ in 0..1200 {
                 if let Ok(value) = status(&args.root).await {
                     println!("{value}");
                     return Ok(());
+                }
+                if child.try_wait()?.is_some() {
+                    break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
             Err(PortError::new(
                 "AGENCY_NOT_READY",
-                "local Agency did not become ready",
+                format!(
+                    "local Agency did not become ready; see {}",
+                    log_path.display()
+                ),
                 "run_agency_serve",
             ))
         }

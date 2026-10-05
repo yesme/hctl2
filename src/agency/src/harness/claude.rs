@@ -15,10 +15,15 @@ pub fn result_from_jsonl(text: &str) -> Result<Session> {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if let Some(id) = value.get("session_id").and_then(Value::as_str)
-            && session_id.is_empty()
+        if value.get("type").and_then(Value::as_str) == Some("system")
+            && value.get("subtype").and_then(Value::as_str) == Some("init")
         {
-            session_id = id.to_owned();
+            session_id = value
+                .get("session_id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| protocol("init has no session id"))?
+                .to_owned();
         }
         if value.get("type").and_then(Value::as_str) != Some("result") {
             continue;
@@ -26,22 +31,40 @@ pub fn result_from_jsonl(text: &str) -> Result<Session> {
         let event_session = value
             .get("session_id")
             .and_then(Value::as_str)
-            .unwrap_or(&session_id)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| protocol("result has no session id"))?
             .to_owned();
-        if !session_id.is_empty() && event_session != session_id {
-            continue;
+        if session_id.is_empty() || event_session != session_id || found.is_some() {
+            return Err(protocol(
+                "result does not belong to the one initialized session",
+            ));
+        }
+        let subtype = value
+            .get("subtype")
+            .and_then(Value::as_str)
+            .ok_or_else(|| protocol("result has no subtype"))?;
+        let is_error = value
+            .get("is_error")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| protocol("result has no error flag"))?;
+        if subtype != "success" && !is_error {
+            return Err(protocol("non-success result cannot claim success"));
         }
         found = Some(Session {
             session_id: event_session,
             result: value
                 .get("result")
                 .and_then(Value::as_str)
-                .unwrap_or("")
+                .or_else(|| {
+                    value
+                        .get("errors")
+                        .and_then(Value::as_array)
+                        .and_then(|a| a.first())
+                        .and_then(Value::as_str)
+                })
+                .ok_or_else(|| protocol("result has no text or error reason"))?
                 .to_owned(),
-            is_error: value
-                .get("is_error")
-                .and_then(Value::as_bool)
-                .unwrap_or(true),
+            is_error,
         });
     }
     found.ok_or_else(|| {
@@ -51,4 +74,8 @@ pub fn result_from_jsonl(text: &str) -> Result<Session> {
             "read_claude_jsonl",
         )
     })
+}
+
+fn protocol(message: &str) -> PortError {
+    PortError::new("HARNESS_RESULT_INVALID", message, "read_claude_jsonl")
 }

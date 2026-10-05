@@ -99,6 +99,7 @@ pub struct Server {
     child: Child,
     pub socket: PathBuf,
     pub state: PathBuf,
+    pub(crate) read_paths: Vec<PathBuf>,
 }
 
 impl Server {
@@ -107,6 +108,16 @@ impl Server {
         state: &Path,
         credential_root: &Path,
         exec_parent: &Path,
+    ) -> Result<Self> {
+        Self::start_with_read(binary, state, credential_root, exec_parent, &[])
+    }
+
+    pub(crate) fn start_with_read(
+        binary: &Path,
+        state: &Path,
+        credential_root: &Path,
+        exec_parent: &Path,
+        read_paths: &[PathBuf],
     ) -> Result<Self> {
         let binary = binary.canonicalize().map_err(|_| {
             PortError::new(
@@ -123,6 +134,25 @@ impl Server {
             .ok_or_else(|| PortError::invalid("Herdr socket directory is missing"))?
             .to_path_buf();
         crate::storage::private_dir(&socket_dir)?;
+        let mut read_paths = read_paths.to_vec();
+        read_paths.push(
+            binary
+                .parent()
+                .ok_or_else(|| PortError::invalid("Herdr has no parent"))?
+                .to_path_buf(),
+        );
+        if cfg!(target_os = "linux") {
+            let helper = std::env::var_os("HCTL2_CONFINE_BIN")
+                .map(PathBuf::from)
+                .unwrap_or(std::env::current_exe()?);
+            read_paths.push(
+                helper
+                    .canonicalize()?
+                    .parent()
+                    .ok_or_else(|| PortError::invalid("helper has no parent"))?
+                    .to_path_buf(),
+            );
+        }
         let _ = std::fs::remove_file(&socket);
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
@@ -142,11 +172,11 @@ impl Server {
             )
             .env(
                 "HCTL2_CONFINE_READ",
-                binary
-                    .parent()
-                    .unwrap_or(binary.as_path())
-                    .display()
-                    .to_string(),
+                read_paths
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
             )
             .process_group(0)
             .stdin(Stdio::null())
@@ -170,6 +200,7 @@ impl Server {
                     child: stop.disarm(),
                     socket,
                     state: state.to_path_buf(),
+                    read_paths,
                 });
             }
             if stop.try_wait()?.is_some() {

@@ -134,6 +134,14 @@ impl Agency {
             |r| r.get(0),
         ))
     }
+
+    pub fn start_log(root: &Path) -> Result<std::fs::File> {
+        use std::io::{Seek, SeekFrom};
+        private_dir(root)?;
+        let mut file = private_file(&root.join("serve.err"))?;
+        file.seek(SeekFrom::End(0))?;
+        Ok(file)
+    }
     fn pair(self: &Arc<Self>, input: Pair) -> Result<Pairing> {
         nonempty(&input.control_id)?;
         digest(&input.tenant_key)?;

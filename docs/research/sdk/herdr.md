@@ -67,3 +67,8 @@ Agency 参考实现的运行时。HCTL 的 Agency adapter 通过 Herdr 的本地
 - 旧 crate：[crates.io herdr 0.1.0](https://crates.io/crates/herdr)（AGPL，非 SDK）
 - 生成器：[typify crates.io](https://crates.io/crates/typify)（0.7.0，Apache-2.0）· [typify 工作区 Cargo.toml（schemars 0.8.22）](https://github.com/oxidecomputer/typify/blob/v0.7.0/Cargo.toml) · [issue #579 2020-12 计划](https://github.com/oxidecomputer/typify/issues/579) · [issue #828 `$defs` 引用](https://github.com/oxidecomputer/typify/issues/828)
 - 本仓库：[Herdr 条目](../runtime/herdr.md) · [运行服务验证记录](../runtime/agency-runtime-validation-20260829.md) · [部件矩阵](../component-matrix-20260902.md)
+
+## 复核记录
+
+- **2026-10-05 · 3c 结束与隔离复核（PR #335）**：锁定版的 `pane.exited` 仍没有退出码。退出文件放在执行目录中时，程序能提前写出假退出码。只把文件移到另一目录也不能证明拒写。macOS 实测在已经受限的 Herdr 下再次运行 `sandbox-exec` 返回 71，原因是 `sandbox_apply: Operation not permitted`，不能用嵌套配置补出第二层限制。
+- **同日 · 当前适配选择**：非交互 Claude print 由 Agency 用标准库 `Command` 启动、`Child::try_wait` 取得内核退出状态，stdout / stderr 用原生 Unix socket 成对收取，不从屏幕解析。Herdr 继续持有窗格和 PTY；固定启动脚本只交回该 PTY 的设备路径，Agency 把收取的字节显示到这个终端。真实执行单独应用一次既有 sandbox / Landlock，拒绝 Agency 凭据根、Herdr 状态及 socket 目录；无需新依赖、PTY 实现或服务协议。相比上游持有 Harness 子进程，这是明确的内部适配取舍：本版不承诺该 Harness 是 Herdr 的前台进程，不激活原生交互、exact attach、Herdr Agent 检测或会话恢复。以后启用这些能力须另验，不把终端显示当作进程归属证明。接口依据仍为上面的锁定源码；子进程与退出依据见 [Rust 标准库 Child](https://doc.rust-lang.org/std/process/struct.Child.html)。
