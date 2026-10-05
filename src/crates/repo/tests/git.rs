@@ -401,3 +401,42 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
         git(&source, &["rev-parse", "main"])
     );
 }
+
+#[test]
+fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Instant;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("hctl2-repo-stuck-{nanos}"));
+    std::fs::create_dir(&dir).unwrap();
+    let program = dir.join("hang.sh");
+    let pidfile = dir.join("pid");
+    std::fs::write(&program, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let started = Instant::now();
+    let error = repo::git::run_for(
+        Command::new(&program).arg(&pidfile),
+        None,
+        std::time::Duration::from_secs(1),
+    )
+    .expect_err("stuck provider command");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert_eq!(error.code, "RESULT_UNKNOWN");
+    let pid: u32 = std::fs::read_to_string(&pidfile)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    let listed = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "pid="])
+        .output()
+        .unwrap();
+    assert!(
+        listed.stdout.iter().all(u8::is_ascii_whitespace),
+        "pid {pid}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

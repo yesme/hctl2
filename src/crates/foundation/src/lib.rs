@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod command;
 pub mod git;
 
 use std::error::Error;

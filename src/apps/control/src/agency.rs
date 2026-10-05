@@ -6,9 +6,13 @@ use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use store::{Store, StoreError, TrustedActor};
 use tokio::sync::Mutex;
+
+/// `agency start` itself waits about five seconds for readiness. This bound sits above that.
+const AGENCY_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn err(e: PortError) -> StoreError {
     participant::port_error(e)
@@ -227,23 +231,43 @@ async fn ensure_local(root: &Path) -> store::Result<()> {
         ));
     }
     let root = root.to_owned();
-    let output = tokio::task::spawn_blocking(move || {
-        std::process::Command::new(binary)
-            .arg("--root")
-            .arg(root)
-            .arg("start")
-            .output()
+    tokio::task::spawn_blocking(move || {
+        let mut command = std::process::Command::new(binary);
+        command.arg("--root").arg(root).arg("start");
+        run_agency_command(command, AGENCY_START_TIMEOUT)
     })
     .await
-    .map_err(|_| invalid("Agency start worker failed"))??;
-    if !output.status.success() {
-        return Err(reject(
+    .map_err(|_| invalid("Agency start worker failed"))?
+}
+
+fn run_agency_command(
+    mut command: std::process::Command,
+    time_limit: Duration,
+) -> store::Result<()> {
+    match foundation::command::run_bounded(&mut command, None, time_limit).map_err(|error| {
+        reject(
             "AGENCY_NOT_READY",
-            "local Agency start failed",
+            format!("cannot start local Agency: {error}"),
             "run_agency_serve",
-        ));
+        )
+    })? {
+        foundation::command::CommandEnd::Finished(output) if output.status.success() => Ok(()),
+        foundation::command::CommandEnd::Finished(output) => Err(reject(
+            "AGENCY_NOT_READY",
+            format!("local Agency start failed ({})", output.status),
+            "run_agency_serve",
+        )),
+        foundation::command::CommandEnd::TimedOut => Err(reject(
+            "AGENCY_START_TIMEOUT",
+            "local Agency start timed out",
+            "run_agency_serve",
+        )),
+        foundation::command::CommandEnd::OutputLimit => Err(reject(
+            "AGENCY_NOT_READY",
+            "local Agency start output exceeded limit",
+            "run_agency_serve",
+        )),
     }
-    Ok(())
 }
 fn text<'a>(payload: &'a Value, key: &str) -> store::Result<&'a str> {
     payload
@@ -770,4 +794,50 @@ pub async fn reconcile(shared: &Arc<Mutex<Option<Store>>>, root: &Path) -> store
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn a_stuck_agency_start_times_out_and_leaves_no_process() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("hctl2-agency-stuck-{nanos}"));
+        fs::create_dir(&dir).unwrap();
+        let program = dir.join("hang.sh");
+        let pidfile = dir.join("pid");
+        fs::write(&program, "#!/bin/sh\necho $$ > \"$1\"\nexec sleep 30\n").unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut command = Command::new(&program);
+        command.arg(&pidfile);
+        let started = Instant::now();
+        let error = super::run_agency_command(command, Duration::from_secs(1))
+            .expect_err("stuck agency start");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(error.code, "AGENCY_START_TIMEOUT");
+        let pid: u32 = fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut probe = Command::new("ps");
+        probe.args(["-p", &pid.to_string(), "-o", "pid="]);
+        let probe =
+            foundation::command::run_bounded(&mut probe, None, Duration::from_secs(5)).unwrap();
+        let foundation::command::CommandEnd::Finished(probe) = probe else {
+            panic!("ps did not finish");
+        };
+        assert!(
+            probe.stdout.iter().all(u8::is_ascii_whitespace),
+            "pid {pid}"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

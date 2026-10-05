@@ -15,3 +15,4 @@
 | [`hmac.md`](./hmac.md) | Agency 票据认证 | 采用 SDK：hmac 0.13.0 / sha2 0.11.0，恒时验证 |
 | [`base64.md`](./base64.md) | 规范 JSON 任意字节 | 采用 SDK：base64 0.22.1，RFC 4648 标准带填充字符串 |
 | [`landlock.md`](./landlock.md) | Linux 上挡住凭据根 | 采用 SDK：`landlock` 0.4.7，ABI V1。工作区禁止 `unsafe_code`，不直接写系统调用。macOS 用 `sandbox-exec` |
+| [`process-control.md`](./process-control.md) | 外部命令时限与超时终止 | 采用 SDK：`process_control` 5.2.0。macOS 无内存上限，输出字节用 filter 计数；不按进程号终止 |
