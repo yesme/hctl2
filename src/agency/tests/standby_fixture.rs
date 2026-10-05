@@ -1,7 +1,7 @@
 //! Test-only structured turn source. Not a harness or an advertised profession.
 use serde_json::{Value, json};
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
@@ -12,6 +12,15 @@ use std::{
 
 fn write(root: &Path, name: &str, value: Value) {
     fs::write(root.join(name), serde_json::to_vec(&value).unwrap()).unwrap();
+}
+fn event(root: &Path, name: &str, mut value: Value) {
+    if let Ok(bytes) = fs::read(root.join(format!("{name}-override"))) {
+        let overrides: Value = serde_json::from_slice(&bytes).unwrap();
+        for (key, item) in overrides.as_object().unwrap() {
+            value[key] = item.clone();
+        }
+    }
+    write(root, name, value);
 }
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -64,7 +73,8 @@ fn main() {
     let mut paste = false;
     let mut sequence = Vec::new();
     let mut count = 0;
-    let mut pending: Option<(Value, String)> = None;
+    let mut draft = String::new();
+    let mut pending: Option<(Value, String, String)> = None;
     let mut uninterruptible = false;
     loop {
         let byte = match rx.recv_timeout(Duration::from_millis(50)) {
@@ -73,7 +83,12 @@ fn main() {
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if sequence == [27] {
                     sequence.clear();
-                    if !uninterruptible && let Some((job, turn)) = pending.take() {
+                    if !uninterruptible && let Some((job, turn, text)) = pending.take() {
+                        // Claude restores an early-interrupted prompt into the composer.
+                        if text.trim() == "wait-early" {
+                            input = text.into_bytes();
+                            fs::write(root.join("draft-restored"), &input).unwrap();
+                        }
                         write(
                             root,
                             "returned.json",
@@ -104,15 +119,21 @@ fn main() {
                 serde_json::from_slice(&fs::read(root.join("job.json")).unwrap()).unwrap();
             count += 1;
             let turn = format!("turn-{count}");
-            write(
+            event(
                 root,
                 "started.json",
-                json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn}),
+                json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn,"text":text.trim()}),
             );
             fs::write(root.join("delivered.txt"), &text).unwrap();
-            if text.trim() == "wait" || text.trim() == "uninterruptible" {
+            let mut delivered = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(root.join("delivered.log"))
+                .unwrap();
+            writeln!(delivered, "{}", serde_json::to_string(&text).unwrap()).unwrap();
+            if matches!(text.trim(), "wait" | "wait-early" | "uninterruptible") {
                 uninterruptible = text.trim() == "uninterruptible";
-                pending = Some((job, turn));
+                pending = Some((job, turn, text));
                 continue;
             }
             let reason = if text.trim() == "error" {
@@ -125,7 +146,7 @@ fn main() {
             } else {
                 text.trim()
             };
-            write(
+            event(
                 root,
                 "returned.json",
                 json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn,"reason":reason,"isAborted":false,"answer":answer}),
@@ -133,6 +154,15 @@ fn main() {
             print!("\r\n{answer}\r\n❯ ");
             std::io::stdout().flush().unwrap();
         } else {
+            // Native prompt.edit handles both typed input and bracketed paste.
+            // This fixture models that UI; the actual plugin has native tests.
+            let job: Value =
+                serde_json::from_slice(&fs::read(root.join("job.json")).unwrap()).unwrap();
+            let key = format!("{}:{}", job["id"], job["digest"]);
+            if job["text"].is_string() && draft != key {
+                input.clear();
+                draft = key;
+            }
             input.push(byte);
         }
     }

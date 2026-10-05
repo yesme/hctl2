@@ -178,7 +178,7 @@ fn selection_key(spec: &ExecutionSpec, tenant: &Path) -> Result<String> {
     Ok(hash(&canonical(&json!([
         tenant,
         spec.binding.id,
-        spec.project,
+        spec.project.id,
         spec.selection.id
     ]))?))
 }
@@ -265,44 +265,59 @@ fn run_job(
         });
         return Ok(());
     }
-    if native.is_none() {
-        let (session, resumed, resume_failed) = Native::open(server, claude, cwd, dir)?;
-        let _ = job.tx.send(RuntimeEvent::Observation {
-            kind: "session_opened".into(),
-            payload: json!({"resumed":resumed,"resume_failed":resume_failed}),
-            source: EvidenceLevel::AdapterEvent,
-        });
-        *native = Some(session);
-    }
-    let session = native.as_mut().expect("native session");
-    let requested = job.token.cancelled.load(Ordering::SeqCst) || stopped.load(Ordering::SeqCst);
-    let expired = crate::storage::now_ms() >= job.spec.document.deadline_ms;
-    if requested || expired {
-        if expired {
-            let _ = job.tx.send(RuntimeEvent::DeadlineReached);
-        }
-        let _ = job.tx.send(RuntimeEvent::TurnStopped {
-            requested_stop: requested,
-            session_closed: false,
-        });
-        return Ok(());
-    }
     write_json(
         &dir.join("job.json"),
         &json!({"id":job.spec.document.idempotency_key,"digest":job.spec.digest,
-        "permissions":job.spec.document.permissions}),
+        "permissions":job.spec.document.permissions,"text":job.text.trim()}),
     )?;
-    for name in ["started.json", "returned.json"] {
+    for name in ["started.json", "returned.json", "rejected.json"] {
         match fs::remove_file(dir.join(name)) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
     }
-    session.client.call(
-        "agent.prompt",
-        json!({"target":session.pane,"text":job.text}),
-    )?;
+    let mut recovered = false;
+    loop {
+        if native.is_none() {
+            let (session, resumed, resume_failed) = Native::open(server, claude, cwd, dir)?;
+            let _ = job.tx.send(RuntimeEvent::Observation {
+                kind: "session_opened".into(),
+                payload: json!({"resumed":resumed,"resume_failed":resume_failed}),
+                source: EvidenceLevel::AdapterEvent,
+            });
+            *native = Some(session);
+        }
+        let requested =
+            job.token.cancelled.load(Ordering::SeqCst) || stopped.load(Ordering::SeqCst);
+        let expired = crate::storage::now_ms() >= job.spec.document.deadline_ms;
+        if requested || expired {
+            if expired {
+                let _ = job.tx.send(RuntimeEvent::DeadlineReached);
+            }
+            let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                requested_stop: requested,
+                session_closed: false,
+            });
+            return Ok(());
+        }
+        let session = native.as_mut().expect("native session");
+        match session.client.call(
+            "agent.prompt",
+            json!({"target":session.pane,"text":job.text}),
+        ) {
+            Ok(_) => break,
+            Err(error) if !recovered && rejected_before_delivery(&error) => {
+                // Only Herdr's explicit pre-queue rejection permits a retry.
+                // A transport error might have delivered text and is not replayed.
+                session.close()?;
+                *native = None;
+                recovered = true;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let session = native.as_mut().expect("native session");
     let mut turn = None;
     let mut interrupt: Option<(Instant, bool)> = None;
     loop {
@@ -334,7 +349,22 @@ fn run_job(
         }
         if let Some(started) = read_json(&dir.join("started.json"))? {
             check_job(&started, job, &session.id)?;
+            if started["text"].as_str() != Some(job.text.trim()) {
+                return Err(PortError::new(
+                    "STANDBY_PROMPT_MISMATCH",
+                    "native turn did not receive this dispatch's text",
+                    "inspect_dispatch",
+                ));
+            }
             turn = started["turnId"].as_str().map(str::to_owned);
+        }
+        if let Some(rejected) = read_json(&dir.join("rejected.json"))? {
+            check_job(&rejected, job, &session.id)?;
+            return Err(PortError::new(
+                "STANDBY_PROMPT_MISMATCH",
+                "native composer rejected another dispatch's text",
+                "inspect_dispatch",
+            ));
         }
         if let Some(returned) = read_json(&dir.join("returned.json"))? {
             check_job(&returned, job, &session.id)?;
@@ -400,6 +430,16 @@ fn run_job(
         std::thread::sleep(Duration::from_millis(25));
     }
 }
+fn rejected_before_delivery(error: &PortError) -> bool {
+    error.code == "HERDR_REJECTED"
+        && serde_json::from_str::<Value>(&error.message).is_ok_and(|v| {
+            matches!(
+                v["code"].as_str(),
+                Some("agent_not_found" | "agent_not_ready")
+            )
+        })
+}
+
 fn check_job(value: &Value, job: &Job, session: &str) -> Result<()> {
     if value["job"] != job.spec.document.idempotency_key
         || value["digest"] != job.spec.digest
@@ -663,4 +703,34 @@ fn prepare_plugin(dir: &Path) -> Result<()> {
         include_str!("harness/turn.js").replace("__HCTL_ROOT__", &serde_json::to_string(dir)?),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_explicit_pre_delivery_rejections_allow_recovery() {
+        for code in ["agent_not_found", "agent_not_ready"] {
+            let error = PortError::new(
+                "HERDR_REJECTED",
+                json!({"code":code}).to_string(),
+                "inspect_dispatch",
+            );
+            assert!(rejected_before_delivery(&error));
+        }
+        for (code, message) in [
+            ("HERDR_REJECTED", r#"{"code":"agent_prompt_failed"}"#),
+            ("HERDR_REJECTED", r#"{"code":"agent_blocked"}"#),
+            ("HERDR_REJECTED", "agent_not_found"),
+            ("HERDR_REJECTED", "{}"),
+            ("HERDR_IO", r#"{"code":"agent_not_found"}"#),
+        ] {
+            assert!(!rejected_before_delivery(&PortError::new(
+                code,
+                message,
+                "inspect_dispatch"
+            )));
+        }
+    }
 }

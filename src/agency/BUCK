@@ -120,7 +120,7 @@ rust_test(
 
 rust_test(
     name = "herdr_test",
-    srcs = ["tests/herdr.rs"],
+    srcs = ["tests/herdr.rs", "tests/turn.test.ts"],
     crate_root = "tests/herdr.rs",
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,

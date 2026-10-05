@@ -191,3 +191,13 @@ P2.3 按实际工具、参数、有效配置核验询问与拒绝覆盖，再冻
 私有安装 Herdr SessionStart 资产、原生目录信任、常驻与 `--resume` 的实测及未验证范围见 [Herdr 复核](./sdk/herdr.md#2026-10-06--3d-常驻会话前置核验)。本次没有修改用户全局设置或论文、设计、约束正文。
 
 **同日 · 3d 接线复核**：生产 Runtime 已用原生 `turn.start` / `turn.complete`，以派工键、Spec 摘要、Session ID、Turn ID 配对；子代理事件过滤后不参与主轮结算。Aqua 下的三条真实测试分别走 Runtime、独立 Agency 服务端口、同进程两轮与闲置后的 `--resume`，均交回原文。测试与失败边界见 [Herdr 3d 实测](./sdk/herdr.md#同日--3d-runtime-与服务端口实测)。错误、取消和截止的确定性用例不伪报 Proposal；单次停止不宣称物理进程退出。脚本插件仅为原生事件到现有派工端口的适配，不替代 Claude 或 Herdr 的运行时。
+
+### 同日 · 3d 早取消后的输入隔离
+
+**决定建议：沿用 Claude 原生 Mods，用 `prompt.edit` 在新派工首次粘贴时替换旧草稿，保留同一派工后续粘贴片段；`prompt.submit` 核正文，不一致就在模型接收前拒绝。Runtime 再核 `turn.start.text`，不以派工键相同代替正文一致。** Claude 2.1.289 早取消会把输入放回提示框，这由 #362 的真实评审复现；只收到 `aborted` 不能证明下一轮输入为空。
+
+[官方 Mods 参考](https://code.claude.com/docs/en/plugins/mods/reference#events) 与上面钉定的本机类型提供 `prompt.edit` 的原草稿、替换范围、插入文字，以及 `prompt.submit` 的 `{drop}`。清理在原生编辑动作内发生，不发额外 Ctrl+C，不改用户键位，不关闭可继续的会话。`turn.start.text` 是原生提示框提交处理后的正文；本实现按原生提交的首尾空白处理核对，正文内部的换行、空格和制表符保留。
+
+测试复用 Claude 自带的 `claude plugin test` / `claude-code/testing`，不引入 Node 或另一个 JS 运行时。实现前，在原插件上跑三条原生插件测试，旧草稿替换与提交不一致拒绝两条失败，分片粘贴保留通过（Buck Build ID `53bc8a90-d89b-49f2-9055-0e368524e547`）。这只证明原插件的缺口与测试能失败；修复后的真实取消、截止和下一轮仍需另跑。
+
+**同日 · 修复后复核**：原生插件三条测试全部通过（Buck Build ID `349a414e-a268-43b4-8ffc-37b3ed9bbf54`），加载的是 Runtime 实际生成的插件，不是另写一份模拟实现。Aqua 下经受限 Runtime 的真实 Claude 会话，在热身后分别早取消与早截止；两次下一轮的 `turn.start.text` 都只含 `Reply exactly NEXT_TOKEN and nothing else.`，各交一条 `NEXT_TOKEN`，同一 PID `41544` 未重启。实际进程退出后的首轮恢复同见 [Herdr 复核](./sdk/herdr.md#同日--3d-轮间退出的恢复边界)。没有给用户全局配置写入代码，也没有增加工具权限。

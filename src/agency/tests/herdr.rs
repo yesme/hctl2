@@ -1299,7 +1299,7 @@ fn turn_state(
         &agency_proto::canonical(&json!([
             cred,
             spec.document.binding.id,
-            spec.document.project,
+            spec.document.project.id,
             spec.document.selection.id
         ]))
         .unwrap(),
@@ -1320,6 +1320,22 @@ fn wait_for(path: &std::path::Path) {
     let timeout = Instant::now() + Duration::from_secs(35);
     while !path.exists() {
         assert!(Instant::now() < timeout, "missing {}", path.display());
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+fn wait_started_job(state: &std::path::Path, key: &str) {
+    let deadline = Instant::now() + Duration::from_secs(35);
+    loop {
+        let event = std::fs::read(state.join("started.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+        if event.is_some_and(|v| v["job"] == key) {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "native turn never started for {key}"
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
 }
@@ -1478,6 +1494,10 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
     // different revision. The worker must not key reuse on old permissions.
     second.selection.revision = "2".into();
     second.selection.digest = agency_proto::hash(b"new selection snapshot");
+    second.project.revision = "2".into();
+    second.project.digest = agency_proto::hash(b"new project snapshot");
+    second.binding.revision = "2".into();
+    second.binding.digest = agency_proto::hash(b"new binding snapshot");
     let second = agency_proto::Sealed::new(second).unwrap();
     let state = turn_state(&exec, &cred, &first);
     let mut a = runtime
@@ -1493,6 +1513,12 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
     assert!(!stdout_has(&left, b"SECOND_ANSWER"));
     assert!(stdout_has(&right, b"SECOND_ANSWER"));
     assert!(!stdout_has(&right, b"FIRST_ANSWER"));
+    assert!(
+        !right.iter().any(|e| matches!(e,
+            agency::runtime::RuntimeEvent::Observation {kind, ..} if kind=="session_opened"
+        )),
+        "metadata updates must not open a new conversation"
+    );
     for events in [&left, &right] {
         assert_eq!(
             events
@@ -1532,8 +1558,25 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
         runtime.pid().unwrap(),
         "Herdr must own the harness"
     );
+    let mut other = second.document.clone();
+    other.project.id = "other-project".into();
+    other.idempotency_key = "other-project-dispatch".into();
+    let other = agency_proto::Sealed::new(other).unwrap();
+    let mut other_running = runtime
+        .start(&other, &sealed_bundle("OTHER_PROJECT"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut other_running, Duration::from_secs(35)),
+        b"OTHER_PROJECT"
+    ));
+    let other_pid = native_pid(&turn_state(&exec, &cred, &other));
+    assert_ne!(
+        pid, other_pid,
+        "different Project identities must remain isolated"
+    );
     runtime.shutdown().unwrap();
     assert!(!standby_alive(pid));
+    assert!(!standby_alive(other_pid));
 }
 
 #[test]
@@ -1576,6 +1619,347 @@ fn standby_cancel_interrupts_only_the_turn_and_next_dispatch_reuses_the_session(
         b"AFTER_CANCEL"
     ));
     assert_eq!(pid, native_pid(&state));
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_early_stop_never_resubmits_the_cancelled_prompt() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-early-stop");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let state = turn_state(&exec, &cred, &sealed_spec("warm", now_ms() + 60_000));
+    let mut warm = runtime
+        .start(
+            &sealed_spec("warm", now_ms() + 60_000),
+            &sealed_bundle("WARM"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut warm, Duration::from_secs(35)),
+        b"WARM"
+    ));
+    let pid = native_pid(&state);
+    for cancel in [true, false] {
+        let key = if cancel {
+            "cancel-early"
+        } else {
+            "deadline-early"
+        };
+        let mut running = runtime
+            .start(
+                &sealed_spec(key, now_ms() + if cancel { 60_000 } else { 1_500 }),
+                &sealed_bundle("wait-early"),
+                &exec,
+                &cred,
+            )
+            .unwrap();
+        wait_started_job(&state, key);
+        if cancel {
+            running.session.lock().unwrap().stop().unwrap();
+        }
+        let events = collect(&mut running, Duration::from_secs(10));
+        assert!(events.iter().any(|e| matches!(e,
+            RuntimeEvent::TurnStopped {requested_stop, session_closed:false} if *requested_stop==cancel)));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
+        )));
+        wait_for(&state.join("draft-restored"));
+        let mut next = runtime
+            .start(
+                &sealed_spec(&format!("after-{key}"), now_ms() + 30_000),
+                &sealed_bundle("ONLY_NEXT_PROMPT"),
+                &exec,
+                &cred,
+            )
+            .unwrap();
+        let events = collect(&mut next, Duration::from_secs(10));
+        let bytes: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                RuntimeEvent::Proposal { bytes, .. } => Some(bytes.as_slice()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bytes, [b"ONLY_NEXT_PROMPT".as_slice()]);
+        let started: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
+        assert_eq!(started["text"], "ONLY_NEXT_PROMPT");
+        assert_eq!(
+            pid,
+            native_pid(&state),
+            "early stop must preserve the conversation process"
+        );
+        std::fs::remove_file(state.join("draft-restored")).unwrap();
+    }
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_a_dead_between_turns_harness_is_resumed_before_the_next_delivery() {
+    use agency::runtime::RuntimeEvent;
+    let (cred, root, exec) = standby_root("standby-dead-idle");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("before-death", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut first = runtime
+        .start(&spec, &sealed_bundle("BEFORE_DEATH"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut first, Duration::from_secs(35)),
+        b"BEFORE_DEATH"
+    ));
+    let pid = native_pid(&state);
+    assert!(
+        Command::new("/bin/kill")
+            .args(["-KILL", &pid.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let timeout = Instant::now() + Duration::from_secs(5);
+    while standby_alive(pid) && Instant::now() < timeout {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!standby_alive(pid));
+    let mut next = runtime
+        .start(
+            &sealed_spec("after-death", now_ms() + 60_000),
+            &sealed_bundle("AFTER_DEATH"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut next, Duration::from_secs(35));
+    assert!(stdout_has(&events, b"AFTER_DEATH"));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::Observation {kind,payload,..}
+        if kind=="session_opened" && payload["resumed"]==true))
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::ProtocolError(_)))
+    );
+    assert_ne!(pid, native_pid(&state));
+    let delivered: Vec<String> = std::fs::read_to_string(state.join("delivered.log"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(delivered, ["BEFORE_DEATH", "AFTER_DEATH"]);
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn standby_rejects_completions_from_a_different_job_digest_or_session() {
+    for field in ["job", "digest", "session"] {
+        rejects_native_event("returned.json", json!({(field): "not-this-dispatch"}));
+    }
+}
+
+#[test]
+fn standby_rejects_a_completion_from_a_different_native_turn() {
+    rejects_native_event("returned.json", json!({"turnId":"not-this-turn"}));
+}
+
+#[test]
+fn standby_rejects_a_subagent_completion() {
+    rejects_native_event("returned.json", json!({"agentId":"subagent"}));
+}
+
+#[test]
+fn standby_rejects_a_started_turn_with_another_prompt() {
+    rejects_native_event("started.json", json!({"text":"OLD_PROMPT_AND_THIS_PROMPT"}));
+}
+
+fn rejects_native_event(file: &str, overrides: serde_json::Value) {
+    use agency::runtime::RuntimeEvent;
+    let case = agency_proto::hash(&agency_proto::canonical(&json!([file, overrides])).unwrap());
+    let (cred, root, exec) = standby_root(&format!("standby-wrong-{}", &case[..12]));
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("warm", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut warm = runtime
+        .start(&spec, &sealed_bundle("WARM"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut warm, Duration::from_secs(35)),
+        b"WARM"
+    ));
+    std::fs::write(
+        state.join(format!("{file}-override")),
+        serde_json::to_vec(&overrides).unwrap(),
+    )
+    .unwrap();
+    let mut wrong = runtime
+        .start(
+            &sealed_spec("wrong-event", now_ms() + 30_000),
+            &sealed_bundle("THIS_PROMPT"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut wrong, Duration::from_secs(10));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::ProtocolError(_))),
+        "wrong {file}: {overrides}"
+    );
+    assert!(!events.iter().any(|e| matches!(
+        e,
+        RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
+    )));
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+#[ignore = "UNVERIFIED: requires the installed Claude plugin test engine"]
+fn native_mod_replaces_early_cancel_drafts_and_rejects_wrong_submissions() {
+    let (cred, root, exec) = standby_root("standby-native-mod");
+    let claude = waiting_claude(&root, true);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("warm", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let mut warm = runtime
+        .start(&spec, &sealed_bundle("WARM"), &exec, &cred)
+        .unwrap();
+    assert!(stdout_has(
+        &collect(&mut warm, Duration::from_secs(35)),
+        b"WARM"
+    ));
+    let plugin = state.join("plugin");
+    std::fs::write(plugin.join("input.test.ts"), include_str!("turn.test.ts")).unwrap();
+    let output = Command::new("claude")
+        .args(["plugin", "test"])
+        .arg(&plugin)
+        .output()
+        .unwrap();
+    eprintln!("{}", String::from_utf8_lossy(&output.stdout));
+    eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+    runtime.shutdown().unwrap();
+    assert!(output.status.success(), "native Mods input tests failed");
+}
+
+#[test]
+#[ignore = "UNVERIFIED: requires a logged-in Claude session and HCTL2_HARNESS_LIVE=1"]
+fn live_early_stop_keeps_only_the_next_prompt_and_idle_death_resumes_once() {
+    use agency::runtime::RuntimeEvent;
+    assert!(std::env::var_os("HCTL2_HARNESS_LIVE").is_some());
+    let located = Command::new("/usr/bin/which")
+        .arg("claude")
+        .output()
+        .unwrap();
+    let claude = PathBuf::from(String::from_utf8(located.stdout).unwrap().trim());
+    let (cred, _root, exec) = standby_root("live-early-stop");
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let profession = runtime.catalog().unwrap().professions.remove(0);
+    let prepare = |key: &str, text: &str, deadline| {
+        let bundle = sealed_bundle(text);
+        let mut spec = sealed_spec(key, deadline).document;
+        spec.profession = profession.clone();
+        spec.bundle.digest = bundle.digest.clone();
+        (agency_proto::Sealed::new(spec).unwrap(), bundle)
+    };
+    let (warm, bundle) = prepare(
+        "warm",
+        "Reply exactly WARM and nothing else.",
+        now_ms() + 120_000,
+    );
+    let state = turn_state(&exec, &cred, &warm);
+    let mut running = runtime.start(&warm, &bundle, &exec, &cred).unwrap();
+    assert!(stdout_has(
+        &collect(&mut running, Duration::from_secs(120)),
+        b"WARM"
+    ));
+    let pid = real_claude_pid(&state);
+    for cancel in [true, false] {
+        let key = if cancel {
+            "cancel-early"
+        } else {
+            "deadline-early"
+        };
+        let (spec, bundle) = prepare(
+            key,
+            "Count from 1 to 400, one number per line. OLD_CANCELLED_INPUT. Do not use tools.",
+            now_ms() + if cancel { 120_000 } else { 1_500 },
+        );
+        let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
+        wait_started_job(&state, key);
+        if cancel {
+            running.session.lock().unwrap().stop().unwrap();
+        }
+        let events = collect(&mut running, Duration::from_secs(30));
+        assert!(events.iter().any(|e| matches!(e, RuntimeEvent::TurnStopped {requested_stop,session_closed:false} if *requested_stop==cancel)));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            RuntimeEvent::Proposal { .. } | RuntimeEvent::TurnReturned
+        )));
+        let text = "Reply exactly NEXT_TOKEN and nothing else.";
+        let (next, bundle) = prepare(&format!("after-{key}"), text, now_ms() + 120_000);
+        let mut running = runtime.start(&next, &bundle, &exec, &cred).unwrap();
+        let events = collect(&mut running, Duration::from_secs(120));
+        let answers: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                RuntimeEvent::Proposal { bytes, .. } => Some(bytes.as_slice()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(answers, [b"NEXT_TOKEN".as_slice()]);
+        let started: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(state.join("started.json")).unwrap()).unwrap();
+        assert_eq!(started["text"], text);
+        assert_eq!(real_claude_pid(&state), pid);
+        eprintln!(
+            "LIVE {key} -> next turn: PID {pid}, native text={}, answer=NEXT_TOKEN",
+            started["text"]
+        );
+    }
+    let before: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.join("resume.json")).unwrap()).unwrap();
+    assert!(
+        Command::new("/bin/kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while standby_alive(pid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!standby_alive(pid));
+    let (next, bundle) = prepare(
+        "after-death",
+        "Reply exactly RESTORED_ONCE and nothing else.",
+        now_ms() + 120_000,
+    );
+    let mut running = runtime.start(&next, &bundle, &exec, &cred).unwrap();
+    let events = collect(&mut running, Duration::from_secs(120));
+    assert!(stdout_has(&events, b"RESTORED_ONCE"));
+    assert!(events.iter().any(|e| matches!(e, RuntimeEvent::Observation {kind,payload,..} if kind=="session_opened"&&payload["resumed"]==true)));
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::ProtocolError(_)))
+    );
+    let after: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state.join("resume.json")).unwrap()).unwrap();
+    assert_eq!(before, after);
+    assert_ne!(pid, real_claude_pid(&state));
+    eprintln!(
+        "LIVE idle harness death: same native Session {}, next dispatch returned RESTORED_ONCE",
+        after["session"]
+    );
     runtime.shutdown().unwrap();
 }
 

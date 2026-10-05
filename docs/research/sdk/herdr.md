@@ -156,3 +156,11 @@ macOS arm64，Herdr 0.9.3、Claude Code 2.1.289。Buck 原生 `root//agency:herd
 失败与修正也记录：第一次启动的目录信任提示先显示、后装输入处理器，两枚连续按键没有完成确认；改为观察选择项再确认，范围仍仅限 Agency 创建的目录。用 Aqua 启动 `buck2 test` 但复用 Background Buck daemon 时，真实 Claude 返回 `authentication_failed`；没有修改登录，而是在 Aqua 中直接运行 Buck 构建的测试产物，三条均通过。原生全局 `settings.json` 的摘要始终为 `9cf9dc693952d4952e3774075421bf98762c8d34ec6bca91e54fe6b551349bc8`；目录信任记录由 Claude 自己保存，符合所有者授权。
 
 真实 Linux 与 macOS x86_64 登录会话未验证，Linux 登录材料及原生历史的允许路径没有放宽。逐 pane 防篡改、原生 input、终端接管、写租约、第二家 harness 不在本包。确定性夹具不作为真实工种上架；两平台回归仍须看本 PR 的 CI。
+
+### 同日 · 3d 轮间退出的恢复边界
+
+**决定建议：仅在 Herdr 明确拒绝、且尚未投递正文时，关闭旧 pane，用 Claude 原生 `--resume` 接回并交这次新派工；最多恢复一次。传输断开或 `agent_prompt_failed` 不自动重投。** 不新增进程管理器，不重跑上一轮，不把恢复算成新授权。
+
+核对仍钉官方 0.9.3 [`queue_agent_prompt`](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/app/api/agents.rs)：`agent_not_found` 与 `agent_not_ready` 都在正文入 PTY 队列之前返回，后者也包括原 agent 已不是前台进程的情形。只有这两种原生错误能证明本次正文没送出；笼统的 I/O 错误不能。在 #362 的评审里，轮间杀掉 Claude 后第一次派工被拒、再下一次才恢复；实现前新增的杀进程用例复现了这个缺口。恢复后的单次投递与真实历史还需验证。
+
+**同日 · 修复后复核**：确定性夹具在首轮交回后被 `SIGKILL`，紧接着的派工经 `--resume` 交回，投递记录精确只有 `BEFORE_DEATH`、`AFTER_DEATH` 各一次（Buck Build ID `5ebe806c-39fd-4d50-8ee4-e7a1484deaec`）。真实 Claude Code 2.1.289 在两轮间被 `SIGTERM`，下一次派工一次交回 `RESTORED_ONCE`，观测 `resumed=true`，保留原生 Session ID `c737310a-7b33-48f6-b225-15405fca0166`，进程换成新 PID。该真实用例同时核过早取消、早截止后的下一轮输入，1 条通过，耗时 20.22 秒；不是重发已投递的旧轮。真实 Linux 与 Intel Mac 登录会话仍未验证。
