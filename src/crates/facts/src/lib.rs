@@ -1046,18 +1046,29 @@ fi
             started.elapsed()
         );
         assert_eq!(error["error"], "command timed out");
-        let mut listed_command = Command::new("pgrep");
-        listed_command.args(["-f", "31.4164"]);
-        let listed = super::finish_external(
-            &mut listed_command,
-            super::PS_TIMEOUT,
-            std::ffi::OsStr::new("pgrep"),
-        )
-        .expect("pgrep");
-        assert!(
-            listed.stdout.iter().all(u8::is_ascii_whitespace),
-            "a process matching the marker is still present"
-        );
+        assert_no_process_with("31.4164");
         fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    /// Fails while a live process still carries `marker` on its command line; the
+    /// kill at the deadline clears the process table a moment later, so the check
+    /// retries and prints what it still sees.
+    fn assert_no_process_with(marker: &str) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let listed = Command::new("pgrep")
+                .args(["-f", marker])
+                .output()
+                .expect("pgrep");
+            if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&listed.stdout).trim()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }

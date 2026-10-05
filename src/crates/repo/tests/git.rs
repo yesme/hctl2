@@ -402,6 +402,28 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
     );
 }
 
+/// Fails while a live process still carries `marker` on its command line; the
+/// kill at the deadline clears the process table a moment later, so the check
+/// retries and prints what it still sees.
+fn assert_no_process_with(marker: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let listed = Command::new("pgrep")
+            .args(["-f", marker])
+            .output()
+            .expect("pgrep");
+        if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "a process matching {marker} is still present: {}",
+            String::from_utf8_lossy(&listed.stdout).trim()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     use std::os::unix::fs::PermissionsExt;
@@ -424,13 +446,6 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     .expect_err("stuck provider command");
     assert!(started.elapsed() < std::time::Duration::from_secs(7));
     assert_eq!(error.code, "RESULT_UNKNOWN");
-    let listed = Command::new("pgrep")
-        .args(["-f", "31.4165"])
-        .output()
-        .unwrap();
-    assert!(
-        listed.stdout.iter().all(u8::is_ascii_whitespace),
-        "a process matching the marker is still present"
-    );
+    assert_no_process_with("31.4165");
     std::fs::remove_dir_all(dir).unwrap();
 }

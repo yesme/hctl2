@@ -820,17 +820,29 @@ mod tests {
             .expect_err("stuck agency start");
         assert!(started.elapsed() < Duration::from_secs(7));
         assert_eq!(error.code, "AGENCY_START_TIMEOUT");
-        let mut probe = Command::new("pgrep");
-        probe.args(["-f", "31.4167"]);
-        let probe =
-            foundation::command::run_bounded(&mut probe, None, Duration::from_secs(5)).unwrap();
-        let foundation::command::CommandEnd::Finished(probe) = probe else {
-            panic!("pgrep did not finish");
-        };
-        assert!(
-            probe.stdout.iter().all(u8::is_ascii_whitespace),
-            "a process matching the marker is still present"
-        );
+        assert_no_process_with("31.4167");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Fails while a live process still carries `marker` on its command line; the
+    /// kill at the deadline clears the process table a moment later, so the check
+    /// retries and prints what it still sees.
+    fn assert_no_process_with(marker: &str) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let listed = Command::new("pgrep")
+                .args(["-f", marker])
+                .output()
+                .expect("pgrep");
+            if listed.stdout.iter().all(u8::is_ascii_whitespace) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&listed.stdout).trim()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }

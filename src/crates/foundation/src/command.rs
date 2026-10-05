@@ -326,10 +326,12 @@ mod tests {
     ///
     /// A pid file needs the stand-in to survive until its first write, which a
     /// process killed at the deadline may not. A marker in the command line is
-    /// true whether or not the process ever got that far.
+    /// true whether or not the process ever got that far. Reaping the killed
+    /// process clears the table entry a moment after the kill, so the check
+    /// retries and prints what it still sees.
     fn assert_no_process_with(marker: &str) {
-        let started = Instant::now();
-        while started.elapsed() < Duration::from_secs(2) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
             let listed = run_bounded(
                 Command::new("pgrep").args(["-f", marker]),
                 None,
@@ -342,9 +344,13 @@ mod tests {
             if output.stdout.iter().all(u8::is_ascii_whitespace) {
                 return;
             }
+            assert!(
+                Instant::now() < deadline,
+                "a process matching {marker} is still present: {}",
+                String::from_utf8_lossy(&output.stdout).trim()
+            );
             thread::sleep(Duration::from_millis(20));
         }
-        panic!("a process matching {marker} is still present");
     }
 
     fn pid_from(path: &Path) -> u32 {
