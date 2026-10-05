@@ -12,7 +12,7 @@ Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制�
 
 ## 第 5 包主体 · 选入校验与 Worker Profile
 
-主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段接 Profile 创建入口和选入校验的后续项，下一段接 Invocation 状态机、Context、Agency 四步启动、结果准入、Room 投影与连接票据。当前不创建 Invocation，也不宣称派工或演示 2 已完成。
+主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段（#334）接 Profile 创建入口；Invocation 领域段接候选预览、授权冻结、状态与四步启动的第 1 步。Context 的业务选材、实际启动、结果准入、Room 投影与连接票据仍留主链段，不宣称派工或演示 2 已完成。
 
 `profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
 
@@ -43,7 +43,9 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 
 5b 首段已接两处选入补齐：Project 创建 / 更新时按 `SelectionPolicy` 解析策略，让未知字段在保存前失败；新选入记录的 `sources` 带上精确 Worker Profile Revision，方便沿来源链读取，既有不可变选入记录不回写。Project 的 `domain_test` 有对应的失败输入与来源引用断言。
 
-当前端口只核授权归属者的精确记录版本；完整领域授权仍未接线。第 5 包在恢复 Pending 前传入真实的授权判定，不沿用端口中的 `still_authorized=true`；Unknown / Confirmed 的回读和字节保全不发新授权，但后续激活、输入与准入另核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
+第 2 包的测试授权仅核精确记录版本，不表示完整领域授权已接线。正式 Invocation 的 Pending 判定见下段；Unknown / Confirmed 的回读和字节保全不发新授权，后续输入与准入仍要核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
+
+Invocation 领域段补了正式 `room_invocation` 的 Pending 授权判定：Control 先核原记录，再调用 Project 的 `current_authorization`；它不把状态版本当授权版本。`dispatch::plan` 提供不写库的 Record、EffectIntent 与依赖记录，让 Project 的同一 Store 事务保存授权和 prepare outbox。旧 `prepare_dispatch` 复用同一个校验入口；名册、租户或观察通道不产生领域授权。该段仍没有新的用户派工入口，多成果与 Unknown 后的准入接线留主链段。
 
 依据：[演示线开工书第 5 包](../../../.memo/design/p2-control-20260906/07-demo-kickoff.md#第-5-包--派工)、[从授权到派工](../../../docs/design/spec/connections.md#project--run--participant从授权到派工)、[结果准入](../../../docs/design/spec/connections.md#participant--project--run结果准入)。
 

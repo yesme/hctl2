@@ -688,7 +688,10 @@ fn current_owner(store: &Store, owner: &store::Reference) -> store::Result<()> {
     let record = store
         .get(&owner.key)?
         .ok_or_else(|| invalid("authorized owner missing"))?;
-    if participant::reference(&record) != *owner {
+    if participant::reference(&record) != *owner
+        || (owner.key.kind == "room_invocation"
+            && !project::invocation::current_authorization(store, owner, now_ms())?)
+    {
         return Err(reject(
             "OWNER_STALE",
             "original owner authorization changed",
@@ -794,6 +797,69 @@ pub async fn reconcile(shared: &Arc<Mutex<Option<Store>>>, root: &Path) -> store
         }
     }
     first_error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn matching_record_version_alone_does_not_authorize_a_room_invocation() {
+        let root = std::env::temp_dir().join(format!(
+            "hctl-agency-owner-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut store = Store::open(&root).unwrap();
+        let actor = TrustedActor(store::Actor {
+            principal: "owner".into(),
+            source: store::ActorSource::DirectClient,
+            permission_scope: vec![store::Scope::Project("project".into())],
+            authority: None,
+        });
+        let record = participant::value(
+            participant::key(
+                store::Scope::Project("project".into()),
+                "room_invocation",
+                "invocation",
+            ),
+            1,
+            &json!({"state":"authorized"}),
+        )
+        .unwrap();
+        let owner = participant::reference(&record);
+        let input = json!({});
+        let command = store::Command {
+            command_id: "fixture".into(),
+            idempotency_key: "fixture".into(),
+            actor: actor.0.clone(),
+            target: record.key.clone(),
+            expected: store::Expected::Absent,
+            binding: owner.clone(),
+            operation: "fixture".into(),
+            input_digest: store::Command::digest_input("fixture", &input).unwrap(),
+            input,
+        };
+        store
+            .submit(store.generation(), &actor, &command, None, |tx| {
+                tx.put(&record)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+        assert_eq!(
+            participant::reference(&store.get(&owner.key).unwrap().unwrap()),
+            owner
+        );
+        let denied = current_owner(&store, &owner).is_err();
+        drop(store);
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(
+            denied,
+            "a matching storage version is not a Project authorization proof"
+        );
+    }
 }
 
 #[cfg(test)]

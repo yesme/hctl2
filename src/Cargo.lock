@@ -1784,6 +1784,7 @@ version = "0.0.0"
 dependencies = [
  "agency-proto",
  "chat",
+ "context",
  "foundation",
  "participant",
  "repo",

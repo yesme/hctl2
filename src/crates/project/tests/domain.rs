@@ -2,6 +2,7 @@ use agency_proto::{
     Capabilities, Catalog, EvidenceLevel, FrozenRef, Profession, SkillClaim, SkillVerification,
     hash,
 };
+mod invocation;
 use project::*;
 use serde_json::{Value, json};
 use std::{

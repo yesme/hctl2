@@ -1,5 +1,6 @@
 //! Control-side binding, frozen roster acceptance and dispatch records. No runtime dependency.
 #![forbid(unsafe_code)]
+pub mod dispatch;
 pub mod profiles;
 pub mod selection;
 use agency_proto::{
@@ -232,75 +233,17 @@ pub fn prepare_dispatch(
     spec: &Sealed<ExecutionSpec>,
     bundle: &Sealed<agency_proto::context::Bundle>,
 ) -> store::Result<Record> {
-    spec.verify().map_err(port_error)?;
-    spec.document.validate().map_err(port_error)?;
-    bundle.verify().map_err(port_error)?;
     let owner_record = store
         .get(&owner.key)?
         .ok_or_else(|| invalid("persist authorized owner first"))?;
-    if reference(&owner_record) != *owner
-        || owner.key.scope != Scope::Project(spec.document.owner.project.clone())
-        || owner.key.id != spec.document.owner.id
-    {
+    if reference(&owner_record) != *owner {
         return Err(reject(
             "OWNER_MISMATCH",
             "dispatch must retain exact authorized owner",
             "rebuild_preview",
         ));
     }
-    let binding = store
-        .get(&key(
-            Scope::Control,
-            "agency_binding",
-            &spec.document.binding.id,
-        ))?
-        .ok_or_else(|| invalid("binding is not accepted"))?;
-    if frozen(&binding) != spec.document.binding {
-        return Err(reject(
-            "BINDING_MISMATCH",
-            "binding revision differs",
-            "rebuild_preview",
-        ));
-    }
-    let b: Binding = decode(&binding)?;
-    if !b.catalog.professions.contains(&spec.document.profession) {
-        return Err(invalid("accepted Profession required"));
-    }
-    let profession_key = key(
-        Scope::Control,
-        "profession",
-        &format!(
-            "{}:{}:{}",
-            b.id, spec.document.profession.reference.id, spec.document.profession.reference.digest
-        ),
-    );
-    let accepted = store
-        .get(&profession_key)?
-        .ok_or_else(|| invalid("explicit Profession acceptance required"))?;
-    let profession: Profession = decode(&accepted)?;
-    if profession != spec.document.profession {
-        return Err(invalid("accepted Profession differs"));
-    }
-    let k = key(owner.key.scope.clone(), "dispatch_intent", id);
-    if spec.document.owner.kind == agency_proto::OwnerKind::RoomInvocation {
-        for previous in store.list("dispatch_intent")? {
-            let input: Value = decode(&previous)?;
-            let original: Sealed<ExecutionSpec> = serde_json::from_value(input["spec"].clone())?;
-            if original.document.owner == spec.document.owner && previous.key != k {
-                return Err(reject(
-                    "DISPATCH_EXISTS",
-                    "Room Invocation has one dispatch",
-                    "inspect_original_dispatch",
-                ));
-            }
-        }
-    }
-    let mut record = value(
-        k,
-        1,
-        &json!({"owner":owner,"spec":spec,"bundle":bundle,"dispatch":null}),
-    )?;
-    record.sources = vec![owner.clone(), reference(&binding)];
+    let record = dispatch::plan(store, id, &owner_record, spec, bundle)?.record;
     write(store, actor, id, "dispatch.prepare", &record, None, None)?;
     Ok(record)
 }
