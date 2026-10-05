@@ -10,6 +10,7 @@ publish.workspace = true
 agency-proto = { path = "../crates/agency-proto" }
 clap.workspace = true
 rusqlite.workspace = true
+rusqlite_migration.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true

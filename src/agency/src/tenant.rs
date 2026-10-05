@@ -5,18 +5,42 @@ use crate::{
 };
 use agency_proto::*;
 use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite_migration::{M, Migrations};
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 type Sessions = HashMap<String, Arc<Mutex<Box<dyn Session>>>>;
+
+const TENANT_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS dispatches(id TEXT PRIMARY KEY,idem TEXT UNIQUE NOT NULL,request BLOB NOT NULL,body BLOB NOT NULL,lease TEXT,lease_expires INTEGER);
+CREATE TABLE IF NOT EXISTS used_leases(id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS events(dispatch TEXT NOT NULL,seq INTEGER NOT NULL,body BLOB NOT NULL,PRIMARY KEY(dispatch,seq));
+CREATE TABLE IF NOT EXISTS results(dispatch TEXT NOT NULL,id TEXT PRIMARY KEY,body BLOB NOT NULL,preserved INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS inputs(dispatch TEXT NOT NULL,idem TEXT NOT NULL,digest TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(dispatch,idem));
+";
+
+pub(crate) fn tenant_migrations() -> Migrations<'static> {
+    Migrations::new(vec![M::up(TENANT_SCHEMA)])
+}
+
 pub(crate) struct TenantState {
     pub(crate) db: Connection,
     pub(crate) sessions: Sessions,
 }
+/// The tenant root is `<credential_root>/tenants/<tenant>`; execution directories
+/// are placed outside it so a confined child cannot read back the credentials.
+fn tenant_credential_root(root: &Path) -> PathBuf {
+    root.parent()
+        .and_then(|parent| parent.parent())
+        .unwrap_or(root)
+        .to_path_buf()
+}
 pub(crate) struct Tenant {
     root: PathBuf,
+    exec_parent: PathBuf,
     pub(crate) key: String,
     pub(crate) state: Mutex<TenantState>,
     pub(crate) runtime: Arc<dyn Runtime>,
@@ -24,16 +48,16 @@ pub(crate) struct Tenant {
 impl Tenant {
     pub(crate) fn open(root: PathBuf, key: String, runtime: Arc<dyn Runtime>) -> Result<Arc<Self>> {
         private_dir(&root)?;
-        let db = database(&root.join("tenant.sqlite"))?;
-        sql(db.execute_batch("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
-            INSERT OR IGNORE INTO settings VALUES('writer',0);
-            CREATE TABLE IF NOT EXISTS dispatches(id TEXT PRIMARY KEY,idem TEXT UNIQUE NOT NULL,request BLOB NOT NULL,body BLOB NOT NULL,lease TEXT,lease_expires INTEGER);
-            CREATE TABLE IF NOT EXISTS used_leases(id TEXT PRIMARY KEY);
-            CREATE TABLE IF NOT EXISTS events(dispatch TEXT NOT NULL,seq INTEGER NOT NULL,body BLOB NOT NULL,PRIMARY KEY(dispatch,seq));
-            CREATE TABLE IF NOT EXISTS results(dispatch TEXT NOT NULL,id TEXT PRIMARY KEY,body BLOB NOT NULL,preserved INTEGER NOT NULL DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS inputs(dispatch TEXT NOT NULL,idem TEXT NOT NULL,digest TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(dispatch,idem)); PRAGMA user_version=1;"))?;
+        // Resolved here, while the credential root exists: a reaped child is released
+        // after shutdown has already removed it.
+        let exec_parent = crate::confine::execution_parent(&tenant_credential_root(&root))?;
+        let db = database(&root.join("tenant.sqlite"), &tenant_migrations())?;
+        // Not part of migration 1: a writer row that vanished must come back on every
+        // open, and an applied migration never runs again.
+        sql(db.execute("INSERT OR IGNORE INTO settings VALUES('writer',0)", []))?;
         let tenant = Arc::new(Self {
             root,
+            exec_parent,
             key,
             state: Mutex::new(TenantState {
                 db,
@@ -202,12 +226,7 @@ impl Tenant {
         }
         dispatch.state = DispatchState::Running;
         put_dispatch(&state.db, &dispatch)?;
-        let credential_root = self
-            .root
-            .parent()
-            .and_then(|parent| parent.parent())
-            .unwrap_or(self.root.as_path())
-            .to_path_buf();
+        let credential_root = tenant_credential_root(&self.root);
         let running = match (|| {
             let exec_root = crate::confine::execution_dir(&credential_root, &dispatch.reference)?;
             self.runtime
@@ -215,6 +234,8 @@ impl Tenant {
         })() {
             Ok(running) => running,
             Err(e) => {
+                // The execution directory was created before the start failed.
+                crate::confine::release_execution_dir(&self.exec_parent, &dispatch.reference);
                 dispatch.state = DispatchState::CannotFulfill;
                 put_dispatch(&state.db, &dispatch)?;
                 event(
@@ -259,6 +280,10 @@ impl Tenant {
                         .expect("tenant mutex")
                         .sessions
                         .remove(&id);
+                    // `Exited` is only sent once the child is reaped, so nothing is
+                    // left running in the execution directory. This runs even when
+                    // persisting the exit failed.
+                    crate::confine::release_execution_dir(&tenant.exec_parent, &id);
                 }
             }
         });
@@ -682,73 +707,7 @@ impl Tenant {
     pub(crate) fn results(&self, input: ResultQuery) -> Result<ResultPage> {
         let state = self.state.lock().expect("tenant mutex");
         let dispatch = get_dispatch(&state.db, &input.dispatch)?;
-        let mut stmt = sql(state
-            .db
-            .prepare("SELECT id,body,preserved FROM results WHERE dispatch=?1 ORDER BY rowid"))?;
-        let rows = sql(stmt.query_map([&input.dispatch], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Vec<u8>>(1)?,
-                r.get::<_, bool>(2)?,
-            ))
-        }))?
-        .collect::<rusqlite::Result<Vec<_>>>();
-        let rows = sql(rows)?;
-        let limit = input.limit.unwrap_or(16).clamp(1, 32) as usize;
-        let mut seen = input.after.is_none();
-        let mut proposals = Vec::new();
-        let mut complete = true;
-        for (id, bytes, preserved) in rows {
-            if let Some(after) = &input.after
-                && !seen
-            {
-                if &id == after {
-                    seen = true;
-                }
-                continue;
-            }
-            if proposals.len() == limit {
-                complete = false;
-                break;
-            }
-            let mut proposal: Proposal = serde_json::from_slice(&bytes)?;
-            proposal.preserved = preserved;
-            let mut trial = proposals.clone();
-            trial.push(proposal.clone());
-            let page = ResultPage {
-                proposals: trial,
-                cursor: Some(proposal.header.proposal_id.clone()),
-                complete: false,
-            };
-            match canonical(&page) {
-                Ok(bytes) if bytes.len() + 1024 <= MAX_DOCUMENT => proposals.push(proposal),
-                _ if !proposals.is_empty() => {
-                    complete = false;
-                    break;
-                }
-                Ok(_) => proposals.push(proposal),
-                Err(error) => return Err(error),
-            }
-        }
-        if input.after.is_some() && !seen {
-            return Err(PortError::new(
-                "RESULT_CURSOR_UNKNOWN",
-                "result cursor does not name a stored proposal",
-                "read_result_page",
-            ));
-        }
-        // `complete` means this page reached the end of the stored results and the
-        // dispatch is no longer running. A caller that stops at `complete` while the
-        // dispatch is still running would miss a result that has not been written yet.
-        if dispatch.state == DispatchState::Running {
-            complete = false;
-        }
-        let cursor = proposals.last().map(|p| p.header.proposal_id.clone());
-        Ok(ResultPage {
-            proposals,
-            cursor,
-            complete,
-        })
+        result_page(&state.db, dispatch.state == DispatchState::Running, &input)
     }
     pub(crate) fn lookup(&self, input: Lookup) -> Result<Dispatch> {
         let state = self.state.lock().expect("tenant mutex");
@@ -826,6 +785,81 @@ fn writer(db: &Connection, generation: u64) -> Result<()> {
         Ok(())
     }
 }
+/// One page of a dispatch's results, selected by SQLite rather than read whole.
+/// The cursor names a stored proposal id, which is the row the page starts after;
+/// a cursor from another dispatch names no row here and is refused the same way
+/// an unknown one is.
+///
+/// `complete` means the page reached the end of the stored results and `running`
+/// is false. A caller that stops at `complete` while the dispatch is still running
+/// would miss a result that has not been written yet.
+fn result_page(db: &Connection, running: bool, input: &ResultQuery) -> Result<ResultPage> {
+    let limit = input.limit.unwrap_or(16).clamp(1, 32);
+    let after = match &input.after {
+        None => None,
+        Some(cursor) => {
+            let rowid = sql(db
+                .query_row(
+                    "SELECT rowid FROM results WHERE dispatch=?1 AND id=?2",
+                    params![input.dispatch, cursor],
+                    |r| r.get::<_, i64>(0),
+                )
+                .optional())?;
+            Some(rowid.ok_or_else(|| {
+                PortError::new(
+                    "RESULT_CURSOR_UNKNOWN",
+                    "result cursor does not name a stored proposal",
+                    "read_result_page",
+                )
+            })?)
+        }
+    };
+    let mut stmt = sql(db.prepare(
+        "SELECT body,preserved FROM results
+         WHERE dispatch=?1 AND (?2 IS NULL OR rowid>?2)
+         ORDER BY rowid LIMIT ?3",
+    ))?;
+    // One row past the page: whether SQLite found it is what `complete` reports.
+    let rows = sql(
+        stmt.query_map(params![input.dispatch, after, i64::from(limit) + 1], |r| {
+            Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, bool>(1)?))
+        }),
+    )?
+    .collect::<rusqlite::Result<Vec<_>>>();
+    let rows = sql(rows)?;
+    drop(stmt);
+    let mut proposals = Vec::new();
+    let mut complete = rows.len() <= limit as usize;
+    for (bytes, preserved) in rows.into_iter().take(limit as usize) {
+        let mut proposal: Proposal = serde_json::from_slice(&bytes)?;
+        proposal.preserved = preserved;
+        let mut trial = proposals.clone();
+        trial.push(proposal.clone());
+        let page = ResultPage {
+            proposals: trial,
+            cursor: Some(proposal.header.proposal_id.clone()),
+            complete: false,
+        };
+        match canonical(&page) {
+            Ok(bytes) if bytes.len() + 1024 <= MAX_DOCUMENT => proposals.push(proposal),
+            _ if !proposals.is_empty() => {
+                complete = false;
+                break;
+            }
+            Ok(_) => proposals.push(proposal),
+            Err(error) => return Err(error),
+        }
+    }
+    if running {
+        complete = false;
+    }
+    let cursor = proposals.last().map(|p| p.header.proposal_id.clone());
+    Ok(ResultPage {
+        proposals,
+        cursor,
+        complete,
+    })
+}
 fn get_dispatch(db: &Connection, id: &str) -> Result<Dispatch> {
     let bytes: Option<Vec<u8>> = sql(db
         .query_row("SELECT body FROM dispatches WHERE id=?1", [id], |r| {
@@ -885,4 +919,151 @@ fn integer(value: u64) -> Result<i64> {
 fn number(row: &rusqlite::Row<'_>) -> rusqlite::Result<u64> {
     let n = row.get::<_, i64>(0)?;
     u64::try_from(n).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, n))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owner() -> Owner {
+        Owner {
+            project: "proj".into(),
+            kind: OwnerKind::RoomInvocation,
+            id: "room".into(),
+            generation: 1,
+        }
+    }
+
+    fn proposal(dispatch: &str, i: usize) -> Proposal {
+        let output = vec![b'x'; 64];
+        let digest = hash(&output);
+        let id = format!("p{i:04}");
+        Proposal {
+            header: ProposalHeader {
+                proposal_id: id.clone(),
+                owner: owner(),
+                dispatch: dispatch.into(),
+                spec_digest: digest.clone(),
+                bundle_digest: digest.clone(),
+                binding: FrozenRef {
+                    id: "binding".into(),
+                    revision: "1".into(),
+                    digest: digest.clone(),
+                },
+                producer_sequence: i as u64,
+                idempotency_key: id.clone(),
+            },
+            schema: "test.bytes.v1".into(),
+            content_digest: digest.clone(),
+            outputs: vec![],
+            output,
+            evidence: EvidenceLevel::Narrated,
+            preserved: false,
+        }
+    }
+
+    /// `poison_from` stores a `body` that is not a blob, so a page that reads past
+    /// its own limit fails on the conversion instead of returning.
+    fn seeded(rows: usize, poison_from: Option<usize>) -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(TENANT_SCHEMA).unwrap();
+        for i in 0..rows {
+            let proposal = proposal("d1", i);
+            let id = proposal.header.proposal_id.clone();
+            let insert = "INSERT INTO results(dispatch,id,body,preserved) VALUES('d1',?1,?2,0)";
+            if poison_from.is_some_and(|from| i >= from) {
+                db.execute(insert, params![id, i as i64]).unwrap();
+            } else {
+                db.execute(insert, params![id, canonical(&proposal).unwrap()])
+                    .unwrap();
+            }
+        }
+        db
+    }
+
+    fn page(after: Option<&str>, limit: Option<u32>) -> ResultQuery {
+        let mut query = ResultQuery::of("d1");
+        query.after = after.map(str::to_owned);
+        query.limit = limit;
+        query
+    }
+
+    #[test]
+    fn a_page_reads_at_most_one_row_past_its_limit() {
+        for limit in [1u32, 2, 16, 32] {
+            let db = seeded(200, Some(limit as usize + 1));
+            // The first poisoned row is genuinely unreadable as a blob.
+            let poisoned = i64::from(limit) + 2;
+            assert!(
+                db.query_row("SELECT body FROM results WHERE rowid=?1", [poisoned], |r| r
+                    .get::<_, Vec<u8>>(0))
+                    .is_err()
+            );
+            let page = result_page(&db, false, &page(None, Some(limit))).unwrap();
+            assert_eq!(page.proposals.len(), limit as usize);
+            assert!(!page.complete);
+        }
+    }
+
+    #[test]
+    fn a_cursor_must_name_a_proposal_this_dispatch_stored() {
+        let db = seeded(4, None);
+        db.execute(
+            "INSERT INTO results(dispatch,id,body,preserved) VALUES('d2','q0000',?1,0)",
+            params![canonical(&proposal("d2", 0)).unwrap()],
+        )
+        .unwrap();
+        for cursor in ["no-such-proposal", "q0000"] {
+            let error = result_page(&db, false, &page(Some(cursor), None)).unwrap_err();
+            assert_eq!(error.code, "RESULT_CURSOR_UNKNOWN");
+            assert_eq!(
+                error.message,
+                "result cursor does not name a stored proposal"
+            );
+            assert_eq!(error.recovery_action, "read_result_page");
+        }
+        let page = result_page(&db, false, &page(Some("p0001"), None)).unwrap();
+        assert_eq!(
+            page.proposals
+                .iter()
+                .map(|p| p.header.proposal_id.clone())
+                .collect::<Vec<_>>(),
+            ["p0002", "p0003"]
+        );
+        assert!(page.complete);
+        assert_eq!(page.cursor.as_deref(), Some("p0003"));
+    }
+
+    #[test]
+    fn complete_tracks_the_end_of_the_stored_results_and_a_running_dispatch() {
+        let empty = seeded(0, None);
+        let query = page(None, None);
+        assert!(
+            result_page(&empty, false, &query)
+                .unwrap()
+                .proposals
+                .is_empty()
+        );
+        assert!(result_page(&empty, false, &query).unwrap().complete);
+        assert!(!result_page(&empty, true, &query).unwrap().complete);
+        let full = seeded(2, None);
+        assert!(result_page(&full, false, &query).unwrap().complete);
+        assert!(!result_page(&full, true, &query).unwrap().complete);
+        let partial = seeded(20, None);
+        assert!(
+            !result_page(&partial, false, &page(None, Some(16)))
+                .unwrap()
+                .complete
+        );
+    }
+
+    #[test]
+    fn the_stored_preservation_flag_reaches_the_page() {
+        let db = seeded(2, None);
+        db.execute("UPDATE results SET preserved=1 WHERE id='p0001'", [])
+            .unwrap();
+        let page = result_page(&db, false, &page(None, None)).unwrap();
+        assert!(!page.proposals[0].preserved);
+        assert!(page.proposals[1].preserved);
+    }
 }
