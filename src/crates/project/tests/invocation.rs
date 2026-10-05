@@ -342,6 +342,35 @@ fn invocation_old_preview_policy_or_roster_cannot_start() {
 }
 
 #[test]
+fn invocation_modified_preview_cannot_widen_permissions_or_change_the_profile() {
+    for field in ["permissions", "profile"] {
+        let (mut e, input) = setup();
+        let (p, a) = prepared(&mut e, input);
+        let before = e.store.read_stamp();
+        let mut value = serde_json::to_value(&p).unwrap();
+        match field {
+            "permissions" => value["configuration"]["permissions"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!("git.write")),
+            "profile" => value["profile"]["digest"] = json!(hash(b"other profile")),
+            _ => unreachable!(),
+        }
+        let modified: call::Preview = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            call::start(&mut e.store, &actor(), &modified, &a, NOW)
+                .unwrap_err()
+                .code,
+            "VERSION_CONFLICT",
+            "{field} changed without changing any dependency version"
+        );
+        assert_eq!(e.store.read_stamp(), before);
+        assert!(e.store.list("room_invocation").unwrap().is_empty());
+        assert!(e.store.list("dispatch_intent").unwrap().is_empty());
+    }
+}
+
+#[test]
 fn invocation_outbox_failure_rolls_back_all_authorization_records() {
     let (mut e, input) = setup();
     let (p, a) = prepared(&mut e, input);
@@ -662,8 +691,9 @@ fn invocation_failure_and_loss_need_original_reducer_authority_and_completion_is
         let (mut e, input) = setup();
         let (p, _, owner) = started(&mut e, input);
         let end = end_input(&e, &p.consumer.id, 1, outcome);
+        let client = chat::owner(&actor(), &e.a).unwrap();
         assert_eq!(
-            call::end(&mut e.store, &actor(), end.clone())
+            call::end(&mut e.store, &client, end.clone())
                 .unwrap_err()
                 .code,
             "PERMISSION_DENIED"
