@@ -49,7 +49,7 @@ pub fn execution_dir(credential_root: &Path, dispatch: &str) -> Result<PathBuf> 
 /// The parent is one the caller resolved while the credential root still existed.
 /// Re-resolving it here would fail once that root is gone, which is exactly when a
 /// shutting-down Agency reaps its last child.
-pub fn release_execution_dir(parent: &Path, dispatch: &str) {
+pub(crate) fn release_execution_dir(parent: &Path, dispatch: &str) {
     // `remove_dir_all` takes a path built from a string: only ever one named child
     // of the parent, never a path that climbs out of it.
     let mut components = Path::new(dispatch).components();

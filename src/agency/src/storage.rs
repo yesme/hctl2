@@ -196,6 +196,14 @@ mod tests {
             ]
         );
         assert_eq!(journal_mode(&tenant), "wal");
+        // Migration 1 builds `settings` but does not seed it. The writer row has to
+        // come back on every open, and an applied migration never runs again, so
+        // `Tenant::open` inserts it outside the migration list.
+        assert_eq!(
+            sql(tenant.query_row("SELECT COUNT(*) FROM settings", [], |r| r.get::<_, i64>(0)))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
