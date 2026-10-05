@@ -209,3 +209,27 @@ gh 固定的是客户端，不是远端 API 行为。2.99.0 源码的 REST 默�
 P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完整核对，显式刷新也完整读取；当前卡片命令不逐卡遍历全板。时间游标重叠最后一分钟，避免同秒变化漏读；没有统一可比较的时间格式则完整读。完整核对保留删除、关系变化的兜底，不把依赖 API 的变化必然推进 issue 更新时间写成保证。
 
 本轮没有在个人远端写测试卡。gh 子进程夹具核了条件头与 304、429 后不再发请求、多页增量、20 张未变卡仅六个读请求、权限拒绝以及已写但丢确认后的重启回读。GraphQL HTTP 200 带 errors 不当成功，也不一律认定未执行；只有能够证明拒绝的响应才释放冲突范围。
+
+## 2026-10-05 · gh 2.99.0 → 2.102.0 的复核记录
+
+决定建议：继续用随包 `gh`，升到 2.102.0；不另加 SDK。发行锁的四处（`metadata.components.gh`、三个 target 的 `assets.gh` 与 `common.gh_source`）已按更新流程改到位；Buck 下载并校验新 sha256 通过，产物里的 `gh --version` 报 `gh version 2.102.0 (2026-09-30)`。
+
+**这一版的四条安全修复**（[v2.102.0 release](https://github.com/cli/cli/releases/tag/v2.102.0)，2026-09-30）：
+
+| # | 修复 | 影响面 | 我们是否受影响 |
+| --- | --- | --- | --- |
+| 1 | [`gh release download`](https://github.com/cli/cli/security/advisories/GHSA-39wj-f2f4-978v)、`gh run download`、`gh repo read-file --output`、`gh attestation download` 在目标含符号链接时可能把远端内容写到非预期的本地文件 | 下载类命令 | 产品不调用；开发者与 CI 用 `gh release download` 取上游制品（本席升级时也用了），升级后不再受符号链接影响 |
+| 2 | `gh attestation verify` 的 `--source-ref` 大小写不敏感比较（[GHSA-4mq3-hpgx-9cx8](https://github.com/cli/cli/security/advisories/GHSA-4mq3-hpgx-9cx8)） | attestation 校验 | 不用 `gh attestation` |
+| 3 | 交互式 `gh skill search` 把结果路径不带走选项分隔符地交给 `gh skill install`，可被选项注入（[GHSA-qcwj-mr2r-2cx7](https://github.com/cli/cli/security/advisories/GHSA-qcwj-mr2r-2cx7)） | 交互式 skill 子命令 | 不用 |
+| 4 | `gh attestation verify` 的 `--signer-workflow` 只按签名证书身份的前缀匹配（[GHSA-wjmr-j3rp-mh2g](https://github.com/cli/cli/security/advisories/GHSA-wjmr-j3rp-mh2g)） | attestation 校验 | 不用 |
+
+**我们用到的两个命令有没有变**：v2.102.0 的「What's Changed」只有两处修复——支持 `ghu_` 令牌给受支持主体附文件、`repo set-default --unset` 可不带参数——**没有** `gh api` 与 `gh pr view` 的行为变化。本层的调用面（`tasks/github.rs` 的 `gh api --include`、`src/crates/facts` 的 `gh api --paginate --slurp` 与 `gh pr view --json`）不受四条安全修复影响，09-28 的读取与限流结论保持不变。
+
+**锁的四处**（`src/packaging/dependencies/lock.json`，sha256 全文在锁里，此处截断便于对照）：
+
+| 目标 | 资产 | sha256 |
+| --- | --- | --- |
+| linux_x86_64 | `gh_2.102.0_linux_amd64.tar.gz` | `bb766f71…6019386` |
+| macos_x86_64 | `gh_2.102.0_macOS_amd64.zip` | `b245f24e…41378b3` |
+| macos_arm64 | `gh_2.102.0_macOS_arm64.zip` | `da922c20…59c337e` |
+| 源码伴随包 | `gh-fc4b137c…-source.tar.gz`（commit `fc4b137c…`） | `78542f85…035773` |

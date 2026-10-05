@@ -4965,6 +4965,7 @@ cargo.rust_library(
     features = [
         "alloc",
         "default",
+        "fs",
         "process",
         "std",
     ],
@@ -4972,7 +4973,6 @@ cargo.rust_library(
         "linux-arm64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
@@ -4982,7 +4982,6 @@ cargo.rust_library(
         "linux-x86_64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
@@ -4990,14 +4989,12 @@ cargo.rust_library(
             deps = [":linux-raw-sys-0.12"],
         ),
         "macos-arm64": dict(
-            features = ["fs"],
             named_deps = {
                 "libc_errno": ":errno-0.3",
             },
             deps = [":libc-0.2"],
         ),
         "macos-x86_64": dict(
-            features = ["fs"],
             named_deps = {
                 "libc_errno": ":errno-0.3",
             },
@@ -5030,6 +5027,7 @@ cargo.rust_binary(
     features = [
         "alloc",
         "default",
+        "fs",
         "process",
         "std",
     ],
@@ -5037,7 +5035,6 @@ cargo.rust_binary(
         "linux-arm64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
@@ -5046,17 +5043,10 @@ cargo.rust_binary(
         "linux-x86_64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
             ],
-        ),
-        "macos-arm64": dict(
-            features = ["fs"],
-        ),
-        "macos-x86_64": dict(
-            features = ["fs"],
         ),
     },
     visibility = [],
@@ -5069,6 +5059,7 @@ buildscript_run(
     features = [
         "alloc",
         "default",
+        "fs",
         "process",
         "std",
     ],
@@ -5076,7 +5067,6 @@ buildscript_run(
         "linux-arm64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
@@ -5085,17 +5075,10 @@ buildscript_run(
         "linux-x86_64": dict(
             features = [
                 "event",
-                "fs",
                 "net",
                 "pipe",
                 "time",
             ],
-        ),
-        "macos-arm64": dict(
-            features = ["fs"],
-        ),
-        "macos-x86_64": dict(
-            features = ["fs"],
         ),
     },
     version = "1.1.5",
