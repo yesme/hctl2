@@ -222,6 +222,11 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
   - 「发布 Memo」命令。
 - **依据**：`spec/task.md` §写入约束；`spec/connections.md` §Human Kanban / Run reducer → Task → Project：验收与回流；`spec/project.md` §Context、Memo 与 Artifact 的 Memo 一段；CT-TASK、CT-PROJECT 的相关行。
 - **框架**：来自第 6 包。
+- **验收**（按 §二 第 10 条在开工前写好，缺一条不算过；每条都要有从真实命令行走到处理函数的用例）：
+    1. **完成一条有契约的 Task，凭证和状态在同一个事务里。** `task complete` 的预览逐项列出验收项、判定者、校验等级和所用的证据，机械项的证据是第 6 包签出的 Integration Receipt。确认之后生命周期变成完成，Task Completion Receipt 记着这一次的生命周期版本、Task Revision 和逐项证据。在写入事务里注入一次失败，Receipt 和生命周期变化都不在。同一个键重投返回原结果。
+    2. **五种该拒的各有一条会红的用例。** 没有契约（预览要求先「采纳契约」，不在同一条命令里补出契约）；绑定的 Run 还没到终态；机械项只有转述的证据，或证据等级低于验收策略的要求；预览之后来了新的 Snapshot 或契约变化；`completion_pending` 期间由人提交。五种拒绝之后 Task 都仍是开放。
+    3. **人在平台上把 issue 关掉，只是一次请求。** 映射到归属人的账号把绑定的 issue 关闭，得到的是同一条「完成 Task」命令的请求：证据齐全时通过，不齐时拒绝、Task 仍开放。control 自己的账号写回的关闭只作观测，不产生请求。
+    4. **重开、取消、发布 Memo。** 重开之后旧的 Receipt 和历史都在，生命周期版本前进；有活动 Run 时取消被拒绝。「发布 Memo」先预览后确认；已发布的 revision 改不了，更新是用 supersedes 接上的一个新 revision，旧的仍能按精确 revision 读回；没有经过这条命令的文字不会成为 Memo。
 
 ### 第 8 包 · 命令行的人读输出
 
@@ -231,6 +236,11 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
   - 错误的 `code`、`message`、`recovery_action` 原样呈现。
   - 只改 `src/apps/cli`，不动命令语义与 RPC。
 - **依据**：`delivery.md` §公共 CLI；`spec/system.md` §场景端口；`scenarios/S3-user-journey.md` 各行对预览内容的要求。
+- **验收**（按 §二 第 10 条在开工前写好，缺一条不算过）：
+    1. **`--json` 一个字节都不变。** 选一组有代表性的命令——至少 `status`、一条两步确认命令的预览与确认、`room hierarchy`、`task board`、`agency catalog`、一条错误——改动前后的 `--json` 输出逐字节相同，用存下来的样例比对。
+    2. **缺省输出是给人读的。** 列表类命令成表，有表头，空列表有一句说明。派工、发布评审、合入、完成四种预览各有一条用例，输出分三段写清：对象是什么，为什么要确认，确认之后会发生什么（会写到哪里、能不能撤回），并给出确认用的完整命令。输出不是终端时不带颜色控制符。
+    3. **错误的三项原样可见。** 任选三种错误（缺预览、版本冲突、权限不足），人读输出里 `code`、`message`、`recovery_action` 都在，值与 `--json` 里的相同，退出码非零。
+    4. **只动命令行。** 改动只在 `src/apps/cli` 下，RPC 与命令语义不变；现有的命令行用例除了比对输出版式的那些，不改断言就通过。
 
 ### 第 9 包 · 端到端收口
 
@@ -412,6 +422,7 @@ Fable 用 main `a075a66`（含第 1 包 #307）构建的安装包从零装了一
 - 账号映射记进绑定：`spec/repo.md` 要求把人在平台上的账号映射记进绑定（#316 评审引的是第 114 行后半句），小活 E 没有做，预览与 README 里如实标了缺口。Grok、Kimi、Qwen 都建议单开一条；所有者 2026-10-05 定先记下，不排人。
 - 原生测试的二进制里烧进了构建目录的绝对路径（`env!` 加 `$(location …)`），换一个工作目录、命中共享缓存后会报误导性的「找不到文件」。Kimi 审 #316 时发现；所有者同日定先记下，不排人。
 - Agency 的分页用例偶发失败：`root//agency:port_test` 里的 `result_pages_keep_each_accepted_payload_under_the_transport_limit`，机器负载高时取结果的调用会被取消（`AGENCY_RESPONSE_UNKNOWN`），单独重跑通过。Fable 审 #323 首版、Qwen 核验 #332 时各碰到一次，都和当时的 PR 无关。先记下，之后当小活派。
+- Agency 的原生测试在 `/tmp` 下留着 `hctl2-exec-…` 这类执行目录，跑完不清，会越积越多；不影响正确性。Fable 2026-10-05 在评审机器上看到，先记下，和上一条一起当小活派。
 
 演示 3 之后还有两大段：Run 与施工图、评审关卡（P2.5，接 Dagu），以及 Workbench（P3）。先做哪段，到演示 3 时由所有者定。Workbench 的界面零件互相独立，适合多家一起写。
 
