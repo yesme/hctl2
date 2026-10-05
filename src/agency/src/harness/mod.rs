@@ -1,5 +1,5 @@
 //! Minimum versions. A harness is cataloged only after a startup smoke check.
-//! Herdr does not use this gate; it uses the locked binary and protocol 20.
+//! Herdr does not use this gate; it uses the locked binary and protocol 22.
 pub mod claude;
 
 pub const CLAUDE_MINIMUM: &str = "2.1.263";

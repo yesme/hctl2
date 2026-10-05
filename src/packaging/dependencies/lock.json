@@ -74,8 +74,8 @@
         "source_asset": "gh_source"
       },
       "herdr": {
-        "version": "0.8.2",
-        "source_commit": "9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c",
+        "version": "0.9.3",
+        "source_commit": "7b116c05bfda646af39d2524c54e70c751f57ee8",
         "source_asset": "herdr_source"
       },
       "cinny": {
@@ -113,7 +113,7 @@
       "dagu_coordinator_health_port": "18091",
       "cinny_port": "6168",
       "gitea_port": "3001",
-      "herdr_protocol": "20"
+      "herdr_protocol": "22"
     },
     "macos_deployment_target": "15.0",
     "source_date_epoch": "946684800"
@@ -135,9 +135,9 @@
       "sha256": "9f6e4a4e5e2cb63e0c46e9b5e7b4d4a4a1c3edc452433dbd60cb83e75538ce0a"
     },
     "herdr_source": {
-      "filename": "herdr-9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c-source.tar.gz",
-      "url": "https://github.com/herdrdev/herdr/archive/9eb521456ac0d19d3ab3d9d7cea3cca10baa8a4c.tar.gz",
-      "sha256": "0797b440181e1da1f43a32c4cfb2c8e11a4398b8c1f392ab5a43b0e748ab7577"
+      "filename": "herdr-7b116c05bfda646af39d2524c54e70c751f57ee8-source.tar.gz",
+      "url": "https://github.com/herdrdev/herdr/archive/7b116c05bfda646af39d2524c54e70c751f57ee8.tar.gz",
+      "sha256": "a8d914d60ae728deec9902ec29d706d305ba51c731424d6ffbf2a8af0b170124"
     },
     "cinny": {
       "filename": "cinny-v4.12.6.tar.gz",
@@ -206,8 +206,8 @@
         },
         "herdr": {
           "filename": "herdr-linux-x86_64",
-          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-linux-x86_64",
-          "sha256": "976150a14d490c94b243ea2e1a7eb2dfb67f12e36b182db90936f6728e6aecf4"
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64",
+          "sha256": "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-x86_64-unknown-linux-musl.tar.gz",
@@ -251,8 +251,8 @@
         },
         "herdr": {
           "filename": "herdr-macos-x86_64",
-          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-x86_64",
-          "sha256": "ab50262c8190cd7aa9056d249d255c08c328c3e8716de9cfa29db4f131b8e2c1"
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-x86_64",
+          "sha256": "db62d548ff3e832b087a96b1894a08d26be3905f1830309cd556783f215d4054"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-x86_64-apple-darwin.tar.gz",
@@ -296,8 +296,8 @@
         },
         "herdr": {
           "filename": "herdr-macos-aarch64",
-          "url": "https://github.com/herdrdev/herdr/releases/download/v0.8.2/herdr-macos-aarch64",
-          "sha256": "a5d4f4d504d8b309c91f811050559300faba31258425f53c50852fc96f6ae574"
+          "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64",
+          "sha256": "5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157"
         },
         "static_web_server": {
           "filename": "static-web-server-v2.44.0-aarch64-apple-darwin.tar.gz",

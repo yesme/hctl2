@@ -1,5 +1,5 @@
-//! Non-interactive process supervision with a Herdr-owned display terminal.
-//! Completion comes from the OS child status and protocol stream, never the screen.
+//! Herdr owns the terminal and harness. Claude's structured turn signal returns output;
+//! physical exit is a separate observation. No Agency-owned harness child.
 use crate::herdr::{Client, Server};
 use crate::runtime::{Running, Runtime, RuntimeEvent, Session};
 use agency_proto::context::{Bundle, Delivery};
@@ -10,14 +10,9 @@ use agency_proto::{
 use serde_json::json;
 use std::{
     fs,
-    io::{Read, Write},
-    os::unix::{
-        fs::{FileTypeExt, OpenOptionsExt},
-        net::UnixStream,
-        process::{CommandExt, ExitStatusExt},
-    },
+    io::Read,
+    os::unix::net::UnixStream,
     path::{Path, PathBuf},
-    process::{Child, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -25,89 +20,103 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Launch {
-    client: Client,
-    pane: String,
-    process: Mutex<Option<Process>>,
-    report_dir: PathBuf,
-    program: PathBuf,
-    profile: PathBuf,
-    stopped: Arc<AtomicBool>,
-    closed: Mutex<bool>,
-    _server: Arc<Server>,
-}
+const OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 
-struct Process {
-    child: Child,
-    stdout: Capture,
-    stderr: Capture,
-    terminal: fs::File,
-}
-
-struct Capture {
+/// Only the exit subscription used by this adapter. It is not a second supervisor.
+struct ExitFeed {
     stream: UnixStream,
-    bytes: Vec<u8>,
-    eof: bool,
+    pending: Vec<u8>,
+    exited: bool,
 }
-
-impl Capture {
-    fn drain(&mut self, terminal: &mut fs::File) -> Result<()> {
+impl ExitFeed {
+    fn subscribe(socket: &Path) -> Result<Self> {
+        use std::io::{BufRead, BufReader, Write};
+        let mut stream = UnixStream::connect(socket)?;
+        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        let request = json!({"id":"exit-feed","protocol":crate::herdr::PROTOCOL,
+            "method":"events.subscribe","params":{"subscriptions":[{"type":"pane.exited"}]}});
+        writeln!(stream, "{request}")?;
+        let mut reader = BufReader::new(stream);
+        let mut response = String::new();
+        reader.by_ref().take(1024 * 1024).read_line(&mut response)?;
+        let value: serde_json::Value = serde_json::from_str(&response)?;
+        if value["id"] != "exit-feed"
+            || value.get("error").is_some()
+            || value.get("result").is_none()
+        {
+            return Err(PortError::invalid("Herdr exit subscription rejected"));
+        }
+        // Preserve events read ahead with the acknowledgement.
+        let pending = reader.buffer().to_vec();
+        let stream = reader.into_inner();
+        stream.set_nonblocking(true)?;
+        Ok(Self {
+            stream,
+            pending,
+            exited: false,
+        })
+    }
+    fn poll(&mut self, pane: &str) -> Result<bool> {
+        if self.exited {
+            return Ok(true);
+        }
         let mut buffer = [0; 8192];
-        // Bound work per poll even when a program produces output indefinitely.
+        let mut disconnected = false;
         for _ in 0..32 {
             match self.stream.read(&mut buffer) {
                 Ok(0) => {
-                    self.eof = true;
+                    disconnected = true;
                     break;
                 }
-                Ok(n) => {
-                    if self.bytes.len() + n > 16 * 1024 * 1024 {
-                        return Err(PortError::new(
-                            "LAUNCH_OUTPUT_LIMIT",
-                            "harness stream exceeds 16 MiB",
-                            "reduce_harness_output",
-                        ));
-                    }
-                    self.bytes.extend_from_slice(&buffer[..n]);
-                    // Display is best effort and is not the result evidence channel.
-                    let _ = terminal.write(&buffer[..n]);
-                }
+                Ok(n) => self.pending.extend_from_slice(&buffer[..n]),
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(e) => return Err(e.into()),
             }
+            if self.pending.len() > 1024 * 1024 {
+                return Err(PortError::invalid("Herdr event buffer exceeds 1 MiB"));
+            }
         }
-        Ok(())
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = self.pending.drain(..=end).collect();
+            let value: serde_json::Value = serde_json::from_slice(&line)?;
+            if let Some(error) = value.get("error") {
+                return Err(PortError::new(
+                    "HERDR_EVENTS_LOST",
+                    error.to_string(),
+                    "inspect_dispatch",
+                ));
+            }
+            // Subscription names use dots; EventKind serializes with snake_case.
+            if value["event"] == "pane_exited" && value["data"]["pane_id"] == pane {
+                self.exited = true;
+            }
+        }
+        // The final event can arrive in the same read as EOF. Consume it first.
+        if disconnected && !self.exited {
+            return Err(PortError::new(
+                "HERDR_EVENTS_LOST",
+                "exit subscription closed before native exit",
+                "inspect_dispatch",
+            ));
+        }
+        Ok(self.exited)
     }
 }
 
-impl Process {
-    fn drain(&mut self) -> Result<()> {
-        self.stdout.drain(&mut self.terminal)?;
-        self.stderr.drain(&mut self.terminal)
-    }
-    fn code(&mut self) -> Result<Option<i32>> {
-        Ok(self
-            .child
-            .try_wait()?
-            .map(|s| s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))))
-    }
-    fn stop(&mut self) -> Result<()> {
-        if self.child.try_wait()?.is_none() {
-            let status = std::process::Command::new("/bin/kill")
-                .args(["-KILL", "--", &format!("-{}", self.child.id())])
-                .status()?;
-            if !status.success() {
-                self.child.kill()?;
-            }
-            self.child.wait()?;
-        }
-        Ok(())
-    }
+pub struct Launch {
+    client: Client,
+    pane: String,
+    events: Mutex<ExitFeed>,
+    report_dir: PathBuf,
+    stopped: AtomicBool,
+    closed: Mutex<bool>,
+    _server: Arc<Server>,
 }
 
 pub struct Finished {
-    pub code: i32,
+    pub code: Option<i32>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
@@ -126,247 +135,169 @@ impl Launch {
                 "launch state differs from the live server",
             ));
         }
+        credential_root.canonicalize()?;
         let stamp = crate::storage::nonce()?;
-        let program = exec_dir.join(format!("program-{stamp}.sh"));
-        let profile = exec_dir.join(format!("program-{stamp}.sb"));
         let report_dir = state_dir.join(format!("launch-{stamp}"));
         crate::storage::private_dir(&report_dir)?;
-        fs::write(&program, body)?;
+        // The caller's text is a file argument, never input typed into a shell.
+        let program = report_dir.join("program.sh");
         let runner = report_dir.join("runner.sh");
+        fs::write(&program, body)?;
+        fs::write(report_dir.join("stdout"), [])?;
+        fs::write(report_dir.join("stderr"), [])?;
         fs::write(
             &runner,
             format!(
-                "#!/bin/sh\ntty > {tty}\nexec sleep 2147483647\n",
-                tty = sh_quote(&report_dir.join("tty")),
+                "#!/bin/sh\n/bin/sh {program} > {stdout} 2> {stderr}\ncode=$?\nprintf '%s\\n' \"$code\" > {exit}\nexit \"$code\"\n",
+                program = sh_quote(&program),
+                stdout = sh_quote(&report_dir.join("stdout")),
+                stderr = sh_quote(&report_dir.join("stderr")),
+                exit = sh_quote(&report_dir.join("exit")),
             ),
         )?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut mode = fs::metadata(&runner)?.permissions();
-            mode.set_mode(0o755);
-            fs::set_permissions(&runner, mode)?;
-        }
+        let events = ExitFeed::subscribe(&server.socket)?;
         let client = Client::connect(&server.socket)?;
         let created = client.call(
             "workspace.create",
-            json!({"cwd": exec_dir, "label": label, "focus": false}),
+            json!({"cwd":exec_dir,"label":label,"focus":false}),
         )?;
-        let pane = created
-            .pointer("/root_pane/pane_id")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| {
-                PortError::new(
-                    "HERDR_PROTOCOL",
-                    "workspace has no pane",
-                    "retry_herdr_call",
-                )
-            })?
-            .to_owned();
-        let launch = Self {
+        let mut launch = Self {
+            pane: created
+                .pointer("/root_pane/pane_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| PortError::invalid("workspace has no pane"))?
+                .into(),
             client,
-            pane,
+            events: Mutex::new(events),
             report_dir,
-            program,
-            profile,
-            process: Mutex::new(None),
-            stopped: Arc::new(AtomicBool::new(false)),
+            stopped: AtomicBool::new(false),
             closed: Mutex::new(false),
             _server: server,
         };
-        launch.client.call(
-            "pane.send_text",
-            json!({"pane_id": launch.pane, "text": format!("/bin/sh {}\n", sh_quote(&runner))}),
+        let tab = created
+            .pointer("/tab/tab_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PortError::invalid("workspace has no tab"))?;
+        let applied = launch.client.call(
+            "layout.apply",
+            json!({
+                "tab_id":tab,"focus":false,
+                "root":{"type":"pane","cwd":exec_dir,"command":["/bin/sh",runner]}
+            }),
         )?;
-        let ready = Instant::now() + Duration::from_secs(5);
-        let tty = loop {
-            if let Ok(text) = fs::read_to_string(launch.report_dir.join("tty")) {
-                let path = PathBuf::from(text.trim());
-                if (path.starts_with("/dev/pts") || path.to_string_lossy().starts_with("/dev/tty"))
-                    && fs::metadata(&path).is_ok_and(|m| m.file_type().is_char_device())
-                {
-                    break path;
-                }
-            }
-            if Instant::now() >= ready {
-                return Err(PortError::new(
-                    "HERDR_TERMINAL_MISSING",
-                    "pane did not supply its terminal",
-                    "retry_herdr_call",
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        };
-        let terminal = fs::OpenOptions::new()
-            .write(true)
-            .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
-            .open(tty)?;
-        let (stdout, child_stdout) = UnixStream::pair()?;
-        let (stderr, child_stderr) = UnixStream::pair()?;
-        stdout.set_nonblocking(true)?;
-        stderr.set_nonblocking(true)?;
-        let mut command = crate::confine::pane_program(
-            &launch.program,
-            exec_dir,
-            credential_root,
-            state_dir,
-            launch
-                ._server
-                .socket
-                .parent()
-                .ok_or_else(|| PortError::invalid("socket has no parent"))?,
-            &launch.profile,
-        )?;
-        crate::confine::scrub(&mut command, exec_dir);
-        command
-            .env(
-                "HCTL2_CONFINE_READ",
-                launch
-                    ._server
-                    .read_paths
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            )
-            .process_group(0)
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(std::os::fd::OwnedFd::from(child_stdout)))
-            .stderr(Stdio::from(std::os::fd::OwnedFd::from(child_stderr)));
-        let child = command.spawn()?;
-        *launch.process.lock().expect("launch process") = Some(Process {
-            child,
-            terminal,
-            stdout: Capture {
-                stream: stdout,
-                bytes: vec![],
-                eof: false,
-            },
-            stderr: Capture {
-                stream: stderr,
-                bytes: vec![],
-                eof: false,
-            },
-        });
+        launch.pane = applied
+            .pointer("/layout/root/pane_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| PortError::invalid("layout has no pane"))?
+            .into();
         Ok(launch)
     }
-
     pub fn pane(&self) -> &str {
         &self.pane
     }
-
     pub fn client(&self) -> &Client {
         &self.client
     }
-
-    /// Native child status. Files in the program's directory cannot affect it.
+    fn exited(&self) -> Result<bool> {
+        self.events.lock().expect("exit feed").poll(&self.pane)
+    }
+    /// Native exit must be observed before consulting the observational exit code.
     pub fn poll_exit(&self) -> Result<Option<i32>> {
-        if self.stopped.load(Ordering::SeqCst) {
+        if self.stopped.load(Ordering::SeqCst) || !self.exited()? {
             return Ok(None);
         }
-        let mut process = self.process.lock().expect("launch process");
-        let process = process
-            .as_mut()
-            .ok_or_else(|| PortError::invalid("launch has no process"))?;
-        process.drain()?;
-        process.code()
+        self.exit_code()
     }
-
+    fn exit_code(&self) -> Result<Option<i32>> {
+        match fs::read_to_string(self.report_dir.join("exit")) {
+            Ok(code) => Ok(code.trim().parse::<i32>().ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+    fn output(&self) -> Result<(Vec<u8>, Vec<u8>)> {
+        let read = |name: &str| -> Result<Vec<u8>> {
+            let mut bytes = Vec::new();
+            fs::File::open(self.report_dir.join(name))?
+                .take(OUTPUT_LIMIT + 1)
+                .read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > OUTPUT_LIMIT {
+                return Err(PortError::new(
+                    "LAUNCH_OUTPUT_LIMIT",
+                    "harness stream exceeds 16 MiB",
+                    "reduce_harness_output",
+                ));
+            }
+            Ok(bytes)
+        };
+        Ok((read("stdout")?, read("stderr")?))
+    }
     pub fn wait(&self, timeout: Duration) -> Result<Finished> {
         match self.wait_end(timeout)? {
             WaitEnd::Finished(finished) => Ok(finished),
             WaitEnd::Stopped => Err(PortError::new(
                 "LAUNCH_STOPPED",
-                "the caller stopped the launch",
+                "caller stopped the launch",
                 "read_exit_event",
             )),
             WaitEnd::TimedOut => Err(PortError::new(
                 "LAUNCH_TIMEOUT",
-                "harness did not exit and close its output before the caller timeout",
+                "program is still running",
                 "raise_timeout_or_cancel",
             )),
         }
     }
-
     pub fn wait_end(&self, timeout: Duration) -> Result<WaitEnd> {
         let deadline = Instant::now() + timeout;
         loop {
             if self.stopped.load(Ordering::SeqCst) {
                 return Ok(WaitEnd::Stopped);
             }
-            {
-                let mut process = self.process.lock().expect("launch process");
-                let process = process
-                    .as_mut()
-                    .ok_or_else(|| PortError::invalid("launch has no process"))?;
-                process.drain()?;
-                if let Some(code) = process.code()? {
-                    if self.stopped.load(Ordering::SeqCst) {
-                        return Ok(WaitEnd::Stopped);
-                    }
-                    process.drain()?;
-                    if process.stdout.eof && process.stderr.eof {
-                        return Ok(WaitEnd::Finished(Finished {
-                            code,
-                            stdout: process.stdout.bytes.clone(),
-                            stderr: process.stderr.bytes.clone(),
-                        }));
-                    }
-                }
+            if self.exited()? {
+                let (stdout, stderr) = self.output()?;
+                return Ok(WaitEnd::Finished(Finished {
+                    code: self.exit_code()?,
+                    stdout,
+                    stderr,
+                }));
             }
             if Instant::now() >= deadline {
                 return Ok(WaitEnd::TimedOut);
             }
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(25));
         }
     }
-
     pub fn cancel(&self) -> Result<()> {
         self.close()?;
-        let mut guard = self.process.lock().expect("launch process");
-        if let Some(process) = guard.as_mut() {
-            process.stop()?;
-        }
         self.stopped.store(true, Ordering::SeqCst);
         Ok(())
     }
-
     fn close(&self) -> Result<()> {
         let mut closed = self.closed.lock().expect("pane close");
         if !*closed {
-            self.client
-                .call("pane.close", json!({"pane_id": self.pane}))?;
+            if let Err(error) = self.client.call("pane.close", json!({"pane_id":self.pane})) {
+                // Herdr removes a pane after its native exit. Only that observed exit
+                // makes a missing pane an idempotent close, not a missing socket.
+                if !error.message.contains("pane_not_found") || !self.exited()? {
+                    return Err(error);
+                }
+            }
             *closed = true;
         }
         Ok(())
     }
-
-    fn stop_process(&self) -> Result<()> {
-        if let Some(process) = self.process.lock().expect("launch process").as_mut() {
-            process.stop()?;
-        }
-        Ok(())
-    }
 }
-
 impl Drop for Launch {
     fn drop(&mut self) {
         let _ = self.close();
-        if let Some(process) = self.process.get_mut().expect("launch process").as_mut() {
-            let _ = process.stop();
-        }
-        let _ = fs::remove_file(&self.program);
-        let _ = fs::remove_file(&self.profile);
         let _ = fs::remove_dir_all(&self.report_dir);
     }
 }
-
 pub enum WaitEnd {
     Finished(Finished),
     Stopped,
     TimedOut,
 }
-
 fn sh_quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
@@ -423,11 +354,11 @@ pub fn smoke(
         "smoke",
     )?;
     let finished = launch.wait(Duration::from_secs(15))?;
-    if finished.code != 0 || !finished.stdout.windows(8).any(|item| item == b"smoke-ok") {
+    if finished.code != Some(0) || !finished.stdout.windows(8).any(|item| item == b"smoke-ok") {
         return Err(PortError::new(
             "HERDR_SMOKE_FAILED",
             format!(
-                "smoke exit {} stdout {:?} stderr {}",
+                "smoke exit {:?} stdout {:?} stderr {}",
                 finished.code,
                 finished.stdout,
                 String::from_utf8_lossy(&finished.stderr)
@@ -582,11 +513,11 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
         let finished = launch.wait(Duration::from_secs(15))?;
         let text = String::from_utf8_lossy(&finished.stdout);
         let version = text.lines().next().unwrap_or("").trim().to_owned();
-        if finished.code != 0 || version.is_empty() {
+        if finished.code != Some(0) || version.is_empty() {
             return Err(PortError::new(
                 "HARNESS_SMOKE_FAILED",
                 format!(
-                    "confined Claude --version exit {}: {}",
+                    "confined Claude --version exit {:?}: {}",
                     finished.code,
                     String::from_utf8_lossy(&finished.stderr)
                         .chars()
@@ -624,6 +555,12 @@ struct HerdrSession {
     launch: Arc<Launch>,
 }
 
+impl Drop for HerdrSession {
+    fn drop(&mut self) {
+        let _ = self.launch.cancel();
+    }
+}
+
 impl Session for HerdrSession {
     fn input(&mut self, _: &[u8]) -> Result<()> {
         Err(PortError::invalid("this launch does not take pane input"))
@@ -638,7 +575,7 @@ impl Runtime for InstalledHerdr {
         let herdr_digest = crate::catalog::file_digest(&self.binary)?;
         let harness = FrozenRef {
             id: "herdr".into(),
-            revision: "protocol-20".into(),
+            revision: "protocol-22".into(),
             digest: herdr_digest,
         };
         let profession = Profession {
@@ -710,105 +647,123 @@ fn dispatch_events(
     claude_result: bool,
     tx: std::sync::mpsc::SyncSender<RuntimeEvent>,
 ) {
-    let ended = match launch.wait_end(timeout) {
-        Ok(WaitEnd::Stopped) => {
+    let deadline = Instant::now() + timeout;
+    let mut returned = false;
+    loop {
+        if launch.stopped.load(Ordering::SeqCst) {
             let _ = tx.send(RuntimeEvent::Exited {
                 code: None,
                 requested_stop: true,
             });
             return;
         }
-        Ok(WaitEnd::TimedOut) => {
-            // A failed pane RPC must not leave our child running past its deadline.
-            let _ = launch.close();
-            let _ = launch.stop_process();
-            let _ = tx.send(RuntimeEvent::DeadlineReached);
-            let _ = tx.send(RuntimeEvent::Exited {
-                code: None,
-                requested_stop: false,
-            });
-            return;
-        }
-        Ok(WaitEnd::Finished(finished)) => finished,
-        Err(error) => {
-            let _ = launch.close();
-            let _ = launch.stop_process();
-            let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
-            let _ = tx.send(RuntimeEvent::Exited {
-                code: None,
-                requested_stop: false,
-            });
-            return;
-        }
-    };
-    if let Err(error) = launch.close() {
-        let _ = tx.send(RuntimeEvent::Observation {
-            kind: "runtime:pane_cleanup_failed".into(),
-            payload: json!({"code": error.code, "message": error.message}),
-            source: EvidenceLevel::AdapterEvent,
-        });
-    }
-    if ended.code == 0 {
-        match proposal_bytes(&ended, claude_result) {
-            Ok(bytes) => {
-                let _ = tx.send(RuntimeEvent::Proposal {
-                    schema: if claude_result {
-                        "claude.result.v1".into()
-                    } else {
-                        "adapter.stdout.v1".into()
-                    },
-                    bytes,
-                    source: EvidenceLevel::AdapterEvent,
-                });
-                let _ = tx.send(RuntimeEvent::Exited {
-                    code: Some(0),
-                    requested_stop: false,
-                });
-            }
+        let observed = (|| -> Result<(Vec<u8>, Vec<u8>, bool)> {
+            let exited = launch.exited()?;
+            let (stdout, stderr) = launch.output()?;
+            Ok((stdout, stderr, exited))
+        })();
+        let (stdout, stderr, exited) = match observed {
+            Ok(value) => value,
             Err(error) => {
-                let _ = tx.send(RuntimeEvent::Observation {
-                    kind: "runtime:harness_failure".into(),
-                    payload: json!({"code": error.code, "message": error.message.chars().take(4096).collect::<String>()}),
-                    source: EvidenceLevel::AdapterEvent,
-                });
                 let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
-                let _ = tx.send(RuntimeEvent::Exited {
-                    code: Some(0),
-                    requested_stop: false,
-                });
+                // A close failure is not evidence of exit. Keep the session available for retry.
+                if launch.close().is_ok() {
+                    let _ = tx.send(RuntimeEvent::Exited {
+                        code: None,
+                        requested_stop: false,
+                    });
+                }
+                return;
+            }
+        };
+        if claude_result && !returned {
+            // The file may end midway through a JSONL record. Only complete records count.
+            let complete = stdout
+                .iter()
+                .rposition(|b| *b == b'\n')
+                .map_or(0, |i| i + 1);
+            match crate::harness::claude::result_from_jsonl(&String::from_utf8_lossy(
+                &stdout[..complete],
+            )) {
+                Ok(session) if !session.is_error => {
+                    let _ = tx.send(RuntimeEvent::Proposal {
+                        schema: "claude.result.v1".into(),
+                        bytes: session.result.into_bytes(),
+                        source: EvidenceLevel::AdapterEvent,
+                    });
+                    let _ = tx.send(RuntimeEvent::TurnReturned);
+                    returned = true;
+                }
+                Ok(session) => {
+                    let _ = tx.send(RuntimeEvent::Observation {
+                        kind: "runtime:harness_failure".into(),
+                        payload: json!({"code":"HARNESS_RESULT_ERROR","message":session.result}),
+                        source: EvidenceLevel::AdapterEvent,
+                    });
+                    let _ = tx.send(RuntimeEvent::ProtocolError("HARNESS_RESULT_ERROR".into()));
+                    if launch.close().is_ok() {
+                        let _ = tx.send(RuntimeEvent::Exited {
+                            code: launch.exit_code().ok().flatten(),
+                            requested_stop: false,
+                        });
+                    }
+                    return;
+                }
+                Err(error) if error.code == "HARNESS_RESULT_MISSING" && !exited => {}
+                Err(error) => {
+                    let _ = tx.send(RuntimeEvent::Observation {
+                        kind:"runtime:harness_failure".into(),
+                        payload:json!({"code":error.code,"message":String::from_utf8_lossy(&stderr).chars().take(4096).collect::<String>()}),
+                        source:EvidenceLevel::AdapterEvent,
+                    });
+                    let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
+                    if launch.close().is_ok() {
+                        let _ = tx.send(RuntimeEvent::Exited {
+                            code: launch.exit_code().ok().flatten(),
+                            requested_stop: false,
+                        });
+                    }
+                    return;
+                }
             }
         }
-    } else {
-        let detail =
-            crate::harness::claude::result_from_jsonl(&String::from_utf8_lossy(&ended.stdout))
-                .map(|session| session.result)
-                .unwrap_or_else(|_| String::from_utf8_lossy(&ended.stderr).into_owned());
-        let _ = tx.send(RuntimeEvent::Observation {
-            kind: "runtime:harness_failure".into(),
-            payload: json!({"exit_code": ended.code, "message": detail.chars().take(4096).collect::<String>()}),
-            source: EvidenceLevel::AdapterEvent,
-        });
-        let _ = tx.send(RuntimeEvent::Exited {
-            code: Some(ended.code),
-            requested_stop: false,
-        });
+        if exited {
+            let code = launch.exit_code().ok().flatten();
+            // Only the explicit script fixture uses stdout-at-exit; no real harness takes this branch.
+            if !claude_result && code == Some(0) {
+                let _ = tx.send(RuntimeEvent::Proposal {
+                    schema: "adapter.stdout.v1".into(),
+                    bytes: stdout,
+                    source: EvidenceLevel::AdapterEvent,
+                });
+                let _ = tx.send(RuntimeEvent::TurnReturned);
+            }
+            let _ = launch.close();
+            let _ = tx.send(RuntimeEvent::Exited {
+                code,
+                requested_stop: false,
+            });
+            return;
+        }
+        if Instant::now() >= deadline {
+            if !returned {
+                let _ = tx.send(RuntimeEvent::DeadlineReached);
+            }
+            match launch.close() {
+                Ok(()) => {
+                    let _ = tx.send(RuntimeEvent::Exited {
+                        code: None,
+                        requested_stop: false,
+                    });
+                }
+                Err(error) => {
+                    let _ = tx.send(RuntimeEvent::ProtocolError(error.code));
+                }
+            }
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(25));
     }
-}
-
-fn proposal_bytes(finished: &Finished, claude_result: bool) -> Result<Vec<u8>> {
-    if !claude_result {
-        return Ok(finished.stdout.clone());
-    }
-    let text = String::from_utf8_lossy(&finished.stdout);
-    let session = crate::harness::claude::result_from_jsonl(&text)?;
-    if session.is_error {
-        return Err(PortError::new(
-            "HARNESS_RESULT_ERROR",
-            session.result,
-            "read_claude_result",
-        ));
-    }
-    Ok(session.result.into_bytes())
 }
 
 fn task_text(bundle: &Bundle) -> Result<String> {

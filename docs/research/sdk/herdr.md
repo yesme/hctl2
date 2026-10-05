@@ -70,6 +70,7 @@ Agency 参考实现的运行时。HCTL 的 Agency adapter 通过 Herdr 的本地
 
 ## 复核记录
 
+
 - **2026-10-05 · 3c 结束与隔离复核（PR #335）**：锁定版的 `pane.exited` 仍没有退出码。退出文件放在执行目录中时，程序能提前写出假退出码。只把文件移到另一目录也不能证明拒写。macOS 实测在已经受限的 Herdr 下再次运行 `sandbox-exec` 返回 71，原因是 `sandbox_apply: Operation not permitted`，不能用嵌套配置补出第二层限制。
 - **同日 · 当前适配选择**：非交互 Claude print 由 Agency 用标准库 `Command` 启动、`Child::try_wait` 取得内核退出状态，stdout / stderr 用原生 Unix socket 成对收取，不从屏幕解析。Herdr 继续持有窗格和 PTY；固定启动脚本只交回该 PTY 的设备路径，Agency 把收取的字节显示到这个终端。真实执行单独应用一次既有 sandbox / Landlock，拒绝 Agency 凭据根、Herdr 状态及 socket 目录；无需新依赖、PTY 实现或服务协议。相比上游持有 Harness 子进程，这是明确的内部适配取舍：本版不承诺该 Harness 是 Herdr 的前台进程，不激活原生交互、exact attach、Herdr Agent 检测或会话恢复。以后启用这些能力须另验，不把终端显示当作进程归属证明。接口依据仍为上面的锁定源码；子进程与退出依据见 [Rust 标准库 Child](https://doc.rust-lang.org/std/process/struct.Child.html)。
 
@@ -116,3 +117,8 @@ let generated = types.to_stream().to_string();
 保留范围是薄 NDJSON 传输、id 配对、协议握手，以及 3c 正式路径实际调用的少量方法和响应字段。它们对照钉定版本的官方类型与 schema，并由原生接口用例核验；不承诺支持 Herdr 的全部方法。没有给生产构建增加 typify、schemars、regress 或一套生成工具。
 
 本次没有做真实订阅事件的生成类型往返，也没有用生成类型调用 Claude；不声称整套协议已验证。C3 到此采用允许的回退。锁文件升级、3b 回归、受限环境里的真实 Claude 派工仍按 3c 四条验收另核，本条不代表 3c 已完成。
+
+- **2026-10-05 · 3c 新验收的接法**：官方 Herdr 0.9.3，源码 `7b116c05bfda646af39d2524c54e70c751f57ee8`、协议 22。三平台发布摘要已对照发布页并下载核对：Linux x86_64 `18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7`，macOS arm64 `5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157`，macOS x86_64 `db62d548ff3e832b087a96b1894a08d26be3905f1830309cd556783f215d4054`。原生 `layout.apply` 的 `command` 是 argv 数组，走 `create_tab_argv_command` → `TerminalRuntime`，不把调用方正文敲进交互式 shell。Agency 只交固定脚本路径，Herdr 持有脚本与 Claude 子进程。Claude print 的原生 `stream-json` 写入本次调用的私有文件；逐行读取，匹配 `system/init` 与 `result` 的会话标识，一轮结果到达就交回 Proposal，不等退出、不从屏幕取。错误结果保留原因，不伪报成功。`pane.exited` 只确认物理退出，脚本记录的退出码只作观测；`pane.close` 沿 Herdr 原生 `shutdown` 停止进程。文件都在执行目录之外；继承的沙箱拒绝 Agency 凭据根。官方版没有逐 pane 的状态目录拒写，恶意伪造这一档留给策略面，不承诺这份输出是不可伪造的工具直报。来源：[原生布局启动](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/app/api/layouts.rs)、[事件定义](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/api/schema/events.rs)、[终端停止](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/pane.rs)。本记录撤销上文 Agency 持有实际进程的接法；实际用例结果另追加，不以源码核对代替运行验证。
+
+- **同日 · 本机新路径实测**：macOS arm64，官方 Herdr 0.9.3，已登录的 Claude Code 2.1.289。在 Aqua 用户会话中运行 Buck 构建的 `herdr_test`，设 `HCTL2_HARNESS_LIVE=1`。`Runtime::start` 得到 `Proposal(schema=claude.result.v1, source=adapter_event): HCTL2_REAL_OK`，随后 `TurnReturned`；真实 `agency start → pair → catalog → prepare → activate → results` 得到 `ResultReturned` 与 `HCTL2_PORT_REAL_OK`。两条都通过受限环境，不复制或修改登录材料。另有确定性用例：Claude 输出一轮结果后仍睡眠，Proposal 与 `TurnReturned` 先到，实际进程祖先含 Herdr；原生停止后进程消失。错误结果、取消前未答完、不同目录同时派工、凭据拒读、状态目录在执行目录之外也通过。接法只交回原始输出，不判断 Task 完成、sysone 结论或生成物合格。
+- **同日 · 验证边界**：普通 CI 不设 live 开关时，两条真实 Claude 用例会打印未验证；不能把测试框架的通过统计当成已登录会话通过。当前本机实跑了 macOS arm64；Linux 与 macOS x86_64 的程序回归交 CI，真实登录会话未验证。没有第二家 Harness、原生交互、会话复用或恢复。逐 pane 状态目录防篡改仍未实现。C3 的类型生成回退不变，没有生产生成器依赖。

@@ -25,6 +25,8 @@ pub enum RuntimeEvent {
         bytes: Vec<u8>,
         source: EvidenceLevel,
     },
+    /// The harness returned this turn; neither task acceptance nor physical exit.
+    TurnReturned,
     Exited {
         code: Option<i32>,
         requested_stop: bool,
@@ -288,10 +290,10 @@ enum Frame {
     },
 }
 
-pub(crate) fn final_state(has_result: bool, code: Option<i32>, stopped: bool) -> DispatchState {
+pub(crate) fn final_state(has_result: bool, _code: Option<i32>, stopped: bool) -> DispatchState {
     if stopped {
         DispatchState::Cancelled
-    } else if has_result && code == Some(0) {
+    } else if has_result {
         DispatchState::ResultReturned
     } else {
         DispatchState::CannotFulfill

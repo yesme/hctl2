@@ -1,4 +1,4 @@
-//! Private Herdr client for the locked 0.8.2 binary (protocol 20).
+//! Private Herdr client for the locked 0.9.3 binary (protocol 22).
 //! Pane and socket ids stay in this process. The caller supplies the pane
 //! program. This module does not register a profession or read a bundle.
 use crate::confine;
@@ -17,7 +17,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const PROTOCOL: u32 = 20;
+pub const PROTOCOL: u32 = 22;
 
 pub struct Client {
     socket: PathBuf,
@@ -99,7 +99,6 @@ pub struct Server {
     child: Child,
     pub socket: PathBuf,
     pub state: PathBuf,
-    pub(crate) read_paths: Vec<PathBuf>,
 }
 
 impl Server {
@@ -200,7 +199,6 @@ impl Server {
                     child: stop.disarm(),
                     socket,
                     state: state.to_path_buf(),
-                    read_paths,
                 });
             }
             if stop.try_wait()?.is_some() {
@@ -212,7 +210,7 @@ impl Server {
         let detail = std::fs::read_to_string(state.join("server.err")).unwrap_or_default();
         Err(PortError::new(
             "HERDR_NOT_READY",
-            format!("locked Herdr server did not answer protocol 20: {detail}"),
+            format!("locked Herdr server did not answer protocol {PROTOCOL}: {detail}"),
             "use_locked_herdr",
         ))
     }

@@ -60,59 +60,7 @@ pub fn command(
     }
 }
 
-/// Restrict Agency's native child separately from Herdr's display process.
-/// The program cannot read credentials or write Herdr's private state or socket.
-pub(crate) fn pane_program(
-    program: &Path,
-    exec_root: &Path,
-    credential_root: &Path,
-    state: &Path,
-    socket_dir: &Path,
-    profile: &Path,
-) -> Result<Command> {
-    let credential = credential_root.canonicalize()?;
-    let exec_root = exec_root.canonicalize()?;
-    let state = state.canonicalize()?;
-    let socket_dir = socket_dir.canonicalize()?;
-    if allowed_tree_contains_credential(&exec_root, &credential)
-        || allowed_tree_contains_credential(&exec_root, &state)
-        || allowed_tree_contains_credential(&exec_root, &socket_dir)
-    {
-        return Err(PortError::invalid(
-            "pane directory overlaps private service data",
-        ));
-    }
-    if cfg!(target_os = "macos") {
-        let mut text = String::from("(version 1)\n(allow default)\n");
-        for path in [&credential, &state, &socket_dir] {
-            let literal = scheme_literal(&path.display().to_string())?;
-            text.push_str(&format!(
-                "(deny file-read* (subpath \"{literal}\"))\n(deny file-write* (subpath \"{literal}\"))\n"
-            ));
-        }
-        fs::write(profile, text)?;
-        let mut command = Command::new("/usr/bin/sandbox-exec");
-        command.arg("-f").arg(profile).arg("/bin/sh").arg(program);
-        Ok(command)
-    } else {
-        let helper = std::env::var_os("HCTL2_CONFINE_BIN")
-            .map(PathBuf::from)
-            .unwrap_or(std::env::current_exe()?);
-        let helper = helper.canonicalize()?;
-        // This process is spawned by Agency, not the already restricted server.
-        // Its independent ruleset grants only this dispatch and read-only binaries.
-        let mut command = Command::new(helper);
-        command
-            .arg("--confine")
-            .arg(credential)
-            .arg("--")
-            .arg("/bin/sh")
-            .arg(program);
-        Ok(command)
-    }
-}
-
-/// Scheme strings treat `\` as an escape. A raw backslash would deny a different path.
+/// Scheme strings treat `\\` as an escape. A raw backslash would deny a different path.
 fn scheme_literal(path: &str) -> Result<String> {
     if path.contains('\n') || path.contains('\0') {
         return Err(PortError::invalid("credential path cannot be embedded"));
