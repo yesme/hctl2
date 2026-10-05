@@ -1408,6 +1408,102 @@ fn project_policy_checks_agency_profession_permissions_and_budget() {
 }
 
 #[test]
+fn unknown_selection_policy_is_rejected_at_project_create_and_update() {
+    let mut e = Env::new();
+    let mut definition = def("invalid-policy");
+    definition.settings.selection_policy = json!({"allow_all_typo":true});
+    for (name, action) in [
+        (
+            "bad-create-policy",
+            Action::Create {
+                repo_id: e.rid.clone(),
+                definition: definition.clone(),
+            },
+        ),
+        (
+            "bad-update-policy",
+            Action::Update {
+                project_id: e.a.clone(),
+                version: 1,
+                definition,
+            },
+        ),
+    ] {
+        assert_eq!(e.apply(name, action).unwrap_err().code, "INVALID_INPUT");
+    }
+    assert_eq!(e.store.list("project").unwrap().len(), 2);
+    assert_eq!(project(&e.store, &e.a).unwrap().version, 1);
+}
+
+#[test]
+fn shared_roster_validation_rejects_empty_profiles_and_non_state_candidate_refs() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let original = accepted_selection(&mut e, &room, "typed-reference", true, None);
+    let project = project(&e.store, &a).unwrap();
+    let mut missing = original.clone();
+    missing.worker_profiles.clear();
+    let error = participant::selection::validate_roster(&e.store, &project, &[missing])
+        .err()
+        .expect("empty Profile candidates rejected by shared validator");
+    assert_eq!(error.code, "INVALID_INPUT");
+    for field in ["agency", "profession"] {
+        let mut bad = original.clone();
+        let target = if field == "agency" {
+            &mut bad.agency
+        } else {
+            &mut bad.profession
+        };
+        target.version = Version::Revision(hash(b"non-state-reference"));
+        if field == "profession" {
+            bad.selected_item = bad.profession.clone();
+        }
+        let error = participant::selection::validate_roster(&e.store, &project, &[bad])
+            .err()
+            .expect("candidate references require State versions");
+        assert_eq!(error.code, "INVALID_INPUT", "{field}");
+    }
+}
+
+#[test]
+fn malformed_selection_is_rejected_before_catalog_lookup() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let mut selected = accepted_selection(&mut e, &room, "structural-first", true, None);
+    selected.room_id = "another-room".into();
+    selected.agency.key.id = "never-accepted".into();
+    assert_eq!(
+        e.apply(
+            "malformed-selection",
+            select_action(&a, &room, vec![selected])
+        )
+        .unwrap_err()
+        .code,
+        "INVALID_INPUT"
+    );
+}
+
+#[test]
+fn new_selection_sources_include_exact_profile_revision() {
+    let mut e = Env::new();
+    let a = e.a.clone();
+    let room = chat::main_binding(&e.store, &a).unwrap().1.id;
+    let selected = accepted_selection(&mut e, &room, "source-profile", true, None);
+    let frozen_profile = selected.worker_profiles[0].clone();
+    let result = e
+        .apply(
+            "select-with-source",
+            select_action(&a, &room, vec![selected]),
+        )
+        .unwrap();
+    let refs: Vec<Reference> = serde_json::from_value(result["selections"].clone()).unwrap();
+    let record = required(&e.store, &refs[0].key).unwrap();
+    assert!(record.sources.contains(&frozen_profile));
+}
+
+#[test]
 fn mention_resolution_uses_exact_room_records_not_names_and_rejects_ambiguous_tags() {
     let mut e = Env::new();
     let a = e.a.clone();

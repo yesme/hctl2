@@ -7,6 +7,7 @@ pub mod chat;
 pub mod config;
 mod context_query;
 mod identity;
+mod profiles;
 mod projects;
 mod repositories;
 mod scm;
