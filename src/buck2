@@ -63,6 +63,13 @@ case "${1:-}" in
         if [ -n "$cc_bin" ]; then
             set -- "--config" "hctl2.cc=$cc_bin" "$@"
         fi
+        # read_config does not see .buckconfig.local. Forward the opt-in so
+        # the execution platform can turn on remote execution on this machine.
+        if [ -f "$project_root/../.buckconfig.local" ] &&
+            grep -q '^remote_execution *= *true$' "$project_root/../.buckconfig.local"
+        then
+            set -- "--config" "hctl2.remote_execution=true" "$@"
+        fi
         set -- "$buck_command" "$@"
         ;;
 esac
