@@ -57,6 +57,15 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_dispatch(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        crate::dispatch::reconcile(
+            Arc::clone(&self.store),
+            self.root.clone(),
+            Arc::clone(&self.services),
+        )
+    }
     pub(crate) fn reconcile_agencies(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
@@ -285,6 +294,7 @@ impl Control for ControlService {
                 }
             }
             "repo.list"
+            | "invocation.show"
             | "context.preview"
             | "context.show"
             | "repo.show"
@@ -316,7 +326,9 @@ impl Control for ControlService {
                 let services = Arc::clone(&self.services);
                 let root = self.root.clone();
                 match tokio::task::spawn_blocking(move || {
-                    if kind.starts_with("project.")
+                    if kind == "invocation.show" {
+                        crate::dispatch::show(&store, &actor, &payload)
+                    } else if kind.starts_with("project.")
                         || kind.starts_with("request.")
                         || matches!(kind.as_str(), "pending" | "overview")
                     {
@@ -411,6 +423,7 @@ impl Control for ControlService {
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
+            || req.operation.starts_with("invocation.")
         {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -427,7 +440,9 @@ impl Control for ControlService {
             };
             match tokio::task::spawn_blocking(move || {
                 let _guard = guard;
-                if operation.starts_with("profile.") {
+                if operation.starts_with("invocation.") {
+                    crate::dispatch::preview(&store, &services, &root, &actor, &operation, &payload)
+                } else if operation.starts_with("profile.") {
                     crate::profiles::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {
                     crate::projects::preview(&store, &services, &actor, &operation, &payload)
@@ -460,6 +475,7 @@ impl Control for ControlService {
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
+            || req.operation.starts_with("invocation.")
         {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
@@ -618,6 +634,17 @@ impl Control for ControlService {
         let result = match tokio::task::spawn_blocking(move || {
             // The blocking worker owns the guard even when its RPC client disconnects.
             let _guard = guard;
+            if operation.starts_with("invocation.") {
+                return crate::dispatch::submit(
+                    &store,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
             if operation.starts_with("profile.") {
                 return crate::profiles::submit(&store, &actor, &repo_request, &details)
                     .map_err(|err| present(&err));
@@ -1021,6 +1048,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("room.")
         || operation.starts_with("project.")
         || operation.starts_with("profile.")
+        || operation.starts_with("invocation.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {

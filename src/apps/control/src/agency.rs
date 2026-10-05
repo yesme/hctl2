@@ -36,6 +36,33 @@ pub fn paired_client(root: &Path, binding: &str) -> store::Result<Client> {
     let pairing: Pairing = serde_json::from_slice(&bytes)?;
     Ok(Client::new(pairing.endpoint.into(), pairing.key))
 }
+
+pub(crate) fn signed_ticket(
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &agency_proto::Dispatch,
+    generation: store::WriterGeneration,
+    permissions: Vec<agency_proto::Permission>,
+    expires_ms: u64,
+) -> store::Result<agency_proto::Ticket> {
+    let pairing: Pairing = serde_json::from_slice(&secrets(root).get(&dispatch.binding.id)?)?;
+    agency_proto::Ticket::sign(
+        agency_proto::TicketClaims {
+            id: format!("{}:{expires_ms}", dispatch.reference),
+            actor: actor.0.principal.clone(),
+            dispatch: dispatch.reference.clone(),
+            owner: dispatch.owner.clone(),
+            spec_digest: dispatch.spec_digest.clone(),
+            writer_generation: u64::try_from(generation.0)
+                .map_err(|_| invalid("writer generation"))?,
+            permissions,
+            input_lease: None,
+            expires_ms,
+        },
+        pairing.key.as_bytes(),
+    )
+    .map_err(err)
+}
 pub async fn query(
     shared: &Arc<Mutex<Option<Store>>>,
     root: &Path,
@@ -599,6 +626,26 @@ pub async fn preserve_results(
     actor: &TrustedActor,
     dispatch: &store::Record,
 ) -> store::Result<usize> {
+    let report = preserve_results_inner(shared, root, actor, dispatch, None).await?;
+    match report.refused.into_iter().next() {
+        Some((_, error)) => Err(error),
+        None => Ok(report.preserved),
+    }
+}
+
+pub struct PreservationReport {
+    pub preserved: usize,
+    pub refused: Vec<(String, StoreError)>,
+}
+
+/// A bad item does not discard later items from the same result page. Failed
+/// items are never acknowledged; the caller can retain the per-item refusal.
+pub async fn preserve_results_report(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &store::Record,
+) -> store::Result<PreservationReport> {
     preserve_results_inner(shared, root, actor, dispatch, None).await
 }
 
@@ -612,7 +659,12 @@ pub async fn preserve_results_failing_before_acknowledgement(
     dispatch: &store::Record,
     acknowledgement: usize,
 ) -> store::Result<usize> {
-    preserve_results_inner(shared, root, actor, dispatch, Some(acknowledgement)).await
+    let report =
+        preserve_results_inner(shared, root, actor, dispatch, Some(acknowledgement)).await?;
+    match report.refused.into_iter().next() {
+        Some((_, error)) => Err(error),
+        None => Ok(report.preserved),
+    }
 }
 
 async fn preserve_results_inner(
@@ -621,11 +673,12 @@ async fn preserve_results_inner(
     actor: &TrustedActor,
     dispatch: &store::Record,
     fail_before_acknowledgement: Option<usize>,
-) -> store::Result<usize> {
+) -> store::Result<PreservationReport> {
     let d: agency_proto::Dispatch = participant::decode(dispatch)?;
     let client = paired_client(root, &d.binding.id)?;
     let mut after = None;
     let mut count = 0usize;
+    let mut refused = Vec::new();
     loop {
         let mut query = agency_proto::ResultQuery::of(d.reference.clone());
         query.after = after.clone();
@@ -634,7 +687,7 @@ async fn preserve_results_inner(
             break;
         }
         for proposal in &page.proposals {
-            {
+            let stored = async {
                 let mut lock = shared.lock().await;
                 let store = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
                 participant::preserve_proposal(store, actor, dispatch, proposal)?;
@@ -648,11 +701,17 @@ async fn preserve_results_inner(
                 if store.read_material(actor, &record.materials[0])? != proposal.output {
                     return Err(invalid("exact preserved bytes cannot be read back"));
                 }
+                Ok::<_, StoreError>(())
+            }
+            .await;
+            if let Err(error) = stored {
+                refused.push((proposal.header.proposal_id.clone(), error));
+                continue;
             }
             if fail_before_acknowledgement == Some(count + 1) {
                 return Err(invalid("preservation acknowledgement stopped"));
             }
-            let _: Value = client
+            let acknowledgement: store::Result<Value> = client
                 .call(
                     "preserve",
                     &agency_proto::Preservation {
@@ -662,8 +721,11 @@ async fn preserve_results_inner(
                     },
                 )
                 .await
-                .map_err(err)?;
-            count += 1;
+                .map_err(err);
+            match acknowledgement {
+                Ok(_) => count += 1,
+                Err(error) => refused.push((proposal.header.proposal_id.clone(), error)),
+            }
         }
         if page.complete {
             break;
@@ -673,7 +735,10 @@ async fn preserve_results_inner(
             break;
         }
     }
-    Ok(count)
+    Ok(PreservationReport {
+        preserved: count,
+        refused,
+    })
 }
 fn now_ms() -> u64 {
     u64::try_from(
@@ -806,7 +871,7 @@ mod authorization_tests {
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
     #[test]
-    fn matching_record_version_alone_does_not_authorize_a_room_invocation() {
+    fn matching_record_version_does_not_authorize_a_malformed_room_invocation() {
         let root = std::env::temp_dir().join(format!(
             "hctl-agency-owner-{}-{}",
             std::process::id(),

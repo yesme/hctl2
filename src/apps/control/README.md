@@ -12,6 +12,18 @@
 
 最少 CLI：`hctl2 profile create --input profile.json --key KEY` 先预览，同一命令加 `--preview-token TOKEN` 确认。文件是 `{"id":"research","profile":{…}}`，其中 Profile 的字段见 [Participant README](../../crates/participant/README.md#第-5-包主体--选入校验与-worker-profile)。创建后精确引用在 `revision`，选人时填入 `worker_profiles`。更新命令和只读查询留第 5 包后半段；下一段主体接 Invocation 与四步启动，不由本入口代替。
 
+## 第 5b 包 · 只读派工主链
+
+`dispatch.rs` 接最少的 `invocation.start` Preview / Submit 和 `invocation.show` Query，actor 仍由本机连接取得。CLI 为 `hctl2 invocation preview --input invocation.json --key KEY`、`start --input invocation.json --key KEY --preview-token TOKEN`、`show PROJECT INVOCATION`。输入是 Project 的 `invocation::Input`，不接受调用者写好的 Execution Spec 或 Bundle。预览返回真实选入记录、Profile、权限、预算、必需 Skill、发布确认缺省和冻结 Context；token 数未实现，仍为 `null`。
+
+`dispatch/context.rs` 用第 4 包的选材和组装器：请求正文、Topic 的已确认提要及来源、显式 Task 的精确评论、该 Room 最新一页的服务器顺序窗口。只授 `context.read` 内所选来源，不授整 Project 的资料读取；超预算走既有 Pointer 字节副本。提交前重核选人、策略、Room 与存储来源版本。当前原生 Agency 不申报 required Skill；带必需 Skill 时因没有取回原文字节的端口返回 `SKILL_DELIVERY_UNAVAILABLE`，不冒充已装载。额外 Memo / Artifact 选材和平台评审评论线仍未接。
+
+人确认后，后台沿 Store 意图准备、持久化映射、激活；仅原 Invocation reducer 在确认第 4 步后提交运行状态。Unknown 只回读原请求。每份成果先保存和回读字节再确认；单项冲突按份报告，不挡后面的保全。Project 校验逐项身份、权限、冻结引用、证据与 schema，在同一事务里准入只读回答、结束 Invocation 和登记 Room 投影。它不判 Task 完成，不把一轮返回当成任务验收。
+
+`dispatch/recovery.rs` 只清理原派工，撤权后不走重新授权。停止请求不证明隔离，停止报告明确记 `isolation_confirmed=false`。完成后的投影独立于 Agency 在线状态，以原 Matrix PUT 事务键恢复；已准入记录与待投影意图可从 `invocation.show` 查看。同一启动键重投取原冻结包并走 Store 原命令校验，重启不重取当前窗口、不新派工。联系不上保持观测错误；已有映射被 Agency 明确报不存在时才进入丢失，停止依据仍保留。
+
+本机 `root//packaging/release:room-cli-test` 用真实 CLI、控制守护进程、独立脚本 Agency 和锁定的 Tuwunel / Gitea 走「配对 → 接受工种 → 创建 Profile → 选人 → 预览 → 启动 → 查看 → Room」。另测重启重投，以及 Matrix 停止后准入回答、控制面重启且 Agency 已停时恢复投影。它不运行真实 Claude，不冒充演示 2 验收。waiting_input 的 Request 收发、终端接管和写入型调用尚未接，本批不把合法边表测试报成这些能力。
+
 ## 控制服务
 
 P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进制仍是 `hctl2-control`。监听控制面数据目录下仅归属者可访问的 Unix socket（`control.sock`，模式 0600），对外提供 `hctl2.control.v1` 的 Query / Preview / Submit / Subscribe。存储打开在工作线程上，与 RPC 并发；`STORE_NOT_READY` 与 `UPGRADE_IN_PROGRESS` 把 `store` 的 `code` / `message` / `recovery_action` 原样放到错误对象里。

@@ -32,6 +32,7 @@ rust_test(
     crate_root = "room.rs",
     deps = [
         "root//apps/control:control",
+        "root//crates/agency-proto:agency_proto",
         "root//crates/chat:chat",
         "root//crates/foundation:foundation",
         "root//crates/store:store",
@@ -41,6 +42,7 @@ rust_test(
     env = hctl2_cargo_env() | {
         "CARGO_BIN_EXE_hctl2": "$(location root//apps/cli:hctl2)",
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
+        "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
         "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
     },
