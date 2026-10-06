@@ -182,3 +182,5 @@ macOS arm64 的 Aqua 用户会话运行 Buck 构建的同一测试产物，Herdr
 [Apple TN2206 的 Signing Modifies the Executable](https://developer.apple.com/library/archive/technotes/tn2206/_index.html) 明确说明签名修改主可执行文件。本仓库 `packaging/dependencies/platforms/macos/package.sh` 先搬动动态库引用，再用原生 `codesign` 重签 Herdr；`common/package.sh` 在这些操作后生成标准 SHA-256 清单。`install-package.sh` 验证归档根清单和安装后 payload 清单，完整发行包也沿用这个机制。Agency 只需读取现有清单里唯一、精确的 `libexec/hctl2/herdr` 条目，沿用已有 SHA-256 函数核实文件；清单缺失、条目缺失、重复或损坏均拒绝，不退回“能启动就接受”。这不是上游身份签名，也不承诺抵御同时篡改二进制与清单的人。
 
 Binding 的目录是接受时的精确快照，不随 Agency 上架自动改写。更新使用已有 `hctl2 agency pair`，以新 Binding ID、新命令 key 接受同一 Agency 的当前目录；旧 Binding 与已选入引用保留。没有新增目录刷新协议或依赖。真实安装包与 CLI 链路的验证结果以小活 N 的 PR 输出为准。
+
+**本机复核**：macOS arm64 的依赖包通过 `install.sh --prefix` 安装后，Agency 经同一份 Herdr 探测真实 Claude Code 2.1.291 与 Codex CLI 0.160.1，租户 catalog 同时列出 `claude-code`、`codex-cli`；二进制被修改后目录为空并报 `HERDR_DIGEST_MISMATCH`。这是版本探针，不是模型派工。Herdr 安装摘要为 `6a59633e170ddacf5c0635306395c9f24760aa357040b21b9dc1b416cee6ce08`，与下载锁的 `5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157` 不同。恢复旧比较与旧恢复动作后，两条真实 CLI / 安装用例分别失败于空工种目录和 `refresh_binding`；修正后通过。命令、版本探针输出与退回测试的 Build ID 见小活 N PR，不据此声称其他平台已实测。

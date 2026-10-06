@@ -21,7 +21,12 @@ impl AgencyProcess {
                 "HCTL2_CLAUDE",
                 std::env::var_os("HCTL2_STANDBY_FIXTURE").unwrap(),
             )
-            .env("HCTL2_CODEX", root.join("absent-codex"))
+            .env(
+                "HCTL2_CODEX",
+                std::env::var_os("HCTL2_TEST_CODEX")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| root.join("absent-codex")),
+            )
             .stdout(Stdio::null())
             .stderr(File::create(&log).unwrap());
         if let Some(install) = install {
@@ -126,6 +131,17 @@ fn installed_payload_catalogs_claude_and_rejects_tampered_herdr() {
         "catalog={catalog}; stderr={}",
         process.log()
     );
+    if std::env::var_os("HCTL2_TEST_CODEX").is_some() {
+        assert!(
+            catalog["professions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["reference"]["id"] == "codex-cli"),
+            "catalog={catalog}; stderr={}",
+            process.log()
+        );
+    }
     println!(
         "installed payload: {}; catalog: {catalog}",
         f.payload.display()
