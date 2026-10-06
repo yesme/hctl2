@@ -580,12 +580,20 @@ fn open_pane(
         .ok_or_else(|| PortError::invalid("layout pane missing"))?
         .to_owned();
     let remote = format!("unix://{}", socket.display());
-    client.call(
-        "agent.start",
-        json!({"name":format!("codex-{}", &hash(dir.as_os_str().as_encoded_bytes())[..24]),
-            "kind":"codex","pane_id":pane,"args":["resume", thread, "--remote", remote],
-            "timeout_ms":30_000}),
-    )?;
+    let params = json!({"name":format!("codex-{}", &hash(dir.as_os_str().as_encoded_bytes())[..24]),
+        "kind":"codex","pane_id":pane,"args":["resume", thread, "--remote", remote],
+        "timeout_ms":30_000});
+    // The shell pane can still be busy for a moment after layout.apply.
+    let ready = Instant::now() + Duration::from_secs(5);
+    loop {
+        match client.call("agent.start", params.clone()) {
+            Ok(_) => break,
+            Err(error) if error.message.contains("agent_pane_busy") && Instant::now() < ready => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => return Err(error),
+        }
+    }
     let timeout = Instant::now() + Duration::from_secs(30);
     while Instant::now() < timeout {
         if client

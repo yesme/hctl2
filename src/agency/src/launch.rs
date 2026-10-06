@@ -407,6 +407,25 @@ impl InstalledHerdr {
     }
 
     pub fn open_with_idle(binary: PathBuf, claude: &Path, idle: Duration) -> Result<Self> {
+        Self::open_inner(binary, claude, idle, None)
+    }
+
+    /// Catalog and run this Codex binary. Does not consult `HCTL2_CODEX` or `PATH`.
+    pub fn open_with_codex(
+        binary: PathBuf,
+        claude: &Path,
+        codex: &Path,
+        idle: Duration,
+    ) -> Result<Self> {
+        Self::open_inner(binary, claude, idle, Some(codex.to_path_buf()))
+    }
+
+    fn open_inner(
+        binary: PathBuf,
+        claude: &Path,
+        idle: Duration,
+        codex_override: Option<PathBuf>,
+    ) -> Result<Self> {
         if idle.is_zero() {
             return Err(PortError::invalid("standby idle duration must be positive"));
         }
@@ -418,7 +437,10 @@ impl InstalledHerdr {
                 .to_path_buf(),
         ];
         let version = smoke_binary(&binary, &claude, &read_paths)?;
-        let (codex, codex_skip) = probe_codex(&binary);
+        let (codex, codex_skip) = match codex_override {
+            Some(path) => inspect_codex(&binary, path),
+            None => probe_codex(&binary),
+        };
         if let Some((path, _, _)) = &codex
             && let Some(parent) = path.parent()
         {
@@ -554,6 +576,13 @@ fn probe_codex(herdr: &Path) -> (Option<(PathBuf, String, String)>, Option<Strin
             Some("codex is not on PATH and HCTL2_CODEX is unset".into()),
         );
     };
+    inspect_codex(herdr, codex)
+}
+
+fn inspect_codex(
+    herdr: &Path,
+    codex: PathBuf,
+) -> (Option<(PathBuf, String, String)>, Option<String>) {
     let Ok(codex) = codex.canonicalize() else {
         return (None, Some("codex path cannot be canonicalized".into()));
     };
