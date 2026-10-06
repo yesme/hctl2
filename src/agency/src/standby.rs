@@ -367,9 +367,13 @@ fn run_job(
                 "inspect_dispatch",
             ));
         }
-        if let Some(returned) = read_json(&dir.join("returned.json"))? {
+        if let Some(returned) = read_json(&dir.join("returned.json"))?
+            && turn.is_some()
+        {
+            // A completion can land between the start-record read and this one.
+            // Wait until the start record is visible before comparing turn ids.
             check_job(&returned, job, &session.id)?;
-            if turn.as_deref() != returned["turnId"].as_str() || turn.is_none() {
+            if turn.as_deref() != returned["turnId"].as_str() {
                 return Err(PortError::invalid(
                     "completion does not match the native turn",
                 ));

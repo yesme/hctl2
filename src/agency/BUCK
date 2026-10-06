@@ -149,6 +149,7 @@ rust_test(
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | {
         "CODEX_HOME": "/tmp/hctl2-codex-fixture-home",
+        "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
         "HCTL2_LOCKED_HERDR": select({
             "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
