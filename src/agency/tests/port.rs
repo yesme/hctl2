@@ -1172,8 +1172,15 @@ async fn control_persists_mapping_before_activation_and_exact_bytes_before_ack()
 }
 
 #[cfg(feature = "control_port_test")]
-#[tokio::test]
-async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate() {
+async fn burst_control_fixture() -> (
+    Rig,
+    std::path::PathBuf,
+    store::TrustedActor,
+    Arc<tokio::sync::Mutex<Option<store::Store>>>,
+    store::Record,
+    Dispatch,
+    Vec<ResultPage>,
+) {
     use store::{Actor, ActorSource, Scope, Store, TrustedActor};
     let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
     let root = rig.root.join("control");
@@ -1288,6 +1295,15 @@ async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate
             break;
         }
     }
+    (rig, root, actor, shared, dispatch, running, pages)
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate() {
+    use store::Scope;
+    let (rig, root, actor, shared, dispatch, running, pages) = burst_control_fixture().await;
+    let client = control::agency::paired_client(&root, "pages").unwrap();
     assert_eq!(pages.len(), 2);
     assert!(pages[1].complete);
     let first = &pages[0].proposals[0];
@@ -1377,6 +1393,84 @@ async fn control_preserves_both_result_pages_and_a_failed_ack_does_not_duplicate
         .await
         .unwrap();
     assert!(follow.proposals[0].preserved);
+    rig.close().await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(feature = "control_port_test")]
+#[tokio::test]
+async fn control_reports_a_conflicting_first_result_but_preserves_and_acknowledges_the_second() {
+    let (rig, root, actor, shared, dispatch, running, pages) = burst_control_fixture().await;
+    let first = &pages[0].proposals[0];
+    let second = &pages[1].proposals[0];
+    // A conflicting inbox identity must be reported, not overwrite the original
+    // or prevent a later independent item from being saved.
+    {
+        let mut lock = shared.lock().await;
+        let s = lock.as_mut().unwrap();
+        let record = participant::value(
+            participant::key(
+                dispatch.key.scope.clone(),
+                "proposal_inbox",
+                &first.header.proposal_id,
+            ),
+            1,
+            &json!({"different_existing_result":true}),
+        )
+        .unwrap();
+        let input = serde_json::to_value(&record).unwrap();
+        let c = store::Command {
+            command_id: "conflicting-inbox-fixture".into(),
+            idempotency_key: "conflicting-inbox-fixture".into(),
+            actor: actor.0.clone(),
+            target: record.key.clone(),
+            expected: store::Expected::Absent,
+            binding: participant::reference(&dispatch),
+            operation: "fixture".into(),
+            input_digest: store::Command::digest_input("fixture", &input).unwrap(),
+            input,
+        };
+        s.submit(s.generation(), &actor, &c, None, |tx| {
+            tx.put(&record)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+    }
+    let report = control::agency::preserve_results_report(&shared, &root, &actor, &dispatch)
+        .await
+        .unwrap();
+    assert_eq!(report.preserved, 1);
+    assert_eq!(report.refused.len(), 1);
+    assert_eq!(report.refused[0].0, first.header.proposal_id);
+    let client = control::agency::paired_client(&root, "pages").unwrap();
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(running.reference.clone()))
+        .await
+        .unwrap();
+    assert!(!page.proposals[0].preserved);
+    let page: ResultPage = client
+        .call(
+            "results",
+            &ResultQuery::of(running.reference).after(first.header.proposal_id.clone()),
+        )
+        .await
+        .unwrap();
+    assert!(page.proposals[0].preserved);
+    let lock = shared.lock().await;
+    let s = lock.as_ref().unwrap();
+    let inbox = s
+        .get(&participant::key(
+            dispatch.key.scope.clone(),
+            "proposal_inbox",
+            &second.header.proposal_id,
+        ))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        s.read_material(&actor, &inbox.materials[0]).unwrap(),
+        second.output
+    );
+    drop(lock);
     rig.close().await;
     let _ = std::fs::remove_dir_all(&root);
 }

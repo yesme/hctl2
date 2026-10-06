@@ -12,7 +12,7 @@ Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制�
 
 ## 第 5 包主体 · 选入校验与 Worker Profile
 
-主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段（#334）接 Profile 创建入口；Invocation 领域段接候选预览、授权冻结、状态与四步启动的第 1 步。Context 的业务选材、实际启动、结果准入、Room 投影与连接票据仍留主链段，不宣称派工或演示 2 已完成。
+主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段（#334）接 Profile 创建入口；Invocation 领域段（#360）接授权冻结与状态。本次主链接线补 Context、实际四步启动、只读回答准入、Room 投影与内部观察 / 停止票据。完整 Terminal 客户端与演示 2 验收仍未完成。
 
 `profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
 
@@ -39,37 +39,38 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 
 ## 第 5 包任务说明
 
-5b 首段已接 Profile 创建的 control Preview / Submit 与最少 CLI，复用 `prepare_profile / admit_profile`。真实主链按「配对 Agency → 接受工种 → 人确认创建只读 Profile → 选入名册 → Invocation 预览 / 启动 / 查看」起步，不靠测试直接写 Store，也不等后半段；最后三种 Invocation 操作由 5b 下一段接。Profile 更新 CLI 和只读查询留后半段。
+真实主链按「配对 Agency → 接受工种 → 人确认创建只读 Profile → 选入名册 → Invocation 预览 / 启动 / 查看」起步，不靠测试直接写 Store，也不等后半段。Control 的 `dispatch.rs` 沿本 crate 的计划、映射与保全接口接线；最少 CLI 已可走通脚本执行体。Profile 更新 CLI 和只读查询留后半段。
 
 5b 首段已接两处选入补齐：Project 创建 / 更新时按 `SelectionPolicy` 解析策略，让未知字段在保存前失败；新选入记录的 `sources` 带上精确 Worker Profile Revision，方便沿来源链读取，既有不可变选入记录不回写。Project 的 `domain_test` 有对应的失败输入与来源引用断言。
 
-第 2 包的测试授权仅核精确记录版本，不表示完整领域授权已接线。正式 Invocation 的 Pending 判定见下段；Unknown / Confirmed 的回读和字节保全不发新授权，后续输入与准入仍要核当前语义归属。当前逐份成果保全在首个错误处返回；第 5 包接多成果时改为逐份报告，不让一个坏成果挡住其余保全。
+第 2 包的测试授权仅核精确记录版本，不表示完整领域授权。正式 Invocation 的 Pending 判定见下段；Unknown / Confirmed 的回读和字节保全不发新授权，后续输入与准入仍要核当前语义归属。Control 的 `preserve_results_report` 逐份保存、回读与确认，返回 `preserved` 数量及 `(proposal_id, StoreError)` 拒绝项；一份冲突不挡后面的保全，失败项不确认。主链把拒绝依据持久化，已终态调用的后续结果仍只留审计。
 
-Invocation 领域段补了正式 `room_invocation` 的 Pending 授权判定：Control 先核原记录，再调用 Project 的 `current_authorization`；它不把状态版本当授权版本。`dispatch::plan` 提供不写库的 Record、EffectIntent 与依赖记录，让 Project 的同一 Store 事务保存授权和 prepare outbox。旧 `prepare_dispatch` 复用同一个校验入口；名册、租户或观察通道不产生领域授权。该段仍没有新的用户派工入口，多成果与 Unknown 后的准入接线留主链段。
+正式 `room_invocation` 的 Pending 判定先核原记录，再调用 Project 的 `current_authorization`，不把状态版本当授权版本。`dispatch::plan` 提供不写库的 Record、EffectIntent 与依赖记录，让 Project 的同一 Store 事务保存授权和 prepare outbox。正式 Invocation 的派工键就是其归属者 ID，按键读取，不扫描其他派工；旧 `prepare_dispatch` 复用同一校验入口。名册、租户或观察通道不产生领域授权。
 
 依据：[演示线开工书第 5 包](../../../.memo/design/p2-control-20260906/07-demo-kickoff.md#第-5-包--派工)、[从授权到派工](../../../docs/design/spec/connections.md#project--run--participant从授权到派工)、[结果准入](../../../docs/design/spec/connections.md#participant--project--run结果准入)。
 
 | 文件 | 要补什么 |
 | --- | --- |
 | `participant/src/selection.rs`、`profiles.rs` | Room 选入校验与 Profile 已在主体首批接线；Run 席位由 Run 后续消费同一精确引用形状 |
-| `participant/src/tickets.rs` | 按当前归属者、冻结规格、权限与控制面写者签发短期票据；连接不恢复领域授权 |
+| `apps/control/src/agency.rs` | 内部短期观察 / 停止票据已接；公共 Terminal 入口须核原归属者、冻结规格与权限，连接不恢复领域授权 |
 | `project/src/invocation.rs` | Room Invocation 的预览、状态机、语义版本、取消与重试、结果准入和 Room 投影；不要放到本 crate |
 | `apps/control/src/dispatch.rs` | 调用 Context 组装器和本包的准备 / 映射接口，再沿 Agency 端口激活；恢复原 outbox |
 | `apps/cli/src/invocation.rs`、`terminal.rs` | Invocation 与 Terminal 命令；端口的观察和输入对手方是 Agency |
 
-先走只读调用。没有唯一、获准的本 Room 候选时拒绝；模型提及与建议不创建调用。预览冻结执行者、Context、权限、预算与评审发布策略。四步启动沿现有接口，不在 RPC 成功后补写授权。当前测试中的授权归属者是测试预置记录，不表示 Invocation 业务已交付。
+先走只读调用。没有唯一、获准的本 Room 候选时拒绝；模型提及与建议不创建调用。预览冻结执行者、Context、权限、预算与评审发布策略。四步启动沿现有接口，不在 RPC 成功后补写授权。第 2 包端口测试的归属者是测试预置记录，不替代本次真实 CLI 主链的领域准入证据。
 
-每份结果保全后还要校验归属者状态与语义版本、绑定、Spec / Bundle、逐项输出范围、权限和证据，再由 Project 准入；迟到或失权的结果只留审计。包 6 才补 Write Lease、封存与 ChangeSet 准入。派工票据签发、真实 Terminal 连接、丢失判定与停止隔离报告也在后续业务接线，不能借当前配对凭据直接给模型命令权。
+每份结果保全后还要校验归属者状态与语义版本、绑定、Spec / Bundle、逐项输出范围、权限和证据，再由 Project 准入；迟到或失权的结果只留审计。包 6 才补 Write Lease、封存与 ChangeSet 准入。Control 内部按原派工签发分开的观察 / 停止票据，含自己的写者代次，不给模型控制面凭据或命令权。停止报告不证明隔离；本批只记已收到报告，`isolation_confirmed=false`。公共 Terminal 连接留后半段。
 
 失败用例：未选入名册、跨 Room 授权、旧语义版本、旧预览、错误输出授权、取消期间返回结果、响应丢失与控制面重启、未知输入投递、停止报告缺失。对照 CT-PROJECT、CT-PARTICIPANT、CT-CONNECTION 的现行行逐条列已做与未做，不把端口测试当领域准入测试。
 
 ## 第 5 包后半段任务说明
 
-后半段由 Qwen 或 DeepSeek 在主体全部合入后接，不在本批增加 CLI 或只读查询。以下是本批已经可用的库入口；Invocation 与票据入口由主体下一批补齐，届时同步写出精确输入输出。
+后半段由 Qwen 或 DeepSeek 在主体全部合入后接，不在本批增加其余 CLI。Invocation 输入输出见 [Project 的后半段说明](../project/README.md#第-5-包后半段任务说明)；它只接命令与只读展示，不复制 reducer。
 
 | 后半段命令 | 可复用接口与输入输出 | CT 对照 |
 | --- | --- | --- |
 | `profession` | 复用既有接受目录、`accept_profession` 与 `agency.profession.list`；输入 Binding ID 和精确 Profession，输出接受记录；不得靠显示名重建身份 | CT-PARTICIPANT 工种冻结与名册独立 |
 | `room roster` | 复用 Project `prepare / admit` 的 `Action::Select` 和 `project.roster`；输入 Project / Room 与预期版本、`Selection[]`，输出不可变引用与 optional 降级项 | CT-PROJECT 选人策略、CT-PARTICIPANT Room / Run 独立身份 |
 | Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线已由 5b 首段提供；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
-| Invocation list / cancel / retry、Terminal inspect / attach / replay | 本批不虚设 API；下一份主体 PR 定义状态机、取消 / 重试与票据后，在对应 README 补接线表。后半段只作命令与只读展示，不复制 reducer | CT-PROJECT Invocation 合法边；CT-PARTICIPANT 终端权限；CT-CONNECTION 失败恢复 |
+| Invocation list / cancel / retry | `invocation / lifecycle / end / prepare / start`，字段与确认流程见 Project README；沿 Control Query / Preview / Submit 接线 | CT-PROJECT Invocation 合法边；CT-CONNECTION 失败恢复 |
+| Terminal inspect / replay | Control 的 `agency::observe_dispatch(shared, root, actor, dispatch_record, after)` 返回 `Trace {dispatch, events, cursor, gap, complete}`；按 Project 与原派工记录校验 scope，不以 payload 自报 actor。输入租约与 attach 公共入口仍未实现，不能拿内部 `signed_ticket` 任意授予输入权限 | CT-PARTICIPANT 票据分权、观察游标与缺口；attach 及受管输入须后续补入口与失败用例 |

@@ -61,8 +61,8 @@ pub fn record_started(
     id: &str,
     now_ms: u64,
 ) -> store::Result<Value> {
-    let scoped = chat::owner(actor, project)?;
     let (root, invocation) = invocation(store, project, id)?;
+    let scoped = reducer(actor, &root)?;
     let (state_record, current) = lifecycle(store, project, id)?;
     let activation_id = format!("activate:{id}");
     let (_, effect_state) = store.effect(&activation_id)?;
@@ -114,6 +114,24 @@ pub fn record_started(
     })
 }
 
+pub(super) fn reducer(actor: &TrustedActor, root: &Record) -> store::Result<TrustedActor> {
+    if actor.0.source != store::ActorSource::InternalReducer
+        || actor.0.authority
+            != Some(Reference {
+                key: root.key.clone(),
+                version: Version::State(1),
+            })
+        || !actor.0.permission_scope.contains(&root.key.scope)
+    {
+        return Err(reject(
+            "PERMISSION_DENIED",
+            "original Invocation reducer required",
+            "request_authorization",
+        ));
+    }
+    Ok(TrustedActor(actor.0.clone()))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct End {
@@ -126,7 +144,7 @@ pub struct End {
 }
 
 /// Cancellation/failure/loss revoke authority and queue cleanup in one native transaction.
-/// Completion deliberately has no entry here: it requires result admission in the next segment.
+/// Completion deliberately has no entry here: it requires result admission.
 pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result<Value> {
     if input.key.trim().is_empty()
         || input.reason.trim().is_empty()
@@ -188,7 +206,10 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
             unsent.push(id.clone());
         }
     }
-    let requires_cleanup = !unsent.contains(&prepare_id);
+    let requires_cleanup = matches!(
+        store.effect(&prepare_id)?.1,
+        EffectState::Unknown | EffectState::Confirmed
+    );
     invocation.authorization.valid = false;
     let next_owner_version = root
         .version

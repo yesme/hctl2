@@ -12,7 +12,7 @@ pub struct AssemblyRequest {
     pub consumer: Owner,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Assembly {
     pub manifest: Sealed<Manifest>,
     pub bundle: Sealed<Bundle>,
@@ -85,9 +85,67 @@ impl Assembler for LocalAssembler {
         }
         fetched.sort_by_key(|(reference, _, kind)| order_key(kind, reference));
 
+        self.assemble_resolved(
+            AssemblyRequest { manifest, consumer },
+            fetched
+                .into_iter()
+                .map(|(reference, bytes, _)| crate::SourceContent { reference, bytes })
+                .collect(),
+        )
+    }
+}
+
+impl LocalAssembler {
+    /// Dispatch adapters resolve online sources outside Store transactions.
+    /// Reuse delivery, budgeting and freezing without pretending they are Store records.
+    pub fn assemble_resolved(
+        &self,
+        request: AssemblyRequest,
+        contents: Vec<crate::SourceContent>,
+    ) -> Result<Assembly> {
+        let AssemblyRequest { manifest, consumer } = request;
+        consumer.validate()?;
+        validate_manifest(&manifest)?;
+        let permission_digest =
+            crate::permission_digest(&self.permitted.iter().cloned().collect::<Vec<_>>());
+        if manifest.permission_digest != permission_digest {
+            return Err(PortError::new(
+                "PERMISSION_CHANGED",
+                "permission set differs",
+                "preview_again",
+            ));
+        }
+        if manifest.budget != self.budget {
+            return Err(PortError::new(
+                "BUDGET_CHANGED",
+                "budget differs",
+                "preview_again",
+            ));
+        }
+        if contents.len() != manifest.sources.len() {
+            return Err(PortError::invalid(
+                "each Manifest source needs exact delivery",
+            ));
+        }
+        let mut remaining = manifest.sources.clone();
+        for content in &contents {
+            if !self.permitted.contains(&content.reference.id) {
+                return Err(PortError::new(
+                    "PERMISSION_DENIED",
+                    "source is outside selected scope",
+                    "request_authorization",
+                ));
+            }
+            let index = remaining
+                .iter()
+                .position(|r| r == &content.reference)
+                .ok_or_else(|| PortError::invalid("duplicate or unselected source"))?;
+            remaining.remove(index);
+        }
+
         let mut inline_used = 0u64;
         let mut entries = Vec::new();
-        for (reference, bytes, _kind) in fetched {
+        for crate::SourceContent { reference, bytes } in contents {
             let entry_digest = hash(&bytes);
             let over_budget = inline_used + bytes.len() as u64 > self.budget;
             if over_budget {

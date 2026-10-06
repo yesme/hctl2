@@ -76,14 +76,24 @@ pub fn plan(
         return Err(invalid("accepted Profession or Agency source differs"));
     }
     let k = key(owner.key.scope.clone(), "dispatch_intent", id);
-    if spec.document.owner.kind == OwnerKind::RoomInvocation {
-        for previous in store.list("dispatch_intent")? {
+    // Formal Room Invocation dispatches use their owner ID as the only key.
+    // Test/legacy owners and Run Attempts retain the port's caller-supplied key.
+    if spec.document.owner.kind == OwnerKind::RoomInvocation && owner.key.kind == "room_invocation"
+    {
+        if id != owner.key.id {
+            return Err(reject(
+                "DISPATCH_EXISTS",
+                "Room Invocation dispatch key is its owner ID",
+                "inspect_original_dispatch",
+            ));
+        }
+        if let Some(previous) = store.get(&k)? {
             let input: Value = decode(&previous)?;
             let original: Sealed<ExecutionSpec> = serde_json::from_value(input["spec"].clone())?;
-            if original.document.owner == spec.document.owner && previous.key != k {
+            if original != *spec {
                 return Err(reject(
                     "DISPATCH_EXISTS",
-                    "Room Invocation has one dispatch",
+                    "dispatch key already freezes another Spec",
                     "inspect_original_dispatch",
                 ));
             }

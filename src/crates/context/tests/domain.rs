@@ -57,6 +57,69 @@ fn permission_digest(permitted: &[&str]) -> String {
     context::permission_digest(&ids)
 }
 
+#[test]
+fn resolved_online_sources_still_require_exact_set_permission_and_budget() {
+    let source = reference("online/room", &hash(b"window"));
+    for case in [
+        "missing",
+        "extra",
+        "wrong_reference",
+        "permission",
+        "budget",
+    ] {
+        let permitted = if case == "permission" {
+            vec!["other"]
+        } else {
+            vec!["online/room"]
+        };
+        let assembly = assembler(&permitted, 32);
+        let mut m = manifest(vec![source.clone()], 32, &permission_digest(&permitted));
+        let mut contents = vec![context::SourceContent {
+            reference: source.clone(),
+            bytes: b"window".to_vec(),
+        }];
+        match case {
+            "missing" => contents.clear(),
+            "extra" => contents.push(context::SourceContent {
+                reference: reference("extra", &hash(b"extra")),
+                bytes: b"extra".to_vec(),
+            }),
+            "wrong_reference" => contents[0].reference.revision = "different".into(),
+            "budget" => m.budget += 1,
+            _ => {}
+        }
+        assert!(
+            assembly
+                .assemble_resolved(
+                    AssemblyRequest {
+                        manifest: m,
+                        consumer: owner()
+                    },
+                    contents
+                )
+                .is_err(),
+            "{case}"
+        );
+    }
+    let permitted = [source.id.as_str()];
+    let result = assembler(&permitted, 1)
+        .assemble_resolved(
+            AssemblyRequest {
+                manifest: manifest(vec![source.clone()], 1, &permission_digest(&permitted)),
+                consumer: owner(),
+            },
+            vec![context::SourceContent {
+                reference: source,
+                bytes: b"window".to_vec(),
+            }],
+        )
+        .unwrap();
+    assert!(
+        matches!(&result.bundle.document.entries[0].delivery, Delivery::Pointer { bytes, .. } if bytes == b"window")
+    );
+    result.bundle.document.validate_delivery().unwrap();
+}
+
 /// CT: every entry carries the honest digest of the bytes actually
 /// delivered, and validate_delivery rejects a tampered copy.
 #[test]

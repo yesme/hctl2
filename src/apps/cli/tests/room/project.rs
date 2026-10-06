@@ -10,6 +10,377 @@ fn accepted(f: &Fixture, namespace: &str, kind: &str, key: &str, input: Value) -
 fn project_definition(name: &str) -> Value {
     json!({"name":name,"goal":"deliver B1","scope":"registered repo","roles":[],"role_members":{},"defaults":{},"settings":{"selection_policy":{},"publish_review_requires_confirmation":true}})
 }
+
+fn ready_timeline(f: &Fixture, project: &str, room: &str) -> Value {
+    for _ in 0..100 {
+        let (ok, result) = f.run(&["room", "timeline", project, room]);
+        if ok {
+            return result;
+        }
+        assert_eq!(result["error"]["code"], "CHAT_UNAVAILABLE", "{result}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    panic!("chat server did not become ready");
+}
+
+#[test]
+fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocation() {
+    let (f, _) = Fixture::packaged("dispatch-chain");
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    let registered = accepted(
+        &f,
+        "repo",
+        "register",
+        "register-dispatch",
+        json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"}),
+    );
+    let registration = &registered["registration"];
+    let repo = registration["repo_id"].as_str().unwrap();
+    let version = registration["version"].to_string();
+    let args = [
+        "repo",
+        "register",
+        "--confirm",
+        repo,
+        "--version",
+        &version,
+        "--platform-repo-id",
+        registration["observed"]["stable_id"].as_str().unwrap(),
+        "--key",
+        "confirm-dispatch",
+    ];
+    let (ok, plan) = f.run(&args);
+    assert!(ok, "{plan}");
+    let mut confirm = args.to_vec();
+    confirm.extend(["--preview-token", plan["preview_token"].as_str().unwrap()]);
+    assert!(f.run(&confirm).0);
+    let created = accepted(
+        &f,
+        "project",
+        "create",
+        "project-dispatch",
+        json!({"repo_id":repo,"definition":project_definition("Dispatch")}),
+    );
+    let p = created["project_id"].as_str().unwrap();
+    let room = created["main_room_id"].as_str().unwrap();
+    let agency_root = f.root.join("independent-agency");
+    let config = f.root.join("script.json");
+    let delay = f.root.join("delay-script");
+    std::fs::write(&config, json!({"program":"/bin/sh","arguments":["-c","read -r initial; if test -f \"$1\"; then sleep 2; fi; printf '%s\\n' '{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}'","dispatch-fixture",delay]}).to_string()).unwrap();
+    struct AgencyChild(std::process::Child);
+    impl Drop for AgencyChild {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let mut agency = AgencyChild(
+        Command::new(&binary)
+            .arg("--root")
+            .arg(&agency_root)
+            .arg("serve")
+            .arg("--script-config")
+            .arg(&config)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    for _ in 0..100 {
+        if Command::new(&binary)
+            .arg("--root")
+            .arg(&agency_root)
+            .arg("status")
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let (ok, binding) = f.run(&[
+        "agency",
+        "pair",
+        "--binding-id",
+        "local",
+        "--agency-root",
+        agency_root.to_str().unwrap(),
+        "--key",
+        "pair",
+    ]);
+    assert!(ok, "{binding}");
+    let (ok, catalog) = f.run(&["agency", "catalog", "local"]);
+    assert!(ok, "{catalog}");
+    let profession = &catalog["professions"][0];
+    let reference_path = f.root.join("profession.json");
+    std::fs::write(&reference_path, profession["reference"].to_string()).unwrap();
+    let (ok, accepted_profession) = f.run(&[
+        "agency",
+        "accept",
+        "--binding-id",
+        "local",
+        "--reference",
+        reference_path.to_str().unwrap(),
+        "--key",
+        "accept",
+    ]);
+    assert!(ok, "{accepted_profession}");
+    let profile = accepted(
+        &f,
+        "profile",
+        "create",
+        "profile",
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":"read_only","permissions":["context.read"],"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+    );
+    let binding_ref =
+        json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
+    let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":["context.read"]},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    accepted(
+        &f,
+        "project",
+        "select",
+        "select",
+        json!({"project_id":p,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":null,"selections":[selection]}),
+    );
+    let show = f.show(p, room);
+    accepted(
+        &f,
+        "room",
+        "send",
+        "context",
+        json!({"project_id":p,"room_id":room,"version":show["binding"]["version"],"body":"READ_ONLY_CONTEXT_MARKER"}),
+    );
+    let path = f.root.join("invocation.json");
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 60000;
+    std::fs::write(&path, json!({"project_id":p,"room_id":room,"target":"research","profile":profile["revision"],"request":"Return the exact answer without modifying files","budget":65536,"deadline_ms":deadline,"retry_of":null}).to_string()).unwrap();
+    let (ok, plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "invoke",
+    ]);
+    assert!(ok, "{plan}");
+    let frozen = &plan["effect_summary"]["assembly"]["bundle"]["document"];
+    assert_eq!(frozen["consumer"]["project"], p);
+    assert_eq!(
+        frozen["entries"].as_array().unwrap().len(),
+        2,
+        "request and this Room's exact online window"
+    );
+    // Starting without a real preview must not create an invocation.
+    let (ok, refusal) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "invoke",
+        "--preview-token",
+        "invented",
+    ]);
+    assert!(!ok);
+    assert_eq!(refusal["error"]["code"], "PREVIEW_REQUIRED");
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "invoke",
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let id = started["invocation_id"].as_str().unwrap();
+    let mut completed = Value::Null;
+    for _ in 0..150 {
+        let (ok, value) = f.run(&["invocation", "show", p, id]);
+        assert!(ok, "{value}");
+        if value["state"] == "completed" {
+            completed = value;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(
+        completed["state"], "completed",
+        "answer admission: {completed}"
+    );
+    assert_eq!(completed["results"][0]["output"], "DISPATCH_CHAIN_OK");
+    for _ in 0..100 {
+        let (ok, timeline) = f.run(&["room", "timeline", p, room]);
+        assert!(ok, "{timeline}");
+        let messages = timeline["events"].as_array().unwrap();
+        let count = messages
+            .iter()
+            .filter(|e| e["content"]["body"] == "DISPATCH_CHAIN_OK")
+            .count();
+        if count > 0 {
+            assert_eq!(count, 1);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(f.run(&["stop"]).0);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(f.run(&["start"]).0);
+    let (ok, again) = f.run(&["invocation", "show", p, id]);
+    assert!(ok, "{again}");
+    assert_eq!(again["results"], completed["results"]);
+    let (ok, replay_plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "invoke",
+    ]);
+    assert!(ok, "{replay_plan}");
+    assert_eq!(
+        replay_plan["effect_summary"], plan["effect_summary"],
+        "replay uses the frozen Context, including the original window"
+    );
+    let (ok, replay) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "invoke",
+        "--preview-token",
+        replay_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{replay}");
+    assert_eq!(replay, started);
+    let timeline = ready_timeline(&f, p, room);
+    assert_eq!(
+        timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["content"]["body"] == "DISPATCH_CHAIN_OK")
+            .count(),
+        1
+    );
+
+    // The answer can be admitted while Matrix is unavailable. Recovery of
+    // that outbox must not require the Agency that already returned it.
+    std::fs::write(&delay, b"delay").unwrap();
+    let mut next_input: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    next_input["deadline_ms"] = json!(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000
+    );
+    std::fs::write(&path, next_input.to_string()).unwrap();
+    let (ok, pending_plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "pending-projection",
+    ]);
+    assert!(ok, "{pending_plan}");
+    let stop_chat = || {
+        assert!(
+            Command::new(f.payload.join("bin/hctl2-services"))
+                .env("HCTL2_STATE_ROOT", f.root.join("services"))
+                .args(["stop", "tuwunel"])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    };
+    stop_chat();
+    let (ok, unavailable) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "pending-projection",
+        "--preview-token",
+        pending_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(!ok, "a live Room is required for a new authorization");
+    assert_eq!(unavailable["error"]["code"], "CHAT_UNAVAILABLE");
+    assert!(
+        Command::new(f.payload.join("bin/hctl2-services"))
+            .env("HCTL2_STATE_ROOT", f.root.join("services"))
+            .args(["start", "tuwunel"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    ready_timeline(&f, p, room);
+    let (ok, pending_call) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "pending-projection",
+        "--preview-token",
+        pending_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{pending_call}");
+    stop_chat();
+    let pending_id = pending_call["invocation_id"].as_str().unwrap();
+    let mut saved = Value::Null;
+    for _ in 0..150 {
+        let (ok, value) = f.run(&["invocation", "show", p, pending_id]);
+        assert!(ok, "{value}");
+        if value["state"] == "completed" {
+            saved = value;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(saved["state"], "completed", "{saved}");
+    assert!(
+        saved["pending_effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["operation"] == "invocation.project")
+    );
+    assert!(f.run(&["stop"]).0);
+    agency.0.kill().unwrap();
+    agency.0.wait().unwrap();
+    assert!(f.run(&["start"]).0);
+    let mut delivered = false;
+    for _ in 0..100 {
+        let timeline = ready_timeline(&f, p, room);
+        let count = timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["content"]["body"] == "DISPATCH_CHAIN_OK")
+            .count();
+        if count == 2 {
+            delivered = true;
+            break;
+        }
+        assert!(count < 2);
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(delivered, "pending projection recovered without the Agency");
+}
 #[test]
 fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart() {
     let (f, port) = Fixture::packaged("project-b1");
