@@ -23,9 +23,29 @@ fn ready_timeline(f: &Fixture, project: &str, room: &str) -> Value {
     panic!("chat server did not become ready");
 }
 
-#[test]
-fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocation() {
-    let (f, _) = Fixture::packaged("dispatch-chain");
+struct AgencyChild(std::process::Child);
+impl Drop for AgencyChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+/// A control plane, a paired real Agency and one selected roster, all reached
+/// through the CLI. `delayed_seconds` is how long the script execution body waits
+/// once `delay` exists; touching that file is what keeps a dispatch observable.
+struct Paired {
+    agency: AgencyChild,
+    repo: String,
+    project: String,
+    room: String,
+    profession: Value,
+    /// The exact `FrozenRef` file the catalog produced and `accept` consumed.
+    profession_reference: PathBuf,
+    profile: Value,
+    delay: PathBuf,
+}
+fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
+    let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let registered = accepted(
         &f,
@@ -61,21 +81,19 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
         "project-dispatch",
         json!({"repo_id":repo,"definition":project_definition("Dispatch")}),
     );
-    let p = created["project_id"].as_str().unwrap();
-    let room = created["main_room_id"].as_str().unwrap();
+    let project = created["project_id"].as_str().unwrap().to_owned();
+    let room = created["main_room_id"].as_str().unwrap().to_owned();
     let agency_root = f.root.join("independent-agency");
     let config = f.root.join("script.json");
     let delay = f.root.join("delay-script");
-    std::fs::write(&config, json!({"program":"/bin/sh","arguments":["-c","read -r initial; if test -f \"$1\"; then sleep 2; fi; printf '%s\\n' '{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}'","dispatch-fixture",delay]}).to_string()).unwrap();
-    struct AgencyChild(std::process::Child);
-    impl Drop for AgencyChild {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
+    let script = format!("read -r initial; if test -f \"$1\"; then sleep {delayed_seconds}; fi; printf '%s\\n' '{{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}}'");
+    std::fs::write(
+        &config,
+        json!({"program":"/bin/sh","arguments":["-c",script,"dispatch-fixture",delay]}).to_string(),
+    )
+    .unwrap();
     let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
-    let mut agency = AgencyChild(
+    let agency = AgencyChild(
         Command::new(&binary)
             .arg("--root")
             .arg(&agency_root)
@@ -114,16 +132,16 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
     assert!(ok, "{binding}");
     let (ok, catalog) = f.run(&["agency", "catalog", "local"]);
     assert!(ok, "{catalog}");
-    let profession = &catalog["professions"][0];
-    let reference_path = f.root.join("profession.json");
-    std::fs::write(&reference_path, profession["reference"].to_string()).unwrap();
+    let profession = catalog["professions"][0].clone();
+    let profession_reference = f.root.join("profession.json");
+    std::fs::write(&profession_reference, profession["reference"].to_string()).unwrap();
     let (ok, accepted_profession) = f.run(&[
         "agency",
         "accept",
         "--binding-id",
         "local",
         "--reference",
-        reference_path.to_str().unwrap(),
+        profession_reference.to_str().unwrap(),
         "--key",
         "accept",
     ]);
@@ -144,8 +162,31 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
         "project",
         "select",
         "select",
-        json!({"project_id":p,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":null,"selections":[selection]}),
+        json!({"project_id":project,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":null,"selections":[selection]}),
     );
+    (
+        f,
+        Paired {
+            agency,
+            repo: repo.to_owned(),
+            project,
+            room,
+            profession,
+            profession_reference,
+            profile,
+            delay,
+        },
+    )
+}
+
+#[test]
+fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocation() {
+    let (f, mut setup) = paired("dispatch-chain", 2);
+    let p = setup.project.as_str();
+    let room = setup.room.as_str();
+    let delay = &setup.delay;
+    let agency = &mut setup.agency;
+    let profile = &setup.profile;
     let show = f.show(p, room);
     accepted(
         &f,
@@ -275,7 +316,7 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
 
     // The answer can be admitted while Matrix is unavailable. Recovery of
     // that outbox must not require the Agency that already returned it.
-    std::fs::write(&delay, b"delay").unwrap();
+    std::fs::write(delay, b"delay").unwrap();
     let mut next_input: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     next_input["deadline_ms"] = json!(
         std::time::SystemTime::now()
@@ -380,6 +421,431 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
         std::thread::sleep(Duration::from_millis(200));
     }
     assert!(delivered, "pending projection recovered without the Agency");
+}
+
+/// The second-half surface walks the real CLI to its handler. Each refusal below
+/// is one this surface adds, so removing the check turns the case red.
+#[test]
+fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli() {
+    let (f, mut setup) = paired("dispatch-rest", 30);
+    let p = setup.project.as_str();
+    let room = setup.room.as_str();
+    let state_version = |value: &Value| value["state_version"].as_i64().unwrap();
+    let deadline = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000
+    };
+    // The script body only waits once this file exists, so the dispatch stays
+    // observable instead of returning its answer at once.
+    std::fs::write(&setup.delay, b"delay").unwrap();
+
+    // `profession accept` is the same command as `agency accept`, so the pairing's
+    // key replays the record instead of accepting a second time.
+    let (ok, listed) = f.run(&["profession", "list"]);
+    assert!(ok, "{listed}");
+    let professions = listed["records"].as_array().unwrap();
+    assert_eq!(professions.len(), 1, "{listed}");
+    let (ok, alias) = f.run(&[
+        "profession",
+        "accept",
+        "--binding-id",
+        "local",
+        "--reference",
+        setup.profession_reference.to_str().unwrap(),
+        "--key",
+        "accept",
+    ]);
+    assert!(ok, "{alias}");
+    assert_eq!(alias["profession"]["key"], professions[0]["key"]);
+
+    // Keeping a candidate means resending the whole roster at its exact version.
+    let (ok, roster) = f.run(&["room", "roster", "show", p, room]);
+    assert!(ok, "{roster}");
+    assert_eq!(roster["selections"].as_array().unwrap().len(), 1, "{roster}");
+    // A roster read returns the stored records; a select resends the selections.
+    let selections: Value = json!(roster["selections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|record| record["data"]["value"].clone())
+        .collect::<Vec<_>>());
+    assert_eq!(selections[0]["responsibility"], "research", "{selections}");
+    let select = |roster_version: Value, key: &str| {
+        let path = f.root.join("roster-select.json");
+        std::fs::write(
+            &path,
+            json!({"project_id":p,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":roster_version,"selections":selections})
+                .to_string(),
+        )
+        .unwrap();
+        let input = path.to_str().unwrap();
+        let (ok, preview) = f.run(&["room", "roster", "select", "--key", key, "--input", input]);
+        if !ok {
+            return (ok, preview);
+        }
+        f.run(&[
+            "room",
+            "roster",
+            "select",
+            "--key",
+            key,
+            "--input",
+            input,
+            "--preview-token",
+            preview["preview_token"].as_str().unwrap(),
+        ])
+    };
+    let (ok, absent) = select(json!(null), "select-absent");
+    assert!(!ok, "an existing roster is not an absent one");
+    assert_eq!(absent["error"]["code"], "VERSION_CONFLICT");
+    let (ok, reselected) = select(json!(1), "select-again");
+    assert!(ok, "{reselected}");
+    assert_eq!(reselected["roster_version"], 2);
+
+    // Reading a Profile shows the exact revision its pointer names, and grants nothing.
+    let (ok, shown) = f.run(&["profile", "show", "research"]);
+    assert!(ok, "{shown}");
+    assert_eq!(shown["pointer"]["version"], json!({"state":1}));
+    assert_eq!(shown["profile"]["model"], setup.profession["model"]);
+    let (ok, missing) = f.run(&["profile", "show", "no-such-profile"]);
+    assert!(!ok, "{missing}");
+    assert_eq!(missing["error"]["code"], "PROFILE_NOT_FOUND");
+
+    // One Invocation that stays observable, so cancellation has something to revoke.
+    let path = f.root.join("invocation.json");
+    std::fs::write(
+        &path,
+        json!({"project_id":p,"room_id":room,"target":"research","profile":setup.profile["revision"],"request":"Return the exact answer without modifying files","budget":65536,"deadline_ms":deadline(),"retry_of":null})
+            .to_string(),
+    )
+    .unwrap();
+    let input = path.to_str().unwrap();
+    let (ok, plan) = f.run(&["invocation", "preview", "--input", input, "--key", "rest"]);
+    assert!(ok, "{plan}");
+    let bundle = plan["effect_summary"]["assembly"]["bundle"]["document"]["id"].clone();
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        input,
+        "--key",
+        "rest",
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let id = started["invocation_id"].as_str().unwrap().to_owned();
+    let mut running = Value::Null;
+    for _ in 0..150 {
+        let (ok, value) = f.run(&["invocation", "show", p, &id]);
+        assert!(ok, "{value}");
+        if value["state"] == "running" {
+            running = value;
+            break;
+        }
+        assert_ne!(
+            value["state"], "completed",
+            "the delayed script answered before it could be observed: {value}"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(running["state"], "running", "{running}");
+
+    // Listing projects this Project's own records; a second Project in the same
+    // control plane proves it does not reach another one's.
+    let (ok, list) = f.run(&["invocation", "list", p]);
+    assert!(ok, "{list}");
+    assert_eq!(list["project_id"], p);
+    let invocations = list["invocations"].as_array().unwrap();
+    assert_eq!(invocations.len(), 1, "{list}");
+    assert_eq!(invocations[0]["invocation_id"], id);
+    assert_eq!(invocations[0]["owner"], running["owner"]);
+    assert_eq!(invocations[0]["state_version"], running["state_version"]);
+    let other = accepted(
+        &f,
+        "project",
+        "create",
+        "project-other",
+        json!({"repo_id":setup.repo,"definition":project_definition("Other")}),
+    );
+    let elsewhere = other["project_id"].as_str().unwrap();
+    let (ok, other_list) = f.run(&["invocation", "list", elsewhere]);
+    assert!(ok, "{other_list}");
+    assert!(
+        other_list["invocations"].as_array().unwrap().is_empty(),
+        "{other_list}"
+    );
+    for args in [
+        vec!["invocation", "show", elsewhere, &id],
+        vec!["terminal", "inspect", elsewhere, &id],
+        vec!["terminal", "replay", elsewhere, &id],
+    ] {
+        let (ok, crossed) = f.run(&args);
+        assert!(!ok, "{args:?}: {crossed}");
+        assert_eq!(crossed["error"]["code"], "NOT_FOUND", "{args:?}");
+    }
+
+    // Inspection goes through the Agency port on an observe-only ticket.
+    for after in ["0", "999999"] {
+        let (ok, inspected) = f.run(&["terminal", "inspect", p, &id, "--after", after]);
+        assert!(ok, "{inspected}");
+        assert_eq!(inspected["trace"]["dispatch"]["owner"]["id"], id);
+    }
+    // A cursor past the last recorded event is a gap, not an empty completion.
+    let (ok, ahead) = f.run(&["terminal", "inspect", p, &id, "--after", "999999"]);
+    assert!(ok, "{ahead}");
+    assert!(ahead["trace"]["gap"].as_bool().unwrap(), "{ahead}");
+    assert!(!ahead["trace"]["complete"].as_bool().unwrap(), "{ahead}");
+
+    // Stored replay reads the control plane only: the Agency is already gone.
+    setup.agency.0.kill().unwrap();
+    setup.agency.0.wait().unwrap();
+    let (ok, replayed) = f.run(&["terminal", "replay", p, &id]);
+    assert!(ok, "{replayed}");
+    let observations = replayed["observations"].as_array().unwrap();
+    assert!(!observations.is_empty(), "{replayed}");
+    assert_eq!(observations[0]["dispatch"]["owner"]["id"], id);
+    // Record keys order by digest, so replay restores the Agency's cursor order.
+    let cursors: Vec<u64> = observations
+        .iter()
+        .map(|o| o["cursor"].as_u64().unwrap())
+        .collect();
+    let mut ordered = cursors.clone();
+    ordered.sort_unstable();
+    assert_eq!(cursors, ordered, "replay is in observation order");
+    // Attach has no public entry: the internal signer never grants managed input.
+    let (ok, attach) = f.run(&["terminal", "attach", p, &id]);
+    assert!(!ok, "{attach}");
+    assert_eq!(attach["error"]["code"], "INPUT_NOT_IMPLEMENTED");
+
+    // Cancellation is the domain's `End`. Its preview reports the real consequence
+    // and never a confirmed isolation.
+    let cancel_path = f.root.join("cancel.json");
+    let cancel_input = cancel_path.to_str().unwrap();
+    let write_cancel = |version: i64| {
+        std::fs::write(
+            &cancel_path,
+            json!({"project_id":p,"invocation_id":id,"state_version":version,"reason":"operator ended the demonstration"})
+                .to_string(),
+        )
+        .unwrap();
+    };
+    write_cancel(state_version(&running));
+    let (ok, invented) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-rest",
+        "--input",
+        cancel_input,
+        "--preview-token",
+        "invented",
+    ]);
+    assert!(!ok, "{invented}");
+    assert_eq!(invented["error"]["code"], "PREVIEW_REQUIRED");
+    write_cancel(state_version(&running) + 100);
+    let (ok, stale) = f.run(&["invocation", "cancel", "--key", "cancel-stale", "--input", cancel_input]);
+    assert!(!ok, "{stale}");
+    assert_eq!(stale["error"]["code"], "VERSION_CONFLICT");
+    assert_eq!(
+        stale["error"]["message"],
+        "cancellation names a stale state version"
+    );
+    let mut failed: Value = serde_json::from_slice(&std::fs::read(&cancel_path).unwrap()).unwrap();
+    failed["outcome"] = json!("failed");
+    let failed_path = f.root.join("cancel-failed.json");
+    std::fs::write(&failed_path, failed.to_string()).unwrap();
+    let (ok, refused) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-failed",
+        "--input",
+        failed_path.to_str().unwrap(),
+    ]);
+    assert!(!ok, "{refused}");
+    assert_eq!(refused["error"]["code"], "INVOCATION_COMMAND_FAILED");
+    assert_eq!(
+        refused["error"]["message"],
+        "only a cancelled outcome is a client command"
+    );
+    write_cancel(state_version(&running));
+    let (ok, cancel_plan) =
+        f.run(&["invocation", "cancel", "--key", "cancel-rest", "--input", cancel_input]);
+    assert!(ok, "{cancel_plan}");
+    let effect = &cancel_plan["effect_summary"];
+    assert_eq!(effect["state"], "running");
+    assert_eq!(effect["outcome"], "cancelled");
+    assert_eq!(effect["state_version"], running["state_version"]);
+    assert!(effect["cleanup_pending"].as_bool().unwrap(), "{cancel_plan}");
+    assert_eq!(
+        effect["isolation_confirmed"],
+        json!(false),
+        "a queued stop is not a confirmed isolation"
+    );
+    let (ok, cancelled) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-rest",
+        "--input",
+        cancel_input,
+        "--preview-token",
+        cancel_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{cancelled}");
+    assert_eq!(cancelled["state"], "cancelled");
+    assert_eq!(cancelled["authorization_revoked"], json!(true));
+    assert_eq!(
+        cancelled["state_version"],
+        json!(state_version(&running) + 1)
+    );
+    assert!(cancelled["cleanup_pending"].as_bool().unwrap(), "{cancelled}");
+    // A second cancellation under a new key finds a terminal Invocation and writes
+    // nothing, so it cannot enqueue a second stop for the same dispatch.
+    write_cancel(state_version(&running) + 1);
+    let (ok, twice) = f.run(&["invocation", "cancel", "--key", "cancel-twice", "--input", cancel_input]);
+    assert!(!ok, "{twice}");
+    assert_eq!(twice["error"]["code"], "INVALID_TRANSITION");
+
+    let (ok, after) = f.run(&["invocation", "list", p]);
+    assert!(ok, "{after}");
+    let revoked = &after["invocations"][0];
+    assert_eq!(revoked["state"], "cancelled");
+    assert_eq!(
+        revoked["state_version"],
+        json!(state_version(&running) + 1)
+    );
+    assert_ne!(
+        revoked["owner"], running["owner"],
+        "revocation advances the authorization root"
+    );
+
+    // Retry names the exact revoked authorization and freezes its own Bundle.
+    let retry_of = f.root.join("retry-of.json");
+    std::fs::write(&retry_of, revoked["owner"].to_string()).unwrap();
+    let stale_owner = f.root.join("stale-owner.json");
+    std::fs::write(&stale_owner, running["owner"].to_string()).unwrap();
+    let retry_path = f.root.join("retry.json");
+    std::fs::write(
+        &retry_path,
+        json!({"project_id":p,"room_id":room,"target":"research","profile":setup.profile["revision"],"request":"Return the exact answer without modifying files","budget":65536,"deadline_ms":deadline(),"retry_of":null})
+            .to_string(),
+    )
+    .unwrap();
+    let retry_input = retry_path.to_str().unwrap();
+    let retry_of_input = retry_of.to_str().unwrap();
+    let (ok, stale_retry) = f.run(&[
+        "invocation",
+        "retry",
+        "--key",
+        "retry-stale",
+        "--input",
+        retry_input,
+        "--retry-of",
+        stale_owner.to_str().unwrap(),
+    ]);
+    assert!(!ok, "{stale_retry}");
+    assert_eq!(stale_retry["error"]["code"], "RETRY_NOT_ALLOWED");
+    // An input file that names a different original is refused before any request.
+    let mut claimed: Value = serde_json::from_slice(&std::fs::read(&retry_path).unwrap()).unwrap();
+    claimed["retry_of"] = running["owner"].clone();
+    let claimed_path = f.root.join("claimed-retry.json");
+    std::fs::write(&claimed_path, claimed.to_string()).unwrap();
+    let (ok, differs) = f.run(&[
+        "invocation",
+        "retry",
+        "--key",
+        "retry-claimed",
+        "--input",
+        claimed_path.to_str().unwrap(),
+        "--retry-of",
+        retry_of_input,
+    ]);
+    assert!(!ok, "{differs}");
+    assert_eq!(differs["error"]["code"], "INVOCATION_COMMAND_FAILED");
+    assert_eq!(
+        differs["error"]["message"],
+        "input retry_of differs from --retry-of"
+    );
+    let (ok, retry_plan) = f.run(&[
+        "invocation",
+        "retry",
+        "--key",
+        "retry-1",
+        "--input",
+        retry_input,
+        "--retry-of",
+        retry_of_input,
+    ]);
+    assert!(ok, "{retry_plan}");
+    assert_ne!(
+        retry_plan["effect_summary"]["assembly"]["bundle"]["document"]["id"],
+        bundle,
+        "a retry freezes its own Bundle"
+    );
+    let (ok, retried) = f.run(&[
+        "invocation",
+        "retry",
+        "--key",
+        "retry-1",
+        "--input",
+        retry_input,
+        "--retry-of",
+        retry_of_input,
+        "--preview-token",
+        retry_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{retried}");
+    let retry_id = retried["invocation_id"].as_str().unwrap().to_owned();
+    assert_ne!(retry_id, id);
+    assert_eq!(retried["state"], "pending");
+    assert_eq!(retried["state_version"], json!(1));
+    // The Agency is gone, so the retry can never commit a dispatch to observe.
+    let (ok, unmapped) = f.run(&["terminal", "inspect", p, &retry_id]);
+    assert!(!ok, "{unmapped}");
+    assert_eq!(unmapped["error"]["code"], "INVALID_INPUT");
+    assert_eq!(unmapped["error"]["message"], "dispatch mapping required");
+    let (ok, both) = f.run(&["invocation", "list", p]);
+    assert!(ok, "{both}");
+    assert_eq!(both["invocations"].as_array().unwrap().len(), 2, "{both}");
+
+    // Updating the pointer freezes a new immutable revision; reading shows exactly it.
+    let update_path = f.root.join("profile-update.json");
+    let mut definition = shown["profile"].clone();
+    definition["max_context_bytes"] = json!(32768);
+    std::fs::write(
+        &update_path,
+        json!({"id":"research","version":1,"profile":definition}).to_string(),
+    )
+    .unwrap();
+    let update_input = update_path.to_str().unwrap();
+    let (ok, update_plan) = f.run(&["profile", "update", "--key", "profile-2", "--input", update_input]);
+    assert!(ok, "{update_plan}");
+    let (ok, updated) = f.run(&[
+        "profile",
+        "update",
+        "--key",
+        "profile-2",
+        "--input",
+        update_input,
+        "--preview-token",
+        update_plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{updated}");
+    assert_eq!(updated["version"], json!(2));
+    let (ok, current) = f.run(&["profile", "show", "research"]);
+    assert!(ok, "{current}");
+    assert_eq!(current["pointer"]["version"], json!({"state":2}));
+    assert_eq!(current["profile"]["max_context_bytes"], json!(32768));
+    assert_ne!(current["revision"], shown["revision"], "revisions are immutable");
+    // The old pointer version is spent; a stale update cannot land on the new one.
+    let (ok, spent) = f.run(&["profile", "update", "--key", "profile-3", "--input", update_input]);
+    assert!(!ok, "{spent}");
+    assert_eq!(spent["error"]["code"], "VERSION_CONFLICT");
 }
 #[test]
 fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart() {

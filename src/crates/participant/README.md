@@ -74,3 +74,11 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 | Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线已由 5b 首段提供；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
 | Invocation list / cancel / retry | `invocation / lifecycle / end / prepare / start`，字段与确认流程见 Project README；沿 Control Query / Preview / Submit 接线 | CT-PROJECT Invocation 合法边；CT-CONNECTION 失败恢复 |
 | Terminal inspect / replay | Control 的 `agency::observe_dispatch(shared, root, actor, dispatch_record, after)` 返回 `Trace {dispatch, events, cursor, gap, complete}`；按 Project 与原派工记录校验 scope，不以 payload 自报 actor。输入租约与 attach 公共入口仍未实现，不能拿内部 `signed_ticket` 任意授予输入权限 | CT-PARTICIPANT 票据分权、观察游标与缺口；attach 及受管输入须后续补入口与失败用例 |
+
+## 第 5 包后半段 · 交付状态
+
+`profession list | accept` 复用既有接受目录与 `accept_profession`：`accept` 的身份来自目录产出的精确 `FrozenRef` 文件，不按显示名重建。Profile 更新走既有 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，Control 侧只把操作名与动作种类的一致性检查放开到 `profile.<kind>`。只读查询是新的 `show_profile(store, actor, id)`：actor 由已认证入口取得、不从 JSON 接受，先过 `access`，再读指针当前命名的精确 Revision；指针缺失以 `PROFILE_NOT_FOUND` 拒绝，不把缺失读成空成功。
+
+Terminal 只接观察与重放。`terminal.inspect` 走 `agency::observe_dispatch`，派工记录由原授权定位（`dispatch_intent` → `dispatch`），不是扫库扫出来的；scope 按 Project 校验，联系不上仍是观察错误，不撤销授权。`terminal.replay` 只读已存的 `dispatch_observation`：按派工引用过滤，再按 Agency 的 `cursor` 排序——存储的 key 顺序是摘要顺序，不是观察顺序。`terminal.attach` 是一个返回类型化拒绝的公共入口（`INPUT_NOT_IMPLEMENTED`）：它不联系 Agency，也不调 `signed_ticket`。受管输入与输入租约仍未实现，内部签名函数不是发权接口。
+
+`record_observation` 加了一处按内容寻址的去重。观察记录的 key 与修订摘要都由内容决定，同一份观察无论谁先看见都是同一个事实；公共入口带的是人的 actor，内部对账循环带的是 reducer 的 actor，两者先后记下同一份时，第二次提交撞上的是第一条命令的身份而不是去重，报 `IDEMPOTENCY_CONFLICT`。去重只在 key、修订摘要与来源三者都相同时成立，内容不同的观察仍各自成记录，重投也不新建停止意图。

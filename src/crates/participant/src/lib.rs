@@ -357,14 +357,20 @@ pub fn record_observation(
     );
     let mut record = value(k, 1, trace)?;
     record.sources = vec![reference(dispatch)];
+    // Key and revision digest are both content-addressed, so an identical
+    // observation is one fact whoever saw it first. Submitting it again under
+    // another authority would collide with the first command's identity instead of
+    // deduplicating, which is what a public read next to the reconcile loop does.
+    if let Some(stored) = store.get(&record.key)?
+        && stored.revision_digest == record.revision_digest
+        && stored.sources == record.sources
+    {
+        return Ok(());
+    }
     write(
         store,
         actor,
-        &format!(
-            "observation:{}:{}",
-            d.reference,
-            hash(&agency_proto::canonical(trace).map_err(port_error)?)
-        ),
+        &format!("observation:{}:{}", d.reference, trace_digest),
         "dispatch.observe",
         &record,
         None,

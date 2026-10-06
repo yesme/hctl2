@@ -63,6 +63,19 @@ pub(super) enum RoomCommand {
     Send(Write),
     Freeze(Write),
     Resume(Write),
+    #[command(subcommand)]
+    Roster(RosterCommand),
+}
+
+#[derive(Subcommand)]
+pub(super) enum RosterCommand {
+    /// Show the roster's exact selections. Grants no dispatch right.
+    Show {
+        project_id: String,
+        room_id: String,
+    },
+    /// Submit the whole roster; keeping a candidate means resending it.
+    Select(Write),
 }
 
 pub(super) async fn dispatch(
@@ -193,6 +206,23 @@ async fn execute(command: RoomCommand, root: &Path, as_json: bool) -> Result<(),
         RoomCommand::Send(w) => ("send", w),
         RoomCommand::Freeze(w) => ("freeze", w),
         RoomCommand::Resume(w) => ("resume", w),
+        RoomCommand::Roster(command) => match command {
+            RosterCommand::Show {
+                project_id,
+                room_id,
+            } => {
+                return query_task(
+                    root,
+                    as_json,
+                    "project.roster",
+                    json!({"project_id":project_id,"room_id":room_id}),
+                )
+                .await;
+            }
+            RosterCommand::Select(w) => {
+                return write(root, as_json, "project", "select", w).await;
+            }
+        },
     };
     write(root, as_json, "room", kind, w).await
 }

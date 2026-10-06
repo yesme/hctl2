@@ -282,3 +282,27 @@ pub fn profile_at(store: &Store, target: &Reference) -> store::Result<(Record, W
     }
     Ok((record, profile))
 }
+
+/// Read-only lookup of the pointer's exact revision. Reading shows a definition
+/// and grants nothing; the trusted actor comes from the authenticated entry.
+pub fn show_profile(store: &Store, actor: &TrustedActor, id: &str) -> store::Result<Value> {
+    access(actor)?;
+    agency_proto::nonempty(id).map_err(crate::port_error)?;
+    let pointer = store
+        .get(&key(Scope::Control, "worker_profile", id))?
+        .ok_or_else(|| {
+            reject(
+                "PROFILE_NOT_FOUND",
+                "profile pointer missing",
+                "create_profile",
+            )
+        })?;
+    let target: Reference = decode(&pointer)?;
+    let (record, profile) = profile_at(store, &target)?;
+    Ok(json!({
+        "profile_id": id,
+        "pointer": reference(&pointer),
+        "revision": reference(&record),
+        "profile": profile,
+    }))
+}

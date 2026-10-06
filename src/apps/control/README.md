@@ -10,7 +10,7 @@
 
 `profiles.rs` 把 `profile.create` 接到既有 Preview / Submit 和 Participant 的 `prepare_profile / admit_profile`。预览 token 绑定原输入和方案；提交校验 `command_id = profile:KEY` 与 `idempotency_key = KEY`，actor 来自连接。没有新 RPC、执行服务或配对凭据通道。这里只建定义，不调用 Agency，也不创建 Invocation。
 
-最少 CLI：`hctl2 profile create --input profile.json --key KEY` 先预览，同一命令加 `--preview-token TOKEN` 确认。文件是 `{"id":"research","profile":{…}}`，其中 Profile 的字段见 [Participant README](../../crates/participant/README.md#第-5-包主体--选入校验与-worker-profile)。创建后精确引用在 `revision`，选人时填入 `worker_profiles`。更新命令和只读查询留第 5 包后半段；下一段主体接 Invocation 与四步启动，不由本入口代替。
+最少 CLI：`hctl2 profile create --input profile.json --key KEY` 先预览，同一命令加 `--preview-token TOKEN` 确认。文件是 `{"id":"research","profile":{…}}`，其中 Profile 的字段见 [Participant README](../../crates/participant/README.md#第-5-包主体--选入校验与-worker-profile)。创建后精确引用在 `revision`，选人时填入 `worker_profiles`。更新命令和只读查询见下面的[后半段](#第-5-包后半段--命令入口)；下一段主体接 Invocation 与四步启动，不由本入口代替。
 
 ## 第 5b 包 · 只读派工主链
 
@@ -22,7 +22,15 @@
 
 `dispatch/recovery.rs` 只清理原派工，撤权后不走重新授权。停止请求不证明隔离，停止报告明确记 `isolation_confirmed=false`。完成后的投影独立于 Agency 在线状态，以原 Matrix PUT 事务键恢复；已准入记录与待投影意图可从 `invocation.show` 查看。同一启动键重投取原冻结包并走 Store 原命令校验，重启不重取当前窗口、不新派工。联系不上保持观测错误；已有映射被 Agency 明确报不存在时才进入丢失，停止依据仍保留。
 
-本机 `root//packaging/release:room-cli-test` 用真实 CLI、控制守护进程、独立脚本 Agency 和锁定的 Tuwunel / Gitea 走「配对 → 接受工种 → 创建 Profile → 选人 → 预览 → 启动 → 查看 → Room」。另测重启重投，以及 Matrix 停止后准入回答、控制面重启且 Agency 已停时恢复投影。它不运行真实 Claude，不冒充演示 2 验收。waiting_input 的 Request 收发、终端接管和写入型调用尚未接，本批不把合法边表测试报成这些能力。
+本机 `root//packaging/release:room-cli-test` 用真实 CLI、控制守护进程、独立脚本 Agency 和锁定的 Tuwunel / Gitea 走「配对 → 接受工种 → 创建 Profile → 选人 → 预览 → 启动 → 查看 → Room」。另测重启重投，以及 Matrix 停止后准入回答、控制面重启且 Agency 已停时恢复投影。它不运行真实 Claude，不冒充演示 2 验收。waiting_input 的 Request 收发、受管输入（终端接管）和写入型调用尚未接，本批不把合法边表测试报成这些能力。
+
+## 第 5 包后半段 · 命令入口
+
+`dispatch.rs` 增 `invocation.list` Query，以及 `invocation.cancel` 的 Preview / Submit：预览是领域侧 `cancel_preview` 的只读投影，确认后 Submit 把原 `End` 交给既有 `invocation::end`，不另开状态路径。`profiles.rs` 增 `profile.show`。三者与 Terminal 一样从连接的 `TrustedActor` 取身份、先过 `chat::owner` 的 Project 范围门再读记录，payload 不能自报 actor；错误 JSON 与主链一致（`error.code / message / recovery_action` 加非零退出）。
+
+`terminal.inspect | replay | attach` 挂在 Query 上，不占用 Submit 的幂等身份。因为 `inspect` 要等 Agency，这是 Query 处理里唯一的异步分支，它用 `shared.lock().await` 取存储，不用 `access()` 的阻塞锁。`attach` 直接返回类型化拒绝，不签发票据、不联系 Agency。
+
+CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster show | select`、`profile update | show`、`invocation list | cancel | retry`。写命令仍是「不带 `--preview-token` 就预览、带 token 就提交」；`profession accept` 与既有 `agency accept` 一样走 `keyed_submit`，只用于非危险操作。`room roster select` 与既有 `project select` 是同一入口的两个别名。`room-cli-test` 增一条端到端用例，从真实命令行走完这 12 条命令并逐条验拒绝；受管输入与写入型调用不在其中。
 
 ## 控制服务
 
