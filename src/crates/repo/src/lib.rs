@@ -1,6 +1,7 @@
 //! Repo owns registration. Platform calls and Git writes run outside Store transactions.
 #![forbid(unsafe_code)]
 
+pub mod changeset;
 pub mod git;
 mod model;
 mod registry;

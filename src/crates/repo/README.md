@@ -19,6 +19,14 @@
 
 注册 ID 来自控制面身份和命令幂等键，不从目录、URL 或提交内容算身份。同一命令只产生同一登记；不同的显式登记不按内容去重。
 
+## 第 6 包 · ChangeSet Revision
+
+Claude 的集成引用这里的已准入版本，不引用提交对象。`ChangeSetRevision` 的五个身份字段是 `change_set_revision_id`、`change_set_id`、`parent_revision_id`、`base_commit_sha`、`result_tree_sha`。`review_subject_digest` 只覆盖这五个字段。`producer_ref` 另存，不进这个摘要。`result_commit_sha` 只出现在封存输入里，不进版本。
+
+`open_change_set` 打开一个写入边界并授出第一张活跃租约。`admit` 在同一次控制面事务里接受工具回读的基线与结果树。归属者已取消或被替代、租约不是当前有效租约时，不写入版本。同一关联键重投返回原版本；同一基线与结果树只换提交包装时也不另开版本。人的显式封存把 `producer_ref` 记成 `human_command`。
+
+本段没有命令行，也没有调用 Git 或平台。预览、脚本执行体、`changeset show|diff`、发布评审、失权与评论线在后续 PR。
+
 ## CLI
 
 输入是 JSON。下例在运行控制面的机器上检查已有目录；`machine: "control"` 是明确选择该机器，不表示路径可跨机器访问。其他机器目前返回 `MACHINE_UNREACHABLE`，不当纯本地仓库。
