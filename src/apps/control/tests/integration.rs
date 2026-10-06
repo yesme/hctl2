@@ -625,3 +625,77 @@ async fn accept_advance_fast_forward_reaches_a_target_that_already_moved_to_the_
     assert_eq!(shown["receipt"]["target_head_after"], result_commit);
     assert_eq!(shown["receipt"]["integrated_tree"], result_tree);
 }
+
+#[tokio::test]
+async fn a_confirmation_lost_under_expected_head_recovers_with_the_original_pre_write_head() {
+    let (_temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
+    git(&repo_path, &["branch", "frozen", &base]);
+    git(&repo_path, &["switch", "-q", "--detach"]);
+    let mut input = input(&repo_id, "refs/heads/frozen", "expected_head");
+    input["strategy"] = json!("merge_commit");
+    let (token, preview) = h.preview("lost-frozen", &input).await;
+    assert_eq!(preview["expected_head"], base);
+    let id = h.submit("lost-frozen", &input, &token).await["intent_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let planned = {
+        let store = Arc::clone(&h.store);
+        let (repo_id, id) = (repo_id.clone(), id.clone());
+        tokio::task::spawn_blocking(move || {
+            control::integration::plan_attempt(&store, &repo_id, &id)
+        })
+        .await
+        .unwrap()
+        .unwrap()
+    };
+    let control::integration::Planned::Local { attempt, .. } = planned else {
+        panic!("local plan expected");
+    };
+    assert_eq!(attempt.expected_head, base);
+    // The tool writes the merge; control never gets to confirm.
+    let written = tool::run(
+        [
+            "integrate",
+            "--repo",
+            repo_path.to_str().unwrap(),
+            "--commit",
+            &attempt.commit,
+            "--base-commit-sha",
+            &base,
+            "--result-tree-sha",
+            &git(
+                &repo_path,
+                &["rev-parse", &format!("{result_commit}^{{tree}}")],
+            ),
+            "--target-ref",
+            "refs/heads/frozen",
+            "--expected-head",
+            &attempt.expected_head,
+            "--strategy",
+            "merge-commit",
+            "--idempotency-key",
+            &attempt.idempotency_key,
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from),
+    )
+    .unwrap();
+    assert_eq!(written.exit_code(), 0, "{}", written.body());
+    let merged = git(&repo_path, &["rev-parse", "refs/heads/frozen"]);
+    assert_ne!(merged, base);
+    // The retry reads the tool's own earlier result; the Receipt's pre-write head is still A.
+    h.reconcile().await;
+    let shown = h.show(&repo_id, &id).await;
+    assert_eq!(shown["intent"]["state"], "succeeded", "{shown}");
+    assert_eq!(shown["receipt"]["target_head_before"], base);
+    assert_eq!(shown["receipt"]["target_head_after"], merged);
+    assert_eq!(shown["receipt"]["readback"]["status"], "already_applied");
+    assert_eq!(shown["intent"]["attempts"], 1);
+    assert_eq!(
+        git(&repo_path, &["rev-parse", "refs/heads/frozen"]),
+        merged,
+        "no second write"
+    );
+    // Genuine drift before any write still fails under expected_head (see the drift test).
+}

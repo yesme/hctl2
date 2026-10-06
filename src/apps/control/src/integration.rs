@@ -487,9 +487,18 @@ fn integrate_local(
                 false,
             ));
         }
+        // On a retry the tool recognises its own earlier write (`already_applied`); its
+        // `before_head` is then the head *now*, not the head the original write started from.
+        // That original head is the frozen attempt's expected head, which the tool's own
+        // compare-and-swap verified when it wrote.
+        let before = if record["status"] == "already_applied" {
+            Some(attempt.expected_head.clone())
+        } else {
+            record["before_head"].as_str().map(str::to_owned)
+        };
         return Ok((
             Outcome::Succeeded {
-                target_head_before: record["before_head"].as_str().map(str::to_owned),
+                target_head_before: before,
                 target_head_after: after,
                 integrated_commit: new,
                 integrated_tree: tree,
