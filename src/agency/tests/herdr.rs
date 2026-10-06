@@ -1257,6 +1257,17 @@ fn collect(
     while Instant::now() < deadline {
         match running.events.recv_timeout(Duration::from_millis(200)) {
             Ok(event) => {
+                match &event {
+                    agency::runtime::RuntimeEvent::ProtocolError(message) => {
+                        eprintln!("runtime protocol error: {message}");
+                    }
+                    agency::runtime::RuntimeEvent::Observation { kind, payload, .. }
+                        if matches!(kind.as_str(), "harness_failure" | "stopped") =>
+                    {
+                        eprintln!("runtime {kind}: {payload}");
+                    }
+                    _ => {}
+                }
                 let done = matches!(
                     event,
                     agency::runtime::RuntimeEvent::Exited { .. }
