@@ -23,6 +23,17 @@ fn binary() -> PathBuf {
     path
 }
 
+fn installed_fixture(root: &std::path::Path) -> PathBuf {
+    let dest = root.join("libexec/hctl2/herdr");
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::copy(binary(), &dest).unwrap();
+    let digest = agency::catalog::file_digest(&dest).unwrap();
+    let manifest = root.join("share/hctl2/PAYLOAD.sha256");
+    std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+    std::fs::write(manifest, format!("{digest}  libexec/hctl2/herdr\n")).unwrap();
+    dest
+}
+
 fn scratch(name: &str) -> (PathBuf, PathBuf) {
     let cred =
         std::env::temp_dir().join(format!("hctl2-herdr-cred-{}-{}", name, std::process::id()));
@@ -509,21 +520,26 @@ fn official_herdr_state_is_outside_the_execution_directory() {
 }
 
 #[test]
-fn a_tampered_install_is_not_the_locked_herdr() {
-    let install = std::env::temp_dir().join(format!("hctl2-install-{}", std::process::id()));
-    let dest = install.join("libexec/hctl2/herdr");
-    let _ = std::fs::remove_dir_all(&install);
-    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &dest).unwrap();
-    assert!(launch::installed_herdr(&install).is_ok());
+fn a_tampered_install_is_not_the_packaged_herdr() {
+    let install = tempfile::tempdir().unwrap();
+    let dest = installed_fixture(install.path());
+    let digest = agency::catalog::file_digest(&dest).unwrap();
+    let manifest = install.path().join("share/hctl2/PAYLOAD.sha256");
+    assert!(launch::installed_herdr(install.path()).is_ok());
+    std::fs::remove_file(&manifest).unwrap();
+    // Even an exact upstream download is not an installed payload without its manifest.
+    assert_eq!(
+        launch::installed_herdr(install.path()).unwrap_err().code,
+        "HERDR_MANIFEST_INVALID"
+    );
+    std::fs::write(&manifest, format!("{digest}  libexec/hctl2/herdr\n")).unwrap();
     let mut bytes = std::fs::read(&dest).unwrap();
     bytes[0] ^= 0xff;
     std::fs::write(&dest, &bytes).unwrap();
     assert_eq!(
-        launch::installed_herdr(&install).unwrap_err().code,
+        launch::installed_herdr(install.path()).unwrap_err().code,
         "HERDR_DIGEST_MISMATCH"
     );
-    let _ = std::fs::remove_dir_all(&install);
 }
 
 #[test]
@@ -553,10 +569,8 @@ fn caller_timeout_is_not_a_successful_exit() {
 #[test]
 fn a_locked_install_smokes_before_it_is_cataloged() {
     let install = std::env::temp_dir().join(format!("hctl2-install-ok-{}", std::process::id()));
-    let dest = install.join("libexec/hctl2/herdr");
     let _ = std::fs::remove_dir_all(&install);
-    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &dest).unwrap();
+    let dest = installed_fixture(&install);
     let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&dest, permissions).unwrap();
@@ -742,9 +756,7 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
 #[test]
 fn agency_start_and_pair_catalog_the_confined_claude_profession() {
     let (root, install) = scratch("catalog-start");
-    let dest = install.join("libexec/hctl2/herdr");
-    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &dest).unwrap();
+    installed_fixture(&install);
     let claude = stub_claude(&install, "2.1.289");
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let started = Command::new(&agency)
@@ -2429,9 +2441,7 @@ impl Drop for StopAgency {
 async fn port_turn(name: &str, live: bool) {
     use agency_proto::*;
     let (root, install) = scratch(name);
-    let herdr = install.join("libexec/hctl2/herdr");
-    std::fs::create_dir_all(herdr.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &herdr).unwrap();
+    let herdr = installed_fixture(&install);
     let claude = if live {
         let found = Command::new("/usr/bin/which")
             .arg("claude")

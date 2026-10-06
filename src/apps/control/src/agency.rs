@@ -124,8 +124,8 @@ pub async fn submit(
             }) {
                 return Err(reject(
                     "BINDING_IMMUTABLE",
-                    "a different provider requires a new binding ID",
-                    "accept_new_binding",
+                    "a different provider requires hctl2 agency pair --binding-id <new-id> --key <new-key>",
+                    "hctl2 agency pair",
                 ));
             }
             let account = format!(
@@ -168,8 +168,8 @@ pub async fn submit(
             if previous.endpoint != pairing.endpoint || previous.key != pairing.key {
                 return Err(reject(
                     "BINDING_IMMUTABLE",
-                    "a different provider requires a new binding ID",
-                    "accept_new_binding",
+                    "a different provider requires hctl2 agency pair --binding-id <new-id> --key <new-key>",
+                    "hctl2 agency pair",
                 ));
             }
         }

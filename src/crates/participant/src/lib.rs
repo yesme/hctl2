@@ -115,8 +115,8 @@ pub fn accept_binding(
         {
             return Err(reject(
                 "BINDING_IMMUTABLE",
-                "accept changed promises under a new binding ID",
-                "accept_new_binding",
+                "accept changed promises with hctl2 agency pair --binding-id <new-id> --key <new-key>",
+                "hctl2 agency pair",
             ));
         }
     }
@@ -149,8 +149,8 @@ pub fn accept_profession(
     if !b.catalog.professions.contains(profession) {
         return Err(reject(
             "PROFESSION_CHANGED",
-            "candidate is not in the accepted catalog",
-            "refresh_binding",
+            "candidate is not in the accepted catalog; run hctl2 agency pair --binding-id <new-id> --agency-root <same-root> --key <new-key>, then accept under the new binding ID",
+            "hctl2 agency pair",
         ));
     }
     let k = key(
