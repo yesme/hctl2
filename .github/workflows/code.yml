@@ -423,8 +423,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-24.04
-    # Measured 17 s; the job's real cost is `rustup toolchain install`, which a
-    # cold runner pays in minutes.
+    # `rustup toolchain install` is minutes on a cold runner; the locked
+    # metadata step now resolves the graph and fetches crates from crates.io,
+    # so it is no longer the cheap step it once was.
     timeout-minutes: 15
     defaults:
       run:
@@ -444,7 +445,12 @@ jobs:
         run: cargo +1.98.0 fmt --all --check
 
       - name: Check locked workspace metadata
-        run: cargo +1.98.0 metadata --locked --no-deps --format-version 1 >/dev/null
+        # Resolving is what makes `--locked` mean something: a manifest that no
+        # longer matches `Cargo.lock` fails here. `--no-deps` skips resolution
+        # and leaves that drift green. Packages come from crates.io over the
+        # network (sparse index plus crate downloads); nothing is vendored in
+        # this repository, so a cold runner must be able to reach it.
+        run: cargo +1.98.0 metadata --locked --format-version 1 >/dev/null
 
   docs-check:
     name: Docs checks

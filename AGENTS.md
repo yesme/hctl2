@@ -39,6 +39,39 @@
 - **有冲突才并 `main`。** `main` 不要求分支先跟上它。有冲突时把 `origin/main` 并进分支解决：`Cargo.lock` 按依赖更新流程重新生成、不手改，并在 PR 里写一句冲突在哪、怎么解的。只动了锁文件或生成文件的不用重新评审；动了代码逻辑的，请评审席复核。
 - **合入之后删分支。** PR 的远端分支在合入时自动删除；自己本地的同名分支，以及以前留下的、已经合入的远端分支，自己删掉。家分支不删。删完回家分支，快进到 `origin/main`。
 
+## 提交署名
+
+每个由 harness 产出的提交，正文末尾加署名行，一席一行，格式固定：
+
+```
+Co-authored-by: <harness> <模型> effort=<档位> <用户号+<bot 名>[bot]@users.noreply.github.com>
+```
+
+- `<harness>`：席位用的 harness，按下表第二列写。
+- `<模型>`：harness 里 `/model` 一类命令显示的模型标识，原样照抄（如 `claude-fable-5-1`、`gpt-6.1-sol`），不写宣传名。
+- `effort=<档位>`：harness 自己的推理档位，照界面或配置里显示的写（如 `xhigh`、`high`、`medium`）；harness 没有这个概念就写 `default`。
+- 邮箱：下表那一家 bot 的。GitHub 据此把提交算到那个 bot 账号头上。数字是 bot **账号的用户号**，不是 App ID；`gh api 'users/<bot 名>%5Bbot%5D' --jq .id` 可查。
+- 几家一起改的提交写几行。人自己手改的提交也写用过的那家；只有在 GitHub 网页上直接改的提交不用（它的提交者是 GitHub）。不写别的署名行：不放会话链接，不写「Generated with …」。
+- Antigravity 席用 `an-antigravity-cli-bot`，不用 `a-gemini-cli-bot`（后者留给 Gemini CLI）。
+
+| 席位 | harness | bot | 邮箱 |
+| --- | --- | --- | --- |
+| Claude | Claude Code | a-claude-code-bot | `281844019+a-claude-code-bot[bot]@users.noreply.github.com` |
+| Codex | Codex | a-chatgpt-codex-bot | `281847692+a-chatgpt-codex-bot[bot]@users.noreply.github.com` |
+| Grok | Grok Build | a-grok-build-bot | `302482056+a-grok-build-bot[bot]@users.noreply.github.com` |
+| Antigravity | Antigravity | an-antigravity-cli-bot | `295901900+an-antigravity-cli-bot[bot]@users.noreply.github.com` |
+| Kimi | Kimi Code | a-kimi-code-bot | `281852327+a-kimi-code-bot[bot]@users.noreply.github.com` |
+| Qwen | Qoder | a-qwen-qoder-bot | `281849308+a-qwen-qoder-bot[bot]@users.noreply.github.com` |
+| DeepSeek | omp | a-deepseek-code-bot | `281851494+a-deepseek-code-bot[bot]@users.noreply.github.com` |
+| GLM | opencode | a-glm-code-bot | `281846436+a-glm-code-bot[bot]@users.noreply.github.com` |
+| MiniMax | mcode | a-minimax-code-bot | `281853025+a-minimax-code-bot[bot]@users.noreply.github.com` |
+| Muse | Muse Code | a-muse-code-bot | `327610061+a-muse-code-bot[bot]@users.noreply.github.com` |
+| Gemini CLI（现在不用） | Gemini CLI | a-gemini-cli-bot | `281848501+a-gemini-cli-bot[bot]@users.noreply.github.com` |
+
+例：`Co-authored-by: Claude Code claude-fable-5-1 effort=xhigh <281844019+a-claude-code-bot[bot]@users.noreply.github.com>`
+
+机械关卡：`PR contract` 检查 PR 里 2026-10-06 18:00（北京时间）之后的每个非合并提交都至少有一行合格的署名、邮箱在上表里；之前的提交不用改（所有者 2026-10-06：「就改未来的好了」）。表改了，`.github/workflows/pr-contract.yml` 里的清单要一起改。
+
 ## Repo 地图
 
 - 设计正文与约束：`docs/design/`（约束在 `spec/`；当前基线版本见根 README）
