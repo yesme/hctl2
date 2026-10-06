@@ -33,6 +33,12 @@ export_file(
 )
 
 export_file(
+    name = "gh-bin",
+    src = "gh-bin",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
     name = "jq-bin",
     src = "jq-bin",
     visibility = ["PUBLIC"],
