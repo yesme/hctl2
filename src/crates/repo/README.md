@@ -23,7 +23,15 @@
 
 Claude 的集成引用这里的已准入版本，不引用提交对象。`ChangeSetRevision` 的五个身份字段是 `change_set_revision_id`、`change_set_id`、`parent_revision_id`、`base_commit_sha`、`result_tree_sha`。`review_subject_digest` 只覆盖这五个字段。`producer_ref` 另存，不进这个摘要。`result_commit_sha` 只出现在封存输入里，不进版本。
 
-`open_change_set` 打开一个写入边界并授出第一张活跃租约。`admit` 在同一次控制面事务里接受工具回读的基线与结果树。归属者已取消或被替代、租约不是当前有效租约时，不写入版本。同一关联键重投返回原版本；同一基线与结果树只换提交包装时也不另开版本。人的显式封存把 `producer_ref` 记成 `human_command`。
+`open_change_set` 打开写入边界，租约持有者保存完整的 `ProducerRef`，含调用 ID 与版本。`admit(store, actor, seal, owner)` 使用 `Store::submit`：已有命令先返回存过的结果，新准入才在事务内检查当前租约、产出者与父版本并写入。`Seal.change_set_version` 是冻结的预期版本，不在重投时改成当前版本；同一关联键换输入仍拒绝。另一个关联键命中已有 Revision 时，也保存这次命令的结果。幂等键按操作、Repo / ChangeSet 分开。
+
+调用封存的 `Seal.lease` 为 `{lease_id, generation}`。租约状态、ID、代次以及持有者的调用 ID 和版本逐项核对。`owner` 是可信调用方提供的当前状态，不是工具回读，也不进命令摘要；新准入时取消或替代会拒绝，已经准入的重投仍取回原版本。这里尚未读取 Invocation 记录，尚未与 Result Proposal 准入共用事务；拆分 3 接提案时要在该事务内读取真实归属者状态，不把本段用例冒充完整提案验收。
+
+人的显式封存使用有 Control 与目标 Repo 权限的 `DirectClient`，`producer_ref` 为 `human_command`，其 `command_id` 就是保存的命令 ID，`Seal.lease` 为 `null`。它不借用调用的租约或状态，也不授新租约；旧租约撤销中时仍可由人的独立授权接受已封存内容。残留预览与确认的真实 CLI 接线留拆分 3 / 5，本段只有领域入口。
+
+基线、结果树和可选提交包装只接收 40 位小写 SHA-1；大写拒绝，不产生第二份身份。只换提交包装或产出来源时保留已有 Revision 的身份与首次产出者。`changeset_revision` 仍在 Repo 范围，ID 是版本 ID，正文八键不变：五个身份字段、`producer_ref`、`review_subject_digest`、`revision_digest`。
+
+发布段将按集成的读取形状写 `changeset_platform_binding`：Repo 范围，ID 为 `change_set_revision_id`，正文含 `review_request.index` 与 `platform_commit_sha`。本 PR 不写平台映射。`list_revisions` 当前按 ID 排序，不是准入顺序；当前版本指针、历史展示顺序留 `changeset show` 段，全表查询优化留查询段。
 
 本段没有命令行，也没有调用 Git 或平台。预览、脚本执行体、`changeset show|diff`、发布评审、失权与评论线在后续 PR。
 
