@@ -1,5 +1,9 @@
 # 发现一 · `agency:herdr_test` 的待机族
 
+> 状态：已落地 · 供小活 M 消费
+> 基线：main @ 47ca566（观察覆盖 2c68b3f → 47ca566）
+> 去向：小活 M 的输入（核销记录：M 的 PR）
+
 ## 形态
 
 四条用例都是：把标记交给假 harness（`src/agency/tests/standby_fixture.rs`，被测逻辑在 `src/agency/src/standby.rs`），再在预算内收集事件、断言标记出现过。

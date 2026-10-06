@@ -1,5 +1,9 @@
 # 发现二 · 原生服务族
 
+> 状态：已落地 · 供小活 M 消费
+> 基线：main @ 47ca566（观察覆盖 2c68b3f → 47ca566）
+> 去向：小活 M 的输入（核销记录：M 的 PR）
+
 ## 2.1 `control:chat_native_test`：重启后重发（macOS）
 
 用例 `native_matrix_create_send_resync_freeze_account_data_and_encryption`（`src/apps/control/src/chat/native_tests.rs:1027`）把原生 Tuwunel `kill` 掉再重启，然后：
