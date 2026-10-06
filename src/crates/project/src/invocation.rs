@@ -1,6 +1,8 @@
 //! Room-owned authorization. State revisions never become dispatch generations.
 mod lifecycle;
 pub use lifecycle::*;
+mod results;
+pub use results::admit_result;
 
 use crate::{
     decode, invalid, key, project, readonly, reference, reject, required, stale, value_record,
@@ -22,6 +24,8 @@ pub struct Input {
     pub key: String,
     pub project_id: String,
     pub room_id: String,
+    #[serde(default)]
+    pub task_id: Option<String>,
     /// Exact selection ID or responsibility, never a display name.
     pub target: String,
     pub profile: Reference,
@@ -45,9 +49,9 @@ pub struct Preview {
     binding: FrozenRef,
     repo: FrozenRef,
     policy_digest: String,
-    required_skills: Vec<FrozenRef>,
+    pub required_skills: Vec<FrozenRef>,
     optional_skill_degradations: Vec<participant::selection::SkillDegradation>,
-    brief: Option<MaterialRef>,
+    pub brief: Option<MaterialRef>,
     publish_review_requires_confirmation: bool,
     checks: Vec<Reference>,
 }
@@ -225,7 +229,7 @@ pub fn prepare(
         let original: Invocation = decode(&old)?;
         let (_, state) = lifecycle(store, &input.project_id, &old.key.id)?;
         if reference(&old) != *previous
-            || original.authorization.valid
+            || current_authorization(store, previous, now_ms)?
             || !state.state.terminal()
             || original.preview.input.room_id != input.room_id
         {

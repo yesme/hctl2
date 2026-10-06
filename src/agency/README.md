@@ -63,6 +63,8 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 当前限制：目录信任自动确认只识别英文界面；测试目录的信任记录由 Claude 原生保存，不自动删除。失效的续接标识可能等到三十秒启动时限才改用新会话。Herdr 关闭 pane 本身失败时，该选入记录的工作线程可能退出，后续请求报 `STANDBY_UNAVAILABLE`，须恢复 Runtime；不把关闭失败报成已回收。
 
+人在 pane 里操作的限制（#362 第三轮实测）：两次派工之间敲 `!` 命令照常执行，不影响下一次派工。敲普通的话会被会话插件挡掉，界面有提示。`/clear` 会换原生会话号，下一次派工失败一次；再下一次续接回的是清空之前的对话。派工正在回答时敲普通的话，会让当前派工以 `STANDBY_PROMPT_MISMATCH` 失败，回答丢失。这不是终端接管能力；接管做出来之前，派工期间不要动那个 pane，也不要在其中用 `/clear`。
+
 第二家 Harness、工具直报、工作副本管理与模型字段留后续包。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照

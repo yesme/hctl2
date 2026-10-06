@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod agency;
+mod invocation;
 mod profile;
 mod project;
 mod repo;
@@ -83,6 +84,8 @@ enum Command {
     Agency(agency::AgencyCommand),
     #[command(subcommand)]
     Profile(profile::ProfileCommand),
+    #[command(subcommand)]
+    Invocation(invocation::InvocationCommand),
 }
 
 #[derive(Subcommand)]
@@ -188,6 +191,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
     match command {
         Command::Agency(command) => agency::dispatch(command, root, json).await,
         Command::Profile(command) => profile::dispatch(command, root, json).await,
+        Command::Invocation(command) => invocation::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,

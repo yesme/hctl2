@@ -162,7 +162,7 @@ pub(crate) async fn write(
     }
     Ok(())
 }
-fn present(error: Option<proto::Error>, as_json: bool) {
+pub(crate) fn present(error: Option<proto::Error>, as_json: bool) {
     if let Some(e) = error {
         print_out(
             as_json,

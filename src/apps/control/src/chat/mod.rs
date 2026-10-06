@@ -43,6 +43,26 @@ fn client(services: &Supervisor) -> Result<matrix::Client> {
     matrix::Client::new(server, token)
 }
 
+/// The current server-ordered window, never a cached timeline or the source Topic's Room.
+pub(crate) fn invocation_window(services: &Supervisor, root: &Path, room: &Room) -> Result<Value> {
+    let client = client(services)?;
+    guard(&client, root, room, bound(room)?)?;
+    client.page(bound(room)?, None, true)
+}
+
+pub(crate) fn project_invocation_result(
+    services: &Supervisor,
+    root: &Path,
+    room: &Room,
+    txn: &str,
+    body: &str,
+) -> Result<Value> {
+    let client = client(services)?;
+    guard(&client, root, room, bound(room)?)?;
+    // Matrix PUT /send is natively idempotent for this exact sender/room/transaction ID.
+    client.send(bound(room)?, txn, body)
+}
+
 /// Project creation (package 辛) freezes this connection when admitting its main Room.
 pub fn configured_server(services: &Supervisor) -> Result<chat::Server> {
     Ok(config::load(services)?.0)
