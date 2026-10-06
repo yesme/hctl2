@@ -141,6 +141,40 @@ rust_test(
     visibility = ["PUBLIC"],
 )
 
+rust_test(
+    name = "codex_fixture_test",
+    srcs = ["tests/codex_fixture_test.rs"],
+    crate_root = "tests/codex_fixture_test.rs",
+    deps = [":service"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {
+        "CODEX_HOME": "/tmp/hctl2-codex-fixture-home",
+        "HCTL2_CONFINE_BIN": "$(location :agency)",
+        "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
+        "HCTL2_LOCKED_HERDR": select({
+            "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
+            "prelude//os:macos": select({
+                "prelude//cpu:arm64": "$(location root//packaging/dependencies:asset_macos_arm64_herdr)",
+                "prelude//cpu:x86_64": "$(location root//packaging/dependencies:asset_macos_x86_64_herdr)",
+            }),
+        }),
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "codex_fixture",
+    srcs = ["tests/codex_fixture.rs"],
+    crate_root = "tests/codex_fixture.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+)
+
 rust_binary(
     name = "standby_fixture",
     srcs = ["tests/standby_fixture.rs"],
@@ -177,6 +211,8 @@ filegroup(
         "control_port": ":control_port_test[clippy.txt]",
         "herdr": ":herdr_test[clippy.txt]",
         "standby_fixture": ":standby_fixture[clippy.txt]",
+        "codex_fixture": ":codex_fixture[clippy.txt]",
+        "codex_fixture_test": ":codex_fixture_test[clippy.txt]",
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],

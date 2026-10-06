@@ -12,6 +12,12 @@ path = "tests/standby_fixture.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "codex-fixture"
+path = "tests/codex_fixture.rs"
+test = false
+bench = false
+
 [dependencies]
 agency-proto = { path = "../crates/agency-proto" }
 clap.workspace = true

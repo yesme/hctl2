@@ -31,12 +31,13 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-3a（#323）、3b（#328）、3c（#335）已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话，删除生产路径的 print 调用；脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d。
+3a（#323）、3b（#328）、3c（#335）、3d 已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话。3e 把 Codex 接成并列工种：正文走一次性 app-server 的 `turn/start`，Herdr pane 跑 `codex resume --remote`。脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d、3e，以及 `docs/research/harness-dispatch-channel-20261006.md` 的决定建议。
 
 | 文件 | 当前职责 |
 | --- | --- |
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
 | `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架只读工种 |
+| `src/codex.rs` | 每个选入记录一个一次性 `codex app-server --listen unix://`；`turn/start` 交正文，pane 里 `codex resume --remote` |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
 | `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
@@ -57,7 +58,7 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 只激活 stop，不上架 input，不提供终端接管或 exact attach。一轮返回不是 Task 完成，不代 sysone 判断或生成物验收。状态目录在执行目录之外，但官方版没有逐 pane 防篡改，恶意伪造仍是未实现的策略点。依据与实现前实测见 [Herdr 复核](../../docs/research/sdk/herdr.md#复核记录) 与 [Claude 钩子复核](../../docs/research/harness-hooks-20260903.md#2026-10-06--claude-常驻会话的一轮结束)。
 
-默认 `root//agency:herdr_test` 跑确定性夹具；真实用例用 Rust 原生 `ignore` 标未验证。开真实验证：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`。macOS 上测试进程须在可访问登录钥匙串的 Aqua 会话；如果 Buck daemon 属于 Background，先用 Buck 构建，再在 Aqua 中运行同一产物。测试环境另需 Buck 声明的 `HCTL2_LOCKED_HERDR`、`HCTL2_CONFINE_BIN`、`HCTL2_STANDBY_FIXTURE`。真实 Linux 登录会话仍未验证，不放宽其登录材料路径。
+默认 `root//agency:herdr_test` 跑确定性夹具；真实用例用 Rust 原生 `ignore` 标未验证。Codex 的 app-server 子集由 `tests/codex_fixture.rs` 说，`root//agency:codex_fixture_test` 默认会跑：rollout 逐字核对、`turn/completed` 与 `item/completed` 只认本轮、打断后 `TurnStopped`、续接失败起新线程并标 `resume_failed`。开真实验证：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`。macOS 上测试进程须在可访问登录钥匙串的 Aqua 会话；如果 Buck daemon 属于 Background，先用 Buck 构建，再在 Aqua 中运行同一产物。测试环境另需 Buck 声明的 `HCTL2_LOCKED_HERDR`、`HCTL2_CONFINE_BIN`、`HCTL2_STANDBY_FIXTURE`。真实 Linux 登录会话仍未验证，不放宽其登录材料路径。
 
 夹具模拟原生界面的草稿恢复，不执行插件。`tests/turn.test.ts` 另用 Claude 自带的 `claude plugin test` 测实际生成插件；本机执行 `root//agency:herdr_test -- --test-arg=native_mod_ --test-arg=--include-ignored --test-arg=--nocapture`，需要已安装 Claude，不需要登录。CI 没有原生 Claude，默认略过；改插件后须另跑这组与真实会话用例。
 
@@ -65,7 +66,11 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 人在 pane 里操作的限制（#362 第三轮实测）：两次派工之间敲 `!` 命令照常执行，不影响下一次派工。敲普通的话会被会话插件挡掉，界面有提示。`/clear` 会换原生会话号，下一次派工失败一次；再下一次续接回的是清空之前的对话。派工正在回答时敲普通的话，会让当前派工以 `STANDBY_PROMPT_MISMATCH` 失败，回答丢失。这不是终端接管能力；接管做出来之前，派工期间不要动那个 pane，也不要在其中用 `/clear`。
 
-第二家 Harness、工具直报、工作副本管理与模型字段留后续包。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
+Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次，监听放在 Herdr 套接字同一私有目录里的 `codex-*.sock`，命令是 `app-server --listen unix://…`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `sandbox: read-only` 与 `approvalPolicy: never`，不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
+
+人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
+
+工具直报、工作副本管理与模型字段仍另议。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 

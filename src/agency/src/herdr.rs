@@ -31,6 +31,22 @@ impl Client {
         })
     }
 
+    /// `layout.apply` can return before the shell pane accepts an agent.
+    pub fn call_retrying_busy(&self, method: &str, params: Value) -> Result<Value> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match self.call(method, params.clone()) {
+                Ok(value) => return Ok(value),
+                Err(error)
+                    if error.message.contains("agent_pane_busy") && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
     pub fn call(&self, method: &str, params: Value) -> Result<Value> {
         let mut stream = UnixStream::connect(&self.socket)?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;

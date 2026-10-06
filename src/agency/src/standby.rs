@@ -154,7 +154,7 @@ impl Drop for Pool {
         let _ = self.shutdown();
     }
 }
-fn readonly(spec: &ExecutionSpec) -> Result<()> {
+pub(crate) fn readonly(spec: &ExecutionSpec) -> Result<()> {
     if spec.write_lease.is_some()
         || spec.review_publish_policy.is_some()
         || spec.permissions.iter().any(|p| p != "context.read")
@@ -174,7 +174,7 @@ fn readonly(spec: &ExecutionSpec) -> Result<()> {
     }
     Ok(())
 }
-fn selection_key(spec: &ExecutionSpec, tenant: &Path) -> Result<String> {
+pub(crate) fn selection_key(spec: &ExecutionSpec, tenant: &Path) -> Result<String> {
     Ok(hash(&canonical(&json!([
         tenant,
         spec.binding.id,
@@ -367,9 +367,13 @@ fn run_job(
                 "inspect_dispatch",
             ));
         }
-        if let Some(returned) = read_json(&dir.join("returned.json"))? {
+        if let Some(returned) = read_json(&dir.join("returned.json"))?
+            && turn.is_some()
+        {
+            // A completion can land between the start-record read and this one.
+            // Wait until the start record is visible before comparing turn ids.
             check_job(&returned, job, &session.id)?;
-            if turn.as_deref() != returned["turnId"].as_str() || turn.is_none() {
+            if turn.as_deref() != returned["turnId"].as_str() {
                 return Err(PortError::invalid(
                     "completion does not match the native turn",
                 ));
@@ -436,7 +440,7 @@ fn rejected_before_delivery(error: &PortError) -> bool {
         && serde_json::from_str::<Value>(&error.message).is_ok_and(|v| {
             matches!(
                 v["code"].as_str(),
-                Some("agent_not_found" | "agent_not_ready")
+                Some("agent_not_found" | "agent_not_ready" | "agent_pane_busy")
             )
         })
 }
@@ -593,7 +597,7 @@ impl Native {
             if let Some(id) = resume {
                 argv.extend(["--resume".into(), id.into()]);
             }
-            native.client.call(
+            native.client.call_retrying_busy(
                 "agent.start",
                 json!({"name":format!("agency-{}", &hash(dir.as_os_str().as_encoded_bytes())[..24]),
                 "kind":"claude","pane_id":native.pane,"args":argv,"timeout_ms":30_000}),
@@ -712,7 +716,7 @@ mod tests {
 
     #[test]
     fn only_explicit_pre_delivery_rejections_allow_recovery() {
-        for code in ["agent_not_found", "agent_not_ready"] {
+        for code in ["agent_not_found", "agent_not_ready", "agent_pane_busy"] {
             let error = PortError::new(
                 "HERDR_REJECTED",
                 json!({"code":code}).to_string(),
