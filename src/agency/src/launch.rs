@@ -8,6 +8,7 @@ use agency_proto::{
     Sealed,
 };
 use serde_json::json;
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     io::Read,
@@ -519,17 +520,19 @@ impl InstalledHerdr {
     }
 }
 
+fn smoke_directory() -> Result<tempfile::TempDir> {
+    Ok(tempfile::Builder::new()
+        .prefix("hctl2-herdr-smoke-")
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()?)
+}
+
 fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<String> {
-    let root = std::env::temp_dir().join(format!(
-        "hctl2-herdr-smoke-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let cred = root.join("cred");
-    let exec = root.join("exec");
+    // Time is not unique across parallel callers. TempDir owns an exclusively
+    // created directory and outlives every probe Launch and Server, including errors.
+    let root = smoke_directory()?;
+    let cred = root.path().join("cred");
+    let exec = root.path().join("exec");
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
     let state = crate::herdr::state_dir(&exec, &cred)?;
@@ -566,8 +569,6 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
         Ok(version)
     })();
     drop(server);
-    let _ = fs::remove_dir_all(&root);
-    let _ = fs::remove_dir_all(&state);
     result
 }
 
@@ -779,4 +780,48 @@ pub(crate) fn task_text(bundle: &Bundle) -> Result<String> {
         return Err(PortError::invalid("bundle has no task text"));
     }
     Ok(text)
+}
+
+#[cfg(test)]
+mod smoke_tests {
+    use super::*;
+    use std::{collections::HashSet, sync::Barrier};
+
+    #[test]
+    fn parallel_smoke_directories_are_private_and_cleanup_is_independent() {
+        let barrier = Barrier::new(32);
+        let mut directories = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..32)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        let directory = smoke_directory().unwrap();
+                        fs::write(directory.path().join("owned"), b"probe").unwrap();
+                        directory
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let paths: HashSet<_> = directories.iter().map(|d| d.path().to_path_buf()).collect();
+        assert_eq!(paths.len(), 32);
+        for directory in &directories {
+            assert_eq!(
+                fs::metadata(directory.path()).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        let removed = directories.pop().unwrap();
+        let removed_path = removed.path().to_path_buf();
+        drop(removed);
+        assert!(!removed_path.exists());
+        for directory in &directories {
+            assert_eq!(fs::read(directory.path().join("owned")).unwrap(), b"probe");
+        }
+        drop(directories);
+        assert!(paths.iter().all(|p| !p.exists()));
+    }
 }
