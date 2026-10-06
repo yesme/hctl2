@@ -197,7 +197,16 @@ fn worker(
             }
         };
         let result = run_job(
-            &server, &codex, &cwd, &dir, &socket, &stopped, &mut live, &job,
+            &TurnEnv {
+                server: &server,
+                codex: &codex,
+                cwd: &cwd,
+                dir: &dir,
+                socket: &socket,
+            },
+            &stopped,
+            &mut live,
+            &job,
         );
         job.token.finished.store(true, Ordering::SeqCst);
         if let Err(error) = result {
@@ -229,12 +238,16 @@ fn worker(
     Ok(())
 }
 
+struct TurnEnv<'a> {
+    server: &'a Arc<Server>,
+    codex: &'a Path,
+    cwd: &'a Path,
+    dir: &'a Path,
+    socket: &'a Path,
+}
+
 fn run_job(
-    server: &Arc<Server>,
-    codex: &Path,
-    cwd: &Path,
-    dir: &Path,
-    socket: &Path,
+    env: &TurnEnv<'_>,
     stopped: &AtomicBool,
     live: &mut Option<Live>,
     job: &Job,
@@ -255,7 +268,7 @@ fn run_job(
         return Ok(());
     }
     if live.is_none() {
-        let (session, resumed, resume_failed) = Live::open(codex, cwd, dir, socket)?;
+        let (session, resumed, resume_failed) = Live::open(env.codex, env.cwd, env.dir, env.socket)?;
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
             payload: json!({"resumed":resumed,"resume_failed":resume_failed,"thread":session.thread}),
@@ -277,7 +290,7 @@ fn run_job(
     }
     let session = live.as_mut().expect("codex session");
     if session.resumed_existing {
-        session.ensure_pane(server, codex, cwd, dir)?;
+        session.ensure_pane(env.server, env.codex, env.cwd, env.dir)?;
     }
     let turn_id = session.turn_start(&job.text)?;
     let mut answer = None;
@@ -312,14 +325,12 @@ fn run_job(
                         msg["params"]["item"]["type"].as_str(),
                         Some("agentMessage" | "agent_message")
                     )
+                    && let Some(text) = msg["params"]["item"]["text"].as_str()
                 {
-                    if let Some(text) = msg["params"]["item"]["text"].as_str() {
-                        answer = Some(text.to_owned());
-                    }
+                    answer = Some(text.to_owned());
                 }
                 if msg["method"] == "turn/completed" && msg["params"]["turn"]["id"] == turn_id {
-                    if interrupt.is_some() {
-                        let requested_stop = interrupt.expect("interrupt").1;
+                    if let Some((_, requested_stop)) = interrupt {
                         let _ = job.tx.send(RuntimeEvent::TurnStopped {
                             requested_stop,
                             session_closed: false,
@@ -337,7 +348,7 @@ fn run_job(
                         PortError::invalid("turn completed without an agent message")
                     })?;
                     rollout_matches(&session.thread, &job.text)?;
-                    session.ensure_pane(server, codex, cwd, dir)?;
+                    session.ensure_pane(env.server, env.codex, env.cwd, env.dir)?;
                     job.token.finished.store(true, Ordering::SeqCst);
                     let _ = job.tx.send(RuntimeEvent::Proposal {
                         schema: "codex.turn.v1".into(),
@@ -350,8 +361,9 @@ fn run_job(
             }
             None => {}
         }
-        if interrupt.is_some_and(|(sent, _)| sent.elapsed() >= Duration::from_secs(3)) {
-            let requested_stop = interrupt.expect("interrupt").1;
+        if let Some((sent, requested_stop)) = interrupt
+            && sent.elapsed() >= Duration::from_secs(3)
+        {
             session.close()?;
             let _ = job.tx.send(RuntimeEvent::TurnStopped {
                 requested_stop,
@@ -409,16 +421,15 @@ impl Live {
         };
         let attached = (|| {
             live.rpc.initialize()?;
-            if let Some(id) = &saved {
-                if live
+            if let Some(id) = &saved
+                && live
                     .rpc
                     .request("thread/resume", json!({"threadId": id}))
                     .is_ok()
-                {
-                    live.thread = id.clone();
-                    live.resumed_existing = true;
-                    return Ok(false);
-                }
+            {
+                live.thread = id.clone();
+                live.resumed_existing = true;
+                return Ok(false);
             }
             let started = live.rpc.request(
                 "thread/start",
@@ -797,7 +808,7 @@ impl Rpc {
                 if let Some(error) = msg.get("error") {
                     return Err(PortError::new(
                         "CODEX_RPC",
-                        redact(&error["message"].as_str().unwrap_or("app-server request failed")),
+                        redact(error["message"].as_str().unwrap_or("app-server request failed")),
                         "inspect_dispatch",
                     ));
                 }

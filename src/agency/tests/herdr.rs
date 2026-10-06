@@ -769,14 +769,17 @@ fn agency_start_and_pair_catalog_the_confined_claude_profession() {
     );
     assert!(stopped.status.success());
     let catalog = catalog.unwrap();
-    assert_eq!(catalog.professions.len(), 1);
-    assert_eq!(catalog.professions[0].reference.id, "claude-code");
+    let claude_profession = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "claude-code")
+        .expect("claude-code");
     assert_eq!(
-        catalog.professions[0].reference.revision,
+        claude_profession.reference.revision,
         "2.1.289 (Claude Code)"
     );
     assert_eq!(
-        catalog.professions[0].reference.digest,
+        claude_profession.reference.digest,
         agency::catalog::file_digest(&claude).unwrap()
     );
 }
@@ -2472,12 +2475,17 @@ async fn port_turn(name: &str, live: bool) {
         .await
         .unwrap();
     let catalog: Catalog = client.call("catalog", &json!({})).await.unwrap();
-    assert_eq!(
-        catalog.professions.len(),
-        1,
-        "{}",
-        std::fs::read_to_string(root.join("serve.err")).unwrap_or_default()
-    );
+    let claude_profession = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "claude-code")
+        .unwrap_or_else(|| {
+            panic!(
+                "{}",
+                std::fs::read_to_string(root.join("serve.err")).unwrap_or_default()
+            )
+        })
+        .clone();
     let expected = if live {
         "HCTL2_PORT_REAL_OK"
     } else {
@@ -2487,7 +2495,7 @@ async fn port_turn(name: &str, live: bool) {
         "Reply with exactly {expected} and do not use tools."
     ));
     let mut document = sealed_spec(name, now_ms() + 120_000).document;
-    document.profession = catalog.professions[0].clone();
+    document.profession = claude_profession.clone();
     document.bundle.digest = bundle.digest.clone();
     let prepared: Dispatch = client
         .call(
@@ -2611,7 +2619,7 @@ async fn port_turn(name: &str, live: bool) {
     eprintln!(
         "{} agency start -> pair -> catalog Claude {} -> prepare -> activate -> ResultReturned",
         if live { "LIVE" } else { "FIXTURE" },
-        catalog.professions[0].reference.revision
+        claude_profession.reference.revision
     );
     eprintln!(
         "Proposal(schema={}, evidence=adapter_event): {output}",
