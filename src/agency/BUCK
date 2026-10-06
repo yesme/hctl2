@@ -24,6 +24,7 @@ DEPS = [
     "root//third-party/rust:rustix",
     "root//third-party/rust:serde",
     "root//third-party/rust:serde_json",
+    "root//third-party/rust:tempfile",
     "root//third-party/rust:tokio",
     "root//third-party/rust:tokio-stream",
     "root//third-party/rust:tonic",

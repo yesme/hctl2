@@ -16,7 +16,7 @@ use std::{
     process::Command,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -625,62 +625,21 @@ fn codex_on_path() -> Option<PathBuf> {
     }
 }
 
-struct SmokeRoot {
-    path: PathBuf,
-}
-
-impl Drop for SmokeRoot {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-/// Clock readings collide when many probes start in the same process. `mkdir`
-/// is the exclusive create; a leftover from a recycled pid is skipped.
-fn exclusive_smoke_root() -> Result<SmokeRoot> {
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let base = std::env::temp_dir();
-    for _ in 0..128 {
-        let path = base.join(format!(
-            "hctl2-herdr-smoke-{}-{}",
-            std::process::id(),
-            SEQ.fetch_add(1, Ordering::Relaxed)
-        ));
-        match fs::create_dir(&path) {
-            Ok(()) => {
-                fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-                return Ok(SmokeRoot { path });
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
-        }
-    }
-    Err(PortError::new(
-        "HERDR_SMOKE_FAILED",
-        "could not create an exclusive smoke directory",
-        "check_locked_herdr",
-    ))
+fn smoke_directory() -> Result<tempfile::TempDir> {
+    Ok(tempfile::Builder::new()
+        .prefix("hctl2-herdr-smoke-")
+        .permissions(fs::Permissions::from_mode(0o700))
+        .tempdir()?)
 }
 
 fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<String> {
-    let root = exclusive_smoke_root()?;
-    let result = smoke_probe(&root, binary, claude, read_paths);
-    drop(root);
-    result
-}
-
-fn smoke_probe(
-    root: &SmokeRoot,
-    binary: &Path,
-    claude: &Path,
-    read_paths: &[PathBuf],
-) -> Result<String> {
-    let cred = root.path.join("cred");
-    let exec = root.path.join("exec");
+    // Time is not unique across parallel callers. TempDir owns an exclusively
+    // created directory and outlives every probe Launch and Server, including errors.
+    let root = smoke_directory()?;
+    let cred = root.path().join("cred");
+    let exec = root.path().join("exec");
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
-    // Herdr state is created inside this root, so dropping the root removes it
-    // only after the probe server is gone.
     let state = crate::herdr::state_dir(&exec, &cred)?;
     let server = Arc::new(Server::start_with_read(
         binary, &state, &cred, &exec, read_paths,
@@ -982,7 +941,7 @@ pub(crate) fn task_text(bundle: &Bundle) -> Result<String> {
 }
 
 #[cfg(test)]
-mod smoke_root_tests {
+mod smoke_tests {
     use super::*;
     use std::{collections::HashSet, sync::Barrier};
 
@@ -994,33 +953,33 @@ mod smoke_root_tests {
                 .map(|_| {
                     scope.spawn(|| {
                         barrier.wait();
-                        let directory = exclusive_smoke_root().unwrap();
-                        fs::write(directory.path.join("owned"), b"probe").unwrap();
+                        let directory = smoke_directory().unwrap();
+                        fs::write(directory.path().join("owned"), b"probe").unwrap();
                         directory
                     })
                 })
                 .collect();
             handles
                 .into_iter()
-                .map(|handle| handle.join().unwrap())
+                .map(|h| h.join().unwrap())
                 .collect::<Vec<_>>()
         });
-        let paths: HashSet<_> = directories.iter().map(|dir| dir.path.clone()).collect();
+        let paths: HashSet<_> = directories.iter().map(|d| d.path().to_path_buf()).collect();
         assert_eq!(paths.len(), 32);
         for directory in &directories {
             assert_eq!(
-                fs::metadata(&directory.path).unwrap().permissions().mode() & 0o777,
+                fs::metadata(directory.path()).unwrap().permissions().mode() & 0o777,
                 0o700
             );
         }
         let removed = directories.pop().unwrap();
-        let removed_path = removed.path.clone();
+        let removed_path = removed.path().to_path_buf();
         drop(removed);
         assert!(!removed_path.exists());
         for directory in &directories {
-            assert_eq!(fs::read(directory.path.join("owned")).unwrap(), b"probe");
+            assert_eq!(fs::read(directory.path().join("owned")).unwrap(), b"probe");
         }
         drop(directories);
-        assert!(paths.iter().all(|path| !path.exists()));
+        assert!(paths.iter().all(|p| !p.exists()));
     }
 }

@@ -5929,6 +5929,12 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "tempfile",
+    actual = ":tempfile-3",
+    visibility = ["PUBLIC"],
+)
+
 http_archive(
     name = "tempfile-3.27.0.crate",
     sha256 = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",

@@ -26,6 +26,7 @@ rusqlite_migration.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tempfile = "=3.27.0"
 tokio.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true
