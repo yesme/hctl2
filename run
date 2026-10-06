@@ -204,7 +204,7 @@ case "$agent" in
       macos)  session="ses_fd816ff58ffew9OZpjG0y62oc6" ;;
       ubuntu) session="ses_f167ca207ffeWkQBeksNkcSjFo" ;;
     esac
-    cmd=(opencode -s "$session" "$workdir")
+    cmd=(opencode --auto -s "$session" "$workdir")
     ;;
   grok)
     workdir="$workspace/hctl2-grok"
