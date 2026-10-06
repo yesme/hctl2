@@ -64,6 +64,9 @@ fn seed_repository(root: &Path) -> (PathBuf, String, String, String) {
     let repo = root.join("apollo");
     std::fs::create_dir_all(&repo).unwrap();
     git(&repo, &["init", "-q", "-b", "main"]);
+    // The tool's merge commits use the repository's configured identity; runners have none.
+    git(&repo, &["config", "user.name", "HCTL2 Test"]);
+    git(&repo, &["config", "user.email", "hctl2@example.invalid"]);
     std::fs::write(repo.join("README.md"), "one\n").unwrap();
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-q", "-m", "one"]);
@@ -446,4 +449,179 @@ async fn previews_refuse_what_the_repo_cannot_offer() {
         refused["error"]["code"], "REVISION_NOT_ADMITTED",
         "{refused}"
     );
+}
+
+#[tokio::test]
+async fn a_fresh_clone_at_the_same_path_is_not_the_frozen_target() {
+    let (temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
+    git(&repo_path, &["branch", "release", &base]);
+    let input = input(&repo_id, "refs/heads/release", "expected_head");
+    let (token, preview) = h.preview("clone", &input).await;
+    assert!(
+        preview["target"]["continuity"]["inode"].is_number(),
+        "{preview}"
+    );
+    let id = h.submit("clone", &input, &token).await["intent_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // The directory is moved away and a fresh clone with the same refs takes its place.
+    let moved_away = temp.0.join("apollo-moved");
+    std::fs::rename(&repo_path, &moved_away).unwrap();
+    git(
+        &temp.0,
+        &[
+            "clone",
+            "-q",
+            "--no-local",
+            moved_away.to_str().unwrap(),
+            repo_path.to_str().unwrap(),
+        ],
+    );
+    git(&repo_path, &["branch", "release", &base]);
+    git(&repo_path, &["branch", "work", &result_commit]);
+    git(&repo_path, &["switch", "-q", "--detach"]);
+    assert_eq!(git(&repo_path, &["rev-parse", "refs/heads/release"]), base);
+    h.reconcile().await;
+    let shown = h.show(&repo_id, &id).await;
+    assert_eq!(shown["intent"]["state"], "unknown", "{shown}");
+    assert_eq!(
+        shown["intent"]["attention"]["code"], "TARGET_IDENTITY_MISMATCH",
+        "{shown}"
+    );
+    assert!(shown["receipt"].is_null());
+    assert!(
+        shown["intent"]["attempt"].is_null(),
+        "no attempt is planned against a stranger"
+    );
+    assert_eq!(
+        git(&repo_path, &["rev-parse", "refs/heads/release"]),
+        base,
+        "clone untouched"
+    );
+    assert_eq!(
+        git(&moved_away, &["rev-parse", "refs/heads/release"]),
+        base,
+        "original untouched"
+    );
+    // The original repository returns to its path: the same intent proceeds.
+    std::fs::remove_dir_all(&repo_path).unwrap();
+    std::fs::rename(&moved_away, &repo_path).unwrap();
+    h.reconcile().await;
+    let shown = h.show(&repo_id, &id).await;
+    assert_eq!(shown["intent"]["state"], "succeeded", "{shown}");
+    assert_eq!(
+        git(&repo_path, &["rev-parse", "refs/heads/release"]),
+        result_commit
+    );
+}
+
+#[tokio::test]
+async fn a_confirmation_lost_after_the_write_is_recovered_from_the_frozen_attempt_with_one_receipt()
+{
+    let (_temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
+    git(&repo_path, &["branch", "nightly", &base]);
+    git(&repo_path, &["switch", "-q", "--detach"]);
+    let mut advance = input(&repo_id, "refs/heads/nightly", "accept_advance");
+    advance["strategy"] = json!("merge_commit");
+    let (token, _) = h.preview("lost", &advance).await;
+    let id = h.submit("lost", &advance, &token).await["intent_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Someone advances the target; control plans the attempt against the moved head …
+    std::fs::write(repo_path.join("OTHER"), "x\n").unwrap();
+    git(&repo_path, &["switch", "-q", "nightly"]);
+    git(&repo_path, &["add", "OTHER"]);
+    git(&repo_path, &["commit", "-q", "-m", "moved"]);
+    let moved = git(&repo_path, &["rev-parse", "HEAD"]);
+    git(&repo_path, &["switch", "-q", "--detach"]);
+    // Planning takes the store's blocking lock, as the worker does off the async runtime.
+    let planned = {
+        let store = Arc::clone(&h.store);
+        let (repo_id, id) = (repo_id.clone(), id.clone());
+        tokio::task::spawn_blocking(move || {
+            control::integration::plan_attempt(&store, &repo_id, &id)
+        })
+        .await
+        .unwrap()
+        .unwrap()
+    };
+    let control::integration::Planned::Local { attempt, .. } = planned else {
+        panic!("local plan expected");
+    };
+    assert_eq!(attempt.expected_head, moved);
+    assert_eq!(
+        h.show(&repo_id, &id).await["intent"]["attempt"]["expected_head"],
+        moved
+    );
+    // … the tool writes the merge, and control dies before it reads the result back.
+    let written = tool::run(
+        [
+            "integrate",
+            "--repo",
+            repo_path.to_str().unwrap(),
+            "--commit",
+            &attempt.commit,
+            "--base-commit-sha",
+            &base,
+            "--result-tree-sha",
+            &git(
+                &repo_path,
+                &["rev-parse", &format!("{result_commit}^{{tree}}")],
+            ),
+            "--target-ref",
+            "refs/heads/nightly",
+            "--expected-head",
+            &attempt.expected_head,
+            "--strategy",
+            "merge-commit",
+            "--idempotency-key",
+            &attempt.idempotency_key,
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from),
+    )
+    .unwrap();
+    assert_eq!(written.exit_code(), 0, "{}", written.body());
+    let merged = git(&repo_path, &["rev-parse", "refs/heads/nightly"]);
+    assert_ne!(merged, moved);
+    // The next pass retries the frozen attempt: the tool recognises its own result, nothing is
+    // re-planned against the new head, and exactly one Receipt is signed.
+    h.reconcile().await;
+    let shown = h.show(&repo_id, &id).await;
+    assert_eq!(shown["intent"]["state"], "succeeded", "{shown}");
+    assert_eq!(shown["receipt"]["target_head_after"], merged);
+    assert_eq!(shown["receipt"]["readback"]["status"], "already_applied");
+    assert_eq!(shown["intent"]["attempts"], 1);
+    assert_eq!(
+        git(&repo_path, &["rev-parse", "refs/heads/nightly"]),
+        merged,
+        "no second write"
+    );
+    assert_eq!(shown["effect_state"], "confirmed");
+}
+
+#[tokio::test]
+async fn accept_advance_fast_forward_reaches_a_target_that_already_moved_to_the_candidate() {
+    let (_temp, mut h, repo_id, repo_path, base, result_commit, result_tree) = harness().await;
+    git(&repo_path, &["branch", "nightly", &base]);
+    git(&repo_path, &["switch", "-q", "--detach"]);
+    let advance = input(&repo_id, "refs/heads/nightly", "accept_advance");
+    let (token, _) = h.preview("ff", &advance).await;
+    let id = h.submit("ff", &advance, &token).await["intent_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // Another writer pushes exactly the candidate before control runs.
+    git(
+        &repo_path,
+        &["update-ref", "refs/heads/nightly", &result_commit],
+    );
+    h.reconcile().await;
+    let shown = h.show(&repo_id, &id).await;
+    assert_eq!(shown["intent"]["state"], "succeeded", "{shown}");
+    assert_eq!(shown["receipt"]["readback"]["status"], "already_applied");
+    assert_eq!(shown["receipt"]["target_head_after"], result_commit);
+    assert_eq!(shown["receipt"]["integrated_tree"], result_tree);
 }

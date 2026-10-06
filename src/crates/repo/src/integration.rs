@@ -90,8 +90,8 @@ pub fn admit_revision_seam(
     let value = serde_json::to_value(revision)?;
     let operation = "repo.revision_seam";
     let cmd = Command {
-        command_id: format!("{operation}:{}", key.id),
-        idempotency_key: format!("{operation}:{}", key.id),
+        command_id: format!("{operation}:{repo_id}:{}", key.id),
+        idempotency_key: format!("{operation}:{repo_id}:{}", key.id),
         actor: actor.0.clone(),
         target: key.clone(),
         expected: Expected::Absent,
@@ -187,6 +187,11 @@ pub struct Observation {
     pub provider_ref: String,
     pub head: Option<String>,
     pub protection: Option<ProtectionSnapshot>,
+    /// Evidence that later executions resolve the same target, not a same-named replacement
+    /// (`spec/repo.md` §集成: 同路径新 clone 不因此成为原目标). Local targets freeze the Git
+    /// common directory's filesystem identity; platform targets freeze the platform's stable id.
+    #[serde(default)]
+    pub continuity: Option<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -197,6 +202,9 @@ pub struct Target {
     pub target_ref: String,
     /// Binding version in force at preview (platform targets only).
     pub binding: Option<Reference>,
+    /// Frozen continuity evidence; execution compares before writing.
+    #[serde(default)]
+    pub continuity: Option<Value>,
 }
 
 /// Everything the intent freezes. Changing any field after preview means a new preview.
@@ -255,6 +263,21 @@ pub struct Intent {
     pub attention: Option<Attention>,
     pub failure: Option<Attention>,
     pub receipt_id: Option<String>,
+    /// The exact executor input of the attempt in flight. Recorded before the executor runs and
+    /// reused verbatim on retry, so a lost confirmation never re-plans against a moved target.
+    #[serde(default)]
+    pub attempt: Option<AttemptInput>,
+}
+
+/// What one executor attempt was given. Frozen per attempt, not recomputed on retry.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttemptInput {
+    pub number: u64,
+    /// Executor-side retry key; a new plan gets a new key, a retry keeps it.
+    pub idempotency_key: String,
+    pub commit: String,
+    pub expected_head: String,
 }
 
 /// The only proof of integration. Immutable; written in the same transaction as the
@@ -468,15 +491,25 @@ fn target_for(
     observation: &Observation,
 ) -> Result<(Target, Value)> {
     match (&registration.prepared.platform, input.target_kind) {
-        (Platform::None, TargetKind::Local) => Ok((
-            Target {
-                kind: TargetKind::Local,
-                provider_ref: observation.provider_ref.clone(),
-                target_ref: input.target_ref.clone(),
-                binding: None,
-            },
-            Value::Null,
-        )),
+        (Platform::None, TargetKind::Local) => {
+            if observation.continuity.is_none() {
+                return Err(reject(
+                    "TARGET_CONTINUITY_UNREAD",
+                    "local target identity was not read; nothing to freeze",
+                    "retry_preview",
+                ));
+            }
+            Ok((
+                Target {
+                    kind: TargetKind::Local,
+                    provider_ref: observation.provider_ref.clone(),
+                    target_ref: input.target_ref.clone(),
+                    binding: None,
+                    continuity: observation.continuity.clone(),
+                },
+                Value::Null,
+            ))
+        }
         (Platform::None, TargetKind::Platform) => Err(reject(
             "PLATFORM_NOT_BOUND",
             "this Repo has no platform; only local targets exist",
@@ -532,6 +565,7 @@ fn target_for(
                         key: binding.key,
                         version: Version::State(record.version),
                     }),
+                    continuity: observation.continuity.clone(),
                 },
                 capabilities,
             ))
@@ -720,6 +754,7 @@ pub fn submit(
         attention: None,
         failure: None,
         receipt_id: None,
+        attempt: None,
     };
     let input = serde_json::to_value(&intent.preview)?;
     let operation = "integration.submit";
@@ -800,6 +835,82 @@ pub fn begin(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<(Inten
     Ok((intent, state))
 }
 
+/// Freeze the executor input of the next attempt before anything runs. Idempotent for the same
+/// input; a different input while one is already recorded is refused.
+pub fn record_attempt(
+    store: &mut Store,
+    repo_id: &str,
+    intent_id: &str,
+    attempt: AttemptInput,
+) -> Result<Intent> {
+    let mut intent = get(store, repo_id, intent_id)?;
+    if !matches!(intent.state, IntentState::Pending | IntentState::Unknown) {
+        return Err(reject(
+            "INTENT_TERMINAL",
+            "integration intent already settled",
+            "inspect_intent",
+        ));
+    }
+    match &intent.attempt {
+        Some(existing) if *existing == attempt => return Ok(intent),
+        Some(_) => {
+            return Err(reject(
+                "ATTEMPT_IN_FLIGHT",
+                "an attempt with other executor input is recorded; read it back before planning anew",
+                "read_back_recorded_attempt",
+            ));
+        }
+        None => {}
+    }
+    intent.attempt = Some(attempt);
+    bump(store, repo_id, intent_id, intent, "integration.attempt")
+}
+
+/// Drop a recorded attempt after the executor proved it wrote nothing, so the next attempt
+/// may plan against the current target (accept-advance only).
+pub fn clear_attempt(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<Intent> {
+    let mut intent = get(store, repo_id, intent_id)?;
+    if intent.attempt.is_none() {
+        return Ok(intent);
+    }
+    intent.attempt = None;
+    bump(
+        store,
+        repo_id,
+        intent_id,
+        intent,
+        "integration.attempt_cleared",
+    )
+}
+
+fn bump(
+    store: &mut Store,
+    repo_id: &str,
+    intent_id: &str,
+    mut intent: Intent,
+    operation: &str,
+) -> Result<Intent> {
+    let actor = reducer(repo_id, intent_id);
+    intent.version += 1;
+    let input = json!({"version": intent.version, "attempt": intent.attempt});
+    let cmd = Command {
+        command_id: format!("{operation}:{intent_id}:{}", intent.version),
+        idempotency_key: format!("{operation}:{intent_id}:{}", intent.version),
+        actor: actor.0.clone(),
+        target: intent_key(repo_id, intent_id),
+        expected: Expected::Exact(Version::State(intent.version - 1)),
+        binding: crate::binding(repo_id),
+        input_digest: Command::digest_input(operation, &input)?,
+        operation: operation.into(),
+        input,
+    };
+    store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        tx.put(&record(&intent)?)?;
+        Ok(json!({"version": intent.version}))
+    })?;
+    get(store, repo_id, intent_id)
+}
+
 /// Record one attempt's readback. Only `Succeeded` writes a Receipt; it, the effect
 /// confirmation and the terminal state land in one transaction.
 pub fn confirm(
@@ -867,6 +978,7 @@ pub fn confirm(
             };
             intent.state = IntentState::Succeeded;
             intent.attention = None;
+            intent.attempt = None;
             intent.receipt_id = Some(receipt.receipt_id.clone());
             (
                 "integration.succeeded",
@@ -882,6 +994,7 @@ pub fn confirm(
         Outcome::Failed(reason) => {
             intent.state = IntentState::Failed;
             intent.attention = None;
+            intent.attempt = None;
             intent.failure = Some(reason.clone());
             (
                 "integration.failed",

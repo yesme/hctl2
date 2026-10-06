@@ -89,6 +89,7 @@ rust_test(
     crate_root = "tests/integration.rs",
     deps = [
         ":control",
+        "root//apps/tool:tool",
         "root//crates/proto:proto",
         "root//crates/repo:repo",
         "root//crates/store:store",

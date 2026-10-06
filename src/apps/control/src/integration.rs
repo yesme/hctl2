@@ -139,35 +139,12 @@ fn observe(registration: &Registration, input: &Input) -> Result<Observation> {
     match input.target_kind {
         TargetKind::Local => {
             let path = local_path(registration)?;
-            let inspected = tool_json(&[
-                "repo".into(),
-                "inspect".into(),
-                "--path".into(),
-                path.clone().into(),
-                "--ref".into(),
-                input.target_ref.clone().into(),
-            ]);
-            let head = match inspected {
-                Ok((0, value)) => value["repository_state"]["requested_ref"]["commit_sha"]
-                    .as_str()
-                    .map(str::to_owned),
-                Ok((_, value)) if value["error"]["code"] == "HCTL2_TOOL_REF_NOT_FOUND" => None,
-                Ok((_, value)) => {
-                    return Err(reject(
-                        "TARGET_UNREADABLE",
-                        format!(
-                            "hctl2-tool could not read the target: {}",
-                            value["error"]["message"]
-                        ),
-                        "inspect_repository",
-                    ));
-                }
-                Err(error) => return Err(error),
-            };
+            let local = inspect_local(&path, &input.target_ref)?;
             Ok(Observation {
                 provider_ref: path.display().to_string(),
-                head,
+                head: local.head,
                 protection: None,
+                continuity: Some(local.continuity),
             })
         }
         TargetKind::Platform => {
@@ -191,9 +168,89 @@ fn observe(registration: &Registration, input: &Input) -> Result<Observation> {
                 provider_ref: format!("{}/{}", observed.instance, observed.full_name),
                 head: None,
                 protection: None,
+                continuity: Some(
+                    json!({"instance": observed.instance, "stable_id": observed.stable_id}),
+                ),
             })
         }
     }
+}
+
+struct LocalTarget {
+    head: Option<String>,
+    /// The Git common directory's filesystem identity: a fresh clone at the same path has a
+    /// new inode, a moved repository keeps its own.
+    continuity: Value,
+}
+
+/// Read a local target's head and the identity of the repository that holds it.
+fn inspect_local(path: &Path, target_ref: &str) -> Result<LocalTarget> {
+    let (code, value) = tool_json(&[
+        "repo".into(),
+        "inspect".into(),
+        "--path".into(),
+        path.to_path_buf().into(),
+        "--ref".into(),
+        target_ref.to_owned().into(),
+    ])?;
+    let (head, value) = match code {
+        0 => (
+            value["repository_state"]["requested_ref"]["commit_sha"]
+                .as_str()
+                .map(str::to_owned),
+            value,
+        ),
+        _ if value["error"]["code"] == "HCTL2_TOOL_REF_NOT_FOUND" => {
+            // The ref is absent; the repository itself still has to be identified.
+            let (code, value) = tool_json(&[
+                "repo".into(),
+                "inspect".into(),
+                "--path".into(),
+                path.to_path_buf().into(),
+            ])?;
+            if code != 0 {
+                return Err(unreadable(&value));
+            }
+            (None, value)
+        }
+        _ => return Err(unreadable(&value)),
+    };
+    let common_dir = value["common_directory_identity"]["git_common_dir"]
+        .as_str()
+        .ok_or_else(|| {
+            reject(
+                "TARGET_UNREADABLE",
+                "repository common directory missing",
+                "inspect_repository",
+            )
+        })?;
+    let metadata = std::fs::metadata(common_dir).map_err(|error| {
+        reject(
+            "TARGET_UNREADABLE",
+            format!("repository common directory unreadable: {error}"),
+            "inspect_repository",
+        )
+    })?;
+    use std::os::unix::fs::MetadataExt;
+    Ok(LocalTarget {
+        head,
+        continuity: json!({
+            "git_common_dir": common_dir,
+            "device": metadata.dev(),
+            "inode": metadata.ino(),
+        }),
+    })
+}
+
+fn unreadable(value: &Value) -> repo::StoreError {
+    reject(
+        "TARGET_UNREADABLE",
+        format!(
+            "hctl2-tool could not read the target: {}",
+            value["error"]["message"]
+        ),
+        "inspect_repository",
+    )
 }
 
 /// Run one tool command in-process and parse its JSON record: `(exit_code, record)`.
@@ -286,70 +343,120 @@ pub async fn reconcile_once(
 
 /// Execute one open intent once and record exactly what was read back.
 pub(crate) fn drive(shared: &Shared, repo_id: &str, intent_id: &str) -> Result<()> {
+    let (outcome, replan) = match plan_attempt(shared, repo_id, intent_id)? {
+        Planned::Local {
+            path,
+            attempt,
+            preview,
+        } => integrate_local(&path, &attempt, &preview)?,
+        Planned::Refused(outcome) => (outcome, false),
+    };
+    access(shared, |s| domain::confirm(s, repo_id, intent_id, outcome))?;
+    if replan {
+        // The executor proved nothing was written under the old plan; the next pass may
+        // read the target again (accept-advance only).
+        access(shared, |s| domain::clear_attempt(s, repo_id, intent_id))?;
+    }
+    Ok(())
+}
+
+/// What one attempt will run with, frozen in the intent before the executor starts.
+pub enum Planned {
+    Local {
+        path: PathBuf,
+        attempt: domain::AttemptInput,
+        preview: Box<Preview>,
+    },
+    /// Nothing may run: the readback to record instead.
+    Refused(Outcome),
+}
+
+/// Begin the attempt and freeze its executor input. A recorded attempt is reused verbatim, so
+/// a confirmation lost between the executor's write and control's readback retries the exact
+/// same input and the executor answers from its own retry record.
+pub fn plan_attempt(shared: &Shared, repo_id: &str, intent_id: &str) -> Result<Planned> {
     let (intent, _) = access(shared, |s| domain::begin(s, repo_id, intent_id))?;
     let registration = access(shared, |s| require_active(s, repo_id))?;
-    let outcome = match intent.preview.target.kind {
-        TargetKind::Local => integrate_local(&registration, &intent)?,
-        TargetKind::Platform => Outcome::Attention(Attention {
+    let preview = &intent.preview;
+    match preview.target.kind {
+        TargetKind::Platform => Ok(Planned::Refused(Outcome::Attention(Attention {
             code: "PLATFORM_INTEGRATION_UNAVAILABLE".into(),
             message:
                 "platform targets are executed by the platform adapter, which is not wired yet"
                     .into(),
             recovery_action: "wait_for_platform_adapter".into(),
             details: Value::Null,
-        }),
-    };
-    access(shared, |s| domain::confirm(s, repo_id, intent_id, outcome))?;
-    Ok(())
+        }))),
+        TargetKind::Local => {
+            let path = local_path(&registration)?;
+            // The target must still be the repository the preview froze, not a replacement
+            // at the same path. A mismatch writes nothing and keeps the intent waiting.
+            let local = inspect_local(&path, &preview.target.target_ref)?;
+            if preview.target.continuity.as_ref() != Some(&local.continuity) {
+                return Ok(Planned::Refused(Outcome::Attention(Attention {
+                    code: "TARGET_IDENTITY_MISMATCH".into(),
+                    message: "the repository at the target path is not the one the preview froze (a new clone or another repository); nothing was written".into(),
+                    recovery_action: "restore_original_repository_or_preview_a_new_intent".into(),
+                    details: json!({"frozen": preview.target.continuity, "observed": local.continuity}),
+                })));
+            }
+            let attempt = match &intent.attempt {
+                Some(attempt) => attempt.clone(),
+                None => {
+                    let commit = match result_commit(&path, &preview.source)? {
+                        Ok(commit) => commit,
+                        Err(reason) => return Ok(Planned::Refused(Outcome::Failed(reason))),
+                    };
+                    let expected = match preview.form {
+                        Form::ExpectedHead => preview.expected_head.clone(),
+                        // Accept the target wherever it is now; the CAS below still pins this attempt.
+                        Form::AcceptAdvance => local.head.clone(),
+                    };
+                    let Some(expected) = expected else {
+                        return Ok(Planned::Refused(Outcome::Failed(Attention {
+                            code: "TARGET_MISSING".into(),
+                            message: "target ref does not exist".into(),
+                            recovery_action: "create_target_ref_then_new_intent".into(),
+                            details: json!({"target_ref": preview.target.target_ref}),
+                        })));
+                    };
+                    let number = intent.attempts + 1;
+                    let attempt = domain::AttemptInput {
+                        number,
+                        idempotency_key: format!("{}:{number}", intent.intent_id),
+                        commit,
+                        expected_head: expected,
+                    };
+                    access(shared, |s| {
+                        domain::record_attempt(s, repo_id, intent_id, attempt.clone())
+                    })?;
+                    attempt
+                }
+            };
+            Ok(Planned::Local {
+                path,
+                attempt,
+                preview: Box::new(preview.clone()),
+            })
+        }
+    }
 }
 
-/// `hctl2-tool integrate` on the registered local repository. The tool's compare-and-swap
-/// on the target ref is the write; its JSON record is the readback.
-fn integrate_local(registration: &Registration, intent: &domain::Intent) -> Result<Outcome> {
-    let path = local_path(registration)?;
-    let preview = &intent.preview;
-    let expected = match preview.form {
-        Form::ExpectedHead => preview.expected_head.clone(),
-        Form::AcceptAdvance => {
-            // Accept the target wherever it is now; the CAS below still pins this attempt.
-            let (code, inspected) = tool_json(&[
-                "repo".into(),
-                "inspect".into(),
-                "--path".into(),
-                path.clone().into(),
-                "--ref".into(),
-                preview.target.target_ref.clone().into(),
-            ])?;
-            if code != 0 {
-                return Ok(Outcome::Attention(attention(
-                    "TARGET_UNREADABLE",
-                    &inspected,
-                    "inspect_repository_then_retry",
-                )));
-            }
-            inspected["repository_state"]["requested_ref"]["commit_sha"]
-                .as_str()
-                .map(str::to_owned)
-        }
-    };
-    let Some(expected) = expected else {
-        return Ok(Outcome::Failed(Attention {
-            code: "TARGET_MISSING".into(),
-            message: "target ref does not exist".into(),
-            recovery_action: "create_target_ref_then_new_intent".into(),
-            details: json!({"target_ref": preview.target.target_ref}),
-        }));
-    };
-    let commit = match result_commit(&path, &preview.source)? {
-        Ok(commit) => commit,
-        Err(reason) => return Ok(Outcome::Failed(reason)),
-    };
+/// `hctl2-tool integrate` on the registered local repository with a frozen attempt. The tool's
+/// compare-and-swap on the target ref is the write; its JSON record is the readback. Returns
+/// the outcome and whether the next pass may plan afresh (only after a proven no-write).
+fn integrate_local(
+    path: &Path,
+    attempt: &domain::AttemptInput,
+    preview: &Preview,
+) -> Result<(Outcome, bool)> {
+    let form = preview.form;
     let (code, record) = tool_json(&[
         "integrate".into(),
         "--repo".into(),
-        path.into(),
+        path.to_path_buf().into(),
         "--commit".into(),
-        commit.into(),
+        attempt.commit.clone().into(),
         "--base-commit-sha".into(),
         preview.source.base_commit_sha.clone().into(),
         "--result-tree-sha".into(),
@@ -357,11 +464,11 @@ fn integrate_local(registration: &Registration, intent: &domain::Intent) -> Resu
         "--target-ref".into(),
         preview.target.target_ref.clone().into(),
         "--expected-head".into(),
-        expected.clone().into(),
+        attempt.expected_head.clone().into(),
         "--strategy".into(),
         preview.strategy.tool_name().into(),
         "--idempotency-key".into(),
-        intent.intent_id.clone().into(),
+        attempt.idempotency_key.clone().into(),
     ])?;
     if code == 0 {
         let after = record["after_head"].as_str().unwrap_or_default().to_owned();
@@ -371,57 +478,80 @@ fn integrate_local(registration: &Registration, intent: &domain::Intent) -> Resu
             .unwrap_or_default()
             .to_owned();
         if after.is_empty() || new.is_empty() || tree.is_empty() {
-            return Ok(Outcome::Unknown(attention(
-                "READBACK_INCOMPLETE",
-                &record,
-                "read_target_with_same_intent",
-            )));
+            return Ok((
+                Outcome::Unknown(attention(
+                    "READBACK_INCOMPLETE",
+                    &record,
+                    "read_target_with_same_intent",
+                )),
+                false,
+            ));
         }
-        return Ok(Outcome::Succeeded {
-            target_head_before: record["before_head"].as_str().map(str::to_owned),
-            target_head_after: after,
-            integrated_commit: new,
-            integrated_tree: tree,
-            evidence_level: "hctl2-tool".into(),
-            observed_at_unix_ms: record["observed_at_unix_ms"].as_u64().unwrap_or_default(),
-            readback: record,
-        });
+        return Ok((
+            Outcome::Succeeded {
+                target_head_before: record["before_head"].as_str().map(str::to_owned),
+                target_head_after: after,
+                integrated_commit: new,
+                integrated_tree: tree,
+                evidence_level: "hctl2-tool".into(),
+                observed_at_unix_ms: record["observed_at_unix_ms"].as_u64().unwrap_or_default(),
+                readback: record,
+            },
+            false,
+        ));
     }
     let tool_code = record["error"]["code"]
         .as_str()
         .unwrap_or_default()
         .to_owned();
     Ok(match tool_code.as_str() {
-        "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN" => Outcome::Unknown(attention(
-            "RESULT_UNKNOWN",
-            &record,
-            "read_target_with_same_intent",
-        )),
-        "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT" => Outcome::Attention(attention(
-            "TARGET_CHECKED_OUT",
-            &record,
-            "switch_worktrees_away_from_target_then_retry_same_intent",
-        )),
-        "HCTL2_TOOL_SITE_BUSY" | "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE" => {
-            Outcome::Attention(attention("SITE_BUSY", &record, "retry_same_intent"))
-        }
+        // The result may already be written: never a failure, never a new plan.
+        "HCTL2_TOOL_INTEGRATION_RESULT_UNKNOWN" | "HCTL2_TOOL_INTEGRATION_KEY_REUSED" => (
+            Outcome::Unknown(attention(
+                "RESULT_UNKNOWN",
+                &record,
+                "read_target_with_same_intent",
+            )),
+            false,
+        ),
+        "HCTL2_TOOL_INTEGRATION_TARGET_CHECKED_OUT" => (
+            Outcome::Attention(attention(
+                "TARGET_CHECKED_OUT",
+                &record,
+                "switch_worktrees_away_from_target_then_retry_same_intent",
+            )),
+            false,
+        ),
+        "HCTL2_TOOL_SITE_BUSY" | "HCTL2_TOOL_SITE_LOCK_UNAVAILABLE" => (
+            Outcome::Attention(attention("SITE_BUSY", &record, "retry_same_intent")),
+            false,
+        ),
+        // Rejected before any write (the tool read the target and refused): under
+        // accept-advance the next pass may plan against the moved target.
         "HCTL2_TOOL_INTEGRATION_HEAD_DRIFT" | "HCTL2_TOOL_INTEGRATION_CAS_REJECTED"
-            if preview.form == Form::AcceptAdvance =>
+            if form == Form::AcceptAdvance =>
         {
-            Outcome::Attention(attention("TARGET_ADVANCED", &record, "retry_same_intent"))
+            (
+                Outcome::Attention(attention("TARGET_ADVANCED", &record, "retry_same_intent")),
+                true,
+            )
         }
-        "HCTL2_TOOL_INTEGRATION_HEAD_DRIFT" | "HCTL2_TOOL_INTEGRATION_CAS_REJECTED" => {
+        "HCTL2_TOOL_INTEGRATION_HEAD_DRIFT" | "HCTL2_TOOL_INTEGRATION_CAS_REJECTED" => (
             Outcome::Failed(attention(
                 "TARGET_HEAD_MISMATCH",
                 &record,
                 "preview_a_new_intent_against_the_current_head",
-            ))
-        }
-        _ => Outcome::Failed(attention(
-            "INTEGRATION_REJECTED",
-            &record,
-            "inspect_tool_record_then_new_intent",
-        )),
+            )),
+            false,
+        ),
+        _ => (
+            Outcome::Failed(attention(
+                "INTEGRATION_REJECTED",
+                &record,
+                "inspect_tool_record_then_new_intent",
+            )),
+            false,
+        ),
     })
 }
 

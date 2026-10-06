@@ -4,6 +4,7 @@ use common::*;
 use repo::integration::{self as integ, *};
 use repo::{Platform, admit, prepare as prepare_registration};
 use serde_json::json;
+use std::collections::BTreeMap;
 use store::{EffectState, Store};
 
 fn local_repo(store: &mut Store) -> String {
@@ -42,7 +43,102 @@ fn observed(head: Option<&str>) -> Observation {
         provider_ref: "/tmp/example".into(),
         head: head.map(str::to_owned),
         protection: None,
+        continuity: Some(json!({"git_common_dir": "/tmp/example/.git", "device": 1, "inode": 42})),
     }
+}
+
+/// A hosted (random local platform) Repo taken all the way to active, like the registration suite does.
+fn hosted_repo(store: &mut Store) -> String {
+    use repo::{
+        FinishChoice, PlatformObservation, confirm_delivery, confirm_platform,
+        effect_id as registration_effect, finish,
+    };
+    let prepared = prepare_registration(request(Platform::Local), None).unwrap();
+    let reg = admit(
+        store,
+        &actor(),
+        "register-hosted",
+        "register-hosted",
+        prepared,
+    )
+    .unwrap();
+    store
+        .begin_effect(
+            store.generation(),
+            &registration_effect(&reg.repo_id, "platform"),
+        )
+        .unwrap();
+    let observed = PlatformObservation {
+        instance: "http://127.0.0.1:3000".into(),
+        stable_id: "7".into(),
+        full_name: "admin/example".into(),
+        clone_url: "http://127.0.0.1:3000/admin/example.git".into(),
+        account_id: "1".into(),
+        has_issues: true,
+        can_write_issues: true,
+        credential_ref: String::new(),
+    };
+    let reg = confirm_platform(store, &reg.repo_id, observed).unwrap();
+    store
+        .begin_effect(
+            store.generation(),
+            &registration_effect(&reg.repo_id, "delivery"),
+        )
+        .unwrap();
+    let reg = confirm_delivery(store, &reg.repo_id).unwrap();
+    finish(
+        store,
+        &actor(),
+        &reg.repo_id,
+        reg.version,
+        FinishChoice::Confirm("7"),
+        "finish-hosted",
+        "finish-hosted",
+    )
+    .unwrap();
+    reg.repo_id
+}
+
+/// Rewrite the platform binding's declared capabilities, as a verified adapter would.
+fn declare_capabilities(store: &mut Store, repo_id: &str, capabilities: serde_json::Value) {
+    use store::{Command, Expected, Record, RecordData, Version};
+    let binding = repo::binding(repo_id);
+    let current = store.get(&binding.key).unwrap().unwrap();
+    let RecordData::Value { mut value } = current.data else {
+        panic!("binding")
+    };
+    value["capabilities"] = capabilities;
+    let mut scoped = actor().0;
+    scoped
+        .permission_scope
+        .push(store::Scope::Repo(repo_id.into()));
+    let scoped = store::TrustedActor(scoped);
+    let cmd = Command {
+        command_id: format!("declare:{}:{}", repo_id, current.version + 1),
+        idempotency_key: format!("declare:{}:{}", repo_id, current.version + 1),
+        actor: scoped.0.clone(),
+        target: binding.key.clone(),
+        expected: Expected::Exact(Version::State(current.version)),
+        binding: binding.clone(),
+        input_digest: Command::digest_input("test.declare", &value).unwrap(),
+        operation: "test.declare".into(),
+        input: value.clone(),
+    };
+    store
+        .submit(store.generation(), &scoped, &cmd, None, |tx| {
+            tx.put(&Record {
+                key: binding.key.clone(),
+                version: current.version + 1,
+                revision_digest: foundation::canonical_json_sha256(&value).unwrap(),
+                data: RecordData::Value {
+                    value: value.clone(),
+                },
+                sources: Vec::new(),
+                materials: Vec::new(),
+            })?;
+            Ok(json!({}))
+        })
+        .unwrap();
 }
 
 fn success(before: &str, after: &str, tree: &str) -> Outcome {
@@ -368,4 +464,190 @@ fn an_unknown_result_keeps_the_target_occupied_until_readback_settles_it() {
     let receipt = receipt(&store, &repo_id, done.receipt_id.as_deref().unwrap()).unwrap();
     assert_eq!(receipt.target_head_before.as_deref(), Some("bbbb"));
     assert_eq!(receipt.target_head_after, "dddd");
+}
+
+#[test]
+fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declared_capabilities() {
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let repo_id = hosted_repo(&mut store);
+    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let local = input(&repo_id, "k", Form::ExpectedHead);
+    assert_eq!(
+        integ::prepare(&store, &actor(), local, observed(Some("aaaa")))
+            .unwrap_err()
+            .code,
+        "LOCAL_TARGET_NOT_ALLOWED"
+    );
+    let platform_observation = |protection: Option<ProtectionSnapshot>| Observation {
+        provider_ref: "http://127.0.0.1:3000/admin/example".into(),
+        head: Some("aaaa".into()),
+        protection,
+        continuity: Some(json!({"instance": "http://127.0.0.1:3000", "stable_id": "7"})),
+    };
+    let mut platform = input(&repo_id, "k", Form::AcceptAdvance);
+    platform.target_kind = TargetKind::Platform;
+    // The hosted binding declares merge and protection readback as unverified: refused.
+    assert_eq!(
+        integ::prepare(
+            &store,
+            &actor(),
+            platform.clone(),
+            platform_observation(Some(ProtectionSnapshot::default()))
+        )
+        .unwrap_err()
+        .code,
+        "CAPABILITY_MISSING"
+    );
+    declare_capabilities(
+        &mut store,
+        &repo_id,
+        json!({
+            "review_threads": true, "formal_reviews": true, "checks": "external_status_only",
+            "remote_merge": true, "identity_mapping": false, "expected_target_head": false,
+            "review_text_readback": true, "protection_readback": true
+        }),
+    );
+    // Expected-head needs a binding that guarantees it; this one does not.
+    let mut frozen = platform.clone();
+    frozen.form = Form::ExpectedHead;
+    assert_eq!(
+        integ::prepare(
+            &store,
+            &actor(),
+            frozen,
+            platform_observation(Some(ProtectionSnapshot::default()))
+        )
+        .unwrap_err()
+        .code,
+        "EXPECTED_HEAD_UNSUPPORTED"
+    );
+    // Protection must have been read to be frozen.
+    assert_eq!(
+        integ::prepare(
+            &store,
+            &actor(),
+            platform.clone(),
+            platform_observation(None)
+        )
+        .unwrap_err()
+        .code,
+        "PROTECTION_UNREAD"
+    );
+    let snapshot = ProtectionSnapshot {
+        requires_review_request: true,
+        required_checks: vec!["canary".into()],
+        strict_sync: false,
+        require_conversation_resolution: false,
+        required_approvals: 0,
+        other: BTreeMap::new(),
+    };
+    let preview = integ::prepare(
+        &store,
+        &actor(),
+        platform,
+        platform_observation(Some(snapshot.clone())),
+    )
+    .unwrap();
+    assert_eq!(preview.target.kind, TargetKind::Platform);
+    assert_eq!(preview.protection.as_ref(), Some(&snapshot));
+    assert_eq!(
+        preview.target.binding.as_ref().map(|b| &b.version),
+        Some(&store::Version::State(2))
+    );
+    let intent = submit(&mut store, &actor(), "integration:k", preview).unwrap();
+    assert_eq!(intent.state, IntentState::Pending);
+    // A local target without continuity evidence cannot be frozen either.
+    let local_repo_id = local_repo(&mut store);
+    admit_revision_seam(&mut store, &actor(), &local_repo_id, &revision_of(1)).unwrap();
+    let mut blind = observed(Some("aaaa"));
+    blind.continuity = None;
+    assert_eq!(
+        integ::prepare(
+            &store,
+            &actor(),
+            input(&local_repo_id, "k", Form::ExpectedHead),
+            blind
+        )
+        .unwrap_err()
+        .code,
+        "TARGET_CONTINUITY_UNREAD"
+    );
+}
+
+#[test]
+fn an_attempt_is_frozen_before_execution_and_only_a_terminal_readback_or_a_proven_no_write_clears_it()
+ {
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let repo_id = local_repo(&mut store);
+    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let preview = integ::prepare(
+        &store,
+        &actor(),
+        input(&repo_id, "one", Form::AcceptAdvance),
+        observed(Some("aaaa")),
+    )
+    .unwrap();
+    let intent = submit(&mut store, &actor(), "integration:one", preview).unwrap();
+    let id = intent.intent_id.clone();
+    begin(&mut store, &repo_id, &id).unwrap();
+    let plan = AttemptInput {
+        number: 1,
+        idempotency_key: format!("{id}:1"),
+        commit: "c".repeat(40),
+        expected_head: "aaaa".into(),
+    };
+    let recorded = record_attempt(&mut store, &repo_id, &id, plan.clone()).unwrap();
+    assert_eq!(recorded.attempt.as_ref(), Some(&plan));
+    // Same plan again is a no-op; another plan while one is in flight is refused.
+    assert_eq!(
+        record_attempt(&mut store, &repo_id, &id, plan.clone())
+            .unwrap()
+            .version,
+        recorded.version
+    );
+    let mut other = plan.clone();
+    other.expected_head = "bbbb".into();
+    assert_eq!(
+        record_attempt(&mut store, &repo_id, &id, other)
+            .unwrap_err()
+            .code,
+        "ATTEMPT_IN_FLIGHT"
+    );
+    // Unknown and attention keep the plan; the next retry must reuse it.
+    let waiting = confirm(
+        &mut store,
+        &repo_id,
+        &id,
+        Outcome::Unknown(attention("RESULT_UNKNOWN")),
+    )
+    .unwrap();
+    assert_eq!(waiting.attempt.as_ref(), Some(&plan));
+    // A proven no-write lets control clear it explicitly.
+    let cleared = clear_attempt(&mut store, &repo_id, &id).unwrap();
+    assert_eq!(cleared.attempt, None);
+    let plan2 = AttemptInput {
+        number: 2,
+        idempotency_key: format!("{id}:2"),
+        commit: "c".repeat(40),
+        expected_head: "bbbb".into(),
+    };
+    begin(&mut store, &repo_id, &id).unwrap();
+    record_attempt(&mut store, &repo_id, &id, plan2).unwrap();
+    let done = confirm(
+        &mut store,
+        &repo_id,
+        &id,
+        success("bbbb", "cccc", &"1".repeat(40)),
+    )
+    .unwrap();
+    assert_eq!(done.attempt, None);
+    assert_eq!(done.state, IntentState::Succeeded);
+    assert_eq!(
+        record_attempt(&mut store, &repo_id, &id, plan)
+            .unwrap_err()
+            .code,
+        "INTENT_TERMINAL"
+    );
 }
