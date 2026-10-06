@@ -69,6 +69,44 @@ CI 在 Linux x86_64 导出 base/diff 两份 Buck 图，用 BTD 保守选择带 `
 
 PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、新 head。旧 head 是新 head 的祖先，且旧 head 上对应 workflow 已成功时，本轮只把旧 head 到 GitHub 当前 test merge 的变化交给路径分类和 BTD；这样仍覆盖最新 base 的兼容性。没有受影响 target 或发行输入时，当前 head 的 required gate 仍成功出现，但不启动三平台重构建。旧结果缺失、API 查询失败、rebase 或强推造成历史改写时，回退到 base 到当前 test merge 的完整 PR diff。strict branch protection 继续生效；更新落后分支时应使用 GitHub 的 merge 形式 `Update branch`，保留可验证的提交链。
 
+## Ubuntu 开发机准备
+
+新机器只需要装下面三样，其余（buck2、rustc、Python、jq 等）由 `./buck2` 经 DotSlash 与 Buck2 按校验和自己准备。下面是所有者 2026-10-07 在 Ubuntu 26.04 上的安装过程。
+
+1. **gh**，用 GitHub 官方 apt 源。开 PR、看 CI 用的是宿主上的 gh；Ubuntu 自带的版本太旧（2.46），`--json` 缺新字段，比如发行资产的 `digest`。构建与测试另用 `build/tools/gh-bin` 钉住的版本，不受宿主 gh 影响。
+
+   ```bash
+   sudo apt update && sudo apt install software-properties-common curl -y
+   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+   sudo apt update
+   sudo apt install gh -y
+   ```
+
+2. **DotSlash**，版本与摘要以 `build/tools/dotslash.env` 为准，解压到 `/usr/local/bin`。在 `src/` 内执行：
+
+   ```bash
+   . build/tools/dotslash.env
+   curl -fsSLO "https://github.com/facebook/dotslash/releases/download/$DOTSLASH_VERSION/$DOTSLASH_LINUX_X86_64_ASSET"
+   echo "$DOTSLASH_LINUX_X86_64_SHA256  $DOTSLASH_LINUX_X86_64_ASSET" | sha256sum -c -
+   sudo tar -xzf "$DOTSLASH_LINUX_X86_64_ASSET" -C /usr/local/bin
+   dotslash --version
+   ```
+
+   `dotslash --version` 必须等于 `DOTSLASH_VERSION`。PATH 前面不要留别的 dotslash，比如 `cargo install` 装的旧版。
+
+3. **clang 与 lld**。这是 Buck2 prelude 默认的 C/C++ 工具链：`system_cxx_toolchain` 用 clang 编译、`clang++` 链接，Linux 上加 `-fuse-ld=lld`。只有 GCC 不够。缺 clang、clang++ 或 lld 时，`./buck2 build`、`run`、`test` 会直接报错，并提示下面这条安装命令。CI 的 ubuntu-24.04 镜像自带 clang 18 与 lld；Ubuntu 26.04 的 apt 装出的是 21。
+
+   ```bash
+   sudo apt install clang lld
+   ```
+
+装好后在 `src/` 跑一遍 CI Linux 作业的全量目标，确认全绿：
+
+```bash
+./buck2 test --build-default-info root//agency/... root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party --target-platforms root//build/platforms:linux_x86_64_gnu
+```
+
 ## 本机 cache 运维
 
 `./buck2` 会按需启动 Process Compose 项目；如果同一 loopback endpoint 已经有旧版或用户自行管理的 `bazel-remote`，则直接复用而不争夺端口。平时不需要单独管理。需要检查日志或主动停止由 Process Compose 启动的实例时，直接使用它的原生命令，不再经过仓库自建的同义 CLI：

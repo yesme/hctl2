@@ -44,9 +44,32 @@ if [ "$(uname -s)" = Darwin ]; then
         ar_bin=$(xcrun --find ar)
     fi
 else
-    cc_bin=$(command -v clang || command -v cc || true)
-    cxx_bin=$(command -v clang++ || command -v c++ || true)
+    # Linux uses the prelude's default C/C++ toolchain as is: clang compiles,
+    # clang++ links with -fuse-ld=lld. A cc/c++ fallback only moved the compile
+    # step; the link still asked for clang++ and lld. Ask clang where it finds
+    # ld.lld: it looks next to itself before PATH, and answers a bare name when
+    # lld is missing.
+    cc_bin=$(command -v clang || true)
+    cxx_bin=$(command -v clang++ || true)
     ar_bin=$(command -v ar || true)
+    case "${1:-}" in
+        build | run | test)
+            lld_bin=
+            if [ -n "$cc_bin" ]; then
+                lld_bin=$("$cc_bin" -print-prog-name=ld.lld 2>/dev/null || true)
+            fi
+            case "$lld_bin" in
+                /*) [ -x "$lld_bin" ] || lld_bin= ;;
+                *) lld_bin= ;;
+            esac
+            if [ -z "$cc_bin" ] || [ -z "$cxx_bin" ] || [ -z "$lld_bin" ]; then
+                printf '%s\n' \
+                    'error: Linux builds need clang, clang++ and lld (the Buck2 prelude C/C++ toolchain)' \
+                    'install them with: sudo apt install clang lld (see src/build/README.md, Ubuntu section)' >&2
+                exit 1
+            fi
+            ;;
+    esac
 fi
 
 case "${1:-}" in
