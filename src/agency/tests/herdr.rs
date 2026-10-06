@@ -2757,7 +2757,10 @@ fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
     );
     assert!(answer.contains("HCTL3E_ONE"), "{answer}");
     let thread = opened.unwrap()["thread"].as_str().unwrap().to_owned();
-    assert!(rollout_has(&thread, "Reply with exactly HCTL3E_ONE and nothing else.\n"));
+    assert!(rollout_has(
+        &thread,
+        "Reply with exactly HCTL3E_ONE and nothing else.\n"
+    ));
     let bang = "!\nReply with exactly HCTL3E_BANG and nothing else.";
     let (answer, _) = run("bang", bang, "codex-a");
     assert!(answer.contains("HCTL3E_BANG"), "{answer}");
@@ -2783,7 +2786,8 @@ fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
     )
     .unwrap();
     assert!(
-        ps.lines().any(|line| line.contains(&thread) && line.contains("--remote")),
+        ps.lines()
+            .any(|line| line.contains(&thread) && line.contains("--remote")),
         "pane process was not still codex resume --remote"
     );
     let (answer, opened) = run(
@@ -2803,7 +2807,8 @@ fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
     )
     .unwrap();
     assert!(
-        !ps.lines().any(|line| line.contains("app-server --listen unix://") && line.contains("codex-")),
+        !ps.lines()
+            .any(|line| line.contains("app-server --listen unix://") && line.contains("codex-")),
         "app-server was still running after shutdown"
     );
 }

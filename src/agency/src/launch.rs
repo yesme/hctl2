@@ -444,7 +444,9 @@ impl InstalledHerdr {
             starts: AtomicUsize::new(0),
             script: None,
             pool: Some(crate::standby::Pool::new(claude, idle)),
-            codex_pool: codex.as_ref().map(|(path, _, _)| crate::codex::Pool::new(path.clone(), idle)),
+            codex_pool: codex
+                .as_ref()
+                .map(|(path, _, _)| crate::codex::Pool::new(path.clone(), idle)),
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
@@ -573,7 +575,10 @@ fn probe_codex(herdr: &Path) -> (Option<(PathBuf, String, String)>, Option<Strin
     }
     match crate::catalog::file_digest(&codex) {
         Ok(digest) => (Some((codex, version, digest)), None),
-        Err(error) => (None, Some(format!("codex digest failed: {}", error.message))),
+        Err(error) => (
+            None,
+            Some(format!("codex digest failed: {}", error.message)),
+        ),
     }
 }
 

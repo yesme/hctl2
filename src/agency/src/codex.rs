@@ -268,7 +268,8 @@ fn run_job(
         return Ok(());
     }
     if live.is_none() {
-        let (session, resumed, resume_failed) = Live::open(env.codex, env.cwd, env.dir, env.socket)?;
+        let (session, resumed, resume_failed) =
+            Live::open(env.codex, env.cwd, env.dir, env.socket)?;
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
             payload: json!({"resumed":resumed,"resume_failed":resume_failed,"thread":session.thread}),
@@ -391,12 +392,7 @@ struct Pane {
 }
 
 impl Live {
-    fn open(
-        codex: &Path,
-        cwd: &Path,
-        dir: &Path,
-        socket: &Path,
-    ) -> Result<(Self, bool, bool)> {
+    fn open(codex: &Path, cwd: &Path, dir: &Path, socket: &Path) -> Result<(Self, bool, bool)> {
         let _ = fs::remove_file(socket);
         let log = crate::storage::private_file(&dir.join("app-server.err"))?;
         let mut child = Command::new(codex);
@@ -480,7 +476,13 @@ impl Live {
             .map(|_| ())
     }
 
-    fn ensure_pane(&mut self, server: &Arc<Server>, codex: &Path, cwd: &Path, dir: &Path) -> Result<()> {
+    fn ensure_pane(
+        &mut self,
+        server: &Arc<Server>,
+        codex: &Path,
+        cwd: &Path,
+        dir: &Path,
+    ) -> Result<()> {
         if let Some(pane) = &self.pane
             && pane
                 .client
@@ -492,7 +494,14 @@ impl Live {
         if let Some(pane) = self.pane.as_mut() {
             let _ = pane.client.call("pane.close", json!({"pane_id": pane.id}));
         }
-        self.pane = Some(open_pane(server, codex, cwd, dir, &self.thread, &self.socket)?);
+        self.pane = Some(open_pane(
+            server,
+            codex,
+            cwd,
+            dir,
+            &self.thread,
+            &self.socket,
+        )?);
         Ok(())
     }
 
@@ -808,7 +817,11 @@ impl Rpc {
                 if let Some(error) = msg.get("error") {
                     return Err(PortError::new(
                         "CODEX_RPC",
-                        redact(error["message"].as_str().unwrap_or("app-server request failed")),
+                        redact(
+                            error["message"]
+                                .as_str()
+                                .unwrap_or("app-server request failed"),
+                        ),
                         "inspect_dispatch",
                     ));
                 }
@@ -830,7 +843,10 @@ impl Rpc {
         self.stream.set_read_timeout(Some(timeout))?;
         match self.read_frame() {
             Ok(text) => Ok(Some(serde_json::from_str(&text)?)),
-            Err(error) if error.kind() == std::io::ErrorKind::TimedOut || error.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::TimedOut
+                    || error.kind() == std::io::ErrorKind::WouldBlock =>
+            {
                 Ok(None)
             }
             Err(error) => Err(error.into()),
@@ -839,12 +855,7 @@ impl Rpc {
 
     fn send(&mut self, value: &Value) -> Result<()> {
         let data = serde_json::to_vec(value)?;
-        let mask = [
-            rand_byte(),
-            rand_byte(),
-            rand_byte(),
-            rand_byte(),
-        ];
+        let mask = [rand_byte(), rand_byte(), rand_byte(), rand_byte()];
         let mut frame = Vec::new();
         frame.push(0x81);
         let n = data.len();
@@ -972,7 +983,11 @@ mod tests {
                 "unix:///tmp/hctl2-codex-test/app.sock"
             ]
         );
-        assert!(!args.iter().any(|arg| arg == "daemon" || arg.contains("config.toml")));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg == "daemon" || arg.contains("config.toml"))
+        );
     }
 
     #[test]
