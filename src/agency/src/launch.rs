@@ -13,6 +13,7 @@ use std::{
     io::Read,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
+    process::Command,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -381,6 +382,10 @@ pub struct InstalledHerdr {
     starts: AtomicUsize,
     script: Option<Arc<LaunchScript>>,
     pool: Option<crate::standby::Pool>,
+    codex_pool: Option<crate::codex::Pool>,
+    codex_revision: Option<String>,
+    codex_digest: Option<String>,
+    codex_skip: Option<String>,
     read_paths: Vec<PathBuf>,
 }
 
@@ -406,13 +411,19 @@ impl InstalledHerdr {
             return Err(PortError::invalid("standby idle duration must be positive"));
         }
         let claude = claude.canonicalize()?;
-        let read_paths = vec![
+        let mut read_paths = vec![
             claude
                 .parent()
                 .ok_or_else(|| PortError::invalid("Claude has no parent"))?
                 .to_path_buf(),
         ];
         let version = smoke_binary(&binary, &claude, &read_paths)?;
+        let (codex, codex_skip) = probe_codex(&binary);
+        if let Some((path, _, _)) = &codex
+            && let Some(parent) = path.parent()
+        {
+            read_paths.push(parent.to_path_buf());
+        }
         if !crate::harness::version_at_least(&version, crate::harness::CLAUDE_MINIMUM) {
             return Err(PortError::new(
                 "HARNESS_VERSION",
@@ -433,8 +444,16 @@ impl InstalledHerdr {
             starts: AtomicUsize::new(0),
             script: None,
             pool: Some(crate::standby::Pool::new(claude, idle)),
+            codex_pool: codex.as_ref().map(|(path, _, _)| crate::codex::Pool::new(path.clone(), idle)),
+            codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
+            codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
+            codex_skip,
             read_paths,
         })
+    }
+
+    pub fn codex_skip(&self) -> Option<&str> {
+        self.codex_skip.as_deref()
     }
 
     pub fn for_test(
@@ -450,6 +469,10 @@ impl InstalledHerdr {
             starts: AtomicUsize::new(0),
             script: Some(Arc::new(script)),
             pool: None,
+            codex_pool: None,
+            codex_revision: None,
+            codex_digest: None,
+            codex_skip: None,
             read_paths: vec![],
         }
     }
@@ -516,6 +539,55 @@ impl InstalledHerdr {
         self.starts.fetch_add(1, Ordering::SeqCst);
         *slot = Some(Arc::clone(&server));
         Ok(server)
+    }
+}
+
+fn probe_codex(herdr: &Path) -> (Option<(PathBuf, String, String)>, Option<String>) {
+    let Some(codex) = std::env::var_os("HCTL2_CODEX")
+        .map(PathBuf::from)
+        .or_else(codex_on_path)
+    else {
+        return (
+            None,
+            Some("codex is not on PATH and HCTL2_CODEX is unset".into()),
+        );
+    };
+    let Ok(codex) = codex.canonicalize() else {
+        return (None, Some("codex path cannot be canonicalized".into()));
+    };
+    let Some(parent) = codex.parent().map(Path::to_path_buf) else {
+        return (None, Some("codex has no parent directory".into()));
+    };
+    let version = match smoke_binary(herdr, &codex, &[parent]) {
+        Ok(version) => version,
+        Err(error) => return (None, Some(format!("codex smoke failed: {}", error.message))),
+    };
+    if !crate::harness::version_at_least(&version, crate::harness::CODEX_MINIMUM) {
+        return (
+            None,
+            Some(format!(
+                "codex {version} is below {}",
+                crate::harness::CODEX_MINIMUM
+            )),
+        );
+    }
+    match crate::catalog::file_digest(&codex) {
+        Ok(digest) => (Some((codex, version, digest)), None),
+        Err(error) => (None, Some(format!("codex digest failed: {}", error.message))),
+    }
+}
+
+fn codex_on_path() -> Option<PathBuf> {
+    let output = Command::new("/usr/bin/which").arg("codex").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let path = text.lines().next()?.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
     }
 }
 
@@ -592,7 +664,13 @@ impl Session for HerdrSession {
 
 impl Runtime for InstalledHerdr {
     fn shutdown(&self) -> Result<()> {
+        let codex = self
+            .codex_pool
+            .as_ref()
+            .map(|pool| pool.shutdown())
+            .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
+        let pooled = codex.and(pooled);
         let mut slot = self.slot.lock().expect("herdr");
         if let Some(server) = slot.as_ref() {
             // Detached event readers may still hold Arc<Server> when the Agency
@@ -628,8 +706,29 @@ impl Runtime for InstalledHerdr {
                 ..Capabilities::default()
             },
         };
+        let mut professions = vec![profession];
+        if let (Some(revision), Some(digest)) = (&self.codex_revision, &self.codex_digest) {
+            professions.push(Profession {
+                reference: FrozenRef {
+                    id: "codex-cli".into(),
+                    revision: revision.clone(),
+                    digest: digest.clone(),
+                },
+                harness: harness.clone(),
+                model: "none".into(),
+                persona: "codex".into(),
+                terms: "read-only Bundle dispatch; app-server turn/start for one selection thread; Herdr pane runs codex resume --remote; no write lease".into(),
+                default_role: "worker".into(),
+                skills: vec![],
+                capabilities: Capabilities {
+                    input: false,
+                    stop: true,
+                    ..Capabilities::default()
+                },
+            });
+        }
         Ok(Catalog {
-            professions: vec![profession],
+            professions,
             harnesses: vec![harness],
             skills: vec![],
         })
@@ -644,6 +743,18 @@ impl Runtime for InstalledHerdr {
     ) -> Result<Running> {
         fs::create_dir_all(exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
+        if spec.document.profession.reference.id == "codex-cli" {
+            let Some(pool) = &self.codex_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.codex_skip
+                        .clone()
+                        .unwrap_or_else(|| "codex is not cataloged".into()),
+                    "install_codex",
+                ));
+            };
+            return pool.submit(server, spec, bundle, exec_root, credential_root);
+        }
         if let Some(pool) = &self.pool {
             return pool.submit(server, spec, bundle, exec_root, credential_root);
         }
@@ -679,6 +790,20 @@ impl Runtime for InstalledHerdr {
         exec_root: &Path,
         credential_root: &Path,
     ) -> Result<Running> {
+        if spec.document.profession.reference.id == "codex-cli" {
+            fs::create_dir_all(exec_root)?;
+            let server = self.ensure(exec_root, credential_root)?;
+            let Some(pool) = &self.codex_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.codex_skip
+                        .clone()
+                        .unwrap_or_else(|| "codex is not cataloged".into()),
+                    "install_codex",
+                ));
+            };
+            return pool.submit(server, spec, bundle, exec_root, tenant);
+        }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;
             let server = self.ensure(exec_root, credential_root)?;

@@ -31,12 +31,13 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-3a（#323）、3b（#328）、3c（#335）已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话，删除生产路径的 print 调用；脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d。
+3a（#323）、3b（#328）、3c（#335）、3d 已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话。3e 把 Codex 接成并列工种：正文走一次性 app-server 的 `turn/start`，Herdr pane 跑 `codex resume --remote`。脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d、3e，以及 `docs/research/harness-dispatch-channel-20261006.md` 的决定建议。
 
 | 文件 | 当前职责 |
 | --- | --- |
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
 | `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架只读工种 |
+| `src/codex.rs` | 每个选入记录一个一次性 `codex app-server --listen unix://`；`turn/start` 交正文，pane 里 `codex resume --remote` |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
 | `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
@@ -63,7 +64,11 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 当前限制：目录信任自动确认只识别英文界面；测试目录的信任记录由 Claude 原生保存，不自动删除。失效的续接标识可能等到三十秒启动时限才改用新会话。Herdr 关闭 pane 本身失败时，该选入记录的工作线程可能退出，后续请求报 `STANDBY_UNAVAILABLE`，须恢复 Runtime；不把关闭失败报成已回收。
 
-第二家 Harness、工具直报、工作副本管理与模型字段留后续包。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
+Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次，监听放在 Herdr 套接字同一私有目录里的 `codex-*.sock`，命令是 `app-server --listen unix://…`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `sandbox: read-only` 与 `approvalPolicy: never`，不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
+
+人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在。这次观察用的连接在 45 秒内没有读到 `turn/completed`。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
+
+工具直报、工作副本管理与模型字段仍另议。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 

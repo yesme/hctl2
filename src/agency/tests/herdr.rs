@@ -2682,3 +2682,176 @@ fn process_matches(pid: u32, binary: &std::path::Path) -> bool {
                     .is_ok_and(|expected| program == expected)
             })
 }
+
+#[test]
+#[ignore = "UNVERIFIED: requires a logged-in Codex session and HCTL2_HARNESS_LIVE=1"]
+fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
+    use agency::runtime::RuntimeEvent;
+    assert!(std::env::var_os("HCTL2_HARNESS_LIVE").is_some());
+    let claude = PathBuf::from(
+        String::from_utf8(
+            Command::new("/usr/bin/which")
+                .arg("claude")
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim(),
+    );
+    let (cred, _root, exec) = standby_root("live-codex");
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let profession = runtime
+        .catalog()
+        .unwrap()
+        .professions
+        .into_iter()
+        .find(|item| item.reference.id == "codex-cli")
+        .expect("codex was not cataloged");
+    let run = |key: &str, text: &str, selection: &str| {
+        let bundle = sealed_bundle(text);
+        let mut spec = sealed_spec(key, now_ms() + 180_000).document;
+        spec.profession = profession.clone();
+        spec.selection.id = selection.into();
+        spec.bundle.digest = bundle.digest.clone();
+        let spec = agency_proto::Sealed::new(spec).unwrap();
+        let mut running = runtime.start(&spec, &bundle, &exec, &cred).unwrap();
+        let events = collect(&mut running, Duration::from_secs(180));
+        let answers: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                RuntimeEvent::Proposal { bytes, .. } => {
+                    Some(String::from_utf8(bytes.clone()).unwrap())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(answers.len(), 1, "{key}");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, RuntimeEvent::TurnReturned))
+                .count(),
+            1
+        );
+        let opened = events.iter().find_map(|event| match event {
+            RuntimeEvent::Observation { kind, payload, .. } if kind == "session_opened" => {
+                Some(payload.clone())
+            }
+            _ => None,
+        });
+        (answers.into_iter().next().unwrap(), opened)
+    };
+    let (answer, opened) = run(
+        "one",
+        "Reply with exactly HCTL3E_ONE and nothing else.",
+        "codex-a",
+    );
+    assert!(answer.contains("HCTL3E_ONE"), "{answer}");
+    let thread = opened.unwrap()["thread"].as_str().unwrap().to_owned();
+    assert!(rollout_has(&thread, "Reply with exactly HCTL3E_ONE and nothing else.\n"));
+    let bang = "!\nReply with exactly HCTL3E_BANG and nothing else.";
+    let (answer, _) = run("bang", bang, "codex-a");
+    assert!(answer.contains("HCTL3E_BANG"), "{answer}");
+    assert!(rollout_has(&thread, &format!("{bang}\n")));
+    let slash = "/\nReply with exactly HCTL3E_SLASH and nothing else.";
+    let (answer, _) = run("slash", slash, "codex-a");
+    assert!(answer.contains("HCTL3E_SLASH"), "{answer}");
+    assert!(rollout_has(&thread, &format!("{slash}\n")));
+    let long = format!(
+        "Reply with exactly HCTL3E_LONG and nothing else.\n{}",
+        "cache line\n".repeat(200)
+    );
+    assert!(long.len() > 2000);
+    let (answer, _) = run("long", &long, "codex-a");
+    assert!(answer.contains("HCTL3E_LONG"), "{answer}");
+    assert!(rollout_has(&thread, &format!("{long}\n")));
+    let ps = String::from_utf8(
+        Command::new("/bin/ps")
+            .args(["-ax", "-o", "command="])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(
+        ps.lines().any(|line| line.contains(&thread) && line.contains("--remote")),
+        "pane process was not still codex resume --remote"
+    );
+    let (answer, opened) = run(
+        "other",
+        "Reply with exactly HCTL3E_OTHER and nothing else.",
+        "codex-b",
+    );
+    assert!(answer.contains("HCTL3E_OTHER"), "{answer}");
+    assert_ne!(opened.unwrap()["thread"], thread);
+    runtime.shutdown().unwrap();
+    let ps = String::from_utf8(
+        Command::new("/bin/ps")
+            .args(["-ax", "-o", "command="])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(
+        !ps.lines().any(|line| line.contains("app-server --listen unix://") && line.contains("codex-")),
+        "app-server was still running after shutdown"
+    );
+}
+
+fn rollout_has(thread: &str, text: &str) -> bool {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".codex"));
+    let mut stack = vec![home.join("sessions")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.contains(thread) {
+                continue;
+            }
+            let Ok(body) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for line in body.lines() {
+                let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+                    continue;
+                };
+                if json_has_input(&value, text) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn json_has_input(value: &serde_json::Value, text: &str) -> bool {
+    let mut stack = vec![value];
+    while let Some(current) = stack.pop() {
+        match current {
+            serde_json::Value::Object(map) => {
+                if map.get("type").and_then(|v| v.as_str()) == Some("input_text")
+                    && map.get("text").and_then(|v| v.as_str()) == Some(text)
+                {
+                    return true;
+                }
+                stack.extend(map.values());
+            }
+            serde_json::Value::Array(items) => stack.extend(items.iter()),
+            _ => {}
+        }
+    }
+    false
+}

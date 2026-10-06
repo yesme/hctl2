@@ -154,7 +154,7 @@ impl Drop for Pool {
         let _ = self.shutdown();
     }
 }
-fn readonly(spec: &ExecutionSpec) -> Result<()> {
+pub(crate) fn readonly(spec: &ExecutionSpec) -> Result<()> {
     if spec.write_lease.is_some()
         || spec.review_publish_policy.is_some()
         || spec.permissions.iter().any(|p| p != "context.read")
@@ -174,7 +174,7 @@ fn readonly(spec: &ExecutionSpec) -> Result<()> {
     }
     Ok(())
 }
-fn selection_key(spec: &ExecutionSpec, tenant: &Path) -> Result<String> {
+pub(crate) fn selection_key(spec: &ExecutionSpec, tenant: &Path) -> Result<String> {
     Ok(hash(&canonical(&json!([
         tenant,
         spec.binding.id,

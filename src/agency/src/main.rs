@@ -69,7 +69,12 @@ async fn run(args: Args) -> Result<()> {
                 Arc::new(ScriptRuntime::new(config.clone()))
             } else if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT") {
                 match catalog_installed_harness(std::path::Path::new(&install)) {
-                    Ok(runtime) => Arc::new(runtime),
+                    Ok(runtime) => {
+                        if let Some(reason) = runtime.codex_skip() {
+                            eprintln!("codex not cataloged: {reason}");
+                        }
+                        Arc::new(runtime)
+                    }
                     Err(error) => {
                         eprintln!("harness not cataloged: {error}");
                         Arc::new(Unconfigured)
