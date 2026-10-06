@@ -183,7 +183,12 @@ case "$agent" in
       macos)  session="01a027ea-f719-7a00-b833-2a587b2a05ac" ;;
       ubuntu) session="01a0e972-feb8-7562-9f37-5741175c456c" ;;
     esac
-    cmd=(codex --dangerously-bypass-approvals-and-sandbox -C "$workdir" resume "$session")
+    cmd=(codex --dangerously-bypass-approvals-and-sandbox -C "$workdir")
+    if [[ "$platform" == macos ]]; then
+      # Keep terminal-launched work out of the shared background server.
+      cmd+=(--no-daemon)
+    fi
+    cmd+=(resume "$session")
     ;;
   deepseek)
     workdir="$workspace/hctl2-deepseek"
