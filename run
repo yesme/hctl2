@@ -172,7 +172,7 @@ case "$agent" in
   claude)
     workdir="$workspace/hctl2-claude"
     case "$platform" in
-      macos)  session="197c3f1e-7e43-46b4-a228-26a497574897" ;;
+      macos)  session="dccc85c7-d24a-45e1-86a2-447b46b1da60" ;;
       ubuntu) session="0a0f76a9-0fff-4495-8682-ff7b61dca6b4" ;;
     esac
     cmd=(claude --dangerously-skip-permissions --resume "$session")
