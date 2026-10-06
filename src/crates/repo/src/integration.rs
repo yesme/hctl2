@@ -116,6 +116,94 @@ pub fn admit_revision_seam(
     Ok(())
 }
 
+/// Record kind written by 发布评审 (the other half of 第 6 包): which platform commit and review
+/// request a ChangeSet Revision was published as. Read here to find what to ask the platform
+/// to merge. Keyed by the revision id in the Repo scope.
+pub const PLATFORM_BINDING_KIND: &str = "changeset_platform_binding";
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewRequestRef {
+    /// The review request's number on the platform.
+    pub index: u64,
+    /// The platform-side commit of the published revision; merges pin it as the source head.
+    pub platform_commit_sha: String,
+}
+
+pub fn platform_binding_key(repo_id: &str, revision_id: &str) -> ObjectKey {
+    ObjectKey {
+        scope: Scope::Repo(repo_id.into()),
+        kind: PLATFORM_BINDING_KIND.into(),
+        id: revision_id.into(),
+    }
+}
+
+/// The review request a revision was published to, if 发布评审 recorded one.
+pub fn review_request(
+    store: &Store,
+    repo_id: &str,
+    revision_id: &str,
+) -> Result<Option<ReviewRequestRef>> {
+    let Some(record) = store.get(&platform_binding_key(repo_id, revision_id))? else {
+        return Ok(None);
+    };
+    let RecordData::Value { value } = &record.data else {
+        return Ok(None);
+    };
+    let index = value["review_request"]["index"].as_u64();
+    let commit = value["platform_commit_sha"].as_str();
+    Ok(match (index, commit) {
+        (Some(index), Some(commit)) => Some(ReviewRequestRef {
+            index,
+            platform_commit_sha: commit.to_owned(),
+        }),
+        _ => None,
+    })
+}
+
+/// 测试缝：发布评审落地前，让集成的用例有可引用的映射。另一半合入后改走它的写入，这个函数删除。
+pub fn admit_platform_binding_seam(
+    store: &mut Store,
+    actor: &TrustedActor,
+    repo_id: &str,
+    revision_id: &str,
+    review: &ReviewRequestRef,
+) -> Result<()> {
+    let registration = require_active(store, repo_id)?;
+    let actor = scoped(actor, &registration.repo_id)?;
+    let key = platform_binding_key(repo_id, revision_id);
+    let value = json!({
+        "change_set_revision_id": revision_id,
+        "platform_commit_sha": review.platform_commit_sha,
+        "review_request": {"index": review.index},
+    });
+    let operation = "repo.platform_binding_seam";
+    let cmd = Command {
+        command_id: format!("{operation}:{repo_id}:{revision_id}"),
+        idempotency_key: format!("{operation}:{repo_id}:{revision_id}"),
+        actor: actor.0.clone(),
+        target: key.clone(),
+        expected: Expected::Absent,
+        binding: crate::binding(repo_id),
+        input_digest: Command::digest_input(operation, &value)?,
+        operation: operation.into(),
+        input: value.clone(),
+    };
+    store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        tx.put(&Record {
+            key: key.clone(),
+            version: 1,
+            revision_digest: canonical_json_sha256(&value)?,
+            data: RecordData::Value {
+                value: value.clone(),
+            },
+            sources: Vec::new(),
+            materials: Vec::new(),
+        })?;
+        Ok(json!({}))
+    })?;
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetKind {
@@ -296,7 +384,9 @@ pub struct Receipt {
     /// The actual target head after integration; under accept-advance it may differ from preview.
     pub target_head_after: String,
     pub integrated_commit: String,
-    pub integrated_tree: String,
+    /// Tree of the integrated commit when the readback channel exposes it; `None` records that
+    /// the platform did not (Gitea's REST API does not return tree ids).
+    pub integrated_tree: Option<String>,
     /// Channel level of the readback that signed this Receipt (`hctl2-tool` or adapter readback).
     pub evidence_level: String,
     pub readback: Value,
@@ -311,7 +401,7 @@ pub enum Outcome {
         target_head_before: Option<String>,
         target_head_after: String,
         integrated_commit: String,
-        integrated_tree: String,
+        integrated_tree: Option<String>,
         evidence_level: String,
         readback: Value,
         observed_at_unix_ms: u64,
@@ -940,8 +1030,9 @@ pub fn confirm(
             readback,
             observed_at_unix_ms,
         } => {
-            if integrated_tree != intent.preview.source.result_tree_sha
-                && intent.preview.strategy == Strategy::FastForward
+            if intent.preview.strategy == Strategy::FastForward
+                && integrated_tree.as_deref()
+                    != Some(intent.preview.source.result_tree_sha.as_str())
             {
                 return Err(reject(
                     "READBACK_MISMATCH",

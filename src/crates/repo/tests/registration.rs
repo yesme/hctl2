@@ -68,16 +68,17 @@ fn local_pending_outbox_readback_identity_confirmation_and_abandonment() {
     for capability in [
         "review_threads",
         "formal_reviews",
-        "remote_merge",
         "identity_mapping",
         "review_text_readback",
-        "protection_readback",
     ] {
         assert_eq!(
             value["capabilities"][capability], false,
             "unverified Gitea capability: {capability}"
         );
     }
+    // Verified live on Gitea 1.27.3 (docs/research/gitea.md, 2026-10-07).
+    assert_eq!(value["capabilities"]["remote_merge"], true);
+    assert_eq!(value["capabilities"]["protection_readback"], true);
     assert_eq!(value["account_mappings"], serde_json::json!({}));
     assert_eq!(
         store

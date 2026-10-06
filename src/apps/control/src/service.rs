@@ -457,7 +457,9 @@ impl Control for ControlService {
                 if operation.starts_with("invocation.") {
                     crate::dispatch::preview(&store, &services, &root, &actor, &operation, &payload)
                 } else if operation.starts_with("integration.") {
-                    crate::integration::preview(&store, &services, &actor, &operation, &payload)
+                    crate::integration::preview(
+                        &store, &services, &root, &actor, &operation, &payload,
+                    )
                 } else if operation.starts_with("profile.") {
                     crate::profiles::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {

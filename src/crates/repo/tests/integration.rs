@@ -146,7 +146,7 @@ fn success(before: &str, after: &str, tree: &str) -> Outcome {
         target_head_before: Some(before.into()),
         target_head_after: after.into(),
         integrated_commit: after.into(),
-        integrated_tree: tree.into(),
+        integrated_tree: Some(tree.into()),
         evidence_level: "hctl2-tool".into(),
         readback: json!({"status":"applied"}),
         observed_at_unix_ms: 1,
@@ -390,7 +390,10 @@ fn only_a_confirming_readback_writes_the_one_receipt_in_the_same_transaction() {
     let receipt = receipt(&store, &repo_id, &receipt_id).unwrap();
     assert_eq!(receipt.intent_id, id);
     assert_eq!(receipt.target_head_after, "cccc");
-    assert_eq!(receipt.integrated_tree, "1".repeat(40));
+    assert_eq!(
+        receipt.integrated_tree.as_deref(),
+        Some("1".repeat(40).as_str())
+    );
     assert_eq!(receipt.evidence_level, "hctl2-tool");
     assert_eq!(
         store.effect(&integ::effect_id(&id)).unwrap().1,
@@ -487,7 +490,16 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     };
     let mut platform = input(&repo_id, "k", Form::AcceptAdvance);
     platform.target_kind = TargetKind::Platform;
-    // The hosted binding declares merge and protection readback as unverified: refused.
+    // A binding that does not declare merge or protection readback refuses platform targets.
+    declare_capabilities(
+        &mut store,
+        &repo_id,
+        json!({
+            "review_threads": false, "formal_reviews": false, "checks": "external_status_only",
+            "remote_merge": false, "identity_mapping": false, "expected_target_head": false,
+            "review_text_readback": false, "protection_readback": true
+        }),
+    );
     assert_eq!(
         integ::prepare(
             &store,
@@ -553,7 +565,7 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     assert_eq!(preview.protection.as_ref(), Some(&snapshot));
     assert_eq!(
         preview.target.binding.as_ref().map(|b| &b.version),
-        Some(&store::Version::State(2))
+        Some(&store::Version::State(3))
     );
     let intent = submit(&mut store, &actor(), "integration:k", preview).unwrap();
     assert_eq!(intent.state, IntentState::Pending);
