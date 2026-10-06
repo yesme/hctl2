@@ -70,7 +70,7 @@ Co-authored-by: <harness> <模型> effort=<档位> <用户号+<bot 名>[bot]@use
 
 例：`Co-authored-by: Claude Code claude-fable-5-1 effort=xhigh <281844019+a-claude-code-bot[bot]@users.noreply.github.com>`
 
-机械关卡：`PR contract` 检查 PR 里 2026-10-06 之后的每个非合并提交都至少有一行合格的署名、邮箱在上表里。表改了，`.github/workflows/pr-contract.yml` 里的清单要一起改。
+机械关卡：`PR contract` 检查 PR 里 2026-10-06 18:00（北京时间）之后的每个非合并提交都至少有一行合格的署名、邮箱在上表里；之前的提交不用改（所有者 2026-10-06：「就改未来的好了」）。表改了，`.github/workflows/pr-contract.yml` 里的清单要一起改。
 
 ## Repo 地图
 

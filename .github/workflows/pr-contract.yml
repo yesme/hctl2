@@ -108,9 +108,9 @@ jobs:
 
           # AGENTS.md「提交署名」：harness 产出的每个提交末尾一席一行
           #   Co-authored-by: <harness> <模型> effort=<档位> <用户号+bot[bot]@users.noreply.github.com>
-          # 邮箱清单与 AGENTS.md 的表一起改。规矩 2026-10-06 落库，之前的提交不查；
-          # GitHub 网页上直接改的提交（提交者是 GitHub）不查。
-          cutoff='2026-10-06T00:00:00+08:00'
+          # 邮箱清单与 AGENTS.md 的表一起改。所有者 2026-10-06：过去的提交说明不改、只管以后的，
+          # 所以只查这个时刻之后的提交；GitHub 网页上直接改的提交（提交者是 GitHub）不查。
+          cutoff='2026-10-06T18:00:00+08:00'
           allowed='281844019+a-claude-code-bot[bot]@users.noreply.github.com
           281847692+a-chatgpt-codex-bot[bot]@users.noreply.github.com
           302482056+a-grok-build-bot[bot]@users.noreply.github.com
