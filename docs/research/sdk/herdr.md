@@ -174,3 +174,11 @@ macOS arm64 的 Aqua 用户会话运行 Buck 构建的同一测试产物，Herdr
 早取消与早截止后，各交 23 行新正文，`turn.start.text` 逐字一致，各得到 `NEXT_TOTAL=253`，PID `38385` 不变。随后真实进程 `SIGTERM`，下一次派工经原生 `--resume` 返回 `RESTORED_ONCE`，Session ID `638eef77-a554-4732-9f7b-93937105c5cb` 不变。独立闲置用例的两轮 PID `60690` 相同；回收后 PID `79978`，仍是 Session `1327ae2a-0f7e-4751-99d4-ef072fdbba5b`，答出原测试词。原始输出贴在 #362 的第三轮处理说明与描述中。
 
 没有直接修改全局配置或登录材料；只自动确认所有者已授权的 Agency 执行目录。原生插件测试 8 条与默认 Agency 测试 115 条另跑通过，默认略过的真实用例不计入。真实 Linux、macOS x86_64 会话仍未验证；GitHub Actions 当时为平台故障，不能用本机成功代称 CI 通过。
+
+### 2026-10-07 · 安装后摘要的权威来源
+
+**决定建议：维持 Herdr 0.9.3，不放宽文件校验。下载由 Buck 的锁定资产核 `lock.json`；安装后的 Herdr 核同一 payload 的 `share/hctl2/PAYLOAD.sha256`。** 两者核对不同阶段的字节，不用下载摘要替代打包后摘要。
+
+[Apple TN2206 的 Signing Modifies the Executable](https://developer.apple.com/library/archive/technotes/tn2206/_index.html) 明确说明签名修改主可执行文件。本仓库 `packaging/dependencies/platforms/macos/package.sh` 先搬动动态库引用，再用原生 `codesign` 重签 Herdr；`common/package.sh` 在这些操作后生成标准 SHA-256 清单。`install-package.sh` 验证归档根清单和安装后 payload 清单，完整发行包也沿用这个机制。Agency 只需读取现有清单里唯一、精确的 `libexec/hctl2/herdr` 条目，沿用已有 SHA-256 函数核实文件；清单缺失、条目缺失、重复或损坏均拒绝，不退回“能启动就接受”。这不是上游身份签名，也不承诺抵御同时篡改二进制与清单的人。
+
+Binding 的目录是接受时的精确快照，不随 Agency 上架自动改写。更新使用已有 `hctl2 agency pair`，以新 Binding ID、新命令 key 接受同一 Agency 的当前目录；旧 Binding 与已选入引用保留。没有新增目录刷新协议或依赖。真实安装包与 CLI 链路的验证结果以小活 N 的 PR 输出为准。
