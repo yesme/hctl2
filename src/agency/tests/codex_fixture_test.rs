@@ -51,7 +51,7 @@ fn codex_fixture_rejects_a_rollout_that_does_not_match_the_task() {
     prepare("mismatch");
     let (runtime, cred, root, exec) = open_runtime("codex-mismatch", Duration::from_secs(300));
     let mut running = dispatch(&runtime, &exec, &cred, "mismatch");
-    let events = collect(&mut running, Duration::from_secs(10));
+    let events = collect(&mut running, Duration::from_secs(20));
     assert_eq!(
         protocol(&events),
         Some("STANDBY_PROMPT_MISMATCH"),
@@ -89,7 +89,7 @@ fn codex_fixture_ignores_an_item_completed_for_another_turn() {
     prepare("foreign-item");
     let (runtime, cred, root, exec) = open_runtime("codex-foreign-item", Duration::from_secs(300));
     let mut running = dispatch(&runtime, &exec, &cred, "foreign-item");
-    let events = collect(&mut running, Duration::from_secs(10));
+    let events = collect(&mut running, Duration::from_secs(20));
     assert_eq!(
         protocol(&events),
         Some("INVALID_INPUT"),
@@ -107,19 +107,26 @@ fn codex_fixture_interrupt_stops_the_turn() {
     let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
     prepare("interrupt");
     let (runtime, cred, root, exec) = open_runtime("codex-interrupt", Duration::from_secs(300));
+    let nonce = format!("{}-{}", std::process::id(), now_ms());
+    fs::write(home().join("nonce"), &nonce).unwrap();
     let mut running = dispatch(&runtime, &exec, &cred, "interrupt");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !home().join("turn-started").exists() {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let started = home().join("turn-started");
+    loop {
+        if fs::read(&started).is_ok_and(|body| body == nonce.as_bytes()) {
+            break;
+        }
         assert!(Instant::now() < deadline, "turn did not start");
         thread::sleep(Duration::from_millis(20));
     }
+    thread::sleep(Duration::from_millis(50));
     running
         .session
         .lock()
         .expect("session")
         .stop()
         .expect("stop");
-    let events = collect(&mut running, Duration::from_secs(10));
+    let events = collect(&mut running, Duration::from_secs(20));
     assert!(
         events.iter().any(|event| matches!(
             event,
@@ -175,6 +182,7 @@ fn prepare(mode: &str) {
     fs::create_dir_all(&home).unwrap();
     let _ = fs::remove_dir_all(home.join("sessions"));
     for name in [
+        "nonce",
         "turn-started",
         "interrupt-seen",
         "last-turn.json",
@@ -228,7 +236,22 @@ fn binary() -> PathBuf {
     path
 }
 
-fn open_runtime(name: &str, idle: Duration) -> (InstalledHerdr, PathBuf, PathBuf, PathBuf) {
+struct RuntimeGuard(InstalledHerdr);
+
+impl Drop for RuntimeGuard {
+    fn drop(&mut self) {
+        let _ = Runtime::shutdown(&self.0);
+    }
+}
+
+impl std::ops::Deref for RuntimeGuard {
+    type Target = InstalledHerdr;
+    fn deref(&self) -> &InstalledHerdr {
+        &self.0
+    }
+}
+
+fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, PathBuf) {
     let cred =
         std::env::temp_dir().join(format!("hctl2-codex-cred-{}-{}", name, std::process::id()));
     let root =
@@ -251,7 +274,7 @@ fn open_runtime(name: &str, idle: Duration) -> (InstalledHerdr, PathBuf, PathBuf
         "{}",
         runtime.codex_skip().unwrap_or("")
     );
-    (runtime, cred, root, exec)
+    (RuntimeGuard(runtime), cred, root, exec)
 }
 
 fn dispatch(runtime: &InstalledHerdr, exec: &Path, cred: &Path, key: &str) -> Running {

@@ -157,7 +157,14 @@ fn serve(mut stream: UnixStream) {
 
 fn emit_after_start(stream: &mut UnixStream, turn_id: &str) {
     match mode().as_str() {
-        "interrupt" => mark("turn-started"),
+        "interrupt" => {
+            let body = home_file("nonce")
+                .and_then(|path| fs::read(path).ok())
+                .unwrap_or_else(|| b"1".to_vec());
+            if let Some(path) = home_file("turn-started") {
+                let _ = fs::write(path, body);
+            }
+        }
         "foreign-turn" => {
             send_json(
                 stream,

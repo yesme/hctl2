@@ -440,7 +440,7 @@ fn rejected_before_delivery(error: &PortError) -> bool {
         && serde_json::from_str::<Value>(&error.message).is_ok_and(|v| {
             matches!(
                 v["code"].as_str(),
-                Some("agent_not_found" | "agent_not_ready")
+                Some("agent_not_found" | "agent_not_ready" | "agent_pane_busy")
             )
         })
 }
@@ -597,7 +597,7 @@ impl Native {
             if let Some(id) = resume {
                 argv.extend(["--resume".into(), id.into()]);
             }
-            native.client.call(
+            native.client.call_retrying_busy(
                 "agent.start",
                 json!({"name":format!("agency-{}", &hash(dir.as_os_str().as_encoded_bytes())[..24]),
                 "kind":"claude","pane_id":native.pane,"args":argv,"timeout_ms":30_000}),
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn only_explicit_pre_delivery_rejections_allow_recovery() {
-        for code in ["agent_not_found", "agent_not_ready"] {
+        for code in ["agent_not_found", "agent_not_ready", "agent_pane_busy"] {
             let error = PortError::new(
                 "HERDR_REJECTED",
                 json!({"code":code}).to_string(),

@@ -1263,6 +1263,11 @@ fn collect(
                 if let agency::runtime::RuntimeEvent::ProtocolError(message) = &event {
                     eprintln!("runtime protocol error: {message}");
                 }
+                if let agency::runtime::RuntimeEvent::Observation { kind, payload, .. } = &event
+                    && kind == "harness_failure"
+                {
+                    eprintln!("runtime harness failure: {payload}");
+                }
                 let done = matches!(
                     event,
                     agency::runtime::RuntimeEvent::Exited { .. }
