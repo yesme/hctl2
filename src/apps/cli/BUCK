@@ -62,6 +62,7 @@ filegroup(
 
 export_file(name = "room_cli_source", src = "tests/room.rs", visibility = ["PUBLIC"])
 export_file(name = "project_cli_source", src = "tests/room/project.rs", visibility = ["PUBLIC"])
+export_file(name = "agency_cli_source", src = "tests/room/agency.rs", visibility = ["PUBLIC"])
 rust_test(
     name = "task_cli_test",
     srcs = ["tests/task.rs"],

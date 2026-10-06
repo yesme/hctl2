@@ -1,4 +1,6 @@
 //! Real CLI, daemon and packaged Tuwunel; the Project package adds native B1.
+#[path = "room/agency.rs"]
+mod agency;
 #[path = "room/project.rs"]
 mod project;
 use chat::{Server, key, main_room, reference};
@@ -30,6 +32,43 @@ impl Drop for Fixture {
 }
 impl Fixture {
     fn packaged(name: &str) -> (Self, u16) {
+        let fixture = Self::unpacked(name);
+        let port = fixture.isolate_ports();
+        (fixture, port)
+    }
+    fn isolate_ports(&self) -> u16 {
+        // Every packaged service gets a port of its own: these fixtures run on the same
+        // machine as the packaged lifecycle test, and the previous value-based rewrite
+        // ("6167", "3000") silently stopped matching when a packaged default changed —
+        // Gitea's is 3001 now — so two tests could fight over one port. Rewrite the
+        // assignments by name instead.
+        let versions = self.payload.join("lib/hctl2/services/versions.sh");
+        let text = std::fs::read_to_string(&versions).unwrap();
+        let mut ports = std::collections::HashMap::new();
+        let isolated = text
+            .lines()
+            .map(|line| {
+                let Some((name, value)) = line
+                    .strip_prefix("readonly ")
+                    .and_then(|rest| rest.split_once("=\""))
+                else {
+                    return line.to_owned();
+                };
+                if !name.ends_with("_PORT") || !value.ends_with('"') {
+                    return line.to_owned();
+                }
+                let port = free_port();
+                ports.insert(name.to_owned(), port);
+                format!("readonly {name}=\"{port}\"")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&versions, format!("{isolated}\n")).unwrap();
+        ports
+            .remove("TUWUNEL_PORT")
+            .expect("packaged versions.sh must define TUWUNEL_PORT")
+    }
+    fn unpacked(name: &str) -> Self {
         let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let archive = find(
@@ -76,37 +115,7 @@ impl Fixture {
                 .success()
         );
         let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
-        // Every packaged service gets a port of its own: these fixtures run on the same
-        // machine as the packaged lifecycle test, and the previous value-based rewrite
-        // ("6167", "3000") silently stopped matching when a packaged default changed —
-        // Gitea's is 3001 now — so two tests could fight over one port. Rewrite the
-        // assignments by name instead.
-        let versions = payload.join("lib/hctl2/services/versions.sh");
-        let text = std::fs::read_to_string(&versions).unwrap();
-        let mut ports = std::collections::HashMap::new();
-        let isolated = text
-            .lines()
-            .map(|line| {
-                let Some((name, value)) = line
-                    .strip_prefix("readonly ")
-                    .and_then(|rest| rest.split_once("=\""))
-                else {
-                    return line.to_owned();
-                };
-                if !name.ends_with("_PORT") || !value.ends_with('"') {
-                    return line.to_owned();
-                }
-                let port = free_port();
-                ports.insert(name.to_owned(), port);
-                format!("readonly {name}=\"{port}\"")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(&versions, format!("{isolated}\n")).unwrap();
-        let port = ports
-            .remove("TUWUNEL_PORT")
-            .expect("packaged versions.sh must define TUWUNEL_PORT");
-        (Self { root, payload }, port)
+        Self { root, payload }
     }
     fn run(&self, args: &[&str]) -> (bool, Value) {
         let out = Command::new(

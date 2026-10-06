@@ -46,7 +46,7 @@ rust_library(
     deps = DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | {"HCTL2_DEPENDENCY_LOCK": "$(location root//packaging/dependencies:lock_json)"},
+    env = hctl2_cargo_env(),
     labels = CI_FAST,
     tests = [":unit_test", ":port_test", ":control_port_test", ":runtime_test"],
     visibility = ["PUBLIC"],
@@ -59,7 +59,7 @@ rust_test(
     deps = DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | {"HCTL2_DEPENDENCY_LOCK": "$(location root//packaging/dependencies:lock_json)"},
+    env = hctl2_cargo_env(),
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -177,6 +177,7 @@ rust_binary(
 
 rust_binary(
     name = "standby_fixture",
+    visibility = ["root//packaging/release:room-cli-test"],
     srcs = ["tests/standby_fixture.rs"],
     crate_root = "tests/standby_fixture.rs",
     deps = ["root//third-party/rust:serde_json"],

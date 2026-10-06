@@ -303,25 +303,9 @@ pub(crate) fn sh_quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
-pub fn locked_digest() -> &'static str {
-    static LOCK: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
-    let lock = LOCK.get_or_init(|| {
-        serde_json::from_str(include_str!(env!("HCTL2_DEPENDENCY_LOCK"))).expect("dependency lock")
-    });
-    let platform = if cfg!(target_os = "linux") {
-        "linux_x86_64"
-    } else if cfg!(target_arch = "x86_64") {
-        "macos_x86_64"
-    } else {
-        "macos_arm64"
-    };
-    lock["targets"][platform]["assets"]["herdr"]["sha256"]
-        .as_str()
-        .expect("locked Herdr digest")
-}
-
 pub fn installed_herdr(install_root: &Path) -> Result<PathBuf> {
-    let path = install_root.join("libexec/hctl2/herdr");
+    const RELATIVE: &str = "libexec/hctl2/herdr";
+    let path = install_root.join(RELATIVE);
     if !path.is_file() {
         return Err(PortError::new(
             "HERDR_BINARY_MISSING",
@@ -329,12 +313,45 @@ pub fn installed_herdr(install_root: &Path) -> Result<PathBuf> {
             "install_locked_herdr",
         ));
     }
+    // Relocation and macOS signing change the upstream bytes. The installer
+    // verifies this manifest after those operations; never fall back to the download hash.
+    let manifest = install_root.join("share/hctl2/PAYLOAD.sha256");
+    let invalid_manifest = |reason: &str| {
+        PortError::new(
+            "HERDR_MANIFEST_INVALID",
+            format!("{}: {reason}", manifest.display()),
+            "reinstall_hctl2_package",
+        )
+    };
+    let contents =
+        fs::read_to_string(&manifest).map_err(|error| invalid_manifest(&error.to_string()))?;
+    // common/package.sh writes the standard text checksum form: hash, two spaces, path.
+    let mut entries = contents
+        .lines()
+        .filter_map(|line| line.split_once("  "))
+        .filter(|(_, relative)| *relative == RELATIVE);
+    let (expected, _) = entries
+        .next()
+        .ok_or_else(|| invalid_manifest("Herdr checksum entry missing"))?;
+    if entries.next().is_some()
+        || expected.len() != 64
+        || !expected
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(invalid_manifest(
+            "Herdr checksum entry invalid or duplicated",
+        ));
+    }
     let digest = crate::catalog::file_digest(&path)?;
-    if digest != locked_digest() {
+    if digest != expected {
         return Err(PortError::new(
             "HERDR_DIGEST_MISMATCH",
-            format!("installed Herdr sha256 {digest} does not match lock.json"),
-            "install_locked_herdr",
+            format!(
+                "installed Herdr sha256 {digest} does not match {}",
+                manifest.display()
+            ),
+            "reinstall_hctl2_package",
         ));
     }
     Ok(path)
@@ -944,6 +961,63 @@ pub(crate) fn task_text(bundle: &Bundle) -> Result<String> {
 mod smoke_tests {
     use super::*;
     use std::{collections::HashSet, sync::Barrier};
+
+    fn payload() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("libexec/hctl2")).unwrap();
+        fs::create_dir_all(root.path().join("share/hctl2")).unwrap();
+        fs::write(root.path().join("libexec/hctl2/herdr"), b"signed payload").unwrap();
+        root
+    }
+
+    #[test]
+    fn installed_herdr_uses_the_post_packaging_manifest_and_rejects_tampering() {
+        let root = payload();
+        let binary = root.path().join("libexec/hctl2/herdr");
+        let digest = crate::catalog::file_digest(&binary).unwrap();
+        fs::write(
+            root.path().join("share/hctl2/PAYLOAD.sha256"),
+            format!("{digest}  libexec/hctl2/herdr\n"),
+        )
+        .unwrap();
+        assert_eq!(installed_herdr(root.path()).unwrap(), binary);
+        fs::write(&binary, b"changed after packaging").unwrap();
+        assert_eq!(
+            installed_herdr(root.path()).unwrap_err().code,
+            "HERDR_DIGEST_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn installed_herdr_requires_one_valid_exact_manifest_entry() {
+        let root = payload();
+        let manifest = root.path().join("share/hctl2/PAYLOAD.sha256");
+        assert_eq!(
+            installed_herdr(root.path()).unwrap_err().code,
+            "HERDR_MANIFEST_INVALID"
+        );
+        let digest = crate::catalog::file_digest(&root.path().join("libexec/hctl2/herdr")).unwrap();
+        for contents in [
+            String::new(),
+            format!("{digest}  libexec/hctl2/not-herdr\n"),
+            format!("{digest}  libexec/hctl2/herdr.extra\n"),
+            "not-a-sha256  libexec/hctl2/herdr\n".into(),
+            format!("{}  libexec/hctl2/herdr\n", "g".repeat(64)),
+            format!("{digest}  libexec/hctl2/herdr\n{digest}  libexec/hctl2/herdr\n"),
+        ] {
+            fs::write(&manifest, &contents).unwrap();
+            assert_eq!(
+                installed_herdr(root.path()).unwrap_err().code,
+                "HERDR_MANIFEST_INVALID",
+                "{contents}"
+            );
+        }
+        fs::remove_file(root.path().join("libexec/hctl2/herdr")).unwrap();
+        assert_eq!(
+            installed_herdr(root.path()).unwrap_err().code,
+            "HERDR_BINARY_MISSING"
+        );
+    }
 
     #[test]
     fn parallel_smoke_directories_are_private_and_cleanup_is_independent() {
