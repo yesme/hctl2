@@ -1260,6 +1260,9 @@ fn collect(
     while Instant::now() < deadline {
         match running.events.recv_timeout(Duration::from_millis(200)) {
             Ok(event) => {
+                if let agency::runtime::RuntimeEvent::ProtocolError(message) = &event {
+                    eprintln!("runtime protocol error: {message}");
+                }
                 let done = matches!(
                     event,
                     agency::runtime::RuntimeEvent::Exited { .. }

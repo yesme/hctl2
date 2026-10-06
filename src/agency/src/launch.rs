@@ -11,12 +11,12 @@ use serde_json::json;
 use std::{
     fs,
     io::Read,
-    os::unix::net::UnixStream,
+    os::unix::{fs::PermissionsExt, net::UnixStream},
     path::{Path, PathBuf},
     process::Command,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -596,19 +596,62 @@ fn codex_on_path() -> Option<PathBuf> {
     }
 }
 
+struct SmokeRoot {
+    path: PathBuf,
+}
+
+impl Drop for SmokeRoot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Clock readings collide when many probes start in the same process. `mkdir`
+/// is the exclusive create; a leftover from a recycled pid is skipped.
+fn exclusive_smoke_root() -> Result<SmokeRoot> {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let base = std::env::temp_dir();
+    for _ in 0..128 {
+        let path = base.join(format!(
+            "hctl2-herdr-smoke-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => {
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+                return Ok(SmokeRoot { path });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(PortError::new(
+        "HERDR_SMOKE_FAILED",
+        "could not create an exclusive smoke directory",
+        "check_locked_herdr",
+    ))
+}
+
 fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<String> {
-    let root = std::env::temp_dir().join(format!(
-        "hctl2-herdr-smoke-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let cred = root.join("cred");
-    let exec = root.join("exec");
+    let root = exclusive_smoke_root()?;
+    let result = smoke_probe(&root, binary, claude, read_paths);
+    drop(root);
+    result
+}
+
+fn smoke_probe(
+    root: &SmokeRoot,
+    binary: &Path,
+    claude: &Path,
+    read_paths: &[PathBuf],
+) -> Result<String> {
+    let cred = root.path.join("cred");
+    let exec = root.path.join("exec");
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
+    // Herdr state is created inside this root, so dropping the root removes it
+    // only after the probe server is gone.
     let state = crate::herdr::state_dir(&exec, &cred)?;
     let server = Arc::new(Server::start_with_read(
         binary, &state, &cred, &exec, read_paths,
@@ -643,8 +686,6 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
         Ok(version)
     })();
     drop(server);
-    let _ = fs::remove_dir_all(&root);
-    let _ = fs::remove_dir_all(&state);
     result
 }
 
@@ -909,4 +950,48 @@ pub(crate) fn task_text(bundle: &Bundle) -> Result<String> {
         return Err(PortError::invalid("bundle has no task text"));
     }
     Ok(text)
+}
+
+#[cfg(test)]
+mod smoke_root_tests {
+    use super::*;
+    use std::{collections::HashSet, sync::Barrier};
+
+    #[test]
+    fn parallel_smoke_directories_are_private_and_cleanup_is_independent() {
+        let barrier = Barrier::new(32);
+        let mut directories = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..32)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        let directory = exclusive_smoke_root().unwrap();
+                        fs::write(directory.path.join("owned"), b"probe").unwrap();
+                        directory
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let paths: HashSet<_> = directories.iter().map(|dir| dir.path.clone()).collect();
+        assert_eq!(paths.len(), 32);
+        for directory in &directories {
+            assert_eq!(
+                fs::metadata(&directory.path).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        let removed = directories.pop().unwrap();
+        let removed_path = removed.path.clone();
+        drop(removed);
+        assert!(!removed_path.exists());
+        for directory in &directories {
+            assert_eq!(fs::read(directory.path.join("owned")).unwrap(), b"probe");
+        }
+        drop(directories);
+        assert!(paths.iter().all(|path| !path.exists()));
+    }
 }
