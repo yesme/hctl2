@@ -57,7 +57,9 @@ pub(crate) fn preview(
         return access(shared, |s| invocation::cancel_preview(s, &end));
     }
     if operation != "invocation.start" {
-        return Err(invalid("only invocation.start and invocation.cancel are exposed"));
+        return Err(invalid(
+            "only invocation.start and invocation.cancel are exposed",
+        ));
     }
     let input: invocation::Input = serde_json::from_value(payload.clone())?;
     if let Some(plan) = access(shared, |s| frozen_plan(s, actor, &input))? {
@@ -135,8 +137,7 @@ fn cancel(
     request: &proto::SubmitRequest,
 ) -> store::Result<Value> {
     let end: invocation::End = serde_json::from_slice(&request.payload)?;
-    if request.idempotency_key != end.key
-        || request.command_id != format!("invocation:{}", end.key)
+    if request.idempotency_key != end.key || request.command_id != format!("invocation:{}", end.key)
     {
         return Err(invalid("Invocation envelope differs"));
     }

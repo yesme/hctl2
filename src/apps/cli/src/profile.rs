@@ -8,9 +8,7 @@ pub(super) enum ProfileCommand {
     /// Preview an update of the exact pointer version; the token confirms it.
     Update(Write),
     /// Show the exact revision the current pointer names. Grants nothing.
-    Show {
-        profile_id: String,
-    },
+    Show { profile_id: String },
 }
 
 pub(super) async fn dispatch(
@@ -22,7 +20,13 @@ pub(super) async fn dispatch(
         ProfileCommand::Create(input) => write(root, as_json, "profile", "create", input).await,
         ProfileCommand::Update(input) => write(root, as_json, "profile", "update", input).await,
         ProfileCommand::Show { profile_id } => {
-            task::query_task(root, as_json, "profile.show", json!({"profile_id":profile_id})).await
+            task::query_task(
+                root,
+                as_json,
+                "profile.show",
+                json!({"profile_id":profile_id}),
+            )
+            .await
         }
     };
     if let Err(error) = &result {

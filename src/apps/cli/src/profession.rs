@@ -40,9 +40,8 @@ async fn execute(command: ProfessionCommand, root: &Path, as_json: bool) -> Resu
             reference,
             key,
         } => {
-            let reference: Value =
-                serde_json::from_slice(&std::fs::read(reference).map_err(io)?)
-                    .map_err(|e| e.to_string())?;
+            let reference: Value = serde_json::from_slice(&std::fs::read(reference).map_err(io)?)
+                .map_err(|e| e.to_string())?;
             keyed_submit(
                 root,
                 as_json,

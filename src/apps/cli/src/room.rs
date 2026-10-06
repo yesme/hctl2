@@ -70,10 +70,7 @@ pub(super) enum RoomCommand {
 #[derive(Subcommand)]
 pub(super) enum RosterCommand {
     /// Show the roster's exact selections. Grants no dispatch right.
-    Show {
-        project_id: String,
-        room_id: String,
-    },
+    Show { project_id: String, room_id: String },
     /// Submit the whole roster; keeping a candidate means resending it.
     Select(Write),
 }

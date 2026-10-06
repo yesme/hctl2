@@ -62,13 +62,9 @@ pub(super) async fn dispatch(
 }
 async fn execute(command: InvocationCommand, root: &Path, as_json: bool) -> Result<(), String> {
     let (operation, file, key, retry_of, token) = match command {
-        InvocationCommand::Preview(input) => (
-            "invocation.start",
-            input.input,
-            input.key,
-            None,
-            None,
-        ),
+        InvocationCommand::Preview(input) => {
+            ("invocation.start", input.input, input.key, None, None)
+        }
         InvocationCommand::Start {
             input,
             preview_token,
@@ -119,10 +115,7 @@ async fn execute(command: InvocationCommand, root: &Path, as_json: bool) -> Resu
     };
     let mut payload = read_json(&file)?;
     let object = payload.as_object_mut().ok_or("input must be an object")?;
-    if object
-        .get("key")
-        .is_some_and(|v| v.as_str() != Some(&key))
-    {
+    if object.get("key").is_some_and(|v| v.as_str() != Some(&key)) {
         return Err("input key differs".into());
     }
     object.insert("key".into(), json!(key));

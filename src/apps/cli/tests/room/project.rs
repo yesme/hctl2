@@ -86,7 +86,9 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
     let agency_root = f.root.join("independent-agency");
     let config = f.root.join("script.json");
     let delay = f.root.join("delay-script");
-    let script = format!("read -r initial; if test -f \"$1\"; then sleep {delayed_seconds}; fi; printf '%s\\n' '{{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}}'");
+    let script = format!(
+        "read -r initial; if test -f \"$1\"; then sleep {delayed_seconds}; fi; printf '%s\\n' '{{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}}'"
+    );
     std::fs::write(
         &config,
         json!({"program":"/bin/sh","arguments":["-c",script,"dispatch-fixture",delay]}).to_string(),
@@ -464,14 +466,20 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     // Keeping a candidate means resending the whole roster at its exact version.
     let (ok, roster) = f.run(&["room", "roster", "show", p, room]);
     assert!(ok, "{roster}");
-    assert_eq!(roster["selections"].as_array().unwrap().len(), 1, "{roster}");
+    assert_eq!(
+        roster["selections"].as_array().unwrap().len(),
+        1,
+        "{roster}"
+    );
     // A roster read returns the stored records; a select resends the selections.
-    let selections: Value = json!(roster["selections"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|record| record["data"]["value"].clone())
-        .collect::<Vec<_>>());
+    let selections: Value = json!(
+        roster["selections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["data"]["value"].clone())
+            .collect::<Vec<_>>()
+    );
     assert_eq!(selections[0]["responsibility"], "research", "{selections}");
     let select = |roster_version: Value, key: &str| {
         let path = f.root.join("roster-select.json");
@@ -647,7 +655,14 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     assert!(!ok, "{invented}");
     assert_eq!(invented["error"]["code"], "PREVIEW_REQUIRED");
     write_cancel(state_version(&running) + 100);
-    let (ok, stale) = f.run(&["invocation", "cancel", "--key", "cancel-stale", "--input", cancel_input]);
+    let (ok, stale) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-stale",
+        "--input",
+        cancel_input,
+    ]);
     assert!(!ok, "{stale}");
     assert_eq!(stale["error"]["code"], "VERSION_CONFLICT");
     assert_eq!(
@@ -673,14 +688,23 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
         "only a cancelled outcome is a client command"
     );
     write_cancel(state_version(&running));
-    let (ok, cancel_plan) =
-        f.run(&["invocation", "cancel", "--key", "cancel-rest", "--input", cancel_input]);
+    let (ok, cancel_plan) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-rest",
+        "--input",
+        cancel_input,
+    ]);
     assert!(ok, "{cancel_plan}");
     let effect = &cancel_plan["effect_summary"];
     assert_eq!(effect["state"], "running");
     assert_eq!(effect["outcome"], "cancelled");
     assert_eq!(effect["state_version"], running["state_version"]);
-    assert!(effect["cleanup_pending"].as_bool().unwrap(), "{cancel_plan}");
+    assert!(
+        effect["cleanup_pending"].as_bool().unwrap(),
+        "{cancel_plan}"
+    );
     assert_eq!(
         effect["isolation_confirmed"],
         json!(false),
@@ -703,11 +727,21 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
         cancelled["state_version"],
         json!(state_version(&running) + 1)
     );
-    assert!(cancelled["cleanup_pending"].as_bool().unwrap(), "{cancelled}");
+    assert!(
+        cancelled["cleanup_pending"].as_bool().unwrap(),
+        "{cancelled}"
+    );
     // A second cancellation under a new key finds a terminal Invocation and writes
     // nothing, so it cannot enqueue a second stop for the same dispatch.
     write_cancel(state_version(&running) + 1);
-    let (ok, twice) = f.run(&["invocation", "cancel", "--key", "cancel-twice", "--input", cancel_input]);
+    let (ok, twice) = f.run(&[
+        "invocation",
+        "cancel",
+        "--key",
+        "cancel-twice",
+        "--input",
+        cancel_input,
+    ]);
     assert!(!ok, "{twice}");
     assert_eq!(twice["error"]["code"], "INVALID_TRANSITION");
 
@@ -715,10 +749,7 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     assert!(ok, "{after}");
     let revoked = &after["invocations"][0];
     assert_eq!(revoked["state"], "cancelled");
-    assert_eq!(
-        revoked["state_version"],
-        json!(state_version(&running) + 1)
-    );
+    assert_eq!(revoked["state_version"], json!(state_version(&running) + 1));
     assert_ne!(
         revoked["owner"], running["owner"],
         "revocation advances the authorization root"
@@ -783,8 +814,7 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     ]);
     assert!(ok, "{retry_plan}");
     assert_ne!(
-        retry_plan["effect_summary"]["assembly"]["bundle"]["document"]["id"],
-        bundle,
+        retry_plan["effect_summary"]["assembly"]["bundle"]["document"]["id"], bundle,
         "a retry freezes its own Bundle"
     );
     let (ok, retried) = f.run(&[
@@ -823,7 +853,14 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     )
     .unwrap();
     let update_input = update_path.to_str().unwrap();
-    let (ok, update_plan) = f.run(&["profile", "update", "--key", "profile-2", "--input", update_input]);
+    let (ok, update_plan) = f.run(&[
+        "profile",
+        "update",
+        "--key",
+        "profile-2",
+        "--input",
+        update_input,
+    ]);
     assert!(ok, "{update_plan}");
     let (ok, updated) = f.run(&[
         "profile",
@@ -841,9 +878,19 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     assert!(ok, "{current}");
     assert_eq!(current["pointer"]["version"], json!({"state":2}));
     assert_eq!(current["profile"]["max_context_bytes"], json!(32768));
-    assert_ne!(current["revision"], shown["revision"], "revisions are immutable");
+    assert_ne!(
+        current["revision"], shown["revision"],
+        "revisions are immutable"
+    );
     // The old pointer version is spent; a stale update cannot land on the new one.
-    let (ok, spent) = f.run(&["profile", "update", "--key", "profile-3", "--input", update_input]);
+    let (ok, spent) = f.run(&[
+        "profile",
+        "update",
+        "--key",
+        "profile-3",
+        "--input",
+        update_input,
+    ]);
     assert!(!ok, "{spent}");
     assert_eq!(spent["error"]["code"], "VERSION_CONFLICT");
 }
