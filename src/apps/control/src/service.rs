@@ -66,6 +66,15 @@ impl ControlService {
             Arc::clone(&self.services),
         )
     }
+    pub(crate) fn reconcile_integrations(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + Send + use<> {
+        crate::integration::reconcile(
+            Arc::clone(&self.store),
+            self.root.clone(),
+            Arc::clone(&self.services),
+        )
+    }
     pub(crate) fn reconcile_agencies(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
@@ -295,6 +304,8 @@ impl Control for ControlService {
             }
             "repo.list"
             | "invocation.show"
+            | "integration.show"
+            | "integration.list"
             | "context.preview"
             | "context.show"
             | "repo.show"
@@ -328,6 +339,8 @@ impl Control for ControlService {
                 match tokio::task::spawn_blocking(move || {
                     if kind == "invocation.show" {
                         crate::dispatch::show(&store, &actor, &payload)
+                    } else if kind.starts_with("integration.") {
+                        crate::integration::query(&store, &kind, &payload)
                     } else if kind.starts_with("project.")
                         || kind.starts_with("request.")
                         || matches!(kind.as_str(), "pending" | "overview")
@@ -424,6 +437,7 @@ impl Control for ControlService {
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
             || req.operation.starts_with("invocation.")
+            || req.operation.starts_with("integration.")
         {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -442,6 +456,8 @@ impl Control for ControlService {
                 let _guard = guard;
                 if operation.starts_with("invocation.") {
                     crate::dispatch::preview(&store, &services, &root, &actor, &operation, &payload)
+                } else if operation.starts_with("integration.") {
+                    crate::integration::preview(&store, &services, &actor, &operation, &payload)
                 } else if operation.starts_with("profile.") {
                     crate::profiles::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {
@@ -476,6 +492,7 @@ impl Control for ControlService {
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
             || req.operation.starts_with("invocation.")
+            || req.operation.starts_with("integration.")
         {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
@@ -647,6 +664,10 @@ impl Control for ControlService {
             }
             if operation.starts_with("profile.") {
                 return crate::profiles::submit(&store, &actor, &repo_request, &details)
+                    .map_err(|err| present(&err));
+            }
+            if operation.starts_with("integration.") {
+                return crate::integration::submit(&store, &actor, &repo_request, &details)
                     .map_err(|err| present(&err));
             }
             if operation.starts_with("project.") {
@@ -1049,6 +1070,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("project.")
         || operation.starts_with("profile.")
         || operation.starts_with("invocation.")
+        || operation.starts_with("integration.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {

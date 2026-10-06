@@ -92,7 +92,8 @@ impl Git {
         ]);
         cmd
     }
-    fn command(&self, path: &Path) -> Command {
+    /// An isolated Git subprocess rooted at `path`; callers add arguments and run it.
+    pub fn command(&self, path: &Path) -> Command {
         let mut cmd = Self::isolated_command(&self.executable);
         cmd.arg("-C").arg(path);
         cmd

@@ -22,6 +22,7 @@ CONTROL_DEPS = [
     "root//crates/repo:repo",
     "root//crates/store:store",
     "root//crates/task:task",
+    "root//apps/tool:tool",
     "root//third-party/rust:serde_json",
     "root//third-party/rust:axum",
     "root//third-party/rust:reqwest",
@@ -47,7 +48,7 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":unit_test", ":boundary_test", ":services_test", ":task_native_test", ":chat_native_test"],
+    tests = [":unit_test", ":boundary_test", ":integration_test", ":services_test", ":task_native_test", ":chat_native_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -75,6 +76,28 @@ rust_test(
     ),
     crate_root = "src/lib.rs",
     deps = CONTROL_DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "integration_test",
+    srcs = ["tests/integration.rs"],
+    crate_root = "tests/integration.rs",
+    deps = [
+        ":control",
+        "root//crates/proto:proto",
+        "root//crates/repo:repo",
+        "root//crates/store:store",
+        "root//third-party/rust:hyper-util",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:tokio",
+        "root//third-party/rust:tonic",
+        "root//third-party/rust:tower",
+    ],
     edition = HCTL2_RUST_EDITION,
     env = hctl2_cargo_env(),
     labels = CI_FAST,
