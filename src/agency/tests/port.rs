@@ -1254,7 +1254,9 @@ async fn burst_control_fixture() -> (
     )
     .await
     .unwrap();
-    let client = control::agency::paired_client(&root, "pages").unwrap();
+    let client = control::agency::paired_client(&root, "pages")
+        .unwrap()
+        .with_request_timeout(LARGE_RESULT_RPC_BUDGET);
     let mut prepare = request(&client, "page-dispatch").await;
     control::agency::submit(
         &shared,
@@ -1324,17 +1326,11 @@ async fn burst_control_fixture() -> (
             .unwrap();
     let mut pages = Vec::new();
     let mut after = None;
-    for _ in 0..100 {
+    let deadline = std::time::Instant::now() + LARGE_RESULT_RPC_BUDGET * LARGE_RESULT_PHASES;
+    while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(running.reference.clone());
         query.after = after.clone();
-        let page: ResultPage = match client.call("results", &query).await {
-            // Retryable by contract (`readback_original_request`): `results` only reads.
-            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                continue;
-            }
-            result => result.unwrap(),
-        };
+        let page: ResultPage = client.call("results", &query).await.unwrap();
         if page.proposals.is_empty() {
             after = None;
             pages.clear();
