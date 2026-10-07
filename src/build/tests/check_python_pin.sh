@@ -309,6 +309,7 @@ chmod +x "$guard_root/bin/uname" "$guard_root/bin/clang" "$guard_root/bin/clang+
 
 guard_hint='Linux builds need clang, clang++ and lld'
 guard_bad=0
+guard_rc=0
 for verb in build test run; do
     marker="$guard_root/reached-$verb"
     guard_out="$(PATH="$guard_root/bin:$PATH" GUARD_PROBE_MARKER="$marker" \
