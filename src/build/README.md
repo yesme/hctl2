@@ -107,6 +107,42 @@ PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、�
 ./buck2 test --build-default-info root//agency/... root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party --target-platforms root//build/platforms:linux_x86_64_gnu
 ```
 
+## macOS 开发机准备
+
+新机器同样只需要装下面三样，其余由 `./buck2` 经 DotSlash 与 Buck2 自己准备。macOS 的 C/C++ 工具链仍是 prelude 默认的 clang，链接用系统 `ld64`，不装 lld。下面是 2026-10-07 在这台 Apple Silicon 开发机上核对过的装法（Darwin arm64，Xcode 26.6，Apple clang 21.0.0，gh 2.102.0，DotSlash 0.5.9）。
+
+1. **gh**，用 Homebrew。开 PR、看 CI 用宿主上的 gh。构建与测试另用 `build/tools/gh-bin` 钉住的版本。
+
+   ```bash
+   brew install gh
+   ```
+
+2. **DotSlash**，版本与摘要以 `build/tools/dotslash.env` 为准，解压到 `/usr/local/bin`。在 `src/` 内执行。Apple Silicon 用 arm64 那一行；Intel 把资产名和摘要换成 `DOTSLASH_MACOS_X86_64_*`。macOS 的 `shasum` 不是 GNU `sha256sum`，不要加 GNU 的 `--check` 写法。
+
+   ```bash
+   . build/tools/dotslash.env
+   curl -fsSLO "https://github.com/facebook/dotslash/releases/download/$DOTSLASH_VERSION/$DOTSLASH_MACOS_ARM64_ASSET"
+   echo "$DOTSLASH_MACOS_ARM64_SHA256  $DOTSLASH_MACOS_ARM64_ASSET" | shasum -a 256 -c -
+   sudo tar -xzf "$DOTSLASH_MACOS_ARM64_ASSET" -C /usr/local/bin
+   dotslash --version
+   ```
+
+   `dotslash --version` 必须等于 `DOTSLASH_VERSION`。PATH 前面不要留别的 dotslash。
+
+3. **Xcode 或 Command Line Tools**。`/usr/bin/clang`、`clang++`、`ar` 是会注入当前 SDK 的 xcrun 垫片。缺它们，或 `xcodebuild` 读不到版本和 macOS SDK 时，`./buck2 build`、`run`、`test` 会直接报错，并提示下面这条命令。`--version` 不要求这套工具链。
+
+   ```bash
+   xcode-select --install
+   ```
+
+装好后在 `src/` 跑一遍本机平台的全量目标。Apple Silicon：
+
+```bash
+./buck2 test --build-default-info root//agency/... root//apps/... root//crates/... root//build/tests/... root//:clippy root//packaging/release:first-party --target-platforms root//build/platforms:macos_arm64
+```
+
+Intel 把平台换成 `root//build/platforms:macos_x86_64`。
+
 ## 本机 cache 运维
 
 `./buck2` 会按需启动 Process Compose 项目；如果同一 loopback endpoint 已经有旧版或用户自行管理的 `bazel-remote`，则直接复用而不争夺端口。平时不需要单独管理。需要检查日志或主动停止由 Process Compose 启动的实例时，直接使用它的原生命令，不再经过仓库自建的同义 CLI：

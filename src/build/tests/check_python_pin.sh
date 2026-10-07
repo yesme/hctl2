@@ -257,6 +257,12 @@ if grep -F 'Linux builds need clang, clang++ and lld' "$launcher" >/dev/null &&
 else
     fail "src/buck2 is missing the Linux clang/lld check"
 fi
+if grep -F 'macOS builds need the Xcode clang shims' "$launcher" >/dev/null &&
+    grep -F 'xcode-select --install' "$launcher" >/dev/null; then
+    note "PASS src/buck2 stops a macOS build without the Xcode clang shims"
+else
+    fail "src/buck2 is missing the macOS clang check"
+fi
 
 if grep -F 'hctl2.python=$py_bin' "$launcher" >/dev/null &&
     grep -F 'hctl2.cc=$cc_bin' "$launcher" >/dev/null; then
