@@ -257,6 +257,104 @@ if grep -F 'Linux builds need clang, clang++ and lld' "$launcher" >/dev/null &&
 else
     fail "src/buck2 is missing the Linux clang/lld check"
 fi
+if grep -F 'macOS builds need a working clang from the Command Line Tools' "$launcher" >/dev/null &&
+    grep -F 'xcode-select --install' "$launcher" >/dev/null &&
+    grep -F 'A full Xcode.app is not required' "$launcher" >/dev/null; then
+    note "PASS src/buck2 asks for the Command Line Tools, not a full Xcode"
+else
+    fail "src/buck2 is missing the Command Line Tools hint"
+fi
+if [ "$(uname -s)" = Darwin ]; then
+    # Copies stay next to src/buck2 so the launcher still finds the pinned
+    # Python. The buck2 binary is replaced with exit 0 so this test does not
+    # start a daemon. A failing xcodebuild must not block a working clang.
+    cat >"$fake/buck2-ok" <<'SH'
+#!/bin/sh
+: > "$GUARD_PROBE_MARKER"
+exit 0
+SH
+    printf '%s\n' '#!/bin/sh' 'exit 1' >"$fake/clang-bad"
+    printf '%s\n' '#!/bin/sh' 'echo xcodebuild requires Xcode >&2' 'exit 1' >"$fake/xcodebuild"
+    chmod +x "$fake/buck2-ok" "$fake/clang-bad" "$fake/xcodebuild"
+    probe="$script_dir/../../buck2.macos-probe"
+    bad="$probe-bad"
+    sed "s|^buck2_bin=.*|buck2_bin=$fake/buck2-ok|" "$launcher" >"$probe"
+    sed -e "s|/usr/bin/clang++|$fake/clang-bad|g" \
+        -e "s|/usr/bin/clang|$fake/clang-bad|g" \
+        -e "s|/usr/bin/ar|$fake/clang-bad|g" \
+        "$probe" >"$bad"
+    chmod +x "$probe" "$bad"
+    # Every verb the guard names must stop. Narrowing the case to build)
+    # lets test and run reach the stand-in, and that has to go red.
+    mac_bad=0
+    for verb in build test run; do
+        marker="$fake/reached-$verb"
+        rm -f "$marker"
+        mac_err="$fake/clt-missing-$verb.txt"
+        if GUARD_PROBE_MARKER="$marker" HCTL2_BUCK2_CACHE=0 \
+            "$bad" "$verb" --help >"$fake/clt-missing-$verb.out" 2>"$mac_err"; then
+            mac_rc=0
+        else
+            mac_rc=$?
+        fi
+        if [ -e "$marker" ] || [ "$mac_rc" -eq 0 ]; then
+            mac_bad=1
+            note "macOS guard: '$verb' reached the exec when clang cannot run"
+        fi
+        if grep -F 'xcode-select --install' "$mac_err" >/dev/null &&
+            grep -F 'Command Line Tools' "$mac_err" >/dev/null &&
+            grep -F 'A full Xcode.app is not required' "$mac_err" >/dev/null; then
+            :
+        else
+            mac_bad=1
+            note "macOS guard: '$verb' did not name the Command Line Tools"
+        fi
+    done
+    marker="$fake/reached-version"
+    rm -f "$marker"
+    mac_ver="$(GUARD_PROBE_MARKER="$marker" HCTL2_BUCK2_CACHE=0 \
+        "$bad" --version 2>&1)" || true
+    if [ -e "$marker" ]; then
+        note "PASS the macOS probe can see the exec, so the verb checks above are real"
+    else
+        mac_bad=1
+        note "macOS guard: '--version' never reached the stand-in"
+    fi
+    case "$mac_ver" in
+        *"Command Line Tools"*)
+            mac_bad=1
+            note "macOS guard: '--version' collected the Command Line Tools hint"
+            ;;
+    esac
+    if [ "$mac_bad" -eq 0 ]; then
+        note "PASS src/buck2 stops build/test/run when clang cannot run and leaves --version alone"
+    else
+        fail "src/buck2 does not stop every guarded verb when clang cannot run"
+    fi
+    mac_ok=0
+    for verb in build test run; do
+        marker="$fake/accepted-$verb"
+        rm -f "$marker"
+        if PATH="$fake:$PATH" GUARD_PROBE_MARKER="$marker" HCTL2_BUCK2_CACHE=0 \
+            "$probe" "$verb" --help >"$fake/clt-only-$verb.out" 2>"$fake/clt-only-$verb.err"; then
+            if [ -e "$marker" ]; then
+                :
+            else
+                mac_ok=1
+                note "macOS guard: '$verb' exited 0 without reaching the exec"
+            fi
+        else
+            mac_ok=1
+            note "macOS guard: '$verb' rejected a working clang because xcodebuild failed"
+        fi
+    done
+    if [ "$mac_ok" -eq 0 ]; then
+        note "PASS src/buck2 build/test/run accept a working clang when xcodebuild is absent"
+    else
+        fail "src/buck2 rejected a working clang on a guarded verb because xcodebuild failed"
+    fi
+    rm -f "$probe" "$bad"
+fi
 
 # --- the Linux guard is a behaviour, not a string ---------------------------
 # The grep above only proves the hint is still in the launcher. Drive the Linux
