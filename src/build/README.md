@@ -77,11 +77,15 @@ PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、�
 
    ```bash
    sudo apt update && sudo apt install software-properties-common curl -y
-   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+   sudo install -m 0755 -d /etc/apt/keyrings
+   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+   sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
    sudo apt update
    sudo apt install gh -y
    ```
+
+   这几步照 GitHub 官方的 [Linux 安装文档](https://github.com/cli/cli/blob/trunk/docs/install_linux.md) 抄，其中 `sudo install -d /etc/apt/keyrings` 不能省：`/etc/apt/keyrings` 不保证默认存在，官方文档里也有这一行。少了它，目录不存在时上面第二条会直接失败。
 
 2. **DotSlash**，版本与摘要以 `build/tools/dotslash.env` 为准，解压到 `/usr/local/bin`。在 `src/` 内执行：
 
