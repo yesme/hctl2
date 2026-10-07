@@ -33,9 +33,11 @@ pub(super) async fn dispatch(
 ) -> Result<(), String> {
     let result = execute(command, root, as_json).await;
     if let Err(error) = &result {
-        print_out(
+        print_error(
             as_json,
-            json!({"error":{"code":"AGENCY_COMMAND_FAILED","message":error,"recovery_action":"inspect_error_and_retry"}}),
+            "AGENCY_COMMAND_FAILED",
+            error,
+            "inspect_error_and_retry",
         );
     }
     result

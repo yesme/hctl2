@@ -30,10 +30,11 @@ pub(super) async fn dispatch(
         }
     };
     if let Err(error) = &result {
-        print_out(
+        print_error(
             as_json,
-            json!({"error":{"code":"PROFILE_COMMAND_FAILED", "message":error,
-            "recovery_action":"inspect_error_and_retry"}}),
+            "PROFILE_COMMAND_FAILED",
+            error,
+            "inspect_error_and_retry",
         );
     }
     result

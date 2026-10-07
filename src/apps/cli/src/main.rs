@@ -8,6 +8,7 @@ mod invocation;
 mod profession;
 mod profile;
 mod project;
+mod render;
 mod repo;
 mod room;
 mod task;
@@ -424,8 +425,32 @@ fn rpc_code(error: &str) -> Option<&str> {
 
 async fn query(root: &Path, json_out: bool, kind: &str, payload: Value) -> Result<(), String> {
     let response = query_raw(root, kind, payload).await?;
-    print_out(json_out, response);
+    print_query(json_out, kind, &response);
     Ok(())
+}
+
+/// Default output goes through the human renderers; `--json` never does.
+pub(crate) fn print_query(as_json: bool, kind: &str, value: &Value) {
+    if as_json {
+        print_out(true, value.clone());
+    } else if let Some(rendered) = render::query(kind, value) {
+        println!("{rendered}");
+    } else {
+        print_out(false, value.clone());
+    }
+}
+
+/// The three typed error fields, verbatim in the default output, untouched JSON
+/// for the machine interface.
+pub(crate) fn print_error(as_json: bool, code: &str, message: &str, recovery: &str) {
+    if as_json {
+        print_out(
+            true,
+            json!({"error":{"code":code,"message":message,"recovery_action":recovery}}),
+        );
+    } else {
+        println!("{}", render::error_block(code, message, recovery));
+    }
 }
 
 async fn query_raw(root: &Path, kind: &str, payload: Value) -> Result<Value, String> {
@@ -533,10 +558,7 @@ async fn keyed_submit(
         .map_err(|e| e.to_string())?
         .into_inner();
     if let Some(error) = response.error {
-        print_out(
-            as_json,
-            json!({"error":{"code":error.code,"message":error.message,"recovery_action":error.recovery_action}}),
-        );
+        print_error(as_json, &error.code, &error.message, &error.recovery_action);
         std::process::exit(1);
     }
     print_out(as_json, bytes_json(&response.result)?);

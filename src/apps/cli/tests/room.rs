@@ -118,22 +118,35 @@ impl Fixture {
         Self { root, payload }
     }
     fn run(&self, args: &[&str]) -> (bool, Value) {
-        let out = Command::new(
+        let (ok, stdout, stderr) = self.run_raw(true, args);
+        (
+            ok,
+            serde_json::from_slice(&stdout).unwrap_or_else(|_| {
+                json!({"stdout":String::from_utf8_lossy(&stdout),"stderr":String::from_utf8_lossy(&stderr)})
+            }),
+        )
+    }
+    /// Raw bytes, for byte-exact output checks and the human default mode.
+    fn run_raw(&self, json: bool, args: &[&str]) -> (bool, Vec<u8>, Vec<u8>) {
+        let mut command = Command::new(
             std::env::var("CARGO_BIN_EXE_hctl2")
                 .expect("CARGO_BIN_EXE_hctl2 must be set to run this test"),
-        )
-        .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
-        .env("HCTL2_INSTALL_ROOT", &self.payload)
-        .env(
-            "HCTL2_CONTROL_BIN",
-            std::env::var("CARGO_BIN_EXE_hctl2-control")
-                .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
-        )
-        .args(["--json", "--root", self.root.to_str().unwrap()])
-        .args(args)
-        .output()
-        .unwrap();
-        (out.status.success(), serde_json::from_slice(&out.stdout).unwrap_or_else(|_| json!({"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)})))
+        );
+        command
+            .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
+            .env("HCTL2_INSTALL_ROOT", &self.payload)
+            .env(
+                "HCTL2_CONTROL_BIN",
+                std::env::var("CARGO_BIN_EXE_hctl2-control")
+                    .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
+            )
+            .arg("--root")
+            .arg(self.root.to_str().unwrap());
+        if json {
+            command.arg("--json");
+        }
+        let out = command.args(args).output().unwrap();
+        (out.status.success(), out.stdout, out.stderr)
     }
     fn query(&self, kind: &str, input: Value) -> Value {
         let path = self.root.join("query.json");
