@@ -1,6 +1,6 @@
 # 演示线开工书：九个包，从聊天到合入
 
-> 状态：已拍板 · 所有者 2026-10-03「落」；§二 各项为所有者同日裁定；第 1 包 #307 已合，演示 1 已验收（§三，所有者同日裁「按建议来」）；同日晚按所有者裁定调整席位（§二 第 9 条、§六：MiniMax 停写只审，小活 D 改派 DeepSeek、E 改派 Qwen）；2026-10-04 所有者定四个梯队的评审规则与陪审席（§二 第 10 条、§四 的「审」列、§六）；2026-10-05 定「可合」之后的合入口径（§二 第 11 条），加小活 F、G 与两条待办（§六、§七）；同日定第 3、4 包并行（§二 第 12 条），第 2 包 #317 已合；同日把第 3 包拆成 3a、3b，harness 版本按最低版本（§二 第 13 条）；同日这一轮收尾：补丁 1a（#318）与小活 C、E、F 已合，第 4 包一轮修正没过、交 Codex 接手（§四、§六），Antigravity 的 PR 改由 Claude 合（§二 第 14 条），加小活 H；同日 3a 合入后重走演示 1 的缺口 1、2、3，三处都已补上（§三）；同日第 4 包（#325，Codex 接手）与小活 G（#327）合入，第 3b 包收窄成 Herdr 管道、真 harness 另开第 3c 包（§二 第 15 条），第 5 包不等真 harness 先开（§二 第 16 条）；同日晚把四梯队规则改成「写分三档、评分两种席位、一席找问题一席核验」（§二 第 10 条改写，§六），第 5、6 包各拆成主体与后半段（§二 第 17 条）；其后第 3c 包（#335）一轮修正之后验收第 2 条没过，按 §二 第 15 条交 Codex 接手，接手后由 Claude 找问题、Kimi 核验（§四 第 3 包）；同日所有者定用社区版、全库盘点自建方案（§二 第 18 条），并定「辨别执行结果」比退出码重要、harness 是半永续的（§二 第 19 条），3c 按此返工；所有者确认第 19 条的重述后约束跟着改（v0.19.3）、3c 的验收改写，状态目录防篡改记为策略点（§二 第 20 条）；同日复盘 #334、#335 后定五条做法（§二 第 21 条）；2026-10-06 定 harness 不按句杀、另开第 3d 包（§二 第 22 条），合入仍由作者做、两席「可合」之后开自动合入（§二 第 23 条）；2026-10-06 第 3d 包（#362）两轮评审卡在同一类问题上，审题后所有者定：派工的正文不经过 harness 的输入框，`!` 与 `/` 是人在终端里的原生操作、不过滤（§二 第 24 条，§四 第 3 包「3d」第 6 条）；同日第 3d 包第三轮按第 24 条改完，Claude、Kimi「可合」后合入（#362）；人直接在参与者的 pane 里操作时的几处限制记在 §七；同日所有者定四件：演示 2 不判「做完」、删掉别家已合入的旧分支、CI 锁检查排成小活 L、各家 harness 交法的调研交 Grok（§二 第 25 条，§六）；同日所有者定三件：第 5 包后半段给 Qwen，herdr 偶发红排小活 M 给 Codex，第二家 harness 的接入开 3e 给 Grok（§二 第 26 条，§四，§六）；2026-10-07 凌晨 #378（小活 M）、#372（第 5 包主链）、#377（3e）先后合入；同日 Fable 走了演示 2（§三），所有者「落」：实录进 `log/`，演示 2 挡住的两处排成小活 N 给 Codex（§六）；同日所有者定第 6 包的拆法、平台与执行体并「落」验收（§二 第 27 条，§四 第 6 包）：Codex 与 Claude 各写一半，先 Gitea 后 GitHub；2026-10-07 `main` 的 macOS x86_64 发布线在 Agency 用例上反复红，排成小活 O 给 Codex（§六）<br>
+> 状态：已拍板 · 所有者 2026-10-03「落」；§二 各项为所有者同日裁定；第 1 包 #307 已合，演示 1 已验收（§三，所有者同日裁「按建议来」）；同日晚按所有者裁定调整席位（§二 第 9 条、§六：MiniMax 停写只审，小活 D 改派 DeepSeek、E 改派 Qwen）；2026-10-04 所有者定四个梯队的评审规则与陪审席（§二 第 10 条、§四 的「审」列、§六）；2026-10-05 定「可合」之后的合入口径（§二 第 11 条），加小活 F、G 与两条待办（§六、§七）；同日定第 3、4 包并行（§二 第 12 条），第 2 包 #317 已合；同日把第 3 包拆成 3a、3b，harness 版本按最低版本（§二 第 13 条）；同日这一轮收尾：补丁 1a（#318）与小活 C、E、F 已合，第 4 包一轮修正没过、交 Codex 接手（§四、§六），Antigravity 的 PR 改由 Claude 合（§二 第 14 条），加小活 H；同日 3a 合入后重走演示 1 的缺口 1、2、3，三处都已补上（§三）；同日第 4 包（#325，Codex 接手）与小活 G（#327）合入，第 3b 包收窄成 Herdr 管道、真 harness 另开第 3c 包（§二 第 15 条），第 5 包不等真 harness 先开（§二 第 16 条）；同日晚把四梯队规则改成「写分三档、评分两种席位、一席找问题一席核验」（§二 第 10 条改写，§六），第 5、6 包各拆成主体与后半段（§二 第 17 条）；其后第 3c 包（#335）一轮修正之后验收第 2 条没过，按 §二 第 15 条交 Codex 接手，接手后由 Claude 找问题、Kimi 核验（§四 第 3 包）；同日所有者定用社区版、全库盘点自建方案（§二 第 18 条），并定「辨别执行结果」比退出码重要、harness 是半永续的（§二 第 19 条），3c 按此返工；所有者确认第 19 条的重述后约束跟着改（v0.19.3）、3c 的验收改写，状态目录防篡改记为策略点（§二 第 20 条）；同日复盘 #334、#335 后定五条做法（§二 第 21 条）；2026-10-06 定 harness 不按句杀、另开第 3d 包（§二 第 22 条），合入仍由作者做、两席「可合」之后开自动合入（§二 第 23 条）；2026-10-06 第 3d 包（#362）两轮评审卡在同一类问题上，审题后所有者定：派工的正文不经过 harness 的输入框，`!` 与 `/` 是人在终端里的原生操作、不过滤（§二 第 24 条，§四 第 3 包「3d」第 6 条）；同日第 3d 包第三轮按第 24 条改完，Claude、Kimi「可合」后合入（#362）；人直接在参与者的 pane 里操作时的几处限制记在 §七；同日所有者定四件：演示 2 不判「做完」、删掉别家已合入的旧分支、CI 锁检查排成小活 L、各家 harness 交法的调研交 Grok（§二 第 25 条，§六）；同日所有者定三件：第 5 包后半段给 Qwen，herdr 偶发红排小活 M 给 Codex，第二家 harness 的接入开 3e 给 Grok（§二 第 26 条，§四，§六）；2026-10-07 凌晨 #378（小活 M）、#372（第 5 包主链）、#377（3e）先后合入；同日 Fable 走了演示 2（§三），所有者「落」：实录进 `log/`，演示 2 挡住的两处排成小活 N 给 Codex（§六）；同日所有者定第 6 包的拆法、平台与执行体并「落」验收（§二 第 27 条，§四 第 6 包）：Codex 与 Claude 各写一半，先 Gitea 后 GitHub；2026-10-07 `main` 的 macOS x86_64 发布线在 Agency 用例上反复红，排成小活 O 给 Codex（§六）；2026-10-08 所有者定 Grok 多用（#392 找问题席换 Grok、小活 P）、第 7 包与第 8 包前半提前开（§二 第 28 条，§六，§八）<br>
 > 基线：main @ `cdb6c66`（草案 v0.19.0；本文所在的 PR 把基线升到 v0.19.1）；演示 1 验收后 main @ `a075a66`，验收 PR 把基线升到 v0.19.2<br>
 > 去向：`src/apps/*`、`src/crates/*`、`src/agency`；`docs/design/delivery.md` §本地 Agency 参考实现（形态已定）；不改约束层<br>
 > 读法：先读 [`README.md`](./README.md) 状态板，再读本文 §三、§四。旧任务书在 [`01-plan.md`](./01-plan.md) 与 [`05-p22-kickoff.md`](./05-p22-kickoff.md)，与本文不一致处以本文和现行约束为准
@@ -65,6 +65,8 @@
 25. **2026-10-06 一并定的四件。** 主笔列了五件等所有者定的事，所有者逐条答：① 「演示 2 里谁来判做完了」——「okay」：按主笔的建议，演示 2 先不判，只把这一轮的回答交回 Room 由人看；sysone 那道题照旧记在判断点清单里（§七）。② 别家留下的已合入旧分支——「删」：主笔随即删掉 20 个（agy 2、codex 2、deepseek 6、glm 4、grok 3、kimi 1、qwen 1、yesme-patch-1），都是 `origin/main` 的祖先、没有被任何工作树检出；留下 `codex/community-first-audit`（Codex 的临时工作树还检出着）、`pr/315`（不在原来那份清单里）和 9 个没有合入过 main 的旧分支（`fix/ci-resolve-validation-range-20260919`、`kimi/grokbot-compare-notes`、`pr/277` 到 `pr/288` 七个），这些不碰。③ MiniMax 在 #348 里查出的那道永远是绿的 CI 锁检查——「排」：小活 L，见 §六。④ 各家 harness 怎么交一轮正文的调研——「安排下去。grok干吧」：专项，见 §六。⑤ 第 9 包谁写——所有者先问「活大么？qwen/deepseek，或者claude试一下？」，主笔的看法：不算大但难、而且要等第 6、7、8 包和第二家 harness 都在了才能开；建议拆成主体与后半段，主体 Claude 试、后半段 Qwen 或 DeepSeek、Codex 找问题，开工时间在第 6 包主体合入、第二家 harness 定下之后，到那时 Codex 空着就换成 Codex 写、Claude 回去审。所有者：「可以。」席位表与第 9 包一节已改。
 26. **2026-10-06 又定三件。** 主笔列了下一步，所有者答：「第5包后半段给qwen，herdr偶发红排小活给codex，3e给grok」。① 第 5 包后半段 Qwen 写，MiniMax 找问题、GLM 核验，开工在主链（#372）合入之后，见 §四 第 5 包「开工」。② `root//agency:herdr_test` 在 CI 上的偶发红排成小活 M，Codex 写，见 §六。③ 第二家 harness（Codex）的接入开 3e，Grok 写，Claude 找问题、Kimi 核验，按 Grok 自己那份调研的决定建议做，见 §四 第 3 包「3e」。席位表随之改。
 27. **2026-10-07 定第 6 包。** 主笔写了第 6 包验收（§四），列三件请裁：拆法、GitHub 测试仓库、执行体。所有者答：「你也写点代码吧？」——Claude 写集成一半、Codex 写另一半，评审席互换（Codex 的 Claude 找问题、GLM 核验；Claude 的 Codex 找问题、Kimi 核验）；「我们用github，还是本地的gitea (顺便测了)」——两条都走，先 Gitea 后 GitHub，GitHub 用新建的公开沙盒 `hctl2-canary`（「你一次建好」）；「执行体用脚本。」——真 harness 改代码留第 9 包。「落」。
+
+28. **2026-10-08 定四件：Grok 多用，第 7、8 包提前开。** 主笔列了剩下的活并建议多用 Grok，所有者答：「1、2 都做，7、8 也开，写小活 P」。① 小活 O（#392）的找问题席由 Claude 换成 Grok——那三条红的用例是 Agency 运行时的夹具，3a–3e 都是 Grok 写的；GLM 核验不变。② 排小活 P 给 Grok（一轮上限）：`main` 上另两条没人认领的偶发红（§六）。③ 第 7 包（DeepSeek）与第 8 包前半（Qwen）现在就开，不等第 6 包收口：第 7 包要的只是 Integration Receipt 的形状与查询入口，#385 已给；第 8 包只动 `src/apps/cli`，发布评审与完成两种预览等第 6、7 包落地再做后半。这是对第 12 条「其余照旧串行」的一次显式偏离。④ 所有者同时要求 Claude 自己也多写代码（「我主要是想评估一下你的写code能力」）；加写的范围主笔另提、所有者定。
 
 ## 三、三次演示
 
@@ -545,7 +547,7 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
 - **不做的**：不改打包的签名步骤本身；不碰 Herdr 的版本。
 - **分支**：`codex/herdr-digest`，从 `origin/main` 起。两席对最终提交「可合」、CI 绿之后作者开自动合入。
 
-### 小活 O · `main` 的 macOS x86_64 发布线在 Agency 用例上反复红（Codex 写；Claude 找问题，GLM 核验）
+### 小活 O · `main` 的 macOS x86_64 发布线在 Agency 用例上反复红（Codex 写；Grok 找问题，GLM 核验；所有者 2026-10-08 把找问题席从 Claude 换成 Grok，§二 第 28 条）
 
 - **来由**：PR 只跑 Linux 与 macOS arm64，`main` 的发布线多跑 macOS x86_64（Intel runner）。2026-10-06 18:04 起它在 `root//agency` 的用例上反复红：`6ced659`（#372）红、`515d7a1`（#377）绿、`e27d252`（#381）绿，之后 `e15efba`（#383，只改文档）、`a1007e1`（#382）、`d193900`（#387）、`e20491f`（#385）四次连红——同一批用例，和当次合入的内容无关。红的是：`port_returns_a_turn_while_herdr_session_is_alive`（`herdr.rs:2498`）与 `agency_start_and_pair_catalog_the_confined_claude_profession`（`herdr.rs:783`）都是 `AGENCY_RESPONSE_UNKNOWN: The operation was cancelled`；`result_pages_keep_each_accepted_payload_under_the_transport_limit`（`port.rs:646`）是分页数 1、期望 2。所有者 2026-10-07：「排小活给 Codex，写任务书」。
 - **验收**（缺一条不算过）：
@@ -555,6 +557,19 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
   4. **退回修正能再现。** 退回之后用同一种方式至少红一次（概率性的写明跑了多少次红了几次）。
 - **不做的**：不改 Agency 的协议与派工逻辑；不改 CI 的平台矩阵；不动 Herdr 版本。
 - **分支**：`codex/macos-x86-agency`，从 `origin/main` 起。两席对最终提交「可合」、CI 绿之后作者开自动合入。
+
+### 小活 P · `main` 上另两条偶发红：`services_test` 的启动窗口、Process Compose 契约脚本的 stop（Grok 写，一轮上限；Claude 找问题，GLM 核验）
+
+- **来由**：所有者 2026-10-08「写小活 P」（§二 第 28 条）。两条都不在任何包里，都是全量并行跑时才红、单跑绿：
+  1. `root//apps/control:services_test` 的 `probe_not_ready_is_not_available_and_store_still_serves`（`src/apps/control/tests/services.rs:150`）：消费 `never-ready` 之后只给 40×50 ms 等它 `running`，全量并行时 process-compose 没来得及起，断言 `never-ready was consumed but never started` 红。2026-10-07 本机 macOS arm64 全量跑红一次、单跑 2/2 绿；Codex 在 #392 的诊断轮里 Intel 也见过两项 `services_test` 红。
+  2. `root//build/tests:process_compose_contract_test`（`src/build/tests/check_process_compose_contract.sh`）：Linux 上 `pc process stop ready-ok` 报 `Failed to stop: 'ready-ok'`（run 37631364441，job 112826326478），紧跟在 `process restart ready-ok` 刚报 Ready 之后；脚本随后 `sleep 1` 再查 `is_running`。
+- **验收**（缺一条不算过）：
+  1. **先定位再修。** 每条说清在等什么、为什么并行时等不到：是 process-compose 的启动/重启与 stop 之间的时序，还是用例把「多久之内必起」写死了。证据是日志里的具体行。
+  2. **修根因，不盖。** 不加 sleep、不加重试、不把用例标成 ignored；要等就等一个有依据的声明预算或一个明确的就绪信号（process-compose 自己的状态、`wait_available` 一类），不是把 40 改成 400。契约脚本里那个 `sleep 1` 要么换成等 process-compose 的状态，要么写明为什么保留。
+  3. **全量并行连续绿。** 修后在 `main` 风格的三平台工作流上（或 `workflow_dispatch` 对分支跑同一套）连续 5 次这两个目标绿，附 run 编号；本机全量并行（`root//apps/control/... root//build/tests/...` 一起）跑 5 次附 Build ID。
+  4. **退回修正能再现。** 退回之后用同一种方式至少红一次（概率性的写明跑了多少次红了几次）。
+- **不做的**：不改 Process Compose 版本与配置形状；不改 `hctl2-services` 的命令语义；不碰小活 O 的三条 Agency 用例。
+- **分支**：`grok/flaky-services-and-contract`，从 `origin/main` 起。一轮上限（§二 第 10 条）：一轮修正没过就交 Codex。两席对最终提交「可合」、CI 绿之后作者开自动合入。
 
 ### 专项 · 各家 harness 怎么交一轮正文（Grok 写；Claude 审，Kimi 核验）
 
@@ -695,6 +710,24 @@ Kimi 对演示 1 的契约走查（§三 的规矩），现在可发：
 ```
 
 之后各包的开工提示词，在前一包合入后由 Fable 给。
+
+第 7 包，给 DeepSeek，所有者 2026-10-08 定提前开（§二 第 28 条）：
+
+```
+你是 DeepSeek 席。做 yesme/hctl2 的「第 7 包 · 完成 Task 与发布 Memo」。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 7 包（先读 §一到 §三；§二 第 10、11、21、23 条是评审与合入规矩）。给你的框架在 src/crates/repo/README.md「第 6 包 · 集成一半」里「给第 7 包的框架」一节：Integration Receipt 的字段与 integration.show 查询入口，机械项的证据就拿它；第 6 包其余部分还在写，不等。分支 deepseek/task-complete 从 origin/main 起；验收四条逐条附实测，每条都要有从真实命令行走到处理函数的用例；PR 描述三节照模板，署名按 AGENTS.md「提交署名」。评审：Grok 找问题、Kimi 核验；两席对最终提交「可合」且 CI 绿后你开自动合入。
+```
+
+第 8 包前半，给 Qwen，同日：
+
+```
+你是 Qwen 席。做 yesme/hctl2 的「第 8 包 · 命令行的人读输出」的前半。开工书：main 上 .memo/design/p2-control-20260906/07-demo-kickoff.md §四 第 8 包（先读 §一到 §三；§二 第 10、11、21、23 条）。前半的范围：验收第 1、3、4 条全部，第 2 条里列表成表与派工、合入两种预览；发布评审、完成两种预览等第 6、7 包落地再做，PR 描述里写明留着。只动 src/apps/cli；--json 逐字节不变，用存下来的样例比对。分支 qwen/cli-human-output 从 origin/main 起；PR 描述三节照模板，验收逐条附实测，署名按 AGENTS.md「提交署名」。评审：Grok 找问题、GLM 核验；两席对最终提交「可合」且 CI 绿后你开自动合入。
+```
+
+小活 P，给 Grok，同日：
+
+```
+你是 Grok 席。做小活 P：任务书在 main 的 .memo/design/p2-control-20260906/07-demo-kickoff.md §六「小活 P」——main 上两条偶发红（services_test 的启动窗口、Process Compose 契约脚本的 stop），来由里有文件行号与 CI run/job 号，验收四条缺一不算过，一轮上限。分支 grok/flaky-services-and-contract 从 origin/main 起。评审：Claude 找问题、GLM 核验；PR 描述三节照模板，验收逐条附实测，署名按 AGENTS.md「提交署名」。
+```
 
 ## 九、轻审怎么审本文
 
