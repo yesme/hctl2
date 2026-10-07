@@ -1393,3 +1393,56 @@ fn tampered_prepared_commit_is_rejected_without_touching_target() {
     );
     assert_eq!(fixture.refs(), refs);
 }
+
+#[test]
+fn fast_forward_follows_an_advanced_target_on_the_candidate_line_and_reports_already_reached() {
+    let fixture = Fixture::new("ff-line");
+    // The target advanced to an intermediate commit that the candidate descends from.
+    git(&fixture.repo, &["switch", "main"]);
+    fs::write(fixture.repo.join("step.txt"), "step\n").unwrap();
+    let step = commit(&fixture.repo, "step");
+    git(&fixture.repo, &["switch", "-c", "line"]);
+    fs::write(fixture.repo.join("more.txt"), "more\n").unwrap();
+    let candidate = commit(&fixture.repo, "more");
+    let tree = git(&fixture.repo, &["rev-parse", "HEAD^{tree}"]);
+    git(&fixture.repo, &["switch", "--detach", "main"]);
+    let value = record(
+        fixture
+            .command(
+                "fast-forward",
+                &step,
+                "line",
+                &fixture.base,
+                &candidate,
+                &tree,
+                TARGET,
+            )
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(value["status"], "applied", "{value}");
+    assert_eq!(value["after_head"], candidate);
+    assert_eq!(value["integrated_tree_sha"], tree);
+    assert_eq!(fixture.head(), candidate);
+    // A target that already reached the candidate has nothing to write: already applied.
+    let again = record(
+        fixture
+            .command(
+                "fast-forward",
+                &candidate,
+                "reached",
+                &fixture.base,
+                &candidate,
+                &tree,
+                TARGET,
+            )
+            .output()
+            .unwrap(),
+        0,
+    );
+    assert_eq!(again["status"], "already_applied", "{again}");
+    assert_eq!(again["after_head"], candidate);
+    assert_eq!(again["integrated_tree_sha"], tree);
+    assert_eq!(fixture.head(), candidate);
+}

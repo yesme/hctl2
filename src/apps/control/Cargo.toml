@@ -32,6 +32,7 @@ serde_json.workspace = true
 store = { path = "../../crates/store" }
 task = { path = "../../crates/task" }
 tokio.workspace = true
+tool = { path = "../tool" }
 tokio-stream.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
