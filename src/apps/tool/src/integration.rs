@@ -165,6 +165,21 @@ fn execute(git: &Git, input: &Arguments) -> Result<ToolOutput, ToolError> {
         }
     }
     require_expected(&intent, before.as_deref())?;
+    // The candidate is already reachable from the target: a fast-forward has nothing to write.
+    if input.strategy == Strategy::FastForward
+        && prepared.is_none()
+        && is_ancestor(git, repo, &intent.commit, &intent.expected)?
+    {
+        return success(
+            git,
+            &repository,
+            &intent,
+            &intent.commit,
+            &before,
+            &before,
+            "already_applied",
+        );
+    }
     if intent.commit != intent.expected {
         require_available_target(git, &repository, input)?;
     }
@@ -372,12 +387,12 @@ fn prepare_commit(
     intent: &Intent,
 ) -> Result<String, ToolError> {
     if input.strategy == Strategy::FastForward {
-        if intent.expected != intent.base
-            || !is_ancestor(git, repo, &intent.expected, &intent.commit)?
-        {
+        // A fast-forward only needs the target head on the candidate's ancestry; the target may
+        // have advanced past the baseline along that line (accept-advance). Diverged targets reject.
+        if !is_ancestor(git, repo, &intent.expected, &intent.commit)? {
             return Err(rejected(
                 "HCTL2_TOOL_INTEGRATION_NOT_FAST_FORWARD",
-                "fast-forward requires target head equal to baseline and an ancestral path to candidate",
+                "fast-forward requires the target head to be an ancestor of the candidate",
                 "choose_matching_inputs_and_explicit_strategy",
                 intent.fields.clone(),
             ));

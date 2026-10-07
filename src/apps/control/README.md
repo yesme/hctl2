@@ -24,6 +24,10 @@
 
 本机 `root//packaging/release:room-cli-test` 用真实 CLI、控制守护进程、独立脚本 Agency 和锁定的 Tuwunel / Gitea 走「配对 → 接受工种 → 创建 Profile → 选人 → 预览 → 启动 → 查看 → Room」。另测重启重投，以及 Matrix 停止后准入回答、控制面重启且 Agency 已停时恢复投影。它不运行真实 Claude，不冒充演示 2 验收。waiting_input 的 Request 收发、终端接管和写入型调用尚未接，本批不把合法边表测试报成这些能力。
 
+## 第 6 包 · 集成一半
+
+`integration.rs` 接 `integration.submit` 的 Preview / Submit 和 `integration.show | list` 的 Query，领域在 [Repo crate](../../crates/repo/README.md#第-6-包--集成一半意图两种授权形态receipt)。预览时读目标：本地目标用库内的 `hctl2-tool repo inspect` 取目标 ref 的头；已准入的 key 回放冻结预览、不再读。提交只持久化意图与效果；后台 worker（`reconcile`，与派工的 worker 并列）执行并回读，本地目标调库内的 `hctl2-tool integrate`，`accept_advance` 下执行前再读一次头。工具的拒绝按码分流：目标被检出留给人、结果未知只回读、预期头不符终态失败。平台目标的适配器（Gitea 合并请求、保护条件回读）还没接；绑定声明缺能力时预览就拒绝。
+
 ## 控制服务
 
 P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进制仍是 `hctl2-control`。监听控制面数据目录下仅归属者可访问的 Unix socket（`control.sock`，模式 0600），对外提供 `hctl2.control.v1` 的 Query / Preview / Submit / Subscribe。存储打开在工作线程上，与 RPC 并发；`STORE_NOT_READY` 与 `UPGRADE_IN_PROGRESS` 把 `store` 的 `code` / `message` / `recovery_action` 原样放到错误对象里。

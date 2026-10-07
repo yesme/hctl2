@@ -299,6 +299,105 @@ if [ "$(uname -s)" = Darwin ]; then
     rm -f "$probe" "$bad"
 fi
 
+# --- the Linux guard is a behaviour, not a string ---------------------------
+# The grep above only proves the hint is still in the launcher. Drive the Linux
+# branch for real instead: a `uname` that says Linux, and a `clang` that answers
+# a bare `ld.lld` (what clang answers when lld is not next to it), so the
+# guard's own condition holds. Then require every verb it claims to guard to
+# stop with the install hint *before the exec*, and the one it does not claim
+# to reach the exec and stay clean.
+# A "non-zero exit" assertion is not enough on its own: a guard that prints the
+# hint and then falls through also exits non-zero, because the exec below it
+# fails on a missing binary. So the probe carries a buck2-bin stand-in that
+# records that it was reached and exits 0, and a guarded verb counts as stopped
+# only when that marker is absent. --version must reach the stand-in, which
+# proves the marker would have shown up had the guard let the exec through.
+# $launcher arrives in the sandbox as a bare export_file with no siblings, so
+# give the probe the small tree the launcher expects to be sitting in.
+guard_root="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-guard-probe.XXXXXX")"
+trap 'rm -rf "$fake" "$guard_root"' EXIT
+mkdir -p "$guard_root/src/build/tools/host-bin" "$guard_root/bin"
+cp "$launcher" "$guard_root/src/buck2"
+cp "$python_pin" "$guard_root/src/build/tools/host-bin/python3"
+chmod +x "$guard_root/src/build/tools/host-bin/python3"
+probe_launcher="$guard_root/src/buck2"
+cat > "$guard_root/src/build/tools/buck2-bin" <<'SH'
+#!/bin/sh
+# Stands in for the real Buck2. Succeeds, so the probe can tell "the guard
+# stopped here" apart from "the exec fell over on a missing binary".
+: > "$GUARD_PROBE_MARKER"
+echo "buck2 stand-in reached the exec"
+exit 0
+SH
+chmod +x "$guard_root/src/build/tools/buck2-bin"
+cat > "$guard_root/bin/uname" <<'SH'
+#!/bin/sh
+echo Linux
+SH
+cat > "$guard_root/bin/clang" <<'SH'
+#!/bin/sh
+case "$*" in
+    # No lld next to this clang: clang hands back the bare name, not a path.
+    *-print-prog-name=ld.lld*) echo "ld.lld" ;;
+    *) echo "clang version 18.1.3" ;;
+esac
+SH
+cat > "$guard_root/bin/clang++" <<'SH'
+#!/bin/sh
+echo "clang version 18.1.3"
+SH
+chmod +x "$guard_root/bin/uname" "$guard_root/bin/clang" "$guard_root/bin/clang++"
+
+guard_hint='Linux builds need clang, clang++ and lld'
+guard_bad=0
+guard_rc=0
+for verb in build test run; do
+    marker="$guard_root/reached-$verb"
+    guard_out="$(PATH="$guard_root/bin:$PATH" GUARD_PROBE_MARKER="$marker" \
+        HCTL2_BUCK2_CACHE=0 sh "$probe_launcher" "$verb" --help 2>&1)" \
+        && guard_rc=0 || guard_rc=$?
+    if [ -e "$marker" ]; then
+        guard_bad=1
+        note "guard probe: '$verb' reached the Buck2 exec instead of stopping"
+    fi
+    if [ "$guard_rc" -eq 0 ]; then
+        guard_bad=1
+        note "guard probe: '$verb' exited 0 with no clang and no lld"
+    fi
+    case "$guard_out" in
+        *"$guard_hint"*) ;;
+        *)
+            guard_bad=1
+            note "guard probe: '$verb' exited $guard_rc without the install hint: $guard_out"
+            ;;
+    esac
+done
+# The guard is scoped to build/run/test. A verb it does not claim must not
+# collect the build hint, and it must still reach the exec — that positive
+# control is what makes the three "did not reach the exec" checks above mean
+# anything. Its exit code is not this assertion's business.
+marker="$guard_root/reached-version"
+guard_out="$(PATH="$guard_root/bin:$PATH" GUARD_PROBE_MARKER="$marker" \
+    HCTL2_BUCK2_CACHE=0 sh "$probe_launcher" --version 2>&1)" || true
+if [ -e "$marker" ]; then
+    note "PASS the probe can see the exec, so the three checks above are real"
+else
+    guard_bad=1
+    note "guard probe: '--version' never reached the Buck2 stand-in; \
+the probe cannot tell a stopped guard from a failed exec"
+fi
+case "$guard_out" in
+    *"$guard_hint"*)
+        guard_bad=1
+        note "guard probe: '--version' collected the build hint"
+        ;;
+esac
+if [ "$guard_bad" -eq 0 ]; then
+    note "PASS the Linux guard stops build/test/run before the exec and leaves --version alone"
+else
+    fail "the Linux guard does not behave the way its message claims"
+fi
+
 if grep -F 'hctl2.python=$py_bin' "$launcher" >/dev/null &&
     grep -F 'hctl2.cc=$cc_bin' "$launcher" >/dev/null; then
     note "PASS launcher still injects hctl2.python / hctl2.cc"
