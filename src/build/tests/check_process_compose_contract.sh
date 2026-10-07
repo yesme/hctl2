@@ -204,18 +204,21 @@ is_ready() {
     printf '%s' "$state" | grep -Eq '"is_ready":[[:space:]]*"Ready"'
 }
 
-# lifecycle.yaml ready-ok shutdown.timeout_seconds. Poll process-compose's
-# own is_running instead of sleeping a fixed second after `process stop`.
+# lifecycle.yaml ready-ok shutdown.timeout_seconds. A get that fails is
+# unknown, not stopped: only an explicit is_running false counts.
 shutdown_timeout_seconds=5
+last_get_state=
 wait_not_running() {
     local name="$1"
     local seconds="$2"
     local attempts=$((seconds * 2))
     local n=0
     local state
+    last_get_state=
     while [ "$n" -lt "$attempts" ]; do
-        state="$(pc process get "$name" --output json 2>/dev/null || true)"
-        if ! printf '%s' "$state" | grep -Eq '"is_running":[[:space:]]*true'; then
+        state="$(pc process get "$name" --output json 2>&1 || true)"
+        last_get_state=$state
+        if printf '%s' "$state" | grep -Eq '"is_running":[[:space:]]*false'; then
             return 0
         fi
         n=$((n + 1))
@@ -245,15 +248,15 @@ else
     fail "ready-ok did not become Ready after restart"
 fi
 
-# ready-ok's shutdown.timeout_seconds in lifecycle.yaml. process-compose
-# 1.122.0 can print "Failed to stop" while a restart epoch is still closing
-# (run 37631364441, job 112826326478, right after "Process ready-ok restarted").
-# set -e used to end the script on that line. The contract is the state.
+# The CLI's exit code is not the contract. src/cmd/stop.go prints
+# "Failed to stop: '<name>'" whenever StopProcess's status is not "ok", and
+# that line does not include the server error. Whether the process stopped is
+# is_running. If it is still true after shutdown.timeout_seconds, this fails.
 stop_log="$(pc process stop ready-ok 2>&1)" || true
 if wait_not_running ready-ok "$shutdown_timeout_seconds"; then
     note "PASS process stop ends ready-ok"
 else
-    fail "ready-ok still running after process stop (${shutdown_timeout_seconds}s shutdown budget): ${stop_log}"
+    fail "ready-ok still running after process stop (${shutdown_timeout_seconds}s shutdown budget): ${stop_log}; last get: ${last_get_state}"
 fi
 
 pc down
