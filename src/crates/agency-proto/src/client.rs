@@ -6,6 +6,7 @@ use std::{
     io::Read,
     os::unix::fs::{FileTypeExt, MetadataExt},
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tonic::transport::{Channel, Endpoint};
 use tower::service_fn;
@@ -84,10 +85,21 @@ impl From<PortError> for CallFailure {
 pub struct Client {
     endpoint: PathBuf,
     key: String,
+    request_timeout: Duration,
 }
 impl Client {
     pub fn new(endpoint: PathBuf, key: String) -> Self {
-        Self { endpoint, key }
+        Self {
+            endpoint,
+            key,
+            request_timeout: Duration::from_secs(5),
+        }
+    }
+    /// Configure tonic's per-request transport budget, not the dispatch deadline.
+    /// A timeout remains NoReply and never causes this client to resend a request.
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
+        self
     }
     pub async fn call<I: Serialize, O: DeserializeOwned>(
         &self,
@@ -117,8 +129,8 @@ impl Client {
         let path = self.endpoint.clone();
         let channel: Channel = Endpoint::try_from("http://[::]:50051")
             .expect("fixed URI")
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
+            .timeout(self.request_timeout)
+            .connect_timeout(Duration::from_secs(2))
             .connect_with_connector(service_fn(move |_| {
                 let path = path.clone();
                 async move {
@@ -186,5 +198,22 @@ impl Client {
         serde_json::from_slice(&reply.document)
             .map_err(PortError::from)
             .map_err(CallFailure::NoReply)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_budget_is_explicit_and_does_not_change_the_original_client() {
+        let original = Client::new("/tmp/unused.sock".into(), "key".into());
+        let configured = original
+            .clone()
+            .with_request_timeout(Duration::from_secs(30));
+        assert_eq!(original.request_timeout, Duration::from_secs(5));
+        assert_eq!(configured.request_timeout, Duration::from_secs(30));
+        assert_eq!(configured.endpoint, original.endpoint);
+        assert_eq!(configured.key, original.key);
     }
 }

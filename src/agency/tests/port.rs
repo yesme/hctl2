@@ -9,6 +9,7 @@ use agency_proto::{
 };
 use serde_json::{Value, json};
 use std::{
+    io::Write,
     path::PathBuf,
     sync::{
         Arc,
@@ -546,6 +547,11 @@ struct BlockingRuntime {
 }
 
 struct BurstRuntime;
+// This fixture produces two 2 MiB outputs. Give each transport operation the
+// same 30-second budget as a cold native session; allow one producer phase and
+// two page reads, rather than an unrelated 20-second polling deadline.
+const LARGE_RESULT_RPC_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+const LARGE_RESULT_PHASES: u32 = 3;
 struct BurstSession(std::sync::mpsc::Sender<agency::runtime::RuntimeEvent>);
 impl agency::runtime::Session for BurstSession {
     fn input(&mut self, _: &[u8]) -> Result<()> {
@@ -601,6 +607,7 @@ impl Runtime for BurstRuntime {
 async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
     let (client, _key) = rig.pair("budget").await;
+    let client = client.with_request_timeout(LARGE_RESULT_RPC_BUDGET);
     let d: Dispatch = client
         .call("prepare", &request(&client, "budget").await)
         .await
@@ -609,17 +616,14 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let mut pages = Vec::new();
     let mut after = None;
     let query_started = std::time::Instant::now();
-    let deadline = query_started + std::time::Duration::from_secs(20);
+    let deadline = query_started + LARGE_RESULT_RPC_BUDGET * LARGE_RESULT_PHASES;
     while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
-        // `results` only reads, and the contract marks a transport timeout retryable
-        // (`readback_original_request`). A loaded machine can push a page of 2 MiB
-        // payloads past the client's fixed timeout, so a polling loop comes back
-        // instead of failing the test.
         let call_started = std::time::Instant::now();
         let reply: Result<ResultPage> = client.call("results", &query).await;
-        eprintln!(
+        let _ = writeln!(
+            std::io::stderr(),
             "small O result page: elapsed={:?}, total={:?}, after={:?}, outcome={:?}",
             call_started.elapsed(),
             query_started.elapsed(),
@@ -629,13 +633,8 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
                 .map(|page| (page.proposals.len(), page.complete))
                 .map_err(|error| &error.code)
         );
-        let page: ResultPage = match reply {
-            Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                continue;
-            }
-            result => result.unwrap(),
-        };
+        // A transport failure stays visible; do not retry it to hide a short budget.
+        let page = reply.unwrap();
         if page.proposals.is_empty()
             || (pages.is_empty() && page.complete && page.proposals.len() < 2)
         {
@@ -659,6 +658,47 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     assert_eq!(pages.len(), 2);
     assert!(!pages[0].complete);
     assert!(pages[1].complete);
+    rig.close().await;
+}
+
+struct BlockedCatalog(std::sync::Mutex<std::sync::mpsc::Receiver<()>>);
+impl Runtime for BlockedCatalog {
+    fn catalog(&self) -> Result<Catalog> {
+        self.0.lock().unwrap().recv().unwrap();
+        BurstRuntime.catalog()
+    }
+    fn start(
+        &self,
+        _: &Sealed<ExecutionSpec>,
+        _: &Sealed<Bundle>,
+        _: &std::path::Path,
+        _: &std::path::Path,
+    ) -> Result<agency::runtime::Running> {
+        Err(PortError::invalid("catalog-only fixture"))
+    }
+}
+
+#[tokio::test]
+async fn declared_request_budget_reaches_tonic_and_timeout_is_no_reply() {
+    let (release, blocked) = std::sync::mpsc::channel();
+    let rig = Rig::with_runtime(Arc::new(BlockedCatalog(std::sync::Mutex::new(blocked)))).await;
+    let (client, _) = rig.pair("request-budget").await;
+    let reply = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        client
+            .with_request_timeout(std::time::Duration::from_millis(20))
+            .call_outcome::<_, Catalog>("catalog", &json!({})),
+    )
+    .await;
+    // Release before asserting, including when the transport ignored the budget.
+    let _ = release.send(());
+    match reply.expect("tonic must use the declared budget instead of its 5-second default") {
+        Err(agency_proto::client::CallFailure::NoReply(error)) => {
+            assert_eq!(error.code, "AGENCY_RESPONSE_UNKNOWN");
+            assert_eq!(error.recovery_action, "readback_original_request");
+        }
+        other => panic!("expected no reply from blocked catalog, got {other:?}"),
+    }
     rig.close().await;
 }
 

@@ -7,12 +7,19 @@ use agency::{
 use agency_proto::{Catalog, Pair, Pairing, client::Client as PortClient};
 use serde_json::json;
 use std::{
+    io::Write,
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Command, Stdio},
     sync::Arc,
     time::{Duration, Instant},
 };
+
+// InstalledHerdr::catalog verifies the entire locked binary. On the full
+// parallel CI set this is CPU-bound work, not a five-second local RPC fixture.
+// Match the existing cold native session readiness budget without changing
+// the production client default or the dispatch's own deadline.
+const CATALOG_RPC_BUDGET: Duration = Duration::from_secs(30);
 
 fn binary() -> PathBuf {
     let path = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr binary"));
@@ -749,9 +756,11 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
                 .await?;
             let started = Instant::now();
             let result = PortClient::new(pair.endpoint.into(), pair.key)
+                .with_request_timeout(CATALOG_RPC_BUDGET)
                 .call("catalog", &json!({}))
                 .await;
-            eprintln!(
+            let _ = writeln!(
+                std::io::stderr(),
                 "small O paired catalog: elapsed={:?}, error={:?}",
                 started.elapsed(),
                 result.as_ref().err()
@@ -2503,8 +2512,13 @@ async fn port_turn(name: &str, live: bool) {
         .await
         .unwrap();
     let catalog_started = Instant::now();
-    let catalog: agency_proto::Result<Catalog> = client.call("catalog", &json!({})).await;
-    eprintln!(
+    let catalog: agency_proto::Result<Catalog> = client
+        .clone()
+        .with_request_timeout(CATALOG_RPC_BUDGET)
+        .call("catalog", &json!({}))
+        .await;
+    let _ = writeln!(
+        std::io::stderr(),
         "small O port catalog: elapsed={:?}, error={:?}",
         catalog_started.elapsed(),
         catalog.as_ref().err()
