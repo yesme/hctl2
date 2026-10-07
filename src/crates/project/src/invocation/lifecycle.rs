@@ -257,6 +257,56 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
         Ok(json!({"invocation_id":input.invocation_id,"state":input.outcome,"state_version":next_state_version,"authorization_revoked":true,"cleanup_pending":requires_cleanup}))
     })
 }
+/// Read-only projection of the same rules `end`'s transaction enforces, so a
+/// human confirms the real consequence. Preview writes nothing and grants
+/// nothing; a queued stop is not a confirmed isolation. The declared state
+/// version must be the current one — `end`'s compare-and-swap stays the authority
+/// on what is still current when the confirmed cancellation is submitted.
+pub fn cancel_preview(store: &Store, input: &End) -> store::Result<Value> {
+    if input.key.trim().is_empty() || input.reason.trim().is_empty() {
+        return Err(invalid("cancel needs a key and a reason"));
+    }
+    if input.outcome != State::Cancelled {
+        return Err(invalid(
+            "failure and loss stay reducer decisions; a human cancels",
+        ));
+    }
+    let (root, invocation) = invocation(store, &input.project_id, &input.invocation_id)?;
+    let (state_record, current) = lifecycle(store, &input.project_id, &input.invocation_id)?;
+    if state_record.version != input.state_version {
+        return Err(reject(
+            "VERSION_CONFLICT",
+            "cancellation names a stale state version",
+            "preview_again",
+        ));
+    }
+    if !current.state.allows(State::Cancelled) || !invocation.authorization.valid {
+        return Err(reject(
+            "INVALID_TRANSITION",
+            "Invocation is terminal or transition is illegal",
+            "inspect_original_invocation",
+        ));
+    }
+    let prepare_id = format!("prepare:{}", input.invocation_id);
+    let activation_id = format!("activate:{}", input.invocation_id);
+    let mut cancelled_effects = vec![];
+    for id in [&prepare_id, &activation_id] {
+        if store.has_effect(id)? && store.effect(id)?.1 == EffectState::Pending {
+            cancelled_effects.push(id.clone());
+        }
+    }
+    Ok(json!({
+        "invocation_id": input.invocation_id,
+        "owner": reference(&root),
+        "state": current.state,
+        "reason": current.reason,
+        "state_version": state_record.version,
+        "outcome": State::Cancelled,
+        "cancelled_effects": cancelled_effects,
+        "cleanup_pending": matches!(store.effect(&prepare_id)?.1, EffectState::Unknown | EffectState::Confirmed),
+        "isolation_confirmed": false,
+    }))
+}
 fn required_in(
     tx: &store::CommandTransaction<'_>,
     key: &store::ObjectKey,

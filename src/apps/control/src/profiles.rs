@@ -2,7 +2,7 @@
 //! other control definitions. This module never talks to Agency.
 use participant::{
     invalid,
-    profiles::{ProfileInput, ProfilePlan, admit_profile, prepare_profile},
+    profiles::{ProfileInput, ProfilePlan, admit_profile, prepare_profile, show_profile},
     reject,
 };
 use serde_json::Value;
@@ -14,10 +14,25 @@ type Shared = Arc<Mutex<Option<Store>>>;
 
 fn input(operation: &str, payload: &Value) -> store::Result<ProfileInput> {
     let input: ProfileInput = serde_json::from_value(payload.clone())?;
-    if operation != "profile.create" || input.action.kind() != "create" {
+    if operation != format!("profile.{}", input.action.kind()) {
         return Err(invalid("Profile operation and action disagree"));
     }
     Ok(input)
+}
+
+pub(crate) fn query(
+    shared: &Shared,
+    actor: &TrustedActor,
+    payload: &Value,
+) -> store::Result<Value> {
+    let id = payload["profile_id"]
+        .as_str()
+        .ok_or_else(|| invalid("profile_id required"))?;
+    let slot = shared.blocking_lock();
+    let store = slot
+        .as_ref()
+        .ok_or_else(|| reject("STORE_NOT_READY", "store not ready", "check_status"))?;
+    show_profile(store, actor, id)
 }
 
 pub(crate) fn preview(

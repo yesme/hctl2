@@ -118,3 +118,25 @@ Repo 外部步骤与 `restore.apply`、服务维护串行；Gitea 就绪等待�
 | 本地平台账号：管理员给 control，有权的人各一个普通账号（[Repo 约束 §平台绑定与能力声明](../../../docs/design/spec/repo.md#平台绑定与能力声明)） | 平台适配器测试：建账号失败不把已打印的口令当账号、已存在的账号复用且不再建、`admin user list` 的表头行不当成账号、协作者授权每次都写请求的级别并由回读确认（含已是协作者时改级别）、响应丢失按结果未知；`unit_test`：会改写平台路径的用户名与越权 permission 在接触平台前拒绝；`cli_test`：外部注册与待确认注册都拿不到 preview_token。绑定里的账号映射未实现，见「失败与恢复」 |
 
 Buck 目标：`root//crates/repo:repo`、`:registration_test`、`:git_test`、`:clippy`；复用 `root//apps/control:{unit_test,boundary_test,services_test}`、`root//apps/cli:cli_test`、`root//packaging/release:complete-test`。其余 CT-REPO（写租约、ChangeSet、发布评审、集成、审计公开）不在戊的交付范围。
+
+## 第 6 包 · 集成一半（意图、两种授权形态、Receipt）
+
+实现依据：[开工书 §四 第 6 包](../../../.memo/design/p2-control-20260906/07-demo-kickoff.md) 验收第 5–7、9（集成半边）、11、12 条；[Repo 约束 §集成](../../../docs/design/spec/repo.md#集成目标两个头与两种授权形态)、§恢复。代码在 `src/integration.rs`；control 的编排在 `apps/control/src/integration.rs`；CLI 是 `hctl2 integration preview | submit | show | list`。
+
+**对象。** `integration_intent`（Repo 范围）记一次「合入 ChangeSet Revision」的持久授权：冻结的预览（源版本的五个身份字段、目标、所选形态、策略、预期目标头或预览时看到的头、平台目标的保护快照、绑定版本）、状态（`pending` 未尝试 / `unknown` 已尝试未确认 / `succeeded` / `failed`）、尝试次数、留给人的 `attention`、终态原因 `failure`、`receipt_id`。`integration_receipt` 是唯一凭证：源、目标、形态、策略、执行前后的目标头、集成提交与树、回读的证据通道（本地目标是 `hctl2-tool`）与回读原文；它只在回读到结果之后、与效果确认和终态同一事务写入。两种记录都是 `RecordData::Value`，每个意图一条 outbox 效果，冲突范围是目标本身（`kind:provider_ref:ref`），所以同一目标同时至多一个待决意图（CT-REPO 第 13 行），由 Store 的 `EFFECT_CONFLICT` 保证、以 `TARGET_BUSY` 报出。
+
+**源版本。** 集成只引用已准入的 ChangeSet Revision（记录 `changeset_revision`，另一半 `changeset.rs` 写入；本模块只读 `AdmittedRevision`：五个身份字段加 `producer_ref`、`review_subject_digest`）。版本里没有提交对象：执行时在目标仓库里找一个树正好是 `result_tree_sha`、父提交含 `base_commit_sha` 的提交（执行体自己的提交），找不到就用固定身份 `commit-tree` 包一个，重试得到同一个对象。`result_commit_sha` 只出现在 Receipt 与平台证据里，和约束一致。另一半合入之前，用例用 `admit_revision_seam` 写同一种记录，它不是领域准入；#384 合入后改走 `changeset::admit` 并删掉。
+
+**形态。** `expected_head` 冻结预览时的目标头，执行时不等就 `failed`、不重试；本地目标总能选它，平台目标只有绑定声明 `expected_target_head` 为真才能选，否则 `EXPECTED_HEAD_UNSUPPORTED`，不在执行时降级（CT-REPO 第 17 行）。`accept_advance` 冻结源、策略与保护快照，接受目标前移，Receipt 记实际目标头。平台目标还要求绑定声明 `remote_merge` 与 `protection_readback`，缺一条 `CAPABILITY_MISSING`；随包 Gitea 这两项现在声明为未验证，所以本批平台目标还进不了预览，验收第 5、7 条的 Gitea 路径在下一个 PR 连同能力声明的实测一起落。
+
+**目标连续性。** 预览冻结目标的连续性证据：本地目标是 Git 公共目录的文件系统身份（设备号与 inode；同路径的新 clone 是另一个 inode，整个目录搬走再搬回还是同一个），平台目标是平台实例与仓库稳定 ID。执行前重读对照，不一致就什么都不写、留 `TARGET_IDENTITY_MISMATCH` 给人（原仓库回来之后同一意图自己续上；CT-REPO 第 36 行「同路径新 clone 不证明目标连续」）。
+
+**每次尝试的输入先冻结。** 执行前把这次给执行体的精确输入记进意图（`attempt`：序号、执行体侧重试键、候选提交、预期头），再执行；重试原样复用，所以「工具已写、control 没来得及确认」之后重启，工具按同一输入与同一重试键认出自己的结果（`already_applied`），不会拿已经变化的目标头重新规划。只有终态回读、或工具证明什么都没写（`accept_advance` 下的 `HEAD_DRIFT` / `CAS_REJECTED`）才清掉它换新序号重规划；`KEY_REUSED` 一律当结果未知。
+
+**执行与回读（本地目标）。** `control` 的后台 worker 每秒看一遍开着的意图：`pending` 立刻执行；`unknown` 每 10 秒再试一次。执行就是 P1 的 `hctl2-tool integrate`（库内调用，同一份代码）：源提交、基线、结果树、目标 ref、预期头（`accept_advance` 下取执行前刚读到的头）、策略、以 `<意图 ID>:<尝试序号>` 为重试键（每次重新规划换新序号，重试沿用）。工具的 JSON 记录是回读：退出码 0 → `succeeded`，Receipt 记 `before_head / after_head / new_head / integrated_tree_sha`（重试得到 `already_applied` 时，写入前的头取冻结尝试的预期头，不取回读那一刻的头）；`RESULT_UNKNOWN` → `unknown`，下次只回读；`TARGET_CHECKED_OUT` → `unknown` 加 `attention`（精确工作树路径与「切离后重试同一意图」），人切离后同一意图自己续上，不新提交；`HEAD_DRIFT` / `CAS_REJECTED` 在 `expected_head` 下 → `failed`（`TARGET_HEAD_MISMATCH`），在 `accept_advance` 下 → 重读头再试；其余拒绝 → `failed`。`fast_forward` 的回读树必须等于准入的结果树，`merge_commit` 的树是合并树。工具的快进条件本批放宽为「目标头是候选的祖先」（目标沿候选这条线前移也能快进，候选已可达则 `already_applied`），分叉仍拒绝，P1 的用例不变。工具的合并提交用仓库配置的 Git 身份；没有身份的仓库合并会以 `COMMIT_FAILED` 终态失败，这是现状，由谁给身份另议。
+
+**同一 key 重投。** 已准入的 key 再预览返回冻结的预览、不再读目标，再提交回到同一个意图；同 key 换输入是 `IDEMPOTENCY_CONFLICT`。
+
+**给第 7 包的框架（验收第 12 条的 Receipt 部分）。** `integration.show {repo_id, intent_id}` 返回 `{intent, receipt, effect_state}`；`integration.list {repo_id}` 列该 Repo 的意图。「完成 Task」的机械项拿 `receipt`：核 `receipt.source.change_set_revision_id`、`receipt.target`、`receipt.target_head_after`、`receipt.evidence_level`，并以 `integration_receipt` 记录的 `sources` 指回意图。错误码：`REVISION_NOT_ADMITTED`、`PLATFORM_NOT_BOUND`、`LOCAL_TARGET_NOT_ALLOWED`、`EXPECTED_HEAD_UNSUPPORTED`、`CAPABILITY_MISSING`、`TARGET_HEAD_UNKNOWN`、`TARGET_BUSY`、`VERSION_CONFLICT`、`IDEMPOTENCY_CONFLICT`、`INTENT_NOT_FOUND`、`INTENT_TERMINAL`、`READBACK_MISMATCH`，都带 `recovery_action`。
+
+**验证。** `root//crates/repo:integration_test`（领域：预览冻结与拒绝、同 key 幂等、同目标互斥与终态释放、只有确认回读写 Receipt、回读与冻结不符拒绝、未知占用）；`root//apps/control:integration_test`（真实控制套接字 + 真实 Git 仓库 + 工具：被检出的目标等人、切离后同一意图续上并签唯一 Receipt、第二个意图 `TARGET_BUSY`、终态后新授权、预期头漂移 `failed` 不重试、`accept_advance` 合并提交记实际头并在执行体提交被删时包提交、同 key 重预览回放冻结预览）。新增：同路径新 clone 不被当成原目标、原仓库回来后续上；工具已写而确认丢失后按冻结的尝试恢复、只签一张 Receipt；`accept_advance` + `fast_forward` 的目标已到候选时 `already_applied`。还没接的：平台目标的执行与保护快照回读（Gitea、GitHub）、重启整个 control 的用例、真实 CLI 到处理函数的用例（等 #384 合入后用 `changeset::admit` 造源版本）。

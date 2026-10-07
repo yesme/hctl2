@@ -6,6 +6,7 @@ set -euo pipefail
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 python_pin="${HOST_PYTHON3:-$script_dir/../tools/host-bin/python3}"
 launcher="${BUCK2_LAUNCHER:-$script_dir/../../buck2}"
+gh_pin="${GH_PIN:-$script_dir/../tools/gh-bin}"
 research="${PYTHON_RESEARCH:-}"
 
 if [ -z "$research" ]; then
@@ -158,9 +159,10 @@ else
     fail "DotSlash digest mismatch: linux=$got_linux arm=$got_macos_arm x86=$got_macos_x86"
 fi
 
+# The pinned gh, not whatever the host has: an old distro gh omits `digest`.
 official_json="$fake/release.json"
-if command -v gh >/dev/null 2>&1 &&
-    gh release view 20260901 --repo astral-sh/python-build-standalone --json assets >"$official_json" 2>/dev/null
+if [ -f "$gh_pin" ] &&
+    "$gh_pin" release view 20260901 --repo astral-sh/python-build-standalone --json assets >"$official_json" 2>/dev/null
 then
     "$helper_python" - "$official_json" "$expected_linux" "$expected_macos_arm" "$expected_macos_x86" <<'PY'
 import json
@@ -185,7 +187,7 @@ if missing:
 PY
     note "PASS official GitHub release 20260901 digests match the pin"
 else
-    note "SKIP live GitHub digest check (gh unavailable)"
+    note "SKIP live GitHub digest check (pinned gh unavailable or not signed in)"
 fi
 
 if [ -f "$research" ]; then
@@ -231,15 +233,128 @@ if [ "$(uname -s)" = Darwin ]; then
             ;;
     esac
 else
-    cc_bin=$(command -v clang || command -v cc || true)
+    cc_bin=$(command -v clang || true)
     case "$cc_bin" in
         /*)
             note "PASS Linux cc resolves to $cc_bin"
             ;;
         *)
-            fail "Linux cc did not resolve to an absolute path: $cc_bin"
+            fail "Linux clang did not resolve to an absolute path: $cc_bin"
             ;;
     esac
+fi
+
+# Linux takes the prelude's clang + lld as is. No cc/c++ fallback in the
+# launcher, and a missing toolchain stops the build with an install hint.
+if grep -E 'command -v (cc|c\+\+)( |\))' "$launcher" >/dev/null; then
+    fail "src/buck2 still falls back to cc/c++ on Linux"
+else
+    note "PASS src/buck2 has no cc/c++ fallback"
+fi
+if grep -F 'Linux builds need clang, clang++ and lld' "$launcher" >/dev/null &&
+    grep -F -- '-print-prog-name=ld.lld' "$launcher" >/dev/null; then
+    note "PASS src/buck2 stops a Linux build without clang, clang++ and lld"
+else
+    fail "src/buck2 is missing the Linux clang/lld check"
+fi
+
+# --- the Linux guard is a behaviour, not a string ---------------------------
+# The grep above only proves the hint is still in the launcher. Drive the Linux
+# branch for real instead: a `uname` that says Linux, and a `clang` that answers
+# a bare `ld.lld` (what clang answers when lld is not next to it), so the
+# guard's own condition holds. Then require every verb it claims to guard to
+# stop with the install hint *before the exec*, and the one it does not claim
+# to reach the exec and stay clean.
+# A "non-zero exit" assertion is not enough on its own: a guard that prints the
+# hint and then falls through also exits non-zero, because the exec below it
+# fails on a missing binary. So the probe carries a buck2-bin stand-in that
+# records that it was reached and exits 0, and a guarded verb counts as stopped
+# only when that marker is absent. --version must reach the stand-in, which
+# proves the marker would have shown up had the guard let the exec through.
+# $launcher arrives in the sandbox as a bare export_file with no siblings, so
+# give the probe the small tree the launcher expects to be sitting in.
+guard_root="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-guard-probe.XXXXXX")"
+trap 'rm -rf "$fake" "$guard_root"' EXIT
+mkdir -p "$guard_root/src/build/tools/host-bin" "$guard_root/bin"
+cp "$launcher" "$guard_root/src/buck2"
+cp "$python_pin" "$guard_root/src/build/tools/host-bin/python3"
+chmod +x "$guard_root/src/build/tools/host-bin/python3"
+probe_launcher="$guard_root/src/buck2"
+cat > "$guard_root/src/build/tools/buck2-bin" <<'SH'
+#!/bin/sh
+# Stands in for the real Buck2. Succeeds, so the probe can tell "the guard
+# stopped here" apart from "the exec fell over on a missing binary".
+: > "$GUARD_PROBE_MARKER"
+echo "buck2 stand-in reached the exec"
+exit 0
+SH
+chmod +x "$guard_root/src/build/tools/buck2-bin"
+cat > "$guard_root/bin/uname" <<'SH'
+#!/bin/sh
+echo Linux
+SH
+cat > "$guard_root/bin/clang" <<'SH'
+#!/bin/sh
+case "$*" in
+    # No lld next to this clang: clang hands back the bare name, not a path.
+    *-print-prog-name=ld.lld*) echo "ld.lld" ;;
+    *) echo "clang version 18.1.3" ;;
+esac
+SH
+cat > "$guard_root/bin/clang++" <<'SH'
+#!/bin/sh
+echo "clang version 18.1.3"
+SH
+chmod +x "$guard_root/bin/uname" "$guard_root/bin/clang" "$guard_root/bin/clang++"
+
+guard_hint='Linux builds need clang, clang++ and lld'
+guard_bad=0
+guard_rc=0
+for verb in build test run; do
+    marker="$guard_root/reached-$verb"
+    guard_out="$(PATH="$guard_root/bin:$PATH" GUARD_PROBE_MARKER="$marker" \
+        HCTL2_BUCK2_CACHE=0 sh "$probe_launcher" "$verb" --help 2>&1)" \
+        && guard_rc=0 || guard_rc=$?
+    if [ -e "$marker" ]; then
+        guard_bad=1
+        note "guard probe: '$verb' reached the Buck2 exec instead of stopping"
+    fi
+    if [ "$guard_rc" -eq 0 ]; then
+        guard_bad=1
+        note "guard probe: '$verb' exited 0 with no clang and no lld"
+    fi
+    case "$guard_out" in
+        *"$guard_hint"*) ;;
+        *)
+            guard_bad=1
+            note "guard probe: '$verb' exited $guard_rc without the install hint: $guard_out"
+            ;;
+    esac
+done
+# The guard is scoped to build/run/test. A verb it does not claim must not
+# collect the build hint, and it must still reach the exec — that positive
+# control is what makes the three "did not reach the exec" checks above mean
+# anything. Its exit code is not this assertion's business.
+marker="$guard_root/reached-version"
+guard_out="$(PATH="$guard_root/bin:$PATH" GUARD_PROBE_MARKER="$marker" \
+    HCTL2_BUCK2_CACHE=0 sh "$probe_launcher" --version 2>&1)" || true
+if [ -e "$marker" ]; then
+    note "PASS the probe can see the exec, so the three checks above are real"
+else
+    guard_bad=1
+    note "guard probe: '--version' never reached the Buck2 stand-in; \
+the probe cannot tell a stopped guard from a failed exec"
+fi
+case "$guard_out" in
+    *"$guard_hint"*)
+        guard_bad=1
+        note "guard probe: '--version' collected the build hint"
+        ;;
+esac
+if [ "$guard_bad" -eq 0 ]; then
+    note "PASS the Linux guard stops build/test/run before the exec and leaves --version alone"
+else
+    fail "the Linux guard does not behave the way its message claims"
 fi
 
 if grep -F 'hctl2.python=$py_bin' "$launcher" >/dev/null &&

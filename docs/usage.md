@@ -232,7 +232,7 @@ hctl2-tool integrate --repo /path/to/repo \
   --idempotency-key <caller-key>
 ```
 
-`--strategy` 为 `fast-forward` 或 `merge-commit`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。`hctl2-tool` 把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
+`--strategy` 为 `fast-forward` 或 `merge-commit`。`fast-forward` 要求目标头是候选提交的祖先（目标可以已经沿候选这条线前移；分叉的目标拒绝），候选已经可从目标头到达时不写、回 `already_applied`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。`hctl2-tool` 把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
 
 ### 等待外部事实
 

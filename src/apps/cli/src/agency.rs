@@ -75,28 +75,5 @@ async fn execute(command: AgencyCommand, root: &Path, as_json: bool) -> Result<(
             )
         }
     };
-    let response = client(root)
-        .await?
-        .submit(SubmitRequest {
-            protocol: Some(Protocol {
-                version: PROTOCOL.into(),
-            }),
-            operation: operation.into(),
-            payload: payload.to_string().into_bytes(),
-            command_id: format!("{operation}:{key}"),
-            idempotency_key: key,
-            preview_token: String::new(),
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .into_inner();
-    if let Some(error) = response.error {
-        print_out(
-            as_json,
-            json!({"error":{"code":error.code,"message":error.message,"recovery_action":error.recovery_action}}),
-        );
-        std::process::exit(1);
-    }
-    print_out(as_json, bytes_json(&response.result)?);
-    Ok(())
+    keyed_submit(root, as_json, operation, payload, key).await
 }

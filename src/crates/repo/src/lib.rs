@@ -3,6 +3,7 @@
 
 pub mod changeset;
 pub mod git;
+pub mod integration;
 mod model;
 mod registry;
 

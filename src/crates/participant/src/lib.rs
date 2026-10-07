@@ -115,8 +115,8 @@ pub fn accept_binding(
         {
             return Err(reject(
                 "BINDING_IMMUTABLE",
-                "accept changed promises under a new binding ID",
-                "accept_new_binding",
+                "accept changed promises with hctl2 agency pair --binding-id <new-id> --key <new-key>",
+                "hctl2 agency pair",
             ));
         }
     }
@@ -149,8 +149,8 @@ pub fn accept_profession(
     if !b.catalog.professions.contains(profession) {
         return Err(reject(
             "PROFESSION_CHANGED",
-            "candidate is not in the accepted catalog",
-            "refresh_binding",
+            "candidate is not in the accepted catalog; run hctl2 agency pair --binding-id <new-id> --agency-root <same-root> --key <new-key>, then accept under the new binding ID",
+            "hctl2 agency pair",
         ));
     }
     let k = key(
@@ -372,6 +372,10 @@ pub fn record_observation(
     )?;
     Ok(())
 }
+/// Contact that found the Agency unreachable. When control saw it is data about
+/// the fact, not part of the fact's identity: the reconcile loop contacts on every
+/// tick, so a timestamp in the key would append one governance record per tick for
+/// a fact that has not changed.
 pub fn record_unreachable(
     store: &mut Store,
     actor: &TrustedActor,
@@ -381,7 +385,7 @@ pub fn record_unreachable(
     let k = key(
         dispatch.key.scope.clone(),
         "dispatch_contact",
-        &format!("{}:{observed_ms}", dispatch.key.id),
+        &dispatch.key.id,
     );
     let mut record = value(
         k,
@@ -389,10 +393,17 @@ pub fn record_unreachable(
         &json!({"contact":"unreachable","observed_ms":observed_ms,"dispatch":dispatch.key.id}),
     )?;
     record.sources = vec![reference(dispatch)];
+    // The digest carries `observed_ms`, so it cannot take part in the comparison;
+    // the dispatch this contact was about is the whole identity of the fact.
+    if let Some(stored) = store.get(&record.key)?
+        && stored.sources == record.sources
+    {
+        return Ok(());
+    }
     write(
         store,
         actor,
-        &format!("contact:{}:{observed_ms}", dispatch.key.id),
+        &format!("contact:{}", dispatch.key.id),
         "dispatch.contact",
         &record,
         None,
