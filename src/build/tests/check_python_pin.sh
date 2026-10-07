@@ -6,6 +6,7 @@ set -euo pipefail
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 python_pin="${HOST_PYTHON3:-$script_dir/../tools/host-bin/python3}"
 launcher="${BUCK2_LAUNCHER:-$script_dir/../../buck2}"
+gh_pin="${GH_PIN:-$script_dir/../tools/gh-bin}"
 research="${PYTHON_RESEARCH:-}"
 
 if [ -z "$research" ]; then
@@ -158,9 +159,10 @@ else
     fail "DotSlash digest mismatch: linux=$got_linux arm=$got_macos_arm x86=$got_macos_x86"
 fi
 
+# The pinned gh, not whatever the host has: an old distro gh omits `digest`.
 official_json="$fake/release.json"
-if command -v gh >/dev/null 2>&1 &&
-    gh release view 20260901 --repo astral-sh/python-build-standalone --json assets >"$official_json" 2>/dev/null
+if [ -f "$gh_pin" ] &&
+    "$gh_pin" release view 20260901 --repo astral-sh/python-build-standalone --json assets >"$official_json" 2>/dev/null
 then
     "$helper_python" - "$official_json" "$expected_linux" "$expected_macos_arm" "$expected_macos_x86" <<'PY'
 import json
@@ -185,7 +187,7 @@ if missing:
 PY
     note "PASS official GitHub release 20260901 digests match the pin"
 else
-    note "SKIP live GitHub digest check (gh unavailable)"
+    note "SKIP live GitHub digest check (pinned gh unavailable or not signed in)"
 fi
 
 if [ -f "$research" ]; then
@@ -231,15 +233,29 @@ if [ "$(uname -s)" = Darwin ]; then
             ;;
     esac
 else
-    cc_bin=$(command -v clang || command -v cc || true)
+    cc_bin=$(command -v clang || true)
     case "$cc_bin" in
         /*)
             note "PASS Linux cc resolves to $cc_bin"
             ;;
         *)
-            fail "Linux cc did not resolve to an absolute path: $cc_bin"
+            fail "Linux clang did not resolve to an absolute path: $cc_bin"
             ;;
     esac
+fi
+
+# Linux takes the prelude's clang + lld as is. No cc/c++ fallback in the
+# launcher, and a missing toolchain stops the build with an install hint.
+if grep -E 'command -v (cc|c\+\+)( |\))' "$launcher" >/dev/null; then
+    fail "src/buck2 still falls back to cc/c++ on Linux"
+else
+    note "PASS src/buck2 has no cc/c++ fallback"
+fi
+if grep -F 'Linux builds need clang, clang++ and lld' "$launcher" >/dev/null &&
+    grep -F -- '-print-prog-name=ld.lld' "$launcher" >/dev/null; then
+    note "PASS src/buck2 stops a Linux build without clang, clang++ and lld"
+else
+    fail "src/buck2 is missing the Linux clang/lld check"
 fi
 
 if grep -F 'hctl2.python=$py_bin' "$launcher" >/dev/null &&

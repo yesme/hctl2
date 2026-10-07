@@ -8,6 +8,7 @@ pub mod config;
 mod context_query;
 pub mod dispatch;
 mod identity;
+pub mod integration;
 mod profiles;
 mod projects;
 mod repositories;
@@ -93,10 +94,12 @@ impl Daemon {
         let project_polling = service.reconcile_projects();
         let agency_polling = service.reconcile_agencies();
         let dispatch_polling = service.reconcile_dispatch();
+        let integration_polling = service.reconcile_integrations();
         let chat = chat::serve(self.root.clone(), hosted, Arc::clone(&self.store));
         tokio::select! {
             () = agency_polling => Ok(()),
             () = dispatch_polling => Ok(()),
+            () = integration_polling => Ok(()),
             result = serve_listener(listener, service) => result,
             _ = polling => Ok(()),
             _ = chat => Ok(()),

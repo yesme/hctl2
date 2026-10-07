@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod agency;
+mod integration;
 mod invocation;
 mod profession;
 mod profile;
@@ -92,6 +93,9 @@ enum Command {
     Invocation(invocation::InvocationCommand),
     #[command(subcommand)]
     Terminal(terminal::TerminalCommand),
+    /// Integrate an admitted ChangeSet Revision into a target ref: preview, submit, show.
+    #[command(subcommand)]
+    Integration(integration::IntegrationCommand),
 }
 
 #[derive(Subcommand)]
@@ -200,6 +204,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Profile(command) => profile::dispatch(command, root, json).await,
         Command::Invocation(command) => invocation::dispatch(command, root, json).await,
         Command::Terminal(command) => terminal::dispatch(command, root, json).await,
+        Command::Integration(command) => integration::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,

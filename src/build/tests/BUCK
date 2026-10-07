@@ -127,10 +127,12 @@ sh_test(
     env = {
         "HOST_PYTHON3": "$(location root//build/tools:host-python3)",
         "BUCK2_LAUNCHER": "$(location root//:buck2_launcher)",
+        "GH_PIN": "$(location root//build/tools:gh-bin)",
         "PYTHON_RESEARCH": "$(location repo//:docs_tree)/docs/research/build-tools/python-build-standalone.md",
     },
     labels = CI_FAST,
     resources = [
+        "root//build/tools:gh-bin",
         "root//build/tools:host-python3",
         "root//:buck2_launcher",
         "repo//:docs_tree",

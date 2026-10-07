@@ -32,6 +32,10 @@
 
 CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster show | select`、`profile update | show`、`invocation list | cancel | retry`。写命令仍是「不带 `--preview-token` 就预览、带 token 就提交」，`profession accept` 除外：它不在 `is_dangerous` 里，走 `keyed_submit` 直接提交、没有预览闸门，与既有 `agency accept` 相同。命名按领域对象正名——`profession accept`、`room roster show | select` 是正名，既有的 `agency accept`、`project roster | select` 降为文档里写明的别名；本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。`room-cli-test` 增一条端到端用例，从真实命令行走完这 12 条命令并逐条验拒绝；受管输入与写入型调用不在其中。
 
+## 第 6 包 · 集成一半
+
+`integration.rs` 接 `integration.submit` 的 Preview / Submit 和 `integration.show | list` 的 Query，领域在 [Repo crate](../../crates/repo/README.md#第-6-包--集成一半意图两种授权形态receipt)。预览时读目标：本地目标用库内的 `hctl2-tool repo inspect` 取目标 ref 的头；已准入的 key 回放冻结预览、不再读。提交只持久化意图与效果；后台 worker（`reconcile`，与派工的 worker 并列）执行并回读，本地目标调库内的 `hctl2-tool integrate`，`accept_advance` 下执行前再读一次头。工具的拒绝按码分流：目标被检出留给人、结果未知只回读、预期头不符终态失败。平台目标的适配器（Gitea 合并请求、保护条件回读）还没接；绑定声明缺能力时预览就拒绝。
+
 ## 控制服务
 
 P2.1 乙的进程边界。目录与私有 crate 名是 `control`；对外二进制仍是 `hctl2-control`。监听控制面数据目录下仅归属者可访问的 Unix socket（`control.sock`，模式 0600），对外提供 `hctl2.control.v1` 的 Query / Preview / Submit / Subscribe。存储打开在工作线程上，与 RPC 并发；`STORE_NOT_READY` 与 `UPGRADE_IN_PROGRESS` 把 `store` 的 `code` / `message` / `recovery_action` 原样放到错误对象里。
