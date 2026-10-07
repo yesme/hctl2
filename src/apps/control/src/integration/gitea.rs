@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use crate::scm::Hosted;
 
+#[derive(Debug)]
 pub(crate) struct Target {
     pub head: Option<String>,
     pub protection: ProtectionSnapshot,
@@ -25,25 +26,75 @@ fn branch(target_ref: &str) -> Result<&str> {
     })
 }
 
-/// Read the target branch's head and its protection rules as the platform reports them.
+/// Read the target branch's head and the protection that is in force for it, as the platform
+/// reports them. Gitea keeps protection as named rules that may be globs, so the branch
+/// record says whether it is protected and which rule applies; only that rule is fetched.
+/// A protected branch whose rule cannot be read is an error, never "unprotected".
 pub(crate) fn observe(hosted: &Hosted, full_name: &str, target_ref: &str) -> Result<Target> {
     let branch = branch(target_ref)?;
-    let head = hosted
-        .api("GET", &format!("repos/{full_name}/branches/{branch}"), None)?
-        .and_then(|value| value["commit"]["id"].as_str().map(str::to_owned));
-    let protection = hosted.api(
-        "GET",
-        &format!("repos/{full_name}/branch_protections/{branch}"),
-        None,
-    )?;
+    let Some(record) = hosted.api("GET", &format!("repos/{full_name}/branches/{branch}"), None)?
+    else {
+        return Ok(Target {
+            head: None,
+            protection: snapshot(None),
+        });
+    };
+    let head = record["commit"]["id"].as_str().map(str::to_owned);
+    if record["protected"] != json!(true) {
+        return Ok(Target {
+            head,
+            protection: snapshot(None),
+        });
+    }
+    let rule_name = record["effective_branch_protection_name"]
+        .as_str()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| {
+            reject(
+                "PROTECTION_UNREAD",
+                "the branch is protected but the platform names no rule for it",
+                "inspect_platform_protection",
+            )
+        })?;
+    let rule = hosted
+        .api(
+            "GET",
+            &format!(
+                "repos/{full_name}/branch_protections/{}",
+                percent_encode(rule_name)
+            ),
+            None,
+        )?
+        .ok_or_else(|| {
+            reject(
+                "PROTECTION_UNREAD",
+                format!("protection rule {rule_name:?} is in force but cannot be read"),
+                "inspect_platform_protection",
+            )
+        })?;
     Ok(Target {
         head,
-        protection: snapshot(protection.as_ref()),
+        protection: snapshot(Some(&rule)),
     })
 }
 
-/// Gitea's `BranchProtection` fields into the frozen snapshot shape. Fields the snapshot has
-/// no slot for stay under `other`, so the comparison at execution still sees them.
+/// A rule name as one path segment (`ma*` → `ma%2A`, `release/*` → `release%2F%2A`).
+fn percent_encode(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for byte in name.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// Gitea's `BranchProtection` rule into the frozen snapshot shape. Every condition the rule
+/// carries stays in the snapshot — the named slots for what the spec names, the rest under
+/// `other` — so a change to any of them is seen at execution and readback. Only the rule's
+/// timestamps are left out: they change without the conditions changing.
 pub(crate) fn snapshot(protection: Option<&Value>) -> ProtectionSnapshot {
     let Some(protection) = protection else {
         return ProtectionSnapshot {
@@ -52,19 +103,19 @@ pub(crate) fn snapshot(protection: Option<&Value>) -> ProtectionSnapshot {
         };
     };
     let mut other = BTreeMap::from([("protected".into(), json!(true))]);
-    for field in [
-        "enable_push",
-        "enable_push_whitelist",
-        "enable_merge_whitelist",
-        "block_on_rejected_reviews",
-        "block_on_official_review_requests",
-        "dismiss_stale_approvals",
-        "require_signed_commits",
-        "enable_approvals_whitelist",
-        "protected_file_patterns",
-    ] {
-        if !protection[field].is_null() {
-            other.insert(field.into(), protection[field].clone());
+    if let Some(fields) = protection.as_object() {
+        for (field, value) in fields {
+            if !matches!(
+                field.as_str(),
+                "created_at"
+                    | "updated_at"
+                    | "enable_status_check"
+                    | "status_check_contexts"
+                    | "block_on_outdated_branch"
+                    | "required_approvals"
+            ) {
+                other.insert(field.clone(), value.clone());
+            }
         }
     }
     ProtectionSnapshot {
@@ -179,6 +230,14 @@ mod tests {
         assert!(!frozen.require_conversation_resolution);
         assert_eq!(frozen.other["protected"], json!(true));
         assert_eq!(frozen.other["block_on_rejected_reviews"], json!(true));
+        assert_eq!(frozen.other["branch_name"], json!("main"));
+        assert!(!frozen.other.contains_key("created_at"));
+        // A condition without a named slot still changes the snapshot.
+        let mut bypass = protected.clone();
+        bypass["block_admin_merge_override"] = json!(true);
+        assert_ne!(snapshot(Some(&bypass)), frozen);
+        assert_eq!(percent_encode("ma*"), "ma%2A");
+        assert_eq!(percent_encode("release/*"), "release%2F%2A");
         // Status checks declared but disabled are not required checks.
         let loose = json!({"enable_push": true, "enable_status_check": false, "status_check_contexts": ["x"]});
         let loose = snapshot(Some(&loose));

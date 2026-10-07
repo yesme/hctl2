@@ -274,7 +274,11 @@ fn unreadable(value: &Value) -> repo::StoreError {
 
 /// Run one tool command in-process and parse its JSON record: `(exit_code, record)`.
 fn tool_json(arguments: &[OsString]) -> Result<(u8, Value)> {
-    let output = tool::run(arguments.iter().cloned()).map_err(|error| {
+    tool_json_with_env(arguments, Vec::new())
+}
+
+fn tool_json_with_env(arguments: &[OsString], env: Vec<(String, OsString)>) -> Result<(u8, Value)> {
+    let output = tool::run_with_env(arguments.iter().cloned(), env).map_err(|error| {
         reject(
             "TOOL_UNAVAILABLE",
             format!("hctl2-tool {}: {}", error.code(), error.message()),
@@ -372,9 +376,15 @@ pub(crate) fn drive(
     repo_id: &str,
     intent_id: &str,
 ) -> Result<()> {
-    drive_with(shared, repo_id, intent_id, &mut |registration| {
-        platform::Hosted::connect(root, &registration.config.control_id, services)
-    })
+    drive_with(
+        shared,
+        repo_id,
+        intent_id,
+        &root.join("integration").join("readback"),
+        &mut |registration| {
+            platform::Hosted::connect(root, &registration.config.control_id, services)
+        },
+    )
 }
 
 /// `drive` with the platform connection supplied by the caller (tests pass a fixture).
@@ -382,9 +392,11 @@ pub(crate) fn drive_with(
     shared: &Shared,
     repo_id: &str,
     intent_id: &str,
+    readback_root: &Path,
     connect: &mut dyn FnMut(&Registration) -> Result<platform::Hosted>,
 ) -> Result<()> {
-    let (outcome, replan) = match plan_attempt_with(shared, repo_id, intent_id, connect)? {
+    let planned = plan_attempt_with(shared, repo_id, intent_id, readback_root, connect)?;
+    let (outcome, replan) = match planned {
         Planned::Local {
             path,
             attempt,
@@ -396,7 +408,19 @@ pub(crate) fn drive_with(
             review,
             attempt,
             preview,
-        } => integrate_gitea(&hosted, &full_name, &review, &attempt, &preview)?,
+            readback,
+        } => {
+            let number = attempt.number;
+            let mut mark = |dispatched: bool| {
+                access(shared, |s| {
+                    domain::mark_attempt_dispatched(s, repo_id, intent_id, number, dispatched)
+                })
+                .map(|_| ())
+            };
+            integrate_gitea(
+                &hosted, &full_name, &review, &attempt, &preview, &readback, &mut mark,
+            )?
+        }
         Planned::Refused(outcome) => (outcome, false),
     };
     access(shared, |s| domain::confirm(s, repo_id, intent_id, outcome))?;
@@ -421,9 +445,19 @@ pub(crate) enum Planned {
         review: domain::ReviewRequestRef,
         attempt: domain::AttemptInput,
         preview: Box<Preview>,
+        readback: Box<ReadbackSite>,
     },
     /// Nothing may run: the readback to record instead.
     Refused(Outcome),
+}
+
+/// Where the Git facts of a platform target are read back: a bare repository control owns,
+/// into which `hctl2-tool readback` fetches the target ref straight from the platform's Git.
+pub(crate) struct ReadbackSite {
+    pub repository: PathBuf,
+    pub clone_url: String,
+    /// Handed to the tool's Git children as environment, never as arguments.
+    pub credential: Option<(String, String)>,
 }
 
 /// Begin the attempt and freeze its executor input. A recorded attempt is reused verbatim, so
@@ -436,7 +470,8 @@ pub fn plan_local_attempt(
     repo_id: &str,
     intent_id: &str,
 ) -> Result<Option<domain::AttemptInput>> {
-    match plan_attempt_with(shared, repo_id, intent_id, &mut |_| {
+    let unused = std::env::temp_dir();
+    match plan_attempt_with(shared, repo_id, intent_id, &unused, &mut |_| {
         Err(reject(
             "PLATFORM_UNAVAILABLE",
             "no platform connection in this context",
@@ -453,6 +488,7 @@ pub(crate) fn plan_attempt_with(
     shared: &Shared,
     repo_id: &str,
     intent_id: &str,
+    readback_root: &Path,
     connect: &mut dyn FnMut(&Registration) -> Result<platform::Hosted>,
 ) -> Result<Planned> {
     let (intent, _) = access(shared, |s| domain::begin(s, repo_id, intent_id))?;
@@ -515,6 +551,7 @@ pub(crate) fn plan_attempt_with(
                         idempotency_key: format!("{}:{number}", intent.intent_id),
                         commit: review.platform_commit_sha.clone(),
                         expected_head: expected,
+                        dispatched: false,
                     };
                     access(shared, |s| {
                         domain::record_attempt(s, repo_id, intent_id, attempt.clone())
@@ -522,12 +559,18 @@ pub(crate) fn plan_attempt_with(
                     attempt
                 }
             };
+            let readback = Box::new(ReadbackSite {
+                repository: readback_root.join(format!("{repo_id}.git")),
+                clone_url: observed.clone_url.clone(),
+                credential: Some((hosted.username.clone(), hosted.token.clone())),
+            });
             Ok(Planned::Gitea {
                 hosted,
                 full_name: observed.full_name,
                 review,
                 attempt,
                 preview: Box::new(preview.clone()),
+                readback,
             })
         }
         TargetKind::Local => {
@@ -569,6 +612,7 @@ pub(crate) fn plan_attempt_with(
                         idempotency_key: format!("{}:{number}", intent.intent_id),
                         commit,
                         expected_head: expected,
+                        dispatched: false,
                     };
                     access(shared, |s| {
                         domain::record_attempt(s, repo_id, intent_id, attempt.clone())
@@ -707,18 +751,27 @@ fn integrate_local(
     })
 }
 
-/// Merge on the hosted Gitea: compare protection with the frozen snapshot, ask the platform to
-/// merge the published review request with the source head pinned, then read the request and
-/// the branch back. Only that readback can confirm; "accepted" alone never does.
+/// Merge on the hosted Gitea. The adapter only asks the platform to merge the published
+/// review request with the source head pinned; everything that decides the outcome is read
+/// back — the request and the branch from the platform, the merge commit and the target head
+/// through `hctl2-tool` from the platform's Git. A request that may have written is never
+/// resent: from then on the attempt is only read back.
 fn integrate_gitea(
     hosted: &platform::Hosted,
     full_name: &str,
     review: &domain::ReviewRequestRef,
     attempt: &domain::AttemptInput,
     preview: &Preview,
+    readback: &ReadbackSite,
+    mark_dispatched: &mut dyn FnMut(bool) -> Result<()>,
 ) -> Result<(Outcome, bool)> {
+    let branch = preview
+        .target
+        .target_ref
+        .strip_prefix("refs/heads/")
+        .unwrap_or(&preview.target.target_ref);
     let current = gitea::observe(hosted, full_name, &preview.target.target_ref)?;
-    if preview.protection.as_ref() != Some(&current.protection) {
+    if !attempt.dispatched && preview.protection.as_ref() != Some(&current.protection) {
         return Ok((
             Outcome::Attention(Attention {
                 code: "PROTECTION_CHANGED".into(),
@@ -731,21 +784,25 @@ fn integrate_gitea(
             false,
         ));
     }
-    let before = match gitea::review_request(hosted, full_name, review.index)? {
-        Some(request) => request,
-        None => {
-            return Ok((
-                Outcome::Attention(Attention {
-                    code: "REVIEW_REQUEST_MISSING".into(),
-                    message: format!("review request #{} is not on the platform", review.index),
-                    recovery_action: "publish_review_then_retry_same_intent".into(),
-                    details: Value::Null,
-                }),
-                false,
-            ));
-        }
+    let Some(before) = gitea::review_request(hosted, full_name, review.index)? else {
+        return Ok((
+            Outcome::Attention(Attention {
+                code: "REVIEW_REQUEST_MISSING".into(),
+                message: format!("review request #{} is not on the platform", review.index),
+                recovery_action: "publish_review_then_retry_same_intent".into(),
+                details: Value::Null,
+            }),
+            false,
+        ));
     };
-    if !before.merged {
+    // The request must still be the published revision aimed at the frozen target, merged or
+    // not. A pinned request can never have merged another head, so that mismatch is final; a
+    // request retargeted after it may have been sent could have written elsewhere.
+    if let Some(outcome) = source_or_target_mismatch(&before, attempt, branch) {
+        return Ok((outcome, false));
+    }
+    let mut posted_now = false;
+    if !before.merged && !attempt.dispatched {
         if preview.form == Form::ExpectedHead
             && current.head.as_deref() != Some(attempt.expected_head.as_str())
         {
@@ -759,22 +816,13 @@ fn integrate_gitea(
                 false,
             ));
         }
-        if before.head_sha.as_deref() != Some(attempt.commit.as_str()) {
-            return Ok((
-                Outcome::Failed(Attention {
-                    code: "SOURCE_HEAD_MISMATCH".into(),
-                    message: "the review request's head is not the published revision commit"
-                        .into(),
-                    recovery_action: "publish_the_revision_again_then_new_intent".into(),
-                    details: json!({"published": attempt.commit, "review_head": before.head_sha}),
-                }),
-                false,
-            ));
-        }
         let message = format!(
             "hctl2 integration of ChangeSet Revision {}",
             preview.source.change_set_revision_id
         );
+        // Persist "may have been sent" before sending; only a proven refusal takes it back.
+        mark_dispatched(true)?;
+        posted_now = true;
         match gitea::request_merge(
             hosted,
             full_name,
@@ -787,6 +835,7 @@ fn integrate_gitea(
             // The platform refused the write before doing it (checks, approvals, conflicts):
             // the human can clear the cause, the same intent retries.
             Err(error) if matches!(error.code, "NATIVE_REJECTED" | "NATIVE_CONFLICT") => {
+                mark_dispatched(false)?;
                 return Ok((
                     Outcome::Attention(Attention {
                         code: "NOT_MERGEABLE".into(),
@@ -798,71 +847,240 @@ fn integrate_gitea(
                 ));
             }
             // Anything else may have reached the platform: fall through to readback, which
-            // alone decides; the request is never resent blindly.
+            // alone decides; the request is never resent.
             Err(_) => {}
         }
     }
-    // Readback: the request must be merged and the branch must carry the merge commit.
+    // Readback from the platform: the request, then the branch and its protection again.
     let after = gitea::review_request(hosted, full_name, review.index)?;
-    let head = gitea::observe(hosted, full_name, &preview.target.target_ref)?.head;
+    let target = gitea::observe(hosted, full_name, &preview.target.target_ref)?;
+    if preview.protection.as_ref() != Some(&target.protection) {
+        return Ok((
+            Outcome::Unknown(Attention {
+                code: "PROTECTION_CHANGED".into(),
+                message: "target protection differs from the frozen snapshot at readback, after a request may have been written; the result is not confirmed".into(),
+                recovery_action: "inspect_platform_then_restore_protection".into(),
+                details: json!({"frozen": preview.protection, "current": target.protection}),
+            }),
+            false,
+        ));
+    }
     let unmerged = after.clone().map(|r| r.raw);
     let Some(after) = after.filter(|r| r.merged) else {
         return Ok((
             Outcome::Unknown(Attention {
                 code: "RESULT_UNKNOWN".into(),
-                message: "the platform accepted the request but the review request does not read back as merged".into(),
+                message: "the request may still be in flight: the review request does not read back as merged; it is read back, not resent".into(),
                 recovery_action: "read_back_review_request_with_same_intent".into(),
                 details: json!({"review_request": unmerged}),
             }),
             false,
         ));
     };
-    let (Some(merge_commit), Some(head)) = (after.merge_commit_sha.clone(), head) else {
+    if let Some(outcome) = source_or_target_mismatch(&after, attempt, branch) {
+        return Ok((outcome, false));
+    }
+    let Some(merge_commit) = after.merge_commit_sha.clone() else {
         return Ok((
             Outcome::Unknown(Attention {
                 code: "RESULT_UNKNOWN".into(),
-                message: "merged review request without a merge commit or branch head to read"
-                    .into(),
+                message: "merged review request without a merge commit to read back".into(),
                 recovery_action: "read_back_review_request_with_same_intent".into(),
                 details: json!({"review_request": after.raw}),
             }),
             false,
         ));
     };
-    // Gitea's REST API returns no tree ids. A fast-forward merge commit is the published
-    // candidate itself, so its tree is the admitted result tree once the ids agree; a merge
-    // commit's tree stays unread rather than guessed.
-    let integrated_tree = match preview.strategy {
-        domain::Strategy::FastForward if merge_commit == attempt.commit => {
-            Some(preview.source.result_tree_sha.clone())
-        }
-        domain::Strategy::FastForward => {
+    // Git readback through the tool: the target must carry that merge commit, and the merge
+    // commit must be the candidate (fast-forward) or have it as a parent (merge commit).
+    let facts = match readback_facts(readback, &preview.target.target_ref, &merge_commit) {
+        Ok(facts) => facts,
+        Err(error) if attempt.dispatched || posted_now => {
             return Ok((
                 Outcome::Unknown(Attention {
-                    code: "RESULT_UNKNOWN".into(),
-                    message:
-                        "fast-forward reported a merge commit other than the published candidate"
-                            .into(),
-                    recovery_action: "read_back_review_request_with_same_intent".into(),
-                    details: json!({"merge_commit_sha": merge_commit, "published": attempt.commit}),
+                    code: "READBACK_UNAVAILABLE".into(),
+                    message: format!(
+                        "merged on the platform but the Git readback failed: {}",
+                        error.message
+                    ),
+                    recovery_action: "retry_readback_with_same_intent".into(),
+                    details: json!({"tool_code": error.code, "review_request": after.raw}),
                 }),
                 false,
             ));
         }
-        domain::Strategy::MergeCommit => None,
+        Err(error) => return Err(error),
+    };
+    let unknown = |message: String| {
+        Ok((
+            Outcome::Unknown(Attention {
+                code: "RESULT_UNKNOWN".into(),
+                message,
+                recovery_action: "read_back_review_request_with_same_intent".into(),
+                details: json!({"merge_commit_sha": merge_commit, "published": attempt.commit, "readback": facts}),
+            }),
+            false,
+        ))
+    };
+    let (Some(head), Some(commit_tree)) = (
+        facts["head"].as_str().map(str::to_owned),
+        facts["commit_tree"].as_str().map(str::to_owned),
+    ) else {
+        return unknown(
+            "the target ref or the merge commit cannot be read from the platform's Git".into(),
+        );
+    };
+    if facts["contains"] != json!(true) {
+        return unknown("the target ref does not carry the merge commit".into());
+    }
+    let integrated_tree = match preview.strategy {
+        domain::Strategy::FastForward if merge_commit != attempt.commit => {
+            return unknown(
+                "fast-forward reported a merge commit other than the published candidate".into(),
+            );
+        }
+        domain::Strategy::FastForward if commit_tree != preview.source.result_tree_sha => {
+            return unknown("the candidate's tree is not the admitted result tree".into());
+        }
+        domain::Strategy::FastForward => commit_tree,
+        domain::Strategy::MergeCommit => {
+            let parents = facts["commit_parents"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            if !parents.iter().any(|p| p == &json!(attempt.commit)) {
+                return unknown(
+                    "the merge commit does not have the published candidate as a parent".into(),
+                );
+            }
+            commit_tree
+        }
+    };
+    let status = if posted_now || attempt.dispatched {
+        "applied"
+    } else {
+        "already_applied"
+    };
+    // The head before the write is only claimed where it was observed: right before this
+    // round's request, or at planning for a request whose confirmation was lost. A request
+    // that was already merged when first looked at has no observed "before".
+    let target_head_before = if posted_now {
+        current.head.clone()
+    } else if attempt.dispatched {
+        Some(attempt.expected_head.clone())
+    } else {
+        None
     };
     Ok((
         Outcome::Succeeded {
-            target_head_before: Some(attempt.expected_head.clone()),
+            target_head_before,
             target_head_after: head,
             integrated_commit: merge_commit,
-            integrated_tree,
-            evidence_level: "platform_adapter".into(),
+            integrated_tree: Some(integrated_tree),
+            evidence_level: "hctl2-tool".into(),
             observed_at_unix_ms: crate::dispatch::now_ms(),
-            readback: json!({"status": if before.merged { "already_applied" } else { "applied" }, "review_request": after.raw}),
+            readback: json!({
+                "status": status,
+                "review_request": after.raw,
+                "platform_head": target.head,
+                "git": facts,
+            }),
         },
         false,
     ))
+}
+
+/// The review request is not the published revision aimed at the frozen target.
+fn source_or_target_mismatch(
+    request: &gitea::ReviewRequest,
+    attempt: &domain::AttemptInput,
+    branch: &str,
+) -> Option<Outcome> {
+    if request.head_sha.as_deref() != Some(attempt.commit.as_str()) {
+        return Some(Outcome::Failed(Attention {
+            code: "SOURCE_HEAD_MISMATCH".into(),
+            message: "the review request's head is not the published revision commit".into(),
+            recovery_action: "publish_the_revision_again_then_new_intent".into(),
+            details: json!({"published": attempt.commit, "review_head": request.head_sha, "merged": request.merged}),
+        }));
+    }
+    if request.base_branch.as_deref() != Some(branch) {
+        let attention = Attention {
+            code: "TARGET_MISMATCH".into(),
+            message: "the review request is aimed at another branch than the frozen target".into(),
+            recovery_action: "retarget_review_request_then_new_intent".into(),
+            details: json!({"target": branch, "review_base": request.base_branch, "merged": request.merged}),
+        };
+        return Some(if attempt.dispatched {
+            // Our request may have gone through against that other base.
+            Outcome::Unknown(attention)
+        } else {
+            Outcome::Failed(attention)
+        });
+    }
+    None
+}
+
+/// `hctl2-tool readback` against the platform's Git, into control's own bare repository.
+fn readback_facts(site: &ReadbackSite, target_ref: &str, commit: &str) -> Result<Value> {
+    if !site.repository.join("HEAD").exists() {
+        let parent = site.repository.parent().ok_or_else(|| {
+            reject(
+                "STORAGE_IO",
+                "readback repository has no parent directory",
+                "check_status",
+            )
+        })?;
+        std::fs::create_dir_all(parent)?;
+        let git = repo::git::Git::discover()?;
+        let init = repo::git::run(
+            git.command(parent)
+                .args(["init", "--bare", "--quiet"])
+                .arg(&site.repository),
+            None,
+        )?;
+        if !init.status.success() {
+            return Err(reject(
+                "STORAGE_IO",
+                "cannot create the readback repository",
+                "check_status",
+            ));
+        }
+    }
+    let arguments: Vec<OsString> = vec![
+        "readback".into(),
+        "--path".into(),
+        site.repository.clone().into(),
+        "--remote".into(),
+        site.clone_url.clone().into(),
+        "--ref".into(),
+        target_ref.into(),
+        "--commit".into(),
+        commit.into(),
+    ];
+    let env = site
+        .credential
+        .as_ref()
+        .map(|(user, token)| {
+            vec![
+                ("HCTL2_GIT_USER".to_owned(), OsString::from(user)),
+                ("HCTL2_GIT_TOKEN".to_owned(), OsString::from(token)),
+            ]
+        })
+        .unwrap_or_default();
+    let (code, record) = tool_json_with_env(&arguments, env)?;
+    if code != 0 || record["schema"] != json!("hctl2.readback.v1") {
+        return Err(reject(
+            "READBACK_FAILED",
+            format!(
+                "hctl2-tool readback {}: {}",
+                record["error"]["code"].as_str().unwrap_or("failed"),
+                record["error"]["message"].as_str().unwrap_or("no record")
+            ),
+            "retry_readback",
+        ));
+    }
+    Ok(record)
 }
 
 /// The commit object handed to Git for an admitted `(base, result tree)`.

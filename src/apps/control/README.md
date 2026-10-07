@@ -26,7 +26,7 @@
 
 ## 第 6 包 · 集成一半
 
-`integration.rs` 接 `integration.submit` 的 Preview / Submit 和 `integration.show | list` 的 Query，领域在 [Repo crate](../../crates/repo/README.md#第-6-包--集成一半意图两种授权形态receipt)。预览时读目标：本地目标用库内的 `hctl2-tool repo inspect` 取目标 ref 的头；已准入的 key 回放冻结预览、不再读。提交只持久化意图与效果；后台 worker（`reconcile`，与派工的 worker 并列）执行并回读，本地目标调库内的 `hctl2-tool integrate`，`accept_advance` 下执行前再读一次头。工具的拒绝按码分流：目标被检出留给人、结果未知只回读、预期头不符终态失败。平台目标的适配器（Gitea 合并请求、保护条件回读）还没接；绑定声明缺能力时预览就拒绝。
+`integration.rs` 接 `integration.submit` 的 Preview / Submit 和 `integration.show | list` 的 Query，领域在 [Repo crate](../../crates/repo/README.md#第-6-包--集成一半意图两种授权形态receipt)。预览时读目标：本地目标用库内的 `hctl2-tool repo inspect` 取目标 ref 的头；已准入的 key 回放冻结预览、不再读。提交只持久化意图与效果；后台 worker（`reconcile`，与派工的 worker 并列）执行并回读，本地目标调库内的 `hctl2-tool integrate`，`accept_advance` 下执行前再读一次头。工具的拒绝按码分流：目标被检出留给人、结果未知只回读、预期头不符终态失败。随包 Gitea 目标：预览读分支头与生效的保护规则（`integration/gitea.rs`），执行时适配器只做一件写入——请求合并发布的评审请求（源头钉死）——发出前把尝试持久标为已发出，明确拒绝才撤回，响应丢了只回读不重发；回读先读平台的请求与分支（保护再对照一次），再调库内的 `hctl2-tool readback` 从平台的 Git 拉目标 ref 到 `<root>/integration/readback/<repo_id>.git` 核合并提交是否被目标承载、树与父提交，Receipt 的证据通道是 `hctl2-tool`。平台连接可注入（`drive_with`），用例用脚本化的 `tea` 与一个真实裸仓库扮演 Gitea。GitHub 下一 PR 接；绑定声明缺能力时预览就拒绝。
 
 ## 控制服务
 

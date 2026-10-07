@@ -18,6 +18,7 @@ use serde_json::Value;
 mod archive;
 mod git;
 mod integration;
+mod readback;
 mod repository;
 pub mod site_lock;
 mod worktree;
@@ -163,6 +164,8 @@ enum ToolCommand {
     Archive(ArchiveArguments),
     /// Integrate a caller-specified commit into a local ref using compare-and-swap.
     Integrate(integration::Arguments),
+    /// Fetch a remote ref into a repository you own and report whether it carries a commit.
+    Readback(readback::Arguments),
 }
 
 #[derive(Debug, clap::Args)]
@@ -324,6 +327,19 @@ enum FactArguments {
 ///
 /// Returns a stable [`ToolError`] when parsing or record serialization fails.
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, ToolError> {
+    run_with_env(arguments, Vec::new())
+}
+
+/// [`run`] with extra environment for the Git children this invocation starts. An in-process
+/// caller hands credentials this way instead of through its own process environment.
+///
+/// # Errors
+///
+/// Returns a stable [`ToolError`] when parsing or record serialization fails.
+pub fn run_with_env(
+    arguments: impl IntoIterator<Item = OsString>,
+    env: Vec<(String, OsString)>,
+) -> Result<ToolOutput, ToolError> {
     let mut argv = vec![OsString::from(PROGRAM_NAME)];
     argv.extend(arguments);
     let cli = match Cli::try_parse_from(argv) {
@@ -357,6 +373,9 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<ToolOutput, 
         ToolCommand::Wait(arguments) => run_wait(arguments),
         ToolCommand::Integrate(arguments) => {
             run_git_command("integrate", |git| integration::run(git, &arguments))
+        }
+        ToolCommand::Readback(arguments) => {
+            run_git_command_with_env(env, "readback", |git| readback::run(git, &arguments))
         }
         ToolCommand::Repo(arguments) => match arguments.command {
             RepoCommand::Inspect { path, reference } => run_git_command("repo_inspect", |git| {
@@ -424,7 +443,15 @@ fn run_git_command(
     operation: &str,
     action: impl FnOnce(&git::Git) -> Result<ToolOutput, ToolError>,
 ) -> Result<ToolOutput, ToolError> {
-    let git = git::Git::discover()?;
+    run_git_command_with_env(Vec::new(), operation, action)
+}
+
+fn run_git_command_with_env(
+    env: Vec<(String, OsString)>,
+    operation: &str,
+    action: impl FnOnce(&git::Git) -> Result<ToolOutput, ToolError>,
+) -> Result<ToolOutput, ToolError> {
+    let git = git::Git::discover_with_env(env)?;
     Ok(action(&git).unwrap_or_else(|error| error.readback(&git, operation)))
 }
 

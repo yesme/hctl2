@@ -366,6 +366,22 @@ pub struct AttemptInput {
     pub idempotency_key: String,
     pub commit: String,
     pub expected_head: String,
+    /// Set the moment a request that may write has left for a platform. From then on the
+    /// attempt is only read back, never resent: a platform refusal that proves no write
+    /// happened clears it; a lost response does not.
+    #[serde(default)]
+    pub dispatched: bool,
+}
+
+impl AttemptInput {
+    /// The executor input, regardless of whether it has been dispatched yet.
+    #[must_use]
+    pub fn same_input(&self, other: &Self) -> bool {
+        self.number == other.number
+            && self.idempotency_key == other.idempotency_key
+            && self.commit == other.commit
+            && self.expected_head == other.expected_head
+    }
 }
 
 /// The only proof of integration. Immutable; written in the same transaction as the
@@ -942,7 +958,7 @@ pub fn record_attempt(
         ));
     }
     match &intent.attempt {
-        Some(existing) if *existing == attempt => return Ok(intent),
+        Some(existing) if existing.same_input(&attempt) => return Ok(intent),
         Some(_) => {
             return Err(reject(
                 "ATTEMPT_IN_FLIGHT",
@@ -954,6 +970,48 @@ pub fn record_attempt(
     }
     intent.attempt = Some(attempt);
     bump(store, repo_id, intent_id, intent, "integration.attempt")
+}
+
+/// Record whether the recorded attempt's request has left for the platform. `true` before a
+/// request that may write is sent; `false` again only when the platform refused it before
+/// writing. Idempotent; no attempt recorded is an error.
+pub fn mark_attempt_dispatched(
+    store: &mut Store,
+    repo_id: &str,
+    intent_id: &str,
+    number: u64,
+    dispatched: bool,
+) -> Result<Intent> {
+    let mut intent = get(store, repo_id, intent_id)?;
+    let Some(attempt) = intent.attempt.as_mut() else {
+        return Err(reject(
+            "ATTEMPT_NOT_RECORDED",
+            "no attempt is recorded for this intent",
+            "record_attempt_first",
+        ));
+    };
+    if attempt.number != number {
+        return Err(reject(
+            "ATTEMPT_MISMATCH",
+            "the recorded attempt is not the one being dispatched",
+            "read_back_recorded_attempt",
+        ));
+    }
+    if attempt.dispatched == dispatched {
+        return Ok(intent);
+    }
+    attempt.dispatched = dispatched;
+    bump(
+        store,
+        repo_id,
+        intent_id,
+        intent,
+        if dispatched {
+            "integration.attempt_dispatched"
+        } else {
+            "integration.attempt_refused"
+        },
+    )
 }
 
 /// Drop a recorded attempt after the executor proved it wrote nothing, so the next attempt

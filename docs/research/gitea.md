@@ -183,3 +183,11 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 - **REST 接口不给树 ID**：`GET git/commits/{sha}` 的 `commit.tree.sha` 与 `GET git/trees/{sha}` 的 `sha` 都回传提交 ID。所以平台目标的 Receipt 只在快进（合并提交就是候选）时记准入的结果树，合并提交的树记为未读。
 - 评审线程、正式评审、评论正文回读仍未实测，声明照旧为假。
 
+**同日补（#390 评审后）· 保护条件要按分支读生效规则，不按分支名查规则。** 对同一实例再测（受保护分支的证据，上面只测了未保护的 404）：
+- 未保护时 `GET branches/main` → `protected: false`、`effective_branch_protection_name: ""`。
+- `POST branch_protections` 建一条通配规则 `rule_name: "ma*"`（`enable_push: false`、`enable_status_check: true` + `["canary"]`、`required_approvals: 1`、`block_on_outdated_branch: true`、`block_admin_merge_override: true`）→ 201，返回的规则共 36 个字段（含 `approvals_whitelist_*`、`merge_whitelist_*`、`bypass_allowlist_*`、`enable_force_push*`、`protected_file_patterns`、`priority`、`created_at`、`updated_at` 等）。
+- 规则生效后 `GET branches/main` → `protected: true`、`effective_branch_protection_name: "ma*"`、`required_approvals: 1`、`status_check_contexts: ["canary"]`；**`GET branch_protections/main` → 404**（按名查规则，没有叫 `main` 的规则）；`GET branch_protections/ma%2A` → 200，`rule_name: "ma*"`、`branch_name: ""`、`priority: 1`。
+- `DELETE branch_protections/ma%2A` → 204，`GET branches/main` 回到 `protected: false`。
+- 结论进适配器：先读分支记录，受保护就按 `effective_branch_protection_name`（一段路径、百分号编码）读规则；受保护却读不到规则记 `PROTECTION_UNREAD`，不记未保护。快照冻结整条规则（除两个时间戳），不只挑几个字段。
+- 这次实测没有再跑合并：`remote_merge` 的依据仍是上面那次快进合并；合并提交的树与「目标头是否承载合并提交」改由 `hctl2-tool readback` 从 Git 读，不再依赖 REST。
+
