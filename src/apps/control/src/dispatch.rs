@@ -50,8 +50,16 @@ pub(crate) fn preview(
     operation: &str,
     payload: &Value,
 ) -> store::Result<Value> {
+    if operation == "invocation.cancel" {
+        let end: invocation::End = serde_json::from_value(payload.clone())?;
+        // The scope gate runs before any read; the record keys alone never decide it.
+        let _ = chat::owner(actor, &end.project_id)?;
+        return access(shared, |s| invocation::cancel_preview(s, &end));
+    }
     if operation != "invocation.start" {
-        return Err(invalid("only invocation.start is exposed"));
+        return Err(invalid(
+            "only invocation.start and invocation.cancel are exposed",
+        ));
     }
     let input: invocation::Input = serde_json::from_value(payload.clone())?;
     if let Some(plan) = access(shared, |s| frozen_plan(s, actor, &input))? {
@@ -70,6 +78,9 @@ pub(crate) fn submit(
     request: &proto::SubmitRequest,
     details: &Value,
 ) -> store::Result<Value> {
+    if request.operation == "invocation.cancel" {
+        return cancel(shared, actor, request);
+    }
     let input: invocation::Input = serde_json::from_slice(&request.payload)?;
     if request.operation != "invocation.start"
         || request.idempotency_key != input.key
@@ -114,6 +125,24 @@ pub(crate) fn submit(
         .map_err(participant::port_error)?;
         invocation::start(s, &actor, &plan.preview, &plan.assembly, now_ms())
     })
+}
+
+/// Cancellation stays the domain's `End` path. `end` derives the control owner
+/// itself, so the raw actor is passed through unchanged. The confirmed preview is
+/// not recomputed here: it already refused a stale declared state version, and
+/// `end`'s compare-and-swap is the authority on what is current when it runs.
+fn cancel(
+    shared: &Shared,
+    actor: &TrustedActor,
+    request: &proto::SubmitRequest,
+) -> store::Result<Value> {
+    let end: invocation::End = serde_json::from_slice(&request.payload)?;
+    if request.idempotency_key != end.key || request.command_id != format!("invocation:{}", end.key)
+    {
+        return Err(invalid("Invocation envelope differs"));
+    }
+    let _ = chat::owner(actor, &end.project_id)?;
+    access(shared, |s| invocation::end(s, actor, end))
 }
 
 /// A response lost after admission retries the original frozen input, not a
@@ -197,6 +226,100 @@ pub(crate) fn show(shared: &Shared, actor: &TrustedActor, payload: &Value) -> st
             json!({"invocation":invocation,"owner":reference(&root),"state":state.state,"reason":state.reason,"state_version":state_record.version,"dispatch_intent":intent,"results":results,"pending_effects":pending_effects}),
         )
     })
+}
+
+/// Read-only projection over this Project's Invocations. Listing grants nothing
+/// and never reads another Project's records.
+pub(crate) fn list(shared: &Shared, actor: &TrustedActor, payload: &Value) -> store::Result<Value> {
+    let p = payload["project_id"]
+        .as_str()
+        .ok_or_else(|| invalid("project_id required"))?;
+    let _ = chat::owner(actor, p)?;
+    access(shared, |s| {
+        let scope = Scope::Project(p.into());
+        let invocations = s
+            .list("room_invocation")?
+            .into_iter()
+            .filter(|root| root.key.scope == scope)
+            .map(|root| {
+                let (state_record, state) = invocation::lifecycle(s, p, &root.key.id)?;
+                Ok(json!({
+                    "invocation_id": root.key.id,
+                    "owner": reference(&root),
+                    "state": state.state,
+                    "reason": state.reason,
+                    "state_version": state_record.version,
+                }))
+            })
+            .collect::<store::Result<Vec<_>>>()?;
+        Ok(json!({"project_id":p,"invocations":invocations}))
+    })
+}
+
+/// The dispatch is named by the original authorization, never scanned for.
+fn dispatch_record(s: &Store, p: &str, id: &str) -> store::Result<Record> {
+    let (root, _) = invocation::invocation(s, p, id)?;
+    let intent = s
+        .get(&key(root.key.scope.clone(), "dispatch_intent", id))?
+        .ok_or_else(|| invalid("dispatch intent missing"))?;
+    let value: Value = decode(&intent)?;
+    let dispatch_id = value["dispatch"]
+        .as_str()
+        .ok_or_else(|| invalid("dispatch mapping required"))?;
+    s.get(&key(root.key.scope.clone(), "dispatch", dispatch_id))?
+        .ok_or_else(|| invalid("dispatch mapping missing"))
+}
+
+/// Inspection and stored replay, and both are reads: the governance records of
+/// what the Agency reported belong to the reconcile loop, so a human look adds
+/// none. The actor comes from the authenticated connection; a payload never names
+/// one. Attach has no public entry yet, so it refuses instead of minting an input
+/// lease from the internal signer.
+pub(crate) async fn terminal(
+    shared: &Shared,
+    root: &Path,
+    actor: &TrustedActor,
+    kind: &str,
+    payload: &Value,
+) -> store::Result<Value> {
+    let p = payload["project_id"]
+        .as_str()
+        .ok_or_else(|| invalid("project_id required"))?;
+    let id = payload["invocation_id"]
+        .as_str()
+        .ok_or_else(|| invalid("invocation_id required"))?;
+    let scoped = chat::owner(actor, p)?;
+    if kind == "terminal.attach" {
+        return Err(reject(
+            "INPUT_NOT_IMPLEMENTED",
+            "managed input has no public entry; internal ticket signing never grants it",
+            "use_terminal_inspect",
+        ));
+    }
+    if kind == "terminal.replay" {
+        let lock = shared.lock().await;
+        let s = lock.as_ref().ok_or_else(|| invalid("store not ready"))?;
+        let dispatch = dispatch_record(s, p, id)?;
+        let mut observations = s
+            .list("dispatch_observation")?
+            .into_iter()
+            .filter(|r| {
+                r.key.scope == dispatch.key.scope && r.sources.contains(&reference(&dispatch))
+            })
+            .map(|r| decode::<agency_proto::Trace>(&r))
+            .collect::<store::Result<Vec<_>>>()?;
+        // Key order is a digest order; the Agency cursor is the observation order.
+        observations.sort_by_key(|trace| trace.cursor);
+        return Ok(json!({"dispatch":reference(&dispatch),"observations":observations}));
+    }
+    let after = payload["after"].as_u64().unwrap_or(0);
+    let dispatch = {
+        let lock = shared.lock().await;
+        let s = lock.as_ref().ok_or_else(|| invalid("store not ready"))?;
+        dispatch_record(s, p, id)?
+    };
+    let trace = crate::agency::inspect_dispatch(shared, root, &scoped, &dispatch, after).await?;
+    Ok(json!({"trace":trace}))
 }
 
 /// One periodic worker owns business delivery. Query does not drive side effects.

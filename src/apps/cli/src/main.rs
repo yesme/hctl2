@@ -5,11 +5,13 @@
 mod agency;
 mod integration;
 mod invocation;
+mod profession;
 mod profile;
 mod project;
 mod repo;
 mod room;
 mod task;
+mod terminal;
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -84,9 +86,13 @@ enum Command {
     #[command(subcommand)]
     Agency(agency::AgencyCommand),
     #[command(subcommand)]
+    Profession(profession::ProfessionCommand),
+    #[command(subcommand)]
     Profile(profile::ProfileCommand),
     #[command(subcommand)]
     Invocation(invocation::InvocationCommand),
+    #[command(subcommand)]
+    Terminal(terminal::TerminalCommand),
     /// Integrate an admitted ChangeSet Revision into a target ref: preview, submit, show.
     #[command(subcommand)]
     Integration(integration::IntegrationCommand),
@@ -194,8 +200,10 @@ async fn context_cli(command: ContextCommand, root: &Path, as_json: bool) -> Res
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
         Command::Agency(command) => agency::dispatch(command, root, json).await,
+        Command::Profession(command) => profession::dispatch(command, root, json).await,
         Command::Profile(command) => profile::dispatch(command, root, json).await,
         Command::Invocation(command) => invocation::dispatch(command, root, json).await,
+        Command::Terminal(command) => terminal::dispatch(command, root, json).await,
         Command::Integration(command) => integration::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
@@ -498,6 +506,41 @@ async fn submit(
         ));
     }
     bytes_json(&response.result)
+}
+
+/// Submits with a caller-supplied idempotency key and no preview token. Only
+/// operations that are not dangerous may take this path.
+async fn keyed_submit(
+    root: &Path,
+    as_json: bool,
+    operation: &str,
+    payload: Value,
+    key: String,
+) -> Result<(), String> {
+    let response = client(root)
+        .await?
+        .submit(SubmitRequest {
+            protocol: Some(Protocol {
+                version: PROTOCOL.into(),
+            }),
+            operation: operation.into(),
+            payload: payload.to_string().into_bytes(),
+            command_id: format!("{operation}:{key}"),
+            idempotency_key: key,
+            preview_token: String::new(),
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .into_inner();
+    if let Some(error) = response.error {
+        print_out(
+            as_json,
+            json!({"error":{"code":error.code,"message":error.message,"recovery_action":error.recovery_action}}),
+        );
+        std::process::exit(1);
+    }
+    print_out(as_json, bytes_json(&response.result)?);
+    Ok(())
 }
 
 async fn client(root: &Path) -> Result<ControlClient<tonic::transport::Channel>, String> {

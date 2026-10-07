@@ -302,8 +302,24 @@ impl Control for ControlService {
                     Err(e) => return Ok(err_query(&e, 0)),
                 }
             }
+            "terminal.inspect" | "terminal.replay" | "terminal.attach" => {
+                match crate::dispatch::terminal(
+                    &self.store,
+                    &self.root,
+                    &actor,
+                    &req.kind,
+                    &payload,
+                )
+                .await
+                {
+                    Ok(value) => value,
+                    Err(e) => return Ok(err_query(&e, self.seq.load(Ordering::Acquire))),
+                }
+            }
             "repo.list"
             | "invocation.show"
+            | "invocation.list"
+            | "profile.show"
             | "integration.show"
             | "integration.list"
             | "context.preview"
@@ -339,6 +355,10 @@ impl Control for ControlService {
                 match tokio::task::spawn_blocking(move || {
                     if kind == "invocation.show" {
                         crate::dispatch::show(&store, &actor, &payload)
+                    } else if kind == "invocation.list" {
+                        crate::dispatch::list(&store, &actor, &payload)
+                    } else if kind == "profile.show" {
+                        crate::profiles::query(&store, &actor, &payload)
                     } else if kind.starts_with("integration.") {
                         crate::integration::query(&store, &kind, &payload)
                     } else if kind.starts_with("project.")

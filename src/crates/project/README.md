@@ -134,3 +134,13 @@ Invocation 的领域入口见下节，最少 preview / start / show 已由主链
 | CT-CONNECTION / CT-PARTICIPANT：停止、票据与恢复 | D：未投递取消、Unknown 保留清理、确认无副作用拒绝不清理；P：票据分权、写者栅栏、停止与截止；B：Matrix 停止后结果仍准入，重启且 Agency 离线时投影恢复 | 主链取消 / 自动截止的跨服务停止与超过一页观测的回读代码有、未测；不报告物理隔离成功 |
 
 D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；B = `root//packaging/release:room-cli-test`。原 Invocation 领域段的失败输入仍在上表对应目标中；本次不改约束版本。
+
+## 第 5 包后半段 · 其余命令与只读投影
+
+`list` 是只读投影，不是新的授权入口：Control 先按 Project 过范围门，再把 `Store::list("room_invocation")` 按获准 Project 的 `Scope` 过滤，对留下的每条走 `invocation::lifecycle`，输出原授权引用、当前状态、`reason` 与独立的 `state_version`。它不读另一 Project 的记录；换别的 Project 的 ID 在取记录时以 `NOT_FOUND` 失败，不按裸 ID 跨范围取。
+
+`cancel` 不另开状态路径。`cancel_preview` 是 `end` 那批规则的只读投影，供人确认后果：它什么都不写、什么都不发放，声明的 `state_version` 必须是当前值（否则 `VERSION_CONFLICT`），已终态或已失权的调用以 `INVALID_TRANSITION` 拒绝，`cleanup_pending` 与 `isolation_confirmed=false` 分开报——排队的停止不是已确认的隔离。确认后 Control 把原 `End` 交给既有 `invocation::end`，撤权、终态、待投递动作撤销与清理 outbox 都在它的事务里；`end` 的比较并交换仍是「提交时什么才算当前」的权威，预览不替代它，也不在这里重算。失败与丢失仍由带原授权的内部 reducer 提交，`end` 对 human 只接受取消。
+
+`retry` 没有新的领域入口。CLI 读 `--retry-of` 指向的原调用文件，取它的精确 owner 引用填进 `Input.retry_of`，再用自己的命令 key 走既有 `invocation.start`；输入文件自己声称的 `retry_of` 与 `--retry-of` 不一致时 CLI 先拒绝，不发请求。旧调用未终态或仍有有效授权由 `start` 的既有检查以 `RETRY_NOT_ALLOWED` 拒绝，Bundle 由新调用自己冻结，不复用旧的。
+
+`room roster show` 复用 `project.roster`，返回选入记录本身，读取不重新授予派工资格；`room roster select` 复用 `Action::Select`，不另造名册存储、不改 Binding。按领域对象命名的 `room roster …` 是正名，既有的 `project roster | select` 降为文档里写明的别名：本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。保留一个候选就是把整份名册按它的确切版本重发，版本不符以 `VERSION_CONFLICT` 拒绝。

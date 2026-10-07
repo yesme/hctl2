@@ -76,3 +76,11 @@ W = `root//crates/participant:profiles_test`；P = `root//crates/project:domain_
 | Profile 更新 CLI 与只读查询 | 创建的最少 CLI / control 接线已由 5b 首段提供；更新复用 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，输出指针版本与精确 Revision。读取复用 `profile_at`；可信 actor 从已认证入口取得，不从 JSON 接受 | CT-CONNECTION 共享定义的原作用域、精确版本、权限逐级收窄 |
 | Invocation list / cancel / retry | `invocation / lifecycle / end / prepare / start`，字段与确认流程见 Project README；沿 Control Query / Preview / Submit 接线 | CT-PROJECT Invocation 合法边；CT-CONNECTION 失败恢复 |
 | Terminal inspect / replay | Control 的 `agency::observe_dispatch(shared, root, actor, dispatch_record, after)` 返回 `Trace {dispatch, events, cursor, gap, complete}`；按 Project 与原派工记录校验 scope，不以 payload 自报 actor。输入租约与 attach 公共入口仍未实现，不能拿内部 `signed_ticket` 任意授予输入权限 | CT-PARTICIPANT 票据分权、观察游标与缺口；attach 及受管输入须后续补入口与失败用例 |
+
+## 第 5 包后半段 · 交付状态
+
+`profession list | accept` 复用既有接受目录与 `accept_profession`：`accept` 的身份来自目录产出的精确 `FrozenRef` 文件，不按显示名重建。按领域对象命名的 `profession …` 是正名，既有的 `agency accept` 降为文档里写明的别名，本批两套都留、收敛成一套放第 8 包（所有者 2026-10-06 裁定）。Profile 更新走既有 `ProfileInput {key, action: update}` → `ProfilePlan` → 确认后 `admit_profile`，Control 侧只把操作名与动作种类的一致性检查放开到 `profile.<kind>`。只读查询是新的 `show_profile(store, actor, id)`：actor 由已认证入口取得、不从 JSON 接受，先过 `access`，再读指针当前命名的精确 Revision；指针缺失以 `PROFILE_NOT_FOUND` 拒绝，不把缺失读成空成功。
+
+Terminal 只接观察与重放，两者都是读。`terminal.inspect` 走 `agency::inspect_dispatch`——说明里点名的 `observe_dispatch` 拆出来的只读一半：同一张 observe-only 票据、同一次 Agency 调用、同样按 Project 与原授权校验 scope，区别只在它不把结果写成记录；派工记录由原授权定位（`dispatch_intent` → `dispatch`），不是扫库扫出来的，联系不上仍是观察错误，不撤销授权，也不追加一条接触。`terminal.replay` 只读已存的 `dispatch_observation`：按派工引用过滤，再按 Agency 的 `cursor` 排序——存储的 key 顺序是摘要顺序，不是观察顺序。`terminal.attach` 是一个返回类型化拒绝的公共入口（`INPUT_NOT_IMPLEMENTED`）：它不联系 Agency，也不调 `signed_ticket`。受管输入与输入租约仍未实现，内部签名函数不是发权接口。
+
+`dispatch_observation` 与 `dispatch_contact` 只记 Agency 报告的事实，只由对账循环写；人的 `terminal inspect` 是读，不写任何记录，「谁看过」留作访问日志的策略点，不进治理记录（所有者 2026-10-06 裁定）。据此 `record_observation` 回到主链原样：写者只剩带原授权的对账循环，内容寻址的 key 加 `Store::submit` 的重放就已经是「同一份观察只有一条记录」。`record_unreachable` 改成同样按内容认身份——它的 key 与命令身份原先都含毫秒时间戳，于是对账循环每个 tick 都为同一个「联系不上」追加一条治理记录，而毫秒只是控制面看见这个事实的时刻，是数据不是身份；现在 key 与命令身份都只认这条派工，时间戳留在记录里，重复接触直接返回，不再无界增长，也不再让第二个 actor 撞上第一条命令的身份。
