@@ -547,10 +547,8 @@ struct BlockingRuntime {
 }
 
 struct BurstRuntime;
-// This fixture produces two 2 MiB outputs. Give each transport operation the
-// same 30-second budget as a cold native session; allow one producer phase and
-// two page reads, rather than an unrelated 20-second polling deadline.
-const LARGE_RESULT_RPC_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+// Allow one producer phase and two page reads under the RPC budget declared
+// by this native test target, rather than an unrelated polling deadline.
 const LARGE_RESULT_PHASES: u32 = 3;
 struct BurstSession(std::sync::mpsc::Sender<agency::runtime::RuntimeEvent>);
 impl agency::runtime::Session for BurstSession {
@@ -607,7 +605,6 @@ impl Runtime for BurstRuntime {
 async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let rig = Rig::with_runtime(Arc::new(BurstRuntime)).await;
     let (client, _key) = rig.pair("budget").await;
-    let client = client.with_request_timeout(LARGE_RESULT_RPC_BUDGET);
     let d: Dispatch = client
         .call("prepare", &request(&client, "budget").await)
         .await
@@ -616,7 +613,7 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     let mut pages = Vec::new();
     let mut after = None;
     let query_started = std::time::Instant::now();
-    let deadline = query_started + LARGE_RESULT_RPC_BUDGET * LARGE_RESULT_PHASES;
+    let deadline = query_started + client.request_timeout().unwrap() * LARGE_RESULT_PHASES;
     while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
@@ -1254,9 +1251,7 @@ async fn burst_control_fixture() -> (
     )
     .await
     .unwrap();
-    let client = control::agency::paired_client(&root, "pages")
-        .unwrap()
-        .with_request_timeout(LARGE_RESULT_RPC_BUDGET);
+    let client = control::agency::paired_client(&root, "pages").unwrap();
     let mut prepare = request(&client, "page-dispatch").await;
     control::agency::submit(
         &shared,
@@ -1326,7 +1321,8 @@ async fn burst_control_fixture() -> (
             .unwrap();
     let mut pages = Vec::new();
     let mut after = None;
-    let deadline = std::time::Instant::now() + LARGE_RESULT_RPC_BUDGET * LARGE_RESULT_PHASES;
+    let deadline =
+        std::time::Instant::now() + client.request_timeout().unwrap() * LARGE_RESULT_PHASES;
     while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(running.reference.clone());
         query.after = after.clone();

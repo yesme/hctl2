@@ -15,12 +15,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-// Both catalog and prepare verify the entire installed Herdr binary. On the
-// full parallel CI set this is not a five-second local RPC fixture.
-// Match the existing cold native session readiness budget without changing
-// the production client default or the dispatch's own deadline.
-const INSTALLED_RPC_BUDGET: Duration = Duration::from_secs(30);
-
 fn binary() -> PathBuf {
     let path = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr binary"));
     let path = path.canonicalize().expect("locked Herdr binary");
@@ -756,7 +750,6 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
                 .await?;
             let started = Instant::now();
             let result = PortClient::new(pair.endpoint.into(), pair.key)
-                .with_request_timeout(INSTALLED_RPC_BUDGET)
                 .call("catalog", &json!({}))
                 .await;
             let _ = writeln!(
@@ -2501,8 +2494,7 @@ async fn port_turn(name: &str, live: bool) {
         .await
         .unwrap();
     let key = paired.key.clone();
-    let client = PortClient::new(paired.endpoint.into(), paired.key)
-        .with_request_timeout(INSTALLED_RPC_BUDGET);
+    let client = PortClient::new(paired.endpoint.into(), paired.key);
     let _: serde_json::Value = client
         .call(
             "fence",

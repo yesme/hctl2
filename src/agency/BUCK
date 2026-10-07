@@ -38,6 +38,11 @@ CLI_DEPS = [
     "root//third-party/rust:tokio",
 ]
 
+# Full parallel functional tests hash the installed Herdr and page two 2 MiB
+# outputs. Reuse the cold-session readiness budget for every client, including
+# clients created inside control's preservation path. Not a dispatch deadline.
+HEAVY_RPC_ENV = {"HCTL2_AGENCY_REQUEST_TIMEOUT_MS": "30000"}
+
 rust_library(
     name = "service",
     crate = "agency",
@@ -114,7 +119,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
+    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -126,7 +131,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | {
+    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
         "HCTL2_LOCKED_HERDR": select({
@@ -195,7 +200,7 @@ rust_test(
     features = ["control_port_test"],
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
+    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
