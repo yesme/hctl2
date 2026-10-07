@@ -119,7 +119,9 @@ flowchart TB
 
 - 触发失效的只有两样：来源章节的内容变了，或 prompt 变了。站点钉定的 hctl2 commit 一升级，就逐个重算来源章节的哈希。
 - 模型 id 不参与失效判断，只作为出处记在 lock 里。换了译者，已经审定的文字不会因此变错；想用新模型重写某个意群，由人主动发起重译。
-- 来源引用用章节锚点，不用 `文件:行`：行号会随编辑漂移，标题锚点稳定。哈希按章节算，不按整个文件算，因此改一处只让引用那一节的意群过期。
+- 来源引用用章节锚点，不用 `文件:行`：行号会随编辑漂移，标题锚点稳定。哈希按章节算（从该标题到下一个同级或更高级标题之前），不按整个文件算，因此改一处只让引用那一节的意群过期。
+- 锚点的 slug 规则直接复用 hctl2 链接检查的那一套（`src/build/docs/check_links.pl`：重复标题依次加 `-1`、`-2`，显式 `<a id>` 与 `<a name>` 也算），不另写，否则章节哈希会和链接检查对不上。
+- 锚点在钉定 commit 里解析不到（标题改名或删除）时，引用它的意群必须标为过期，不许跳过校验；否则失败是静默的。
 
 过期之后要不要重写，按[判断点的三段论](../room-judgment-20261002.md#二所有者定的)走：
 
@@ -140,7 +142,8 @@ flowchart TB
 | 状态 | 待译、待审、已定、过期 |
 
 - 来源与 prompt 都不变时，生成步骤零输出、零 token。
-- 意群文件与 lock 一并进 git。CI 只校验自洽：lock 里的哈希与当前来源、prompt 对得上，对不上的意群必须标为过期。CI 永不调模型。
+- 意群文件与 lock 一并进 git。CI 只校验自洽：lock 里的哈希与当前来源、prompt 对得上；对不上或锚点解析不到的意群必须标为过期。CI 永不调模型。
+- 站点级只记一项：钉定的 hctl2 commit。colophon 页首写一行「站点基于 hctl2 @ `<commit>`，构建于 `<日期>`」，`llms.txt` 开头写同一行，人和 agent 都能一眼看到整份公开面钉在哪个版本上。
 
 ## 谁来生成，谁来接受
 
@@ -149,7 +152,12 @@ flowchart TB
 - 谁触发生成都行：任意 harness 按协议都能起草，把稿件提交为待审。
 - 接受权只在人手里。待审变已定、过期确认照用，都必须能回指人的动作；凭证的具体形式（例如人批准的 PR）在 P1 定。
 
-边界因此不在模型在哪跑（本机还是 CI），而在模型的产出不经人接受就不能上站。同理，LLM 只参与创作，不参与构建：内容在创作时起草与审定，展现在设计期出候选，构建步骤只组合已定的东西。
+起草与构建是两件事：
+
+- 起草属于创作，可以在任何地方跑，包括 CI。它归「谁触发生成都行」，产出走 PR，由人接受。
+- 构建只组合已定的意群与展现层，永远不调模型。
+
+因此 CI 里出现模型调用，只能是一次起草任务，不能是构建的一步。边界不在模型在哪跑，而在模型的产出不经人接受就不能上站。同理，LLM 只参与创作，不参与构建：内容在创作时起草与审定，展现在设计期出候选。
 
 ## 业界先例
 
@@ -158,15 +166,15 @@ flowchart TB
 | 先例 | 借什么 | 不借什么 |
 | --- | --- | --- |
 | gettext 的 `fuzzy` 标记 | 原文变化时标记待审，不丢弃旧译文 | 编译时默认不收录 `fuzzy` 条目：我们的过期意群继续上线 |
-| Crowdin 的 `updateOption` | 原文变化后，译文与审定分开处理，怎么处理由项目定 | 平台本身；它的 API 默认清掉译文与审定 |
+| Crowdin 的 `updateOption` | 原文变化后，译文与审定分开处理，由项目选：清掉两者、只留译文、两者都留 | 平台本身 |
 | lingo.dev 的 `i18n.lock` | 对源内容算 SHA-256，只重译改过的部分；lock 进 git | 自动重译：我们要人审 |
 | `cargo insta` | 生成结果先挂起，逐条 review 接受后才入库 | — |
 | DITA 的 topic 与 map | 内容单元与组织方式分开，同一批 topic 配不同的 map | XML 工具链 |
-| llms.txt | agent 面的索引约定 | — |
-| GitHub Agentic Workflows | 模型可以在 CI 里跑，产出走 PR 由人审 | — |
+| llms.txt 提案 | 站点根放 `llms.txt` 索引；给 agent 读的页面在同一路径另给一份 `.md` | — |
+| GitHub Agentic Workflows（GitHub Next 的研究项目，不是正式发布的能力） | 起草可以在 CI 里跑，产出走 PR 由人审；这一步属于创作，不属于构建 | 把它当现成机制依赖 |
 | Buck2 与 reindeer | 内容寻址的键、零工作重跑、生成物入库且 CI 只校验新鲜度 | 把模型调用做成构建 action |
 
-出处：[lingo.dev i18n.lock](https://lingo.dev/en/cli/fundamentals/i18n-lock-lockfile)、[Crowdin updateOption 的取值与默认值](https://www.withone.ai/knowledge/crowdin/conn_mod_def%3A%3AGLK6R9Q2otA%3A%3Ajyz9dmhbS76xOXH4XIW43A)、[llms.txt 采用情况](https://www.rankability.com/llms-report/)、[GitHub Agentic Workflows](https://githubnext.com/projects/agentic-workflows)。站点仓库建起来后，这些进它自己的调研目录。
+出处：[gettext msgfmt 的 `--use-fuzzy`](https://www.gnu.org/software/gettext/manual/html_node/msgfmt-Invocation.html)、[Crowdin 官方 JS 客户端的 `UpdateOption`](https://github.com/crowdin/crowdin-api-client-js/blob/master/src/sourceFiles/index.ts)、[lingo.dev i18n.lock](https://lingo.dev/en/cli/fundamentals/i18n-lock-lockfile)、[llms.txt 提案](https://llmstxt.org/)、[GitHub Next：Agentic Workflows](https://githubnext.com/projects/agentic-workflows)。站点仓库建起来后，这些进它自己的调研目录。
 
 ## 仓库形态
 
@@ -182,7 +190,7 @@ flowchart TB
 
 | 阶段 | 交付 | 验收 |
 | --- | --- | --- |
-| P0 协议 | 意群文件格式（frontmatter 字段、markdown 约定、关系词表）、prompt 规范、lock 字段与四个状态、`pages.yml`；首页三个意群跑通，agent 面同步导出 | 改一处来源章节只让引用它的意群过期；全不改时零输出；agent 面不经展现层即可读 |
+| P0 协议 | 意群文件格式（frontmatter 字段、markdown 约定、关系词表）、prompt 规范、lock 字段与四个状态、`pages.yml`；首页三个意群跑通，agent 面同步导出 | 改一处来源章节只让引用它的意群过期；锚点解析不到的意群标为过期；全不改时零输出；agent 面不经展现层即可读 |
 | P1 工具 | `gen` 命令（算哈希、列出待译与过期清单、起草进待审）、接受凭证的形式、CI 自洽校验（不联网） | 清单可复现；CI 不调模型；每条已定记录都能回指人的接受 |
 | P2 展现层 | tokens、三声部字体、渲染器、排版测试页 | 内容里出现样式即报错；测试页逐条过清单 |
 | P3 全站意群 | 逐页逐意群起草与审定 | 每个意群可回指来源；colophon 列出每个意群的状态 |

@@ -50,7 +50,7 @@
 | `/evidence/` | `docs/research/**` | 研究库索引：钉定版本、证据层级、许可证 |
 | `/product/` | Workbench 快照 | 产品页面快照（见下） |
 | `/design/` `/spec/` `/usage/` | 原样渲染既有正文 | 设计、约束层、使用说明 |
-| `/colophon/` | lock 里的审定记录 | 每个意群的来源 commit、prompt、模型、审校人与日期、状态；过期的标出 |
+| `/colophon/` | lock 里的审定记录 | 页首一行写站点钉定的 hctl2 commit 与构建日期；其下是每个意群的来源 commit、prompt、模型、审校人与日期、状态，过期的标出 |
 | `/llms.txt` 与各意群 `.md` | 内容层原样导出 | 给 agent 读：不经展现层，带来源、关系与审定状态 |
 
 `.memo/` 不上站。
