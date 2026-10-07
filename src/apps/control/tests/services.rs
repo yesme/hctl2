@@ -139,25 +139,25 @@ async fn probe_not_ready_is_not_available_and_store_still_serves() {
     .await;
     assert_eq!(result["consumed"], true, "{result}");
     // consume records the start and returns before is_running
-    // (src/apps/control/src/services.rs). never-ready then stays running until
-    // its probe fails: failure_threshold 3 × period_seconds 1 in
-    // testdata/process-compose/lifecycle.yaml. wait_available already allows
-    // 80 × 50 ms for process-compose to answer. Poll at 50 ms, inside that
-    // 3 s window, for the answer budget plus the probe life.
-    let polls = 80 + (3 * 1000 / 50);
-    let mut running = false;
+    // (src/apps/control/src/services.rs). The failing probe then stops the
+    // process: failure_threshold 3 × period_seconds 1 in
+    // testdata/process-compose/lifecycle.yaml. A status query slower than that
+    // window still sees the pid process-compose recorded, and running is
+    // already false. wait_available's 80 × 50 ms is how long we already allow
+    // process-compose to answer.
+    let mut started = false;
     let mut last = serde_json::Value::Null;
-    for _ in 0..polls {
-        let services = query_json(&mut client, "services").await;
-        last = services.clone();
-        if hosted(&services, "never-ready")["running"] == true {
-            running = true;
+    for _ in 0..80 {
+        last = query_json(&mut client, "services").await;
+        let never = hosted(&last, "never-ready");
+        if never["running"] == true || never["pid"].as_i64().is_some_and(|pid| pid > 0) {
+            started = true;
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(
-        running,
+        started,
         "never-ready was consumed but never started: {last}"
     );
     let services = query_json(&mut client, "services").await;
