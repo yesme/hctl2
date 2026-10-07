@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Subcommand)]
 pub(super) enum TerminalCommand {
-    /// Observe the original dispatch through the Agency port.
+    /// Read what the Agency reports for the original dispatch; records nothing.
     Inspect {
         project_id: String,
         invocation_id: String,

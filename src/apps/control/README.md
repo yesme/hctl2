@@ -28,9 +28,9 @@
 
 `dispatch.rs` 增 `invocation.list` Query，以及 `invocation.cancel` 的 Preview / Submit：预览是领域侧 `cancel_preview` 的只读投影，确认后 Submit 把原 `End` 交给既有 `invocation::end`，不另开状态路径。`profiles.rs` 增 `profile.show`。三者与 Terminal 一样从连接的 `TrustedActor` 取身份、先过 `chat::owner` 的 Project 范围门再读记录，payload 不能自报 actor；错误 JSON 与主链一致（`error.code / message / recovery_action` 加非零退出）。
 
-`terminal.inspect | replay | attach` 挂在 Query 上，不占用 Submit 的幂等身份。因为 `inspect` 要等 Agency，这是 Query 处理里唯一的异步分支，它用 `shared.lock().await` 取存储，不用 `access()` 的阻塞锁。`attach` 直接返回类型化拒绝，不签发票据、不联系 Agency。
+`terminal.inspect | replay | attach` 挂在 Query 上，不占用 Submit 的幂等身份，而且三条都是读：`dispatch_observation` 与 `dispatch_contact` 只由对账循环写，`inspect` 走 `agency::inspect_dispatch`（`observe_dispatch` 拆出来的只读一半），人看过不留记录——「谁看过」是访问日志的策略点，不进治理记录。因为 `inspect` 要等 Agency，这是 Query 处理里唯一的异步分支，它用 `shared.lock().await` 取存储，不用 `access()` 的阻塞锁。`attach` 直接返回类型化拒绝，不签发票据、不联系 Agency。
 
-CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster show | select`、`profile update | show`、`invocation list | cancel | retry`。写命令仍是「不带 `--preview-token` 就预览、带 token 就提交」；`profession accept` 与既有 `agency accept` 一样走 `keyed_submit`，只用于非危险操作。`room roster select` 与既有 `project select` 是同一入口的两个别名。`room-cli-test` 增一条端到端用例，从真实命令行走完这 12 条命令并逐条验拒绝；受管输入与写入型调用不在其中。
+CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster show | select`、`profile update | show`、`invocation list | cancel | retry`。写命令仍是「不带 `--preview-token` 就预览、带 token 就提交」，`profession accept` 除外：它不在 `is_dangerous` 里，走 `keyed_submit` 直接提交、没有预览闸门，与既有 `agency accept` 相同。命名按领域对象正名——`profession accept`、`room roster show | select` 是正名，既有的 `agency accept`、`project roster | select` 降为文档里写明的别名；本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。`room-cli-test` 增一条端到端用例，从真实命令行走完这 12 条命令并逐条验拒绝；受管输入与写入型调用不在其中。
 
 ## 控制服务
 

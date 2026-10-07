@@ -357,20 +357,14 @@ pub fn record_observation(
     );
     let mut record = value(k, 1, trace)?;
     record.sources = vec![reference(dispatch)];
-    // Key and revision digest are both content-addressed, so an identical
-    // observation is one fact whoever saw it first. Submitting it again under
-    // another authority would collide with the first command's identity instead of
-    // deduplicating, which is what a public read next to the reconcile loop does.
-    if let Some(stored) = store.get(&record.key)?
-        && stored.revision_digest == record.revision_digest
-        && stored.sources == record.sources
-    {
-        return Ok(());
-    }
     write(
         store,
         actor,
-        &format!("observation:{}:{}", d.reference, trace_digest),
+        &format!(
+            "observation:{}:{}",
+            d.reference,
+            hash(&agency_proto::canonical(trace).map_err(port_error)?)
+        ),
         "dispatch.observe",
         &record,
         None,
@@ -378,6 +372,10 @@ pub fn record_observation(
     )?;
     Ok(())
 }
+/// Contact that found the Agency unreachable. When control saw it is data about
+/// the fact, not part of the fact's identity: the reconcile loop contacts on every
+/// tick, so a timestamp in the key would append one governance record per tick for
+/// a fact that has not changed.
 pub fn record_unreachable(
     store: &mut Store,
     actor: &TrustedActor,
@@ -387,7 +385,7 @@ pub fn record_unreachable(
     let k = key(
         dispatch.key.scope.clone(),
         "dispatch_contact",
-        &format!("{}:{observed_ms}", dispatch.key.id),
+        &dispatch.key.id,
     );
     let mut record = value(
         k,
@@ -395,10 +393,17 @@ pub fn record_unreachable(
         &json!({"contact":"unreachable","observed_ms":observed_ms,"dispatch":dispatch.key.id}),
     )?;
     record.sources = vec![reference(dispatch)];
+    // The digest carries `observed_ms`, so it cannot take part in the comparison;
+    // the dispatch this contact was about is the whole identity of the fact.
+    if let Some(stored) = store.get(&record.key)?
+        && stored.sources == record.sources
+    {
+        return Ok(());
+    }
     write(
         store,
         actor,
-        &format!("contact:{}:{observed_ms}", dispatch.key.id),
+        &format!("contact:{}", dispatch.key.id),
         "dispatch.contact",
         &record,
         None,

@@ -766,14 +766,18 @@ fn current_owner(store: &Store, owner: &store::Reference) -> store::Result<()> {
     Ok(())
 }
 
-/// Observation and contact are recorded without granting or revoking domain authority.
-pub async fn observe_dispatch(
+/// Sign an observe-only ticket and ask the Agency what it reports. The internal
+/// signer grants observation and nothing else; it never mints an input lease.
+async fn contact_dispatch(
     shared: &Arc<Mutex<Option<Store>>>,
     root: &Path,
     actor: &TrustedActor,
     dispatch: &store::Record,
     after: u64,
-) -> store::Result<agency_proto::Trace> {
+) -> store::Result<(
+    store::WriterGeneration,
+    Result<agency_proto::Trace, PortError>,
+)> {
     let d: agency_proto::Dispatch = participant::decode(dispatch)?;
     if !actor.0.permission_scope.contains(&dispatch.key.scope) {
         return Err(reject(
@@ -809,6 +813,33 @@ pub async fn observe_dispatch(
     let result = Client::new(credentials.endpoint.into(), credentials.key)
         .call("observe", &agency_proto::Observe { ticket, after })
         .await;
+    Ok((generation, result))
+}
+
+/// Read what the Agency reports now. This writes nothing: that control looked is
+/// an access-log policy point, not a fact about the dispatch, so a human read
+/// leaves the governance records to the reconcile loop.
+pub async fn inspect_dispatch(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &store::Record,
+    after: u64,
+) -> store::Result<agency_proto::Trace> {
+    let (_, result) = contact_dispatch(shared, root, actor, dispatch, after).await?;
+    result.map_err(err)
+}
+
+/// The reconcile loop's observation, and the only writer of `dispatch_observation`
+/// and `dispatch_contact`. Recording grants or revokes no domain authority.
+pub async fn observe_dispatch(
+    shared: &Arc<Mutex<Option<Store>>>,
+    root: &Path,
+    actor: &TrustedActor,
+    dispatch: &store::Record,
+    after: u64,
+) -> store::Result<agency_proto::Trace> {
+    let (generation, result) = contact_dispatch(shared, root, actor, dispatch, after).await?;
     let mut state = shared.lock().await;
     let s = state.as_mut().ok_or_else(|| invalid("store not ready"))?;
     if s.generation() != generation {

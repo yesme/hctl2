@@ -143,4 +143,4 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 
 `retry` 没有新的领域入口。CLI 读 `--retry-of` 指向的原调用文件，取它的精确 owner 引用填进 `Input.retry_of`，再用自己的命令 key 走既有 `invocation.start`；输入文件自己声称的 `retry_of` 与 `--retry-of` 不一致时 CLI 先拒绝，不发请求。旧调用未终态或仍有有效授权由 `start` 的既有检查以 `RETRY_NOT_ALLOWED` 拒绝，Bundle 由新调用自己冻结，不复用旧的。
 
-`room roster show` 复用 `project.roster`，返回选入记录本身，读取不重新授予派工资格；`room roster select` 复用 `Action::Select`，与既有 `project select` 是同一入口的两个命令行别名，不另造名册存储、不改 Binding。保留一个候选就是把整份名册按它的确切版本重发，版本不符以 `VERSION_CONFLICT` 拒绝。
+`room roster show` 复用 `project.roster`，返回选入记录本身，读取不重新授予派工资格；`room roster select` 复用 `Action::Select`，不另造名册存储、不改 Binding。按领域对象命名的 `room roster …` 是正名，既有的 `project roster | select` 降为文档里写明的别名：本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。保留一个候选就是把整份名册按它的确切版本重发，版本不符以 `VERSION_CONFLICT` 拒绝。

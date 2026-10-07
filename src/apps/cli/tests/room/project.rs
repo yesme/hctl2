@@ -429,7 +429,7 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
 /// is one this surface adds, so removing the check turns the case red.
 #[test]
 fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli() {
-    let (f, mut setup) = paired("dispatch-rest", 30);
+    let (f, mut setup) = paired("dispatch-rest", 120);
     let p = setup.project.as_str();
     let room = setup.room.as_str();
     let state_version = |value: &Value| value["state_version"].as_i64().unwrap();
@@ -608,13 +608,38 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     assert!(ahead["trace"]["gap"].as_bool().unwrap(), "{ahead}");
     assert!(!ahead["trace"]["complete"].as_bool().unwrap(), "{ahead}");
 
+    // What the Agency reported reaches the governance records through the reconcile
+    // loop alone, so wait for its own observation before asking what a human look
+    // adds to it.
+    let stored = || -> Vec<Value> {
+        let (ok, replayed) = f.run(&["terminal", "replay", p, &id]);
+        assert!(ok, "{replayed}");
+        replayed["observations"].as_array().unwrap().clone()
+    };
+    let mut observed = Vec::new();
+    for _ in 0..150 {
+        observed = stored();
+        if !observed.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(!observed.is_empty(), "the reconcile loop observed nothing");
+    for _ in 0..3 {
+        let (ok, inspected) = f.run(&["terminal", "inspect", p, &id]);
+        assert!(ok, "{inspected}");
+    }
+    assert_eq!(
+        stored(),
+        observed,
+        "a human inspect is a read: it records no observation"
+    );
+
     // Stored replay reads the control plane only: the Agency is already gone.
     setup.agency.0.kill().unwrap();
     setup.agency.0.wait().unwrap();
-    let (ok, replayed) = f.run(&["terminal", "replay", p, &id]);
-    assert!(ok, "{replayed}");
-    let observations = replayed["observations"].as_array().unwrap();
-    assert!(!observations.is_empty(), "{replayed}");
+    let observations = stored();
+    assert_eq!(observations, observed, "replay needs no Agency");
     assert_eq!(observations[0]["dispatch"]["owner"]["id"], id);
     // Record keys order by digest, so replay restores the Agency's cursor order.
     let cursors: Vec<u64> = observations
@@ -624,6 +649,14 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     let mut ordered = cursors.clone();
     ordered.sort_unstable();
     assert_eq!(cursors, ordered, "replay is in observation order");
+    // An unreachable Agency stays the answer, however often a human asks: the read
+    // writes no contact record, so there is no command identity to collide with.
+    for _ in 0..5 {
+        let (ok, unreachable) = f.run(&["terminal", "inspect", p, &id]);
+        assert!(!ok, "{unreachable}");
+        assert_eq!(unreachable["error"]["code"], "AGENCY_UNREACHABLE");
+    }
+    assert_eq!(stored(), observed, "a human inspect records nothing");
     // Attach has no public entry: the internal signer never grants managed input.
     let (ok, attach) = f.run(&["terminal", "attach", p, &id]);
     assert!(!ok, "{attach}");

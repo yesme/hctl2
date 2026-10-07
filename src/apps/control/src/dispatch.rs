@@ -270,9 +270,11 @@ fn dispatch_record(s: &Store, p: &str, id: &str) -> store::Result<Record> {
         .ok_or_else(|| invalid("dispatch mapping missing"))
 }
 
-/// Observation and stored replay. The actor comes from the authenticated
-/// connection; a payload never names one. Attach has no public entry yet, so it
-/// refuses instead of minting an input lease from the internal signer.
+/// Inspection and stored replay, and both are reads: the governance records of
+/// what the Agency reported belong to the reconcile loop, so a human look adds
+/// none. The actor comes from the authenticated connection; a payload never names
+/// one. Attach has no public entry yet, so it refuses instead of minting an input
+/// lease from the internal signer.
 pub(crate) async fn terminal(
     shared: &Shared,
     root: &Path,
@@ -316,7 +318,7 @@ pub(crate) async fn terminal(
         let s = lock.as_ref().ok_or_else(|| invalid("store not ready"))?;
         dispatch_record(s, p, id)?
     };
-    let trace = crate::agency::observe_dispatch(shared, root, &scoped, &dispatch, after).await?;
+    let trace = crate::agency::inspect_dispatch(shared, root, &scoped, &dispatch, after).await?;
     Ok(json!({"trace":trace}))
 }
 
