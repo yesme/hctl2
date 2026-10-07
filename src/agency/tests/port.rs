@@ -608,7 +608,8 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
     activate(&client, &d).await;
     let mut pages = Vec::new();
     let mut after = None;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let query_started = std::time::Instant::now();
+    let deadline = query_started + std::time::Duration::from_secs(20);
     while std::time::Instant::now() < deadline {
         let mut query = ResultQuery::of(d.reference.clone());
         query.after = after.clone();
@@ -616,7 +617,19 @@ async fn result_pages_keep_each_accepted_payload_under_the_transport_limit() {
         // (`readback_original_request`). A loaded machine can push a page of 2 MiB
         // payloads past the client's fixed timeout, so a polling loop comes back
         // instead of failing the test.
-        let page: ResultPage = match client.call("results", &query).await {
+        let call_started = std::time::Instant::now();
+        let reply: Result<ResultPage> = client.call("results", &query).await;
+        eprintln!(
+            "small O result page: elapsed={:?}, total={:?}, after={:?}, outcome={:?}",
+            call_started.elapsed(),
+            query_started.elapsed(),
+            after,
+            reply
+                .as_ref()
+                .map(|page| (page.proposals.len(), page.complete))
+                .map_err(|error| &error.code)
+        );
+        let page: ResultPage = match reply {
             Err(error) if error.code == "AGENCY_RESPONSE_UNKNOWN" => {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 continue;
