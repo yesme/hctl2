@@ -3,6 +3,9 @@
 #[path = "cli/profile.rs"]
 mod profile;
 
+#[path = "cli/memo.rs"]
+mod memo;
+
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;

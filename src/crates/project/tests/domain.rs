@@ -3,6 +3,7 @@ use agency_proto::{
     hash,
 };
 mod invocation;
+mod memo;
 use project::*;
 use serde_json::{Value, json};
 use std::{
