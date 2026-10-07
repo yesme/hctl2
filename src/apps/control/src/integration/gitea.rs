@@ -3,27 +3,34 @@
 //! through the packaged `tea api`; nothing here infers success from a response code alone.
 use std::collections::BTreeMap;
 
-use repo::integration::ProtectionSnapshot;
+use repo::integration::{ProtectionSnapshot, Strategy};
 use repo::{Result, reject};
 use serde_json::{Value, json};
 
+use super::target::{PlatformTarget, ReviewRequest, Target, branch};
 use crate::scm::Hosted;
 
-#[derive(Debug)]
-pub(crate) struct Target {
-    pub head: Option<String>,
-    pub protection: ProtectionSnapshot,
-}
-
-/// A branch name from a fully qualified ref.
-fn branch(target_ref: &str) -> Result<&str> {
-    target_ref.strip_prefix("refs/heads/").ok_or_else(|| {
-        reject(
-            "INVALID_INPUT",
-            "platform targets are branches (refs/heads/...)",
-            "correct_input",
-        )
-    })
+impl PlatformTarget for Hosted {
+    fn observe(&self, full_name: &str, target_ref: &str) -> Result<Target> {
+        observe(self, full_name, target_ref)
+    }
+    fn review_request(&self, full_name: &str, index: u64) -> Result<Option<ReviewRequest>> {
+        review_request(self, full_name, index)
+    }
+    fn check_strategy(&self, _: Strategy) -> Result<()> {
+        // `fast-forward-only` and `merge` both keep the exact candidate.
+        Ok(())
+    }
+    fn request_merge(
+        &self,
+        full_name: &str,
+        index: u64,
+        strategy: Strategy,
+        head: &str,
+        message: &str,
+    ) -> Result<()> {
+        request_merge(self, full_name, index, merge_style(strategy), head, message).map(|_| ())
+    }
 }
 
 /// Read the target branch's head and the protection that is in force for it, as the platform
@@ -144,18 +151,6 @@ pub(crate) fn snapshot(protection: Option<&Value>) -> ProtectionSnapshot {
     }
 }
 
-/// What the platform knows about one review request after a merge attempt or on readback.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ReviewRequest {
-    pub index: u64,
-    pub state: String,
-    pub merged: bool,
-    pub merge_commit_sha: Option<String>,
-    pub head_sha: Option<String>,
-    pub base_branch: Option<String>,
-    pub raw: Value,
-}
-
 pub(crate) fn review_request(
     hosted: &Hosted,
     full_name: &str,
@@ -177,10 +172,10 @@ pub(crate) fn review_request(
 
 /// Gitea merge style for a frozen strategy. `fast-forward-only` refuses anything that is not a
 /// true fast-forward; `merge` always creates a merge commit.
-pub(crate) fn merge_style(strategy: repo::integration::Strategy) -> &'static str {
+pub(crate) fn merge_style(strategy: Strategy) -> &'static str {
     match strategy {
-        repo::integration::Strategy::FastForward => "fast-forward-only",
-        repo::integration::Strategy::MergeCommit => "merge",
+        Strategy::FastForward => "fast-forward-only",
+        Strategy::MergeCommit => "merge",
     }
 }
 
@@ -246,9 +241,6 @@ mod tests {
         let none = snapshot(None);
         assert_eq!(none.other["protected"], json!(false));
         assert!(!none.requires_review_request);
-        assert_eq!(
-            merge_style(repo::integration::Strategy::FastForward),
-            "fast-forward-only"
-        );
+        assert_eq!(merge_style(Strategy::FastForward), "fast-forward-only");
     }
 }

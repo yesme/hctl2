@@ -1,6 +1,7 @@
-//! Hosted Gitea as a target, against a scripted `tea` and a real bare repository standing in
-//! for the platform's Git: the API answers are files the test controls, the merges are real
-//! commits, so protection drift, refusals, lost responses and readback are deterministic.
+//! Hosted Gitea and GitHub as targets, against a scripted `tea` / `gh` and a real bare
+//! repository standing in for the platform's Git: the API answers are files the test controls,
+//! the merges are real commits, so protection drift, refusals, lost responses and readback are
+//! deterministic. The integration rules are shared; GitHub cases cover what differs.
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -11,7 +12,8 @@ use serde_json::{Value, json};
 use store::{Actor, ActorSource, Scope, Store, TrustedActor};
 use tokio::sync::Mutex;
 
-use super::{Shared, drive_with, gitea};
+use super::target::PlatformTarget;
+use super::{Connection, Shared, drive_with, github};
 use crate::scm::Hosted;
 
 struct Temp(PathBuf);
@@ -83,7 +85,68 @@ exit 0
 
 const PROTECTION: &str = r#"{"rule_name":"main","branch_name":"main","enable_push":false,"enable_status_check":true,"status_check_contexts":["canary"],"required_approvals":0,"block_on_outdated_branch":false,"block_admin_merge_override":false,"created_at":"2026-10-07T00:00:00Z","updated_at":"2026-10-07T00:00:00Z"}"#;
 
+const GH: &str = r#"#!/bin/sh
+# Scripted GitHub: `api --hostname H --method M [--input -] PATH`. $0.state/: protection.json
+# (absent = no classic protection), announce_protected (branch record says protected anyway),
+# rules.json (ruleset rules in force; absent = []), pr_state, pr_head, pr_base, merge_sha,
+# posts; switches as for tea. $0.state/../platform.git is the platform's Git.
+S="$0.state"; R="$S/../platform.git"
+export GIT_AUTHOR_NAME=github GIT_AUTHOR_EMAIL=github@localhost GIT_COMMITTER_NAME=github GIT_COMMITTER_EMAIL=github@localhost
+method=""; path=""; body=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    --hostname) shift 2 ;;
+    --input) body="$(cat)"; shift 2 ;;
+    api) shift ;;
+    *) path="$1"; shift ;;
+  esac
+done
+case "$method $path" in
+  "GET "*/branches/*/protection)
+    if [ -f "$S/protection.json" ]; then cat "$S/protection.json"; exit 0; fi
+    printf '{"message":"Branch not protected"}'; printf 'gh: Branch not protected (HTTP 404)\n' >&2; exit 1 ;;
+  "GET "*/rules/branches/*)
+    if [ -f "$S/rules.json" ]; then cat "$S/rules.json"; else printf '[]'; fi ;;
+  "GET "*/branches/*)
+    b="${path##*/}"
+    head="$(git -C "$R" rev-parse --verify -q "refs/heads/$b")" || { printf '{"message":"Branch not found"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
+    if [ -f "$S/protection.json" ] || [ -f "$S/announce_protected" ]; then protected=true; else protected=false; fi
+    printf '{"name":"%s","commit":{"sha":"%s"},"protected":%s}' "$b" "$head" "$protected" ;;
+  "GET "*/pulls/*)
+    state="$(cat "$S/pr_state")"
+    if [ "$state" = merged ]; then merged=true; sha="\"$(cat "$S/merge_sha")\""; else merged=false; sha=null; fi
+    printf '{"number":3,"state":"%s","merged":%s,"merge_commit_sha":%s,"head":{"sha":"%s"},"base":{"ref":"%s"}}' \
+      "$([ "$state" = merged ] && echo closed || echo open)" "$merged" "$sha" "$(cat "$S/pr_head")" "$(cat "$S/pr_base")" ;;
+  "PUT "*/pulls/*/merge)
+    printf x >> "$S/posts"
+    if [ -f "$S/lose_unmerged" ]; then exit 1; fi
+    if [ -f "$S/fail_merge" ]; then printf '{"message":"Required status check \"canary\" is expected."}'; printf 'gh: Required status check (HTTP 405)\n' >&2; exit 1; fi
+    if [ "$(cat "$S/pr_state")" = merged ]; then printf '{"message":"Pull Request is not mergeable"}'; printf 'gh: not mergeable (HTTP 405)\n' >&2; exit 1; fi
+    want="${body#*\"sha\":\"}"; want="${want%%\"*}"
+    if [ "$want" != "$(cat "$S/pr_head")" ]; then printf '{"message":"Head branch was modified. Review and try the merge again."}'; printf 'gh: Head branch was modified (HTTP 409)\n' >&2; exit 1; fi
+    base="$(cat "$S/pr_base")"; cand="$(cat "$S/pr_head")"
+    merge="$(git -C "$R" commit-tree "$cand^{tree}" -p "refs/heads/$base" -p "$cand" -m "Merge pull request #3")"
+    git -C "$R" update-ref "refs/heads/$base" "$merge"
+    printf merged > "$S/pr_state"; printf '%s' "$merge" > "$S/merge_sha"
+    if [ -f "$S/drift_after_merge" ]; then cp "$S/drift_after_merge" "$S/protection.json"; fi
+    if [ -f "$S/lose_merge" ]; then exit 1; fi
+    printf '{"sha":"%s","merged":true,"message":"Pull Request successfully merged"}' "$merge" ;;
+  *) printf '{"message":"Not Found"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1 ;;
+esac
+exit 0
+"#;
+
+const GH_PROTECTION: &str = r#"{"url":"https://api.github.com/repos/yesme/canary/branches/main/protection","required_status_checks":{"url":"u","strict":false,"contexts":["canary"],"contexts_url":"u","checks":[{"context":"canary","app_id":null}]},"required_pull_request_reviews":{"url":"u","dismiss_stale_reviews":false,"require_code_owner_reviews":false,"required_approving_review_count":0},"enforce_admins":{"url":"u","enabled":true},"required_conversation_resolution":{"enabled":false},"allow_force_pushes":{"enabled":false},"allow_deletions":{"enabled":false}}"#;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Gitea,
+    GitHub,
+}
+
 struct Platform {
+    kind: Kind,
     hosted: Hosted,
     state: PathBuf,
     git_dir: PathBuf,
@@ -97,10 +160,23 @@ struct Platform {
 
 impl Platform {
     fn new(dir: &Path) -> Self {
+        Self::of(Kind::Gitea, dir)
+    }
+    fn github(dir: &Path) -> Self {
+        Self::of(Kind::GitHub, dir)
+    }
+    fn of(kind: Kind, dir: &Path) -> Self {
         let tea = dir.join("tea");
         let state = dir.join("tea.state");
         std::fs::create_dir_all(&state).unwrap();
-        std::fs::write(&tea, TEA).unwrap();
+        std::fs::write(
+            &tea,
+            match kind {
+                Kind::Gitea => TEA,
+                Kind::GitHub => GH,
+            },
+        )
+        .unwrap();
         std::fs::set_permissions(&tea, std::fs::Permissions::from_mode(0o700)).unwrap();
         let git_dir = dir.join("platform.git");
         let output = Command::new("git")
@@ -110,6 +186,7 @@ impl Platform {
             .unwrap();
         assert!(output.status.success());
         let mut platform = Self {
+            kind,
             hosted: Hosted::fixture(
                 tea,
                 "http://127.0.0.1:3000".into(),
@@ -136,8 +213,48 @@ impl Platform {
         platform.set("pr_base", "main");
         platform.set("rule_name", "main");
         platform.set("rule_path", "main");
-        platform.set("protection.json", PROTECTION);
+        platform.set(
+            "protection.json",
+            match kind {
+                Kind::Gitea => PROTECTION,
+                Kind::GitHub => GH_PROTECTION,
+            },
+        );
         platform
+    }
+    fn full_name(&self) -> &'static str {
+        match self.kind {
+            Kind::Gitea => "admin/example",
+            Kind::GitHub => "yesme/canary",
+        }
+    }
+    fn connection(&self) -> Connection {
+        let script = self.state.parent().unwrap().join("tea");
+        match self.kind {
+            Kind::Gitea => Connection::Gitea(Hosted::fixture(
+                script,
+                self.hosted.url.clone(),
+                self.hosted.username.clone(),
+                self.hosted.token.clone(),
+            )),
+            Kind::GitHub => Connection::GitHub(github::GitHub::fixture(script, "github.com")),
+        }
+    }
+    fn observe(&self) -> repo::Result<super::target::Target> {
+        self.connection()
+            .observe(self.full_name(), "refs/heads/main")
+    }
+    fn provider_ref(&self) -> String {
+        match self.kind {
+            Kind::Gitea => "http://127.0.0.1:3000/admin/example".into(),
+            Kind::GitHub => "github.com/yesme/canary".into(),
+        }
+    }
+    fn continuity(&self) -> Value {
+        match self.kind {
+            Kind::Gitea => json!({"instance": "http://127.0.0.1:3000", "stable_id": "7"}),
+            Kind::GitHub => json!({"instance": "github.com", "stable_id": "77"}),
+        }
     }
     fn git(&self, args: &[&str]) -> String {
         let output = Command::new("git")
@@ -237,15 +354,8 @@ impl Platform {
     fn readback_root(&self) -> PathBuf {
         self.state.parent().unwrap().join("readback")
     }
-    fn connect(&self) -> impl FnMut(&repo::Registration) -> repo::Result<Hosted> + '_ {
-        move |_| {
-            Ok(Hosted::fixture(
-                self.state.parent().unwrap().join("tea"),
-                self.hosted.url.clone(),
-                self.hosted.username.clone(),
-                self.hosted.token.clone(),
-            ))
-        }
+    fn connect(&self) -> impl FnMut(&repo::Registration) -> repo::Result<Connection> + '_ {
+        move |_| Ok(self.connection())
     }
     fn drive(&self, shared: &Shared, repo_id: &str, id: &str) -> repo::Result<()> {
         drive_with(
@@ -262,6 +372,9 @@ impl Platform {
 /// published as review request #7 whose head is the platform's candidate commit.
 fn hosted_repo(store: &mut Store, platform: &Platform) -> String {
     use repo::{FinishChoice, PlatformObservation, confirm_delivery, confirm_platform, finish};
+    if platform.kind == Kind::GitHub {
+        return github_repo(store, platform);
+    }
     let prepared = repo::prepare(
         repo::Register {
             name: "example".into(),
@@ -387,6 +500,103 @@ fn hosted_repo(store: &mut Store, platform: &Platform) -> String {
     repo_id
 }
 
+/// An external GitHub Repo taken to active (its binding declares merge and protection readback
+/// verified), one admitted revision published as pull request #3 at the platform's candidate.
+fn github_repo(store: &mut Store, platform: &Platform) -> String {
+    github_repo_with(
+        store,
+        repo::PlatformObservation {
+            instance: "github.com".into(),
+            stable_id: "77".into(),
+            full_name: "yesme/canary".into(),
+            clone_url: platform.git_dir.to_string_lossy().into_owned(),
+            account_id: "1".into(),
+            has_issues: true,
+            can_write_issues: true,
+            credential_ref: String::new(),
+        },
+        &platform.base,
+        &platform.tree,
+        3,
+        &platform.candidate,
+    )
+}
+
+fn github_repo_with(
+    store: &mut Store,
+    observed: repo::PlatformObservation,
+    base: &str,
+    tree: &str,
+    number: u64,
+    head: &str,
+) -> String {
+    use repo::{FinishChoice, confirm_platform, finish};
+    let stable = observed.stable_id.clone();
+    let prepared = repo::prepare(
+        repo::Register {
+            name: "canary".into(),
+            origin: repo::Origin::External,
+            platform: Some(repo::Platform::Github),
+            instance: Some("github.com".into()),
+            platform_repo_id: Some(stable.clone()),
+            platform_path: Some(observed.full_name.clone()),
+            local: None,
+            remote_evidence: None,
+            default_source: None,
+        },
+        None,
+    )
+    .unwrap();
+    let reg = repo::admit(store, &actor(), "register-gh", "register-gh", prepared).unwrap();
+    store
+        .begin_effect(
+            store.generation(),
+            &repo::effect_id(&reg.repo_id, "platform"),
+        )
+        .unwrap();
+    let reg = confirm_platform(store, &reg.repo_id, observed).unwrap();
+    if reg.lifecycle != repo::Lifecycle::Active {
+        finish(
+            store,
+            &actor(),
+            &reg.repo_id,
+            reg.version,
+            FinishChoice::Confirm(&stable),
+            "finish-gh",
+            "finish-gh",
+        )
+        .unwrap();
+    }
+    let repo_id = reg.repo_id;
+    domain::admit_revision_seam(
+        store,
+        &actor(),
+        &repo_id,
+        &domain::AdmittedRevision {
+            change_set_revision_id: "rev-1".into(),
+            change_set_id: "cs-1".into(),
+            parent_revision_id: None,
+            base_commit_sha: base.into(),
+            result_tree_sha: tree.into(),
+            producer_ref: json!({"kind":"human_command","command_id":"seal"}),
+            review_subject_digest: "d".repeat(64),
+        },
+    )
+    .unwrap();
+    domain::admit_platform_binding_seam(
+        store,
+        &actor(),
+        &repo_id,
+        "rev-1",
+        &domain::ReviewRequestRef {
+            index: number,
+            platform_commit_sha: head.into(),
+        },
+    )
+    .unwrap();
+    repo_id
+}
+
 fn temp(name: &str) -> Temp {
     let dir = std::env::temp_dir().join(format!("hctl2-gitea-integ-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -426,12 +636,12 @@ fn submit(
         form,
         strategy,
     };
-    let target = gitea::observe(&platform.hosted, "admin/example", "refs/heads/main").unwrap();
+    let target = platform.observe().unwrap();
     let observation = domain::Observation {
-        provider_ref: "http://127.0.0.1:3000/admin/example".into(),
+        provider_ref: platform.provider_ref(),
         head: target.head,
         protection: Some(target.protection),
-        continuity: Some(json!({"instance": "http://127.0.0.1:3000", "stable_id": "7"})),
+        continuity: Some(platform.continuity()),
     };
     let mut guard = shared.blocking_lock();
     let store = guard.as_mut().unwrap();
@@ -485,7 +695,7 @@ fn gitea_merge_pins_the_published_head_and_signs_one_receipt_only_after_readback
     {
         let mut guard = shared.blocking_lock();
         let store = guard.as_mut().unwrap();
-        let target = gitea::observe(&platform.hosted, "admin/example", "refs/heads/main").unwrap();
+        let target = platform.observe().unwrap();
         let err = domain::prepare(
             store,
             &actor(),
@@ -687,7 +897,7 @@ fn a_request_whose_response_was_lost_before_the_merge_is_only_read_back_never_re
     {
         let mut guard = shared.blocking_lock();
         let store = guard.as_mut().unwrap();
-        let target = gitea::observe(&platform.hosted, "admin/example", "refs/heads/main").unwrap();
+        let target = platform.observe().unwrap();
         let preview = domain::prepare(
             store,
             &actor(),
@@ -850,13 +1060,13 @@ fn protection_in_force_through_a_glob_rule_is_read_and_drift_after_the_write_blo
             "\"rule_name\":\"ma*\",\"branch_name\":\"\"",
         ),
     );
-    let target = gitea::observe(&platform.hosted, "admin/example", "refs/heads/main").unwrap();
+    let target = platform.observe().unwrap();
     assert!(target.protection.requires_review_request);
     assert_eq!(target.protection.required_checks, vec!["canary"]);
     assert_eq!(target.protection.other["rule_name"], json!("ma*"));
     // Protected, but the rule in force cannot be read: an error, never "unprotected".
     platform.set("rule_path", "elsewhere");
-    let err = gitea::observe(&platform.hosted, "admin/example", "refs/heads/main").unwrap_err();
+    let err = platform.observe().unwrap_err();
     assert_eq!(err.code, "PROTECTION_UNREAD");
     platform.set("rule_path", "ma%2A");
     let (shared, repo_id, id) = scenario(
@@ -935,6 +1145,150 @@ fn a_review_request_whose_head_is_not_the_published_revision_is_not_merged() {
     assert_eq!(failed["intent"]["failure"]["code"], "SOURCE_HEAD_MISMATCH");
     assert_eq!(platform.posts(), 0);
     assert_eq!(platform.read("pr_state"), "open");
+}
+
+#[test]
+fn github_merge_pins_the_head_only_reads_back_after_a_lost_response_and_signs_from_git() {
+    let temp = temp("github");
+    let platform = Platform::github(&temp.0);
+    // GitHub offers no fast-forward of the exact candidate: refused before anything is frozen.
+    assert_eq!(
+        platform
+            .connection()
+            .check_strategy(Strategy::FastForward)
+            .unwrap_err()
+            .code,
+        "STRATEGY_UNSUPPORTED"
+    );
+    let (shared, repo_id, id) = scenario(
+        &temp,
+        &platform,
+        "one",
+        Form::AcceptAdvance,
+        Strategy::MergeCommit,
+    );
+    let before = shown(&shared, &repo_id, &id);
+    let protection = &before["intent"]["preview"]["protection"];
+    assert_eq!(protection["required_checks"], json!(["canary"]));
+    assert!(protection["requires_review_request"].as_bool().unwrap());
+    assert_eq!(
+        protection["other"]["enforce_admins"],
+        json!({"enabled": true})
+    );
+    assert!(protection["other"]["url"].is_null(), "{protection}");
+    // Refused by the platform (a required check is missing): waits, no write, not dispatched.
+    platform.set("fail_merge", "");
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let waiting = shown(&shared, &repo_id, &id);
+    assert_eq!(
+        waiting["intent"]["attention"]["code"], "NOT_MERGEABLE",
+        "{waiting}"
+    );
+    assert_eq!(waiting["intent"]["attempt"]["dispatched"], json!(false));
+    assert_eq!(platform.posts(), 1);
+    // The request leaves and nothing comes back: only read back from here on.
+    platform.unset("fail_merge");
+    platform.set("lose_unmerged", "");
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let unknown = shown(&shared, &repo_id, &id);
+    assert_eq!(unknown["intent"]["state"], "unknown", "{unknown}");
+    assert_eq!(unknown["intent"]["attempt"]["dispatched"], json!(true));
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    assert_eq!(platform.posts(), 2);
+    assert_eq!(receipts(&shared), 0);
+    // The platform merges it after all: confirmed from its Git, one Receipt, still 2 PUTs.
+    platform.unset("lose_unmerged");
+    let merge = platform.merge_natively(false);
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let done = shown(&shared, &repo_id, &id);
+    assert_eq!(done["intent"]["state"], "succeeded", "{done}");
+    let receipt = &done["receipt"];
+    assert_eq!(receipt["integrated_commit"], json!(merge));
+    assert_eq!(receipt["integrated_tree"], json!(platform.tree));
+    assert_eq!(receipt["target_head_after"], json!(platform.head()));
+    assert_eq!(receipt["evidence_level"], "hctl2-tool");
+    assert_eq!(receipt["readback"]["git"]["contains"], json!(true));
+    assert!(
+        receipt["readback"]["git"]["commit_parents"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(platform.candidate))
+    );
+    assert_eq!(platform.posts(), 2);
+    assert_eq!(receipts(&shared), 1);
+}
+
+#[test]
+fn github_protection_announced_but_unreadable_is_an_error_and_ruleset_rules_are_frozen() {
+    let temp = temp("github-rules");
+    let platform = Platform::github(&temp.0);
+    // The branch record says protected, the classic endpoint has nothing: not "unprotected".
+    platform.unset("protection.json");
+    platform.set("announce_protected", "");
+    assert_eq!(platform.observe().unwrap_err().code, "PROTECTION_UNREAD");
+    platform.unset("announce_protected");
+    // No classic protection, but a ruleset puts two rules in force on the branch.
+    platform.set(
+        "rules.json",
+        &json!([
+            {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "required_review_thread_resolution": true}},
+            {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true, "required_status_checks": [{"context": "lint"}]}}
+        ])
+        .to_string(),
+    );
+    let target = platform.observe().unwrap();
+    assert_eq!(target.protection.other["protected"], json!(false));
+    assert!(target.protection.requires_review_request);
+    assert_eq!(target.protection.required_checks, vec!["lint"]);
+    assert_eq!(target.protection.required_approvals, 1);
+    assert!(target.protection.require_conversation_resolution);
+    assert!(target.protection.strict_sync);
+    let (shared, repo_id, id) = scenario(
+        &temp,
+        &platform,
+        "one",
+        Form::AcceptAdvance,
+        Strategy::MergeCommit,
+    );
+    // A rule changes after the preview: nothing is requested.
+    platform.set(
+        "rules.json",
+        &json!([
+            {"type": "pull_request", "parameters": {"required_approving_review_count": 2, "required_review_thread_resolution": true}},
+            {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true, "required_status_checks": [{"context": "lint"}]}}
+        ])
+        .to_string(),
+    );
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let drifted = shown(&shared, &repo_id, &id);
+    assert_eq!(
+        drifted["intent"]["attention"]["code"], "PROTECTION_CHANGED",
+        "{drifted}"
+    );
+    assert_eq!(
+        drifted["intent"]["attention"]["details"]["current"]["required_approvals"],
+        2
+    );
+    assert_eq!(platform.posts(), 0);
+    // A pull request already merged into another branch than the target: no Receipt for main.
+    platform.git(&["update-ref", "refs/heads/release", &platform.base]);
+    platform.set("pr_base", "release");
+    platform.set("pr_state", "merged");
+    platform.set("merge_sha", &platform.candidate);
+    platform.set(
+        "rules.json",
+        &json!([
+            {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "required_review_thread_resolution": true}},
+            {"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": true, "required_status_checks": [{"context": "lint"}]}}
+        ])
+        .to_string(),
+    );
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let failed = shown(&shared, &repo_id, &id);
+    assert_eq!(failed["intent"]["state"], "failed", "{failed}");
+    assert_eq!(failed["intent"]["failure"]["code"], "TARGET_MISMATCH");
+    assert_eq!(platform.posts(), 0);
+    assert_eq!(receipts(&shared), 0);
 }
 
 #[test]
@@ -1033,4 +1387,186 @@ fn a_source_branch_that_moves_after_a_dispatched_request_is_settled_by_git_not_b
         "SOURCE_HEAD_MISMATCH"
     );
     assert_eq!(platform2.posts(), 0);
+}
+
+/// The public sandbox `yesme/hctl2-canary` (protected `main`: review request + check `canary`):
+/// a real pull request merged by control through `gh`, read back from GitHub's Git.
+#[test]
+#[ignore = "UNVERIFIED: requires HCTL2_GITHUB_LIVE=1 and a gh login with push to yesme/hctl2-canary"]
+fn live_github_canary_protected_main_is_merged_only_through_a_pull_request_with_a_pinned_head() {
+    use crate::services::Supervisor;
+    assert!(std::env::var_os("HCTL2_GITHUB_LIVE").is_some());
+    let temp = temp("canary-live");
+    let services = Supervisor::from_root(temp.0.clone());
+    let github = github::GitHub::connect(&services, "github.com").unwrap();
+    let full = "yesme/hctl2-canary";
+    let api = |method: &str, path: &str, body: Option<Value>| {
+        github
+            .api(method, path, body)
+            .unwrap()
+            .unwrap_or(Value::Null)
+    };
+    let repo_meta = api("GET", &format!("repos/{full}"), None);
+    let base = api("GET", &format!("repos/{full}/branches/main"), None)["commit"]["sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // A branch with one commit, made through the API, and a pull request onto main.
+    let branch = format!("hctl2-integration-{}", crate::dispatch::now_ms());
+    api(
+        "POST",
+        &format!("repos/{full}/git/refs"),
+        Some(json!({"ref": format!("refs/heads/{branch}"), "sha": base})),
+    );
+    let content =
+        base64_standard(format!("integrated at {}\n", crate::dispatch::now_ms()).as_bytes());
+    let created = api(
+        "PUT",
+        &format!("repos/{full}/contents/{branch}.txt"),
+        Some(json!({"message": "hctl2 canary change", "content": content, "branch": branch})),
+    );
+    let head = created["commit"]["sha"].as_str().unwrap().to_owned();
+    let tree = created["commit"]["tree"]["sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let pr = api(
+        "POST",
+        &format!("repos/{full}/pulls"),
+        Some(
+            json!({"title": format!("hctl2 integration {branch}"), "head": branch, "base": "main"}),
+        ),
+    );
+    let number = pr["number"].as_u64().unwrap();
+    // The required check must finish before the platform lets anyone merge.
+    for _ in 0..60 {
+        let status = api(
+            "GET",
+            &format!("repos/{full}/commits/{head}/check-runs"),
+            None,
+        );
+        if status["check_runs"].as_array().is_some_and(|runs| {
+            runs.iter()
+                .any(|r| r["name"] == "canary" && r["conclusion"] == "success")
+        }) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+    let mut store = Store::open(&temp.0.join("control")).unwrap();
+    let stable = repo_meta["id"].to_string();
+    let repo_id = github_repo_with(
+        &mut store,
+        repo::PlatformObservation {
+            instance: "github.com".into(),
+            stable_id: stable.clone(),
+            full_name: full.into(),
+            clone_url: repo_meta["clone_url"].as_str().unwrap().into(),
+            account_id: "0".into(),
+            has_issues: true,
+            can_write_issues: true,
+            credential_ref: String::new(),
+        },
+        &base,
+        &tree,
+        number,
+        &head,
+    );
+    let shared: Shared = Arc::new(Mutex::new(Some(store)));
+    let target = github.observe(full, "refs/heads/main").unwrap();
+    let id = {
+        let input = Input {
+            key: "canary".into(),
+            repo_id: repo_id.clone(),
+            change_set_revision_id: "rev-1".into(),
+            target_kind: TargetKind::Platform,
+            target_ref: "refs/heads/main".into(),
+            form: Form::AcceptAdvance,
+            strategy: Strategy::MergeCommit,
+        };
+        let observation = domain::Observation {
+            provider_ref: format!("github.com/{full}"),
+            head: target.head,
+            protection: Some(target.protection),
+            continuity: Some(json!({"instance": "github.com", "stable_id": stable})),
+        };
+        let mut guard = shared.blocking_lock();
+        let store = guard.as_mut().unwrap();
+        let preview = domain::prepare(store, &actor(), input, observation).unwrap();
+        domain::submit(store, &actor(), "integration:canary", preview)
+            .unwrap()
+            .intent_id
+    };
+    let preview = shown(&shared, &repo_id, &id)["intent"]["preview"].clone();
+    assert!(
+        preview["protection"]["requires_review_request"]
+            .as_bool()
+            .unwrap(),
+        "{preview}"
+    );
+    assert_eq!(preview["protection"]["required_checks"], json!(["canary"]));
+    assert_eq!(
+        preview["protection"]["other"]["enforce_admins"]["enabled"],
+        json!(true)
+    );
+    let readback_root = temp.0.join("readback");
+    let mut connect = |_: &repo::Registration| {
+        Ok(Connection::GitHub(
+            github::GitHub::connect(&services, "github.com").unwrap(),
+        ))
+    };
+    for _ in 0..12 {
+        drive_with(&shared, &repo_id, &id, &readback_root, &mut connect).unwrap();
+        if shown(&shared, &repo_id, &id)["intent"]["state"] == "succeeded" {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+    let done = shown(&shared, &repo_id, &id);
+    assert_eq!(done["intent"]["state"], "succeeded", "{done}");
+    let merge = done["receipt"]["integrated_commit"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let main = api("GET", &format!("repos/{full}/branches/main"), None)["commit"]["sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(main, merge, "main carries the merge commit");
+    assert_eq!(done["receipt"]["target_head_after"], main);
+    assert_eq!(done["receipt"]["evidence_level"], "hctl2-tool");
+    assert_eq!(done["receipt"]["readback"]["git"]["contains"], json!(true));
+    assert!(
+        done["receipt"]["readback"]["git"]["commit_parents"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(head))
+    );
+    assert!(done["receipt"]["integrated_tree"].is_string());
+    assert_eq!(
+        api("GET", &format!("repos/{full}/pulls/{number}"), None)["merged"],
+        json!(true)
+    );
+    eprintln!(
+        "LIVE canary: pr #{number} head {head} merged as {merge}; receipt {}",
+        done["receipt"]["receipt_id"]
+    );
+}
+
+/// Standard base64 for the contents API; no new dependency for one test.
+fn base64_standard(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n =
+            chunk.iter().fold(0u32, |acc, b| (acc << 8) | u32::from(*b)) << (8 * (3 - chunk.len()));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

@@ -18,8 +18,12 @@ use crate::scm as platform;
 use crate::services::Supervisor;
 
 pub(crate) mod gitea;
+pub(crate) mod github;
+pub(crate) mod target;
 #[cfg(test)]
 mod tests;
+
+use target::PlatformTarget;
 
 type Shared = Arc<Mutex<Option<Store>>>;
 
@@ -173,16 +177,11 @@ fn observe(
                     "confirm_repo",
                 )
             })?;
-            let (head, protection) = match registration.prepared.platform {
-                Platform::Local => {
-                    let hosted =
-                        platform::Hosted::connect(root, &registration.config.control_id, services)?;
-                    let target = gitea::observe(&hosted, &observed.full_name, &input.target_ref)?;
-                    (target.head, Some(target.protection))
-                }
-                // GitHub observation lands with the canary path (验收第 11 条).
-                Platform::Github | Platform::None => (None, None),
-            };
+            let connection = connect_platform(root, services, registration)?;
+            // A strategy the platform cannot carry out is refused before anything is frozen.
+            connection.check_strategy(input.strategy)?;
+            let target = connection.observe(&observed.full_name, &input.target_ref)?;
+            let (head, protection) = (target.head, Some(target.protection));
             Ok(Observation {
                 provider_ref: format!("{}/{}", observed.instance, observed.full_name),
                 head,
@@ -381,10 +380,76 @@ pub(crate) fn drive(
         repo_id,
         intent_id,
         &root.join("integration").join("readback"),
-        &mut |registration| {
-            platform::Hosted::connect(root, &registration.config.control_id, services)
-        },
+        &mut |registration| connect_platform(root, services, registration),
     )
+}
+
+/// The platform adapter a plan runs against; tests pass fixtures.
+pub(crate) enum Connection {
+    Gitea(platform::Hosted),
+    GitHub(github::GitHub),
+}
+
+impl Connection {
+    fn target(&self) -> &dyn PlatformTarget {
+        match self {
+            Self::Gitea(hosted) => hosted,
+            Self::GitHub(github) => github,
+        }
+    }
+}
+
+impl PlatformTarget for Connection {
+    fn observe(&self, full_name: &str, target_ref: &str) -> Result<target::Target> {
+        self.target().observe(full_name, target_ref)
+    }
+    fn review_request(&self, full_name: &str, index: u64) -> Result<Option<target::ReviewRequest>> {
+        self.target().review_request(full_name, index)
+    }
+    fn check_strategy(&self, strategy: domain::Strategy) -> Result<()> {
+        self.target().check_strategy(strategy)
+    }
+    fn request_merge(
+        &self,
+        full_name: &str,
+        index: u64,
+        strategy: domain::Strategy,
+        head: &str,
+        message: &str,
+    ) -> Result<()> {
+        self.target()
+            .request_merge(full_name, index, strategy, head, message)
+    }
+}
+
+fn connect_platform(
+    root: &Path,
+    services: &Supervisor,
+    registration: &Registration,
+) -> Result<Connection> {
+    match registration.prepared.platform {
+        Platform::Local => Ok(Connection::Gitea(platform::Hosted::connect(
+            root,
+            &registration.config.control_id,
+            services,
+        )?)),
+        Platform::Github => {
+            let instance = registration
+                .prepared
+                .request
+                .instance
+                .as_deref()
+                .unwrap_or("github.com");
+            Ok(Connection::GitHub(github::GitHub::connect(
+                services, instance,
+            )?))
+        }
+        Platform::None => Err(reject(
+            "PLATFORM_NOT_BOUND",
+            "this Repo has no platform",
+            "choose_local_target",
+        )),
+    }
 }
 
 /// `drive` with the platform connection supplied by the caller (tests pass a fixture).
@@ -393,7 +458,7 @@ pub(crate) fn drive_with(
     repo_id: &str,
     intent_id: &str,
     readback_root: &Path,
-    connect: &mut dyn FnMut(&Registration) -> Result<platform::Hosted>,
+    connect: &mut dyn FnMut(&Registration) -> Result<Connection>,
 ) -> Result<()> {
     let planned = plan_attempt_with(shared, repo_id, intent_id, readback_root, connect)?;
     let (outcome, replan) = match planned {
@@ -402,8 +467,8 @@ pub(crate) fn drive_with(
             attempt,
             preview,
         } => integrate_local(&path, &attempt, &preview)?,
-        Planned::Gitea {
-            hosted,
+        Planned::Platform {
+            connection,
             full_name,
             review,
             attempt,
@@ -417,8 +482,14 @@ pub(crate) fn drive_with(
                 })
                 .map(|_| ())
             };
-            integrate_gitea(
-                &hosted, &full_name, &review, &attempt, &preview, &readback, &mut mark,
+            integrate_platform(
+                &connection,
+                &full_name,
+                &review,
+                &attempt,
+                &preview,
+                &readback,
+                &mut mark,
             )?
         }
         Planned::Refused(outcome) => (outcome, false),
@@ -439,8 +510,8 @@ pub(crate) enum Planned {
         attempt: domain::AttemptInput,
         preview: Box<Preview>,
     },
-    Gitea {
-        hosted: platform::Hosted,
+    Platform {
+        connection: Connection,
         full_name: String,
         review: domain::ReviewRequestRef,
         attempt: domain::AttemptInput,
@@ -479,7 +550,7 @@ pub fn plan_local_attempt(
         ))
     })? {
         Planned::Local { attempt, .. } => Ok(Some(attempt)),
-        Planned::Gitea { attempt, .. } => Ok(Some(attempt)),
+        Planned::Platform { attempt, .. } => Ok(Some(attempt)),
         Planned::Refused(_) => Ok(None),
     }
 }
@@ -489,25 +560,22 @@ pub(crate) fn plan_attempt_with(
     repo_id: &str,
     intent_id: &str,
     readback_root: &Path,
-    connect: &mut dyn FnMut(&Registration) -> Result<platform::Hosted>,
+    connect: &mut dyn FnMut(&Registration) -> Result<Connection>,
 ) -> Result<Planned> {
     let (intent, _) = access(shared, |s| domain::begin(s, repo_id, intent_id))?;
     let registration = access(shared, |s| require_active(s, repo_id))?;
     let preview = &intent.preview;
     match preview.target.kind {
-        TargetKind::Platform if registration.prepared.platform != Platform::Local => {
-            Ok(Planned::Refused(Outcome::Attention(Attention {
-                code: "PLATFORM_INTEGRATION_UNAVAILABLE".into(),
-                message: "this platform's merge adapter is not wired yet (GitHub lands with the canary path)".into(),
-                recovery_action: "wait_for_platform_adapter".into(),
-                details: Value::Null,
-            })))
-        }
         TargetKind::Platform => {
             let observed = registration.observed.clone().ok_or_else(|| {
-                reject("REPO_PENDING", "platform binding not confirmed", "confirm_repo")
+                reject(
+                    "REPO_PENDING",
+                    "platform binding not confirmed",
+                    "confirm_repo",
+                )
             })?;
-            let continuity = json!({"instance": observed.instance, "stable_id": observed.stable_id});
+            let continuity =
+                json!({"instance": observed.instance, "stable_id": observed.stable_id});
             if preview.target.continuity.as_ref() != Some(&continuity) {
                 return Ok(Planned::Refused(Outcome::Attention(Attention {
                     code: "TARGET_IDENTITY_MISMATCH".into(),
@@ -519,22 +587,27 @@ pub(crate) fn plan_attempt_with(
             // The platform merges a review request; the revision must have been published.
             let Some(review) = access(shared, |s| {
                 domain::review_request(s, repo_id, &preview.source.change_set_revision_id)
-            })? else {
+            })?
+            else {
                 return Ok(Planned::Refused(Outcome::Attention(Attention {
                     code: "REVIEW_REQUEST_MISSING".into(),
-                    message: "this revision has no review request on the platform yet; publish it first".into(),
+                    message:
+                        "this revision has no review request on the platform yet; publish it first"
+                            .into(),
                     recovery_action: "publish_review_then_retry_same_intent".into(),
                     details: json!({"change_set_revision_id": preview.source.change_set_revision_id}),
                 })));
             };
-            let hosted = connect(&registration)?;
+            let connection = connect(&registration)?;
             let attempt = match &intent.attempt {
                 Some(attempt) => attempt.clone(),
                 None => {
                     let expected = match preview.form {
                         Form::ExpectedHead => preview.expected_head.clone(),
                         Form::AcceptAdvance => {
-                            gitea::observe(&hosted, &observed.full_name, &preview.target.target_ref)?.head
+                            connection
+                                .observe(&observed.full_name, &preview.target.target_ref)?
+                                .head
                         }
                     };
                     let Some(expected) = expected else {
@@ -559,13 +632,19 @@ pub(crate) fn plan_attempt_with(
                     attempt
                 }
             };
+            // The packaged Gitea is read with control's own account; GitHub with whatever
+            // credential helper Git has (`gh auth setup-git`), control copies no token.
+            let credential = match &connection {
+                Connection::Gitea(hosted) => Some((hosted.username.clone(), hosted.token.clone())),
+                Connection::GitHub(_) => None,
+            };
             let readback = Box::new(ReadbackSite {
                 repository: readback_root.join(format!("{repo_id}.git")),
                 clone_url: observed.clone_url.clone(),
-                credential: Some((hosted.username.clone(), hosted.token.clone())),
+                credential,
             });
-            Ok(Planned::Gitea {
-                hosted,
+            Ok(Planned::Platform {
+                connection,
                 full_name: observed.full_name,
                 review,
                 attempt,
@@ -751,13 +830,13 @@ fn integrate_local(
     })
 }
 
-/// Merge on the hosted Gitea. The adapter only asks the platform to merge the published
+/// Merge on a code platform. The adapter only asks the platform to merge the published
 /// review request with the source head pinned; everything that decides the outcome is read
 /// back — the request and the branch from the platform, the merge commit and the target head
 /// through `hctl2-tool` from the platform's Git. A request that may have written is never
 /// resent: from then on the attempt is only read back.
-fn integrate_gitea(
-    hosted: &platform::Hosted,
+fn integrate_platform(
+    connection: &dyn PlatformTarget,
     full_name: &str,
     review: &domain::ReviewRequestRef,
     attempt: &domain::AttemptInput,
@@ -770,7 +849,7 @@ fn integrate_gitea(
         .target_ref
         .strip_prefix("refs/heads/")
         .unwrap_or(&preview.target.target_ref);
-    let current = gitea::observe(hosted, full_name, &preview.target.target_ref)?;
+    let current = connection.observe(full_name, &preview.target.target_ref)?;
     if !attempt.dispatched && preview.protection.as_ref() != Some(&current.protection) {
         return Ok((
             Outcome::Attention(Attention {
@@ -784,7 +863,7 @@ fn integrate_gitea(
             false,
         ));
     }
-    let Some(before) = gitea::review_request(hosted, full_name, review.index)? else {
+    let Some(before) = connection.review_request(full_name, review.index)? else {
         return Ok((
             Outcome::Attention(Attention {
                 code: "REVIEW_REQUEST_MISSING".into(),
@@ -823,15 +902,14 @@ fn integrate_gitea(
         // Persist "may have been sent" before sending; only a proven refusal takes it back.
         mark_dispatched(true)?;
         posted_now = true;
-        match gitea::request_merge(
-            hosted,
+        match connection.request_merge(
             full_name,
             review.index,
-            gitea::merge_style(preview.strategy),
+            preview.strategy,
             &attempt.commit,
             &message,
         ) {
-            Ok(_) => {}
+            Ok(()) => {}
             // The platform refused the write before doing it (checks, approvals, conflicts):
             // the human can clear the cause, the same intent retries.
             Err(error) if matches!(error.code, "NATIVE_REJECTED" | "NATIVE_CONFLICT") => {
@@ -852,8 +930,8 @@ fn integrate_gitea(
         }
     }
     // Readback from the platform: the request, then the branch and its protection again.
-    let after = gitea::review_request(hosted, full_name, review.index)?;
-    let target = gitea::observe(hosted, full_name, &preview.target.target_ref)?;
+    let after = connection.review_request(full_name, review.index)?;
+    let target = connection.observe(full_name, &preview.target.target_ref)?;
     if preview.protection.as_ref() != Some(&target.protection) {
         return Ok((
             Outcome::Unknown(Attention {
@@ -1001,7 +1079,7 @@ fn integrate_gitea(
 /// the merge commit against the frozen candidate. Before anything was sent, a moved head
 /// means the published revision is no longer what the request offers.
 fn source_or_target_mismatch(
-    request: &gitea::ReviewRequest,
+    request: &target::ReviewRequest,
     attempt: &domain::AttemptInput,
     branch: &str,
     dispatched: bool,
