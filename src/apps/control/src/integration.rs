@@ -872,7 +872,7 @@ fn integrate_gitea(
                 code: "RESULT_UNKNOWN".into(),
                 message: "the request may still be in flight: the review request does not read back as merged; it is read back, not resent".into(),
                 recovery_action: "read_back_review_request_with_same_intent".into(),
-                details: json!({"review_request": unmerged}),
+                details: json!({"review_request": unmerged, "published": attempt.commit}),
             }),
             false,
         ));
@@ -991,12 +991,18 @@ fn integrate_gitea(
 }
 
 /// The review request is not the published revision aimed at the frozen target.
+///
+/// The request's head follows its source branch while that branch exists — on Gitea even
+/// after the merge — so once a pinned request may have been sent, a moved head proves
+/// nothing about whether it went through: that is left to the Git readback, which checks
+/// the merge commit against the frozen candidate. Before anything was sent, a moved head
+/// means the published revision is no longer what the request offers.
 fn source_or_target_mismatch(
     request: &gitea::ReviewRequest,
     attempt: &domain::AttemptInput,
     branch: &str,
 ) -> Option<Outcome> {
-    if request.head_sha.as_deref() != Some(attempt.commit.as_str()) {
+    if request.head_sha.as_deref() != Some(attempt.commit.as_str()) && !attempt.dispatched {
         return Some(Outcome::Failed(Attention {
             code: "SOURCE_HEAD_MISMATCH".into(),
             message: "the review request's head is not the published revision commit".into(),

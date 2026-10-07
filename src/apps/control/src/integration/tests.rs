@@ -933,3 +933,72 @@ fn a_review_request_whose_head_is_not_the_published_revision_is_not_merged() {
     assert_eq!(platform.posts(), 0);
     assert_eq!(platform.read("pr_state"), "open");
 }
+
+#[test]
+fn a_source_branch_that_moves_after_a_dispatched_request_is_settled_by_git_not_by_its_head() {
+    let temp = temp("moved-source");
+    let platform = Platform::new(&temp.0);
+    let (shared, repo_id, id) = scenario(
+        &temp,
+        &platform,
+        "one",
+        Form::AcceptAdvance,
+        Strategy::MergeCommit,
+    );
+    // The request left, nothing came back; someone then pushes to the source branch, so the
+    // request's head (which follows the branch) is no longer the pinned candidate.
+    platform.set("lose_unmerged", "");
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    assert_eq!(shown(&shared, &repo_id, &id)["intent"]["state"], "unknown");
+    platform.unset("lose_unmerged");
+    let pushed = platform.git(&[
+        "commit-tree",
+        &format!("{}^{{tree}}", platform.candidate),
+        "-p",
+        &platform.candidate,
+        "-m",
+        "pushed later",
+    ]);
+    platform.set("pr_head", &pushed);
+    // Not merged yet: a moved head after a possible write proves nothing; stays unknown,
+    // keeps the attempt and the target, sends nothing.
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let still = shown(&shared, &repo_id, &id);
+    assert_eq!(still["intent"]["state"], "unknown", "{still}");
+    assert_eq!(still["intent"]["attention"]["code"], "RESULT_UNKNOWN");
+    assert_eq!(still["intent"]["attempt"]["dispatched"], json!(true));
+    assert_eq!(platform.posts(), 1);
+    assert_eq!(receipts(&shared), 0);
+    // The pinned request lands after all (the platform merges the candidate, the branch
+    // keeps its newer head): the Git readback sees the candidate as the merge commit's
+    // parent and confirms — the request's current head is irrelevant.
+    let merge = platform.merge_natively(false);
+    platform.drive(&shared, &repo_id, &id).unwrap();
+    let done = shown(&shared, &repo_id, &id);
+    assert_eq!(done["intent"]["state"], "succeeded", "{done}");
+    assert_eq!(done["receipt"]["integrated_commit"], json!(merge));
+    assert!(
+        done["receipt"]["readback"]["git"]["commit_parents"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(platform.candidate))
+    );
+    assert_eq!(platform.posts(), 1);
+    assert_eq!(receipts(&shared), 1);
+    // Before anything was sent, a moved head is still final (the existing rule).
+    let platform2 = Platform::new(&temp.0.join("unsent"));
+    let (shared2, repo2, id2) = scenario(
+        &temp,
+        &platform2,
+        "two",
+        Form::AcceptAdvance,
+        Strategy::MergeCommit,
+    );
+    platform2.set("pr_head", &pushed);
+    platform2.drive(&shared2, &repo2, &id2).unwrap();
+    assert_eq!(
+        shown(&shared2, &repo2, &id2)["intent"]["failure"]["code"],
+        "SOURCE_HEAD_MISMATCH"
+    );
+    assert_eq!(platform2.posts(), 0);
+}

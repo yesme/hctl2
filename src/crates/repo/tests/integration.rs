@@ -631,13 +631,12 @@ fn an_attempt_is_frozen_before_execution_and_only_a_terminal_readback_or_a_prove
         "marking survives a replan"
     );
     assert_eq!(same.version, sent.version);
-    assert_eq!(
+    assert!(
         integ::get(&store, &repo_id, &id)
             .unwrap()
             .attempt
             .unwrap()
             .dispatched,
-        true,
         "persisted, not held in memory"
     );
     let refused = mark_attempt_dispatched(&mut store, &repo_id, &id, 1, false).unwrap();
