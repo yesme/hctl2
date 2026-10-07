@@ -257,11 +257,46 @@ if grep -F 'Linux builds need clang, clang++ and lld' "$launcher" >/dev/null &&
 else
     fail "src/buck2 is missing the Linux clang/lld check"
 fi
-if grep -F 'macOS builds need the Xcode clang shims' "$launcher" >/dev/null &&
-    grep -F 'xcode-select --install' "$launcher" >/dev/null; then
-    note "PASS src/buck2 stops a macOS build without the Xcode clang shims"
+if grep -F 'macOS builds need a working clang from the Command Line Tools' "$launcher" >/dev/null &&
+    grep -F 'xcode-select --install' "$launcher" >/dev/null &&
+    grep -F 'A full Xcode.app is not required' "$launcher" >/dev/null; then
+    note "PASS src/buck2 asks for the Command Line Tools, not a full Xcode"
 else
-    fail "src/buck2 is missing the macOS clang check"
+    fail "src/buck2 is missing the Command Line Tools hint"
+fi
+if [ "$(uname -s)" = Darwin ]; then
+    # Copies stay next to src/buck2 so the launcher still finds the pinned
+    # Python. The buck2 binary is replaced with exit 0 so this test does not
+    # start a daemon. A failing xcodebuild must not block a working clang.
+    printf '%s\n' '#!/bin/sh' 'exit 0' >"$fake/buck2-ok"
+    printf '%s\n' '#!/bin/sh' 'exit 1' >"$fake/clang-bad"
+    printf '%s\n' '#!/bin/sh' 'echo xcodebuild requires Xcode >&2' 'exit 1' >"$fake/xcodebuild"
+    chmod +x "$fake/buck2-ok" "$fake/clang-bad" "$fake/xcodebuild"
+    probe="$script_dir/../../buck2.macos-probe"
+    bad="$probe-bad"
+    sed "s|^buck2_bin=.*|buck2_bin=$fake/buck2-ok|" "$launcher" >"$probe"
+    sed -e "s|/usr/bin/clang++|$fake/clang-bad|g" \
+        -e "s|/usr/bin/clang|$fake/clang-bad|g" \
+        -e "s|/usr/bin/ar|$fake/clang-bad|g" \
+        "$probe" >"$bad"
+    chmod +x "$probe" "$bad"
+    clt_err="$fake/clt-missing.txt"
+    if HCTL2_BUCK2_CACHE=0 "$bad" build --help >"$fake/clt-missing.out" 2>"$clt_err"; then
+        fail "src/buck2 build continued when clang cannot run"
+    elif grep -F 'xcode-select --install' "$clt_err" >/dev/null &&
+        grep -F 'Command Line Tools' "$clt_err" >/dev/null &&
+        grep -F 'A full Xcode.app is not required' "$clt_err" >/dev/null; then
+        note "PASS src/buck2 build stops when clang cannot run and names the Command Line Tools"
+    else
+        fail "src/buck2 build did not name the Command Line Tools when clang cannot run"
+    fi
+    if PATH="$fake:$PATH" HCTL2_BUCK2_CACHE=0 "$probe" build --help \
+        >"$fake/clt-only.out" 2>"$fake/clt-only.err"; then
+        note "PASS src/buck2 build accepts a working clang when xcodebuild is absent"
+    else
+        fail "src/buck2 build rejected a working clang because xcodebuild failed"
+    fi
+    rm -f "$probe" "$bad"
 fi
 
 if grep -F 'hctl2.python=$py_bin' "$launcher" >/dev/null &&

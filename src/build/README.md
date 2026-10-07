@@ -129,7 +129,7 @@ PR 的 Code 与 Release workflow 会读取 `pull_request/synchronize` 的旧、�
 
    `dotslash --version` 必须等于 `DOTSLASH_VERSION`。PATH 前面不要留别的 dotslash。
 
-3. **Xcode 或 Command Line Tools**。`/usr/bin/clang`、`clang++`、`ar` 是会注入当前 SDK 的 xcrun 垫片。缺它们，或 `xcodebuild` 读不到版本和 macOS SDK 时，`./buck2 build`、`run`、`test` 会直接报错，并提示下面这条命令。`--version` 不要求这套工具链。
+3. **Command Line Tools**。要装的是这一包，不是完整的 Xcode.app。`/usr/bin/clang` 在没装它时也在，只是个垫片，`--version` 跑不起来。装好之后 clang 能用，macOS SDK 也在。`xcodebuild` 只有完整 Xcode 才有，构建不需要它；装了完整 Xcode 时启动器会多记下它的版本，没装就留空。`./buck2 build`、`run`、`test` 在 clang 还不能跑时直接报错，并提示下面这条命令。`--version` 不要求这套工具链。
 
    ```bash
    xcode-select --install
