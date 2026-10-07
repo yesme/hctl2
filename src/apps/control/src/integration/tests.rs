@@ -71,6 +71,9 @@ case "$method $path" in
     git -C "$R" update-ref "refs/heads/$base" "$merge"
     printf merged > "$S/pr_state"; printf '%s' "$merge" > "$S/merge_sha"
     if [ -f "$S/drift_after_merge" ]; then cp "$S/drift_after_merge" "$S/protection.json"; fi
+    # Someone pushes to the source branch the instant the merge lands: the request's head
+    # (which follows the branch) moves before anyone reads it back.
+    if [ -f "$S/advance_source_after_merge" ]; then cp "$S/advance_source_after_merge" "$S/pr_head"; fi
     if [ -f "$S/lose_merge" ]; then exit 1; fi
     printf 'HTTP/1.1 200 OK\n' >&2 ;;
   *) printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{}'; exit 1 ;;
@@ -985,6 +988,35 @@ fn a_source_branch_that_moves_after_a_dispatched_request_is_settled_by_git_not_b
     );
     assert_eq!(platform.posts(), 1);
     assert_eq!(receipts(&shared), 1);
+    // The same within one round: the merge lands and the source branch is pushed before
+    // the readback — the request's head is no longer the candidate, the Git facts still say
+    // the candidate was merged.
+    let platform3 = Platform::new(&temp.0.join("same-round"));
+    let (shared3, repo3, id3) = scenario(
+        &temp,
+        &platform3,
+        "three",
+        Form::AcceptAdvance,
+        Strategy::MergeCommit,
+    );
+    let pushed3 = platform3.git(&[
+        "commit-tree",
+        &format!("{}^{{tree}}", platform3.candidate),
+        "-p",
+        &platform3.candidate,
+        "-m",
+        "pushed right after",
+    ]);
+    platform3.set("advance_source_after_merge", &pushed3);
+    platform3.drive(&shared3, &repo3, &id3).unwrap();
+    let done3 = shown(&shared3, &repo3, &id3);
+    assert_eq!(done3["intent"]["state"], "succeeded", "{done3}");
+    assert_eq!(
+        done3["receipt"]["integrated_commit"],
+        json!(platform3.read("merge_sha"))
+    );
+    assert_eq!(platform3.read("pr_head"), pushed3);
+    assert_eq!(platform3.posts(), 1);
     // Before anything was sent, a moved head is still final (the existing rule).
     let platform2 = Platform::new(&temp.0.join("unsent"));
     let (shared2, repo2, id2) = scenario(

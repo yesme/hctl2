@@ -798,7 +798,7 @@ fn integrate_gitea(
     // The request must still be the published revision aimed at the frozen target, merged or
     // not. A pinned request can never have merged another head, so that mismatch is final; a
     // request retargeted after it may have been sent could have written elsewhere.
-    if let Some(outcome) = source_or_target_mismatch(&before, attempt, branch) {
+    if let Some(outcome) = source_or_target_mismatch(&before, attempt, branch, attempt.dispatched) {
         return Ok((outcome, false));
     }
     let mut posted_now = false;
@@ -877,7 +877,10 @@ fn integrate_gitea(
             false,
         ));
     };
-    if let Some(outcome) = source_or_target_mismatch(&after, attempt, branch) {
+    // From here on the request may have reached the platform, in this round or an earlier
+    // one: the request's current head decides nothing, the Git readback does.
+    let sent = attempt.dispatched || posted_now;
+    if let Some(outcome) = source_or_target_mismatch(&after, attempt, branch, sent) {
         return Ok((outcome, false));
     }
     let Some(merge_commit) = after.merge_commit_sha.clone() else {
@@ -1001,8 +1004,9 @@ fn source_or_target_mismatch(
     request: &gitea::ReviewRequest,
     attempt: &domain::AttemptInput,
     branch: &str,
+    dispatched: bool,
 ) -> Option<Outcome> {
-    if request.head_sha.as_deref() != Some(attempt.commit.as_str()) && !attempt.dispatched {
+    if request.head_sha.as_deref() != Some(attempt.commit.as_str()) && !dispatched {
         return Some(Outcome::Failed(Attention {
             code: "SOURCE_HEAD_MISMATCH".into(),
             message: "the review request's head is not the published revision commit".into(),
@@ -1017,7 +1021,7 @@ fn source_or_target_mismatch(
             recovery_action: "retarget_review_request_then_new_intent".into(),
             details: json!({"target": branch, "review_base": request.base_branch, "merged": request.merged}),
         };
-        return Some(if attempt.dispatched {
+        return Some(if dispatched {
             // Our request may have gone through against that other base.
             Outcome::Unknown(attention)
         } else {
