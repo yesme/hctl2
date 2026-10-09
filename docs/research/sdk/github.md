@@ -233,3 +233,13 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 | macos_x86_64 | `gh_2.102.0_macOS_amd64.zip` | `b245f24e…41378b3` |
 | macos_arm64 | `gh_2.102.0_macOS_arm64.zip` | `da922c20…59c337e` |
 | 源码伴随包 | `gh-fc4b137c…-source.tar.gz`（commit `fc4b137c…`） | `78542f85…035773` |
+
+### 2026-10-07 · 集成目标的实测（第 6 包集成一半，公开沙箱 `yesme/hctl2-canary`）
+
+用随包 `gh api` 对受保护的 `main`（经典保护：须经评审请求、必需检查 `canary`、`enforce_admins`）实测，结果进 `integration/github.rs` 与绑定的能力声明（`remote_merge`、`protection_readback` 对 GitHub 为真）：
+
+- `GET repos/{o}/{r}/branches/main` → `protected: true`、`commit.sha`；`GET …/branches/main/protection` → 200，顶层键 `allow_deletions, allow_force_pushes, allow_fork_syncing, block_creations, enforce_admins, lock_branch, required_conversation_resolution, required_linear_history, required_pull_request_reviews, required_signatures, required_status_checks, url`，`required_status_checks` 同时给 `contexts` 与 `checks[].context`；未保护时该端点 404 `Branch not protected`。
+- `GET repos/{o}/{r}/rules/branches/main` → `[]`（这个仓库没有规则集），`GET …/rulesets` → `[]`。规则集保护的分支在 `branches/{b}` 里不标 `protected`，所以两个端点都读，都冻结。
+- `PUT repos/{o}/{r}/pulls/{n}/merge` 带 `merge_method: merge`、`sha`：PR #2（头 `f6d026e`）由 control 合入，合并提交 `870c03e`，回读 `main` 等于合并提交、PR `merged: true`；`hctl2-tool readback` 匿名从 `clone_url` 拉 `refs/heads/main`，`contains: true`，合并提交的父提交含 `f6d026e`。
+- 合并方式只有 merge / squash / rebase，没有精确候选的快进；`fast_forward` 策略在预览拒绝（`STRATEGY_UNSUPPORTED`）。
+- 没测：私有仓库的 Git 回读凭据（设计上走 `gh auth setup-git` 配的助手）、规则集生效时的实际响应形状（按 REST 文档的 `type` + `parameters` 写，用例用脚本化输入）。
