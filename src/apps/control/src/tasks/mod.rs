@@ -1,10 +1,12 @@
 //! Task transport, provider I/O and recovery; Store locks cover only short transactions.
+#[cfg(test)]
+mod completion_tests;
 mod github;
 mod provider;
 use crate::services::Supervisor;
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc};
-use store::{EffectState, Store, TrustedActor};
+use store::{EffectState, Scope, Store, TrustedActor};
 use task::{Action, Input, Plan, Result, Snapshot, Source, reject};
 use tokio::sync::Mutex;
 type Shared = Arc<Mutex<Option<Store>>>;
@@ -130,6 +132,7 @@ pub(super) fn preview(
     shared: &Shared,
     services: &Supervisor,
     root: &Path,
+    actor: &TrustedActor,
     operation: &str,
     payload: &Value,
 ) -> Result<Value> {
@@ -166,7 +169,16 @@ pub(super) fn preview(
     if let Some((rid, id)) = access(shared, |s| task::source_id_for_action(s, &input.action))? {
         read(shared, services, root, &rid, &id, Some(&input.action))?;
     }
-    let mut plan = access(shared, |s| task::prepare(s, input))?;
+    // 预览与准入同一套判定：操作声明的项目要落在 actor 的作用域里，project 头才读得到物料。
+    let scoped;
+    let actor = match task::project_id_for_action(&input.action) {
+        Some(project) => {
+            scoped = task::owner(actor, [Scope::Project(project.into())])?;
+            &scoped
+        }
+        None => actor,
+    };
+    let mut plan = access(shared, |s| task::prepare_as(s, actor, input))?;
     if matches!(plan.input.action, Action::Connect { .. }) {
         let control = access(shared, |s| Ok(s.control_id().to_owned()))?;
         for record in plan
@@ -230,6 +242,9 @@ pub(super) fn submit(
         }
         result["effect_state"] = access(shared, |s| Ok(serde_json::to_value(s.effect(&id)?.1)?))?;
     }
+    if let Some(project) = result["project_id"].as_str().map(str::to_owned) {
+        result["provider_done"] = drive_completion_requests(shared, &project, actor)?;
+    }
     if let (Some(project), Some(id)) = (result["project_id"].as_str(), result["task_id"].as_str()) {
         result["task"] = access(shared, |s| {
             let (r, t) = task::task(s, project, id)?;
@@ -237,6 +252,97 @@ pub(super) fn submit(
         })?;
     }
     Ok(result)
+}
+
+/// 供应端 Done 归档出的「完成 Task」请求：走与 Workbench/CLI 相同的预览与准入。
+/// 只有绑定声明允许自动提交时才提交；被拒时保留外部 Done 与 HCTL 开放，把类型化
+/// 结果记在请求上，等人处理。
+fn drive_completion_requests(
+    shared: &Shared,
+    project: &str,
+    actor: &TrustedActor,
+) -> Result<Value> {
+    let pending = access(shared, |s| {
+        Ok(s.list(task::COMPLETION_REQUEST_KIND)?
+            .into_iter()
+            .filter(|r| r.key.scope == Scope::Project(project.into()))
+            .filter_map(|r| {
+                task::decode::<task::CompletionRequest>(&r)
+                    .ok()
+                    .map(|request| (r, request))
+            })
+            .filter(|(_, request)| request.state == "pending")
+            .collect::<Vec<_>>())
+    })?;
+    let mut handled = vec![];
+    for (_, request) in pending {
+        let outcome = access(shared, |s| {
+            let (_, src) = task::source(s, &request.repo_id, &request.source_id)?;
+            if !src.auto_complete_provider_done {
+                return Ok(json!({
+                    "request_id": request.request_id,
+                    "state": "pending",
+                    "reason": "binding_does_not_auto_submit",
+                }));
+            }
+            let (task_record, t) = task::task(s, &request.project_id, &request.task_id)?;
+            // 与 Workbench/CLI 同源：由已认证的 owner 以自己的身份完成，供应端归属记在请求上。
+            let actor = task::owner(actor, [Scope::Project(request.project_id.clone())])?;
+            let evidence =
+                task::provider_evidence(s, &actor, &t, &request.snapshot, &src.port_kind)?;
+            let input = task::Input {
+                key: format!("provider-done:{}", request.idempotency_key),
+                action: Action::Complete {
+                    project_id: request.project_id.clone(),
+                    task_id: request.task_id.clone(),
+                    version: task_record.version,
+                    lifecycle_version: t.lifecycle_version,
+                    revision_number: t.revision.as_ref().map(|r| r.number).unwrap_or(0),
+                    acceptance: evidence,
+                },
+            };
+            match task::prepare_as(s, &actor, input).and_then(|plan| task::admit(s, &actor, plan)) {
+                Ok(value) => {
+                    task::mark_completion_request(
+                        s,
+                        project,
+                        &request.request_id,
+                        "accepted",
+                        None,
+                    )?;
+                    Ok(json!({
+                        "request_id": request.request_id,
+                        "state": "accepted",
+                        "result": value,
+                    }))
+                }
+                Err(error) => {
+                    task::mark_completion_request(
+                        s,
+                        project,
+                        &request.request_id,
+                        "declined",
+                        Some(json!({
+                            "code": error.code,
+                            "message": error.message,
+                            "recovery_action": error.recovery_action,
+                        })),
+                    )?;
+                    Ok(json!({
+                        "request_id": request.request_id,
+                        "state": "declined",
+                        "error": {
+                            "code": error.code,
+                            "message": error.message,
+                            "recovery_action": error.recovery_action,
+                        },
+                    }))
+                }
+            }
+        })?;
+        handled.push(outcome);
+    }
+    Ok(Value::Array(handled))
 }
 
 fn drive(

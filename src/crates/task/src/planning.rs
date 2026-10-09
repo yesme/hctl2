@@ -328,6 +328,272 @@ fn check_contract(
     Ok(())
 }
 
+/// 完成要读契约正文：材料读取需要可信身份，所以调用方必须带上 actor。
+fn contract_of(store: &Store, actor: &TrustedActor, t: &Task) -> Result<(Contract, Revision)> {
+    let revision = t.revision.clone().ok_or_else(|| {
+        reject(
+            "CONTRACT_REQUIRED",
+            "adopt a contract before completing this Task",
+            "adopt_contract",
+        )
+    })?;
+    let bytes = store.read_material(actor, &revision.material)?;
+    let contract: Contract = serde_json::from_slice(&bytes).map_err(|_| {
+        reject(
+            "INVALID_RECORD",
+            "Task Revision material is not a contract",
+            "inspect_storage",
+        )
+    })?;
+    Ok((contract, revision))
+}
+
+/// 证据通道的强弱：`narrated` 最弱，`adapter_event` 次之，`unmediated` 最强。
+fn channel_rank(channel: &str) -> Option<u8> {
+    match channel {
+        "narrated" => Some(0),
+        "adapter_event" => Some(1),
+        "unmediated" => Some(2),
+        _ => None,
+    }
+}
+
+/// 机械项的集成证据：契约事先接受的 Integration Receipt，逐字段核过才算数。
+fn integration_evidence(
+    store: &Store,
+    t: &Task,
+    reference: &Reference,
+) -> Result<Option<(String, Reference)>> {
+    let Some(record) = store.get(&reference.key)? else {
+        return Ok(None);
+    };
+    if record.key.scope != Scope::Repo(t.repo_id.clone())
+        || record.key.kind != repo::integration::RECEIPT_KIND
+        || reference.version != Version::State(record.version)
+    {
+        return Ok(None);
+    }
+    let receipt = repo::integration::receipt(store, &t.repo_id, record.key.id.as_str())?;
+    let channel = if receipt.evidence_level == "hctl2-tool" {
+        "unmediated"
+    } else {
+        "adapter_event"
+    };
+    // 源版本、目标头与「指回意图」的来源都要在，缺一项不算核过。
+    if receipt.repo_id != t.repo_id
+        || receipt.source.change_set_revision_id.trim().is_empty()
+        || receipt.target_head_after.trim().is_empty()
+        || record.sources.is_empty()
+    {
+        return Ok(None);
+    }
+    // 归属：先把 `source` 钉回本 Repo 冻结的版本记录，再沿封存者找到本 Task。
+    if store
+        .get(&repo::integration::revision_key(
+            &t.repo_id,
+            &receipt.source.change_set_revision_id,
+        ))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let admitted =
+        repo::integration::revision(store, &t.repo_id, &receipt.source.change_set_revision_id)?;
+    if admitted != receipt.source || !admitted_for_task(store, t, &admitted.producer_ref)? {
+        return Ok(None);
+    }
+    Ok(Some((channel.into(), reference.clone())))
+}
+
+/// 该冻结版本是否由「声明属于本 Task」的 Room Invocation 封存。
+///
+/// task 不能依赖 project（project 依赖 task，成环），按记录 kind 与 JSON 路径读原文。
+/// 上界写明：`task_id` 是调用启动者在输入里声明的，project 侧不校验，所以这条判据
+/// 证明的是「该 ChangeSet 由声明属于本 Task 的 Invocation 持有租约产出」。人工命令
+/// 封存的版本没有 Invocation，判不出归属，一律不认（fail closed）。
+fn admitted_for_task(store: &Store, t: &Task, producer: &Value) -> Result<bool> {
+    if producer.get("kind").and_then(Value::as_str) != Some("invocation") {
+        return Ok(false);
+    }
+    let Some(invocation_id) = producer.get("invocation_id").and_then(Value::as_str) else {
+        return Ok(false);
+    };
+    let Some(record) = store.get(&key(
+        Scope::Project(t.project_id.clone()),
+        "room_invocation",
+        invocation_id,
+    ))?
+    else {
+        return Ok(false);
+    };
+    let RecordData::Value { value } = &record.data else {
+        return Ok(false);
+    };
+    let input = &value["preview"]["input"];
+    Ok(input["task_id"].as_str() == Some(t.id.as_str())
+        && input["project_id"].as_str() == Some(t.project_id.as_str()))
+}
+
+/// 供应端 Done 请求能提供的证据：只覆盖契约里的机械项，用这次观测作旁路证据；
+/// `gate` 与 `human` 项一律不给证据——准入会按各自的规则拒，Task 保持开放。
+pub fn provider_evidence(
+    store: &Store,
+    actor: &TrustedActor,
+    t: &Task,
+    snapshot: &Reference,
+    port: &str,
+) -> Result<Vec<ItemEvidence>> {
+    let (contract, _) = contract_of(store, actor, t)?;
+    Ok(contract
+        .acceptance
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| matches!(item.grade, Grade::Mechanical))
+        .map(|(index, _)| ItemEvidence {
+            item: index,
+            judge: Judge::Adapter { port: port.into() },
+            channel: "adapter_event".into(),
+            references: vec![snapshot.clone()],
+            producer: Some(port.into()),
+            generation: None,
+        })
+        .collect())
+}
+
+/// 逐项核对：判定者、校验等级、证据通道与集成凭证都要对得上，缺一项就拒绝。
+fn completion_items(
+    store: &Store,
+    actor: &TrustedActor,
+    t: &Task,
+    contract: &Contract,
+    submitted: &[ItemEvidence],
+) -> Result<Vec<ItemOutcome>> {
+    if contract.acceptance.is_empty() {
+        return Err(reject(
+            "INVALID_CONTRACT",
+            "contract has no acceptance items",
+            "adopt_contract",
+        ));
+    }
+    let mut outcomes = Vec::new();
+    for (index, item) in contract.acceptance.iter().enumerate() {
+        let candidate = submitted.iter().find(|e| e.item == index).ok_or_else(|| {
+            reject(
+                "EVIDENCE_REQUIRED",
+                format!("acceptance item {index} has no evidence"),
+                "supply_evidence",
+            )
+        })?;
+        let channel = channel_rank(&candidate.channel).ok_or_else(|| {
+            reject(
+                "EVIDENCE_CHANNEL",
+                "unknown evidence channel",
+                "correct_input",
+            )
+        })?;
+        match item.grade {
+            Grade::Mechanical => {
+                if channel < 1 {
+                    return Err(reject(
+                        "EVIDENCE_TOO_WEAK",
+                        "mechanical items accept only unmediated or adapter_event evidence",
+                        "supply_evidence",
+                    ));
+                }
+            }
+            Grade::Gate => {
+                if !matches!(candidate.judge, Judge::Gate { .. }) || candidate.references.is_empty()
+                {
+                    return Err(reject(
+                        "GATE_EVIDENCE_REQUIRED",
+                        "gate items accept only a Gate Receipt verdict",
+                        "supply_verdict",
+                    ));
+                }
+            }
+            Grade::Human => {
+                let Judge::Human { actor: who } = &candidate.judge else {
+                    return Err(reject(
+                        "HUMAN_JUDGEMENT_REQUIRED",
+                        "human items accept only an explicit human verdict",
+                        "supply_judgement",
+                    ));
+                };
+                if who != &actor.0.principal {
+                    return Err(reject(
+                        "HUMAN_JUDGEMENT_REQUIRED",
+                        "the judging human is not the submitting actor",
+                        "supply_judgement",
+                    ));
+                }
+            }
+        }
+        if let Some(minimum) = item
+            .evidence
+            .as_ref()
+            .and_then(|r| r.min_channel.as_deref())
+            .and_then(channel_rank)
+            && channel < minimum
+        {
+            return Err(reject(
+                "EVIDENCE_TOO_WEAK",
+                format!("acceptance item {index} requires a higher evidence channel"),
+                "supply_evidence",
+            ));
+        }
+        let mut validation_level = candidate.channel.clone();
+        let mut references = candidate.references.clone();
+        for reference in &candidate.references {
+            let record = store.get(&reference.key)?.ok_or_else(|| {
+                reject(
+                    "EVIDENCE_MISSING",
+                    "referenced evidence does not exist",
+                    "supply_evidence",
+                )
+            })?;
+            if reference.version != Version::State(record.version) {
+                return Err(stale());
+            }
+        }
+        if item.evidence.as_ref().and_then(|r| r.accept.as_deref()) == Some("integration_receipt") {
+            let mut verified = None;
+            for reference in &candidate.references {
+                if let Some((channel, reference)) = integration_evidence(store, t, reference)? {
+                    verified = Some((channel, reference));
+                    break;
+                }
+            }
+            let Some((channel, reference)) = verified else {
+                return Err(reject(
+                    "INTEGRATION_RECEIPT_REQUIRED",
+                    "this item needs the Repo module's Integration Receipt",
+                    "integrate_first",
+                ));
+            };
+            validation_level = channel;
+            references = vec![reference];
+        }
+        outcomes.push(ItemOutcome {
+            item: index,
+            text: item.text.clone(),
+            text_digest: canonical_json_sha256(&serde_json::to_value(item)?)?,
+            grade: serde_json::to_value(&item.grade)?
+                .as_str()
+                .unwrap_or("unknown")
+                .to_owned(),
+            outcome: "passed".into(),
+            validation_level,
+            judge: candidate.judge.clone(),
+            references,
+            producer: candidate.producer.clone(),
+            generation: candidate.generation,
+            source_snapshot: t.snapshot.clone(),
+            source_head: None,
+        });
+    }
+    Ok(outcomes)
+}
+
 pub(crate) fn new_task(
     store: &Store,
     project: &str,
@@ -398,7 +664,12 @@ fn add_effect(
 }
 
 pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
-    prepare_inner(store, input, None)
+    prepare_inner(store, input, None, None)
+}
+
+/// 与 [`prepare`] 相同，但带上提交者的可信身份：完成要读契约正文并核对 human 判定者。
+pub fn prepare_as(store: &Store, actor: &TrustedActor, input: Input) -> Result<Plan> {
+    prepare_inner(store, input, None, Some(actor))
 }
 
 pub fn request_blockers(
@@ -448,10 +719,15 @@ pub fn prepare_request_adoption(store: &Store, input: Input, blocker: &Record) -
     {
         return Err(stale());
     }
-    prepare_inner(store, input, Some(&waiting.request_id))
+    prepare_inner(store, input, Some(&waiting.request_id), None)
 }
 
-fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result<Plan> {
+fn prepare_inner(
+    store: &Store,
+    input: Input,
+    answering: Option<&str>,
+    actor: Option<&TrustedActor>,
+) -> Result<Plan> {
     if input.key.trim().is_empty() {
         return Err(reject(
             "INVALID_INPUT",
@@ -478,6 +754,8 @@ fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result
             candidate_id,
             consent,
             make_default,
+            human_account,
+            auto_complete_provider_done,
         } => {
             if !consent {
                 return Err(reject(
@@ -523,7 +801,7 @@ fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result
             );
             let skey = key(Scope::Repo(repo_id.clone()), "task_source", &id);
             if let Some(existing) = store.get(&skey)? {
-                let src: Source = decode(&existing)?;
+                let mut src: Source = decode(&existing)?;
                 if !src.active {
                     return Err(reject(
                         "SOURCE_DISABLED",
@@ -531,7 +809,15 @@ fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result
                         "reconnect_source",
                     ));
                 }
-                p.check(&existing);
+                if src.human_account != *human_account
+                    || src.auto_complete_provider_done != *auto_complete_provider_done
+                {
+                    src.human_account = human_account.clone();
+                    src.auto_complete_provider_done = *auto_complete_provider_done;
+                    p.put(store, skey.clone(), &src)?;
+                } else {
+                    p.check(&existing);
+                }
             } else {
                 let src = Source {
                     id: id.clone(),
@@ -554,6 +840,8 @@ fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result
                     candidate,
                     binding_revision: 1,
                     active: true,
+                    human_account: human_account.clone(),
+                    auto_complete_provider_done: *auto_complete_provider_done,
                 };
                 p.put(store, skey, &src)?;
             }
@@ -909,6 +1197,133 @@ fn prepare_inner(store: &Store, input: Input, answering: Option<&str>) -> Result
             t.archived = true;
             let (sr, _) = source(store, &t.repo_id, &t.source_id)?;
             p.put_task(store, &t, &reference(&sr))?;
+        }
+        Action::Complete {
+            project_id,
+            task_id,
+            version,
+            lifecycle_version,
+            revision_number,
+            acceptance,
+        } => {
+            let actor = actor.ok_or_else(|| {
+                reject(
+                    "PERMISSION_DENIED",
+                    "completion needs the submitting human actor",
+                    "retry_with_identity",
+                )
+            })?;
+            project(store, &mut p, project_id, None)?;
+            let (r, mut t) = task(store, project_id, task_id)?;
+            if *version != r.version || *lifecycle_version != t.lifecycle_version {
+                return Err(stale());
+            }
+            if t.run_occupancy.is_some() {
+                // `completion_pending` 期间只接受匹配 Run 归约器的内部完成命令（P2.3 接）。
+                return Err(reject(
+                    "RUN_ACTIVE",
+                    "completion_pending 期间不接受人的完成命令",
+                    "wait_for_run_reducer",
+                ));
+            }
+            if !active_runs(store, &t)?.is_empty() {
+                return Err(reject(
+                    "RUN_ACTIVE",
+                    "a bound Run is not terminal",
+                    "finish_run_first",
+                ));
+            }
+            if t.lifecycle != "open" {
+                return Err(reject("TASK_TERMINAL", "Task is not open", "inspect_task"));
+            }
+            let (contract, revision) = contract_of(store, actor, &t)?;
+            if *revision_number != revision.number {
+                return Err(stale());
+            }
+            let items = completion_items(store, actor, &t, &contract, acceptance)?;
+            let receipt_id = format!("{}:{}", t.id, t.lifecycle_version + 1);
+            let receipt = CompletionReceipt {
+                receipt_id: receipt_id.clone(),
+                task_id: t.id.clone(),
+                project_id: project_id.clone(),
+                command_id: format!("task:{}", input.key),
+                idempotency_key: input.key.clone(),
+                lifecycle_version: t.lifecycle_version + 1,
+                revision_number: revision.number,
+                revision_digest: revision.proposal_digest.clone(),
+                policy_digest: revision.policy_digest.clone(),
+                items,
+                completed_at: now(),
+            };
+            p.put(
+                store,
+                key(
+                    Scope::Project(project_id.clone()),
+                    COMPLETION_RECEIPT_KIND,
+                    &receipt_id,
+                ),
+                &receipt,
+            )?;
+            t.lifecycle = "completed".into();
+            t.lifecycle_version += 1;
+            let (sr, _) = source(store, &t.repo_id, &t.source_id)?;
+            p.put_task(store, &t, &reference(&sr))?;
+            p.result = json!({
+                "project_id": project_id,
+                "task_id": task_id,
+                "receipt_id": receipt_id,
+                "lifecycle": "completed",
+                "lifecycle_version": t.lifecycle_version,
+                "items": &receipt.items,
+            });
+        }
+        Action::Reopen {
+            project_id,
+            task_id,
+            version,
+            lifecycle_version,
+            revision_number,
+        } => {
+            project(store, &mut p, project_id, None)?;
+            let (r, mut t) = task(store, project_id, task_id)?;
+            if *version != r.version || *lifecycle_version != t.lifecycle_version {
+                return Err(stale());
+            }
+            if t.lifecycle == "open" {
+                return Err(reject("TASK_OPEN", "Task is already open", "inspect_task"));
+            }
+            if t.run_occupancy.is_some() || !active_runs(store, &t)?.is_empty() {
+                return Err(reject(
+                    "RUN_ACTIVE",
+                    "reopen does not stop Run",
+                    "finish_run_first",
+                ));
+            }
+            match (revision_number, t.revision.as_ref()) {
+                // 未处理 drift：必须显式冻结继续使用的当前 Revision。
+                (None, _) if t.pending_contract.is_some() => {
+                    return Err(reject(
+                        "CONTRACT_DRIFT",
+                        "adopt the new contract or freeze the current Revision explicitly",
+                        "adopt_contract",
+                    ));
+                }
+                (Some(expected), Some(current)) if expected != &current.number => {
+                    return Err(stale());
+                }
+                _ => {}
+            }
+            t.lifecycle = "open".into();
+            t.lifecycle_version += 1;
+            t.archived = false;
+            let (sr, _) = source(store, &t.repo_id, &t.source_id)?;
+            p.put_task(store, &t, &reference(&sr))?;
+            p.result = json!({
+                "project_id": project_id,
+                "task_id": task_id,
+                "lifecycle": "open",
+                "lifecycle_version": t.lifecycle_version,
+            });
         }
         Action::DeleteCard {
             project_id,

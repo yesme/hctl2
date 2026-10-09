@@ -289,6 +289,8 @@ pub(super) fn src() -> Source {
         board_scope_stable_id: "1".into(),
         binding_revision: 1,
         active: true,
+        human_account: None,
+        auto_complete_provider_done: false,
     }
 }
 pub(super) fn effect(operation: &str, write: Value) -> EffectIntent {

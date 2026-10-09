@@ -254,6 +254,8 @@ impl Env {
                 candidate_id: "github_issues".into(),
                 consent: true,
                 make_default: false,
+                auto_complete_provider_done: false,
+                human_account: None,
             },
         };
         let plan = task::prepare(&e.store, input).unwrap();
@@ -395,6 +397,7 @@ impl Env {
             acceptance: vec![task::Acceptance {
                 text: "approved".into(),
                 grade: task::Grade::Human,
+                evidence: None,
             }],
             roles: vec![],
             capabilities: vec![],

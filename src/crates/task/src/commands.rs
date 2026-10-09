@@ -111,6 +111,17 @@ pub fn apply(tx: &mut CommandTransaction<'_>, plan: &Plan) -> Result<()> {
             tx.admit_material(m)?;
         }
         tx.put(r)?;
+        // 测试缝：完成事务里注入一次失败（CT-TASK：Receipt 与生命周期变化同生共死）。
+        // 只有 `HCTL_TASK_COMPLETE_FAIL=after_receipt` 时生效，生产路径不设这个变量。
+        if r.key.kind == COMPLETION_RECEIPT_KIND
+            && std::env::var("HCTL_TASK_COMPLETE_FAIL").as_deref() == Ok("after_receipt")
+        {
+            return Err(reject(
+                "INJECTED_FAILURE",
+                "test seam aborted the completion transaction",
+                "retry",
+            ));
+        }
     }
     for e in &plan.effects {
         tx.enqueue_effect(e)?;

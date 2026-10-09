@@ -191,3 +191,21 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 - 结论进适配器：先读分支记录，受保护就按 `effective_branch_protection_name`（一段路径、百分号编码）读规则；受保护却读不到规则记 `PROTECTION_UNREAD`，不记未保护。快照冻结整条规则（除两个时间戳），不只挑几个字段。
 - 这次实测没有再跑合并：`remote_merge` 的依据仍是上面那次快进合并；合并提交的树与「目标头是否承载合并提交」改由 `hctl2-tool readback` 从 Git 读，不再依赖 REST。
 
+### 2026-10-08 · 关闭者归属与依赖门槛实测（第 7 包完成 Task）
+
+**决定建议：** Gitea 上「谁把卡片推进终态」的来源改为 issue 时间线，不用 issue 载荷的 `closed_by`——该字段在 Gitea 不产出。适配器读卡时，卡片已关闭且载荷缺 `closed_by` 才补读一次时间线，只补这一个字段；供应端 Done 的归属判定（`closed_by` 与绑定声明的 `human_account` 比对）与能力声明不变。
+
+实测（原生 Buck 测试，锁定的 Gitea 1.27.3 + tea 0.15.1，私有回环仓库）：
+
+| 观察 | 对设计的意思 |
+| --- | --- |
+| `GET /repos/{o}/{r}/issues/{n}` 的载荷没有 `closed_by`；完整键集为 assets、assignee(s)、body、closed_at、comments、content_version、created_at、due_date、html_url、id、is_locked、labels、milestone、number、original_author(_id)、pin_order、projects、pull_request、ref、repository、state、time_estimate、title、updated_at、url、user，唯一的人字段 `user` 是作者 | 不能假定平台带得回关闭者；归属要另找来源 |
+| 钉定 commit 的 `modules/convert/issue.go` 通篇没有 `ClosedBy` | 上述缺失是转换层行为，不是本次实例配置所致 |
+| `GET /repos/{o}/{r}/issues/{n}/timeline` 的 `{"type":"close"}` 条目带 `user.login`；同一次「人用自己账号关闭」取回的就是该人 | 关闭者从时间线补读；只对已关闭且缺字段的卡发起，仍是条件读取 |
+| 关闭仍有未关闭依赖的卡被拒，HTTP 412（`CloseIssue` 分支，`routers/api/v1/repo/issue.go`） | 412 与 404/409 语义不可互推；测试与运维要先解除阻塞依赖 |
+| `PATCH …/issues/{n}` 只带 `{"state":"closed"}`、不带 `content_version`，在无未关闭依赖的卡上成功 | 与 09-17「不带该字段则无条件覆盖」一致；状态编辑不需要版本锁 |
+| 以另一个账号的凭据走适配器写回被拒（`PLATFORM_CHANGED`，冻结绑定与客户端身份不一致） | 「人在平台上动手」只能用与该人凭据绑定的外带调用，不能用控制面账号的适配器代写 |
+| 仅设 `GITEA_INSTANCE_URL`/`GITEA_TOKEN`、没有 tea 登录配置与本地远端时，`tea issues close` 不可用（`-repo` 不是其旗标） | 外带写回统一走 `tea api` 形态，与适配器同一条通路 |
+
+以上均为所测动作的观察，不外推到其它实例配置或其它账号组合。
+

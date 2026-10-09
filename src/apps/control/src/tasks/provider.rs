@@ -283,7 +283,16 @@ impl Client {
         )?;
         match raw {
             None => Ok(None),
-            Some(raw) => {
+            Some(mut raw) => {
+                // Gitea 1.27 的 issue 载荷不带关闭者（实测），已关闭且缺该字段时补读时间线，
+                // 只补这一个字段；其余投影仍以 issue 载荷为准。
+                if matches!(self, Self::Gitea(_))
+                    && raw.get("closed_by").is_none()
+                    && raw["state"] == json!("closed")
+                    && let Some(closer) = self.closer(src, original.number)?
+                {
+                    raw["closed_by"] = closer;
+                }
                 let c = normalize(src, raw)?;
                 if c.entity != original.entity {
                     return Err(reject(
@@ -295,6 +304,18 @@ impl Client {
                 Ok(Some(c))
             }
         }
+    }
+
+    /// 「谁关闭的」在 Gitea 上只出现在 issue 时间线的 `close` 事件里。
+    fn closer(&self, src: &Source, number: u64) -> Result<Option<Value>> {
+        let path = format!("repos/{}/issues/{number}/timeline", src.platform.full_name);
+        let Some(entries) = self.api("GET", &path, None)? else {
+            return Ok(None);
+        };
+        Ok(entries
+            .as_array()
+            .and_then(|list| list.iter().rev().find(|e| e["type"] == json!("close")))
+            .and_then(|e| e.get("user").cloned()))
     }
     #[cfg(test)]
     pub fn effect(&self, src: &Source, e: &store::EffectIntent, send: bool) -> Result<Card> {

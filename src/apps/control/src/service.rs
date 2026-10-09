@@ -508,7 +508,7 @@ impl Control for ControlService {
                 } else if operation.starts_with("room.") {
                     crate::chat::preview(&store, &services, &root, &operation, &payload)
                 } else if operation.starts_with("task.") {
-                    crate::tasks::preview(&store, &services, &root, &operation, &payload)
+                    crate::tasks::preview(&store, &services, &root, &actor, &operation, &payload)
                 } else {
                     crate::repositories::preview(&store, &operation, &payload)
                 }

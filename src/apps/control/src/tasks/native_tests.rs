@@ -151,7 +151,7 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
         .unwrap()
         .to_owned();
     let client = Client::Gitea(Hosted::fixture(
-        tea_copy,
+        tea_copy.clone(),
         url.clone(),
         "owner".into(),
         token,
@@ -165,7 +165,7 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
         .unwrap()
         .unwrap();
     let mut src = super::tests::src();
-    src.platform.instance = url;
+    src.platform.instance = url.clone();
     src.platform.stable_id = id(&repository["id"]).unwrap();
     src.platform.account_id = id(&client.required("user").unwrap()["id"]).unwrap();
     src.board_scope_stable_id = src.platform.stable_id.clone();
@@ -256,6 +256,70 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
             .len(),
         1
     );
+    // 「人在平台上关闭」在真实 Gitea 上带得回演员：第 7 包的 provider Done 映射要靠它。
+    let out = admin(&[
+        "create",
+        "--username",
+        "human",
+        "--email",
+        "human@localhost",
+        "--random-password",
+        "--must-change-password=false",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = admin(&[
+        "generate-access-token",
+        "--username",
+        "human",
+        "--token-name",
+        "fixture-human",
+        "--scopes",
+        "read:user,write:repository,write:issue",
+        "--raw",
+    ]);
+    assert!(out.status.success());
+    let human_token = String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .find(|s| s.len() == 40 && s.bytes().all(|c| c.is_ascii_hexdigit()))
+        .unwrap()
+        .to_owned();
+    client
+        .api(
+            "PUT",
+            "repos/owner/repo/collaborators/human",
+            Some(json!({"permission": "write"})),
+        )
+        .unwrap();
+    // 人用自己的账号在平台上关闭：先解除阻塞依赖（Gitea 拒绝关闭仍有未关闭依赖的卡），
+    // 再由人关闭。适配器读回卡片时必须带回 `closed_by`，第 7 包的供应端 Done 映射靠它。
+    client
+        .api(
+            "DELETE",
+            &format!("repos/owner/repo/issues/{}/dependencies", first.number),
+            Some(json!({"owner":"owner","repo":"repo","index":dep["number"]})),
+        )
+        .unwrap();
+    let human = Client::Gitea(Hosted::fixture(
+        tea_copy,
+        url.clone(),
+        "human".into(),
+        human_token,
+    ));
+    human
+        .api(
+            "PATCH",
+            &format!("repos/owner/repo/issues/{}", first.number),
+            Some(json!({"state": "closed"})),
+        )
+        .unwrap();
+    let closed = client.read_card(&src, &first).unwrap().unwrap();
+    assert_eq!(closed.stage, "closed");
+    assert_eq!(closed.raw["closed_by"]["login"], json!("human"));
     let delete = super::tests::effect("task.delete", json!({"card":card}));
     assert!(client.effect(&src, &delete, true).unwrap().tombstone);
     assert!(client.effect(&src, &delete, false).unwrap().tombstone);

@@ -123,6 +123,55 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
         if same_card && t.needs_attention == old_attention && t.pending_contract == old_pending {
             continue;
         }
+        // 供应端 Done：绑定声明了归属 human 的账号，且卡片由它从非终态推进到终态，
+        // 归档一次「完成 Task」请求。HCTL 服务账号写回、未知 actor、只见当前 Done、
+        // 重复或迟到的投递都不产生新请求（同一幂等键落到同一条记录）。
+        if let (Some(card), Some(account)) = (found, src.human_account.as_deref())
+            && !card.tombstone
+            && terminal_stage(&card.stage)
+            && old_card.is_some_and(|c| !terminal_stage(&c.stage))
+            && closer_of(card).as_deref() == Some(account)
+            && account != src.platform.account_id
+        {
+            let tuple = json!([
+                current.binding_revision,
+                card.entity.immutable_external_entity_id,
+                t.id,
+                account,
+                old_card.map(|c| c.stage.clone()).unwrap_or_default(),
+                card.stage,
+                card.remote_revision,
+            ]);
+            let idempotency_key =
+                foundation::bytes_sha256(foundation::canonical_json(&tuple)?.as_slice());
+            let request_key = key(
+                Scope::Project(t.project_id.clone()),
+                COMPLETION_REQUEST_KIND,
+                &idempotency_key,
+            );
+            if store.get(&request_key)?.is_none() {
+                let request = CompletionRequest {
+                    request_id: idempotency_key.clone(),
+                    task_id: t.id.clone(),
+                    project_id: t.project_id.clone(),
+                    repo_id: src.repo_id.clone(),
+                    source_id: src.id.clone(),
+                    binding: reference(&sr),
+                    entity: card.entity.immutable_external_entity_id.clone(),
+                    provider_actor: account.to_owned(),
+                    stage_before: old_card.map(|c| c.stage.clone()).unwrap_or_default(),
+                    stage_after: card.stage.clone(),
+                    remote_revision: card.remote_revision.clone(),
+                    idempotency_key: idempotency_key.clone(),
+                    snapshot: reference(&record),
+                    observed_at: snap.observed_at,
+                    state: "pending".into(),
+                    last_error: None,
+                };
+                scopes.push(request_key.scope.clone());
+                changes.push(value_record(request_key, 1, &request)?);
+            }
+        }
         t.snapshot = Some(reference(&record));
         t.state_version += 1;
         // Task's contract/title/lifecycle are governance, not overwritten by card fields.
@@ -437,6 +486,23 @@ pub fn board(store: &Store, project_id: &str, source_id: &str) -> Result<Value> 
     )
 }
 
+/// Action 声明的项目作用域；不带项目的动作返回 `None`。
+pub fn project_id_for_action(action: &Action) -> Option<&str> {
+    match action {
+        Action::Attach { project_id, .. }
+        | Action::Claim { project_id, .. }
+        | Action::Create { project_id, .. }
+        | Action::Adopt { project_id, .. }
+        | Action::Update { project_id, .. }
+        | Action::Move { project_id, .. }
+        | Action::Cancel { project_id, .. }
+        | Action::Complete { project_id, .. }
+        | Action::Reopen { project_id, .. }
+        | Action::DeleteCard { project_id, .. } => Some(project_id.as_str()),
+        _ => None,
+    }
+}
+
 pub fn source_id_for_action(store: &Store, action: &Action) -> Result<Option<(String, String)>> {
     Ok(match action {
         Action::Attach {
@@ -494,6 +560,67 @@ pub fn source_id_for_action(store: &Store, action: &Action) -> Result<Option<(St
         Action::Refresh { repo_id, source_id } => Some((repo_id.clone(), source_id.clone())),
         _ => None,
     })
+}
+
+/// 归档请求的状态推进（`accepted` / `declined`）；重复或迟到的观测只更新快照。
+pub fn mark_completion_request(
+    store: &mut Store,
+    project: &str,
+    request_id: &str,
+    state: &str,
+    error: Option<Value>,
+) -> Result<()> {
+    let k = key(
+        Scope::Project(project.into()),
+        COMPLETION_REQUEST_KIND,
+        request_id,
+    );
+    let record = required(store, &k)?;
+    let mut request: CompletionRequest = decode(&record)?;
+    request.state = state.into();
+    request.last_error = error;
+    let actor = observer(
+        Reference {
+            key: k.clone(),
+            version: Version::State(record.version),
+        },
+        vec![k.scope.clone()],
+    );
+    let value = serde_json::to_value(&request)?;
+    let cmd = store::Command {
+        command_id: format!("task-completion-request:{}", k.id),
+        idempotency_key: format!("task-completion-request:{}", k.id),
+        actor: actor.0.clone(),
+        target: k.clone(),
+        expected: store::Expected::Exact(Version::State(record.version)),
+        binding: Reference {
+            key: k.clone(),
+            version: Version::State(record.version),
+        },
+        input_digest: store::Command::digest_input("task.completion_request", &value)?,
+        operation: "task.completion_request".into(),
+        input: value,
+    };
+    store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        tx.put(&value_record(k.clone(), record.version + 1, &request)?)?;
+        Ok(json!({"request":k.id}))
+    })?;
+    Ok(())
+}
+
+/// 供应端把卡片推进到的终态名（issue 源只有 open/closed）。
+fn terminal_stage(stage: &str) -> bool {
+    matches!(stage, "closed" | "done" | "completed")
+}
+
+/// 卡片的关闭者：Gitea 报 `username`，GitHub 报 `login`。
+fn closer_of(card: &Card) -> Option<String> {
+    let closed = card.raw.get("closed_by")?;
+    closed
+        .get("login")
+        .or_else(|| closed.get("username"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 pub fn content_digest(snap: &Snapshot) -> Result<String> {
