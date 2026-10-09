@@ -234,6 +234,16 @@ hctl2-tool integrate --repo /path/to/repo \
 
 `--strategy` 为 `fast-forward` 或 `merge-commit`。`fast-forward` 要求目标头是候选提交的祖先（目标可以已经沿候选这条线前移；分叉的目标拒绝），候选已经可从目标头到达时不写、回 `already_applied`。目标 ref 正被任一工作树检出时默认拒绝；`--allow-checked-out-target` 才放行，且该开关绑在幂等键上。成功回读后 `status` 为 `applied` 或 `already_applied`。`hctl2-tool` 把预备提交钉在 `refs/hctl2/integrations/` 下作重试缓存，失败也不自动删；P1 不加清理子命令，P2 control 在意图结束且结果仍有可达副本时负责显式清理。
 
+### 从平台的 Git 回读目标 ref
+
+```bash
+HCTL2_GIT_USER=<账号> HCTL2_GIT_TOKEN=<令牌> hctl2-tool readback \
+  --path /path/to/mirror.git --remote http://127.0.0.1:3001/owner/name.git \
+  --ref refs/heads/main --commit <merge-sha>
+```
+
+`--path` 是调用方自己的仓库（裸仓库即可），`--ref` 被原名拉进去（强制更新，带 `--no-tags`）。记录 `hctl2.readback.v1` 报远端与本地读到的头、头的树、`--commit` 是否存在、它的树与父提交、以及目标头的历史是否包含它（`contains`）；远端没有这个 ref 时头为 `null`。只报事实，不判断集成是否成功。凭据只从 `HCTL2_GIT_USER` / `HCTL2_GIT_TOKEN` 两个环境变量走 Git 自己的每进程 credential helper，不写配置、不进 URL；没有这两个变量就按匿名拉取。control 对平台目标签 Integration Receipt 之前就是用它核合并提交与目标头。
+
 ### 等待外部事实
 
 `wait` 接受绝对 Unix 秒截止时间与一个事实：

@@ -171,3 +171,23 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 本机原生 Buck 测试中，间隔超过一秒后为卡添加阻塞依赖，该卡 `updated_at` 从 `2026-09-28T02:48:55+08:00` 变为 `2026-09-28T02:48:57+08:00`；不能假定 API 时间都以 Z 结尾。测试同时验证带时区的 `since`、评论回读与 409 状态码。这只证明所测添加动作，不推导全部依赖编辑、删除都更新两端时间；周期完整核对仍保留。
 
 拒绝结果不按「所有 4xx」归类：401/403/404 的拒绝响应及单独正文条件更新的 409 可保留原意图、发送前精确回读与平台响应，结束为失败；多字段 PATCH 的 409 仍可能已改过标题，不证明整体未生效。超时、5xx 与未核实的错误只按原目标回读。子进程夹具覆盖明确拒绝、可能部分写入与确认丢失，不能把夹具结果说成真实并发故障实验。
+
+## 复核记录
+
+### 2026-10-07 · 合并与保护条件回读的实测（第 6 包集成一半）
+
+对着随包的 Gitea 1.27.3（演示 2 的私有实例）用随包 `tea api` 实测，结果进了绑定的能力声明（`remote_merge`、`protection_readback` 对本地平台声明为真）与 control 的适配器：
+
+- `GET repos/{o}/{r}/branches/main` → 200，`commit.id` 是分支头；`GET repos/{o}/{r}/branch_protections/main` 在未保护时 404（适配器记为「未保护」快照），保护字段按 1.27 的 `BranchProtection` 读：`enable_push`、`enable_status_check` + `status_check_contexts`、`required_approvals`、`block_on_outdated_branch`。
+- `POST repos/{o}/{r}/pulls/{index}/merge` 带 `head_commit_id`：头不符 → **409 `head out of date`**（源头匹配生效，什么都没合）；刚建的评审请求在可合性检查完成前 → **405 `Please try again later`**（不是终态，稍后同一请求可再试）；检查完成后 `Do: fast-forward-only` → **200**，回读 `merged: true`、`merge_commit_sha` 等于候选提交、分支头等于候选提交；再合一次 → 405 `The PR is already merged`。
+- **REST 接口不给树 ID**：`GET git/commits/{sha}` 的 `commit.tree.sha` 与 `GET git/trees/{sha}` 的 `sha` 都回传提交 ID。所以平台目标的 Receipt 只在快进（合并提交就是候选）时记准入的结果树，合并提交的树记为未读。
+- 评审线程、正式评审、评论正文回读仍未实测，声明照旧为假。
+
+**同日补（#390 评审后）· 保护条件要按分支读生效规则，不按分支名查规则。** 对同一实例再测（受保护分支的证据，上面只测了未保护的 404）：
+- 未保护时 `GET branches/main` → `protected: false`、`effective_branch_protection_name: ""`。
+- `POST branch_protections` 建一条通配规则 `rule_name: "ma*"`（`enable_push: false`、`enable_status_check: true` + `["canary"]`、`required_approvals: 1`、`block_on_outdated_branch: true`、`block_admin_merge_override: true`）→ 201，返回的规则共 36 个字段（含 `approvals_whitelist_*`、`merge_whitelist_*`、`bypass_allowlist_*`、`enable_force_push*`、`protected_file_patterns`、`priority`、`created_at`、`updated_at` 等）。
+- 规则生效后 `GET branches/main` → `protected: true`、`effective_branch_protection_name: "ma*"`、`required_approvals: 1`、`status_check_contexts: ["canary"]`；**`GET branch_protections/main` → 404**（按名查规则，没有叫 `main` 的规则）；`GET branch_protections/ma%2A` → 200，`rule_name: "ma*"`、`branch_name: ""`、`priority: 1`。
+- `DELETE branch_protections/ma%2A` → 204，`GET branches/main` 回到 `protected: false`。
+- 结论进适配器：先读分支记录，受保护就按 `effective_branch_protection_name`（一段路径、百分号编码）读规则；受保护却读不到规则记 `PROTECTION_UNREAD`，不记未保护。快照冻结整条规则（除两个时间戳），不只挑几个字段。
+- 这次实测没有再跑合并：`remote_merge` 的依据仍是上面那次快进合并；合并提交的树与「目标头是否承载合并提交」改由 `hctl2-tool readback` 从 Git 读，不再依赖 REST。
+

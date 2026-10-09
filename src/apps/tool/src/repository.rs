@@ -355,7 +355,7 @@ fn remotes(git: &Git, repository: &Repository) -> Result<Vec<Value>, ToolError> 
     Ok(values)
 }
 
-fn redact_remote_url(url: &str) -> String {
+pub(crate) fn redact_remote_url(url: &str) -> String {
     if let Some((scheme, remainder)) = url.split_once("://") {
         let boundary = remainder.find(['/', '?', '#']).unwrap_or(remainder.len());
         let (authority, suffix) = remainder.split_at(boundary);
