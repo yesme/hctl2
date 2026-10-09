@@ -1051,7 +1051,7 @@ fn completion_preview_dies_when_the_task_moves_after_preview() {
     );
     let actor = completing_actor("A");
     let plan = prepare_as(
-        &mut e.store,
+        &e.store,
         &actor,
         Input {
             key: "complete-stale".into(),

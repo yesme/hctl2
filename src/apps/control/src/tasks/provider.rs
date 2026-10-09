@@ -314,7 +314,7 @@ impl Client {
         };
         Ok(entries
             .as_array()
-            .and_then(|list| list.iter().filter(|e| e["type"] == json!("close")).last())
+            .and_then(|list| list.iter().rev().find(|e| e["type"] == json!("close")))
             .and_then(|e| e.get("user").cloned()))
     }
     #[cfg(test)]
