@@ -51,6 +51,20 @@ pub(crate) fn preview(
     let repo_id = field(payload, "repo_id")?;
     let intent_id = field(payload, "intent_id")?;
     let intent = access(shared, |s| domain::get(s, repo_id, intent_id))?;
+    // The client names the round it looked at; a newer one wants a fresh look.
+    if payload["round"]
+        .as_u64()
+        .is_some_and(|round| round != intent.round)
+    {
+        return Err(reject(
+            "FROZEN_INPUT_CHANGED",
+            format!(
+                "the intent is at round {}, not the one requested",
+                intent.round
+            ),
+            "preview_again",
+        ));
+    }
     if intent.state != State::PendingHuman {
         return Err(reject(
             "INTENT_NOT_PENDING_HUMAN",
@@ -64,6 +78,7 @@ pub(crate) fn preview(
     Ok(json!({
         "repo_id": repo_id,
         "intent_id": intent_id,
+        "intent_version": intent.version,
         "change_set_id": intent.change_set_id,
         "change_set_revision_id": intent.target.change_set_revision_id,
         "round": intent.round,
@@ -84,9 +99,24 @@ pub(crate) fn submit(
     let payload: Value = serde_json::from_slice(&request.payload)?;
     let repo_id = field(&payload, "repo_id")?;
     let intent_id = field(&payload, "intent_id")?;
+    let Some(round) = details["round"].as_u64() else {
+        return Err(reject(
+            "INVALID_INPUT",
+            "review publish preview names no round",
+            "rebuild_preview",
+        ));
+    };
+    let Some(revision_id) = details["change_set_revision_id"].as_str() else {
+        return Err(reject(
+            "INVALID_INPUT",
+            "review publish preview names no revision",
+            "rebuild_preview",
+        ));
+    };
     if request.operation != OPERATION
         || details["intent_id"] != json!(intent_id)
         || details["repo_id"] != json!(repo_id)
+        || request.command_id != command_id(intent_id, round)
     {
         return Err(reject(
             "INVALID_INPUT",
@@ -94,10 +124,25 @@ pub(crate) fn submit(
             "rebuild_preview",
         ));
     }
+    // The release is bound to the revision and round the human looked at.
     let intent = access(shared, |s| {
-        domain::release(s, actor, &request.command_id, repo_id, intent_id)
+        domain::release(
+            s,
+            actor,
+            &request.command_id,
+            repo_id,
+            intent_id,
+            revision_id,
+            round,
+        )
     })?;
     Ok(json!({"intent_id": intent.intent_id, "repo_id": intent.repo_id, "state": intent.state}))
+}
+
+/// One command identity per publish round: the same round replays, the next round is a new
+/// authorization. The CLI builds the same string from `review.show`.
+pub(crate) fn command_id(intent_id: &str, round: u64) -> String {
+    format!("review-publish:{intent_id}:{round}")
 }
 
 pub(crate) fn query(shared: &Shared, kind: &str, payload: &Value) -> Result<Value> {
@@ -231,6 +276,12 @@ pub(crate) fn drive_with(
     connect: &mut dyn FnMut(&Registration) -> Result<(Connection, Credential)>,
 ) -> Result<()> {
     let (intent, _) = access(shared, |s| domain::begin(s, repo_id, intent_id))?;
+    let round = Round {
+        repo_id: repo_id.into(),
+        intent_id: intent_id.into(),
+        revision_id: intent.target.change_set_revision_id.clone(),
+        round: intent.round,
+    };
     let registration = access(shared, |s| require_active(s, repo_id))?;
     let observed = registration.observed.clone().ok_or_else(|| {
         reject(
@@ -239,6 +290,21 @@ pub(crate) fn drive_with(
             "confirm_repo",
         )
     })?;
+    // The intent was authorized under one platform binding version; a rebind since then
+    // is a new authorization, not a new endpoint for this one.
+    let binding_version = access(shared, |s| {
+        Ok(s.get(&repo::binding(repo_id).key)?.map(|r| r.version))
+    })?;
+    if binding_version != Some(intent.binding_version as i64) {
+        let outcome = Outcome::Attention(Attention {
+            code: "BINDING_CHANGED".into(),
+            message: "the Repo's platform binding changed since this publish was authorized; nothing was sent".into(),
+            recovery_action: "authorize_a_new_dispatch_under_the_current_binding".into(),
+            details: json!({"authorized": intent.binding_version, "current": binding_version}),
+        });
+        access(shared, |s| round.confirm(s, outcome))?;
+        return Ok(());
+    }
     let Some(local) = registration.prepared.local.as_ref() else {
         let outcome = Outcome::Failed(Attention {
             code: "PUSH_SOURCE_MISSING".into(),
@@ -247,9 +313,7 @@ pub(crate) fn drive_with(
             recovery_action: "register_repo_from_local_repository".into(),
             details: Value::Null,
         });
-        access(shared, |s| {
-            domain::confirm(s, repo_id, intent_id, outcome, now())
-        })?;
+        access(shared, |s| round.confirm(s, outcome))?;
         return Ok(());
     };
     let site = Site {
@@ -258,19 +322,20 @@ pub(crate) fn drive_with(
         full_name: observed.full_name.clone(),
     };
     let (connection, credential) = connect(&registration)?;
-    let outcome = publish(
-        shared,
-        repo_id,
-        intent_id,
-        intent,
-        &site,
-        &connection,
-        &credential,
-    )?;
+    // A round superseded underneath this pass (a newer revision admitted before the worker
+    // took it) refuses every persisted step with FROZEN_INPUT_CHANGED; the pass ends there
+    // and the next tick reads the intent afresh.
+    let outcome = match publish(shared, intent, &round, &site, &connection, &credential) {
+        Ok(outcome) => outcome,
+        Err(error) if error.code == "FROZEN_INPUT_CHANGED" => return Ok(()),
+        Err(error) => return Err(error),
+    };
     if let Some(outcome) = outcome {
-        access(shared, |s| {
-            domain::confirm(s, repo_id, intent_id, outcome, now())
-        })?;
+        match access(shared, |s| round.confirm(s, outcome)) {
+            Ok(_) => {}
+            Err(error) if error.code == "FROZEN_INPUT_CHANGED" => {}
+            Err(error) => return Err(error),
+        }
     }
     Ok(())
 }
@@ -279,17 +344,39 @@ fn now() -> u64 {
     crate::dispatch::now_ms()
 }
 
+/// The intent, revision and round one worker pass is about; every persisted step names them.
+struct Round {
+    repo_id: String,
+    intent_id: String,
+    revision_id: String,
+    round: u64,
+}
+
+impl Round {
+    fn confirm(&self, store: &mut Store, outcome: Outcome) -> Result<domain::Intent> {
+        domain::confirm(
+            store,
+            &self.repo_id,
+            &self.intent_id,
+            &self.revision_id,
+            self.round,
+            outcome,
+            now(),
+        )
+    }
+}
+
 /// Both stages with readback. `Ok(None)` means a stage was confirmed but the round is not
 /// finished and nothing needs recording beyond what the stage recorded.
 fn publish(
     shared: &Shared,
-    repo_id: &str,
-    intent_id: &str,
     intent: domain::Intent,
+    round: &Round,
     site: &Site,
     connection: &dyn PlatformTarget,
     credential: &Credential,
 ) -> Result<Option<Outcome>> {
+    let (repo_id, intent_id) = (round.repo_id.as_str(), round.intent_id.as_str());
     // The commit the branch will carry: frozen once per revision, before anything leaves.
     let commit = match intent.target.commit_sha.clone() {
         Some(commit) => commit,
@@ -306,7 +393,14 @@ fn publish(
             match crate::integration::result_commit(&site.local_path, &source)? {
                 Ok(commit) => {
                     access(shared, |s| {
-                        domain::freeze_commit(s, repo_id, intent_id, &commit)
+                        domain::freeze_commit(
+                            s,
+                            repo_id,
+                            intent_id,
+                            &round.revision_id,
+                            round.round,
+                            &commit,
+                        )
                     })?;
                     commit
                 }
@@ -340,7 +434,14 @@ fn publish(
                 ))));
             }
             access(shared, |s| {
-                domain::mark_push_dispatched(s, repo_id, intent_id, true)
+                domain::mark_push_dispatched(
+                    s,
+                    repo_id,
+                    intent_id,
+                    &round.revision_id,
+                    round.round,
+                    true,
+                )
             })?;
             let pushed = git.push_ref(
                 &site.local_path,
@@ -362,7 +463,14 @@ fn publish(
                 // no-write, anything else is someone else's branch now.
                 if head == expected {
                     access(shared, |s| {
-                        domain::mark_push_dispatched(s, repo_id, intent_id, false)
+                        domain::mark_push_dispatched(
+                            s,
+                            repo_id,
+                            intent_id,
+                            &round.revision_id,
+                            round.round,
+                            false,
+                        )
                     })?;
                     let detail = match pushed {
                         Ok(PushOutcome::Unknown(text)) => text,
@@ -384,7 +492,15 @@ fn publish(
             }
         }
         access(shared, |s| {
-            domain::confirm_push(s, repo_id, intent_id, &commit, now())
+            domain::confirm_push(
+                s,
+                repo_id,
+                intent_id,
+                &round.revision_id,
+                round.round,
+                &commit,
+                now(),
+            )
         })?;
     }
 
@@ -426,19 +542,36 @@ fn publish(
                     details: json!({"recorded": intent.review.index, "found": request.index}),
                 })));
             }
-            // A refused update keeps the request as it is; the mapping still holds. Only
-            // an unreachable platform stops the round here.
+            // The audit association is part of publishing: a refused update leaves the round
+            // open with the reason, to be retried once the platform lets it through.
             if let Err(error) =
                 connection.update_review_request(&site.full_name, request.index, &title, &body)
-                && error.code == "PLATFORM_UNAVAILABLE"
             {
-                return Ok(Some(Outcome::Attention(unavailable(error))));
+                if error.code == "PLATFORM_UNAVAILABLE" {
+                    return Ok(Some(Outcome::Attention(unavailable(error))));
+                }
+                return Ok(Some(Outcome::Attention(Attention {
+                    code: "AUDIT_UPDATE_REJECTED".into(),
+                    message: format!(
+                        "the platform refused to update the review request's title and body: {}",
+                        error.message
+                    ),
+                    recovery_action: "inspect_platform_permissions_then_retry_same_intent".into(),
+                    details: json!({"platform_code": error.code, "index": request.index}),
+                })));
             }
             request
         }
         None => {
             access(shared, |s| {
-                domain::mark_review_dispatched(s, repo_id, intent_id, true)
+                domain::mark_review_dispatched(
+                    s,
+                    repo_id,
+                    intent_id,
+                    &round.revision_id,
+                    round.round,
+                    true,
+                )
             })?;
             let created = connection.create_review_request(
                 &site.full_name,
@@ -455,7 +588,14 @@ fn publish(
                 }
                 Err(error) => {
                     access(shared, |s| {
-                        domain::mark_review_dispatched(s, repo_id, intent_id, false)
+                        domain::mark_review_dispatched(
+                            s,
+                            repo_id,
+                            intent_id,
+                            &round.revision_id,
+                            round.round,
+                            false,
+                        )
                     })?;
                     return Ok(Some(Outcome::Attention(Attention {
                         code: "REVIEW_REQUEST_REJECTED".into(),

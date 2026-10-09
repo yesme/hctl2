@@ -57,10 +57,32 @@ async fn execute(command: ReviewCommand, root: &Path, as_json: bool) -> Result<(
                 .await;
         }
     };
-    let payload = serde_json::to_vec(&json!({"repo_id": repo_id, "intent_id": intent_id}))
-        .map_err(|e| e.to_string())?;
     let mut client = client(root).await?;
-    let command_id = format!("review-publish:{intent_id}");
+    // The command identity is per publish round: the same round replays, the next round
+    // is a new authorization. The current round comes from the intent itself.
+    let shown = client
+        .query(QueryRequest {
+            protocol: Some(Protocol {
+                version: PROTOCOL.into(),
+            }),
+            kind: "review.show".into(),
+            payload: serde_json::to_vec(&json!({"repo_id": repo_id, "intent_id": intent_id}))
+                .map_err(|e| e.to_string())?,
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .into_inner();
+    if let Some(error) = shown.error {
+        task::present(Some(error), as_json);
+        return Err("review intent could not be read".into());
+    }
+    let round = bytes_json(&shown.payload)?["intent"]["round"]
+        .as_u64()
+        .ok_or("review intent has no round")?;
+    let payload =
+        serde_json::to_vec(&json!({"repo_id": repo_id, "intent_id": intent_id, "round": round}))
+            .map_err(|e| e.to_string())?;
+    let command_id = format!("review-publish:{intent_id}:{round}");
     if let Some(preview_token) = token {
         let result = client
             .submit(SubmitRequest {

@@ -32,7 +32,7 @@ pub(crate) fn actor() -> TrustedActor {
 pub(crate) const TEA: &str = r#"#!/bin/sh
 # $0.state/: protection.json (absent = unprotected), rule_name (effective rule the branch
 # record names), rule_path (the one path segment the rule answers under), pr_state, pr_head,
-# pr_base, merge_sha, posts; switches: fail_merge (405), lose_merge (merge, then die without
+# pr_base, merge_sha, posts; switches: fail_merge (405), refuse_update (403 on PATCH), lose_merge (merge, then die without
 # an HTTP line), lose_unmerged (die without merging or an HTTP line), drift_after_merge.
 # $0.state/../platform.git is the platform's Git; merges are real commits there.
 S="$0.state"; R="$S/../platform.git"
@@ -81,6 +81,7 @@ case "$method $path" in
   "PATCH "*/pulls/*)
     printf x >> "$S/updates"
     if [ -f "$S/down" ]; then exit 1; fi
+    if [ -f "$S/refuse_update" ]; then printf 'HTTP/1.1 403 Forbidden\n' >&2; printf '{"message":"user is not allowed to edit this pull request"}'; exit 1; fi
     title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
     printf 'HTTP/1.1 201 Created\n' >&2; pr_json ;;
   "POST "*/pulls/*/merge)
@@ -168,6 +169,7 @@ case "$method $path" in
   "PATCH "*/pulls/*)
     printf x >> "$S/updates"
     if [ -f "$S/down" ]; then printf 'gh: connection refused\n' >&2; exit 1; fi
+    if [ -f "$S/refuse_update" ]; then printf '{"message":"Resource not accessible by integration"}'; printf 'gh: Resource not accessible by integration (HTTP 403)\n' >&2; exit 1; fi
     title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
     pr_json ;;
   "PUT "*/pulls/*/merge)

@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use store::{Store, TrustedActor};
 use tokio::sync::Mutex;
 
-use super::{Shared, drive_with};
+use super::{Shared, command_id, drive_with};
 use crate::integration::Connection;
 use crate::integration::fixture::{Kind, Platform, actor, temp};
 
@@ -230,6 +230,60 @@ fn admit(
     .unwrap()
 }
 
+/// The ChangeSet as the Store holds it now.
+fn current_set(store: &Store, change_set_id: &str) -> changeset::ChangeSet {
+    serde_json::from_value(
+        store
+            .list("changeset")
+            .unwrap()
+            .into_iter()
+            .find_map(|r| match r.data {
+                store::RecordData::Value { value }
+                    if value["change_set_id"] == json!(change_set_id) =>
+                {
+                    Some(value)
+                }
+                _ => None,
+            })
+            .unwrap(),
+    )
+    .unwrap()
+}
+
+/// The executor produces a second revision on the same base (a new tree on `base`; its own
+/// commit is the packaging because base and tree match) and it is admitted under the same
+/// policy. Returns that commit and the intent as the admission wrote it.
+fn second_revision(platform: &Platform, s: &Scenario, content: &str) -> (String, domain::Intent) {
+    let local = platform.local_clone();
+    git(&local, &["switch", "-q", "-C", "work", &platform.base]);
+    std::fs::write(local.join("a"), content).unwrap();
+    git(&local, &["commit", "-q", "-am", content]);
+    let commit = git(&local, &["rev-parse", "HEAD"]);
+    let tree = git(&local, &["rev-parse", "HEAD^{tree}"]);
+    let first = shown(s)["intent"]["target"]["change_set_revision_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut guard = s.shared.blocking_lock();
+    let store = guard.as_mut().unwrap();
+    let set = current_set(store, &s.change_set_id);
+    let key = format!("assoc-{}", &tree[..8]);
+    let (_, intent) = admit(store, &set, &s.policy, &tree, Some(&first), &key);
+    (commit, intent.unwrap())
+}
+
+/// The revision and round the intent is at now, for the steps that must name them.
+fn at(s: &Scenario) -> (String, u64) {
+    let shown = shown(s);
+    (
+        shown["intent"]["target"]["change_set_revision_id"]
+            .as_str()
+            .unwrap()
+            .to_owned(),
+        shown["intent"]["round"].as_u64().unwrap(),
+    )
+}
+
 fn drive(platform: &Platform, s: &Scenario) -> repo::Result<()> {
     drive_with(&s.shared, &s.repo_id, &s.intent_id, &mut |_| {
         Ok((platform.connection(), Credential::Anonymous))
@@ -380,8 +434,26 @@ fn a_lost_confirmation_between_the_two_stages_recovers_by_readback_with_one_requ
     {
         let mut guard = s3.shared.blocking_lock();
         let store = guard.as_mut().unwrap();
-        domain::freeze_commit(store, &s3.repo_id, &s3.intent_id, &platform3.candidate).unwrap();
-        domain::mark_push_dispatched(store, &s3.repo_id, &s3.intent_id, true).unwrap();
+        let (rev, round) = {
+            let shown = domain::show(store, &s3.repo_id, &s3.intent_id).unwrap();
+            (
+                shown["intent"]["target"]["change_set_revision_id"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+                shown["intent"]["round"].as_u64().unwrap(),
+            )
+        };
+        domain::freeze_commit(
+            store,
+            &s3.repo_id,
+            &s3.intent_id,
+            &rev,
+            round,
+            &platform3.candidate,
+        )
+        .unwrap();
+        domain::mark_push_dispatched(store, &s3.repo_id, &s3.intent_id, &rev, round, true).unwrap();
     }
     git(
         &platform3.git_dir,
@@ -418,7 +490,7 @@ fn a_newer_revision_updates_the_same_request_and_a_stale_push_cannot_overwrite_i
     git(&local, &["commit", "-q", "-am", "second"]);
     let second_commit = git(&local, &["rev-parse", "HEAD"]);
     let second_tree = git(&local, &["rev-parse", "HEAD^{tree}"]);
-    // Admitting it under the same policy redirects the intent: round 2, same request.
+    // Admitting it under the same policy opens round 2 of the intent: same request.
     let first_revision = shown(&s)["intent"]["target"]["change_set_revision_id"]
         .as_str()
         .unwrap()
@@ -426,22 +498,7 @@ fn a_newer_revision_updates_the_same_request_and_a_stale_push_cannot_overwrite_i
     {
         let mut guard = s.shared.blocking_lock();
         let store = guard.as_mut().unwrap();
-        let set: changeset::ChangeSet = serde_json::from_value(
-            store
-                .list("changeset")
-                .unwrap()
-                .into_iter()
-                .find_map(|r| match r.data {
-                    store::RecordData::Value { value }
-                        if value["change_set_id"] == json!(s.change_set_id) =>
-                    {
-                        Some(value)
-                    }
-                    _ => None,
-                })
-                .unwrap(),
-        )
-        .unwrap();
+        let set = current_set(store, &s.change_set_id);
         let (_, intent) = admit(
             store,
             &set,
@@ -453,6 +510,7 @@ fn a_newer_revision_updates_the_same_request_and_a_stale_push_cannot_overwrite_i
         let intent = intent.unwrap();
         assert_eq!(intent.state, State::Pending);
         assert_eq!(intent.round, 2);
+        assert!(!intent.started);
         assert_eq!(
             intent.push.confirmed_commit,
             Some(platform.candidate.clone()),
@@ -589,20 +647,397 @@ fn a_policy_that_wants_a_human_holds_the_intent_until_released() {
             permission_scope: vec![store::Scope::Control],
             authority: None,
         });
+        let rev = preview["change_set_revision_id"].as_str().unwrap();
         assert_eq!(
-            domain::release(store, &reducer, "release-x", &s.repo_id, &s.intent_id)
-                .unwrap_err()
-                .code,
+            domain::release(
+                store,
+                &reducer,
+                "release-x",
+                &s.repo_id,
+                &s.intent_id,
+                rev,
+                1
+            )
+            .unwrap_err()
+            .code,
             "PERMISSION_DENIED"
         );
-        let released =
-            domain::release(store, &actor(), "release-1", &s.repo_id, &s.intent_id).unwrap();
-        assert_eq!(released.state, State::Pending);
-        assert_eq!(released.authorizing_actor.principal, "owner");
     }
+    // The release goes through the command envelope the CLI sends: the command identity is
+    // this round's, and the preview's revision and round are what gets released.
+    let released = submit(&s, &preview).unwrap();
+    assert_eq!(released["state"], "pending");
+    assert_eq!(
+        shown(&s)["intent"]["authorizing_actor"]["principal"],
+        "owner"
+    );
+    // Replaying the same round returns the same answer without a second release.
+    assert_eq!(submit(&s, &preview).unwrap()["state"], "pending");
     drive(&platform, &s).unwrap();
     assert_eq!(shown(&s)["intent"]["state"], "published");
     assert_eq!(platform.creates(), 1);
+    // A second revision under the human gate: its own round, its own preview and release,
+    // under this round's command identity — the first round's envelope is refused.
+    let (second_commit, intent) = second_revision(&platform, &s, "second\n");
+    assert_eq!(intent.state, State::PendingHuman);
+    assert_eq!(intent.round, 2);
+    assert_eq!(
+        submit(&s, &preview).unwrap_err().code,
+        "FROZEN_INPUT_CHANGED",
+        "round 1's envelope cannot release round 2"
+    );
+    assert_eq!(
+        super::preview(
+            &s.shared,
+            &actor(),
+            "review.publish",
+            &json!({"repo_id": s.repo_id, "intent_id": s.intent_id, "round": 1}),
+        )
+        .unwrap_err()
+        .code,
+        "FROZEN_INPUT_CHANGED",
+        "a preview of the round that is gone"
+    );
+    let preview2 = super::preview(
+        &s.shared,
+        &actor(),
+        "review.publish",
+        &json!({"repo_id": s.repo_id, "intent_id": s.intent_id, "round": 2}),
+    )
+    .unwrap();
+    assert_eq!(preview2["round"], 2);
+    assert_eq!(submit(&s, &preview2).unwrap()["state"], "pending");
+    drive(&platform, &s).unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(done["intent"]["round"], 2);
+    assert_eq!(
+        done["mappings"][1]["platform_commit_sha"],
+        json!(second_commit)
+    );
+    assert_eq!(platform.creates(), 1);
+    assert_eq!(platform.updates(), 1);
+}
+
+/// The CLI's envelope for releasing what `preview` showed: the same payload, the round's
+/// command identity, the preview's details.
+fn submit(s: &Scenario, preview: &Value) -> repo::Result<Value> {
+    let round = preview["round"].as_u64().unwrap();
+    let request = proto::SubmitRequest {
+        protocol: None,
+        operation: "review.publish".into(),
+        payload: serde_json::to_vec(
+            &json!({"repo_id": s.repo_id, "intent_id": s.intent_id, "round": round}),
+        )
+        .unwrap(),
+        command_id: command_id(&s.intent_id, round),
+        idempotency_key: String::new(),
+        preview_token: String::new(),
+    };
+    super::submit(&s.shared, &actor(), &request, preview)
+}
+
+/// A human who previewed round 1 cannot release what round 2 became; a revision admitted
+/// after a release but before the worker took it needs its own release.
+#[test]
+fn a_release_names_the_round_it_previewed_and_a_successor_needs_its_own() {
+    let temp = temp("human-rounds");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, true);
+    let preview1 = super::preview(
+        &s.shared,
+        &actor(),
+        "review.publish",
+        &json!({"repo_id": s.repo_id, "intent_id": s.intent_id}),
+    )
+    .unwrap();
+    // B is admitted before the human submits: round 1 was never taken, so it is withdrawn
+    // and round 2 waits for a human; the old envelope releases nothing.
+    let (second_commit, intent) = second_revision(&platform, &s, "second\n");
+    assert_eq!(intent.round, 2);
+    assert_eq!(intent.state, State::PendingHuman);
+    assert_eq!(
+        submit(&s, &preview1).unwrap_err().code,
+        "FROZEN_INPUT_CHANGED"
+    );
+    assert_eq!(shown(&s)["intent"]["state"], "pending_human");
+    // Released, then a third revision lands before the worker takes round 2: round 3 is
+    // pending_human again — a release does not carry over to a revision nobody looked at.
+    let preview2 = super::preview(
+        &s.shared,
+        &actor(),
+        "review.publish",
+        &json!({"repo_id": s.repo_id, "intent_id": s.intent_id}),
+    )
+    .unwrap();
+    assert_eq!(submit(&s, &preview2).unwrap()["state"], "pending");
+    let (third_commit, intent) = second_revision(&platform, &s, "third\n");
+    assert_eq!(intent.round, 3);
+    assert_eq!(intent.state, State::PendingHuman);
+    assert!(drive(&platform, &s).is_err(), "nothing to drive");
+    assert!(branch_head(&platform, &format!("hctl2/{}", s.change_set_id)).is_none());
+    let preview3 = super::preview(
+        &s.shared,
+        &actor(),
+        "review.publish",
+        &json!({"repo_id": s.repo_id, "intent_id": s.intent_id}),
+    )
+    .unwrap();
+    assert_eq!(preview3["round"], 3);
+    assert_eq!(submit(&s, &preview3).unwrap()["state"], "pending");
+    drive(&platform, &s).unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(done["intent"]["round"], 3);
+    let mappings = done["mappings"].as_array().unwrap();
+    assert_eq!(
+        mappings.len(),
+        1,
+        "only the third revision reached the platform"
+    );
+    assert_eq!(mappings[0]["platform_commit_sha"], json!(third_commit));
+    assert_ne!(second_commit, third_commit);
+    assert_eq!(platform.creates(), 1);
+}
+
+/// A revision admitted while the worker is executing a round neither changes that round's
+/// target nor takes its evidence: the round finishes for the revision it started with, the
+/// newer one waits and gets the next round.
+#[test]
+fn a_revision_admitted_during_execution_waits_and_never_takes_the_evidence() {
+    let temp = temp("during");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, false);
+    let first_revision = at(&s).0;
+    // The admission of B happens inside the pass, after the worker took round 1 and while
+    // it connects to the platform.
+    let mut second = None;
+    drive_with(&s.shared, &s.repo_id, &s.intent_id, &mut |_| {
+        let (commit, intent) = second_revision(&platform, &s, "second\n");
+        assert_eq!(intent.round, 1, "the executing round keeps its target");
+        assert_eq!(intent.target.change_set_revision_id, first_revision);
+        assert!(intent.queued.is_some());
+        second = Some(commit);
+        Ok((platform.connection(), Credential::Anonymous))
+    })
+    .unwrap();
+    let second_commit = second.unwrap();
+    let after = shown(&s);
+    assert_eq!(after["intent"]["state"], "pending", "{after}");
+    assert_eq!(
+        after["intent"]["round"], 2,
+        "round 1 settled, round 2 opened for B"
+    );
+    let mappings = after["mappings"].as_array().unwrap();
+    assert_eq!(mappings.len(), 1);
+    assert_eq!(mappings[0]["change_set_revision_id"], json!(first_revision));
+    assert_eq!(
+        mappings[0]["platform_commit_sha"],
+        json!(platform.candidate)
+    );
+    assert_eq!(platform.creates(), 1);
+    // The next pass publishes B as round 2.
+    drive(&platform, &s).unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(
+        done["mappings"][1]["platform_commit_sha"],
+        json!(second_commit)
+    );
+    assert_eq!(platform.updates(), 1);
+}
+
+/// A push whose confirmation was lost, then a newer revision admitted: the round confirms
+/// its own push from the remote and finishes; the newer revision follows as round 2.
+#[test]
+fn a_revision_admitted_after_a_lost_push_confirmation_follows_the_round() {
+    let temp = temp("after-lost-push");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, false);
+    let branch = format!("hctl2/{}", s.change_set_id);
+    {
+        let mut guard = s.shared.blocking_lock();
+        let store = guard.as_mut().unwrap();
+        domain::begin(store, &s.repo_id, &s.intent_id).unwrap();
+        let (rev, round) = {
+            let shown = domain::show(store, &s.repo_id, &s.intent_id).unwrap();
+            (
+                shown["intent"]["target"]["change_set_revision_id"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+                shown["intent"]["round"].as_u64().unwrap(),
+            )
+        };
+        domain::freeze_commit(
+            store,
+            &s.repo_id,
+            &s.intent_id,
+            &rev,
+            round,
+            &platform.candidate,
+        )
+        .unwrap();
+        domain::mark_push_dispatched(store, &s.repo_id, &s.intent_id, &rev, round, true).unwrap();
+    }
+    git(
+        &platform.git_dir,
+        &[
+            "update-ref",
+            &format!("refs/heads/{branch}"),
+            &platform.candidate,
+        ],
+    );
+    let (second_commit, intent) = second_revision(&platform, &s, "second\n");
+    assert_eq!(intent.round, 1);
+    assert!(
+        intent.push.dispatched,
+        "the dispatched push is not forgotten"
+    );
+    assert_eq!(
+        intent.target.commit_sha.as_deref(),
+        Some(platform.candidate.as_str())
+    );
+    drive(&platform, &s).unwrap();
+    let after = shown(&s);
+    assert_eq!(after["intent"]["round"], 2, "{after}");
+    assert_eq!(
+        after["mappings"][0]["platform_commit_sha"],
+        json!(platform.candidate)
+    );
+    drive(&platform, &s).unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(branch_head(&platform, &branch), Some(second_commit.clone()));
+    assert_eq!(
+        done["mappings"][1]["platform_commit_sha"],
+        json!(second_commit)
+    );
+    assert_eq!(platform.creates(), 1);
+}
+
+/// Create-only policy, a newer revision admitted while the create of the first is in
+/// flight and its response gets lost: the round confirms its request by readback for the
+/// revision it started with, and the newer revision is refused as an update — it is never
+/// pushed and the request is never touched.
+#[test]
+fn a_create_only_policy_after_a_lost_create_does_not_update_the_request() {
+    let temp = temp("create-only-lost");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", false, false);
+    let branch = format!("hctl2/{}", s.change_set_id);
+    let first_revision = at(&s).0;
+    platform.set("lose_create", "");
+    drive_with(&s.shared, &s.repo_id, &s.intent_id, &mut |_| {
+        let (_, intent) = second_revision(&platform, &s, "second\n");
+        assert_eq!(intent.round, 1);
+        assert!(intent.queued.is_some());
+        Ok((platform.connection(), Credential::Anonymous))
+    })
+    .unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(done["intent"]["round"], 1);
+    assert_eq!(done["intent"]["attention"]["code"], "UPDATE_NOT_ALLOWED");
+    assert!(done["intent"]["queued"].is_null());
+    let mappings = done["mappings"].as_array().unwrap();
+    assert_eq!(mappings.len(), 1);
+    assert_eq!(mappings[0]["change_set_revision_id"], json!(first_revision));
+    assert_eq!(
+        branch_head(&platform, &branch),
+        Some(platform.candidate.clone())
+    );
+    assert_eq!(platform.creates(), 1);
+    assert_eq!(platform.updates(), 0);
+    // Nothing is left to drive for this intent.
+    assert_eq!(drive(&platform, &s).unwrap_err().code, "INTENT_TERMINAL");
+}
+
+/// The platform refuses the audit association (title and body) of an update: the round
+/// stays open with the reason and finishes once the platform lets the update through, with
+/// no second push and no second request.
+#[test]
+fn a_refused_audit_update_keeps_the_round_open_until_it_goes_through() {
+    let temp = temp("refused-update");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, false);
+    drive(&platform, &s).unwrap();
+    assert_eq!(shown(&s)["intent"]["state"], "published");
+    let (second_commit, _) = second_revision(&platform, &s, "second\n");
+    platform.set("refuse_update", "");
+    drive(&platform, &s).unwrap();
+    let refused = shown(&s);
+    assert_eq!(
+        refused["intent"]["attention"]["code"], "AUDIT_UPDATE_REJECTED",
+        "{refused}"
+    );
+    assert_eq!(refused["intent"]["state"], "unknown");
+    assert_eq!(
+        refused["mappings"].as_array().unwrap().len(),
+        1,
+        "no mapping for B yet"
+    );
+    assert_eq!(platform.updates(), 1);
+    platform.unset("refuse_update");
+    drive(&platform, &s).unwrap();
+    let done = shown(&s);
+    assert_eq!(done["intent"]["state"], "published", "{done}");
+    assert_eq!(
+        done["mappings"][1]["platform_commit_sha"],
+        json!(second_commit)
+    );
+    assert_eq!(platform.creates(), 1);
+    assert_eq!(platform.updates(), 2);
+}
+
+/// The intent carries the platform binding version it was authorized under; the worker
+/// sends nothing for an intent whose Repo was rebound since.
+#[test]
+fn a_rebound_repo_does_not_receive_an_intent_authorized_under_the_old_binding() {
+    let temp = temp("rebound");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, false);
+    {
+        let mut guard = s.shared.blocking_lock();
+        let store = guard.as_mut().unwrap();
+        // A rebind as the Store sees it: the binding record moves to version 2.
+        let binding = repo::binding(&s.repo_id);
+        let record = store.get(&binding.key).unwrap().unwrap();
+        assert_eq!(record.version, 1);
+        let mut next = record.clone();
+        next.version = 2;
+        let cmd = store::Command {
+            command_id: "rebind".into(),
+            idempotency_key: "rebind".into(),
+            actor: scoped(&s.repo_id).0,
+            target: binding.key.clone(),
+            expected: store::Expected::Exact(store::Version::State(1)),
+            binding: binding.clone(),
+            input_digest: store::Command::digest_input("test.rebind", &json!({})).unwrap(),
+            operation: "test.rebind".into(),
+            input: json!({}),
+        };
+        store
+            .submit(store.generation(), &scoped(&s.repo_id), &cmd, None, |tx| {
+                tx.put(&next)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+    }
+    drive(&platform, &s).unwrap();
+    let held = shown(&s);
+    assert_eq!(
+        held["intent"]["attention"]["code"], "BINDING_CHANGED",
+        "{held}"
+    );
+    assert!(branch_head(&platform, &format!("hctl2/{}", s.change_set_id)).is_none());
+    assert_eq!(platform.creates(), 0);
 }
 
 #[test]

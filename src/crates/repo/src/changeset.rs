@@ -226,7 +226,24 @@ pub fn admit_with_publication(
         1,
         &revision,
     )?;
-    let input = serde_json::to_value(&seal)?;
+    // The command's input is everything that decides what this admission does: the seal,
+    // and — when a publish is requested — which frozen policy under whose authority. A
+    // replay of the same key with another policy, another authorizer, or no publish at all
+    // is then a different input and refused, not answered from the cache. Without a
+    // publication the input is the seal alone, exactly as admissions recorded before
+    // publishing existed, so those keep replaying.
+    let input = match publication {
+        None => serde_json::to_value(&seal)?,
+        Some(publication) => json!({
+            "seal": seal,
+            "publication": {
+                "policy_id": publication.policy.policy_id,
+                "policy_version": publication.policy.version,
+                "policy_digest": publication.policy.digest,
+                "authorizing_actor": publication.authorizing_actor,
+            },
+        }),
+    };
     let command_key = format!(
         "changeset.admit:{}:{}",
         set.change_set_id, seal.association_key
@@ -339,23 +356,32 @@ pub fn admit_with_publication(
                 revision.clone()
             }
         };
-        let intent = match publication {
-            Some(publication) => Some(crate::review::enqueue(
-                tx,
-                &control_id,
-                &admitted,
-                &current.repo_id,
-                publication,
-                now_ms,
-            )?),
-            None => None,
-        };
-        Ok(json!({"revision": admitted, "intent": intent}))
+        match publication {
+            Some(publication) => {
+                let intent = crate::review::enqueue(
+                    tx,
+                    &control_id,
+                    &admitted,
+                    &current.repo_id,
+                    current.binding_version,
+                    publication,
+                    now_ms,
+                )?;
+                Ok(json!({"revision": admitted, "intent": intent}))
+            }
+            // The result shape admissions always had; replays of older ones decode it.
+            None => Ok(serde_json::to_value(&admitted)?),
+        }
     })?;
-    Ok((
-        serde_json::from_value(result["revision"].clone())?,
-        serde_json::from_value(result["intent"].clone())?,
-    ))
+    // A result is either the bare revision (no publish) or `{revision, intent}`.
+    if result.get("revision").is_some() {
+        Ok((
+            serde_json::from_value(result["revision"].clone())?,
+            serde_json::from_value(result["intent"].clone())?,
+        ))
+    } else {
+        Ok((serde_json::from_value(result)?, None))
+    }
 }
 
 pub fn get_revision(store: &Store, revision_id: &str) -> Result<ChangeSetRevision> {

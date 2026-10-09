@@ -121,7 +121,18 @@ pub struct Intent {
     pub state: State,
     /// Publish rounds: one per revision that reached the platform or is on its way.
     pub round: u64,
+    /// The platform binding version the ChangeSet was opened under; frozen here so a rebind
+    /// cannot carry an old intent to a new endpoint.
+    #[serde(default)]
+    pub binding_version: u64,
     pub target: Target,
+    /// True once the worker took this round for execution: from then on the target is
+    /// immutable and a newer revision waits in `queued` until the round settles.
+    #[serde(default)]
+    pub started: bool,
+    /// The newest admitted revision waiting for the current round to settle.
+    #[serde(default)]
+    pub queued: Option<Target>,
     pub push: PushStage,
     pub review: ReviewStage,
     pub attempts: u64,
@@ -298,18 +309,21 @@ pub struct Publication {
     pub authorizing_actor: Actor,
 }
 
-/// Enqueue (or redirect) the publish of `revision` inside the admission transaction.
+/// Enqueue the publish of `revision` inside the admission transaction.
 ///
-/// No intent yet: one is written, queued unless the policy wants a human first. An intent
-/// still in flight: it now targets this revision, nothing else changes. An intent that
-/// already published: a new round is queued when the policy allows updates, otherwise the
-/// intent records the refusal and the revision stays unpublished. Returns the intent as
-/// written.
+/// No intent yet: one is written, queued unless the policy wants a human first. A round
+/// the worker has not taken yet is superseded: its effect is withdrawn as never sent and a
+/// new round starts for this revision (a human's release of the old round does not carry
+/// over). A round already executing keeps its target and its evidence; the newer revision
+/// waits in `queued` and becomes the next round when this one settles. After a settled
+/// round a new one is queued when the policy allows updates, otherwise the intent records
+/// the refusal and the revision stays unpublished. Returns the intent as written.
 pub fn enqueue(
     tx: &mut CommandTransaction<'_>,
     control_id: &str,
     revision: &ChangeSetRevision,
     repo_id: &str,
+    binding_version: u64,
     publication: &Publication,
     now_ms: u64,
 ) -> Result<Intent> {
@@ -318,6 +332,13 @@ pub fn enqueue(
             "POLICY_REPO_MISMATCH",
             "the publish policy is frozen for another Repo",
             "use_policy_of_this_repo",
+        ));
+    }
+    if publication.policy.policy.binding_version != binding_version {
+        return Err(reject(
+            "POLICY_BINDING_MISMATCH",
+            "the publish policy was frozen against another platform binding version than the ChangeSet",
+            "authorize_a_new_dispatch_under_the_current_binding",
         ));
     }
     let id = intent_id(control_id, repo_id, &revision.change_set_id);
@@ -359,7 +380,10 @@ pub fn enqueue(
                 authorizing_actor: publication.authorizing_actor.clone(),
                 state,
                 round: 1,
+                binding_version,
                 target,
+                started: false,
+                queued: None,
                 push: PushStage::default(),
                 review: ReviewStage::default(),
                 attempts: 0,
@@ -380,48 +404,43 @@ pub fn enqueue(
                     "use_original_policy",
                 ));
             }
-            if intent.target.change_set_revision_id == revision.change_set_revision_id {
+            if intent.target.change_set_revision_id == revision.change_set_revision_id
+                || intent
+                    .queued
+                    .as_ref()
+                    .is_some_and(|q| q.change_set_revision_id == revision.change_set_revision_id)
+            {
                 return Ok(intent);
             }
             match intent.state {
-                // In flight: the next attempt publishes the newer revision. The push stage is
-                // reset so the frozen commit is recomputed; a confirmed earlier push is the
-                // lease the next push is made against.
+                // Not taken yet: nothing was sent for this round, so it is withdrawn and the
+                // newer revision gets its own round — and its own human confirmation.
+                State::PendingHuman | State::Pending if !intent.started => {
+                    if intent.state == State::Pending {
+                        tx.cancel_pending_effect(&effect_id(&intent.intent_id, intent.round))?;
+                    }
+                    next_round(&mut intent, target);
+                    if intent.state == State::Pending {
+                        tx.enqueue_effect(&effect(&intent)?)?;
+                    }
+                }
+                // Executing: the round keeps its target and evidence; the newer revision
+                // waits its turn.
                 State::Pending | State::Unknown | State::PendingHuman => {
-                    intent.target = target;
-                    intent.push.dispatched = false;
-                    intent.review.dispatched = false;
-                    intent.attention = None;
+                    intent.queued = Some(target);
                 }
                 State::Published | State::Failed if intent.policy.policy.allow_update => {
-                    intent.target = target;
-                    intent.push = PushStage {
-                        dispatched: false,
-                        confirmed_commit: intent.push.confirmed_commit.clone(),
-                        confirmed_at_unix_ms: None,
-                    };
-                    intent.review.dispatched = false;
-                    intent.review.confirmed_commit = None;
-                    intent.review.confirmed_at_unix_ms = None;
-                    intent.attention = None;
-                    intent.failure = None;
-                    intent.round += 1;
-                    intent.state = if intent.policy.policy.requires_human_confirmation {
-                        State::PendingHuman
-                    } else {
-                        State::Pending
-                    };
+                    next_round(&mut intent, target);
                     if intent.state == State::Pending {
                         tx.enqueue_effect(&effect(&intent)?)?;
                     }
                 }
                 State::Published | State::Failed => {
-                    intent.attention = Some(Attention {
-                        code: "UPDATE_NOT_ALLOWED".into(),
-                        message: "the frozen policy allows creating the review request, not updating it; the newer revision is admitted but not published".into(),
-                        recovery_action: "authorize_a_new_dispatch_with_updates_allowed".into(),
-                        details: json!({"unpublished_revision": revision.change_set_revision_id, "published_revision": intent.target.change_set_revision_id, "at_unix_ms": now_ms}),
-                    });
+                    intent.attention = Some(update_not_allowed(
+                        &intent,
+                        &revision.change_set_revision_id,
+                        now_ms,
+                    ));
                 }
             }
             intent.version += 1;
@@ -430,6 +449,52 @@ pub fn enqueue(
     };
     tx.put(&record(&intent)?)?;
     Ok(intent)
+}
+
+/// Open the next round for `target`: stages reset (a confirmed push stays as the lease for
+/// the next push), the state follows the policy's human gate.
+fn next_round(intent: &mut Intent, target: Target) {
+    intent.target = target;
+    intent.queued = None;
+    intent.started = false;
+    intent.push = PushStage {
+        dispatched: false,
+        confirmed_commit: intent.push.confirmed_commit.clone(),
+        confirmed_at_unix_ms: None,
+    };
+    intent.review.dispatched = false;
+    intent.review.confirmed_commit = None;
+    intent.review.confirmed_at_unix_ms = None;
+    intent.attention = None;
+    intent.failure = None;
+    intent.round += 1;
+    intent.state = if intent.policy.policy.requires_human_confirmation {
+        State::PendingHuman
+    } else {
+        State::Pending
+    };
+}
+
+fn update_not_allowed(intent: &Intent, unpublished: &str, now_ms: u64) -> Attention {
+    Attention {
+        code: "UPDATE_NOT_ALLOWED".into(),
+        message: "the frozen policy allows creating the review request, not updating it; the newer revision is admitted but not published".into(),
+        recovery_action: "authorize_a_new_dispatch_with_updates_allowed".into(),
+        details: json!({"unpublished_revision": unpublished, "published_revision": intent.target.change_set_revision_id, "at_unix_ms": now_ms}),
+    }
+}
+
+/// The round this call is about; every persisted step of the worker names it so a round
+/// superseded underneath it is refused instead of mixed up.
+fn expect_round(intent: &Intent, revision_id: &str, round: u64) -> Result<()> {
+    if intent.round != round || intent.target.change_set_revision_id != revision_id {
+        return Err(reject(
+            "FROZEN_INPUT_CHANGED",
+            "the intent moved to another revision or round since this step was planned",
+            "read_intent_again",
+        ));
+    }
+    Ok(())
 }
 
 fn effect(intent: &Intent) -> Result<EffectIntent> {
@@ -551,8 +616,13 @@ pub fn release(
     command_id: &str,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    // The human releases exactly what the preview showed; a newer revision or round since
+    // then wants its own look.
+    expect_round(&intent, revision_id, round)?;
     if intent.state != State::PendingHuman {
         return Ok(intent);
     }
@@ -613,6 +683,22 @@ pub fn begin(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<(Inten
         store.resume_pending_effect(store.generation(), &id, true)?;
         store.begin_effect(store.generation(), &id)?;
     }
+    // From the first take the round's target is immutable; admission queues behind it.
+    let intent = if intent.started {
+        intent
+    } else {
+        let mut started = intent;
+        started.started = true;
+        let input = json!({"round": started.round});
+        bump(
+            store,
+            repo_id,
+            intent_id,
+            started,
+            "review.round_started",
+            input,
+        )?
+    };
     Ok((intent, state))
 }
 
@@ -650,9 +736,12 @@ pub fn freeze_commit(
     store: &mut Store,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
     commit_sha: &str,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    expect_round(&intent, revision_id, round)?;
     match intent.target.commit_sha.as_deref() {
         Some(existing) if existing == commit_sha => return Ok(intent),
         Some(_) if intent.push.dispatched => {
@@ -683,9 +772,12 @@ pub fn mark_push_dispatched(
     store: &mut Store,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
     dispatched: bool,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    expect_round(&intent, revision_id, round)?;
     if intent.push.dispatched == dispatched {
         return Ok(intent);
     }
@@ -706,10 +798,13 @@ pub fn confirm_push(
     store: &mut Store,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
     commit_sha: &str,
     now_ms: u64,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    expect_round(&intent, revision_id, round)?;
     if intent.target.commit_sha.as_deref() != Some(commit_sha) {
         return Err(reject(
             "FROZEN_INPUT_CHANGED",
@@ -738,9 +833,12 @@ pub fn mark_review_dispatched(
     store: &mut Store,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
     dispatched: bool,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    expect_round(&intent, revision_id, round)?;
     if intent.review.dispatched == dispatched {
         return Ok(intent);
     }
@@ -779,10 +877,13 @@ pub fn confirm(
     store: &mut Store,
     repo_id: &str,
     intent_id: &str,
+    revision_id: &str,
+    round: u64,
     outcome: Outcome,
     now_ms: u64,
 ) -> Result<Intent> {
     let mut intent = get(store, repo_id, intent_id)?;
+    expect_round(&intent, revision_id, round)?;
     if !matches!(intent.state, State::Pending | State::Unknown) {
         return Err(reject(
             "INTENT_TERMINAL",
@@ -864,8 +965,27 @@ pub fn confirm(
             ("review.unknown", EffectReadback::Unknown)
         }
     };
+    // A settled round hands over to the revision that waited behind it, under the same
+    // policy rules as any later admission.
+    let mut next_effect = None;
+    if matches!(intent.state, State::Published | State::Failed)
+        && let Some(queued) = intent.queued.take()
+    {
+        if intent.policy.policy.allow_update {
+            next_round(&mut intent, queued);
+            if intent.state == State::Pending {
+                next_effect = Some(effect(&intent)?);
+            }
+        } else {
+            intent.attention = Some(update_not_allowed(
+                &intent,
+                &queued.change_set_revision_id,
+                now_ms,
+            ));
+        }
+    }
     intent.version += 1;
-    let input = json!({"round": intent.round, "state": intent.state, "attempt": intent.attempts});
+    let input = json!({"round": round, "state": intent.state, "attempt": intent.attempts});
     let cmd = Command {
         command_id: format!("{operation}:{intent_id}:{}", intent.version),
         idempotency_key: format!("{operation}:{intent_id}:{}", intent.version),
@@ -879,6 +999,9 @@ pub fn confirm(
     };
     store.submit(store.generation(), &actor, &cmd, None, |tx| {
         tx.confirm_effect(&effect_key, &readback)?;
+        if let Some(next) = &next_effect {
+            tx.enqueue_effect(next)?;
+        }
         if let Some((key, value)) = &binding {
             // The mapping is evidence: written once per revision, never rewritten.
             if tx.get(key)?.is_none() {
