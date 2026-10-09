@@ -10,6 +10,15 @@ use store::{
 
 use crate::{Result, reject};
 
+mod admission;
+mod human;
+mod leases;
+pub use admission::admit_in_transaction;
+pub use human::{HumanInput, HumanPlan, admit_human, human_receipt, prepare_human};
+pub use leases::{
+    LeasePlan, acquire_lease, complete_revocation, get_change_set, plan_lease, revoke_lease,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LeaseState {
@@ -107,6 +116,32 @@ pub struct Seal {
     pub producer_ref: ProducerRef,
 }
 
+/// One proposed Git result. Its paths are operation inputs, not registered workspaces.
+/// Control's field checks authorize nothing until native Git readback and admission.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Output {
+    pub change_set_id: String,
+    pub lease: LeaseRef,
+    pub base_commit_sha: String,
+    pub parent_revision_id: Option<String>,
+    pub location: OutputLocation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum OutputLocation {
+    Commit {
+        repo_path: std::path::PathBuf,
+        commit_sha: String,
+    },
+    Worktree {
+        repo_path: std::path::PathBuf,
+    },
+}
+
+pub const OUTPUT_SCHEMA: &str = "hctl2.changeset-output.v1";
+
 pub fn review_subject_digest(identity: &ReviewIdentity) -> Result<String> {
     Ok(canonical_json_sha256(&serde_json::to_value(identity)?)?)
 }
@@ -192,40 +227,6 @@ pub fn admit_with_publication(
             "open_change_set",
         )
     })?;
-    let identity = ReviewIdentity {
-        change_set_revision_id: String::new(),
-        change_set_id: set.change_set_id.clone(),
-        parent_revision_id: seal.parent_revision_id.clone(),
-        base_commit_sha: seal.base_commit_sha.clone(),
-        result_tree_sha: seal.result_tree_sha.clone(),
-    };
-    let bare = review_subject_digest(&ReviewIdentity {
-        change_set_revision_id: String::new(),
-        ..identity.clone()
-    })?;
-    let change_set_revision_id = format!("csr-{bare}");
-    let identity = ReviewIdentity {
-        change_set_revision_id: change_set_revision_id.clone(),
-        ..identity
-    };
-    let review_subject_digest = review_subject_digest(&identity)?;
-    let mut revision = ChangeSetRevision {
-        change_set_revision_id,
-        change_set_id: set.change_set_id.clone(),
-        parent_revision_id: seal.parent_revision_id.clone(),
-        base_commit_sha: seal.base_commit_sha.clone(),
-        result_tree_sha: seal.result_tree_sha.clone(),
-        producer_ref: seal.producer_ref.clone(),
-        review_subject_digest,
-        revision_digest: String::new(),
-    };
-    revision.revision_digest =
-        canonical_json_sha256(&serde_json::to_value(revision_body(&revision))?)?;
-    let record = value_record(
-        revision_key(&set.repo_id, &revision.change_set_revision_id),
-        1,
-        &revision,
-    )?;
     // The command's input is everything that decides what this admission does: the seal,
     // and — when a publish is requested — which frozen policy under whose authority. A
     // replay of the same key with another policy, another authorizer, or no publish at all
@@ -262,108 +263,15 @@ pub fn admit_with_publication(
         input,
     )?;
     let result = store.submit(store.generation(), actor, &command, None, |tx| {
-        let current: ChangeSet = decode(&tx.get(&command.target)?.ok_or_else(|| {
-            reject(
-                "CHANGESET_NOT_FOUND",
-                "ChangeSet is not open",
-                "open_change_set",
-            )
-        })?)?;
-        valid_producer(&seal.producer_ref)?;
-        match &seal.producer_ref {
-            ProducerRef::Invocation { .. } => {
-                if owner != OwnerGate::Active {
-                    return Err(reject(
-                        "CHANGESET_OWNER_CLOSED",
-                        "owner was cancelled or superseded before admission",
-                        "do_not_publish",
-                    ));
-                }
-                let lease = seal.lease.as_ref().ok_or_else(|| {
-                    reject(
-                        "LEASE_NOT_CURRENT",
-                        "invocation requires its lease",
-                        "refresh_lease",
-                    )
-                })?;
-                if current.lease.state != LeaseState::Active
-                    || current.lease.lease_id != lease.lease_id
-                    || current.lease.generation != lease.generation
-                {
-                    return Err(reject(
-                        "LEASE_NOT_CURRENT",
-                        "write lease is not the current active lease",
-                        "refresh_lease",
-                    ));
-                }
-                if current.lease.holder != seal.producer_ref {
-                    return Err(reject(
-                        "LEASE_PRODUCER_MISMATCH",
-                        "producer differs from the lease holder invocation or version",
-                        "use_authorized_producer",
-                    ));
-                }
-            }
-            ProducerRef::HumanCommand { .. } => {
-                // The trusted direct client authorizes this human command. It does
-                // not inherit an invocation's lease, owner state or producer ID.
-                if actor.0.source != ActorSource::DirectClient
-                    || !actor.0.permission_scope.contains(&Scope::Control)
-                {
-                    return Err(reject(
-                        "PERMISSION_DENIED",
-                        "human sealing requires a trusted authorized direct client",
-                        "request_authorization",
-                    ));
-                }
-                if seal.lease.is_some() {
-                    return Err(reject(
-                        "HUMAN_SEAL_LEASE",
-                        "human sealing must not borrow an invocation lease",
-                        "submit_human_seal_without_lease",
-                    ));
-                }
-            }
-        }
-        git_sha(&seal.base_commit_sha)?;
-        git_sha(&seal.result_tree_sha)?;
-        if let Some(commit) = &seal.result_commit_sha {
-            git_sha(commit)?;
-        }
-        if let Some(parent) = &seal.parent_revision_id {
-            let previous: ChangeSetRevision = decode(
-                &tx.get(&revision_key(&current.repo_id, parent))?
-                    .ok_or_else(|| {
-                        reject(
-                            "CHANGESET_REVISION_NOT_FOUND",
-                            "parent revision is not admitted in this Repo",
-                            "use_parent_from_this_change_set",
-                        )
-                    })?,
-            )?;
-            if previous.change_set_id != current.change_set_id {
-                return Err(reject(
-                    "CHANGESET_PARENT_MISMATCH",
-                    "parent revision belongs to another ChangeSet",
-                    "use_parent_from_this_change_set",
-                ));
-            }
-        }
-        let admitted = match tx.get(&record.key)? {
-            Some(existing) => decode::<ChangeSetRevision>(&existing)?,
-            None => {
-                tx.put(&record)?;
-                revision.clone()
-            }
-        };
+        let admitted = admit_in_transaction(tx, actor, &set.repo_id, &seal, owner)?;
         match publication {
             Some(publication) => {
                 let intent = crate::review::enqueue(
                     tx,
                     &control_id,
                     &admitted,
-                    &current.repo_id,
-                    current.binding_version,
+                    &set.repo_id,
+                    set.binding_version,
                     publication,
                     now_ms,
                 )?;

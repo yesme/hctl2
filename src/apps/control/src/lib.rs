@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod agency;
+mod changesets;
 pub mod chat;
 pub mod config;
 mod context_query;

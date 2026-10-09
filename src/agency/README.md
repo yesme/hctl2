@@ -27,6 +27,10 @@ Buck：`root//agency:agency`、`:service`、`:cli_test`、`:port_test`、`:contr
 
 `serve --script-config FILE` 读取服务所有者的配置 `{"program":"/absolute/program","arguments":[]}`，不是派工请求中的任意命令。脚本从 stdin 读一行含 Spec / Bundle 的 JCS，之后读获准输入。stdout 每行是 `observation`（kind / payload）或唯一的 `result`（schema / output 字符串）。单帧上限 1 MiB；异常帧标观测缺口，不当成成功。脚本报告的结果和自述只记 narrated。
 
+脚本在标准库创建的独立进程组里运行。停止用已有 rustix 的 `kill_process_group`，结束同组脚本和仍握着输出管道的子进程；读到 EOF 并取得真实退出状态后才报退出。`port_test` 的 `stopping_a_script_reaps_the_child_that_holds_its_output_pipe` 覆盖 shell 等待子进程时取消，不把逻辑取消当成退出证据。这不处理自行离开进程组的程序，也不改变 Herdr 的会话管理。
+
+仍未激活的派工停止时，Agency 在同一原生数据库事务里保存取消状态与 `stopped / never_started` 观测。与激活共享租户锁，停止赢则后续激活不运行，激活先发生则等真实停止报告。控制面之前看到 Prepared，不可代替这份报告。
+
 执行环境清空继承变量，只给 PATH、LANG、本次私有 HOME 和已交付材料。Pointer 文件只读并核摘要。输入写入用原生 socket 超时，物理投递不确定时保留 unknown，不能换 key 盲重发。接管比较并交换撤旧租约，旧租约身份不复用。截止不随断联顺延，过期时报无法履约。
 
 这是可信的协议测试执行体，不是沙箱或生产 Harness：不提供 PTY、exact attach、子进程树隔离、工具直报、敏感输入或 OS 加固。没有真实模型凭据。准备不执行，激活才执行；重启不能证明旧执行有效时报告无法履约，不盲目重跑。已保管结果仍可交回。字节确认后本版仍保留结果，不启用垃圾回收。停机前宜让调用方取得停止报告；突然终止服务后只能按实际可证明的范围恢复。

@@ -32,6 +32,20 @@
 
 CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster show | select`、`profile update | show`、`invocation list | cancel | retry`。写命令仍是「不带 `--preview-token` 就预览、带 token 就提交」，`profession accept` 除外：它不在 `is_dangerous` 里，走 `keyed_submit` 直接提交、没有预览闸门，与既有 `agency accept` 相同。命名按领域对象正名——`profession accept`、`room roster show | select` 是正名，既有的 `agency accept`、`project roster | select` 降为文档里写明的别名；本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。`room-cli-test` 增一条端到端用例，从真实命令行走完这 12 条命令并逐条验拒绝；受管输入与写入型调用不在其中。
 
+## 第 6 包 · 拆分 2：写入预览、租约与封存准入
+
+原 `invocation preview | start | show` 接受 Project 新增的可选 `write` 边界，不新建 RPC。预览调用 `repo::review::freeze_policy` 保存不可改写的策略定义，再由领域读取；没有租约 grant 或发布意图。提交用同一授权事务激活租约、冻结 Spec 与 prepare outbox，后续沿既有 Agency 四步启动。只读输入的编码与路径保留。
+
+`dispatch/context.rs` 把待启动 ChangeSet、基线、租约与策略的规范字节作为必需材料送到执行体。可选 `review_change_set_revision` 为本 Repo 的精确 `store::Reference`；读取钩子已留，第 10 条接平台评论前会明确拒绝，不默默删掉该来源。Context 的其他来源仍沿第 4 包接口。
+
+取消后，`dispatch/recovery.rs` 跨页读取原派工的停止报告：写入型不在逻辑取消或一轮结束时提前结束回读，要看到脚本退出或确认从未激活。保存报告和租约撤销同事务；缺证明继续占用旧租约。停止报告仍不代表已实施系统级隔离。
+
+`dispatch/write.rs` 读取原提案保存的字节，在控制面存储事务外调用现场工具封存 Git。准入时重新核调用、租约、Spec、输出与原材料，ChangeSet Revision、结果、调用终态、租约撤销中、Room 投影和发布意图共用一个事务。策略类型、冻结与发布入队复用 `repo::review::{Policy, freeze_policy, Publication, enqueue}`；不在提案事务里嵌套调用外层 `admit_with_publication` 的 Store 提交。推送、建评审请求和平台映射仍归发布 worker，本包不复制它。
+
+人的封存经 `changeset seal` 预览与确认，使用独立命令，不借用 Invocation 租约。`changeset show | diff` 读取已准入版本；路径只作为此次 Git 操作输入，不新增工作区注册对象。本段暂限控制面可读取的本地 Git；跨机 Git 交付、残留接管 / 丢弃、评审评论读取另交后续段。
+
+`root//packaging/release:room-cli-test` 的 `write_dispatch_real_cli_freezes_policy_grants_once_and_requires_exit_before_regrant` 从真实 CLI、控制进程、随包 Gitea 和脚本 Agency 走预览、启动、查看与取消：检查第二写入者被拒、Spec 不随 Project 确认缺省变化、退出报告后才预览下一代租约。取消暴露的 shell 子进程持有管道问题在 Agency 的脚本执行体用原生进程组修正，未新增控制面进程管理。
+
 ## 第 6 包 · 集成一半
 
 `integration.rs` 接 `integration.submit` 的 Preview / Submit 和 `integration.show | list` 的 Query，领域在 [Repo crate](../../crates/repo/README.md#第-6-包--集成一半意图两种授权形态receipt)。预览时读目标：本地目标用库内的 `hctl2-tool repo inspect` 取目标 ref 的头；已准入的 key 回放冻结预览、不再读。提交只持久化意图与效果；后台 worker（`reconcile`，与派工的 worker 并列）执行并回读，本地目标调库内的 `hctl2-tool integrate`，`accept_advance` 下执行前再读一次头。工具的拒绝按码分流：目标被检出留给人、结果未知只回读、预期头不符终态失败。随包 Gitea 目标：预览读分支头与生效的保护规则（`integration/gitea.rs`），执行时适配器只做一件写入——请求合并发布的评审请求（源头钉死）——发出前把尝试持久标为已发出，明确拒绝才撤回，响应丢了只回读不重发；回读先读平台的请求与分支（保护再对照一次），再调库内的 `hctl2-tool readback` 从平台的 Git 拉目标 ref 到 `<root>/integration/readback/<repo_id>.git` 核合并提交是否被目标承载、树与父提交，Receipt 的证据通道是 `hctl2-tool`。平台连接可注入（`drive_with` 收 `Connection`），这套规矩写在 `integration/target.rs` 的 `PlatformTarget` 上，Gitea（`integration/gitea.rs`）与 GitHub（`integration/github.rs`，随包 `gh`、经典保护 + 规则集生效规则、`PUT merge` 带 `sha`、快进在预览就拒绝）各只换适配器；用例用脚本化的 `tea` / `gh` 与一个真实裸仓库扮演平台，另有对公开沙箱 `yesme/hctl2-canary` 的实跑用例（`HCTL2_GITHUB_LIVE=1`）。绑定声明缺能力时预览就拒绝。发布评审（`review.rs`，验收第 4 条与第 9 条发布半边）是同一条链的前一端：意图由版本准入的事务写入（`repo::changeset::admit_with_publication`），后台 worker `review::reconcile` 分两段执行——持 Git 凭据推冻结的提交到策略分支（`--force-with-lease` 钉上次确认的头，推完 `ls-remote` 回读）、再经同一套 `PlatformTarget` 接口找或建评审请求——每段回读后各自确认，映射证据写成集成一半读的 `changeset_platform_binding`；`review.publish` 是人放行「须人显式确认」意图的两步命令，`review.show|list` 查询。领域与状态机见 [Repo crate](../../crates/repo/README.md#第-6-包--发布评审意图两段映射证据)。

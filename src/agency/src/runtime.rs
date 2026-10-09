@@ -7,7 +7,7 @@ use agency_proto::{
 use serde::{Deserialize, Serialize};
 use std::{
     io::{BufRead, BufReader, Read, Write},
-    os::unix::process::ExitStatusExt,
+    os::unix::process::{CommandExt, ExitStatusExt},
     os::unix::{fs::PermissionsExt, net::UnixStream},
     path::{Path, PathBuf},
     process::{Child, Stdio},
@@ -169,6 +169,7 @@ impl Runtime for ScriptRuntime {
         )?;
         crate::confine::scrub(&mut child, root);
         child
+            .process_group(0)
             .stdin(Stdio::from(std::os::fd::OwnedFd::from(child_stdin)))
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -176,7 +177,7 @@ impl Runtime for ScriptRuntime {
         let mut initial = canonical(&serde_json::json!({"spec":spec,"bundle":bundle}))?;
         initial.push(b'\n');
         if let Err(e) = stdin.write_all(&initial) {
-            let _ = child.kill();
+            let _ = stop_script_group(rustix::process::Pid::from_child(&child));
             let _ = child.wait();
             return Err(e.into());
         }
@@ -186,6 +187,7 @@ impl Runtime for ScriptRuntime {
             child,
             stdin,
             stopped: false,
+            reaped: false,
         }));
         let reader = Arc::clone(&private);
         std::thread::spawn(move || {
@@ -245,6 +247,7 @@ impl Runtime for ScriptRuntime {
                 let mut session = reader.lock().expect("script session mutex");
                 match session.child.try_wait() {
                     Ok(Some(status)) => {
+                        session.reaped = true;
                         let _ = tx.send(RuntimeEvent::Exited {
                             code: status
                                 .code()
@@ -273,8 +276,19 @@ struct ScriptSession {
     child: Child,
     stdin: UnixStream,
     stopped: bool,
+    reaped: bool,
 }
 struct ScriptHandle(Arc<Mutex<ScriptSession>>);
+// A shell's children inherit its output pipe. Killing only the shell leaves
+// that pipe open and withholds the physical exit evidence from the collector.
+// The group is created by this runtime, not selected from caller input.
+fn stop_script_group(group: rustix::process::Pid) -> std::io::Result<()> {
+    match rustix::process::kill_process_group(group, rustix::process::Signal::KILL) {
+        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 impl Session for ScriptHandle {
     fn input(&mut self, bytes: &[u8]) -> Result<()> {
         self.0
@@ -286,8 +300,15 @@ impl Session for ScriptHandle {
     }
     fn stop(&mut self) -> Result<()> {
         let mut session = self.0.lock().expect("script mutex");
-        if session.child.try_wait()?.is_none() {
-            session.child.kill()?;
+        if !session.reaped {
+            // Preserve the group id before reaping its leader. A zombie-only
+            // group on macOS can reject kill with EPERM until the leader is
+            // reaped. Still signal the original group: living descendants may
+            // hold stdout even when the leader has already exited.
+            let group = rustix::process::Pid::from_child(&session.child);
+            let reaped = session.child.try_wait()?.is_some();
+            stop_script_group(group)?;
+            session.reaped = reaped;
             session.stopped = true;
         }
         Ok(())
@@ -295,7 +316,9 @@ impl Session for ScriptHandle {
 }
 impl Drop for ScriptSession {
     fn drop(&mut self) {
-        let _ = self.child.kill();
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = stop_script_group(rustix::process::Pid::from_child(&self.child));
+        }
         let _ = self.child.wait();
     }
 }

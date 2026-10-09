@@ -9,7 +9,7 @@
 | `src/model.rs` | Project 定义、不可改写的 Room 选入记录、类型化 Request 与命令输入 |
 | `src/commands.rs` | 纯读取预览、Project / Room 事务、归档与恢复、名册与多房间动作准入 |
 | `src/requests.rs` | 去重与取代、解决 / 取消 / 截止、唯一投递与接收回执 |
-| `src/invocation.rs`、`src/invocation/lifecycle.rs`、`src/invocation/results.rs` | Invocation 的预览、只读授权、状态、撤权与重试、只读回答准入及投影意图；外部动作由 Control 主链接 |
+| `src/invocation.rs`、`src/invocation/lifecycle.rs`、`src/invocation/results.rs`、`src/invocation/write.rs` | Invocation 的预览、授权、状态、撤权与重试、只读回答准入及投影意图、写入边界与租约启动；外部动作由 Control 主链接 |
 | `src/views.rs` | 阻塞列表、待你处理、Overview 与闲置提醒的只读投影 |
 | `src/memo.rs` | 发布 Memo 的预览与准入、只追加 revision、指针清单与精确读回 |
 | `apps/control/src/projects.rs` | Query / Preview / Submit、逐房间外部投递、Request 重启恢复与每 5 秒截止检查 |
@@ -138,6 +138,32 @@ Invocation 的领域入口见下节，最少 preview / start / show 已由主链
 
 D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；B = `root//packaging/release:room-cli-test`。原 Invocation 领域段的失败输入仍在上表对应目标中；本次不改约束版本。
 
+## 第 6 包 · 拆分 2：写入预览、租约与封存准入
+
+`invocation::Input` 新增可选 `write: WriteInput { change_set_id?, baseline_commit, target_branch, allow_update }`。省略 ChangeSet ID 时，按本控制面、Repo 和调用键派生新 ID；有 ID 时只接受同 Repo、同平台绑定版本、同基线且旧租约已撤销的 ChangeSet。基线要求 40 位小写 SHA-1，Git 对象存在性及封存回读由 control 在准入事务外执行。只读 Profile 不能附写入边界；写入型必须给边界。
+
+`review_policy_input` 从当前 Project、Repo 与 Profile 派生策略输入和内容寻址的策略 ID。Control 调 `repo::review::freeze_policy` 保存，领域预览只读核对它。策略固定 `branch_rule = hctl2/{change_set}`、`description_source = none`、`audit_scope = minimal`，确认缺省来自 Project。`WritePreview` 列出待启动租约、策略精确引用及 `publish_for_review_not_integration`。保存策略定义不发租约，也不登记发布意图；未启动的旧预览不因策略记录已存在而获得授权。
+
+确认启动在原授权事务里比较当前版本并取得租约，同时保存原调用、Spec、状态与 prepare outbox。Spec 的 `base`、`write_lease`、`review_publish_policy` 固定预览边界；Context 必须实际交付 `write-boundary/<consumer>` 的规范字节，只写引用或送错字节不能启动。Project 此后改变确认缺省不改已启动调用。脚本执行体沿原四步启动；Herdr 的只读限制不在本段放开，真 harness 写入留第 9 包。
+
+取消、失败或丢失同事务把当前租约转为撤销中。prepare 从未发出并在事务内取消，可以直接撤销；其他情况要保存原派工的停止报告，`confirm_write_stop` 在写报告的事务里核原调用、Spec 与租约。Agency 在停止时确认从未激活，或证明脚本执行体退出，才可撤销；清理开始时看到 Prepared 不算证明。逻辑取消、停止请求、叙述和一轮结束都不算退出。没有证据继续拒绝下一个写入者，不假称已经隔离。
+
+同一输入新增可选 `review_change_set_revision: store::Reference`，限本 Repo 的精确 `changeset_revision`。旧输入省略这两项时序列化形状不变。Control 的 Context 读取钩子已经留好；拆分 2 选择该来源仍返回 `REVIEW_LINE_NOT_CONFIGURED`，第 10 条接原生评论读取与冻结，不暗中忽略选择。
+
+`admit_result` 对没有封存输入的写入型返回 `CHANGESET_RESULT_REQUIRED`，防止只读回答绕过 ChangeSet 准入。`sealing_input` 核原提案字节、活跃归属者和租约，给 control 在事务外封存；`admit_sealed_result` 重核这些边界，同一事务接受 Revision、结果、Room 投影与发布意图。`Publication` 的策略必须等于 Spec 冻结的精确引用，提交者取原调用保存的 DirectClient，不取模型提案。事务只登记发布，worker 由 Claude 提供，本段不复制它。
+
+| CT / 边界 | 会失败的输入与目标 |
+| --- | --- |
+| CT-REPO：租约待启动、同一 ChangeSet 单写、撤销证明 | D：`write_invocation_preview_does_not_grant_and_start_freezes_policy_baseline_and_lease`、`cancelling_unsent_write_revokes_in_the_same_transaction_and_next_writer_has_new_generation`、`cancelling_possibly_started_write_without_exit_proof_keeps_the_original_lease_busy`；R：`second_writer_cannot_take_active_or_revoking_lease_even_after_restart` |
+| CT-REPO：停止请求不等于撤销证明 | D：`stopped_write_requires_original_dispatch_exit_not_a_turn_or_stop_request`、`agency_confirmed_never_started_write_can_release_its_lease`；C：`writer_stop_page_skips_cancelled_or_turn_only_pages_until_physical_exit`；A：`prepared_cancellation_records_never_started_before_activation_can_race_it` |
+| CT-CONNECTION：实际送达冻结边界 | D：`writer_cannot_activate_without_delivered_exact_changeset_boundary` |
+| CT-REPO：只读与写入结果分开 | D：`read_only_profile_cannot_smuggle_a_write_boundary_into_the_preview`、`writing_call_cannot_be_completed_as_a_read_only_answer`；P：`write_profiles_require_scoped_write_permission_and_cannot_grant_commands` |
+| CT-REPO：精确评审版本来源 | D：`selected_review_version_is_exact_repo_scoped_and_old_inputs_keep_their_encoding`；平台评论实际冻结留第 10 条 |
+| CT-REPO / CT-CONNECTION：封存与提案准入共用事务 | D：`write_result_and_revision_share_admission_and_completion_does_not_prove_writer_stopped`、`write_projection_conflict_rolls_back_revision_result_completion_and_lease_revocation`、`cancelling_after_git_seal_but_before_admission_leaves_only_saved_proposal` |
+| CT-REPO：精确写入边界、人的独立封存 | D：`write_result_rejects_each_boundary_change_without_revision_result_or_completion`、`human_seal_is_an_independent_admission_and_replay_keeps_its_first_observation`；CLI：`human_seal_real_cli_reads_exact_git_identity_diff_and_replays_after_input_disappears` |
+
+D = `root//crates/project:domain_test`；R = `root//crates/repo:changeset_test`；C = `root//apps/control:unit_test`；P = `root//crates/participant:profiles_test`；A = `root//agency:port_test`。残留预览、人的接管与丢弃沿既定拆分 5，不以本段的租约领域测试冒充验收第 8 条全链。
+
 ## 第 5 包后半段 · 其余命令与只读投影
 
 `list` 是只读投影，不是新的授权入口：Control 先按 Project 过范围门，再把 `Store::list("room_invocation")` 按获准 Project 的 `Scope` 过滤，对留下的每条走 `invocation::lifecycle`，输出原授权引用、当前状态、`reason` 与独立的 `state_version`。它不读另一 Project 的记录；换别的 Project 的 ID 在取记录时以 `NOT_FOUND` 失败，不按裸 ID 跨范围取。
@@ -192,4 +218,3 @@ D = `root//crates/project:domain_test`（`tests/memo.rs`）；C = `root//apps/cl
 cd src
 ./buck2 test root//crates/project:domain_test root//apps/cli:cli_test root//apps/control:unit_test root//apps/control:boundary_test
 ```
-

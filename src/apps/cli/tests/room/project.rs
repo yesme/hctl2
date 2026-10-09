@@ -45,14 +45,37 @@ struct Paired {
     delay: PathBuf,
 }
 fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
+    paired_profile(name, delayed_seconds, "read_only")
+}
+fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Paired) {
     let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    let mut registration_input = json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"});
+    if mode == "write" {
+        let site = f.root.join("write-site");
+        std::fs::create_dir(&site).unwrap();
+        for args in [
+            vec!["init", "--initial-branch=main"],
+            vec!["config", "user.name", "Dispatch Fixture"],
+            vec!["config", "user.email", "dispatch@example.test"],
+        ] {
+            assert!(git_output(&site, &args).status.success());
+        }
+        std::fs::write(site.join("source.txt"), b"initial\n").unwrap();
+        assert!(git_output(&site, &["add", "source.txt"]).status.success());
+        assert!(
+            git_output(&site, &["commit", "-m", "fixture baseline"])
+                .status
+                .success()
+        );
+        registration_input["local"] = json!({"machine":"control","path":site});
+    }
     let registered = accepted(
         &f,
         "repo",
         "register",
         "register-dispatch",
-        json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"}),
+        registration_input,
     );
     let registration = &registered["registration"];
     let repo = registration["repo_id"].as_str().unwrap();
@@ -148,17 +171,22 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
         "accept",
     ]);
     assert!(ok, "{accepted_profession}");
+    let permissions = if mode == "write" {
+        json!(["context.read", "git.read", "git.write"])
+    } else {
+        json!(["context.read"])
+    };
     let profile = accepted(
         &f,
         "profile",
         "create",
         "profile",
-        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":"read_only","permissions":["context.read"],"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
     );
     let binding_ref =
         json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
     let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
-    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":["context.read"]},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
     accepted(
         &f,
         "project",
@@ -179,6 +207,209 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
             delay,
         },
     )
+}
+
+fn git_output(site: &Path, args: &[&str]) -> std::process::Output {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(site)
+        .args(args)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+#[test]
+fn write_dispatch_real_cli_freezes_policy_grants_once_and_requires_exit_before_regrant() {
+    let (f, setup) = paired_profile("write-dispatch", 120, "write");
+    std::fs::write(&setup.delay, b"keep the writer observable").unwrap();
+    let p = setup.project.as_str();
+    let baseline =
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120000;
+    let path = f.root.join("write-invocation.json");
+    let input = path.to_str().unwrap();
+    let mut request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Use only the frozen ChangeSet boundary","budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
+    std::fs::write(&path, request.to_string()).unwrap();
+    let (ok, plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        input,
+        "--key",
+        "write-1",
+    ]);
+    assert!(ok, "{plan}");
+    let write = plan["effect_summary"]["preview"]["write"].clone();
+    assert_eq!(write["lease"]["pending"]["lease"]["state"], "pending");
+    assert_eq!(write["lease"]["pending"]["baseline_commit"], baseline);
+    assert_eq!(write["authorization"], "publish_for_review_not_integration");
+    let set = write["lease"]["pending"]["change_set_id"].as_str().unwrap();
+    let (ok, listed) = f.run(&["invocation", "list", p]);
+    assert!(ok, "{listed}");
+    assert!(listed["invocations"].as_array().unwrap().is_empty());
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        input,
+        "--key",
+        "write-1",
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let id = started["invocation_id"].as_str().unwrap();
+    let mut running = Value::Null;
+    for _ in 0..150 {
+        let (ok, value) = f.run(&["invocation", "show", p, id]);
+        assert!(ok, "{value}");
+        running = value;
+        if running["state"] == "running" {
+            break;
+        }
+        assert_eq!(running["state"], "pending", "{running}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert_eq!(running["state"], "running", "{running}");
+    let spec = running["invocation"]["spec"]["document"].clone();
+    assert_eq!(spec["base"], baseline);
+    assert_eq!(spec["write_lease"]["revision"], "1");
+    assert_eq!(
+        spec["review_publish_policy"],
+        write["review_publish_policy"]
+    );
+    assert_eq!(running["invocation"]["authorization"]["write"], true);
+    assert!(
+        running["invocation"]["authorization"]["authorizing_actor"]["principal"]
+            .as_str()
+            .is_some()
+    );
+
+    request["write"]["change_set_id"] = json!(set);
+    std::fs::write(&path, request.to_string()).unwrap();
+    let (ok, busy) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        input,
+        "--key",
+        "write-2",
+    ]);
+    assert!(!ok, "{busy}");
+    assert_eq!(busy["error"]["code"], "WRITE_LEASE_BUSY");
+
+    let (ok, project) = f.run(&["project", "show", p]);
+    assert!(ok, "{project}");
+    let mut definition = project["definition"].clone();
+    definition["settings"]["publish_review_requires_confirmation"] = json!(false);
+    accepted(
+        &f,
+        "project",
+        "update",
+        "confirmation-off",
+        json!({"project_id":p,"version":project["project"]["version"],"definition":definition}),
+    );
+    let (ok, unchanged) = f.run(&["invocation", "show", p, id]);
+    assert!(ok, "{unchanged}");
+    assert_eq!(unchanged["invocation"]["spec"]["document"], spec);
+
+    let cancelled = accepted(
+        &f,
+        "invocation",
+        "cancel",
+        "cancel-writer",
+        json!({"project_id":p,"invocation_id":id,"state_version":running["state_version"],"reason":"cancel this writer before assigning another"}),
+    );
+    assert_eq!(cancelled["state"], "cancelled");
+    assert_eq!(cancelled["cleanup_pending"], true);
+    // A lease can be regranted only after the real Agency exit report is stored.
+    // Poll the human preview: no fixture inserts a receipt or grants a lease.
+    let mut next = Value::Null;
+    for _ in 0..150 {
+        let (ok, value) = f.run(&[
+            "invocation",
+            "preview",
+            "--input",
+            input,
+            "--key",
+            "write-2",
+        ]);
+        next = value;
+        if ok {
+            break;
+        }
+        assert_eq!(next["error"]["code"], "WRITE_LEASE_BUSY", "{next}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(next["preview_token"].is_string(), "{next}");
+    let next_write = &next["effect_summary"]["preview"]["write"];
+    assert_eq!(next_write["lease"]["pending"]["lease"]["generation"], 2);
+    assert_ne!(
+        next_write["review_publish_policy"],
+        write["review_publish_policy"]
+    );
+    assert!(f.run(&["stop"]).0);
+    // stop acknowledges shutdown; in-flight blocking workers can still own
+    // the Store. Wait for its native writer lock to be released, not a delay.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let store = loop {
+        match Store::open(&f.root) {
+            Ok(store) => break store,
+            Err(error) if error.code == "WRITER_BUSY" && std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("control did not release its Store after stop: {error:?}"),
+        }
+    };
+    let saved = store
+        .get(&store::ObjectKey {
+            scope: Scope::Repo(setup.repo.clone()),
+            kind: "changeset".into(),
+            id: set.into(),
+        })
+        .unwrap()
+        .unwrap();
+    let RecordData::Value { value: saved } = saved.data else {
+        panic!("ChangeSet record required")
+    };
+    assert_eq!(saved["lease"]["state"], "revoked");
+    assert_eq!(saved["lease"]["generation"], 1);
+    assert!(
+        store.list("review_publish_intent").unwrap().is_empty(),
+        "a preview/start is not a Revision admission"
+    );
+    let policy_id = write["review_publish_policy"]["id"].as_str().unwrap();
+    let record = store
+        .get(&store::ObjectKey {
+            scope: Scope::Repo(setup.repo.clone()),
+            kind: "review_publish_policy".into(),
+            id: policy_id.into(),
+        })
+        .unwrap()
+        .unwrap();
+    let RecordData::Value { value } = record.data else {
+        panic!("policy record required")
+    };
+    assert_eq!(value["policy"]["requires_human_confirmation"], true);
+    assert_eq!(value["digest"], write["review_publish_policy"]["digest"]);
+    println!(
+        "CLI writer: {id}; frozen policy: {policy_id}; lease 1 stopped, next preview generation 2; no publish intent"
+    );
 }
 
 #[test]

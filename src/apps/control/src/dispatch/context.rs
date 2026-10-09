@@ -5,6 +5,36 @@ use ::context::{
     SourceKind, Sources, StoreSources,
 };
 
+/// Package 6's review source is explicit. Its platform adapter is wired in the stacked
+/// comment-line PR; a selected source is never silently omitted while it is unavailable.
+fn review_source(
+    shared: &Shared,
+    actor: &TrustedActor,
+    preview: &invocation::Preview,
+) -> store::Result<Option<SourceContent>> {
+    let Some(revision) = &preview.input.review_change_set_revision else {
+        return Ok(None);
+    };
+    access(shared, |s| {
+        let current = s
+            .get(&revision.key)?
+            .ok_or_else(|| invalid("review version missing"))?;
+        if participant::reference(&current) != *revision {
+            return Err(reject(
+                "VERSION_CONFLICT",
+                "review version changed",
+                "rebuild_preview",
+            ));
+        }
+        let _ = actor;
+        Err(reject(
+            "REVIEW_LINE_NOT_CONFIGURED",
+            "platform review-comment adapter is not connected yet",
+            "inspect_review_on_platform",
+        ))
+    })
+}
+
 fn reference(id: String, bytes: &[u8]) -> agency_proto::FrozenRef {
     let digest = agency_proto::hash(bytes);
     agency_proto::FrozenRef {
@@ -42,6 +72,16 @@ pub(super) fn assemble(
         ),
         bytes: preview.input.request.as_bytes().to_vec(),
     }];
+    if let Some(write) = &preview.write {
+        let bytes = write.context_bytes()?;
+        contents.push(SourceContent {
+            reference: reference(format!("write-boundary/{}", preview.consumer.id), &bytes),
+            bytes,
+        });
+    }
+    if let Some(review) = review_source(shared, &scoped, preview)? {
+        contents.push(review);
+    }
     if preview.brief.is_some() || preview.input.task_id.is_some() {
         let selected = access(shared, |s| {
             let (selected, _) = ::context::select_context(
@@ -76,12 +116,17 @@ pub(super) fn assemble(
     });
     let permitted: Vec<_> = contents.iter().map(|c| c.reference.id.clone()).collect();
     let policy = reference(
-        "policy/invocation-read-only-v1".into(),
+        if preview.write.is_some() {
+            "policy/invocation-write-v1"
+        } else {
+            "policy/invocation-read-only-v1"
+        }
+        .into(),
         b"hctl2.invocation.explicit-request-own-room.v1",
     );
     let mut manifest = Manifest {
         id: String::new(),
-        purpose: format!("read-only invocation {}", preview.consumer.id),
+        purpose: format!("{} invocation {}", if preview.write.is_some() { "write" } else { "read-only" }, preview.consumer.id),
         scope: format!("project {p}"),
         parent: None,
         sources: contents.iter().map(|c| c.reference.clone()).collect(),

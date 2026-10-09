@@ -972,3 +972,183 @@ fn make_executable(path: &Path) {
 
 #[cfg(not(unix))]
 fn make_executable(_path: &Path) {}
+
+#[test]
+fn seal_reads_exact_base_and_tree_retains_objects_and_diff_uses_no_worktree_state() {
+    let f = Fixture::new("seal-commit");
+    let commit = f.second_commit();
+    let seal = || {
+        tool()
+            .args(["repo", "seal", "--path"])
+            .arg(&f.repo)
+            .args([
+                "--change-set-ref",
+                "cs-test",
+                "--baseline",
+                &f.first_commit,
+                "--commit",
+                &commit,
+            ])
+            .output()
+            .unwrap()
+    };
+    let sealed = seal();
+    assert_success(&sealed);
+    let v = json_stdout(&sealed);
+    assert_eq!(v["base_commit_sha"], f.first_commit);
+    assert_eq!(v["result_commit_sha"], commit);
+    assert_eq!(
+        v["result_tree_sha"],
+        git_stdout(Some(&f.repo), ["rev-parse", "HEAD^{tree}"])
+    );
+    assert_eq!(
+        git_stdout(
+            Some(&f.repo),
+            ["rev-parse", v["retained_ref"].as_str().unwrap()]
+        ),
+        commit
+    );
+    let replay = seal();
+    assert_success(&replay);
+    assert_eq!(json_stdout(&replay)["retained_ref"], v["retained_ref"]);
+    fs::write(f.repo.join("README.md"), "private unsealed bytes\n").unwrap();
+    let diff = tool()
+        .args(["repo", "diff", "--path"])
+        .arg(&f.repo)
+        .args([
+            "--base",
+            &f.first_commit,
+            "--tree",
+            v["result_tree_sha"].as_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_success(&diff);
+    let diff = json_stdout(&diff);
+    assert!(diff["diff"].as_str().unwrap().contains("+second"), "{diff}");
+    assert!(!diff["diff"].as_str().unwrap().contains("private unsealed"));
+}
+
+#[test]
+fn seal_worktree_reuses_archive_snapshot_and_rejects_the_wrong_frozen_baseline() {
+    let f = Fixture::new("seal-worktree");
+    let sites = f.root.join("sites");
+    let materialized = materialize(&f, &sites, "cs-test", &f.first_commit);
+    assert_success(&materialized);
+    fs::write(sites.join("cs-test/new.txt"), "new snapshot\n").unwrap();
+    let sealed = tool()
+        .args(["repo", "seal", "--path"])
+        .arg(&f.repo)
+        .args(["--change-set-ref", "cs-test", "--baseline", &f.first_commit])
+        .output()
+        .unwrap();
+    assert_success(&sealed);
+    let v = json_stdout(&sealed);
+    assert_eq!(v["base_commit_sha"], f.first_commit);
+    let snapshot = git_stdout(
+        Some(&f.repo),
+        [
+            "show",
+            &format!("{}:new.txt", v["result_commit_sha"].as_str().unwrap()),
+        ],
+    );
+    assert_eq!(snapshot, "new snapshot");
+    let wrong = f.second_commit();
+    assert_error_code(
+        tool()
+            .args(["repo", "seal", "--path"])
+            .arg(&f.repo)
+            .args(["--change-set-ref", "cs-test", "--baseline", &wrong])
+            .output()
+            .unwrap(),
+        "HCTL2_TOOL_BASELINE_MISMATCH",
+    );
+    assert!(sites.join("cs-test/new.txt").is_file());
+}
+
+#[test]
+fn seal_commit_refuses_a_result_before_the_base_and_non_exact_references() {
+    let f = Fixture::new("seal-boundary");
+    let base = f.second_commit();
+    assert_error_code(
+        tool()
+            .args(["repo", "seal", "--path"])
+            .arg(&f.repo)
+            .args([
+                "--change-set-ref",
+                "cs-test",
+                "--baseline",
+                &base,
+                "--commit",
+                &f.first_commit,
+            ])
+            .output()
+            .unwrap(),
+        "HCTL2_TOOL_BASELINE_MISMATCH",
+    );
+    assert_error_code(
+        tool()
+            .args(["repo", "seal", "--path"])
+            .arg(&f.repo)
+            .args([
+                "--change-set-ref",
+                "cs-test",
+                "--baseline",
+                &base,
+                "--commit",
+                "HEAD",
+            ])
+            .output()
+            .unwrap(),
+        "HCTL2_TOOL_INVALID_ARGUMENT",
+    );
+    assert!(
+        git_stdout(
+            Some(&f.repo),
+            [
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/hctl2/changesets/cs-test/seals"
+            ]
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn seal_association_replays_original_git_bytes_after_unconfirmed_response() {
+    let f = Fixture::new("seal-retry");
+    let sites = f.root.join("sites");
+    assert_success(&materialize(&f, &sites, "cs-test", &f.first_commit));
+    let worktree = sites.join("cs-test");
+    fs::write(worktree.join("new.txt"), "first result\n").unwrap();
+    let run = || {
+        tool()
+            .args(["repo", "seal", "--path"])
+            .arg(&f.repo)
+            .args([
+                "--change-set-ref",
+                "cs-test",
+                "--baseline",
+                &f.first_commit,
+                "--key",
+                "proposal-1:1",
+            ])
+            .output()
+            .unwrap()
+    };
+    let first = run();
+    assert_success(&first);
+    let first = json_stdout(&first);
+    fs::write(worktree.join("new.txt"), "later private result\n").unwrap();
+    let retry = run();
+    assert_success(&retry);
+    let retry = json_stdout(&retry);
+    assert_eq!(retry["reused"], true);
+    assert_eq!(retry["result_tree_sha"], first["result_tree_sha"]);
+    assert_eq!(retry["result_commit_sha"], first["result_commit_sha"]);
+    assert_eq!(
+        fs::read_to_string(worktree.join("new.txt")).unwrap(),
+        "later private result\n"
+    );
+}

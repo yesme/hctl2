@@ -105,6 +105,206 @@ fn replace_set(store: &mut Store, set: &mut repo::changeset::ChangeSet) {
         .unwrap();
 }
 
+fn lease_transaction<T: serde::Serialize>(
+    store: &mut Store,
+    key: &str,
+    run: impl FnOnce(&mut store::CommandTransaction<'_>) -> repo::Result<T>,
+) -> repo::Result<serde_json::Value> {
+    let actor = actor("repo-1");
+    let target = ObjectKey {
+        scope: Scope::Repo("repo-1".into()),
+        kind: "lease_test".into(),
+        id: key.into(),
+    };
+    let command = Command {
+        command_id: key.into(),
+        idempotency_key: key.into(),
+        actor: actor.0.clone(),
+        binding: Reference {
+            key: target.clone(),
+            version: Version::State(1),
+        },
+        target,
+        expected: Expected::Absent,
+        operation: "lease.test".into(),
+        input: serde_json::json!({}),
+        input_digest: Command::digest_input("lease.test", &serde_json::json!({})).unwrap(),
+    };
+    store.submit(store.generation(), &actor, &command, None, |tx| {
+        Ok(serde_json::to_value(run(tx)?)?)
+    })
+}
+
+#[test]
+fn pending_lease_is_not_a_grant_and_authorization_failure_rolls_it_back() {
+    use repo::changeset::{acquire_lease, plan_lease};
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let pending = plan_lease(
+        &store,
+        "repo-1",
+        3,
+        &sha(1),
+        "write",
+        None,
+        &invocation("writer"),
+    )
+    .unwrap();
+    assert_eq!(pending.pending.lease.state, LeaseState::Pending);
+    assert!(store.list("changeset").unwrap().is_empty());
+    let error = lease_transaction::<serde_json::Value>(&mut store, "failed-start", |tx| {
+        acquire_lease(tx, &pending)?;
+        Err(repo::reject("TEST_ABORT", "owner admission failed", "test"))
+    })
+    .unwrap_err();
+    assert_eq!(error.code, "TEST_ABORT");
+    assert!(store.list("changeset").unwrap().is_empty());
+    let active: ChangeSet = serde_json::from_value(
+        lease_transaction(&mut store, "start", |tx| acquire_lease(tx, &pending)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(active.lease.state, LeaseState::Active);
+    assert_eq!(active.lease.holder, invocation("writer"));
+}
+
+#[test]
+fn second_writer_cannot_take_active_or_revoking_lease_even_after_restart() {
+    use repo::changeset::{acquire_lease, plan_lease, revoke_lease};
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let pending = plan_lease(
+        &store,
+        "repo-1",
+        3,
+        &sha(1),
+        "write",
+        None,
+        &invocation("first"),
+    )
+    .unwrap();
+    let stale = pending.clone();
+    let active: ChangeSet = serde_json::from_value(
+        lease_transaction(&mut store, "start", |tx| acquire_lease(tx, &pending)).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        lease_transaction(&mut store, "stale-start", |tx| acquire_lease(tx, &stale))
+            .unwrap_err()
+            .code,
+        "VERSION_CONFLICT"
+    );
+    assert_eq!(
+        plan_lease(
+            &store,
+            "repo-1",
+            3,
+            &sha(1),
+            "next",
+            Some(&active.change_set_id),
+            &invocation("next")
+        )
+        .unwrap_err()
+        .code,
+        "WRITE_LEASE_BUSY"
+    );
+    let lease = LeaseRef {
+        lease_id: active.lease.lease_id.clone(),
+        generation: active.lease.generation,
+    };
+    assert_eq!(
+        lease_transaction(&mut store, "wrong-producer", |tx| revoke_lease(
+            tx,
+            "repo-1",
+            &active.change_set_id,
+            &lease,
+            &invocation("other")
+        ))
+        .unwrap_err()
+        .code,
+        "LEASE_NOT_CURRENT"
+    );
+    let revoked: ChangeSet = serde_json::from_value(
+        lease_transaction(&mut store, "cancel", |tx| {
+            revoke_lease(
+                tx,
+                "repo-1",
+                &active.change_set_id,
+                &lease,
+                &invocation("first"),
+            )
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(revoked.lease.state, LeaseState::Revoking);
+    drop(store);
+    let store = Store::open(&temp.0).unwrap();
+    assert_eq!(
+        plan_lease(
+            &store,
+            "repo-1",
+            3,
+            &sha(1),
+            "next",
+            Some(&active.change_set_id),
+            &invocation("next")
+        )
+        .unwrap_err()
+        .code,
+        "WRITE_LEASE_BUSY"
+    );
+}
+
+#[test]
+fn lease_preview_cannot_cross_repo_or_tamper_with_identity_generation_or_state() {
+    use repo::changeset::{acquire_lease, plan_lease};
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let active = opened(&mut store);
+    assert_eq!(
+        plan_lease(
+            &store,
+            "repo-2",
+            3,
+            &sha(1),
+            "next",
+            Some(&active.change_set_id),
+            &invocation("next")
+        )
+        .unwrap_err()
+        .code,
+        "CHANGESET_NOT_FOUND"
+    );
+    let pending = plan_lease(
+        &store,
+        "repo-1",
+        3,
+        &sha(1),
+        "other",
+        None,
+        &invocation("writer"),
+    )
+    .unwrap();
+    for field in ["generation", "id", "state", "version"] {
+        let mut wrong = pending.clone();
+        match field {
+            "generation" => wrong.pending.lease.generation += 1,
+            "id" => wrong.pending.lease.lease_id = "borrowed".into(),
+            "state" => wrong.pending.lease.state = LeaseState::Active,
+            "version" => wrong.pending.version += 1,
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            lease_transaction(&mut store, field, |tx| acquire_lease(tx, &wrong))
+                .unwrap_err()
+                .code,
+            "LEASE_PREVIEW_MISMATCH",
+            "{field}"
+        );
+    }
+    assert_eq!(store.list("changeset").unwrap().len(), 1);
+}
+
 #[test]
 fn admitted_result_replays_after_owner_closes_or_lease_changes() {
     let temp = Temp::new();
