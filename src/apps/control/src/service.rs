@@ -320,6 +320,8 @@ impl Control for ControlService {
             | "invocation.show"
             | "invocation.list"
             | "profile.show"
+            | "memo.show"
+            | "memo.list"
             | "integration.show"
             | "integration.list"
             | "context.preview"
@@ -359,6 +361,8 @@ impl Control for ControlService {
                         crate::dispatch::list(&store, &actor, &payload)
                     } else if kind == "profile.show" {
                         crate::profiles::query(&store, &actor, &payload)
+                    } else if kind.starts_with("memo.") {
+                        crate::memo::query(&store, &actor, &kind, &payload)
                     } else if kind.starts_with("integration.") {
                         crate::integration::query(&store, &kind, &payload)
                     } else if kind.starts_with("project.")
@@ -456,6 +460,7 @@ impl Control for ControlService {
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
+            || req.operation.starts_with("memo.")
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
         {
@@ -482,6 +487,8 @@ impl Control for ControlService {
                     )
                 } else if operation.starts_with("profile.") {
                     crate::profiles::preview(&store, &actor, &operation, &payload)
+                } else if operation.starts_with("memo.") {
+                    crate::memo::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {
                     crate::projects::preview(&store, &services, &actor, &operation, &payload)
                 } else if operation.starts_with("room.") {
@@ -513,6 +520,7 @@ impl Control for ControlService {
             || req.operation.starts_with("room.")
             || req.operation.starts_with("project.")
             || req.operation.starts_with("profile.")
+            || req.operation.starts_with("memo.")
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
         {
@@ -686,6 +694,10 @@ impl Control for ControlService {
             }
             if operation.starts_with("profile.") {
                 return crate::profiles::submit(&store, &actor, &repo_request, &details)
+                    .map_err(|err| present(&err));
+            }
+            if operation.starts_with("memo.") {
+                return crate::memo::submit(&store, &actor, &repo_request, &details)
                     .map_err(|err| present(&err));
             }
             if operation.starts_with("integration.") {
@@ -1091,6 +1103,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("room.")
         || operation.starts_with("project.")
         || operation.starts_with("profile.")
+        || operation.starts_with("memo.")
         || operation.starts_with("invocation.")
         || operation.starts_with("integration.")
 }

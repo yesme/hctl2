@@ -3,6 +3,7 @@
 
 mod commands;
 pub mod invocation;
+pub mod memo;
 mod model;
 mod requests;
 mod views;

@@ -5,6 +5,7 @@
 mod agency;
 mod integration;
 mod invocation;
+mod memo;
 mod profession;
 mod profile;
 mod project;
@@ -90,6 +91,9 @@ enum Command {
     Profession(profession::ProfessionCommand),
     #[command(subcommand)]
     Profile(profile::ProfileCommand),
+    /// Publish governance text as an append-only Memo revision: preview, confirm, read back.
+    #[command(subcommand)]
+    Memo(memo::MemoCommand),
     #[command(subcommand)]
     Invocation(invocation::InvocationCommand),
     #[command(subcommand)]
@@ -203,6 +207,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Agency(command) => agency::dispatch(command, root, json).await,
         Command::Profession(command) => profession::dispatch(command, root, json).await,
         Command::Profile(command) => profile::dispatch(command, root, json).await,
+        Command::Memo(command) => memo::dispatch(command, root, json).await,
         Command::Invocation(command) => invocation::dispatch(command, root, json).await,
         Command::Terminal(command) => terminal::dispatch(command, root, json).await,
         Command::Integration(command) => integration::dispatch(command, root, json).await,

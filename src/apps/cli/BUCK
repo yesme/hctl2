@@ -29,11 +29,19 @@ rust_binary(
 
 rust_test(
     name = "cli_test",
-srcs = ["tests/cli.rs", "tests/cli/profile.rs", "tests/cli/human.rs", "tests/cli/samples.rs"],
+    srcs = [
+        "tests/cli.rs",
+        "tests/cli/human.rs",
+        "tests/cli/memo.rs",
+        "tests/cli/profile.rs",
+        "tests/cli/samples.rs",
+    ],
     crate_root = "tests/cli.rs",
     deps = [
         "root//crates/agency-proto:agency_proto",
+        "root//crates/chat:chat",
         "root//crates/context:context",
+        "root//crates/foundation:foundation",
         "root//crates/participant:participant",
         "root//crates/repo:repo",
         "root//crates/store:store",

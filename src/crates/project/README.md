@@ -11,8 +11,11 @@
 | `src/requests.rs` | 去重与取代、解决 / 取消 / 截止、唯一投递与接收回执 |
 | `src/invocation.rs`、`src/invocation/lifecycle.rs`、`src/invocation/results.rs` | Invocation 的预览、只读授权、状态、撤权与重试、只读回答准入及投影意图；外部动作由 Control 主链接 |
 | `src/views.rs` | 阻塞列表、待你处理、Overview 与闲置提醒的只读投影 |
+| `src/memo.rs` | 发布 Memo 的预览与准入、只追加 revision、指针清单与精确读回 |
 | `apps/control/src/projects.rs` | Query / Preview / Submit、逐房间外部投递、Request 重启恢复与每 5 秒截止检查 |
+| `apps/control/src/memo.rs` | Memo 的 Query / Preview / Submit 适配，`memo.list` 用控制面自己的时钟 |
 | `apps/cli/src/project.rs` | 公共 `hctl2 project` 与 `hctl2 request` 两步确认入口 |
+| `apps/cli/src/memo.rs` | 公共 `hctl2 memo`：正文按文件提交，两步确认 |
 
 沿用 Store 的 SQLite 事务、命令内核与治理材料 Git 裸库，不建另一套存储。Project 身份记录引用精确版本的 `project_details`；目标、范围、角色、默认规则与设置可追溯。Task 身份与契约 Revision 保存接受时的 Project 引用，后续改缺省不回写历史。
 
@@ -74,7 +77,7 @@ hctl2 request show PROJECT_ID REQUEST_ID
 | Project 版本更新不改已接受约束、名册换人不回写旧记录 | D：保存旧选入与 Binding、Task Revision 接受版本冻结、改缺省后原 Request delivery 可确认；第 5 包首批再测真实候选与旧 Profile 引用 | 活动调用 / Run 的冻结设置仍待派工与 Run 接线 |
 | Request 比较并交换、唯一投递、崩溃重试、截止不伪造 Task 终态 | D：来源在 Submit / 回执前变化拒绝，Unknown 后重新开库仅一回执一 Revision，旧 Task 预览不能绕过新 Request，过期旧来源不挡其他截止 | Run / Invocation 的来源 builder 与接收方尚未实现 |
 | CT-REPO 其余注册、平台绑定、集成与评审行 | 原 Repo 测试与完整安装包测试保留；本包不改 Repo reducer | 变更 / 发布评审 / 集成仍按任务书后续包交付 |
-| CT-PROJECT 其余 Invocation、Context、Memo、模型、派发与审计行 | 本包不派工、不发布 Memo；Chat / Task 已有回归目标保留 | 第 2–7 包及 Workbench，不标本包完成 |
+| CT-PROJECT 其余 Invocation、Context、模型、派发与审计行 | 本包不派工；Memo 三行见[第 7 包](#第-7-包--发布-memo) | 第 2–6、8 包及 Workbench，不标本包完成 |
 
 D = `root//crates/project:domain_test`（连用 Task / Chat reducer）；N = `root//apps/control:chat_native_test`；B1 = `root//packaging/release:room-cli-test` 中的原生安装包验收；R = 该目标保留的 Room 验收。原生测试用 lock.json 的 Tuwunel / Gitea / tea，在私有目录和独立回环端口运行，不操作开发者实例。
 
@@ -144,3 +147,49 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 `retry` 没有新的领域入口。CLI 读 `--retry-of` 指向的原调用文件，取它的精确 owner 引用填进 `Input.retry_of`，再用自己的命令 key 走既有 `invocation.start`；输入文件自己声称的 `retry_of` 与 `--retry-of` 不一致时 CLI 先拒绝，不发请求。旧调用未终态或仍有有效授权由 `start` 的既有检查以 `RETRY_NOT_ALLOWED` 拒绝，Bundle 由新调用自己冻结，不复用旧的。
 
 `room roster show` 复用 `project.roster`，返回选入记录本身，读取不重新授予派工资格；`room roster select` 复用 `Action::Select`，不另造名册存储、不改 Binding。按领域对象命名的 `room roster …` 是正名，既有的 `project roster | select` 降为文档里写明的别名：本批两套都留，收敛成一套放第 8 包（所有者 2026-10-06 裁定）。保留一个候选就是把整份名册按它的确切版本重发，版本不符以 `VERSION_CONFLICT` 拒绝。
+
+## 第 7 包 · 发布 Memo
+
+依据 [Project 约束](../../../docs/design/spec/project.md#contextmemo-与-artifact)的 Memo 一段与[写入约束](../../../docs/design/spec/project.md)「Memo | 发布 revision 只追加」。Memo 只由 `memo.publish` 一条命令产生：预览纯读、确认在同一个 Store 事务里保存正文材料并准入、写 revision 与指针。原始消息、执行日志与模型总结都不经这条路，因此不会成为 Memo；Room 提要、冻结来源与自动归纳都不触发它。
+
+| 形状 | 说明 |
+| --- | --- |
+| `memo_revision/{memo_id}:{revision}` | 只追加的一个已发布 revision，记录版本恒为 1；它的唯一准入材料就是正文定位符，由准入填写，调用方不能提供 |
+| `memo/{memo_id}` | 当前指针，版本号等于 revision 号，值是精确 revision 引用。发布新版本只移动它，不改写历史 |
+| `memo_command/{sha256(key)}` | 命令记录，供同 key 重放回答原结果 |
+
+`Memo` 固定 `memo_id / revision / applicability / author / sources / content_digest / supersedes / expires_at`。`author` 取认证连接的 principal，不是 payload 字段（`deny_unknown_fields` 使带 `author` 的输入直接解析失败）。`sources` 是逐条核对过 digest 的精确冻结 Message / Artifact 引用，跨 Project 的引用拒绝；`content_digest` 是正文字节的摘要，与准入材料的 `byte_digest` 必须一致。
+
+更新是 `supersedes` 指名精确前一 revision 的新 revision：首个 revision 的 `supersedes` 为空，对已发布的 Memo 提交空 `supersedes` 以 `SUPERSEDES_REQUIRED` 拒绝，`supersedes` 不是当前已发布的那个 revision 以 `VERSION_CONFLICT` 拒绝。旧 revision 仍按精确 revision 读回，读回不依赖指针、搜索或"最近"。已发布 revision 不可改写：同版本换内容被记录投影拒绝；即便记录被换掉，指针与 `at()` 也不再为它服务。
+
+正文经 `--body` 的文件字节进入命令，准入时保存为治理材料并绑定本命令的幂等 key。保存不等于准入：未准入的正文读不回来，别的命令 key 保存的字节也不能被本命令认领。归档 Project 拒绝发布（`PROJECT_READ_ONLY`），读回仍可用——[归档拒绝清单](../../../docs/design/spec/project.md)没有逐项列 Memo，这一条按「写入型命令由 Project 的只读前置拒绝」的既有规则处理。
+
+`memo list` 给出指针清单：机械过滤已过有效期的 Memo，已被取代的 revision 本来就不是指针；`items` 保留全部当前 revision 与 `expired` 事实供人看。`now` 由控制面自己的时钟给出，调用方不能指定过滤时刻。显式 `memo show --revision` 不受这份清单影响。
+
+### CLI
+
+```sh
+hctl2 memo publish --input memo-action.json --body memo-body.md --key publish-one
+hctl2 memo publish --input memo-action.json --body memo-body.md --key publish-one --preview-token TOKEN
+hctl2 memo show PROJECT_ID MEMO_ID [--revision N]
+hctl2 memo list PROJECT_ID
+```
+
+`--input` 是动作本身：`{"project_id","project_version","memo_id","applicability","sources","supersedes","expires_at"}`，`kind` 与 `body` 由 CLI 补。正文用文件而不是 JSON 字符串，写下的字节就是成为治理材料的字节；`--input` 自带 `body` 而与 `--body` 不一致时 CLI 先拒绝，不发请求。预览之后改正文，原 token 不再匹配（`PREVIEW_REQUIRED`）；确认成功即消耗 token，重放要重新预览。
+
+### CT 与失败输入
+
+| CT 内容 | 本次证据 | 未覆盖及原因 |
+| --- | --- | --- |
+| 原始消息、执行日志和模型总结不经「发布 Memo」命令不会成为 Memo | D：确认过的 Room 提要与冻结来源不产生任何 Memo 记录；引用未冻结消息 `SOURCE_UNAVAILABLE`；空白正文、跨 Project 来源、payload 带 `author` 均拒绝；预览前后读数一致且三类记录为空；同 key 被别的命令占用后 `IDEMPOTENCY_CONFLICT`。C：发布前 `memo list` 为空，预览不写；预览后改正文，原 token 确认失败 | 模型总结的产生路径本身归派工与 Agency 包 |
+| 过期或被取代的 Memo 不进指针清单，显式引用除外 | D：`expires_at` 前后各读一次清单，过期者出局、当前 revision 换成新的一条；`show --revision` 仍读回旧正文；另一 Project 的清单为空。C：同形走真实命令行 | 组装器消费这份清单属 Context 交付，本包只提供它 |
+| 材料 Git 中新增正文但未准入时不自动成为 Memo 或推进版本 | D：`save_material` 之后 `read_material` 仍 `MATERIAL_NOT_ADMITTED`；同字节在另一命令 key 下得到不同定位符，本命令不能认领它；手工换掉 revision 记录不推进指针，`at()` 与两种 `show` 全部拒绝 | Artifact 登记未接，`artifact_revision` 只是预留的合法来源种类 |
+| 发布 revision 只追加，更新以 supersedes 连接 | D：同版本不同内容 `VERSION_CONFLICT`；revision 1 / 2 / 3 逐条读回，`supersedes` 指向精确前一条；`--revision` 越界 `MEMO_NOT_FOUND`。C：revision 2 换引用、旧 revision 仍可读 | — |
+
+D = `root//crates/project:domain_test`（`tests/memo.rs`）；C = `root//apps/cli:cli_test`（`tests/cli/memo.rs`，预置 Project、主 Room 与一条冻结消息，命令全走真实 CLI 与 RPC）。本次不改约束版本。
+
+```sh
+cd src
+./buck2 test root//crates/project:domain_test root//apps/cli:cli_test root//apps/control:unit_test root//apps/control:boundary_test
+```
+

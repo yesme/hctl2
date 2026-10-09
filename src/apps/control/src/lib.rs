@@ -9,6 +9,7 @@ mod context_query;
 pub mod dispatch;
 mod identity;
 pub mod integration;
+mod memo;
 mod profiles;
 mod projects;
 mod repositories;
