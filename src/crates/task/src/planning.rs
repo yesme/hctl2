@@ -380,13 +380,58 @@ fn integration_evidence(
         "adapter_event"
     };
     // 源版本、目标头与「指回意图」的来源都要在，缺一项不算核过。
-    if receipt.source.change_set_revision_id.trim().is_empty()
+    if receipt.repo_id != t.repo_id
+        || receipt.source.change_set_revision_id.trim().is_empty()
         || receipt.target_head_after.trim().is_empty()
         || record.sources.is_empty()
     {
         return Ok(None);
     }
+    // 归属：先把 `source` 钉回本 Repo 冻结的版本记录，再沿封存者找到本 Task。
+    if store
+        .get(&repo::integration::revision_key(
+            &t.repo_id,
+            &receipt.source.change_set_revision_id,
+        ))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let admitted =
+        repo::integration::revision(store, &t.repo_id, &receipt.source.change_set_revision_id)?;
+    if admitted != receipt.source || !admitted_for_task(store, t, &admitted.producer_ref)? {
+        return Ok(None);
+    }
     Ok(Some((channel.into(), reference.clone())))
+}
+
+/// 该冻结版本是否由「声明属于本 Task」的 Room Invocation 封存。
+///
+/// task 不能依赖 project（project 依赖 task，成环），按记录 kind 与 JSON 路径读原文。
+/// 上界写明：`task_id` 是调用启动者在输入里声明的，project 侧不校验，所以这条判据
+/// 证明的是「该 ChangeSet 由声明属于本 Task 的 Invocation 持有租约产出」。人工命令
+/// 封存的版本没有 Invocation，判不出归属，一律不认（fail closed）。
+fn admitted_for_task(store: &Store, t: &Task, producer: &Value) -> Result<bool> {
+    if producer.get("kind").and_then(Value::as_str) != Some("invocation") {
+        return Ok(false);
+    }
+    let Some(invocation_id) = producer.get("invocation_id").and_then(Value::as_str) else {
+        return Ok(false);
+    };
+    let Some(record) = store.get(&key(
+        Scope::Project(t.project_id.clone()),
+        "room_invocation",
+        invocation_id,
+    ))?
+    else {
+        return Ok(false);
+    };
+    let RecordData::Value { value } = &record.data else {
+        return Ok(false);
+    };
+    let input = &value["preview"]["input"];
+    Ok(input["task_id"].as_str() == Some(t.id.as_str())
+        && input["project_id"].as_str() == Some(t.project_id.as_str()))
 }
 
 /// 供应端 Done 请求能提供的证据：只覆盖契约里的机械项，用这次观测作旁路证据；

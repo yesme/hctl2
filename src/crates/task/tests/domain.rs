@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 use store::{
-    Actor, ActorSource, Command, Expected, ExternalEntity, ProjectSettings, Record, RecordData,
-    Reference, Scope, Store, TrustedActor, Version,
+    Actor, ActorSource, Command, Expected, ExternalEntity, ObjectKey, ProjectSettings, Record,
+    RecordData, Reference, Scope, Store, TrustedActor, Version,
 };
 use task::*;
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -1019,6 +1019,145 @@ fn completion_refuses_a_human_item_judged_by_a_tool() {
     );
     let (_, t) = task(&e.store, "A", &id).unwrap();
     assert_eq!(t.lifecycle, "open");
+}
+
+/// 造一条本 Repo 的「冻结版本 + Receipt」：版本由 `producer` 封存，Receipt 的 `source`
+/// 指向它；`declared_task` 是 `room_invocation` 记录里声明的 Task（`None` 即不写记录）。
+fn receipt_fixture(e: &mut Env, producer: Value, declared_task: Option<&str>) -> ObjectKey {
+    let revision = repo::integration::AdmittedRevision {
+        change_set_revision_id: "rev-1".into(),
+        change_set_id: "cs-1".into(),
+        parent_revision_id: None,
+        base_commit_sha: "b".repeat(40),
+        result_tree_sha: "1".repeat(40),
+        producer_ref: producer,
+        review_subject_digest: "d".repeat(64),
+    };
+    repo::integration::admit_revision_seam(&mut e.store, &actor(), &e.rid, &revision).unwrap();
+    if let Some(task_id) = declared_task {
+        seed(
+            &mut e.store,
+            task::value_record(
+                task::key(Scope::Project("A".into()), "room_invocation", "inv-1"),
+                1,
+                &json!({"preview":{"input":{"project_id":"A","task_id":task_id}}}),
+            )
+            .unwrap(),
+        );
+    }
+    let receipt = repo::integration::Receipt {
+        receipt_id: "receipt-1".into(),
+        intent_id: "intent-1".into(),
+        repo_id: e.rid.clone(),
+        source: revision,
+        target: repo::integration::Target {
+            kind: repo::integration::TargetKind::Platform,
+            provider_ref: "https://github.com/owner/fixture".into(),
+            target_ref: "refs/heads/main".into(),
+            binding: None,
+            continuity: None,
+        },
+        form: repo::integration::Form::ExpectedHead,
+        strategy: repo::integration::Strategy::FastForward,
+        target_head_before: Some("a".repeat(40)),
+        target_head_after: "c".repeat(40),
+        integrated_commit: "c".repeat(40),
+        integrated_tree: Some("1".repeat(40)),
+        evidence_level: "hctl2-tool".into(),
+        readback: json!({}),
+        observed_at_unix_ms: 1,
+    };
+    let key = repo::integration::receipt_key(&e.rid, "receipt-1");
+    let mut record = task::value_record(key.clone(), 1, &receipt).unwrap();
+    record.sources = vec![Reference {
+        key: repo::integration::intent_key(&e.rid, "intent-1"),
+        version: Version::State(1),
+    }];
+    seed(&mut e.store, record);
+    key
+}
+
+fn receipt_evidence(key: ObjectKey) -> Vec<ItemEvidence> {
+    vec![ItemEvidence {
+        item: 0,
+        judge: Judge::Hctl2Tool,
+        channel: "unmediated".into(),
+        references: vec![Reference {
+            key,
+            version: Version::State(1),
+        }],
+        producer: None,
+        generation: None,
+    }]
+}
+
+/// 契约点名 Integration Receipt 时，只有属于本 Task 的那张算数：Receipt 的 `source`
+/// 必须等于冻结的版本记录，且该版本的封存者要声明属于本 Task。
+#[test]
+fn completion_accepts_only_the_receipt_of_this_task() {
+    // 正例：版本由声明属于本 Task 的 Invocation 封存。
+    let mut e = Env::new();
+    let id = ready(&mut e, integration_contract("A"));
+    let key = receipt_fixture(
+        &mut e,
+        json!({"kind":"invocation","invocation_id":"inv-1","invocation_version":1}),
+        Some(id.as_str()),
+    );
+    let action = complete_action(&e, "A", &id, receipt_evidence(key));
+    let done = apply_as(
+        &mut e.store,
+        &completing_actor("A"),
+        "complete-own-receipt",
+        action,
+    )
+    .unwrap();
+    assert_eq!(done["lifecycle"], "completed", "{done}");
+    assert_eq!(done["items"][0]["validation_level"], "unmediated", "{done}");
+    assert_eq!(task(&e.store, "A", &id).unwrap().1.lifecycle, "completed");
+
+    // 别人的 Invocation 产出的 Receipt：拒，Task 保持开放。
+    let mut e = Env::new();
+    let id = ready(&mut e, integration_contract("A"));
+    let key = receipt_fixture(
+        &mut e,
+        json!({"kind":"invocation","invocation_id":"inv-1","invocation_version":1}),
+        Some("another-task"),
+    );
+    let action = complete_action(&e, "A", &id, receipt_evidence(key));
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-foreign-receipt",
+            action,
+        )
+        .unwrap_err()
+        .code,
+        "INTEGRATION_RECEIPT_REQUIRED"
+    );
+    assert_eq!(task(&e.store, "A", &id).unwrap().1.lifecycle, "open");
+
+    // 人工命令封存的版本没有 Invocation，判不出 Task 归属：拒。
+    let mut e = Env::new();
+    let id = ready(&mut e, integration_contract("A"));
+    let key = receipt_fixture(
+        &mut e,
+        json!({"kind":"human_command","command_id":"seal"}),
+        None,
+    );
+    let action = complete_action(&e, "A", &id, receipt_evidence(key));
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-sealed-by-hand",
+            action,
+        )
+        .unwrap_err()
+        .code,
+        "INTEGRATION_RECEIPT_REQUIRED"
+    );
+    assert_eq!(task(&e.store, "A", &id).unwrap().1.lifecycle, "open");
 }
 
 #[test]

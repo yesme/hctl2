@@ -1,4 +1,8 @@
 //! Project is a fixture until package 辛; every Task operation crosses the real CLI/RPC.
+use repo::integration::{
+    self as integ, AdmittedRevision, Form, Input, Observation, Outcome, ProtectionSnapshot,
+    Strategy, TargetKind,
+};
 use serde_json::{Value, json};
 use std::{
     os::unix::fs::{MetadataExt, PermissionsExt},
@@ -257,7 +261,17 @@ struct Adopted {
     lifecycle_version: i64,
 }
 
+/// The mechanical item cites the seeded fixture record with no declared evidence kind.
 fn adopt(fx: &Fixture) -> Adopted {
+    adopt_contract(fx, None)
+}
+
+/// Same, but the mechanical item's contract declares `accept: integration_receipt`.
+fn adopt_integration(fx: &Fixture) -> Adopted {
+    adopt_contract(fx, Some("integration_receipt".into()))
+}
+
+fn adopt_contract(fx: &Fixture, accept: Option<String>) -> Adopted {
     let created = cmd(
         &fx.root,
         "create",
@@ -274,7 +288,7 @@ fn adopt(fx: &Fixture) -> Adopted {
                 text: "a mechanical check passed".into(),
                 grade: task::Grade::Mechanical,
                 evidence: Some(task::EvidenceRequirement {
-                    accept: None,
+                    accept,
                     min_channel: Some("unmediated".into()),
                 }),
             },
@@ -323,15 +337,24 @@ fn adopt(fx: &Fixture) -> Adopted {
 /// The `complete` action body: item 0 cites the seeded record as unmediated tool
 /// evidence; item 1 is the submitting human's own verdict.
 fn completion_action(adopted: &Adopted, principal: &str) -> Value {
+    completion_action_with(
+        adopted,
+        principal,
+        Reference {
+            key: task::key(Scope::Project("A".into()), "fixture_evidence", "evidence-1"),
+            version: Version::State(1),
+        },
+    )
+}
+
+/// Same, but item 0 cites the real Integration Receipt this Task produced.
+fn completion_action_with(adopted: &Adopted, principal: &str, evidence: Reference) -> Value {
     let evidence = vec![
         task::ItemEvidence {
             item: 0,
             judge: task::Judge::Hctl2Tool,
             channel: "unmediated".into(),
-            references: vec![Reference {
-                key: task::key(Scope::Project("A".into()), "fixture_evidence", "evidence-1"),
-                version: Version::State(1),
-            }],
+            references: vec![evidence],
             producer: Some("hctl2-tool".into()),
             generation: Some(7),
         },
@@ -354,6 +377,108 @@ fn completion_action(adopted: &Adopted, principal: &str) -> Value {
         "revision_number":adopted.revision_number,
         "acceptance": serde_json::to_value(&evidence).unwrap(),
     })
+}
+
+/// Sign a real Integration Receipt for this Task's Repo: admit an Invocation-owned ChangeSet
+/// Revision, write the Room Invocation record the attribution check follows, then run the Repo
+/// module's live preview / submit / begin / confirming-readback sequence. Stops the daemon;
+/// the caller starts it again.
+fn sign_receipt(root: &Path, task_id: &str) -> (String, String) {
+    let mut s = open_stopped(root);
+    let (_, t) = task::task(&s, "A", task_id).unwrap();
+    let repo_id = t.repo_id.clone();
+    let actor = TrustedActor(Actor {
+        principal: "fixture-owner".into(),
+        source: ActorSource::DirectClient,
+        permission_scope: vec![Scope::Control],
+        authority: None,
+    });
+    // The frozen version points back at an Invocation that declares this Task.
+    let invocation_id = "invocation-1";
+    let revision = AdmittedRevision {
+        change_set_revision_id: "rev-1".into(),
+        change_set_id: "cs-1".into(),
+        parent_revision_id: None,
+        base_commit_sha: "b".repeat(40),
+        result_tree_sha: "1".repeat(40),
+        producer_ref: json!({
+            "kind": "invocation",
+            "invocation_id": invocation_id,
+            "invocation_version": 1,
+        }),
+        review_subject_digest: "d".repeat(64),
+    };
+    integ::admit_revision_seam(&mut s, &actor, &repo_id, &revision).unwrap();
+    // `task` cannot depend on `project`, so the attribution check reads this record's JSON
+    // path verbatim (`preview.input.task_id` / `project_id`), not a typed struct.
+    let invocation = task::value_record(
+        task::key(Scope::Project("A".into()), "room_invocation", invocation_id),
+        1,
+        &json!({"preview": {"input": {"task_id": task_id, "project_id": "A"}}}),
+    )
+    .unwrap();
+    let owner = task::owner(&actor, [invocation.key.scope.clone()]).unwrap();
+    let input = serde_json::to_value(&invocation).unwrap();
+    let command = store::Command {
+        command_id: "room-invocation".into(),
+        idempotency_key: "room-invocation".into(),
+        actor: owner.0.clone(),
+        target: invocation.key.clone(),
+        expected: Expected::Absent,
+        binding: task::reference(&invocation),
+        input_digest: store::Command::digest_input("fixture", &input).unwrap(),
+        operation: "fixture".into(),
+        input,
+    };
+    s.submit(s.generation(), &owner, &command, None, |tx| {
+        tx.put(&invocation)?;
+        Ok(json!({}))
+    })
+    .unwrap();
+    // A platform-bound Repo integrates on the platform: accept-advance form (GitHub cannot
+    // guarantee an expected target head), a protection snapshot, platform continuity.
+    let preview = integ::prepare(
+        &s,
+        &actor,
+        Input {
+            key: "receipt".into(),
+            repo_id: repo_id.clone(),
+            change_set_revision_id: revision.change_set_revision_id.clone(),
+            target_kind: TargetKind::Platform,
+            target_ref: "refs/heads/main".into(),
+            form: Form::AcceptAdvance,
+            strategy: Strategy::FastForward,
+        },
+        Observation {
+            provider_ref: "github.com/owner/fixture".into(),
+            head: Some("bbbb".into()),
+            protection: Some(ProtectionSnapshot::default()),
+            continuity: Some(json!({"platform_stable_id": "77"})),
+        },
+    )
+    .unwrap();
+    let intent = integ::submit(&mut s, &actor, "integration:receipt", preview).unwrap();
+    integ::begin(&mut s, &repo_id, &intent.intent_id).unwrap();
+    let done = integ::confirm(
+        &mut s,
+        &repo_id,
+        &intent.intent_id,
+        Outcome::Succeeded {
+            target_head_before: Some("bbbb".into()),
+            target_head_after: "cccc".into(),
+            integrated_commit: "cccc".into(),
+            integrated_tree: Some("1".repeat(40)),
+            evidence_level: "hctl2-tool".into(),
+            readback: json!({"status": "applied"}),
+            observed_at_unix_ms: 1,
+        },
+    )
+    .unwrap();
+    let receipt_id = done
+        .receipt_id
+        .expect("a confirming readback writes a Receipt");
+    drop(s);
+    (repo_id, receipt_id)
 }
 
 #[test]
@@ -477,6 +602,72 @@ fn completion_crosses_the_real_command_line_and_writes_one_receipt() {
     assert_eq!(receipt.items[0].validation_level, "unmediated");
     assert_eq!(receipt.items[0].generation, Some(7));
     assert_eq!(receipt.items[1].grade, "human");
+    drop(s);
+}
+
+/// 正例：机械项按契约接受 Integration Receipt，证据是本 Task 的真 Receipt。归属链
+/// （Receipt.source → 冻结版本 → Invocation → 本 Task）完整，完成全程走真命令行。
+#[test]
+fn completion_accepts_the_integration_receipt_this_task_produced() {
+    let fx = fixture("integration-receipt", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt_integration(&fx);
+    let (repo_id, receipt_id) = sign_receipt(&root, &adopted.task_id);
+    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
+    let expected = Reference {
+        key: integ::receipt_key(&repo_id, &receipt_id),
+        version: Version::State(1),
+    };
+    let action = completion_action_with(&adopted, &actor_principal(&root), expected.clone());
+    // 验收 1：预览逐项列出验收项、判定者、校验等级；机械项的等级来自真 Receipt。
+    let preview_path = root.join("integration-complete-preview.json");
+    std::fs::write(&preview_path, action.to_string()).unwrap();
+    let (ok, preview) = run(
+        &root,
+        &[
+            "task",
+            "complete",
+            "--key",
+            "integration-complete",
+            "--input",
+            preview_path.to_str().unwrap(),
+        ],
+    );
+    assert!(ok, "{preview}");
+    let items = &preview["effect_summary"]["result"]["items"];
+    assert_eq!(items[0]["text"], "a mechanical check passed", "{preview}");
+    assert_eq!(items[0]["grade"], "mechanical");
+    assert_eq!(items[0]["validation_level"], "unmediated", "{preview}");
+    assert_eq!(items[0]["judge"]["kind"], "hctl2_tool");
+    assert_eq!(items[1]["grade"], "human");
+    let completed = cmd(&root, "complete", "integration-complete", action);
+    assert_eq!(completed["lifecycle"], "completed", "{completed}");
+    assert_eq!(completed["lifecycle_version"], 2, "{completed}");
+    let completion_id = completed["receipt_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("receipt_id missing: {completed}"))
+        .to_string();
+    let s = open_stopped(&root);
+    let completions = s.list(task::COMPLETION_RECEIPT_KIND).unwrap();
+    assert_eq!(
+        completions.len(),
+        1,
+        "exactly one completion receipt: {completions:?}"
+    );
+    let completion = task::decode::<task::CompletionReceipt>(&completions[0]).unwrap();
+    assert_eq!(completion.receipt_id, completion_id);
+    assert_eq!(completion.items.len(), 2);
+    assert_eq!(completion.items[0].grade, "mechanical");
+    assert_eq!(completion.items[0].validation_level, "unmediated");
+    assert_eq!(completion.items[0].references, vec![expected.clone()]);
+    // 该引用真的指向本 Task 产出的那张 Receipt。
+    assert!(
+        s.get(&expected.key).unwrap().is_some(),
+        "integration receipt must exist: {expected:?}"
+    );
+    let receipt = integ::receipt(&s, &repo_id, &receipt_id).unwrap();
+    assert_eq!(receipt.evidence_level, "hctl2-tool");
+    assert_eq!(receipt.source.change_set_revision_id, "rev-1");
     drop(s);
 }
 
