@@ -17,6 +17,8 @@ use tokio::sync::Mutex;
 use crate::scm as platform;
 use crate::services::Supervisor;
 
+#[cfg(test)]
+pub(crate) mod fixture;
 pub(crate) mod gitea;
 pub(crate) mod github;
 pub(crate) mod target;
@@ -420,9 +422,39 @@ impl PlatformTarget for Connection {
         self.target()
             .request_merge(full_name, index, strategy, head, message)
     }
+    fn find_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+    ) -> Result<Option<target::ReviewRequest>> {
+        self.target()
+            .find_review_request(full_name, base_branch, head_branch)
+    }
+    fn create_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<target::ReviewRequest> {
+        self.target()
+            .create_review_request(full_name, base_branch, head_branch, title, body)
+    }
+    fn update_review_request(
+        &self,
+        full_name: &str,
+        index: u64,
+        title: &str,
+        body: &str,
+    ) -> Result<()> {
+        self.target()
+            .update_review_request(full_name, index, title, body)
+    }
 }
 
-fn connect_platform(
+pub(crate) fn connect_platform(
     root: &Path,
     services: &Supervisor,
     registration: &Registration,
@@ -1176,7 +1208,7 @@ fn readback_facts(site: &ReadbackSite, target_ref: &str, commit: &str) -> Result
 /// Identity lives in base and tree, not in a commit (`spec/repo.md`). An executor's own commit
 /// with exactly that tree on top of the base is reused when the repository has one; otherwise
 /// a wrapper commit is written with a fixed identity so retries resolve to the same object.
-fn result_commit(
+pub(crate) fn result_commit(
     repo_path: &Path,
     source: &domain::AdmittedRevision,
 ) -> Result<std::result::Result<String, Attention>> {

@@ -166,7 +166,23 @@ pub fn admit(
     seal: Seal,
     owner: OwnerGate,
 ) -> Result<ChangeSetRevision> {
+    admit_with_publication(store, actor, seal, owner, None, 0).map(|(revision, _)| revision)
+}
+
+/// [`admit`], and in the same transaction the publish intent the frozen review publishing
+/// policy calls for (`spec/repo.md` §发布评审: persisted with the admission, under the actor
+/// envelope of the human command that authorized the write). A failure anywhere leaves
+/// neither the revision nor the intent.
+pub fn admit_with_publication(
+    store: &mut Store,
+    actor: &TrustedActor,
+    seal: Seal,
+    owner: OwnerGate,
+    publication: Option<&crate::review::Publication>,
+    now_ms: u64,
+) -> Result<(ChangeSetRevision, Option<crate::review::Intent>)> {
     nonempty(&seal.association_key, "association key")?;
+    let control_id = store.control_id().to_owned();
     // Only the immutable Repo scope is discovered here. Mutable guards and duplicate
     // revision lookup run inside submit, after its persisted-command replay.
     let set = load_change_set(store, "", &seal.change_set_id)?.ok_or_else(|| {
@@ -316,14 +332,30 @@ pub fn admit(
                 ));
             }
         }
-        if let Some(existing) = tx.get(&record.key)? {
-            let existing: ChangeSetRevision = decode(&existing)?;
-            return Ok(serde_json::to_value(existing)?);
-        }
-        tx.put(&record)?;
-        Ok(serde_json::to_value(&revision)?)
+        let admitted = match tx.get(&record.key)? {
+            Some(existing) => decode::<ChangeSetRevision>(&existing)?,
+            None => {
+                tx.put(&record)?;
+                revision.clone()
+            }
+        };
+        let intent = match publication {
+            Some(publication) => Some(crate::review::enqueue(
+                tx,
+                &control_id,
+                &admitted,
+                &current.repo_id,
+                publication,
+                now_ms,
+            )?),
+            None => None,
+        };
+        Ok(json!({"revision": admitted, "intent": intent}))
     })?;
-    Ok(serde_json::from_value(result)?)
+    Ok((
+        serde_json::from_value(result["revision"].clone())?,
+        serde_json::from_value(result["intent"].clone())?,
+    ))
 }
 
 pub fn get_revision(store: &Store, revision_id: &str) -> Result<ChangeSetRevision> {

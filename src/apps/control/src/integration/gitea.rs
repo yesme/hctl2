@@ -31,6 +31,67 @@ impl PlatformTarget for Hosted {
     ) -> Result<()> {
         request_merge(self, full_name, index, merge_style(strategy), head, message).map(|_| ())
     }
+    fn find_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+    ) -> Result<Option<ReviewRequest>> {
+        // Gitea 1.22+: one request per (base, head) pair, looked up directly; 404 is "none".
+        Ok(self
+            .api(
+                "GET",
+                &format!("repos/{full_name}/pulls/{base_branch}/{head_branch}"),
+                None,
+            )?
+            .map(parse))
+    }
+    fn create_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<ReviewRequest> {
+        let value = self
+            .api(
+                "POST",
+                &format!("repos/{full_name}/pulls"),
+                Some(
+                    json!({"head": head_branch, "base": base_branch, "title": title, "body": body}),
+                ),
+            )?
+            .unwrap_or(Value::Null);
+        Ok(parse(value))
+    }
+    fn update_review_request(
+        &self,
+        full_name: &str,
+        index: u64,
+        title: &str,
+        body: &str,
+    ) -> Result<()> {
+        self.api(
+            "PATCH",
+            &format!("repos/{full_name}/pulls/{index}"),
+            Some(json!({"title": title, "body": body})),
+        )
+        .map(|_| ())
+    }
+}
+
+/// A Gitea pull request record into the shared shape.
+fn parse(value: Value) -> ReviewRequest {
+    ReviewRequest {
+        index: value["number"].as_u64().unwrap_or_default(),
+        state: value["state"].as_str().unwrap_or_default().to_owned(),
+        merged: value["merged"] == json!(true),
+        merge_commit_sha: value["merge_commit_sha"].as_str().map(str::to_owned),
+        head_sha: value["head"]["sha"].as_str().map(str::to_owned),
+        base_branch: value["base"]["ref"].as_str().map(str::to_owned),
+        raw: value,
+    }
 }
 
 /// Read the target branch's head and the protection that is in force for it, as the platform
@@ -161,12 +222,7 @@ pub(crate) fn review_request(
     };
     Ok(Some(ReviewRequest {
         index,
-        state: value["state"].as_str().unwrap_or_default().to_owned(),
-        merged: value["merged"] == json!(true),
-        merge_commit_sha: value["merge_commit_sha"].as_str().map(str::to_owned),
-        head_sha: value["head"]["sha"].as_str().map(str::to_owned),
-        base_branch: value["base"]["ref"].as_str().map(str::to_owned),
-        raw: value,
+        ..parse(value)
     }))
 }
 

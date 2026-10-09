@@ -393,6 +393,83 @@ impl Git {
         }
         Ok(refs)
     }
+    /// One remote ref's head as the remote reports it right now; `None` when absent.
+    pub fn remote_ref(
+        &self,
+        path: &Path,
+        url: &str,
+        reference: &str,
+        credential: &Credential,
+    ) -> Result<Option<String>> {
+        let mut cmd = self.command(path);
+        cmd.arg("--git-dir=/dev/null");
+        credential.apply(&mut cmd);
+        let output = run(cmd.args(["ls-remote", "--refs", url, reference]), None)?;
+        if !output.status.success() {
+            return Err(reject(
+                "PLATFORM_UNAVAILABLE",
+                "Git target could not be read",
+                "retry_later",
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .find(|(_, name)| *name == reference)
+            .map(|(sha, _)| sha.to_owned()))
+    }
+
+    /// Push one commit to one remote ref with the remote's expected old value pinned
+    /// (`--force-with-lease`): `None` means the ref must not exist yet. The push either lands
+    /// exactly that commit or changes nothing; what the remote holds afterwards is read back
+    /// by the caller, never inferred from this result.
+    pub fn push_ref(
+        &self,
+        path: &Path,
+        url: &str,
+        commit: &str,
+        reference: &str,
+        expected: Option<&str>,
+        credential: &Credential,
+    ) -> Result<PushOutcome> {
+        let mut cmd = self.command(path);
+        credential.apply(&mut cmd);
+        cmd.args([
+            "push",
+            "--porcelain",
+            "--atomic",
+            "--no-verify",
+            "--no-follow-tags",
+        ]);
+        cmd.arg(format!(
+            "--force-with-lease={reference}:{}",
+            expected.unwrap_or("")
+        ));
+        cmd.arg(url).arg(format!("{commit}:{reference}"));
+        let output = run(&mut cmd, None)?;
+        let porcelain = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.success() {
+            return Ok(PushOutcome::Pushed);
+        }
+        // Porcelain lines start with `!` for refs the remote rejected; a stale lease is the
+        // one refusal that proves nothing was written. Anything else is unknown.
+        let rejected_lease = porcelain
+            .lines()
+            .any(|line| line.starts_with('!') && line.contains("stale info"))
+            || stderr.contains("stale info");
+        if rejected_lease {
+            return Ok(PushOutcome::StaleLease);
+        }
+        let refused = porcelain
+            .lines()
+            .find(|line| line.starts_with('!'))
+            .map(|line| line.trim().to_owned());
+        Ok(PushOutcome::Unknown(refused.unwrap_or_else(|| {
+            stderr.trim().chars().take(400).collect()
+        })))
+    }
+
     pub fn switch_remote(&self, snapshot: &LocalSnapshot, url: &str) -> Result<()> {
         let (name, old) = snapshot
             .remotes
@@ -424,6 +501,43 @@ impl Git {
         }
         Ok(())
     }
+}
+
+/// How a Git subprocess authenticates to a remote. Nothing here lands in arguments that
+/// `ps` could show: a static credential travels as environment read by Git's own helper, a
+/// helper command is one the platform tool provides (`gh auth git-credential`).
+#[derive(Clone, Debug, Default)]
+pub enum Credential {
+    #[default]
+    Anonymous,
+    Static {
+        user: String,
+        token: String,
+    },
+    Helper(String),
+}
+
+impl Credential {
+    pub fn apply(&self, cmd: &mut Command) {
+        match self {
+            Self::Anonymous => {}
+            Self::Static { user, token } => credentials(cmd, Some((user, token))),
+            Self::Helper(helper) => {
+                cmd.args(["-c", "credential.helper="])
+                    .arg("-c")
+                    .arg(format!("credential.helper={helper}"));
+            }
+        }
+    }
+}
+
+/// What a push proved. `Pushed` still wants a readback; `StaleLease` proves the remote ref
+/// was not where the caller expected and nothing changed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PushOutcome {
+    Pushed,
+    StaleLease,
+    Unknown(String),
 }
 
 fn credentials(cmd: &mut Command, credential: Option<(&str, &str)>) {
