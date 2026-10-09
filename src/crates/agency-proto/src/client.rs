@@ -6,6 +6,7 @@ use std::{
     io::Read,
     os::unix::fs::{FileTypeExt, MetadataExt},
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tonic::transport::{Channel, Endpoint};
 use tower::service_fn;
@@ -84,10 +85,28 @@ impl From<PortError> for CallFailure {
 pub struct Client {
     endpoint: PathBuf,
     key: String,
+    request_timeout: Option<Duration>,
 }
 impl Client {
     pub fn new(endpoint: PathBuf, key: String) -> Self {
-        Self { endpoint, key }
+        Self {
+            endpoint,
+            key,
+            request_timeout: None,
+        }
+    }
+    /// Configure tonic's per-request transport budget, not the dispatch deadline.
+    /// A timeout remains NoReply and never causes this client to resend a request.
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = Some(timeout);
+        self
+    }
+    /// Explicit client budget takes precedence over the process declaration.
+    pub fn request_timeout(&self) -> Result<Duration> {
+        request_budget(
+            self.request_timeout,
+            std::env::var_os("HCTL2_AGENCY_REQUEST_TIMEOUT_MS"),
+        )
     }
     pub async fn call<I: Serialize, O: DeserializeOwned>(
         &self,
@@ -117,8 +136,8 @@ impl Client {
         let path = self.endpoint.clone();
         let channel: Channel = Endpoint::try_from("http://[::]:50051")
             .expect("fixed URI")
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
+            .timeout(self.request_timeout()?)
+            .connect_timeout(Duration::from_secs(2))
             .connect_with_connector(service_fn(move |_| {
                 let path = path.clone();
                 async move {
@@ -186,5 +205,75 @@ impl Client {
         serde_json::from_slice(&reply.document)
             .map_err(PortError::from)
             .map_err(CallFailure::NoReply)
+    }
+}
+
+fn request_budget(
+    explicit: Option<Duration>,
+    declared: Option<std::ffi::OsString>,
+) -> Result<Duration> {
+    let timeout = match explicit {
+        Some(timeout) => timeout,
+        None => match declared {
+            None => Duration::from_secs(5),
+            Some(value) => Duration::from_millis(
+                value
+                    .to_str()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .ok_or_else(|| PortError::invalid("HCTL2_AGENCY_REQUEST_TIMEOUT_MS"))?,
+            ),
+        },
+    };
+    if timeout.is_zero() {
+        return Err(PortError::invalid("request budget must be positive"));
+    }
+    Ok(timeout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_budget_is_explicit_and_does_not_change_the_original_client() {
+        let original = Client::new("/tmp/unused.sock".into(), "key".into());
+        let configured = original
+            .clone()
+            .with_request_timeout(Duration::from_secs(30));
+        assert_eq!(original.request_timeout, None);
+        assert_eq!(configured.request_timeout, Some(Duration::from_secs(30)));
+        assert_eq!(configured.endpoint, original.endpoint);
+        assert_eq!(configured.key, original.key);
+    }
+
+    #[test]
+    fn process_budget_is_used_when_no_client_budget_was_declared() {
+        assert_eq!(request_budget(None, None).unwrap(), Duration::from_secs(5));
+        assert_eq!(
+            request_budget(None, Some("30000".into())).unwrap(),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            request_budget(Some(Duration::from_millis(20)), Some("30000".into())).unwrap(),
+            Duration::from_millis(20)
+        );
+    }
+
+    #[test]
+    fn malformed_or_zero_request_budget_is_rejected() {
+        use std::os::unix::ffi::OsStringExt;
+        for declared in [
+            "0".into(),
+            "-1".into(),
+            "unknown".into(),
+            "18446744073709551616".into(),
+            std::ffi::OsString::from_vec(vec![255]),
+        ] {
+            assert_eq!(
+                request_budget(None, Some(declared)).unwrap_err().code,
+                "INVALID_INPUT"
+            );
+        }
+        assert!(request_budget(Some(Duration::ZERO), None).is_err());
     }
 }

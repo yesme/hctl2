@@ -66,3 +66,11 @@ P2.1 甲 / 乙起草接口时还有一个待定衔接点：[hctl2-tool 的 JSON 
 - 官方制品：[protoc v36.1](https://github.com/protocolbuffers/protobuf/releases/tag/v36.1)；表中大小与摘要取发布 API，未把下载包大小说成运行内存。
 - Buck：[本库二进制 pin](../../../src/build/tools/buck2-bin)、[上游 prelude 的 Android 生成规则](https://github.com/facebook/buck2-prelude/blob/main/toolchains/android/tools/protobuf.bzl)；判断基于本机展开的钉定 prelude，网页 main 仅方便定位。
 - TypeScript：[Protobuf-ES](https://github.com/bufbuild/protobuf-es)、[2.14.1 包](https://www.npmjs.com/package/@bufbuild/protobuf/v/2.14.1)、[生成器 2.14.1](https://www.npmjs.com/package/@bufbuild/protoc-gen-es/v/2.14.1)。
+
+## 复核记录
+
+### 2026-10-07 · Agency 重型端口测试的传输预算
+
+核对本库钉定的 tonic `0.14.6` 发布包源码：`transport/channel/endpoint.rs` 的 `Endpoint::timeout` 设置单次请求预算，连接预算另由 `connect_timeout` 控制；`transport/channel/service/connection.rs` 用它构造 `GrpcTimeout`。`transport/service/grpc_timeout.rs` 的计时器到期产生 `TimeoutExpired`，`status.rs` 把它映射为 `Code::Cancelled`，显示文本是 `The operation was cancelled`。这一文本可以来自传输预算到期，不等于 Harness 或派工被取消。源码见 [Endpoint](https://docs.rs/crate/tonic/0.14.6/source/src/transport/channel/endpoint.rs)、[GrpcTimeout](https://docs.rs/crate/tonic/0.14.6/source/src/transport/service/grpc_timeout.rs)、[Status](https://docs.rs/crate/tonic/0.14.6/source/src/status.rs)；本次直接读取本机下载的钉定发布包，网页正文未取得。
+
+维持使用 tonic 原生超时，不添加计时或重试框架。Agency 客户端的缺省请求预算仍为 5 秒、连接预算仍为 2 秒；调用方可显式分配请求预算，进程也可声明预算。重型测试用 Buck 原生 `env` 向整个测试进程声明预算，覆盖控制面内部创建的客户端，不为测试增加业务接口。预算改变只影响这次传输等待，不改 Execution Spec 的截止、授权或成果判定。端口实际被阻塞时，超时仍返回没有答复，调用方按原动作回读。具体重型测试预算与验证见 [Agency 的 Buck 与 CT 对照](../../../src/agency/README.md#buck-与-ct-对照)。

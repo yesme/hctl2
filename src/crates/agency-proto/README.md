@@ -26,6 +26,8 @@ Buck：`root//crates/agency-proto:generated`、`:agency_proto`、`:contract_test
 - `Client::call_outcome` 区分对端错误答复与没有答复。适配器只对原动作的前置校验拒绝结为 rejected；存储故障与回读拒绝不能证明原动作没发生。输入重试保留原票据和原 key，换票据是不同请求，不自动重发未知输入。
 - 结果查询按提案 id 游标分页（`ResultQuery.after`，`ResultPage.complete`）。单份成果仍受传输信封限制；多份成果可以分次取回。
 
+`Client` 缺省连接预算为 2 秒、单次 RPC 预算为 5 秒。进程可用 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS` 声明请求预算，单位毫秒，非法值或零拒绝调用；调用方的 `with_request_timeout(Duration)` 优先于进程声明，克隆后配置不改变原客户端。`request_timeout()` 返回实际预算。预算交给 tonic 原生超时，不改变 Execution Spec 的截止或权限，不重发请求；超时仍返回 `CallFailure::NoReply`，由调用方回读原动作。
+
 ## 第 3、4、5 包共同接法
 
 记录先 `Sealed::new`，接收后核对 `verify` 和实际交付摘要。权限、截止、预算与消费者改变就重建规格，不在活动派工里改字段。能力按效果声明，缺少要求就拒绝激活。脚本没有终端、工具直报或 OS 加固能力。

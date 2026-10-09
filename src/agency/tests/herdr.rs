@@ -7,6 +7,7 @@ use agency::{
 use agency_proto::{Catalog, Pair, Pairing, client::Client as PortClient};
 use serde_json::json;
 use std::{
+    io::Write,
     os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Command, Stdio},
@@ -747,9 +748,17 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
                     },
                 )
                 .await?;
-            PortClient::new(pair.endpoint.into(), pair.key)
+            let started = Instant::now();
+            let result = PortClient::new(pair.endpoint.into(), pair.key)
                 .call("catalog", &json!({}))
-                .await
+                .await;
+            let _ = writeln!(
+                std::io::stderr(),
+                "small O paired catalog: elapsed={:?}, error={:?}",
+                started.elapsed(),
+                result.as_ref().err()
+            );
+            result
         })
 }
 
@@ -2495,7 +2504,15 @@ async fn port_turn(name: &str, live: bool) {
         )
         .await
         .unwrap();
-    let catalog: Catalog = client.call("catalog", &json!({})).await.unwrap();
+    let catalog_started = Instant::now();
+    let catalog: agency_proto::Result<Catalog> = client.call("catalog", &json!({})).await;
+    let _ = writeln!(
+        std::io::stderr(),
+        "small O port catalog: elapsed={:?}, error={:?}",
+        catalog_started.elapsed(),
+        catalog.as_ref().err()
+    );
+    let catalog = catalog.unwrap();
     let claude_profession = catalog
         .professions
         .iter()
