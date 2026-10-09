@@ -13,6 +13,7 @@ mod memo;
 mod profiles;
 mod projects;
 mod repositories;
+pub mod review;
 mod scm;
 mod service;
 mod services;
@@ -96,11 +97,13 @@ impl Daemon {
         let agency_polling = service.reconcile_agencies();
         let dispatch_polling = service.reconcile_dispatch();
         let integration_polling = service.reconcile_integrations();
+        let review_polling = service.reconcile_reviews();
         let chat = chat::serve(self.root.clone(), hosted, Arc::clone(&self.store));
         tokio::select! {
             () = agency_polling => Ok(()),
             () = dispatch_polling => Ok(()),
             () = integration_polling => Ok(()),
+            () = review_polling => Ok(()),
             result = serve_listener(listener, service) => result,
             _ = polling => Ok(()),
             _ = chat => Ok(()),

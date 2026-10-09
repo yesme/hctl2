@@ -6,6 +6,7 @@ pub mod git;
 pub mod integration;
 mod model;
 mod registry;
+pub mod review;
 
 pub use model::*;
 pub use registry::*;

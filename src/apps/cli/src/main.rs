@@ -11,6 +11,7 @@ mod profile;
 mod project;
 mod render;
 mod repo;
+mod review;
 mod room;
 mod task;
 mod terminal;
@@ -101,6 +102,9 @@ enum Command {
     /// Integrate an admitted ChangeSet Revision into a target ref: preview, submit, show.
     #[command(subcommand)]
     Integration(integration::IntegrationCommand),
+    /// Publishing ChangeSet Revisions for review: release a held intent, show, list.
+    #[command(subcommand)]
+    Review(review::ReviewCommand),
 }
 
 #[derive(Subcommand)]
@@ -211,6 +215,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Invocation(command) => invocation::dispatch(command, root, json).await,
         Command::Terminal(command) => terminal::dispatch(command, root, json).await,
         Command::Integration(command) => integration::dispatch(command, root, json).await,
+        Command::Review(command) => review::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,

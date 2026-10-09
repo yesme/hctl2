@@ -179,6 +179,19 @@ hctl2-services start
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
+## 发布评审与合入（`hctl2 review`、`hctl2 integration`）
+
+写入型调用封存的版本按冻结的评审发布策略由 control 自动发布去评审；策略开了「须人显式确认」时意图停在 `pending_human`，由人放行：
+
+```bash
+hctl2 review list <repo_id>
+hctl2 review show <repo_id> <intent_id>
+hctl2 review publish <repo_id> <intent_id>                       # 预览：推到哪个分支、建到哪个目标分支
+hctl2 review publish <repo_id> <intent_id> --preview-token <t>   # 放行；推送与建请求在后台跑并回读
+```
+
+`show` 给出两段各自的确认（推送到的提交、评审请求编号）和这个 ChangeSet 各版本的映射。合入另走 `hctl2 integration preview|submit|show|list`。
+
 ## 使用 `hctl2-tool`
 
 安装离线包后，`PATH` 里的 `hctl2-tool` 就是发行物里的那一份。从源码构建：

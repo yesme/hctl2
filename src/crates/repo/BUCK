@@ -26,7 +26,7 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":registration_test", ":git_test", ":changeset_test", ":integration_test"],
+    tests = [":registration_test", ":git_test", ":changeset_test", ":integration_test", ":review_test"],
     visibility = ["PUBLIC"],
 )
 
@@ -42,7 +42,7 @@ rust_library(
         rustc_flags = HCTL2_RUSTC_FLAGS,
         visibility = ["PUBLIC"],
     )
-    for suite in ["registration", "git", "changeset", "integration"]
+    for suite in ["registration", "git", "changeset", "integration", "review"]
 ]
 
 filegroup(
@@ -53,6 +53,7 @@ filegroup(
         "git": ":git_test[clippy.txt]",
         "changeset": ":changeset_test[clippy.txt]",
         "integration": ":integration_test[clippy.txt]",
+        "review": ":review_test[clippy.txt]",
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],

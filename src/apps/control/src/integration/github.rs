@@ -38,6 +38,11 @@ impl GitHub {
         })
     }
 
+    /// The `gh` this connection uses; Git's credential helper for pushes is built from it.
+    pub(crate) fn gh_path(&self) -> &std::path::Path {
+        &self.gh
+    }
+
     #[cfg(test)]
     pub(crate) fn fixture(gh: PathBuf, hostname: &str) -> Self {
         Self {
@@ -125,6 +130,78 @@ impl PlatformTarget for GitHub {
             message,
         )
         .map(|_| ())
+    }
+    fn find_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+    ) -> Result<Option<ReviewRequest>> {
+        let owner = full_name.split('/').next().unwrap_or_default();
+        let listed = self
+            .api(
+                "GET",
+                &format!(
+                    "repos/{full_name}/pulls?state=all&base={base_branch}&head={owner}:{head_branch}&per_page=10"
+                ),
+                None,
+            )?
+            .unwrap_or(Value::Null);
+        let mut requests: Vec<Value> = listed.as_array().cloned().unwrap_or_default();
+        // The newest first; an open one wins over closed ones on the same pair.
+        requests.sort_by_key(|r| std::cmp::Reverse(r["number"].as_u64().unwrap_or_default()));
+        let chosen = requests
+            .iter()
+            .find(|r| r["state"] == json!("open"))
+            .or_else(|| requests.first())
+            .cloned();
+        Ok(chosen.map(parse))
+    }
+    fn create_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<ReviewRequest> {
+        let value = self
+            .api(
+                "POST",
+                &format!("repos/{full_name}/pulls"),
+                Some(
+                    json!({"head": head_branch, "base": base_branch, "title": title, "body": body}),
+                ),
+            )?
+            .unwrap_or(Value::Null);
+        Ok(parse(value))
+    }
+    fn update_review_request(
+        &self,
+        full_name: &str,
+        index: u64,
+        title: &str,
+        body: &str,
+    ) -> Result<()> {
+        self.api(
+            "PATCH",
+            &format!("repos/{full_name}/pulls/{index}"),
+            Some(json!({"title": title, "body": body})),
+        )
+        .map(|_| ())
+    }
+}
+
+/// A GitHub pull request record into the shared shape.
+fn parse(value: Value) -> ReviewRequest {
+    ReviewRequest {
+        index: value["number"].as_u64().unwrap_or_default(),
+        state: value["state"].as_str().unwrap_or_default().to_owned(),
+        merged: value["merged"] == json!(true) || value["merged_at"].is_string(),
+        merge_commit_sha: value["merge_commit_sha"].as_str().map(str::to_owned),
+        head_sha: value["head"]["sha"].as_str().map(str::to_owned),
+        base_branch: value["base"]["ref"].as_str().map(str::to_owned),
+        raw: value,
     }
 }
 
@@ -284,12 +361,7 @@ pub(crate) fn pull_request(
     };
     Ok(Some(ReviewRequest {
         index: number,
-        state: value["state"].as_str().unwrap_or_default().to_owned(),
-        merged: value["merged"] == json!(true),
-        merge_commit_sha: value["merge_commit_sha"].as_str().map(str::to_owned),
-        head_sha: value["head"]["sha"].as_str().map(str::to_owned),
-        base_branch: value["base"]["ref"].as_str().map(str::to_owned),
-        raw: value,
+        ..parse(value)
     }))
 }
 

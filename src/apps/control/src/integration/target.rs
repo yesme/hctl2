@@ -42,6 +42,31 @@ pub(crate) trait PlatformTarget {
         head: &str,
         message: &str,
     ) -> Result<()>;
+    /// The review request from `head_branch` into `base_branch`, open or not; `None` when
+    /// the platform has none. This is the readback publishing recovers by.
+    fn find_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+    ) -> Result<Option<ReviewRequest>>;
+    /// Open a review request; the platform's answer is returned but the caller reads back.
+    fn create_review_request(
+        &self,
+        full_name: &str,
+        base_branch: &str,
+        head_branch: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<ReviewRequest>;
+    /// Update an open request's title and body (its head follows the branch).
+    fn update_review_request(
+        &self,
+        full_name: &str,
+        index: u64,
+        title: &str,
+        body: &str,
+    ) -> Result<()>;
 }
 
 /// A branch name from a fully qualified ref.
