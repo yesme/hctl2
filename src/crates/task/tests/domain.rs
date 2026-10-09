@@ -318,6 +318,8 @@ impl Env {
                 candidate_id: "github_issues".into(),
                 consent: true,
                 make_default: false,
+                human_account: None,
+                auto_complete_provider_done: false,
             },
         )
         .unwrap();
@@ -411,6 +413,7 @@ impl Env {
             acceptance: vec![Acceptance {
                 text: "verified".into(),
                 grade: Grade::Human,
+                evidence: None,
             }],
             roles: vec![],
             capabilities: vec![],
@@ -429,6 +432,932 @@ impl Env {
             contract,
         }
     }
+}
+
+// —— 第 7 包：完成 Task 与重开 ————————————————————————————————
+
+fn apply_as(s: &mut Store, actor: &TrustedActor, k: &str, a: Action) -> Result<Value> {
+    let p = prepare_as(
+        s,
+        actor,
+        Input {
+            key: k.into(),
+            action: a,
+        },
+    )?;
+    admit(s, actor, p)
+}
+
+/// 先按当前事实组 action（只借用一次 Env），再在一条命令里 prepare+admit。
+fn apply_built(
+    e: &mut Env,
+    actor: &TrustedActor,
+    k: &str,
+    build: impl FnOnce(&Env) -> Action,
+) -> Result<Value> {
+    let action = build(e);
+    apply_as(&mut e.store, actor, k, action)
+}
+
+/// 完成用的 actor：直连的人，并带上该 Project 的权限范围（读契约材料需要）。
+fn completing_actor(project: &str) -> TrustedActor {
+    owner(&actor(), [Scope::Project(project.into())]).unwrap()
+}
+
+/// 机械项（不点名集成凭证）+ 人判项各一的契约。
+fn mixed_contract(p: &str) -> Adoption {
+    let contract = Contract {
+        scope: "scope".into(),
+        expected_outcome: "outcome".into(),
+        acceptance: vec![
+            Acceptance {
+                text: "build is green".into(),
+                grade: Grade::Mechanical,
+                evidence: Some(EvidenceRequirement {
+                    accept: None,
+                    min_channel: None,
+                }),
+            },
+            Acceptance {
+                text: "person accepts".into(),
+                grade: Grade::Human,
+                evidence: None,
+            },
+        ],
+        roles: vec![],
+        capabilities: vec![],
+    };
+    adoption_of(p, contract)
+}
+
+/// 机械项点名要第 6 包签出的 Integration Receipt 的契约。
+fn integration_contract(p: &str) -> Adoption {
+    let contract = Contract {
+        scope: "scope".into(),
+        expected_outcome: "outcome".into(),
+        acceptance: vec![Acceptance {
+            text: "the change is integrated".into(),
+            grade: Grade::Mechanical,
+            evidence: Some(EvidenceRequirement {
+                accept: Some("integration_receipt".into()),
+                min_channel: Some("unmediated".into()),
+            }),
+        }],
+        roles: vec![],
+        capabilities: vec![],
+    };
+    adoption_of(p, contract)
+}
+
+/// Gate 项一个的契约（第 9 包接 Gate 席位；此处只核完成时的判定者与引用）。
+fn gate_contract(p: &str) -> Adoption {
+    let contract = Contract {
+        scope: "scope".into(),
+        expected_outcome: "outcome".into(),
+        acceptance: vec![Acceptance {
+            text: "gate passes".into(),
+            grade: Grade::Gate,
+            evidence: None,
+        }],
+        roles: vec![],
+        capabilities: vec![],
+    };
+    adoption_of(p, contract)
+}
+
+/// 机械项点名直报下限（`unmediated`）的契约：旁路证据不够。
+fn min_channel_contract(p: &str) -> Adoption {
+    let contract = Contract {
+        scope: "scope".into(),
+        expected_outcome: "outcome".into(),
+        acceptance: vec![Acceptance {
+            text: "build is green".into(),
+            grade: Grade::Mechanical,
+            evidence: Some(EvidenceRequirement {
+                accept: None,
+                min_channel: Some("unmediated".into()),
+            }),
+        }],
+        roles: vec![],
+        capabilities: vec![],
+    };
+    adoption_of(p, contract)
+}
+
+fn adoption_of(p: &str, contract: Contract) -> Adoption {
+    Adoption {
+        origin: ContractOrigin::Local {
+            reference: Reference {
+                key: key(Scope::Project(p.into()), "project", p),
+                version: Version::State(1),
+            },
+            proposal_digest: foundation::canonical_json_sha256(
+                &serde_json::to_value(&contract).unwrap(),
+            )
+            .unwrap(),
+        },
+        contract,
+    }
+}
+
+fn facts(e: &Env, project: &str, id: &str) -> (i64, i64, i64) {
+    let (r, t) = task(&e.store, project, id).unwrap();
+    (
+        r.version,
+        t.lifecycle_version,
+        t.revision.as_ref().map(|rev| rev.number).unwrap_or(0),
+    )
+}
+
+fn human_judge() -> Judge {
+    Judge::Human {
+        actor: "owner".into(),
+    }
+}
+
+fn complete_action(e: &Env, project: &str, id: &str, evidence: Vec<ItemEvidence>) -> Action {
+    let (version, lifecycle_version, revision_number) = facts(e, project, id);
+    Action::Complete {
+        project_id: project.into(),
+        task_id: id.into(),
+        version,
+        lifecycle_version,
+        revision_number,
+        acceptance: evidence,
+    }
+}
+
+/// 一份 Task 从「已采纳 mixed 契约」出发，供完成类用例起步。
+fn ready(e: &mut Env, contract: Adoption) -> String {
+    e.attach("A", None);
+    e.observe("card", false);
+    let id = e.claim("A");
+    let (r, _) = task(&e.store, "A", &id).unwrap();
+    apply(
+        &mut e.store,
+        "adopt-A",
+        Action::Adopt {
+            project_id: "A".into(),
+            project_version: 1,
+            task_id: id.clone(),
+            version: r.version,
+            adoption: contract,
+        },
+    )
+    .unwrap();
+    id
+}
+
+fn evidence_record(e: &mut Env, id: &str) -> Reference {
+    let key = key(Scope::Project("A".into()), "task_snapshot", id);
+    seed(
+        &mut e.store,
+        value_record(key.clone(), 1, &json!({"evidence": id})).unwrap(),
+    );
+    Reference {
+        key,
+        version: Version::State(1),
+    }
+}
+
+fn seed_open_run(e: &mut Env, id: &str) {
+    seed(
+        &mut e.store,
+        value_record(
+            key(Scope::Project("A".into()), "run", "run-1"),
+            1,
+            &json!({"task_id": id, "lifecycle": "running"}),
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+fn completion_preview_refuses_without_a_contract() {
+    let mut e = Env::new();
+    e.attach("A", None);
+    e.observe("card", false);
+    let id = e.claim("A");
+    let err = apply_built(&mut e, &completing_actor("A"), "complete-A", |e| {
+        complete_action(e, "A", &id, vec![])
+    })
+    .unwrap_err();
+    assert_eq!(err.code, "CONTRACT_REQUIRED");
+    assert_eq!(err.recovery_action, "adopt_contract");
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+#[test]
+fn completion_refuses_while_a_bound_run_is_open() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    seed_open_run(&mut e, &id);
+    let reference = evidence_record(&mut e, "green");
+    let err = apply_built(&mut e, &completing_actor("A"), "complete-A", |e| {
+        complete_action(
+            e,
+            "A",
+            &id,
+            vec![
+                ItemEvidence {
+                    item: 0,
+                    judge: Judge::Hctl2Tool,
+                    channel: "unmediated".into(),
+                    references: vec![reference],
+                    producer: Some("hctl2-tool".into()),
+                    generation: Some(1),
+                },
+                ItemEvidence {
+                    item: 1,
+                    judge: human_judge(),
+                    channel: "unmediated".into(),
+                    references: vec![],
+                    producer: None,
+                    generation: None,
+                },
+            ],
+        )
+    })
+    .unwrap_err();
+    assert_eq!(err.code, "RUN_ACTIVE");
+    assert_eq!(err.recovery_action, "finish_run_first");
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+#[test]
+fn completion_refuses_narrated_or_weak_evidence() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    // 机械项只给转述证据：拒。
+    let action = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "narrated".into(),
+                references: vec![reference.clone()],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: human_judge(),
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-narrated",
+            action.clone()
+        )
+        .unwrap_err()
+        .code,
+        "EVIDENCE_TOO_WEAK"
+    );
+    // 缺一项的证据：拒。
+    let missing = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Hctl2Tool,
+            channel: "unmediated".into(),
+            references: vec![reference.clone()],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-missing",
+            missing
+        )
+        .unwrap_err()
+        .code,
+        "EVIDENCE_REQUIRED"
+    );
+    // 引用不存在的证据：拒。
+    let ghost = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![Reference {
+                    key: key(Scope::Project("A".into()), "task_snapshot", "ghost"),
+                    version: Version::State(1),
+                }],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: human_judge(),
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-ghost",
+            ghost
+        )
+        .unwrap_err()
+        .code,
+        "EVIDENCE_MISSING"
+    );
+    // 别人的判定不算人判：拒。
+    let forged = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![reference.clone()],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: Judge::Human {
+                    actor: "someone-else".into(),
+                },
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-forged",
+            forged
+        )
+        .unwrap_err()
+        .code,
+        "HUMAN_JUDGEMENT_REQUIRED"
+    );
+    // 契约点名要集成凭证而证据不是它：拒。
+    let mut e = Env::new();
+    let id = ready(&mut e, integration_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let no_receipt = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Hctl2Tool,
+            channel: "unmediated".into(),
+            references: vec![reference],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-no-receipt",
+            no_receipt
+        )
+        .unwrap_err()
+        .code,
+        "INTEGRATION_RECEIPT_REQUIRED"
+    );
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+/// Gate 项只认 Gate 席位的判定：工具回读与非 Gate 判定都拒，缺引用也拒。
+#[test]
+fn completion_refuses_gate_items_without_a_gate_receipt() {
+    let mut e = Env::new();
+    let id = ready(&mut e, gate_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let tool = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Hctl2Tool,
+            channel: "unmediated".into(),
+            references: vec![reference],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-gate-tool",
+            tool
+        )
+        .unwrap_err()
+        .code,
+        "GATE_EVIDENCE_REQUIRED"
+    );
+    let empty = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Gate {
+                seat: "gate-1".into(),
+            },
+            channel: "unmediated".into(),
+            references: vec![],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-gate-empty",
+            empty
+        )
+        .unwrap_err()
+        .code,
+        "GATE_EVIDENCE_REQUIRED"
+    );
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+/// 未知通道与低于项声明的下限的通道都拒，且都不改动 Task。
+#[test]
+fn completion_refuses_unknown_and_below_minimum_channels() {
+    let mut e = Env::new();
+    let id = ready(&mut e, min_channel_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let unknown = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Hctl2Tool,
+            channel: "guessed".into(),
+            references: vec![reference.clone()],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-unknown-channel",
+            unknown
+        )
+        .unwrap_err()
+        .code,
+        "EVIDENCE_CHANNEL"
+    );
+    // 契约要求直报，旁路证据不够：拒。
+    let bypass = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![ItemEvidence {
+            item: 0,
+            judge: Judge::Hctl2Tool,
+            channel: "adapter_event".into(),
+            references: vec![reference],
+            producer: None,
+            generation: None,
+        }],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-below-min",
+            bypass
+        )
+        .unwrap_err()
+        .code,
+        "EVIDENCE_TOO_WEAK"
+    );
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+/// 人判项必须由本人判定：工具代判即拒。
+#[test]
+fn completion_refuses_a_human_item_judged_by_a_tool() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let tool_judged = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![reference],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    assert_eq!(
+        apply_as(
+            &mut e.store,
+            &completing_actor("A"),
+            "complete-tool-judged",
+            tool_judged
+        )
+        .unwrap_err()
+        .code,
+        "HUMAN_JUDGEMENT_REQUIRED"
+    );
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+#[test]
+fn completion_preview_dies_when_the_task_moves_after_preview() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let action = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![reference],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: human_judge(),
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    let actor = completing_actor("A");
+    let plan = prepare_as(
+        &mut e.store,
+        &actor,
+        Input {
+            key: "complete-stale".into(),
+            action,
+        },
+    )
+    .unwrap();
+    // 预览之后来了新 Snapshot：Task 记录前进一个版本，冻结的预览必须失效。
+    let (r, mut t) = task(&e.store, "A", &id).unwrap();
+    t.state_version += 1;
+    seed(
+        &mut e.store,
+        value_record(r.key.clone(), r.version + 1, &t).unwrap(),
+    );
+    let err = admit(&mut e.store, &actor, plan).unwrap_err();
+    assert_eq!(err.code, stale().code);
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+#[test]
+fn human_completion_is_refused_while_completion_pending() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let (r, mut t) = task(&e.store, "A", &id).unwrap();
+    t.run_occupancy = Some(json!("completion_pending"));
+    seed(
+        &mut e.store,
+        value_record(r.key.clone(), r.version + 1, &t).unwrap(),
+    );
+    let reference = evidence_record(&mut e, "green");
+    let err = apply_built(&mut e, &completing_actor("A"), "complete-pending", |e| {
+        complete_action(
+            e,
+            "A",
+            &id,
+            vec![
+                ItemEvidence {
+                    item: 0,
+                    judge: Judge::Hctl2Tool,
+                    channel: "unmediated".into(),
+                    references: vec![reference],
+                    producer: None,
+                    generation: None,
+                },
+                ItemEvidence {
+                    item: 1,
+                    judge: human_judge(),
+                    channel: "unmediated".into(),
+                    references: vec![],
+                    producer: None,
+                    generation: None,
+                },
+            ],
+        )
+    })
+    .unwrap_err();
+    assert_eq!(err.code, "RUN_ACTIVE");
+    assert_eq!(err.recovery_action, "wait_for_run_reducer");
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+}
+
+#[test]
+fn completion_writes_receipt_and_lifecycle_together_and_replays_the_same_key() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let action = complete_action(
+        &e,
+        "A",
+        &id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![reference.clone()],
+                producer: Some("hctl2-tool".into()),
+                generation: Some(7),
+            },
+            ItemEvidence {
+                item: 1,
+                judge: human_judge(),
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    );
+    let actor = completing_actor("A");
+    let result = apply_as(&mut e.store, &actor, "complete-A", action.clone()).unwrap();
+    assert_eq!(result["lifecycle"], "completed");
+    let receipt_id = result["receipt_id"].as_str().unwrap();
+    let receipt_key = key(
+        Scope::Project("A".into()),
+        COMPLETION_RECEIPT_KIND,
+        receipt_id,
+    );
+    let receipt: CompletionReceipt = decode(&required(&e.store, &receipt_key).unwrap()).unwrap();
+    assert_eq!(receipt.lifecycle_version, 2);
+    assert_eq!(receipt.revision_number, 1);
+    assert_eq!(receipt.idempotency_key, "complete-A");
+    assert_eq!(receipt.items.len(), 2);
+    assert_eq!(receipt.items[0].grade, "mechanical");
+    assert_eq!(receipt.items[0].validation_level, "unmediated");
+    assert_eq!(receipt.items[0].judge, Judge::Hctl2Tool);
+    assert_eq!(receipt.items[0].generation, Some(7));
+    assert_eq!(receipt.items[1].judge, human_judge());
+    assert_eq!(receipt.items[1].grade, "human");
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "completed");
+    assert_eq!(t.lifecycle_version, 2);
+    // 同一个键重投：返回原结果，不重复完成。
+    let again = apply_as(&mut e.store, &actor, "complete-A", action).unwrap();
+    assert_eq!(again, result);
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle_version, 2);
+}
+
+#[test]
+fn reopen_keeps_the_receipt_and_advances_the_version() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let reference = evidence_record(&mut e, "green");
+    let actor = completing_actor("A");
+    let result = apply_built(&mut e, &actor, "reopen-first-complete-A", |e| {
+        complete_action(
+            e,
+            "A",
+            &id,
+            vec![
+                ItemEvidence {
+                    item: 0,
+                    judge: Judge::Hctl2Tool,
+                    channel: "unmediated".into(),
+                    references: vec![reference],
+                    producer: None,
+                    generation: None,
+                },
+                ItemEvidence {
+                    item: 1,
+                    judge: human_judge(),
+                    channel: "unmediated".into(),
+                    references: vec![],
+                    producer: None,
+                    generation: None,
+                },
+            ],
+        )
+    })
+    .unwrap();
+    let receipt_key = key(
+        Scope::Project("A".into()),
+        COMPLETION_RECEIPT_KIND,
+        result["receipt_id"].as_str().unwrap(),
+    );
+    // 有活动 Run 时取消被拒绝（既有行为，留一条回归）。
+    seed_open_run(&mut e, &id);
+    let (r, _) = task(&e.store, "A", &id).unwrap();
+    let cancel = apply(
+        &mut e.store,
+        "cancel-A",
+        Action::Cancel {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(cancel.code, "RUN_ACTIVE");
+    // 清理这个 Run 之后重开：旧 Receipt 与历史都在，生命周期版本前进。
+    let run_key = key(Scope::Project("A".into()), "run", "run-1");
+    seed(
+        &mut e.store,
+        value_record(
+            run_key,
+            2,
+            &json!({"task_id": id, "lifecycle": "completed"}),
+        )
+        .unwrap(),
+    );
+    let (r, t) = task(&e.store, "A", &id).unwrap();
+    let reopened = apply_as(
+        &mut e.store,
+        &actor,
+        "reopen-A",
+        Action::Reopen {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+            lifecycle_version: t.lifecycle_version,
+            revision_number: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(reopened["lifecycle"], "open");
+    assert_eq!(reopened["lifecycle_version"], 3);
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+    assert_eq!(t.lifecycle_version, 3);
+    assert!(required(&e.store, &receipt_key).is_ok());
+}
+
+/// 一次「卡片被某账号关闭」的观测：state=closed，closed_by 是指定账号。
+fn observe_closed(e: &mut Env, closer: &str) {
+    let (r, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (_, previous) = latest(&e.store, &src).unwrap();
+    let mut card = previous.cards[0].clone();
+    card.stage = "closed".into();
+    card.remote_revision = "closed-1".into();
+    card.raw["state"] = json!("closed");
+    card.raw["closed_by"] = json!({"login": closer});
+    observe(
+        &mut e.store,
+        &src,
+        Snapshot {
+            source: reference(&r),
+            observed_at: now(),
+            complete: true,
+            error: None,
+            cards: vec![card],
+            stable_groups: Vec::new(),
+        },
+    )
+    .unwrap();
+}
+
+fn completion_requests(e: &Env) -> Vec<CompletionRequest> {
+    e.store
+        .list(COMPLETION_REQUEST_KIND)
+        .unwrap()
+        .into_iter()
+        .filter_map(|r| decode(&r).ok())
+        .collect()
+}
+
+#[test]
+fn provider_done_archives_one_request_only_for_the_mapped_human() {
+    let mut e = Env::new();
+    let (sr, mut src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    src.human_account = Some("human".into());
+    src.auto_complete_provider_done = true;
+    seed(
+        &mut e.store,
+        value_record(sr.key.clone(), sr.version + 1, &src).unwrap(),
+    );
+    e.attach("A", None);
+    e.observe("card", false);
+    let _ = e.claim("A");
+    // 控制面自己的账号写回关闭：只作观测，不产生请求。
+    observe_closed(&mut e, &src.platform.account_id);
+    assert_eq!(completion_requests(&e).len(), 0);
+    // 未知 actor 的关闭：同样只作观测。
+    e.observe("card", false);
+    observe_closed(&mut e, "someone-else");
+    assert_eq!(completion_requests(&e).len(), 0);
+    // 归属 human 把卡片从非终态推进到 Done：归档一条命令草稿。
+    e.observe("card", false);
+    observe_closed(&mut e, "human");
+    let requests = completion_requests(&e);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].provider_actor, "human");
+    assert_eq!(requests[0].stage_before, "open");
+    assert_eq!(requests[0].stage_after, "closed");
+    assert_eq!(requests[0].state, "pending");
+    assert_eq!(requests[0].binding.version, Version::State(sr.version + 1));
+    // 重复与迟到的投递落到同一条记录。
+    observe_closed(&mut e, "human");
+    assert_eq!(completion_requests(&e).len(), 1);
+}
+
+#[test]
+fn provider_evidence_covers_mechanical_items_only() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    let snapshot = evidence_record(&mut e, "observed");
+    let actor = completing_actor("A");
+    let evidence = provider_evidence(&e.store, &actor, &t, &snapshot, "task_source").unwrap();
+    // 只有机械项拿到证据；人判项没有，准入会以 EVIDENCE_REQUIRED 拒。
+    assert_eq!(evidence.len(), 1);
+    assert_eq!(evidence[0].item, 0);
+    assert_eq!(evidence[0].channel, "adapter_event");
+    assert_eq!(
+        evidence[0].judge,
+        Judge::Adapter {
+            port: "task_source".into()
+        }
+    );
+    assert_eq!(evidence[0].references, vec![snapshot.clone()]);
+    let refused = apply_built(&mut e, &actor, "complete-by-provider", |e| {
+        Action::Complete {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: facts(e, "A", &id).0,
+            lifecycle_version: facts(e, "A", &id).1,
+            revision_number: facts(e, "A", &id).2,
+            acceptance: evidence.clone(),
+        }
+    })
+    .unwrap_err();
+    assert_eq!(refused.code, "EVIDENCE_REQUIRED");
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "open");
 }
 
 #[test]
@@ -497,7 +1426,9 @@ fn source_consent_scope_disable_reconnect_and_second_reference() {
                 repo_id: e.rid.clone(),
                 candidate_id: "github_issues".into(),
                 consent: false,
-                make_default: true
+                make_default: true,
+                human_account: None,
+                auto_complete_provider_done: false,
             }
         )
         .unwrap_err()

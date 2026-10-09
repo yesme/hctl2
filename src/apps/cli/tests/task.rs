@@ -1,12 +1,15 @@
 //! Project is a fixture until package 辛; every Task operation crosses the real CLI/RPC.
 use serde_json::{Value, json};
 use std::{
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::Duration,
 };
 use store::{
-    Actor, ActorSource, Expected, ProjectSettings, Record, RecordData, Scope, Store, TrustedActor,
+    Actor, ActorSource, Expected, ProjectSettings, Record, RecordData, Reference, Scope, Store,
+    TrustedActor, Version,
 };
 struct Temp(PathBuf);
 impl Drop for Temp {
@@ -16,6 +19,11 @@ impl Drop for Temp {
     }
 }
 fn run(root: &Path, args: &[&str]) -> (bool, Value) {
+    run_with_env(root, args, &[])
+}
+/// Extra env is applied to the process we spawn. Only the daemon hosts the store,
+/// so the completion-failure seam must be attached to `hctl2 start`, not to the CLI.
+fn run_with_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (bool, Value) {
     let out = Command::new(
         std::env::var("CARGO_BIN_EXE_hctl2")
             .expect("CARGO_BIN_EXE_hctl2 must be set to run this test"),
@@ -26,6 +34,7 @@ fn run(root: &Path, args: &[&str]) -> (bool, Value) {
             .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
     )
     .env("HCTL2_GH", root.join("gh"))
+    .envs(envs.iter().copied())
     .args(["--json", "--root", root.to_str().unwrap()])
     .args(args)
     .output()
@@ -57,9 +66,18 @@ fn cmd_result(root: &Path, kind: &str, key: &str, action: Value) -> (bool, Value
         ],
     )
 }
-#[test]
-fn task_commands_cross_live_daemon_preview_replay_and_restart() {
-    let root = std::env::temp_dir().join(format!("hctl-task-cli-{}", std::process::id()));
+
+/// Live fixture shared by every Task acceptance test: a registered repo, two seeded
+/// Project records ("A"/"B") at version 1, one seeded evidence record in Project "A",
+/// and a running daemon with `connect` + `attach` already applied to both Projects.
+struct Fixture {
+    root: PathBuf,
+    _temp: Temp,
+    source_id: String,
+}
+
+fn fixture(name: &str, daemon_env: &[(&str, &str)]) -> Fixture {
+    let root = std::env::temp_dir().join(format!("hctl-cli-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let temp = Temp(root.clone());
     let gh = root.join("gh");
@@ -115,6 +133,7 @@ esac
         repo::prepare(request, None).unwrap(),
     )
     .unwrap();
+    let repo_id = reg.repo_id.clone();
     repo::begin_step(&mut s, &actor, &reg.repo_id, "platform").unwrap();
     repo::confirm_platform(
         &mut s,
@@ -170,15 +189,45 @@ esac
         })
         .unwrap();
     }
+    // An existing record any mechanical item may cite as unmediated evidence.
+    let evidence = task::value_record(
+        task::key(Scope::Project("A".into()), "fixture_evidence", "evidence-1"),
+        1,
+        &json!({"seeded": "evidence"}),
+    )
+    .unwrap();
+    let a = task::owner(&actor, [evidence.key.scope.clone()]).unwrap();
+    let input = serde_json::to_value(&evidence).unwrap();
+    let c = store::Command {
+        command_id: "evidence-1".into(),
+        idempotency_key: "evidence-1".into(),
+        actor: a.0.clone(),
+        target: evidence.key.clone(),
+        expected: Expected::Absent,
+        binding: task::reference(&evidence),
+        input_digest: store::Command::digest_input("fixture", &input).unwrap(),
+        operation: "fixture".into(),
+        input,
+    };
+    s.submit(s.generation(), &a, &c, None, |tx| {
+        tx.put(&evidence)?;
+        Ok(json!({}))
+    })
+    .unwrap();
     drop(s);
-    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
+    let (started, start_result) = run_with_env(
+        &root,
+        &["start", "--secret-backend", "user-file"],
+        daemon_env,
+    );
+    assert!(started, "start {name}: {start_result}");
     let source = cmd(
         &root,
         "connect",
         "connect",
-        json!({"repo_id":reg.repo_id,"candidate_id":"github_issues","consent":true,"make_default":false}),
+        json!({"repo_id":repo_id,"candidate_id":"github_issues","consent":true,"make_default":false}),
     );
-    let sid = source["source_id"].as_str().unwrap();
+    let sid = source["source_id"].as_str().unwrap().to_string();
     for p in ["A", "B"] {
         cmd(
             &root,
@@ -187,8 +236,132 @@ esac
             json!({"project_id":p,"project_version":1,"source_id":sid,"approved_scope":"77","consent":true}),
         );
     }
-    let create =
-        json!({"project_id":"A","project_version":1,"source_id":sid,"title":"new","body":"body"});
+    Fixture {
+        root,
+        _temp: temp,
+        source_id: sid,
+    }
+}
+
+/// The trusted actor the daemon derives from the connecting process: `local-owner:{uid}`.
+fn actor_principal(root: &Path) -> String {
+    format!("local-owner:{}", std::fs::metadata(root).unwrap().uid())
+}
+
+/// Create a Task in Project "A" through the CLI, then adopt a two-item contract
+/// (0: mechanical/unmediated, 1: human) through the CLI, and return what completion needs.
+struct Adopted {
+    task_id: String,
+    version: i64,
+    revision_number: i64,
+    lifecycle_version: i64,
+}
+
+fn adopt(fx: &Fixture) -> Adopted {
+    let created = cmd(
+        &fx.root,
+        "create",
+        "create",
+        json!({"project_id":"A","project_version":1,"source_id":fx.source_id.clone(),"title":"new","body":"body"}),
+    );
+    let task_id = created["task_id"].as_str().unwrap().to_string();
+    let version = created["task"]["version"].as_i64().unwrap();
+    let contract = task::Contract {
+        scope: "A".into(),
+        expected_outcome: "the card is finished".into(),
+        acceptance: vec![
+            task::Acceptance {
+                text: "a mechanical check passed".into(),
+                grade: task::Grade::Mechanical,
+                evidence: Some(task::EvidenceRequirement {
+                    accept: None,
+                    min_channel: Some("unmediated".into()),
+                }),
+            },
+            task::Acceptance {
+                text: "a human judged it done".into(),
+                grade: task::Grade::Human,
+                evidence: None,
+            },
+        ],
+        roles: vec![],
+        capabilities: vec![],
+    };
+    let proposal_digest =
+        foundation::canonical_json_sha256(&serde_json::to_value(&contract).unwrap()).unwrap();
+    let adoption = task::Adoption {
+        contract,
+        origin: task::ContractOrigin::Local {
+            reference: Reference {
+                key: task::key(Scope::Project("A".into()), "project", "A"),
+                version: Version::State(1),
+            },
+            proposal_digest,
+        },
+    };
+    let adopted = cmd(
+        &fx.root,
+        "adopt",
+        "adopt",
+        json!({
+            "project_id":"A","project_version":1,"task_id":task_id,"version":version,
+            "adoption": serde_json::to_value(&adoption).unwrap(),
+        }),
+    );
+    Adopted {
+        task_id,
+        version: adopted["task"]["version"].as_i64().unwrap(),
+        revision_number: adopted["task"]["data"]["revision"]["number"]
+            .as_i64()
+            .unwrap(),
+        lifecycle_version: adopted["task"]["data"]["lifecycle_version"]
+            .as_i64()
+            .unwrap(),
+    }
+}
+
+/// The `complete` action body: item 0 cites the seeded record as unmediated tool
+/// evidence; item 1 is the submitting human's own verdict.
+fn completion_action(adopted: &Adopted, principal: &str) -> Value {
+    let evidence = vec![
+        task::ItemEvidence {
+            item: 0,
+            judge: task::Judge::Hctl2Tool,
+            channel: "unmediated".into(),
+            references: vec![Reference {
+                key: task::key(Scope::Project("A".into()), "fixture_evidence", "evidence-1"),
+                version: Version::State(1),
+            }],
+            producer: Some("hctl2-tool".into()),
+            generation: Some(7),
+        },
+        task::ItemEvidence {
+            item: 1,
+            judge: task::Judge::Human {
+                actor: principal.into(),
+            },
+            channel: "narrated".into(),
+            references: vec![],
+            producer: None,
+            generation: None,
+        },
+    ];
+    json!({
+        "project_id":"A",
+        "task_id":adopted.task_id.clone(),
+        "version":adopted.version,
+        "lifecycle_version":adopted.lifecycle_version,
+        "revision_number":adopted.revision_number,
+        "acceptance": serde_json::to_value(&evidence).unwrap(),
+    })
+}
+
+#[test]
+fn task_commands_cross_live_daemon_preview_replay_and_restart() {
+    let fx = fixture("restart", &[]);
+    let root = fx.root.clone();
+    let sid = fx.source_id.clone();
+    let create = json!({"project_id":"A","project_version":1,"source_id":sid.clone(),"title":"new","body":"body"});
     std::fs::write(root.join("gh.hide"), "hide readback until restart").unwrap();
     let (ok, pending) = cmd_result(&root, "create", "create", create.clone());
     assert!(!ok, "lost confirmation must not report success: {pending}");
@@ -207,7 +380,7 @@ esac
         &root,
         "claim",
         "claim-b",
-        json!({"project_id":"B","project_version":1,"source_id":sid,"entity_id":"node1"}),
+        json!({"project_id":"B","project_version":1,"source_id":sid.clone(),"entity_id":"node1"}),
     );
     assert_ne!(b["task_id"], created["task_id"]);
     for (project, task_id) in [
@@ -237,9 +410,138 @@ esac
     let after = cmd(&root, "create", "create", create);
     assert_eq!(after["task_id"], created["task_id"]);
     assert_eq!(std::fs::read_to_string(root.join("gh.posts")).unwrap(), "x");
-    let (ok, board) = run(&root, &["task", "board", "B", sid]);
+    let (ok, board) = run(&root, &["task", "board", "B", sid.as_str()]);
     assert!(ok, "{board}");
     assert_eq!(board["cards"][0]["claimed"], true);
     assert!(!root.join("hosted-consumed.json").exists());
-    drop(temp);
+    drop(fx);
+}
+
+/// Stop the daemon so this process can hold the store's exclusive lock and read it.
+fn open_stopped(root: &Path) -> Store {
+    assert!(run(root, &["stop"]).0);
+    thread::sleep(Duration::from_millis(200));
+    Store::open(root).unwrap()
+}
+
+#[test]
+fn completion_crosses_the_real_command_line_and_writes_one_receipt() {
+    let fx = fixture("complete", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    let action = completion_action(&adopted, &actor_principal(&root));
+    // 验收 1：预览逐项列出验收项、判定者、校验等级和所用的证据。
+    let preview_path = root.join("complete-preview.json");
+    std::fs::write(&preview_path, action.to_string()).unwrap();
+    let (ok, preview) = run(
+        &root,
+        &[
+            "task",
+            "complete",
+            "--key",
+            "complete",
+            "--input",
+            preview_path.to_str().unwrap(),
+        ],
+    );
+    assert!(ok, "{preview}");
+    let items = &preview["effect_summary"]["result"]["items"];
+    assert_eq!(items[0]["text"], "a mechanical check passed", "{preview}");
+    assert_eq!(items[0]["grade"], "mechanical");
+    assert_eq!(items[0]["validation_level"], "unmediated");
+    assert_eq!(items[0]["judge"]["kind"], "hctl2_tool");
+    assert_eq!(items[0]["references"].as_array().unwrap().len(), 1);
+    assert_eq!(items[1]["text"], "a human judged it done");
+    assert_eq!(items[1]["grade"], "human");
+    assert_eq!(items[1]["judge"]["kind"], "human");
+    let completed = cmd(&root, "complete", "complete", action.clone());
+    assert_eq!(completed["lifecycle"], "completed", "{completed}");
+    let receipt_id = completed["receipt_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("receipt_id missing: {completed}"))
+        .to_string();
+    assert_eq!(completed["lifecycle_version"], 2, "{completed}");
+    // The same key must replay the frozen result, never write a second completion.
+    let replay = cmd(&root, "complete", "complete", action);
+    assert_eq!(replay["receipt_id"], completed["receipt_id"]);
+    assert_eq!(replay["lifecycle_version"], 2, "{replay}");
+    let s = open_stopped(&root);
+    let receipts = s.list(task::COMPLETION_RECEIPT_KIND).unwrap();
+    assert_eq!(receipts.len(), 1, "exactly one receipt: {receipts:?}");
+    let receipt = task::decode::<task::CompletionReceipt>(&receipts[0]).unwrap();
+    assert_eq!(receipt.receipt_id, receipt_id);
+    assert_eq!(receipt.task_id, adopted.task_id);
+    assert_eq!(receipt.lifecycle_version, 2);
+    assert_eq!(receipt.items.len(), 2);
+    assert_eq!(receipt.items[0].grade, "mechanical");
+    assert_eq!(receipt.items[0].validation_level, "unmediated");
+    assert_eq!(receipt.items[0].generation, Some(7));
+    assert_eq!(receipt.items[1].grade, "human");
+    drop(s);
+}
+
+#[test]
+fn completion_failure_inside_the_transaction_leaves_nothing() {
+    let fx = fixture("fail", &[("HCTL_TASK_COMPLETE_FAIL", "after_receipt")]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    let action = completion_action(&adopted, &actor_principal(&root));
+    let (ok, failure) = cmd_result(&root, "complete", "complete", action);
+    assert!(!ok, "injected failure must not succeed: {failure}");
+    assert_eq!(failure["error"]["code"], "INJECTED_FAILURE", "{failure}");
+    let s = open_stopped(&root);
+    assert!(
+        s.list(task::COMPLETION_RECEIPT_KIND).unwrap().is_empty(),
+        "no receipt may survive the aborted transaction"
+    );
+    let (_, t) = task::task(&s, "A", &adopted.task_id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+    assert_eq!(t.lifecycle_version, 1);
+    drop(s);
+}
+
+#[test]
+fn reopen_crosses_the_real_command_line_and_keeps_the_receipt() {
+    let fx = fixture("reopen", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    let completed = cmd(
+        &root,
+        "complete",
+        "complete",
+        completion_action(&adopted, &actor_principal(&root)),
+    );
+    assert_eq!(completed["lifecycle"], "completed", "{completed}");
+    let receipt_id = completed["receipt_id"].as_str().unwrap().to_string();
+    let version = completed["task"]["version"].as_i64().unwrap();
+    let lifecycle_version = completed["task"]["data"]["lifecycle_version"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(lifecycle_version, 2, "{completed}");
+    let reopened = cmd(
+        &root,
+        "reopen",
+        "reopen",
+        json!({
+            "project_id":"A","task_id":adopted.task_id.clone(),"version":version,
+            "lifecycle_version":lifecycle_version,"revision_number":adopted.revision_number,
+        }),
+    );
+    assert_eq!(reopened["lifecycle"], "open", "{reopened}");
+    assert_eq!(reopened["lifecycle_version"], 3, "{reopened}");
+    let s = open_stopped(&root);
+    assert!(
+        s.get(&task::key(
+            Scope::Project("A".into()),
+            task::COMPLETION_RECEIPT_KIND,
+            &receipt_id,
+        ))
+        .unwrap()
+        .is_some(),
+        "reopen must keep the completion receipt"
+    );
+    let (_, t) = task::task(&s, "A", &adopted.task_id).unwrap();
+    assert_eq!(t.lifecycle, "open");
+    assert_eq!(t.lifecycle_version, 3);
+    drop(s);
 }
