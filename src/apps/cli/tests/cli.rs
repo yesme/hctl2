@@ -1,5 +1,7 @@
 //! CLI wiring for init/start/status/doctor/export/backup/restore against a live daemon.
 
+#[path = "cli/human.rs"]
+mod human;
 #[path = "cli/profile.rs"]
 mod profile;
 

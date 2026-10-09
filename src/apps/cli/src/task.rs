@@ -46,10 +46,7 @@ pub(super) async fn dispatch(
 ) -> Result<(), String> {
     let result = execute(command, root, as_json).await;
     if let Err(e) = &result {
-        print_out(
-            as_json,
-            json!({"error":{"code":"TASK_COMMAND_FAILED","message":e,"recovery_action":"inspect_error_and_retry"}}),
-        );
+        print_error(as_json, "TASK_COMMAND_FAILED", e, "inspect_error_and_retry");
     }
     result
 }
@@ -164,10 +161,7 @@ pub(crate) async fn write(
 }
 pub(crate) fn present(error: Option<proto::Error>, as_json: bool) {
     if let Some(e) = error {
-        print_out(
-            as_json,
-            json!({"error":{"code":e.code,"message":e.message,"recovery_action":e.recovery_action}}),
-        );
+        print_error(as_json, &e.code, &e.message, &e.recovery_action);
         std::process::exit(1);
     }
 }
@@ -190,6 +184,6 @@ pub(crate) async fn query_task(
         .map_err(|e| e.to_string())?
         .into_inner();
     present(r.error, as_json);
-    print_out(as_json, bytes_json(&r.payload)?);
+    crate::print_query(as_json, kind, &bytes_json(&r.payload)?);
     Ok(())
 }

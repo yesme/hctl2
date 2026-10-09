@@ -174,9 +174,15 @@ impl Harness {
     }
     /// One pass of the background worker, exactly as the service runs it.
     async fn reconcile(&self) {
-        control::integration::reconcile_once(&self.store, &self.root, &mut HashMap::new())
-            .await
-            .unwrap();
+        let services = Arc::new(control::Supervisor::from_root(self.root.clone()));
+        control::integration::reconcile_once(
+            &self.store,
+            &self.root,
+            &services,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
     }
 }
 
@@ -541,15 +547,13 @@ async fn a_confirmation_lost_after_the_write_is_recovered_from_the_frozen_attemp
         let store = Arc::clone(&h.store);
         let (repo_id, id) = (repo_id.clone(), id.clone());
         tokio::task::spawn_blocking(move || {
-            control::integration::plan_attempt(&store, &repo_id, &id)
+            control::integration::plan_local_attempt(&store, &repo_id, &id)
         })
         .await
         .unwrap()
         .unwrap()
     };
-    let control::integration::Planned::Local { attempt, .. } = planned else {
-        panic!("local plan expected");
-    };
+    let attempt = planned.expect("local plan expected");
     assert_eq!(attempt.expected_head, moved);
     assert_eq!(
         h.show(&repo_id, &id).await["intent"]["attempt"]["expected_head"],
@@ -639,18 +643,16 @@ async fn a_confirmation_lost_under_expected_head_recovers_with_the_original_pre_
         .as_str()
         .unwrap()
         .to_owned();
-    let planned = {
+    let attempt = {
         let store = Arc::clone(&h.store);
         let (repo_id, id) = (repo_id.clone(), id.clone());
         tokio::task::spawn_blocking(move || {
-            control::integration::plan_attempt(&store, &repo_id, &id)
+            control::integration::plan_local_attempt(&store, &repo_id, &id)
         })
         .await
         .unwrap()
         .unwrap()
-    };
-    let control::integration::Planned::Local { attempt, .. } = planned else {
-        panic!("local plan expected");
+        .expect("local plan expected")
     };
     assert_eq!(attempt.expected_head, base);
     // The tool writes the merge; control never gets to confirm.

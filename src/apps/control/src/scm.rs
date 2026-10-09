@@ -295,7 +295,9 @@ impl Hosted {
         }
         if !output.status.success() || !status.is_some_and(|s| (200..300).contains(&s)) {
             return Err(reject(
-                if method != "GET" && matches!(status, Some(401 | 403 | 404)) {
+                // 405 is Gitea's answer for a write it refuses to perform (a merge that is
+                // not mergeable): the platform rejected it before doing anything.
+                if method != "GET" && matches!(status, Some(401 | 403 | 404 | 405)) {
                     "NATIVE_REJECTED"
                 } else if method != "GET" && status == Some(409) {
                     "NATIVE_CONFLICT"

@@ -10,6 +10,8 @@ use foundation::git::{parse_version, resolve_executable, sanitized_command, vers
 pub(crate) struct Git {
     executable: PathBuf,
     version: String,
+    /// Environment handed to every Git child (an in-process caller's credentials, for one).
+    extra_env: Vec<(String, OsString)>,
 }
 
 #[derive(Debug)]
@@ -18,7 +20,7 @@ pub(crate) struct GitOutput {
 }
 
 impl Git {
-    pub(crate) fn discover() -> Result<Self, ToolError> {
+    pub(crate) fn discover_with_env(extra_env: Vec<(String, OsString)>) -> Result<Self, ToolError> {
         let requested = std::env::var_os("HCTL2_GIT").unwrap_or_else(|| OsString::from("git"));
         let executable = resolve_executable(&requested).ok_or_else(|| {
             ToolError::new(
@@ -73,7 +75,12 @@ impl Git {
         Ok(Self {
             executable,
             version: version.2,
+            extra_env,
         })
+    }
+
+    pub(crate) fn extra_env(&self) -> &[(String, OsString)] {
+        &self.extra_env
     }
 
     pub(crate) fn executable(&self) -> &Path {
@@ -100,6 +107,9 @@ impl Git {
     ) -> Result<GitOutput, ToolError> {
         let mut command = sanitized_command(&self.executable);
         command.arg("-C").arg(repository).args(arguments);
+        for (name, value) in &self.extra_env {
+            command.env(name, value);
+        }
         for (name, value) in extra_env {
             command.env(name, value);
         }

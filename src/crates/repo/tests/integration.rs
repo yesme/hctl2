@@ -146,7 +146,7 @@ fn success(before: &str, after: &str, tree: &str) -> Outcome {
         target_head_before: Some(before.into()),
         target_head_after: after.into(),
         integrated_commit: after.into(),
-        integrated_tree: tree.into(),
+        integrated_tree: Some(tree.into()),
         evidence_level: "hctl2-tool".into(),
         readback: json!({"status":"applied"}),
         observed_at_unix_ms: 1,
@@ -390,7 +390,10 @@ fn only_a_confirming_readback_writes_the_one_receipt_in_the_same_transaction() {
     let receipt = receipt(&store, &repo_id, &receipt_id).unwrap();
     assert_eq!(receipt.intent_id, id);
     assert_eq!(receipt.target_head_after, "cccc");
-    assert_eq!(receipt.integrated_tree, "1".repeat(40));
+    assert_eq!(
+        receipt.integrated_tree.as_deref(),
+        Some("1".repeat(40).as_str())
+    );
     assert_eq!(receipt.evidence_level, "hctl2-tool");
     assert_eq!(
         store.effect(&integ::effect_id(&id)).unwrap().1,
@@ -487,7 +490,16 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     };
     let mut platform = input(&repo_id, "k", Form::AcceptAdvance);
     platform.target_kind = TargetKind::Platform;
-    // The hosted binding declares merge and protection readback as unverified: refused.
+    // A binding that does not declare merge or protection readback refuses platform targets.
+    declare_capabilities(
+        &mut store,
+        &repo_id,
+        json!({
+            "review_threads": false, "formal_reviews": false, "checks": "external_status_only",
+            "remote_merge": false, "identity_mapping": false, "expected_target_head": false,
+            "review_text_readback": false, "protection_readback": true
+        }),
+    );
     assert_eq!(
         integ::prepare(
             &store,
@@ -553,7 +565,7 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     assert_eq!(preview.protection.as_ref(), Some(&snapshot));
     assert_eq!(
         preview.target.binding.as_ref().map(|b| &b.version),
-        Some(&store::Version::State(2))
+        Some(&store::Version::State(3))
     );
     let intent = submit(&mut store, &actor(), "integration:k", preview).unwrap();
     assert_eq!(intent.state, IntentState::Pending);
@@ -597,9 +609,46 @@ fn an_attempt_is_frozen_before_execution_and_only_a_terminal_readback_or_a_prove
         idempotency_key: format!("{id}:1"),
         commit: "c".repeat(40),
         expected_head: "aaaa".into(),
+        dispatched: false,
     };
     let recorded = record_attempt(&mut store, &repo_id, &id, plan.clone()).unwrap();
     assert_eq!(recorded.attempt.as_ref(), Some(&plan));
+    // A request that may write leaves: the attempt is marked as dispatched before it goes,
+    // the same plan is still recognised as the same plan, and only a proven refusal
+    // (marking it back) says it never wrote. The wrong attempt number is refused.
+    assert_eq!(
+        mark_attempt_dispatched(&mut store, &repo_id, &id, 2, true)
+            .unwrap_err()
+            .code,
+        "ATTEMPT_MISMATCH"
+    );
+    let sent = mark_attempt_dispatched(&mut store, &repo_id, &id, 1, true).unwrap();
+    assert!(sent.attempt.as_ref().unwrap().dispatched);
+    assert!(sent.version > recorded.version);
+    let same = record_attempt(&mut store, &repo_id, &id, plan.clone()).unwrap();
+    assert!(
+        same.attempt.as_ref().unwrap().dispatched,
+        "marking survives a replan"
+    );
+    assert_eq!(same.version, sent.version);
+    assert!(
+        integ::get(&store, &repo_id, &id)
+            .unwrap()
+            .attempt
+            .unwrap()
+            .dispatched,
+        "persisted, not held in memory"
+    );
+    let refused = mark_attempt_dispatched(&mut store, &repo_id, &id, 1, false).unwrap();
+    assert!(!refused.attempt.as_ref().unwrap().dispatched);
+    assert_eq!(
+        mark_attempt_dispatched(&mut store, &repo_id, &id, 1, false)
+            .unwrap()
+            .version,
+        refused.version,
+        "idempotent"
+    );
+    let recorded = refused;
     // Same plan again is a no-op; another plan while one is in flight is refused.
     assert_eq!(
         record_attempt(&mut store, &repo_id, &id, plan.clone())
@@ -627,11 +676,18 @@ fn an_attempt_is_frozen_before_execution_and_only_a_terminal_readback_or_a_prove
     // A proven no-write lets control clear it explicitly.
     let cleared = clear_attempt(&mut store, &repo_id, &id).unwrap();
     assert_eq!(cleared.attempt, None);
+    assert_eq!(
+        mark_attempt_dispatched(&mut store, &repo_id, &id, 1, true)
+            .unwrap_err()
+            .code,
+        "ATTEMPT_NOT_RECORDED"
+    );
     let plan2 = AttemptInput {
         number: 2,
         idempotency_key: format!("{id}:2"),
         commit: "c".repeat(40),
         expected_head: "bbbb".into(),
+        dispatched: false,
     };
     begin(&mut store, &repo_id, &id).unwrap();
     record_attempt(&mut store, &repo_id, &id, plan2).unwrap();
