@@ -1285,3 +1285,146 @@ fn b1_register_two_projects_native_rooms_same_card_contract_request_and_restart(
         );
     }
 }
+
+#[test]
+fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
+    let (f, setup) = paired("human-dispatch", 60);
+    let p = setup.project.as_str();
+    let room = setup.room.as_str();
+    let path = f.root.join("invocation.json");
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 60000;
+    std::fs::write(
+        &path,
+        json!({"project_id":p,"room_id":room,"target":"research","profile":setup.profile["revision"],
+            "request":"Return the exact answer without modifying files","budget":65536,
+            "deadline_ms":deadline,"retry_of":null})
+        .to_string(),
+    )
+    .unwrap();
+    let input = path.to_str().unwrap();
+    let (ok, human, stderr) = f.run_raw(
+        false,
+        &[
+            "invocation",
+            "preview",
+            "--input",
+            input,
+            "--key",
+            "human-dispatch",
+        ],
+    );
+    assert!(ok, "{}", String::from_utf8_lossy(&stderr));
+    let human = String::from_utf8(human).unwrap();
+    for heading in [
+        "Dispatch preview",
+        "Object",
+        "Why this needs confirmation",
+        "What happens after you confirm",
+        "Confirm with",
+    ] {
+        assert!(
+            human.contains(heading),
+            "missing section {heading}:\n{human}"
+        );
+    }
+    // The object section names the real dispatch targets, not placeholders.
+    for value in [p, room, "research"] {
+        assert!(
+            human.contains(value),
+            "object section must name {value}:\n{human}"
+        );
+    }
+    assert!(
+        human.contains("invocation cancel"),
+        "the undo path must be named:\n{human}"
+    );
+    assert!(!human.contains('\u{1b}'), "no ANSI escapes:\n{human}");
+    // The printed confirm command is executable as printed: take the line under
+    // "Confirm with", strip the binary, run it.
+    let confirm_line = human
+        .lines()
+        .skip_while(|line| !line.contains("Confirm with"))
+        .nth(1)
+        .expect("a confirm command line")
+        .trim();
+    assert!(confirm_line.contains("--preview-token"), "{confirm_line}");
+    let words = confirm_line.split_whitespace().collect::<Vec<_>>();
+    let confirmed = Command::new(words[0])
+        .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
+        .env("HCTL2_INSTALL_ROOT", &f.payload)
+        .env(
+            "HCTL2_CONTROL_BIN",
+            std::env::var("CARGO_BIN_EXE_hctl2-control").unwrap(),
+        )
+        .args(&words[1..])
+        .output()
+        .unwrap();
+    assert!(
+        confirmed.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&confirmed.stdout),
+        String::from_utf8_lossy(&confirmed.stderr)
+    );
+    // The default invocation listing is a table with a header and this row.
+    let (ok, listed, _) = f.run_raw(false, &["invocation", "list", p]);
+    assert!(ok);
+    let listed = String::from_utf8(listed).unwrap();
+    let mut lines = listed.lines();
+    let header = lines.next().expect("a header row");
+    assert_eq!(
+        header.split_whitespace().collect::<Vec<_>>(),
+        ["invocation", "state", "version", "reason"]
+    );
+    let separator = lines.next().expect("a separator row");
+    assert!(separator.starts_with("-----------"), "{separator}");
+    let row = lines
+        .next()
+        .expect("one invocation row")
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    assert!(row[0].starts_with("invocation-"), "{row:?}");
+    assert!(
+        row[1] == "pending" || row[1] == "running",
+        "the dispatched invocation is listed with its state: {row:?}"
+    );
+    assert!(!listed.contains('\u{1b}'));
+    // The machine interface stays byte-stable where the content allows it: the
+    // catalog is fixed by the paired fixture, so two runs must agree byte for
+    // byte and match the saved golden sample.
+    let (ok, first, _) = f.run_raw(true, &["agency", "catalog", "local"]);
+    assert!(ok);
+    let (_, second, _) = f.run_raw(true, &["agency", "catalog", "local"]);
+    assert_eq!(
+        first, second,
+        "agency catalog --json must be deterministic in one fixture"
+    );
+    let catalog = String::from_utf8(first).unwrap();
+    assert_eq!(
+        catalog.trim_end(),
+        AGENCY_CATALOG_JSON.trim_end(),
+        "agency catalog --json drifted from the saved sample"
+    );
+    let (ok, human, _) = f.run_raw(false, &["agency", "catalog", "local"]);
+    assert!(ok);
+    let human = String::from_utf8(human).unwrap();
+    assert!(human.contains("Professions"), "{human}");
+    let header = human
+        .lines()
+        .find(|line| line.starts_with("profession"))
+        .expect("a profession header row");
+    assert_eq!(
+        header.split_whitespace().collect::<Vec<_>>(),
+        ["profession", "revision", "harness", "persona"],
+        "the catalog is a table with headers:\n{human}"
+    );
+    assert!(human.contains("script-worker"), "{human}");
+    assert!(!human.contains('\u{1b}'));
+}
+
+/// Captured from the pre-renderer CLI with the same fixture; pins the machine
+/// interface for `agency catalog`, which needs a live Agency.
+const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;

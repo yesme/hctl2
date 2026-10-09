@@ -35,9 +35,11 @@ pub(super) async fn dispatch(
 ) -> Result<(), String> {
     let result = execute(command, root, as_json).await;
     if let Err(error) = &result {
-        print_out(
+        print_error(
             as_json,
-            json!({"error":{"code":"INTEGRATION_COMMAND_FAILED","message":error,"recovery_action":"inspect_error_and_retry"}}),
+            "INTEGRATION_COMMAND_FAILED",
+            error,
+            "inspect_error_and_retry",
         );
     }
     result
@@ -112,10 +114,20 @@ async fn execute(command: IntegrationCommand, root: &Path, as_json: bool) -> Res
             .map_err(|e| e.to_string())?
             .into_inner();
         task::present(result.error, as_json);
-        print_out(
-            as_json,
-            json!({"preview_token":result.preview_token,"effect_summary":bytes_json(&result.effect_summary)?}),
-        );
+        if !as_json {
+            println!(
+                "{}",
+                crate::render::integration_preview(
+                    &result.preview_token,
+                    &bytes_json(&result.effect_summary)?
+                )
+            );
+        } else {
+            print_out(
+                as_json,
+                json!({"preview_token":result.preview_token,"effect_summary":bytes_json(&result.effect_summary)?}),
+            );
+        }
     }
     Ok(())
 }

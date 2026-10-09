@@ -40,9 +40,11 @@ pub(super) async fn project(
 }
 fn report(result: Result<(), String>, as_json: bool) -> Result<(), String> {
     if let Err(e) = &result {
-        print_out(
+        print_error(
             as_json,
-            json!({"error":{"code":"PROJECT_COMMAND_FAILED","message":e,"recovery_action":"inspect_error_and_retry"}}),
+            "PROJECT_COMMAND_FAILED",
+            e,
+            "inspect_error_and_retry",
         );
     }
     result

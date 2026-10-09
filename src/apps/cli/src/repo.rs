@@ -50,9 +50,11 @@ pub(super) async fn dispatch(
     let result = execute(command, root, as_json).await;
     if let Err(error) = &result {
         // Observations and rejections remain machine-readable, including transport failures.
-        print_out(
+        print_error(
             as_json,
-            json!({"error":{"code":"REPO_COMMAND_FAILED","message":error,"recovery_action":"inspect_error_and_retry"}}),
+            "REPO_COMMAND_FAILED",
+            error,
+            "inspect_error_and_retry",
         );
     }
     result
