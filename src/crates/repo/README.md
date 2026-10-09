@@ -41,7 +41,7 @@ Claude 的集成引用这里的已准入版本，不引用提交对象。`Change
 
 `revoke_lease(tx, repo_id, change_set_id, lease, holder)` 转撤销中；`complete_revocation(..., proof?)` 只接受原调用的已保存退出报告，或同事务已取消的原 prepare。没有退出证据不发新代次。它们由 Project 的启动 / 终止 / 停止报告事务调用，不独立提交授权。原 `open_change_set / admit` 入口保留；Proposal 与 Revision 同事务准入由 Project 的 `admit_sealed_result` 接入，发布意图复用 `repo::review`，本段不造第二套发布队列。
 
-发布模块提供 `repo::changeset::admit_with_publication(store, actor, seal, owner, Some(&Publication { policy, authorizing_actor }), now_ms)`；跨模块提案准入不能在自身事务中嵌套调用这个 Store 包装层，而是共用 `admit_in_transaction` 与 `repo::review::enqueue`。`policy` 由 `repo::review::policy` 读取，核对 Spec 冻结的 ID、版本和摘要；`authorizing_actor` 来自原 Invocation 授权保存的人类提交者，不取模型的提案。推送、建立评审请求和 `changeset_platform_binding` 由 Claude 的 worker 做。本包依赖发布模块的接口，临时组合测试不等于发布全链已验收。
+发布模块提供 `repo::changeset::admit_with_publication(store, actor, seal, owner, Some(&Publication { policy, authorizing_actor }), now_ms)`；跨模块提案准入不能在自身事务中嵌套调用这个 Store 包装层，而是共用 `admit_in_transaction` 与 `repo::review::enqueue`。`policy` 由 `repo::review::policy` 读取，核对 Spec 冻结的 ID、版本和摘要；`Policy.binding_version` 等于 ChangeSet 打开时的绑定版本，入队仍按该版本检查，不取当前新绑定替代。`authorizing_actor` 来自原 Invocation 授权保存的人类提交者，不取模型的提案。推送、建立评审请求和 `changeset_platform_binding` 由 Claude 的 worker 做。本包依赖发布模块的接口，临时组合测试不等于发布全链已验收。
 
 ## CLI
 

@@ -355,7 +355,7 @@ fn admit(
                 if tx.get(&write.policy_record.key)?.as_ref().map(reference) != Some(write.policy_record.clone()) {
                     return Err(stale());
                 }
-                Some(repo::review::enqueue(tx, &control_id, revision, &write.lease.pending.repo_id, publication, now_ms)?)
+                Some(repo::review::enqueue(tx, &control_id, revision, &write.lease.pending.repo_id, write.lease.pending.binding_version, publication, now_ms)?)
             }
             _ => None,
         };

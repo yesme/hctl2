@@ -169,6 +169,50 @@ fn cancelling_unsent_write_revokes_in_the_same_transaction_and_next_writer_has_n
 }
 
 #[test]
+fn write_preview_cannot_reuse_a_changeset_opened_under_another_platform_binding() {
+    let (mut e, input) = write_setup();
+    let (p, _, _) = started(&mut e, input);
+    let set = &p.write.as_ref().unwrap().lease.pending;
+    let cancel = end_input(&e, &p.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    let mut registration = required(&e.store, &repo::key(&e.rid)).unwrap();
+    let store::RecordData::Repo {
+        platform_binding: Some(binding),
+        ..
+    } = &mut registration.data
+    else {
+        panic!("platform binding required");
+    };
+    binding.version = Version::State(2);
+    registration.version += 1;
+    let mut repo_actor = actor();
+    repo_actor
+        .0
+        .permission_scope
+        .push(Scope::Repo(e.rid.clone()));
+    replace_record_as(&mut e, registration, repo_actor);
+    let mut next = p.input.clone();
+    next.key = "rebound-writer".into();
+    next.write.as_mut().unwrap().change_set_id = Some(set.change_set_id.clone());
+    freeze_policy_fixture(&mut e, &next);
+    let stamp = e.store.read_stamp();
+    assert_eq!(
+        call::prepare(&e.store, &actor(), next, NOW)
+            .unwrap_err()
+            .code,
+        "CHANGESET_BOUNDARY_MISMATCH"
+    );
+    assert_eq!(e.store.read_stamp(), stamp);
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id)
+            .unwrap()
+            .binding_version,
+        set.binding_version
+    );
+    assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+}
+
+#[test]
 fn cancelling_possibly_started_write_without_exit_proof_keeps_the_original_lease_busy() {
     let (mut e, input) = write_setup();
     let (p, _, _) = started(&mut e, input);
@@ -543,6 +587,10 @@ fn end_input(e: &Env, id: &str, version: i64, outcome: State) -> call::End {
 
 fn replace_record(e: &mut Env, record: Record) {
     let scoped = chat::owner(&actor(), &e.a).unwrap();
+    replace_record_as(e, record, scoped);
+}
+
+fn replace_record_as(e: &mut Env, record: Record, scoped: TrustedActor) {
     let old = e.store.get(&record.key).unwrap();
     let input = serde_json::to_value(&record).unwrap();
     let command = Command {
@@ -2015,6 +2063,14 @@ fn write_result_and_revision_share_admission_and_completion_does_not_prove_write
     assert_eq!(
         publication.policy.policy_id,
         p.write.as_ref().unwrap().review_publish_policy.id
+    );
+    assert_eq!(
+        publication.binding_version,
+        p.write.as_ref().unwrap().lease.pending.binding_version
+    );
+    assert_eq!(
+        publication.policy.policy.binding_version,
+        publication.binding_version
     );
     assert!(
         e.store
