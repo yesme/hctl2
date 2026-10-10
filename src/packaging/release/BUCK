@@ -21,6 +21,11 @@ export_file(
     src = "test-toolbox.sh",
 )
 
+export_file(
+    name = "demo3.sh",
+    src = "demo3.sh",
+)
+
 first_party_release(name = "first-party")
 
 complete_release(name = "complete")
@@ -73,5 +78,53 @@ sh_test(
     env = {"CLIPPY_REPORTS": "$(location :room-cli-clippy)"},
     labels = CI_RELEASE,
     test_rule_timeout_ms = 120000,
+    visibility = ["PUBLIC"],
+)
+
+# Demo 3, both paths (kickoff §四 第 9 包验收第 8 条). Like room-cli-test these
+# consume the real offline payload and drive only `hctl2 --json`, so the
+# packaged Gitea, Tuwunel, process-compose and gh are the ones under test.
+# HCTL2_DEMO3_GITHUB_TOKEN is not declared here: the workflow passes it through
+# `buck2 test -- --env`, which keeps the runner secret out of the action key and
+# out of the graph. Without it demo3-github.sh skips visibly instead of failing.
+_DEMO3_ENV = {
+    "HCTL2_AGENCY_BIN": "$(location root//agency:agency)",
+    "HCTL2_CLI_BIN": "$(location root//apps/cli:hctl2)",
+    "HCTL2_CONTROL_BIN": "$(location root//apps/control:hctl2-control)",
+    "HCTL2_DEMO3_COMMON": "$(location :demo3.sh)",
+    "HCTL2_JQ": "$(location root//build/tools:jq-bin)",
+    "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
+    "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
+}
+
+_DEMO3_RESOURCES = [
+    ":demo3.sh",
+    "root//agency:agency",
+    "root//apps/cli:hctl2",
+    "root//apps/control:hctl2-control",
+    "root//build/tools:jq-bin",
+    "root//build/tools:zstd-bin",
+    "root//packaging/dependencies:package",
+]
+
+sh_test(
+    name = "demo3-gitea-test",
+    test = "demo3-gitea.sh",
+    env = _DEMO3_ENV,
+    resources = _DEMO3_RESOURCES,
+    labels = CI_RELEASE,
+    run_test_separately = True,
+    test_rule_timeout_ms = 600000,
+    visibility = ["PUBLIC"],
+)
+
+sh_test(
+    name = "demo3-github-test",
+    test = "demo3-github.sh",
+    env = _DEMO3_ENV,
+    resources = _DEMO3_RESOURCES,
+    labels = CI_RELEASE,
+    run_test_separately = True,
+    test_rule_timeout_ms = 600000,
     visibility = ["PUBLIC"],
 )
