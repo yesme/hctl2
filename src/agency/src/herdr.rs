@@ -134,6 +134,17 @@ impl Server {
         exec_parent: &Path,
         read_paths: &[PathBuf],
     ) -> Result<Self> {
+        Self::start_with_access(binary, state, credential_root, exec_parent, read_paths, &[])
+    }
+
+    pub(crate) fn start_with_access(
+        binary: &Path,
+        state: &Path,
+        credential_root: &Path,
+        exec_parent: &Path,
+        read_paths: &[PathBuf],
+        model_state: &[PathBuf],
+    ) -> Result<Self> {
         let binary = binary.canonicalize().map_err(|_| {
             PortError::new(
                 "HERDR_BINARY_MISSING",
@@ -171,6 +182,9 @@ impl Server {
         let _ = std::fs::remove_file(&socket);
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
+        if !model_state.is_empty() {
+            confine::protect_native_credentials(state, credential_root)?;
+        }
         child
             .env("HERDR_SOCKET_PATH", &socket)
             .env("HERDR_CONFIG_PATH", state.join("config.toml"))
@@ -179,10 +193,16 @@ impl Server {
             .env(
                 "HCTL2_CONFINE_ALLOW",
                 format!(
-                    "{}\n{}\n{}",
+                    "{}\n{}\n{}\n{}",
                     state.display(),
                     socket_dir.display(),
-                    exec_parent.display()
+                    exec_parent.display(),
+                    model_state
+                        .iter()
+                        .filter(|p| p.exists())
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 ),
             )
             .env(

@@ -553,12 +553,27 @@ impl InstalledHerdr {
         } else {
             parent
         };
-        let server = Arc::new(Server::start_with_read(
+        let mut model_state = if self.pool.is_some() {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| vec![home.join(".claude"), home.join(".claude.json")])
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+        if self.codex_pool.is_some() {
+            let codex_home = std::env::var_os("CODEX_HOME")
+                .map(PathBuf::from)
+                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex")));
+            model_state.extend(codex_home);
+        }
+        let server = Arc::new(Server::start_with_access(
             &self.binary,
             &state,
             credential_root,
             parent,
             &self.read_paths,
+            &model_state,
         )?);
         if self.pool.is_some() {
             // Herdr's own installer, redirected privately. Never export this
@@ -748,7 +763,7 @@ impl Runtime for InstalledHerdr {
             harness: harness.clone(),
             model: "none".into(),
             persona: "claude code".into(),
-            terms: "read-only Bundle dispatch; native Claude turns in a selection-local Herdr session; no tool input or write lease".into(),
+            terms: "Bundle dispatch in a selection-local native Claude Herdr session; read-only or leased ChangeSet worktree; write return waits for sealing dependency; no terminal input or publication".into(),
             default_role: "worker".into(),
             skills: vec![],
             capabilities: Capabilities {
@@ -768,7 +783,7 @@ impl Runtime for InstalledHerdr {
                 harness: harness.clone(),
                 model: "none".into(),
                 persona: "codex".into(),
-                terms: "read-only Bundle dispatch; app-server turn/start for one selection thread; Herdr pane runs codex resume --remote; no write lease".into(),
+                terms: "Bundle dispatch via app-server turn/start in one selection thread; Herdr pane runs codex resume --remote; read-only or leased ChangeSet worktree; write return waits for sealing dependency; no terminal input or publication".into(),
                 default_role: "worker".into(),
                 skills: vec![],
                 capabilities: Capabilities {
@@ -804,10 +819,24 @@ impl Runtime for InstalledHerdr {
                     "install_codex",
                 ));
             };
-            return pool.submit(server, spec, bundle, exec_root, credential_root);
+            return pool.submit(
+                server,
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+            );
         }
         if let Some(pool) = &self.pool {
-            return pool.submit(server, spec, bundle, exec_root, credential_root);
+            return pool.submit(
+                server,
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+            );
         }
         let body = (self.script.as_ref().expect("test adapter"))(
             &spec.document,
@@ -853,12 +882,12 @@ impl Runtime for InstalledHerdr {
                     "install_codex",
                 ));
             };
-            return pool.submit(server, spec, bundle, exec_root, tenant);
+            return pool.submit(server, spec, bundle, exec_root, tenant, credential_root);
         }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;
             let server = self.ensure(exec_root, credential_root)?;
-            pool.submit(server, spec, bundle, exec_root, tenant)
+            pool.submit(server, spec, bundle, exec_root, tenant, credential_root)
         } else {
             self.start(spec, bundle, exec_root, credential_root)
         }
