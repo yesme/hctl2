@@ -26,6 +26,16 @@ fn git(path: &Path, args: &[&str]) -> String {
 fn ok(root: &Path, args: &[&str]) -> Value {
     let (success, out, err) = run(root, args);
     assert!(success, "{args:?}: {out} {err}");
+    if args == ["stop"] {
+        // The current CLI acknowledges the stop request before the daemon exits.
+        // Restart/store-open fixtures wait for the original listener to disappear;
+        // they do not retry the next command or change production shutdown semantics.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::os::unix::net::UnixStream::connect(root.join("control.sock")).is_ok() {
+            assert!(std::time::Instant::now() < deadline, "control did not stop");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
     if out.trim().is_empty() {
         Value::Null
     } else {
@@ -219,19 +229,23 @@ fn residual_chain(
         wrong_target["target_change_set_id"] = json!(source);
         let mut unknown_field = original.clone();
         unknown_field["lease"] = json!({"generation":99});
-        let mut invalid = vec![wrong_path, wrong_target, unknown_field];
+        let mut invalid = vec![
+            (wrong_path, "INVALID_INPUT"),
+            (wrong_target, "INVALID_INPUT"),
+            (unknown_field, "INVALID_JSON"),
+        ];
         if action == "discard" {
             let mut wrong_parent = original.clone();
             wrong_parent["parent_revision_id"] = json!("not-a-version-for-discard");
-            invalid.push(wrong_parent);
+            invalid.push((wrong_parent, "INVALID_INPUT"));
         }
-        for payload in invalid {
+        for (payload, code) in invalid {
             std::fs::write(&input, payload.to_string()).unwrap();
             let (success, out, _) = run(root, &args);
             assert!(!success, "{action}: {payload}: {out}");
             assert_eq!(
                 serde_json::from_str::<Value>(&out).unwrap()["error"]["code"],
-                "INVALID_INPUT",
+                code,
                 "{payload}"
             );
         }

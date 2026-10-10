@@ -111,6 +111,82 @@ fn residual_discard_is_durable_before_cleanup_and_replays_readback_after_restart
 }
 
 #[test]
+fn residual_discard_keys_and_effects_are_independent_between_repos() {
+    use repo::changeset::residual;
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let first = residual_fixture(&mut store);
+    let mut request = common::request(repo::Platform::None);
+    request.name = "another-repo".into();
+    let prepared = repo::prepare(request, None).unwrap();
+    let registered =
+        repo::admit(&mut store, &common::actor(), "repo-2", "repo-2", prepared).unwrap();
+    let mut second = open_change_set(
+        &mut store,
+        &actor(&registered.repo_id),
+        &registered.repo_id,
+        0,
+        &sha(1),
+        "residual",
+        &invocation("lost"),
+    )
+    .unwrap();
+    second.lease.state = LeaseState::Revoking;
+    replace_set(&mut store, &mut second);
+    let record = store.get(&repo::key(&second.repo_id)).unwrap().unwrap();
+    let repo_ref = Reference {
+        key: record.key,
+        version: Version::State(record.version),
+    };
+    let source = Reference {
+        key: ObjectKey {
+            scope: Scope::Repo(second.repo_id.clone()),
+            kind: "changeset".into(),
+            id: second.change_set_id.clone(),
+        },
+        version: Version::State(second.version),
+    };
+    let mut effects = Vec::new();
+    for (set, registered, source) in [first, (second, repo_ref, source)] {
+        let owner = actor(&set.repo_id);
+        let plan = serde_json::json!({"input":{"key":"same","repo_id":set.repo_id,"change_set_id":set.change_set_id},"worktree_path":format!("/fixture/{}", set.change_set_id)});
+        let pending = residual::begin(
+            &mut store,
+            &owner,
+            &set.repo_id,
+            "same",
+            &plan,
+            &source,
+            &registered,
+        )
+        .unwrap();
+        let effect = pending["effect_id"].as_str().unwrap();
+        assert!(!effects.iter().any(|other| other == effect));
+        effects.push(effect.to_owned());
+        store
+            .resume_pending_effect(store.generation(), effect, true)
+            .unwrap();
+        store.begin_effect(store.generation(), effect).unwrap();
+        let done = residual::finish(
+            &mut store,
+            &owner,
+            &set.repo_id,
+            "same",
+            &serde_json::json!({"removed":true}),
+        )
+        .unwrap();
+        assert_eq!(done["status"], "discarded");
+        assert_eq!(
+            residual::receipt(&store, &owner, &set.repo_id, "same", &plan["input"])
+                .unwrap()
+                .unwrap(),
+            done
+        );
+    }
+    assert_eq!(store.list("changeset_residual").unwrap().len(), 2);
+}
+
+#[test]
 fn residual_discard_rejects_a_changed_source_and_nonhuman_authority_without_enqueue() {
     use repo::changeset::residual;
     let temp = Temp::new();
@@ -150,7 +226,11 @@ fn residual_discard_rejects_a_changed_source_and_nonhuman_authority_without_enqu
         "VERSION_CONFLICT"
     );
     assert!(store.list("changeset_residual").unwrap().is_empty());
-    assert!(store.effect("changeset:discard:discard").is_err());
+    assert!(
+        store
+            .effect(&format!("changeset.discard:{}:discard", set.repo_id))
+            .is_err()
+    );
 }
 
 #[test]

@@ -42,7 +42,7 @@ fn action(operation: &str) -> store::Result<&str> {
     }
 }
 fn human_key(input: &Input, action: &str) -> String {
-    format!("{action}:{}", input.key)
+    format!("{action}:{}:{}", input.repo_id, input.key)
 }
 fn inspect(path: &Path) -> store::Result<Value> {
     native(vec![
@@ -498,4 +498,20 @@ pub(super) fn list(store: &Store, repo_id: &str, change_set_id: &str) -> store::
         }
     }
     Ok(values)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn human_recovery_command_identity_includes_repo_and_action() {
+        let mut input: Input = serde_json::from_value(json!({
+            "key":"same", "repo_id":"A", "change_set_id":"residual", "repo_path":"/fixture"
+        }))
+        .unwrap();
+        let a = human_key(&input, "takeover");
+        assert_ne!(a, human_key(&input, "adopt"));
+        input.repo_id = "B".into();
+        assert_ne!(a, human_key(&input, "takeover"));
+    }
 }

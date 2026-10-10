@@ -58,17 +58,18 @@ pub fn begin(
     }
     let actor = owner(actor, repo)?;
     let target = key(repo, command_key);
+    let intent_id = format!("changeset.discard:{repo}:{command_key}");
     let cmd = command(
         &actor,
         target.clone(),
-        &target.id,
-        &target.id,
+        &intent_id,
+        &intent_id,
         Expected::Absent,
         "changeset.discard",
         plan.clone(),
     )?;
     let effect = EffectIntent {
-        intent_id: target.id.clone(),
+        intent_id: intent_id.clone(),
         owner: Reference {
             key: target.clone(),
             version: Version::State(1),
@@ -83,7 +84,7 @@ pub fn begin(
         operation: "git.worktree.remove".into(),
         input: plan.clone(),
         input_digest: Command::digest_input("git.worktree.remove", plan)?,
-        idempotency_key: target.id.clone(),
+        idempotency_key: intent_id,
     };
     store.submit(store.generation(), &actor, &cmd, None, |tx| {
         if tx.get(&repo_ref.key)?.map(|r| Reference {
@@ -153,14 +154,21 @@ fn settle(
     if value["status"] == "discarded" || value["status"] == "rejected" {
         return Ok(value);
     }
-    let (effect, _) = store.effect(&target.id)?;
+    let effect_id = value["effect_id"].as_str().ok_or_else(|| {
+        reject(
+            "INVALID_INPUT",
+            "discard effect missing",
+            "inspect_change_set",
+        )
+    })?;
+    let (effect, _) = store.effect(effect_id)?;
     value["status"] = json!(if established { "discarded" } else { "rejected" });
     value["observation"] = observation.clone();
     let cmd = command(
         &actor,
         target.clone(),
-        &format!("{}:confirm", target.id),
-        &format!("{}:confirm", target.id),
+        &format!("{}:confirm", effect.intent_id),
+        &format!("{}:confirm", effect.intent_id),
         Expected::Exact(Version::State(old.version)),
         "changeset.discard_confirmed",
         json!({"effect_id":effect.intent_id}),
