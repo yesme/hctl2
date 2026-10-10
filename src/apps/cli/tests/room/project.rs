@@ -749,14 +749,13 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         {"text":"a human judged it done","grade":"human"}],"roles":[],"capabilities":[]});
     let digest = foundation::canonical_json_sha256(&contract).unwrap();
     let adoption = json!({"contract":contract,"origin":{"kind":"local","reference":{"key":{"scope":{"kind":"project","id":p},"kind":"project","id":p},"version":{"state":pv}},"proposal_digest":digest}});
-    let adopted = accepted(
+    accepted(
         &f,
         "task",
         "adopt",
         "demo3-adopt",
         json!({"project_id":p,"project_version":pv,"task_id":task_id,"version":before["version"],"adoption":adoption}),
     );
-    let adopted_task = &adopted["task"];
     // 十秒答得出：合同已采纳、还没派工，下一步是从 Room 派工。
     let (_, next) = task_next(&f, &p, &task_id);
     assert!(next.starts_with("dispatch from the Room"), "{next}");
@@ -1020,10 +1019,14 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     // 人的第 2 次预览：完成 Task，机械项引用这张 Receipt。
     let principal = format!("local-owner:{}", std::fs::metadata(&f.root).unwrap().uid());
     let receipt_ref = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"integration_receipt","id":receipt_id},"version":{"state":1}});
+    // The Task record can move after adoption (provider refresh, the Receipt landing); the
+    // completion names the version a person sees now, as a person re-reading would.
+    let (ok, current_task) = f.run(&["task", "show", &p, &task_id]);
+    assert!(ok, "{current_task}");
     let complete = json!({
-        "project_id":p,"task_id":task_id,"version":adopted_task["version"],
-        "lifecycle_version":adopted_task["data"]["lifecycle_version"],
-        "revision_number":adopted_task["data"]["revision"]["number"],
+        "project_id":p,"task_id":task_id,"version":current_task["version"],
+        "lifecycle_version":current_task["data"]["lifecycle_version"],
+        "revision_number":current_task["data"]["revision"]["number"],
         "acceptance":[
             {"item":0,"judge":{"kind":"hctl2_tool"},"channel":"unmediated","references":[receipt_ref],"producer":"hctl2-tool","generation":1},
             {"item":1,"judge":{"kind":"human","actor":principal},"channel":"narrated","references":[],"producer":null,"generation":null}
