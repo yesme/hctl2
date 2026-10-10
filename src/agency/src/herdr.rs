@@ -202,9 +202,9 @@ impl Server {
         let _ = std::fs::remove_file(&socket);
         let mut child = confine::command(&binary, &["server".into()], state, credential_root)?;
         confine::scrub(&mut child, state);
-        if !model_state.is_empty() {
-            confine::protect_native_credentials(state, credential_root)?;
-        }
+        // Every Herdr child, including a read-only pane, gets the keyring and
+        // gh file denies. On Linux this is a no-op; the allow-list is the boundary.
+        confine::protect_native_credentials(state, credential_root)?;
         if cfg!(target_os = "macos") && !denied_git.is_empty() {
             confine::append_git_denials(state, denied_git)?;
         }

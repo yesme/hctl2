@@ -46,6 +46,62 @@ fn codex_fixture_turn_matches_rollout_and_uses_a_read_only_sandbox() {
 }
 
 #[test]
+fn codex_read_only_cannot_read_credentials_keyring_or_gh_auth() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    prepare("ok");
+    let specimen = SecretSpecimen::plant("codex-read");
+    let (runtime, cred, root, exec) = open_runtime("codex-secret", Duration::from_secs(300));
+    let cred_file = cred.join("pair.key").canonicalize().unwrap();
+    let task = format!(
+        "HCTL2_SECRET_PROBE {}\n",
+        serde_json::json!({"secret_paths":[cred_file, &specimen.file]})
+    );
+    let mut running = start_task(&runtime, &exec, &cred, "secret", &task, &[])
+        .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
+    let events = collect(&mut running, Duration::from_secs(20));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, RuntimeEvent::TurnReturned)),
+        "{}",
+        show(&events)
+    );
+    let turn = read_json("last-turn.json");
+    assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
+    assert!(turn["sandboxPolicy"].get("networkAccess").is_none());
+    assert_eq!(read_json("last-thread.json")["sandbox"], "read-only");
+    let probe = read_json("secret-probe.json");
+    for read in probe["reads"].as_array().unwrap() {
+        assert_eq!(read["readable"], false, "{probe}");
+    }
+    assert_eq!(probe["gh_authenticated"], false, "{probe}");
+    assert_eq!(probe["gh_token_present"], false);
+    assert_eq!(probe["dbus_present"], false);
+    runtime.shutdown().expect("shutdown");
+    let _ = fs::remove_dir_all(cred);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn declared_no_network_is_refused_before_codex_starts() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    prepare("ok");
+    let (runtime, cred, root, exec) = open_runtime("codex-isolate", Duration::from_secs(300));
+    let error = match start_task(&runtime, &exec, &cred, "isolate", "HELLO", &["no_network"]) {
+        Err(error) => error,
+        Ok(_) => panic!("declared no_network must not start"),
+    };
+    assert_eq!(error.code, "ISOLATION_UNAVAILABLE");
+    assert_eq!(error.message, "no_network");
+    assert_eq!(error.recovery_action, "drop_unenforceable_isolation");
+    assert!(!home().join("last-turn.json").exists());
+    assert!(!home().join("last-thread.json").exists());
+    runtime.shutdown().expect("shutdown");
+    let _ = fs::remove_dir_all(cred);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn codex_fixture_rejects_a_rollout_that_does_not_match_the_task() {
     let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
     prepare("mismatch");
@@ -187,6 +243,8 @@ fn prepare(mode: &str) {
         "interrupt-seen",
         "last-turn.json",
         "last-thread.json",
+        "secret-probe.json",
+        "write-probe.json",
     ] {
         let _ = fs::remove_file(home.join(name));
     }
@@ -275,6 +333,70 @@ fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, 
         runtime.codex_skip().unwrap_or("")
     );
     (RuntimeGuard(runtime), cred, root, exec)
+}
+
+struct SecretSpecimen {
+    file: PathBuf,
+    tree: Option<PathBuf>,
+}
+
+impl Drop for SecretSpecimen {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.file);
+        if let Some(tree) = &self.tree {
+            let _ = fs::remove_dir_all(tree);
+        }
+    }
+}
+
+impl SecretSpecimen {
+    /// Linux: outside the Landlock allow-list. macOS: under the denied keyring path.
+    fn plant(label: &str) -> Self {
+        if cfg!(target_os = "linux") {
+            let tree = std::env::temp_dir().join(format!(
+                "hctl2-keyring-{label}-{}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&tree);
+            fs::create_dir_all(&tree).unwrap();
+            let file = tree.join("login.keyring");
+            fs::write(&file, b"trial-keyring-secret").unwrap();
+            Self {
+                file,
+                tree: Some(tree),
+            }
+        } else {
+            let dir =
+                PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share/keyrings");
+            fs::create_dir_all(&dir).unwrap();
+            let file = dir.join(format!(
+                "hctl2-pkg9-{label}-{}.keyring",
+                std::process::id()
+            ));
+            fs::write(&file, b"trial-keyring-secret").unwrap();
+            Self { file, tree: None }
+        }
+    }
+}
+
+fn start_task(
+    runtime: &InstalledHerdr,
+    exec: &Path,
+    cred: &Path,
+    key: &str,
+    task: &str,
+    effects: &[&str],
+) -> agency_proto::Result<Running> {
+    let bundle = sealed_bundle(task);
+    let mut document = sealed_spec(key).document;
+    document.profession.reference.id = "codex-cli".into();
+    document.bundle.digest = bundle.digest.clone();
+    document.required_capabilities.isolation_effects = effects
+        .iter()
+        .map(|item| (*item).to_string())
+        .collect();
+    let spec = Sealed::new(document).unwrap();
+    runtime.start(&spec, &bundle, exec, cred)
 }
 
 fn dispatch(runtime: &InstalledHerdr, exec: &Path, cred: &Path, key: &str) -> Running {

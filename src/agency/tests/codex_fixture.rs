@@ -146,6 +146,9 @@ fn serve(mut stream: impl Read + Write) {
                 {
                     write_json("write-probe.json", &probe);
                 }
+                if let Some(probe) = write_probe::secret_probe(text) {
+                    write_json("secret-probe.json", &probe);
+                }
                 let thread_id = thread.clone().unwrap_or_else(|| "missing-thread".into());
                 write_rollout(&thread_id, text);
                 seq += 1;

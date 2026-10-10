@@ -2147,6 +2147,44 @@ async fn mismatched_material_capability_and_profession_fail_before_activation() 
             .code,
         "CAPABILITY_MISSING"
     );
+    let mut req = request(&client, "no-network").await;
+    req.spec.document.required_capabilities.isolation_effects = vec!["no_network".into()];
+    req.spec = Sealed::new(req.spec.document).unwrap();
+    let error = client
+        .call::<_, Dispatch>("prepare", &req)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        agency_proto::PortError::new(
+            "ISOLATION_UNAVAILABLE",
+            "no_network",
+            "drop_unenforceable_isolation",
+        )
+    );
+    let mut req = request(&client, "unknown-isolation").await;
+    req.spec.document.required_capabilities.isolation_effects = vec!["not-applied".into()];
+    req.spec = Sealed::new(req.spec.document).unwrap();
+    assert_eq!(
+        client
+            .call::<_, Dispatch>("prepare", &req)
+            .await
+            .unwrap_err()
+            .code,
+        "ISOLATION_UNAVAILABLE"
+    );
+    let mut req = request(&client, "no-network-and-secure-input").await;
+    req.spec.document.required_capabilities.secure_input = true;
+    req.spec.document.required_capabilities.isolation_effects = vec!["no_network".into()];
+    req.spec = Sealed::new(req.spec.document).unwrap();
+    assert_eq!(
+        client
+            .call::<_, Dispatch>("prepare", &req)
+            .await
+            .unwrap_err()
+            .code,
+        "ISOLATION_UNAVAILABLE"
+    );
     let mut req = request(&client, "profession").await;
     req.spec.document.profession.terms = "new terms".into();
     req.spec = Sealed::new(req.spec.document).unwrap();

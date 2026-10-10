@@ -331,6 +331,9 @@ fn run_job(
     native: &mut Option<Native>,
     job: &Job,
 ) -> Result<()> {
+    crate::confine::reject_unenforceable_isolation(
+        &job.spec.document.required_capabilities.isolation_effects,
+    )?;
     if job.token.cancelled.load(Ordering::SeqCst) || stopped.load(Ordering::SeqCst) {
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
             requested_stop: true,

@@ -227,8 +227,25 @@ pub fn scrub(cmd: &mut Command, exec_root: &Path) {
     cmd.current_dir(exec_root);
 }
 
-/// A write-capable app-server has the physical credential boundary of Herdr
-/// descendants. Keep its native model login; never grant the whole HOME.
+/// Any declared isolation effect is refused. This process does not apply one:
+/// Landlock here is filesystem-only, the macOS profile starts from
+/// `(allow default)`, and a Codex write turn sets `networkAccess` to
+/// `enabled`. Starting anyway would record an isolation that did not happen.
+pub(crate) fn reject_unenforceable_isolation(effects: &[String]) -> Result<()> {
+    if effects.is_empty() {
+        return Ok(());
+    }
+    Err(PortError::new(
+        "ISOLATION_UNAVAILABLE",
+        effects.join(", "),
+        "drop_unenforceable_isolation",
+    ))
+}
+
+/// An app-server has the physical credential boundary of Herdr descendants.
+/// `write` is the host sandbox flag a write turn expects. Read-only stays on
+/// this boundary without that flag. Keep the native model login; never grant
+/// the whole HOME.
 pub(crate) fn harness_command(
     program: &Path,
     arguments: &[String],
@@ -236,6 +253,7 @@ pub(crate) fn harness_command(
     state: &Path,
     socket: &Path,
     credential_root: &Path,
+    write: bool,
 ) -> Result<Command> {
     let mut command = command(program, arguments, state, credential_root)?;
     let home = std::env::var_os("HOME")
@@ -263,7 +281,8 @@ pub(crate) fn harness_command(
     let temp = state.join("tmp");
     crate::storage::private_dir(&temp)?;
     protect_native_credentials(state, credential_root)?;
-    if cfg!(target_os = "macos") {
+    // Read-only has no materialized worktree, so there is no source Git dir to deny.
+    if write && cfg!(target_os = "macos") {
         let profile = state.join("credential.sb");
         let rules = fs::read_to_string(&profile)? + &worktree_git_denial(cwd)?;
         fs::remove_file(&profile)?;
@@ -301,7 +320,9 @@ pub(crate) fn harness_command(
                 .ok_or_else(|| PortError::invalid("harness parent missing"))?,
         )
         .current_dir(cwd);
-    command.args(["-c", "sandbox_mode=\"danger-full-access\""]);
+    if write {
+        command.args(["-c", "sandbox_mode=\"danger-full-access\""]);
+    }
     Ok(command)
 }
 
@@ -371,4 +392,23 @@ pub(crate) fn sensitive_paths() -> Vec<PathBuf> {
         paths.push(PathBuf::from(gh));
     }
     paths
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reject_unenforceable_isolation;
+    use agency_proto::PortError;
+
+    #[test]
+    fn empty_isolation_starts_and_any_declared_effect_is_refused() {
+        assert!(reject_unenforceable_isolation(&[]).is_ok());
+        assert_eq!(
+            reject_unenforceable_isolation(&["no_network".into(), "other".into()]).unwrap_err(),
+            PortError::new(
+                "ISOLATION_UNAVAILABLE",
+                "no_network, other",
+                "drop_unenforceable_isolation",
+            )
+        );
+    }
 }

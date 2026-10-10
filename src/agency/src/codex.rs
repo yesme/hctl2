@@ -326,6 +326,9 @@ fn run_job(
     live: &mut Option<Live>,
     job: &Job,
 ) -> Result<()> {
+    crate::confine::reject_unenforceable_isolation(
+        &job.spec.document.required_capabilities.isolation_effects,
+    )?;
     if job.token.cancelled.load(Ordering::SeqCst) || stopped.load(Ordering::SeqCst) {
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
             requested_stop: true,
@@ -344,7 +347,7 @@ fn run_job(
     let cwd = job.copy.as_ref().map_or(env.cwd, |copy| copy.cwd.as_path());
     if live
         .as_ref()
-        .is_some_and(|s| s.cwd != cwd || s.confined != job.copy.is_some())
+        .is_some_and(|s| s.cwd != cwd || s.writing != job.copy.is_some())
     {
         live.as_mut().expect("live Codex").close()?;
         *live = None;
@@ -355,7 +358,8 @@ fn run_job(
             cwd,
             env.dir,
             env.socket,
-            job.copy.as_ref().map(|_| job.credential_root.as_path()),
+            &job.credential_root,
+            job.copy.is_some(),
         )?;
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
@@ -498,7 +502,7 @@ struct Live {
     resumed_existing: bool,
     pane: Option<Pane>,
     closed: bool,
-    confined: bool,
+    writing: bool,
     cwd: PathBuf,
 }
 
@@ -513,11 +517,15 @@ impl Live {
         cwd: &Path,
         dir: &Path,
         socket: &Path,
-        credential_root: Option<&Path>,
+        credential_root: &Path,
+        writing: bool,
     ) -> Result<(Self, bool, bool)> {
         let _ = fs::remove_file(socket);
         let log = crate::storage::private_file(&dir.join("app-server.err"))?;
-        let address = if credential_root.is_some() {
+        // The write turn's bubblewrap cannot mount inside Landlock, so that
+        // path uses a localhost socket. Read-only stays on the unix socket and
+        // still runs inside the credential boundary.
+        let address = if writing {
             Some(TcpListener::bind("127.0.0.1:0")?.local_addr()?)
         } else {
             None
@@ -539,13 +547,15 @@ impl Live {
                 hash(auth.as_bytes()),
             ]);
         }
-        let mut child = if let Some(credential_root) = credential_root {
-            crate::confine::harness_command(codex, &args, cwd, dir, socket, credential_root)?
-        } else {
-            let mut child = Command::new(codex);
-            child.args(args);
-            child
-        };
+        let mut child = crate::confine::harness_command(
+            codex,
+            &args,
+            cwd,
+            dir,
+            socket,
+            credential_root,
+            writing,
+        )?;
         child
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
@@ -573,7 +583,7 @@ impl Live {
             resumed_existing: false,
             pane: None,
             closed: false,
-            confined: credential_root.is_some(),
+            writing,
             cwd: cwd.to_path_buf(),
         };
         let attached = (|| {
@@ -590,7 +600,7 @@ impl Live {
             }
             let started = live.rpc.request(
                 "thread/start",
-                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": if credential_root.is_some() { "danger-full-access" } else { "read-only" }}),
+                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": if writing { "danger-full-access" } else { "read-only" }}),
             )?;
             let id = started["thread"]["id"]
                 .as_str()

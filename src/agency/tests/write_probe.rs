@@ -70,3 +70,29 @@ pub fn execute(text: &str, cwd: &Path, enabled: bool) -> Option<Value> {
         "dbus_present":std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()}),
     )
 }
+
+/// Credential reads for a turn that is not asking to edit. Unlike `execute`,
+/// this does not require the write sandbox.
+pub fn secret_probe(text: &str) -> Option<Value> {
+    let line = text
+        .lines()
+        .find_map(|line| line.strip_prefix("HCTL2_SECRET_PROBE "))?;
+    let request: Value = serde_json::from_str(line).unwrap();
+    let reads: Vec<_> = request["secret_paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|path| {
+            let path = path.as_str().unwrap();
+            json!({"path":path,"readable":fs::read(path).is_ok()})
+        })
+        .collect();
+    let gh = Command::new("gh").args(["auth", "status"]).output();
+    Some(json!({
+        "reads": reads,
+        "gh_authenticated": gh.is_ok_and(|output| output.status.success()),
+        "gh_token_present": std::env::var_os("GH_TOKEN").is_some()
+            || std::env::var_os("GITHUB_TOKEN").is_some(),
+        "dbus_present": std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some(),
+    }))
+}

@@ -96,3 +96,34 @@ OK
 Claude session `7cb61625-651b-4bd2-afcb-24181009b73a`、turn `13e923be-0670-4a5b-add6-987b04f007cb`，原生记录 `~/.claude/projects/<工作树编码>/<session>.jsonl`；封存 baseline `6e328ffe4d24741dfe96ce54a2ca8b2c890d54d2`、commit `8dc99d8493be62b1f9e8c72dbf2261df2e182a4a`。Codex thread `01a126d2-b33c-7f51-bc05-367041baa404`，原生记录 `~/.codex/sessions/2026/10/11/rollout-2026-10-11T01-18-26-01a126d2-b33c-7f51-bc05-367041baa404.jsonl`；封存 baseline `61bcf343a245d3a98d2ae7c374bb024f5ff22184`、commit `8c583056553a524c6092dab5ca4a3be5cbea74d1`。二者 Proposal 与独立工作树回读的 tree 都是 `d09eea455a0755473856dd9d89c249d6f68ca220`。
 
 Claude 原生 JSONL 中逐字比较 user 正文与插件 started.text，核原生工具的测试 OK。Codex 原生 rollout 中核 user 正文、ChangeSet / 租约 / 发布目标和 CommandExecution exit_code=0 / OK，运行时另逐字核 input_text。最终状态 ResultReturned，Proposal 的结果树与独立工作树回读相等。Claude 叙述中 Git status 的失败是隔离边界内的真实现象；Agency 在边界外的 Git 回读与 seal 成功，不能把模型对此原因的猜测当成事实。
+
+## 复核记录
+
+### 2026-10-11 · 第 9 包第 5 条：声明了 `no_network` 并没有断网
+
+Grok 第二席（Ubuntu）核对第 3f 写入路径。Codex 写入 turn 把 `sandboxPolicy` 设成 `externalSandbox`，`networkAccess` 为 `enabled`。macOS profile 从 `(allow default)` 起。Linux 助手固定 Landlock ABI V1，只处理文件系统访问。工种名册的 `isolation_effects` 是空的，准备阶段会因名册里没有这个字符串而给出 `CAPABILITY_MISSING`；`InstalledHerdr::start` 不经过 `fulfills`。名册若写上 `no_network`，进程仍会带着网络启动。
+
+本包不把网络说成已经切断。更高 ABI 的 Landlock 才有 TCP bind/connect 规则，这里没有套用；macOS 的 `(deny network*)` 会碰到 Codex 写入用的本机 WebSocket 和模型 API，和声明的 `no_network` 不是同一件事。任何已声明的隔离效果，包括 `no_network` 和未知名字，在准备和启动前拒绝，原因码 `ISOLATION_UNAVAILABLE`，恢复动作 `drop_unenforceable_isolation`。不拉起 harness。派工记录清掉这些效果，避免把未施加的承诺记成已生效。没有声明时照常启动。
+
+只读 Codex 改为走同一层操作系统凭据边界，仍用 Unix 套接字和 `read-only`，不传 `danger-full-access`，也不把 `networkAccess` 设成 `enabled`。Herdr 每次启动都写上钥匙串和 `gh` 的文件拒绝；Linux 上该函数是空操作，边界仍是允许名单。没有改 Herdr 制品或协议，没有改 `~/.codex` 或 `~/.claude`。
+
+Ubuntu 本机实测，Build `81fb6595-d84d-4d14-a9ce-6a2e7e4537a2`：
+
+```text
+write_session_test: 5 passed; 0 failed; 2 ignored; 203.35s
+codex_fixture_test: 8 passed; 0 failed; 29.0s
+herdr_test: 53 passed; 0 failed; 7 ignored; 178.68s
+unit_test: 17 passed; 0 failed
+runtime_test: 7 passed; 0 failed
+cli_test: 1 passed; 0 failed
+port_test: 26 passed; 0 failed; 17.43s
+control_port_test: 31 passed; 0 failed; 86.83s
+Tests finished: Pass 8. Fail 0.
+```
+
+两家写入沿既有探针拒读凭据根、Linux keyring 试件和 `gh auth`。只读补了同一组：Claude 走 Herdr pane，与 Claude 进程同一 Landlock；Codex 走受限制的 app-server 夹具。pane 里的 `gh auth status` 限时等待后仍非成功。macOS 的 profile 规则和钥匙串路径在同一份代码里。本席没有在 macOS 上跑，这一半记为推断，不把 Ubuntu 夹具当成 macOS keychain 实测。
+
+把 `reject_unenforceable_isolation` 改成始终成功后，Build `3ddf0798-c095-4d05-8df8-815bb181184c`：`unit_test` 与 `codex_fixture_test` 各 0 passed、1 failed。前者对 `Ok` 调用 `unwrap_err`，后者报告 `declared no_network must not start`。恢复原函数后 Build `86296dfe-763c-48e6-a45e-77035e1b819b` 这两条重新通过。退回版本未提交。
+
+Clippy Build `a377b543-c261-4725-8758-2a0affd6d60f`：12 份报告全为空。文档链接 Build `4c97f2e9-6d08-4150-bc00-d39f64d1f58a`：`check_links: OK (163 markdown files)`。真实登录会话没有重跑。
+

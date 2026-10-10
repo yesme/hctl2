@@ -863,6 +863,9 @@ impl Runtime for InstalledHerdr {
         exec_root: &Path,
         credential_root: &Path,
     ) -> Result<Running> {
+        crate::confine::reject_unenforceable_isolation(
+            &spec.document.required_capabilities.isolation_effects,
+        )?;
         fs::create_dir_all(exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
         if spec.document.profession.reference.id == "codex-cli" {
@@ -933,6 +936,9 @@ impl Runtime for InstalledHerdr {
         exec_root: &Path,
         credential_root: &Path,
     ) -> Result<Running> {
+        crate::confine::reject_unenforceable_isolation(
+            &spec.document.required_capabilities.isolation_effects,
+        )?;
         if spec.document.profession.reference.id == "codex-cli" {
             fs::create_dir_all(exec_root)?;
             let server = self.ensure(exec_root, credential_root)?;

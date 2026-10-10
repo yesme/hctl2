@@ -384,6 +384,35 @@ fn on_path(name: &str) -> PathBuf {
 fn fixture_home() -> PathBuf {
     PathBuf::from(std::env::var("CODEX_HOME").unwrap())
 }
+
+/// macOS write and read turns deny this path via the startup profile.
+/// Linux already plants a keyring outside the allow-list and does not touch HOME.
+struct HomeKeyring(Option<PathBuf>);
+
+impl Drop for HomeKeyring {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+impl HomeKeyring {
+    fn plant(label: &str) -> Self {
+        if !cfg!(target_os = "macos") {
+            return Self(None);
+        }
+        let dir = PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share/keyrings");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(format!("hctl2-pkg9-{label}-{}.keyring", std::process::id()));
+        fs::write(&file, b"trial-keyring-secret").unwrap();
+        Self(Some(file))
+    }
+
+    fn path(&self) -> Option<&Path> {
+        self.0.as_deref()
+    }
+}
 fn json_file(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
@@ -504,9 +533,13 @@ async fn fixture_writes(harness: &str) {
     let keyring = rig.temp.path().join("keyrings/login.keyring");
     fs::create_dir_all(keyring.parent().unwrap()).unwrap();
     fs::write(&keyring, b"trial-keyring").unwrap();
+    let macos_keyring = HomeKeyring::plant(harness);
     let mut paths = vec![rig.root.join("pair.key"), rig.repo.join(".git/config")];
     if cfg!(target_os = "linux") {
-        paths.push(keyring);
+        paths.push(keyring.clone());
+    }
+    if let Some(path) = macos_keyring.path() {
+        paths.push(path.to_path_buf());
     }
     let gh = PathBuf::from(std::env::var_os("HOME").unwrap()).join(".config/gh/hosts.yml");
     if gh.exists() {
@@ -663,11 +696,26 @@ async fn fixture_writes(harness: &str) {
         1
     );
     let _: Dispatch = rig.client.call("stop", &next_ticket).await.unwrap();
+    let mut secret_paths = vec![rig.root.join("pair.key")];
+    if cfg!(target_os = "linux") {
+        secret_paths.push(keyring.clone());
+    }
+    if let Some(path) = macos_keyring.path() {
+        secret_paths.push(path.to_path_buf());
+    }
+    let gh_hosts = PathBuf::from(std::env::var_os("HOME").unwrap()).join(".config/gh/hosts.yml");
+    if gh_hosts.exists() {
+        secret_paths.push(gh_hosts);
+    }
+    let readonly_text = format!(
+        "read after write\nHCTL2_SECRET_PROBE {}",
+        json!({"secret_paths": secret_paths})
+    );
     let (mut readonly, _) = rig
         .request(
             harness,
             &format!("readonly-{harness}"),
-            "read after write",
+            &readonly_text,
             |spec, _| {
                 spec.permissions = vec!["context.read".into()];
                 spec.write_lease = None;
@@ -694,16 +742,41 @@ async fn fixture_writes(harness: &str) {
     );
     let readonly_results: ResultPage = rig
         .client
-        .call("results", &ResultQuery::of(readonly_dispatch.reference))
+        .call(
+            "results",
+            &ResultQuery::of(readonly_dispatch.reference.clone()),
+        )
         .await
         .unwrap();
     assert_eq!(readonly_results.proposals.len(), 1);
     if harness == "codex-cli" {
-        assert_eq!(
-            json_file(&fixture_home().join("last-turn.json"))["sandboxPolicy"]["type"],
-            "readOnly"
-        );
+        let turn = json_file(&fixture_home().join("last-turn.json"));
+        assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
+        assert!(turn["sandboxPolicy"].get("networkAccess").is_none());
     }
+    let secret = if harness == "claude-code" {
+        json_file(
+            &rig.claude_state(&readonly, &readonly_dispatch)
+                .join("secret-probe.json"),
+        )
+    } else {
+        json_file(&fixture_home().join("secret-probe.json"))
+    };
+    assert!(
+        secret["reads"].as_array().unwrap().iter().any(|read| {
+            read["path"]
+                .as_str()
+                .unwrap()
+                .ends_with("pair.key")
+        }),
+        "{secret}"
+    );
+    for read in secret["reads"].as_array().unwrap() {
+        assert_eq!(read["readable"], false, "{secret}");
+    }
+    assert_eq!(secret["gh_authenticated"], false, "{secret}");
+    assert_eq!(secret["gh_token_present"], false);
+    assert_eq!(secret["dbus_present"], false);
     eprintln!("{harness} write probe: {probe}");
     rig.close().await;
 }

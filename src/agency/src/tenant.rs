@@ -133,6 +133,11 @@ impl Tenant {
                     "accept_new_profession",
                 )
             })?;
+        // Declared effects this Agency cannot apply fail before the catalog
+        // comparison, so the reason is the missing enforcement, not a missing name.
+        crate::confine::reject_unenforceable_isolation(
+            &spec.required_capabilities.isolation_effects,
+        )?;
         actual.capabilities.fulfills(&spec.required_capabilities)?;
         if spec.input_policy == InputPolicy::ManagedSingleWriter
             && !actual.capabilities.managed_single_writer
@@ -174,13 +179,17 @@ impl Tenant {
             }
             return Ok(serde_json::from_slice(&body)?);
         }
+        let mut capabilities = actual.capabilities.clone();
+        // A profession may name an effect this process does not apply. An
+        // undeclared effect is not recorded as effective.
+        capabilities.isolation_effects.clear();
         let dispatch = Dispatch {
             reference: nonce()?,
             owner: spec.owner.clone(),
             spec_digest: input.spec.digest.clone(),
             bundle_digest: input.bundle.digest.clone(),
             binding: spec.binding.clone(),
-            capabilities: actual.capabilities.clone(),
+            capabilities,
             state: DispatchState::Prepared,
         };
         let tx = sql(state.db.transaction())?;
