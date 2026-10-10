@@ -16,7 +16,7 @@
 
 `dispatch.rs` 接最少的 `invocation.start` Preview / Submit 和 `invocation.show` Query，actor 仍由本机连接取得。CLI 为 `hctl2 invocation preview --input invocation.json --key KEY`、`start --input invocation.json --key KEY --preview-token TOKEN`、`show PROJECT INVOCATION`。输入是 Project 的 `invocation::Input`，不接受调用者写好的 Execution Spec 或 Bundle。预览返回真实选入记录、Profile、权限、预算、必需 Skill、发布确认缺省和冻结 Context；token 数未实现，仍为 `null`。
 
-`dispatch/context.rs` 用第 4 包的选材和组装器：请求正文、Topic 的已确认提要及来源、显式 Task 的精确评论、该 Room 最新一页的服务器顺序窗口。只授 `context.read` 内所选来源，不授整 Project 的资料读取；超预算走既有 Pointer 字节副本。提交前重核选人、策略、Room 与存储来源版本。当前原生 Agency 不申报 required Skill；带必需 Skill 时因没有取回原文字节的端口返回 `SKILL_DELIVERY_UNAVAILABLE`，不冒充已装载。额外 Memo / Artifact 选材和平台评审评论线仍未接。
+`dispatch/context.rs` 用第 4 包的选材和组装器：请求正文、Topic 的已确认提要及来源、显式 Task 的精确评论、该 Room 最新一页的服务器顺序窗口。只授 `context.read` 内所选来源，不授整 Project 的资料读取；超预算走既有 Pointer 字节副本。提交前重核选人、策略、Room 与存储来源版本。当前原生 Agency 不申报 required Skill；带必需 Skill 时因没有取回原文字节的端口返回 `SKILL_DELIVERY_UNAVAILABLE`，不冒充已装载。额外 Memo / Artifact 选材仍未接；平台评审评论线见下节收尾接法。
 
 人确认后，后台沿 Store 意图准备、持久化映射、激活；仅原 Invocation reducer 在确认第 4 步后提交运行状态。Unknown 只回读原请求。每份成果先保存和回读字节再确认；单项冲突按份报告，不挡后面的保全。Project 校验逐项身份、权限、冻结引用、证据与 schema，在同一事务里准入只读回答、结束 Invocation 和登记 Room 投影。它不判 Task 完成，不把一轮返回当成任务验收。
 
@@ -36,13 +36,13 @@ CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster sho
 
 原 `invocation preview | start | show` 接受 Project 新增的可选 `write` 边界，不新建 RPC。预览调用 `repo::review::freeze_policy` 保存不可改写的策略定义，再由领域读取；没有租约 grant 或发布意图。提交用同一授权事务激活租约、冻结 Spec 与 prepare outbox，后续沿既有 Agency 四步启动。只读输入的编码与路径保留。
 
-`dispatch/context.rs` 把待启动 ChangeSet、基线、租约、完整目标正文、完整策略正文与注册副本路径的规范字节作为必需材料送到执行体。路径标为控制面机器所有，不是远程执行目录。可选 `review_change_set_revision` 为本 Repo 的精确 `store::Reference`；读取钩子已留，第 10 条接平台评论前会明确拒绝，不默默删掉该来源。Context 的其他来源仍沿第 4 包接口。
+`dispatch/context.rs` 把待启动 ChangeSet、基线、租约、完整目标正文、完整策略正文与注册副本路径的规范字节作为必需材料送到执行体。路径标为控制面机器所有，不是远程执行目录。可选 `review_change_set_revision` 为本 Repo 的精确 `store::Reference`；原生评审评论读取见下节。Context 的其他来源仍沿第 4 包接口。
 
 取消后，`dispatch/recovery.rs` 跨页读取原派工的停止报告：写入型不在逻辑取消或一轮结束时提前结束回读，要看到脚本退出或确认从未激活。保存报告和租约撤销同事务；缺证明继续占用旧租约。停止报告仍不代表已实施系统级隔离。
 
 `dispatch/write.rs` 读取原提案保存的字节，在控制面存储事务外调用现场工具封存 Git。准入时重新核调用、租约、Spec、输出与原材料，ChangeSet Revision、结果、调用终态、租约撤销中、Room 投影和发布意图共用一个事务。策略类型、冻结与发布入队复用 `repo::review::{Policy, freeze_policy, Publication, enqueue}`；不在提案事务里嵌套调用外层 `admit_with_publication` 的 Store 提交。推送、建评审请求和平台映射仍归发布 worker，本包不复制它。
 
-人的封存经 `changeset seal` 预览与确认，使用独立命令，不借用 Invocation 租约。`changeset show | diff` 读取已准入版本；路径只作为此次 Git 操作输入，不新增工作区注册对象。本段暂限控制面可读取的本地 Git；跨机 Git 交付、残留接管 / 丢弃、评审评论读取另交后续段。
+人的封存经 `changeset seal` 预览与确认，使用独立命令，不借用 Invocation 租约。`changeset show | diff` 读取已准入版本；路径只作为此次 Git 操作输入，不新增工作区注册对象。本段暂限控制面可读取的本地 Git；跨机 Git 交付未接，残留接管 / 丢弃和评审评论读取见下节。
 
 `root//packaging/release:room-cli-test` 的 `write_dispatch_real_cli_freezes_policy_grants_once_and_requires_exit_before_regrant` 从真实 CLI、控制进程、随包 Gitea 和脚本 Agency 走预览、启动、查看与取消：检查第二写入者被拒、Spec 不随 Project 确认缺省变化、退出报告后才预览下一代租约。取消暴露的 shell 子进程持有管道问题在 Agency 的脚本执行体用原生进程组修正，未新增控制面进程管理。
 
@@ -50,7 +50,13 @@ CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster sho
 
 `write_dispatch_real_cli_accepts_verified_no_changes_without_publishing` 交回未改动的实际工作目录，现场工具回读两棵 Git 树相同后接受空结果。它核对目标正文与本地路径、重启后的单份结果、没有 Revision / 发布意图 / 平台请求。脚本保留自己的交付目录直到受管停止；不在封存前退出并清掉未交付对象。
 
-第 8 条的残留接管 / 采用 / 丢弃命令与第 10 条的平台评论线，统一留到 #405 合入后的「第 6 包收尾」PR；本段只提供后者需要的精确版本引用与读取钩子，不把未接读取说成可用。
+### 第 6 包收尾：残留命令与评审评论
+
+`changesets/residual.rs` 接 `changeset takeover | adopt | discard` 的预览与确认。输入含原 `repo_id / change_set_id`、精确绝对 `repo_path` 和 CLI 注入的 `key`；仅 adopt 可带 `target_change_set_id`，不带则新建，封存父版可用 `parent_revision_id` 指定。原租约须已失权。预览复用 P1 的快照，列出原 ChangeSet / Repo 引用、实际路径、Git 状态与树；确认后的 takeover / adopt 复用人的独立封存事务，不补 Invocation、结果或停止证明。源引用在准入事务内再比较；缺旧写入者退出证明时仍不授新租约。
+
+discard 先持久化既有 outbox 意图，再调用 P1 `archive remove`。原生现场锁内核对树和 `--expected-worktree`，不会因路径迁移删除另一处目录。确认范围是整个工作树，包括忽略文件；忽略文件在 Git 状态里列出，不属于 Git 快照。明确未删时记录 rejected、用新 key 重新预览；确认丢失时保留 pending，重投只回读原路径，目录及注册都已消失时结案，仍存在时返回 `RESULT_UNKNOWN`，不重发删除。人可用原预览的参数通过现场工具显式处理，再重投原命令回读结案。命令保留领域版本与旧租约。`changeset show` 列未准入提案、处理记录及可本机定位的 P1 残留；无法读取时明示错误，不猜远端目录。
+
+`dispatch/review_source.rs` 按选择的 Revision 读取 `changeset_platform_binding`，用已有 tea / gh 的 API 入口读一般评论、正式评审和行内评论。Context 的规范 JSON 固定 Revision、平台 mapping、Repo / 绑定引用、请求索引、平台提交与原始评论 ID / 字节。一般评论属于整条请求；行内评论按提交关联筛选。分页失败或重复 ID 明确拒绝，不截断成完整来源。提交只重核冻结引用，不重取已编辑的平台正文；完整副本仍走第 4 包的 inline / pointer 和预算。评论与平台批准都不产生集成授权。独立 `context.preview` 尚未接平台读取；本入口是 `invocation preview` 显式选择的评论线。
 
 ## 第 6 包 · 集成一半
 

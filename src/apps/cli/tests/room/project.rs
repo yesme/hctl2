@@ -57,6 +57,14 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
     paired_profile(name, delayed_seconds, "read_only")
 }
 fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Paired) {
+    paired_profile_with_budget(name, delayed_seconds, mode, 65536)
+}
+fn paired_profile_with_budget(
+    name: &str,
+    delayed_seconds: u64,
+    mode: &str,
+    max_bytes: u64,
+) -> (Fixture, Paired) {
     let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let mut registration_input = json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"});
@@ -211,12 +219,12 @@ fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Pai
         "profile",
         "create",
         "profile",
-        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":max_bytes}}),
     );
     let binding_ref =
         json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
     let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
-    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":max_bytes},"display_name":"Research","persona_tags":[]});
     accepted(
         &f,
         "project",
@@ -357,23 +365,35 @@ while read -r managed_input; do :; done
 /// Independent platform readback uses the packaged tea and the control's stored
 /// credential, not a stubbed platform or a worker/test seam. Never print the token.
 fn gitea_read(f: &Fixture, registration: &Value, path: &str) -> Value {
+    gitea_api(f, registration, "GET", path, None)
+}
+fn gitea_api(
+    f: &Fixture,
+    registration: &Value,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> Value {
     let token = control::config::secret_store(&f.root)
         .unwrap()
         .get(registration["observed"]["credential_ref"].as_str().unwrap())
         .unwrap();
-    let output = Command::new(f.payload.join("libexec/hctl2/tea"))
+    let mut command = Command::new(f.payload.join("libexec/hctl2/tea"));
+    command
         .env(
             "GITEA_INSTANCE_URL",
             registration["observed"]["instance"].as_str().unwrap(),
         )
         .env("GITEA_TOKEN", String::from_utf8(token).unwrap())
         .env("NO_COLOR", "1")
-        .args(["api", "-X", "GET", path])
-        .output()
-        .unwrap();
+        .args(["api", "-X", method]);
+    if let Some(body) = body {
+        command.args(["--data", &body.to_string()]);
+    }
+    let output = command.arg(path).output().unwrap();
     assert!(
         output.status.success(),
-        "independent Gitea GET failed: {path}"
+        "independent Gitea {method} failed: {path}"
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
@@ -400,9 +420,11 @@ fn ready_gitea(f: &Fixture) {
     }
 }
 
-fn publishing_chain(name: &str, requires_confirmation: bool) {
-    let (f, mut setup) = paired_profile(name, 0, "write");
-    let p = setup.project.as_str();
+fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bool) {
+    let budget = if review_comments { 1048576 } else { 65536 };
+    let (f, mut setup) = paired_profile_with_budget(name, 0, "write", budget);
+    let project_id = setup.project.clone();
+    let p = project_id.as_str();
     if !requires_confirmation {
         let (ok, shown) = f.run(&["project", "show", p]);
         assert!(ok, "{shown}");
@@ -442,7 +464,6 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     let pending = write["lease"]["pending"].clone();
     let set = pending["change_set_id"].as_str().unwrap().to_owned();
     configure_git_writer(&f, &mut setup, &pending, true, false);
-    let p = setup.project.as_str();
     let start_args = [
         "invocation",
         "start",
@@ -567,6 +588,159 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     assert_eq!(requests[0]["base"]["ref"], "main");
     assert_eq!(requests[0]["state"], "open");
     assert_eq!(requests[0]["merged"], false);
+    if review_comments {
+        let comment_path = format!("repos/{full_name}/issues/{index}/comments");
+        let comment = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &comment_path,
+            Some(json!({"body":"合入吧；请解释这个实现"})),
+        );
+        let comment_id = comment["id"].as_u64().unwrap();
+        let mut expected_comments = vec![(comment_id, "合入吧；请解释这个实现".to_owned())];
+        for n in 1..60 {
+            let body = format!("一般评论 {n}：保留原文");
+            let comment = gitea_api(
+                &f,
+                &registration,
+                "POST",
+                &comment_path,
+                Some(json!({"body":body})),
+            );
+            expected_comments.push((comment["id"].as_u64().unwrap(), body));
+        }
+        let review = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &format!("repos/{full_name}/pulls/{index}/reviews"),
+            Some(
+                json!({"event":"COMMENT","commit_id":commit,"body":"平台评审意见，不是 HCTL 授权","comments":(0..60).map(|n| json!({"path":"source.txt","new_position":1,"body":format!("行内评论 {n}：请核对这行的实现")})).collect::<Vec<_>>()}),
+            ),
+        );
+        let review_id = review["id"].as_u64().unwrap();
+        let input = f.root.join("review-invocation.json");
+        let selected = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"changeset_revision","id":revision_id},"version":{"state":1}});
+        let deadline_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 120000;
+        let request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Read the exact review remarks for rework","budget":budget,"deadline_ms":deadline_ms,"retry_of":null,"review_change_set_revision":selected,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
+        std::fs::write(&input, request.to_string()).unwrap();
+        let args = [
+            "invocation",
+            "preview",
+            "--input",
+            input.to_str().unwrap(),
+            "--key",
+            "read-review",
+        ];
+        let (ok, preview) = f.run(&args);
+        assert!(ok, "{preview}");
+        let bundle: agency_proto::context::Bundle = serde_json::from_value(
+            preview["effect_summary"]["assembly"]["bundle"]["document"].clone(),
+        )
+        .unwrap();
+        let entry = bundle
+            .entries
+            .iter()
+            .find(|e| e.source.id == format!("review_comments/{revision_id}"))
+            .unwrap();
+        let bytes = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes,
+            _ => panic!("review bytes must be delivered"),
+        };
+        let exact: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(exact["identity"]["revision"], selected);
+        assert_eq!(exact["platform_commit_sha"], commit);
+        assert_eq!(exact["request_comments"][0]["id"], comment_id);
+        assert_eq!(
+            exact["request_comments"][0]["body"],
+            "合入吧；请解释这个实现"
+        );
+        let comments = exact["request_comments"].as_array().unwrap();
+        assert_eq!(comments.len(), 60);
+        for (id, body) in &expected_comments {
+            assert!(
+                comments
+                    .iter()
+                    .any(|c| c["id"] == *id && c["body"] == *body)
+            );
+        }
+        assert_eq!(entry.source.digest, agency_proto::hash(bytes));
+        assert!(
+            exact["reviews"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["id"] == review_id)
+        );
+        let line_comments = exact["line_comments"].as_array().unwrap();
+        assert_eq!(line_comments.len(), 60);
+        for n in 0..60 {
+            assert!(line_comments.iter().any(
+                |c| c["id"].is_u64() && c["body"] == format!("行内评论 {n}：请核对这行的实现")
+            ));
+        }
+        // An edit after preview cannot replace the bytes authorized for this call.
+        gitea_api(
+            &f,
+            &registration,
+            "PATCH",
+            &format!("repos/{full_name}/issues/comments/{comment_id}"),
+            Some(json!({"body":"later edited text"})),
+        );
+        let pending = &preview["effect_summary"]["preview"]["write"]["lease"]["pending"];
+        configure_git_writer(&f, &mut setup, pending, false, true);
+        let mut start = args.to_vec();
+        start[1] = "start";
+        start.extend([
+            "--preview-token",
+            preview["preview_token"].as_str().unwrap(),
+        ]);
+        let (ok, started) = f.run(&start);
+        assert!(ok, "{started}");
+        let review_invocation = started["invocation_id"].as_str().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let shown = loop {
+            let (ok, shown) = f.run(&["invocation", "show", p, review_invocation]);
+            assert!(ok, "{shown}");
+            if shown["state"] == "completed" {
+                break shown;
+            }
+            assert!(
+                matches!(shown["state"].as_str(), Some("pending" | "running"))
+                    && std::time::Instant::now() < deadline,
+                "review rework failed: {shown}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(
+            shown["invocation"]["spec"]["document"]["bundle"]["digest"],
+            preview["effect_summary"]["assembly"]["bundle"]["digest"]
+        );
+        let (ok, saved) = f.run(&["context", "show", p, "--bundle-id", &bundle.id]);
+        assert!(ok, "{saved}");
+        let saved_bundle: agency_proto::context::Bundle =
+            serde_json::from_value(saved["bundle"]["document"].clone()).unwrap();
+        assert_eq!(
+            saved_bundle, bundle,
+            "platform edits must not replace frozen delivery bytes"
+        );
+        // The precise bundle remains frozen in the Invocation; content never enqueues integration.
+        let (_, integrations) = f.run(&["integration", "list", &setup.repo]);
+        assert!(
+            integrations["items"].as_array().unwrap().is_empty(),
+            "{integrations}"
+        );
+        println!(
+            "LIVE review Context: revision={revision_id}, comment={comment_id}, general_comments=60, line_comments=60, digest={}; no integration intent",
+            entry.source.digest
+        );
+    }
     let branch = published["intent"]["branch"].as_str().unwrap();
     let remote = gitea_read(
         &f,
@@ -612,7 +786,10 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
         }
     };
     assert_eq!(store.list("changeset_revision").unwrap().len(), 1);
-    assert_eq!(store.list("invocation_result").unwrap().len(), 1);
+    assert_eq!(
+        store.list("invocation_result").unwrap().len(),
+        if review_comments { 2 } else { 1 }
+    );
     let record = store
         .get(&store::ObjectKey {
             scope: Scope::Repo(setup.repo.clone()),
@@ -704,12 +881,17 @@ fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
 
 #[test]
 fn write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea() {
-    publishing_chain("publish-automatic", false);
+    publishing_chain("publish-automatic", false, false);
 }
 
 #[test]
 fn write_dispatch_real_cli_persists_human_gate_and_publishes_after_restart() {
-    publishing_chain("publish-held", true);
+    publishing_chain("publish-held", true, false);
+}
+
+#[test]
+fn review_comments_real_cli_freezes_gitea_content_without_authorizing_integration() {
+    publishing_chain("publish-comments", false, true);
 }
 
 #[test]
@@ -2284,3 +2466,363 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
 /// presets. The test substitutes the digest computed from the fixture's own
 /// program file before comparing, so every other byte is still pinned.
 const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;
+/// Codex stand-in from `agency/tests/codex_fixture.rs`. It speaks app-server
+/// `turn/start`, writes a rollout whose `input_text` is that body, and answers
+/// `ANSWER`. Herdr only displays `codex resume --remote`.
+fn paired_codex(name: &str, codex_bin: &std::path::Path, private_home: bool) -> (Fixture, Paired) {
+    let (f, _) = Fixture::packaged(name);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    let registered = accepted(
+        &f,
+        "repo",
+        "register",
+        "register-dispatch",
+        json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"}),
+    );
+    let registration = &registered["registration"];
+    let repo = registration["repo_id"].as_str().unwrap();
+    let version = registration["version"].to_string();
+    let args = [
+        "repo",
+        "register",
+        "--confirm",
+        repo,
+        "--version",
+        &version,
+        "--platform-repo-id",
+        registration["observed"]["stable_id"].as_str().unwrap(),
+        "--key",
+        "confirm-dispatch",
+    ];
+    let (ok, plan) = f.run(&args);
+    assert!(ok, "{plan}");
+    let mut confirm = args.to_vec();
+    confirm.extend(["--preview-token", plan["preview_token"].as_str().unwrap()]);
+    assert!(f.run(&confirm).0);
+    let created = accepted(
+        &f,
+        "project",
+        "create",
+        "project-dispatch",
+        json!({"repo_id":repo,"definition":project_definition("Dispatch")}),
+    );
+    let project = created["project_id"].as_str().unwrap().to_owned();
+    let room = created["main_room_id"].as_str().unwrap().to_owned();
+    let agency_root = f.root.join("independent-agency");
+    let delay = f.root.join("delay-script");
+    let codex_home = f.root.join("codex-home");
+    if private_home {
+        std::fs::create_dir_all(&codex_home).unwrap();
+    }
+    let log = f.root.join("agency-serve.err");
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let claude = std::env::var_os("HCTL2_STANDBY_FIXTURE").expect("HCTL2_STANDBY_FIXTURE");
+    let mut command = Command::new(&binary);
+    command
+        .arg("--root")
+        .arg(&agency_root)
+        .arg("serve")
+        .env("HCTL2_INSTALL_ROOT", &f.payload)
+        .env("HCTL2_CLAUDE", &claude)
+        .env("HCTL2_CODEX", codex_bin)
+        .env("HCTL2_AGENCY_IDLE_MS", "600000");
+    if private_home {
+        command.env("CODEX_HOME", &codex_home);
+    }
+    let agency = AgencyChild(
+        command
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(&log).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let mut ready = false;
+    for _ in 0..400 {
+        if Command::new(&binary)
+            .arg("--root")
+            .arg(&agency_root)
+            .arg("status")
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        ready,
+        "agency did not become ready: {}",
+        std::fs::read_to_string(&log).unwrap_or_default()
+    );
+    let (ok, binding) = f.run(&[
+        "agency",
+        "pair",
+        "--binding-id",
+        "local",
+        "--agency-root",
+        agency_root.to_str().unwrap(),
+        "--key",
+        "pair",
+    ]);
+    assert!(ok, "{binding}");
+    let (ok, catalog) = f.run(&["agency", "catalog", "local"]);
+    assert!(
+        ok,
+        "{catalog} {}",
+        std::fs::read_to_string(&log).unwrap_or_default()
+    );
+    let profession = catalog["professions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["reference"]["id"] == "codex-cli")
+        .cloned()
+        .unwrap_or_else(|| panic!("codex-cli missing: {catalog}"));
+    let profession_reference = f.root.join("profession.json");
+    std::fs::write(&profession_reference, profession["reference"].to_string()).unwrap();
+    let (ok, accepted_profession) = f.run(&[
+        "agency",
+        "accept",
+        "--binding-id",
+        "local",
+        "--reference",
+        profession_reference.to_str().unwrap(),
+        "--key",
+        "accept",
+    ]);
+    assert!(ok, "{accepted_profession}");
+    let profile = accepted(
+        &f,
+        "profile",
+        "create",
+        "profile",
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":"read_only","permissions":["context.read"],"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+    );
+    let binding_ref =
+        json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
+    let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":["context.read"]},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    accepted(
+        &f,
+        "project",
+        "select",
+        "select",
+        json!({"project_id":project,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":null,"selections":[selection]}),
+    );
+    (
+        f,
+        Paired {
+            agency,
+            repo: repo.to_owned(),
+            project,
+            room,
+            profession,
+            profession_reference,
+            profile,
+            delay,
+        },
+    )
+}
+
+fn dispatch_once(f: &Fixture, setup: &Paired, key: &str, request: &str) -> (Value, Value) {
+    let p = setup.project.as_str();
+    let room = setup.room.as_str();
+    let path = f.root.join(format!("{key}.json"));
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 180_000;
+    std::fs::write(
+        &path,
+        json!({"project_id":p,"room_id":room,"target":"research","profile":setup.profile["revision"],"request":request,"budget":65536,"deadline_ms":deadline,"retry_of":null}).to_string(),
+    )
+    .unwrap();
+    let (ok, plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        key,
+    ]);
+    assert!(ok, "{plan}");
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        key,
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let id = started["invocation_id"].as_str().unwrap();
+    let mut completed = Value::Null;
+    for _ in 0..180 {
+        let (ok, value) = f.run(&["invocation", "show", p, id]);
+        assert!(ok, "{value}");
+        if value["state"] == "completed" || value["state"] == "failed" {
+            completed = value;
+            break;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    assert_eq!(completed["state"], "completed", "{completed}");
+    (completed, plan)
+}
+
+#[test]
+fn codex_fixture_dispatch_from_real_cli_admits_the_answer_into_the_room() {
+    let codex = std::path::PathBuf::from(
+        std::env::var_os("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE"),
+    );
+    let (f, setup) = paired_codex("codex-chain", &codex, true);
+    let (completed, _) = dispatch_once(
+        &f,
+        &setup,
+        "invoke-codex",
+        "Reply with the fixture answer. Do not modify files.",
+    );
+    assert_eq!(completed["results"][0]["output"], "ANSWER");
+    let mut seen = false;
+    for _ in 0..60 {
+        let (ok, timeline) = f.run(&["room", "timeline", &setup.project, &setup.room]);
+        assert!(ok, "{timeline}");
+        seen = timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["content"]["body"] == "ANSWER");
+        if seen {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(seen, "the Codex answer was not projected into the Room");
+}
+
+/// One logged-in Codex turn. Ignored unless `HCTL2_CODEX_LIVE=1`. Does not print credentials.
+#[test]
+#[ignore = "uses the local Codex login; set HCTL2_CODEX_LIVE=1"]
+fn live_codex_dispatch_returns_one_answer_to_the_room() {
+    if std::env::var_os("HCTL2_CODEX_LIVE").is_none() {
+        return;
+    }
+    let which = Command::new("/usr/bin/which")
+        .arg("codex")
+        .output()
+        .unwrap();
+    assert!(which.status.success(), "codex is not on PATH");
+    let codex = std::path::PathBuf::from(String::from_utf8(which.stdout).unwrap().trim());
+    let rollout_after = std::time::SystemTime::now()
+        .checked_sub(Duration::from_secs(30))
+        .unwrap_or(std::time::UNIX_EPOCH);
+    let (f, setup) = paired_codex("codex-live", &codex, false);
+    let request = "Reply with exactly CODEX_ROOM_OK and no other text. Do not modify files.";
+    let (completed, plan) = dispatch_once(&f, &setup, "invoke-live", request);
+    let output = completed["results"][0]["output"].as_str().unwrap_or("");
+    assert!(
+        output.contains("CODEX_ROOM_OK"),
+        "answer did not contain the marker"
+    );
+    let bundle: agency_proto::context::Bundle =
+        serde_json::from_value(plan["effect_summary"]["assembly"]["bundle"]["document"].clone())
+            .unwrap();
+    let mut expected = String::new();
+    for entry in &bundle.entries {
+        let bytes = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes.as_slice(),
+            agency_proto::context::Delivery::Recall { .. } => continue,
+        };
+        expected.push_str(std::str::from_utf8(bytes).unwrap());
+        expected.push('\n');
+    }
+    assert!(!expected.is_empty(), "preview bundle had no task text");
+    let timeline = ready_timeline(&f, &setup.project, &setup.room);
+    assert!(
+        timeline["events"].as_array().unwrap().iter().any(|event| {
+            event["content"]["body"]
+                .as_str()
+                .is_some_and(|body| body.contains("CODEX_ROOM_OK"))
+        }),
+        "the Codex answer was not projected into the Room"
+    );
+    let home = std::env::var_os("HOME").expect("HOME");
+    let sessions = std::path::PathBuf::from(home).join(".codex/sessions");
+    let mut matched = false;
+    if sessions.is_dir() {
+        let mut stack = vec![sessions];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let Ok(meta) = path.metadata() else {
+                    continue;
+                };
+                if meta.modified().ok().is_none_or(|when| when < rollout_after) {
+                    continue;
+                }
+                if rollout_input_equals(&path, &expected) {
+                    matched = true;
+                    break;
+                }
+            }
+            if matched {
+                break;
+            }
+        }
+    }
+    assert!(
+        matched,
+        "rollout input_text was not the dispatch body byte for byte"
+    );
+}
+
+fn rollout_input_equals(path: &std::path::Path, text: &str) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    let body = String::from_utf8_lossy(&bytes);
+    for line in body.lines() {
+        if !line.contains("input_text") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value_has_input_text(&value, text) {
+            return true;
+        }
+    }
+    false
+}
+
+fn value_has_input_text(value: &Value, text: &str) -> bool {
+    match value {
+        Value::Object(map) => {
+            if map.get("type").and_then(Value::as_str) == Some("input_text")
+                && map.get("text").and_then(Value::as_str) == Some(text)
+            {
+                return true;
+            }
+            map.values().any(|child| value_has_input_text(child, text))
+        }
+        Value::Array(items) => items.iter().any(|child| value_has_input_text(child, text)),
+        _ => false,
+    }
+}

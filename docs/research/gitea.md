@@ -209,3 +209,39 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 
 以上均为所测动作的观察，不外推到其它实例配置或其它账号组合。
 
+### 2026-10-11 · 平台评审评论进入真实返工 Context
+
+决定建议：仍用 Gitea 1.27.3 与 tea 0.15.1 的原生 API，不引入 SDK。新建本地平台绑定可声明 `review_text_readback=true`；评审线程解决状态与正式批准的机械判定仍未在这次验证，不扩大那两项能力。已有冻结绑定不自动改写。
+
+原生目标 `root//packaging/release:room-cli-test` 的 `review_comments_real_cli_freezes_gitea_content_without_authorizing_integration` 使用实际安装包、CLI、control 与脚本 Agency。首次写入调用经封存准入、发布 worker 推送与建请求产生真实 `changeset_platform_binding`，不用映射测试缝。随后用随包 tea 在同一请求创建一般评论、`COMMENT` 评审及一条行内评论，再从真实 `invocation preview | start | show` 走返工。
+
+| 观察 | 对设计的意思 |
+| --- | --- |
+| `GET issues/{index}/comments`、`GET pulls/{index}/reviews`、`GET pulls/{index}/reviews/{review_id}/comments` 读回原生 ID、正文与提交关联；创建评审用 `POST pulls/{index}/reviews`，带 `event: COMMENT`、`commit_id` 与 `comments` | 普通评论、评审正文和行内评论都能作为精确 Context 来源；没有验证平台批准或线程解决资格 |
+| Bundle 中的规范正文保留精确 Revision、平台映射、请求编号、平台提交及各评论 ID；来源摘要与实际交付字节一致 | 继续使用第 4 包的 Manifest / Bundle，不另造评论存储或客户端 |
+| 预览后修改平台评论，启动仍接受原预览，`context show` 回读原 Bundle | 平台当前内容不覆盖已冻结的派工上下文 |
+| 评论正文含「合入吧」，下一次脚本调用正常交回，控制面没有集成意图 | 评论是 content，不是授权 |
+
+首次全组运行 Build ID `fb6a43d9-884b-48f1-97e2-e6de2587488f`：本条用例及另外九条通过；两条旧用例分别报 SQLite I/O 与 Git 材料不可用，全组不是绿。本条只记录上述实际通过的评论链，不用它覆盖两条旧用例的失败。GitHub 读取沿既有 gh API 适配，本次未对在线 GitHub 评论线实跑。
+
+随后以 `--test-threads=1` 单列本条与两条失败用例补跑，Build ID `ec73ecef-749a-4eee-ba0b-a4338a034e0a`：三条通过。本条再次从真实发布走到返工 Context；两个旧用例的首次失败原因仍未确定，补跑通过不等于已解释或修复它们。
+
+### 2026-10-11 · #415 评审后的评论接口逐项复核
+
+决定建议：版本和能力声明不变。Gitea 的一般评论和单条评审的行内评论都单次读取，不带 `page` / `limit`；评审列表仍分页。保留原生子进程的 16 MiB 输出上限，超限拒绝，不截断；单次读取也保留评论集合的数量上限。GitHub 的分页读法不变。
+
+再次核对锁定提交 `146cc3eec57174711eac0e0a0c7b38670c6e3922`：
+
+| 接口 | 源码依据 | 读取方式 |
+| --- | --- | --- |
+| `issues/{index}/comments` | [`ListIssueComments`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/issue_comment.go) 的查询只有 Issue、since、before 和评论类型，没有分页参数 | 一次返回该 Issue 的全部一般评论 |
+| `pulls/{index}/reviews` | [`ListPullReviews`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/pull_review.go) 使用 `utils.GetListOptions(ctx)` | 按 `limit` / `page` 分页 |
+| `pulls/{index}/reviews/{id}/comments` | 同文件的 `GetPullReviewComments` 直接调用 [`ToPullReviewCommentList`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/services/convert/pull_review.go)，遍历该评审的全部代码评论，没有分页参数 | 每条评审单次读取全部行内评论 |
+
+不能用少量评论的通过结果推导分页行为正确。超过一页大小的真实评论链和超限拒绝须分别验证，评论仍只是 content，不产生授权。
+
+本机使用实际安装包的同一评论链，创建 60 条一般评论和 60 条行内评论。首次夹具的调用预算大于 Profile，报 `BUDGET_EXCEEDED`，尚未测到接口；仅将该夹具的 Profile、选入记录和调用预算对齐为 1 MiB。旧读取实现随后在 Build ID `4dd71cea-76ea-4a4d-82d7-07545e7abe43` 报 `REVIEW_SOURCE_CHANGED`，原因是分页重复读取同一批 ID。
+
+改为单次读取后，同一真实用例在 Build ID `8a47cf48-4436-49c4-9af6-5a59076ddbe2` 通过：Bundle 含全部 60 条一般评论的原生 ID 与原文、全部 60 条行内评论及所选提交关联；预览后编辑仍不替换原 Bundle，没有集成意图。评论读取的 8 条单元用例也通过，覆盖单次请求、缺失来源、非法响应、重复 ID、10,000 条完整接收、10,001 条拒绝及 `OUTPUT_LIMIT` 原样传出。该集合另含一次租约守卫的临时退回实验，实验用例按预期红，不把该集合写成全绿。
+
+恢复租约守卫后的最终集合 Build ID `c90d9ae2-afc9-4925-818c-469140ed45db`：安装包评论链所在整组 12/12、CLI 28/28、Control 74 条（另有 2 条旧 live 用例 ignored）、Repo ChangeSet 37/37、文档 14 项及两项 Clippy 门禁全部通过，20 个 Buck 测试目标全绿。真实评论链再次读回 60 条一般评论和 60 条行内评论。

@@ -65,12 +65,7 @@ fn local_pending_outbox_readback_identity_confirmation_and_abandonment() {
     };
     assert_eq!(value["capabilities"]["checks"], "external_status_only");
     assert_eq!(value["capabilities"]["expected_target_head"], false);
-    for capability in [
-        "review_threads",
-        "formal_reviews",
-        "identity_mapping",
-        "review_text_readback",
-    ] {
+    for capability in ["review_threads", "formal_reviews", "identity_mapping"] {
         assert_eq!(
             value["capabilities"][capability], false,
             "unverified Gitea capability: {capability}"
@@ -79,6 +74,8 @@ fn local_pending_outbox_readback_identity_confirmation_and_abandonment() {
     // Verified live on Gitea 1.27.3 (docs/research/gitea.md, 2026-10-07).
     assert_eq!(value["capabilities"]["remote_merge"], true);
     assert_eq!(value["capabilities"]["protection_readback"], true);
+    // General and line-comment bytes verified through real Gitea dispatch Context.
+    assert_eq!(value["capabilities"]["review_text_readback"], true);
     assert_eq!(value["account_mappings"], serde_json::json!({}));
     assert_eq!(
         store
