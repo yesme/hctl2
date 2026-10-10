@@ -114,10 +114,20 @@ async fn execute(command: ReviewCommand, root: &Path, as_json: bool) -> Result<(
             .map_err(|e| e.to_string())?
             .into_inner();
         task::present(result.error, as_json);
-        print_out(
-            as_json,
-            json!({"preview_token":result.preview_token,"effect_summary":bytes_json(&result.effect_summary)?}),
-        );
+        if !as_json {
+            println!(
+                "{}",
+                crate::render::review_preview(
+                    &result.preview_token,
+                    &bytes_json(&result.effect_summary)?
+                )
+            );
+        } else {
+            print_out(
+                as_json,
+                json!({"preview_token":result.preview_token,"effect_summary":bytes_json(&result.effect_summary)?}),
+            );
+        }
     }
     Ok(())
 }

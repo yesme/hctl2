@@ -45,6 +45,114 @@ fn run_with_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (bool, Val
     .unwrap();
     (out.status.success(),serde_json::from_slice(&out.stdout).unwrap_or_else(|_|json!({"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)})))
 }
+/// Raw stdout without `--json`: the human renderer's exact text, for section checks.
+fn run_human(root: &Path, args: &[&str]) -> (bool, String) {
+    let out = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2").expect("CARGO_BIN_EXE_hctl2 must be set"),
+    )
+    .env(
+        "HCTL2_CONTROL_BIN",
+        std::env::var("CARGO_BIN_EXE_hctl2-control")
+            .expect("CARGO_BIN_EXE_hctl2-control must be set"),
+    )
+    .env("HCTL2_GH", root.join("gh"))
+    .args(["--root", root.to_str().unwrap()])
+    .args(args)
+    .output()
+    .unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
+}
+
+/// Raw `--json` stdout bytes, for the saved sample of the machine interface.
+fn run_json_raw(root: &Path, args: &[&str]) -> (bool, String) {
+    let out = Command::new(
+        std::env::var("CARGO_BIN_EXE_hctl2").expect("CARGO_BIN_EXE_hctl2 must be set"),
+    )
+    .env(
+        "HCTL2_CONTROL_BIN",
+        std::env::var("CARGO_BIN_EXE_hctl2-control")
+            .expect("CARGO_BIN_EXE_hctl2-control must be set"),
+    )
+    .env("HCTL2_GH", root.join("gh"))
+    .args(["--json", "--root", root.to_str().unwrap()])
+    .args(args)
+    .output()
+    .unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
+}
+
+/// Replace the values that differ between runs — the preview token, control-derived hex
+/// ids, the local uid and the completion timestamp — so a saved sample can be compared
+/// byte for byte.
+fn mask_unstable(output: &str) -> String {
+    let mut masked = output.to_owned();
+    if let Ok(value) = serde_json::from_str::<Value>(output)
+        && let Some(token) = value["preview_token"].as_str()
+    {
+        masked = masked.replace(token, "MASKED-PREVIEW-TOKEN");
+    }
+    masked = mask_hex_runs(&masked, 64, "MASKED-ID");
+    masked = mask_hex_runs(&masked, 32, "MASKED-SHORT-ID");
+    masked = mask_digits_after(&masked, "local-owner:", "MASKED");
+    mask_digits_after(&masked, "\"completed_at\":", "MASKED-AT")
+}
+
+/// Replace maximal runs of exactly `len` lowercase hex digits.
+fn mask_hex_runs(input: &str, len: usize, replacement: &str) -> String {
+    fn hex(c: char) -> bool {
+        c.is_ascii_digit() || ('a'..='f').contains(&c)
+    }
+    fn flush(run: &mut String, out: &mut String, len: usize, replacement: &str) {
+        if run.len() == len {
+            out.push_str(replacement);
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut run = String::new();
+    for c in input.chars() {
+        if hex(c) {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out, len, replacement);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out, len, replacement);
+    out
+}
+
+/// Replace the digits that follow each occurrence of `marker`.
+fn mask_digits_after(input: &str, marker: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(at) = rest.find(marker) {
+        let after = at + marker.len();
+        out.push_str(&rest[..after]);
+        let digits = rest[after..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .count();
+        out.push_str(replacement);
+        rest = &rest[after + digits..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Saved `--json` sample of the completion preview, captured before the human renderer
+/// landed; run-varying values are masked by `mask_unstable` on both sides. Regenerate with
+/// `HCTL2_GOLDEN_DIR` and paste the file back.
+const COMPLETION_PREVIEW_JSON: &str = r#"{"effect_summary":{"adoption":null,"cancel_effects":[],"checks":[{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":1},{"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"version":null},{"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"version":4},{"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"version":3}],"effects":[],"input":{"action":{"acceptance":[{"channel":"unmediated","generation":7,"item":0,"judge":{"kind":"hctl2_tool"},"producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}]},{"channel":"narrated","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"references":[]}],"kind":"complete","lifecycle_version":1,"project_id":"A","revision_number":1,"task_id":"MASKED-ID","version":4},"key":"complete-human"},"records":[{"data":{"type":"value","value":{"command_id":"task:complete-human","completed_at":MASKED-AT,"idempotency_key":"complete-human","items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle_version":2,"policy_digest":"MASKED-ID","project_id":"A","receipt_id":"MASKED-ID:2","revision_digest":"MASKED-ID","revision_number":1,"task_id":"MASKED-ID"}},"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":1},{"data":{"type":"value","value":{"archived":false,"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"id":"MASKED-ID","lifecycle":"completed","lifecycle_version":2,"needs_attention":false,"number":1,"pending_contract":null,"project_id":"A","repo_id":"MASKED-ID","revision":{"backend_projection_digest":null,"binding":null,"material":{"byte_digest":"MASKED-ID","control_id":"MASKED-SHORT-ID","material_id":"MASKED-ID","scope":{"id":"A","kind":"project"}},"number":1,"origin":{"kind":"local","proposal_digest":"MASKED-ID","reference":{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":{"state":1}}},"policy_digest":"MASKED-ID","proposal_digest":"MASKED-ID"},"run_occupancy":null,"snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"source_id":"MASKED-ID","state_version":1,"title":"new"}},"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":5},{"data":{"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"source":{"key":{"id":"MASKED-ID","kind":"task_source","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":1}},"type":"task"},"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":4}],"result":{"items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle":"completed","lifecycle_version":2,"project_id":"A","receipt_id":"MASKED-ID:2","task_id":"MASKED-ID"},"task_key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}}},"preview_token":"MASKED-PREVIEW-TOKEN"}"#;
+
 fn cmd(root: &Path, kind: &str, key: &str, action: Value) -> Value {
     let (ok, result) = cmd_result(root, kind, key, action);
     assert!(ok, "submit {kind}: {result}");
@@ -540,6 +648,68 @@ fn task_commands_cross_live_daemon_preview_replay_and_restart() {
     assert_eq!(board["cards"][0]["claimed"], true);
     assert!(!root.join("hosted-consumed.json").exists());
     drop(fx);
+}
+
+/// 验收第 2 条后半：`task complete` 的预览三段写清对象、为何确认、确认后发生什么，
+/// 并给出完整确认命令；机器接口（`--json`）与入库样例逐字节一致；非终端无颜色控制符。
+#[test]
+fn human_completion_preview_names_items_and_confirm_command() {
+    let fx = fixture("human-complete", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    let action = completion_action(&adopted, &actor_principal(&root));
+    let input = root.join("complete-human.json");
+    std::fs::write(&input, action.to_string()).unwrap();
+    let arguments = [
+        "task",
+        "complete",
+        "--key",
+        "complete-human",
+        "--input",
+        input.to_str().unwrap(),
+    ];
+    let (ok, machine) = run_json_raw(&root, &arguments);
+    assert!(ok, "{machine}");
+    let masked = mask_unstable(&machine);
+    if let Some(dir) = std::env::var_os("HCTL2_GOLDEN_DIR") {
+        std::fs::write(
+            std::path::Path::new(&dir).join("task-complete-preview.json"),
+            &masked,
+        )
+        .unwrap();
+        return;
+    }
+    assert_eq!(
+        masked.trim_end(),
+        COMPLETION_PREVIEW_JSON.trim_end(),
+        "--json of the completion preview drifted from the saved sample"
+    );
+    let (ok, human) = run_human(&root, &arguments);
+    assert!(ok, "{human}");
+    for heading in [
+        "Completion preview",
+        "Object",
+        "Why this needs confirmation",
+        "What happens after you confirm",
+        "Confirm with",
+    ] {
+        assert!(
+            human.contains(heading),
+            "missing section {heading}:\n{human}"
+        );
+    }
+    // 三段里的值来自机器接口自身。
+    let machine: Value = serde_json::from_str(&machine).unwrap();
+    let result = &machine["effect_summary"]["result"];
+    for value in [&result["task_id"], &result["receipt_id"]] {
+        assert!(human.contains(value.as_str().unwrap()), "{human}");
+    }
+    assert!(human.contains("a mechanical check passed"), "{human}");
+    assert!(human.contains("a human judged it done"), "{human}");
+    assert!(human.contains("hctl2-tool"), "{human}");
+    assert!(human.contains("--preview-token"), "{human}");
+    assert!(human.contains("hctl2 task reopen"), "{human}");
+    assert!(!human.contains('\u{1b}'), "{human}");
 }
 
 /// Stop the daemon so this process can hold the store's exclusive lock and read it.
