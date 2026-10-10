@@ -135,6 +135,11 @@ pub struct Intent {
     pub queued: Option<Target>,
     pub push: PushStage,
     pub review: ReviewStage,
+    /// The audit association the platform refused to update after a published round. The
+    /// worker retries only that update and clears this once it goes through; publishing is
+    /// not undone by it (CT-REPO: 关联写回失败时集成仍成功、写回待同步).
+    #[serde(default)]
+    pub audit_sync: Option<Attention>,
     pub attempts: u64,
     pub attention: Option<Attention>,
     pub failure: Option<Attention>,
@@ -386,6 +391,7 @@ pub fn enqueue(
                 queued: None,
                 push: PushStage::default(),
                 review: ReviewStage::default(),
+                audit_sync: None,
                 attempts: 0,
                 attention: None,
                 failure: None,
@@ -467,6 +473,8 @@ fn next_round(intent: &mut Intent, target: Target) {
     intent.review.confirmed_at_unix_ms = None;
     intent.attention = None;
     intent.failure = None;
+    // A newer round re-does the audit association itself; a stale pending sync is dropped.
+    intent.audit_sync = None;
     intent.round += 1;
     intent.state = if intent.policy.policy.requires_human_confirmation {
         State::PendingHuman
@@ -578,7 +586,9 @@ pub fn open(store: &Store) -> Result<Vec<Intent>> {
     for record in store.list(INTENT_KIND)? {
         if let RecordData::Value { value } = &record.data {
             let intent: Intent = serde_json::from_value(value.clone())?;
-            if matches!(intent.state, State::Pending | State::Unknown) {
+            if matches!(intent.state, State::Pending | State::Unknown)
+                || (intent.state == State::Published && intent.audit_sync.is_some())
+            {
                 intents.push(intent);
             }
         }
@@ -730,6 +740,64 @@ fn bump(
     get(store, repo_id, intent_id)
 }
 
+/// The audit association finally went through: drop the pending sync item. Publishing is
+/// untouched — the round stays `published` with its mapping.
+pub fn clear_audit_sync(
+    store: &mut Store,
+    repo_id: &str,
+    intent_id: &str,
+    revision_id: &str,
+    round: u64,
+) -> Result<Intent> {
+    let intent = get(store, repo_id, intent_id)?;
+    // The retry was planned against one round; a newer one owns the audit association now.
+    expect_round(&intent, revision_id, round)?;
+    if intent.state != State::Published || intent.audit_sync.is_none() {
+        return Ok(intent);
+    }
+    let mut intent = intent;
+    intent.audit_sync = None;
+    bump(
+        store,
+        repo_id,
+        intent_id,
+        intent,
+        "review.audit_synced",
+        json!({"intent_id": intent_id}),
+    )
+}
+
+/// The Repo's platform binding changed since this publish was authorized: nothing more is
+/// sent for the old authorization, and the pending audit sync stays where it is, now with
+/// that reason. Idempotent — the worker re-reads the same intent every pass.
+pub fn note_binding_changed(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<Intent> {
+    let mut intent = get(store, repo_id, intent_id)?;
+    if intent.state != State::Published || intent.audit_sync.is_none() {
+        return Ok(intent);
+    }
+    if intent
+        .attention
+        .as_ref()
+        .is_some_and(|attention| attention.code == "BINDING_CHANGED")
+    {
+        return Ok(intent);
+    }
+    intent.attention = Some(Attention {
+        code: "BINDING_CHANGED".into(),
+        message: "the Repo's platform binding changed since this publish was authorized; the audit association is not sent".into(),
+        recovery_action: "authorize_a_new_dispatch_under_the_current_binding".into(),
+        details: json!({"authorized": intent.binding_version}),
+    });
+    bump(
+        store,
+        repo_id,
+        intent_id,
+        intent,
+        "review.audit_binding_changed",
+        json!({"intent_id": intent_id}),
+    )
+}
+
 /// Freeze the commit the push will carry. Idempotent for the same commit; another commit
 /// while one is frozen and possibly pushed is refused.
 pub fn freeze_commit(
@@ -858,10 +926,14 @@ pub fn mark_review_dispatched(
 #[derive(Clone, Debug)]
 pub enum Outcome {
     /// Both stages confirmed: the request carries the frozen commit. Writes the mapping.
+    /// `audit_sync` carries an audit-association update the platform refused: the round
+    /// still publishes (the mapping is written in the same transaction) and the refusal is
+    /// recorded on the intent as a pending sync the worker retries on its own.
     Published {
         index: u64,
         platform_commit_sha: String,
         readback: Value,
+        audit_sync: Option<Attention>,
     },
     /// Nothing more will be written for this round; the human decides what next.
     Failed(Attention),
@@ -900,6 +972,7 @@ pub fn confirm(
             index,
             platform_commit_sha,
             readback,
+            audit_sync,
         } => {
             if intent.target.commit_sha.as_deref() != Some(platform_commit_sha.as_str()) {
                 return Err(reject(
@@ -916,6 +989,9 @@ pub fn confirm(
             intent.push.dispatched = false;
             intent.attention = None;
             intent.failure = None;
+            // The audit association is a writeback: a refusal leaves a pending sync item,
+            // never an open round.
+            intent.audit_sync = audit_sync;
             // The shape `integration::review_request` reads: the platform commit at the top,
             // the request's number under `review_request`.
             binding = Some((
