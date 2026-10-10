@@ -307,6 +307,7 @@ fn stages_record_only_what_was_read_back_and_the_mapping_is_written_once() {
                 index: 9,
                 platform_commit_sha: sha(0xc2),
                 readback: json!({}),
+                audit_sync: None,
             },
             7,
         )
@@ -324,6 +325,7 @@ fn stages_record_only_what_was_read_back_and_the_mapping_is_written_once() {
             index: 9,
             platform_commit_sha: sha(0xc1),
             readback: json!({"ok": true}),
+            audit_sync: None,
         },
         7,
     )

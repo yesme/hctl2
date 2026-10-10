@@ -8,6 +8,7 @@ use store::{Scope, Store, TrustedActor};
 use tokio::sync::Mutex;
 
 type Shared = Arc<Mutex<Option<Store>>>;
+mod residual;
 
 fn access<T>(shared: &Shared, f: impl FnOnce(&mut Store) -> store::Result<T>) -> store::Result<T> {
     let mut lock = shared.blocking_lock();
@@ -21,7 +22,7 @@ pub(crate) fn preview(
     payload: &Value,
 ) -> store::Result<Value> {
     if operation != "changeset.seal" {
-        return Err(invalid("unknown ChangeSet command"));
+        return residual::preview(shared, actor, operation, payload);
     }
     let input: repo::changeset::HumanInput = serde_json::from_value(payload.clone())?;
     if let Some(receipt) = access(shared, |s| repo::changeset::human_receipt(s, actor, &input))? {
@@ -40,6 +41,9 @@ pub(crate) fn submit(
     request: &proto::SubmitRequest,
     details: &Value,
 ) -> store::Result<Value> {
+    if request.operation != "changeset.seal" {
+        return residual::submit(shared, actor, request, details);
+    }
     let input: repo::changeset::HumanInput = serde_json::from_slice(&request.payload)?;
     if request.operation != "changeset.seal"
         || request.idempotency_key != input.key
@@ -242,6 +246,9 @@ pub(crate) fn query(
             .into_iter()
             .chain(s.list("human_seal")?)
         {
+            if record.key.scope != Scope::Repo(repo.into()) {
+                continue;
+            }
             let value: Value = decode(&record)?;
             if value["seal"]["change_set_id"] == id {
                 saved.push(value);
@@ -250,7 +257,31 @@ pub(crate) fn query(
         (set, versions, repo::require_active(s, repo)?, saved)
     };
     if kind == "changeset.show" {
-        return Ok(json!({"change_set":set,"revisions":versions,"saved_git_observations":saved}));
+        let mut residuals = access(shared, |s| residual::list(s, repo, id))?;
+        if matches!(
+            set.lease.state,
+            repo::changeset::LeaseState::Revoking | repo::changeset::LeaseState::Revoked
+        ) && let Some(local) = &registration.prepared.local
+        {
+            match native(vec!["repo".into(),"inspect".into(),"--path".into(),local.path.as_os_str().to_owned()]) {
+                Ok(observed) => {
+                    for worktree in observed["common_directory_identity"]["worktrees"].as_array().into_iter().flatten() {
+                        if worktree["branch"] == format!("refs/heads/hctl2/changeset/{id}")
+                            || worktree["detached"] == true && worktree["path"].as_str().is_some_and(|p| Path::new(p).file_name().is_some_and(|name| name == id)) {
+                            let path = Path::new(worktree["path"].as_str().ok_or_else(|| invalid("worktree path missing"))?);
+                            match residual::git_status(path) {
+                                Ok(status) => residuals.push(json!({"status":"materialized_residual","worktree_path":path,"git":worktree,"git_status":status,"recovery_action":"preview_takeover_adopt_or_discard"})),
+                                Err(error) => residuals.push(json!({"status":"unreadable","worktree_path":path,"error":{"code":error.code,"recovery_action":error.recovery_action}})),
+                            }
+                        }
+                    }
+                }
+                Err(error) => residuals.push(json!({"status":"unreadable","worktree_path":null,"error":{"code":error.code,"recovery_action":error.recovery_action}})),
+            }
+        }
+        return Ok(
+            json!({"change_set":set,"revisions":versions,"saved_git_observations":saved,"residuals":residuals}),
+        );
     }
     if kind != "changeset.diff" {
         return Err(invalid("unknown ChangeSet query"));

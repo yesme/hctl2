@@ -111,7 +111,7 @@ Invocation 的领域入口见下节，最少 preview / start / show 已由主链
 
 授权在 `room_invocation`，状态在 `invocation_state`，两者是同一个 Invocation 的存储部分，不是两个业务对象。`state_version` 供状态比较并交换；`invocation_version` 在授权根的引用里，不由状态变化推出。确认激活后，原 Invocation 的内部 reducer 提交 `record_started`，普通客户端不能提交运行状态。取消、失败或丢失在同一事务里推进状态并使授权失效；待投递动作撤销，已经尝试的动作保留 Unknown，并登记按原派工定位的清理 outbox。Control 回读停止报告，不把停止请求当报告，也不把报告当隔离证明。
 
-`end` 对 human 只接受取消；失败、丢失由带原授权的内部 reducer 提交。它不接受“完成”命令，不从进程退出或屏幕内容推断完成。`admit_result` 核精确归属者、绑定、Spec / Bundle、逐项输出授权、schema、证据与保全字节，在一个事务写只读回答、Completed 状态与 Room 投影 outbox，不完成 Task。终态本身使执行授权失效，授权根不必因成功回答而改版。重试仍用新 key、新 Invocation 与 Bundle，`retry_of` 留原调用的精确引用；旧调用未终态或仍有有效授权时拒绝。等待输入的 Request 接线尚未实现，合法边表不是该能力的证明。
+`end` 对 human 只接受取消；失败、丢失由带原授权的内部 reducer 提交。它不接受“完成”命令，不从进程退出或屏幕内容推断完成。`admit_result` 核精确归属者、绑定、Spec / Bundle、逐项输出授权、schema、证据与保全字节，在一个事务写只读回答、Completed 状态与 Room 投影 outbox，不完成 Task。只读 schema 是 `adapter.stdout.v1`、`claude.turn.v1`、`codex.turn.v1`。终态本身使执行授权失效，授权根不必因成功回答而改版。重试仍用新 key、新 Invocation 与 Bundle，`retry_of` 留原调用的精确引用；旧调用未终态或仍有有效授权时拒绝。等待输入的 Request 接线尚未实现，合法边表不是该能力的证明。
 
 `prepare` 冻结只读 Profile、Project 版本与选人策略、Room、独立名册、必需 Skill、预算、截止和发布确认缺省。`start` 从它生成 Spec，不能注入更宽权限或换执行者；读取已经准入的 Manifest / Bundle 与材料原文，核实际 consumer、预算、请求正文、必需 Skill 字节和 Topic 提要。token 数未知仍是 `null`。Control 组装器只读本 Room 的服务器窗口、已确认提要及来源、显式 `task_id` 的评论；真实必需 Skill 原文端口尚无，遇到该项拒绝，不补造。范围与缺口见 [Control README](../../apps/control/README.md#第-5b-包--只读派工主链)。
 
@@ -148,7 +148,7 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 
 取消、失败或丢失同事务把当前租约转为撤销中。prepare 从未发出并在事务内取消，可以直接撤销；其他情况要保存原派工的停止报告，`confirm_write_stop` 在写报告的事务里核原调用、Spec 与租约。Agency 在停止时确认从未激活，或证明脚本执行体退出，才可撤销；清理开始时看到 Prepared 不算证明。逻辑取消、停止请求、叙述和一轮结束都不算退出。没有证据继续拒绝下一个写入者，不假称已经隔离。
 
-同一输入新增可选 `review_change_set_revision: store::Reference`，限本 Repo 的精确 `changeset_revision`。旧输入省略这两项时序列化形状不变。Control 的 Context 读取钩子已经留好；拆分 2 选择该来源仍返回 `REVIEW_LINE_NOT_CONFIGURED`，第 10 条接原生评论读取与冻结，不暗中忽略选择。
+同一输入新增可选 `review_change_set_revision: store::Reference`，限本 Repo 的精确 `changeset_revision`。旧输入省略这两项时序列化形状不变。Control 的 Context 读取钩子已接原生平台评论：按该版本的 mapping 冻结来源与字节，提交时再核引用。平台未绑定、版本未发布或来源不可读会明确拒绝，不暗中忽略选择；评论不产生授权。
 
 `admit_result` 对没有封存输入的写入型返回 `CHANGESET_RESULT_REQUIRED`，防止只读回答绕过 ChangeSet 准入。`sealing_input` 核原提案字节、活跃归属者和租约，给 control 在事务外封存；`admit_sealed_result` 重核这些边界，同一事务接受 Revision、结果、Room 投影与发布意图。`Publication` 的策略必须等于 Spec 冻结的精确引用，提交者取原调用保存的 DirectClient，不取模型提案。事务只登记发布，worker 由 Claude 提供，本段不复制它。
 

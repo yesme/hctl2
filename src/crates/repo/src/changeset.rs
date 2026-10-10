@@ -13,7 +13,9 @@ use crate::{Result, reject};
 mod admission;
 mod human;
 mod leases;
+pub mod residual;
 pub use admission::{admit_in_transaction, validate_in_transaction};
+pub use human::admit_human_checked;
 pub use human::{HumanInput, HumanPlan, admit_human, human_receipt, prepare_human};
 pub use leases::{
     LeasePlan, acquire_lease, complete_revocation, get_change_set, plan_lease, revoke_lease,
