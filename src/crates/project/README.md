@@ -111,7 +111,7 @@ Invocation 的领域入口见下节，最少 preview / start / show 已由主链
 
 授权在 `room_invocation`，状态在 `invocation_state`，两者是同一个 Invocation 的存储部分，不是两个业务对象。`state_version` 供状态比较并交换；`invocation_version` 在授权根的引用里，不由状态变化推出。确认激活后，原 Invocation 的内部 reducer 提交 `record_started`，普通客户端不能提交运行状态。取消、失败或丢失在同一事务里推进状态并使授权失效；待投递动作撤销，已经尝试的动作保留 Unknown，并登记按原派工定位的清理 outbox。Control 回读停止报告，不把停止请求当报告，也不把报告当隔离证明。
 
-`end` 对 human 只接受取消；失败、丢失由带原授权的内部 reducer 提交。它不接受“完成”命令，不从进程退出或屏幕内容推断完成。`admit_result` 核精确归属者、绑定、Spec / Bundle、逐项输出授权、schema、证据与保全字节，在一个事务写只读回答、Completed 状态与 Room 投影 outbox，不完成 Task。终态本身使执行授权失效，授权根不必因成功回答而改版。重试仍用新 key、新 Invocation 与 Bundle，`retry_of` 留原调用的精确引用；旧调用未终态或仍有有效授权时拒绝。等待输入的 Request 接线尚未实现，合法边表不是该能力的证明。
+`end` 对 human 只接受取消；失败、丢失由带原授权的内部 reducer 提交。它不接受“完成”命令，不从进程退出或屏幕内容推断完成。`admit_result` 核精确归属者、绑定、Spec / Bundle、逐项输出授权、schema、证据与保全字节，在一个事务写只读回答、Completed 状态与 Room 投影 outbox，不完成 Task。只读 schema 是 `adapter.stdout.v1`、`claude.turn.v1`、`codex.turn.v1`。终态本身使执行授权失效，授权根不必因成功回答而改版。重试仍用新 key、新 Invocation 与 Bundle，`retry_of` 留原调用的精确引用；旧调用未终态或仍有有效授权时拒绝。等待输入的 Request 接线尚未实现，合法边表不是该能力的证明。
 
 `prepare` 冻结只读 Profile、Project 版本与选人策略、Room、独立名册、必需 Skill、预算、截止和发布确认缺省。`start` 从它生成 Spec，不能注入更宽权限或换执行者；读取已经准入的 Manifest / Bundle 与材料原文，核实际 consumer、预算、请求正文、必需 Skill 字节和 Topic 提要。token 数未知仍是 `null`。Control 组装器只读本 Room 的服务器窗口、已确认提要及来源、显式 `task_id` 的评论；真实必需 Skill 原文端口尚无，遇到该项拒绝，不补造。范围与缺口见 [Control README](../../apps/control/README.md#第-5b-包--只读派工主链)。
 

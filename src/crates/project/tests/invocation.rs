@@ -1284,6 +1284,23 @@ fn invocation_rejects_unsupported_schema_but_can_admit_a_subsequent_good_answer(
 }
 
 #[test]
+fn invocation_admits_a_codex_turn_answer() {
+    let (mut e, input) = setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let inbox = preserved(&mut e, &dispatch, "codex.turn.v1", 1);
+    let admitted =
+        call::admit_result(&mut e.store, &reducer, &e.a, &p.consumer.id, &inbox, NOW).unwrap();
+    assert_eq!(admitted["state"], "completed");
+    assert_eq!(
+        call::lifecycle(&e.store, &e.a, &p.consumer.id)
+            .unwrap()
+            .1
+            .state,
+        State::Completed
+    );
+}
+
+#[test]
 fn invocation_projection_conflict_rolls_back_result_and_completion_but_keeps_preserved_bytes() {
     let (mut e, input) = setup();
     let (p, owner, reducer, dispatch) = running(&mut e, input);

@@ -73,7 +73,7 @@ pub fn admit_result(
             .any(|p| p == "context.read")
         || !matches!(
             proposal.schema.as_str(),
-            "adapter.stdout.v1" | "claude.turn.v1"
+            "adapter.stdout.v1" | "claude.turn.v1" | "codex.turn.v1"
         )
         || proposal.outputs.len() != 1
         || inbox.materials.len() != 1
