@@ -37,9 +37,10 @@ fn last_native_task_test<'a>(
         } else {
             argv
         };
-        let requested = words
-            .windows(3)
-            .any(|w| w == ["-m", "unittest", "discover"])
+        let requested = matches!(words.first().copied(), Some("/usr/bin/python3" | "python3"))
+            && words
+                .windows(3)
+                .any(|w| w == ["-m", "unittest", "discover"])
             && words.windows(2).any(|w| w == ["-s", code_dir])
             && words.windows(2).any(|w| w == ["-p", "test_calculator.py"]);
         (record["type"] == "event_msg"
@@ -80,6 +81,9 @@ fn native_test_evidence_is_bound_to_this_task_and_the_last_attempt() {
         record(cwd.to_str().unwrap(), "canary_cases/current_task_old", 0),
         record("/tmp/agency/other-change-set", code_dir, 0),
     ];
+    let mut plan = record(cwd.to_str().unwrap(), code_dir, 0);
+    plan["payload"]["item"]["command"][2] = json!(format!("echo '{}'", test_command(code_dir)));
+    records.push(plan);
     assert!(last_native_task_test(&records, cwd, code_dir).is_none());
     records.push(record(cwd.to_str().unwrap(), code_dir, 0));
     assert!(native_test_passed(
