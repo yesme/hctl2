@@ -156,10 +156,20 @@ pub(crate) async fn write(
             .map_err(|e| e.to_string())?
             .into_inner();
         present(r.error, as_json);
-        print_out(
-            as_json,
-            json!({"preview_token":r.preview_token,"effect_summary":bytes_json(&r.effect_summary)?}),
-        );
+        if !as_json && namespace == "task" && kind == "complete" {
+            println!(
+                "{}",
+                crate::render::completion_preview(
+                    &r.preview_token,
+                    &bytes_json(&r.effect_summary)?
+                )
+            );
+        } else {
+            print_out(
+                as_json,
+                json!({"preview_token":r.preview_token,"effect_summary":bytes_json(&r.effect_summary)?}),
+            );
+        }
     }
     Ok(())
 }

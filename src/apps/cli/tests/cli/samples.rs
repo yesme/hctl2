@@ -33,3 +33,8 @@ pub(crate) const AGENCY_BINDINGS: &str = r#"{"records":[{"data":{"type":"value",
 
 pub(crate) const ERROR_NOT_FOUND: &str = r#"{"error":{"code":"NOT_FOUND","message":"task_state not found","recovery_action":"inspect_object"}}
 "#;
+
+/// Saved `--json` sample of the review publish preview, captured before the human renderer
+/// landed; run-varying values (the token and control-derived ids) are masked on both sides.
+/// Regenerate with `HCTL2_GOLDEN_DIR` and paste the file back.
+pub(crate) const REVIEW_PUBLISH_PREVIEW: &str = r#"{"effect_summary":{"allow_update":true,"authorizes":"publishing this revision for review on the platform: push to the branch, then create or update the review request. Not a merge.","branch":"hctl2/cs-MASKED-ID","change_set_id":"cs-MASKED-ID","change_set_revision_id":"csr-MASKED-ID","intent_id":"rp-MASKED-ID","intent_version":1,"policy":{"digest":"MASKED-ID","policy":{"allow_update":true,"audit_scope":"minimal","binding_version":1,"branch_rule":"hctl2/{change_set}","description_source":"none","repo_id":"MASKED-ID","requires_human_confirmation":true,"target_branch":"main"},"policy_id":"fixture-policy","version":1},"repo_id":"MASKED-ID","round":1,"target_branch":"main"},"preview_token":"MASKED-PREVIEW-TOKEN"}"#;

@@ -296,6 +296,63 @@ fn mask_preview_token(output: &str) -> String {
     output.to_owned()
 }
 
+/// Replace the values that differ between runs — the preview token, control-derived hex
+/// ids, the local uid and the completion timestamp — so a saved sample compares byte for
+/// byte. The review publish preview carries no timestamp; the helper is shared so both
+/// previews of this package mask the same way.
+fn mask_unstable(output: &str) -> String {
+    let mut masked = mask_preview_token(output);
+    masked = mask_hex_runs(&masked, 64, "MASKED-ID");
+    masked = mask_hex_runs(&masked, 32, "MASKED-SHORT-ID");
+    masked = mask_digits_after(&masked, "local-owner:", "MASKED");
+    mask_digits_after(&masked, "\"completed_at\":", "MASKED-AT")
+}
+
+/// Replace maximal runs of exactly `len` lowercase hex digits.
+fn mask_hex_runs(input: &str, len: usize, replacement: &str) -> String {
+    fn hex(c: char) -> bool {
+        c.is_ascii_digit() || ('a'..='f').contains(&c)
+    }
+    fn flush(run: &mut String, out: &mut String, len: usize, replacement: &str) {
+        if run.len() == len {
+            out.push_str(replacement);
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut run = String::new();
+    for c in input.chars() {
+        if hex(c) {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out, len, replacement);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out, len, replacement);
+    out
+}
+
+/// Replace the digits that follow each occurrence of `marker`.
+fn mask_digits_after(input: &str, marker: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(at) = rest.find(marker) {
+        let after = at + marker.len();
+        out.push_str(&rest[..after]);
+        let digits = rest[after..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .count();
+        out.push_str(replacement);
+        rest = &rest[after + digits..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn sample_commands(path: &str) -> Vec<Vec<String>> {
     let select = vec![
         "project".to_owned(),
@@ -610,6 +667,246 @@ fn human_errors_show_code_message_and_recovery_action_verbatim() {
         )),
         "{human}"
     );
+}
+
+/// 验收第 2 条后半：发布评审预览的三段（对象、为何确认、确认后发生什么）与完整确认
+/// 命令；机器接口（`--json`）与入库样例逐字节一致；非终端无颜色控制符。
+#[test]
+fn human_review_publish_preview_names_branch_target_and_confirm_command() {
+    let temp = Temp::new();
+    let root = temp.0.as_path();
+    assert!(run(root, true, &["init", "--secret-backend", "user-file"]).0);
+    // A real local git repository as the push baseline.
+    let git = root.join("publish.git");
+    std::fs::create_dir_all(&git).unwrap();
+    let git_env = [
+        ("GIT_AUTHOR_NAME", "fixture"),
+        ("GIT_AUTHOR_EMAIL", "fixture@example.invalid"),
+        ("GIT_COMMITTER_NAME", "fixture"),
+        ("GIT_COMMITTER_EMAIL", "fixture@example.invalid"),
+        ("GIT_AUTHOR_DATE", "2005-04-02T22:20:00+00:00"),
+        ("GIT_COMMITTER_DATE", "2005-04-02T22:20:00+00:00"),
+    ];
+    let git_root = git.clone();
+    let git_command = move || {
+        let mut command = Command::new("git");
+        command
+            .current_dir(&git_root)
+            .env_remove("GIT_CONFIG_GLOBAL");
+        for (name, value) in git_env {
+            command.env(name, value);
+        }
+        command
+    };
+    for arguments in [
+        vec!["init", "-q", "-b", "main"],
+        vec!["config", "user.name", "fixture"],
+        vec!["config", "user.email", "fixture@example.invalid"],
+        vec!["commit", "-q", "--allow-empty", "-m", "initial"],
+    ] {
+        assert!(git_command().args(&arguments).status().unwrap().success());
+    }
+    let head = String::from_utf8(
+        git_command()
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    let tree = String::from_utf8(
+        git_command()
+            .args(["rev-parse", "HEAD^{tree}"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    assert!(run(root, true, &["start"]).0);
+    // Register the Repo through the real CLI: preview, then confirm with the token.
+    let register_input = root.join("register.json");
+    std::fs::write(
+        &register_input,
+        json!({"name":"fixture-publish","origin":"local","platform":"none",
+            "local":{"machine":"control","path":git.display().to_string()}})
+        .to_string(),
+    )
+    .unwrap();
+    let register = [
+        "repo",
+        "register",
+        "--input",
+        register_input.to_str().unwrap(),
+        "--key",
+        "fixture-publish",
+    ];
+    let (ok, out, err) = run(root, true, &register);
+    assert!(ok, "{out} {err}");
+    let plan: Value = serde_json::from_str(&out).unwrap();
+    let token = plan["preview_token"].as_str().unwrap();
+    let mut confirm = register.to_vec();
+    confirm.push("--preview-token");
+    confirm.push(token);
+    let (ok, out, err) = run(root, true, &confirm);
+    assert!(ok, "{out} {err}");
+    let registered: Value = serde_json::from_str(&out).unwrap();
+    let repo_id = registered["repo_id"]
+        .as_str()
+        .or_else(|| registered["registration"]["repo_id"].as_str())
+        .expect("a repo id in the register result")
+        .to_owned();
+    // Seeding writes the store directly, so the daemon steps aside first.
+    assert!(
+        run(root, true, &["stop"]).0,
+        "stop the daemon before seeding"
+    );
+    let intent_id = {
+        use store::{Command as StoreCommand, Expected};
+        let mut trusted = actor("P");
+        let mut store = None;
+        for _ in 0..50 {
+            match store::Store::open(root) {
+                Ok(open) => {
+                    store = Some(open);
+                    break;
+                }
+                Err(error) if error.code == "WRITER_BUSY" => {
+                    std::thread::sleep(Duration::from_millis(100))
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+        let mut store = store.expect("the daemon released the store");
+        trusted
+            .0
+            .permission_scope
+            .push(store::Scope::Repo(repo_id.clone()));
+        let producer = repo::changeset::ProducerRef::HumanCommand {
+            command_id: "seal-once".into(),
+        };
+        let set = repo::changeset::open_change_set(
+            &mut store,
+            &trusted,
+            &repo_id,
+            1,
+            &head,
+            "human-seal",
+            &producer,
+        )
+        .unwrap();
+        let revision = repo::changeset::admit(
+            &mut store,
+            &trusted,
+            repo::changeset::Seal {
+                association_key: "seal-once".into(),
+                change_set_id: set.change_set_id.clone(),
+                change_set_version: set.version,
+                lease: None,
+                base_commit_sha: head.clone(),
+                result_tree_sha: tree.clone(),
+                result_commit_sha: None,
+                parent_revision_id: None,
+                producer_ref: producer,
+            },
+            repo::changeset::OwnerGate::Active,
+        )
+        .unwrap();
+        let policy = repo::review::freeze_policy(
+            &mut store,
+            &trusted,
+            "fixture-policy",
+            repo::review::Policy {
+                repo_id: repo_id.clone(),
+                binding_version: 1,
+                branch_rule: "hctl2/{change_set}".into(),
+                target_branch: "main".into(),
+                allow_update: true,
+                description_source: "none".into(),
+                requires_human_confirmation: true,
+                audit_scope: "minimal".into(),
+            },
+        )
+        .unwrap();
+        let publication = repo::review::Publication {
+            policy,
+            authorizing_actor: trusted.0.clone(),
+        };
+        let control_id = store.control_id().to_owned();
+        let intent_id = repo::review::intent_id(&control_id, &repo_id, &revision.change_set_id);
+        let command = StoreCommand {
+            command_id: "fixture-publish-intent".into(),
+            idempotency_key: "fixture-publish-intent".into(),
+            actor: trusted.0.clone(),
+            target: repo::review::intent_key(&repo_id, &intent_id),
+            expected: Expected::Absent,
+            binding: repo::binding(&repo_id),
+            input_digest: StoreCommand::digest_input("fixture", &json!({})).unwrap(),
+            operation: "fixture".into(),
+            input: json!({}),
+        };
+        store
+            .submit(store.generation(), &trusted, &command, None, |tx| {
+                repo::review::enqueue(tx, &control_id, &revision, &repo_id, 1, &publication, 1)?;
+                Ok(json!({}))
+            })
+            .unwrap();
+        intent_id
+    };
+    assert!(run(root, true, &["start"]).0);
+    let arguments = ["review", "publish", repo_id.as_str(), intent_id.as_str()];
+    let (ok, machine, err) = run_bytes(root, true, &arguments);
+    assert!(
+        ok,
+        "{} {}",
+        String::from_utf8_lossy(&machine),
+        String::from_utf8_lossy(&err)
+    );
+    let machine_text = String::from_utf8(machine).unwrap();
+    let masked = mask_unstable(&machine_text);
+    if let Some(dir) = std::env::var_os("HCTL2_GOLDEN_DIR") {
+        std::fs::write(
+            std::path::Path::new(&dir).join("review-publish-preview.json"),
+            &masked,
+        )
+        .unwrap();
+        return;
+    }
+    assert_eq!(
+        masked.trim_end(),
+        samples::REVIEW_PUBLISH_PREVIEW.trim_end(),
+        "--json of the review publish preview drifted from the saved sample"
+    );
+    let (ok, human, err) = run(root, false, &arguments);
+    assert!(ok, "{human} {err}");
+    for heading in [
+        "Review publish preview",
+        "Object",
+        "Why this needs confirmation",
+        "What happens after you confirm",
+        "Confirm with",
+    ] {
+        assert!(
+            human.contains(heading),
+            "missing section {heading}:\n{human}"
+        );
+    }
+    // 三段里的值来自机器接口自身（用未掩码的原文，掩码只服务于样例比对）。
+    let machine: Value = serde_json::from_str(&machine_text).unwrap();
+    let summary = &machine["effect_summary"];
+    for value in [
+        &summary["intent_id"],
+        &summary["branch"],
+        &summary["target_branch"],
+    ] {
+        assert!(human.contains(value.as_str().unwrap()), "{human}");
+    }
+    assert!(human.contains("--preview-token"), "{human}");
+    assert!(human.contains("cannot be taken back"), "{human}");
+    assert!(!human.contains('\u{1b}'), "{human}");
 }
 
 #[test]

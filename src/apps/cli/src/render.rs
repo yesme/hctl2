@@ -245,6 +245,119 @@ pub(crate) fn integration_preview(token: &str, effect: &Value) -> String {
     sections.render(&confirm_command(token))
 }
 
+/// A review-publish preview: one frozen intent about to push a branch and open the review
+/// request for it. The policy that froze `requires_human_confirmation` is why this stops.
+pub(crate) fn review_preview(token: &str, effect: &Value) -> String {
+    let updates = if effect["allow_update"] == Value::Bool(true) {
+        "allowed: a later round may update the request this round opens".to_owned()
+    } else {
+        "no: the first round creates the request, later revisions are refused".to_owned()
+    };
+    let sections = PreviewSections {
+        title: "Review publish preview".to_owned(),
+        object: vec![
+            ("repo".to_owned(), dash(&effect["repo_id"])),
+            ("publish intent".to_owned(), dash(&effect["intent_id"])),
+            ("round".to_owned(), cell(&effect["round"])),
+            ("ChangeSet".to_owned(), dash(&effect["change_set_id"])),
+            (
+                "ChangeSet Revision".to_owned(),
+                dash(&effect["change_set_revision_id"]),
+            ),
+            ("push to branch".to_owned(), dash(&effect["branch"])),
+            (
+                "review request target".to_owned(),
+                dash(&effect["target_branch"]),
+            ),
+            ("updates an existing request".to_owned(), updates),
+        ],
+        why: vec![
+            "this intent was frozen to wait for a human; confirming is the release".to_owned(),
+            "it authorizes a platform write: push the branch, then create or update the review request — not a merge".to_owned(),
+        ],
+        after: vec![
+            "persists the release, then runs both stages in the background: push the commit, then create or update the review request, each confirmed by reading the platform back".to_owned(),
+            "records the pushed commit, the review request index and this ChangeSet's revision mapping in the control store".to_owned(),
+            "undo: the push cannot be taken back; a review request that was created is closed on the platform, not by this CLI".to_owned(),
+        ],
+    };
+    sections.render(&confirm_command(token))
+}
+
+/// The judge of one acceptance item as one label.
+fn judge_label(judge: &Value) -> String {
+    match judge["kind"].as_str() {
+        Some("hctl2_tool") => "hctl2-tool".to_owned(),
+        Some("adapter") => format!("adapter {}", dash(&judge["port"])),
+        Some("gate") => format!("gate seat {}", dash(&judge["seat"])),
+        Some("human") => format!("human {}", dash(&judge["actor"])),
+        other => other.unwrap_or("unknown").to_owned(),
+    }
+}
+
+/// A completion preview: the acceptance items about to be bound to a Task Completion
+/// Receipt, each with the evidence channel and the judge that passed it.
+pub(crate) fn completion_preview(token: &str, effect: &Value) -> String {
+    let result = &effect["result"];
+    let action = &effect["input"]["action"];
+    let mut object = vec![
+        ("project".to_owned(), dash(&result["project_id"])),
+        ("task".to_owned(), dash(&result["task_id"])),
+        ("Task Revision".to_owned(), cell(&action["revision_number"])),
+        (
+            "lifecycle version".to_owned(),
+            format!(
+                "{} -> {}",
+                cell(&action["lifecycle_version"]),
+                cell(&result["lifecycle_version"]),
+            ),
+        ),
+        (
+            "Task Completion Receipt".to_owned(),
+            dash(&result["receipt_id"]),
+        ),
+    ];
+    if let Some(items) = result["items"].as_array() {
+        for (index, item) in items.iter().enumerate() {
+            object.push((
+                format!("item {}", index + 1),
+                format!(
+                    "{} · {} · {} — {}",
+                    dash(&item["grade"]),
+                    dash(&item["validation_level"]),
+                    judge_label(&item["judge"]),
+                    dash(&item["text"]),
+                ),
+            ));
+        }
+    }
+    let mut after = vec![
+        "writes the Task Completion Receipt and advances the Task to completed in the same control-store transaction".to_owned(),
+        "the receipt binds exactly the Task Revision and the items above; nothing is rewritten later".to_owned(),
+    ];
+    if effect["effects"]
+        .as_array()
+        .is_some_and(|effects| !effects.is_empty())
+    {
+        after.push(
+            "queues the listed external writeback and reads it back in the background; a failed writeback only marks attention".to_owned(),
+        );
+    }
+    after.push(
+        "undo: `hctl2 task reopen` returns the Task to open under a new lifecycle version; the Completion Receipt stays recorded".to_owned(),
+    );
+    let sections = PreviewSections {
+        title: "Completion preview".to_owned(),
+        object,
+        why: vec![
+            "completing is terminal for this lifecycle version: the receipt below is what the Task is judged by".to_owned(),
+            "each item's judge and evidence channel are as listed; a human item is the submitting person's own verdict".to_owned(),
+        ],
+        after,
+    };
+    sections.render(&confirm_command(token))
+}
+
 /// The three error fields, verbatim, for the default output.
 pub(crate) fn error_block(code: &str, message: &str, recovery: &str) -> String {
     [
