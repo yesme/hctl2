@@ -9,7 +9,7 @@
 #
 # Sourced by demo3-gitea.sh and demo3-github.sh; not a test on its own.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 : "${HCTL2_CLI_BIN:?Buck must provide HCTL2_CLI_BIN}"
 # Not called directly: `hctl2 start` looks for hctl2-control beside its own
@@ -39,8 +39,7 @@ DEMO3_SOURCE=""
 DEMO3_TASK=""
 
 note() { printf 'demo3: %s\n' "$*"; }
-die() {
-    printf 'demo3 FAILED: %s\n' "$*" >&2
+demo3_dump_agency_err() {
     # The execution body's own streams are the Agency's to discard, so the
     # Agency's stderr is the only trace a failure inside it leaves. It carries
     # catalog diagnostics; the pairing material goes to stdout, which is
@@ -49,8 +48,22 @@ die() {
         printf 'demo3 --- agency.err ---\n' >&2
         tail -n 30 "$DEMO3_ROOT/agency.err" >&2
     fi
+}
+die() {
+    printf 'demo3 FAILED: %s\n' "$*" >&2
+    demo3_dump_agency_err
     exit 1
 }
+# Almost every step here is a command substitution over `hctl2 --json`, so a
+# refusal prints its diagnostics into a variable and `set -e` aborts with
+# nothing on either stream -- a runner log then shows only how far the notes
+# got. Name the line that aborted. The JSON it captured is still lost, so the
+# steps whose answer matters read their own exit status as well.
+demo3_unhandled() { # <line> <status> <command>
+    printf 'demo3 FAILED: unhandled exit %s at line %s: %s\n' "$2" "$1" "$3" >&2
+    demo3_dump_agency_err
+}
+trap 'demo3_unhandled "$LINENO" "$?" "$BASH_COMMAND"' ERR
 
 # One CLI call against this demo's own control root. The caller decides whether
 # a non-zero exit is a failure or an expected refusal.
@@ -128,6 +141,9 @@ demo3_isolate_ports() {
 }
 
 demo3_cleanup() {
+    # Teardown is best effort; its own failures must not masquerade as the
+    # reason the run stopped.
+    trap - ERR
     if [[ -n "$DEMO3_AGENCY_PID" ]]; then
         kill "$DEMO3_AGENCY_PID" 2>/dev/null || true
         local _
@@ -162,10 +178,12 @@ demo3_prepare() { # <name>
     [[ -n "$archive" ]] || die "dependency package has no runtime archive"
     mkdir -p "$DEMO3_ROOT/install"
     # The archive is a zstd frame: decode it with the pinned tool instead of
-    # relying on whichever decoder the host tar happens to have.
-    "$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$archive" >"$DEMO3_ROOT/payload.tar"
-    tar -xf "$DEMO3_ROOT/payload.tar" -C "$DEMO3_ROOT/install"
-    rm -f "$DEMO3_ROOT/payload.tar"
+    # relying on whichever decoder the host tar happens to have. Decoded into
+    # tar rather than into a file: the payload unpacks to 635 MB and the tar it
+    # comes from is the same again, and the complete package job runs several of
+    # these payload tests at once on a runner whose disk is bounded, so writing
+    # the tar out would more than double what this one test holds at its peak.
+    "$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$archive" | tar -xf - -C "$DEMO3_ROOT/install"
     services_bin="$(find "$DEMO3_ROOT/install" -type f -name hctl2-services \
         -path '*/bin/*' | head -n 1)"
     [[ -n "$services_bin" ]] || die "dependency package has no bin/hctl2-services"
@@ -200,8 +218,10 @@ demo3_wait_service() { # <name>
 }
 
 demo3_assert_service_down() { # <name>
-    local name="$1" snapshot
-    snapshot="$(hctl2 services status)"
+    local name="$1" snapshot="" status=0
+    snapshot="$(hctl2 services status)" || status=$?
+    [[ "$status" -eq 0 ]] ||
+        die "\`hctl2 services status\` exited $status while checking $name: $snapshot"
     printf '%s\n' "$snapshot" | "$HCTL2_JQ" -e --arg n "$name" \
         '.hosted[] | select(.name == $n) | (.available | not) and (.consumed | not)' \
         >/dev/null || die "$name was already up before anything consumed it: $snapshot"
