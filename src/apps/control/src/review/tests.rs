@@ -957,42 +957,70 @@ fn a_create_only_policy_after_a_lost_create_does_not_update_the_request() {
     assert_eq!(drive(&platform, &s).unwrap_err().code, "INTENT_TERMINAL");
 }
 
-/// The platform refuses the audit association (title and body) of an update: the round
-/// stays open with the reason and finishes once the platform lets the update through, with
-/// no second push and no second request.
+/// The platform refuses the audit association (title and body) of an update: publishing
+/// still settles with its mapping (CT-REPO: 关联写回失败时集成仍成功、写回待同步), the
+/// refusal is recorded as a pending sync item on the same intent, and no second push or
+/// second request is made; once the platform lets the update through the item is cleared.
 #[test]
-fn a_refused_audit_update_keeps_the_round_open_until_it_goes_through() {
+fn a_refused_audit_update_publishes_with_a_pending_sync() {
     let temp = temp("refused-update");
     let platform = Platform::new(&temp.0);
     platform.without_review_request();
     let s = scenario(&temp.0, &platform, "one", true, false);
     drive(&platform, &s).unwrap();
     assert_eq!(shown(&s)["intent"]["state"], "published");
-    let (second_commit, _) = second_revision(&platform, &s, "second\n");
+    let (second_commit, second_intent) = second_revision(&platform, &s, "second\n");
+    let second_revision_id = second_intent.target.change_set_revision_id.clone();
     platform.set("refuse_update", "");
     drive(&platform, &s).unwrap();
     let refused = shown(&s);
+    assert_eq!(refused["intent"]["state"], "published", "{refused}");
+    assert!(refused["intent"]["attention"].is_null(), "{refused}");
     assert_eq!(
-        refused["intent"]["attention"]["code"], "AUDIT_UPDATE_REJECTED",
+        refused["intent"]["audit_sync"]["code"], "AUDIT_UPDATE_REJECTED",
         "{refused}"
     );
-    assert_eq!(refused["intent"]["state"], "unknown");
-    assert_eq!(
-        refused["mappings"].as_array().unwrap().len(),
-        1,
-        "no mapping for B yet"
-    );
+    // 映射已写：这一版有 platform binding，集成半边读得到它。
+    let mappings = refused["mappings"].as_array().unwrap();
+    assert_eq!(mappings.len(), 2, "{refused}");
+    assert_eq!(mappings[1]["platform_commit_sha"], json!(second_commit));
     assert_eq!(platform.updates(), 1);
+    assert_eq!(platform.creates(), 1);
+    {
+        let guard = s.shared.blocking_lock();
+        let store = guard.as_ref().unwrap();
+        // 待同步项让 worker 仍然看得到这条意图；集成侧按映射读得到这一版。
+        let open = domain::open(store).unwrap();
+        assert_eq!(open.len(), 1);
+        assert_eq!(
+            open[0].audit_sync.as_ref().unwrap().code,
+            "AUDIT_UPDATE_REJECTED"
+        );
+        assert!(
+            repo::integration::review_request(store, &s.repo_id, &second_revision_id)
+                .unwrap()
+                .is_some(),
+            "the new revision's mapping is written"
+        );
+    }
     platform.unset("refuse_update");
     drive(&platform, &s).unwrap();
     let done = shown(&s);
-    assert_eq!(done["intent"]["state"], "published", "{done}");
-    assert_eq!(
-        done["mappings"][1]["platform_commit_sha"],
-        json!(second_commit)
-    );
-    assert_eq!(platform.creates(), 1);
+    assert!(done["intent"]["audit_sync"].is_null(), "{done}");
+    assert_eq!(done["intent"]["state"], "published");
     assert_eq!(platform.updates(), 2);
+    assert_eq!(platform.creates(), 1);
+    // 映射不重写：仍是那两条，第二条的落库时刻与拒时一致。
+    assert_eq!(done["mappings"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        done["mappings"][1]["recorded_at_unix_ms"],
+        refused["mappings"][1]["recorded_at_unix_ms"]
+    );
+    {
+        let guard = s.shared.blocking_lock();
+        let store = guard.as_ref().unwrap();
+        assert!(domain::open(store).unwrap().is_empty());
+    }
 }
 
 /// The intent carries the platform binding version it was authorized under; the worker

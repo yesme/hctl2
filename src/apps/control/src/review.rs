@@ -206,7 +206,7 @@ pub async fn reconcile_once(
     };
     let mut first_error = None;
     for intent in open {
-        if intent.state == State::Unknown
+        if (intent.state == State::Unknown || intent.audit_sync.is_some())
             && last_attempt
                 .get(&intent.intent_id)
                 .is_some_and(|at| at.elapsed() < RETRY_AFTER)
@@ -261,6 +261,48 @@ pub(crate) fn drive(
     })
 }
 
+/// Retry just the audit association of an already published round: no second push, no
+/// second request; on success the pending sync item is cleared in one transaction.
+fn retry_audit(
+    shared: &Shared,
+    repo_id: &str,
+    intent: &domain::Intent,
+    connect: &mut dyn FnMut(&Registration) -> Result<(Connection, Credential)>,
+) -> Result<()> {
+    let registration = access(shared, |s| require_active(s, repo_id))?;
+    let observed = registration.observed.clone().ok_or_else(|| {
+        reject(
+            "REPO_PENDING",
+            "platform binding not confirmed",
+            "confirm_repo",
+        )
+    })?;
+    let Some(index) = intent.review.index else {
+        return Ok(());
+    };
+    let Some(commit) = intent.review.confirmed_commit.clone() else {
+        return Ok(());
+    };
+    let title = format!(
+        "hctl2: ChangeSet {} · revision {}",
+        short(&intent.change_set_id),
+        short(&intent.target.change_set_revision_id)
+    );
+    let body = association(intent, &commit);
+    let (connection, _credential) = connect(&registration)?;
+    match connection.update_review_request(&observed.full_name, index, &title, &body) {
+        Ok(()) => {
+            access(shared, |s| {
+                domain::clear_audit_sync(s, repo_id, &intent.intent_id)
+            })?;
+            Ok(())
+        }
+        // Still refused, or the platform did not answer: the pending item stays as written
+        // and the next pass tries again.
+        Err(_) => Ok(()),
+    }
+}
+
 /// Where the push reads its objects from and what it pushes with.
 pub(crate) struct Site {
     pub local_path: PathBuf,
@@ -275,6 +317,12 @@ pub(crate) fn drive_with(
     intent_id: &str,
     connect: &mut dyn FnMut(&Registration) -> Result<(Connection, Credential)>,
 ) -> Result<()> {
+    let intent = access(shared, |s| domain::get(s, repo_id, intent_id))?;
+    // A published round whose audit association is still pending owes the platform that
+    // writeback and nothing else: retry just the update.
+    if intent.state == State::Published && intent.audit_sync.is_some() {
+        return retry_audit(shared, repo_id, &intent, connect);
+    }
     let (intent, _) = access(shared, |s| domain::begin(s, repo_id, intent_id))?;
     let round = Round {
         repo_id: repo_id.into(),
@@ -516,7 +564,7 @@ fn publish(
         Ok(existing) => existing,
         Err(error) => return Ok(Some(Outcome::Attention(unavailable(error)))),
     };
-    let request = match existing {
+    let (request, audit_sync) = match existing {
         Some(request) if request.merged || request.state != "open" => {
             return Ok(Some(Outcome::Attention(Attention {
                 code: "REVIEW_REQUEST_CLOSED".into(),
@@ -542,25 +590,31 @@ fn publish(
                     details: json!({"recorded": intent.review.index, "found": request.index}),
                 })));
             }
-            // The audit association is part of publishing: a refused update leaves the round
-            // open with the reason, to be retried once the platform lets it through.
-            if let Err(error) =
-                connection.update_review_request(&site.full_name, request.index, &title, &body)
-            {
-                if error.code == "PLATFORM_UNAVAILABLE" {
+            // The audit association is a writeback, not a precondition (CT-REPO): a refusal
+            // becomes a pending sync item on the intent, and publishing still settles once
+            // the readback below matches the frozen commit.
+            let audit_sync = match connection.update_review_request(
+                &site.full_name,
+                request.index,
+                &title,
+                &body,
+            ) {
+                Ok(()) => None,
+                Err(error) if error.code == "PLATFORM_UNAVAILABLE" => {
                     return Ok(Some(Outcome::Attention(unavailable(error))));
                 }
-                return Ok(Some(Outcome::Attention(Attention {
+                Err(error) => Some(Attention {
                     code: "AUDIT_UPDATE_REJECTED".into(),
                     message: format!(
                         "the platform refused to update the review request's title and body: {}",
                         error.message
                     ),
-                    recovery_action: "inspect_platform_permissions_then_retry_same_intent".into(),
+                    recovery_action: "retry_same_intent_when_the_platform_accepts_the_update"
+                        .into(),
                     details: json!({"platform_code": error.code, "index": request.index}),
-                })));
-            }
-            request
+                }),
+            };
+            (request, audit_sync)
         }
         None => {
             access(shared, |s| {
@@ -606,7 +660,7 @@ fn publish(
                 }
             }
             match connection.find_review_request(&site.full_name, &base, &intent.branch) {
-                Ok(Some(request)) => request,
+                Ok(Some(request)) => (request, None),
                 Ok(None) => {
                     return Ok(Some(Outcome::Unknown(Attention {
                         code: "RESULT_UNKNOWN".into(),
@@ -631,6 +685,7 @@ fn publish(
         index: request.index,
         platform_commit_sha: commit,
         readback: json!({"review_request": request.raw, "branch": intent.branch}),
+        audit_sync,
     }))
 }
 
