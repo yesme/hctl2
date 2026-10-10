@@ -285,3 +285,58 @@ fn profiles_do_not_grant_command_or_write_authority() {
     let record = e.store.list("worker_profile_revision").unwrap().remove(0);
     assert!(matches!(record.data, RecordData::Value { .. }));
 }
+
+#[test]
+fn write_profile_previews_without_granting_a_lease_or_governance_authority() {
+    let e = Env::new();
+    let mut write = profile();
+    write.mode = "write".into();
+    write.permissions = vec!["context.read".into(), "git.read".into(), "git.write".into()];
+    let plan = prepare_profile(
+        &e.store,
+        input(
+            "writer",
+            ProfileAction::Create {
+                id: "writer".into(),
+                profile: write,
+            },
+        ),
+        &actor(),
+    )
+    .unwrap();
+    assert_eq!(plan.input.action.kind(), "create");
+    assert!(e.store.list("changeset").unwrap().is_empty());
+    assert!(e.store.list("room_invocation").unwrap().is_empty());
+    assert!(e.store.list("review_publish_intent").unwrap().is_empty());
+}
+
+#[test]
+fn write_profiles_require_scoped_write_permission_and_cannot_grant_commands() {
+    let e = Env::new();
+    for permission in [
+        "context.read",
+        "command.submit",
+        "task.complete",
+        "integration.submit",
+        "review.publish",
+        "git.push",
+        "terminal.input",
+    ] {
+        let mut write = profile();
+        write.mode = "write".into();
+        write.permissions = vec![permission.into()];
+        let error = prepare_profile(
+            &e.store,
+            input(
+                permission,
+                ProfileAction::Create {
+                    id: "writer".into(),
+                    profile: write,
+                },
+            ),
+            &actor(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "PERMISSION_SCOPE_INVALID", "{permission}");
+    }
+}

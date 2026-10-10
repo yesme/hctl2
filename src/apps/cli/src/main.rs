@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod agency;
+mod changeset;
 mod integration;
 mod invocation;
 mod memo;
@@ -105,6 +106,8 @@ enum Command {
     /// Publishing ChangeSet Revisions for review: release a held intent, show, list.
     #[command(subcommand)]
     Review(review::ReviewCommand),
+    #[command(subcommand)]
+    Changeset(changeset::ChangeSetCommand),
 }
 
 #[derive(Subcommand)]
@@ -216,6 +219,7 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Terminal(command) => terminal::dispatch(command, root, json).await,
         Command::Integration(command) => integration::dispatch(command, root, json).await,
         Command::Review(command) => review::dispatch(command, root, json).await,
+        Command::Changeset(command) => changeset::dispatch(command, root, json).await,
         Command::Context { command } => context_cli(command, root, json).await,
         Command::Repo(command) => repo::dispatch(command, root, json).await,
         Command::Task(command) => task::dispatch(command, root, json).await,

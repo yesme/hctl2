@@ -23,16 +23,25 @@ impl WorkerProfile {
     pub fn validate(&self) -> store::Result<()> {
         self.harness.validate().map_err(crate::port_error)?;
         if self.model.trim().is_empty()
-            || self.mode != "read_only"
+            || !matches!(self.mode.as_str(), "read_only" | "write")
             || self.max_context_bytes == 0
             || self.max_context_bytes > agency_proto::MAX_DOCUMENT as u64
             || self.environment.iter().any(|v| v.trim().is_empty())
         {
             return Err(invalid(
-                "read_only profile, model and bounded context bytes required",
+                "read_only or write profile, model and bounded context bytes required",
             ));
         }
-        validate_permissions(&self.permissions)
+        validate_permissions(&self.permissions)?;
+        let writes = self.permissions.iter().any(|p| p == "git.write");
+        if writes != (self.mode == "write") {
+            return Err(reject(
+                "PERMISSION_SCOPE_INVALID",
+                "git.write is required only in a write Profile; a Profile alone grants no lease",
+                "narrow_permissions",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -40,12 +49,12 @@ pub fn validate_permissions(permissions: &[String]) -> store::Result<()> {
     for (index, permission) in permissions.iter().enumerate() {
         if !matches!(
             permission.as_str(),
-            "context.read" | "git.read" | "terminal.observe"
+            "context.read" | "git.read" | "git.write" | "terminal.observe"
         ) || permissions[..index].contains(permission)
         {
             return Err(reject(
                 "PERMISSION_SCOPE_INVALID",
-                "unique read-only permissions required; no command or integration authority",
+                "unique content permissions required; no command or integration authority",
                 "narrow_permissions",
             ));
         }

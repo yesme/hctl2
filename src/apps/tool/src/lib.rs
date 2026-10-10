@@ -20,6 +20,7 @@ mod git;
 mod integration;
 mod readback;
 mod repository;
+mod seal;
 pub mod site_lock;
 mod worktree;
 
@@ -176,6 +177,29 @@ struct RepoArguments {
 
 #[derive(Debug, Subcommand)]
 enum RepoCommand {
+    /// Retain a committed result or snapshot a managed worktree, then read back Git identity.
+    Seal {
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        change_set_ref: String,
+        #[arg(long)]
+        baseline: String,
+        #[arg(long)]
+        commit: Option<String>,
+        /// Stable proposal/producer or human command association for retries.
+        #[arg(long)]
+        key: Option<String>,
+    },
+    /// Exact binary diff from a declared base commit to the admitted result tree.
+    Diff {
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        base: String,
+        #[arg(long)]
+        tree: String,
+    },
     /// Read repository identities, worktrees, HEAD, a ref, and remotes.
     Inspect {
         /// Any directory in the repository to inspect.
@@ -378,6 +402,21 @@ pub fn run_with_env(
             run_git_command_with_env(env, "readback", |git| readback::run(git, &arguments))
         }
         ToolCommand::Repo(arguments) => match arguments.command {
+            RepoCommand::Seal {
+                path,
+                change_set_ref,
+                baseline,
+                commit,
+                key,
+            } => {
+                worktree::validate_change_set_ref(&change_set_ref)?;
+                run_git_command("repo_seal", |git| {
+                    seal::seal(git, path, change_set_ref, baseline, commit, key)
+                })
+            }
+            RepoCommand::Diff { path, base, tree } => {
+                run_git_command("repo_diff", |git| seal::diff(git, path, base, tree))
+            }
             RepoCommand::Inspect { path, reference } => run_git_command("repo_inspect", |git| {
                 repository::inspect(git, path, reference)
             }),

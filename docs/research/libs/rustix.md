@@ -21,3 +21,11 @@
 `src/apps/tool/src/site_lock.rs` 改用本 crate 的 `fs` 功能（`rustix = { workspace = true, features = ["fs"] }`，`src/third-party/rust/BUCK` 由 Reindeer 再生）里的 `fs::statfs`，取代解析 `mount` 与 `stat` 的人类输出：macOS 读 `f_fstypename`（在 `forbid(unsafe_code)` 下按定长 C 串安全读取），Linux 把 `f_type` 映射回 `stat -f -c %T` 的拼写，未知魔数记 `unknown-<magic>`。保守拒绝清单与 `HCTL2_TOOL_FILESYSTEM_UNREADABLE`／`HCTL2_TOOL_FILESYSTEM_UNSUPPORTED` 错误码不变。
 
 实证（macOS arm64）：把 HFS+ 磁盘映像挂到 `/Volumes/hctl2nested`，卷内仓库的现场锁回执报 `"filesystem": "hfs"`，宿主 APFS 上的仓库报 `"apfs"`——嵌套挂载由内核按路径作答，不再需要最长前缀匹配。Linux 侧由 `unit_test` 的魔数映射用例覆盖，两平台编译在 CI。
+
+## 2026-10-08 · 脚本执行体停止复核
+
+写入型派工的真实 CLI 用例发现：只终止 shell，等待中的 `sleep` 子进程仍握着 stdout，收集器拿不到 EOF 和退出报告，旧租约因此继续占用。独立的 `root//agency:port_test` 用例 `stopping_a_script_reaps_the_child_that_holds_its_output_pipe` 先观察子进程启动，再请求停止；修正前缺真实退出报告而失败，修正后通过。
+
+复用已钉的 **rustix 1.1.5**、既有 `process` feature，不加依赖。已核锁定源码 `src/process/kill.rs`：`kill_process_group` 调用平台原生进程组信号；标准库 `CommandExt::process_group(0)` 为脚本建立自己的组。Agency 只对自己创建的组发停止信号，随后按 EOF 与真实退出状态交回证据，不让控制面接触进程号。自行离开该组的程序不在此保证内，不据此宣称完整子进程树隔离。Herdr 会话不改。
+
+2026-10-10 的端口回归还发现：macOS 对只剩未回收退出进程的组可能返回 `EPERM`；诊断时查询该进程已是 `ESRCH`。停止前先保留组号，再用标准库 `Child::try_wait()` 回收已退出的组长，最后仍向原组发信号。不能因为组长退出而漏掉仍握着管道的子进程，也不把权限错误吞掉。原先红的非法流用例与完整端口集合在修正后通过；另给组长自行退出、子进程继续握着管道的情形补独立用例。

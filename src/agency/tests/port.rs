@@ -2380,6 +2380,182 @@ async fn missing_terminal_result_is_protocol_failure_and_cancel_has_exit_report(
     rig.close().await;
 }
 #[tokio::test]
+async fn script_result_returns_the_turn_but_keeps_delivery_until_managed_stop() {
+    let rig = Rig::new("read -r init; printf 'delivery bytes' > delivery.txt; printf '%s\\n' '{\"type\":\"result\",\"schema\":\"test.v1\",\"output\":\"delivery.txt\"}'; read -r hold").await;
+    let (client, key) = rig.pair("delivery-lifetime").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "delivery-lifetime").await)
+        .await
+        .unwrap();
+    let execution = agency::confine::execution_dir(&rig.root, &d.reference).unwrap();
+    activate(&client, &d).await;
+    let trace = terminal(&client, &d, &key).await;
+    assert_eq!(trace.dispatch.state, DispatchState::ResultReturned);
+    assert!(
+        trace
+            .events
+            .iter()
+            .any(|event| event.kind == "turn_returned")
+    );
+    assert!(!trace.events.iter().any(|event| event.kind == "stopped"));
+    assert_eq!(
+        std::fs::read(execution.join("delivery.txt")).unwrap(),
+        b"delivery bytes"
+    );
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference.clone()))
+        .await
+        .unwrap();
+    assert_eq!(page.proposals.len(), 1);
+    let _: Dispatch = client
+        .call("stop", &ticket(&d, &key, vec![Permission::Stop], None))
+        .await
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let trace: Trace = client
+            .call(
+                "observe",
+                &Observe {
+                    ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                    after: 0,
+                },
+            )
+            .await
+            .unwrap();
+        if trace.events.iter().any(|event| {
+            event.kind == "stopped"
+                && event.payload["requested_stop"] == true
+                && event.payload.get("exit_code").is_some()
+        }) && !execution.exists()
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "delivery was not released after physical stop"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    rig.close().await;
+}
+
+#[tokio::test]
+async fn stopping_a_script_reaps_the_child_that_holds_its_output_pipe() {
+    script_group_stop_closes_output("wait \"$child\"").await;
+}
+
+#[tokio::test]
+async fn stopping_a_script_with_an_exited_leader_still_closes_the_child_pipe() {
+    script_group_stop_closes_output("exit 0").await;
+}
+
+async fn script_group_stop_closes_output(parent_finish: &str) {
+    let script = format!(
+        "read -r init; /bin/sleep 30 & child=$!; printf '{{\"type\":\"observation\",\"kind\":\"child_ready\",\"payload\":{{\"pid\":%s}}}}\\n' \"$child\"; {parent_finish}"
+    );
+    let rig = Rig::new(&script).await;
+    let (client, key) = rig.pair("child-pipe").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "child-pipe").await)
+        .await
+        .unwrap();
+    activate(&client, &d).await;
+    let observe = Observe {
+        ticket: ticket(&d, &key, vec![Permission::Observe], None),
+        after: 0,
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let child = loop {
+        let trace: Trace = client.call("observe", &observe).await.unwrap();
+        if let Some(event) = trace
+            .events
+            .iter()
+            .find(|event| event.kind == "runtime:child_ready")
+        {
+            break i32::try_from(event.payload["pid"].as_i64().unwrap()).unwrap();
+        }
+        assert!(std::time::Instant::now() < deadline, "child did not start");
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    let _: Dispatch = client
+        .call("stop", &ticket(&d, &key, vec![Permission::Stop], None))
+        .await
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let exited = loop {
+        let trace: Trace = client.call("observe", &observe).await.unwrap();
+        if trace.events.iter().any(|event| {
+            event.kind == "stopped"
+                && event.payload["requested_stop"] == true
+                && event.payload.get("exit_code").is_some()
+                && event.payload["terminal_result_present"] == false
+        }) {
+            break true;
+        }
+        if std::time::Instant::now() >= deadline {
+            break false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    // The red case must not leave the exact child this fixture created behind.
+    if !exited {
+        let _ = rustix::process::kill_process(
+            rustix::process::Pid::from_raw(child).unwrap(),
+            rustix::process::Signal::KILL,
+        );
+    }
+    rig.close().await;
+    assert!(
+        exited,
+        "cancelled is not proof that the script's output pipe closed"
+    );
+}
+
+#[tokio::test]
+async fn prepared_cancellation_records_never_started_before_activation_can_race_it() {
+    let rig = Rig::new(RESULT).await;
+    let (client, key) = rig.pair("never-started").await;
+    let dispatch: Dispatch = client
+        .call("prepare", &request(&client, "never-started").await)
+        .await
+        .unwrap();
+    let stopped: Dispatch = client
+        .call(
+            "stop",
+            &ticket(&dispatch, &key, vec![Permission::Stop], None),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stopped.state, DispatchState::Cancelled);
+    assert_eq!(
+        activate(&client, &dispatch).await.state,
+        DispatchState::Cancelled
+    );
+    let trace: Trace = client
+        .call(
+            "observe",
+            &Observe {
+                ticket: ticket(&dispatch, &key, vec![Permission::Observe], None),
+                after: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(trace.events.iter().any(|event| {
+        event.kind == "stopped"
+            && event.source == EvidenceLevel::AdapterEvent
+            && event.payload["never_started"] == true
+    }));
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(dispatch.reference))
+        .await
+        .unwrap();
+    assert!(page.proposals.is_empty());
+    rig.close().await;
+}
+
+#[tokio::test]
 async fn cursor_gap_and_unknown_event_are_explicit() {
     let rig=Rig::new("read -r init; printf '%s\n' '{\"type\":\"observation\",\"kind\":\"new_vendor_event\",\"payload\":{\"done\":true}}' '{\"type\":\"result\",\"schema\":\"test.result.v1\",\"output\":\"answer\"}'").await;
     let (client, key) = rig.pair("a").await;
