@@ -297,7 +297,9 @@ git reset --hard --quiet main
 git config user.name 'Script Writer'
 git config user.email 'writer@example.test'
 if test "$5" = no_changes; then
-    git branch -m "hctl2/changeset/$4"
+    # Create the P1 branch without moving a ref between directories: Landlock
+    # ABI V1 rejects cross-directory rename even within this private repository.
+    git checkout -q -b "hctl2/changeset/$4"
     git update-ref "refs/hctl2/changesets/$4/baseline" HEAD
 fi
 if test "$3" = changed; then
@@ -655,10 +657,21 @@ fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
     let execution = Path::new("/tmp")
         .join(format!("hctl2-exec-{}", &digest[..20]))
         .join(dispatch);
+    let trace = f.run(&[
+        "terminal",
+        "inspect",
+        shown["invocation"]["preview"]["input"]["project_id"]
+            .as_str()
+            .unwrap_or("not-mapped"),
+        shown["invocation"]["spec"]["document"]["owner"]["id"]
+            .as_str()
+            .unwrap_or("not-mapped"),
+    ]);
     format!(
-        "script stderr: {}; result frame: {}",
+        "script stderr: {}; result frame: {}; Agency trace: {}",
         std::fs::read_to_string(execution.join("git-error.txt")).unwrap_or_default(),
-        std::fs::read_to_string(execution.join("result-frame.json")).unwrap_or_default()
+        std::fs::read_to_string(execution.join("result-frame.json")).unwrap_or_default(),
+        trace.1,
     )
 }
 
@@ -756,7 +769,8 @@ fn write_dispatch_real_cli_accepts_verified_no_changes_without_publishing() {
             break shown;
         }
         assert!(
-            std::time::Instant::now() < deadline,
+            matches!(shown["state"].as_str(), Some("pending" | "running"))
+                && std::time::Instant::now() < deadline,
             "unchanged result not admitted: {shown}; {}",
             script_diagnostics(&f, &shown)
         );
