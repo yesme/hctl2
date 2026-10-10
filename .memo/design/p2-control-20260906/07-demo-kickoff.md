@@ -234,7 +234,7 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
     - 不做的：不改 Herdr；不装 daemon；不做第三家；不做写入型；不改控制面对象。上架的工种与 3d 的 Claude 工种并列，模型字段怎么填仍另议。
   - **3f**（Agency 写入型会话；分支 `codex/agency-write-session`；Codex 第二实例写，Claude 找问题、Kimi 核验；所有者 2026-10-10「按你这个来」，§二 第 31 条 ①）：让两家 harness 能在隔离工作树里真改代码并把结果封存交回。3d/3e 的常驻会话规矩不变；控制面侧的租约、写入型派工预览与封存准入在 #405（第 6 包拆分 2），本段只做 Agency。验收六条，缺一条不算过，每条要有从真实入口走到处理函数的用例：
     1. **写入型 Spec 能起。** 带 `write_lease` 与 `review_publish_policy` 的 Execution Spec 两家工种都能起，不再 `STANDBY_READONLY`；只读 Spec 的行为与 3d/3e 的用例一字不改。
-    2. **隔离工作副本。** 按 ChangeSet 的 Repo 本地仓库与基线提交，在 Agency 私有目录建 detached 工作树，harness 的 cwd 是它；一个 ChangeSet 一个工作树，租约撤销后保全不删；工作树在凭据根之外，harness 环境读不到控制面凭据根、钥匙串、`gh auth`（沿 3a 判据，补用例）。
+    2. **隔离工作副本。** 用第 1 包工具箱的 `hctl2-tool worktree materialize --path <Repo 本地仓库> --root <Agency 私有目录> --change-set-ref <id> --baseline <sha>` 建（落在 `<root>/<ChangeSet>`、分支 `hctl2/<id>`；harness 之后 detach HEAD 也认——`archive.rs::require_worktree` 先按分支找、再按路径名找），不自己造裸仓库或自定义 ref，封存 `repo seal` 对着它做；harness 的 cwd 是它；一个 ChangeSet 一个工作树，租约撤销后保全不删；工作树在凭据根之外，harness 环境读不到控制面凭据根、钥匙串、`gh auth`（沿 3a 判据，补用例）。（2026-10-10 改口：原文写「detached 工作树」是措辞不是要求，Codex 第二席据此自造了私有裸仓库而封存工具认不出，见 #405 评论；改为用现成机制，`seal` 不放宽。）
     3. **正文告诉 harness 它在改什么。** ChangeSet id、基线、租约、目标经第 4 包 Bundle 的口交进去，不让 harness 猜；harness 不拿 Git 凭据、不推送。
     4. **一轮交回时封存。** 调 `hctl2-tool` 的封存入口（以 #405 为准；#405 没合之前先做第 1–3、5 条，合了再接这一条）对工作树封存，Result Proposal 的 ChangeSet 输出按 `src/crates/repo/README.md` 的 schema，`base_commit_sha` 与 `result_tree_sha` 由工具回读；没改动如实报空结果不造版本；封存失败如实报、不算这一轮结束。
     5. **两家 harness 真实会话各一次。** 在试验仓库改一段非文档代码并留测试证据，Proposal 里的结果树与工作树一致，像 #362 那样读 harness 自己的记录核正文；要本机登录的用例 `ignored` 标 UNVERIFIED 并附实录到 PR。
