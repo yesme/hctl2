@@ -7,9 +7,10 @@ use chat::{Server, key, main_room, reference};
 use serde_json::{Value, json};
 use std::{
     fs::File,
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::LazyLock,
+    sync::{Arc, LazyLock, Mutex, Weak},
     time::Duration,
 };
 use store::{
@@ -20,6 +21,8 @@ use store::{
 struct Fixture {
     root: PathBuf,
     payload: PathBuf,
+    /// Keeps the shared payload this fixture linked from alive; the last holder's drop removes it.
+    source: Arc<SharedPayload>,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -76,12 +79,19 @@ impl Fixture {
             .expect("packaged versions.sh must define TUWUNEL_PORT")
     }
     fn unpacked(name: &str) -> Self {
+        // The shared payload comes first: a failed initialization must not leave a fixture root
+        // (or half a package) behind.
+        let source = shared_payload();
         let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let extract = root.join("install");
-        link_tree(&SHARED_PAYLOAD, &extract);
+        link_tree(&source.dir, &extract);
         let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
-        Self { root, payload }
+        Self {
+            root,
+            payload,
+            source,
+        }
     }
     fn run(&self, args: &[&str]) -> (bool, Value) {
         let (ok, stdout, stderr) = self.run_raw(true, args);
@@ -164,17 +174,30 @@ fn free_port() -> u16 {
     port
 }
 
-// One archive extraction per test process. Every fixture used to unpack the
-// payload beside its own case, and at seven cases the release runner's disk
-// filled before they finished (run 38030503449: "Cannot write: Disk quota
-// exceeded", "STORAGE_SQLITE disk I/O error"). Fixtures now link their payload
-// tree from this single copy instead. The copy is named for this process and
-// lives until it exits: the release runner is disposable, and a local run can
-// delete `/tmp/hctl-payload-*` afterwards.
-static SHARED_PAYLOAD: LazyLock<PathBuf> = LazyLock::new(|| {
-    let root = std::env::temp_dir().join(format!("hctl-payload-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+// One archive extraction per overlapping batch of fixtures: the first fixture that finds no
+// live payload extracts one, every other fixture links its own tree from a live copy, and the
+// last fixture holding it returns the disk. Nothing outlives the test binary and a failed
+// extraction leaves no half package behind.
+struct SharedPayload {
+    dir: PathBuf,
+}
+impl Drop for SharedPayload {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+static LIVE_PAYLOADS: LazyLock<Mutex<Vec<Weak<SharedPayload>>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
+
+fn shared_payload() -> Arc<SharedPayload> {
+    // A panicking test thread must not poison the registry for the rest of the binary.
+    let mut live = LIVE_PAYLOADS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    live.retain(|weak| weak.strong_count() > 0);
+    if let Some(payload) = live.iter().find_map(Weak::upgrade) {
+        return payload;
+    }
     let archive = find(
         Path::new(
             &std::env::var("HCTL2_TEST_DEPENDENCY_PACKAGE")
@@ -188,34 +211,57 @@ static SHARED_PAYLOAD: LazyLock<PathBuf> = LazyLock::new(|| {
         },
     )
     .unwrap();
-    let extract = root.join("install");
-    std::fs::create_dir(&extract).unwrap();
-    // The archive is a zstd frame; decompress with the pinned tool instead
-    // of relying on the host tar's decoder, and stream the tar through
-    // stdin the way the packaged lifecycle test does, so no second copy of
-    // the payload ever reaches disk.
-    let zstd = Path::new(
+    let dir = std::env::temp_dir().join(format!(
+        "hctl-payload-{}-{}",
+        std::process::id(),
+        live.len() + 1
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir(&dir).unwrap();
+    if let Err(detail) = unpack_payload(&zstd_tool(), &archive, &dir) {
+        let _ = std::fs::remove_dir_all(&dir);
+        panic!("{detail}");
+    }
+    let payload = Arc::new(SharedPayload { dir });
+    println!("shared payload extracted: {}", payload.dir.display());
+    live.push(Arc::downgrade(&payload));
+    payload
+}
+
+fn zstd_tool() -> PathBuf {
+    Path::new(
         &std::env::var("HCTL2_ZSTD_ROOT").expect("HCTL2_ZSTD_ROOT must be set to run this test"),
     )
-    .join("bin/zstd");
-    let mut decompress = Command::new(&zstd)
+    .join("bin/zstd")
+}
+
+/// Stream the archive through the pinned zstd into tar. `--ignore-zeros` keeps tar reading to the
+/// real end of the stream: an archive's end-of-archive block is not the end of the zstd frame, and
+/// a tar that stops there closes the pipe on a decoder with padding left to write, which kills
+/// zstd with SIGPIPE (141) on a perfectly good archive (Codex, #416 T1). Both statuses are
+/// required; a failed run removes what it half-extracted.
+fn unpack_payload(zstd: &Path, archive: &Path, extract: &Path) -> std::result::Result<(), String> {
+    let mut decompress = Command::new(zstd)
         .arg("-dc")
-        .arg(&archive)
+        .arg(archive)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap();
+        .map_err(|error| format!("spawning {}: {error}", zstd.display()))?;
     let unpack = Command::new("tar")
-        .args(["-xf", "-", "-C"])
-        .arg(&extract)
+        .args(["-x", "--ignore-zeros", "-f", "-", "-C"])
+        .arg(extract)
         .stdin(Stdio::from(decompress.stdout.take().unwrap()))
         .stderr(Stdio::piped())
         .spawn()
-        .unwrap();
+        .map_err(|error| format!("spawning tar: {error}"))?;
     let decompressed = decompress.wait_with_output().unwrap();
     let unpacked = unpack.wait_with_output().unwrap();
-    assert!(
-        decompressed.status.success() && unpacked.status.success(),
+    if decompressed.status.success() && unpacked.status.success() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_dir_all(extract);
+    Err(format!(
         "unpacking {} failed: zstd {:?} {}, tar {:?} {} (cwd {})",
         archive.display(),
         decompressed.status,
@@ -223,9 +269,8 @@ static SHARED_PAYLOAD: LazyLock<PathBuf> = LazyLock::new(|| {
         unpacked.status,
         String::from_utf8_lossy(&unpacked.stderr).trim(),
         std::env::current_dir().unwrap_or_default().display(),
-    );
-    extract
-});
+    ))
+}
 
 // Hardlink the shared payload into a fixture's own tree: a payload tree costs
 // directory entries instead of a second copy, while each fixture still owns its
@@ -262,6 +307,125 @@ fn find(root: &Path, predicate: impl Fn(&Path) -> bool + Copy) -> Option<PathBuf
     }
     None
 }
+/// 小活 T 的核验用例（Codex #416 T1）：发布包的 tar 后面还有零填充，那是解包必须读过去的
+/// 常态——tar 的归档结束块不是 zstd 帧的结尾；坏校验和的帧必须失败，且不留半份。
+#[test]
+fn unpack_payload_reads_past_the_end_of_archive_and_rejects_a_bad_frame() {
+    let work = std::env::temp_dir().join(format!("hctl-unpack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let source = work.join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("marker.txt"), b"payload\n").unwrap();
+    let tar = work.join("padded.tar");
+    assert!(
+        Command::new("tar")
+            .arg("-cf")
+            .arg(&tar)
+            .arg("-C")
+            .arg(&source)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut padded = std::fs::OpenOptions::new().append(true).open(&tar).unwrap();
+    padded.write_all(&vec![0u8; 1 << 20]).unwrap();
+    drop(padded);
+    let archive = work.join("padded.tar.zst");
+    assert!(
+        Command::new(zstd_tool())
+            .args(["-q", "-f"])
+            .arg(&tar)
+            .arg("-o")
+            .arg(&archive)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let extract = work.join("extract");
+    std::fs::create_dir(&extract).unwrap();
+    unpack_payload(&zstd_tool(), &archive, &extract).expect("a padded archive must unpack");
+    assert!(extract.join("marker.txt").is_file());
+    // 坏校验和：解码器返回非零，解包失败，半份也不留。
+    let mut frame = std::fs::read(&archive).unwrap();
+    let last = frame.len() - 1;
+    frame[last] ^= 0xff;
+    let bad = work.join("bad.tar.zst");
+    std::fs::write(&bad, &frame).unwrap();
+    let half = work.join("half");
+    std::fs::create_dir(&half).unwrap();
+    assert!(unpack_payload(&zstd_tool(), &bad, &half).is_err());
+    assert!(
+        !half.exists(),
+        "a failed unpack must take the half-extracted tree with it"
+    );
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+/// `shared_payload_leaves_nothing_behind_after_exit_or_a_failed_init` 的子进程目标：只建一个
+/// 夹具（共享解包加硬链接），然后正常退出。
+#[test]
+fn packaged_fixture_probe() {
+    let (fixture, _) = Fixture::packaged("probe");
+    println!("probe payload: {}", fixture.payload.display());
+}
+
+/// 小活 T 的核验用例（Codex #416 T2）：共享副本由夹具的生命周期持有——正常退出后临时目录里
+/// 不留 `hctl-payload-*`；初始化中途失败也不留半份，且失败本身如实报出来。
+#[test]
+fn shared_payload_leaves_nothing_behind_after_exit_or_a_failed_init() {
+    let probe = std::env::temp_dir().join(format!("hctl-exit-probe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&probe);
+    std::fs::create_dir_all(&probe).unwrap();
+    let leftovers = || {
+        std::fs::read_dir(&probe)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("hctl-"))
+            .count()
+    };
+    let child = |package: Option<&Path>| {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", "packaged_fixture_probe", "--nocapture"])
+            .env("TMPDIR", &probe);
+        if let Some(package) = package {
+            command.env("HCTL2_TEST_DEPENDENCY_PACKAGE", package);
+        }
+        command.output().unwrap()
+    };
+    let normal = child(None);
+    assert!(
+        normal.status.success(),
+        "{}",
+        String::from_utf8_lossy(&normal.stderr)
+    );
+    assert_eq!(
+        leftovers(),
+        0,
+        "a normal exit must take the shared payload with it"
+    );
+    let bad_package = probe.join("bad-package");
+    std::fs::create_dir(&bad_package).unwrap();
+    std::fs::write(
+        bad_package.join("hctl2-0.0.0-bad.tar.zst"),
+        b"not a zstd frame",
+    )
+    .unwrap();
+    let failed = child(Some(&bad_package));
+    assert!(
+        !failed.status.success(),
+        "a bad package must fail the probe"
+    );
+    assert_eq!(
+        leftovers(),
+        0,
+        "a failed init must not leave half a payload"
+    );
+    let _ = std::fs::remove_dir_all(&probe);
+}
+
 #[test]
 fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     let (f, port) = Fixture::packaged("room");
@@ -563,6 +727,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     let restored = Fixture {
         root: root.join("restored"),
         payload: f.payload.clone(),
+        source: Arc::clone(&f.source),
     };
     // A new directory imports the control identity before the daemon starts, rather than
     // overwriting an unrelated initialized control. Native services restore through the CLI.
