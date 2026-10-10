@@ -28,7 +28,7 @@ complete_release(name = "complete")
 # This test consumes the real offline payload; keep compression/source archives out of Code CI.
 rust_test(
     name = "room-cli-test",
-    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs", "root//apps/cli:agency_cli_source": "room/agency.rs"},
+    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs", "root//apps/cli:agency_cli_source": "room/agency.rs", "root//apps/cli:github_cli_source": "room/github.rs"},
     crate_root = "room.rs",
     deps = [
         "root//apps/control:control",
@@ -43,6 +43,7 @@ rust_test(
         "CARGO_BIN_EXE_hctl2": "$(location root//apps/cli:hctl2)",
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
+        "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
         "HCTL2_STANDBY_FIXTURE": "$(location root//agency:standby_fixture)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
         "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",

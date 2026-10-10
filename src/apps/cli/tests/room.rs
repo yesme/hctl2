@@ -3,6 +3,8 @@
 mod agency;
 #[path = "room/project.rs"]
 mod project;
+#[path = "room/github.rs"]
+mod github;
 use chat::{Server, key, main_room, reference};
 use serde_json::{Value, json};
 use std::{
