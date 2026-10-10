@@ -226,3 +226,149 @@ pub fn scrub(cmd: &mut Command, exec_root: &Path) {
     cmd.env("LANG", "C.UTF-8");
     cmd.current_dir(exec_root);
 }
+
+/// A write-capable app-server has the physical credential boundary of Herdr
+/// descendants. Keep its native model login; never grant the whole HOME.
+pub(crate) fn harness_command(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    state: &Path,
+    socket: &Path,
+    credential_root: &Path,
+) -> Result<Command> {
+    let mut command = command(program, arguments, state, credential_root)?;
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| PortError::invalid("native harness HOME missing"))?;
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".codex"));
+    let execution_parent = cwd
+        .parent()
+        .ok_or_else(|| PortError::invalid("session parent missing"))?;
+    let socket_parent = socket
+        .parent()
+        .ok_or_else(|| PortError::invalid("socket parent missing"))?;
+    for path in [&codex_home, execution_parent, socket_parent, state] {
+        if allowed_tree_contains_credential(&intended_path(path)?, &credential_root.canonicalize()?)
+        {
+            return Err(PortError::new(
+                "CREDENTIAL_ROOT_COVERED",
+                "native harness allowance overlaps credentials",
+                "move_credential_root",
+            ));
+        }
+    }
+    let temp = state.join("tmp");
+    crate::storage::private_dir(&temp)?;
+    protect_native_credentials(state, credential_root)?;
+    if cfg!(target_os = "macos") {
+        let profile = state.join("credential.sb");
+        let rules = fs::read_to_string(&profile)? + &worktree_git_denial(cwd)?;
+        fs::remove_file(&profile)?;
+        fs::write(&profile, rules)?;
+        fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
+    }
+    command
+        .env_clear()
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env(
+            "PATH",
+            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
+        )
+        .env("LANG", "C.UTF-8")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("TMPDIR", &temp)
+        .env(
+            "HCTL2_CONFINE_ALLOW",
+            format!(
+                "{}\n{}\n{}\n{}",
+                codex_home.display(),
+                execution_parent.display(),
+                socket_parent.display(),
+                state.display()
+            ),
+        )
+        .env(
+            "HCTL2_CONFINE_READ",
+            program
+                .canonicalize()?
+                .parent()
+                .ok_or_else(|| PortError::invalid("harness parent missing"))?,
+        )
+        .current_dir(cwd);
+    command.args(["-c", "sandbox_mode=\"danger-full-access\""]);
+    Ok(command)
+}
+
+pub(crate) fn protect_native_credentials(state: &Path, credential_root: &Path) -> Result<()> {
+    if cfg!(target_os = "macos") {
+        let profile = state.join("credential.sb");
+        let mut rules = format!(
+            "(version 1)\n(allow default)\n(deny file-read* (subpath \"{}\"))\n(deny file-write* (subpath \"{}\"))\n",
+            scheme_literal(&credential_root.canonicalize()?.display().to_string())?,
+            scheme_literal(&credential_root.canonicalize()?.display().to_string())?
+        );
+        for path in sensitive_paths() {
+            rules.push_str(&format!(
+                "(deny file-read* (subpath \"{}\"))\n",
+                scheme_literal(&path.display().to_string())?
+            ));
+        }
+        let _ = fs::remove_file(&profile);
+        fs::write(&profile, rules)?;
+        fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
+    }
+    Ok(())
+}
+
+/// A materialized checkout shares the source Repo's Git configuration. Keep it
+/// outside native harnesses; the Agency/toolbox reads Git identity and seals.
+pub(crate) fn append_git_denials(state: &Path, paths: &[PathBuf]) -> Result<()> {
+    let profile = state.join("credential.sb");
+    let mut rules = fs::read_to_string(&profile)?;
+    for path in paths {
+        rules.push_str(&git_denial(path)?);
+    }
+    fs::remove_file(&profile)?;
+    fs::write(&profile, rules)?;
+    fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
+    Ok(())
+}
+
+pub(crate) fn worktree_git_denial(cwd: &Path) -> Result<String> {
+    let common = crate::write::git_common_dir(cwd)?;
+    git_denial(&common)
+}
+
+fn git_denial(common: &Path) -> Result<String> {
+    let path = scheme_literal(&common.display().to_string())?;
+    Ok(format!(
+        "(deny file-read* (subpath \"{path}\"))\n(deny file-write* (subpath \"{path}\"))\n"
+    ))
+}
+
+pub(crate) fn sensitive_paths() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let mut paths = vec![
+        home.join(".config/gh"),
+        home.join(".ssh"),
+        home.join(".git-credentials"),
+        home.join("Library/Keychains"),
+        home.join(".local/share/keyrings"),
+        PathBuf::from("/Library/Keychains"),
+    ];
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        paths.push(PathBuf::from(xdg).join("gh"));
+    }
+    if let Some(gh) = std::env::var_os("GH_CONFIG_DIR") {
+        paths.push(PathBuf::from(gh));
+    }
+    paths
+}

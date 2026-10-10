@@ -24,6 +24,7 @@ use std::{
 const LIMIT: u64 = 16 * 1024 * 1024;
 
 struct Token {
+    writing: bool,
     cancelled: AtomicBool,
     finished: AtomicBool,
 }
@@ -33,7 +34,7 @@ impl Session for Handle {
         Err(PortError::invalid("standby input is not advertised"))
     }
     fn stop(&mut self) -> Result<()> {
-        if !self.0.finished.load(Ordering::SeqCst) {
+        if self.0.writing || !self.0.finished.load(Ordering::SeqCst) {
             self.0.cancelled.store(true, Ordering::SeqCst);
         }
         Ok(())
@@ -45,8 +46,10 @@ impl Drop for Handle {
     }
 }
 struct Job {
+    server: Arc<Server>,
     spec: Sealed<ExecutionSpec>,
     text: String,
+    copy: Option<crate::write::WorkCopy>,
     token: Arc<Token>,
     tx: mpsc::SyncSender<RuntimeEvent>,
 }
@@ -77,18 +80,28 @@ impl Pool {
         bundle: &Sealed<Bundle>,
         exec: &Path,
         tenant: &Path,
+        credential_root: &Path,
     ) -> Result<Running> {
-        readonly(&spec.document)?;
-        let text = crate::launch::task_text(&bundle.document)?;
+        let copy = crate::write::prepare(
+            &spec.document,
+            &bundle.document,
+            exec,
+            tenant,
+            credential_root,
+        )?;
+        let text = crate::write::task_text(&bundle.document, copy.as_ref())?;
         let key = selection_key(&spec.document, tenant)?;
         let token = Arc::new(Token {
+            writing: copy.is_some(),
             cancelled: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         });
         let (tx, rx) = mpsc::sync_channel(8);
         let job = Job {
+            server: Arc::clone(&server),
             spec: spec.clone(),
             text,
+            copy,
             token: Arc::clone(&token),
             tx,
         };
@@ -195,8 +208,21 @@ fn worker(
     crate::storage::private_dir(&dir)?;
     let mut native: Option<Native> = None;
     let mut last = Instant::now();
+    let mut returned: Option<Job> = None;
     loop {
-        if stopped.load(Ordering::SeqCst) {
+        let shutdown = stopped.load(Ordering::SeqCst);
+        if returned
+            .as_ref()
+            .is_some_and(|job| job.token.cancelled.load(Ordering::SeqCst))
+            || shutdown
+        {
+            if let Some(session) = native.as_mut() {
+                session.close()?;
+            }
+            native = None;
+            release_returned(&mut returned, true);
+        }
+        if shutdown {
             break;
         }
         let job = match receiver.recv_timeout(Duration::from_millis(25)) {
@@ -206,11 +232,31 @@ fn worker(
                 if native.is_some() && last.elapsed() >= idle {
                     native.as_mut().expect("native session").close()?;
                     native = None;
+                    release_returned(&mut returned, false);
                 }
                 continue;
             }
         };
-        let result = run_job(&server, &claude, &cwd, &dir, &stopped, &mut native, &job);
+        // A new frozen Spec must not enter a process retaining the old write lease.
+        // The native history is resumed by ID/thread when run_job opens it again.
+        if returned.is_some() {
+            if let Some(session) = native.as_mut() {
+                session.close()?;
+            }
+            native = None;
+            release_returned(&mut returned, false);
+        }
+        let result = run_job(
+            &job.server,
+            &claude,
+            &cwd,
+            &dir,
+            &stopped,
+            &mut native,
+            &job,
+        );
+        let sealed =
+            result.is_ok() && job.copy.is_some() && job.token.finished.load(Ordering::SeqCst);
         job.token.finished.store(true, Ordering::SeqCst);
         if let Err(error) = result {
             let _ = job.tx.send(RuntimeEvent::Observation {
@@ -222,15 +268,38 @@ fn worker(
             // No next turn may enter an uncertain old turn.
             if let Some(session) = native.as_mut() {
                 session.close()?;
+                if job.copy.is_some() {
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
             }
             native = None;
         }
-        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        if sealed {
+            returned = Some(job);
+        } else {
+            if job.copy.is_some() {
+                if let Some(session) = native.as_mut() {
+                    session.close()?;
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
+                native = None;
+            }
+            let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        }
         last = Instant::now();
     }
     if let Some(session) = native.as_mut() {
         session.close()?;
     }
+    release_returned(&mut returned, true);
     for job in receiver.try_iter() {
         job.token.finished.store(true, Ordering::SeqCst);
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
@@ -241,6 +310,18 @@ fn worker(
     }
     Ok(())
 }
+// DispatchReleased removes the stop handle from the tenant. A sealed writing
+// turn retains that handle until its native session is physically closed.
+fn release_returned(returned: &mut Option<Job>, requested_stop: bool) {
+    if let Some(job) = returned.take() {
+        let _ = job.tx.send(RuntimeEvent::TurnStopped {
+            requested_stop,
+            session_closed: true,
+        });
+        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+    }
+}
+
 fn run_job(
     server: &Arc<Server>,
     claude: &Path,
@@ -265,6 +346,14 @@ fn run_job(
         });
         return Ok(());
     }
+    let cwd = job.copy.as_ref().map_or(cwd, |copy| copy.cwd.as_path());
+    let writing = job.copy.is_some();
+    if let Some(session) = native.as_mut()
+        && (session.cwd != cwd || session.writing != writing)
+    {
+        session.close()?;
+        *native = None;
+    }
     let marker = format!("HCTL2_DISPATCH_{}", job.spec.digest);
     write_json(
         &dir.join("job.json"),
@@ -281,7 +370,8 @@ fn run_job(
     let mut recovered = false;
     loop {
         if native.is_none() {
-            let (session, resumed, resume_failed) = Native::open(server, claude, cwd, dir)?;
+            let (session, resumed, resume_failed) =
+                Native::open(server, claude, cwd, dir, writing)?;
             let _ = job.tx.send(RuntimeEvent::Observation {
                 kind: "session_opened".into(),
                 payload: json!({"resumed":resumed,"resume_failed":resume_failed}),
@@ -392,9 +482,34 @@ fn run_job(
                         .ok_or_else(|| PortError::invalid("turn answer missing"))?
                         .as_bytes()
                         .to_vec();
+                    let (schema, bytes) = if let Some(copy) = &job.copy {
+                        let output = crate::write::seal_return(
+                            copy,
+                            &bytes,
+                            job.spec.document.deadline_ms,
+                            &job.tx,
+                            || {
+                                job.token.cancelled.load(Ordering::SeqCst)
+                                    || stopped.load(Ordering::SeqCst)
+                            },
+                        )?;
+                        let Some(output) = output else {
+                            session.close()?;
+                            *native = None;
+                            let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                                requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                                    || stopped.load(Ordering::SeqCst),
+                                session_closed: true,
+                            });
+                            return Ok(());
+                        };
+                        output
+                    } else {
+                        ("claude.turn.v1".into(), bytes)
+                    };
                     job.token.finished.store(true, Ordering::SeqCst);
                     let _ = job.tx.send(RuntimeEvent::Proposal {
-                        schema: "claude.turn.v1".into(),
+                        schema,
                         bytes,
                         source: EvidenceLevel::AdapterEvent,
                     });
@@ -496,6 +611,8 @@ struct Native {
     pane: String,
     id: String,
     closed: bool,
+    cwd: PathBuf,
+    writing: bool,
 }
 impl Native {
     fn open(
@@ -503,13 +620,14 @@ impl Native {
         claude: &Path,
         cwd: &Path,
         dir: &Path,
+        writing: bool,
     ) -> Result<(Self, bool, bool)> {
         prepare_plugin(dir)?;
         let prior = read_json(&dir.join("resume.json"))?
             .and_then(|v| v["session"].as_str().map(str::to_owned));
         let resume_failed = prior.is_some();
         if let Some(id) = prior {
-            match Self::boot(server, claude, cwd, dir, Some(&id)) {
+            match Self::boot(server, claude, cwd, dir, Some(&id), writing) {
                 Ok(session) if session.id == id => return Ok((session, true, false)),
                 Ok(mut session) => {
                     session.close()?;
@@ -518,7 +636,7 @@ impl Native {
                 Err(error) => return Err(error),
             }
         }
-        Self::boot(server, claude, cwd, dir, None).map(|s| (s, false, resume_failed))
+        Self::boot(server, claude, cwd, dir, None, writing).map(|s| (s, false, resume_failed))
     }
     fn boot(
         server: &Arc<Server>,
@@ -526,6 +644,7 @@ impl Native {
         cwd: &Path,
         dir: &Path,
         resume: Option<&str>,
+        writing: bool,
     ) -> Result<Self> {
         let integration = server.state.join("claude-integration");
         let hook = integration.join("hooks/herdr-agent-state.sh");
@@ -535,7 +654,13 @@ impl Native {
             ));
         }
         let command = format!("bash {} session", crate::launch::sh_quote(&hook));
-        let settings = json!({"hooks":{"SessionStart":[{"matcher":"^(startup|resume|clear|compact|fork)$","hooks":[{"type":"command","command":command,"timeout":10}]}]}});
+        let mut settings = json!({"hooks":{"SessionStart":[{"matcher":"^(startup|resume|clear|compact|fork)$","hooks":[{"type":"command","command":command,"timeout":10}]}]}});
+        if writing {
+            settings["sandbox"] = json!({"enabled":false,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false,
+                "filesystem":{"denyRead":crate::confine::sensitive_paths()},"network":{"allowedDomains":[]}});
+            settings["permissions"] =
+                json!({"deny":["Bash(git push *)","Bash(gh *)","Bash(git credential *)"]});
+        }
         write_json(&dir.join("settings.json"), &settings)?;
         let bin = dir.join("bin");
         crate::storage::private_dir(&bin)?;
@@ -566,6 +691,8 @@ impl Native {
             pane,
             id: String::new(),
             closed: false,
+            cwd: cwd.to_path_buf(),
+            writing,
         };
         let result = (|| {
             // A fixed non-login shell keeps the native agent executable pinned;
@@ -574,11 +701,33 @@ impl Native {
                 .pointer("/tab/tab_id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| PortError::invalid("workspace tab missing"))?;
-            let applied = native.client.call("layout.apply", json!({"tab_id":tab,"focus":false,
-                "root":{"type":"pane","cwd":cwd,"command":["/usr/bin/env",
-                    format!("PATH={}:{}",bin.display(),std::env::var("PATH").unwrap_or_else(|_|"/usr/bin:/bin".into())),
-                    format!("HOME={}",std::env::var("HOME").unwrap_or_default()),
-                    format!("USER={}",std::env::var("USER").unwrap_or_default()),"/bin/sh"]}}))?;
+            let mut shell = vec![
+                "/usr/bin/env".into(),
+                format!(
+                    "PATH={}:{}",
+                    bin.display(),
+                    std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
+                ),
+                format!("HOME={}", std::env::var("HOME").unwrap_or_default()),
+                format!("USER={}", std::env::var("USER").unwrap_or_default()),
+            ];
+            if writing {
+                let temp = dir.join("tmp");
+                crate::storage::private_dir(&temp)?;
+                shell.extend([
+                    "GIT_CONFIG_GLOBAL=/dev/null".into(),
+                    "GIT_CONFIG_NOSYSTEM=1".into(),
+                    "GIT_TERMINAL_PROMPT=0".into(),
+                    format!("TMPDIR={}", temp.display()),
+                    format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
+                ]);
+            }
+            shell.push("/bin/sh".into());
+            let applied = native.client.call(
+                "layout.apply",
+                json!({"tab_id":tab,"focus":false,
+                "root":{"type":"pane","cwd":cwd,"command":shell}}),
+            )?;
             native.pane = applied
                 .pointer("/layout/root/pane_id")
                 .and_then(Value::as_str)
@@ -590,10 +739,24 @@ impl Native {
                 dir.join("settings.json").display().to_string(),
                 "--strict-mcp-config".into(),
                 "--tools".into(),
-                String::new(),
+                if writing {
+                    "Read,Edit,Write,Bash,Glob,Grep".into()
+                } else {
+                    String::new()
+                },
                 "--plugin-dir".into(),
                 dir.join("plugin").display().to_string(),
             ];
+            if writing {
+                argv.extend([
+                    "--permission-mode".into(),
+                    "acceptEdits".into(),
+                    "--allowedTools".into(),
+                    "Bash(*)".into(),
+                    "--permission-prompts".into(),
+                    "none".into(),
+                ]);
+            }
             if let Some(id) = resume {
                 argv.extend(["--resume".into(), id.into()]);
             }

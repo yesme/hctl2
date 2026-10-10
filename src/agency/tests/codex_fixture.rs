@@ -1,11 +1,13 @@
 //! Test double for the Codex app-server subset. Not a harness and not installed.
 //! `CODEX_HOME/mode` selects ok, mismatch, foreign-turn, foreign-item, interrupt,
 //! or resume-fail. Rollouts land under `$CODEX_HOME/sessions`.
+mod write_probe;
 use serde_json::{Value, json};
 use std::{
     env, fs,
     io::{Read, Write},
-    os::unix::net::{UnixListener, UnixStream},
+    net::TcpListener,
+    os::unix::net::UnixListener,
     path::PathBuf,
     process,
 };
@@ -29,19 +31,20 @@ fn main() {
         eprintln!("codex fixture expected --version, resume, or app-server --listen");
         process::exit(2);
     };
-    let Some(path) = listen.strip_prefix("unix://") else {
-        eprintln!("codex fixture listen path is not unix://");
-        process::exit(2);
-    };
-    let _ = fs::remove_file(path);
-    let listener = UnixListener::bind(path).unwrap_or_else(|error| {
-        eprintln!("codex fixture bind {path}: {error}");
-        process::exit(1);
-    });
-    for conn in listener.incoming() {
-        match conn {
-            Ok(stream) => serve(stream),
-            Err(error) => eprintln!("codex fixture accept: {error}"),
+    if let Some(address) = listen.strip_prefix("ws://") {
+        assert!(
+            args.windows(2)
+                .any(|p| p == ["--ws-auth", "capability-token"])
+        );
+        for stream in TcpListener::bind(address).unwrap().incoming().flatten() {
+            serve(stream);
+        }
+    } else {
+        let path = listen.strip_prefix("unix://").expect("native listen URL");
+        let _ = fs::remove_file(path);
+        let listener = UnixListener::bind(path).unwrap();
+        for stream in listener.incoming().flatten() {
+            serve(stream);
         }
     }
 }
@@ -93,7 +96,7 @@ fn write_rollout(thread: &str, text: &str) {
     );
 }
 
-fn serve(mut stream: UnixStream) {
+fn serve(mut stream: impl Read + Write) {
     if upgrade(&mut stream).is_err() {
         return;
     }
@@ -134,6 +137,15 @@ fn serve(mut stream: UnixStream) {
             "turn/start" => {
                 write_json("last-turn.json", &msg["params"]);
                 let text = msg["params"]["input"][0]["text"].as_str().unwrap_or("");
+                if let Some(cwd) = msg["params"]["cwd"].as_str()
+                    && let Some(probe) = write_probe::execute(
+                        text,
+                        std::path::Path::new(cwd),
+                        msg["params"]["sandboxPolicy"]["type"] == "externalSandbox",
+                    )
+                {
+                    write_json("write-probe.json", &probe);
+                }
                 let thread_id = thread.clone().unwrap_or_else(|| "missing-thread".into());
                 write_rollout(&thread_id, text);
                 seq += 1;
@@ -155,7 +167,7 @@ fn serve(mut stream: UnixStream) {
     }
 }
 
-fn emit_after_start(stream: &mut UnixStream, turn_id: &str) {
+fn emit_after_start(stream: &mut (impl Read + Write), turn_id: &str) {
     match mode().as_str() {
         "interrupt" => {
             let body = home_file("nonce")
@@ -184,37 +196,37 @@ fn emit_after_start(stream: &mut UnixStream, turn_id: &str) {
     }
 }
 
-fn send_item(stream: &mut UnixStream, turn_id: &str, text: &str) {
+fn send_item(stream: &mut (impl Read + Write), turn_id: &str, text: &str) {
     send_json(
         stream,
         &json!({"method":"item/completed","params":{"turnId": turn_id, "item":{"type":"agentMessage","text": text}}}),
     );
 }
 
-fn send_completed(stream: &mut UnixStream, turn_id: &str) {
+fn send_completed(stream: &mut (impl Read + Write), turn_id: &str) {
     send_json(
         stream,
         &json!({"method":"turn/completed","params":{"turn":{"id": turn_id}}}),
     );
 }
 
-fn send_result(stream: &mut UnixStream, id: &Value, result: Value) {
+fn send_result(stream: &mut (impl Read + Write), id: &Value, result: Value) {
     let mut msg = json!({"result": result});
     msg["id"] = id.clone();
     send_json(stream, &msg);
 }
 
-fn send_error(stream: &mut UnixStream, id: &Value, message: &str) {
+fn send_error(stream: &mut (impl Read + Write), id: &Value, message: &str) {
     let mut msg = json!({"error": {"message": message}});
     msg["id"] = id.clone();
     send_json(stream, &msg);
 }
 
-fn send_json(stream: &mut UnixStream, value: &Value) {
+fn send_json(stream: &mut (impl Read + Write), value: &Value) {
     let _ = send_frame(stream, &value.to_string());
 }
 
-fn upgrade(stream: &mut UnixStream) -> std::io::Result<()> {
+fn upgrade(stream: &mut (impl Read + Write)) -> std::io::Result<()> {
     let mut buf = Vec::new();
     let mut tmp = [0; 1024];
     while !buf.windows(4).any(|item| item == b"\r\n\r\n") {
@@ -235,7 +247,7 @@ fn upgrade(stream: &mut UnixStream) -> std::io::Result<()> {
     )
 }
 
-fn send_frame(stream: &mut UnixStream, text: &str) -> std::io::Result<()> {
+fn send_frame(stream: &mut (impl Read + Write), text: &str) -> std::io::Result<()> {
     let data = text.as_bytes();
     let mut frame = vec![0x81];
     if data.len() < 126 {
@@ -248,7 +260,7 @@ fn send_frame(stream: &mut UnixStream, text: &str) -> std::io::Result<()> {
     stream.write_all(&frame)
 }
 
-fn read_frame(stream: &mut UnixStream, buf: &mut Vec<u8>) -> std::io::Result<String> {
+fn read_frame(stream: &mut (impl Read + Write), buf: &mut Vec<u8>) -> std::io::Result<String> {
     loop {
         while buf.len() < 2 {
             fill(stream, buf)?;
@@ -293,7 +305,7 @@ fn read_frame(stream: &mut UnixStream, buf: &mut Vec<u8>) -> std::io::Result<Str
     }
 }
 
-fn fill(stream: &mut UnixStream, buf: &mut Vec<u8>) -> std::io::Result<()> {
+fn fill(stream: &mut (impl Read + Write), buf: &mut Vec<u8>) -> std::io::Result<()> {
     let mut tmp = [0; 8192];
     let n = stream.read(&mut tmp)?;
     if n == 0 {

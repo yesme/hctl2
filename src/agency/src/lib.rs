@@ -11,4 +11,5 @@ pub mod service;
 mod standby;
 mod storage;
 mod tenant;
+mod write;
 pub use service::{Agency, serve};

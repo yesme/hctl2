@@ -1,4 +1,5 @@
 //! Test-only structured turn source. Not a harness or an advertised profession.
+mod write_probe;
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -29,7 +30,10 @@ fn main() {
         return;
     }
     let option = |name: &str| args.windows(2).find(|a| a[0] == name).map(|a| a[1].clone());
-    assert_eq!(option("--tools").as_deref(), Some(""));
+    let writing = option("--tools").as_deref() == Some("Read,Edit,Write,Bash,Glob,Grep");
+    if !writing {
+        assert_eq!(option("--tools").as_deref(), Some(""));
+    }
     assert!(args.iter().any(|a| a == "--restricted"));
     assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_none());
     assert!(std::env::var_os("USER").is_some());
@@ -143,6 +147,11 @@ fn main() {
                 json!({"session":id,"job":job["id"],"digest":job["digest"],"turnId":turn,"text":text}),
             );
             fs::write(root.join("delivered.txt"), &text).unwrap();
+            if let Some(probe) =
+                write_probe::execute(&text, &std::env::current_dir().unwrap(), writing)
+            {
+                write(root, "write-probe.json", probe);
+            }
             let mut delivered = OpenOptions::new()
                 .create(true)
                 .append(true)
