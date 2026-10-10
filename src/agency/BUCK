@@ -171,6 +171,7 @@ rust_test(
 
 rust_binary(
     name = "codex_fixture",
+    visibility = ["root//packaging/release:room-cli-test"],
     srcs = ["tests/codex_fixture.rs", "tests/write_probe.rs"],
     crate_root = "tests/codex_fixture.rs",
     deps = ["root//third-party/rust:serde_json"],
