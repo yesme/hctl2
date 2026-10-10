@@ -2,11 +2,11 @@
 use agency_proto::{FrozenRef, Result, SkillClaim, hash};
 use std::{fs, path::Path, process::Command};
 
-/// In-process SHA-256 of a debug build is too slow for the Codex standalone
-/// binary. The server does not listen until this digest returns, and the
-/// ready budget is shorter than that hash. The platform tool reads the file
-/// itself and returns the same SHA-256.
-const PLATFORM_DIGEST_MIN_BYTES: u64 = 32 * 1024 * 1024;
+/// In-process SHA-256 of a debug build is too slow for the locked Herdr
+/// binary and the Codex standalone binary. Catalog requests time out, and
+/// the server does not listen until the Codex digest returns. The platform
+/// tool reads the file itself and returns the same SHA-256.
+const PLATFORM_DIGEST_MIN_BYTES: u64 = 1024 * 1024;
 
 pub fn file_digest(path: &Path) -> Result<String> {
     if fs::metadata(path)?.len() > PLATFORM_DIGEST_MIN_BYTES

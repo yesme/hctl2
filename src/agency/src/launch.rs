@@ -405,6 +405,7 @@ pub struct InstalledHerdr {
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
+    herdr_digest: String,
     read_paths: Vec<PathBuf>,
 }
 
@@ -476,6 +477,7 @@ impl InstalledHerdr {
             ));
         }
         let digest = crate::catalog::file_digest(&claude)?;
+        let herdr_digest = crate::catalog::file_digest(&binary)?;
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -492,6 +494,7 @@ impl InstalledHerdr {
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
+            herdr_digest,
             read_paths,
         })
     }
@@ -504,6 +507,7 @@ impl InstalledHerdr {
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
     ) -> Self {
+        let herdr_digest = crate::catalog::file_digest(&binary).expect("herdr digest");
         Self {
             binary,
             profession_id: "test-adapter".into(),
@@ -518,6 +522,7 @@ impl InstalledHerdr {
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
+            herdr_digest,
             read_paths: vec![],
         }
     }
@@ -804,11 +809,10 @@ impl Runtime for InstalledHerdr {
     }
 
     fn catalog(&self) -> Result<Catalog> {
-        let herdr_digest = crate::catalog::file_digest(&self.binary)?;
         let harness = FrozenRef {
             id: "herdr".into(),
             revision: "protocol-22".into(),
-            digest: herdr_digest,
+            digest: self.herdr_digest.clone(),
         };
         let profession = Profession {
             reference: FrozenRef {
