@@ -402,7 +402,8 @@ impl HomeKeyring {
         if !cfg!(target_os = "macos") {
             return Self(None);
         }
-        let dir = PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share/keyrings");
+        let dir =
+            PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share/keyrings");
         fs::create_dir_all(&dir).unwrap();
         let file = dir.join(format!("hctl2-pkg9-{label}-{}.keyring", std::process::id()));
         fs::write(&file, b"trial-keyring-secret").unwrap();
@@ -763,12 +764,11 @@ async fn fixture_writes(harness: &str) {
         json_file(&fixture_home().join("secret-probe.json"))
     };
     assert!(
-        secret["reads"].as_array().unwrap().iter().any(|read| {
-            read["path"]
-                .as_str()
-                .unwrap()
-                .ends_with("pair.key")
-        }),
+        secret["reads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|read| { read["path"].as_str().unwrap().ends_with("pair.key") }),
         "{secret}"
     );
     for read in secret["reads"].as_array().unwrap() {

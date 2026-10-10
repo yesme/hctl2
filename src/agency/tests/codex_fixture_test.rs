@@ -353,10 +353,8 @@ impl SecretSpecimen {
     /// Linux: outside the Landlock allow-list. macOS: under the denied keyring path.
     fn plant(label: &str) -> Self {
         if cfg!(target_os = "linux") {
-            let tree = std::env::temp_dir().join(format!(
-                "hctl2-keyring-{label}-{}",
-                std::process::id()
-            ));
+            let tree =
+                std::env::temp_dir().join(format!("hctl2-keyring-{label}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&tree);
             fs::create_dir_all(&tree).unwrap();
             let file = tree.join("login.keyring");
@@ -366,13 +364,10 @@ impl SecretSpecimen {
                 tree: Some(tree),
             }
         } else {
-            let dir =
-                PathBuf::from(std::env::var_os("HOME").expect("HOME")).join(".local/share/keyrings");
+            let dir = PathBuf::from(std::env::var_os("HOME").expect("HOME"))
+                .join(".local/share/keyrings");
             fs::create_dir_all(&dir).unwrap();
-            let file = dir.join(format!(
-                "hctl2-pkg9-{label}-{}.keyring",
-                std::process::id()
-            ));
+            let file = dir.join(format!("hctl2-pkg9-{label}-{}.keyring", std::process::id()));
             fs::write(&file, b"trial-keyring-secret").unwrap();
             Self { file, tree: None }
         }
@@ -391,10 +386,8 @@ fn start_task(
     let mut document = sealed_spec(key).document;
     document.profession.reference.id = "codex-cli".into();
     document.bundle.digest = bundle.digest.clone();
-    document.required_capabilities.isolation_effects = effects
-        .iter()
-        .map(|item| (*item).to_string())
-        .collect();
+    document.required_capabilities.isolation_effects =
+        effects.iter().map(|item| (*item).to_string()).collect();
     let spec = Sealed::new(document).unwrap();
     runtime.start(&spec, &bundle, exec, cred)
 }

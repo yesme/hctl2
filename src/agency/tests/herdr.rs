@@ -67,10 +67,8 @@ impl SecretSpecimen {
     /// macOS: a file under the keyring path the profile denies. Not the login keychain.
     fn plant(label: &str) -> Self {
         if cfg!(target_os = "linux") {
-            let tree = std::env::temp_dir().join(format!(
-                "hctl2-keyring-{label}-{}",
-                std::process::id()
-            ));
+            let tree =
+                std::env::temp_dir().join(format!("hctl2-keyring-{label}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&tree);
             std::fs::create_dir_all(&tree).unwrap();
             let file = tree.join("login.keyring");
@@ -83,10 +81,7 @@ impl SecretSpecimen {
             let dir = PathBuf::from(std::env::var_os("HOME").expect("HOME"))
                 .join(".local/share/keyrings");
             std::fs::create_dir_all(&dir).unwrap();
-            let file = dir.join(format!(
-                "hctl2-pkg9-{label}-{}.keyring",
-                std::process::id()
-            ));
+            let file = dir.join(format!("hctl2-pkg9-{label}-{}.keyring", std::process::id()));
             std::fs::write(&file, b"trial-keyring-secret").unwrap();
             Self { file, tree: None }
         }
