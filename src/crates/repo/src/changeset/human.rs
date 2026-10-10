@@ -193,14 +193,14 @@ pub fn admit_human(
             "rebuild_preview",
         ));
     }
-    if let OutputLocation::Commit { commit_sha, .. } = &plan.input.location {
-        if seal.result_commit_sha.as_ref() != Some(commit_sha) {
-            return Err(reject(
-                "PROPOSAL_MISMATCH",
-                "human seal differs from the declared commit",
-                "rebuild_preview",
-            ));
-        }
+    if let OutputLocation::Commit { commit_sha, .. } = &plan.input.location
+        && seal.result_commit_sha.as_ref() != Some(commit_sha)
+    {
+        return Err(reject(
+            "PROPOSAL_MISMATCH",
+            "human seal differs from the declared commit",
+            "rebuild_preview",
+        ));
     }
     let target = receipt_key(&plan.input.repo_id, &plan.input.key);
     if human_receipt(store, &actor, &plan.input)?.is_none()

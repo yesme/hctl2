@@ -313,14 +313,14 @@ fn admit(
                 "inspect_original_proposal",
             ));
         }
-        if let repo::changeset::OutputLocation::Commit { commit_sha, .. } = &declared.location {
-            if seal.result_commit_sha.as_ref() != Some(commit_sha) {
-                return Err(reject(
-                    "PROPOSAL_MISMATCH",
-                    "sealed commit differs from the proposed exact commit",
-                    "inspect_original_proposal",
-                ));
-            }
+        if let repo::changeset::OutputLocation::Commit { commit_sha, .. } = &declared.location
+            && seal.result_commit_sha.as_ref() != Some(commit_sha)
+        {
+            return Err(reject(
+                "PROPOSAL_MISMATCH",
+                "sealed commit differs from the proposed exact commit",
+                "inspect_original_proposal",
+            ));
         }
     }
     let (room_binding, room) = chat::room(store, project, &invocation.preview.input.room_id)?;
@@ -408,17 +408,17 @@ fn admit(
             _ => None,
         };
         let mut admitted = admitted.clone();
-        if baseline_tree_sha.is_some() {
-            if let RecordData::Value { value } = &mut admitted.data {
-                value["no_changes"] = json!(true);
-                admitted.revision_digest = canonical_json_sha256(value)?;
-            }
+        if baseline_tree_sha.is_some()
+            && let RecordData::Value { value } = &mut admitted.data
+        {
+            value["no_changes"] = json!(true);
+            admitted.revision_digest = canonical_json_sha256(value)?;
         }
-        if let Some(revision) = &revision {
-            if let RecordData::Value { value } = &mut admitted.data {
-                value["change_set_revision"] = serde_json::to_value(revision)?;
-                admitted.revision_digest = canonical_json_sha256(value)?;
-            }
+        if let Some(revision) = &revision
+            && let RecordData::Value { value } = &mut admitted.data
+        {
+            value["change_set_revision"] = serde_json::to_value(revision)?;
+            admitted.revision_digest = canonical_json_sha256(value)?;
         }
         tx.put(&admitted)?;
         tx.put(&completed)?;

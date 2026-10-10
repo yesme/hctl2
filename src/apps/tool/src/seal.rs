@@ -21,13 +21,13 @@ pub(crate) fn seal(
     if let Some(commit) = &commit {
         exact_sha(commit)?;
     }
-    if let Some(key) = &key {
-        if key.trim().is_empty() || key.trim() != key {
-            return Err(ToolError::new(
-                "HCTL2_TOOL_INVALID_ARGUMENT",
-                "exact nonempty seal key required",
-            ));
-        }
+    if let Some(key) = &key
+        && (key.trim().is_empty() || key.trim() != key)
+    {
+        return Err(ToolError::new(
+            "HCTL2_TOOL_INVALID_ARGUMENT",
+            "exact nonempty seal key required",
+        ));
     }
     let association = key.as_ref().map(|key| {
         format!(
@@ -179,7 +179,7 @@ pub(crate) fn diff(
     let repository = Repository::open(git, &path)?;
     let output = git.checked(
         &repository.anchor,
-        &vec![
+        &[
             OsString::from("diff"),
             "--no-ext-diff".into(),
             "--no-textconv".into(),

@@ -17,7 +17,16 @@ fn ready_timeline(f: &Fixture, project: &str, room: &str) -> Value {
         if ok {
             return result;
         }
-        assert_eq!(result["error"]["code"], "CHAT_UNAVAILABLE", "{result}");
+        assert!(
+            matches!(
+                result["error"]["code"].as_str(),
+                Some("CHAT_UNAVAILABLE" | "VERSION_CONFLICT")
+            ),
+            "{result}"
+        );
+        if result["error"]["code"] == "VERSION_CONFLICT" {
+            assert_eq!(result["error"]["recovery_action"], "preview_again");
+        }
         std::thread::sleep(Duration::from_millis(200));
     }
     panic!("chat server did not become ready");
@@ -70,13 +79,34 @@ fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Pai
         );
         registration_input["local"] = json!({"machine":"control","path":site});
     }
-    let registered = accepted(
-        &f,
-        "repo",
-        "register",
-        "register-dispatch",
-        registration_input,
-    );
+    let (mut ok, mut registered) =
+        f.command_ns("repo", "register", "register-dispatch", &registration_input);
+    let ready_by = std::time::Instant::now() + Duration::from_secs(60);
+    while !ok {
+        // Bootstrap can return a persisted pending registration before Gitea is
+        // ready. Follow that command's recovery path, never start a second one.
+        assert_eq!(
+            registered["error"]["code"], "PLATFORM_NOT_READY",
+            "{registered}"
+        );
+        assert_eq!(registered["error"]["recovery_action"], "retry_registration");
+        assert!(std::time::Instant::now() < ready_by, "{registered}");
+        let repo = registered["registration"]["repo_id"].as_str().unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        let resume = [
+            "repo",
+            "register",
+            "--resume",
+            repo,
+            "--key",
+            "resume-dispatch",
+        ];
+        let (preview_ok, plan) = f.run(&resume);
+        assert!(preview_ok, "{plan}");
+        let mut submit = resume.to_vec();
+        submit.extend(["--preview-token", plan["preview_token"].as_str().unwrap()]);
+        (ok, registered) = f.run(&submit);
+    }
     let registration = &registered["registration"];
     let repo = registration["repo_id"].as_str().unwrap();
     let version = registration["version"].to_string();
@@ -544,7 +574,8 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
         diff.to_string()
             .contains("changed by the actual script execution")
     );
-    assert_eq!(f.run(&start_args).1["invocation_id"], invocation);
+    let replayed = replay_invocation(&f, &input, "publish-chain");
+    assert_eq!(replayed["invocation_id"], invocation);
     assert!(f.run(&["stop"]).0);
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     let store = loop {
@@ -608,6 +639,33 @@ fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
     )
 }
 
+fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
+    // Preview tokens belong to the daemon, not the persistent command receipt.
+    // Fetch a new token after restart while replaying the same frozen input.
+    let args = [
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        key,
+    ];
+    let (ok, plan) = f.run(&args);
+    assert!(ok, "{plan}");
+    let (ok, replay) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        key,
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{replay}");
+    replay
+}
+
 #[test]
 fn write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea() {
     publishing_chain("publish-automatic", false);
@@ -645,7 +703,10 @@ fn write_dispatch_real_cli_accepts_verified_no_changes_without_publishing() {
     assert!(ok, "{preview}");
     let write = &preview["effect_summary"]["preview"]["write"];
     assert_eq!(write["objective"], objective);
-    assert_eq!(write["repo_local_path"], site.to_str().unwrap());
+    assert_eq!(
+        write["repo_local_path"],
+        site.canonicalize().unwrap().to_str().unwrap()
+    );
     assert_eq!(write["repo_local_machine"], "control");
     assert_eq!(write["publication_target"]["target_branch"], "main");
     let pending = write["lease"]["pending"].clone();
@@ -707,7 +768,10 @@ fn write_dispatch_real_cli_accepts_verified_no_changes_without_publishing() {
         .unwrap()
         .is_empty()
     );
-    assert_eq!(f.run(&start).1["invocation_id"], invocation);
+    assert_eq!(
+        replay_invocation(&f, &input, "unchanged")["invocation_id"],
+        invocation
+    );
     assert!(f.run(&["stop"]).0);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     assert_eq!(
@@ -2122,9 +2186,9 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "the dispatched invocation is listed with its state: {row:?}"
     );
     assert!(!listed.contains('\u{1b}'));
-    // The machine interface stays byte-stable where the content allows it: the
-    // catalog is fixed by the paired fixture, so two runs must agree byte for
-    // byte and match the saved golden sample.
+    // The machine interface stays byte-stable where the content allows it. The
+    // program-file digest differs across OS releases; check it against the
+    // actual /bin/sh, while keeping every other field pinned to the sample.
     let (ok, first, _) = f.run_raw(true, &["agency", "catalog", "local"]);
     assert!(ok);
     let (_, second, _) = f.run_raw(true, &["agency", "catalog", "local"]);
@@ -2133,9 +2197,14 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "agency catalog --json must be deterministic in one fixture"
     );
     let catalog = String::from_utf8(first).unwrap();
+    let digest = agency_proto::hash(&std::fs::read("/bin/sh").unwrap());
+    let mut expected: Value = serde_json::from_str(AGENCY_CATALOG_JSON).unwrap();
+    expected["harnesses"][0]["digest"] = json!(digest);
+    expected["professions"][0]["harness"]["digest"] = json!(digest);
+    expected["professions"][0]["reference"]["digest"] = json!(digest);
     assert_eq!(
         catalog.trim_end(),
-        AGENCY_CATALOG_JSON.trim_end(),
+        serde_json::to_string(&expected).unwrap(),
         "agency catalog --json drifted from the saved sample"
     );
     let (ok, human, _) = f.run_raw(false, &["agency", "catalog", "local"]);
