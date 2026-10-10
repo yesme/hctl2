@@ -47,7 +47,7 @@ pub fn execute(text: &str, cwd: &Path, enabled: bool) -> Option<Value> {
         .current_dir(cwd)
         .output();
     Some(
-        json!({"cwd":cwd,"head":String::from_utf8_lossy(&git.stdout).trim(),"git_error":String::from_utf8_lossy(&git.stderr),"detached":!branch.status.success(),"reads":reads,
+        json!({"cwd":cwd,"head":String::from_utf8_lossy(&git.stdout).trim(),"git_success":git.status.success(),"git_error":String::from_utf8_lossy(&git.stderr),"detached":if git.status.success() { Some(!branch.status.success()) } else { None },"reads":reads,
         "test_success":test.status.success(), "test_output":String::from_utf8_lossy(&test.stderr),
         "gh_authenticated":gh.is_ok_and(|o| o.status.success()),"gh_token_present":std::env::var_os("GH_TOKEN").is_some() || std::env::var_os("GITHUB_TOKEN").is_some(),
         "dbus_present":std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some()}),

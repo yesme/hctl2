@@ -298,7 +298,7 @@ impl Rig {
             .unwrap()
             .unwrap()
             .path()
-            .join("worktree")
+            .join("cs-trial")
             .canonicalize()
             .unwrap()
     }
@@ -382,7 +382,7 @@ async fn fixture_writes(harness: &str) {
     let keyring = rig.temp.path().join("keyrings/login.keyring");
     fs::create_dir_all(keyring.parent().unwrap()).unwrap();
     fs::write(&keyring, b"trial-keyring").unwrap();
-    let mut paths = vec![rig.root.join("pair.key")];
+    let mut paths = vec![rig.root.join("pair.key"), rig.repo.join(".git/config")];
     if cfg!(target_os = "linux") {
         paths.push(keyring);
     }
@@ -423,7 +423,24 @@ async fn fixture_writes(harness: &str) {
         "def double(value):\n    return value + 2\n"
     );
     assert_eq!(git(&worktree, &["rev-parse", "HEAD"]).trim(), rig.baseline);
-    assert_eq!(git(&worktree, &["remote"]), "");
+    assert_eq!(
+        git(&worktree, &["symbolic-ref", "HEAD"]).trim(),
+        "refs/heads/hctl2/changeset/cs-trial"
+    );
+    assert_eq!(
+        git(
+            &worktree,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"]
+        )
+        .trim(),
+        rig.repo
+            .join(".git")
+            .canonicalize()
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
+    assert!(!worktree.parent().unwrap().join("repository.git").exists());
     let probe = if harness == "claude-code" {
         let state = rig.claude_state(&input, &dispatch);
         let started = json_file(&state.join("started.json"));
@@ -440,9 +457,16 @@ async fn fixture_writes(harness: &str) {
         assert_eq!(turn["cwd"], json!(worktree));
         json_file(&fixture_home().join("write-probe.json"))
     };
-    assert_eq!(probe["cwd"], json!(worktree));
-    assert_eq!(probe["head"], rig.baseline);
-    assert_eq!(probe["detached"], true);
+    assert_eq!(
+        PathBuf::from(probe["cwd"].as_str().unwrap())
+            .canonicalize()
+            .unwrap(),
+        worktree.canonicalize().unwrap()
+    );
+    assert_eq!(
+        probe["git_success"], false,
+        "source Git metadata must stay outside the harness: {probe}"
+    );
     assert_eq!(probe["test_success"], true, "{probe}");
     for read in probe["reads"].as_array().unwrap() {
         assert_eq!(read["readable"], false, "{probe}");
@@ -477,6 +501,9 @@ async fn fixture_writes(harness: &str) {
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+    // An already materialized copy is recognized after detach; no second
+    // worktree or reset is needed on the next lease. Git readback is Agency-side.
+    git(&worktree, &["checkout", "--detach"]);
     let (again, _) = rig
         .request(
             harness,
@@ -564,12 +591,12 @@ async fn fixture_writes(harness: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn claude_write_entry_uses_detached_worktree_and_keeps_unsealed_edits() {
+async fn claude_write_entry_uses_materialized_worktree_and_keeps_unsealed_edits() {
     let _guard = SERIAL.lock().await;
     fixture_writes("claude-code").await;
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn codex_write_entry_uses_detached_worktree_and_cannot_read_credentials() {
+async fn codex_write_entry_uses_materialized_worktree_and_cannot_read_credentials() {
     let _guard = SERIAL.lock().await;
     fixture_writes("codex-cli").await;
 }

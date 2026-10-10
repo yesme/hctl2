@@ -263,6 +263,13 @@ pub(crate) fn harness_command(
     let temp = state.join("tmp");
     crate::storage::private_dir(&temp)?;
     protect_native_credentials(state, credential_root)?;
+    if cfg!(target_os = "macos") {
+        let profile = state.join("credential.sb");
+        let rules = fs::read_to_string(&profile)? + &worktree_git_denial(cwd)?;
+        fs::remove_file(&profile)?;
+        fs::write(&profile, rules)?;
+        fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
+    }
     command
         .env_clear()
         .env("HOME", &home)
@@ -317,6 +324,16 @@ pub(crate) fn protect_native_credentials(state: &Path, credential_root: &Path) -
         fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
     }
     Ok(())
+}
+
+/// A materialized checkout shares the source Repo's Git configuration. Keep it
+/// outside native harnesses; the Agency/toolbox reads Git identity and seals.
+pub(crate) fn worktree_git_denial(cwd: &Path) -> Result<String> {
+    let common = crate::write::git_common_dir(cwd)?;
+    let path = scheme_literal(&common.display().to_string())?;
+    Ok(format!(
+        "(deny file-read* (subpath \"{path}\"))\n(deny file-write* (subpath \"{path}\"))\n"
+    ))
 }
 
 pub(crate) fn sensitive_paths() -> Vec<PathBuf> {

@@ -176,8 +176,7 @@ pub(crate) fn prepare(
             "choose_execution_directory",
         ));
     }
-    let cwd = root.join("worktree");
-    let repository = root.join("repository.git");
+    let cwd = root.join(change_set);
     let descriptor = canonical(
         &json!({"repo_id":repo.id,"source":source,"change_set":change_set,"baseline":base}),
     )?;
@@ -194,74 +193,56 @@ pub(crate) fn prepare(
             "inspect_preserved_worktree",
         ));
     }
-    if !repository.exists() {
-        git(
+    if !cwd.exists() {
+        let report = tool(
             &root,
             &[
-                "init",
-                "--bare",
-                "--template=",
-                repository.to_str().ok_or_else(fail)?,
-            ],
-        )?;
-    }
-    if !cwd.exists() {
-        // No remote or source configuration is persisted. Fetch only the exact
-        // baseline from a local path, with credential helpers and hooks disabled.
-        git(
-            &repository,
-            &[
-                "fetch",
-                "--no-tags",
-                "--no-write-fetch-head",
-                "--",
-                source.to_str().ok_or_else(fail)?,
-                base,
-            ],
-        )?;
-        git(
-            &repository,
-            &[
                 "worktree",
-                "add",
-                "--detach",
-                "--",
-                cwd.to_str().ok_or_else(fail)?,
+                "materialize",
+                "--repo",
+                source.to_str().ok_or_else(fail)?,
+                "--root",
+                root.to_str().ok_or_else(fail)?,
+                "--change-set-ref",
+                change_set,
+                "--baseline",
                 base,
             ],
         )?;
-        git(
-            &repository,
-            &[
-                "update-ref",
-                &format!("refs/hctl2/changesets/{change_set}/baseline"),
-                base,
-            ],
-        )?;
+        let materialized = report["worktree"]["path"].as_str().map(PathBuf::from);
+        if report["schema"] != "hctl2.worktree.v1"
+            || report["outcome"] != "established"
+            || report["change_set_ref"] != change_set
+            || report["baseline_commit_sha"] != *base
+            || materialized.as_ref().and_then(|p| p.canonicalize().ok())
+                != Some(cwd.canonicalize()?)
+        {
+            return Err(PortError::new(
+                "WRITE_WORKTREE_CONFLICT",
+                "tool materialized a different ChangeSet worktree or baseline",
+                "inspect_preserved_worktree",
+            ));
+        }
     }
     let actual = git(&cwd, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let symbolic = git_optional(&cwd, &["symbolic-ref", "-q", "HEAD"])?;
     if actual.trim() != base
-        || git_optional(&cwd, &["symbolic-ref", "-q", "HEAD"])?
-            .status
-            .success()
+        || (symbolic.status.success()
+            && String::from_utf8_lossy(&symbolic.stdout).trim()
+                != format!("refs/heads/hctl2/changeset/{change_set}"))
+        || (!symbolic.status.success() && symbolic.status.code() != Some(1))
     {
         return Err(PortError::new(
             "WRITE_WORKTREE_CONFLICT",
-            "preserved worktree must remain detached at its frozen baseline",
+            "preserved worktree must remain at its frozen baseline and ChangeSet branch or detached",
             "inspect_preserved_worktree",
         ));
     }
-    let common = PathBuf::from(
-        git(
-            &cwd,
-            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-        )?
-        .trim(),
-    );
-    if common.canonicalize()? != repository.canonicalize()? {
+    let common = git_common_dir(&cwd)?;
+    if common != git_common_dir(&source)? {
         return Err(PortError::new(
             "WRITE_WORKTREE_CONFLICT",
-            "worktree is no longer attached to the Agency private repository",
+            "worktree is no longer attached to the Bundle's Repo",
             "inspect_preserved_worktree",
         ));
     }
@@ -278,10 +259,22 @@ pub(crate) fn prepare(
     }))
 }
 
+pub(crate) fn git_common_dir(path: &Path) -> Result<PathBuf> {
+    PathBuf::from(
+        git(
+            path,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        )?
+        .trim(),
+    )
+    .canonicalize()
+    .map_err(Into::into)
+}
+
 pub(crate) fn task_text(bundle: &Bundle, copy: Option<&WorkCopy>) -> Result<String> {
     let mut text = crate::launch::task_text(bundle)?;
     if let Some(copy) = copy {
-        text.push_str(&format!("\nAgency ChangeSet: {}\nBaseline: {}\nWrite lease: {} generation {}\nAgency execution directory: {}\nEdit and test this ChangeSet in this detached worktree. Leave changes uncommitted for Agency sealing. Do not push, publish reviews, obtain Git credentials, or change harness global configuration.\n", copy.change_set, copy.baseline, copy.lease.id, copy.generation, copy.cwd.display()));
+        text.push_str(&format!("\nAgency ChangeSet: {}\nBaseline: {}\nWrite lease: {} generation {}\nAgency execution directory: {}\nEdit and test this ChangeSet in this materialized worktree. Leave changes uncommitted for Agency sealing. Do not push, publish reviews, obtain Git credentials, or change harness global configuration.\n", copy.change_set, copy.baseline, copy.lease.id, copy.generation, copy.cwd.display()));
     }
     Ok(text)
 }
@@ -392,6 +385,59 @@ fn git_optional(path: &Path, args: &[&str]) -> Result<Output> {
         .args(args)
         .current_dir(path);
     run(&mut cmd)
+}
+
+fn tool(path: &Path, args: &[&str]) -> Result<Value> {
+    let program = std::env::var_os("HCTL2_TOOL_BIN")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HCTL2_INSTALL_ROOT")
+                .map(|root| PathBuf::from(root).join("libexec/hctl2/hctl2-tool"))
+        })
+        .ok_or_else(|| {
+            PortError::new(
+                "WRITE_TOOL_UNAVAILABLE",
+                "installed hctl2-tool is required to materialize a ChangeSet",
+                "install_toolbox",
+            )
+        })?;
+    // Buck supplies a relative artifact path; resolve it before moving the tool
+    // into the Agency private directory.
+    let program = program.canonicalize().map_err(|error| {
+        PortError::new(
+            "WRITE_TOOL_UNAVAILABLE",
+            format!("installed hctl2-tool cannot be resolved: {error}"),
+            "install_toolbox",
+        )
+    })?;
+    let mut cmd = Command::new(program);
+    cmd.env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("LANG", "C.UTF-8")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(args)
+        .current_dir(path);
+    let output = run(&mut cmd)?;
+    if !output.status.success() {
+        return Err(PortError::new(
+            "WRITE_TOOL_FAILED",
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout)
+                    .chars()
+                    .take(4096)
+                    .collect::<String>(),
+                String::from_utf8_lossy(&output.stderr)
+                    .chars()
+                    .take(4096)
+                    .collect::<String>()
+            ),
+            "inspect_preserved_worktree",
+        ));
+    }
+    Ok(serde_json::from_slice(&output.stdout)?)
 }
 
 pub(crate) fn run(cmd: &mut Command) -> Result<Output> {

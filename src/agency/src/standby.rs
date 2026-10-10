@@ -649,6 +649,16 @@ impl Native {
                     format!("TMPDIR={}", temp.display()),
                     format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
                 ]);
+                if cfg!(target_os = "macos") {
+                    shell.extend([
+                        "/usr/bin/sandbox-exec".into(),
+                        "-p".into(),
+                        format!(
+                            "(version 1)\n(allow default)\n{}",
+                            crate::confine::worktree_git_denial(cwd)?
+                        ),
+                    ]);
+                }
             }
             shell.push("/bin/sh".into());
             let applied = native.client.call(
