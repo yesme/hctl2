@@ -119,14 +119,20 @@ fetch_gate() {
 }
 
 # A hand-written format assertion, not a general YAML or shell parser. Accept
-# the two owned step names, a single folded command and PR/non-PR conditions.
-# Unsupported shapes fail instead of guessing. Comments, another step, `build`
-# instead of `test`, and --exclude cannot stand in for a scheduled test.
+# the two owned step names, a single folded command, PR/non-PR conditions, the
+# one env key that carries the canary credential and the test-executor argument
+# that hands it to the tests. Unsupported shapes fail instead of guessing.
+# Comments, another step, `build` instead of `test`, and --exclude cannot stand
+# in for a scheduled test.
 # Returns 0 for verified wiring, 1 for a recognized scheduling omission, and 2
 # when the format cannot be verified. Both failures still block the check.
 release_selects_gate() {
     awk -v gate="$1" '
-        function check_step(   expected, pr, non_pr, n, words, i, hits, platform, config) {
+        BEGIN {
+            canary_env = "          HCTL2_CANARY_GITHUB_TOKEN: ${{ secrets.HCTL2_CANARY_GITHUB_TOKEN }}"
+            executor_env = "\"HCTL2_DEMO3_GITHUB_TOKEN=${HCTL2_CANARY_GITHUB_TOKEN}\""
+        }
+        function check_step(   expected, pr, non_pr, n, words, i, hits, platform, config, executor) {
             if (!wanted) return
             seen[wanted]++
             pr = "        if: ${{ github.event_name == '\''pull_request'\'' }}"
@@ -136,6 +142,7 @@ release_selects_gate() {
                 unsupported = 1; return
             }
             if (condition != "        if: ${{ github.event_name " expected " '\''pull_request'\'' }}") not_scheduled = 1
+            if (env_seen != 1) unsupported = 1
             gsub(/\$\{\{ matrix\.buck_target \}\}/, "PLATFORM", command)
             n = split(command, words, / +/)
             if (words[1] == "./buck2" && words[2] == "build") { not_scheduled = 1; return }
@@ -145,22 +152,26 @@ release_selects_gate() {
             for (i = 4; i <= n; i++) {
                 if (words[i] == "--target-platforms" && words[i+1] == "root//build/platforms:PLATFORM") { platform++; i++ }
                 else if (words[i] == "--config" && words[i+1] == "hctl2.zstd_preset=fast") { config++; i++ }
+                else if (words[i] == "--" && words[i+1] == "--env" && words[i+2] == executor_env) { executor++; i += 2 }
                 else if (words[i] ~ /^root\/\/[A-Za-z0-9_\/.-]*:[A-Za-z0-9_.-]+$/) { if (words[i] == gate) hits++ }
                 else unsupported = 1
             }
             if (hits == 0) not_scheduled = 1
-            if (hits > 1 || platform != 1 || config != (wanted == 1 ? 1 : 0)) unsupported = 1
+            if (hits > 1 || platform != 1 || executor != 1 || config != (wanted == 1 ? 1 : 0)) unsupported = 1
         }
         /^  package:$/ { package = 1; next }
         package && /^  [A-Za-z0-9_-]+:/ { check_step(); wanted = 0; package = 0 }
         !package { next }
         /^      - / {
             check_step(); wanted = 0; condition = ""; command = ""; folded = 0; in_run = 0
+            in_env = 0; env_seen = 0
             if ($0 == "      - name: Test complete offline install and lifecycle (fast zstd preset)") wanted = 1
             if ($0 == "      - name: Test complete offline install and lifecycle") wanted = 2
             next
         }
         wanted && /^        if:/ { condition = $0; next }
+        wanted && $0 == "        env:" { in_env = 1; next }
+        wanted && in_env && $0 == canary_env { env_seen++; in_env = 0; next }
         wanted && $0 == "        run: >-" { folded = 1; in_run = 1; next }
         wanted && in_run && /^          / { sub(/^          /, ""); command = command (command == "" ? "" : " ") $0; next }
         wanted && $0 !~ /^[[:space:]]*(#|$)/ { unsupported = 1 }
@@ -234,7 +245,7 @@ while read -r report gate executable scheduler extra; do
                     ;;
                 *)
                     note_failure "cannot verify Release workflow shape for $gate; scheduling is unknown, not proved absent"
-                    printf '%s\n' 'Expected package job steps named "Test complete offline install and lifecycle (fast zstd preset)" and "Test complete offline install and lifecycle", complementary PR conditions, run: >-, a 10-space command body starting ./buck2 test --build-default-info, target arguments, --target-platforms, and the PR fast preset. Update the format assertion and its fixtures when changing this shape.' >&2
+                    printf '%s\n' 'Expected package job steps named "Test complete offline install and lifecycle (fast zstd preset)" and "Test complete offline install and lifecycle", complementary PR conditions, an env block carrying HCTL2_CANARY_GITHUB_TOKEN from secrets, run: >-, a 10-space command body starting ./buck2 test --build-default-info, target arguments, --target-platforms, the PR fast preset, and the trailing -- --env "HCTL2_DEMO3_GITHUB_TOKEN=${HCTL2_CANARY_GITHUB_TOKEN}". Update the format assertion and its fixtures when changing this shape.' >&2
                     continue
                     ;;
             esac
