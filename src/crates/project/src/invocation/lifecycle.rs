@@ -132,6 +132,34 @@ pub(super) fn reducer(actor: &TrustedActor, root: &Record) -> store::Result<Trus
     Ok(TrustedActor(actor.0.clone()))
 }
 
+pub(super) fn stop_effect(
+    store: &Store,
+    root: &Record,
+    call: &Invocation,
+) -> store::Result<EffectIntent> {
+    let id = &root.key.id;
+    let input = json!({"dispatch_intent":id,"owner":call.spec.document.owner,"isolate":true});
+    Ok(EffectIntent {
+        intent_id: format!("stop:{id}"),
+        owner: reference(root),
+        binding: reference(&required(
+            store,
+            &key(
+                Scope::Control,
+                "agency_binding",
+                &call.spec.document.binding.id,
+            ),
+        )?),
+        operation: "agency.stop".into(),
+        target: id.clone(),
+        conflict_scope: format!("stop:{id}"),
+        permission_scope: root.key.scope.clone(),
+        input_digest: Command::digest_input("agency.stop", &input)?,
+        input,
+        idempotency_key: format!("stop:{id}"),
+    })
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct End {
@@ -161,7 +189,7 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
     let (state_record, current) = lifecycle(store, &input.project_id, &input.invocation_id)?;
     // A human can cancel. Failure/loss are reducer decisions under the original
     // authorization, not new client commands or claims made by a model.
-    let scoped = if input.outcome == State::Cancelled {
+    let mut scoped = if input.outcome == State::Cancelled {
         chat::owner(actor, &input.project_id)?
     } else if actor.0.source == store::ActorSource::InternalReducer
         && actor.0.authority
@@ -178,6 +206,12 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
             "request_authorization",
         ));
     };
+    if let Some(write) = &invocation.preview.write {
+        scoped
+            .0
+            .permission_scope
+            .push(Scope::Repo(write.lease.pending.repo_id.clone()));
+    }
     let next_state_version = input
         .state_version
         .checked_add(1)
@@ -225,27 +259,7 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
             reason: Some(input.reason.clone()),
         },
     )?;
-    let cleanup = json!({"dispatch_intent":input.invocation_id,"owner":invocation.spec.document.owner,"isolate":true});
-    let effect = EffectIntent {
-        intent_id: format!("stop:{}", input.invocation_id),
-        owner: reference(&root),
-        binding: required(
-            store,
-            &key(
-                Scope::Control,
-                "agency_binding",
-                &invocation.spec.document.binding.id,
-            ),
-        )
-        .map(|r| reference(&r))?,
-        operation: "agency.stop".into(),
-        target: input.invocation_id.clone(),
-        conflict_scope: format!("stop:{}", input.invocation_id),
-        permission_scope: root.key.scope.clone(),
-        input_digest: Command::digest_input("agency.stop", &cleanup)?,
-        input: cleanup,
-        idempotency_key: format!("stop:{}", input.invocation_id),
-    };
+    let effect = stop_effect(store, &root, &invocation)?;
     store.submit(store.generation(), &scoped, &command, None, |tx| {
         if !current.state.allows(input.outcome) || !decode::<Invocation>(&required_in(tx, &root.key)?)?.authorization.valid {
             return Err(reject("INVALID_TRANSITION", "Invocation is terminal or transition is illegal", "inspect_original_invocation"));
@@ -253,6 +267,7 @@ pub fn end(store: &mut Store, actor: &TrustedActor, input: End) -> store::Result
         tx.put(&revoked)?;
         tx.put(&next)?;
         for id in &unsent { tx.cancel_pending_effect(id)?; }
+        super::write::revoke(tx, &invocation, !requires_cleanup)?;
         if requires_cleanup { tx.enqueue_effect(&effect)?; }
         Ok(json!({"invocation_id":input.invocation_id,"state":input.outcome,"state_version":next_state_version,"authorization_revoked":true,"cleanup_pending":requires_cleanup}))
     })

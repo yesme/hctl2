@@ -333,6 +333,8 @@ impl Control for ControlService {
             | "integration.list"
             | "review.show"
             | "review.list"
+            | "changeset.show"
+            | "changeset.diff"
             | "context.preview"
             | "context.show"
             | "repo.show"
@@ -376,6 +378,8 @@ impl Control for ControlService {
                         crate::integration::query(&store, &kind, &payload)
                     } else if kind.starts_with("review.") {
                         crate::review::query(&store, &kind, &payload)
+                    } else if kind.starts_with("changeset.") {
+                        crate::changesets::query(&store, &actor, &kind, &payload)
                     } else if kind.starts_with("project.")
                         || kind.starts_with("request.")
                         || matches!(kind.as_str(), "pending" | "overview")
@@ -475,6 +479,7 @@ impl Control for ControlService {
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
             || req.operation.starts_with("review.")
+            || req.operation.starts_with("changeset.")
         {
             let payload = match json_bytes(&req.payload) {
                 Ok(value) => value,
@@ -501,6 +506,8 @@ impl Control for ControlService {
                     crate::review::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("profile.") {
                     crate::profiles::preview(&store, &actor, &operation, &payload)
+                } else if operation.starts_with("changeset.") {
+                    crate::changesets::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("memo.") {
                     crate::memo::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {
@@ -538,6 +545,7 @@ impl Control for ControlService {
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
             || req.operation.starts_with("review.")
+            || req.operation.starts_with("changeset.")
         {
             foundation::bytes_sha256(format!("{base_token}\0{details}").as_bytes())
         } else {
@@ -721,6 +729,10 @@ impl Control for ControlService {
             }
             if operation.starts_with("review.") {
                 return crate::review::submit(&store, &actor, &repo_request, &details)
+                    .map_err(|err| present(&err));
+            }
+            if operation.starts_with("changeset.") {
+                return crate::changesets::submit(&store, &actor, &repo_request, &details)
                     .map_err(|err| present(&err));
             }
             if operation.starts_with("project.") {
@@ -1126,6 +1138,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("invocation.")
         || operation.starts_with("integration.")
         || operation.starts_with("review.")
+        || operation.starts_with("changeset.")
 }
 
 fn preview_token(operation: &str, payload: &[u8], command_id: &str) -> String {
