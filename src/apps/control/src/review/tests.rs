@@ -1023,6 +1023,80 @@ fn a_refused_audit_update_publishes_with_a_pending_sync() {
     }
 }
 
+/// A rebind while the audit association is still pending: the retry sends nothing, the
+/// pending sync item stays, and the reason moves to BINDING_CHANGED; a clear that names
+/// another round is refused.
+#[test]
+fn a_rebound_repo_stops_the_audit_retry_and_keeps_the_pending_sync() {
+    let temp = temp("refused-rebound");
+    let platform = Platform::new(&temp.0);
+    platform.without_review_request();
+    let s = scenario(&temp.0, &platform, "one", true, false);
+    drive(&platform, &s).unwrap();
+    let (_, _) = second_revision(&platform, &s, "second\n");
+    platform.set("refuse_update", "");
+    drive(&platform, &s).unwrap();
+    let refused = shown(&s);
+    assert_eq!(refused["intent"]["state"], "published", "{refused}");
+    assert_eq!(platform.updates(), 1, "{refused}");
+    {
+        let mut guard = s.shared.blocking_lock();
+        rebind(guard.as_mut().unwrap(), &s.repo_id);
+    }
+    drive(&platform, &s).unwrap();
+    let held = shown(&s);
+    assert_eq!(
+        held["intent"]["attention"]["code"], "BINDING_CHANGED",
+        "{held}"
+    );
+    assert_eq!(held["intent"]["state"], "published", "{held}");
+    assert_eq!(
+        held["intent"]["audit_sync"]["code"], "AUDIT_UPDATE_REJECTED",
+        "the pending sync item stays: {held}"
+    );
+    assert_eq!(
+        platform.updates(),
+        1,
+        "nothing was sent for the old binding: {held}"
+    );
+    {
+        let mut guard = s.shared.blocking_lock();
+        let store = guard.as_mut().unwrap();
+        assert_eq!(
+            domain::clear_audit_sync(store, &s.repo_id, &s.intent_id, "another-revision", 1)
+                .unwrap_err()
+                .code,
+            "FROZEN_INPUT_CHANGED"
+        );
+    }
+}
+
+/// A rebind as the Store sees it: the binding record moves to version 2.
+fn rebind(store: &mut Store, repo_id: &str) {
+    let binding = repo::binding(repo_id);
+    let record = store.get(&binding.key).unwrap().unwrap();
+    assert_eq!(record.version, 1);
+    let mut next = record.clone();
+    next.version = 2;
+    let cmd = store::Command {
+        command_id: "rebind".into(),
+        idempotency_key: "rebind".into(),
+        actor: scoped(repo_id).0,
+        target: binding.key.clone(),
+        expected: store::Expected::Exact(store::Version::State(1)),
+        binding,
+        input_digest: store::Command::digest_input("test.rebind", &json!({})).unwrap(),
+        operation: "test.rebind".into(),
+        input: json!({}),
+    };
+    store
+        .submit(store.generation(), &scoped(repo_id), &cmd, None, |tx| {
+            tx.put(&next)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+}
+
 /// The intent carries the platform binding version it was authorized under; the worker
 /// sends nothing for an intent whose Repo was rebound since.
 #[test]
@@ -1033,30 +1107,7 @@ fn a_rebound_repo_does_not_receive_an_intent_authorized_under_the_old_binding() 
     let s = scenario(&temp.0, &platform, "one", true, false);
     {
         let mut guard = s.shared.blocking_lock();
-        let store = guard.as_mut().unwrap();
-        // A rebind as the Store sees it: the binding record moves to version 2.
-        let binding = repo::binding(&s.repo_id);
-        let record = store.get(&binding.key).unwrap().unwrap();
-        assert_eq!(record.version, 1);
-        let mut next = record.clone();
-        next.version = 2;
-        let cmd = store::Command {
-            command_id: "rebind".into(),
-            idempotency_key: "rebind".into(),
-            actor: scoped(&s.repo_id).0,
-            target: binding.key.clone(),
-            expected: store::Expected::Exact(store::Version::State(1)),
-            binding: binding.clone(),
-            input_digest: store::Command::digest_input("test.rebind", &json!({})).unwrap(),
-            operation: "test.rebind".into(),
-            input: json!({}),
-        };
-        store
-            .submit(store.generation(), &scoped(&s.repo_id), &cmd, None, |tx| {
-                tx.put(&next)?;
-                Ok(json!({}))
-            })
-            .unwrap();
+        rebind(guard.as_mut().unwrap(), &s.repo_id);
     }
     drive(&platform, &s).unwrap();
     let held = shown(&s);

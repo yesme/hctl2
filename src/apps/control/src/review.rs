@@ -270,6 +270,18 @@ fn retry_audit(
     connect: &mut dyn FnMut(&Registration) -> Result<(Connection, Credential)>,
 ) -> Result<()> {
     let registration = access(shared, |s| require_active(s, repo_id))?;
+    // The same check the full attempt makes: a rebind since this publish was authorized is
+    // a new authorization, so nothing is sent for the old one and the pending sync item
+    // stays, now carrying that reason.
+    let binding_version = access(shared, |s| {
+        Ok(s.get(&repo::binding(repo_id).key)?.map(|r| r.version))
+    })?;
+    if binding_version != Some(intent.binding_version as i64) {
+        access(shared, |s| {
+            domain::note_binding_changed(s, repo_id, &intent.intent_id)
+        })?;
+        return Ok(());
+    }
     let observed = registration.observed.clone().ok_or_else(|| {
         reject(
             "REPO_PENDING",
@@ -283,17 +295,36 @@ fn retry_audit(
     let Some(commit) = intent.review.confirmed_commit.clone() else {
         return Ok(());
     };
+    let (connection, _credential) = connect(&registration)?;
+    // The request is found the way the publish pass finds it, and the number it finds must
+    // be the recorded one: a changed request is never updated blind.
+    let found = match connection.find_review_request(
+        &observed.full_name,
+        &intent.policy.policy.target_branch,
+        &intent.branch,
+    ) {
+        Ok(found) => found,
+        Err(_) => return Ok(()),
+    };
+    if found.is_none_or(|request| request.index != index) {
+        return Ok(());
+    }
     let title = format!(
         "hctl2: ChangeSet {} · revision {}",
         short(&intent.change_set_id),
         short(&intent.target.change_set_revision_id)
     );
     let body = association(intent, &commit);
-    let (connection, _credential) = connect(&registration)?;
     match connection.update_review_request(&observed.full_name, index, &title, &body) {
         Ok(()) => {
             access(shared, |s| {
-                domain::clear_audit_sync(s, repo_id, &intent.intent_id)
+                domain::clear_audit_sync(
+                    s,
+                    repo_id,
+                    &intent.intent_id,
+                    &intent.target.change_set_revision_id,
+                    intent.round,
+                )
             })?;
             Ok(())
         }

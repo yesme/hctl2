@@ -742,8 +742,16 @@ fn bump(
 
 /// The audit association finally went through: drop the pending sync item. Publishing is
 /// untouched — the round stays `published` with its mapping.
-pub fn clear_audit_sync(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<Intent> {
+pub fn clear_audit_sync(
+    store: &mut Store,
+    repo_id: &str,
+    intent_id: &str,
+    revision_id: &str,
+    round: u64,
+) -> Result<Intent> {
     let intent = get(store, repo_id, intent_id)?;
+    // The retry was planned against one round; a newer one owns the audit association now.
+    expect_round(&intent, revision_id, round)?;
     if intent.state != State::Published || intent.audit_sync.is_none() {
         return Ok(intent);
     }
@@ -755,6 +763,37 @@ pub fn clear_audit_sync(store: &mut Store, repo_id: &str, intent_id: &str) -> Re
         intent_id,
         intent,
         "review.audit_synced",
+        json!({"intent_id": intent_id}),
+    )
+}
+
+/// The Repo's platform binding changed since this publish was authorized: nothing more is
+/// sent for the old authorization, and the pending audit sync stays where it is, now with
+/// that reason. Idempotent — the worker re-reads the same intent every pass.
+pub fn note_binding_changed(store: &mut Store, repo_id: &str, intent_id: &str) -> Result<Intent> {
+    let mut intent = get(store, repo_id, intent_id)?;
+    if intent.state != State::Published || intent.audit_sync.is_none() {
+        return Ok(intent);
+    }
+    if intent
+        .attention
+        .as_ref()
+        .is_some_and(|attention| attention.code == "BINDING_CHANGED")
+    {
+        return Ok(intent);
+    }
+    intent.attention = Some(Attention {
+        code: "BINDING_CHANGED".into(),
+        message: "the Repo's platform binding changed since this publish was authorized; the audit association is not sent".into(),
+        recovery_action: "authorize_a_new_dispatch_under_the_current_binding".into(),
+        details: json!({"authorized": intent.binding_version}),
+    });
+    bump(
+        store,
+        repo_id,
+        intent_id,
+        intent,
+        "review.audit_binding_changed",
         json!({"intent_id": intent_id}),
     )
 }
