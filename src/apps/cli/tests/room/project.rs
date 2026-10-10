@@ -765,14 +765,13 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         {"text":"a human judged it done","grade":"human"}],"roles":[],"capabilities":[]});
     let digest = foundation::canonical_json_sha256(&contract).unwrap();
     let adoption = json!({"contract":contract,"origin":{"kind":"local","reference":{"key":{"scope":{"kind":"project","id":p},"kind":"project","id":p},"version":{"state":pv}},"proposal_digest":digest}});
-    let adopted = accepted(
+    accepted(
         &f,
         "task",
         "adopt",
         "demo3-adopt",
         json!({"project_id":p,"project_version":pv,"task_id":task_id,"version":before["version"],"adoption":adoption}),
     );
-    let adopted_task = &adopted["task"];
     // 写入型调用，归属这张 Task。
     let baseline =
         String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
@@ -1083,13 +1082,17 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     );
     assert_eq!(main["commit"]["id"], commit, "{main}");
     assert_eq!(receipt["target_head_after"], commit, "{merged}");
-    // 人的第 2 次预览：完成 Task，机械项引用这张 Receipt。
+    // 人的第 2 次预览：完成 Task，机械项引用这张 Receipt。完成预览按当前 Task Revision 提交：
+    // 集成回执挂上任务之后记录会前移，拿采纳时那份旧版本会被判 `VERSION_CONFLICT`
+    // （全量并行跑时撞到过一次），这里重读一次再提交。
     let principal = format!("local-owner:{}", std::fs::metadata(&f.root).unwrap().uid());
     let receipt_ref = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"integration_receipt","id":receipt_id},"version":{"state":1}});
+    let (ok, current_task) = f.run(&["task", "show", &p, &task_id]);
+    assert!(ok, "{current_task}");
     let complete = json!({
-        "project_id":p,"task_id":task_id,"version":adopted_task["version"],
-        "lifecycle_version":adopted_task["data"]["lifecycle_version"],
-        "revision_number":adopted_task["data"]["revision"]["number"],
+        "project_id":p,"task_id":task_id,"version":current_task["version"],
+        "lifecycle_version":current_task["data"]["lifecycle_version"],
+        "revision_number":current_task["data"]["revision"]["number"],
         "acceptance":[
             {"item":0,"judge":{"kind":"hctl2_tool"},"channel":"unmediated","references":[receipt_ref],"producer":"hctl2-tool","generation":1},
             {"item":1,"judge":{"kind":"human","actor":principal},"channel":"narrated","references":[],"producer":null,"generation":null}
