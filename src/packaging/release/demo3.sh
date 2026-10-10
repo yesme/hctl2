@@ -81,14 +81,20 @@ assert_json() { # <filter> <json> <what went wrong>
 # The product's write convention: the same command twice, first without a token
 # so it only previews, then with the exact token so it submits. There is no
 # one-shot form, so the preview is never skipped by accident.
+# No caller tolerates a refusal here, so both phases report the answer they got:
+# with `--json` the diagnosis is on stdout, and stdout is what the caller
+# captures, so an unreported failure would leave the runner log with a line
+# number and no reason.
 two_phase() { # <key> <command...> (no --key, no --preview-token)
     local key="$1"
     shift
-    local preview token
+    local preview token submitted status=0
     preview="$(hctl2 "$@" --key "$key")" || die "preview of $key failed: $preview"
     token="$(json_str '.preview_token' "$preview")" ||
         die "preview of $key returned no token: $preview"
-    hctl2 "$@" --key "$key" --preview-token "$token"
+    submitted="$(hctl2 "$@" --key "$key" --preview-token "$token")" || status=$?
+    [[ "$status" -eq 0 ]] || die "submit of $key exited $status: $submitted"
+    printf '%s\n' "$submitted"
 }
 
 demo3_sha256() { # stdin -> lowercase hex
