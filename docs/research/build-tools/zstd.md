@@ -57,3 +57,12 @@
 - 同批改动：`src/build/tools/zstd.bzl`（源码钉定）、`zstd-build.sh`（构建脚本，含 make 日志的线程断言）、`BUCK`（`zstd-bin` 目标）、`common/action.sh`（`run_zstd` / `require_pinned_zstd` / `zstd_preset_flags` / `compress_archive`）、两个 `defs.bzl`（工具输入与预设配置 `hctl2.zstd_preset`）、归档名与解包路径（`package.sh`、`assemble.sh`、三个 `test-package.sh`）、`src/apps/cli/tests/room.rs` 与 `src/packaging/release/BUCK`（release 测试按 `.tar.zst` 找包、解包走钉定 zstd）、`docs/usage.md`、打包 README ×4、`src/crates/{chat,project}/README.md` 的预设开关与 `release.yml`。
 - 归档名由 `.tar.xz` 改为 `.tar.zst`，`.sha256` 旁文件同批改名；解包一律经钉定 zstd（`run_zstd -dc … | tar -xf -`），不依赖宿主 PATH 上的 tar 解码能力。
 - 三平台 CI（`Buck2` 与 `Complete package` 四个 job）已跑通：Linux x86_64 与 macOS arm64 上现编工具、打整包（release 预设）并跑完离线安装与服务生命周期；macOS x86_64 的发布构建按既定排期在 tag 流水线验证。
+
+
+### 2026-10-11 · 流式 tar 消费完整解码输出
+
+第 9 包 GitHub PR 的 macOS 完整包检查出现过组包 action exit 141、安装前静默退出与依赖包验收阶段静默退出。共同的流式入口是 `run_zstd -dc ... | tar -[tx]f -`：tar 遇到结束零块后可以先关闭管道，zstd 仍在输出合法的归档填充，收到 SIGPIPE；`pipefail` 因此把合法归档判为失败。
+
+先核原生选项：[libarchive bsdtar 手册](https://raw.githubusercontent.com/libarchive/libarchive/master/tar/bsdtar.1) 的 `--ignore-zeros` 与 GNU tar 兼容，读取结束零块之后的数据。对解包和列目录入口加该选项，让 tar 消费完整输入；仍用钉定 zstd 与 pipefail，不吞 141 或解码错误，不增加临时 tar 副本。列目录的布局验证也扫描全部成员。
+
+本机用 Buck2 构建的 zstd 与 GNU tar 1.35 复核：有效单文件归档尾部加 16 MiB 零填充，原入口 decoder=-13（shell 141）、tar=0；加 `--ignore-zeros` 后二者 0，列出的文件仍只有 fixture.txt。翻转 zstd 校验尾字节，加选项的入口仍 decoder=1，`Restored data doesn't match checksum`，没有把损坏压缩包放过。macOS 实际修正结果随后核 CI，不把此 Linux 复现冒充 macOS 实测。

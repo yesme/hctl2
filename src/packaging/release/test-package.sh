@@ -58,7 +58,7 @@ cleanup_release_test() {
     find "${test_root:?}" -depth -delete
 }
 trap cleanup_release_test EXIT
-run_zstd -dc "$ARCHIVE" | tar -xf - -C "$test_root"
+run_zstd -dc "$ARCHIVE" | tar --ignore-zeros -xf - -C "$test_root"
 release_root="$test_root/$PACKAGE_ID"
 
 [[ -x "$release_root/payload/bin/hctl2-tool" ]] || die "release is missing hctl2-tool"
