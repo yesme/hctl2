@@ -442,9 +442,9 @@ pub(super) fn query(shared: &Shared, kind: &str, payload: &Value) -> Result<Valu
         ),
         "task.show" => {
             let (r, t) = task::task(s, field(payload, "project_id")?, field(payload, "task_id")?)?;
-            Ok(
-                json!({"version":r.version,"data":t,"request_blockers":task::request_blockers(s,&t.project_id,&t.id)?.into_iter().map(|(_,b)|b).collect::<Vec<_>>()}),
-            )
+            let mut shown = json!({"version":r.version,"data":t,"request_blockers":task::request_blockers(s,&t.project_id,&t.id)?.into_iter().map(|(_,b)|b).collect::<Vec<_>>()});
+            shown["progress"] = progress(s, &t)?;
+            Ok(shown)
         }
         "task.sources" => Ok(
             json!({"items":s.list("task_source")?,"references":s.list("task_source_reference")?,"defaults":s.list("task_default_source")?}),
@@ -460,6 +460,113 @@ pub(super) fn query(shared: &Shared, kind: &str, payload: &Value) -> Result<Valu
             "correct_input",
         )),
     })
+}
+
+/// Where the Task's work stands, joined from the records that already exist: the Room
+/// Invocations dispatched for it, the newest admitted version of their ChangeSet, its review
+/// publication, the integration of that version, and the Completion Receipt. Read-only; the
+/// human view of `task show` turns it into goal, state, blocking, harness, evidence and the
+/// next command (CT-PRODUCT: answerable in ten seconds).
+fn progress(s: &Store, t: &task::Task) -> Result<Value> {
+    let mut invocations = Vec::new();
+    let mut write_sets: Vec<(String, String)> = Vec::new();
+    for record in s.list("room_invocation")? {
+        if record.key.scope != Scope::Project(t.project_id.clone()) {
+            continue;
+        }
+        let store::RecordData::Value { value } = &record.data else {
+            continue;
+        };
+        let Ok(call) = serde_json::from_value::<project::invocation::Invocation>(value.clone())
+        else {
+            continue;
+        };
+        if call.preview.input.task_id.as_deref() != Some(t.id.as_str()) {
+            continue;
+        }
+        let id = record.key.id.clone();
+        let (state, reason) = match project::invocation::lifecycle(s, &t.project_id, &id) {
+            Ok((_, lifecycle)) => (
+                serde_json::to_value(lifecycle.state)?,
+                json!(lifecycle.reason),
+            ),
+            Err(_) => (json!("unknown"), Value::Null),
+        };
+        let write = call.preview.write.as_ref().map(|w| {
+            json!({"repo_id": w.lease.pending.repo_id, "change_set_id": w.lease.pending.change_set_id})
+        });
+        if let Some(w) = &call.preview.write {
+            write_sets.push((
+                w.lease.pending.repo_id.clone(),
+                w.lease.pending.change_set_id.clone(),
+            ));
+        }
+        let profession = &call.spec.document.profession;
+        invocations.push(json!({
+            "invocation_id": id, "state": state, "reason": reason,
+            "harness": profession.harness.id, "model": profession.model, "write": write,
+        }));
+    }
+    // The newest admitted version across this Task's ChangeSets, and what followed it.
+    let mut revision = Value::Null;
+    let mut review = Value::Null;
+    let mut integration = Value::Null;
+    if let Some((repo_id, change_set_id)) = write_sets.last() {
+        // Revisions are listed in id order, not time order. The newest one is the one the
+        // ChangeSet's publish intent is on (or waiting behind it); without publishing, a
+        // single admitted version is the answer and several are not guessed at.
+        let intent_id = repo::review::intent_id(s.control_id(), repo_id, change_set_id);
+        let intent = repo::review::get(s, repo_id, &intent_id).ok();
+        let revisions = repo::changeset::list_revisions(s, change_set_id)?;
+        let current = intent
+            .as_ref()
+            .map(|i| {
+                i.queued
+                    .as_ref()
+                    .unwrap_or(&i.target)
+                    .change_set_revision_id
+                    .clone()
+            })
+            .or_else(|| {
+                (revisions.len() == 1).then(|| revisions[0].change_set_revision_id.clone())
+            });
+        if let Some(latest) = current.and_then(|id| {
+            revisions
+                .into_iter()
+                .find(|r| r.change_set_revision_id == id)
+        }) {
+            if let Some(intent) = &intent {
+                let index =
+                    repo::integration::review_request(s, repo_id, &latest.change_set_revision_id)?
+                        .map(|r| r.index);
+                review = json!({"intent_id": intent.intent_id, "state": intent.state,
+                    "branch": intent.branch, "target_branch": intent.policy.policy.target_branch,
+                    "review_request": index});
+            }
+            if let Some(merge) = repo::integration::list(s, repo_id)?
+                .into_iter()
+                .rev()
+                .find(|i| i.preview.source.change_set_revision_id == latest.change_set_revision_id)
+            {
+                integration = json!({"intent_id": merge.intent_id, "state": merge.state,
+                    "receipt_id": merge.receipt_id});
+            }
+            revision = json!({"repo_id": repo_id, "change_set_id": change_set_id,
+                "change_set_revision_id": latest.change_set_revision_id,
+                "base_commit_sha": latest.base_commit_sha, "result_tree_sha": latest.result_tree_sha});
+        }
+    }
+    let completion = s
+        .list(task::COMPLETION_RECEIPT_KIND)?
+        .into_iter()
+        .filter_map(|r| task::decode::<task::CompletionReceipt>(&r).ok())
+        .filter(|c| c.task_id == t.id && c.project_id == t.project_id)
+        .max_by_key(|c| c.lifecycle_version)
+        .map(|c| json!({"receipt_id": c.receipt_id, "lifecycle_version": c.lifecycle_version}));
+    Ok(json!({
+        "invocations": invocations, "revision": revision, "review": review,
+        "integration": integration, "completion": completion,
+    }))
 }
 
 /// Periodic read-only reconciliation. No pending writes are resent by this loop.

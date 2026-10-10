@@ -382,6 +382,7 @@ fn dash(value: &Value) -> String {
 /// fallback. List kinds render as tables with headers; empty lists say so.
 pub(crate) fn query(kind: &str, value: &Value) -> Option<String> {
     match kind {
+        "task.show" => Some(task_show(value)),
         "task.list" => {
             let items = rows_of(value, "items")?;
             let mut table = Table::new(&["task", "project", "title", "lifecycle", "version"]);
@@ -577,5 +578,181 @@ pub(crate) fn query(kind: &str, value: &Value) -> Option<String> {
             Some(table.render("No Repos registered yet."))
         }
         _ => None,
+    }
+}
+
+/// `task show` for a person: what the Task is for, where it stands, what blocks it, which
+/// harness is on it, the evidence so far, and the one command that moves it on.
+fn task_show(value: &Value) -> String {
+    let data = &value["data"];
+    let progress = &value["progress"];
+    let project = cell(&data["project_id"]);
+    let task = cell(&data["id"]);
+    let contract = if data["revision"].is_null() {
+        "no contract adopted".to_owned()
+    } else {
+        format!("contract revision {}", cell(&data["revision"]["number"]))
+    };
+    let blockers = value["request_blockers"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let latest = progress["invocations"]
+        .as_array()
+        .and_then(|items| items.last())
+        .cloned()
+        .unwrap_or(Value::Null);
+    let harness = if latest.is_null() {
+        "none dispatched yet".to_owned()
+    } else {
+        format!(
+            "{} ({}) — invocation {} {}",
+            dash(&latest["harness"]),
+            dash(&latest["model"]),
+            short_id(&cell(&latest["invocation_id"])),
+            dash(&latest["state"]),
+        )
+    };
+    let revision = &progress["revision"];
+    let review = &progress["review"];
+    let integration = &progress["integration"];
+    let completion = &progress["completion"];
+    let mut evidence = Vec::new();
+    if !revision.is_null() {
+        evidence.push(format!(
+            "version {}",
+            short_id(&cell(&revision["change_set_revision_id"]))
+        ));
+    }
+    if !review.is_null() {
+        evidence.push(match review["review_request"].as_u64() {
+            Some(index) => format!("review request #{index} ({})", dash(&review["state"])),
+            None => format!("review {}", dash(&review["state"])),
+        });
+    }
+    if !integration.is_null() {
+        evidence.push(match integration["receipt_id"].as_str() {
+            Some(receipt) => format!("Integration Receipt {}", short_id(receipt)),
+            None => format!("integration {}", dash(&integration["state"])),
+        });
+    }
+    if !completion.is_null() {
+        evidence.push(format!(
+            "Completion Receipt {}",
+            short_id(&cell(&completion["receipt_id"]))
+        ));
+    }
+    let blocking = if !blockers.is_empty() {
+        format!("{} pending request(s)", blockers.len())
+    } else if data["revision"].is_null() {
+        "completion needs an adopted contract".to_owned()
+    } else {
+        "nothing".to_owned()
+    };
+    let next = next_step(
+        &project,
+        &task,
+        data,
+        &blockers,
+        &latest,
+        review,
+        integration,
+        completion,
+    );
+    [
+        format!("Task {} — {}", short_id(&task), dash(&data["title"])),
+        format!("  goal      {}", dash(&data["title"])),
+        format!("  state     {}; {contract}", dash(&data["lifecycle"])),
+        format!("  blocking  {blocking}"),
+        format!("  harness   {harness}"),
+        format!(
+            "  evidence  {}",
+            if evidence.is_empty() {
+                "none yet".to_owned()
+            } else {
+                evidence.join(", ")
+            }
+        ),
+        format!("  next      {next}"),
+    ]
+    .join("\n")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn next_step(
+    project: &str,
+    task: &str,
+    data: &Value,
+    blockers: &[Value],
+    latest: &Value,
+    review: &Value,
+    integration: &Value,
+    completion: &Value,
+) -> String {
+    let running = |state: &Value| {
+        matches!(
+            state.as_str(),
+            Some("pending" | "running" | "waiting_input")
+        )
+    };
+    if data["lifecycle"] == "completed" || !completion.is_null() {
+        return "nothing — the Task is completed".into();
+    }
+    if !blockers.is_empty() {
+        return format!("answer the pending request: hctl2 project pending {project}");
+    }
+    if data["revision"].is_null() {
+        return format!(
+            "adopt a contract for Task {}: hctl2 task adopt --key <key> --input <adoption.json>",
+            short_id(task)
+        );
+    }
+    if latest.is_null() {
+        return "dispatch from the Room with this task_id: hctl2 invocation preview --input <invocation.json> --key <key>".into();
+    }
+    if running(&latest["state"]) {
+        return format!(
+            "wait for {} to return (invocation {})",
+            dash(&latest["harness"]),
+            dash(&latest["state"])
+        );
+    }
+    if review.is_null() && integration.is_null() {
+        return format!(
+            "inspect the invocation: hctl2 invocation show {project} {}",
+            cell(&latest["invocation_id"])
+        );
+    }
+    match review["state"].as_str() {
+        Some("pending_human") => {
+            return format!(
+                "release publishing for review: hctl2 review publish {} {}",
+                cell(&latest["write"]["repo_id"]),
+                cell(&review["intent_id"])
+            );
+        }
+        Some("pending" | "unknown") => {
+            return format!("wait for publishing (review {})", dash(&review["state"]));
+        }
+        _ => {}
+    }
+    match integration["state"].as_str() {
+        None => format!(
+            "integrate the published version into {}: hctl2 integration preview --input <integration.json> --key <key>",
+            dash(&review["target_branch"])
+        ),
+        Some("succeeded") => "complete the Task citing the Integration Receipt: hctl2 task complete --input <completion.json> --key <key>".to_owned(),
+        Some(state) => format!("wait for integration ({state})"),
+    }
+}
+
+/// Long ids shortened for a person: the kind prefix plus twelve characters.
+fn short_id(id: &str) -> String {
+    match id.split_once('-') {
+        Some((kind, rest)) if kind.len() <= 11 && rest.len() > 12 => {
+            format!("{kind}-{}", rest.chars().take(12).collect::<String>())
+        }
+        _ if id.len() > 16 => id.chars().take(16).collect(),
+        _ => id.to_owned(),
     }
 }

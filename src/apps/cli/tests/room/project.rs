@@ -665,6 +665,27 @@ fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
     demo3_gitea_chain("demo3-gitea-confirm", true);
 }
 
+/// `task show` for a person, and its `next` line.
+fn task_next(f: &Fixture, project: &str, task: &str) -> (String, String) {
+    let (ok, out, err) = f.run_raw(false, &["task", "show", project, task]);
+    assert!(ok, "{}", String::from_utf8_lossy(&err));
+    let text = String::from_utf8(out).unwrap();
+    assert!(!text.contains('\u{1b}'), "{text}");
+    for field in ["goal", "state", "blocking", "harness", "evidence", "next"] {
+        assert!(
+            text.lines().any(|l| l.trim_start().starts_with(field)),
+            "task show lacks {field}: {text}"
+        );
+    }
+    let next = text
+        .lines()
+        .find_map(|l| l.trim_start().strip_prefix("next"))
+        .unwrap()
+        .trim()
+        .to_owned();
+    (text, next)
+}
+
 fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     let (f, mut setup) = paired_profile(name, 0, "write");
     let p = setup.project.clone();
@@ -736,6 +757,24 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         json!({"project_id":p,"project_version":pv,"task_id":task_id,"version":before["version"],"adoption":adoption}),
     );
     let adopted_task = &adopted["task"];
+    // 十秒答得出：合同已采纳、还没派工，下一步是从 Room 派工。
+    let (_, next) = task_next(&f, &p, &task_id);
+    assert!(next.starts_with("dispatch from the Room"), "{next}");
+    // 逃生口一：没有契约的卡只映射，完成会被拒，不签凭证；task show 说它卡在哪。
+    let bare = accepted(
+        &f,
+        "task",
+        "create",
+        "demo3-bare-task",
+        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"no contract","body":"mapped only"}),
+    );
+    let bare_id = bare["task_id"].as_str().unwrap().to_owned();
+    let (text, next) = task_next(&f, &p, &bare_id);
+    assert!(
+        text.contains("completion needs an adopted contract"),
+        "{text}"
+    );
+    assert!(next.starts_with("adopt a contract"), "{next}");
     // 写入型调用，归属这张 Task。
     let baseline =
         String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
@@ -853,6 +892,14 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     if requires_confirmation {
         let held = f.run(&["review", "show", &setup.repo, &intent]).1;
         assert_eq!(held["intent"]["state"], "pending_human", "{held}");
+        let (_, next) = task_next(&f, &p, &task_id);
+        assert!(
+            next.starts_with(&format!(
+                "release publishing for review: hctl2 review publish {} {intent}",
+                setup.repo
+            )),
+            "{next}"
+        );
         // 人的发布预览：推到哪个分支、建到哪个目标、不是合入。
         let (ok, release) = f.run(&["review", "publish", &setup.repo, &intent]);
         assert!(ok, "{release}");
@@ -892,6 +939,12 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     let index = published["mappings"][0]["review_request"]["index"]
         .as_u64()
         .unwrap();
+    let (text, next) = task_next(&f, &p, &task_id);
+    assert!(
+        next.starts_with("integrate the published version into main"),
+        "{text}"
+    );
+    assert!(text.contains(&format!("review request #{index}")), "{text}");
     // 人的第 1 次预览：合入，只选接受目标前移。
     let integration = f.root.join("demo3-integration.json");
     std::fs::write(
@@ -960,6 +1013,10 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     );
     assert_eq!(main["commit"]["id"], commit, "{main}");
     assert_eq!(receipt["target_head_after"], commit, "{merged}");
+    let (text, next) = task_next(&f, &p, &task_id);
+    assert!(next.starts_with("complete the Task"), "{text}");
+    println!("LIVE CLI demo3 task show before completion:\n{text}");
+    assert!(text.contains("Integration Receipt"), "{text}");
     // 人的第 2 次预览：完成 Task，机械项引用这张 Receipt。
     let principal = format!("local-owner:{}", std::fs::metadata(&f.root).unwrap().uid());
     let receipt_ref = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"integration_receipt","id":receipt_id},"version":{"state":1}});
@@ -1000,6 +1057,27 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     let (ok, task_after) = f.run(&["task", "show", &p, &task_id]);
     assert!(ok, "{task_after}");
     assert_eq!(task_after["data"]["lifecycle"], "completed", "{task_after}");
+    // 逃生口三：无 Run 路径从 Task 回溯得到每一个对象，和链上的一一对上。
+    let progress = &task_after["progress"];
+    assert_eq!(
+        progress["invocations"][0]["invocation_id"], invocation,
+        "{progress}"
+    );
+    assert_eq!(
+        progress["revision"]["change_set_revision_id"], revision_id,
+        "{progress}"
+    );
+    assert_eq!(progress["review"]["review_request"], index, "{progress}");
+    assert_eq!(
+        progress["integration"]["receipt_id"], receipt_id,
+        "{progress}"
+    );
+    assert!(
+        progress["completion"]["receipt_id"].is_string(),
+        "{progress}"
+    );
+    let (_, next) = task_next(&f, &p, &task_id);
+    assert!(next.starts_with("nothing"), "{next}");
     assert_eq!(
         human_previews,
         if requires_confirmation {
