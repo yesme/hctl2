@@ -191,3 +191,25 @@ fn room_three_states_and_project_settings_are_versioned_not_repo_policy() {
         matches!(&store.versions(&project.key).unwrap()[0].data,RecordData::Project{settings,..} if !settings.publish_review_requires_confirmation)
     );
 }
+
+/// Admission order comes from the event log, not from ids: a later write has a larger first
+/// sequence even when its id sorts first, a new version does not move the first sequence,
+/// and an object never written has none.
+#[test]
+fn first_sequence_follows_admission_order_not_ids() {
+    let temp = Temp::new();
+    let mut store = temp.store();
+    let older = task("p", "zzz-older");
+    let newer = task("q", "aaa-newer");
+    submit_record(&mut store, "p", &older);
+    submit_record(&mut store, "q", &newer);
+    let first = store.first_sequence(&older.key).unwrap().unwrap();
+    let second = store.first_sequence(&newer.key).unwrap().unwrap();
+    assert!(first < second, "{first} < {second}");
+    assert!(
+        store
+            .first_sequence(&task("r", "never").key)
+            .unwrap()
+            .is_none()
+    );
+}

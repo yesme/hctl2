@@ -1064,16 +1064,19 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         "{progress}"
     );
     assert_eq!(
-        progress["revision"]["change_set_revision_id"], revision_id,
+        progress["revisions"][0]["change_set_revision_id"], revision_id,
         "{progress}"
     );
-    assert_eq!(progress["review"]["review_request"], index, "{progress}");
     assert_eq!(
-        progress["integration"]["receipt_id"], receipt_id,
+        progress["revisions"][0]["publication"]["review_request"], index,
+        "{progress}"
+    );
+    assert_eq!(
+        progress["revisions"][0]["integration"]["receipt_id"], receipt_id,
         "{progress}"
     );
     assert!(
-        progress["completion"]["receipt_id"].is_string(),
+        progress["completion"]["current"]["receipt_id"].is_string(),
         "{progress}"
     );
     let (_, next) = task_next(&f, &p, &task_id);

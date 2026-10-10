@@ -454,21 +454,47 @@ fn admit(
     })
 }
 
-/// The Room line for an admitted write: which version, from what, and what happens next.
+/// The Room line for an admitted write: which version, from what, and what happens to that
+/// exact version next. The publish intent works one round at a time, so a version can be
+/// the round being published, wait behind it, or be refused by a create-only policy.
 fn write_summary(
     revision: &repo::changeset::ChangeSetRevision,
     intent: Option<&repo::review::Intent>,
 ) -> String {
+    use repo::review::State;
+    let id = revision.change_set_revision_id.as_str();
     let next = match intent {
-        Some(intent) if intent.state == repo::review::State::PendingHuman => format!(
-            "Publishing for review waits for a human: hctl2 review publish {} {}",
+        None => "No review publication was authorized for this write.".to_owned(),
+        Some(intent)
+            if intent.attention.as_ref().is_some_and(|a| {
+                a.code == "UPDATE_NOT_ALLOWED" && a.details["unpublished_revision"] == id
+            }) =>
+        {
+            "Not published: the frozen policy only creates the review request, and it already exists; this version stays unpublished.".to_owned()
+        }
+        Some(intent)
+            if intent.queued.as_ref().map(|q| q.change_set_revision_id.as_str()) == Some(id) =>
+        {
+            "Publishing for review waits for the version already in flight to settle.".to_owned()
+        }
+        Some(intent) if intent.target.change_set_revision_id == id => match intent.state {
+            State::PendingHuman => format!(
+                "Publishing for review waits for a human: hctl2 review publish {} {}",
+                intent.repo_id, intent.intent_id
+            ),
+            State::Pending => format!(
+                "Publishing for review is queued: push to {} and open or update the review request, each read back.",
+                intent.branch
+            ),
+            _ => format!(
+                "Publishing for review: hctl2 review show {} {}",
+                intent.repo_id, intent.intent_id
+            ),
+        },
+        Some(intent) => format!(
+            "Publishing for review: hctl2 review show {} {}",
             intent.repo_id, intent.intent_id
         ),
-        Some(intent) => format!(
-            "Publishing for review is queued: push to {} and open a review request, each read back.",
-            intent.branch
-        ),
-        None => "No review publication was authorized for this write.".into(),
     };
     format!(
         "Write admitted as version {} of ChangeSet {} (baseline {}, result tree {}). {next}",
@@ -487,5 +513,75 @@ fn short(id: &str) -> String {
             format!("{kind}-{}", rest.chars().take(12).collect::<String>())
         }
         _ => id.chars().take(12).collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A publish intent as the review domain stores it, for the shapes that matter here.
+    fn intent(
+        state: &str,
+        target: &str,
+        queued: Option<&str>,
+        attention: Option<(&str, &str)>,
+    ) -> repo::review::Intent {
+        let revision = |id: &str| json!({"change_set_revision_id": id, "base_commit_sha": "b".repeat(40), "result_tree_sha": "c".repeat(40), "commit_sha": null});
+        serde_json::from_value(json!({
+            "intent_id": "pub", "repo_id": "R", "change_set_id": "cs-1",
+            "policy": {"policy_id": "p", "version": 1, "digest": "d", "policy": {
+                "repo_id": "R", "binding_version": 1, "branch_rule": "hctl2/{change_set}",
+                "target_branch": "main", "allow_update": false, "description_source": "none",
+                "requires_human_confirmation": false, "audit_scope": "minimal"}},
+            "branch": "hctl2/cs-1",
+            "authorized_by": {"kind": "invocation", "invocation_id": "inv", "invocation_version": 1},
+            "authorizing_actor": {"principal": "owner", "source": "direct_client", "permission_scope": [{"kind": "control"}], "authority": null},
+            "state": state, "round": 1, "binding_version": 1, "target": revision(target),
+            "started": false, "queued": queued.map(revision),
+            "push": {"dispatched": false, "confirmed_commit": null, "confirmed_at_unix_ms": null},
+            "review": {"dispatched": false, "index": null, "confirmed_commit": null, "confirmed_at_unix_ms": null},
+            "attempts": 0,
+            "attention": attention.map(|(code, unpublished)| json!({"code": code, "message": "m", "recovery_action": "r", "details": {"unpublished_revision": unpublished}})),
+            "failure": null, "version": 1
+        }))
+        .unwrap()
+    }
+
+    fn admitted(id: &str) -> repo::changeset::ChangeSetRevision {
+        serde_json::from_value(json!({
+            "change_set_revision_id": id, "change_set_id": "cs-1", "parent_revision_id": null,
+            "base_commit_sha": "b".repeat(40), "result_tree_sha": "c".repeat(40),
+            "producer_ref": {"kind": "invocation", "invocation_id": "inv", "invocation_version": 1},
+            "review_subject_digest": "d", "revision_digest": "d"
+        }))
+        .unwrap()
+    }
+
+    /// The Room line follows what happens to this exact version, not to the intent's round.
+    #[test]
+    fn the_room_line_names_what_happens_to_this_version() {
+        let v2 = admitted("csr-2");
+        let refused = intent(
+            "published",
+            "csr-1",
+            None,
+            Some(("UPDATE_NOT_ALLOWED", "csr-2")),
+        );
+        assert!(
+            write_summary(&v2, Some(&refused))
+                .contains("Not published: the frozen policy only creates"),
+            "{}",
+            write_summary(&v2, Some(&refused))
+        );
+        let waiting = intent("pending", "csr-1", Some("csr-2"), None);
+        assert!(
+            write_summary(&v2, Some(&waiting)).contains("waits for the version already in flight")
+        );
+        let queued = intent("pending", "csr-2", None, None);
+        assert!(write_summary(&v2, Some(&queued)).contains("Publishing for review is queued"));
+        let human = intent("pending_human", "csr-2", None, None);
+        assert!(write_summary(&v2, Some(&human)).contains("hctl2 review publish R pub"));
+        assert!(write_summary(&v2, None).contains("No review publication was authorized"));
     }
 }

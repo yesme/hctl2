@@ -274,6 +274,17 @@ impl Store {
             .collect()
     }
 
+    /// Event order of an object's first version: when it was admitted relative to every other
+    /// write, without wall-clock timestamps. `None` if the object was never written.
+    pub fn first_sequence(&self, key: &ObjectKey) -> Result<Option<i64>> {
+        self.status.require_ready()?;
+        Ok(self.conn.query_row(
+            "SELECT min(sequence) FROM events WHERE object_key=?1",
+            [key.encoded()?],
+            |r| r.get::<_, Option<i64>>(0),
+        )?)
+    }
+
     /// Read admitted activity in one existing scope, using event order rather
     /// than wall-clock timestamps. Public callers still choose the permitted scope.
     pub fn recent_versions(&self, scope: &Scope, limit: u32) -> Result<Vec<(i64, Record)>> {
