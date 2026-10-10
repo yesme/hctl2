@@ -5,7 +5,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use repo::integration::{self as domain};
 use serde_json::{Value, json};
 use store::{Actor, ActorSource, Scope, Store, TrustedActor};
 
@@ -579,32 +578,14 @@ pub(crate) fn hosted_repo(store: &mut Store, platform: &Platform) -> String {
             })
             .unwrap();
     }
-    domain::admit_revision_seam(
+    admit_and_publish(
         store,
-        &actor(),
         &repo_id,
-        &domain::AdmittedRevision {
-            change_set_revision_id: "rev-1".into(),
-            change_set_id: "cs-1".into(),
-            parent_revision_id: None,
-            base_commit_sha: platform.base.clone(),
-            result_tree_sha: platform.tree.clone(),
-            producer_ref: json!({"kind":"human_command","command_id":"seal"}),
-            review_subject_digest: "d".repeat(64),
-        },
-    )
-    .unwrap();
-    domain::admit_platform_binding_seam(
-        store,
-        &actor(),
-        &repo_id,
-        "rev-1",
-        &domain::ReviewRequestRef {
-            index: 7,
-            platform_commit_sha: platform.candidate.clone(),
-        },
-    )
-    .unwrap();
+        &platform.base,
+        &platform.tree,
+        7,
+        &platform.candidate,
+    );
     repo_id
 }
 
@@ -676,33 +657,124 @@ pub(crate) fn github_repo_with(
         .unwrap();
     }
     let repo_id = reg.repo_id;
-    domain::admit_revision_seam(
+    admit_and_publish(store, &repo_id, base, tree, number, head);
+    repo_id
+}
+
+/// One revision admitted through the real ChangeSet admission and published through the
+/// real review-publishing domain steps (frozen policy, intent in the admission transaction,
+/// both stages confirmed): the mapping integration reads is the one 发布评审 writes, not a
+/// planted record. The platform side is whatever the scripted platform already holds.
+fn admit_and_publish(
+    store: &mut Store,
+    repo_id: &str,
+    base: &str,
+    tree: &str,
+    index: u64,
+    platform_commit: &str,
+) {
+    use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+    use repo::review;
+    let mut scoped = actor().0;
+    scoped.permission_scope.push(Scope::Repo(repo_id.into()));
+    let scoped = TrustedActor(scoped);
+    let binding_version = store
+        .get(&repo::binding(repo_id).key)
+        .unwrap()
+        .expect("platform binding confirmed")
+        .version as u64;
+    let policy = review::freeze_policy(
         store,
         &actor(),
-        &repo_id,
-        &domain::AdmittedRevision {
-            change_set_revision_id: "rev-1".into(),
-            change_set_id: "cs-1".into(),
-            parent_revision_id: None,
+        "fixture-policy",
+        review::Policy {
+            repo_id: repo_id.into(),
+            binding_version,
+            branch_rule: "hctl2/{change_set}".into(),
+            target_branch: "main".into(),
+            allow_update: true,
+            description_source: "none".into(),
+            requires_human_confirmation: false,
+            audit_scope: "minimal".into(),
+        },
+    )
+    .unwrap();
+    let holder = ProducerRef::Invocation {
+        invocation_id: "inv-1".into(),
+        invocation_version: 1,
+    };
+    let set = changeset::open_change_set(
+        store,
+        &scoped,
+        repo_id,
+        binding_version,
+        base,
+        "cs-key",
+        &holder,
+    )
+    .unwrap();
+    let (revision, intent) = changeset::admit_with_publication(
+        store,
+        &scoped,
+        Seal {
+            association_key: "seal-1".into(),
+            change_set_id: set.change_set_id.clone(),
+            change_set_version: set.version,
+            lease: Some(LeaseRef {
+                lease_id: set.lease.lease_id.clone(),
+                generation: set.lease.generation,
+            }),
             base_commit_sha: base.into(),
             result_tree_sha: tree.into(),
-            producer_ref: json!({"kind":"human_command","command_id":"seal"}),
-            review_subject_digest: "d".repeat(64),
+            result_commit_sha: None,
+            parent_revision_id: None,
+            producer_ref: holder,
         },
+        OwnerGate::Active,
+        Some(&review::Publication {
+            policy,
+            authorizing_actor: actor().0,
+        }),
+        1,
     )
     .unwrap();
-    domain::admit_platform_binding_seam(
+    let intent = intent.expect("the admission enqueued the publish");
+    let (id, rev, round) = (
+        intent.intent_id.as_str(),
+        revision.change_set_revision_id.as_str(),
+        intent.round,
+    );
+    review::begin(store, repo_id, id).unwrap();
+    review::freeze_commit(store, repo_id, id, rev, round, platform_commit).unwrap();
+    review::mark_push_dispatched(store, repo_id, id, rev, round, true).unwrap();
+    review::confirm_push(store, repo_id, id, rev, round, platform_commit, 1).unwrap();
+    review::mark_review_dispatched(store, repo_id, id, rev, round, true).unwrap();
+    review::confirm(
         store,
-        &actor(),
-        &repo_id,
-        "rev-1",
-        &domain::ReviewRequestRef {
-            index: number,
-            platform_commit_sha: head.into(),
+        repo_id,
+        id,
+        rev,
+        round,
+        review::Outcome::Published {
+            index,
+            platform_commit_sha: platform_commit.into(),
+            readback: json!({"fixture": "scripted platform"}),
         },
+        1,
     )
     .unwrap();
-    repo_id
+}
+
+/// The id of the one revision a fixture Repo holds.
+pub(crate) fn revision_id(store: &Store, repo_id: &str) -> String {
+    let revisions: Vec<_> = store
+        .list("changeset_revision")
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.key.scope == Scope::Repo(repo_id.into()))
+        .collect();
+    assert_eq!(revisions.len(), 1, "fixture Repo holds one revision");
+    revisions[0].key.id.clone()
 }
 
 pub(crate) fn temp(name: &str) -> Temp {

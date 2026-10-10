@@ -139,7 +139,7 @@ Buck 目标：`root//crates/repo:repo`、`:registration_test`、`:git_test`、`:
 
 **对象。** `integration_intent`（Repo 范围）记一次「合入 ChangeSet Revision」的持久授权：冻结的预览（源版本的五个身份字段、目标、所选形态、策略、预期目标头或预览时看到的头、平台目标的保护快照、绑定版本）、状态（`pending` 未尝试 / `unknown` 已尝试未确认 / `succeeded` / `failed`）、尝试次数、留给人的 `attention`、终态原因 `failure`、`receipt_id`。`integration_receipt` 是唯一凭证：源、目标、形态、策略、执行前后的目标头、集成提交与树、回读的证据通道（本地目标是 `hctl2-tool`）与回读原文；它只在回读到结果之后、与效果确认和终态同一事务写入。两种记录都是 `RecordData::Value`，每个意图一条 outbox 效果，冲突范围是目标本身（`kind:provider_ref:ref`），所以同一目标同时至多一个待决意图（CT-REPO 第 13 行），由 Store 的 `EFFECT_CONFLICT` 保证、以 `TARGET_BUSY` 报出。
 
-**源版本。** 集成只引用已准入的 ChangeSet Revision（记录 `changeset_revision`，另一半 `changeset.rs` 写入；本模块只读 `AdmittedRevision`：五个身份字段加 `producer_ref`、`review_subject_digest`）。版本里没有提交对象：执行时在目标仓库里找一个树正好是 `result_tree_sha`、父提交含 `base_commit_sha` 的提交（执行体自己的提交），找不到就用固定身份 `commit-tree` 包一个，重试得到同一个对象。`result_commit_sha` 只出现在 Receipt 与平台证据里，和约束一致。另一半合入之前，用例用 `admit_revision_seam` 写同一种记录，它不是领域准入；#384 合入后改走 `changeset::admit` 并删掉。
+**源版本。** 集成只引用已准入的 ChangeSet Revision（记录 `changeset_revision`，另一半 `changeset.rs` 写入；本模块只读 `AdmittedRevision`：五个身份字段加 `producer_ref`、`review_subject_digest`）。版本里没有提交对象：执行时在目标仓库里找一个树正好是 `result_tree_sha`、父提交含 `base_commit_sha` 的提交（执行体自己的提交），找不到就用固定身份 `commit-tree` 包一个，重试得到同一个对象。`result_commit_sha` 只出现在 Receipt 与平台证据里，和约束一致。用例的版本都走真实的 `changeset::admit`（ChangeSet 开给调用、持租约封存，或人的封存不借租约），测试缝 `admit_revision_seam` 已删。
 
 **形态。** `expected_head` 冻结预览时的目标头，执行时不等就 `failed`、不重试；本地目标总能选它，平台目标只有绑定声明 `expected_target_head` 为真才能选，否则 `EXPECTED_HEAD_UNSUPPORTED`，不在执行时降级（CT-REPO 第 17 行）。`accept_advance` 冻结源、策略与保护快照，接受目标前移，Receipt 记实际目标头。平台目标还要求绑定声明 `remote_merge` 与 `protection_readback`，缺一条 `CAPABILITY_MISSING`；随包 Gitea 这两项现在声明为未验证，所以本批平台目标还进不了预览，验收第 5、7 条的 Gitea 路径在下一个 PR 连同能力声明的实测一起落。
 
@@ -176,6 +176,6 @@ Buck 目标：`root//crates/repo:repo`、`:registration_test`、`:git_test`、`:
 
 **查询与命令。** `review.show {repo_id, intent_id}` 返回 `{intent, stages: {push, review_request}, mappings}`；`review.list {repo_id}`；`review.publish` 是两步确认（预览写清推到哪个分支、建到哪个目标分支、授权的是发布去评审不是合入）。命令行 `hctl2 review publish|show|list`。
 
-**没做的。** 描述来源只有 `none`（Result Proposal 的文本产出接进来是另一半的事）；`hctl2-tool readback` 式的工具回读没有用在发布上（推送后的回读是 `ls-remote`，评审请求的回读是平台接口）；GitHub 的推送凭据助手（`gh auth git-credential`）没有在真实 GitHub 上跑过；集成一半的用例仍用 `admit_platform_binding_seam` 造映射，等租约/派工段落地后换成真实发布、删缝。
+**没做的。** 描述来源只有 `none`（Result Proposal 的文本产出接进来是另一半的事）；`hctl2-tool readback` 式的工具回读没有用在发布上（推送后的回读是 `ls-remote`，评审请求的回读是平台接口）；GitHub 的推送凭据助手（`gh auth git-credential`）没有在真实 GitHub 上跑过。集成一半与完成 Task 的用例里，映射由真实的发布领域步骤写（冻结策略、准入同事务入队、两段确认后 `confirm(Published)`），`admit_platform_binding_seam` 已删。
 
 **验证。** `root//crates/repo:review_test`（领域：意图随准入同事务落库或都不落、同版本幂等、同键换策略/换授权人/改成不发布拒绝、换策略拒绝；绑定版本不符不落、意图记绑定版本；无发布的准入结果仍是裸版本、经发布入口重投；提交冻结后在飞不可换、每一步写明版本与轮次、确认只认冻结的提交、映射写一次、终态拒绝；人工门槛只有直连客户端能放行、放行写明版本与轮次、策略按摘要冻结）；`root//apps/control:unit_test` 的 `review::tests`（脚本化 `tea`/`gh` + 真实裸仓库：推送 + 建请求 + 映射；平台停机只确认第一段、重开 Store 后只建一次请求；建请求响应丢失回读到就不再建；推送确认丢失从远端读回不再推；新版本更新同一请求、旧推送被 lease 挡住；只许建拒绝第二版；人工门槛走命令信封、同轮重投、第二轮新身份；预览后来了新版本旧信封放不了、放行后来的新版本要自己的放行；执行中准入的新版本不换目标不拿证据、结后才开下一轮；推送确认丢失后准入新版本先结这一轮；只许建、建请求在飞时来新版本不更新请求；更新被拒这一轮不结、放开后补上；换绑后什么都不发；分支被人动过不覆盖；请求已关闭不替换；GitHub 按 owner:branch 找）；`live_gitea_demo_…`（演示 2 的 Gitea 1.27.3 实跑：真实克隆的新版本推成分支、control 建出评审请求 #2 并回读，之后关闭删分支；`HCTL2_GITEA_LIVE_*` 环境下跑）。
