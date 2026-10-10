@@ -199,18 +199,27 @@ static SHARED_PAYLOAD: LazyLock<PathBuf> = LazyLock::new(|| {
         .arg("-dc")
         .arg(&archive)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     let unpack = Command::new("tar")
         .args(["-xf", "-", "-C"])
         .arg(&extract)
         .stdin(Stdio::from(decompress.stdout.take().unwrap()))
-        .status()
+        .stderr(Stdio::piped())
+        .spawn()
         .unwrap();
+    let decompressed = decompress.wait_with_output().unwrap();
+    let unpacked = unpack.wait_with_output().unwrap();
     assert!(
-        decompress.wait().unwrap().success() && unpack.success(),
-        "unpacking {} failed",
-        archive.display()
+        decompressed.status.success() && unpacked.status.success(),
+        "unpacking {} failed: zstd {:?} {}, tar {:?} {} (cwd {})",
+        archive.display(),
+        decompressed.status,
+        String::from_utf8_lossy(&decompressed.stderr).trim(),
+        unpacked.status,
+        String::from_utf8_lossy(&unpacked.stderr).trim(),
+        std::env::current_dir().unwrap_or_default().display(),
     );
     extract
 });
