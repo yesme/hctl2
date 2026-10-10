@@ -75,47 +75,6 @@ pub fn revision(store: &Store, repo_id: &str, id: &str) -> Result<AdmittedRevisi
     Ok(revision)
 }
 
-/// 测试缝：在 ChangeSet Revision 的准入（第 6 包另一半，#384）合入之前，让集成的用例有可引用的版本。
-/// 写的是同一种记录；不是领域准入，不经 Invocation、租约或封存；control 不把它暴露成命令。
-/// 另一半合入后，用例改走 `changeset::admit`，这个函数删除。
-pub fn admit_revision_seam(
-    store: &mut Store,
-    actor: &TrustedActor,
-    repo_id: &str,
-    revision: &AdmittedRevision,
-) -> Result<()> {
-    let registration = require_active(store, repo_id)?;
-    let actor = scoped(actor, &registration.repo_id)?;
-    let key = revision_key(repo_id, &revision.change_set_revision_id);
-    let value = serde_json::to_value(revision)?;
-    let operation = "repo.revision_seam";
-    let cmd = Command {
-        command_id: format!("{operation}:{repo_id}:{}", key.id),
-        idempotency_key: format!("{operation}:{repo_id}:{}", key.id),
-        actor: actor.0.clone(),
-        target: key.clone(),
-        expected: Expected::Absent,
-        binding: crate::binding(repo_id),
-        input_digest: Command::digest_input(operation, &value)?,
-        operation: operation.into(),
-        input: value.clone(),
-    };
-    store.submit(store.generation(), &actor, &cmd, None, |tx| {
-        tx.put(&Record {
-            key: key.clone(),
-            version: 1,
-            revision_digest: canonical_json_sha256(&value)?,
-            data: RecordData::Value {
-                value: value.clone(),
-            },
-            sources: Vec::new(),
-            materials: Vec::new(),
-        })?;
-        Ok(json!({"change_set_revision_id": key.id}))
-    })?;
-    Ok(())
-}
-
 /// Record kind written by 发布评审 (the other half of 第 6 包): which platform commit and review
 /// request a ChangeSet Revision was published as. Read here to find what to ask the platform
 /// to merge. Keyed by the revision id in the Repo scope.
@@ -158,50 +117,6 @@ pub fn review_request(
         }),
         _ => None,
     })
-}
-
-/// 测试缝：发布评审落地前，让集成的用例有可引用的映射。另一半合入后改走它的写入，这个函数删除。
-pub fn admit_platform_binding_seam(
-    store: &mut Store,
-    actor: &TrustedActor,
-    repo_id: &str,
-    revision_id: &str,
-    review: &ReviewRequestRef,
-) -> Result<()> {
-    let registration = require_active(store, repo_id)?;
-    let actor = scoped(actor, &registration.repo_id)?;
-    let key = platform_binding_key(repo_id, revision_id);
-    let value = json!({
-        "change_set_revision_id": revision_id,
-        "platform_commit_sha": review.platform_commit_sha,
-        "review_request": {"index": review.index},
-    });
-    let operation = "repo.platform_binding_seam";
-    let cmd = Command {
-        command_id: format!("{operation}:{repo_id}:{revision_id}"),
-        idempotency_key: format!("{operation}:{repo_id}:{revision_id}"),
-        actor: actor.0.clone(),
-        target: key.clone(),
-        expected: Expected::Absent,
-        binding: crate::binding(repo_id),
-        input_digest: Command::digest_input(operation, &value)?,
-        operation: operation.into(),
-        input: value.clone(),
-    };
-    store.submit(store.generation(), &actor, &cmd, None, |tx| {
-        tx.put(&Record {
-            key: key.clone(),
-            version: 1,
-            revision_digest: canonical_json_sha256(&value)?,
-            data: RecordData::Value {
-                value: value.clone(),
-            },
-            sources: Vec::new(),
-            materials: Vec::new(),
-        })?;
-        Ok(json!({}))
-    })?;
-    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

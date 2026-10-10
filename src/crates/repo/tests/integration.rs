@@ -14,23 +14,58 @@ fn local_repo(store: &mut Store) -> String {
         .repo_id
 }
 
-fn revision_of(n: u8) -> AdmittedRevision {
-    AdmittedRevision {
-        change_set_revision_id: format!("rev-{n}"),
-        change_set_id: "cs-1".into(),
-        parent_revision_id: None,
-        base_commit_sha: "b".repeat(40),
-        result_tree_sha: format!("{n}").repeat(40),
-        producer_ref: json!({"kind":"human_command","command_id":"seal"}),
-        review_subject_digest: "d".repeat(64),
-    }
+/// Revision `n` of the Repo's one ChangeSet, admitted through the real ChangeSet admission
+/// (lease, version and producer checks) and read back the way integration reads it.
+fn admitted(store: &mut Store, repo_id: &str, n: u8) -> AdmittedRevision {
+    use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+    let holder = ProducerRef::Invocation {
+        invocation_id: "inv-1".into(),
+        invocation_version: 1,
+    };
+    let mut scoped = actor().0;
+    scoped
+        .permission_scope
+        .push(store::Scope::Repo(repo_id.into()));
+    let scoped = store::TrustedActor(scoped);
+    let set = changeset::open_change_set(
+        store,
+        &scoped,
+        repo_id,
+        1,
+        &"b".repeat(40),
+        "cs-key",
+        &holder,
+    )
+    .unwrap();
+    let current = changeset::get_change_set(store, repo_id, &set.change_set_id).unwrap();
+    let revision = changeset::admit(
+        store,
+        &scoped,
+        Seal {
+            association_key: format!("seal-{n}"),
+            change_set_id: current.change_set_id.clone(),
+            change_set_version: current.version,
+            lease: Some(LeaseRef {
+                lease_id: current.lease.lease_id.clone(),
+                generation: current.lease.generation,
+            }),
+            base_commit_sha: "b".repeat(40),
+            result_tree_sha: format!("{n}").repeat(40),
+            result_commit_sha: None,
+            parent_revision_id: None,
+            producer_ref: holder,
+        },
+        OwnerGate::Active,
+    )
+    .unwrap();
+    integ::revision(store, repo_id, &revision.change_set_revision_id).unwrap()
 }
 
-fn input(repo_id: &str, key: &str, form: Form) -> Input {
+fn input(repo_id: &str, revision: &str, key: &str, form: Form) -> Input {
     Input {
         key: key.into(),
         repo_id: repo_id.into(),
-        change_set_revision_id: "rev-1".into(),
+        change_set_revision_id: revision.into(),
         target_kind: TargetKind::Local,
         target_ref: "refs/heads/main".into(),
         form,
@@ -171,23 +206,28 @@ fn preview_freezes_source_target_and_form_and_refuses_what_the_repo_cannot_offer
         integ::prepare(
             &store,
             &actor(),
-            input(&repo_id, "k", Form::ExpectedHead),
+            input(&repo_id, "csr-unadmitted", "k", Form::ExpectedHead),
             observed(Some("a"))
         )
         .unwrap_err()
         .code,
         "REVISION_NOT_ADMITTED"
     );
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let rev1 = admitted(&mut store, &repo_id, 1);
     let preview = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "k", Form::ExpectedHead),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "k",
+            Form::ExpectedHead,
+        ),
         observed(Some("aaaa")),
     )
     .unwrap();
     assert_eq!(preview.expected_head.as_deref(), Some("aaaa"));
-    assert_eq!(preview.source, revision_of(1));
+    assert_eq!(preview.source, rev1);
     assert_eq!(preview.target.kind, TargetKind::Local);
     assert_eq!(preview.target.provider_ref, "/tmp/example");
     assert!(preview.target.binding.is_none());
@@ -197,7 +237,12 @@ fn preview_freezes_source_target_and_form_and_refuses_what_the_repo_cannot_offer
         integ::prepare(
             &store,
             &actor(),
-            input(&repo_id, "k", Form::ExpectedHead),
+            input(
+                &repo_id,
+                &rev1.change_set_revision_id,
+                "k",
+                Form::ExpectedHead
+            ),
             observed(None)
         )
         .unwrap_err()
@@ -207,13 +252,23 @@ fn preview_freezes_source_target_and_form_and_refuses_what_the_repo_cannot_offer
     let advance = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "k", Form::AcceptAdvance),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "k",
+            Form::AcceptAdvance,
+        ),
         observed(None),
     )
     .unwrap();
     assert_eq!(advance.expected_head, None);
     // A Repo without a platform has no platform target.
-    let mut platform = input(&repo_id, "k", Form::AcceptAdvance);
+    let mut platform = input(
+        &repo_id,
+        &rev1.change_set_revision_id,
+        "k",
+        Form::AcceptAdvance,
+    );
     platform.target_kind = TargetKind::Platform;
     assert_eq!(
         integ::prepare(&store, &actor(), platform, observed(Some("aaaa")))
@@ -221,7 +276,12 @@ fn preview_freezes_source_target_and_form_and_refuses_what_the_repo_cannot_offer
             .code,
         "PLATFORM_NOT_BOUND"
     );
-    let mut bad_ref = input(&repo_id, "k", Form::AcceptAdvance);
+    let mut bad_ref = input(
+        &repo_id,
+        &rev1.change_set_revision_id,
+        "k",
+        Form::AcceptAdvance,
+    );
     bad_ref.target_ref = "main".into();
     assert_eq!(
         integ::prepare(&store, &actor(), bad_ref, observed(Some("aaaa")))
@@ -236,12 +296,17 @@ fn submit_is_idempotent_per_key_and_one_unresolved_intent_occupies_a_target() {
     let temp = Temp::new();
     let mut store = Store::open(&temp.0).unwrap();
     let repo_id = local_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(2)).unwrap();
+    let rev1 = admitted(&mut store, &repo_id, 1);
+    let rev2 = admitted(&mut store, &repo_id, 2);
     let preview = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "one", Form::ExpectedHead),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "one",
+            Form::ExpectedHead,
+        ),
         observed(Some("aaaa")),
     )
     .unwrap();
@@ -256,8 +321,8 @@ fn submit_is_idempotent_per_key_and_one_unresolved_intent_occupies_a_target() {
     let again = submit(&mut store, &actor(), "integration:one", preview.clone()).unwrap();
     assert_eq!(again.intent_id, first.intent_id);
     let mut other = preview.clone();
-    other.input.change_set_revision_id = "rev-2".into();
-    other.source = revision_of(2);
+    other.input.change_set_revision_id = rev2.change_set_revision_id.clone();
+    other.source = rev2.clone();
     assert_eq!(
         submit(&mut store, &actor(), "integration:one", other.clone())
             .unwrap_err()
@@ -309,11 +374,16 @@ fn only_a_confirming_readback_writes_the_one_receipt_in_the_same_transaction() {
     let temp = Temp::new();
     let mut store = Store::open(&temp.0).unwrap();
     let repo_id = local_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let rev1 = admitted(&mut store, &repo_id, 1);
     let preview = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "one", Form::ExpectedHead),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "one",
+            Form::ExpectedHead,
+        ),
         observed(Some("aaaa")),
     )
     .unwrap();
@@ -429,11 +499,16 @@ fn an_unknown_result_keeps_the_target_occupied_until_readback_settles_it() {
     let temp = Temp::new();
     let mut store = Store::open(&temp.0).unwrap();
     let repo_id = local_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let rev1 = admitted(&mut store, &repo_id, 1);
     let preview = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "one", Form::AcceptAdvance),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "one",
+            Form::AcceptAdvance,
+        ),
         observed(Some("aaaa")),
     )
     .unwrap();
@@ -474,8 +549,13 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     let temp = Temp::new();
     let mut store = Store::open(&temp.0).unwrap();
     let repo_id = hosted_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
-    let local = input(&repo_id, "k", Form::ExpectedHead);
+    let rev1 = admitted(&mut store, &repo_id, 1);
+    let local = input(
+        &repo_id,
+        &rev1.change_set_revision_id,
+        "k",
+        Form::ExpectedHead,
+    );
     assert_eq!(
         integ::prepare(&store, &actor(), local, observed(Some("aaaa")))
             .unwrap_err()
@@ -488,7 +568,12 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
         protection,
         continuity: Some(json!({"instance": "http://127.0.0.1:3000", "stable_id": "7"})),
     };
-    let mut platform = input(&repo_id, "k", Form::AcceptAdvance);
+    let mut platform = input(
+        &repo_id,
+        &rev1.change_set_revision_id,
+        "k",
+        Form::AcceptAdvance,
+    );
     platform.target_kind = TargetKind::Platform;
     // A binding that does not declare merge or protection readback refuses platform targets.
     declare_capabilities(
@@ -571,14 +656,19 @@ fn a_platform_bound_repo_offers_no_local_target_and_platform_targets_need_declar
     assert_eq!(intent.state, IntentState::Pending);
     // A local target without continuity evidence cannot be frozen either.
     let local_repo_id = local_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &local_repo_id, &revision_of(1)).unwrap();
+    let rev1 = admitted(&mut store, &local_repo_id, 1);
     let mut blind = observed(Some("aaaa"));
     blind.continuity = None;
     assert_eq!(
         integ::prepare(
             &store,
             &actor(),
-            input(&local_repo_id, "k", Form::ExpectedHead),
+            input(
+                &local_repo_id,
+                &rev1.change_set_revision_id,
+                "k",
+                Form::ExpectedHead
+            ),
             blind
         )
         .unwrap_err()
@@ -593,11 +683,16 @@ fn an_attempt_is_frozen_before_execution_and_only_a_terminal_readback_or_a_prove
     let temp = Temp::new();
     let mut store = Store::open(&temp.0).unwrap();
     let repo_id = local_repo(&mut store);
-    admit_revision_seam(&mut store, &actor(), &repo_id, &revision_of(1)).unwrap();
+    let rev1 = admitted(&mut store, &repo_id, 1);
     let preview = integ::prepare(
         &store,
         &actor(),
-        input(&repo_id, "one", Form::AcceptAdvance),
+        input(
+            &repo_id,
+            &rev1.change_set_revision_id,
+            "one",
+            Form::AcceptAdvance,
+        ),
         observed(Some("aaaa")),
     )
     .unwrap();
