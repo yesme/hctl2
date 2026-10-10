@@ -51,6 +51,7 @@ rust_test(
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
         "HCTL2_STANDBY_FIXTURE": "$(location root//agency:standby_fixture)",
+        "HCTL2_CODEX_FIXTURE": "$(location root//agency:codex_fixture)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
         "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
     },

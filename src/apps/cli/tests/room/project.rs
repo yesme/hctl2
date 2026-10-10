@@ -2261,6 +2261,367 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
     assert!(!human.contains('\u{1b}'));
 }
 
+/// Codex stand-in from `agency/tests/codex_fixture.rs`. It speaks app-server
+/// `turn/start`, writes a rollout whose `input_text` is that body, and answers
+/// `ANSWER`. Herdr only displays `codex resume --remote`.
+fn paired_codex(name: &str, codex_bin: &std::path::Path, private_home: bool) -> (Fixture, Paired) {
+    let (f, _) = Fixture::packaged(name);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    let registered = accepted(
+        &f,
+        "repo",
+        "register",
+        "register-dispatch",
+        json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"}),
+    );
+    let registration = &registered["registration"];
+    let repo = registration["repo_id"].as_str().unwrap();
+    let version = registration["version"].to_string();
+    let args = [
+        "repo",
+        "register",
+        "--confirm",
+        repo,
+        "--version",
+        &version,
+        "--platform-repo-id",
+        registration["observed"]["stable_id"].as_str().unwrap(),
+        "--key",
+        "confirm-dispatch",
+    ];
+    let (ok, plan) = f.run(&args);
+    assert!(ok, "{plan}");
+    let mut confirm = args.to_vec();
+    confirm.extend(["--preview-token", plan["preview_token"].as_str().unwrap()]);
+    assert!(f.run(&confirm).0);
+    let created = accepted(
+        &f,
+        "project",
+        "create",
+        "project-dispatch",
+        json!({"repo_id":repo,"definition":project_definition("Dispatch")}),
+    );
+    let project = created["project_id"].as_str().unwrap().to_owned();
+    let room = created["main_room_id"].as_str().unwrap().to_owned();
+    let agency_root = f.root.join("independent-agency");
+    let delay = f.root.join("delay-script");
+    let codex_home = f.root.join("codex-home");
+    if private_home {
+        std::fs::create_dir_all(&codex_home).unwrap();
+    }
+    let log = f.root.join("agency-serve.err");
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let claude = std::env::var_os("HCTL2_STANDBY_FIXTURE").expect("HCTL2_STANDBY_FIXTURE");
+    let mut command = Command::new(&binary);
+    command
+        .arg("--root")
+        .arg(&agency_root)
+        .arg("serve")
+        .env("HCTL2_INSTALL_ROOT", &f.payload)
+        .env("HCTL2_CLAUDE", &claude)
+        .env("HCTL2_CODEX", codex_bin)
+        .env("HCTL2_AGENCY_IDLE_MS", "600000");
+    if private_home {
+        command.env("CODEX_HOME", &codex_home);
+    }
+    let agency = AgencyChild(
+        command
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(&log).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let mut ready = false;
+    for _ in 0..400 {
+        if Command::new(&binary)
+            .arg("--root")
+            .arg(&agency_root)
+            .arg("status")
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            ready = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        ready,
+        "agency did not become ready: {}",
+        std::fs::read_to_string(&log).unwrap_or_default()
+    );
+    let (ok, binding) = f.run(&[
+        "agency",
+        "pair",
+        "--binding-id",
+        "local",
+        "--agency-root",
+        agency_root.to_str().unwrap(),
+        "--key",
+        "pair",
+    ]);
+    assert!(ok, "{binding}");
+    let (ok, catalog) = f.run(&["agency", "catalog", "local"]);
+    assert!(
+        ok,
+        "{catalog} {}",
+        std::fs::read_to_string(&log).unwrap_or_default()
+    );
+    let profession = catalog["professions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["reference"]["id"] == "codex-cli")
+        .cloned()
+        .unwrap_or_else(|| panic!("codex-cli missing: {catalog}"));
+    let profession_reference = f.root.join("profession.json");
+    std::fs::write(&profession_reference, profession["reference"].to_string()).unwrap();
+    let (ok, accepted_profession) = f.run(&[
+        "agency",
+        "accept",
+        "--binding-id",
+        "local",
+        "--reference",
+        profession_reference.to_str().unwrap(),
+        "--key",
+        "accept",
+    ]);
+    assert!(ok, "{accepted_profession}");
+    let profile = accepted(
+        &f,
+        "profile",
+        "create",
+        "profile",
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":"read_only","permissions":["context.read"],"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+    );
+    let binding_ref =
+        json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
+    let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":["context.read"]},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    accepted(
+        &f,
+        "project",
+        "select",
+        "select",
+        json!({"project_id":project,"project_version":1,"room_id":room,"topic_command_key":null,"roster_version":null,"selections":[selection]}),
+    );
+    (
+        f,
+        Paired {
+            agency,
+            repo: repo.to_owned(),
+            project,
+            room,
+            profession,
+            profession_reference,
+            profile,
+            delay,
+        },
+    )
+}
+
+fn dispatch_once(f: &Fixture, setup: &Paired, key: &str, request: &str) -> (Value, Value) {
+    let p = setup.project.as_str();
+    let room = setup.room.as_str();
+    let path = f.root.join(format!("{key}.json"));
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 180_000;
+    std::fs::write(
+        &path,
+        json!({"project_id":p,"room_id":room,"target":"research","profile":setup.profile["revision"],"request":request,"budget":65536,"deadline_ms":deadline,"retry_of":null}).to_string(),
+    )
+    .unwrap();
+    let (ok, plan) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        key,
+    ]);
+    assert!(ok, "{plan}");
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        key,
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let id = started["invocation_id"].as_str().unwrap();
+    let mut completed = Value::Null;
+    for _ in 0..180 {
+        let (ok, value) = f.run(&["invocation", "show", p, id]);
+        assert!(ok, "{value}");
+        if value["state"] == "completed" || value["state"] == "failed" {
+            completed = value;
+            break;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    assert_eq!(completed["state"], "completed", "{completed}");
+    (completed, plan)
+}
+
+#[test]
+fn codex_fixture_dispatch_from_real_cli_admits_the_answer_into_the_room() {
+    let codex = std::path::PathBuf::from(
+        std::env::var_os("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE"),
+    );
+    let (f, setup) = paired_codex("codex-chain", &codex, true);
+    let (completed, _) = dispatch_once(
+        &f,
+        &setup,
+        "invoke-codex",
+        "Reply with the fixture answer. Do not modify files.",
+    );
+    assert_eq!(completed["results"][0]["output"], "ANSWER");
+    let mut seen = false;
+    for _ in 0..60 {
+        let (ok, timeline) = f.run(&["room", "timeline", &setup.project, &setup.room]);
+        assert!(ok, "{timeline}");
+        seen = timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["content"]["body"] == "ANSWER");
+        if seen {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    assert!(seen, "the Codex answer was not projected into the Room");
+}
+
+/// One logged-in Codex turn. Ignored unless `HCTL2_CODEX_LIVE=1`. Does not print credentials.
+#[test]
+#[ignore = "uses the local Codex login; set HCTL2_CODEX_LIVE=1"]
+fn live_codex_dispatch_returns_one_answer_to_the_room() {
+    if std::env::var_os("HCTL2_CODEX_LIVE").is_none() {
+        return;
+    }
+    let which = Command::new("/usr/bin/which")
+        .arg("codex")
+        .output()
+        .unwrap();
+    assert!(which.status.success(), "codex is not on PATH");
+    let codex = std::path::PathBuf::from(String::from_utf8(which.stdout).unwrap().trim());
+    let rollout_after = std::time::SystemTime::now()
+        .checked_sub(Duration::from_secs(30))
+        .unwrap_or(std::time::UNIX_EPOCH);
+    let (f, setup) = paired_codex("codex-live", &codex, false);
+    let request = "Reply with exactly CODEX_ROOM_OK and no other text. Do not modify files.";
+    let (completed, plan) = dispatch_once(&f, &setup, "invoke-live", request);
+    let output = completed["results"][0]["output"].as_str().unwrap_or("");
+    assert!(
+        output.contains("CODEX_ROOM_OK"),
+        "answer did not contain the marker"
+    );
+    let bundle: agency_proto::context::Bundle =
+        serde_json::from_value(plan["effect_summary"]["assembly"]["bundle"]["document"].clone())
+            .unwrap();
+    let mut expected = String::new();
+    for entry in &bundle.entries {
+        let bytes = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes.as_slice(),
+            agency_proto::context::Delivery::Recall { .. } => continue,
+        };
+        expected.push_str(std::str::from_utf8(bytes).unwrap());
+        expected.push('\n');
+    }
+    assert!(!expected.is_empty(), "preview bundle had no task text");
+    let timeline = ready_timeline(&f, &setup.project, &setup.room);
+    assert!(
+        timeline["events"].as_array().unwrap().iter().any(|event| {
+            event["content"]["body"]
+                .as_str()
+                .is_some_and(|body| body.contains("CODEX_ROOM_OK"))
+        }),
+        "the Codex answer was not projected into the Room"
+    );
+    let home = std::env::var_os("HOME").expect("HOME");
+    let sessions = std::path::PathBuf::from(home).join(".codex/sessions");
+    let mut matched = false;
+    if sessions.is_dir() {
+        let mut stack = vec![sessions];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let Ok(meta) = path.metadata() else {
+                    continue;
+                };
+                if meta.modified().ok().is_none_or(|when| when < rollout_after) {
+                    continue;
+                }
+                if rollout_input_equals(&path, &expected) {
+                    matched = true;
+                    break;
+                }
+            }
+            if matched {
+                break;
+            }
+        }
+    }
+    assert!(
+        matched,
+        "rollout input_text was not the dispatch body byte for byte"
+    );
+}
+
+fn rollout_input_equals(path: &std::path::Path, text: &str) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    let body = String::from_utf8_lossy(&bytes);
+    for line in body.lines() {
+        if !line.contains("input_text") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value_has_input_text(&value, text) {
+            return true;
+        }
+    }
+    false
+}
+
+fn value_has_input_text(value: &Value, text: &str) -> bool {
+    match value {
+        Value::Object(map) => {
+            if map.get("type").and_then(Value::as_str) == Some("input_text")
+                && map.get("text").and_then(Value::as_str) == Some(text)
+            {
+                return true;
+            }
+            map.values().any(|child| value_has_input_text(child, text))
+        }
+        Value::Array(items) => items.iter().any(|child| value_has_input_text(child, text)),
+        _ => false,
+    }
+}
+
 /// Captured from the pre-renderer CLI with the same fixture; pins the machine
 /// interface for `agency catalog`, which needs a live Agency.
 const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;

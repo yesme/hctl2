@@ -236,7 +236,7 @@ fn admit(
         } else {
             !matches!(
                 proposal.schema.as_str(),
-                "adapter.stdout.v1" | "claude.turn.v1"
+                "adapter.stdout.v1" | "claude.turn.v1" | "codex.turn.v1"
             ) || seal.is_some()
         }
         || proposal.outputs.len() != 1
