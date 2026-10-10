@@ -376,6 +376,28 @@ fn gitea_read(f: &Fixture, registration: &Value, path: &str) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
+fn ready_gitea(f: &Fixture) {
+    // Restart restores consumption asynchronously. Local records are readable
+    // before the hosted process is ready to answer independent native requests.
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        let (ok, status) = f.run(&["services", "status"]);
+        assert!(ok, "{status}");
+        let gitea = status["hosted"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|service| service["name"] == "gitea")
+            .unwrap();
+        assert_eq!(gitea["consumed"], true, "{status}");
+        if gitea["available"] == true {
+            return;
+        }
+        assert!(std::time::Instant::now() < deadline, "{status}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 fn publishing_chain(name: &str, requires_confirmation: bool) {
     let (f, mut setup) = paired_profile(name, 0, "write");
     let p = setup.project.as_str();
@@ -607,6 +629,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
         f.run(&["review", "show", &setup.repo, intent]).1["mappings"],
         published["mappings"]
     );
+    ready_gitea(&f);
     assert_eq!(
         gitea_read(
             &f,
