@@ -9,6 +9,7 @@ use agency_proto::{
 };
 use serde_json::json;
 use std::{
+    collections::HashMap,
     fs,
     io::Read,
     os::unix::{fs::PermissionsExt, net::UnixStream},
@@ -396,6 +397,7 @@ pub struct InstalledHerdr {
     profession_revision: String,
     profession_digest: String,
     slot: Mutex<Option<Arc<Server>>>,
+    write_slots: Mutex<HashMap<PathBuf, Arc<Server>>>,
     starts: AtomicUsize,
     script: Option<Arc<LaunchScript>>,
     pool: Option<crate::standby::Pool>,
@@ -480,6 +482,7 @@ impl InstalledHerdr {
             profession_revision: version,
             profession_digest: digest,
             slot: Mutex::new(None),
+            write_slots: Mutex::new(HashMap::new()),
             starts: AtomicUsize::new(0),
             script: None,
             pool: Some(crate::standby::Pool::new(claude, idle)),
@@ -507,6 +510,7 @@ impl InstalledHerdr {
             profession_revision: "test".into(),
             profession_digest: "test".into(),
             slot: Mutex::new(None),
+            write_slots: Mutex::new(HashMap::new()),
             starts: AtomicUsize::new(0),
             script: Some(Arc::new(script)),
             pool: None,
@@ -539,7 +543,51 @@ impl InstalledHerdr {
         {
             return Ok(Arc::clone(server));
         }
-        let state = crate::herdr::state_dir(exec, credential_root)?;
+        let server = self.create_server(exec, credential_root, None)?;
+        *slot = Some(Arc::clone(&server));
+        Ok(server)
+    }
+
+    fn ensure_claude(
+        &self,
+        exec: &Path,
+        tenant: &Path,
+        credential_root: &Path,
+        spec: &ExecutionSpec,
+        bundle: &Bundle,
+    ) -> Result<Arc<Server>> {
+        if !cfg!(target_os = "macos") || spec.write_lease.is_none() {
+            return self.ensure(exec, credential_root);
+        }
+        let copy = crate::write::prepare(spec, bundle, exec, tenant, credential_root)?
+            .ok_or_else(|| PortError::invalid("writing copy missing"))?;
+        let common = crate::write::git_common_dir(&copy.cwd)?;
+        let mut slots = self.write_slots.lock().expect("writing herdr");
+        if let Some(server) = slots.get(&common)
+            && Client::connect(&server.socket)
+                .and_then(|client| client.ping())
+                .is_ok()
+        {
+            return Ok(Arc::clone(server));
+        }
+        let server = self.create_server(exec, credential_root, Some(&common))?;
+        slots.insert(common, Arc::clone(&server));
+        Ok(server)
+    }
+
+    fn create_server(
+        &self,
+        exec: &Path,
+        credential_root: &Path,
+        denied_git: Option<&Path>,
+    ) -> Result<Arc<Server>> {
+        let mut state = crate::herdr::state_dir(exec, credential_root)?;
+        if let Some(common) = denied_git {
+            state = state.join(format!(
+                "write-{}",
+                agency_proto::hash(common.as_os_str().as_encoded_bytes())
+            ));
+        }
         let parent = exec
             .parent()
             .ok_or_else(|| PortError::invalid("execution directory has no parent"))?;
@@ -553,12 +601,31 @@ impl InstalledHerdr {
         } else {
             parent
         };
-        let server = Arc::new(Server::start_with_read(
+        let mut model_state = if self.pool.is_some() {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| vec![home.join(".claude"), home.join(".claude.json")])
+                .unwrap_or_default()
+        } else {
+            vec![]
+        };
+        if self.codex_pool.is_some() {
+            let codex_home = std::env::var_os("CODEX_HOME")
+                .map(PathBuf::from)
+                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex")));
+            model_state.extend(codex_home);
+        }
+        let server = Arc::new(Server::start_with_denials(
             &self.binary,
             &state,
             credential_root,
             parent,
             &self.read_paths,
+            &model_state,
+            &denied_git
+                .map(Path::to_path_buf)
+                .into_iter()
+                .collect::<Vec<_>>(),
         )?);
         if self.pool.is_some() {
             // Herdr's own installer, redirected privately. Never export this
@@ -578,7 +645,6 @@ impl InstalledHerdr {
             }
         }
         self.starts.fetch_add(1, Ordering::SeqCst);
-        *slot = Some(Arc::clone(&server));
         Ok(server)
     }
 }
@@ -722,6 +788,11 @@ impl Runtime for InstalledHerdr {
             .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
         let pooled = codex.and(pooled);
+        for server in
+            std::mem::take(&mut *self.write_slots.lock().expect("writing herdr")).into_values()
+        {
+            Client::connect(&server.socket)?.call("server.stop", json!({}))?;
+        }
         let mut slot = self.slot.lock().expect("herdr");
         if let Some(server) = slot.as_ref() {
             // Detached event readers may still hold Arc<Server> when the Agency
@@ -748,7 +819,7 @@ impl Runtime for InstalledHerdr {
             harness: harness.clone(),
             model: "none".into(),
             persona: "claude code".into(),
-            terms: "read-only Bundle dispatch; native Claude turns in a selection-local Herdr session; no tool input or write lease".into(),
+            terms: "Bundle dispatch in a selection-local native Claude Herdr session; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
             default_role: "worker".into(),
             skills: vec![],
             capabilities: Capabilities {
@@ -768,7 +839,7 @@ impl Runtime for InstalledHerdr {
                 harness: harness.clone(),
                 model: "none".into(),
                 persona: "codex".into(),
-                terms: "read-only Bundle dispatch; app-server turn/start for one selection thread; Herdr pane runs codex resume --remote; no write lease".into(),
+                terms: "Bundle dispatch via app-server turn/start in one selection thread; Herdr pane runs codex resume --remote; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
                 default_role: "worker".into(),
                 skills: vec![],
                 capabilities: Capabilities {
@@ -804,10 +875,31 @@ impl Runtime for InstalledHerdr {
                     "install_codex",
                 ));
             };
-            return pool.submit(server, spec, bundle, exec_root, credential_root);
+            return pool.submit(
+                server,
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+            );
         }
         if let Some(pool) = &self.pool {
-            return pool.submit(server, spec, bundle, exec_root, credential_root);
+            let server = self.ensure_claude(
+                exec_root,
+                credential_root,
+                credential_root,
+                &spec.document,
+                &bundle.document,
+            )?;
+            return pool.submit(
+                server,
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+            );
         }
         let body = (self.script.as_ref().expect("test adapter"))(
             &spec.document,
@@ -853,12 +945,18 @@ impl Runtime for InstalledHerdr {
                     "install_codex",
                 ));
             };
-            return pool.submit(server, spec, bundle, exec_root, tenant);
+            return pool.submit(server, spec, bundle, exec_root, tenant, credential_root);
         }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;
-            let server = self.ensure(exec_root, credential_root)?;
-            pool.submit(server, spec, bundle, exec_root, tenant)
+            let server = self.ensure_claude(
+                exec_root,
+                tenant,
+                credential_root,
+                &spec.document,
+                &bundle.document,
+            )?;
+            pool.submit(server, spec, bundle, exec_root, tenant, credential_root)
         } else {
             self.start(spec, bundle, exec_root, credential_root)
         }

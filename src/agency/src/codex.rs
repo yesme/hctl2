@@ -13,6 +13,7 @@ use std::{
     collections::HashMap,
     fs,
     io::{Read, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
     os::unix::{net::UnixStream, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -27,6 +28,7 @@ use std::{
 const LIMIT: u64 = 16 * 1024 * 1024;
 
 struct Token {
+    writing: bool,
     cancelled: AtomicBool,
     finished: AtomicBool,
 }
@@ -36,7 +38,7 @@ impl Session for Handle {
         Err(PortError::invalid("standby input is not advertised"))
     }
     fn stop(&mut self) -> Result<()> {
-        if !self.0.finished.load(Ordering::SeqCst) {
+        if self.0.writing || !self.0.finished.load(Ordering::SeqCst) {
             self.0.cancelled.store(true, Ordering::SeqCst);
         }
         Ok(())
@@ -50,6 +52,8 @@ impl Drop for Handle {
 struct Job {
     spec: Sealed<ExecutionSpec>,
     text: String,
+    copy: Option<crate::write::WorkCopy>,
+    credential_root: PathBuf,
     token: Arc<Token>,
     tx: std::sync::mpsc::SyncSender<RuntimeEvent>,
 }
@@ -82,11 +86,19 @@ impl Pool {
         bundle: &Sealed<Bundle>,
         exec: &Path,
         tenant: &Path,
+        credential_root: &Path,
     ) -> Result<Running> {
-        crate::standby::readonly(&spec.document)?;
-        let text = crate::launch::task_text(&bundle.document)?;
+        let copy = crate::write::prepare(
+            &spec.document,
+            &bundle.document,
+            exec,
+            tenant,
+            credential_root,
+        )?;
+        let text = crate::write::task_text(&bundle.document, copy.as_ref())?;
         let key = selection_key(&spec.document, tenant)?;
         let token = Arc::new(Token {
+            writing: copy.is_some(),
             cancelled: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         });
@@ -94,6 +106,8 @@ impl Pool {
         let job = Job {
             spec: spec.clone(),
             text,
+            copy,
+            credential_root: credential_root.to_path_buf(),
             token: Arc::clone(&token),
             tx,
         };
@@ -179,8 +193,21 @@ fn worker(
         .join(format!("codex-{}.sock", &hash(key.as_bytes())[..8]));
     let mut live: Option<Live> = None;
     let mut last = Instant::now();
+    let mut returned: Option<Job> = None;
     loop {
-        if stopped.load(Ordering::SeqCst) {
+        let shutdown = stopped.load(Ordering::SeqCst);
+        if returned
+            .as_ref()
+            .is_some_and(|job| job.token.cancelled.load(Ordering::SeqCst))
+            || shutdown
+        {
+            if let Some(session) = live.as_mut() {
+                session.close()?;
+            }
+            live = None;
+            release_returned(&mut returned, true);
+        }
+        if shutdown {
             break;
         }
         let job = match receiver.recv_timeout(Duration::from_millis(25)) {
@@ -192,10 +219,20 @@ fn worker(
                         session.close()?;
                     }
                     live = None;
+                    release_returned(&mut returned, false);
                 }
                 continue;
             }
         };
+        // A new frozen Spec must not enter a process retaining the old write lease.
+        // The native history is resumed by ID/thread when run_job opens it again.
+        if returned.is_some() {
+            if let Some(session) = live.as_mut() {
+                session.close()?;
+            }
+            live = None;
+            release_returned(&mut returned, false);
+        }
         let result = run_job(
             &TurnEnv {
                 server: &server,
@@ -208,6 +245,8 @@ fn worker(
             &mut live,
             &job,
         );
+        let sealed =
+            result.is_ok() && job.copy.is_some() && job.token.finished.load(Ordering::SeqCst);
         job.token.finished.store(true, Ordering::SeqCst);
         if let Err(error) = result {
             let _ = job.tx.send(RuntimeEvent::Observation {
@@ -218,15 +257,38 @@ fn worker(
             let _ = job.tx.send(RuntimeEvent::ProtocolError(error.code));
             if let Some(session) = live.as_mut() {
                 session.close()?;
+                if job.copy.is_some() {
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
             }
             live = None;
         }
-        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        if sealed {
+            returned = Some(job);
+        } else {
+            if job.copy.is_some() {
+                if let Some(session) = live.as_mut() {
+                    session.close()?;
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
+                live = None;
+            }
+            let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        }
         last = Instant::now();
     }
     if let Some(session) = live.as_mut() {
         session.close()?;
     }
+    release_returned(&mut returned, true);
     for job in receiver.try_iter() {
         job.token.finished.store(true, Ordering::SeqCst);
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
@@ -236,6 +298,18 @@ fn worker(
         let _ = job.tx.send(RuntimeEvent::DispatchReleased);
     }
     Ok(())
+}
+
+// DispatchReleased removes the stop handle from the tenant. A sealed writing
+// turn retains that handle until its native session is physically closed.
+fn release_returned(returned: &mut Option<Job>, requested_stop: bool) {
+    if let Some(job) = returned.take() {
+        let _ = job.tx.send(RuntimeEvent::TurnStopped {
+            requested_stop,
+            session_closed: true,
+        });
+        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+    }
 }
 
 struct TurnEnv<'a> {
@@ -267,9 +341,22 @@ fn run_job(
         });
         return Ok(());
     }
+    let cwd = job.copy.as_ref().map_or(env.cwd, |copy| copy.cwd.as_path());
+    if live
+        .as_ref()
+        .is_some_and(|s| s.cwd != cwd || s.confined != job.copy.is_some())
+    {
+        live.as_mut().expect("live Codex").close()?;
+        *live = None;
+    }
     if live.is_none() {
-        let (session, resumed, resume_failed) =
-            Live::open(env.codex, env.cwd, env.dir, env.socket)?;
+        let (session, resumed, resume_failed) = Live::open(
+            env.codex,
+            cwd,
+            env.dir,
+            env.socket,
+            job.copy.as_ref().map(|_| job.credential_root.as_path()),
+        )?;
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
             payload: json!({"resumed":resumed,"resume_failed":resume_failed,"thread":session.thread}),
@@ -291,9 +378,9 @@ fn run_job(
     }
     let session = live.as_mut().expect("codex session");
     if session.resumed_existing {
-        session.ensure_pane(env.server, env.codex, env.cwd, env.dir)?;
+        session.ensure_pane(env.server, env.codex, cwd, env.dir)?;
     }
-    let turn_id = session.turn_start(&job.text)?;
+    let turn_id = session.turn_start(&job.text, job.copy.as_ref().map(|_| cwd))?;
     let mut answer = None;
     let mut interrupt: Option<(Instant, bool)> = None;
     loop {
@@ -349,11 +436,36 @@ fn run_job(
                         PortError::invalid("turn completed without an agent message")
                     })?;
                     rollout_matches(&session.thread, &job.text)?;
-                    session.ensure_pane(env.server, env.codex, env.cwd, env.dir)?;
+                    session.ensure_pane(env.server, env.codex, cwd, env.dir)?;
+                    let (schema, bytes) = if let Some(copy) = &job.copy {
+                        let output = crate::write::seal_return(
+                            copy,
+                            text.as_bytes(),
+                            job.spec.document.deadline_ms,
+                            &job.tx,
+                            || {
+                                job.token.cancelled.load(Ordering::SeqCst)
+                                    || stopped.load(Ordering::SeqCst)
+                            },
+                        )?;
+                        let Some(output) = output else {
+                            session.close()?;
+                            *live = None;
+                            let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                                requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                                    || stopped.load(Ordering::SeqCst),
+                                session_closed: true,
+                            });
+                            return Ok(());
+                        };
+                        output
+                    } else {
+                        ("codex.turn.v1".into(), text.into_bytes())
+                    };
                     job.token.finished.store(true, Ordering::SeqCst);
                     let _ = job.tx.send(RuntimeEvent::Proposal {
-                        schema: "codex.turn.v1".into(),
-                        bytes: text.into_bytes(),
+                        schema,
+                        bytes,
                         source: EvidenceLevel::AdapterEvent,
                     });
                     let _ = job.tx.send(RuntimeEvent::TurnReturned);
@@ -380,10 +492,14 @@ struct Live {
     child: Child,
     rpc: Rpc,
     socket: PathBuf,
+    remote: String,
+    auth: Option<String>,
     thread: String,
     resumed_existing: bool,
     pane: Option<Pane>,
     closed: bool,
+    confined: bool,
+    cwd: PathBuf,
 }
 
 struct Pane {
@@ -392,28 +508,73 @@ struct Pane {
 }
 
 impl Live {
-    fn open(codex: &Path, cwd: &Path, dir: &Path, socket: &Path) -> Result<(Self, bool, bool)> {
+    fn open(
+        codex: &Path,
+        cwd: &Path,
+        dir: &Path,
+        socket: &Path,
+        credential_root: Option<&Path>,
+    ) -> Result<(Self, bool, bool)> {
         let _ = fs::remove_file(socket);
         let log = crate::storage::private_file(&dir.join("app-server.err"))?;
-        let mut child = Command::new(codex);
+        let address = if credential_root.is_some() {
+            Some(TcpListener::bind("127.0.0.1:0")?.local_addr()?)
+        } else {
+            None
+        };
+        let auth = address
+            .map(|_| agency_proto::client::new_credential())
+            .transpose()?;
+        let remote = address.map_or_else(
+            || format!("unix://{}", socket.display()),
+            |address| format!("ws://{address}"),
+        );
+        let mut args = listen_args(socket);
+        if let Some(auth) = &auth {
+            args[2] = remote.clone();
+            args.extend([
+                "--ws-auth".into(),
+                "capability-token".into(),
+                "--ws-token-sha256".into(),
+                hash(auth.as_bytes()),
+            ]);
+        }
+        let mut child = if let Some(credential_root) = credential_root {
+            crate::confine::harness_command(codex, &args, cwd, dir, socket, credential_root)?
+        } else {
+            let mut child = Command::new(codex);
+            child.args(args);
+            child
+        };
         child
-            .args(listen_args(socket))
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
             .stderr(Stdio::from(log))
             .current_dir(cwd)
             .process_group(0);
         let mut child = child.spawn()?;
-        let rpc = wait_socket(socket, &mut child)?;
+        let rpc = if let Some(address) = address {
+            wait_tcp(
+                address,
+                auth.as_deref().expect("write listener token"),
+                &mut child,
+            )?
+        } else {
+            wait_socket(socket, &mut child)?
+        };
         let saved = read_thread(dir)?;
         let mut live = Self {
             child,
             rpc,
             socket: socket.to_path_buf(),
+            remote,
+            auth,
             thread: String::new(),
             resumed_existing: false,
             pane: None,
             closed: false,
+            confined: credential_root.is_some(),
+            cwd: cwd.to_path_buf(),
         };
         let attached = (|| {
             live.rpc.initialize()?;
@@ -429,7 +590,7 @@ impl Live {
             }
             let started = live.rpc.request(
                 "thread/start",
-                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": "read-only"}),
+                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": if credential_root.is_some() { "danger-full-access" } else { "read-only" }}),
             )?;
             let id = started["thread"]["id"]
                 .as_str()
@@ -450,16 +611,20 @@ impl Live {
         }
     }
 
-    fn turn_start(&mut self, text: &str) -> Result<String> {
-        let turn = self.rpc.request(
-            "turn/start",
-            json!({
-                "threadId": self.thread,
-                "approvalPolicy": "never",
-                "sandboxPolicy": {"type": "readOnly"},
-                "input": [{"type": "text", "text": text}],
-            }),
-        )?;
+    fn turn_start(&mut self, text: &str, cwd: Option<&Path>) -> Result<String> {
+        let mut params = json!({
+            "threadId": self.thread,
+            "approvalPolicy": "never",
+            "sandboxPolicy": {"type": "readOnly"},
+            "input": [{"type": "text", "text": text}],
+        });
+        if let Some(cwd) = cwd {
+            params["cwd"] = json!(cwd);
+            // Native bubblewrap cannot mount inside an inherited Landlock ruleset.
+            // app-server explicitly supports a sandbox supplied by its host.
+            params["sandboxPolicy"] = json!({"type":"externalSandbox", "networkAccess":"enabled"});
+        }
+        let turn = self.rpc.request("turn/start", params)?;
         turn["turn"]["id"]
             .as_str()
             .filter(|id| !id.is_empty())
@@ -500,7 +665,8 @@ impl Live {
             cwd,
             dir,
             &self.thread,
-            &self.socket,
+            &self.remote,
+            self.auth.as_deref(),
         )?);
         Ok(())
     }
@@ -540,7 +706,8 @@ fn open_pane(
     cwd: &Path,
     dir: &Path,
     thread: &str,
-    socket: &Path,
+    remote: &str,
+    auth: Option<&str>,
 ) -> Result<Pane> {
     let bin = dir.join("bin");
     crate::storage::private_dir(&bin)?;
@@ -561,9 +728,21 @@ fn open_pane(
         bin.display(),
         std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
     );
+    let mut env = json!({"HOME":home,"USER":user,"PATH":path});
+    let mut command = vec![
+        "/usr/bin/env".to_owned(),
+        format!("PATH={path}"),
+        format!("HOME={home}"),
+        format!("USER={user}"),
+    ];
+    if let Some(auth) = auth {
+        env["HCTL2_CODEX_REMOTE_TOKEN"] = json!(auth);
+        command.push(format!("HCTL2_CODEX_REMOTE_TOKEN={auth}"));
+    }
+    command.push("/bin/sh".into());
     let created = client.call(
         "workspace.create",
-        json!({"cwd":cwd,"focus":false,"label":"agency-codex","env":{"HOME":home,"USER":user,"PATH":path}}),
+        json!({"cwd":cwd,"focus":false,"label":"agency-codex","env":env}),
     )?;
     let tab = created
         .pointer("/tab/tab_id")
@@ -571,19 +750,29 @@ fn open_pane(
         .ok_or_else(|| PortError::invalid("workspace tab missing"))?;
     let applied = client.call(
         "layout.apply",
-        json!({"tab_id":tab,"focus":false,"root":{"type":"pane","cwd":cwd,"command":["/usr/bin/env",
-            format!("PATH={path}"), format!("HOME={home}"), format!("USER={user}"), "/bin/sh"]}}),
+        json!({"tab_id":tab,"focus":false,"root":{"type":"pane","cwd":cwd,"command":command}}),
     )?;
     let pane = applied
         .pointer("/layout/root/pane_id")
         .and_then(Value::as_str)
         .ok_or_else(|| PortError::invalid("layout pane missing"))?
         .to_owned();
-    let remote = format!("unix://{}", socket.display());
+    let mut args = vec![
+        "resume".to_owned(),
+        thread.to_owned(),
+        "--remote".into(),
+        remote.into(),
+    ];
+    if auth.is_some() {
+        args.extend([
+            "--remote-auth-token-env".into(),
+            "HCTL2_CODEX_REMOTE_TOKEN".into(),
+        ]);
+    }
     client.call_retrying_busy(
         "agent.start",
         json!({"name":format!("codex-{}", &hash(dir.as_os_str().as_encoded_bytes())[..24]),
-            "kind":"codex","pane_id":pane,"args":["resume", thread, "--remote", remote],
+            "kind":"codex","pane_id":pane,"args":args,
             "timeout_ms":30_000}),
     )?;
     let timeout = Instant::now() + Duration::from_secs(30);
@@ -601,6 +790,28 @@ fn open_pane(
         "STANDBY_START_TIMEOUT",
         "codex --remote did not become ready",
         "inspect_herdr_pane",
+    ))
+}
+
+fn wait_tcp(address: SocketAddr, auth: &str, child: &mut Child) -> Result<Rpc> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        if child.try_wait()?.is_some() {
+            return Err(PortError::new(
+                "CODEX_APP_SERVER_EXITED",
+                "app-server exited before listening",
+                "inspect_app_server_log",
+            ));
+        }
+        if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_millis(100)) {
+            return Rpc::upgrade(Stream::Tcp(stream), Some(auth));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Err(PortError::new(
+        "CODEX_APP_SERVER_EXITED",
+        "app-server did not start listening",
+        "inspect_app_server_log",
     ))
 }
 
@@ -749,20 +960,67 @@ fn input_text_eq(value: &Value, text: &str) -> bool {
     false
 }
 
+enum Stream {
+    Unix(UnixStream),
+    Tcp(TcpStream),
+}
+impl Stream {
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        match self {
+            Self::Unix(s) => s.set_read_timeout(timeout),
+            Self::Tcp(s) => s.set_read_timeout(timeout),
+        }
+    }
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        match self {
+            Self::Unix(s) => s.set_write_timeout(timeout),
+            Self::Tcp(s) => s.set_write_timeout(timeout),
+        }
+    }
+}
+impl Read for Stream {
+    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Unix(s) => s.read(bytes),
+            Self::Tcp(s) => s.read(bytes),
+        }
+    }
+}
+impl Write for Stream {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Unix(s) => s.write(bytes),
+            Self::Tcp(s) => s.write(bytes),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Unix(s) => s.flush(),
+            Self::Tcp(s) => s.flush(),
+        }
+    }
+}
+
 struct Rpc {
-    stream: UnixStream,
+    stream: Stream,
     buf: Vec<u8>,
     next: u64,
 }
 
 impl Rpc {
     fn connect(path: &Path) -> Result<Self> {
-        let mut stream = UnixStream::connect(path)?;
+        Self::upgrade(Stream::Unix(UnixStream::connect(path)?), None)
+    }
+
+    fn upgrade(mut stream: Stream, auth: Option<&str>) -> Result<Self> {
         stream.set_read_timeout(Some(Duration::from_secs(20)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         let key = "dGhlIHNhbXBsZSBub25jZQ==";
+        let authorization = auth.map_or(String::new(), |auth| {
+            format!("Authorization: Bearer {auth}\r\n")
+        });
         let req = format!(
-            "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
+            "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n{authorization}\r\n"
         );
         stream.write_all(req.as_bytes())?;
         let mut buf = Vec::new();
@@ -933,7 +1191,7 @@ impl Rpc {
     }
 }
 
-fn read_some(stream: &mut UnixStream, buf: &mut [u8]) -> std::io::Result<usize> {
+fn read_some(stream: &mut Stream, buf: &mut [u8]) -> std::io::Result<usize> {
     match stream.read(buf) {
         Ok(0) => Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
