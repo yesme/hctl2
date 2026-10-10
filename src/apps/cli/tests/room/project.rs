@@ -655,20 +655,34 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
 /// 人只预览两次（合入、完成）；投影与平台事实一致。真 harness 版在 3f 合入后另加。
 #[test]
 fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() {
-    let (f, mut setup) = paired_profile("demo3-gitea", 0, "write");
+    demo3_gitea_chain("demo3-gitea", false);
+}
+
+/// 第 9 包验收第 3 条：开了「发布评审须人显式确认」的 Project 多一次发布预览，三次预览；
+/// 意图停在 `pending_human`，预览写明推到哪个分支、建到哪个目标、不是合入。
+#[test]
+fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
+    demo3_gitea_chain("demo3-gitea-confirm", true);
+}
+
+fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
+    let (f, mut setup) = paired_profile(name, 0, "write");
     let p = setup.project.clone();
-    // 缺省路径：发布不需要人放行。
-    let (ok, shown) = f.run(&["project", "show", &p]);
-    assert!(ok, "{shown}");
-    let mut definition = shown["definition"].clone();
-    definition["settings"]["publish_review_requires_confirmation"] = json!(false);
-    accepted(
-        &f,
-        "project",
-        "update",
-        "demo3-automatic-publication",
-        json!({"project_id":p,"version":shown["project"]["version"],"definition":definition}),
-    );
+    let mut human_previews = Vec::new();
+    // 项目定义里开关缺省是开着的；缺省路径把它关掉，发布不需要人放行。
+    if !requires_confirmation {
+        let (ok, shown) = f.run(&["project", "show", &p]);
+        assert!(ok, "{shown}");
+        let mut definition = shown["definition"].clone();
+        definition["settings"]["publish_review_requires_confirmation"] = json!(false);
+        accepted(
+            &f,
+            "project",
+            "update",
+            "demo3-automatic-publication",
+            json!({"project_id":p,"version":shown["project"]["version"],"definition":definition}),
+        );
+    }
     // The update above moved the Project record; every later command names the current one.
     let (ok, current) = f.run(&["project", "show", &p]);
     assert!(ok, "{current}");
@@ -750,7 +764,7 @@ fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() 
     assert_eq!(write["publication_target"]["target_branch"], "main");
     assert_eq!(
         write["publication_target"]["requires_human_confirmation"],
-        false
+        requires_confirmation
     );
     let pending = write["lease"]["pending"].clone();
     let set = pending["change_set_id"].as_str().unwrap().to_owned();
@@ -796,6 +810,73 @@ fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() 
     let (ok, listed) = f.run(&["review", "list", &setup.repo]);
     assert!(ok, "{listed}");
     let intent = listed["items"][0]["intent_id"].as_str().unwrap().to_owned();
+    // 安静：Room 里是一句给人看的话，不是机器的 ChangeSet 记录。
+    // The projection is an outbox effect delivered after admission; wait for it.
+    let room_bodies = || -> Vec<String> {
+        ready_timeline(&f, &p, &setup.room)["events"]
+            .as_array()
+            .map(|events| {
+                events
+                    .iter()
+                    .filter_map(|e| e["content"]["body"].as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let bodies = wait(
+        "room projection",
+        Box::new(|| {
+            let bodies = room_bodies();
+            bodies
+                .iter()
+                .any(|b| b.starts_with("Write admitted as version"))
+                .then(|| json!(bodies))
+        }),
+    );
+    let bodies: Vec<String> = serde_json::from_value(bodies).unwrap();
+    let line = bodies
+        .iter()
+        .find(|b| b.starts_with("Write admitted as version"))
+        .unwrap();
+    assert!(
+        line.contains(if requires_confirmation {
+            "waits for a human: hctl2 review publish"
+        } else {
+            "Publishing for review is queued"
+        }),
+        "{line}"
+    );
+    assert!(
+        !bodies.iter().any(|b| b.contains("\"change_set_id\"")),
+        "raw ChangeSet output leaked into the Room: {bodies:?}"
+    );
+    if requires_confirmation {
+        let held = f.run(&["review", "show", &setup.repo, &intent]).1;
+        assert_eq!(held["intent"]["state"], "pending_human", "{held}");
+        // 人的发布预览：推到哪个分支、建到哪个目标、不是合入。
+        let (ok, release) = f.run(&["review", "publish", &setup.repo, &intent]);
+        assert!(ok, "{release}");
+        let summary = &release["effect_summary"];
+        assert_eq!(summary["target_branch"], "main", "{release}");
+        assert!(summary["branch"].as_str().unwrap().starts_with("hctl2/"));
+        assert!(
+            summary["authorizes"]
+                .as_str()
+                .unwrap()
+                .contains("Not a merge"),
+            "{release}"
+        );
+        let (ok, released) = f.run(&[
+            "review",
+            "publish",
+            &setup.repo,
+            &intent,
+            "--preview-token",
+            release["preview_token"].as_str().unwrap(),
+        ]);
+        assert!(ok, "{released}");
+        human_previews.push("publish");
+    }
     let published = wait(
         "publication",
         Box::new(|| {
@@ -836,6 +917,7 @@ fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() 
     ]);
     let (ok, submitted) = f.run(&submit);
     assert!(ok, "{submitted}");
+    human_previews.push("integration");
     let merge_intent = submitted["intent_id"]
         .as_str()
         .unwrap_or_else(|| panic!("integration submit returned no intent: {submitted}"))
@@ -914,11 +996,20 @@ fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() 
     ]);
     let (ok, completed) = f.run(&confirm);
     assert!(ok, "{completed}");
+    human_previews.push("completion");
     let (ok, task_after) = f.run(&["task", "show", &p, &task_id]);
     assert!(ok, "{task_after}");
     assert_eq!(task_after["data"]["lifecycle"], "completed", "{task_after}");
+    assert_eq!(
+        human_previews,
+        if requires_confirmation {
+            vec!["publish", "integration", "completion"]
+        } else {
+            vec!["integration", "completion"]
+        }
+    );
     println!(
-        "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: integration, completion"
+        "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: {human_previews:?}"
     );
 }
 

@@ -329,19 +329,23 @@ fn admit(
         .as_ref()
         .ok_or_else(|| invalid("Room binding is not ready"))?;
     let effect_id = format!("projection:{id}:{}", h.proposal_id);
-    let projection =
-        json!({"room":room,"body":body,"proposal":reference(inbox),"evidence":proposal.evidence});
-    let effect = EffectIntent {
-        intent_id: effect_id.clone(),
-        owner: reference(&root),
-        binding: reference(&room_binding),
-        operation: "invocation.project".into(),
-        target: external.clone(),
-        conflict_scope: effect_id.clone(),
-        permission_scope: root.key.scope.clone(),
-        input_digest: Command::digest_input("invocation.project", &projection)?,
-        input: projection,
-        idempotency_key: effect_id.clone(),
+    // What the Room shows. A read-only answer is the answer. A write result's output is the
+    // machine ChangeSet record; the Room gets one human line about what was admitted and
+    // what happens next instead (CT-PRODUCT: quiet on success, readable at a glance).
+    let projection_effect = |body: &str| -> store::Result<EffectIntent> {
+        let projection = json!({"room":room,"body":body,"proposal":reference(inbox),"evidence":proposal.evidence});
+        Ok(EffectIntent {
+            intent_id: effect_id.clone(),
+            owner: reference(&root),
+            binding: reference(&room_binding),
+            operation: "invocation.project".into(),
+            target: external.clone(),
+            conflict_scope: effect_id.clone(),
+            permission_scope: root.key.scope.clone(),
+            input_digest: Command::digest_input("invocation.project", &projection)?,
+            input: projection,
+            idempotency_key: effect_id.clone(),
+        })
     };
     let mut admitted = value_record(
         target,
@@ -433,11 +437,55 @@ fn admit(
             tx.put(&record)?;
             tx.enqueue_effect(cleanup)?;
         }
-        tx.enqueue_effect(&effect)?;
+        let room_body = match (&revision, seal) {
+            (Some(revision), _) => write_summary(revision, publication_intent.as_ref()),
+            (None, Some(seal)) => format!(
+                "Write turn returned no changes: the worktree matches baseline {}; no new version, nothing published.",
+                short(&seal.base_commit_sha)
+            ),
+            (None, None) => body.to_owned(),
+        };
+        tx.enqueue_effect(&projection_effect(&room_body)?)?;
         let mut result = json!({"invocation_id":id,"state":"completed","result":reference(&admitted),"projection_effect":effect_id});
         if baseline_tree_sha.is_some() { result["no_changes"] = json!(true); }
         if let Some(revision) = revision { result["change_set_revision"] = serde_json::to_value(revision)?; }
         if let Some(intent) = publication_intent { result["review_publish_intent"] = serde_json::to_value(intent)?; }
         Ok(result)
     })
+}
+
+/// The Room line for an admitted write: which version, from what, and what happens next.
+fn write_summary(
+    revision: &repo::changeset::ChangeSetRevision,
+    intent: Option<&repo::review::Intent>,
+) -> String {
+    let next = match intent {
+        Some(intent) if intent.state == repo::review::State::PendingHuman => format!(
+            "Publishing for review waits for a human: hctl2 review publish {} {}",
+            intent.repo_id, intent.intent_id
+        ),
+        Some(intent) => format!(
+            "Publishing for review is queued: push to {} and open a review request, each read back.",
+            intent.branch
+        ),
+        None => "No review publication was authorized for this write.".into(),
+    };
+    format!(
+        "Write admitted as version {} of ChangeSet {} (baseline {}, result tree {}). {next}",
+        short(&revision.change_set_revision_id),
+        short(&revision.change_set_id),
+        short(&revision.base_commit_sha),
+        short(&revision.result_tree_sha),
+    )
+}
+
+/// Identifiers in a Room line: the kind prefix and twelve characters are enough to find the
+/// full one with `changeset show` / `review show`.
+fn short(id: &str) -> String {
+    match id.split_once('-') {
+        Some((kind, rest)) if kind.len() <= 4 => {
+            format!("{kind}-{}", rest.chars().take(12).collect::<String>())
+        }
+        _ => id.chars().take(12).collect(),
+    }
 }
