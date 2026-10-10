@@ -648,6 +648,280 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     );
 }
 
+/// 第 9 包验收第 1 条的骨架（脚本执行体版）：本地 Gitea 这条链从真实命令行走到 Task 完成。
+/// 试验仓库只在本地、缺省绑随包 Gitea；Project 与带契约的 Task；从 Room 发写入型调用（预览里
+/// 有 ChangeSet、租约、冻结的发布策略）；脚本在隔离目录改代码；封存、准入、自动发成评审请求；
+/// 人预览合入（只能选接受目标前移）→ Integration Receipt；人预览完成 → Task Completion Receipt。
+/// 人只预览两次（合入、完成）；投影与平台事实一致。真 harness 版在 3f 合入后另加。
+#[test]
+fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() {
+    let (f, mut setup) = paired_profile("demo3-gitea", 0, "write");
+    let p = setup.project.clone();
+    // 缺省路径：发布不需要人放行。
+    let (ok, shown) = f.run(&["project", "show", &p]);
+    assert!(ok, "{shown}");
+    let mut definition = shown["definition"].clone();
+    definition["settings"]["publish_review_requires_confirmation"] = json!(false);
+    accepted(
+        &f,
+        "project",
+        "update",
+        "demo3-automatic-publication",
+        json!({"project_id":p,"version":shown["project"]["version"],"definition":definition}),
+    );
+    // The update above moved the Project record; every later command names the current one.
+    let (ok, current) = f.run(&["project", "show", &p]);
+    assert!(ok, "{current}");
+    let pv = current["project"]["version"].clone();
+    let (ok, registration) = f.run(&["repo", "show", &setup.repo]);
+    assert!(ok, "{registration}");
+    let full_name = registration["observed"]["full_name"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let platform_id = registration["observed"]["stable_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // 带契约的 Task：机械项只认本 Task 的 Integration Receipt，另有一条人的判定。
+    let source = accepted(
+        &f,
+        "task",
+        "connect",
+        "demo3-source",
+        json!({"repo_id":setup.repo,"candidate_id":"gitea_issues","consent":true,"make_default":false}),
+    );
+    let source = source["source_id"].as_str().unwrap().to_owned();
+    accepted(
+        &f,
+        "task",
+        "attach",
+        "demo3-attach",
+        json!({"project_id":p,"project_version":pv,"source_id":source,"approved_scope":platform_id,"consent":true}),
+    );
+    let created = accepted(
+        &f,
+        "task",
+        "create",
+        "demo3-task",
+        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"change source.txt","body":"the script executor rewrites source.txt"}),
+    );
+    let task_id = created["task_id"].as_str().unwrap().to_owned();
+    let (ok, before) = f.run(&["task", "show", &p, &task_id]);
+    assert!(ok, "{before}");
+    let contract = json!({"scope":"demo3","expected_outcome":"source.txt changed and merged","acceptance":[
+        {"text":"the change is integrated","grade":"mechanical","evidence":{"accept":"integration_receipt","min_channel":"unmediated"}},
+        {"text":"a human judged it done","grade":"human"}],"roles":[],"capabilities":[]});
+    let digest = foundation::canonical_json_sha256(&contract).unwrap();
+    let adoption = json!({"contract":contract,"origin":{"kind":"local","reference":{"key":{"scope":{"kind":"project","id":p},"kind":"project","id":p},"version":{"state":pv}},"proposal_digest":digest}});
+    let adopted = accepted(
+        &f,
+        "task",
+        "adopt",
+        "demo3-adopt",
+        json!({"project_id":p,"project_version":pv,"task_id":task_id,"version":before["version"],"adoption":adoption}),
+    );
+    let adopted_task = &adopted["task"];
+    // 写入型调用，归属这张 Task。
+    let baseline =
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120000;
+    let input = f.root.join("demo3-invocation.json");
+    std::fs::write(&input, json!({"project_id":p,"room_id":setup.room,"task_id":task_id,"target":"research","profile":setup.profile["revision"],"request":"Change source.txt for the adopted Task","budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    let preview_args = [
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "demo3-write",
+    ];
+    let (ok, preview) = f.run(&preview_args);
+    assert!(ok, "{preview}");
+    let write = &preview["effect_summary"]["preview"]["write"];
+    assert_eq!(write["authorization"], "publish_for_review_not_integration");
+    assert_eq!(write["publication_target"]["target_branch"], "main");
+    assert_eq!(
+        write["publication_target"]["requires_human_confirmation"],
+        false
+    );
+    let pending = write["lease"]["pending"].clone();
+    let set = pending["change_set_id"].as_str().unwrap().to_owned();
+    configure_git_writer(&f, &mut setup, &pending, true, false);
+    let mut start = preview_args.to_vec();
+    start[1] = "start";
+    start.extend([
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, started) = f.run(&start);
+    assert!(ok, "{started}");
+    let invocation = started["invocation_id"].as_str().unwrap().to_owned();
+    let wait = |what: &str, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
+        let by = std::time::Instant::now() + Duration::from_secs(90);
+        loop {
+            if let Some(value) = done() {
+                return value;
+            }
+            assert!(
+                std::time::Instant::now() < by,
+                "{what} did not settle; {}",
+                std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    let finished = wait(
+        "invocation",
+        Box::new(|| {
+            let (ok, shown) = f.run(&["invocation", "show", &p, &invocation]);
+            assert!(ok, "{shown}");
+            (shown["state"] == "completed").then_some(shown)
+        }),
+    );
+    assert_eq!(finished["state"], "completed", "{finished}");
+    let (ok, admitted) = f.run(&["changeset", "show", &setup.repo, &set]);
+    assert!(ok, "{admitted}");
+    let revision_id = admitted["revisions"][0]["change_set_revision_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (ok, listed) = f.run(&["review", "list", &setup.repo]);
+    assert!(ok, "{listed}");
+    let intent = listed["items"][0]["intent_id"].as_str().unwrap().to_owned();
+    let published = wait(
+        "publication",
+        Box::new(|| {
+            let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
+            assert!(ok, "{shown}");
+            (shown["intent"]["state"] == "published").then_some(shown)
+        }),
+    );
+    let commit = published["mappings"][0]["platform_commit_sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let index = published["mappings"][0]["review_request"]["index"]
+        .as_u64()
+        .unwrap();
+    // 人的第 1 次预览：合入，只选接受目标前移。
+    let integration = f.root.join("demo3-integration.json");
+    std::fs::write(
+        &integration,
+        json!({"repo_id":setup.repo,"change_set_revision_id":revision_id,"target_kind":"platform","target_ref":"refs/heads/main","form":"accept_advance","strategy":"fast_forward"}).to_string(),
+    )
+    .unwrap();
+    let integration_args = [
+        "integration",
+        "preview",
+        "--input",
+        integration.to_str().unwrap(),
+        "--key",
+        "demo3-merge",
+    ];
+    let (ok, merge_preview) = f.run(&integration_args);
+    assert!(ok, "{merge_preview}");
+    let mut submit = integration_args.to_vec();
+    submit[1] = "submit";
+    submit.extend([
+        "--preview-token",
+        merge_preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, submitted) = f.run(&submit);
+    assert!(ok, "{submitted}");
+    let merge_intent = submitted["intent_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("integration submit returned no intent: {submitted}"))
+        .to_owned();
+    let merged = wait(
+        "integration",
+        Box::new(|| {
+            let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
+            assert!(ok, "{shown}");
+            let state = shown["intent"]["state"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            assert!(
+                !matches!(state.as_str(), "failed"),
+                "integration failed: {shown}"
+            );
+            (state == "succeeded").then_some(shown)
+        }),
+    );
+    let receipt = merged["receipt"].clone();
+    assert_eq!(
+        receipt["source"]["change_set_revision_id"], revision_id,
+        "{merged}"
+    );
+    assert_eq!(receipt["evidence_level"], "hctl2-tool", "{merged}");
+    let receipt_id = receipt["receipt_id"].as_str().unwrap().to_owned();
+    // 平台事实：请求已合，main 前移到发布的提交（快进）。
+    ready_gitea(&f);
+    let request = gitea_read(
+        &f,
+        &registration,
+        &format!("repos/{full_name}/pulls/{index}"),
+    );
+    assert_eq!(request["merged"], true, "{request}");
+    let main = gitea_read(
+        &f,
+        &registration,
+        &format!("repos/{full_name}/branches/main"),
+    );
+    assert_eq!(main["commit"]["id"], commit, "{main}");
+    assert_eq!(receipt["target_head_after"], commit, "{merged}");
+    // 人的第 2 次预览：完成 Task，机械项引用这张 Receipt。
+    let principal = format!("local-owner:{}", std::fs::metadata(&f.root).unwrap().uid());
+    let receipt_ref = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"integration_receipt","id":receipt_id},"version":{"state":1}});
+    let complete = json!({
+        "project_id":p,"task_id":task_id,"version":adopted_task["version"],
+        "lifecycle_version":adopted_task["data"]["lifecycle_version"],
+        "revision_number":adopted_task["data"]["revision"]["number"],
+        "acceptance":[
+            {"item":0,"judge":{"kind":"hctl2_tool"},"channel":"unmediated","references":[receipt_ref],"producer":"hctl2-tool","generation":1},
+            {"item":1,"judge":{"kind":"human","actor":principal},"channel":"narrated","references":[],"producer":null,"generation":null}
+        ]
+    });
+    let complete_input = f.root.join("demo3-complete.json");
+    std::fs::write(&complete_input, complete.to_string()).unwrap();
+    let complete_args = [
+        "task",
+        "complete",
+        "--key",
+        "demo3-complete",
+        "--input",
+        complete_input.to_str().unwrap(),
+    ];
+    let (ok, completion_preview) = f.run(&complete_args);
+    assert!(ok, "{completion_preview}");
+    let items = &completion_preview["effect_summary"]["result"]["items"];
+    assert_eq!(
+        items[0]["validation_level"], "unmediated",
+        "{completion_preview}"
+    );
+    let mut confirm = complete_args.to_vec();
+    confirm.extend([
+        "--preview-token",
+        completion_preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, completed) = f.run(&confirm);
+    assert!(ok, "{completed}");
+    let (ok, task_after) = f.run(&["task", "show", &p, &task_id]);
+    assert!(ok, "{task_after}");
+    assert_eq!(task_after["data"]["lifecycle"], "completed", "{task_after}");
+    println!(
+        "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: integration, completion"
+    );
+}
+
 fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
     let credential_root = f.root.join("independent-agency").canonicalize().unwrap();
     let digest = agency_proto::hash(credential_root.as_os_str().as_encoded_bytes());
