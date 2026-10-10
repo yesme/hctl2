@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Verify a complete release package, then exercise its offline service lifecycle.
 
-set -euo pipefail
+set -Eeuo pipefail
 # Keep a failed assertion locatable without logging command arguments or credentials.
-trap 'printf "release contract failed at line %s (exit %s)\n" "$LINENO" "$?" >&2' ERR
+trap 'release_failed_status=$?; if [[ $- == *e* ]]; then printf "release contract failed at %s:%s (exit %s)\n" "${BASH_SOURCE[0]##*/}" "$LINENO" "$release_failed_status" >&2; fi' ERR
 
 usage() {
     printf 'usage: test-package.sh RELEASE_OUTPUT_DIRECTORY\n'
