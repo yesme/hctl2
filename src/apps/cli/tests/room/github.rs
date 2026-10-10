@@ -6,6 +6,110 @@ use std::{os::unix::fs::MetadataExt, time::Instant};
 
 const CANARY: &str = "yesme/hctl2-canary";
 
+fn test_command(code_dir: &str) -> String {
+    format!("/usr/bin/python3 -B -m unittest discover -s {code_dir} -p test_calculator.py -v")
+}
+
+fn last_native_task_test<'a>(
+    records: &'a [Value],
+    cwd: &Path,
+    code_dir: &str,
+) -> Option<&'a Value> {
+    let cwd = format!("file://{}", cwd.display());
+    records.iter().rev().find_map(|record| {
+        let item = &record["payload"]["item"];
+        let command = item["command"].as_array()?;
+        let argv: Option<Vec<_>> = command.iter().map(Value::as_str).collect();
+        let argv = argv?;
+        // Native CommandExecution stores argv, including the shell's script argument.
+        // Read whole argument words so an old directory or a directory suffix cannot match.
+        let shell = argv.len() == 3
+            && matches!(
+                Path::new(argv[0]).file_name().and_then(|s| s.to_str()),
+                Some("sh" | "bash" | "zsh")
+            )
+            && matches!(argv[1], "-c" | "-lc");
+        let words = if shell {
+            argv[2]
+                .split_whitespace()
+                .map(|word| word.trim_matches(['\'', '"']))
+                .collect()
+        } else {
+            argv
+        };
+        let requested = words
+            .windows(3)
+            .any(|w| w == ["-m", "unittest", "discover"])
+            && words.windows(2).any(|w| w == ["-s", code_dir])
+            && words.windows(2).any(|w| w == ["-p", "test_calculator.py"]);
+        (record["type"] == "event_msg"
+            && record["payload"]["type"] == "item_completed"
+            && item["type"] == "CommandExecution"
+            && item["cwd"] == cwd
+            && requested)
+            .then_some(item)
+    })
+}
+
+fn native_test_passed(item: &Value) -> bool {
+    item["status"] == "completed"
+        && item["exit_code"] == 0
+        && item["aggregated_output"].as_str().is_some_and(|output| {
+            output.lines().any(|line| {
+                line.strip_prefix("Ran ")
+                    .and_then(|rest| rest.split_whitespace().next())
+                    .and_then(|count| count.parse::<u64>().ok())
+                    .is_some_and(|count| count > 0)
+            }) && output.trim_end().lines().last() == Some("OK")
+        })
+}
+
+#[test]
+fn native_test_evidence_is_bound_to_this_task_and_the_last_attempt() {
+    let cwd = Path::new("/tmp/agency/current-change-set");
+    let code_dir = "canary_cases/current_task";
+    let record = |dir: &str, task: &str, exit: i32| {
+        json!({"type":"event_msg", "payload":{"type":"item_completed", "item":{
+            "type":"CommandExecution", "command":["/usr/bin/zsh", "-lc", test_command(task)],
+            "cwd":format!("file://{dir}"), "status":if exit == 0 { "completed" } else { "failed" },
+            "exit_code":exit, "aggregated_output":"Ran 6 tests in 0.01s\n\nOK\n"
+        }}})
+    };
+    let mut records = vec![
+        record(cwd.to_str().unwrap(), "canary_cases/old_task", 0),
+        record(cwd.to_str().unwrap(), "canary_cases/current_task_old", 0),
+        record("/tmp/agency/other-change-set", code_dir, 0),
+    ];
+    assert!(last_native_task_test(&records, cwd, code_dir).is_none());
+    records.push(record(cwd.to_str().unwrap(), code_dir, 0));
+    assert!(native_test_passed(
+        last_native_task_test(&records, cwd, code_dir).unwrap()
+    ));
+    // A later failed attempt must supersede the earlier success, even if output contains OK.
+    records.push(record(cwd.to_str().unwrap(), code_dir, 1));
+    records.last_mut().unwrap()["payload"]["item"]["command"][2] = json!(format!(
+        "/usr/bin/python3 -m unittest discover -v -p test_calculator.py -s '{code_dir}'"
+    ));
+    assert!(!native_test_passed(
+        last_native_task_test(&records, cwd, code_dir).unwrap()
+    ));
+}
+
+#[test]
+fn native_test_evidence_requires_a_nonempty_successful_unittest_summary() {
+    let mut item = json!({"status":"completed", "exit_code":0,
+        "aggregated_output":"Ran 8 tests in 0.01s\n\nOK\n"});
+    assert!(native_test_passed(&item));
+    for output in [
+        "the tests Ran and look OK",
+        "Ran 0 tests\n\nOK\n",
+        "Ran 6 tests\n\nFAILED\n",
+    ] {
+        item["aggregated_output"] = json!(output);
+        assert!(!native_test_passed(&item), "{output}");
+    }
+}
+
 fn run(f: &Fixture, args: &[&str]) -> Value {
     let (ok, value) = f.run(args);
     let safe_args: Vec<_> = args
@@ -342,8 +446,9 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
         .unwrap()
         .as_millis();
     let code_dir = format!("canary_cases/codex_{nonce}");
+    let requested_test = test_command(&code_dir);
     let request = format!(
-        "In {code_dir}, add calculator.py implementing ceil_div(numerator, denominator) for signed integers using integer arithmetic, raising ValueError on zero denominator. Add test_calculator.py with unittest covering positive, negative, exact and zero cases. This is real non-documentation code for the adopted Task. Run /usr/bin/python3 -B -m unittest discover -s {code_dir} -p test_calculator.py -v and report the command and output. Modify only these two files, leave changes uncommitted for Agency sealing, and do not push, obtain credentials, publish, or change global harness configuration."
+        "In {code_dir}, add calculator.py implementing ceil_div(numerator, denominator) for signed integers using integer arithmetic, raising ValueError on zero denominator. Add test_calculator.py with unittest covering positive, negative, exact and zero cases. This is real non-documentation code for the adopted Task. Run {requested_test} and report the command and output. Modify only these two files, leave changes uncommitted for Agency sealing, and do not push, obtain credentials, publish, or change global harness configuration."
     );
     let task = accept(
         &f,
@@ -449,15 +554,14 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let cwd = records
+    let session_cwd = records
         .iter()
         .find(|r| r["type"] == "session_meta")
         .unwrap()["payload"]["cwd"]
         .as_str()
         .map(PathBuf::from)
-        .unwrap()
-        .canonicalize()
         .unwrap();
+    let cwd = session_cwd.canonicalize().unwrap();
     assert_eq!(cwd.file_name().unwrap().to_str().unwrap(), change_set);
     assert!(!cwd.starts_with(agency.root.canonicalize().unwrap()));
     assert_eq!(
@@ -494,18 +598,12 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
                     .any(|b| b["type"] == "input_text" && b["text"] == expected_body))),
         "Codex rollout does not contain the exact frozen Bundle + Agency boundary"
     );
-    let native_test = records
-        .iter()
-        .find_map(|r| {
-            let item = &r["payload"]["item"];
-            (item["type"] == "CommandExecution"
-                && item["exit_code"] == 0
-                && item["aggregated_output"]
-                    .as_str()
-                    .is_some_and(|o| o.contains("Ran ") && o.contains("OK")))
-            .then_some(item)
-        })
-        .expect("native Codex test execution exit 0 / OK");
+    let native_test = last_native_task_test(&records, &session_cwd, &code_dir)
+        .expect("native Codex test execution for this Task in this ChangeSet worktree");
+    assert!(
+        native_test_passed(native_test),
+        "last native test: {native_test}"
+    );
     println!(
         "CODEX rollout={} thread={thread}; exact input_text verified\nUSER BODY:\n{expected_body}\nNATIVE TEST: {native_test}",
         rollout.display()
