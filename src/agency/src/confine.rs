@@ -328,8 +328,24 @@ pub(crate) fn protect_native_credentials(state: &Path, credential_root: &Path) -
 
 /// A materialized checkout shares the source Repo's Git configuration. Keep it
 /// outside native harnesses; the Agency/toolbox reads Git identity and seals.
+pub(crate) fn append_git_denials(state: &Path, paths: &[PathBuf]) -> Result<()> {
+    let profile = state.join("credential.sb");
+    let mut rules = fs::read_to_string(&profile)?;
+    for path in paths {
+        rules.push_str(&git_denial(path)?);
+    }
+    fs::remove_file(&profile)?;
+    fs::write(&profile, rules)?;
+    fs::set_permissions(profile, fs::Permissions::from_mode(0o400))?;
+    Ok(())
+}
+
 pub(crate) fn worktree_git_denial(cwd: &Path) -> Result<String> {
     let common = crate::write::git_common_dir(cwd)?;
+    git_denial(&common)
+}
+
+fn git_denial(common: &Path) -> Result<String> {
     let path = scheme_literal(&common.display().to_string())?;
     Ok(format!(
         "(deny file-read* (subpath \"{path}\"))\n(deny file-write* (subpath \"{path}\"))\n"

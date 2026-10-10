@@ -27,6 +27,23 @@ pub fn execute(text: &str, cwd: &Path, enabled: bool) -> Option<Value> {
         )
         .unwrap();
     }
+    let runs = cwd.join("fixture-runs");
+    let count: u32 = fs::read_to_string(&runs)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    fs::write(runs, (count + 1).to_string()).unwrap();
+    if request["wait"] == true {
+        fs::write(cwd.join("fixture-ready"), b"ready").unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !cwd.join("fixture-go").exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "fixture release missing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
     let test = Command::new("/usr/bin/python3")
         .args(["-m", "unittest", "-v", "test_calculator"])
         .current_dir(cwd)

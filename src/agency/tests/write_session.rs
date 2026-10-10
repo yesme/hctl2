@@ -44,7 +44,11 @@ impl Rig {
         )
         .unwrap();
         fs::write(repo.join("test_calculator.py"), "import unittest\nfrom calculator import double\nclass CalculatorTest(unittest.TestCase):\n    def test_double(self):\n        self.assertEqual(double(3), 6)\n        self.assertEqual(double(0), 0)\n").unwrap();
-        fs::write(repo.join(".gitignore"), "__pycache__/\n").unwrap();
+        fs::write(
+            repo.join(".gitignore"),
+            "__pycache__/\nfixture-ready\nfixture-go\nfixture-runs\n",
+        )
+        .unwrap();
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-m", "baseline"]);
         let baseline = git(&repo, &["rev-parse", "HEAD"]).trim().to_owned();
@@ -305,20 +309,27 @@ impl Rig {
     fn claude_state(&self, input: &Prepare, dispatch: &Dispatch) -> PathBuf {
         let exec = confine::execution_dir(&self.root, &dispatch.reference).unwrap();
         let state = herdr::state_dir(&exec, &self.root).unwrap();
-        fs::read_dir(state)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .find(|p| {
-                p.file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .starts_with("standby-")
-                    && fs::read(p.join("job.json")).is_ok_and(|b| {
-                        serde_json::from_slice::<Value>(&b).unwrap()["id"]
-                            == input.spec.document.idempotency_key
-                    })
-            })
-            .unwrap()
+        fn find(state: &Path, id: &str, depth: u8) -> Option<PathBuf> {
+            if depth > 2 {
+                return None;
+            }
+            for entry in fs::read_dir(state).ok()? {
+                let path = entry.ok()?.path();
+                if path.file_name()?.to_str()?.starts_with("standby-")
+                    && fs::read(path.join("job.json"))
+                        .is_ok_and(|b| serde_json::from_slice::<Value>(&b).unwrap()["id"] == id)
+                {
+                    return Some(path);
+                }
+                if path.is_dir()
+                    && let Some(found) = find(&path, id, depth + 1)
+                {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        find(&state, &input.spec.document.idempotency_key, 0).expect("selection state")
     }
     async fn close(self) {
         let _: Value = self.admin.call("shutdown", &json!({})).await.unwrap();
@@ -377,6 +388,117 @@ fn json_file(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
+async fn check_proposal(rig: &Rig, dispatch: &Dispatch, trace: &Trace, empty: bool) {
+    let page: ResultPage = rig
+        .client
+        .call("results", &ResultQuery::of(dispatch.reference.clone()))
+        .await
+        .unwrap();
+    assert_eq!(page.proposals.len(), 1, "{page:?}");
+    let proposal = &page.proposals[0];
+    assert_eq!(proposal.schema, repo::changeset::OUTPUT_SCHEMA);
+    assert_eq!(proposal.evidence, EvidenceLevel::AdapterEvent);
+    assert_eq!(proposal.outputs.len(), 1);
+    let output: repo::changeset::Output = serde_json::from_slice(&proposal.output).unwrap();
+    let report = &trace
+        .events
+        .iter()
+        .find(|e| e.kind == "runtime:git_sealed")
+        .expect("native tool seal readback")
+        .payload;
+    let cwd = rig.worktree();
+    assert_eq!(output.change_set_id, "cs-trial");
+    assert_eq!(output.base_commit_sha, rig.baseline);
+    assert_eq!(output.parent_revision_id, None);
+    assert_eq!(output.base_commit_sha, report["base_commit_sha"]);
+    assert_eq!(
+        report["base_tree_sha"],
+        git(&cwd, &["rev-parse", &format!("{}^{{tree}}", rig.baseline)]).trim()
+    );
+    match output.location {
+        repo::changeset::OutputLocation::Commit {
+            repo_path,
+            commit_sha,
+        } => {
+            assert!(!empty);
+            assert_eq!(repo_path.canonicalize().unwrap(), cwd);
+            assert_eq!(commit_sha, report["result_commit_sha"]);
+            assert_eq!(
+                git(&cwd, &["rev-parse", &format!("{commit_sha}^{{tree}}")]).trim(),
+                report["result_tree_sha"]
+            );
+            assert_ne!(report["base_tree_sha"], report["result_tree_sha"]);
+        }
+        repo::changeset::OutputLocation::NoChanges { repo_path } => {
+            assert!(empty);
+            assert_eq!(repo_path.canonicalize().unwrap(), cwd);
+            assert_eq!(report["base_tree_sha"], report["result_tree_sha"]);
+        }
+        _ => panic!("Agency must return an immutable commit or explicit empty result"),
+    }
+    // Independently seal the current working files through the public tool and
+    // compare its tree with the fixed candidate. This is not a model assertion.
+    let tool = PathBuf::from(std::env::var("HCTL2_TOOL_BIN").unwrap())
+        .canonicalize()
+        .unwrap();
+    let readback = Command::new(tool)
+        .args([
+            "repo",
+            "seal",
+            "--path",
+            cwd.to_str().unwrap(),
+            "--change-set-ref",
+            "cs-trial",
+            "--baseline",
+            &rig.baseline,
+            "--key",
+            &format!("verify-{}", dispatch.reference),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        readback.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&readback.stdout),
+        String::from_utf8_lossy(&readback.stderr)
+    );
+    let readback: Value = serde_json::from_slice(&readback.stdout).unwrap();
+    assert_eq!(
+        readback["result_tree_sha"], report["result_tree_sha"],
+        "Proposal tree differs from worktree"
+    );
+    let retry = Command::new(
+        PathBuf::from(std::env::var("HCTL2_TOOL_BIN").unwrap())
+            .canonicalize()
+            .unwrap(),
+    )
+    .args([
+        "repo",
+        "seal",
+        "--path",
+        cwd.to_str().unwrap(),
+        "--change-set-ref",
+        "cs-trial",
+        "--baseline",
+        &rig.baseline,
+        "--key",
+        &format!("agency-{}", dispatch.spec_digest),
+    ])
+    .output()
+    .unwrap();
+    assert!(retry.status.success());
+    let retry: Value = serde_json::from_slice(&retry.stdout).unwrap();
+    assert_eq!(retry["reused"], true);
+    assert_eq!(retry["result_commit_sha"], report["result_commit_sha"]);
+    eprintln!(
+        "SEALED {}: base={} tree={} commit={} empty={empty}",
+        dispatch.reference,
+        output.base_commit_sha,
+        report["result_tree_sha"],
+        report["result_commit_sha"]
+    );
+}
+
 async fn fixture_writes(harness: &str) {
     let rig = Rig::new(false).await;
     let keyring = rig.temp.path().join("keyrings/login.keyring");
@@ -399,20 +521,11 @@ async fn fixture_writes(harness: &str) {
     let trace = rig.finish(&ticket).await;
     assert_eq!(
         trace.dispatch.state,
-        DispatchState::Running,
-        "{}",
-        serde_json::to_string(&trace).unwrap()
+        DispatchState::ResultReturned,
+        "{trace:?}"
     );
-    assert!(
-        trace
-            .events
-            .iter()
-            .any(|e| e.kind == "runtime:seal_failed"
-                && e.payload["code"] == "WRITE_SEAL_UNAVAILABLE"),
-        "{}",
-        serde_json::to_string(&trace).unwrap()
-    );
-    assert!(!trace.events.iter().any(|e| e.kind == "turn_returned"));
+    assert!(trace.events.iter().any(|e| e.kind == "turn_returned"));
+    check_proposal(&rig, &dispatch, &trace, false).await;
     let worktree = rig.worktree();
     assert_eq!(
         fs::read_to_string(worktree.join("calculator.py")).unwrap(),
@@ -479,7 +592,7 @@ async fn fixture_writes(harness: &str) {
         .call("results", &ResultQuery::of(dispatch.reference.clone()))
         .await
         .unwrap();
-    assert!(results.proposals.is_empty());
+    assert_eq!(results.proposals.len(), 1);
     let _: Dispatch = rig.client.call("stop", &ticket).await.unwrap();
     assert!(
         worktree.join("calculator.py").exists(),
@@ -526,12 +639,17 @@ async fn fixture_writes(harness: &str) {
             },
         )
         .await;
-    let (_, next_ticket) = rig.activate(&again).await;
+    let (next_dispatch, next_ticket) = rig.activate(&again).await;
     let next_trace = rig.finish(&next_ticket).await;
     assert_eq!(
         next_trace.dispatch.state,
-        DispatchState::Running,
+        DispatchState::ResultReturned,
         "{next_trace:?}"
+    );
+    check_proposal(&rig, &next_dispatch, &next_trace, false).await;
+    assert_eq!(
+        git(&worktree, &["symbolic-ref", "HEAD"]).trim(),
+        "refs/heads/hctl2/changeset/cs-trial"
     );
     assert_eq!(
         rig.worktree(),
@@ -668,6 +786,162 @@ async fn write_entry_rejects_mismatched_or_missing_bundle_authority() {
     rig.close().await;
 }
 
+async fn wait_returned(rig: &Rig, ticket: &Ticket) -> Trace {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let trace = rig.trace(ticket).await;
+        if trace.dispatch.state == DispatchState::ResultReturned {
+            return trace;
+        }
+        assert_eq!(trace.dispatch.state, DispatchState::Running, "{trace:?}");
+        assert!(Instant::now() < deadline, "{trace:?}");
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn both_write_entries_return_verified_empty_result() {
+    let _guard = SERIAL.lock().await;
+    for harness in ["claude-code", "codex-cli"] {
+        let rig = Rig::new(false).await;
+        let (input, _) = rig
+            .request(
+                harness,
+                &format!("empty-{harness}"),
+                "Report no changes.\nHCTL2_WRITE_FIXTURE {\"edit\":false,\"secret_paths\":[]}",
+                |_, _| {},
+            )
+            .await;
+        let (dispatch, ticket) = rig.activate(&input).await;
+        let trace = rig.finish(&ticket).await;
+        assert_eq!(
+            trace.dispatch.state,
+            DispatchState::ResultReturned,
+            "{trace:?}"
+        );
+        check_proposal(&rig, &dispatch, &trace, true).await;
+        rig.close().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn both_write_entries_preserve_failed_seal_and_retry_without_redispatch() {
+    let _guard = SERIAL.lock().await;
+    for (harness, recover) in [
+        ("claude-code", true),
+        ("codex-cli", true),
+        ("claude-code", false),
+        ("codex-cli", false),
+    ] {
+        let rig = Rig::new(false).await;
+        let text =
+            "Fix double.\nHCTL2_WRITE_FIXTURE {\"edit\":true,\"wait\":true,\"secret_paths\":[]}";
+        let (input, _) = rig
+            .request(harness, &format!("retry-{harness}"), text, |_, _| {})
+            .await;
+        let (dispatch, ticket) = rig.activate(&input).await;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let worktree = loop {
+            let root = confine::execution_parent(&rig.root)
+                .unwrap()
+                .join("write-worktrees");
+            if let Ok(entries) = fs::read_dir(root)
+                && let Some(Ok(entry)) = entries.into_iter().next()
+            {
+                let cwd = entry.path().join("cs-trial");
+                if cwd.join("fixture-ready").exists() {
+                    break cwd.canonicalize().unwrap();
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fixture never started: {:?}",
+                rig.trace(&ticket).await
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        };
+        // An honest external Git operation changes the checked-out branch while
+        // the harness is running. seal must preserve its native refusal.
+        git(&worktree, &["checkout", "-b", "external-review"]);
+        fs::write(worktree.join("fixture-go"), b"go").unwrap();
+        let trace = rig.finish(&ticket).await;
+        assert_eq!(trace.dispatch.state, DispatchState::Running, "{trace:?}");
+        assert!(
+            trace.events.iter().any(|e| e.kind == "runtime:seal_failed"
+                && e.payload["code"] == "HCTL2_TOOL_WORKTREE_BRANCH_MOVED"),
+            "{trace:?}"
+        );
+        assert!(!trace.events.iter().any(|e| e.kind == "turn_returned"));
+        let page: ResultPage = rig
+            .client
+            .call("results", &ResultQuery::of(dispatch.reference.clone()))
+            .await
+            .unwrap();
+        assert!(page.proposals.is_empty());
+        assert!(
+            worktree
+                .parent()
+                .unwrap()
+                .join("pending-answer.json")
+                .exists()
+        );
+        assert!(
+            fs::read_to_string(worktree.join("calculator.py"))
+                .unwrap()
+                .contains("value * 2")
+        );
+        if !recover {
+            let _: Dispatch = rig.client.call("stop", &ticket).await.unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let stopped = rig.trace(&ticket).await;
+                if stopped
+                    .events
+                    .iter()
+                    .any(|e| e.kind == "stopped" && e.payload["session_closed"] == true)
+                {
+                    assert_eq!(stopped.dispatch.state, DispatchState::Cancelled);
+                    break;
+                }
+                assert!(Instant::now() < deadline, "{stopped:?}");
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            let page: ResultPage = rig
+                .client
+                .call("results", &ResultQuery::of(dispatch.reference.clone()))
+                .await
+                .unwrap();
+            assert!(page.proposals.is_empty());
+            assert!(worktree.join("calculator.py").exists());
+            assert!(
+                worktree
+                    .parent()
+                    .unwrap()
+                    .join("pending-answer.json")
+                    .exists()
+            );
+            rig.close().await;
+            continue;
+        }
+        git(&worktree, &["checkout", "hctl2/changeset/cs-trial"]);
+        let trace = wait_returned(&rig, &ticket).await;
+        assert_eq!(
+            fs::read_to_string(worktree.join("fixture-runs")).unwrap(),
+            "1"
+        );
+        assert_eq!(
+            trace
+                .events
+                .iter()
+                .filter(|e| e.kind == "runtime:session_opened")
+                .count(),
+            1
+        );
+        check_proposal(&rig, &dispatch, &trace, false).await;
+        rig.close().await;
+    }
+}
+
 async fn live_writes(harness: &str) {
     assert_eq!(
         std::env::var("HCTL2_HARNESS_LIVE").as_deref(),
@@ -696,16 +970,10 @@ async fn live_writes(harness: &str) {
     assert!(git(&worktree, &["diff", "--", "calculator.py"]).contains("value * 2"));
     assert_eq!(
         trace.dispatch.state,
-        DispatchState::Running,
-        "seal dependency is pending"
-    );
-    assert!(
-        trace
-            .events
-            .iter()
-            .any(|e| e.payload["code"] == "WRITE_SEAL_UNAVAILABLE"),
+        DispatchState::ResultReturned,
         "{trace:?}"
     );
+    check_proposal(&rig, &dispatch, &trace, false).await;
     if harness == "claude-code" {
         let state = rig.claude_state(&input, &dispatch);
         let started = json_file(&state.join("started.json"));

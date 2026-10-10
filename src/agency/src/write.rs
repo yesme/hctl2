@@ -23,6 +23,7 @@ pub(crate) struct WorkCopy {
     pub baseline: String,
     pub lease: FrozenRef,
     pub generation: u64,
+    pub seal_key: String,
 }
 
 pub(crate) fn prepare(
@@ -256,6 +257,7 @@ pub(crate) fn prepare(
         baseline: base.clone(),
         lease: lease.clone(),
         generation,
+        seal_key: format!("agency-{}", hash(&canonical(spec)?)),
     }))
 }
 
@@ -279,13 +281,85 @@ pub(crate) fn task_text(bundle: &Bundle, copy: Option<&WorkCopy>) -> Result<Stri
     Ok(text)
 }
 
-// Replaced by the #405 public seal entry only after that PR is on main.
-pub(crate) fn return_turn(_copy: &WorkCopy, _answer: &[u8]) -> Result<(String, Vec<u8>)> {
-    Err(PortError::new(
-        "WRITE_SEAL_UNAVAILABLE",
-        "hctl2-tool sealing dependency #405 is not installed; worktree preserved",
-        "retry_after_seal_available",
-    ))
+fn return_turn(copy: &WorkCopy) -> Result<(Vec<u8>, Value)> {
+    let symbolic = git_optional(&copy.cwd, &["symbolic-ref", "-q", "HEAD"])?;
+    if symbolic.status.code() == Some(1) {
+        // Recognize a detached P1 copy without weakening archive::require_worktree.
+        // Restore only the existing branch at the same frozen baseline; no reset/ref write.
+        let branch = format!("hctl2/changeset/{}", copy.change_set);
+        if git(&copy.cwd, &["rev-parse", "--verify", "HEAD^{commit}"])?.trim() != copy.baseline
+            || git(
+                &copy.cwd,
+                &[
+                    "rev-parse",
+                    "--verify",
+                    &format!("refs/heads/{branch}^{{commit}}"),
+                ],
+            )?
+            .trim()
+                != copy.baseline
+        {
+            return Err(PortError::new(
+                "WRITE_WORKTREE_CONFLICT",
+                "detached worktree or ChangeSet branch differs from the frozen baseline",
+                "inspect_preserved_worktree",
+            ));
+        }
+        git(&copy.cwd, &["checkout", &branch])?;
+    }
+    let report = tool(
+        &copy.cwd,
+        &[
+            "repo",
+            "seal",
+            "--path",
+            copy.cwd
+                .to_str()
+                .ok_or_else(|| PortError::invalid("worktree path is not UTF-8"))?,
+            "--change-set-ref",
+            &copy.change_set,
+            "--baseline",
+            &copy.baseline,
+            "--key",
+            &copy.seal_key,
+        ],
+    )?;
+    if report["schema"] != "hctl2.git-seal.v1"
+        || report["outcome"] != "established"
+        || report["evidence_level"] != "unmediated"
+        || report["change_set_id"] != copy.change_set
+        || report["base_commit_sha"] != copy.baseline
+        || !report["error"].is_null()
+        || report["repo_path"]
+            .as_str()
+            .and_then(|p| Path::new(p).canonicalize().ok())
+            != Some(copy.cwd.clone())
+    {
+        return Err(PortError::new(
+            "WRITE_SEAL_READBACK_MISMATCH",
+            "tool seal does not describe this frozen ChangeSet",
+            "inspect_preserved_worktree",
+        ));
+    }
+    for key in [
+        "base_commit_sha",
+        "base_tree_sha",
+        "result_tree_sha",
+        "result_commit_sha",
+    ] {
+        sha(report[key]
+            .as_str()
+            .ok_or_else(|| PortError::invalid("tool seal SHA missing"))?)?;
+    }
+    let location = if report["base_tree_sha"] == report["result_tree_sha"] {
+        json!({"kind":"no_changes","repo_path":copy.cwd})
+    } else {
+        json!({"kind":"commit","repo_path":copy.cwd,"commit_sha":report["result_commit_sha"]})
+    };
+    let bytes = canonical(&json!({"change_set_id":copy.change_set,
+        "lease":{"lease_id":copy.lease.id,"generation":copy.generation},
+        "base_commit_sha":report["base_commit_sha"],"parent_revision_id":null,"location":location}))?;
+    Ok((bytes, report))
 }
 
 /// A native answer is saved locally, but a failed seal is not a returned round.
@@ -311,8 +385,26 @@ pub(crate) fn seal_return(
     file.sync_all()?;
     let mut previous = None;
     loop {
-        match return_turn(copy, answer) {
-            Ok(output) => return Ok(Some(output)),
+        if stopped() || crate::storage::now_ms() >= deadline {
+            if crate::storage::now_ms() >= deadline {
+                let _ = tx.send(crate::runtime::RuntimeEvent::DeadlineReached);
+            }
+            return Ok(None);
+        }
+        match return_turn(copy) {
+            Ok((bytes, report)) => {
+                let _ = tx.send(crate::runtime::RuntimeEvent::Observation {
+                    kind: "git_sealed".into(),
+                    payload: report,
+                    source: agency_proto::EvidenceLevel::Unmediated,
+                });
+                let _ = tx.send(crate::runtime::RuntimeEvent::Observation {
+                    kind: "native_answer".into(),
+                    payload: json!({"text":String::from_utf8_lossy(answer)}),
+                    source: agency_proto::EvidenceLevel::AdapterEvent,
+                });
+                return Ok(Some(("hctl2.changeset-output.v1".into(), bytes)));
+            }
             Err(error) => {
                 if previous.as_deref() != Some(error.code.as_str()) {
                     let _ = tx.send(crate::runtime::RuntimeEvent::Observation {
@@ -397,7 +489,7 @@ fn tool(path: &Path, args: &[&str]) -> Result<Value> {
         .ok_or_else(|| {
             PortError::new(
                 "WRITE_TOOL_UNAVAILABLE",
-                "installed hctl2-tool is required to materialize a ChangeSet",
+                "installed hctl2-tool is required to materialize and seal a ChangeSet",
                 "install_toolbox",
             )
         })?;
@@ -421,8 +513,20 @@ fn tool(path: &Path, args: &[&str]) -> Result<Value> {
         .current_dir(path);
     let output = run(&mut cmd)?;
     if !output.status.success() {
+        let native = serde_json::from_slice::<Value>(&output.stdout).ok();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let code = native
+            .as_ref()
+            .and_then(|v| v["error"]["code"].as_str())
+            .or_else(|| {
+                stderr
+                    .split("error[")
+                    .nth(1)
+                    .and_then(|s| s.split(']').next())
+            })
+            .unwrap_or("WRITE_TOOL_FAILED");
         return Err(PortError::new(
-            "WRITE_TOOL_FAILED",
+            code,
             format!(
                 "{}{}",
                 String::from_utf8_lossy(&output.stdout)

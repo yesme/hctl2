@@ -184,7 +184,7 @@ rust_test(
     name = "write_session_test",
     srcs = ["tests/write_session.rs"],
     crate_root = "tests/write_session.rs",
-    deps = [":service"] + DEPS,
+    deps = [":service", "root//crates/repo:repo"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | HEAVY_RPC_ENV | {

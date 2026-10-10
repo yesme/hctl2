@@ -1,82 +1,81 @@
 # Agency 写入会话
 
-> 状态：部分验证 · 2026-10-11。本文记录第 3f 包的选型与本机证据，不新增领域授权。
+> 状态：Ubuntu 本机已实跑；最终头两平台 CI 待核 · 2026-10-11。只记录第 3f 包的执行机制与证据，不新增准入或发布授权。
 
-Agency 继续使用 [3d/3e 的交正文接口](./harness-dispatch-channel-20261006.md)。写入只改变本轮的工作目录与工具权限；ChangeSet、租约和发布策略由 Execution Spec 与第 4 包 Bundle 交付，封存和准入沿第 6 包接口。
+## 选型与边界
 
-## 原生机制与边界
+工作副本按 main `c58a82d` 的 3f 第 2 条，直接调用 P1 的 `hctl2-tool worktree materialize`。工具使用原生 [Git worktree](https://git-scm.com/docs/git-worktree)，负责分支、基线标记和 `<root>/<ChangeSet>` 目录。Agency 只核工具回读并认回保全副本，不创建裸仓库或自定义 ref。Repo 本地路径、目标正文和发布边界来自第 4 包 Bundle；租约、Repo、基线与发布策略摘要必须与 Spec 一致。
 
-- 工作副本按 main `c58a82d` 的 3f 第 2 条，调用第 1 包已有的 `hctl2-tool worktree materialize`，Repo 路径、基线和 ChangeSet 均来自冻结的 Spec / Bundle；`root` 在 Agency 私有目录，工作树为 `<root>/<ChangeSet>`。不建立私有裸仓库，不自行写 Git ref；工具负责原生 [Git worktree](https://git-scm.com/docs/git-worktree) 的创建与回读。工作树不随派工临时目录删除。harness 仍不能读取源 Repo 的 Git 配置、控制面凭据或 `gh auth`；Git 元数据由 Agency / 工具在受限会话之外回读，不为让 harness 跑 Git 放开源仓库目录。
+实现层脚注：当前公开参数为 `--repo`，原生分支为 `hctl2/changeset/<id>`，对应开工书的 Repo 路径和 ChangeSet 分支。后续 detach 时按目录、Git common dir 和冻结基线认回。封存前，只有 HEAD 与原生分支都仍为冻结基线，才用 Git checkout 恢复原分支；不 reset、不移动 ref、不放宽 `archive::require_worktree`。
 
-实现层脚注：当前工具公开参数名为 `--repo`，对应开工书中的 Repo 本地路径，原生分支名为 `hctl2/changeset/<id>`。直接使用工具实际接口，不改工具或封存检查。已物化副本后续 detach 时，Agency 按同一目录、Git common dir 和基线认回，不重建或抹掉编辑。当前 `archive::require_worktree` 虽按目录名找 detached 副本，随后仍要求检出原分支；第 4 条接线时要按工具现有恢复出口处理，不能宣称 detached 的封存已经验证。
-- [Claude CLI](https://code.claude.com/docs/en/cli-reference) 的 `--restricted`、`--tools`、`--permission-mode` 与 `--settings` 都可按启动指定。只读启动参数保留；写入启动显式开放读、编辑和测试所需工具，用会话 settings 配置权限，不修改用户配置。切换工作目录或权限时关闭当前 pane，再按原生会话 ID 续接；不让下一份只读 Spec 继承写入权限。
-- [Codex app-server 协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs) 的 `turn/start` 可逐轮指定 `cwd` 与 `sandboxPolicy`。`workspaceWrite` 不限制所有读路径，不能单靠它证明凭据不可读。Ubuntu 上 Landlock 还会使嵌套的 bubblewrap 挂载失败；写入型 app-server 使用原生 `externalSandbox`，由 Agency 的 OS 隔离提供凭据边界，逐项测试实际拒读。只读 `readOnly` 的逐轮参数保留。登录使用本机 harness 自己的原生登录，不复制凭据。
-- 封存调用 `hctl2-tool` 的公开入口；不在 Agency 重新实现索引快照、结果树计算或版本准入。#405 合入前只实现准备和执行，不能把未封存的回答报告为已交回。
+两家继续使用 [3d/3e 的正文通道](./harness-dispatch-channel-20261006.md)，同一 selection 的队列与原生 session ID / thread 保留。切 cwd 或工具权限时关闭旧进程再原生 resume，下一份只读 Spec 不继承写权限。只读函数与旧 `herdr.rs / codex_fixture_test.rs` 用例原文未改。
 
-Codex 0.161.0 的 [Unix listener](https://github.com/openai/codex/blob/rust-v0.161.0/codex-rs/app-server-transport/src/transport/unix_socket.rs) 会把实际 socket 移到固定的 `/tmp/codex-daemon-<uid>`，不能经 HOME/TMPDIR 覆盖；该目录同时承载其他特权会话，不将它加入写入进程的允许路径。写入会话改用原生 localhost WebSocket 与 `--ws-auth capability-token`，每次启动生成独立令牌，只把摘要交给 listener；Herdr 通过原生 `--remote-auth-token-env` 接入同一会话。只读 Unix listener 不变。协议帧处理沿现有 3e 适配器，未引入新的协议或依赖。
+- [Claude CLI](https://code.claude.com/docs/en/cli-reference)：会话级 `--restricted / --tools / --permission-mode / --settings` 开放编辑和测试；正文仍经插件交入，不走输入框。内层 sandbox 关闭，凭据边界由 Agency 的 OS 隔离承担，不改全局配置。
+- [Codex app-server](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/src/protocol/v2/permissions.rs)：写入 turn 使用 `externalSandbox`，启动过程的 OS 边界隔离控制凭据；只读 `readOnly` 参数保留。Linux 不嵌套 bubblewrap。
+- Codex 0.161.0 的 [Unix listener](https://github.com/openai/codex/blob/rust-v0.161.0/codex-rs/app-server-transport/src/transport/unix_socket.rs) 实际端点移至固定 `/tmp/codex-daemon-<uid>`；不把这个共享特权目录放进写入允许路径。写会话使用原生 localhost WebSocket 与独立 capability-token，Herdr 用原生 `--remote-auth-token-env` 接入。只读 Unix listener 不变。
 
-## 本机事实
+物化副本共享源 Git 目录，harness 不获源 Git 配置和 Git 凭据访问权；代码编辑、编译和测试使用工作文件，Git 身份与封存由 Agency / 工具回读。Linux 保留 Landlock 的精确允许路径，环境不带 GH token、DBus 会话或 SSH agent。macOS 写入 Claude 的源 Git 拒读规则在 Herdr 启动前与控制凭据、钥匙串路径合成一层 profile，按源 Git common dir 复用实例；Codex app-server 直接应用一层 profile。不改 Herdr 制品或协议。
 
-2026-10-10 Ubuntu：Claude Code `2.1.293`、模型 `claude-opus-5-5`；Codex CLI `0.161.0`。两家本机原生登录会话均已实跑代码修改和测试。以下记录仍不算第 3f 包六条全部验收通过：#405 尚未合入，Proposal 封存及其结果树一致性还未验证。
+这个 macOS 调整来自 CI `38069437964`：pane 内新增 `sandbox-exec` 后 Claude pane 在派工前消失，Codex 与只读回归通过。它与 [Anthropic 仓库的嵌套 sandbox 复现](https://github.com/anthropics/sandbox-runtime/issues/67)一致。删除内层应用、在启动前合成 profile 后必须核新头 CI；Ubuntu 不能代替 macOS。macOS 原生登录与原生 keychain 内容访问仍 UNVERIFIED，不因夹具通过提升能力声明。
 
-## 旧工作树实现的入口与回归记录（截至 93e172b）
+## 封存接口
 
-用例都从实际 Agency 的本机 RPC `prepare → activate → InstalledHerdr::start_for_tenant` 进入 Claude/Codex pool，再核进程效果。没有只调用 `write::prepare` 来代替端口派工。
+#405 已合入 main `f526006`。Agency 只调用公开 `repo seal --path ... --change-set-ref ... --baseline ... --key ...`，不另算索引或结果树。Spec 的规范摘要作为固定关联键，工具重试不重派正文，同一个键重试固定同一个提交。
 
-```sh
-./src/buck2 test root//agency:write_session_test root//agency:codex_fixture_test root//agency:unit_test root//agency:herdr_test root//agency:runtime_test
-```
+工具回读 `base_commit_sha / base_tree_sha / result_tree_sha / result_commit_sha`。Agency 比较两棵树：相同交 `no_changes`，有改动交固定 commit，输出严格为 Repo README 的 `hctl2.changeset-output.v1`。`parent_revision_id` 未经材料交付，保持 null。结果树由固定提交回读，不能在严格 schema 中另塞一个 `result_tree_sha` 字段。Proposal 的证据等级仍为 adapter_event；工具 Git 回读另留 unmediated observation，不提升未验证的工种能力。
 
-2026-10-10，Build ID `6a5344d3-d9b0-4d02-861d-0b0d65a8fde2`：
+原生回答先写 Agency 私有 `pending-answer.json`。seal 失败保留原错误码和工作文件，回合保持 Running，无 Proposal 或 TurnReturned；仅重试工具。撤销或超时结束等待，关闭原生写入进程并附 session_closed 证据。成功交回后仍保留 stop 句柄到撤租约或空闲回收，不让 DispatchReleased 提前使控制面失去停止入口。只读停止规矩保持原样。
 
-```text
-write_session_test: 3 passed; 0 failed; 2 ignored
-codex_fixture_test: 6 passed; 0 failed
-unit_test: 16 passed; 0 failed
-herdr_test: 52 passed; 0 failed; 7 ignored
-runtime_test: 7 passed; 0 failed
-Tests finished: Pass 5. Fail 0.
-```
+[接口分工确认](https://github.com/yesme/hctl2/pull/405#issuecomment-6094092852)：Bundle 本地路径、完整目标与 no_changes 接收由 mac 席在 #405 补齐。[处理说明](https://github.com/yesme/hctl2/pull/405#issuecomment-6099906403)撤回之前放宽 detached seal 的请求。本 PR 不改工具、控制面、runtime.rs、tenant.rs 或 port.rs，不接准入与发布。
 
-两家写入夹具均实际改 `calculator.py` 并执行 Python 测试，核 cwd、HEAD、detached、源代码未变、无 remote、控制面配对密钥拒读、Linux 允许路径之外的 keyring 试件拒读、`gh auth status` 不成功、GitHub token 与 DBus 会话环境不存在。撤销后文件保全；第二代租约仍使用同一个 ChangeSet 目录；之后只读 Spec 能交回只读回答。macOS 上本机 keychain 登录行为未实测；不把 Linux 的文件试件当作 macOS 原生钥匙串实测。
+## 入口与回归实测
 
-边界入口另核：Bundle 基线变、持有者变、本机 Repo 路径缺失、目标正文缺失、没有 `git.write`、发布目标变而冻结摘要未变、Repo 在另一台机器、只交租约或只交策略、租约形状损坏。它们均走 `CannotFulfill` 和对应拒绝码，不起工作树。
+用例从真实 Agency RPC `prepare → activate → InstalledHerdr::start_for_tenant` 进入处理函数，再核进程和 Git 效果。不是只调内部函数。
 
 ```sh
-./src/buck2 test root//agency:cli_test root//agency:port_test root//agency:control_port_test
+./src/buck2 test root//agency:write_session_test root//agency:codex_fixture_test root//agency:herdr_test root//agency:unit_test root//agency:runtime_test root//agency:cli_test root//agency:port_test root//agency:control_port_test
 ```
 
-Build ID `e5f928d5-fadd-412b-ba30-da22e42c240b`：`1 / 22 / 27 passed; 0 failed`，三个 target 全过。
+Build `ccf67205-8aee-44a0-8a9f-430fd6875a0f`：8 个 target 通过；写入入口 `5 passed; 0 failed; 2 ignored; 191.00s`；旧回归依次 `6 / 52 / 16 / 7 / 1 / 26 / 31 passed; 0 failed`，Herdr 7 条本机登录用例仍 ignored。
+
+两家夹具核真实工具的 schema、outcome、基线、规范 cwd、源 Repo common dir、无私有裸仓库、源代码不变、源 Git 配置拒读、控制配对密钥拒读、Linux keyring 试件拒读、gh auth 不成功，以及环境中无 GH token / DBus。停止后 detach，同一 ChangeSet 的第二代租约和 Repo 元数据版本变化仍认回同一目录、保留文件，并恢复原生分支封存；之后只读 Spec 正常交回。
+
+严格反序列化 Proposal 输出，固定 commit 的树等于工具回读，再以独立 seal 键回读当前工作树核同一结果树；原关联键重试返回 reused=true 和同一提交。两家各核空结果。外部诚实 Git 操作切到另一分支，seal 报 `HCTL2_TOOL_WORKTREE_BRANCH_MOVED`，Running / 零 Proposal / 无 TurnReturned；恢复后只重试工具、一次 harness 执行、一次 Proposal。另一组在失败时撤销，实际关闭并保全回答与工作文件，没有 Proposal。
+
+拒绝入口覆盖：Bundle 基线与持有者变化、本机路径或目标缺失、无 git.write、发布目标变而摘要未变、远端机器、只交租约或只交策略、租约形状损坏。均 CannotFulfill，不起工作树。
 
 ```sh
 ./src/buck2 build root//agency:clippy
+./src/buck2 test root//apps/tool:archive_test root//crates/repo/...
+./src/buck2 test root//build/docs:profile-research
 ```
 
-Build ID `8082cf68-8688-453d-baba-5b5680af728a`：`BUILD SUCCEEDED`，Agency 12 份 `clippy.txt` 全为空；不是只据 build 的退出码说 Clippy 无诊断。
+Clippy Build `e92cf41b-c3c9-4c13-ba0f-0d86f356c4e1` 通过，12 份报告全为空。Tool / Repo Build `38e5681b-7e16-41aa-99bc-e426a2ff5ee6`：6 个 target 全过，`78 passed; 0 failed`。文档 Build `690cfcbd-813d-41ef-a55d-9362868fed63`：`check_links: OK (163 markdown files)`。
 
-## 退回修正
+## 退回修正看红
 
-只删除 `write::prepare` 中 `set["baseline_commit"] != *base` 的比较，其余未改，重跑：
+旧工作树阶段删除 Bundle baseline 与 Spec base 比较，Build `b76d67ec-afca-4fed-be5d-a37d8f4cc74b` 的端口边界用例红：`left: Running / right: CannotFulfill / 0 passed; 1 failed`；恢复后回归绿。退回版本未提交。
+
+只将 Codex Handle.stop 退回“finished 后忽略 stop”，保留字段读取以免 Rust 未使用字段诊断拦在编译阶段。运行：
 
 ```sh
-./src/buck2 test root//agency:write_session_test -- --test-arg=write_entry_rejects
+./src/buck2 test root//agency:write_session_test -- --test-arg=codex_write_entry_uses_materialized
 ```
 
-Build ID `097632c1-b71a-4237-bead-36d2cdea7ed5` 的正常比较版本通过。退回后的 Build ID `b76d67ec-afca-4fed-be5d-a37d8f4cc74b`：
+Build `ef500666-fa43-443d-9198-091c1fb0f93d`：
 
 ```text
-write_entry_rejects_mismatched_or_missing_bundle_authority ... FAILED
-assertion `left == right` failed
-left: Running
-right: CannotFulfill
+codex_write_entry_uses_materialized_worktree_and_cannot_read_credentials ... FAILED
+write revocation lacks session-close evidence
+state: ResultReturned
 0 passed; 1 failed
 ```
 
-错误基线进入了 harness，而不是按合同拒绝。恢复比较后，上面的全组回归通过。退回版本未提交。
+Proposal 已交回而原写入进程不能被撤销入口关闭。恢复精确原文件后，Build `1843ce00-3b52-4c78-a8c5-06f44edf51d4`：`1 passed; 0 failed; 16.89s`。退回版本未提交。第一次直接删除条件的变异被未使用字段诊断挡住，NO TESTS RAN；没有将那次编译失败算成用例变红。
 
-## 旧工作树实现的真实会话（2026-10-10）
+## 两家真实会话
 
-CI 默认不取本机登录，真实会话用例 `ignored`，注释标 `UNVERIFIED`；以下是 Ubuntu 本机显式启用的实录。
+CI 默认 ignored，注释为 UNVERIFIED；本机原生登录显式启用，不改 ~/.claude 或 ~/.codex 全局配置。
 
 ```sh
 ./src/buck2 test root//agency:write_session_test -- \
@@ -84,17 +83,9 @@ CI 默认不取本机登录，真实会话用例 `ignored`，注释标 `UNVERIFI
   --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture
 ```
 
-Build ID `efeb9f75-ef51-47a2-924c-bc9a15208d13`：
+Build `c5791889-380d-4ea0-b1aa-f599aeebd633`：`2 passed; 0 failed; 190.95s`。Claude Code `2.1.293`、模型 `claude-opus-5-5`；Codex CLI `0.161.0`。
 
-```text
-live_claude_changes_non_documentation_code_and_runs_tests ... ok
-live_codex_changes_non_documentation_code_and_runs_tests ... ok
-2 passed; 0 failed; 118.38s
-```
-
-两家收到的目标是修正 `calculator.py` 的 `double(value)`，从 `value + 2` 改为 `value * 2`，运行 `/usr/bin/python3 -m unittest -v test_calculator`，保留未提交改动。两家的原生记录中都核到 Bundle 的 ChangeSet、基线、租约和完整发布目标；不是凭终端截图或模型自述认定正文送到。
-
-Claude 原生 JSONL：session `dabff094-529c-466a-b91d-8481b49d43c2`、turn `faf0583f-271f-4b21-a623-b8b36ad6d171`，文件在 `~/.claude/projects/<工作树编码>/<session>.jsonl`。用例逐字比较原生 `user.message.content` 与会话插件的派工正文，核到原生 `Edit` 和 `Bash` 结果。Codex 原生 rollout：thread `01a12464-471f-7182-81ea-09223c462d77`，文件 `~/.codex/sessions/2026/10/10/rollout-2026-10-10T13-58-35-01a12464-471f-7182-81ea-09223c462d77.jsonl`；运行时逐字核 `input_text`，用例另核原生 `CommandExecution.exit_code = 0`。二者都实际留下相同代码 diff，测试原生结果为：
+两家都将 calculator.py 的 `return value + 2` 改为 `return value * 2`，原生测试与独立重跑一致：
 
 ```text
 test_double (test_calculator.CalculatorTest.test_double) ... ok
@@ -102,50 +93,6 @@ Ran 1 test in 0.000s
 OK
 ```
 
-独立地在工作树再执行同一个测试也通过。尚未封存，因此当前断言是 `Running + runtime:seal_failed/WRITE_SEAL_UNAVAILABLE`，没有 Proposal 或 `TurnReturned`。这只证明真实执行这半段，不能据此声称 Proposal 的结果树一致。
+Claude session `7cb61625-651b-4bd2-afcb-24181009b73a`、turn `13e923be-0670-4a5b-add6-987b04f007cb`，原生记录 `~/.claude/projects/<工作树编码>/<session>.jsonl`；封存 baseline `6e328ffe4d24741dfe96ce54a2ca8b2c890d54d2`、commit `8dc99d8493be62b1f9e8c72dbf2261df2e182a4a`。Codex thread `01a126d2-b33c-7f51-bc05-367041baa404`，原生记录 `~/.codex/sessions/2026/10/11/rollout-2026-10-11T01-18-26-01a126d2-b33c-7f51-bc05-367041baa404.jsonl`；封存 baseline `61bcf343a245d3a98d2ae7c374bb024f5ff22184`、commit `8c583056553a524c6092dab5ca4a3be5cbea74d1`。二者 Proposal 与独立工作树回读的 tree 都是 `d09eea455a0755473856dd9d89c249d6f68ca220`。
 
-## 待接的接口
-
-#405 的 Bundle 从 `e5ab3de` 起使用 `repo_local_path / repo_local_machine / objective / publication_target`。Agency 核整份 `publication_target` 的规范摘要等于 Spec 的 `review_publish_policy.digest`，同时核 Repo 与绑定版本。无改动出口是 `no_changes`，控制面再用 Git 核验，不能靠模型文字造版本。
-
-[接口处理说明](https://github.com/yesme/hctl2/pull/405#issuecomment-6094092852)记录所有者已指定的 mac/Ubuntu 分工。[工作树与封存入口处理说明](https://github.com/yesme/hctl2/pull/405#issuecomment-6094386044)记录目前 `seal → archive::snapshot → require_worktree` 对 detached 的拒绝。验收主笔随后提议第 2 条改用 P1 的分支工作树，已向所有者报出这项调整；未得到调整指令之前不把它当成已改的验收。Agency 不改 #405 的工具、控制面、runtime.rs、tenant.rs 和 port.rs。
-
-
-## 两平台 CI 的处理
-
-草稿首头 `6c465f5` 的 Code CI 在 Linux 通过，macOS 的 Claude 写入入口发现 `/tmp` 与 `/private/tmp` 指向同一目录时 cwd 比较失败。工作树交给 harness 前改用 Git 副本路径的 `canonicalize` 回读，入口用例也比较规范路径。重跑：
-
-```sh
-./src/buck2 test root//agency:write_session_test
-./src/buck2 build root//agency:clippy
-```
-
-2026-10-10：Build `f76e954b-7e6f-423a-be3e-ffc7ec126fd7` 为 `3 passed; 0 failed; 2 ignored`；Clippy Build `3f6c9556-d175-485b-9f05-52770b6f5bc6` 通过，12 份诊断为空。`93e172b` 后续 Code CI 两平台通过：[38030956059](https://github.com/yesme/hctl2/actions/runs/38030956059)。本次改物化入口后的 macOS 结果另待 CI，不能用旧头或 Linux 本机结果代替。
-
-首头完整打包 CI 两平台还在 `human_output_renders_dispatch_preview_sections_and_invocation_table` 失败：旧样本写死 `/bin/sh` 的程序摘要，不同平台实物摘要与它不一致。该文件属于 #405，`9e2d221` 已改成回读实际 `/bin/sh` 摘要，其余字段继续按原样本比较；本 PR 不并行改该文件，等待依赖合入后验证。
-
-## 第 2 条改口后的复核（2026-10-11）
-
-按 main `c58a82d` 的工作树口径，第一次派工调用真实 `hctl2-tool`，核 `hctl2.worktree.v1`、`established`、基线和规范路径。入口用例另核 Git common dir 确为 Bundle 的源 Repo、原生 ChangeSet 分支已检出、没有 `repository.git`。harness 内不能读源 Git 配置或凭据，不能依赖 Git 命令自行读取共享元数据；代码编辑和测试照常。Git 身份由 Agency 独立回读。macOS 通过 native sandbox 对源 Git 目录追加拒读，保持替换私有 Git 副本前的凭据边界。
-
-撤销后保留文件；在保留的 P1 副本 detach 后交第二代租约，仍核同一目录、基线和 Repo，编辑不被 reset，之后只读派工照旧交回。新入口的 cwd 比较两边都先 canonicalize。
-
-```sh
-./src/buck2 test root//agency:write_session_test
-./src/buck2 test root//agency:codex_fixture_test root//agency:herdr_test root//agency:unit_test root//agency:runtime_test
-./src/buck2 build root//agency:clippy
-```
-
-写入入口最终 Build `af93bb2f-79e8-45c1-beaf-d3d6bcb83bd3`：`3 passed; 0 failed; 2 ignored; 67.41s`。旧回归 Build `c495856e-f355-446c-b163-78146b5f415b`：`6 / 52 / 16 / 7 passed; 0 failed`，7 条原生登录用例仍 ignored；旧用例文件未改。Clippy Build `802ae2cc-85bb-4f8a-bb30-bc5fc929cabc` 通过，12 份诊断为空。首轮入口因为工具产物是相对路径而 `CannotFulfill`；改为切 cwd 前解析工具绝对路径后通过，失败日志未算成验收通过。
-
-### 两家真实会话在物化副本中重跑
-
-```sh
-./src/buck2 test root//agency:write_session_test -- \
-  --env HCTL2_HARNESS_LIVE=1 --env CODEX_HOME=/home/jackywang/.codex \
-  --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture
-```
-
-Build `413001ca-6355-4d6a-a2cb-f2b417d461f7`：`2 passed; 0 failed; 109.03s`。Claude Code `2.1.293`，session `5ca92c56-01b0-4956-997d-f01b7821beba`、turn `1d7c50db-9b4c-4339-89be-6813db89769f`；用例读 `~/.claude/projects/<工作树编码>/<session>.jsonl`，正文逐字相等，原生测试 OK。Codex `0.161.0`，thread `01a126ae-1287-76f2-9a3b-1e4ac3b95158`；原生记录在 `~/.codex/sessions/2026/10/11/rollout-2026-10-11T00-38-25-01a126ae-1287-76f2-9a3b-1e4ac3b95158.jsonl`，核正文、测试命令 exit 0 与 OK。
-
-两家均把 `calculator.py` 的 `return value + 2` 修为 `return value * 2`，独立重跑 `/usr/bin/python3 -m unittest -v test_calculator` 也为 `Ran 1 test / OK`。会话仍在封存等待状态，无 Proposal；以上不替代第 4 条和第 5 条结果树一致性的验收。#405 仍开放，接口合入后再接。
+Claude 原生 JSONL 中逐字比较 user 正文与插件 started.text，核原生工具的测试 OK。Codex 原生 rollout 中核 user 正文、ChangeSet / 租约 / 发布目标和 CommandExecution exit_code=0 / OK，运行时另逐字核 input_text。最终状态 ResultReturned，Proposal 的结果树与独立工作树回读相等。Claude 叙述中 Git status 的失败是隔离边界内的真实现象；Agency 在边界外的 Git 回读与 seal 成功，不能把模型对此原因的猜测当成事实。

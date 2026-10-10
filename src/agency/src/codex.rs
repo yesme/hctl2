@@ -28,6 +28,7 @@ use std::{
 const LIMIT: u64 = 16 * 1024 * 1024;
 
 struct Token {
+    writing: bool,
     cancelled: AtomicBool,
     finished: AtomicBool,
 }
@@ -37,7 +38,7 @@ impl Session for Handle {
         Err(PortError::invalid("standby input is not advertised"))
     }
     fn stop(&mut self) -> Result<()> {
-        if !self.0.finished.load(Ordering::SeqCst) {
+        if self.0.writing || !self.0.finished.load(Ordering::SeqCst) {
             self.0.cancelled.store(true, Ordering::SeqCst);
         }
         Ok(())
@@ -97,6 +98,7 @@ impl Pool {
         let text = crate::write::task_text(&bundle.document, copy.as_ref())?;
         let key = selection_key(&spec.document, tenant)?;
         let token = Arc::new(Token {
+            writing: copy.is_some(),
             cancelled: AtomicBool::new(false),
             finished: AtomicBool::new(false),
         });
@@ -191,8 +193,21 @@ fn worker(
         .join(format!("codex-{}.sock", &hash(key.as_bytes())[..8]));
     let mut live: Option<Live> = None;
     let mut last = Instant::now();
+    let mut returned: Option<Job> = None;
     loop {
-        if stopped.load(Ordering::SeqCst) {
+        let shutdown = stopped.load(Ordering::SeqCst);
+        if returned
+            .as_ref()
+            .is_some_and(|job| job.token.cancelled.load(Ordering::SeqCst))
+            || shutdown
+        {
+            if let Some(session) = live.as_mut() {
+                session.close()?;
+            }
+            live = None;
+            release_returned(&mut returned, true);
+        }
+        if shutdown {
             break;
         }
         let job = match receiver.recv_timeout(Duration::from_millis(25)) {
@@ -204,10 +219,20 @@ fn worker(
                         session.close()?;
                     }
                     live = None;
+                    release_returned(&mut returned, false);
                 }
                 continue;
             }
         };
+        // A new frozen Spec must not enter a process retaining the old write lease.
+        // The native history is resumed by ID/thread when run_job opens it again.
+        if returned.is_some() {
+            if let Some(session) = live.as_mut() {
+                session.close()?;
+            }
+            live = None;
+            release_returned(&mut returned, false);
+        }
         let result = run_job(
             &TurnEnv {
                 server: &server,
@@ -220,6 +245,8 @@ fn worker(
             &mut live,
             &job,
         );
+        let sealed =
+            result.is_ok() && job.copy.is_some() && job.token.finished.load(Ordering::SeqCst);
         job.token.finished.store(true, Ordering::SeqCst);
         if let Err(error) = result {
             let _ = job.tx.send(RuntimeEvent::Observation {
@@ -230,15 +257,38 @@ fn worker(
             let _ = job.tx.send(RuntimeEvent::ProtocolError(error.code));
             if let Some(session) = live.as_mut() {
                 session.close()?;
+                if job.copy.is_some() {
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
             }
             live = None;
         }
-        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        if sealed {
+            returned = Some(job);
+        } else {
+            if job.copy.is_some() {
+                if let Some(session) = live.as_mut() {
+                    session.close()?;
+                    let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                        requested_stop: job.token.cancelled.load(Ordering::SeqCst)
+                            || stopped.load(Ordering::SeqCst),
+                        session_closed: true,
+                    });
+                }
+                live = None;
+            }
+            let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+        }
         last = Instant::now();
     }
     if let Some(session) = live.as_mut() {
         session.close()?;
     }
+    release_returned(&mut returned, true);
     for job in receiver.try_iter() {
         job.token.finished.store(true, Ordering::SeqCst);
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
@@ -248,6 +298,18 @@ fn worker(
         let _ = job.tx.send(RuntimeEvent::DispatchReleased);
     }
     Ok(())
+}
+
+// DispatchReleased removes the stop handle from the tenant. A sealed writing
+// turn retains that handle until its native session is physically closed.
+fn release_returned(returned: &mut Option<Job>, requested_stop: bool) {
+    if let Some(job) = returned.take() {
+        let _ = job.tx.send(RuntimeEvent::TurnStopped {
+            requested_stop,
+            session_closed: true,
+        });
+        let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+    }
 }
 
 struct TurnEnv<'a> {
