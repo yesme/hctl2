@@ -189,7 +189,12 @@ demo3_prepare() { # <name>
     # comes from is the same again, and the complete package job runs several of
     # these payload tests at once on a runner whose disk is bounded, so writing
     # the tar out would more than double what this one test holds at its peak.
-    "$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$archive" | tar -xf - -C "$DEMO3_ROOT/install"
+    # Process substitution, not a pipe: tar stops reading at the end-of-archive
+    # marker, so a decoder still pushing bytes dies of SIGPIPE and `pipefail`
+    # then fails a run whose payload extracted perfectly (exit 141, seen on the
+    # macOS arm64 runner). Only tar's own status says whether the payload is
+    # there, and a truncated stream still fails as tar's unexpected EOF.
+    tar -xf <("$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$archive") -C "$DEMO3_ROOT/install"
     services_bin="$(find "$DEMO3_ROOT/install" -type f -name hctl2-services \
         -path '*/bin/*' | head -n 1)"
     [[ -n "$services_bin" ]] || die "dependency package has no bin/hctl2-services"
