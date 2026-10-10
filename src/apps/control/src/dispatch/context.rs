@@ -5,8 +5,8 @@ use ::context::{
     SourceKind, Sources, StoreSources,
 };
 
-/// Package 6's review source is explicit. Its platform adapter is wired in the stacked
-/// comment-line PR; a selected source is never silently omitted while it is unavailable.
+/// Package 6's review source is explicit. Its platform adapter is wired in the
+/// follow-up closure PR; a selected source is never silently omitted while unavailable.
 fn review_source(
     shared: &Shared,
     actor: &TrustedActor,

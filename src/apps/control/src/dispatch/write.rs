@@ -18,7 +18,9 @@ pub(super) async fn admit(
     // Git may take time or fail. Never keep Store locked while it writes objects.
     let (seal, observation) = tokio::task::spawn_blocking(move || {
         let (seal, observation) = crate::changesets::seal(&output.location, seal)?;
-        crate::changesets::deliver_objects(&registration, &seal, &observation)?;
+        if observation["base_tree_sha"] != observation["result_tree_sha"] {
+            crate::changesets::deliver_objects(&registration, &seal, &observation)?;
+        }
         Ok::<_, store::StoreError>((seal, observation))
     })
     .await
@@ -34,5 +36,20 @@ pub(super) async fn admit(
     if s.get(&saved.key)?.is_none() {
         recovery::record(s, actor, &saved, "invocation.git_sealed", None)?;
     }
-    invocation::admit_sealed_result(s, actor, project, id, inbox, &seal, now_ms())
+    if observation["base_tree_sha"] == observation["result_tree_sha"] {
+        let baseline_tree = observation["base_tree_sha"]
+            .as_str()
+            .ok_or_else(|| invalid("native baseline tree missing"))?;
+        invocation::admit_unchanged_result(
+            s,
+            actor,
+            project,
+            id,
+            inbox,
+            (&seal, baseline_tree),
+            now_ms(),
+        )
+    } else {
+        invocation::admit_sealed_result(s, actor, project, id, inbox, &seal, now_ms())
+    }
 }

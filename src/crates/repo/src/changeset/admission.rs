@@ -39,6 +39,25 @@ pub fn admit_in_transaction(
     seal: &Seal,
     owner: OwnerGate,
 ) -> Result<ChangeSetRevision> {
+    validate_in_transaction(tx, actor, repo_id, seal, owner)?;
+    let revision = revision_for(seal)?;
+    let key = revision_key(repo_id, &revision.change_set_revision_id);
+    if let Some(existing) = tx.get(&key)? {
+        return decode(&existing);
+    }
+    tx.put(&value_record(key, 1, &revision)?)?;
+    Ok(revision)
+}
+
+/// An unchanged execution needs the same authority and lease checks, but does
+/// not admit a code version. Keep those guards identical to changed results.
+pub fn validate_in_transaction(
+    tx: &mut CommandTransaction<'_>,
+    actor: &TrustedActor,
+    repo_id: &str,
+    seal: &Seal,
+    owner: OwnerGate,
+) -> Result<()> {
     nonempty(&seal.association_key, "association key")?;
     let current: ChangeSet = decode(
         &tx.get(&change_set_key(repo_id, &seal.change_set_id))?
@@ -133,11 +152,5 @@ pub fn admit_in_transaction(
             ));
         }
     }
-    let revision = revision_for(seal)?;
-    let key = revision_key(repo_id, &revision.change_set_revision_id);
-    if let Some(existing) = tx.get(&key)? {
-        return decode(&existing);
-    }
-    tx.put(&value_record(key, 1, &revision)?)?;
-    Ok(revision)
+    Ok(())
 }

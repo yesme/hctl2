@@ -68,6 +68,13 @@ pub fn human_receipt(
 
 pub fn prepare_human(store: &Store, actor: &TrustedActor, input: HumanInput) -> Result<HumanPlan> {
     let _ = owner(actor, &input.repo_id)?;
+    if matches!(input.location, OutputLocation::NoChanges { .. }) {
+        return Err(reject(
+            "INVALID_INPUT",
+            "no_changes is an execution result, not a human code-version seal",
+            "use_commit_or_worktree",
+        ));
+    }
     if input.key.trim().is_empty() || input.key.trim() != input.key {
         return Err(reject(
             "INVALID_INPUT",

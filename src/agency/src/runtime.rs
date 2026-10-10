@@ -226,6 +226,12 @@ impl Runtime for ScriptRuntime {
                                 {
                                     break;
                                 }
+                                // A terminal result frame returns this turn, not
+                                // its process. Keep delivery files until managed
+                                // stop so control can seal them before release.
+                                if tx.send(RuntimeEvent::TurnReturned).is_err() {
+                                    break;
+                                }
                             }
                             _ => {
                                 let _ = tx.send(RuntimeEvent::ProtocolError(

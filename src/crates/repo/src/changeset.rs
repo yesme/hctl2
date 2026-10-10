@@ -13,7 +13,7 @@ use crate::{Result, reject};
 mod admission;
 mod human;
 mod leases;
-pub use admission::admit_in_transaction;
+pub use admission::{admit_in_transaction, validate_in_transaction};
 pub use human::{HumanInput, HumanPlan, admit_human, human_receipt, prepare_human};
 pub use leases::{
     LeasePlan, acquire_lease, complete_revocation, get_change_set, plan_lease, revoke_lease,
@@ -136,6 +136,11 @@ pub enum OutputLocation {
         commit_sha: String,
     },
     Worktree {
+        repo_path: std::path::PathBuf,
+    },
+    /// An execution reporting no edits still supplies a tree to be read back.
+    /// This claim never substitutes for native Git equality with the baseline.
+    NoChanges {
         repo_path: std::path::PathBuf,
     },
 }

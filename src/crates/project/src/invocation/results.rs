@@ -103,7 +103,29 @@ pub fn admit_sealed_result(
     seal: &repo::changeset::Seal,
     now_ms: u64,
 ) -> store::Result<Value> {
-    admit(store, actor, project, id, inbox, Some(seal), now_ms)
+    admit(store, actor, project, id, inbox, Some((seal, None)), now_ms)
+}
+
+/// The adapter has mechanically compared the baseline and result trees. An
+/// unchanged turn is an accepted result, not a code version or a publication.
+pub fn admit_unchanged_result(
+    store: &mut Store,
+    actor: &TrustedActor,
+    project: &str,
+    id: &str,
+    inbox: &Record,
+    readback: (&repo::changeset::Seal, &str),
+    now_ms: u64,
+) -> store::Result<Value> {
+    admit(
+        store,
+        actor,
+        project,
+        id,
+        inbox,
+        Some((readback.0, Some(readback.1))),
+        now_ms,
+    )
 }
 
 fn admit(
@@ -112,9 +134,13 @@ fn admit(
     project: &str,
     id: &str,
     inbox: &Record,
-    seal: Option<&repo::changeset::Seal>,
+    readback: Option<(&repo::changeset::Seal, Option<&str>)>,
     now_ms: u64,
 ) -> store::Result<Value> {
+    let (seal, baseline_tree_sha) = match readback {
+        Some((seal, baseline_tree)) => (Some(seal), baseline_tree),
+        None => (None, None),
+    };
     let (root, invocation) = invocation(store, project, id)?;
     if invocation.authorization.write && seal.is_none() {
         return Err(reject(
@@ -150,6 +176,9 @@ fn admit(
     let mut input = json!({"proposal":reference(inbox),"digest":proposal.content_digest,"owner":spec.document.owner});
     if let Some(seal) = seal {
         input["seal"] = serde_json::to_value(seal)?;
+    }
+    if let Some(tree) = baseline_tree_sha {
+        input["unchanged_baseline_tree"] = json!(tree);
     }
     let publication = if seal.is_some() {
         super::write::publication(store, &invocation)?
@@ -248,6 +277,18 @@ fn admit(
     })?;
     if let Some(seal) = seal {
         let declared: repo::changeset::Output = serde_json::from_slice(&proposal.output)?;
+        if baseline_tree_sha.is_some_and(|tree| tree != seal.result_tree_sha)
+            || matches!(
+                declared.location,
+                repo::changeset::OutputLocation::NoChanges { .. }
+            ) && baseline_tree_sha.is_none()
+        {
+            return Err(reject(
+                "NO_CHANGES_MISMATCH",
+                "unchanged result requires matching native baseline and result trees",
+                "submit_actual_changeset_output",
+            ));
+        }
         let write = invocation
             .preview
             .write
@@ -318,7 +359,9 @@ fn admit(
         &Lifecycle {
             state: State::Completed,
             reason: Some(
-                if seal.is_some() {
+                if baseline_tree_sha.is_some() {
+                    "unchanged Git tree verified; not Task acceptance"
+                } else if seal.is_some() {
                     "Git version admitted; not Task acceptance"
                 } else {
                     "read-only answer admitted; not Task acceptance"
@@ -345,7 +388,12 @@ fn admit(
         let revision = match seal {
             Some(seal) => {
                 let write = invocation.preview.write.as_ref().ok_or_else(|| invalid("write preview missing"))?;
-                Some(repo::changeset::admit_in_transaction(tx, &actor, &write.lease.pending.repo_id, seal, repo::changeset::OwnerGate::Active)?)
+                if baseline_tree_sha.is_some() {
+                    repo::changeset::validate_in_transaction(tx, &actor, &write.lease.pending.repo_id, seal, repo::changeset::OwnerGate::Active)?;
+                    None
+                } else {
+                    Some(repo::changeset::admit_in_transaction(tx, &actor, &write.lease.pending.repo_id, seal, repo::changeset::OwnerGate::Active)?)
+                }
             }
             None => None,
         };
@@ -360,6 +408,12 @@ fn admit(
             _ => None,
         };
         let mut admitted = admitted.clone();
+        if baseline_tree_sha.is_some() {
+            if let RecordData::Value { value } = &mut admitted.data {
+                value["no_changes"] = json!(true);
+                admitted.revision_digest = canonical_json_sha256(value)?;
+            }
+        }
         if let Some(revision) = &revision {
             if let RecordData::Value { value } = &mut admitted.data {
                 value["change_set_revision"] = serde_json::to_value(revision)?;
@@ -381,6 +435,7 @@ fn admit(
         }
         tx.enqueue_effect(&effect)?;
         let mut result = json!({"invocation_id":id,"state":"completed","result":reference(&admitted),"projection_effect":effect_id});
+        if baseline_tree_sha.is_some() { result["no_changes"] = json!(true); }
         if let Some(revision) = revision { result["change_set_revision"] = serde_json::to_value(revision)?; }
         if let Some(intent) = publication_intent { result["review_publish_intent"] = serde_json::to_value(intent)?; }
         Ok(result)

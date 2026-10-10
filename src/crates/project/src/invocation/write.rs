@@ -15,6 +15,13 @@ pub struct WriteInput {
 #[serde(deny_unknown_fields)]
 pub struct WritePreview {
     pub lease: repo::changeset::LeasePlan,
+    /// Location of the registered delivery copy on the control machine, not a
+    /// participant workspace or a path assumed reachable from another machine.
+    pub repo_local_path: Option<std::path::PathBuf>,
+    pub repo_local_machine: String,
+    /// Full human request, not a reference or a publication-policy description.
+    pub objective: String,
+    pub publication_target: repo::review::Policy,
     pub review_publish_policy: FrozenRef,
     pub policy_record: Reference,
     /// Explicitly a publish-for-review authorization, never target integration.
@@ -184,6 +191,13 @@ pub(super) fn prepare(
     )?;
     Ok(Some(WritePreview {
         lease,
+        repo_local_path: repo::require_active(store, repo_id)?
+            .prepared
+            .local
+            .map(|local| local.path),
+        repo_local_machine: "control".into(),
+        objective: input.request.clone(),
+        publication_target: policy,
         review_publish_policy: FrozenRef {
             id: policy_id,
             revision: policy_record.version.to_string(),

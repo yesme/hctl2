@@ -1990,6 +1990,23 @@ fn write_result(
     p: &call::Preview,
     dispatch: &Record,
 ) -> (Record, repo::changeset::Seal) {
+    write_result_at(
+        e,
+        p,
+        dispatch,
+        repo::changeset::OutputLocation::Commit {
+            repo_path: "/operation-input-only".into(),
+            commit_sha: "c".repeat(40),
+        },
+    )
+}
+
+fn write_result_at(
+    e: &mut Env,
+    p: &call::Preview,
+    dispatch: &Record,
+    location: repo::changeset::OutputLocation,
+) -> (Record, repo::changeset::Seal) {
     use repo::changeset::*;
     let set = &p.write.as_ref().unwrap().lease.pending;
     let lease = LeaseRef {
@@ -2001,10 +2018,7 @@ fn write_result(
         lease: lease.clone(),
         base_commit_sha: set.baseline_commit.clone(),
         parent_revision_id: None,
-        location: OutputLocation::Commit {
-            repo_path: "/operation-input-only".into(),
-            commit_sha: "c".repeat(40),
-        },
+        location,
     };
     let inbox = preserved_bytes(
         e,
@@ -2029,6 +2043,171 @@ fn write_result(
         },
     };
     (inbox, seal)
+}
+
+#[test]
+fn unchanged_write_result_is_admitted_without_revision_or_publication_and_replays_once() {
+    let (mut e, input) = write_setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let (inbox, seal) = write_result_at(
+        &mut e,
+        &p,
+        &dispatch,
+        repo::changeset::OutputLocation::NoChanges {
+            repo_path: "/operation-input-only".into(),
+        },
+    );
+    let result = call::admit_unchanged_result(
+        &mut e.store,
+        &reducer,
+        &e.a,
+        &p.consumer.id,
+        &inbox,
+        (&seal, &seal.result_tree_sha),
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(result["state"], "completed");
+    assert_eq!(result["no_changes"], true);
+    assert!(result["change_set_revision"].is_null());
+    assert!(e.store.list("changeset_revision").unwrap().is_empty());
+    assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+    assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+    let saved: Value = decode(&e.store.list("invocation_result").unwrap()[0]).unwrap();
+    assert_eq!(saved["no_changes"], true);
+    assert!(saved["change_set_revision"].is_null());
+    let set = repo::changeset::get_change_set(&e.store, &e.rid, &seal.change_set_id).unwrap();
+    assert_eq!(set.lease.state, repo::changeset::LeaseState::Revoking);
+    assert!(
+        e.store
+            .has_effect(&format!("stop:{}", p.consumer.id))
+            .unwrap()
+    );
+    assert_eq!(
+        call::admit_unchanged_result(
+            &mut e.store,
+            &reducer,
+            &e.a,
+            &p.consumer.id,
+            &inbox,
+            (&seal, &seal.result_tree_sha),
+            NOW + 1
+        )
+        .unwrap(),
+        result
+    );
+    assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+}
+
+#[test]
+fn unchanged_write_result_rejects_different_tree_unverified_claim_and_stale_lease() {
+    for bad in ["tree", "no-readback", "lease"] {
+        let (mut e, input) = write_setup();
+        let (p, _, reducer, dispatch) = running(&mut e, input);
+        let (inbox, mut seal) = write_result_at(
+            &mut e,
+            &p,
+            &dispatch,
+            repo::changeset::OutputLocation::NoChanges {
+                repo_path: "/operation-input-only".into(),
+            },
+        );
+        if bad == "lease" {
+            seal.lease.as_mut().unwrap().generation += 1;
+        }
+        let stamp = e.store.read_stamp();
+        let error = if bad == "no-readback" {
+            call::admit_sealed_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &inbox,
+                &seal,
+                NOW,
+            )
+            .unwrap_err()
+        } else {
+            let tree = if bad == "tree" {
+                "d".repeat(40)
+            } else {
+                seal.result_tree_sha.clone()
+            };
+            call::admit_unchanged_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &inbox,
+                (&seal, &tree),
+                NOW,
+            )
+            .unwrap_err()
+        };
+        assert_eq!(
+            error.code,
+            if bad == "lease" {
+                "PROPOSAL_MISMATCH"
+            } else {
+                "NO_CHANGES_MISMATCH"
+            }
+        );
+        assert_eq!(e.store.read_stamp(), stamp);
+        assert!(e.store.list("changeset_revision").unwrap().is_empty());
+        assert!(e.store.list("invocation_result").unwrap().is_empty());
+        assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+        assert_eq!(
+            call::lifecycle(&e.store, &e.a, &p.consumer.id)
+                .unwrap()
+                .1
+                .state,
+            State::Running
+        );
+    }
+}
+
+#[test]
+fn write_bundle_freezes_local_copy_and_full_publication_target() {
+    let (mut e, input) = write_setup();
+    let mut record = required(&e.store, &repo::key(&e.rid)).unwrap();
+    let store::RecordData::Repo {
+        registration: Some(registration),
+        ..
+    } = &mut record.data
+    else {
+        panic!("registration required")
+    };
+    registration["prepared"]["local"] = json!({"path":"/registered/delivery-copy", "remotes":{}, "refs":{}, "head_branch":"main", "governance_paths":[]});
+    record.version += 1;
+    let mut owner = actor();
+    owner.0.permission_scope.push(Scope::Repo(e.rid.clone()));
+    replace_record_as(&mut e, record, owner);
+    let (p, assembly) = prepared(&mut e, input);
+    let write = p.write.as_ref().unwrap();
+    let bytes: Value = serde_json::from_slice(&write.context_bytes().unwrap()).unwrap();
+    assert_eq!(bytes["repo_local_path"], "/registered/delivery-copy");
+    assert_eq!(bytes["repo_local_machine"], "control");
+    assert_eq!(bytes["objective"], p.input.request);
+    assert_eq!(bytes["publication_target"]["repo_id"], e.rid);
+    assert_eq!(bytes["publication_target"]["target_branch"], "main");
+    assert_eq!(
+        bytes["publication_target"]["branch_rule"],
+        "hctl2/{change_set}"
+    );
+    assert_eq!(
+        bytes["publication_target"]["requires_human_confirmation"],
+        true
+    );
+    assert!(exact_write_entry(&p, &assembly));
+    call::start(&mut e.store, &actor(), &p, &assembly, NOW).unwrap();
+}
+
+fn exact_write_entry(preview: &call::Preview, assembly: &Assembly) -> bool {
+    assembly.bundle.document.entries.iter().any(|entry| {
+        entry.source.id == format!("write-boundary/{}", preview.consumer.id)
+            && matches!(&entry.delivery, Delivery::Inline { bytes }
+            if *bytes == preview.write.as_ref().unwrap().context_bytes().unwrap())
+    })
 }
 
 #[test]

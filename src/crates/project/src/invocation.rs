@@ -2,7 +2,7 @@
 mod lifecycle;
 pub use lifecycle::*;
 mod results;
-pub use results::{admit_result, admit_sealed_result, sealing_input};
+pub use results::{admit_result, admit_sealed_result, admit_unchanged_result, sealing_input};
 mod write;
 pub use write::{WriteInput, WritePreview, confirm_write_stop, review_policy_input};
 

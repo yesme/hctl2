@@ -2380,6 +2380,67 @@ async fn missing_terminal_result_is_protocol_failure_and_cancel_has_exit_report(
     rig.close().await;
 }
 #[tokio::test]
+async fn script_result_returns_the_turn_but_keeps_delivery_until_managed_stop() {
+    let rig = Rig::new("read -r init; printf 'delivery bytes' > delivery.txt; printf '%s\\n' '{\"type\":\"result\",\"schema\":\"test.v1\",\"output\":\"delivery.txt\"}'; read -r hold").await;
+    let (client, key) = rig.pair("delivery-lifetime").await;
+    let d: Dispatch = client
+        .call("prepare", &request(&client, "delivery-lifetime").await)
+        .await
+        .unwrap();
+    let execution = agency::confine::execution_dir(&rig.root, &d.reference).unwrap();
+    activate(&client, &d).await;
+    let trace = terminal(&client, &d, &key).await;
+    assert_eq!(trace.dispatch.state, DispatchState::ResultReturned);
+    assert!(
+        trace
+            .events
+            .iter()
+            .any(|event| event.kind == "turn_returned")
+    );
+    assert!(!trace.events.iter().any(|event| event.kind == "stopped"));
+    assert_eq!(
+        std::fs::read(execution.join("delivery.txt")).unwrap(),
+        b"delivery bytes"
+    );
+    let page: ResultPage = client
+        .call("results", &ResultQuery::of(d.reference.clone()))
+        .await
+        .unwrap();
+    assert_eq!(page.proposals.len(), 1);
+    let _: Dispatch = client
+        .call("stop", &ticket(&d, &key, vec![Permission::Stop], None))
+        .await
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let trace: Trace = client
+            .call(
+                "observe",
+                &Observe {
+                    ticket: ticket(&d, &key, vec![Permission::Observe], None),
+                    after: 0,
+                },
+            )
+            .await
+            .unwrap();
+        if trace.events.iter().any(|event| {
+            event.kind == "stopped"
+                && event.payload["requested_stop"] == true
+                && event.payload.get("exit_code").is_some()
+        }) && !execution.exists()
+        {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "delivery was not released after physical stop"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    rig.close().await;
+}
+
+#[tokio::test]
 async fn stopping_a_script_reaps_the_child_that_holds_its_output_pipe() {
     script_group_stop_closes_output("wait \"$child\"").await;
 }

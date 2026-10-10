@@ -106,6 +106,15 @@ pub(crate) fn seal(
         )?
         .stdout_text()?;
     exact_sha(&tree)?;
+    let base_tree = git
+        .checked(
+            &repository.anchor,
+            &args(&["rev-parse", "--verify", &format!("{base}^{{tree}}")]),
+            "HCTL2_TOOL_GIT_READ_FAILED",
+            "read baseline tree",
+        )?
+        .stdout_text()?;
+    exact_sha(&base_tree)?;
     // A tree/base pair is the version identity; a retained ref protects the packaging
     // commit from collection. Repeated sealing does not need to move a user's branch.
     let retained = format!("refs/hctl2/changesets/{change_set}/seals/{base}/{tree}/{commit}");
@@ -152,7 +161,7 @@ pub(crate) fn seal(
             "outcome":"established", "observed_at_unix_ms":observed_at_unix_ms(),
             "git":{"path":git.executable(),"version":git.version()},
             "repo_path":repository.anchor, "change_set_id":change_set,
-            "base_commit_sha":base,"result_tree_sha":tree,"result_commit_sha":commit,
+            "base_commit_sha":base,"base_tree_sha":base_tree,"result_tree_sha":tree,"result_commit_sha":commit,
         "retained_ref":retained, "association_ref":association, "reused":reused,"error":Value::Null,
         }),
         0,

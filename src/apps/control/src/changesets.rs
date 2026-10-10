@@ -107,7 +107,9 @@ pub(crate) fn seal(location: &OutputLocation, mut seal: Seal) -> store::Result<(
             repo_path,
             commit_sha,
         } => (repo_path, Some(commit_sha)),
-        OutputLocation::Worktree { repo_path } => (repo_path, None),
+        OutputLocation::Worktree { repo_path } | OutputLocation::NoChanges { repo_path } => {
+            (repo_path, None)
+        }
     };
     let mut args: Vec<OsString> = ["repo", "seal", "--path"].map(Into::into).into();
     args.extend([
@@ -134,6 +136,15 @@ pub(crate) fn seal(location: &OutputLocation, mut seal: Seal) -> store::Result<(
     }
     seal.result_tree_sha = exact_sha(&observation, "result_tree_sha")?;
     seal.result_commit_sha = Some(exact_sha(&observation, "result_commit_sha")?);
+    let baseline_tree = exact_sha(&observation, "base_tree_sha")?;
+    if matches!(location, OutputLocation::NoChanges { .. }) && baseline_tree != seal.result_tree_sha
+    {
+        return Err(reject(
+            "NO_CHANGES_MISMATCH",
+            "the reported unchanged worktree differs from the baseline tree",
+            "submit_actual_changeset_output",
+        ));
+    }
     if commit.is_some_and(|commit| seal.result_commit_sha.as_ref() != Some(commit)) {
         return Err(invalid("Git seal differs from the exact proposed commit"));
     }
@@ -288,4 +299,107 @@ pub(crate) fn query(
         "--tree".into(),
         revision.result_tree_sha.into(),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_changes_claim_is_checked_against_the_actual_materialized_git_tree() {
+        let root = std::env::temp_dir().join(format!(
+            "hctl2-empty-seal-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        let repository = root.join("repo");
+        std::fs::create_dir(&repository).unwrap();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repository)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        };
+        git(&["init", "--initial-branch=main"]);
+        git(&["config", "user.name", "Empty Seal Fixture"]);
+        git(&["config", "user.email", "fixture@example.test"]);
+        std::fs::write(repository.join("source.txt"), "baseline\n").unwrap();
+        git(&["add", "source.txt"]);
+        git(&["commit", "-m", "baseline"]);
+        let baseline = git(&["rev-parse", "HEAD"]);
+        let sites = root.join("sites");
+        let arguments: Vec<OsString> = vec![
+            "worktree".into(),
+            "materialize".into(),
+            "--repo".into(),
+            repository.clone().into_os_string(),
+            "--root".into(),
+            sites.clone().into_os_string(),
+            "--change-set-ref".into(),
+            "cs-empty".into(),
+            "--baseline".into(),
+            baseline.clone().into(),
+        ];
+        let materialized = tool::run(arguments).unwrap();
+        assert_eq!(materialized.exit_code(), 0, "{}", materialized.body());
+        let input = Seal {
+            association_key: "empty-first".into(),
+            change_set_id: "cs-empty".into(),
+            change_set_version: 1,
+            lease: Some(repo::changeset::LeaseRef {
+                lease_id: "lease-empty".into(),
+                generation: 1,
+            }),
+            base_commit_sha: baseline,
+            result_tree_sha: String::new(),
+            result_commit_sha: None,
+            parent_revision_id: None,
+            producer_ref: repo::changeset::ProducerRef::Invocation {
+                invocation_id: "fixture".into(),
+                invocation_version: 1,
+            },
+        };
+        let location = OutputLocation::NoChanges {
+            repo_path: repository.clone(),
+        };
+        let (sealed, observation) = seal(&location, input.clone()).unwrap();
+        assert_eq!(observation["base_tree_sha"], sealed.result_tree_sha);
+        // Untracked edits also change the alternate-index snapshot. A model's
+        // unchanged claim must not hide them, or reuse a prior proposal's seal.
+        std::fs::write(sites.join("cs-empty/untracked.txt"), "actual edit\n").unwrap();
+        let mut changed = input;
+        changed.association_key = "empty-second".into();
+        let error = seal(&location, changed.clone()).unwrap_err();
+        assert_eq!(error.code, "NO_CHANGES_MISMATCH");
+        assert_eq!(error.recovery_action, "submit_actual_changeset_output");
+        let (sealed, observation) = seal(
+            &OutputLocation::Worktree {
+                repo_path: repository,
+            },
+            changed,
+        )
+        .unwrap();
+        assert_ne!(observation["base_tree_sha"], sealed.result_tree_sha);
+    }
 }

@@ -226,6 +226,505 @@ fn git_output(site: &Path, args: &[&str]) -> std::process::Output {
     output
 }
 
+/// Configure the script fixture for the boundary just previewed by the real CLI.
+/// No domain records, admitted versions or platform mappings are inserted here.
+/// The confined script reconstructs the baseline with native fast-import, creates
+/// its own commit, and returns a real Result frame through the Agency port.
+fn configure_git_writer(
+    f: &Fixture,
+    setup: &mut Paired,
+    pending: &Value,
+    changed: bool,
+    claim_no_changes: bool,
+) {
+    assert!(setup.agency.0.kill().is_ok());
+    setup.agency.0.wait().unwrap();
+    let exported = git_output(&f.root.join("write-site"), &["fast-export", "main"]);
+    let output = json!({
+        "change_set_id": pending["change_set_id"],
+        "lease": {
+            "lease_id": pending["lease"]["lease_id"],
+            "generation": pending["lease"]["generation"],
+        },
+        "base_commit_sha": pending["baseline_commit"],
+        "parent_revision_id": null,
+        "location": if claim_no_changes {
+            json!({"kind":"no_changes", "repo_path":"EXECUTION_PATH"})
+        } else { json!({
+            "kind": "commit", "repo_path": "EXECUTION_PATH", "commit_sha": "RESULT_COMMIT",
+        }) },
+    });
+    let frame =
+        json!({"type":"result","schema":"hctl2.changeset-output.v1","output":output.to_string()});
+    let script = r#"set -eu
+exec 2>git-error.txt
+read -r initial
+mkdir git-result
+cd git-result
+git init -q --initial-branch=main
+printf '%s' "$1" | git fast-import --quiet
+git reset --hard --quiet main
+git config user.name 'Script Writer'
+git config user.email 'writer@example.test'
+if test "$5" = no_changes; then
+    git branch -m "hctl2/changeset/$4"
+    git update-ref "refs/hctl2/changesets/$4/baseline" HEAD
+fi
+if test "$3" = changed; then
+    printf 'changed by the actual script execution\n' > source.txt
+    git add source.txt
+    git commit --quiet -m 'script result'
+fi
+commit=$(git rev-parse HEAD)
+printf '%s\n' "$2" | sed -e "s|EXECUTION_PATH|$PWD|g" -e "s|RESULT_COMMIT|$commit|g" | tee ../result-frame.json
+# The execution owns these unsealed Git objects until the control accepts them.
+# Keep its delivery directory alive; the normal managed stop reaps the writer.
+while read -r managed_input; do :; done
+"#;
+    let config = f.root.join("script.json");
+    std::fs::write(
+        &config,
+        json!({"program":"/bin/sh","arguments":["-c",script,"git-writer",String::from_utf8(exported.stdout).unwrap(),frame.to_string(),if changed { "changed" } else { "unchanged" },pending["change_set_id"],if claim_no_changes { "no_changes" } else { "commit" }]}).to_string(),
+    )
+    .unwrap();
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    setup.agency = AgencyChild(
+        Command::new(&binary)
+            .arg("--root")
+            .arg(f.root.join("independent-agency"))
+            .arg("serve")
+            .arg("--script-config")
+            .arg(&config)
+            .stdout(Stdio::null())
+            .stderr(File::create(f.root.join("git-writer.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if Command::new(&binary)
+            .arg("--root")
+            .arg(f.root.join("independent-agency"))
+            .arg("status")
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            break;
+        }
+        assert!(setup.agency.0.try_wait().unwrap().is_none());
+        assert!(
+            std::time::Instant::now() < deadline,
+            "script Agency not ready"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// Independent platform readback uses the packaged tea and the control's stored
+/// credential, not a stubbed platform or a worker/test seam. Never print the token.
+fn gitea_read(f: &Fixture, registration: &Value, path: &str) -> Value {
+    let token = control::config::secret_store(&f.root)
+        .unwrap()
+        .get(registration["observed"]["credential_ref"].as_str().unwrap())
+        .unwrap();
+    let output = Command::new(f.payload.join("libexec/hctl2/tea"))
+        .env(
+            "GITEA_INSTANCE_URL",
+            registration["observed"]["instance"].as_str().unwrap(),
+        )
+        .env("GITEA_TOKEN", String::from_utf8(token).unwrap())
+        .env("NO_COLOR", "1")
+        .args(["api", "-X", "GET", path])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "independent Gitea GET failed: {path}"
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+fn publishing_chain(name: &str, requires_confirmation: bool) {
+    let (f, mut setup) = paired_profile(name, 0, "write");
+    let p = setup.project.as_str();
+    if !requires_confirmation {
+        let (ok, shown) = f.run(&["project", "show", p]);
+        assert!(ok, "{shown}");
+        let mut definition = shown["definition"].clone();
+        definition["settings"]["publish_review_requires_confirmation"] = json!(false);
+        accepted(
+            &f,
+            "project",
+            "update",
+            "automatic-publication",
+            json!({"project_id":p,"version":shown["project"]["version"],"definition":definition}),
+        );
+    }
+    let baseline =
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120000;
+    let input = f.root.join("publish-invocation.json");
+    std::fs::write(&input, json!({"project_id":setup.project,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Modify source.txt within this frozen write boundary","budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    let args = [
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "publish-chain",
+    ];
+    let (ok, preview) = f.run(&args);
+    assert!(ok, "{preview}");
+    let write = &preview["effect_summary"]["preview"]["write"];
+    let pending = write["lease"]["pending"].clone();
+    let set = pending["change_set_id"].as_str().unwrap().to_owned();
+    configure_git_writer(&f, &mut setup, &pending, true, false);
+    let p = setup.project.as_str();
+    let start_args = [
+        "invocation",
+        "start",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "publish-chain",
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ];
+    let (ok, started) = f.run(&start_args);
+    assert!(ok, "{started}");
+    let invocation = started["invocation_id"].as_str().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        let (ok, shown) = f.run(&["invocation", "show", p, invocation]);
+        assert!(ok, "{shown}");
+        if shown["state"] == "completed" {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "script result not admitted: state={}, results={}; {}",
+            shown["state"],
+            shown["results"],
+            script_diagnostics(&f, &shown)
+        );
+        assert!(
+            matches!(shown["state"].as_str(), Some("pending" | "running")),
+            "{shown}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let (ok, admitted) = f.run(&["changeset", "show", &setup.repo, &set]);
+    assert!(ok, "{admitted}");
+    assert_eq!(admitted["revisions"].as_array().unwrap().len(), 1);
+    let revision = &admitted["revisions"][0];
+    let revision_id = revision["change_set_revision_id"].as_str().unwrap();
+    assert_eq!(revision["producer_ref"]["invocation_id"], invocation);
+    assert_eq!(revision["base_commit_sha"], baseline);
+    let (ok, listed) = f.run(&["review", "list", &setup.repo]);
+    assert!(ok, "{listed}");
+    assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+    let intent = listed["items"][0]["intent_id"].as_str().unwrap();
+    let (ok, registration) = f.run(&["repo", "show", &setup.repo]);
+    assert!(ok, "{registration}");
+    let full_name = registration["observed"]["full_name"].as_str().unwrap();
+    if requires_confirmation {
+        let held = f.run(&["review", "show", &setup.repo, intent]).1;
+        assert_eq!(held["intent"]["state"], "pending_human");
+        assert_eq!(held["intent"]["started"], false);
+        assert!(held["mappings"].as_array().unwrap().is_empty());
+        assert!(
+            gitea_read(
+                &f,
+                &registration,
+                &format!("repos/{full_name}/pulls?state=all")
+            )
+            .as_array()
+            .unwrap()
+            .is_empty()
+        );
+        // Client and daemon can disappear after admission. The same persisted
+        // intent is released through the real command after control restarts.
+        assert!(f.run(&["stop"]).0);
+        assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+        let (ok, release) = f.run(&["review", "publish", &setup.repo, intent]);
+        assert!(ok, "{release}");
+        let (ok, released) = f.run(&[
+            "review",
+            "publish",
+            &setup.repo,
+            intent,
+            "--preview-token",
+            release["preview_token"].as_str().unwrap(),
+        ]);
+        assert!(ok, "{released}");
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let published = loop {
+        let (ok, shown) = f.run(&["review", "show", &setup.repo, intent]);
+        assert!(ok, "{shown}");
+        if shown["intent"]["state"] == "published" {
+            break shown;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "publication not confirmed: {shown}; {}",
+            std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(
+        published["intent"]["target"]["change_set_revision_id"],
+        revision_id
+    );
+    assert_eq!(
+        published["intent"]["policy"]["policy"]["requires_human_confirmation"],
+        requires_confirmation
+    );
+    assert_eq!(
+        published["intent"]["policy"]["digest"],
+        write["review_publish_policy"]["digest"]
+    );
+    assert_eq!(published["mappings"].as_array().unwrap().len(), 1);
+    let mapping = &published["mappings"][0];
+    let commit = mapping["platform_commit_sha"].as_str().unwrap();
+    let index = mapping["review_request"]["index"].as_u64().unwrap();
+    assert_eq!(published["stages"]["push"]["confirmed"], true);
+    assert_eq!(published["stages"]["push"]["commit_sha"], commit);
+    assert_eq!(published["stages"]["review_request"]["confirmed"], true);
+    assert_eq!(published["stages"]["review_request"]["commit_sha"], commit);
+    assert_eq!(published["stages"]["review_request"]["index"], index);
+    let requests = gitea_read(
+        &f,
+        &registration,
+        &format!("repos/{full_name}/pulls?state=all"),
+    );
+    assert_eq!(requests.as_array().unwrap().len(), 1);
+    assert_eq!(requests[0]["number"], index);
+    assert_eq!(requests[0]["head"]["sha"], commit);
+    assert_eq!(requests[0]["base"]["ref"], "main");
+    assert_eq!(requests[0]["state"], "open");
+    assert_eq!(requests[0]["merged"], false);
+    let branch = published["intent"]["branch"].as_str().unwrap();
+    let remote = gitea_read(
+        &f,
+        &registration,
+        &format!("repos/{full_name}/branches/{branch}"),
+    );
+    assert_eq!(remote["commit"]["id"], commit);
+    let tree = String::from_utf8(
+        git_output(
+            &f.root.join("write-site"),
+            &["rev-parse", &format!("{commit}^{{tree}}")],
+        )
+        .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    assert_eq!(revision["result_tree_sha"], tree);
+    assert_eq!(
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim(),
+        baseline,
+        "object delivery must not move the user's HEAD"
+    );
+    let (ok, diff) = f.run(&["changeset", "diff", &setup.repo, &set, revision_id]);
+    assert!(ok, "{diff}");
+    assert!(
+        diff.to_string()
+            .contains("changed by the actual script execution")
+    );
+    assert_eq!(f.run(&start_args).1["invocation_id"], invocation);
+    assert!(f.run(&["stop"]).0);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let store = loop {
+        match Store::open(&f.root) {
+            Ok(store) => break store,
+            Err(error) if error.code == "WRITER_BUSY" && std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
+            Err(error) => panic!("control Store after publication: {error:?}"),
+        }
+    };
+    assert_eq!(store.list("changeset_revision").unwrap().len(), 1);
+    assert_eq!(store.list("invocation_result").unwrap().len(), 1);
+    let record = store
+        .get(&store::ObjectKey {
+            scope: Scope::Repo(setup.repo.clone()),
+            kind: "changeset_platform_binding".into(),
+            id: revision_id.into(),
+        })
+        .unwrap()
+        .unwrap();
+    let RecordData::Value { value } = record.data else {
+        panic!("mapping record required")
+    };
+    assert_eq!(value, *mapping);
+    drop(store);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    assert_eq!(
+        f.run(&["review", "show", &setup.repo, intent]).1["mappings"],
+        published["mappings"]
+    );
+    assert_eq!(
+        gitea_read(
+            &f,
+            &registration,
+            &format!("repos/{full_name}/pulls?state=all")
+        )
+        .as_array()
+        .unwrap()
+        .len(),
+        1
+    );
+    println!(
+        "LIVE CLI publish: {invocation} -> {revision_id} -> {branch} at {commit} -> Gitea review #{index}; confirmation={requires_confirmation}; one version, result, intent and mapping after restart"
+    );
+}
+
+fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
+    let credential_root = f.root.join("independent-agency").canonicalize().unwrap();
+    let digest = agency_proto::hash(credential_root.as_os_str().as_encoded_bytes());
+    let dispatch = shown["dispatch_intent"]["data"]["value"]["dispatch"]
+        .as_str()
+        .unwrap_or("not-mapped");
+    let execution = Path::new("/tmp")
+        .join(format!("hctl2-exec-{}", &digest[..20]))
+        .join(dispatch);
+    format!(
+        "script stderr: {}; result frame: {}",
+        std::fs::read_to_string(execution.join("git-error.txt")).unwrap_or_default(),
+        std::fs::read_to_string(execution.join("result-frame.json")).unwrap_or_default()
+    )
+}
+
+#[test]
+fn write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea() {
+    publishing_chain("publish-automatic", false);
+}
+
+#[test]
+fn write_dispatch_real_cli_persists_human_gate_and_publishes_after_restart() {
+    publishing_chain("publish-held", true);
+}
+
+#[test]
+fn write_dispatch_real_cli_accepts_verified_no_changes_without_publishing() {
+    let (f, mut setup) = paired_profile("write-unchanged", 0, "write");
+    let site = f.root.join("write-site");
+    let baseline = String::from_utf8(git_output(&site, &["rev-parse", "HEAD"]).stdout)
+        .unwrap()
+        .trim()
+        .to_owned();
+    let deadline = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120000;
+    let input = f.root.join("unchanged-invocation.json");
+    let objective = "Inspect source.txt; keep the tree unchanged if no correction is needed";
+    std::fs::write(&input, json!({"project_id":setup.project,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":objective,"budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    let (ok, preview) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "unchanged",
+    ]);
+    assert!(ok, "{preview}");
+    let write = &preview["effect_summary"]["preview"]["write"];
+    assert_eq!(write["objective"], objective);
+    assert_eq!(write["repo_local_path"], site.to_str().unwrap());
+    assert_eq!(write["repo_local_machine"], "control");
+    assert_eq!(write["publication_target"]["target_branch"], "main");
+    let pending = write["lease"]["pending"].clone();
+    let set = pending["change_set_id"].as_str().unwrap();
+    configure_git_writer(&f, &mut setup, &pending, false, true);
+    let start = [
+        "invocation",
+        "start",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "unchanged",
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ];
+    let (ok, started) = f.run(&start);
+    assert!(ok, "{started}");
+    let invocation = started["invocation_id"].as_str().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let shown = loop {
+        let (ok, shown) = f.run(&["invocation", "show", &setup.project, invocation]);
+        assert!(ok, "{shown}");
+        if shown["state"] == "completed" {
+            break shown;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "unchanged result not admitted: {shown}; {}",
+            script_diagnostics(&f, &shown)
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(shown["results"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        shown["results"][0]["record"]["data"]["value"]["no_changes"],
+        true
+    );
+    assert!(shown["results"][0]["record"]["data"]["value"]["change_set_revision"].is_null());
+    let (ok, sealed) = f.run(&["changeset", "show", &setup.repo, set]);
+    assert!(ok, "{sealed}");
+    assert!(sealed["revisions"].as_array().unwrap().is_empty());
+    let observation = &sealed["saved_git_observations"][0]["observation"];
+    assert_eq!(observation["base_tree_sha"], observation["result_tree_sha"]);
+    assert!(
+        f.run(&["review", "list", &setup.repo]).1["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let registration = f.run(&["repo", "show", &setup.repo]).1;
+    let full_name = registration["observed"]["full_name"].as_str().unwrap();
+    assert!(
+        gitea_read(
+            &f,
+            &registration,
+            &format!("repos/{full_name}/pulls?state=all")
+        )
+        .as_array()
+        .unwrap()
+        .is_empty()
+    );
+    assert_eq!(f.run(&start).1["invocation_id"], invocation);
+    assert!(f.run(&["stop"]).0);
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    assert_eq!(
+        f.run(&["invocation", "show", &setup.project, invocation]).1["results"],
+        shown["results"]
+    );
+    assert_eq!(
+        String::from_utf8(git_output(&site, &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim(),
+        baseline
+    );
+    println!(
+        "LIVE CLI unchanged: {invocation}; native trees equal, one accepted result, no Revision, publication intent or Gitea review after restart"
+    );
+}
+
 #[test]
 fn write_dispatch_real_cli_freezes_policy_grants_once_and_requires_exit_before_regrant() {
     let (f, setup) = paired_profile("write-dispatch", 120, "write");

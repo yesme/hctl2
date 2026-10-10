@@ -142,7 +142,7 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 
 `invocation::Input` 新增可选 `write: WriteInput { change_set_id?, baseline_commit, target_branch, allow_update }`。省略 ChangeSet ID 时，按本控制面、Repo 和调用键派生新 ID；有 ID 时只接受同 Repo、同平台绑定版本、同基线且旧租约已撤销的 ChangeSet。基线要求 40 位小写 SHA-1，Git 对象存在性及封存回读由 control 在准入事务外执行。只读 Profile 不能附写入边界；写入型必须给边界。
 
-`review_policy_input` 从当前 Project、Repo 与 Profile 派生策略输入和内容寻址的策略 ID。Control 调 `repo::review::freeze_policy` 保存，领域预览只读核对它。策略固定 `branch_rule = hctl2/{change_set}`、`description_source = none`、`audit_scope = minimal`，确认缺省来自 Project。`WritePreview` 列出待启动租约、策略精确引用及 `publish_for_review_not_integration`。保存策略定义不发租约，也不登记发布意图；未启动的旧预览不因策略记录已存在而获得授权。
+`review_policy_input` 从当前 Project、Repo 与 Profile 派生策略输入和内容寻址的策略 ID。Control 调 `repo::review::freeze_policy` 保存，领域预览只读核对它。策略固定 `branch_rule = hctl2/{change_set}`、`description_source = none`、`audit_scope = minimal`，确认缺省来自 Project。`WritePreview` 列出待启动租约、策略精确引用及 `publish_for_review_not_integration`，还交付完整目标正文 `objective`、策略正文 `publication_target`、注册副本的 `repo_local_path` 与所属机器 `repo_local_machine = control`。远程注册没有本地副本时路径为 `null`，不假定远程 Agency 可访问控制面路径。保存策略定义不发租约，也不登记发布意图；未启动的旧预览不因策略记录已存在而获得授权。
 
 确认启动在原授权事务里比较当前版本并取得租约，同时保存原调用、Spec、状态与 prepare outbox。Spec 的 `base`、`write_lease`、`review_publish_policy` 固定预览边界；Context 必须实际交付 `write-boundary/<consumer>` 的规范字节，只写引用或送错字节不能启动。Project 此后改变确认缺省不改已启动调用。脚本执行体沿原四步启动；Herdr 的只读限制不在本段放开，真 harness 写入留第 9 包。
 
@@ -152,17 +152,20 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 
 `admit_result` 对没有封存输入的写入型返回 `CHANGESET_RESULT_REQUIRED`，防止只读回答绕过 ChangeSet 准入。`sealing_input` 核原提案字节、活跃归属者和租约，给 control 在事务外封存；`admit_sealed_result` 重核这些边界，同一事务接受 Revision、结果、Room 投影与发布意图。`Publication` 的策略必须等于 Spec 冻结的精确引用，提交者取原调用保存的 DirectClient，不取模型提案。事务只登记发布，worker 由 Claude 提供，本段不复制它。
 
+无改动沿同一个 Result Proposal 接口：`location = { kind: "no_changes", repo_path }` 交回实际工作目录。现场工具比较基线树与结果树；确实相同才由 `admit_unchanged_result` 接受，保存 `no_changes = true`，不准入 Revision、不登记发布意图。普通提交 / 工作目录结果经回读树相同也走这条路径。授权、Spec、Bundle、原提案字节与租约检查照旧；调用完成不表示 Task 验收通过，租约仍要原派工停止证明才能释放。无改动声明与实际树不同返回 `NO_CHANGES_MISMATCH`。
+
 | CT / 边界 | 会失败的输入与目标 |
 | --- | --- |
 | CT-REPO：租约待启动、同一 ChangeSet 单写、撤销证明 | D：`write_invocation_preview_does_not_grant_and_start_freezes_policy_baseline_and_lease`、`cancelling_unsent_write_revokes_in_the_same_transaction_and_next_writer_has_new_generation`、`cancelling_possibly_started_write_without_exit_proof_keeps_the_original_lease_busy`；R：`second_writer_cannot_take_active_or_revoking_lease_even_after_restart` |
 | CT-REPO：停止请求不等于撤销证明 | D：`stopped_write_requires_original_dispatch_exit_not_a_turn_or_stop_request`、`agency_confirmed_never_started_write_can_release_its_lease`；C：`writer_stop_page_skips_cancelled_or_turn_only_pages_until_physical_exit`；A：`prepared_cancellation_records_never_started_before_activation_can_race_it` |
 | CT-CONNECTION：实际送达冻结边界 | D：`writer_cannot_activate_without_delivered_exact_changeset_boundary` |
+| 写入材料与空结果 | D：`write_bundle_freezes_local_copy_and_full_publication_target`、`unchanged_write_result_is_admitted_without_revision_or_publication_and_replays_once`、`unchanged_write_result_rejects_different_tree_unverified_claim_and_stale_lease`；CLI：`write_dispatch_real_cli_accepts_verified_no_changes_without_publishing` |
 | CT-REPO：只读与写入结果分开 | D：`read_only_profile_cannot_smuggle_a_write_boundary_into_the_preview`、`writing_call_cannot_be_completed_as_a_read_only_answer`；P：`write_profiles_require_scoped_write_permission_and_cannot_grant_commands` |
 | CT-REPO：精确评审版本来源 | D：`selected_review_version_is_exact_repo_scoped_and_old_inputs_keep_their_encoding`；平台评论实际冻结留第 10 条 |
 | CT-REPO / CT-CONNECTION：封存与提案准入共用事务 | D：`write_result_and_revision_share_admission_and_completion_does_not_prove_writer_stopped`、`write_projection_conflict_rolls_back_revision_result_completion_and_lease_revocation`、`cancelling_after_git_seal_but_before_admission_leaves_only_saved_proposal` |
 | CT-REPO：精确写入边界、人的独立封存 | D：`write_result_rejects_each_boundary_change_without_revision_result_or_completion`、`human_seal_is_an_independent_admission_and_replay_keeps_its_first_observation`；CLI：`human_seal_real_cli_reads_exact_git_identity_diff_and_replays_after_input_disappears` |
 
-D = `root//crates/project:domain_test`；R = `root//crates/repo:changeset_test`；C = `root//apps/control:unit_test`；P = `root//crates/participant:profiles_test`；A = `root//agency:port_test`。残留预览、人的接管与丢弃沿既定拆分 5，不以本段的租约领域测试冒充验收第 8 条全链。
+D = `root//crates/project:domain_test`；R = `root//crates/repo:changeset_test`；C = `root//apps/control:unit_test`；P = `root//crates/participant:profiles_test`；A = `root//agency:port_test`；CLI = `root//packaging/release:room-cli-test`。第 8 条的残留接管 / 采用 / 丢弃与第 10 条评论线，统一留 #405 合入后的「第 6 包收尾」PR，不以本段的租约领域测试冒充这些全链。
 
 ## 第 5 包后半段 · 其余命令与只读投影
 

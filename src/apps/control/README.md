@@ -36,7 +36,7 @@ CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster sho
 
 原 `invocation preview | start | show` 接受 Project 新增的可选 `write` 边界，不新建 RPC。预览调用 `repo::review::freeze_policy` 保存不可改写的策略定义，再由领域读取；没有租约 grant 或发布意图。提交用同一授权事务激活租约、冻结 Spec 与 prepare outbox，后续沿既有 Agency 四步启动。只读输入的编码与路径保留。
 
-`dispatch/context.rs` 把待启动 ChangeSet、基线、租约与策略的规范字节作为必需材料送到执行体。可选 `review_change_set_revision` 为本 Repo 的精确 `store::Reference`；读取钩子已留，第 10 条接平台评论前会明确拒绝，不默默删掉该来源。Context 的其他来源仍沿第 4 包接口。
+`dispatch/context.rs` 把待启动 ChangeSet、基线、租约、完整目标正文、完整策略正文与注册副本路径的规范字节作为必需材料送到执行体。路径标为控制面机器所有，不是远程执行目录。可选 `review_change_set_revision` 为本 Repo 的精确 `store::Reference`；读取钩子已留，第 10 条接平台评论前会明确拒绝，不默默删掉该来源。Context 的其他来源仍沿第 4 包接口。
 
 取消后，`dispatch/recovery.rs` 跨页读取原派工的停止报告：写入型不在逻辑取消或一轮结束时提前结束回读，要看到脚本退出或确认从未激活。保存报告和租约撤销同事务；缺证明继续占用旧租约。停止报告仍不代表已实施系统级隔离。
 
@@ -45,6 +45,12 @@ CLI 增 `profession` 与 `terminal` 两棵子命令树，以及 `room roster sho
 人的封存经 `changeset seal` 预览与确认，使用独立命令，不借用 Invocation 租约。`changeset show | diff` 读取已准入版本；路径只作为此次 Git 操作输入，不新增工作区注册对象。本段暂限控制面可读取的本地 Git；跨机 Git 交付、残留接管 / 丢弃、评审评论读取另交后续段。
 
 `root//packaging/release:room-cli-test` 的 `write_dispatch_real_cli_freezes_policy_grants_once_and_requires_exit_before_regrant` 从真实 CLI、控制进程、随包 Gitea 和脚本 Agency 走预览、启动、查看与取消：检查第二写入者被拒、Spec 不随 Project 确认缺省变化、退出报告后才预览下一代租约。取消暴露的 shell 子进程持有管道问题在 Agency 的脚本执行体用原生进程组修正，未新增控制面进程管理。
+
+同一目标的 `write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea` 让脚本在隔离执行目录生成真实提交，经封存准入与同事务入队，由发布 worker 推送、建请求、写 `changeset_platform_binding`。用随包 `tea` 独立回读请求与分支头，再核精确结果树及原工作副本的 HEAD 未移动。`write_dispatch_real_cli_persists_human_gate_and_publishes_after_restart` 另走确认开关打开的路径：准入后平台无请求，控制面重启后人经 `review publish` 放行；再次重启、重投仍只有一份版本、结果、意图与映射，一条平台请求。两个用例不使用准入或平台映射的测试缝。
+
+`write_dispatch_real_cli_accepts_verified_no_changes_without_publishing` 交回未改动的实际工作目录，现场工具回读两棵 Git 树相同后接受空结果。它核对目标正文与本地路径、重启后的单份结果、没有 Revision / 发布意图 / 平台请求。脚本保留自己的交付目录直到受管停止；不在封存前退出并清掉未交付对象。
+
+第 8 条的残留接管 / 采用 / 丢弃命令与第 10 条的平台评论线，统一留到 #405 合入后的「第 6 包收尾」PR；本段只提供后者需要的精确版本引用与读取钩子，不把未接读取说成可用。
 
 ## 第 6 包 · 集成一半
 
