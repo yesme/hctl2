@@ -107,6 +107,28 @@ _DEMO3_RESOURCES = [
     "root//packaging/dependencies:package",
 ]
 
+# The streaming unpack both paths share, pinned on fixtures of a few hundred
+# bytes: a valid archive carrying trailing padding must unpack, and an archive
+# whose zstd frame fails its own content checksum must be refused. Sourcing
+# demo3.sh runs its "Buck must provide" guards, so the binaries those name are
+# declared even though this test never runs one of them. The dependency package
+# is the deliberate exception: declaring it would pull the whole offline payload
+# into a test that reads none of it, and into the disk budget of the job that
+# runs it. The guard only asks that the variable be non-empty.
+_DEMO3_UNPACK_ENV = _DEMO3_ENV | {
+    "HCTL2_TEST_DEPENDENCY_PACKAGE": "unused-by-demo3-unpack-test",
+}
+
+sh_test(
+    name = "demo3-unpack-test",
+    test = "demo3-unpack-test.sh",
+    env = _DEMO3_UNPACK_ENV,
+    resources = [r for r in _DEMO3_RESOURCES if r != "root//packaging/dependencies:package"],
+    labels = CI_RELEASE,
+    test_rule_timeout_ms = 120000,
+    visibility = ["PUBLIC"],
+)
+
 sh_test(
     name = "demo3-gitea-test",
     test = "demo3-gitea.sh",

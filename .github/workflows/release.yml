@@ -245,6 +245,8 @@ jobs:
       # room-cli-clippy-clean-test is the gate over room-cli's clippy report:
       # the clippy run writes that report and succeeds either way, so without
       # the test a diagnostic in it would never fail anything.
+      # demo3-unpack-test pins the streaming unpack both demo3 paths share, on
+      # fixtures of a few hundred bytes rather than on the payload.
       # demo3's two paths drive the packaged services and a script Agency
       # through `hctl2 --json` only. The canary credential reaches the test the
       # way buck2 documents for exactly this (`buck2 test //foo:bar -- --env
@@ -259,6 +261,7 @@ jobs:
           ./buck2 test --build-default-info root//packaging/release:complete-test
           root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           root//packaging/release:room-cli-clippy-clean-test
+          root//packaging/release:demo3-unpack-test
           root//packaging/release:demo3-gitea-test
           root//packaging/release:demo3-github-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
@@ -273,6 +276,7 @@ jobs:
           ./buck2 test --build-default-info root//packaging/release:complete-test
           root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           root//packaging/release:room-cli-clippy-clean-test
+          root//packaging/release:demo3-unpack-test
           root//packaging/release:demo3-gitea-test
           root//packaging/release:demo3-github-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}

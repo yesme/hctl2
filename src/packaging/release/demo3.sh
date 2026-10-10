@@ -170,6 +170,27 @@ demo3_cleanup() {
     fi
 }
 
+# The archive is a zstd frame, so it is decoded with the pinned tool instead of
+# relying on whichever decoder the host tar happens to have, and decoded into
+# tar rather than into a file: the payload unpacks to 635 MB and the tar it comes
+# from is the same again, and the complete package job runs several of these
+# payload tests at once on a runner whose disk is bounded, so writing the tar out
+# would more than double what this one test holds at its peak.
+#
+# A pipe, not process substitution, so `pipefail` also sees the decoder. tar's
+# status alone does not say whether the payload arrived: with a corrupt trailing
+# checksum zstd writes nothing at all, tar reports no error and exits 0, and the
+# install directory is simply empty. `--ignore-zeros` is what makes the pipe
+# safe -- tar stops reading at the first end-of-archive marker, so the padding a
+# valid archive legitimately carries would otherwise kill the decoder with
+# SIGPIPE and fail a run that unpacked perfectly (exit 141, seen on the macOS
+# arm64 runner). Spelled long: bsdtar rejects `-i` in a short-option cluster.
+#
+# Both shapes are pinned by root//packaging/release:demo3-unpack-test.
+demo3_unpack_payload() { # <archive> <dest>
+    "$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$1" | tar -xf - --ignore-zeros -C "$2"
+}
+
 demo3_prepare() { # <name>
     local name="$1"
     DEMO3_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-demo3-$name.XXXXXX")"
@@ -183,18 +204,7 @@ demo3_prepare() { # <name>
         ! -name '*-sources.tar.zst' | head -n 1)"
     [[ -n "$archive" ]] || die "dependency package has no runtime archive"
     mkdir -p "$DEMO3_ROOT/install"
-    # The archive is a zstd frame: decode it with the pinned tool instead of
-    # relying on whichever decoder the host tar happens to have. Decoded into
-    # tar rather than into a file: the payload unpacks to 635 MB and the tar it
-    # comes from is the same again, and the complete package job runs several of
-    # these payload tests at once on a runner whose disk is bounded, so writing
-    # the tar out would more than double what this one test holds at its peak.
-    # Process substitution, not a pipe: tar stops reading at the end-of-archive
-    # marker, so a decoder still pushing bytes dies of SIGPIPE and `pipefail`
-    # then fails a run whose payload extracted perfectly (exit 141, seen on the
-    # macOS arm64 runner). Only tar's own status says whether the payload is
-    # there, and a truncated stream still fails as tar's unexpected EOF.
-    tar -xf <("$HCTL2_ZSTD_ROOT/bin/zstd" -dc "$archive") -C "$DEMO3_ROOT/install"
+    demo3_unpack_payload "$archive" "$DEMO3_ROOT/install"
     services_bin="$(find "$DEMO3_ROOT/install" -type f -name hctl2-services \
         -path '*/bin/*' | head -n 1)"
     [[ -n "$services_bin" ]] || die "dependency package has no bin/hctl2-services"
