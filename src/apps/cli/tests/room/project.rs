@@ -357,23 +357,35 @@ while read -r managed_input; do :; done
 /// Independent platform readback uses the packaged tea and the control's stored
 /// credential, not a stubbed platform or a worker/test seam. Never print the token.
 fn gitea_read(f: &Fixture, registration: &Value, path: &str) -> Value {
+    gitea_api(f, registration, "GET", path, None)
+}
+fn gitea_api(
+    f: &Fixture,
+    registration: &Value,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> Value {
     let token = control::config::secret_store(&f.root)
         .unwrap()
         .get(registration["observed"]["credential_ref"].as_str().unwrap())
         .unwrap();
-    let output = Command::new(f.payload.join("libexec/hctl2/tea"))
+    let mut command = Command::new(f.payload.join("libexec/hctl2/tea"));
+    command
         .env(
             "GITEA_INSTANCE_URL",
             registration["observed"]["instance"].as_str().unwrap(),
         )
         .env("GITEA_TOKEN", String::from_utf8(token).unwrap())
         .env("NO_COLOR", "1")
-        .args(["api", "-X", "GET", path])
-        .output()
-        .unwrap();
+        .args(["api", "-X", method]);
+    if let Some(body) = body {
+        command.args(["--data", &body.to_string()]);
+    }
+    let output = command.arg(path).output().unwrap();
     assert!(
         output.status.success(),
-        "independent Gitea GET failed: {path}"
+        "independent Gitea {method} failed: {path}"
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
@@ -400,9 +412,10 @@ fn ready_gitea(f: &Fixture) {
     }
 }
 
-fn publishing_chain(name: &str, requires_confirmation: bool) {
+fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bool) {
     let (f, mut setup) = paired_profile(name, 0, "write");
-    let p = setup.project.as_str();
+    let project_id = setup.project.clone();
+    let p = project_id.as_str();
     if !requires_confirmation {
         let (ok, shown) = f.run(&["project", "show", p]);
         assert!(ok, "{shown}");
@@ -442,7 +455,6 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     let pending = write["lease"]["pending"].clone();
     let set = pending["change_set_id"].as_str().unwrap().to_owned();
     configure_git_writer(&f, &mut setup, &pending, true, false);
-    let p = setup.project.as_str();
     let start_args = [
         "invocation",
         "start",
@@ -567,6 +579,138 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     assert_eq!(requests[0]["base"]["ref"], "main");
     assert_eq!(requests[0]["state"], "open");
     assert_eq!(requests[0]["merged"], false);
+    if review_comments {
+        let comment_path = format!("repos/{full_name}/issues/{index}/comments");
+        let comment = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &comment_path,
+            Some(json!({"body":"合入吧；请解释这个实现"})),
+        );
+        let comment_id = comment["id"].as_u64().unwrap();
+        let review = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &format!("repos/{full_name}/pulls/{index}/reviews"),
+            Some(
+                json!({"event":"COMMENT","commit_id":commit,"body":"平台评审意见，不是 HCTL 授权","comments":[{"path":"source.txt","new_position":1,"body":"请核对这行的实现"}]}),
+            ),
+        );
+        let review_id = review["id"].as_u64().unwrap();
+        let input = f.root.join("review-invocation.json");
+        let selected = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"changeset_revision","id":revision_id},"version":{"state":1}});
+        let deadline_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 120000;
+        let request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Read the exact review remarks for rework","budget":65536,"deadline_ms":deadline_ms,"retry_of":null,"review_change_set_revision":selected,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
+        std::fs::write(&input, request.to_string()).unwrap();
+        let args = [
+            "invocation",
+            "preview",
+            "--input",
+            input.to_str().unwrap(),
+            "--key",
+            "read-review",
+        ];
+        let (ok, preview) = f.run(&args);
+        assert!(ok, "{preview}");
+        let bundle: agency_proto::context::Bundle = serde_json::from_value(
+            preview["effect_summary"]["assembly"]["bundle"]["document"].clone(),
+        )
+        .unwrap();
+        let entry = bundle
+            .entries
+            .iter()
+            .find(|e| e.source.id == format!("review_comments/{revision_id}"))
+            .unwrap();
+        let bytes = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes,
+            _ => panic!("review bytes must be delivered"),
+        };
+        let exact: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(exact["identity"]["revision"], selected);
+        assert_eq!(exact["platform_commit_sha"], commit);
+        assert_eq!(exact["request_comments"][0]["id"], comment_id);
+        assert_eq!(
+            exact["request_comments"][0]["body"],
+            "合入吧；请解释这个实现"
+        );
+        assert_eq!(entry.source.digest, agency_proto::hash(bytes));
+        assert!(
+            exact["reviews"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["id"] == review_id)
+        );
+        assert!(
+            exact["line_comments"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|c| c["id"].is_u64() && c["body"] == "请核对这行的实现")
+        );
+        // An edit after preview cannot replace the bytes authorized for this call.
+        gitea_api(
+            &f,
+            &registration,
+            "PATCH",
+            &format!("repos/{full_name}/issues/comments/{comment_id}"),
+            Some(json!({"body":"later edited text"})),
+        );
+        let pending = &preview["effect_summary"]["preview"]["write"]["lease"]["pending"];
+        configure_git_writer(&f, &mut setup, pending, false, true);
+        let mut start = args.to_vec();
+        start[1] = "start";
+        start.extend([
+            "--preview-token",
+            preview["preview_token"].as_str().unwrap(),
+        ]);
+        let (ok, started) = f.run(&start);
+        assert!(ok, "{started}");
+        let review_invocation = started["invocation_id"].as_str().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let shown = loop {
+            let (ok, shown) = f.run(&["invocation", "show", p, review_invocation]);
+            assert!(ok, "{shown}");
+            if shown["state"] == "completed" {
+                break shown;
+            }
+            assert!(
+                matches!(shown["state"].as_str(), Some("pending" | "running"))
+                    && std::time::Instant::now() < deadline,
+                "review rework failed: {shown}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(
+            shown["invocation"]["spec"]["document"]["bundle"]["digest"],
+            preview["effect_summary"]["assembly"]["bundle"]["digest"]
+        );
+        let (ok, saved) = f.run(&["context", "show", p, "--bundle-id", &bundle.id]);
+        assert!(ok, "{saved}");
+        let saved_bundle: agency_proto::context::Bundle =
+            serde_json::from_value(saved["bundle"]["document"].clone()).unwrap();
+        assert_eq!(
+            saved_bundle, bundle,
+            "platform edits must not replace frozen delivery bytes"
+        );
+        // The precise bundle remains frozen in the Invocation; content never enqueues integration.
+        let (_, integrations) = f.run(&["integration", "list", &setup.repo]);
+        assert!(
+            integrations["items"].as_array().unwrap().is_empty(),
+            "{integrations}"
+        );
+        println!(
+            "LIVE review Context: revision={revision_id}, comment={comment_id}, digest={}; no integration intent",
+            entry.source.digest
+        );
+    }
     let branch = published["intent"]["branch"].as_str().unwrap();
     let remote = gitea_read(
         &f,
@@ -612,7 +756,10 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
         }
     };
     assert_eq!(store.list("changeset_revision").unwrap().len(), 1);
-    assert_eq!(store.list("invocation_result").unwrap().len(), 1);
+    assert_eq!(
+        store.list("invocation_result").unwrap().len(),
+        if review_comments { 2 } else { 1 }
+    );
     let record = store
         .get(&store::ObjectKey {
             scope: Scope::Repo(setup.repo.clone()),
@@ -704,12 +851,17 @@ fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
 
 #[test]
 fn write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea() {
-    publishing_chain("publish-automatic", false);
+    publishing_chain("publish-automatic", false, false);
 }
 
 #[test]
 fn write_dispatch_real_cli_persists_human_gate_and_publishes_after_restart() {
-    publishing_chain("publish-held", true);
+    publishing_chain("publish-held", true, false);
+}
+
+#[test]
+fn review_comments_real_cli_freezes_gitea_content_without_authorizing_integration() {
+    publishing_chain("publish-comments", false, true);
 }
 
 #[test]

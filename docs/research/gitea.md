@@ -209,3 +209,19 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 
 以上均为所测动作的观察，不外推到其它实例配置或其它账号组合。
 
+### 2026-10-11 · 平台评审评论进入真实返工 Context
+
+决定建议：仍用 Gitea 1.27.3 与 tea 0.15.1 的原生 API，不引入 SDK。新建本地平台绑定可声明 `review_text_readback=true`；评审线程解决状态与正式批准的机械判定仍未在这次验证，不扩大那两项能力。已有冻结绑定不自动改写。
+
+原生目标 `root//packaging/release:room-cli-test` 的 `review_comments_real_cli_freezes_gitea_content_without_authorizing_integration` 使用实际安装包、CLI、control 与脚本 Agency。首次写入调用经封存准入、发布 worker 推送与建请求产生真实 `changeset_platform_binding`，不用映射测试缝。随后用随包 tea 在同一请求创建一般评论、`COMMENT` 评审及一条行内评论，再从真实 `invocation preview | start | show` 走返工。
+
+| 观察 | 对设计的意思 |
+| --- | --- |
+| `GET issues/{index}/comments`、`GET pulls/{index}/reviews`、`GET pulls/{index}/reviews/{review_id}/comments` 读回原生 ID、正文与提交关联；创建评审用 `POST pulls/{index}/reviews`，带 `event: COMMENT`、`commit_id` 与 `comments` | 普通评论、评审正文和行内评论都能作为精确 Context 来源；没有验证平台批准或线程解决资格 |
+| Bundle 中的规范正文保留精确 Revision、平台映射、请求编号、平台提交及各评论 ID；来源摘要与实际交付字节一致 | 继续使用第 4 包的 Manifest / Bundle，不另造评论存储或客户端 |
+| 预览后修改平台评论，启动仍接受原预览，`context show` 回读原 Bundle | 平台当前内容不覆盖已冻结的派工上下文 |
+| 评论正文含「合入吧」，下一次脚本调用正常交回，控制面没有集成意图 | 评论是 content，不是授权 |
+
+首次全组运行 Build ID `fb6a43d9-884b-48f1-97e2-e6de2587488f`：本条用例及另外九条通过；两条旧用例分别报 SQLite I/O 与 Git 材料不可用，全组不是绿。本条只记录上述实际通过的评论链，不用它覆盖两条旧用例的失败。GitHub 读取沿既有 gh API 适配，本次未对在线 GitHub 评论线实跑。
+
+随后以 `--test-threads=1` 单列本条与两条失败用例补跑，Build ID `ec73ecef-749a-4eee-ba0b-a4338a034e0a`：三条通过。本条再次从真实发布走到返工 Context；两个旧用例的首次失败原因仍未确定，补跑通过不等于已解释或修复它们。

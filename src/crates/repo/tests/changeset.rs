@@ -9,6 +9,194 @@ use store::{
     TrustedActor, Version,
 };
 
+fn residual_fixture(store: &mut Store) -> (ChangeSet, Reference, Reference) {
+    let prepared = repo::prepare(common::request(repo::Platform::None), None).unwrap();
+    let registered =
+        repo::admit(store, &common::actor(), "register", "register", prepared).unwrap();
+    let mut set = open_change_set(
+        store,
+        &actor(&registered.repo_id),
+        &registered.repo_id,
+        0,
+        &sha(1),
+        "residual",
+        &invocation("lost"),
+    )
+    .unwrap();
+    set.lease.state = LeaseState::Revoking;
+    replace_set(store, &mut set);
+    let repo_record = store.get(&repo::key(&set.repo_id)).unwrap().unwrap();
+    let source = Reference {
+        key: ObjectKey {
+            scope: Scope::Repo(set.repo_id.clone()),
+            kind: "changeset".into(),
+            id: set.change_set_id.clone(),
+        },
+        version: Version::State(set.version),
+    };
+    (
+        set,
+        Reference {
+            key: repo_record.key,
+            version: Version::State(repo_record.version),
+        },
+        source,
+    )
+}
+
+#[test]
+fn residual_discard_is_durable_before_cleanup_and_replays_readback_after_restart() {
+    use repo::changeset::residual;
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let (set, repo_ref, source) = residual_fixture(&mut store);
+    let owner = actor(&set.repo_id);
+    let plan = serde_json::json!({"input":{"key":"discard","repo_id":set.repo_id,"change_set_id":set.change_set_id},"worktree_path":"/fixture/residual"});
+    let pending = residual::begin(
+        &mut store,
+        &owner,
+        &set.repo_id,
+        "discard",
+        &plan,
+        &source,
+        &repo_ref,
+    )
+    .unwrap();
+    let effect = pending["effect_id"].as_str().unwrap();
+    assert_eq!(pending["status"], "pending");
+    store
+        .resume_pending_effect(store.generation(), effect, true)
+        .unwrap();
+    store.begin_effect(store.generation(), effect).unwrap();
+    // Physical cleanup succeeded, but its confirmation never reached the Store.
+    drop(store);
+    let mut store = Store::open(&temp.0).unwrap();
+    assert_eq!(
+        residual::begin(
+            &mut store,
+            &owner,
+            &set.repo_id,
+            "discard",
+            &plan,
+            &source,
+            &repo_ref
+        )
+        .unwrap(),
+        pending
+    );
+    let observed =
+        serde_json::json!({"operation":"removed_discarded","recovered_by_readback":true});
+    let done = residual::finish(&mut store, &owner, &set.repo_id, "discard", &observed).unwrap();
+    assert_eq!(done["status"], "discarded");
+    assert_eq!(
+        residual::finish(&mut store, &owner, &set.repo_id, "discard", &observed).unwrap(),
+        done
+    );
+    assert_eq!(
+        repo::changeset::get_change_set(&store, &set.repo_id, &set.change_set_id)
+            .unwrap()
+            .lease
+            .state,
+        LeaseState::Revoking
+    );
+    assert!(store.list("changeset_revision").unwrap().is_empty());
+    let mut other = plan["input"].clone();
+    other["change_set_id"] = serde_json::json!("another");
+    assert_eq!(
+        residual::receipt(&store, &owner, &set.repo_id, "discard", &other)
+            .unwrap_err()
+            .code,
+        "IDEMPOTENCY_CONFLICT"
+    );
+}
+
+#[test]
+fn residual_discard_rejects_a_changed_source_and_nonhuman_authority_without_enqueue() {
+    use repo::changeset::residual;
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let (mut set, repo_ref, source) = residual_fixture(&mut store);
+    let owner = actor(&set.repo_id);
+    let plan = serde_json::json!({"input":{"key":"discard"},"worktree_path":"/fixture/residual"});
+    let mut provider = TrustedActor(owner.0.clone());
+    provider.0.source = ActorSource::ProviderEvent;
+    assert_eq!(
+        residual::begin(
+            &mut store,
+            &provider,
+            &set.repo_id,
+            "discard",
+            &plan,
+            &source,
+            &repo_ref
+        )
+        .unwrap_err()
+        .code,
+        "PERMISSION_DENIED"
+    );
+    replace_set(&mut store, &mut set);
+    assert_eq!(
+        residual::begin(
+            &mut store,
+            &owner,
+            &set.repo_id,
+            "discard",
+            &plan,
+            &source,
+            &repo_ref
+        )
+        .unwrap_err()
+        .code,
+        "VERSION_CONFLICT"
+    );
+    assert!(store.list("changeset_residual").unwrap().is_empty());
+    assert!(store.effect("changeset:discard:discard").is_err());
+}
+
+#[test]
+fn residual_adoption_checks_the_source_inside_the_human_admission_transaction() {
+    let temp = Temp::new();
+    let mut store = Store::open(&temp.0).unwrap();
+    let (mut set, _, source) = residual_fixture(&mut store);
+    let owner = actor(&set.repo_id);
+    let plan = repo::changeset::prepare_human(
+        &store,
+        &owner,
+        repo::changeset::HumanInput {
+            key: "adopt".into(),
+            repo_id: set.repo_id.clone(),
+            change_set_id: None,
+            base_commit_sha: sha(1),
+            parent_revision_id: None,
+            location: repo::changeset::OutputLocation::Commit {
+                repo_path: "/fixture/residual".into(),
+                commit_sha: sha(9),
+            },
+        },
+    )
+    .unwrap();
+    let mut seal = plan.seal_input();
+    seal.result_tree_sha = sha(2);
+    seal.result_commit_sha = Some(sha(9));
+    replace_set(&mut store, &mut set);
+    assert_eq!(
+        repo::changeset::admit_human_checked(
+            &mut store,
+            &owner,
+            &plan,
+            &seal,
+            &serde_json::json!({}),
+            &[source]
+        )
+        .unwrap_err()
+        .code,
+        "VERSION_CONFLICT"
+    );
+    assert!(store.list("human_seal").unwrap().is_empty());
+    assert!(store.list("changeset_revision").unwrap().is_empty());
+    assert_eq!(store.list("changeset").unwrap().len(), 1);
+}
+
 fn actor(repo_id: &str) -> TrustedActor {
     TrustedActor(Actor {
         principal: "owner".into(),

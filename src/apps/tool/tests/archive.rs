@@ -248,6 +248,48 @@ fn discard_requires_matching_tree_sha_and_does_not_keep_a_snapshot() {
 }
 
 #[test]
+fn removal_rejects_a_worktree_moved_since_human_confirmation() {
+    let fixture = Fixture::new("confirmed-path");
+    let old = fixture.materialize("CS-path");
+    fs::write(old.join("only-copy.txt"), "keep\n").unwrap();
+    let observed = snapshot(&fixture, "CS-path");
+    assert_success(&observed);
+    let tree = json_stdout(&observed)["result_tree_sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let moved = fixture.root.join("moved");
+    git(
+        Some(&fixture.repo),
+        [
+            OsStr::new("worktree"),
+            OsStr::new("move"),
+            old.as_os_str(),
+            moved.as_os_str(),
+        ],
+    );
+    let output = tool()
+        .args(["archive", "remove", "--repo"])
+        .arg(&fixture.repo)
+        .args([
+            "--change-set-ref",
+            "CS-path",
+            "--discard-unarchived",
+            "--confirm-discard",
+            &tree,
+            "--expected-worktree",
+        ])
+        .arg(&old)
+        .output()
+        .unwrap();
+    assert_error_code(output, "HCTL2_TOOL_WORKTREE_PATH_CHANGED");
+    assert_eq!(
+        fs::read_to_string(moved.join("only-copy.txt")).unwrap(),
+        "keep\n"
+    );
+}
+
+#[test]
 fn reject_ignored_blocks_salvage_removal() {
     let fixture = Fixture::new("reject-ignored");
     let worktree = fixture.materialize("CS-noise");
