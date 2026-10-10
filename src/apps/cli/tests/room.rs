@@ -9,6 +9,7 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::LazyLock,
     time::Duration,
 };
 use store::{
@@ -63,7 +64,13 @@ impl Fixture {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        std::fs::write(&versions, format!("{isolated}\n")).unwrap();
+        // Replace the file instead of writing through it: a fixture payload is
+        // a hardlink tree over the shared extraction, and an in-place write
+        // would reach the copy every other fixture links from. Renaming a new
+        // file over the entry leaves the shared inode alone.
+        let replacement = self.payload.join("lib/hctl2/services/versions.sh.tmp");
+        std::fs::write(&replacement, format!("{isolated}\n")).unwrap();
+        std::fs::rename(&replacement, &versions).unwrap();
         ports
             .remove("TUWUNEL_PORT")
             .expect("packaged versions.sh must define TUWUNEL_PORT")
@@ -71,49 +78,8 @@ impl Fixture {
     fn unpacked(name: &str) -> Self {
         let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let archive = find(
-            Path::new(
-                &std::env::var("HCTL2_TEST_DEPENDENCY_PACKAGE")
-                    .expect("HCTL2_TEST_DEPENDENCY_PACKAGE must be set to run this test"),
-            ),
-            |p| {
-                p.file_name()
-                    .unwrap()
-                    .to_str()
-                    .is_some_and(|n| n.ends_with(".tar.zst") && !n.contains("-sources"))
-            },
-        )
-        .unwrap();
         let extract = root.join("install");
-        std::fs::create_dir(&extract).unwrap();
-        // The archive is a zstd frame; decompress with the pinned tool instead
-        // of relying on the host tar's decoder, then unpack the tar.
-        let zstd = Path::new(
-            &std::env::var("HCTL2_ZSTD_ROOT")
-                .expect("HCTL2_ZSTD_ROOT must be set to run this test"),
-        )
-        .join("bin/zstd");
-        let tar_file = root.join("payload.tar");
-        let tar_out = File::create(&tar_file).unwrap();
-        assert!(
-            Command::new(&zstd)
-                .arg("-dc")
-                .arg(&archive)
-                .stdout(Stdio::from(tar_out))
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(
-            Command::new("tar")
-                .args(["-xf"])
-                .arg(&tar_file)
-                .arg("-C")
-                .arg(&extract)
-                .status()
-                .unwrap()
-                .success()
-        );
+        link_tree(&SHARED_PAYLOAD, &extract);
         let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
         Self { root, payload }
     }
@@ -193,6 +159,81 @@ fn free_port() -> u16 {
     let port = socket.local_addr().unwrap().port();
     drop(socket);
     port
+}
+
+// One archive extraction per test process. Every fixture used to unpack the
+// payload beside its own case, and at seven cases the release runner's disk
+// filled before they finished (run 38030503449: "Cannot write: Disk quota
+// exceeded", "STORAGE_SQLITE disk I/O error"). Fixtures now link their payload
+// tree from this single copy instead. The copy is named for this process and
+// lives until it exits: the release runner is disposable, and a local run can
+// delete `/tmp/hctl-payload-*` afterwards.
+static SHARED_PAYLOAD: LazyLock<PathBuf> = LazyLock::new(|| {
+    let root = std::env::temp_dir().join(format!("hctl-payload-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let archive = find(
+        Path::new(
+            &std::env::var("HCTL2_TEST_DEPENDENCY_PACKAGE")
+                .expect("HCTL2_TEST_DEPENDENCY_PACKAGE must be set to run this test"),
+        ),
+        |p| {
+            p.file_name()
+                .unwrap()
+                .to_str()
+                .is_some_and(|n| n.ends_with(".tar.zst") && !n.contains("-sources"))
+        },
+    )
+    .unwrap();
+    let extract = root.join("install");
+    std::fs::create_dir(&extract).unwrap();
+    // The archive is a zstd frame; decompress with the pinned tool instead
+    // of relying on the host tar's decoder, and stream the tar through
+    // stdin the way the packaged lifecycle test does, so no second copy of
+    // the payload ever reaches disk.
+    let zstd = Path::new(
+        &std::env::var("HCTL2_ZSTD_ROOT").expect("HCTL2_ZSTD_ROOT must be set to run this test"),
+    )
+    .join("bin/zstd");
+    let mut decompress = Command::new(&zstd)
+        .arg("-dc")
+        .arg(&archive)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let unpack = Command::new("tar")
+        .args(["-xf", "-", "-C"])
+        .arg(&extract)
+        .stdin(Stdio::from(decompress.stdout.take().unwrap()))
+        .status()
+        .unwrap();
+    assert!(
+        decompress.wait().unwrap().success() && unpack.success(),
+        "unpacking {} failed",
+        archive.display()
+    );
+    extract
+});
+
+// Hardlink the shared payload into a fixture's own tree: a payload tree costs
+// directory entries instead of a second copy, while each fixture still owns its
+// `lib/hctl2/services/versions.sh` entry. Files the fixture changes are
+// replaced, never rewritten in place, so the shared copy stays intact.
+fn link_tree(source: &Path, target: &Path) {
+    std::fs::create_dir_all(target).unwrap();
+    for entry in std::fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let from = entry.path();
+        let to = target.join(entry.file_name());
+        let file_type = entry.file_type().unwrap();
+        if file_type.is_symlink() {
+            std::os::unix::fs::symlink(std::fs::read_link(&from).unwrap(), &to).unwrap();
+        } else if file_type.is_dir() {
+            link_tree(&from, &to);
+        } else {
+            std::fs::hard_link(&from, &to).unwrap();
+        }
+    }
 }
 
 fn find(root: &Path, predicate: impl Fn(&Path) -> bool + Copy) -> Option<PathBuf> {

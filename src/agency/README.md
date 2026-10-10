@@ -84,7 +84,7 @@ Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。�
 
 ## Buck 与 CT 对照
 
-重型端口用例显式声明传输预算，不把吞吐当成功条件：`port_test`、`control_port_test` 与 `herdr_test` 在 Buck 的 `env` 中声明 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS=30000`，沿用冷会话的 30 秒就绪预算。声明覆盖测试进程内所有客户端，包括控制面保全路径自行创建的客户端。安装目录与准备核验整个 Herdr 二进制；分页用例产出两份 2 MiB 结果，收集预算按实际 RPC 预算乘以一个产出阶段加两次分页读取计算，共 90 秒。摘要、信封上限、游标与两页的断言不变，传输超时直接失败，不重试。未声明预算的生产客户端仍缺省 5 秒；`declared_request_budget_reaches_tonic_and_timeout_is_no_reply` 用被阻塞的目录查询核验调用方预算确实进入 tonic，且优先于进程预算，没有答复不被算作成功。
+重型用例显式声明传输预算，不把吞吐当成功条件：`port_test`、`control_port_test` 与 `herdr_test`，以及完整包测试 `root//packaging/release:room-cli-test`（安装目录用例要 catalog 整个已安装的 Herdr，Intel 发布机上超过 5 秒缺省），在 Buck 的 `env` 中声明 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS=30000`（共享常量 `HEAVY_AGENCY_RPC_ENV`，在 [`//build/rules:test_env.bzl`](../build/rules/test_env.bzl)），沿用冷会话的 30 秒就绪预算。声明覆盖测试进程内所有客户端，包括控制面保全路径自行创建的客户端。安装目录与准备核验整个 Herdr 二进制；分页用例产出两份 2 MiB 结果，收集预算按实际 RPC 预算乘以一个产出阶段加两次分页读取计算，共 90 秒。摘要、信封上限、游标与两页的断言不变，传输超时直接失败，不重试。未声明预算的生产客户端仍缺省 5 秒；`declared_request_budget_reaches_tonic_and_timeout_is_no_reply` 用被阻塞的目录查询核验调用方预算确实进入 tonic，且优先于进程预算，没有答复不被算作成功。
 
 脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
 
