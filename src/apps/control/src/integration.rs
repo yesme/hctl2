@@ -961,6 +961,19 @@ fn integrate_platform(
             Err(_) => {}
         }
     }
+    // 测试缝（第 9 包验收第 4 条）：合并请求已发出（dispatched 已持久化），结果还没回读。
+    // 标记删掉后，下面的回读照既有路径签一张 Receipt，不会重发合并。
+    if crate::test_seams::held("hold-integration-before-readback") {
+        return Ok((
+            Outcome::Unknown(Attention {
+                code: "RESULT_UNKNOWN".into(),
+                message: "the merge request left; its result is not read back yet".into(),
+                recovery_action: "read_back_review_request_with_same_intent".into(),
+                details: json!({"test_seam": "hold-integration-before-readback", "published": attempt.commit}),
+            }),
+            false,
+        ));
+    }
     // Readback from the platform: the request, then the branch and its protection again.
     let after = connection.review_request(full_name, review.index)?;
     let target = connection.observe(full_name, &preview.target.target_ref)?;

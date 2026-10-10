@@ -147,33 +147,7 @@ fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Pai
         json!({"program":"/bin/sh","arguments":["-c",script,"dispatch-fixture",delay]}).to_string(),
     )
     .unwrap();
-    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
-    let agency = AgencyChild(
-        Command::new(&binary)
-            .arg("--root")
-            .arg(&agency_root)
-            .arg("serve")
-            .arg("--script-config")
-            .arg(&config)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap(),
-    );
-    for _ in 0..100 {
-        if Command::new(&binary)
-            .arg("--root")
-            .arg(&agency_root)
-            .arg("status")
-            .output()
-            .unwrap()
-            .status
-            .success()
-        {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let agency = spawn_agency(&f, "agency.log");
     let (ok, binding) = f.run(&[
         "agency",
         "pair",
@@ -319,39 +293,7 @@ while read -r managed_input; do :; done
         json!({"program":"/bin/sh","arguments":["-c",script,"git-writer",String::from_utf8(exported.stdout).unwrap(),frame.to_string(),if changed { "changed" } else { "unchanged" },pending["change_set_id"],if claim_no_changes { "no_changes" } else { "commit" }]}).to_string(),
     )
     .unwrap();
-    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
-    setup.agency = AgencyChild(
-        Command::new(&binary)
-            .arg("--root")
-            .arg(f.root.join("independent-agency"))
-            .arg("serve")
-            .arg("--script-config")
-            .arg(&config)
-            .stdout(Stdio::null())
-            .stderr(File::create(f.root.join("git-writer.log")).unwrap())
-            .spawn()
-            .unwrap(),
-    );
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    loop {
-        if Command::new(&binary)
-            .arg("--root")
-            .arg(f.root.join("independent-agency"))
-            .arg("status")
-            .output()
-            .unwrap()
-            .status
-            .success()
-        {
-            break;
-        }
-        assert!(setup.agency.0.try_wait().unwrap().is_none());
-        assert!(
-            std::time::Instant::now() < deadline,
-            "script Agency not ready"
-        );
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    setup.agency = spawn_agency(f, "git-writer.log");
 }
 
 /// Independent platform readback uses the packaged tea and the control's stored
@@ -398,6 +340,88 @@ fn ready_gitea(f: &Fixture) {
         assert!(std::time::Instant::now() < deadline, "{status}");
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// Spawn (or respawn) the fixture Agency with whatever `script.json` currently holds, and wait
+/// for its control socket. The Agency keeps its own root, so a restart keeps its bindings.
+fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let mut agency = AgencyChild(
+        Command::new(&binary)
+            .arg("--root")
+            .arg(f.root.join("independent-agency"))
+            .arg("serve")
+            .arg("--script-config")
+            .arg(f.root.join("script.json"))
+            .stdout(Stdio::null())
+            .stderr(File::create(f.root.join(log)).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if Command::new(&binary)
+            .arg("--root")
+            .arg(f.root.join("independent-agency"))
+            .arg("status")
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            return agency;
+        }
+        assert!(
+            agency.0.try_wait().unwrap().is_none(),
+            "Agency exited before it answered status"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Agency did not become ready"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// 第 9 包验收第 4 条的测试缝标记：见 `src/apps/control/src/test_seams.rs`。
+fn seam_marker(f: &Fixture, name: &str, present: bool) {
+    let dir = f.root.join("test-seams");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(name);
+    if present {
+        std::fs::write(&path, b"").unwrap();
+    } else {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+/// 第 9 包验收第 4 条：control、Agency 与随包服务各杀一次再起，顺序与整包安装时的启动一致。
+fn kill_and_restart_everything(f: &Fixture, setup: &mut Paired) {
+    assert!(f.run(&["stop"]).0, "control must stop cleanly");
+    setup.agency.0.kill().unwrap();
+    setup.agency.0.wait().unwrap();
+    let services = || {
+        let mut command = Command::new(f.payload.join("bin/hctl2-services"));
+        command.env("HCTL2_STATE_ROOT", f.root.join("services"));
+        command
+    };
+    assert!(
+        services().arg("stop").output().unwrap().status.success(),
+        "packaged services must stop"
+    );
+    assert!(
+        services()
+            .args(["start", "--no-wait"])
+            .output()
+            .unwrap()
+            .status
+            .success(),
+        "packaged services must start"
+    );
+    assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+    setup.agency = spawn_agency(f, "independent-agency.log");
+    ready_gitea(f);
+    ready_timeline(f, &setup.project, &setup.room);
 }
 
 fn publishing_chain(name: &str, requires_confirmation: bool) {
@@ -655,20 +679,33 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
 /// 人只预览两次（合入、完成）；投影与平台事实一致。真 harness 版在 3f 合入后另加。
 #[test]
 fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() {
-    demo3_gitea_chain("demo3-gitea", false);
+    demo3_gitea_chain("demo3-gitea", false, false);
+}
+
+/// 第 9 包验收第 4 条：在发布第一段之后（已推送、未建评审请求）、集成已提交未回读、完成已
+/// 预览未提交三处各杀一次 control、Agency 与随包服务再起：记录、意图、Receipt、映射与 CLI
+/// 投影一致；平台上评审请求一条、合并一次、Receipt 一张。脚本执行体没有可续接的 harness
+/// 会话，本用例如实标明「没有会话可续」——真 harness 的续接见第 3 包与 3f。
+#[test]
+fn demo3_gitea_chain_restarts_do_not_repeat_side_effects() {
+    demo3_gitea_chain("demo3-gitea-restart", false, true);
 }
 
 /// 第 9 包验收第 3 条：开了「发布评审须人显式确认」的 Project 多一次发布预览，三次预览；
 /// 意图停在 `pending_human`，预览写明推到哪个分支、建到哪个目标、不是合入。
 #[test]
 fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
-    demo3_gitea_chain("demo3-gitea-confirm", true);
+    demo3_gitea_chain("demo3-gitea-confirm", true, false);
 }
 
-fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
+fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     let (f, mut setup) = paired_profile(name, 0, "write");
     let p = setup.project.clone();
     let mut human_previews = Vec::new();
+    // 杀点 1 的缝标记在开工前就放好：发布的第一段（推送）一完，发布就停在这里，等测试来杀。
+    if restart {
+        seam_marker(&f, "hold-publish-after-push", true);
+    }
     // 项目定义里开关缺省是开着的；缺省路径把它关掉，发布不需要人放行。
     if !requires_confirmation {
         let (ok, shown) = f.run(&["project", "show", &p]);
@@ -850,6 +887,52 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         !bodies.iter().any(|b| b.contains("\"change_set_id\"")),
         "raw ChangeSet output leaked into the Room: {bodies:?}"
     );
+    if restart {
+        // 杀点 1：分支已推送并确认，平台还没被问过评审请求。
+        let held = wait(
+            "publication held after push",
+            Box::new(|| {
+                let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
+                assert!(ok, "{shown}");
+                (shown["intent"]["attention"]["details"]["test_seam"]
+                    == json!("hold-publish-after-push"))
+                .then_some(shown)
+            }),
+        );
+        assert_eq!(held["intent"]["state"], "unknown", "{held}");
+        assert_eq!(held["stages"]["push"]["confirmed"], true, "{held}");
+        assert_eq!(
+            held["stages"]["review_request"]["confirmed"], false,
+            "{held}"
+        );
+        assert!(
+            gitea_read(
+                &f,
+                &registration,
+                &format!("repos/{full_name}/pulls?state=all")
+            )
+            .as_array()
+            .unwrap()
+            .is_empty(),
+            "no review request may exist while the seam holds"
+        );
+        kill_and_restart_everything(&f, &mut setup);
+        // 再起之后，意图、阶段与映射与杀前一致（缝还在，状态不会自己往前走）。
+        let resumed = f.run(&["review", "show", &setup.repo, &intent]).1;
+        assert_eq!(
+            resumed["intent"]["state"], held["intent"]["state"],
+            "{resumed}"
+        );
+        assert_eq!(
+            resumed["intent"]["attention"], held["intent"]["attention"],
+            "{resumed}"
+        );
+        assert_eq!(resumed["intent"]["target"], held["intent"]["target"]);
+        assert_eq!(resumed["stages"], held["stages"], "{resumed}");
+        assert_eq!(resumed["mappings"], held["mappings"], "{resumed}");
+        // 拔掉缝：下一次尝试只建这一条请求。
+        seam_marker(&f, "hold-publish-after-push", false);
+    }
     if requires_confirmation {
         let held = f.run(&["review", "show", &setup.repo, &intent]).1;
         assert_eq!(held["intent"]["state"], "pending_human", "{held}");
@@ -909,6 +992,10 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
     ];
     let (ok, merge_preview) = f.run(&integration_args);
     assert!(ok, "{merge_preview}");
+    if restart {
+        // 杀点 2 的缝标记：合并请求发出去之后、结果回读之前停下来。
+        seam_marker(&f, "hold-integration-before-readback", true);
+    }
     let mut submit = integration_args.to_vec();
     submit[1] = "submit";
     submit.extend([
@@ -922,6 +1009,42 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         .as_str()
         .unwrap_or_else(|| panic!("integration submit returned no intent: {submitted}"))
         .to_owned();
+    if restart {
+        // 杀点 2：合并已提交、结果还没回读——平台上是「已合并」，控制面还没有 Receipt。
+        let held = wait(
+            "integration held before readback",
+            Box::new(|| {
+                let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
+                assert!(ok, "{shown}");
+                (shown["intent"]["attention"]["details"]["test_seam"]
+                    == json!("hold-integration-before-readback"))
+                .then_some(shown)
+            }),
+        );
+        assert!(held["receipt"].is_null(), "{held}");
+        ready_gitea(&f);
+        let merged_request = gitea_read(
+            &f,
+            &registration,
+            &format!("repos/{full_name}/pulls/{index}"),
+        );
+        assert_eq!(merged_request["merged"], true, "{merged_request}");
+        kill_and_restart_everything(&f, &mut setup);
+        let resumed = f
+            .run(&["integration", "show", &setup.repo, &merge_intent])
+            .1;
+        assert_eq!(
+            resumed["intent"]["state"], held["intent"]["state"],
+            "{resumed}"
+        );
+        assert_eq!(
+            resumed["intent"]["attention"]["details"], held["intent"]["attention"]["details"],
+            "{resumed}"
+        );
+        assert!(resumed["receipt"].is_null(), "{resumed}");
+        // 拔掉缝：回读签一张 Receipt，合并不重发。
+        seam_marker(&f, "hold-integration-before-readback", false);
+    }
     let merged = wait(
         "integration",
         Box::new(|| {
@@ -989,13 +1112,39 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
         items[0]["validation_level"], "unmediated",
         "{completion_preview}"
     );
-    let mut confirm = complete_args.to_vec();
-    confirm.extend([
-        "--preview-token",
-        completion_preview["preview_token"].as_str().unwrap(),
-    ]);
-    let (ok, completed) = f.run(&confirm);
-    assert!(ok, "{completed}");
+    if restart {
+        // 杀点 3：完成已预览、还没提交。预览属于 daemon 的会话，重启后旧 token 不再认。
+        kill_and_restart_everything(&f, &mut setup);
+        let mut stale = complete_args.to_vec();
+        stale.extend([
+            "--preview-token",
+            completion_preview["preview_token"].as_str().unwrap(),
+        ]);
+        let (ok, refused) = f.run(&stale);
+        assert!(
+            !ok,
+            "a preview token from before the restart must not submit: {refused}"
+        );
+        assert_eq!(refused["error"]["code"], "PREVIEW_REQUIRED", "{refused}");
+        assert_eq!(
+            refused["error"]["recovery_action"], "preview_then_submit",
+            "{refused}"
+        );
+        let (ok, fresh) = f.run(&complete_args);
+        assert!(ok, "{fresh}");
+        let mut confirm = complete_args.to_vec();
+        confirm.extend(["--preview-token", fresh["preview_token"].as_str().unwrap()]);
+        let (ok, completed) = f.run(&confirm);
+        assert!(ok, "{completed}");
+    } else {
+        let mut confirm = complete_args.to_vec();
+        confirm.extend([
+            "--preview-token",
+            completion_preview["preview_token"].as_str().unwrap(),
+        ]);
+        let (ok, completed) = f.run(&confirm);
+        assert!(ok, "{completed}");
+    }
     human_previews.push("completion");
     let (ok, task_after) = f.run(&["task", "show", &p, &task_id]);
     assert!(ok, "{task_after}");
@@ -1008,6 +1157,95 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool) {
             vec!["integration", "completion"]
         }
     );
+    if restart {
+        // 三个杀点走完再对一次账：平台事实、记录、CLI 投影。
+        let review_before = f.run(&["review", "show", &setup.repo, &intent]).1;
+        let integration_before = f
+            .run(&["integration", "show", &setup.repo, &merge_intent])
+            .1;
+        let changeset_before = f.run(&["changeset", "show", &setup.repo, &set]).1;
+        ready_gitea(&f);
+        let requests = gitea_read(
+            &f,
+            &registration,
+            &format!("repos/{full_name}/pulls?state=all"),
+        );
+        assert_eq!(requests.as_array().unwrap().len(), 1, "{requests}");
+        assert_eq!(requests[0]["number"], index, "{requests}");
+        assert_eq!(requests[0]["merged"], true, "{requests}");
+        assert_eq!(requests[0]["merge_commit_sha"], commit, "{requests}");
+        let main_now = gitea_read(
+            &f,
+            &registration,
+            &format!("repos/{full_name}/branches/main"),
+        );
+        assert_eq!(main_now["commit"]["id"], commit, "{main_now}");
+        // 记录：每样一张，三个杀点一次都没有复制出第二份副作用。
+        assert!(f.run(&["stop"]).0);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let store = loop {
+            match Store::open(&f.root) {
+                Ok(store) => break store,
+                Err(error) if error.code == "WRITER_BUSY" => {
+                    assert!(std::time::Instant::now() < deadline);
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("control Store after the restarts: {error:?}"),
+            }
+        };
+        assert_eq!(store.list("review_publish_intent").unwrap().len(), 1);
+        assert_eq!(store.list("integration_intent").unwrap().len(), 1);
+        assert_eq!(store.list("integration_receipt").unwrap().len(), 1);
+        assert_eq!(store.list("changeset_revision").unwrap().len(), 1);
+        assert_eq!(store.list("changeset_platform_binding").unwrap().len(), 1);
+        assert_eq!(store.list("task_completion_receipt").unwrap().len(), 1);
+        assert_eq!(store.list("invocation_result").unwrap().len(), 1);
+        drop(store);
+        assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
+        ready_gitea(&f);
+        // 再起之后，CLI 投影的事实与杀前一致（意图、阶段、映射、凭证、版本）。
+        let review_after = f.run(&["review", "show", &setup.repo, &intent]).1;
+        assert_eq!(
+            review_after["intent"]["state"], review_before["intent"]["state"],
+            "{review_after}"
+        );
+        assert_eq!(
+            review_after["intent"]["target"],
+            review_before["intent"]["target"]
+        );
+        assert_eq!(
+            review_after["intent"]["branch"],
+            review_before["intent"]["branch"]
+        );
+        assert_eq!(review_after["stages"], review_before["stages"]);
+        assert_eq!(review_after["mappings"], review_before["mappings"]);
+        let integration_after = f
+            .run(&["integration", "show", &setup.repo, &merge_intent])
+            .1;
+        assert_eq!(
+            integration_after["intent"]["state"], integration_before["intent"]["state"],
+            "{integration_after}"
+        );
+        assert_eq!(
+            integration_after["intent"]["target"],
+            integration_before["intent"]["target"]
+        );
+        assert_eq!(integration_after["receipt"], integration_before["receipt"]);
+        let changeset_after = f.run(&["changeset", "show", &setup.repo, &set]).1;
+        assert_eq!(changeset_after["revisions"], changeset_before["revisions"]);
+        let task_restarted = f.run(&["task", "show", &p, &task_id]).1;
+        assert_eq!(
+            task_restarted["data"]["lifecycle"], task_after["data"]["lifecycle"],
+            "{task_restarted}"
+        );
+        assert_eq!(
+            task_restarted["data"]["revision"],
+            task_after["data"]["revision"]
+        );
+        println!(
+            "LIVE CLI demo3 restart: three kill points (publish after push, integration before readback, completion after preview) survived control + Agency + packaged service restarts with one review request, one merge and one receipt each"
+        );
+    }
     println!(
         "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: {human_previews:?}"
     );

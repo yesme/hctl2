@@ -183,7 +183,7 @@ rust_test(
     deps = [":service", "root//crates/repo:repo"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
         "CODEX_HOME": "/tmp/hctl2-write-session-fixture-home",
         "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
         "HCTL2_CONFINE_BIN": "$(location :agency)",

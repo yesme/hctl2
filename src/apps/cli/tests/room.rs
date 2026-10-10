@@ -101,6 +101,9 @@ impl Fixture {
         command
             .env_remove("HCTL2_PROCESS_COMPOSE_BIN")
             .env("HCTL2_INSTALL_ROOT", &self.payload)
+            // 第 9 包验收第 4 条的测试缝：control 从这里找标记文件，决定尝试停在哪个状态。
+            // 没有标记时行为不变；每个夹具的根不同，别的用例不受影响。
+            .env("HCTL2_TEST_SEAM_ROOT", self.root.join("test-seams"))
             .env(
                 "HCTL2_CONTROL_BIN",
                 std::env::var("CARGO_BIN_EXE_hctl2-control")
