@@ -182,6 +182,18 @@ pub fn admit_human(
     seal: &Seal,
     observation: &Value,
 ) -> Result<Value> {
+    admit_human_checked(store, actor, plan, seal, observation, &[])
+}
+
+/// Adoption also checks the source ChangeSet inside the admission transaction.
+pub fn admit_human_checked(
+    store: &mut Store,
+    actor: &TrustedActor,
+    plan: &HumanPlan,
+    seal: &Seal,
+    observation: &Value,
+    sources: &[Reference],
+) -> Result<Value> {
     let actor = owner(actor, &plan.input.repo_id)?;
     let mut expected_seal = plan.seal_input();
     expected_seal.result_tree_sha = seal.result_tree_sha.clone();
@@ -213,7 +225,10 @@ pub fn admit_human(
         ));
     }
     // Tool timestamps are observations, not the idempotency fingerprint.
-    let input = json!({"plan":plan,"seal":seal});
+    let mut input = json!({"plan":plan,"seal":seal});
+    if !sources.is_empty() {
+        input["residual_sources"] = serde_json::to_value(sources)?;
+    }
     let cmd = command(
         &actor,
         target.clone(),
@@ -224,6 +239,19 @@ pub fn admit_human(
         input,
     )?;
     store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        for expected in sources {
+            if tx.get(&expected.key)?.map(|r| Reference {
+                key: r.key,
+                version: Version::State(r.version),
+            }) != Some(expected.clone())
+            {
+                return Err(reject(
+                    "VERSION_CONFLICT",
+                    "residual source changed",
+                    "rebuild_preview",
+                ));
+            }
+        }
         if tx.get(&plan.repo.key)?.map(|r| Reference {
             key: r.key,
             version: Version::State(r.version),

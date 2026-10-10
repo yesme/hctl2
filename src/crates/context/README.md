@@ -58,4 +58,4 @@ D = `tests/domain.rs`；N = `tests/native.rs`，两者由 `root//crates/context:
 
 独立 `context.preview` 仍不读在线窗口；没有确认提要、也没有显式 Task 时返回 `SOURCE_UNAVAILABLE`。第 5b 包的派工入口在 `apps/control/src/dispatch/context.rs` 读取本 Room 的在线窗口，复用本 crate 的 `select_context` 读取已确认提要及来源、显式 Task 评论，再用 `assemble_resolved` 复用交付、预算和封存逻辑。它校验精确来源集合、消费者权限答案和预算；来源适配器负责冻结版本与原文，不能靠改名把调用者提供的字节当成服务器事实。
 
-派工只选择 `context.read` 范围内已明确的请求、当前 Room 和可选 Task，不调用只读预览的整 Project 占位权限。独立 `context.preview` 的占位仍未替换，不产生执行授权。额外 Memo / Artifact 选材、必需 Skill 原文取回仍未接；平台评审评论线留第 6 包。没有新增约束或共享对象。
+派工只选择 `context.read` 范围内已明确的请求、当前 Room 和可选 Task，不调用只读预览的整 Project 占位权限。独立 `context.preview` 的占位仍未替换，不产生执行授权。额外 Memo / Artifact 选材、必需 Skill 原文取回仍未接。第 6 包在 `dispatch/review_source.rs` 读取显式所选 ChangeSet Revision 对应的平台评审评论，作为 `review_comments/<revision_id>` 的 `SourceContent` 交给既有组装器；精确 mapping / 绑定引用及评论 ID、原文均冻结。该入口不改变独立 `StoreSources::ReviewComments` 尚未配置的错误。没有新增约束或共享对象。

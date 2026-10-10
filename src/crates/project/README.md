@@ -148,7 +148,7 @@ D = `root//crates/project:domain_test`；P = `root//agency:control_port_test`；
 
 取消、失败或丢失同事务把当前租约转为撤销中。prepare 从未发出并在事务内取消，可以直接撤销；其他情况要保存原派工的停止报告，`confirm_write_stop` 在写报告的事务里核原调用、Spec 与租约。Agency 在停止时确认从未激活，或证明脚本执行体退出，才可撤销；清理开始时看到 Prepared 不算证明。逻辑取消、停止请求、叙述和一轮结束都不算退出。没有证据继续拒绝下一个写入者，不假称已经隔离。
 
-同一输入新增可选 `review_change_set_revision: store::Reference`，限本 Repo 的精确 `changeset_revision`。旧输入省略这两项时序列化形状不变。Control 的 Context 读取钩子已经留好；拆分 2 选择该来源仍返回 `REVIEW_LINE_NOT_CONFIGURED`，第 10 条接原生评论读取与冻结，不暗中忽略选择。
+同一输入新增可选 `review_change_set_revision: store::Reference`，限本 Repo 的精确 `changeset_revision`。旧输入省略这两项时序列化形状不变。Control 的 Context 读取钩子已接原生平台评论：按该版本的 mapping 冻结来源与字节，提交时再核引用。平台未绑定、版本未发布或来源不可读会明确拒绝，不暗中忽略选择；评论不产生授权。
 
 `admit_result` 对没有封存输入的写入型返回 `CHANGESET_RESULT_REQUIRED`，防止只读回答绕过 ChangeSet 准入。`sealing_input` 核原提案字节、活跃归属者和租约，给 control 在事务外封存；`admit_sealed_result` 重核这些边界，同一事务接受 Revision、结果、Room 投影与发布意图。`Publication` 的策略必须等于 Spec 冻结的精确引用，提交者取原调用保存的 DirectClient，不取模型提案。事务只登记发布，worker 由 Claude 提供，本段不复制它。
 

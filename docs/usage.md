@@ -179,6 +179,64 @@ hctl2-services start
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
+## 写入型派工与 ChangeSet
+
+`invocation preview` 的 JSON 输入可以带 `write`。Worker Profile 也须是 `write` 模式并允许 `git.write`。基线填 Git 回读的提交 SHA；目标分支和能否更新评审请求由人明确选择：
+
+```json
+{
+  "project_id": "P",
+  "room_id": "R",
+  "target": "worker-name",
+  "profile": {"key": {"scope": {"kind": "control"}, "kind": "worker_profile_revision", "id": "<revision>"}, "version": {"state": 1}},
+  "request": "修改代码并交回测试结果",
+  "budget": 65536,
+  "deadline_ms": 1799999999999,
+  "write": {
+    "change_set_id": null,
+    "baseline_commit": "<完整的 40 位提交 SHA>",
+    "target_branch": "main",
+    "allow_update": true
+  }
+}
+```
+
+`profile` 使用 `profile create/show` 回读的精确 Revision 引用，不自行拼引用。`change_set_id: null` 请求新 ChangeSet；复用既有 ChangeSet 时填它的 ID，旧写入者的停止证据仍要成立。预览本身不授租约：
+
+```bash
+hctl2 invocation preview --input /absolute/write.json --key write-1
+hctl2 invocation start --input /absolute/write.json --key write-1 --preview-token <t>
+hctl2 invocation show <project_id> <invocation_id>
+hctl2 changeset show <repo_id> <change_set_id>
+hctl2 changeset diff <repo_id> <change_set_id> <revision_id>
+```
+
+人也能独立封存，不借执行者租约。`seal` 的输入含 `repo_id`、`base_commit_sha`、可选的 `change_set_id / parent_revision_id`，以及 `location`：提交用 `{"kind":"commit","repo_path":"/absolute/repo","commit_sha":"<sha>"}`；未提交修改用 P1 工作树的 `{"kind":"worktree","repo_path":"/absolute/sites/<ChangeSet>"}`。
+
+```bash
+hctl2 changeset seal --input /absolute/seal.json --key human-1
+hctl2 changeset seal --input /absolute/seal.json --key human-1 --preview-token <t>
+```
+
+### 处理失权残留
+
+`takeover / adopt / discard` 都先预览、再用同一输入和预览票确认。输入含 `repo_id`、来源 `change_set_id` 和精确的绝对 `repo_path`。`takeover` 把预览的快照作为人的独立版本接受到原 ChangeSet；`adopt` 接受到另一 ChangeSet，省略 `target_change_set_id` 时新建；目标已有版本时可显式给 `parent_revision_id`。这两条命令不启动执行，也不把旧租约改成已停止。
+
+```bash
+hctl2 changeset takeover --input /absolute/residual.json --key recover-1
+hctl2 changeset takeover --input /absolute/residual.json --key recover-1 --preview-token <t>
+hctl2 changeset adopt --input /absolute/residual.json --key adopt-1
+hctl2 changeset adopt --input /absolute/residual.json --key adopt-1 --preview-token <t>
+hctl2 changeset discard --input /absolute/residual.json --key discard-1
+hctl2 changeset discard --input /absolute/residual.json --key discard-1 --preview-token <t>
+```
+
+丢弃确认绑定预览的树与路径；确认前又有非忽略修改或目录迁移时拒绝删除。确认删除的范围是整个该工作树，包括 Git 忽略的文件；预览会列出 Git 状态，忽略文件不在封存快照里。`changeset show` 返回保存的 Git 观测和残留处理记录，含工作树路径。目录在另一台机器上时，这些命令不能假装能访问它；先在资源所在机器保全，不能把未封存字节自动搬过来。没有旧写入者停止证明时仍不授新租约。
+
+### 把平台评审评论带入返工
+
+下一次 Invocation 的输入加 `review_change_set_revision`，值为所选 ChangeSet Revision 的精确 Store 引用。预览通过该版本的 `changeset_platform_binding` 读取评审请求、一般评论、评审及该提交的行内评论；完整标识和原文冻进 Context Bundle。预览后平台改了评论，也不替换本次已确认的字节。读不到来源会报错，不静默漏材料。评论里的「合入吧」只是 content，不替代 `integration` 的授权。
+
 ## 发布评审与合入（`hctl2 review`、`hctl2 integration`）
 
 写入型调用封存的版本按冻结的评审发布策略由 control 自动发布去评审；策略开了「须人显式确认」时意图停在 `pending_human`，由人放行：
