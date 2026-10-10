@@ -521,48 +521,7 @@ fn progress(s: &Store, t: &task::Task) -> Result<Value> {
     }
     invocations.sort_by_key(|(sequence, _)| *sequence);
     sets.sort_by_key(|(sequence, _, _)| *sequence);
-    // Every admitted version of this Task's ChangeSets, oldest first, each with what
-    // happened to that exact version.
-    let mut revisions = Vec::new();
-    for (_, repo_id, change_set_id) in &sets {
-        let intent_id = repo::review::intent_id(s.control_id(), repo_id, change_set_id);
-        let intent = repo::review::get(s, repo_id, &intent_id).ok();
-        let merges = repo::integration::list(s, repo_id)?;
-        let mut ordered = Vec::new();
-        for revision in repo::changeset::list_revisions(s, change_set_id)? {
-            let key = repo::integration::revision_key(repo_id, &revision.change_set_revision_id);
-            ordered.push((order(&key)?, revision));
-        }
-        ordered.sort_by_key(|(sequence, _)| *sequence);
-        for (_, revision) in ordered {
-            let id = revision.change_set_revision_id.clone();
-            let mapping = repo::integration::review_request(s, repo_id, &id)?;
-            let publication = publication_of(intent.as_ref(), &id, mapping.as_ref());
-            let mut attempts = Vec::new();
-            for merge in merges
-                .iter()
-                .filter(|m| m.preview.source.change_set_revision_id == id)
-            {
-                attempts.push((
-                    order(&repo::integration::intent_key(repo_id, &merge.intent_id))?,
-                    merge,
-                ));
-            }
-            attempts.sort_by_key(|(sequence, _)| *sequence);
-            let integration = attempts.last().map(|(_, merge)| {
-                json!({"intent_id": merge.intent_id, "state": merge.state,
-                    "receipt_id": merge.receipt_id,
-                    "attention": merge.failure.as_ref().or(merge.attention.as_ref()).map(|a| &a.code)})
-            });
-            revisions.push(json!({
-                "repo_id": repo_id, "change_set_id": change_set_id,
-                "change_set_revision_id": id,
-                "base_commit_sha": revision.base_commit_sha,
-                "result_tree_sha": revision.result_tree_sha,
-                "publication": publication, "integration": integration,
-            }));
-        }
-    }
+    let revisions = revisions_of(s, &sets)?;
     // Completion Receipts stay as history after a reopen; only a completed lifecycle has a
     // current one.
     let mut receipts: Vec<task::CompletionReceipt> = s
@@ -582,6 +541,54 @@ fn progress(s: &Store, t: &task::Task) -> Result<Value> {
         "revisions": revisions,
         "completion": {"current": current, "history": history},
     }))
+}
+
+/// Every admitted version of these ChangeSets in admission order across all of them (the
+/// Store's event order), each with what happened to that exact version: its publication and
+/// its latest integration attempt.
+fn revisions_of(s: &Store, sets: &[(i64, String, String)]) -> Result<Vec<Value>> {
+    let order =
+        |key: &store::ObjectKey| -> Result<i64> { Ok(s.first_sequence(key)?.unwrap_or(i64::MAX)) };
+    let mut revisions = Vec::new();
+    for (_, repo_id, change_set_id) in sets {
+        let intent_id = repo::review::intent_id(s.control_id(), repo_id, change_set_id);
+        let intent = repo::review::get(s, repo_id, &intent_id).ok();
+        let merges = repo::integration::list(s, repo_id)?;
+        for revision in repo::changeset::list_revisions(s, change_set_id)? {
+            let id = revision.change_set_revision_id.clone();
+            let sequence = order(&repo::integration::revision_key(repo_id, &id))?;
+            let mapping = repo::integration::review_request(s, repo_id, &id)?;
+            let publication = publication_of(intent.as_ref(), &id, mapping.as_ref());
+            let mut attempts = Vec::new();
+            for merge in merges
+                .iter()
+                .filter(|m| m.preview.source.change_set_revision_id == id)
+            {
+                attempts.push((
+                    order(&repo::integration::intent_key(repo_id, &merge.intent_id))?,
+                    merge,
+                ));
+            }
+            attempts.sort_by_key(|(sequence, _)| *sequence);
+            let integration = attempts.last().map(|(_, merge)| {
+                json!({"intent_id": merge.intent_id, "state": merge.state,
+                    "receipt_id": merge.receipt_id,
+                    "attention": merge.failure.as_ref().or(merge.attention.as_ref()).map(|a| &a.code)})
+            });
+            revisions.push((
+                sequence,
+                json!({
+                    "repo_id": repo_id, "change_set_id": change_set_id,
+                    "change_set_revision_id": id,
+                    "base_commit_sha": revision.base_commit_sha,
+                    "result_tree_sha": revision.result_tree_sha,
+                    "publication": publication, "integration": integration,
+                }),
+            ));
+        }
+    }
+    revisions.sort_by_key(|(sequence, _)| *sequence);
+    Ok(revisions.into_iter().map(|(_, value)| value).collect())
 }
 
 /// What happened to one exact version's review publication. The ChangeSet's publish intent
@@ -753,6 +760,83 @@ impl Poller {
 #[cfg(test)]
 mod progress_tests {
     use super::*;
+
+    /// Two ChangeSets of one Task: A dispatched first, B second, but B's version is admitted
+    /// before A's. The list follows admission across both, so the newest is A1, not B1.
+    #[test]
+    fn versions_follow_admission_order_across_change_sets() {
+        use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+        let dir = std::env::temp_dir().join(format!("hctl2-progress-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut store = Store::open(&dir).unwrap();
+        let actor = TrustedActor(store::Actor {
+            principal: "owner".into(),
+            source: store::ActorSource::DirectClient,
+            permission_scope: vec![Scope::Control, Scope::Repo("R".into())],
+            authority: None,
+        });
+        let open = |store: &mut Store, key: &str, invocation: &str| {
+            let holder = ProducerRef::Invocation {
+                invocation_id: invocation.into(),
+                invocation_version: 1,
+            };
+            let set =
+                changeset::open_change_set(store, &actor, "R", 1, &"b".repeat(40), key, &holder)
+                    .unwrap();
+            (set, holder)
+        };
+        let admit =
+            |store: &mut Store, set: &changeset::ChangeSet, holder: &ProducerRef, tree: &str| {
+                changeset::admit(
+                    store,
+                    &actor,
+                    Seal {
+                        association_key: format!("seal-{tree}"),
+                        change_set_id: set.change_set_id.clone(),
+                        change_set_version: set.version,
+                        lease: Some(LeaseRef {
+                            lease_id: set.lease.lease_id.clone(),
+                            generation: set.lease.generation,
+                        }),
+                        base_commit_sha: "b".repeat(40),
+                        result_tree_sha: tree.repeat(40),
+                        result_commit_sha: None,
+                        parent_revision_id: None,
+                        producer_ref: holder.clone(),
+                    },
+                    OwnerGate::Active,
+                )
+                .unwrap()
+                .change_set_revision_id
+            };
+        let (a, a_holder) = open(&mut store, "cs-a", "inv-a");
+        let (b, b_holder) = open(&mut store, "cs-b", "inv-b");
+        let b1 = admit(&mut store, &b, &b_holder, "1");
+        let a1 = admit(&mut store, &a, &a_holder, "2");
+        // Dispatch order puts A's ChangeSet first.
+        let sets = vec![
+            (1, "R".to_owned(), a.change_set_id.clone()),
+            (2, "R".to_owned(), b.change_set_id.clone()),
+        ];
+        let listed: Vec<_> = revisions_of(&store, &sets)
+            .unwrap()
+            .into_iter()
+            .map(|r| r["change_set_revision_id"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(listed, vec![b1, a1]);
+        // Without any publish intent each version says so, none is dropped.
+        let states: Vec<_> = revisions_of(&store, &sets)
+            .unwrap()
+            .into_iter()
+            .map(|r| r["publication"]["state"].clone())
+            .collect();
+        assert_eq!(
+            states,
+            vec![json!("not_authorized"), json!("not_authorized")]
+        );
+        drop(store);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A publish intent as the review domain stores it, for the shapes that matter here.
     fn intent(
