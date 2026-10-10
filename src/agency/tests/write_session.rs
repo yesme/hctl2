@@ -601,6 +601,7 @@ async fn fixture_writes(harness: &str) {
     } else {
         let turn = json_file(&fixture_home().join("last-turn.json"));
         assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
+        assert_eq!(turn["sandboxPolicy"]["networkAccess"], "enabled");
         assert_eq!(turn["cwd"], json!(worktree));
         json_file(&fixture_home().join("write-probe.json"))
     };
@@ -752,8 +753,8 @@ async fn fixture_writes(harness: &str) {
     assert_eq!(readonly_results.proposals.len(), 1);
     if harness == "codex-cli" {
         let turn = json_file(&fixture_home().join("last-turn.json"));
-        assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
-        assert!(turn["sandboxPolicy"].get("networkAccess").is_none());
+        assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
+        assert_eq!(turn["sandboxPolicy"]["networkAccess"], "restricted");
     }
     let secret = if harness == "claude-code" {
         json_file(

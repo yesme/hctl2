@@ -36,7 +36,8 @@ fn codex_fixture_turn_matches_rollout_and_uses_a_read_only_sandbox() {
     );
     let turn = read_json("last-turn.json");
     assert_eq!(turn["approvalPolicy"], "never");
-    assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
+    assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
+    assert_eq!(turn["sandboxPolicy"]["networkAccess"], "restricted");
     let started = read_json("last-thread.json");
     assert_eq!(started["approvalPolicy"], "never");
     assert_eq!(started["sandbox"], "read-only");
@@ -67,8 +68,8 @@ fn codex_read_only_cannot_read_credentials_keyring_or_gh_auth() {
         show(&events)
     );
     let turn = read_json("last-turn.json");
-    assert_eq!(turn["sandboxPolicy"]["type"], "readOnly");
-    assert!(turn["sandboxPolicy"].get("networkAccess").is_none());
+    assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
+    assert_eq!(turn["sandboxPolicy"]["networkAccess"], "restricted");
     assert_eq!(read_json("last-thread.json")["sandbox"], "read-only");
     let probe = read_json("secret-probe.json");
     for read in probe["reads"].as_array().unwrap() {
@@ -78,6 +79,51 @@ fn codex_read_only_cannot_read_credentials_keyring_or_gh_auth() {
     assert_eq!(probe["gh_token_present"], false);
     assert_eq!(probe["dbus_present"], false);
     runtime.shutdown().expect("shutdown");
+    let _ = fs::remove_dir_all(cred);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn codex_read_only_cannot_write_the_source_repo() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    prepare("ok");
+    let repo = std::env::temp_dir().join(format!("hctl2-src-repo-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&repo);
+    fs::create_dir_all(&repo).unwrap();
+    fs::write(repo.join("keep"), b"original").unwrap();
+    let (runtime, cred, root, exec) = open_runtime("codex-src-repo", Duration::from_secs(300));
+    let task = format!(
+        "HCTL2_SECRET_PROBE {}\n",
+        serde_json::json!({"secret_paths":[], "source_repo": &repo})
+    );
+    let mut running = start_task(&runtime, &exec, &cred, "src-repo", &task, &[])
+        .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
+    let events = collect(&mut running, Duration::from_secs(20));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, RuntimeEvent::TurnReturned)),
+        "{}",
+        show(&events)
+    );
+    let turn = read_json("last-turn.json");
+    assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
+    assert_eq!(turn["sandboxPolicy"]["networkAccess"], "restricted");
+    assert!(turn["cwd"].is_null());
+    let probe = read_json("secret-probe.json");
+    let marker = repo.join("hctl2-ro-write");
+    if cfg!(target_os = "linux") {
+        assert_eq!(probe["source_write"], false, "{probe}");
+        assert!(
+            !marker.exists(),
+            "read-only dispatch wrote into the source repo"
+        );
+        assert_eq!(fs::read(repo.join("keep")).unwrap(), b"original");
+    } else {
+        let _ = fs::remove_file(&marker);
+    }
+    runtime.shutdown().expect("shutdown");
+    let _ = fs::remove_dir_all(&repo);
     let _ = fs::remove_dir_all(cred);
     let _ = fs::remove_dir_all(root);
 }

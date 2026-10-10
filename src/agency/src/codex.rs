@@ -622,18 +622,23 @@ impl Live {
     }
 
     fn turn_start(&mut self, text: &str, cwd: Option<&Path>) -> Result<String> {
+        let writing = cwd.is_some();
         let mut params = json!({
             "threadId": self.thread,
             "approvalPolicy": "never",
-            "sandboxPolicy": {"type": "readOnly"},
             "input": [{"type": "text", "text": text}],
         });
         if let Some(cwd) = cwd {
             params["cwd"] = json!(cwd);
-            // Native bubblewrap cannot mount inside an inherited Landlock ruleset.
-            // app-server explicitly supports a sandbox supplied by its host.
-            params["sandboxPolicy"] = json!({"type":"externalSandbox", "networkAccess":"enabled"});
         }
+        // Bubblewrap cannot create a user namespace inside this Landlock
+        // (`uid_map` EPERM), so a readOnly policy cannot run a command.
+        // The host allow-list is the filesystem boundary. Read-only does not
+        // grant network; a write turn still reaches the model API.
+        params["sandboxPolicy"] = json!({
+            "type": "externalSandbox",
+            "networkAccess": if writing { "enabled" } else { "restricted" },
+        });
         let turn = self.rpc.request("turn/start", params)?;
         turn["turn"]["id"]
             .as_str()

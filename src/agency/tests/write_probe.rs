@@ -87,9 +87,13 @@ pub fn secret_probe(text: &str) -> Option<Value> {
             json!({"path":path,"readable":fs::read(path).is_ok()})
         })
         .collect();
+    let source_write = request["source_repo"]
+        .as_str()
+        .map(|path| fs::write(Path::new(path).join("hctl2-ro-write"), b"leaked").is_ok());
     let gh = Command::new("gh").args(["auth", "status"]).output();
     Some(json!({
         "reads": reads,
+        "source_write": source_write,
         "gh_authenticated": gh.is_ok_and(|output| output.status.success()),
         "gh_token_present": std::env::var_os("GH_TOKEN").is_some()
             || std::env::var_os("GITHUB_TOKEN").is_some(),
