@@ -1396,7 +1396,7 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
     // catalog is fixed by the paired fixture, so two runs must agree byte for
     // byte and match the saved golden sample — except the digest bytes, which
     // are the fingerprint of the program file the fixture runs. Acceptance 1's
-    // "` + "`--json`" + ` byte-identical" compares the same environment before
+    // "`--json` byte-identical" compares the same environment before
     // and after a change; a program file differs across platforms and build
     // presets, so the golden holds a placeholder where the digest sits, and the
     // live bytes are compared with the digest computed from the fixture's own
@@ -1446,10 +1446,10 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
     assert!(!human.contains('\u{1b}'));
 }
 
-/// Saved ` + "`--json`" + ` sample of ` + "`agency catalog`" + `, which needs a live Agency. The digest
-/// positions hold the ` + "`FIXTURE-PROGRAM-DIGEST`" + ` placeholder: those bytes are the fingerprint of
-/// the program file the fixture runs (` + "`ScriptRuntime`" + ` hashes ` + "`config.program`" + `), which is not
-/// stable across platforms or build presets. The test substitutes the digest
-/// computed from the fixture's own program file before comparing, so every
-/// other byte is still pinned.
+/// Saved `--json` sample of `agency catalog`, which needs a live Agency. The
+/// digest positions hold the `FIXTURE-PROGRAM-DIGEST` placeholder: those bytes
+/// are the fingerprint of the program file the fixture runs (`ScriptRuntime`
+/// hashes `config.program`), which is not stable across platforms or build
+/// presets. The test substitutes the digest computed from the fixture's own
+/// program file before comparing, so every other byte is still pinned.
 const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;
