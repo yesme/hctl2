@@ -18,7 +18,7 @@ Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制�
 
 `profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
 
-初版只实现只读配置：`mode = read_only`；权限为 `context.read`、`git.read`、`terminal.observe` 的不重复子集。Profile 不授予治理命令、Task 完成、派工或集成权。`max_context_bytes` 是字节预算，不是 token 估算。`environment` 是环境要求的描述文本，不作为连接地址、目录、进程、shell 环境变量或执行加固的声明；当前未验证其满足情况。写入型配置随第 6 包补，以上是本批实现范围，不是新增约束。
+Profile 支持 `mode = read_only | write`。权限为 `context.read`、`git.read`、`git.write`、`terminal.observe` 的不重复子集；`git.write` 只在写入型中允许，且写入型必须包含它。Profile 定义不授予租约、治理命令、Task 完成、派工或集成权。`max_context_bytes` 是字节预算，不是 token 估算。`environment` 是环境要求的描述文本，不作为连接地址、目录、进程、shell 环境变量或执行加固的声明；当前未验证其满足情况。Invocation 的人确认与租约启动由 Project 负责，以上是实现范围，不是新增约束。
 
 `selection::validate_roster` 核接受过的 Binding、工种与条款摘要，Profile 的 Harness / 模型、能力承诺、权限和预算，再核 Skill 的精确内容与核验报告。Skill 引用沿用现有 `Reference` 的 `Revision(content_digest)`；provider revision 由接受目录中的唯一精确项固定，缺项或歧义拒绝。unknown 不升为 known，回读不一致拒绝，optional 缺失返回逐候选的 `optional_skill_degradations`。Skill 正文仍由 Agency 保存。
 

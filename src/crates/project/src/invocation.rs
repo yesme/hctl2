@@ -2,7 +2,9 @@
 mod lifecycle;
 pub use lifecycle::*;
 mod results;
-pub use results::admit_result;
+pub use results::{admit_result, admit_sealed_result, admit_unchanged_result, sealing_input};
+mod write;
+pub use write::{WriteInput, WritePreview, confirm_write_stop, review_policy_input};
 
 use crate::{
     decode, invalid, key, project, readonly, reference, reject, required, stale, value_record,
@@ -26,6 +28,11 @@ pub struct Input {
     pub room_id: String,
     #[serde(default)]
     pub task_id: Option<String>,
+    /// Explicit admitted version for the review-comment source; never inferred from Task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_change_set_revision: Option<Reference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write: Option<WriteInput>,
     /// Exact selection ID or responsibility, never a display name.
     pub target: String,
     pub profile: Reference,
@@ -52,6 +59,8 @@ pub struct Preview {
     pub required_skills: Vec<FrozenRef>,
     optional_skill_degradations: Vec<participant::selection::SkillDegradation>,
     pub brief: Option<MaterialRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write: Option<WritePreview>,
     publish_review_requires_confirmation: bool,
     checks: Vec<Reference>,
 }
@@ -70,6 +79,8 @@ pub struct Invocation {
 pub struct Authorization {
     pub write: bool,
     pub valid: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorizing_actor: Option<store::Actor>,
 }
 
 pub fn invocation_id(store: &Store, project: &str, command_key: &str) -> String {
@@ -220,6 +231,23 @@ pub fn prepare(
         reference(&roster),
         reference(&selection),
     ];
+    if let Some(review) = &input.review_change_set_revision {
+        if review.key.scope != Scope::Repo(repo_id.clone())
+            || review.key.kind != "changeset_revision"
+        {
+            return Err(reject(
+                "REVIEW_VERSION_MISMATCH",
+                "review version is outside this Repo",
+                "select_admitted_revision",
+            ));
+        }
+        let revision = required(store, &review.key)?;
+        if reference(&revision) != *review {
+            return Err(stale());
+        }
+        let _ = repo::changeset::get_revision(store, &review.key.id)?;
+        checks.push(review.clone());
+    }
     checks.extend(validated.dependencies.iter().map(reference));
     if let Some(previous) = &input.retry_of {
         if previous.key.scope != scope || previous.key.kind != "room_invocation" {
@@ -254,6 +282,13 @@ pub fn prepare(
     {
         return Err(invalid("retry requires a new command key"));
     }
+    let write = write::prepare(store, &input, &consumer, &p, &repo, &configuration)?;
+    if let Some(write) = &write {
+        checks.push(write.policy_record.clone());
+        if let Some(previous) = &write.lease.previous {
+            checks.push(previous.clone());
+        }
+    }
     Ok(Preview {
         input,
         consumer,
@@ -269,6 +304,7 @@ pub fn prepare(
         required_skills,
         optional_skill_degradations: validated.optional_skill_degradations,
         brief: chat.brief,
+        write,
         publish_review_requires_confirmation: settings.publish_review_requires_confirmation,
         checks,
     })
@@ -311,6 +347,15 @@ fn execution_spec(preview: &Preview, assembly: &Assembly) -> store::Result<Seale
             &format!("invocation-request/{}", preview.consumer.id),
             &agency_proto::hash(preview.input.request.as_bytes()),
         )
+        || if let Some(write) = &preview.write {
+            !exact_entry(
+                assembly,
+                &format!("write-boundary/{}", preview.consumer.id),
+                &agency_proto::hash(&write.context_bytes()?),
+            )
+        } else {
+            false
+        }
         || preview
             .required_skills
             .iter()
@@ -344,10 +389,20 @@ fn execution_spec(preview: &Preview, assembly: &Assembly) -> store::Result<Seale
         budget: preview.input.budget,
         deadline_ms: preview.input.deadline_ms,
         repo: Some(preview.repo.clone()),
-        base: None,
+        base: preview
+            .write
+            .as_ref()
+            .map(|w| w.lease.pending.baseline_commit.clone()),
         delivery_scope: vec![preview.input.room_id.clone()],
-        write_lease: None,
-        review_publish_policy: None,
+        write_lease: preview
+            .write
+            .as_ref()
+            .map(write::lease_reference)
+            .transpose()?,
+        review_publish_policy: preview
+            .write
+            .as_ref()
+            .map(|w| w.review_publish_policy.clone()),
         idempotency_key: format!("prepare:{}", preview.consumer.id),
     };
     spec.validate().map_err(port_error)?;
@@ -363,7 +418,13 @@ pub fn start(
     assembly: &Assembly,
     now_ms: u64,
 ) -> store::Result<Value> {
-    let scoped = chat::owner(actor, &preview.input.project_id)?;
+    let mut scoped = chat::owner(actor, &preview.input.project_id)?;
+    if let Some(write) = &preview.write {
+        scoped
+            .0
+            .permission_scope
+            .push(Scope::Repo(write.lease.pending.repo_id.clone()));
+    }
     let spec = execution_spec(preview, assembly)?;
     let root_key = owner_key(&preview.input.project_id, &preview.consumer.id);
     let input = json!({"preview":preview,"spec":spec});
@@ -434,8 +495,9 @@ pub fn start(
             preview: preview.clone(),
             spec: spec.clone(),
             authorization: Authorization {
-                write: false,
+                write: preview.write.is_some(),
                 valid: true,
+                authorizing_actor: preview.write.as_ref().map(|_| scoped.0.clone()),
             },
         },
     )?;
@@ -471,6 +533,9 @@ pub fn start(
             if tx.get(&expected.key)?.as_ref().map(reference) != Some(expected) {
                 return Err(stale());
             }
+        }
+        if let Some(write) = &preview.write {
+            repo::changeset::acquire_lease(tx, &write.lease)?;
         }
         tx.put(&root)?;
         tx.put(&state)?;

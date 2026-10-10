@@ -24,6 +24,8 @@ fn setup() -> (Env, call::Input) {
         project_id: e.a.clone(),
         room_id: room,
         task_id: None,
+        review_change_set_revision: None,
+        write: None,
         target: "research".into(),
         profile,
         request: "compare these alternatives".into(),
@@ -32,6 +34,447 @@ fn setup() -> (Env, call::Input) {
         retry_of: None,
     };
     (e, input)
+}
+
+fn write_setup() -> (Env, call::Input) {
+    let (mut e, mut input) = setup();
+    let (_, original) = participant::profiles::profile_at(&e.store, &input.profile).unwrap();
+    let mut writer = original;
+    writer.mode = "write".into();
+    writer.permissions = vec!["context.read".into(), "git.read".into(), "git.write".into()];
+    let plan = participant::profiles::prepare_profile(
+        &e.store,
+        participant::profiles::ProfileInput {
+            key: "writer-profile".into(),
+            action: participant::profiles::ProfileAction::Create {
+                id: "writer".into(),
+                profile: writer,
+            },
+        },
+        &actor(),
+    )
+    .unwrap();
+    let result = participant::profiles::admit_profile(&mut e.store, &actor(), plan).unwrap();
+    input.profile = serde_json::from_value(result["revision"].clone()).unwrap();
+    let selected = participant::selection::resolve_room_candidate(
+        &e.store,
+        &e.a,
+        &input.room_id,
+        &input.target,
+    )
+    .unwrap();
+    let mut selection: Selection = decode(&selected).unwrap();
+    selection.worker_profiles = vec![input.profile.clone()];
+    selection.permission = json!({"allow":["context.read","git.read","git.write"]});
+    e.apply(
+        "writer-roster",
+        Action::Select {
+            project_id: e.a.clone(),
+            project_version: 1,
+            room_id: input.room_id.clone(),
+            topic_command_key: None,
+            roster_version: Some(1),
+            selections: vec![selection],
+        },
+    )
+    .unwrap();
+    input.write = Some(call::WriteInput {
+        change_set_id: None,
+        baseline_commit: "a".repeat(40),
+        target_branch: "main".into(),
+        allow_update: true,
+    });
+    freeze_policy_fixture(&mut e, &input);
+    (e, input)
+}
+
+/// Use the shared Repo policy API; this slice does not run the publishing worker.
+fn freeze_policy_fixture(e: &mut Env, input: &call::Input) {
+    let (id, policy) = call::review_policy_input(&e.store, input).unwrap().unwrap();
+    let mut a = actor();
+    a.0.permission_scope.push(Scope::Repo(e.rid.clone()));
+    repo::review::freeze_policy(&mut e.store, &a, &id, policy).unwrap();
+}
+
+#[test]
+fn write_invocation_preview_does_not_grant_and_start_freezes_policy_baseline_and_lease() {
+    let (mut e, input) = write_setup();
+    let (p, a) = prepared(&mut e, input);
+    let w = p.write.as_ref().unwrap();
+    assert_eq!(
+        w.lease.pending.lease.state,
+        repo::changeset::LeaseState::Pending
+    );
+    assert!(e.store.list("changeset").unwrap().is_empty());
+    assert!(e.store.list("review_publish_intent").unwrap().is_empty());
+    let first = call::start(&mut e.store, &actor(), &p, &a, NOW).unwrap();
+    assert_eq!(
+        call::start(&mut e.store, &actor(), &p, &a, NOW).unwrap(),
+        first
+    );
+    let (_, invocation) = call::invocation(&e.store, &e.a, &p.consumer.id).unwrap();
+    let set =
+        repo::changeset::get_change_set(&e.store, &e.rid, &w.lease.pending.change_set_id).unwrap();
+    assert_eq!(set.lease.state, repo::changeset::LeaseState::Active);
+    assert_eq!(invocation.spec.document.base, Some("a".repeat(40)));
+    assert_eq!(
+        invocation.spec.document.write_lease.as_ref().unwrap().id,
+        set.lease.lease_id
+    );
+    assert_eq!(
+        invocation.spec.document.review_publish_policy,
+        Some(w.review_publish_policy.clone())
+    );
+    assert!(invocation.authorization.write);
+    assert_eq!(
+        invocation.authorization.authorizing_actor.unwrap().source,
+        ActorSource::DirectClient
+    );
+    let mut second = p.input.clone();
+    second.key = "second".into();
+    second.write.as_mut().unwrap().change_set_id = Some(set.change_set_id);
+    freeze_policy_fixture(&mut e, &second);
+    assert_eq!(
+        call::prepare(&e.store, &actor(), second, NOW)
+            .unwrap_err()
+            .code,
+        "WRITE_LEASE_BUSY"
+    );
+}
+
+#[test]
+fn cancelling_unsent_write_revokes_in_the_same_transaction_and_next_writer_has_new_generation() {
+    let (mut e, input) = write_setup();
+    let (p, _, _) = started(&mut e, input);
+    let set = &p.write.as_ref().unwrap().lease.pending;
+    let cancel = end_input(&e, &p.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    let stopped = repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id).unwrap();
+    assert_eq!(stopped.lease.state, repo::changeset::LeaseState::Revoked);
+    let mut next = p.input.clone();
+    next.key = "replacement".into();
+    next.write.as_mut().unwrap().change_set_id = Some(set.change_set_id.clone());
+    freeze_policy_fixture(&mut e, &next);
+    let (p, _, _) = started(&mut e, next);
+    let current = repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id).unwrap();
+    assert_eq!(current.lease.state, repo::changeset::LeaseState::Active);
+    assert_eq!(current.lease.generation, 2);
+    assert_eq!(
+        current.lease.holder,
+        repo::changeset::ProducerRef::Invocation {
+            invocation_id: p.consumer.id,
+            invocation_version: 1
+        }
+    );
+}
+
+#[test]
+fn write_preview_cannot_reuse_a_changeset_opened_under_another_platform_binding() {
+    let (mut e, input) = write_setup();
+    let (p, _, _) = started(&mut e, input);
+    let set = &p.write.as_ref().unwrap().lease.pending;
+    let cancel = end_input(&e, &p.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    let mut registration = required(&e.store, &repo::key(&e.rid)).unwrap();
+    let store::RecordData::Repo {
+        platform_binding: Some(binding),
+        ..
+    } = &mut registration.data
+    else {
+        panic!("platform binding required");
+    };
+    binding.version = Version::State(2);
+    registration.version += 1;
+    let mut repo_actor = actor();
+    repo_actor
+        .0
+        .permission_scope
+        .push(Scope::Repo(e.rid.clone()));
+    replace_record_as(&mut e, registration, repo_actor);
+    let mut next = p.input.clone();
+    next.key = "rebound-writer".into();
+    next.write.as_mut().unwrap().change_set_id = Some(set.change_set_id.clone());
+    freeze_policy_fixture(&mut e, &next);
+    let stamp = e.store.read_stamp();
+    assert_eq!(
+        call::prepare(&e.store, &actor(), next, NOW)
+            .unwrap_err()
+            .code,
+        "CHANGESET_BOUNDARY_MISMATCH"
+    );
+    assert_eq!(e.store.read_stamp(), stamp);
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id)
+            .unwrap()
+            .binding_version,
+        set.binding_version
+    );
+    assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+}
+
+#[test]
+fn cancelling_possibly_started_write_without_exit_proof_keeps_the_original_lease_busy() {
+    let (mut e, input) = write_setup();
+    let (p, _, _) = started(&mut e, input);
+    let set = &p.write.as_ref().unwrap().lease.pending;
+    e.store
+        .begin_effect(e.store.generation(), &format!("prepare:{}", p.consumer.id))
+        .unwrap();
+    let cancel = end_input(&e, &p.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id)
+            .unwrap()
+            .lease
+            .state,
+        repo::changeset::LeaseState::Revoking
+    );
+    assert_eq!(
+        repo::changeset::plan_lease(
+            &e.store,
+            &e.rid,
+            set.binding_version,
+            &set.baseline_commit,
+            "next",
+            Some(&set.change_set_id),
+            &repo::changeset::ProducerRef::Invocation {
+                invocation_id: "next".into(),
+                invocation_version: 1
+            }
+        )
+        .unwrap_err()
+        .code,
+        "WRITE_LEASE_BUSY"
+    );
+}
+
+#[test]
+fn read_only_profile_cannot_smuggle_a_write_boundary_into_the_preview() {
+    let (e, mut input) = setup();
+    input.write = Some(call::WriteInput {
+        change_set_id: None,
+        baseline_commit: "a".repeat(40),
+        target_branch: "main".into(),
+        allow_update: true,
+    });
+    assert_eq!(
+        call::prepare(&e.store, &actor(), input, NOW)
+            .unwrap_err()
+            .code,
+        "WRITE_BOUNDARY_NOT_ALLOWED"
+    );
+}
+
+#[test]
+fn stopped_write_requires_original_dispatch_exit_not_a_turn_or_stop_request() {
+    let (mut e, input) = write_setup();
+    let (p, _, _) = started(&mut e, input);
+    e.store
+        .begin_effect(e.store.generation(), &format!("prepare:{}", p.consumer.id))
+        .unwrap();
+    let cancel = end_input(&e, &p.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    let (_, invocation) = call::invocation(&e.store, &e.a, &p.consumer.id).unwrap();
+    let mut proof = json!({
+        "dispatch":"original",
+        "stop_report": {
+            "dispatch": { "owner": p.consumer, "spec_digest":invocation.spec.digest, "state":"cancelled" },
+            "events":[{"kind":"stopped","source":"adapter_event","payload":{"exit_code":null,"terminal_result_present":false,"requested_stop":true}}]
+        },
+        "never_started":false
+    });
+    for field in ["owner", "generation", "spec", "turn", "level", "missing"] {
+        let mut wrong = proof.clone();
+        match field {
+            "owner" => wrong["stop_report"]["dispatch"]["owner"]["id"] = json!("another"),
+            "generation" => wrong["stop_report"]["dispatch"]["owner"]["generation"] = json!(2),
+            "spec" => wrong["stop_report"]["dispatch"]["spec_digest"] = json!(hash(b"other")),
+            "turn" => {
+                wrong["stop_report"]["events"][0]["payload"] =
+                    json!({"requested_stop":true,"session_closed":true})
+            }
+            "level" => wrong["stop_report"]["events"][0]["source"] = json!("narrated"),
+            "missing" => {
+                wrong["stop_report"]["events"] = json!([]);
+                // A control-side lookup once saw Prepared. That stale lookup
+                // must not replace an Agency report about what stop actually did.
+                wrong["never_started"] = json!(true);
+            }
+            _ => unreachable!(),
+        }
+        let error = write_cleanup_fixture(&mut e, &invocation, wrong).unwrap_err();
+        assert_eq!(error.code, "STOP_PROOF_REQUIRED", "{field}");
+        assert!(e.store.list("dispatch_cleanup").unwrap().is_empty());
+        assert_eq!(
+            repo::changeset::get_change_set(
+                &e.store,
+                &e.rid,
+                &p.write.as_ref().unwrap().lease.pending.change_set_id
+            )
+            .unwrap()
+            .lease
+            .state,
+            repo::changeset::LeaseState::Revoking
+        );
+    }
+    // A signal-killed process has no numeric exit code. Its native physical exit report
+    // still proves it stopped; a turn-interrupted report has no exit_code field at all.
+    proof["stop_report"]["events"][0]["payload"]["exit_code"] = Value::Null;
+    write_cleanup_fixture(&mut e, &invocation, proof).unwrap();
+    assert_eq!(
+        repo::changeset::get_change_set(
+            &e.store,
+            &e.rid,
+            &p.write.as_ref().unwrap().lease.pending.change_set_id
+        )
+        .unwrap()
+        .lease
+        .state,
+        repo::changeset::LeaseState::Revoked
+    );
+}
+
+fn write_cleanup_fixture(
+    e: &mut Env,
+    invocation: &call::Invocation,
+    proof: Value,
+) -> store::Result<Value> {
+    let mut actor = chat::owner(&actor(), &e.a).unwrap();
+    actor.0.permission_scope.push(Scope::Repo(e.rid.clone()));
+    let record = value_record(
+        key(
+            Scope::Project(e.a.clone()),
+            "dispatch_cleanup",
+            &invocation.spec.document.owner.id,
+        ),
+        1,
+        &proof,
+    )
+    .unwrap();
+    let command = Command {
+        command_id: "proof".into(),
+        idempotency_key: "proof".into(),
+        actor: actor.0.clone(),
+        target: record.key.clone(),
+        expected: Expected::Absent,
+        binding: reference(&record),
+        operation: "fixture.cleanup".into(),
+        input: proof.clone(),
+        input_digest: Command::digest_input("fixture.cleanup", &proof).unwrap(),
+    };
+    e.store
+        .submit(e.store.generation(), &actor, &command, None, |tx| {
+            tx.put(&record)?;
+            call::confirm_write_stop(tx, invocation, &reference(&record))?;
+            Ok(json!({}))
+        })
+}
+
+#[test]
+fn agency_confirmed_never_started_write_can_release_its_lease() {
+    let (mut e, input) = write_setup();
+    let (preview, _, _) = started(&mut e, input);
+    e.store
+        .begin_effect(
+            e.store.generation(),
+            &format!("prepare:{}", preview.consumer.id),
+        )
+        .unwrap();
+    let cancel = end_input(&e, &preview.consumer.id, 1, State::Cancelled);
+    call::end(&mut e.store, &actor(), cancel).unwrap();
+    let (_, invocation) = call::invocation(&e.store, &e.a, &preview.consumer.id).unwrap();
+    let proof = json!({"stop_report":{
+        "dispatch":{"owner":preview.consumer,"spec_digest":invocation.spec.digest,"state":"cancelled"},
+        "events":[{"kind":"stopped","source":"adapter_event","payload":{"never_started":true}}]
+    }});
+    write_cleanup_fixture(&mut e, &invocation, proof).unwrap();
+    let set = preview.write.unwrap().lease.pending;
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id)
+            .unwrap()
+            .lease
+            .state,
+        repo::changeset::LeaseState::Revoked
+    );
+}
+
+#[test]
+fn selected_review_version_is_exact_repo_scoped_and_old_inputs_keep_their_encoding() {
+    let (mut e, mut input) = setup();
+    let mut scoped = actor();
+    scoped.0.permission_scope.push(Scope::Repo(e.rid.clone()));
+    let set = repo::changeset::open_change_set(
+        &mut e.store,
+        &scoped,
+        &e.rid,
+        1,
+        &"a".repeat(40),
+        "review",
+        &repo::changeset::ProducerRef::HumanCommand {
+            command_id: "open".into(),
+        },
+    )
+    .unwrap();
+    let revision = repo::changeset::admit(
+        &mut e.store,
+        &scoped,
+        repo::changeset::Seal {
+            association_key: "human-review".into(),
+            change_set_id: set.change_set_id,
+            change_set_version: 1,
+            lease: None,
+            base_commit_sha: "a".repeat(40),
+            result_tree_sha: "b".repeat(40),
+            result_commit_sha: None,
+            parent_revision_id: None,
+            producer_ref: repo::changeset::ProducerRef::HumanCommand {
+                command_id: "human-review".into(),
+            },
+        },
+        repo::changeset::OwnerGate::Active,
+    )
+    .unwrap();
+    let original = serde_json::to_value(&input).unwrap();
+    assert!(original.get("review_change_set_revision").is_none());
+    assert!(original.get("write").is_none());
+    let old: call::Input = serde_json::from_value(original.clone()).unwrap();
+    assert_eq!(serde_json::to_value(old).unwrap(), original);
+    let selected = Reference {
+        key: key(
+            Scope::Repo(e.rid.clone()),
+            "changeset_revision",
+            &revision.change_set_revision_id,
+        ),
+        version: Version::State(1),
+    };
+    input.review_change_set_revision = Some(selected.clone());
+    assert_eq!(
+        call::prepare(&e.store, &actor(), input.clone(), NOW)
+            .unwrap()
+            .input
+            .review_change_set_revision,
+        Some(selected.clone())
+    );
+    for field in ["repo", "kind", "version"] {
+        let mut wrong = input.clone();
+        let r = wrong.review_change_set_revision.as_mut().unwrap();
+        match field {
+            "repo" => r.key.scope = Scope::Repo("other".into()),
+            "kind" => r.key.kind = "integration_receipt".into(),
+            "version" => r.version = Version::State(2),
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            call::prepare(&e.store, &actor(), wrong, NOW)
+                .unwrap_err()
+                .code,
+            if field == "version" {
+                "VERSION_CONFLICT"
+            } else {
+                "REVIEW_VERSION_MISMATCH"
+            }
+        );
+    }
 }
 fn assembly(preview: &call::Preview) -> Assembly {
     let request = preview.input.request.as_bytes().to_vec();
@@ -45,7 +488,24 @@ fn assembly(preview: &call::Preview) -> Assembly {
         revision: "1".into(),
         digest: hash(&skill_bytes),
     };
-    let source_ids = vec![request_ref.id.clone(), skill.id.clone()];
+    let mut sources = vec![
+        (request_ref.clone(), request.clone()),
+        (skill.clone(), skill_bytes.clone()),
+    ];
+    if let Some(write) = &preview.write {
+        let bytes = write.context_bytes().unwrap();
+        sources.push((
+            frozen_ref(
+                &format!("write-boundary/{}", preview.consumer.id),
+                &hash(&bytes),
+            ),
+            bytes,
+        ));
+    }
+    let source_ids = sources
+        .iter()
+        .map(|(r, _)| r.id.clone())
+        .collect::<Vec<_>>();
     let permission = context::permission_digest(&source_ids);
     let policy = frozen_ref("mechanical", &hash(b"policy"));
     let manifest = Sealed::new(Manifest {
@@ -53,7 +513,7 @@ fn assembly(preview: &call::Preview) -> Assembly {
         purpose: "research".into(),
         scope: format!("project {}", preview.consumer.project),
         parent: None,
-        sources: vec![request_ref.clone(), skill.clone()],
+        sources: sources.iter().map(|(r, _)| r.clone()).collect(),
         selection_policy: policy.clone(),
         freshness: "exact".into(),
         coverage: "exact request and Skill".into(),
@@ -64,7 +524,7 @@ fn assembly(preview: &call::Preview) -> Assembly {
         budget: preview.input.budget,
     })
     .unwrap();
-    let entries = [(request_ref, request), (skill, skill_bytes)]
+    let entries = sources
         .into_iter()
         .map(|(source, bytes)| Entry {
             source,
@@ -127,6 +587,10 @@ fn end_input(e: &Env, id: &str, version: i64, outcome: State) -> call::End {
 
 fn replace_record(e: &mut Env, record: Record) {
     let scoped = chat::owner(&actor(), &e.a).unwrap();
+    replace_record_as(e, record, scoped);
+}
+
+fn replace_record_as(e: &mut Env, record: Record, scoped: TrustedActor) {
     let old = e.store.get(&record.key).unwrap();
     let input = serde_json::to_value(&record).unwrap();
     let command = Command {
@@ -977,8 +1441,18 @@ fn running(e: &mut Env, input: call::Input) -> (call::Preview, Reference, Truste
     (preview, owner, reducer, dispatch)
 }
 fn preserved(e: &mut Env, dispatch: &Record, schema: &str, sequence: u64) -> Record {
-    let d: Dispatch = participant::decode(dispatch).unwrap();
     let bytes = b"an exact read-only answer".to_vec();
+    preserved_bytes(e, dispatch, schema, sequence, bytes)
+}
+
+fn preserved_bytes(
+    e: &mut Env,
+    dispatch: &Record,
+    schema: &str,
+    sequence: u64,
+    bytes: Vec<u8>,
+) -> Record {
+    let d: Dispatch = participant::decode(dispatch).unwrap();
     let digest = hash(&bytes);
     let id = format!("proposal-{sequence}");
     let proposal = agency_proto::Proposal {
@@ -1021,6 +1495,62 @@ fn preserved(e: &mut Env, dispatch: &Record, schema: &str, sequence: u64) -> Rec
         &key(dispatch.key.scope.clone(), "proposal_inbox", &id),
     )
     .unwrap()
+}
+
+#[test]
+fn writer_cannot_activate_without_delivered_exact_changeset_boundary() {
+    let (mut e, input) = write_setup();
+    let (p, mut a) = prepared(&mut e, input);
+    a.bundle
+        .document
+        .entries
+        .retain(|entry| !entry.source.id.starts_with("write-boundary/"));
+    a.bundle = Sealed::new(a.bundle.document).unwrap();
+    assert_eq!(
+        call::start(&mut e.store, &actor(), &p, &a, NOW)
+            .unwrap_err()
+            .code,
+        "CONTEXT_MISMATCH"
+    );
+    assert!(e.store.list("changeset").unwrap().is_empty());
+    assert!(e.store.list("room_invocation").unwrap().is_empty());
+}
+
+#[test]
+fn writing_call_cannot_be_completed_as_a_read_only_answer() {
+    let (mut e, input) = write_setup();
+    let (preview, _, reducer, dispatch) = running(&mut e, input);
+    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    assert_eq!(
+        call::admit_result(
+            &mut e.store,
+            &reducer,
+            &e.a,
+            &preview.consumer.id,
+            &inbox,
+            NOW
+        )
+        .unwrap_err()
+        .code,
+        "CHANGESET_RESULT_REQUIRED"
+    );
+    assert!(e.store.list("invocation_result").unwrap().is_empty());
+    assert!(e.store.list("changeset_revision").unwrap().is_empty());
+    assert_eq!(
+        call::lifecycle(&e.store, &e.a, &preview.consumer.id)
+            .unwrap()
+            .1
+            .state,
+        State::Running
+    );
+    let write = preview.write.unwrap().lease.pending;
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &write.repo_id, &write.change_set_id)
+            .unwrap()
+            .lease
+            .state,
+        repo::changeset::LeaseState::Active
+    );
 }
 
 fn replace_proposal(e: &mut Env, inbox: &Record, proposal: &agency_proto::Proposal) -> Record {
@@ -1469,5 +1999,607 @@ fn invocation_dispatch_plan_uses_owner_key_and_rejects_a_second_key_without_scan
             .unwrap()
             .code,
         "DISPATCH_EXISTS"
+    );
+}
+
+fn write_result(
+    e: &mut Env,
+    p: &call::Preview,
+    dispatch: &Record,
+) -> (Record, repo::changeset::Seal) {
+    write_result_at(
+        e,
+        p,
+        dispatch,
+        repo::changeset::OutputLocation::Commit {
+            repo_path: "/operation-input-only".into(),
+            commit_sha: "c".repeat(40),
+        },
+    )
+}
+
+fn write_result_at(
+    e: &mut Env,
+    p: &call::Preview,
+    dispatch: &Record,
+    location: repo::changeset::OutputLocation,
+) -> (Record, repo::changeset::Seal) {
+    use repo::changeset::*;
+    let set = &p.write.as_ref().unwrap().lease.pending;
+    let lease = LeaseRef {
+        lease_id: set.lease.lease_id.clone(),
+        generation: set.lease.generation,
+    };
+    let output = repo::changeset::Output {
+        change_set_id: set.change_set_id.clone(),
+        lease: lease.clone(),
+        base_commit_sha: set.baseline_commit.clone(),
+        parent_revision_id: None,
+        location,
+    };
+    let inbox = preserved_bytes(
+        e,
+        dispatch,
+        OUTPUT_SCHEMA,
+        1,
+        serde_json::to_vec(&output).unwrap(),
+    );
+    let proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
+    let seal = Seal {
+        association_key: proposal.header.proposal_id,
+        change_set_id: set.change_set_id.clone(),
+        change_set_version: set.version,
+        lease: Some(lease),
+        base_commit_sha: set.baseline_commit.clone(),
+        result_tree_sha: "b".repeat(40),
+        result_commit_sha: Some("c".repeat(40)),
+        parent_revision_id: None,
+        producer_ref: ProducerRef::Invocation {
+            invocation_id: p.consumer.id.clone(),
+            invocation_version: p.consumer.generation,
+        },
+    };
+    (inbox, seal)
+}
+
+#[test]
+fn unchanged_write_result_is_admitted_without_revision_or_publication_and_replays_once() {
+    let (mut e, input) = write_setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let (inbox, seal) = write_result_at(
+        &mut e,
+        &p,
+        &dispatch,
+        repo::changeset::OutputLocation::NoChanges {
+            repo_path: "/operation-input-only".into(),
+        },
+    );
+    let result = call::admit_unchanged_result(
+        &mut e.store,
+        &reducer,
+        &e.a,
+        &p.consumer.id,
+        &inbox,
+        (&seal, &seal.result_tree_sha),
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(result["state"], "completed");
+    assert_eq!(result["no_changes"], true);
+    assert!(result["change_set_revision"].is_null());
+    assert!(e.store.list("changeset_revision").unwrap().is_empty());
+    assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+    assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+    let saved: Value = decode(&e.store.list("invocation_result").unwrap()[0]).unwrap();
+    assert_eq!(saved["no_changes"], true);
+    assert!(saved["change_set_revision"].is_null());
+    let set = repo::changeset::get_change_set(&e.store, &e.rid, &seal.change_set_id).unwrap();
+    assert_eq!(set.lease.state, repo::changeset::LeaseState::Revoking);
+    assert!(
+        e.store
+            .has_effect(&format!("stop:{}", p.consumer.id))
+            .unwrap()
+    );
+    assert_eq!(
+        call::admit_unchanged_result(
+            &mut e.store,
+            &reducer,
+            &e.a,
+            &p.consumer.id,
+            &inbox,
+            (&seal, &seal.result_tree_sha),
+            NOW + 1
+        )
+        .unwrap(),
+        result
+    );
+    assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+}
+
+#[test]
+fn unchanged_write_result_rejects_different_tree_unverified_claim_and_stale_lease() {
+    for bad in ["tree", "no-readback", "lease"] {
+        let (mut e, input) = write_setup();
+        let (p, _, reducer, dispatch) = running(&mut e, input);
+        let (inbox, mut seal) = write_result_at(
+            &mut e,
+            &p,
+            &dispatch,
+            repo::changeset::OutputLocation::NoChanges {
+                repo_path: "/operation-input-only".into(),
+            },
+        );
+        if bad == "lease" {
+            seal.lease.as_mut().unwrap().generation += 1;
+        }
+        let stamp = e.store.read_stamp();
+        let error = if bad == "no-readback" {
+            call::admit_sealed_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &inbox,
+                &seal,
+                NOW,
+            )
+            .unwrap_err()
+        } else {
+            let tree = if bad == "tree" {
+                "d".repeat(40)
+            } else {
+                seal.result_tree_sha.clone()
+            };
+            call::admit_unchanged_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &inbox,
+                (&seal, &tree),
+                NOW,
+            )
+            .unwrap_err()
+        };
+        assert_eq!(
+            error.code,
+            if bad == "lease" {
+                "PROPOSAL_MISMATCH"
+            } else {
+                "NO_CHANGES_MISMATCH"
+            }
+        );
+        assert_eq!(e.store.read_stamp(), stamp);
+        assert!(e.store.list("changeset_revision").unwrap().is_empty());
+        assert!(e.store.list("invocation_result").unwrap().is_empty());
+        assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+        assert_eq!(
+            call::lifecycle(&e.store, &e.a, &p.consumer.id)
+                .unwrap()
+                .1
+                .state,
+            State::Running
+        );
+    }
+}
+
+#[test]
+fn write_bundle_freezes_local_copy_and_full_publication_target() {
+    let (mut e, input) = write_setup();
+    let mut record = required(&e.store, &repo::key(&e.rid)).unwrap();
+    let store::RecordData::Repo {
+        registration: Some(registration),
+        ..
+    } = &mut record.data
+    else {
+        panic!("registration required")
+    };
+    registration["prepared"]["local"] = json!({"path":"/registered/delivery-copy", "remotes":{}, "refs":{}, "head_branch":"main", "governance_paths":[]});
+    record.version += 1;
+    let mut owner = actor();
+    owner.0.permission_scope.push(Scope::Repo(e.rid.clone()));
+    replace_record_as(&mut e, record, owner);
+    let (p, assembly) = prepared(&mut e, input);
+    let write = p.write.as_ref().unwrap();
+    let bytes: Value = serde_json::from_slice(&write.context_bytes().unwrap()).unwrap();
+    assert_eq!(bytes["repo_local_path"], "/registered/delivery-copy");
+    assert_eq!(bytes["repo_local_machine"], "control");
+    assert_eq!(bytes["objective"], p.input.request);
+    assert_eq!(bytes["publication_target"]["repo_id"], e.rid);
+    assert_eq!(bytes["publication_target"]["target_branch"], "main");
+    assert_eq!(
+        bytes["publication_target"]["branch_rule"],
+        "hctl2/{change_set}"
+    );
+    assert_eq!(
+        bytes["publication_target"]["requires_human_confirmation"],
+        true
+    );
+    assert!(exact_write_entry(&p, &assembly));
+    call::start(&mut e.store, &actor(), &p, &assembly, NOW).unwrap();
+}
+
+fn exact_write_entry(preview: &call::Preview, assembly: &Assembly) -> bool {
+    assembly.bundle.document.entries.iter().any(|entry| {
+        entry.source.id == format!("write-boundary/{}", preview.consumer.id)
+            && matches!(&entry.delivery, Delivery::Inline { bytes }
+            if *bytes == preview.write.as_ref().unwrap().context_bytes().unwrap())
+    })
+}
+
+#[test]
+fn write_result_and_revision_share_admission_and_completion_does_not_prove_writer_stopped() {
+    let (mut e, input) = write_setup();
+    let (p, owner, reducer, dispatch) = running(&mut e, input);
+    let (inbox, seal) = write_result(&mut e, &p, &dispatch);
+    let result = call::admit_sealed_result(
+        &mut e.store,
+        &reducer,
+        &e.a,
+        &p.consumer.id,
+        &inbox,
+        &seal,
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(result["state"], "completed");
+    assert_eq!(e.store.list("changeset_revision").unwrap().len(), 1);
+    assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+    let intents = e.store.list(repo::review::INTENT_KIND).unwrap();
+    assert_eq!(intents.len(), 1);
+    let publication: repo::review::Intent = decode(&intents[0]).unwrap();
+    assert_eq!(
+        publication.target.change_set_revision_id,
+        result["change_set_revision"]["change_set_revision_id"]
+    );
+    assert_eq!(
+        publication.authorizing_actor.source,
+        ActorSource::DirectClient
+    );
+    assert_eq!(
+        publication.policy.policy_id,
+        p.write.as_ref().unwrap().review_publish_policy.id
+    );
+    assert_eq!(
+        publication.binding_version,
+        p.write.as_ref().unwrap().lease.pending.binding_version
+    );
+    assert_eq!(
+        publication.policy.policy.binding_version,
+        publication.binding_version
+    );
+    assert!(
+        e.store
+            .has_effect(&format!("stop:{}", p.consumer.id))
+            .unwrap()
+    );
+    let set = repo::changeset::get_change_set(&e.store, &e.rid, &seal.change_set_id).unwrap();
+    assert_eq!(set.lease.state, repo::changeset::LeaseState::Revoking);
+    assert!(!call::current_authorization(&e.store, &owner, NOW).unwrap());
+    let replay = call::admit_sealed_result(
+        &mut e.store,
+        &reducer,
+        &e.a,
+        &p.consumer.id,
+        &inbox,
+        &seal,
+        NOW + 1,
+    )
+    .unwrap();
+    assert_eq!(replay, result);
+    assert_eq!(e.store.list("changeset_revision").unwrap().len(), 1);
+}
+
+#[test]
+fn write_result_rejects_each_boundary_change_without_revision_result_or_completion() {
+    for bad in [
+        "set",
+        "lease-id",
+        "lease-generation",
+        "base",
+        "parent",
+        "producer",
+        "producer-version",
+        "association",
+        "commit",
+    ] {
+        let (mut e, input) = write_setup();
+        let (p, _, reducer, dispatch) = running(&mut e, input);
+        let (inbox, mut seal) = write_result(&mut e, &p, &dispatch);
+        match bad {
+            "set" => seal.change_set_id = "another".into(),
+            "lease-id" => seal.lease.as_mut().unwrap().lease_id = "another".into(),
+            "lease-generation" => seal.lease.as_mut().unwrap().generation += 1,
+            "base" => seal.base_commit_sha = "d".repeat(40),
+            "parent" => seal.parent_revision_id = Some("another".into()),
+            "producer" => {
+                seal.producer_ref = repo::changeset::ProducerRef::Invocation {
+                    invocation_id: "another".into(),
+                    invocation_version: 1,
+                }
+            }
+            "producer-version" => {
+                seal.producer_ref = repo::changeset::ProducerRef::Invocation {
+                    invocation_id: p.consumer.id.clone(),
+                    invocation_version: 2,
+                }
+            }
+            "association" => seal.association_key = "another".into(),
+            "commit" => seal.result_commit_sha = Some("d".repeat(40)),
+            _ => unreachable!(),
+        }
+        assert_eq!(
+            call::admit_sealed_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &inbox,
+                &seal,
+                NOW
+            )
+            .unwrap_err()
+            .code,
+            "PROPOSAL_MISMATCH",
+            "{bad}"
+        );
+        assert!(
+            e.store.list("changeset_revision").unwrap().is_empty(),
+            "{bad}"
+        );
+        assert!(
+            e.store.list("invocation_result").unwrap().is_empty(),
+            "{bad}"
+        );
+        assert_eq!(
+            call::lifecycle(&e.store, &e.a, &p.consumer.id)
+                .unwrap()
+                .1
+                .state,
+            State::Running
+        );
+    }
+}
+
+#[test]
+fn cancelling_after_git_seal_but_before_admission_leaves_only_saved_proposal() {
+    let (mut e, input) = write_setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let (inbox, seal) = write_result(&mut e, &p, &dispatch);
+    let version = call::lifecycle(&e.store, &e.a, &p.consumer.id)
+        .unwrap()
+        .0
+        .version;
+    call::end(
+        &mut e.store,
+        &actor(),
+        call::End {
+            key: "cancel-after-seal".into(),
+            project_id: e.a.clone(),
+            invocation_id: p.consumer.id.clone(),
+            state_version: version,
+            outcome: State::Cancelled,
+            reason: "cancel between physical seal and admission".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        call::admit_sealed_result(
+            &mut e.store,
+            &reducer,
+            &e.a,
+            &p.consumer.id,
+            &inbox,
+            &seal,
+            NOW
+        )
+        .unwrap_err()
+        .code,
+        "OWNER_STALE"
+    );
+    assert!(e.store.list("changeset_revision").unwrap().is_empty());
+    assert!(e.store.list("invocation_result").unwrap().is_empty());
+    assert_eq!(e.store.list("proposal_inbox").unwrap().len(), 1);
+}
+
+#[test]
+fn write_projection_conflict_rolls_back_revision_result_completion_and_lease_revocation() {
+    let (mut e, input) = write_setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let (inbox, seal) = write_result(&mut e, &p, &dispatch);
+    let proposal: agency_proto::Proposal = decode(&inbox).unwrap();
+    let effect_id = format!(
+        "projection:{}:{}",
+        p.consumer.id, proposal.header.proposal_id
+    );
+    let (room_binding, room) = chat::room(&e.store, &e.a, &p.input.room_id).unwrap();
+    let occupied = EffectIntent {
+        intent_id: "occupied-write-projection".into(),
+        owner: reference(&call::invocation(&e.store, &e.a, &p.consumer.id).unwrap().0),
+        binding: reference(&room_binding),
+        operation: "invocation.project".into(),
+        target: room.matrix_room_id.unwrap(),
+        conflict_scope: effect_id,
+        permission_scope: Scope::Project(e.a.clone()),
+        input: json!({"other":"projection"}),
+        input_digest: Command::digest_input("invocation.project", &json!({"other":"projection"}))
+            .unwrap(),
+        idempotency_key: "occupied".into(),
+    };
+    let target = key(
+        Scope::Project(e.a.clone()),
+        "fixture",
+        "occupy-write-projection",
+    );
+    let a = TrustedActor(reducer.0.clone());
+    let command = Command {
+        command_id: "occupy-write-projection".into(),
+        idempotency_key: "occupy-write-projection".into(),
+        actor: a.0.clone(),
+        target: target.clone(),
+        expected: Expected::Absent,
+        binding: reference(&dispatch),
+        operation: "fixture".into(),
+        input: json!({}),
+        input_digest: Command::digest_input("fixture", &json!({})).unwrap(),
+    };
+    e.store
+        .submit(e.store.generation(), &a, &command, None, |tx| {
+            tx.enqueue_effect(&occupied)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+    assert_eq!(
+        call::admit_sealed_result(
+            &mut e.store,
+            &reducer,
+            &e.a,
+            &p.consumer.id,
+            &inbox,
+            &seal,
+            NOW
+        )
+        .unwrap_err()
+        .code,
+        "EFFECT_CONFLICT"
+    );
+    assert!(e.store.list("changeset_revision").unwrap().is_empty());
+    assert!(e.store.list("invocation_result").unwrap().is_empty());
+    assert!(e.store.list(repo::review::INTENT_KIND).unwrap().is_empty());
+    assert!(
+        !e.store
+            .pending_effects()
+            .unwrap()
+            .iter()
+            .any(|id| id.starts_with("review-publish:"))
+    );
+    assert_eq!(
+        call::lifecycle(&e.store, &e.a, &p.consumer.id)
+            .unwrap()
+            .1
+            .state,
+        State::Running
+    );
+    let set = &p.write.unwrap().lease.pending;
+    assert_eq!(
+        repo::changeset::get_change_set(&e.store, &e.rid, &set.change_set_id)
+            .unwrap()
+            .lease
+            .state,
+        repo::changeset::LeaseState::Active
+    );
+}
+
+#[test]
+fn sealing_preflight_requires_original_saved_bytes_live_owner_and_exact_write_boundary() {
+    let (mut e, input) = write_setup();
+    let (p, _, reducer, dispatch) = running(&mut e, input);
+    let (inbox, _) = write_result(&mut e, &p, &dispatch);
+    let (output, seal, repo) =
+        call::sealing_input(&e.store, &reducer, &e.a, &p.consumer.id, &inbox, NOW).unwrap();
+    assert_eq!(repo, e.rid);
+    assert_eq!(seal.change_set_id, output.change_set_id);
+    assert_eq!(
+        seal.producer_ref,
+        repo::changeset::ProducerRef::Invocation {
+            invocation_id: p.consumer.id.clone(),
+            invocation_version: 1
+        }
+    );
+    assert_eq!(
+        call::sealing_input(&e.store, &actor(), &e.a, &p.consumer.id, &inbox, NOW)
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    let mut wrong = inbox.clone();
+    let mut proposal: agency_proto::Proposal = decode(&wrong).unwrap();
+    proposal.output.push(b' ');
+    wrong.data = store::RecordData::Value {
+        value: serde_json::to_value(proposal).unwrap(),
+    };
+    assert_eq!(
+        call::sealing_input(&e.store, &reducer, &e.a, &p.consumer.id, &wrong, NOW)
+            .unwrap_err()
+            .code,
+        "PROPOSAL_MISMATCH"
+    );
+    let state = call::lifecycle(&e.store, &e.a, &p.consumer.id).unwrap().0;
+    call::end(
+        &mut e.store,
+        &actor(),
+        call::End {
+            key: "cancel-before-git".into(),
+            project_id: e.a.clone(),
+            invocation_id: p.consumer.id.clone(),
+            state_version: state.version,
+            outcome: State::Cancelled,
+            reason: "stop".into(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        call::sealing_input(&e.store, &reducer, &e.a, &p.consumer.id, &inbox, NOW)
+            .unwrap_err()
+            .code,
+        "OWNER_STALE"
+    );
+}
+
+#[test]
+fn human_seal_is_an_independent_admission_and_replay_keeps_its_first_observation() {
+    let (mut e, _) = setup();
+    let input = repo::changeset::HumanInput {
+        key: "human-seal".into(),
+        repo_id: e.rid.clone(),
+        change_set_id: None,
+        base_commit_sha: "a".repeat(40),
+        parent_revision_id: None,
+        location: repo::changeset::OutputLocation::Commit {
+            repo_path: "/operation-input".into(),
+            commit_sha: "c".repeat(40),
+        },
+    };
+    let plan = repo::changeset::prepare_human(&e.store, &actor(), input.clone()).unwrap();
+    assert!(e.store.list("changeset").unwrap().is_empty());
+    let mut seal = plan.seal_input();
+    seal.result_tree_sha = "b".repeat(40);
+    seal.result_commit_sha = Some("c".repeat(40));
+    let first =
+        repo::changeset::admit_human(&mut e.store, &actor(), &plan, &seal, &json!({"observed":1}))
+            .unwrap();
+    let repeated =
+        repo::changeset::admit_human(&mut e.store, &actor(), &plan, &seal, &json!({"observed":2}))
+            .unwrap();
+    assert_eq!(first, repeated);
+    assert_eq!(first["observation"]["observed"], 1);
+    assert_eq!(
+        first["revision"]["producer_ref"],
+        json!({"kind":"human_command","command_id":"changeset:human-seal"})
+    );
+    assert!(first["seal"]["lease"].is_null());
+    assert!(e.store.list("room_invocation").unwrap().is_empty());
+    assert_eq!(e.store.list("changeset_revision").unwrap().len(), 1);
+    let set =
+        repo::changeset::get_change_set(&e.store, &e.rid, &plan.change_set.change_set_id).unwrap();
+    assert_eq!(set.lease.state, repo::changeset::LeaseState::Revoked);
+    let mut other = input.clone();
+    other.base_commit_sha = "d".repeat(40);
+    assert_eq!(
+        repo::changeset::prepare_human(&e.store, &actor(), other)
+            .unwrap_err()
+            .code,
+        "IDEMPOTENCY_CONFLICT"
+    );
+    let mut borrowed = seal.clone();
+    borrowed.lease = Some(repo::changeset::LeaseRef {
+        lease_id: "someone-else".into(),
+        generation: 1,
+    });
+    assert_eq!(
+        repo::changeset::admit_human(&mut e.store, &actor(), &plan, &borrowed, &json!({}))
+            .unwrap_err()
+            .code,
+        "PROPOSAL_MISMATCH"
     );
 }

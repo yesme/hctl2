@@ -31,6 +31,7 @@ rust_test(
     name = "cli_test",
     srcs = [
         "tests/cli.rs",
+        "tests/cli/changeset.rs",
         "tests/cli/human.rs",
         "tests/cli/memo.rs",
         "tests/cli/profile.rs",

@@ -702,7 +702,16 @@ impl Tenant {
         } else if d.state == DispatchState::Prepared {
             let mut cancelled = d.clone();
             cancelled.state = DispatchState::Cancelled;
-            put_dispatch(&state.db, &cancelled)?;
+            let tx = sql(state.db.unchecked_transaction())?;
+            put_dispatch(&tx, &cancelled)?;
+            event(
+                &tx,
+                &d.reference,
+                "stopped",
+                serde_json::json!({"requested_stop":true,"never_started":true}),
+                EvidenceLevel::AdapterEvent,
+            )?;
+            sql(tx.commit())?;
             return Ok(cancelled);
         }
         // Request is not proof of exit. Observe the stopped event and actual exit code.

@@ -178,6 +178,13 @@ impl CommandTransaction<'_> {
         get_record(self.tx, key)
     }
 
+    /// Read the outbox under the same transaction as a domain transition.
+    pub fn effect(&self, id: &str) -> Result<(EffectIntent, EffectState)> {
+        let found = effect(self.tx, id)?;
+        self.actor.permits(&found.0.permission_scope)?;
+        Ok(found)
+    }
+
     /// Append a reducer-validated immutable snapshot, with links and admitted material refs.
     /// Domain transitions stay with the consuming module; this enforces version/identity invariants.
     fn put_inner(&self, record: &Record) -> Result<()> {

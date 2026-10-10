@@ -3,6 +3,30 @@ use super::*;
 use agency_proto::{Dispatch, DispatchState, ExecutionSpec, Permission, Sealed};
 use store::{Command, EffectIntent, EffectState, Expected, Readback};
 
+fn stop_page_sufficient(trace: &agency_proto::Trace, write: bool) -> bool {
+    if write {
+        // Cancelled is the logical state, not physical exit. Keep reading the
+        // next page when it contains only a turn boundary or the stop request.
+        trace.events.iter().any(|event| {
+            event.kind == "stopped"
+                && event.source == agency_proto::EvidenceLevel::AdapterEvent
+                && ((trace.dispatch.state == DispatchState::Cancelled
+                    && event.payload["never_started"] == true)
+                    || (event
+                        .payload
+                        .as_object()
+                        .is_some_and(|p| p.contains_key("exit_code"))
+                        && event.payload["terminal_result_present"].is_boolean()))
+        })
+    } else {
+        trace.dispatch.state == DispatchState::Cancelled
+            || trace
+                .events
+                .iter()
+                .any(|e| e.kind == "stopped" || e.kind == "turn_stopped")
+    }
+}
+
 pub(super) fn record(
     s: &mut Store,
     actor: &TrustedActor,
@@ -10,6 +34,24 @@ pub(super) fn record(
     operation: &str,
     effect: Option<(&EffectIntent, Value)>,
 ) -> store::Result<()> {
+    let write_owner = if record.key.kind == "dispatch_cleanup" {
+        let Scope::Project(project) = &record.key.scope else {
+            return Err(invalid("Project cleanup required"));
+        };
+        Some(invocation::invocation(s, project, &record.key.id)?.1)
+    } else {
+        None
+    };
+    let mut actor = TrustedActor(actor.0.clone());
+    if let Some(write) = write_owner
+        .as_ref()
+        .and_then(|call| call.preview.write.as_ref())
+    {
+        actor
+            .0
+            .permission_scope
+            .push(Scope::Repo(write.lease.pending.repo_id.clone()));
+    }
     let input = serde_json::to_value(record)?;
     let command = Command {
         command_id: format!("{operation}:{}", record.key.id),
@@ -26,8 +68,11 @@ pub(super) fn record(
         input_digest: Command::digest_input(operation, &input)?,
         input,
     };
-    s.submit(s.generation(), actor, &command, None, |tx| {
+    s.submit(s.generation(), &actor, &command, None, |tx| {
         tx.put(record)?;
+        if let Some(call) = &write_owner {
+            invocation::confirm_write_stop(tx, call, &reference(record))?;
+        }
         if let Some((effect, result)) = &effect {
             tx.confirm_effect(
                 &effect.intent_id,
@@ -144,12 +189,7 @@ pub(super) async fn stop(
         {
             return Err(invalid("stop readback differs"));
         }
-        if trace.dispatch.state == DispatchState::Cancelled
-            || trace
-                .events
-                .iter()
-                .any(|e| e.kind == "stopped" || e.kind == "turn_stopped")
-        {
+        if stop_page_sufficient(&trace, spec.document.write_lease.is_some()) {
             break trace;
         }
         if trace.complete || trace.cursor <= after {
@@ -252,4 +292,73 @@ pub(super) async fn projections(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agency_proto::{
+        Capabilities, EvidenceLevel, FrozenRef, Observation, Owner, OwnerKind, Trace,
+    };
+
+    fn page(kind: &str, source: EvidenceLevel, payload: Value) -> Trace {
+        Trace {
+            dispatch: Dispatch {
+                reference: "dispatch".into(),
+                owner: Owner {
+                    project: "project".into(),
+                    kind: OwnerKind::RoomInvocation,
+                    id: "invocation".into(),
+                    generation: 1,
+                },
+                spec_digest: "a".repeat(64),
+                bundle_digest: "b".repeat(64),
+                binding: FrozenRef {
+                    id: "agency".into(),
+                    revision: "1".into(),
+                    digest: "c".repeat(64),
+                },
+                capabilities: Capabilities::default(),
+                state: DispatchState::Cancelled,
+            },
+            events: vec![Observation {
+                sequence: 1,
+                source,
+                confidence: "adapter report".into(),
+                evidence_digest: "d".repeat(64),
+                observed_ms: 1,
+                kind: kind.into(),
+                payload,
+            }],
+            cursor: 1,
+            gap: false,
+            complete: false,
+        }
+    }
+
+    #[test]
+    fn writer_stop_page_skips_cancelled_or_turn_only_pages_until_physical_exit() {
+        let turn = page("turn_stopped", EvidenceLevel::AdapterEvent, json!({}));
+        assert!(!stop_page_sufficient(&turn, true));
+        assert!(stop_page_sufficient(&turn, false));
+        let never_started = page(
+            "stopped",
+            EvidenceLevel::AdapterEvent,
+            json!({"never_started":true}),
+        );
+        assert!(stop_page_sufficient(&never_started, true));
+        let exit = json!({"exit_code":null,"terminal_result_present":true});
+        assert!(!stop_page_sufficient(
+            &page("stopped", EvidenceLevel::Narrated, exit.clone()),
+            true
+        ));
+        assert!(!stop_page_sufficient(
+            &page("stopped", EvidenceLevel::AdapterEvent, json!({})),
+            true
+        ));
+        assert!(stop_page_sufficient(
+            &page("stopped", EvidenceLevel::AdapterEvent, exit),
+            true
+        ));
+    }
 }

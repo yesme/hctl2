@@ -1,6 +1,7 @@
 //! Room Invocation orchestration. Provider I/O is never inside a Store transaction.
 mod context;
 mod recovery;
+mod write;
 use crate::services::Supervisor;
 use participant::{decode, invalid, key, reference, reject};
 use project::invocation::{self, State};
@@ -65,7 +66,13 @@ pub(crate) fn preview(
     if let Some(plan) = access(shared, |s| frozen_plan(s, actor, &input))? {
         return Ok(serde_json::to_value(plan)?);
     }
-    let preview = access(shared, |s| invocation::prepare(s, actor, input, now_ms()))?;
+    let preview = access(shared, |s| {
+        let scoped = chat::owner(actor, &input.project_id)?;
+        if let Some((policy_id, policy)) = invocation::review_policy_input(s, &input)? {
+            repo::review::freeze_policy(s, &scoped, &policy_id, policy)?;
+        }
+        invocation::prepare(s, &scoped, input, now_ms())
+    })?;
     let assembly = context::assemble(shared, services, root, actor, &preview)?;
     Ok(serde_json::to_value(Plan { preview, assembly })?)
 }
@@ -388,7 +395,15 @@ async fn drive(
     if state.state == State::Completed {
         // Projection recovery does not depend on a live Agency. Later results
         // are still preserved for audit, never admitted into a completed call.
-        recovery::projections(shared, services, &actor, root, id).await?;
+        let stop_error = if call.authorization.write {
+            recovery::stop(shared, root, &actor, &intent).await.err()
+        } else {
+            None
+        };
+        // A stopped chat server must not prevent the old writer's revocation.
+        let projection_error = recovery::projections(shared, services, &actor, root, id)
+            .await
+            .err();
         let data: Value = decode(&intent)?;
         if let Some(dispatch_id) = data["dispatch"].as_str() {
             let dispatch = {
@@ -400,7 +415,7 @@ async fn drive(
             };
             preserve(shared, root, &actor, owner, &dispatch).await?;
         }
-        return Ok(());
+        return stop_error.or(projection_error).map_or(Ok(()), Err);
     }
     if !state.state.terminal() {
         let mut lock = shared.lock().await;
@@ -516,15 +531,38 @@ async fn drive(
         };
         preserve(shared, root, &actor, owner, &dispatch).await?;
         if trace.dispatch.state == agency_proto::DispatchState::ResultReturned && authorized {
-            let mut lock = shared.lock().await;
-            let s = lock.as_mut().ok_or_else(|| invalid("store not ready"))?;
-            for inbox in s.list("proposal_inbox")?.into_iter().filter(|r| {
+            let inboxes = {
+                let lock = shared.lock().await;
+                lock.as_ref()
+                    .ok_or_else(|| invalid("store not ready"))?
+                    .list("proposal_inbox")?
+            };
+            for inbox in inboxes.into_iter().filter(|r| {
                 r.key.scope == owner.key.scope && r.sources.contains(&reference(&dispatch))
             }) {
-                match invocation::admit_result(s, &actor, p, id, &inbox, now_ms()) {
+                let result = if call.authorization.write {
+                    write::admit(shared, &actor, p, id, &inbox).await
+                } else {
+                    let mut lock = shared.lock().await;
+                    invocation::admit_result(
+                        lock.as_mut().ok_or_else(|| invalid("store not ready"))?,
+                        &actor,
+                        p,
+                        id,
+                        &inbox,
+                        now_ms(),
+                    )
+                };
+                match result {
                     Ok(_) => {}
                     Err(e) if matches!(e.code, "OWNER_STALE" | "PROPOSAL_MISMATCH") => {
-                        first_result_error(s, &actor, &inbox, &e)?;
+                        let mut lock = shared.lock().await;
+                        first_result_error(
+                            lock.as_mut().ok_or_else(|| invalid("store not ready"))?,
+                            &actor,
+                            &inbox,
+                            &e,
+                        )?;
                     }
                     Err(e) => return Err(e),
                 }
