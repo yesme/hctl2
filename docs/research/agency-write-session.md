@@ -108,3 +108,16 @@ OK
 
 [接口处理说明](https://github.com/yesme/hctl2/pull/405#issuecomment-6094092852)记录所有者已指定的 mac/Ubuntu 分工。[工作树与封存入口处理说明](https://github.com/yesme/hctl2/pull/405#issuecomment-6094386044)记录目前 `seal → archive::snapshot → require_worktree` 对 detached 的拒绝。验收主笔随后提议第 2 条改用 P1 的分支工作树，已向所有者报出这项调整；未得到调整指令之前不把它当成已改的验收。Agency 不改 #405 的工具、控制面、runtime.rs、tenant.rs 和 port.rs。
 
+
+## 两平台 CI 的处理
+
+草稿首头 `6c465f5` 的 Code CI 在 Linux 通过，macOS 的 Claude 写入入口发现 `/tmp` 与 `/private/tmp` 指向同一目录时 cwd 比较失败。工作树交给 harness 前改用 Git 副本路径的 `canonicalize` 回读，入口用例也比较规范路径。重跑：
+
+```sh
+./src/buck2 test root//agency:write_session_test
+./src/buck2 build root//agency:clippy
+```
+
+2026-10-10：Build `f76e954b-7e6f-423a-be3e-ffc7ec126fd7` 为 `3 passed; 0 failed; 2 ignored`；Clippy Build `3f6c9556-d175-485b-9f05-52770b6f5bc6` 通过，12 份诊断为空。修正后的 macOS 检查尚待 CI 回跑，不能用本机 Linux 结果代替。
+
+首头完整打包 CI 两平台还在 `human_output_renders_dispatch_preview_sections_and_invocation_table` 失败：旧样本写死 `/bin/sh` 的程序摘要，不同平台实物摘要与它不一致。该文件属于 #405，`9e2d221` 已改成回读实际 `/bin/sh` 摘要，其余字段继续按原样本比较；本 PR 不并行改该文件，等待依赖合入后验证。

@@ -270,7 +270,7 @@ pub(crate) fn prepare(
     let _ = target;
     fs::write(record, descriptor)?;
     Ok(Some(WorkCopy {
-        cwd,
+        cwd: cwd.canonicalize()?,
         change_set: change_set.into(),
         baseline: base.clone(),
         lease: lease.clone(),

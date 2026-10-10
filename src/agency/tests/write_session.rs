@@ -299,6 +299,8 @@ impl Rig {
             .unwrap()
             .path()
             .join("worktree")
+            .canonicalize()
+            .unwrap()
     }
     fn claude_state(&self, input: &Prepare, dispatch: &Dispatch) -> PathBuf {
         let exec = confine::execution_dir(&self.root, &dispatch.reference).unwrap();
