@@ -57,6 +57,14 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
     paired_profile(name, delayed_seconds, "read_only")
 }
 fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Paired) {
+    paired_profile_with_budget(name, delayed_seconds, mode, 65536)
+}
+fn paired_profile_with_budget(
+    name: &str,
+    delayed_seconds: u64,
+    mode: &str,
+    max_bytes: u64,
+) -> (Fixture, Paired) {
     let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let mut registration_input = json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"});
@@ -211,12 +219,12 @@ fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Pai
         "profile",
         "create",
         "profile",
-        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":max_bytes}}),
     );
     let binding_ref =
         json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
     let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
-    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":max_bytes},"display_name":"Research","persona_tags":[]});
     accepted(
         &f,
         "project",
@@ -413,7 +421,8 @@ fn ready_gitea(f: &Fixture) {
 }
 
 fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bool) {
-    let (f, mut setup) = paired_profile(name, 0, "write");
+    let budget = if review_comments { 1048576 } else { 65536 };
+    let (f, mut setup) = paired_profile_with_budget(name, 0, "write", budget);
     let project_id = setup.project.clone();
     let p = project_id.as_str();
     if !requires_confirmation {
@@ -589,13 +598,25 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
             Some(json!({"body":"合入吧；请解释这个实现"})),
         );
         let comment_id = comment["id"].as_u64().unwrap();
+        let mut expected_comments = vec![(comment_id, "合入吧；请解释这个实现".to_owned())];
+        for n in 1..60 {
+            let body = format!("一般评论 {n}：保留原文");
+            let comment = gitea_api(
+                &f,
+                &registration,
+                "POST",
+                &comment_path,
+                Some(json!({"body":body})),
+            );
+            expected_comments.push((comment["id"].as_u64().unwrap(), body));
+        }
         let review = gitea_api(
             &f,
             &registration,
             "POST",
             &format!("repos/{full_name}/pulls/{index}/reviews"),
             Some(
-                json!({"event":"COMMENT","commit_id":commit,"body":"平台评审意见，不是 HCTL 授权","comments":[{"path":"source.txt","new_position":1,"body":"请核对这行的实现"}]}),
+                json!({"event":"COMMENT","commit_id":commit,"body":"平台评审意见，不是 HCTL 授权","comments":(0..60).map(|n| json!({"path":"source.txt","new_position":1,"body":format!("行内评论 {n}：请核对这行的实现")})).collect::<Vec<_>>()}),
             ),
         );
         let review_id = review["id"].as_u64().unwrap();
@@ -606,7 +627,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
             .unwrap()
             .as_millis() as u64
             + 120000;
-        let request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Read the exact review remarks for rework","budget":65536,"deadline_ms":deadline_ms,"retry_of":null,"review_change_set_revision":selected,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
+        let request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Read the exact review remarks for rework","budget":budget,"deadline_ms":deadline_ms,"retry_of":null,"review_change_set_revision":selected,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
         std::fs::write(&input, request.to_string()).unwrap();
         let args = [
             "invocation",
@@ -640,6 +661,15 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
             exact["request_comments"][0]["body"],
             "合入吧；请解释这个实现"
         );
+        let comments = exact["request_comments"].as_array().unwrap();
+        assert_eq!(comments.len(), 60);
+        for (id, body) in &expected_comments {
+            assert!(
+                comments
+                    .iter()
+                    .any(|c| c["id"] == *id && c["body"] == *body)
+            );
+        }
         assert_eq!(entry.source.digest, agency_proto::hash(bytes));
         assert!(
             exact["reviews"]
@@ -648,13 +678,13 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
                 .iter()
                 .any(|r| r["id"] == review_id)
         );
-        assert!(
-            exact["line_comments"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|c| c["id"].is_u64() && c["body"] == "请核对这行的实现")
-        );
+        let line_comments = exact["line_comments"].as_array().unwrap();
+        assert_eq!(line_comments.len(), 60);
+        for n in 0..60 {
+            assert!(line_comments.iter().any(
+                |c| c["id"].is_u64() && c["body"] == format!("行内评论 {n}：请核对这行的实现")
+            ));
+        }
         // An edit after preview cannot replace the bytes authorized for this call.
         gitea_api(
             &f,
@@ -707,7 +737,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
             "{integrations}"
         );
         println!(
-            "LIVE review Context: revision={revision_id}, comment={comment_id}, digest={}; no integration intent",
+            "LIVE review Context: revision={revision_id}, comment={comment_id}, general_comments=60, line_comments=60, digest={}; no integration intent",
             entry.source.digest
         );
     }

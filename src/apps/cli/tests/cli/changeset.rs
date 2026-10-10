@@ -120,6 +120,123 @@ fn residual_discard_real_cli_does_not_call_a_moved_detached_worktree_deleted() {
     residual_chain("discard", false, false, true);
 }
 
+#[test]
+fn residual_active_writer_real_cli_refuses_all_recovery_previews_without_sealing() {
+    let temp = Temp::new();
+    let root = &temp.0;
+    let path = root.join("repo");
+    std::fs::create_dir(&path).unwrap();
+    git(&path, &["init", "--initial-branch=main"]);
+    std::fs::write(path.join("answer"), "before\n").unwrap();
+    git(&path, &["add", "answer"]);
+    git(&path, &["commit", "-m", "base"]);
+    let base = git(&path, &["rev-parse", "HEAD"]);
+    ok(root, &["init", "--secret-backend", "user-file"]);
+    let (repo_id, set) = {
+        let mut store = store::Store::open(root).unwrap();
+        let repo_id = registered(&mut store, &path);
+        let set = repo::changeset::open_change_set(
+            &mut store,
+            &owner(Some(&repo_id)),
+            &repo_id,
+            0,
+            &base,
+            "active-writer",
+            &repo::changeset::ProducerRef::Invocation {
+                invocation_id: "running-writer".into(),
+                invocation_version: 1,
+            },
+        )
+        .unwrap();
+        assert_eq!(set.lease.state, repo::changeset::LeaseState::Active);
+        (repo_id, set)
+    };
+    let worktrees = root.join("sites");
+    native_tool(&[
+        "worktree",
+        "materialize",
+        "--repo",
+        path.to_str().unwrap(),
+        "--root",
+        worktrees.to_str().unwrap(),
+        "--change-set-ref",
+        &set.change_set_id,
+        "--baseline",
+        &base,
+    ]);
+    let worktree = worktrees.join(&set.change_set_id).canonicalize().unwrap();
+    std::fs::write(worktree.join("writer-output"), "not a residual\n").unwrap();
+    let objects = || {
+        git(
+            &path,
+            &[
+                "cat-file",
+                "--batch-all-objects",
+                "--batch-check=%(objectname)",
+            ],
+        )
+        .lines()
+        .map(str::to_owned)
+        .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = objects();
+    ok(root, &["start"]);
+    let input = root.join("active.json");
+    std::fs::write(
+        &input,
+        json!({"repo_id":repo_id,"change_set_id":set.change_set_id,"repo_path":worktree})
+            .to_string(),
+    )
+    .unwrap();
+    let results: Vec<_> = ["takeover", "adopt", "discard"]
+        .into_iter()
+        .map(|action| {
+            let (success, out, err) = run(
+                root,
+                &[
+                    "changeset",
+                    action,
+                    "--input",
+                    input.to_str().unwrap(),
+                    "--key",
+                    action,
+                ],
+            );
+            (
+                action,
+                success,
+                serde_json::from_str::<Value>(&out).unwrap(),
+                err,
+            )
+        })
+        .collect();
+    for (action, success, value, err) in results {
+        assert!(!success, "{action}: {value} {err}");
+        assert_eq!(
+            value["error"]["code"], "RESIDUAL_NOT_REVOKED",
+            "{action}: {value}"
+        );
+    }
+    assert_eq!(
+        objects(),
+        before,
+        "rejected previews must not seal Git objects"
+    );
+    assert_eq!(
+        std::fs::read_to_string(worktree.join("writer-output")).unwrap(),
+        "not a residual\n"
+    );
+    let shown = ok(root, &["changeset", "show", &repo_id, &set.change_set_id]);
+    assert_eq!(shown["change_set"]["lease"]["state"], "active");
+    assert!(shown["revisions"].as_array().unwrap().is_empty());
+    assert!(shown["residuals"].as_array().unwrap().is_empty());
+    ok(root, &["stop"]);
+    let store = store::Store::open(root).unwrap();
+    assert!(store.list("human_seal").unwrap().is_empty());
+    assert!(store.list("changeset_residual").unwrap().is_empty());
+    assert!(store.list("review_publish_intent").unwrap().is_empty());
+}
+
 fn residual_chain(
     action: &str,
     change_after_preview: bool,

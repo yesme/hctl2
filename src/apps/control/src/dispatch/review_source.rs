@@ -128,7 +128,11 @@ pub(super) fn read(
         )
     })?;
     let github = registration.prepared.platform == Platform::Github;
-    let comments = collect(&mut api, &format!("issues/{index}/comments"), github)?;
+    let comments = if github {
+        collect(&mut api, &format!("issues/{index}/comments"), true)?
+    } else {
+        collect_once(&mut api, &format!("issues/{index}/comments"))?
+    };
     let reviews = collect(&mut api, &format!("pulls/{index}/reviews"), github)?;
     let mut line_comments = if github {
         collect(&mut api, &format!("pulls/{index}/comments"), true)?
@@ -138,11 +142,8 @@ pub(super) fn read(
             let id = review["id"]
                 .as_u64()
                 .ok_or_else(|| invalid("review ID missing"))?;
-            let mut comments = collect(
-                &mut api,
-                &format!("pulls/{index}/reviews/{id}/comments"),
-                false,
-            )?;
+            let mut comments =
+                collect_once(&mut api, &format!("pulls/{index}/reviews/{id}/comments"))?;
             for comment in &mut comments {
                 comment["review_commit_id"] = review["commit_id"].clone();
             }
@@ -269,6 +270,45 @@ fn collect(
     ))
 }
 
+// Gitea 1.27.3 ignores pagination on these comment endpoints. The API runner
+// still enforces its byte limit; retain the paged collector's item ceiling too.
+fn collect_once(
+    api: &mut impl FnMut(&str) -> store::Result<Option<Value>>,
+    path: &str,
+) -> store::Result<Vec<Value>> {
+    let value = api(path)?.ok_or_else(|| {
+        reject(
+            "REVIEW_SOURCE_UNAVAILABLE",
+            "comment endpoint missing",
+            "inspect_review_on_platform",
+        )
+    })?;
+    let items = value
+        .as_array()
+        .ok_or_else(|| invalid("comment endpoint did not return an array"))?;
+    if items.len() > 200 * 50 {
+        return Err(reject(
+            "REVIEW_SOURCE_TOO_LARGE",
+            "comment collection exceeds preview limit; not truncated",
+            "narrow_review_source",
+        ));
+    }
+    let mut ids = std::collections::BTreeSet::new();
+    for item in items {
+        let id = item["id"]
+            .as_u64()
+            .ok_or_else(|| invalid("comment identifier missing"))?;
+        if !ids.insert(id) {
+            return Err(reject(
+                "REVIEW_SOURCE_CHANGED",
+                "comment collection repeated an identifier",
+                "rebuild_preview",
+            ));
+        }
+    }
+    Ok(items.clone())
+}
+
 pub(super) fn verify(store: &Store, source: &agency_proto::FrozenRef) -> store::Result<()> {
     let identity: Identity = serde_json::from_str(&source.revision)?;
     for expected in [
@@ -294,6 +334,59 @@ pub(super) fn verify(store: &Store, source: &agency_proto::FrozenRef) -> store::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gitea_unpaged_comment_endpoints_read_all_sixty_items_once() {
+        let items: Vec<_> = (0..60)
+            .map(|id| json!({"id":id,"body":format!("原文 {id}")}))
+            .collect();
+        for path in ["issues/7/comments", "pulls/7/reviews/9/comments"] {
+            let mut visited = Vec::new();
+            // The native endpoints return the same entire list even if a
+            // caller supplies page/limit. A second read must not be attempted.
+            let mut api = |request: &str| {
+                visited.push(request.to_owned());
+                Ok(Some(json!(items)))
+            };
+            assert_eq!(collect_once(&mut api, path).unwrap(), items);
+            assert_eq!(visited, [path]);
+        }
+    }
+
+    #[test]
+    fn unpaged_comments_reject_missing_invalid_duplicate_and_oversized_sources() {
+        for (response, code) in [
+            (None, "REVIEW_SOURCE_UNAVAILABLE"),
+            (Some(json!({"items":[]})), "INVALID_INPUT"),
+            (Some(json!([{"body":"missing ID"}])), "INVALID_INPUT"),
+            (Some(json!([{"id":1},{"id":1}])), "REVIEW_SOURCE_CHANGED"),
+        ] {
+            let mut api = |_: &str| Ok(response.clone());
+            assert_eq!(collect_once(&mut api, "comments").unwrap_err().code, code);
+        }
+        for length in [10000, 10001] {
+            let mut api = |_: &str| {
+                Ok(Some(json!(
+                    (0..length).map(|id| json!({"id":id})).collect::<Vec<_>>()
+                )))
+            };
+            let result = collect_once(&mut api, "comments");
+            if length == 10000 {
+                assert_eq!(result.unwrap().len(), length);
+            } else {
+                assert_eq!(result.unwrap_err().code, "REVIEW_SOURCE_TOO_LARGE");
+            }
+        }
+        let mut output_limit =
+            |_: &str| Err(reject("OUTPUT_LIMIT", "output exceeds cap", "inspect"));
+        assert_eq!(
+            collect_once(&mut output_limit, "comments")
+                .unwrap_err()
+                .code,
+            "OUTPUT_LIMIT"
+        );
+    }
+
     #[test]
     fn matching_platform_path_does_not_replace_the_bound_repository_identity() {
         verify_platform_id(&json!({"id":7}), "7").unwrap();

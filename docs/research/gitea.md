@@ -225,3 +225,23 @@ Gitea 归档为 [v1.27.3 Release](https://github.com/go-gitea/gitea/releases/tag
 首次全组运行 Build ID `fb6a43d9-884b-48f1-97e2-e6de2587488f`：本条用例及另外九条通过；两条旧用例分别报 SQLite I/O 与 Git 材料不可用，全组不是绿。本条只记录上述实际通过的评论链，不用它覆盖两条旧用例的失败。GitHub 读取沿既有 gh API 适配，本次未对在线 GitHub 评论线实跑。
 
 随后以 `--test-threads=1` 单列本条与两条失败用例补跑，Build ID `ec73ecef-749a-4eee-ba0b-a4338a034e0a`：三条通过。本条再次从真实发布走到返工 Context；两个旧用例的首次失败原因仍未确定，补跑通过不等于已解释或修复它们。
+
+### 2026-10-11 · #415 评审后的评论接口逐项复核
+
+决定建议：版本和能力声明不变。Gitea 的一般评论和单条评审的行内评论都单次读取，不带 `page` / `limit`；评审列表仍分页。保留原生子进程的 16 MiB 输出上限，超限拒绝，不截断；单次读取也保留评论集合的数量上限。GitHub 的分页读法不变。
+
+再次核对锁定提交 `146cc3eec57174711eac0e0a0c7b38670c6e3922`：
+
+| 接口 | 源码依据 | 读取方式 |
+| --- | --- | --- |
+| `issues/{index}/comments` | [`ListIssueComments`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/issue_comment.go) 的查询只有 Issue、since、before 和评论类型，没有分页参数 | 一次返回该 Issue 的全部一般评论 |
+| `pulls/{index}/reviews` | [`ListPullReviews`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/routers/api/v1/repo/pull_review.go) 使用 `utils.GetListOptions(ctx)` | 按 `limit` / `page` 分页 |
+| `pulls/{index}/reviews/{id}/comments` | 同文件的 `GetPullReviewComments` 直接调用 [`ToPullReviewCommentList`](https://github.com/go-gitea/gitea/blob/146cc3eec57174711eac0e0a0c7b38670c6e3922/services/convert/pull_review.go)，遍历该评审的全部代码评论，没有分页参数 | 每条评审单次读取全部行内评论 |
+
+不能用少量评论的通过结果推导分页行为正确。超过一页大小的真实评论链和超限拒绝须分别验证，评论仍只是 content，不产生授权。
+
+本机使用实际安装包的同一评论链，创建 60 条一般评论和 60 条行内评论。首次夹具的调用预算大于 Profile，报 `BUDGET_EXCEEDED`，尚未测到接口；仅将该夹具的 Profile、选入记录和调用预算对齐为 1 MiB。旧读取实现随后在 Build ID `4dd71cea-76ea-4a4d-82d7-07545e7abe43` 报 `REVIEW_SOURCE_CHANGED`，原因是分页重复读取同一批 ID。
+
+改为单次读取后，同一真实用例在 Build ID `8a47cf48-4436-49c4-9af6-5a59076ddbe2` 通过：Bundle 含全部 60 条一般评论的原生 ID 与原文、全部 60 条行内评论及所选提交关联；预览后编辑仍不替换原 Bundle，没有集成意图。评论读取的 8 条单元用例也通过，覆盖单次请求、缺失来源、非法响应、重复 ID、10,000 条完整接收、10,001 条拒绝及 `OUTPUT_LIMIT` 原样传出。该集合另含一次租约守卫的临时退回实验，实验用例按预期红，不把该集合写成全绿。
+
+恢复租约守卫后的最终集合 Build ID `c90d9ae2-afc9-4925-818c-469140ed45db`：安装包评论链所在整组 12/12、CLI 28/28、Control 74 条（另有 2 条旧 live 用例 ignored）、Repo ChangeSet 37/37、文档 14 项及两项 Clippy 门禁全部通过，20 个 Buck 测试目标全绿。真实评论链再次读回 60 条一般评论和 60 条行内评论。
