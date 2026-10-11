@@ -47,7 +47,7 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | --- | --- |
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
 | `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架两家工种；为写入启动合成凭据隔离规则 |
-| `src/codex.rs` | 每个选入记录一个常驻 app-server；只读用 Unix listener，写入用独立鉴权 WebSocket；`turn/start` 交正文，pane 展示同一原生线程 |
+| `src/codex.rs` | 每个选入记录一个常驻 app-server；两种模式都用独立鉴权的本机 WebSocket；`turn/start` 交正文，pane 展示同一原生线程 |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
 | `src/write.rs` | 按 Bundle / Spec 核写边界，调用 P1 materialize 与公开 repo seal，保全副本、失败重试并交 ChangeSet 输出 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
@@ -77,7 +77,7 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 人在 pane 里操作的限制（#362 第三轮实测）：两次派工之间敲 `!` 命令照常执行，不影响下一次派工。敲普通的话会被会话插件挡掉，界面有提示。`/clear` 会换原生会话号，下一次派工失败一次；再下一次续接回的是清空之前的对话。派工正在回答时敲普通的话，会让当前派工以 `STANDBY_PROMPT_MISMATCH` 失败，回答丢失。这不是终端接管能力；接管做出来之前，派工期间不要动那个 pane，也不要在其中用 `/clear`。
 
-Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次，监听放在 Herdr 套接字同一私有目录里的 `codex-*.sock`，命令是 `app-server --listen unix://…`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `sandbox: read-only` 与 `approvalPolicy: never`，不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
+Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次。Codex 0.161 的 Unix 监听会去准备 `/tmp/codex-daemon-<uid>`，Landlock 不允许 `/tmp`，所以只读和写入都改听带 capability token 的 `ws://127.0.0.1`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `approvalPolicy: never`。只读的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`：Codex 自己的 bubblewrap 在这层 Landlock 里建不起用户名字空间，命令由宿主边界执行，不把网络记成已切断。写入 turn 仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
 
 人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
 
@@ -85,7 +85,9 @@ Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。�
 
 两家写 Spec 必须同时交 `write_lease` 与 `review_publish_policy`，授权 `context.read / git.write`，并从 Bundle 的 required `write-boundary/<owner.id>` 交本机 Repo 路径、目标正文、ChangeSet、基线、租约和完整发布目标。Agency 核持有者、代次、Repo / 基线和规范摘要，再调用 `hctl2-tool worktree materialize --repo ... --root ... --change-set-ref ... --baseline ...`；工作树为 Agency 私有 `<root>/<ChangeSet>`，一个 ChangeSet 一个副本，撤销不删除。保留副本可以 detach，身份仍须与冻结基线和源 Repo 相符。
 
-harness 只编辑、测试工作文件，不获源 Git 配置、控制凭据或 gh auth，不推送，不改全局配置。Linux 由 Landlock 提供边界；macOS 只应用一层启动 profile，写入 Claude 按源 Git common dir 复用隔离实例。切 cwd / 权限或撤租约时关闭旧写进程，下次按原生会话 ID / thread 续接；只读停止与常驻行为保持原样。
+harness 只编辑、测试工作文件，不获源 Git 配置、控制凭据或 gh auth，不推送，不改全局配置。Linux 由 Landlock 提供边界；macOS 只应用一层启动 profile，写入 Claude 按源 Git common dir 复用隔离实例。只读 Codex 走同一层凭据边界，和写入一样用本机 WebSocket，不带 `danger-full-access`。它的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`。工作目录是 Agency 私有执行目录，Landlock 允许名单不包含源仓库。切 cwd / 权限或撤租约时关闭旧写进程，下次按原生会话 ID / thread 续接；只读的停止与常驻回合仍按原规则。
+
+Execution Spec 的 `isolation_effects` 只要有一项（包括 `no_network`），准备和启动都拒绝，原因码 `ISOLATION_UNAVAILABLE`，不拉起 harness。这些效果本包不施加：Landlock 不管网络，macOS profile 从 `(allow default)` 起，写入 turn 的 `externalSandbox` 仍是 `networkAccess: enabled`。派工上不把它们记成已生效。没有声明时照常启动。
 
 原生一轮完成后，Agency 保存回答并调用公开 `hctl2-tool repo seal`。Detached 副本只在 HEAD 和原生 ChangeSet 分支都仍为冻结基线时恢复原分支再封存，不放宽工具检查。工具回读基线和结果树：相同交 `no_changes`，有改动交固定 commit；输出严格按 [Repo Result Proposal schema](../crates/repo/README.md)。失败报原错误码、保留 Running / 回答 / 文件，只重试工具，不重复派工或交 Proposal。成功交回后保留 stop 句柄到原写进程实际关闭，控制面继续负责准入和发布。
 
@@ -95,13 +97,13 @@ harness 只编辑、测试工作文件，不获源 Git 配置、控制凭据或 
 
 重型用例显式声明传输预算，不把吞吐当成功条件：`port_test`、`control_port_test` 与 `herdr_test`，以及完整包测试 `root//packaging/release:room-cli-test`（安装目录用例要 catalog 整个已安装的 Herdr，Intel 发布机上超过 5 秒缺省），在 Buck 的 `env` 中声明 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS=30000`（共享常量 `HEAVY_AGENCY_RPC_ENV`，在 [`//build/rules:test_env.bzl`](../build/rules/test_env.bzl)），沿用冷会话的 30 秒就绪预算。声明覆盖测试进程内所有客户端，包括控制面保全路径自行创建的客户端。安装目录与准备核验整个 Herdr 二进制；分页用例产出两份 2 MiB 结果，收集预算按实际 RPC 预算乘以一个产出阶段加两次分页读取计算，共 90 秒。摘要、信封上限、游标与两页的断言不变，传输超时直接失败，不重试。未声明预算的生产客户端仍缺省 5 秒；`declared_request_budget_reaches_tonic_and_timeout_is_no_reply` 用被阻塞的目录查询核验调用方预算确实进入 tonic，且优先于进程预算，没有答复不被算作成功。
 
-脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
+脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。声明了隔离效果也不记成已生效，直接拒绝启动。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
 
 两边挡住凭据根的方式不一样。macOS 的 `sandbox-exec` 只拒绝凭据根，其余路径照常，所以 `--script-config` 里的程序可以放在凭据根以外的任何可执行位置，布局检查也不在 macOS 上做。Linux 的 Landlock 是允许名单：工作目录，以及 `/bin`、`/usr`、`/lib`、`/lib64`、`/etc`、`/dev`、`/proc`、`/opt`。`/dev` 和单独挂载的 `/dev/pts` 另外允许写文件和创建字符设备，pane 要读写伪终端，shell 也要把输出写到 `/dev/null`；删除和新建普通文件仍然不放行。凭据根若落在这些目录下面，这一布局无法从允许名单里挖掉，启动会被拒绝，不会把那个祖先目录放行。程序若不在这些目录里，会在 `exec` 时失败。macOS 的配置把凭据路径写成 Scheme 字面量，反斜杠会先转义，避免拒绝指到另一条路径。子进程的 stderr 接到 null，观测里看得到的是退出码；助手自己的失败原因不会进事件。限制没有完全生效时助手退出，目标程序不会启动。脚本观测带 `runtime:` 前缀，不能冒充 Agency 自己的终局事件。独立后台进程使用标准库独立进程组，不宣称已隔离整个子进程树。
 
 | CT-PARTICIPANT / CT-CONNECTION 的行 | 本包失败输入与覆盖 | 后续边界 |
 | --- | --- | --- |
-| 能力缺失、声明隔离效果 | 脚本没有 secure input / exact attach / no-network；要求后拒绝准备 | 真正隔离效果与终端等级由包 3 验 |
+| 能力缺失、声明隔离效果 | 没有 secure input / exact attach。要求 secure input 时准备拒绝，原因码 `CAPABILITY_MISSING`。要求 `no_network` 或任何隔离效果时，准备与启动都拒绝，原因码 `ISOLATION_UNAVAILABLE`，不记成已生效 | 真正的网络切断与终端等级仍未做 |
 | Skill required / digest / known | 缺 required Skill、直报摘要不一致拒绝；没有报告保持 unknown | 安装与真实核验由包 3 |
 | Spec / Bundle / Proposal 摘要与逐项授权 | 改交付字节、消费者、工种条款、输出的 Project 或授权拒绝 | 当前保全非领域准入；包 5 判迟到与取消 |
 | 错租户、旧 control writer、票据分权 | 乙读取甲派工、错密钥、旧写者输入拒绝；旧待交结果仍可取 | 本包是本机端口，远程接入待另验 |

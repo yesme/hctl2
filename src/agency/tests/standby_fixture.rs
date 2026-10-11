@@ -152,6 +152,9 @@ fn main() {
             {
                 write(root, "write-probe.json", probe);
             }
+            if let Some(probe) = write_probe::secret_probe(&text) {
+                write(root, "secret-probe.json", probe);
+            }
             let mut delivered = OpenOptions::new()
                 .create(true)
                 .append(true)

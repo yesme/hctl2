@@ -48,6 +48,74 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
     (cred, exec)
 }
 
+struct SecretSpecimen {
+    file: PathBuf,
+    tree: Option<PathBuf>,
+}
+
+impl Drop for SecretSpecimen {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.file);
+        if let Some(tree) = &self.tree {
+            let _ = std::fs::remove_dir_all(tree);
+        }
+    }
+}
+
+impl SecretSpecimen {
+    /// Linux: a sibling of the execution directory, outside the Landlock allow-list.
+    /// macOS: a file under the keyring path the profile denies. Not the login keychain.
+    fn plant(label: &str) -> Self {
+        if cfg!(target_os = "linux") {
+            let tree =
+                std::env::temp_dir().join(format!("hctl2-keyring-{label}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&tree);
+            std::fs::create_dir_all(&tree).unwrap();
+            let file = tree.join("login.keyring");
+            std::fs::write(&file, b"trial-keyring-secret").unwrap();
+            Self {
+                file,
+                tree: Some(tree),
+            }
+        } else {
+            let dir = PathBuf::from(std::env::var_os("HOME").expect("HOME"))
+                .join(".local/share/keyrings");
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = dir.join(format!("hctl2-pkg9-{label}-{}.keyring", std::process::id()));
+            std::fs::write(&file, b"trial-keyring-secret").unwrap();
+            Self { file, tree: None }
+        }
+    }
+}
+
+fn pane_secret_command(credential: &std::path::Path, keyring: &std::path::Path) -> String {
+    format!(
+        "cred=0\n\
+         key=0\n\
+         gh=0\n\
+         if cat '{cred}' >/dev/null 2>&1; then cred=1; fi\n\
+         if cat '{key}' >/dev/null 2>&1; then key=1; fi\n\
+         gh auth status >/dev/null 2>&1 &\n\
+         pid=$!\n\
+         n=0\n\
+         while kill -0 \"$pid\" 2>/dev/null; do\n\
+         n=$((n+1))\n\
+         if [ \"$n\" -gt 40 ]; then\n\
+         kill \"$pid\" 2>/dev/null\n\
+         wait \"$pid\"\n\
+         break\n\
+         fi\n\
+         sleep 0.1\n\
+         done\n\
+         st=0\n\
+         wait \"$pid\" || st=$?\n\
+         if [ \"$st\" -eq 0 ]; then gh=1; fi\n\
+         printf '%s%s %s %s %s\\n' HCTL2 DONE \"$cred\" \"$key\" \"$gh\"\n",
+        cred = credential.display(),
+        key = keyring.display(),
+    )
+}
+
 fn outside_credential(state: &std::path::Path, cred: &std::path::Path, exec: &std::path::Path) {
     let cred = cred.canonicalize().unwrap();
     let exec = exec.canonicalize().unwrap();
@@ -268,6 +336,35 @@ fn the_pane_cannot_read_the_credential_root() {
     assert!(text.contains("HCTL2OUTNO"));
     assert!(!text.contains("HCTL2OUTYES"));
     assert!(!text.contains("secret-credential"));
+    let _ = std::fs::remove_dir_all(&cred);
+    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
+    let (cred, exec) = scratch("secrets");
+    let cred = cred.canonicalize().unwrap();
+    let specimen = SecretSpecimen::plant("pane");
+    let server = Server::start(
+        &binary(),
+        &herdr::state_dir(&exec, &cred).unwrap(),
+        &cred,
+        &exec,
+    )
+    .unwrap();
+    let client = Client::connect(&server.socket).unwrap();
+    let command = pane_secret_command(&cred.join("pair.key"), &specimen.file);
+    assert!(
+        !command.contains("HCTL2DONE"),
+        "marker must be printed in pieces"
+    );
+    let text = herdr::run_command(&client, &exec, "secrets", &command, "HCTL2DONE").unwrap();
+    assert!(
+        text.contains("HCTL2DONE 0 0 0"),
+        "credential, keyring, and gh auth must all fail: {text}"
+    );
+    assert!(!text.contains("secret-credential"), "{text}");
+    assert!(!text.contains("trial-keyring-secret"), "{text}");
     let _ = std::fs::remove_dir_all(&cred);
     let _ = std::fs::remove_dir_all(&exec);
 }
@@ -2846,7 +2943,7 @@ fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
     .unwrap();
     assert!(
         !ps.lines()
-            .any(|line| line.contains("app-server --listen unix://") && line.contains("codex-")),
+            .any(|line| line.contains("app-server --listen ws://")),
         "app-server was still running after shutdown"
     );
 }

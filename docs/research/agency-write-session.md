@@ -96,3 +96,55 @@ OK
 Claude session `7cb61625-651b-4bd2-afcb-24181009b73a`、turn `13e923be-0670-4a5b-add6-987b04f007cb`，原生记录 `~/.claude/projects/<工作树编码>/<session>.jsonl`；封存 baseline `6e328ffe4d24741dfe96ce54a2ca8b2c890d54d2`、commit `8dc99d8493be62b1f9e8c72dbf2261df2e182a4a`。Codex thread `01a126d2-b33c-7f51-bc05-367041baa404`，原生记录 `~/.codex/sessions/2026/10/11/rollout-2026-10-11T01-18-26-01a126d2-b33c-7f51-bc05-367041baa404.jsonl`；封存 baseline `61bcf343a245d3a98d2ae7c374bb024f5ff22184`、commit `8c583056553a524c6092dab5ca4a3be5cbea74d1`。二者 Proposal 与独立工作树回读的 tree 都是 `d09eea455a0755473856dd9d89c249d6f68ca220`。
 
 Claude 原生 JSONL 中逐字比较 user 正文与插件 started.text，核原生工具的测试 OK。Codex 原生 rollout 中核 user 正文、ChangeSet / 租约 / 发布目标和 CommandExecution exit_code=0 / OK，运行时另逐字核 input_text。最终状态 ResultReturned，Proposal 的结果树与独立工作树回读相等。Claude 叙述中 Git status 的失败是隔离边界内的真实现象；Agency 在边界外的 Git 回读与 seal 成功，不能把模型对此原因的猜测当成事实。
+
+## 复核记录
+
+### 2026-10-11 · 第 9 包第 5 条：声明了 `no_network` 并没有断网
+
+Grok 第二席（Ubuntu）核对第 3f 写入路径。Codex 写入 turn 把 `sandboxPolicy` 设成 `externalSandbox`，`networkAccess` 为 `enabled`。macOS profile 从 `(allow default)` 起。Linux 助手固定 Landlock ABI V1，只处理文件系统访问。工种名册的 `isolation_effects` 是空的，准备阶段会因名册里没有这个字符串而给出 `CAPABILITY_MISSING`；`InstalledHerdr::start` 不经过 `fulfills`。名册若写上 `no_network`，进程仍会带着网络启动。
+
+本包不把网络说成已经切断。更高 ABI 的 Landlock 才有 TCP bind/connect 规则，这里没有套用；macOS 的 `(deny network*)` 会碰到 Codex 写入用的本机 WebSocket 和模型 API，和声明的 `no_network` 不是同一件事。任何已声明的隔离效果，包括 `no_network` 和未知名字，在准备和启动前拒绝，原因码 `ISOLATION_UNAVAILABLE`，恢复动作 `drop_unenforceable_isolation`。不拉起 harness。派工记录清掉这些效果，避免把未施加的承诺记成已生效。没有声明时照常启动。
+
+只读 Codex 改为走同一层操作系统凭据边界，仍用 Unix 套接字和 `read-only`，不传 `danger-full-access`，也不把 `networkAccess` 设成 `enabled`。Herdr 每次启动都写上钥匙串和 `gh` 的文件拒绝；Linux 上该函数是空操作，边界仍是允许名单。没有改 Herdr 制品或协议，没有改 `~/.codex` 或 `~/.claude`。
+
+Ubuntu 本机实测，Build `81fb6595-d84d-4d14-a9ce-6a2e7e4537a2`：
+
+```text
+write_session_test: 5 passed; 0 failed; 2 ignored; 203.35s
+codex_fixture_test: 8 passed; 0 failed; 29.0s
+herdr_test: 53 passed; 0 failed; 7 ignored; 178.68s
+unit_test: 17 passed; 0 failed
+runtime_test: 7 passed; 0 failed
+cli_test: 1 passed; 0 failed
+port_test: 26 passed; 0 failed; 17.43s
+control_port_test: 31 passed; 0 failed; 86.83s
+Tests finished: Pass 8. Fail 0.
+```
+
+两家写入沿既有探针拒读凭据根、Linux keyring 试件和 `gh auth`。只读补了同一组：Claude 走 Herdr pane，与 Claude 进程同一 Landlock；Codex 走受限制的 app-server 夹具。pane 里的 `gh auth status` 限时等待后仍非成功。macOS 的 profile 规则和钥匙串路径在同一份代码里。本席没有在 macOS 上跑，这一半记为推断，不把 Ubuntu 夹具当成 macOS keychain 实测。
+
+把 `reject_unenforceable_isolation` 改成始终成功后，Build `3ddf0798-c095-4d05-8df8-815bb181184c`：`unit_test` 与 `codex_fixture_test` 各 0 passed、1 failed。前者对 `Ok` 调用 `unwrap_err`，后者报告 `declared no_network must not start`。恢复原函数后 Build `86296dfe-763c-48e6-a45e-77035e1b819b` 这两条重新通过。退回版本未提交。
+
+Clippy Build `a377b543-c261-4725-8758-2a0affd6d60f`：12 份报告全为空。文档链接 Build `4c97f2e9-6d08-4150-bc00-d39f64d1f58a`：`check_links: OK (163 markdown files)`。真实登录会话没有重跑。
+
+### 2026-10-11 · 只读 Codex 在 Landlock 里跑不了 bubblewrap
+
+上一节写的「只读仍用 Unix 套接字和 `read-only`」在 Codex 0.161.0、本机内核 7.0.0-34-generic 上不成立。评审要求二选一：真登录跑一条 shell 并读 exit code，或者只读也改 `externalSandbox` 且不开网络。选了后者。
+
+Landlock 施加 `no_new_privs` 之后，用户名字空间不可用。`/usr/bin/bwrap` 在边界外能跑完；同一只 `--confine` 助手里，`bwrap` 立刻失败：`bwrap: setting up uid map: Permission denied`，退出码 1。同一助手里直接跑 `/bin/sh` 可以打印输出，写兄弟目录被拒绝。所以只读 turn 若仍把 `sandboxPolicy` 设成 `readOnly`，命令跑不起来。本席没有再花一轮模型去证明这条。
+
+只读 `turn/start` 改为 `externalSandbox`，`networkAccess` 为 `restricted`。写入仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。线程沙箱仍是写入 `danger-full-access`、只读 `read-only`。只读不传 `sandbox_mode="danger-full-access"`。`restricted` 不是已经切断的网络，派工记录也不把它写成 `no_network`。只读的工作目录是 Agency 私有执行目录，Landlock 允许名单不包含源仓库。夹具在 Linux 上断言只读派工写不进源仓库；macOS 的 `(allow default)` 挡的是凭据根，不挡源仓库，这一半记为推断。
+
+夹具 Build `70726a26-51a8-447b-b4d0-1d5d61f46aca`：`codex_fixture_test` 9 passed（含 `codex_read_only_cannot_write_the_source_repo`），`write_session_test` 5 passed、2 ignored。
+
+改完之后重跑 #417 的 `live_codex_dispatch_returns_one_answer_to_the_room`（`HCTL2_CODEX_LIVE=1`，ignored / UNVERIFIED，一条真实登录）。前三次是红的，原因都不是「模型拒绝回答」：
+
+- Build `4f53dabc-25a6-446d-b1ce-7b258ee4b515`：40 秒就绪预算耗在调试构建对 279MB Codex 二进制做进程内 SHA-256 上，服务还没听套接字，stderr 是空的。
+- Build `232e6993-c82f-4db3-a68c-3962a1e836c3`：进程就绪了，`profession.accept` 再调 `catalog`。调试构建每次请求都重算约 29MB 的 Herdr 摘要，超过客户端 5 秒，返回 `AGENCY_RESPONSE_UNKNOWN` / `The operation was cancelled`。
+- 摘要改成超过 1 MiB 走平台工具（Linux `/usr/bin/sha256sum`，macOS `/usr/bin/shasum -a 256`），Herdr 摘要在打开时算一次之后复用。本席没有在 macOS 上跑 `shasum` 这条路径，记为推断。边界外计时：就绪 22 秒，随后两次 `status` 约 0.03 秒和 0.02 秒。Build `80b35907-3284-4c1a-9591-451781fe935d`。单元测试 `large_file_digest_matches_in_process_sha256` 在 Build `528d7d34` 通过。没有为此重跑整个 agency 包。
+- Build `98b099a2-1d73-4a01-bcb2-36bcd54bdb6f`：派工状态 `failed`，原因是 Agency cannot fulfill this dispatch。`app-server.err` 先记 bubblewrap 需要用户名字空间，随后 `Error: Permission denied (os error 13)`。Codex 0.161 的 Unix 监听会 `canonicalize("/tmp")` 并准备 `/tmp/codex-daemon-<uid>`。允许名单不含 `/tmp`。同一限制下改听 `ws://127.0.0.1` 后，进程约 2 秒开始监听；那行 bubblewrap 日志不是退出原因。
+
+只读和写入因此都用带 capability token 的本机 WebSocket。只读的 `networkAccess` 仍是 `restricted`。Build `37dd2e61-333c-4f84-ba87-73ffac4fce5f`：`unit_test` 18 passed，`codex_fixture_test` 9 passed，`write_session_test` 5 passed、2 ignored。
+
+第四次真实登录，Build `2073c38c-23d8-4edb-86ff-367939fea04e`：`room-cli-test` 1 passed，57.98 秒。rollout 文件名 `rollout-2026-10-11T08-09-22-01a1284a-eddc-7f72-868b-faae04de6543.jsonl`。这条用例证明回答回到了 Room，并且 rollout 里的 `input_text` 与任务正文一致。它不执行 shell，也不证明某条命令的 exit code。仍是 ignored / UNVERIFIED，一次真实登录。
+

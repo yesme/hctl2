@@ -14,7 +14,7 @@ use std::{
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    os::unix::{net::UnixStream, process::CommandExt},
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
@@ -326,6 +326,9 @@ fn run_job(
     live: &mut Option<Live>,
     job: &Job,
 ) -> Result<()> {
+    crate::confine::reject_unenforceable_isolation(
+        &job.spec.document.required_capabilities.isolation_effects,
+    )?;
     if job.token.cancelled.load(Ordering::SeqCst) || stopped.load(Ordering::SeqCst) {
         let _ = job.tx.send(RuntimeEvent::TurnStopped {
             requested_stop: true,
@@ -344,7 +347,7 @@ fn run_job(
     let cwd = job.copy.as_ref().map_or(env.cwd, |copy| copy.cwd.as_path());
     if live
         .as_ref()
-        .is_some_and(|s| s.cwd != cwd || s.confined != job.copy.is_some())
+        .is_some_and(|s| s.cwd != cwd || s.writing != job.copy.is_some())
     {
         live.as_mut().expect("live Codex").close()?;
         *live = None;
@@ -355,7 +358,8 @@ fn run_job(
             cwd,
             env.dir,
             env.socket,
-            job.copy.as_ref().map(|_| job.credential_root.as_path()),
+            &job.credential_root,
+            job.copy.is_some(),
         )?;
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
@@ -493,12 +497,12 @@ struct Live {
     rpc: Rpc,
     socket: PathBuf,
     remote: String,
-    auth: Option<String>,
+    auth: String,
     thread: String,
     resumed_existing: bool,
     pane: Option<Pane>,
     closed: bool,
-    confined: bool,
+    writing: bool,
     cwd: PathBuf,
 }
 
@@ -513,39 +517,35 @@ impl Live {
         cwd: &Path,
         dir: &Path,
         socket: &Path,
-        credential_root: Option<&Path>,
+        credential_root: &Path,
+        writing: bool,
     ) -> Result<(Self, bool, bool)> {
         let _ = fs::remove_file(socket);
         let log = crate::storage::private_file(&dir.join("app-server.err"))?;
-        let address = if credential_root.is_some() {
-            Some(TcpListener::bind("127.0.0.1:0")?.local_addr()?)
-        } else {
-            None
-        };
-        let auth = address
-            .map(|_| agency_proto::client::new_credential())
-            .transpose()?;
-        let remote = address.map_or_else(
-            || format!("unix://{}", socket.display()),
-            |address| format!("ws://{address}"),
-        );
+        // Codex 0.161's unix listener canonicalizes /tmp and prepares
+        // /tmp/codex-daemon-<uid>. Landlock does not allow /tmp, so that
+        // listener exits before a turn. Both modes use a localhost socket.
+        // Read-only still does not pass danger-full-access or enable network.
+        let address = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
+        let auth = agency_proto::client::new_credential()?;
+        let remote = format!("ws://{address}");
         let mut args = listen_args(socket);
-        if let Some(auth) = &auth {
-            args[2] = remote.clone();
-            args.extend([
-                "--ws-auth".into(),
-                "capability-token".into(),
-                "--ws-token-sha256".into(),
-                hash(auth.as_bytes()),
-            ]);
-        }
-        let mut child = if let Some(credential_root) = credential_root {
-            crate::confine::harness_command(codex, &args, cwd, dir, socket, credential_root)?
-        } else {
-            let mut child = Command::new(codex);
-            child.args(args);
-            child
-        };
+        args[2] = remote.clone();
+        args.extend([
+            "--ws-auth".into(),
+            "capability-token".into(),
+            "--ws-token-sha256".into(),
+            hash(auth.as_bytes()),
+        ]);
+        let mut child = crate::confine::harness_command(
+            codex,
+            &args,
+            cwd,
+            dir,
+            socket,
+            credential_root,
+            writing,
+        )?;
         child
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
@@ -553,15 +553,7 @@ impl Live {
             .current_dir(cwd)
             .process_group(0);
         let mut child = child.spawn()?;
-        let rpc = if let Some(address) = address {
-            wait_tcp(
-                address,
-                auth.as_deref().expect("write listener token"),
-                &mut child,
-            )?
-        } else {
-            wait_socket(socket, &mut child)?
-        };
+        let rpc = wait_tcp(address, &auth, &mut child)?;
         let saved = read_thread(dir)?;
         let mut live = Self {
             child,
@@ -573,7 +565,7 @@ impl Live {
             resumed_existing: false,
             pane: None,
             closed: false,
-            confined: credential_root.is_some(),
+            writing,
             cwd: cwd.to_path_buf(),
         };
         let attached = (|| {
@@ -590,7 +582,7 @@ impl Live {
             }
             let started = live.rpc.request(
                 "thread/start",
-                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": if credential_root.is_some() { "danger-full-access" } else { "read-only" }}),
+                json!({"cwd": cwd, "approvalPolicy": "never", "sandbox": if writing { "danger-full-access" } else { "read-only" }}),
             )?;
             let id = started["thread"]["id"]
                 .as_str()
@@ -612,18 +604,23 @@ impl Live {
     }
 
     fn turn_start(&mut self, text: &str, cwd: Option<&Path>) -> Result<String> {
+        let writing = cwd.is_some();
         let mut params = json!({
             "threadId": self.thread,
             "approvalPolicy": "never",
-            "sandboxPolicy": {"type": "readOnly"},
             "input": [{"type": "text", "text": text}],
         });
         if let Some(cwd) = cwd {
             params["cwd"] = json!(cwd);
-            // Native bubblewrap cannot mount inside an inherited Landlock ruleset.
-            // app-server explicitly supports a sandbox supplied by its host.
-            params["sandboxPolicy"] = json!({"type":"externalSandbox", "networkAccess":"enabled"});
         }
+        // Bubblewrap cannot create a user namespace inside this Landlock
+        // (`uid_map` EPERM), so a readOnly policy cannot run a command.
+        // The host allow-list is the filesystem boundary. Read-only does not
+        // grant network; a write turn still reaches the model API.
+        params["sandboxPolicy"] = json!({
+            "type": "externalSandbox",
+            "networkAccess": if writing { "enabled" } else { "restricted" },
+        });
         let turn = self.rpc.request("turn/start", params)?;
         turn["turn"]["id"]
             .as_str()
@@ -666,7 +663,7 @@ impl Live {
             dir,
             &self.thread,
             &self.remote,
-            self.auth.as_deref(),
+            Some(self.auth.as_str()),
         )?);
         Ok(())
     }
@@ -804,35 +801,13 @@ fn wait_tcp(address: SocketAddr, auth: &str, child: &mut Child) -> Result<Rpc> {
             ));
         }
         if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_millis(100)) {
-            return Rpc::upgrade(Stream::Tcp(stream), Some(auth));
+            return Rpc::upgrade(stream, Some(auth));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
     Err(PortError::new(
         "CODEX_APP_SERVER_EXITED",
         "app-server did not start listening",
-        "inspect_app_server_log",
-    ))
-}
-
-fn wait_socket(socket: &Path, child: &mut Child) -> Result<Rpc> {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if socket.exists() {
-            return Rpc::connect(socket);
-        }
-        if child.try_wait()?.is_some() {
-            return Err(PortError::new(
-                "CODEX_APP_SERVER_EXITED",
-                "app-server exited before its socket appeared",
-                "inspect_app_server_log",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    Err(PortError::new(
-        "CODEX_APP_SERVER_EXITED",
-        "app-server did not open its socket",
         "inspect_app_server_log",
     ))
 }
@@ -960,59 +935,14 @@ fn input_text_eq(value: &Value, text: &str) -> bool {
     false
 }
 
-enum Stream {
-    Unix(UnixStream),
-    Tcp(TcpStream),
-}
-impl Stream {
-    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.set_read_timeout(timeout),
-            Self::Tcp(s) => s.set_read_timeout(timeout),
-        }
-    }
-    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.set_write_timeout(timeout),
-            Self::Tcp(s) => s.set_write_timeout(timeout),
-        }
-    }
-}
-impl Read for Stream {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Unix(s) => s.read(bytes),
-            Self::Tcp(s) => s.read(bytes),
-        }
-    }
-}
-impl Write for Stream {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Unix(s) => s.write(bytes),
-            Self::Tcp(s) => s.write(bytes),
-        }
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.flush(),
-            Self::Tcp(s) => s.flush(),
-        }
-    }
-}
-
 struct Rpc {
-    stream: Stream,
+    stream: TcpStream,
     buf: Vec<u8>,
     next: u64,
 }
 
 impl Rpc {
-    fn connect(path: &Path) -> Result<Self> {
-        Self::upgrade(Stream::Unix(UnixStream::connect(path)?), None)
-    }
-
-    fn upgrade(mut stream: Stream, auth: Option<&str>) -> Result<Self> {
+    fn upgrade(mut stream: TcpStream, auth: Option<&str>) -> Result<Self> {
         stream.set_read_timeout(Some(Duration::from_secs(20)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         let key = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -1191,7 +1121,7 @@ impl Rpc {
     }
 }
 
-fn read_some(stream: &mut Stream, buf: &mut [u8]) -> std::io::Result<usize> {
+fn read_some(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<usize> {
     match stream.read(buf) {
         Ok(0) => Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
