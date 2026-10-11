@@ -108,8 +108,8 @@ test_dependency_package() {
 
     verify_archive_sidecar "$ARCHIVE"
     verify_archive_sidecar "$SOURCE_ARCHIVE"
-    run_zstd -dc "$ARCHIVE" | tar -xf - -C "$test_root"
-    run_zstd -dc "$SOURCE_ARCHIVE" | tar -xf - -C "$test_root"
+    run_zstd -dc "$ARCHIVE" | tar --ignore-zeros -xf - -C "$test_root"
+    run_zstd -dc "$SOURCE_ARCHIVE" | tar --ignore-zeros -xf - -C "$test_root"
     grep -F '# HCTL2 使用说明' "$test_root/$PACKAGE_ID/USAGE.md" >/dev/null
     grep -F "$SOURCE_PACKAGE_ID.tar.zst" "$test_root/$PACKAGE_ID/SOURCES.md" >/dev/null
     [[ -f "$test_root/$PACKAGE_ID/payload/share/hctl2/chatroom/cinny/index.html" ]] || \

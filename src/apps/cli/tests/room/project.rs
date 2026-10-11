@@ -3011,9 +3011,15 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "the dispatched invocation is listed with its state: {row:?}"
     );
     assert!(!listed.contains('\u{1b}'));
-    // The machine interface stays byte-stable where the content allows it. The
-    // program-file digest differs across OS releases; check it against the
-    // actual /bin/sh, while keeping every other field pinned to the sample.
+    // The machine interface stays byte-stable where the content allows it: the
+    // catalog is fixed by the paired fixture, so two runs must agree byte for
+    // byte and match the saved golden sample — except the digest bytes, which
+    // are the fingerprint of the program file the fixture runs. Acceptance 1's
+    // "`--json` byte-identical" compares the same environment before
+    // and after a change; a program file differs across platforms and build
+    // presets, so the golden holds a placeholder where the digest sits, and the
+    // live bytes are compared with the digest computed from the fixture's own
+    // program file at run time. Everything else stays byte for byte.
     let (ok, first, _) = f.run_raw(true, &["agency", "catalog", "local"]);
     assert!(ok);
     let (_, second, _) = f.run_raw(true, &["agency", "catalog", "local"]);
@@ -3022,14 +3028,24 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "agency catalog --json must be deterministic in one fixture"
     );
     let catalog = String::from_utf8(first).unwrap();
-    let digest = agency_proto::hash(&std::fs::read("/bin/sh").unwrap());
-    let mut expected: Value = serde_json::from_str(AGENCY_CATALOG_JSON).unwrap();
-    expected["harnesses"][0]["digest"] = json!(digest);
-    expected["professions"][0]["harness"]["digest"] = json!(digest);
-    expected["professions"][0]["reference"]["digest"] = json!(digest);
+    let program =
+        serde_json::from_slice::<Value>(&std::fs::read(f.root.join("script.json")).unwrap())
+            .unwrap()["program"]
+            .as_str()
+            .expect("the fixture names its program file")
+            .to_owned();
+    let program_digest = agency_proto::hash(&std::fs::read(&program).unwrap());
+    // The fingerprint appears as the harness digest, the profession's harness
+    // digest and its reference digest; all three cover the same program file.
     assert_eq!(
-        catalog.trim_end(),
-        serde_json::to_string(&expected).unwrap(),
+        catalog.matches(&program_digest).count(),
+        3,
+        "the catalog carries the fixture program's digest:\n{catalog}"
+    );
+    let normalized = catalog.replace(&program_digest, "FIXTURE-PROGRAM-DIGEST");
+    assert_eq!(
+        normalized.trim_end(),
+        AGENCY_CATALOG_JSON.trim_end(),
         "agency catalog --json drifted from the saved sample"
     );
     let (ok, human, _) = f.run_raw(false, &["agency", "catalog", "local"]);
@@ -3049,6 +3065,13 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
     assert!(!human.contains('\u{1b}'));
 }
 
+/// Saved `--json` sample of `agency catalog`, which needs a live Agency. The
+/// digest positions hold the `FIXTURE-PROGRAM-DIGEST` placeholder: those bytes
+/// are the fingerprint of the program file the fixture runs (`ScriptRuntime`
+/// hashes `config.program`), which is not stable across platforms or build
+/// presets. The test substitutes the digest computed from the fixture's own
+/// program file before comparing, so every other byte is still pinned.
+const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;
 /// Codex stand-in from `agency/tests/codex_fixture.rs`. It speaks app-server
 /// `turn/start`, writes a rollout whose `input_text` is that body, and answers
 /// `ANSWER`. Herdr only displays `codex resume --remote`.
@@ -3409,7 +3432,3 @@ fn value_has_input_text(value: &Value, text: &str) -> bool {
         _ => false,
     }
 }
-
-/// Captured from the pre-renderer CLI with the same fixture; pins the machine
-/// interface for `agency catalog`, which needs a live Agency.
-const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;

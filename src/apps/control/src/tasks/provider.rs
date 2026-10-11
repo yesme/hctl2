@@ -106,6 +106,14 @@ impl Client {
             "narrow_source_scope",
         ))
     }
+
+    fn issue_filter(&self) -> &'static str {
+        // GitHub's `type` names an issue type; Gitea uses it to exclude PRs.
+        match self {
+            Self::Gitea(_) => "&type=issues",
+            Self::Github { .. } => "",
+        }
+    }
     fn repository(&self, src: &Source) -> Result<Value> {
         let repo = self.required(&format!("repos/{}", src.platform.full_name))?;
         let user = self.required("user")?;
@@ -158,7 +166,8 @@ impl Client {
             vec![]
         };
         let path = format!(
-            "{base}/issues?state=all&type=issues{}",
+            "{base}/issues?state=all{}{}",
+            self.issue_filter(),
             since
                 .as_ref()
                 .map(|s| format!("&since={s}"))
@@ -337,7 +346,7 @@ impl Client {
         if e.operation == "task.create" {
             let find = || -> Result<Option<Card>> {
                 let mut matched = vec![];
-                for raw in self.list(&format!("{base}?state=all&type=issues"))? {
+                for raw in self.list(&format!("{base}?state=all{}", self.issue_filter()))? {
                     if raw.get("pull_request").is_some_and(|v| !v.is_null()) {
                         continue;
                     }

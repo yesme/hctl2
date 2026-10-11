@@ -243,3 +243,9 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 - `PUT repos/{o}/{r}/pulls/{n}/merge` 带 `merge_method: merge`、`sha`：PR #2（头 `f6d026e`）由 control 合入，合并提交 `870c03e`，回读 `main` 等于合并提交、PR `merged: true`；`hctl2-tool readback` 匿名从 `clone_url` 拉 `refs/heads/main`，`contains: true`，合并提交的父提交含 `f6d026e`。
 - 合并方式只有 merge / squash / rebase，没有精确候选的快进；`fast_forward` 策略在预览拒绝（`STRATEGY_UNSUPPORTED`）。
 - 没测：私有仓库的 Git 回读凭据（设计上走 `gh auth setup-git` 配的助手）、规则集生效时的实际响应形状（按 REST 文档的 `type` + `parameters` 写，用例用脚本化输入）。
+
+### 2026-10-11 · 第 9 包 GitHub 链的 Issue 查询参数复核
+
+真实 `task attach` 在 canary 返回 `PROVIDER_UNAVAILABLE / HTTP 422`。独立用原生 gh 回读：`GET repos/yesme/hctl2-canary/issues?state=all&type=issues&per_page=100&page=1` 返回 `Validation Failed`，错误为 `Issue / type / invalid / issues`；删除 `type=issues` 后返回 200、3 条。
+
+[GitHub List repository issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues) 的 `type` 是 issue type 名称，不是 issue 与 PR 的分类开关。GitHub 的结果仍按 `pull_request` 字段排除 PR；不发送这个过滤参数。随包 Gitea 保留它原有的 `type=issues`。修正同时覆盖全量／增量快照与创建后的关联键回读，不改分页、ETag 或准入语义。真实整链已通过：Codex 改两份 Python 代码，公开封存回读、准入、原生 gh 凭据助手推送与 PR #8、canary 检查、保护合并与 Git Receipt、Task 完成。命令与输出见 [2026-10-11 Codex / GitHub 实录](../../../.memo/log/2026-10-11-Codex-GitHub.md)；仅验证此公开 canary 的经典分支保护，不据此扩大私有仓库或规则集能力声明。

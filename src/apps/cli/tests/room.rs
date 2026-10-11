@@ -1,6 +1,8 @@
 //! Real CLI, daemon and packaged Tuwunel; the Project package adds native B1.
 #[path = "room/agency.rs"]
 mod agency;
+#[path = "room/github.rs"]
+mod github;
 #[path = "room/project.rs"]
 mod project;
 use chat::{Server, key, main_room, reference};
