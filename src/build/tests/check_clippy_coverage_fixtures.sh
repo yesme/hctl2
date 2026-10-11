@@ -170,6 +170,18 @@ reset
 sed '/^          root\/\/packaging\/release:room-cli-clippy-clean-test$/s/$/ --exclude ci:release/' "$release_workflow" >"$checkout/.github/workflows/release.yml"
 expect 'an exclusion cannot masquerade as scheduling' failure 'cannot verify Release workflow shape'
 
+# The credential path is part of the owned shape: without the env key, or
+# without the test-executor argument that forwards it, the demo3 GitHub path
+# would skip silently on every runner instead of exercising the canary.
+reset
+awk '/^          HCTL2_CANARY_GITHUB_TOKEN: / { next } { print }' \
+    "$release_workflow" >"$checkout/.github/workflows/release.yml"
+expect 'an env block without the canary key is unknown' failure 'cannot verify Release workflow shape' 'must both schedule'
+reset
+awk '/^          -- --env / { next } { print }' \
+    "$release_workflow" >"$checkout/.github/workflows/release.yml"
+expect 'dropping the test-executor credential is unknown' failure 'cannot verify Release workflow shape' 'must both schedule'
+
 # Harmless YAML changes remain unsupported, but must not be diagnosed as a
 # proven scheduling omission. Keep the narrow assertion rather than growing
 # it into another YAML parser.

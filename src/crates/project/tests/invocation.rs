@@ -2100,6 +2100,18 @@ fn unchanged_write_result_is_admitted_without_revision_or_publication_and_replay
             .has_effect(&format!("stop:{}", p.consumer.id))
             .unwrap()
     );
+    // The Room is told in one line that nothing changed, not shown the machine record.
+    let (projection, _) = e
+        .store
+        .effect(result["projection_effect"].as_str().unwrap())
+        .unwrap();
+    let body = projection.input["body"].as_str().unwrap();
+    assert!(
+        body.starts_with("Write turn returned no changes")
+            && body.contains("no new version, nothing published"),
+        "{body}"
+    );
+    assert!(!body.contains("change_set_id"), "{body}");
     assert_eq!(
         call::admit_unchanged_result(
             &mut e.store,
@@ -2114,6 +2126,16 @@ fn unchanged_write_result_is_admitted_without_revision_or_publication_and_replay
         result
     );
     assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
+    // Replaying does not project a second time.
+    assert_eq!(
+        e.store
+            .pending_effects()
+            .unwrap()
+            .iter()
+            .filter(|id| id.starts_with("projection:"))
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -2243,6 +2265,17 @@ fn write_result_and_revision_share_admission_and_completion_does_not_prove_write
     )
     .unwrap();
     assert_eq!(result["state"], "completed");
+    // The Room line names the admitted version and what happens to it next.
+    let (projection, _) = e
+        .store
+        .effect(result["projection_effect"].as_str().unwrap())
+        .unwrap();
+    let body = projection.input["body"].as_str().unwrap();
+    assert!(body.starts_with("Write admitted as version csr-"), "{body}");
+    assert!(
+        body.contains("waits for a human") || body.contains("Publishing for review is queued"),
+        "{body}"
+    );
     assert_eq!(e.store.list("changeset_revision").unwrap().len(), 1);
     assert_eq!(e.store.list("invocation_result").unwrap().len(), 1);
     let intents = e.store.list(repo::review::INTENT_KIND).unwrap();
