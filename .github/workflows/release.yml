@@ -245,22 +245,42 @@ jobs:
       # room-cli-clippy-clean-test is the gate over room-cli's clippy report:
       # the clippy run writes that report and succeeds either way, so without
       # the test a diagnostic in it would never fail anything.
+      # demo3-unpack-test pins the streaming unpack both demo3 paths share, on
+      # fixtures of a few hundred bytes rather than on the payload.
+      # demo3's two paths drive the packaged services and a script Agency
+      # through `hctl2 --json` only. The canary credential reaches the test the
+      # way buck2 documents for exactly this (`buck2 test //foo:bar -- --env
+      # PRIVATE_KEY=123`): a test-executor argument, so it is not part of any
+      # action key and tests do not execute on RE. Absent or empty, the GitHub
+      # path prints a SKIP and passes, which is the branch a fork's PR takes.
       - name: Test complete offline install and lifecycle (fast zstd preset)
         if: ${{ github.event_name == 'pull_request' }}
+        env:
+          HCTL2_CANARY_GITHUB_TOKEN: ${{ secrets.HCTL2_CANARY_GITHUB_TOKEN }}
         run: >-
           ./buck2 test --build-default-info root//packaging/release:complete-test
           root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           root//packaging/release:room-cli-clippy-clean-test
+          root//packaging/release:demo3-unpack-test
+          root//packaging/release:demo3-gitea-test
+          root//packaging/release:demo3-github-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
           --config hctl2.zstd_preset=fast
+          -- --env "HCTL2_DEMO3_GITHUB_TOKEN=${HCTL2_CANARY_GITHUB_TOKEN}"
 
       - name: Test complete offline install and lifecycle
         if: ${{ github.event_name != 'pull_request' }}
+        env:
+          HCTL2_CANARY_GITHUB_TOKEN: ${{ secrets.HCTL2_CANARY_GITHUB_TOKEN }}
         run: >-
           ./buck2 test --build-default-info root//packaging/release:complete-test
           root//packaging/release:room-cli-test root//packaging/release:room-cli-clippy
           root//packaging/release:room-cli-clippy-clean-test
+          root//packaging/release:demo3-unpack-test
+          root//packaging/release:demo3-gitea-test
+          root//packaging/release:demo3-github-test
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
+          -- --env "HCTL2_DEMO3_GITHUB_TOKEN=${HCTL2_CANARY_GITHUB_TOKEN}"
 
       - name: Stop Buck2 action cache
         if: always()

@@ -286,6 +286,10 @@ enum ArchiveCommand {
         #[arg(long, requires = "discard_unarchived")]
         confirm_discard: Option<String>,
 
+        /// Refuse removal if the ChangeSet now resolves to a different worktree.
+        #[arg(long)]
+        expected_worktree: Option<PathBuf>,
+
         /// Refuse salvage-removal when ignored files are present.
         #[arg(long)]
         reject_ignored: bool,
@@ -458,6 +462,7 @@ pub fn run_with_env(
                 change_set_ref,
                 discard_unarchived,
                 confirm_discard,
+                expected_worktree,
                 reject_ignored,
             } => {
                 worktree::validate_change_set_ref(&change_set_ref)?;
@@ -468,6 +473,7 @@ pub fn run_with_env(
                         change_set_ref,
                         discard_unarchived,
                         confirm_discard,
+                        expected_worktree,
                         reject_ignored,
                     )
                 })

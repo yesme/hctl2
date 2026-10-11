@@ -67,6 +67,7 @@ rust_test(
         "CARGO_BIN_EXE_hctl2": "$(location :hctl2)",
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
+        "HCTL2_TEST_TOOL": "$(location root//apps/tool:hctl2-tool)",
     },
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
@@ -88,6 +89,7 @@ filegroup(
 export_file(name = "room_cli_source", src = "tests/room.rs", visibility = ["PUBLIC"])
 export_file(name = "project_cli_source", src = "tests/room/project.rs", visibility = ["PUBLIC"])
 export_file(name = "agency_cli_source", src = "tests/room/agency.rs", visibility = ["PUBLIC"])
+export_file(name = "github_cli_source", src = "tests/room/github.rs", visibility = ["PUBLIC"])
 rust_test(
     name = "task_cli_test",
     srcs = ["tests/task.rs"],

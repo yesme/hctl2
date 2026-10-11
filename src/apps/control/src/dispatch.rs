@@ -1,6 +1,7 @@
 //! Room Invocation orchestration. Provider I/O is never inside a Store transaction.
 mod context;
 mod recovery;
+mod review_source;
 mod write;
 use crate::services::Supervisor;
 use participant::{decode, invalid, key, reference, reject};

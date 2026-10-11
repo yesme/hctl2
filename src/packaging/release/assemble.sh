@@ -85,7 +85,7 @@ validate_archive_layout() {
             "$expected_root" | "$expected_root"/*) ;;
             *) die "archive entry is outside $expected_root: $entry" ;;
         esac
-    done < <(run_zstd -dc "$archive" | tar -tf -)
+    done < <(run_zstd -dc "$archive" | tar --ignore-zeros -tf -)
 }
 
 format_spdx_time() {
@@ -201,7 +201,7 @@ case "$build_dir" in
     *) die "unsafe release build directory: $build_dir" ;;
 esac
 trap 'find "${build_dir:?}" -depth -delete' EXIT
-run_zstd -dc "$dependencies_archive" | tar -xf - -C "$build_dir"
+run_zstd -dc "$dependencies_archive" | tar --ignore-zeros -xf - -C "$build_dir"
 package_root="$build_dir/$package_id"
 payload_root="$package_root/payload"
 
