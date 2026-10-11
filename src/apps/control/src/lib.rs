@@ -20,6 +20,7 @@ mod service;
 mod services;
 mod socket;
 mod tasks;
+mod test_seams;
 
 pub use chat::MatrixClient;
 pub use identity::owner_actor;

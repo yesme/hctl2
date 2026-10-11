@@ -583,6 +583,17 @@ fn publish(
         })?;
     }
 
+    // 测试缝（第 9 包验收第 4 条）：分支已推送并确认，平台还没被问过评审请求——与平台失联
+    // 时同形状的 Unknown。标记删掉后，下面这段照既有路径回读分支、只建一条请求。
+    if crate::test_seams::held("hold-publish-after-push") {
+        return Ok(Some(Outcome::Unknown(Attention {
+            code: "PLATFORM_UNAVAILABLE".into(),
+            message: "the platform was not asked for the review request".into(),
+            recovery_action: "retry_same_intent_when_platform_is_up".into(),
+            details: json!({"test_seam": "hold-publish-after-push"}),
+        })));
+    }
+
     // Stage 2: one review request from the branch into the target, carrying that commit.
     let base = intent.policy.policy.target_branch.clone();
     let title = format!(
