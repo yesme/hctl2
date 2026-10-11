@@ -2943,7 +2943,7 @@ fn live_codex_turn_start_matches_rollout_and_keeps_one_thread() {
     .unwrap();
     assert!(
         !ps.lines()
-            .any(|line| line.contains("app-server --listen unix://") && line.contains("codex-")),
+            .any(|line| line.contains("app-server --listen ws://")),
         "app-server was still running after shutdown"
     );
 }

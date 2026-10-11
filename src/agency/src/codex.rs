@@ -14,7 +14,7 @@ use std::{
     fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    os::unix::{net::UnixStream, process::CommandExt},
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
@@ -497,7 +497,7 @@ struct Live {
     rpc: Rpc,
     socket: PathBuf,
     remote: String,
-    auth: Option<String>,
+    auth: String,
     thread: String,
     resumed_existing: bool,
     pane: Option<Pane>,
@@ -522,31 +522,21 @@ impl Live {
     ) -> Result<(Self, bool, bool)> {
         let _ = fs::remove_file(socket);
         let log = crate::storage::private_file(&dir.join("app-server.err"))?;
-        // The write turn's bubblewrap cannot mount inside Landlock, so that
-        // path uses a localhost socket. Read-only stays on the unix socket and
-        // still runs inside the credential boundary.
-        let address = if writing {
-            Some(TcpListener::bind("127.0.0.1:0")?.local_addr()?)
-        } else {
-            None
-        };
-        let auth = address
-            .map(|_| agency_proto::client::new_credential())
-            .transpose()?;
-        let remote = address.map_or_else(
-            || format!("unix://{}", socket.display()),
-            |address| format!("ws://{address}"),
-        );
+        // Codex 0.161's unix listener canonicalizes /tmp and prepares
+        // /tmp/codex-daemon-<uid>. Landlock does not allow /tmp, so that
+        // listener exits before a turn. Both modes use a localhost socket.
+        // Read-only still does not pass danger-full-access or enable network.
+        let address = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
+        let auth = agency_proto::client::new_credential()?;
+        let remote = format!("ws://{address}");
         let mut args = listen_args(socket);
-        if let Some(auth) = &auth {
-            args[2] = remote.clone();
-            args.extend([
-                "--ws-auth".into(),
-                "capability-token".into(),
-                "--ws-token-sha256".into(),
-                hash(auth.as_bytes()),
-            ]);
-        }
+        args[2] = remote.clone();
+        args.extend([
+            "--ws-auth".into(),
+            "capability-token".into(),
+            "--ws-token-sha256".into(),
+            hash(auth.as_bytes()),
+        ]);
         let mut child = crate::confine::harness_command(
             codex,
             &args,
@@ -563,15 +553,7 @@ impl Live {
             .current_dir(cwd)
             .process_group(0);
         let mut child = child.spawn()?;
-        let rpc = if let Some(address) = address {
-            wait_tcp(
-                address,
-                auth.as_deref().expect("write listener token"),
-                &mut child,
-            )?
-        } else {
-            wait_socket(socket, &mut child)?
-        };
+        let rpc = wait_tcp(address, &auth, &mut child)?;
         let saved = read_thread(dir)?;
         let mut live = Self {
             child,
@@ -681,7 +663,7 @@ impl Live {
             dir,
             &self.thread,
             &self.remote,
-            self.auth.as_deref(),
+            Some(self.auth.as_str()),
         )?);
         Ok(())
     }
@@ -819,35 +801,13 @@ fn wait_tcp(address: SocketAddr, auth: &str, child: &mut Child) -> Result<Rpc> {
             ));
         }
         if let Ok(stream) = TcpStream::connect_timeout(&address, Duration::from_millis(100)) {
-            return Rpc::upgrade(Stream::Tcp(stream), Some(auth));
+            return Rpc::upgrade(stream, Some(auth));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
     Err(PortError::new(
         "CODEX_APP_SERVER_EXITED",
         "app-server did not start listening",
-        "inspect_app_server_log",
-    ))
-}
-
-fn wait_socket(socket: &Path, child: &mut Child) -> Result<Rpc> {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while Instant::now() < deadline {
-        if socket.exists() {
-            return Rpc::connect(socket);
-        }
-        if child.try_wait()?.is_some() {
-            return Err(PortError::new(
-                "CODEX_APP_SERVER_EXITED",
-                "app-server exited before its socket appeared",
-                "inspect_app_server_log",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    Err(PortError::new(
-        "CODEX_APP_SERVER_EXITED",
-        "app-server did not open its socket",
         "inspect_app_server_log",
     ))
 }
@@ -975,59 +935,14 @@ fn input_text_eq(value: &Value, text: &str) -> bool {
     false
 }
 
-enum Stream {
-    Unix(UnixStream),
-    Tcp(TcpStream),
-}
-impl Stream {
-    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.set_read_timeout(timeout),
-            Self::Tcp(s) => s.set_read_timeout(timeout),
-        }
-    }
-    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.set_write_timeout(timeout),
-            Self::Tcp(s) => s.set_write_timeout(timeout),
-        }
-    }
-}
-impl Read for Stream {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Unix(s) => s.read(bytes),
-            Self::Tcp(s) => s.read(bytes),
-        }
-    }
-}
-impl Write for Stream {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        match self {
-            Self::Unix(s) => s.write(bytes),
-            Self::Tcp(s) => s.write(bytes),
-        }
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        match self {
-            Self::Unix(s) => s.flush(),
-            Self::Tcp(s) => s.flush(),
-        }
-    }
-}
-
 struct Rpc {
-    stream: Stream,
+    stream: TcpStream,
     buf: Vec<u8>,
     next: u64,
 }
 
 impl Rpc {
-    fn connect(path: &Path) -> Result<Self> {
-        Self::upgrade(Stream::Unix(UnixStream::connect(path)?), None)
-    }
-
-    fn upgrade(mut stream: Stream, auth: Option<&str>) -> Result<Self> {
+    fn upgrade(mut stream: TcpStream, auth: Option<&str>) -> Result<Self> {
         stream.set_read_timeout(Some(Duration::from_secs(20)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         let key = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -1206,7 +1121,7 @@ impl Rpc {
     }
 }
 
-fn read_some(stream: &mut Stream, buf: &mut [u8]) -> std::io::Result<usize> {
+fn read_some(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<usize> {
     match stream.read(buf) {
         Ok(0) => Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
