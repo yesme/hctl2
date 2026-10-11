@@ -1,5 +1,6 @@
 load("//build/rules:ci.bzl", "CI_FAST")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+load("//build/rules:test_env.bzl", "HEAVY_AGENCY_RPC_ENV")
 oncall("hctl2")
 
 # Export this package's Markdown; the root glob stops at BUCK boundaries.
@@ -37,11 +38,6 @@ CLI_DEPS = [
     "root//third-party/rust:serde_json",
     "root//third-party/rust:tokio",
 ]
-
-# Full parallel functional tests hash the installed Herdr and page two 2 MiB
-# outputs. Reuse the cold-session readiness budget for every client, including
-# clients created inside control's preservation path. Not a dispatch deadline.
-HEAVY_RPC_ENV = {"HCTL2_AGENCY_REQUEST_TIMEOUT_MS": "30000"}
 
 rust_library(
     name = "service",
@@ -119,7 +115,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -131,7 +127,7 @@ rust_test(
     deps = [":service"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
         "HCTL2_LOCKED_HERDR": select({
@@ -171,7 +167,8 @@ rust_test(
 
 rust_binary(
     name = "codex_fixture",
-    srcs = ["tests/codex_fixture.rs"],
+    visibility = ["root//packaging/release:room-cli-test"],
+    srcs = ["tests/codex_fixture.rs", "tests/write_probe.rs"],
     crate_root = "tests/codex_fixture.rs",
     deps = ["root//third-party/rust:serde_json"],
     edition = HCTL2_RUST_EDITION,
@@ -180,10 +177,35 @@ rust_binary(
     labels = CI_FAST,
 )
 
+rust_test(
+    name = "write_session_test",
+    srcs = ["tests/write_session.rs"],
+    crate_root = "tests/write_session.rs",
+    deps = [":service", "root//crates/repo:repo"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
+        "CODEX_HOME": "/tmp/hctl2-write-session-fixture-home",
+        "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
+        "HCTL2_CONFINE_BIN": "$(location :agency)",
+        "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
+        "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
+        "HCTL2_LOCKED_HERDR": select({
+            "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
+            "prelude//os:macos": select({
+                "prelude//cpu:arm64": "$(location root//packaging/dependencies:asset_macos_arm64_herdr)",
+                "prelude//cpu:x86_64": "$(location root//packaging/dependencies:asset_macos_x86_64_herdr)",
+            }),
+        }),
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
 rust_binary(
     name = "standby_fixture",
     visibility = ["root//packaging/release:room-cli-test"],
-    srcs = ["tests/standby_fixture.rs"],
+    srcs = ["tests/standby_fixture.rs", "tests/write_probe.rs"],
     crate_root = "tests/standby_fixture.rs",
     deps = ["root//third-party/rust:serde_json"],
     edition = HCTL2_RUST_EDITION,
@@ -200,7 +222,7 @@ rust_test(
     features = ["control_port_test"],
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    env = hctl2_cargo_env() | HEAVY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {"HCTL2_CONFINE_BIN": "$(location :agency)"},
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )
@@ -219,6 +241,7 @@ filegroup(
         "standby_fixture": ":standby_fixture[clippy.txt]",
         "codex_fixture": ":codex_fixture[clippy.txt]",
         "codex_fixture_test": ":codex_fixture_test[clippy.txt]",
+        "write_session": ":write_session_test[clippy.txt]",
     },
     labels = CI_FAST,
     visibility = ["PUBLIC"],

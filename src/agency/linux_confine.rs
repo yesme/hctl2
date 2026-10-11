@@ -134,6 +134,20 @@ fn restrict(work: &Path, credential: &Path) -> io::Result<()> {
         }
         ruleset = add(ruleset, &path, access)?;
     }
+    // Ubuntu's /etc/resolv.conf points outside /etc into /run/systemd/resolve.
+    // Grant that exact system file, never /run or the user's keyring directory.
+    for system_file in ["/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"] {
+        let file = Path::new(system_file);
+        if file.exists() {
+            let file = file.canonicalize()?;
+            if agency::confine::allowed_tree_contains_credential(&file, credential) {
+                return Err(Error::other(
+                    "system resolver file overlaps credential root",
+                ));
+            }
+            ruleset = add(ruleset, &file, read_exec)?;
+        }
+    }
     let status = ruleset.restrict_self().map_err(io_err)?;
     if !matches!(status.ruleset, RulesetStatus::FullyEnforced) {
         return Err(Error::other("landlock was not fully enforced"));
@@ -146,6 +160,13 @@ fn add(
     path: &Path,
     access: landlock::BitFlags<AccessFs>,
 ) -> io::Result<landlock::RulesetCreated> {
+    // A file rule cannot carry ReadDir/MakeDir or other directory-only rights.
+    // The native harness's state includes ~/.claude.json as a single file.
+    let access = if path.is_file() {
+        access & (AccessFs::Execute | AccessFs::ReadFile | AccessFs::WriteFile)
+    } else {
+        access
+    };
     let fd = PathFd::new(path).map_err(io_err)?;
     ruleset
         .add_rule(PathBeneath::new(fd, access))

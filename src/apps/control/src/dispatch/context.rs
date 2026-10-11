@@ -5,36 +5,6 @@ use ::context::{
     SourceKind, Sources, StoreSources,
 };
 
-/// Package 6's review source is explicit. Its platform adapter is wired in the
-/// follow-up closure PR; a selected source is never silently omitted while unavailable.
-fn review_source(
-    shared: &Shared,
-    actor: &TrustedActor,
-    preview: &invocation::Preview,
-) -> store::Result<Option<SourceContent>> {
-    let Some(revision) = &preview.input.review_change_set_revision else {
-        return Ok(None);
-    };
-    access(shared, |s| {
-        let current = s
-            .get(&revision.key)?
-            .ok_or_else(|| invalid("review version missing"))?;
-        if participant::reference(&current) != *revision {
-            return Err(reject(
-                "VERSION_CONFLICT",
-                "review version changed",
-                "rebuild_preview",
-            ));
-        }
-        let _ = actor;
-        Err(reject(
-            "REVIEW_LINE_NOT_CONFIGURED",
-            "platform review-comment adapter is not connected yet",
-            "inspect_review_on_platform",
-        ))
-    })
-}
-
 fn reference(id: String, bytes: &[u8]) -> agency_proto::FrozenRef {
     let digest = agency_proto::hash(bytes);
     agency_proto::FrozenRef {
@@ -79,7 +49,7 @@ pub(super) fn assemble(
             bytes,
         });
     }
-    if let Some(review) = review_source(shared, &scoped, preview)? {
+    if let Some(review) = review_source::read(shared, services, root, &scoped, preview)? {
         contents.push(review);
     }
     if preview.brief.is_some() || preview.input.task_id.is_some() {
@@ -132,11 +102,10 @@ pub(super) fn assemble(
         sources: contents.iter().map(|c| c.reference.clone()).collect(),
         selection_policy: policy.clone(),
         freshness: "server-ordered exact window at human preview".into(),
-        coverage: "explicit request, this Room's confirmed brief and its sources, selected Task comments and current window".into(),
+        coverage: "explicit request, this Room's confirmed brief and its sources, selected Task / ChangeSet review comments and current window".into(),
         known_gaps: vec![
             "window limited to the latest 100 server events; no inferred Task or additional Memo / Artifact"
                 .into(),
-            "platform review-comment line is not configured".into(),
         ],
         required_skills: preview.required_skills.clone(),
         permission_digest: ::context::permission_digest(&permitted),
@@ -173,6 +142,9 @@ fn kind(r: &agency_proto::FrozenRef) -> store::Result<SourceKind> {
 
 pub(super) fn verify_sources(s: &Store, actor: &TrustedActor, plan: &Plan) -> store::Result<()> {
     for r in &plan.assembly.manifest.document.sources {
+        if r.id.starts_with("review_comments/") {
+            review_source::verify(s, r)?;
+        }
         if r.id.starts_with("task_comments/")
             || r.id.starts_with("room_binding/")
             || r.id.starts_with("chat_source_reference/")

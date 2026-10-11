@@ -46,9 +46,10 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | 文件 | 当前职责 |
 | --- | --- |
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
-| `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架只读工种 |
-| `src/codex.rs` | 每个选入记录一个一次性 `codex app-server --listen unix://`；`turn/start` 交正文，pane 里 `codex resume --remote` |
+| `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架两家工种；为写入启动合成凭据隔离规则 |
+| `src/codex.rs` | 每个选入记录一个常驻 app-server；只读用 Unix listener，写入用独立鉴权 WebSocket；`turn/start` 交正文，pane 展示同一原生线程 |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
+| `src/write.rs` | 按 Bundle / Spec 核写边界，调用 P1 materialize 与公开 repo seal，保全副本、失败重试并交 ChangeSet 输出 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
 | `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
 | `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及子进程读取凭据根；Linux 二进制目录只读、可执行 |
@@ -58,7 +59,7 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.prompt` 只交本次派工的固定标记，原生插件在 `prompt.submit` 核对标记后注入冻结正文。正文不经过输入框，不变成粘贴附件或原生命令。同一选入记录复用一个会话，派工按 FIFO 逐轮执行；不同租户、Binding、Project 或选入记录不共用。复用键取这些对象的 ID，不取版本或摘要，记录更新不换会话。每轮结果按本次派工键、Spec 摘要、原生 Session ID 与 Turn ID 配对。原生插件的 `turn.complete` 给最终回答与 `answer / refusal / aborted / error`；子代理事件不算主调用结果。回答与拒绝原文交回一条 Proposal、一次 `TurnReturned`，证据为 adapter_event；错误与打断不伪报回答。不看终端空闲或进程退出判这一轮结束。
 
-本包只允许带 `context.read` 的只读 Bundle 派工，每次都重新检查自己的 Spec。工具列表为空、MCP 严格限制；不承诺访问任意工作副本或上一次派工留下的权限。写租约、评审发布策略及其余权限在本实现中拒绝，写入型调用留第 9 包。会话历史复用不证明旧授权有效。
+3d/3e 的只读路径只允许 `context.read`，工具列表为空、MCP 严格限制，每次检查本轮 Spec，不续用旧授权。带写租约的派工由下面的 3f 路径处理；未完整交付写入边界时拒绝，不用历史会话猜权限。
 
 官方 SessionStart 资产由安装器放在 Agency 私有目录，用会话级 `--settings` 引用；Claude 插件只通过 `--plugin-dir` 加载。保留用户 HOME、PATH、USER，不向 Claude 设置 `CLAUDE_CONFIG_DIR`，不复制登录材料、不直接编辑全局设置。按所有者授权，只自动确认 Agency 准备的执行目录的原生信任提示，允许 Claude 保存该目录的信任记录；不跳过工具权限检查。
 
@@ -80,11 +81,19 @@ Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。�
 
 人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
 
-工具直报、工作副本管理与模型字段仍另议。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
+### 3f · 写入型会话
+
+两家写 Spec 必须同时交 `write_lease` 与 `review_publish_policy`，授权 `context.read / git.write`，并从 Bundle 的 required `write-boundary/<owner.id>` 交本机 Repo 路径、目标正文、ChangeSet、基线、租约和完整发布目标。Agency 核持有者、代次、Repo / 基线和规范摘要，再调用 `hctl2-tool worktree materialize --repo ... --root ... --change-set-ref ... --baseline ...`；工作树为 Agency 私有 `<root>/<ChangeSet>`，一个 ChangeSet 一个副本，撤销不删除。保留副本可以 detach，身份仍须与冻结基线和源 Repo 相符。
+
+harness 只编辑、测试工作文件，不获源 Git 配置、控制凭据或 gh auth，不推送，不改全局配置。Linux 由 Landlock 提供边界；macOS 只应用一层启动 profile，写入 Claude 按源 Git common dir 复用隔离实例。切 cwd / 权限或撤租约时关闭旧写进程，下次按原生会话 ID / thread 续接；只读停止与常驻行为保持原样。
+
+原生一轮完成后，Agency 保存回答并调用公开 `hctl2-tool repo seal`。Detached 副本只在 HEAD 和原生 ChangeSet 分支都仍为冻结基线时恢复原分支再封存，不放宽工具检查。工具回读基线和结果树：相同交 `no_changes`，有改动交固定 commit；输出严格按 [Repo Result Proposal schema](../crates/repo/README.md)。失败报原错误码、保留 Running / 回答 / 文件，只重试工具，不重复派工或交 Proposal。成功交回后保留 stop 句柄到原写进程实际关闭，控制面继续负责准入和发布。
+
+`write_session_test` 从真实 RPC 核两家进程与 Git 结果；本机登录的原生会话用例默认 ignored / UNVERIFIED。实测、原生记录、macOS 限制及变异记录见 [Agency 写入会话调研](../../docs/research/agency-write-session.md)。模型字段与通用工具直报仍另议。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
 ## Buck 与 CT 对照
 
-重型端口用例显式声明传输预算，不把吞吐当成功条件：`port_test`、`control_port_test` 与 `herdr_test` 在 Buck 的 `env` 中声明 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS=30000`，沿用冷会话的 30 秒就绪预算。声明覆盖测试进程内所有客户端，包括控制面保全路径自行创建的客户端。安装目录与准备核验整个 Herdr 二进制；分页用例产出两份 2 MiB 结果，收集预算按实际 RPC 预算乘以一个产出阶段加两次分页读取计算，共 90 秒。摘要、信封上限、游标与两页的断言不变，传输超时直接失败，不重试。未声明预算的生产客户端仍缺省 5 秒；`declared_request_budget_reaches_tonic_and_timeout_is_no_reply` 用被阻塞的目录查询核验调用方预算确实进入 tonic，且优先于进程预算，没有答复不被算作成功。
+重型用例显式声明传输预算，不把吞吐当成功条件：`port_test`、`control_port_test` 与 `herdr_test`，以及完整包测试 `root//packaging/release:room-cli-test`（安装目录用例要 catalog 整个已安装的 Herdr，Intel 发布机上超过 5 秒缺省），在 Buck 的 `env` 中声明 `HCTL2_AGENCY_REQUEST_TIMEOUT_MS=30000`（共享常量 `HEAVY_AGENCY_RPC_ENV`，在 [`//build/rules:test_env.bzl`](../build/rules/test_env.bzl)），沿用冷会话的 30 秒就绪预算。声明覆盖测试进程内所有客户端，包括控制面保全路径自行创建的客户端。安装目录与准备核验整个 Herdr 二进制；分页用例产出两份 2 MiB 结果，收集预算按实际 RPC 预算乘以一个产出阶段加两次分页读取计算，共 90 秒。摘要、信封上限、游标与两页的断言不变，传输超时直接失败，不重试。未声明预算的生产客户端仍缺省 5 秒；`declared_request_budget_reaches_tonic_and_timeout_is_no_reply` 用被阻塞的目录查询核验调用方预算确实进入 tonic，且优先于进程预算，没有答复不被算作成功。
 
 脚本目录摘要覆盖程序文件字节。没有配置脚本时目录是空的。执行目录在凭据根之外，子进程再被挡住凭据根。挡住的是凭据根，不是操作系统隔离效果，目录里不记录已验证隔离。`ResultPage.complete` 只在这一页已经取到已存结果的末尾、并且派工不再处于 Running 时为真。
 

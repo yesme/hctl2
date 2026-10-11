@@ -210,6 +210,9 @@ for arg do
   previous="$arg"
   path="$arg"
 done
+case "$path" in
+ *'type=issues'*) printf 'HTTP/1.1 422 Validation Failed\n\n{"message":"Validation Failed","errors":[{"field":"type","code":"invalid","value":"issues"}]}'; exit 1 ;;
+esac
 if [ "$header" = yes ]; then
   if [ "$method" = POST ] && [ -f "$0.hide" ]; then printf 'HTTP/1.1 503 Lost Confirmation\n\n';
   elif [ "$method" = PATCH ]; then printf 'HTTP/1.1 403 Forbidden\n\n';

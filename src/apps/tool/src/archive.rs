@@ -46,6 +46,7 @@ pub(crate) fn remove(
     change_set_ref: String,
     discard_unarchived: bool,
     confirm_discard: Option<String>,
+    expected_worktree: Option<PathBuf>,
     reject_ignored: bool,
 ) -> Result<ToolOutput, ToolError> {
     if discard_unarchived {
@@ -65,6 +66,16 @@ pub(crate) fn remove(
     let repository = Repository::open(git, &repository_path)?;
     let site_lock = acquire_lock(&repository, "archive_remove", &change_set_ref)?;
     let worktree = require_worktree(git, &repository, &change_set_ref)?;
+    if expected_worktree
+        .as_deref()
+        .is_some_and(|path| path != worktree.path)
+    {
+        return Err(ToolError::not_established(
+            "HCTL2_TOOL_WORKTREE_PATH_CHANGED",
+            "ChangeSet no longer resolves to the confirmed worktree",
+        )
+        .with_recovery_action("inspect_worktree_then_retry_archive"));
+    }
     if discard_unarchived {
         discard_worktree(
             git,

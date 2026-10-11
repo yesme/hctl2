@@ -1,6 +1,7 @@
 load(":defs.bzl", "complete_release", "first_party_release")
 load("//build/rules:ci.bzl", "CI_RELEASE")
 load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+load("//build/rules:test_env.bzl", "HEAVY_AGENCY_RPC_ENV")
 
 oncall("hctl2")
 
@@ -33,7 +34,7 @@ complete_release(name = "complete")
 # This test consumes the real offline payload; keep compression/source archives out of Code CI.
 rust_test(
     name = "room-cli-test",
-    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs", "root//apps/cli:agency_cli_source": "room/agency.rs"},
+    mapped_srcs = {"root//apps/cli:room_cli_source": "room.rs", "root//apps/cli:project_cli_source": "room/project.rs", "root//apps/cli:agency_cli_source": "room/agency.rs", "root//apps/cli:github_cli_source": "room/github.rs"},
     crate_root = "room.rs",
     deps = [
         "root//apps/control:control",
@@ -44,11 +45,19 @@ rust_test(
         "root//third-party/rust:serde_json",
     ],
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env() | {
+    # The installed-payload case makes control catalog the installed Herdr, so
+    # the clients this test starts through the real CLI need the same 30 s
+    # budget the Agency port fixtures declare: on the Intel release runner the
+    # digest outruns the 5 s default and the call is cancelled (run 38030503449,
+    # job 114259063481). The declaration reaches control and agency by
+    # inheritance; no production default changes.
+    env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
         "CARGO_BIN_EXE_hctl2": "$(location root//apps/cli:hctl2)",
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
+        "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
         "HCTL2_STANDBY_FIXTURE": "$(location root//agency:standby_fixture)",
+        "HCTL2_CODEX_FIXTURE": "$(location root//agency:codex_fixture)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
         "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
     },
