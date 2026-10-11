@@ -65,6 +65,22 @@ fn paired_profile_with_budget(
     mode: &str,
     max_bytes: u64,
 ) -> (Fixture, Paired) {
+    paired_with(name, delayed_seconds, mode, max_bytes, Executor::Script)
+}
+/// Who does the turn: the script fixture, or a real Claude Code session that the
+/// packaged Agency starts from the installed `claude` with its native login (3f).
+#[derive(Clone, Copy, PartialEq)]
+enum Executor {
+    Script,
+    ClaudeCode,
+}
+fn paired_with(
+    name: &str,
+    delayed_seconds: u64,
+    mode: &str,
+    max_bytes: u64,
+    executor: Executor,
+) -> (Fixture, Paired) {
     let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let mut registration_input = json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"});
@@ -155,7 +171,7 @@ fn paired_profile_with_budget(
         json!({"program":"/bin/sh","arguments":["-c",script,"dispatch-fixture",delay]}).to_string(),
     )
     .unwrap();
-    let agency = spawn_agency(&f, "agency.log");
+    let agency = spawn_agency_as(&f, "agency.log", executor);
     let (ok, binding) = f.run(&[
         "agency",
         "pair",
@@ -169,7 +185,21 @@ fn paired_profile_with_budget(
     assert!(ok, "{binding}");
     let (ok, catalog) = f.run(&["agency", "catalog", "local"]);
     assert!(ok, "{catalog}");
-    let profession = catalog["professions"][0].clone();
+    let profession = match executor {
+        Executor::Script => catalog["professions"][0].clone(),
+        Executor::ClaudeCode => catalog["professions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["reference"]["id"] == "claude-code")
+            .unwrap_or_else(|| {
+                panic!(
+                    "UNVERIFIED: native Claude Code not cataloged: {catalog}; {}",
+                    std::fs::read_to_string(f.root.join("agency.log")).unwrap_or_default()
+                )
+            })
+            .clone(),
+    };
     let profession_reference = f.root.join("profession.json");
     std::fs::write(&profession_reference, profession["reference"].to_string()).unwrap();
     let (ok, accepted_profession) = f.run(&[
@@ -365,20 +395,36 @@ fn ready_gitea(f: &Fixture) {
 /// Spawn (or respawn) the fixture Agency with whatever `script.json` currently holds, and wait
 /// for its control socket. The Agency keeps its own root, so a restart keeps its bindings.
 fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
+    spawn_agency_as(f, log, Executor::Script)
+}
+fn spawn_agency_as(f: &Fixture, log: &str, executor: Executor) -> AgencyChild {
     let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let mut serve = Command::new(&binary);
+    serve
+        .arg("--root")
+        .arg(f.root.join("independent-agency"))
+        .arg("serve");
+    let ready_within = match executor {
+        Executor::Script => {
+            serve.arg("--script-config").arg(f.root.join("script.json"));
+            Duration::from_secs(10)
+        }
+        // The native Agency digests the installed harnesses before it answers.
+        Executor::ClaudeCode => {
+            serve
+                .env("HCTL2_INSTALL_ROOT", &f.payload)
+                .env_remove("GH_DEBUG");
+            Duration::from_secs(90)
+        }
+    };
     let mut agency = AgencyChild(
-        Command::new(&binary)
-            .arg("--root")
-            .arg(f.root.join("independent-agency"))
-            .arg("serve")
-            .arg("--script-config")
-            .arg(f.root.join("script.json"))
+        serve
             .stdout(Stdio::null())
             .stderr(File::create(f.root.join(log)).unwrap())
             .spawn()
             .unwrap(),
     );
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + ready_within;
     loop {
         if Command::new(&binary)
             .arg("--root")
@@ -393,11 +439,13 @@ fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
         }
         assert!(
             agency.0.try_wait().unwrap().is_none(),
-            "Agency exited before it answered status"
+            "Agency exited before it answered status: {}",
+            std::fs::read_to_string(f.root.join(log)).unwrap_or_default()
         );
         assert!(
             std::time::Instant::now() < deadline,
-            "Agency did not become ready"
+            "Agency did not become ready: {}",
+            std::fs::read_to_string(f.root.join(log)).unwrap_or_default()
         );
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -856,7 +904,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
 /// 人只预览两次（合入、完成）；投影与平台事实一致。真 harness 版在 3f 合入后另加。
 #[test]
 fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() {
-    demo3_gitea_chain("demo3-gitea", false, false);
+    demo3_gitea_chain("demo3-gitea", false, false, Executor::Script);
 }
 
 /// 第 9 包验收第 4 条：在发布第一段之后（已推送、未建评审请求）、集成已提交未回读、完成已
@@ -865,14 +913,28 @@ fn demo3_gitea_chain_real_cli_reaches_task_completion_with_two_human_previews() 
 /// 会话，本用例如实标明「没有会话可续」——真 harness 的续接见第 3 包与 3f。
 #[test]
 fn demo3_gitea_chain_restarts_do_not_repeat_side_effects() {
-    demo3_gitea_chain("demo3-gitea-restart", false, true);
+    demo3_gitea_chain("demo3-gitea-restart", false, true, Executor::Script);
 }
 
 /// 第 9 包验收第 3 条：开了「发布评审须人显式确认」的 Project 多一次发布预览，三次预览；
 /// 意图停在 `pending_human`，预览写明推到哪个分支、建到哪个目标、不是合入。
 #[test]
 fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
-    demo3_gitea_chain("demo3-gitea-confirm", true, false);
+    demo3_gitea_chain("demo3-gitea-confirm", true, false, Executor::Script);
+}
+
+/// 第 9 包验收第 1 条的另一半：同一条链，写入那一轮换成真的 Claude Code 会话——随包 Agency
+/// 起本机装的 `claude`、用它自己的登录，在 3f 的隔离工作副本里改文件，Agency 封存。其余照旧：
+/// 自动发成评审请求、人预览合入、人预览完成。只在显式要求时跑（会用掉一次真会话）。
+#[test]
+#[ignore = "UNVERIFIED: installed Claude Code with its native login; HCTL2_HARNESS_LIVE=1"]
+fn demo3_gitea_chain_with_a_real_claude_code_session_reaches_task_completion() {
+    assert_eq!(
+        std::env::var("HCTL2_HARNESS_LIVE").as_deref(),
+        Ok("1"),
+        "UNVERIFIED: HCTL2_HARNESS_LIVE=1 required"
+    );
+    demo3_gitea_chain("demo3-gitea-claude", false, false, Executor::ClaudeCode);
 }
 
 /// `task show` for a person, and its `next` line.
@@ -896,8 +958,20 @@ fn task_next(f: &Fixture, project: &str, task: &str) -> (String, String) {
     (text, next)
 }
 
-fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
-    let (f, mut setup) = paired_profile(name, 0, "write");
+const CLAUDE_LINE: &str = "changed by Claude Code";
+
+fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, executor: Executor) {
+    let (f, mut setup) = paired_with(name, 0, "write", 65536, executor);
+    let live = executor == Executor::ClaudeCode;
+    // A real session edits and the Agency seals; the script answers at once.
+    let settle = Duration::from_secs(if live { 900 } else { 90 });
+    let request = if live {
+        format!(
+            "Replace the whole content of source.txt with the single line `{CLAUDE_LINE}` followed by a newline. Change no other file. Leave the change uncommitted for Agency sealing, and do not push, publish, obtain credentials, or change global harness configuration."
+        )
+    } else {
+        "Change source.txt for the adopted Task".to_owned()
+    };
     let p = setup.project.clone();
     let mut human_previews = Vec::new();
     // 杀点 1 的缝标记在开工前就放好：发布的第一段（推送）一完，发布就停在这里，等测试来杀。
@@ -953,7 +1027,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         "task",
         "create",
         "demo3-task",
-        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"change source.txt","body":"the script executor rewrites source.txt"}),
+        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"change source.txt","body":if live { request.as_str() } else { "the script executor rewrites source.txt" }}),
     );
     let task_id = created["task_id"].as_str().unwrap().to_owned();
     let (ok, before) = f.run(&["task", "show", &p, &task_id]);
@@ -998,9 +1072,10 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64
-        + 120000;
+        + settle.as_millis() as u64
+        + 30000;
     let input = f.root.join("demo3-invocation.json");
-    std::fs::write(&input, json!({"project_id":p,"room_id":setup.room,"task_id":task_id,"target":"research","profile":setup.profile["revision"],"request":"Change source.txt for the adopted Task","budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    std::fs::write(&input, json!({"project_id":p,"room_id":setup.room,"task_id":task_id,"target":"research","profile":setup.profile["revision"],"request":request,"budget":65536,"deadline_ms":deadline,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
     let preview_args = [
         "invocation",
         "preview",
@@ -1020,7 +1095,9 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     );
     let pending = write["lease"]["pending"].clone();
     let set = pending["change_set_id"].as_str().unwrap().to_owned();
-    configure_git_writer(&f, &mut setup, &pending, true, false);
+    if !live {
+        configure_git_writer(&f, &mut setup, &pending, true, false);
+    }
     let mut start = preview_args.to_vec();
     start[1] = "start";
     start.extend([
@@ -1031,7 +1108,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     assert!(ok, "{started}");
     let invocation = started["invocation_id"].as_str().unwrap().to_owned();
     let wait = |what: &str, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
-        let by = std::time::Instant::now() + Duration::from_secs(90);
+        let by = std::time::Instant::now() + settle;
         loop {
             if let Some(value) = done() {
                 return value;
@@ -1049,6 +1126,17 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         Box::new(|| {
             let (ok, shown) = f.run(&["invocation", "show", &p, &invocation]);
             assert!(ok, "{shown}");
+            // A terminal failure will not turn into a completion; stop at once.
+            assert!(
+                !matches!(
+                    shown["state"].as_str(),
+                    Some("failed" | "cancelled" | "lost")
+                ),
+                "{}; {}; Agency stderr: {}",
+                shown["reason"],
+                script_diagnostics(&f, &shown),
+                std::fs::read_to_string(f.root.join("agency.log")).unwrap_or_default()
+            );
             (shown["state"] == "completed").then_some(shown)
         }),
     );
@@ -1505,6 +1593,22 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         );
         println!(
             "LIVE CLI demo3 restart: three kill points (publish after push, integration before readback, completion after preview) survived control + Agency + packaged service restarts with one review request, one merge and one receipt each"
+        );
+    }
+    if live {
+        // The turn really was Claude Code, and what reached Gitea main is its edit,
+        // read from the merged commit itself rather than from the session's report.
+        assert_eq!(
+            progress["invocations"][0]["harness"], "claude-code",
+            "{progress}"
+        );
+        let merged_file = git_output(
+            &f.root.join("write-site"),
+            &["show", &format!("{commit}:source.txt")],
+        );
+        assert_eq!(
+            String::from_utf8(merged_file.stdout).unwrap().trim_end(),
+            CLAUDE_LINE
         );
     }
     println!(
