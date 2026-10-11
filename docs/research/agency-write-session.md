@@ -127,3 +127,24 @@ Tests finished: Pass 8. Fail 0.
 
 Clippy Build `a377b543-c261-4725-8758-2a0affd6d60f`：12 份报告全为空。文档链接 Build `4c97f2e9-6d08-4150-bc00-d39f64d1f58a`：`check_links: OK (163 markdown files)`。真实登录会话没有重跑。
 
+### 2026-10-11 · 只读 Codex 在 Landlock 里跑不了 bubblewrap
+
+上一节写的「只读仍用 Unix 套接字和 `read-only`」在 Codex 0.161.0、本机内核 7.0.0-34-generic 上不成立。评审要求二选一：真登录跑一条 shell 并读 exit code，或者只读也改 `externalSandbox` 且不开网络。选了后者。
+
+Landlock 施加 `no_new_privs` 之后，用户名字空间不可用。`/usr/bin/bwrap` 在边界外能跑完；同一只 `--confine` 助手里，`bwrap` 立刻失败：`bwrap: setting up uid map: Permission denied`，退出码 1。同一助手里直接跑 `/bin/sh` 可以打印输出，写兄弟目录被拒绝。所以只读 turn 若仍把 `sandboxPolicy` 设成 `readOnly`，命令跑不起来。本席没有再花一轮模型去证明这条。
+
+只读 `turn/start` 改为 `externalSandbox`，`networkAccess` 为 `restricted`。写入仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。线程沙箱仍是写入 `danger-full-access`、只读 `read-only`。只读不传 `sandbox_mode="danger-full-access"`。`restricted` 不是已经切断的网络，派工记录也不把它写成 `no_network`。只读的工作目录是 Agency 私有执行目录，Landlock 允许名单不包含源仓库。夹具在 Linux 上断言只读派工写不进源仓库；macOS 的 `(allow default)` 挡的是凭据根，不挡源仓库，这一半记为推断。
+
+夹具 Build `70726a26-51a8-447b-b4d0-1d5d61f46aca`：`codex_fixture_test` 9 passed（含 `codex_read_only_cannot_write_the_source_repo`），`write_session_test` 5 passed、2 ignored。
+
+改完之后重跑 #417 的 `live_codex_dispatch_returns_one_answer_to_the_room`（`HCTL2_CODEX_LIVE=1`，ignored / UNVERIFIED，一条真实登录）。前三次是红的，原因都不是「模型拒绝回答」：
+
+- Build `4f53dabc-25a6-446d-b1ce-7b258ee4b515`：40 秒就绪预算耗在调试构建对 279MB Codex 二进制做进程内 SHA-256 上，服务还没听套接字，stderr 是空的。
+- Build `232e6993-c82f-4db3-a68c-3962a1e836c3`：进程就绪了，`profession.accept` 再调 `catalog`。调试构建每次请求都重算约 29MB 的 Herdr 摘要，超过客户端 5 秒，返回 `AGENCY_RESPONSE_UNKNOWN` / `The operation was cancelled`。
+- 摘要改成超过 1 MiB 走平台工具（Linux `/usr/bin/sha256sum`，macOS `/usr/bin/shasum -a 256`），Herdr 摘要在打开时算一次之后复用。本席没有在 macOS 上跑 `shasum` 这条路径，记为推断。边界外计时：就绪 22 秒，随后两次 `status` 约 0.03 秒和 0.02 秒。Build `80b35907-3284-4c1a-9591-451781fe935d`。单元测试 `large_file_digest_matches_in_process_sha256` 在 Build `528d7d34` 通过。没有为此重跑整个 agency 包。
+- Build `98b099a2-1d73-4a01-bcb2-36bcd54bdb6f`：派工状态 `failed`，原因是 Agency cannot fulfill this dispatch。`app-server.err` 先记 bubblewrap 需要用户名字空间，随后 `Error: Permission denied (os error 13)`。Codex 0.161 的 Unix 监听会 `canonicalize("/tmp")` 并准备 `/tmp/codex-daemon-<uid>`。允许名单不含 `/tmp`。同一限制下改听 `ws://127.0.0.1` 后，进程约 2 秒开始监听；那行 bubblewrap 日志不是退出原因。
+
+只读和写入因此都用带 capability token 的本机 WebSocket。只读的 `networkAccess` 仍是 `restricted`。Build `37dd2e61-333c-4f84-ba87-73ffac4fce5f`：`unit_test` 18 passed，`codex_fixture_test` 9 passed，`write_session_test` 5 passed、2 ignored。
+
+第四次真实登录，Build `2073c38c-23d8-4edb-86ff-367939fea04e`：`room-cli-test` 1 passed，57.98 秒。rollout 文件名 `rollout-2026-10-11T08-09-22-01a1284a-eddc-7f72-868b-faae04de6543.jsonl`。这条用例证明回答回到了 Room，并且 rollout 里的 `input_text` 与任务正文一致。它不执行 shell，也不证明某条命令的 exit code。仍是 ignored / UNVERIFIED，一次真实登录。
+
