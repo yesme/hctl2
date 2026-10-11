@@ -1,7 +1,6 @@
 //! Project is a fixture until package 辛; every Task operation crosses the real CLI/RPC.
 use repo::integration::{
-    self as integ, AdmittedRevision, Form, Input, Observation, Outcome, ProtectionSnapshot,
-    Strategy, TargetKind,
+    self as integ, Form, Input, Observation, Outcome, ProtectionSnapshot, Strategy, TargetKind,
 };
 use serde_json::{Value, json};
 use std::{
@@ -506,20 +505,49 @@ fn sign_receipt(root: &Path, task_id: &str) -> (String, String) {
     });
     // The frozen version points back at an Invocation that declares this Task.
     let invocation_id = "invocation-1";
-    let revision = AdmittedRevision {
-        change_set_revision_id: "rev-1".into(),
-        change_set_id: "cs-1".into(),
-        parent_revision_id: None,
-        base_commit_sha: "b".repeat(40),
-        result_tree_sha: "1".repeat(40),
-        producer_ref: json!({
-            "kind": "invocation",
-            "invocation_id": invocation_id,
-            "invocation_version": 1,
-        }),
-        review_subject_digest: "d".repeat(64),
+    // The revision comes from the real ChangeSet admission: a ChangeSet opened for the
+    // invocation, the result sealed under its lease.
+    let revision = {
+        use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+        let mut scoped = actor.0.clone();
+        scoped.permission_scope.push(Scope::Repo(repo_id.clone()));
+        let scoped = TrustedActor(scoped);
+        let holder = ProducerRef::Invocation {
+            invocation_id: invocation_id.into(),
+            invocation_version: 1,
+        };
+        let set = changeset::open_change_set(
+            &mut s,
+            &scoped,
+            &repo_id,
+            1,
+            &"b".repeat(40),
+            "cs-key",
+            &holder,
+        )
+        .unwrap();
+        let admitted = changeset::admit(
+            &mut s,
+            &scoped,
+            Seal {
+                association_key: "seal-1".into(),
+                change_set_id: set.change_set_id.clone(),
+                change_set_version: set.version,
+                lease: Some(LeaseRef {
+                    lease_id: set.lease.lease_id.clone(),
+                    generation: set.lease.generation,
+                }),
+                base_commit_sha: "b".repeat(40),
+                result_tree_sha: "1".repeat(40),
+                result_commit_sha: None,
+                parent_revision_id: None,
+                producer_ref: holder,
+            },
+            OwnerGate::Active,
+        )
+        .unwrap();
+        integ::revision(&s, &repo_id, &admitted.change_set_revision_id).unwrap()
     };
-    integ::admit_revision_seam(&mut s, &actor, &repo_id, &revision).unwrap();
     // `task` cannot depend on `project`, so the attribution check reads this record's JSON
     // path verbatim (`preview.input.task_id` / `project_id`), not a typed struct.
     let invocation = task::value_record(
@@ -840,7 +868,12 @@ fn completion_accepts_the_integration_receipt_this_task_produced() {
     );
     let receipt = integ::receipt(&s, &repo_id, &receipt_id).unwrap();
     assert_eq!(receipt.evidence_level, "hctl2-tool");
-    assert_eq!(receipt.source.change_set_revision_id, "rev-1");
+    // The source is the revision the real admission wrote for this Repo.
+    assert!(receipt.source.change_set_revision_id.starts_with("csr-"));
+    assert_eq!(
+        integ::revision(&s, &repo_id, &receipt.source.change_set_revision_id).unwrap(),
+        receipt.source
+    );
     drop(s);
 }
 

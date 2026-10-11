@@ -32,7 +32,20 @@ rust_library(
     env = hctl2_cargo_env(),
     labels = CI_FAST,
     rustc_flags = HCTL2_RUSTC_FLAGS,
-    tests = [":domain_test"],
+    tests = [":domain_test", ":unit_test"],
+    visibility = ["PUBLIC"],
+)
+
+# The library's own unit tests (private helpers such as the Room line for a write).
+rust_test(
+    name = "unit_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )
 
@@ -50,7 +63,11 @@ rust_test(
 
 filegroup(
     name = "clippy",
-    srcs = {"library": ":project[clippy.txt]", "domain": ":domain_test[clippy.txt]"},
+    srcs = {
+        "library": ":project[clippy.txt]",
+        "unit": ":unit_test[clippy.txt]",
+        "domain": ":domain_test[clippy.txt]",
+    },
     labels = CI_FAST,
     visibility = ["PUBLIC"],
 )

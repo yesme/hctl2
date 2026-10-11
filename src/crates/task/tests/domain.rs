@@ -1024,16 +1024,53 @@ fn completion_refuses_a_human_item_judged_by_a_tool() {
 /// 造一条本 Repo 的「冻结版本 + Receipt」：版本由 `producer` 封存，Receipt 的 `source`
 /// 指向它；`declared_task` 是 `room_invocation` 记录里声明的 Task（`None` 即不写记录）。
 fn receipt_fixture(e: &mut Env, producer: Value, declared_task: Option<&str>) -> ObjectKey {
-    let revision = repo::integration::AdmittedRevision {
-        change_set_revision_id: "rev-1".into(),
-        change_set_id: "cs-1".into(),
-        parent_revision_id: None,
-        base_commit_sha: "b".repeat(40),
-        result_tree_sha: "1".repeat(40),
-        producer_ref: producer,
-        review_subject_digest: "d".repeat(64),
+    // 版本走真实的 ChangeSet 准入：ChangeSet 开给 inv-1；调用封存时持它的租约，
+    // 人的封存不借租约。读回的就是集成与完成核对用的那条冻结版本。
+    use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+    let producer: ProducerRef = serde_json::from_value(producer).unwrap();
+    let mut scoped = actor().0;
+    scoped.permission_scope.push(Scope::Repo(e.rid.clone()));
+    let scoped = TrustedActor(scoped);
+    let holder = ProducerRef::Invocation {
+        invocation_id: "inv-1".into(),
+        invocation_version: 1,
     };
-    repo::integration::admit_revision_seam(&mut e.store, &actor(), &e.rid, &revision).unwrap();
+    let set = changeset::open_change_set(
+        &mut e.store,
+        &scoped,
+        &e.rid,
+        1,
+        &"b".repeat(40),
+        "cs-key",
+        &holder,
+    )
+    .unwrap();
+    let lease = match producer {
+        ProducerRef::Invocation { .. } => Some(LeaseRef {
+            lease_id: set.lease.lease_id.clone(),
+            generation: set.lease.generation,
+        }),
+        ProducerRef::HumanCommand { .. } => None,
+    };
+    let admitted = changeset::admit(
+        &mut e.store,
+        &scoped,
+        Seal {
+            association_key: "seal-1".into(),
+            change_set_id: set.change_set_id.clone(),
+            change_set_version: set.version,
+            lease,
+            base_commit_sha: "b".repeat(40),
+            result_tree_sha: "1".repeat(40),
+            result_commit_sha: None,
+            parent_revision_id: None,
+            producer_ref: producer,
+        },
+        OwnerGate::Active,
+    )
+    .unwrap();
+    let revision =
+        repo::integration::revision(&e.store, &e.rid, &admitted.change_set_revision_id).unwrap();
     if let Some(task_id) = declared_task {
         seed(
             &mut e.store,

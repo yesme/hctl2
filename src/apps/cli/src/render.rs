@@ -382,6 +382,7 @@ fn dash(value: &Value) -> String {
 /// fallback. List kinds render as tables with headers; empty lists say so.
 pub(crate) fn query(kind: &str, value: &Value) -> Option<String> {
     match kind {
+        "task.show" => Some(task_show(value)),
         "task.list" => {
             let items = rows_of(value, "items")?;
             let mut table = Table::new(&["task", "project", "title", "lifecycle", "version"]);
@@ -577,5 +578,350 @@ pub(crate) fn query(kind: &str, value: &Value) -> Option<String> {
             Some(table.render("No Repos registered yet."))
         }
         _ => None,
+    }
+}
+
+/// `task show` for a person: what the Task is for, where it stands, what blocks it, which
+/// harness is on it, the evidence so far, and the one command that moves it on. Everything
+/// is about the newest dispatch and the newest admitted version, in the Store's event order.
+fn task_show(value: &Value) -> String {
+    let data = &value["data"];
+    let progress = &value["progress"];
+    let project = cell(&data["project_id"]);
+    let task = cell(&data["id"]);
+    let contract = if data["revision"].is_null() {
+        "no contract adopted".to_owned()
+    } else {
+        format!("contract revision {}", cell(&data["revision"]["number"]))
+    };
+    let blockers = value["request_blockers"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let last = |field: &str| {
+        progress[field]
+            .as_array()
+            .and_then(|items| items.last())
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    let latest = last("invocations");
+    let revision = last("revisions");
+    let publication = &revision["publication"];
+    let integration = &revision["integration"];
+    let completion = &progress["completion"]["current"];
+    let harness = if latest.is_null() {
+        "none dispatched yet".to_owned()
+    } else {
+        format!(
+            "{} ({}) — invocation {} {}",
+            dash(&latest["harness"]),
+            dash(&latest["model"]),
+            short_id(&cell(&latest["invocation_id"])),
+            dash(&latest["state"]),
+        )
+    };
+    let mut evidence = Vec::new();
+    if !revision.is_null() {
+        evidence.push(format!(
+            "version {}",
+            short_id(&cell(&revision["change_set_revision_id"]))
+        ));
+        evidence.push(match publication["review_request"].as_u64() {
+            Some(index) => format!("review request #{index} ({})", dash(&publication["state"])),
+            None => format!("review {}", dash(&publication["state"])),
+        });
+        if !integration.is_null() {
+            evidence.push(match integration["receipt_id"].as_str() {
+                Some(receipt) => format!("Integration Receipt {}", short_id(receipt)),
+                None => format!("integration {}", dash(&integration["state"])),
+            });
+        }
+    }
+    if let Some(receipt) = completion["receipt_id"].as_str() {
+        evidence.push(format!("Completion Receipt {}", short_id(receipt)));
+    } else if let Some(count) = progress["completion"]["history"]
+        .as_array()
+        .map(Vec::len)
+        .filter(|n| *n > 0)
+    {
+        evidence.push(format!(
+            "{count} earlier Completion Receipt(s), reopened since"
+        ));
+    }
+    let attention = [&publication["attention"], &integration["attention"]]
+        .into_iter()
+        .filter_map(|a| a.as_str())
+        .collect::<Vec<_>>();
+    let blocking = if !blockers.is_empty() {
+        format!("{} pending request(s)", blockers.len())
+    } else if data["revision"].is_null() {
+        "completion needs an adopted contract".to_owned()
+    } else if !attention.is_empty() && data["lifecycle"] != "completed" {
+        attention.join(", ")
+    } else {
+        "nothing".to_owned()
+    };
+    let next = next_step(&project, &task, data, &blockers, &latest, &revision);
+    [
+        format!("Task {} — {}", short_id(&task), dash(&data["title"])),
+        format!("  goal      {}", dash(&data["title"])),
+        format!("  state     {}; {contract}", dash(&data["lifecycle"])),
+        format!("  blocking  {blocking}"),
+        format!("  harness   {harness}"),
+        format!(
+            "  evidence  {}",
+            if evidence.is_empty() {
+                "none yet".to_owned()
+            } else {
+                evidence.join(", ")
+            }
+        ),
+        format!("  next      {next}"),
+    ]
+    .join("\n")
+}
+
+/// The one command that moves the Task on, from its current lifecycle and the newest
+/// dispatch and version. Failures and unknown outcomes point at the record to read, never at
+/// a step that would assume success.
+fn next_step(
+    project: &str,
+    task: &str,
+    data: &Value,
+    blockers: &[Value],
+    latest: &Value,
+    revision: &Value,
+) -> String {
+    if data["lifecycle"] == "completed" {
+        return "nothing — the Task is completed".into();
+    }
+    if !blockers.is_empty() {
+        return format!("answer the pending request: hctl2 project pending {project}");
+    }
+    if data["revision"].is_null() {
+        return format!(
+            "adopt a contract for Task {}: hctl2 task adopt --key <key> --input <adoption.json>",
+            short_id(task)
+        );
+    }
+    if latest.is_null() {
+        return "dispatch from the Room with this task_id: hctl2 invocation preview --input <invocation.json> --key <key>".into();
+    }
+    let invocation = cell(&latest["invocation_id"]);
+    if matches!(
+        latest["state"].as_str(),
+        Some("pending" | "running" | "waiting_input")
+    ) {
+        return format!(
+            "wait for {} to return (invocation {})",
+            dash(&latest["harness"]),
+            dash(&latest["state"])
+        );
+    }
+    if revision.is_null() || latest["write"].is_null() && latest["state"] != "completed" {
+        return format!(
+            "the last invocation is {}: hctl2 invocation show {project} {invocation}",
+            dash(&latest["state"])
+        );
+    }
+    let publication = &revision["publication"];
+    let repo = cell(&publication["repo_id"]);
+    let intent = cell(&publication["intent_id"]);
+    let show_review = format!("hctl2 review show {repo} {intent}");
+    match publication["state"].as_str() {
+        Some("published") => {}
+        Some("pending_human") => {
+            return format!("release publishing for review: hctl2 review publish {repo} {intent}");
+        }
+        Some("publishing" | "queued") => {
+            return format!(
+                "wait for publishing (review {})",
+                dash(&publication["state"])
+            );
+        }
+        Some("unknown" | "failed") => {
+            return format!(
+                "publishing is {} ({}): {show_review}",
+                dash(&publication["state"]),
+                dash(&publication["attention"])
+            );
+        }
+        Some("update_not_allowed") => {
+            return format!(
+                "version {} is not published — the frozen policy only creates the review request: {show_review}",
+                short_id(&cell(&revision["change_set_revision_id"]))
+            );
+        }
+        _ => {
+            return format!(
+                "inspect the version: hctl2 changeset show {} {}",
+                cell(&revision["repo_id"]),
+                cell(&revision["change_set_id"])
+            );
+        }
+    }
+    let integration = &revision["integration"];
+    match integration["state"].as_str() {
+        None => format!(
+            "integrate the published version into {}: hctl2 integration preview --input <integration.json> --key <key>",
+            dash(&publication["target_branch"])
+        ),
+        Some("succeeded") => "complete the Task citing the Integration Receipt: hctl2 task complete --input <completion.json> --key <key>".to_owned(),
+        Some("pending") => "wait for integration (pending)".to_owned(),
+        Some(state) => format!(
+            "integration is {state} ({}): hctl2 integration show {} {}",
+            dash(&integration["attention"]),
+            cell(&revision["repo_id"]),
+            cell(&integration["intent_id"])
+        ),
+    }
+}
+
+/// Long ids shortened for a person: the kind prefix plus twelve characters.
+fn short_id(id: &str) -> String {
+    match id.split_once('-') {
+        Some((kind, rest)) if kind.len() <= 11 && rest.len() > 12 => {
+            format!("{kind}-{}", rest.chars().take(12).collect::<String>())
+        }
+        _ if id.len() > 16 => id.chars().take(16).collect(),
+        _ => id.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn show(data: Value, progress: Value) -> (String, String) {
+        let text = task_show(&json!({"data": data, "progress": progress, "request_blockers": []}));
+        let next = text
+            .lines()
+            .find_map(|l| l.trim_start().strip_prefix("next"))
+            .unwrap()
+            .trim()
+            .to_owned();
+        (text, next)
+    }
+
+    fn open_task() -> Value {
+        json!({"id": "t-1", "project_id": "P", "title": "change it", "lifecycle": "open",
+            "revision": {"number": 1}})
+    }
+
+    fn write_call(state: &str) -> Value {
+        json!({"invocation_id": "invocation-a", "state": state, "harness": "claude-code",
+            "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}})
+    }
+
+    fn version(publication: Value, integration: Value) -> Value {
+        json!({"repo_id": "R", "change_set_id": "cs-1", "change_set_revision_id": "csr-1",
+            "publication": publication, "integration": integration})
+    }
+
+    fn published() -> Value {
+        json!({"state": "published", "intent_id": "pub", "repo_id": "R", "branch": "hctl2/cs-1",
+            "target_branch": "main", "review_request": 7})
+    }
+
+    /// A reopened Task keeps its old Completion Receipt as history; it is not completed.
+    #[test]
+    fn a_reopened_task_is_not_reported_completed_by_a_historical_receipt() {
+        let (text, next) = show(
+            open_task(),
+            json!({"invocations": [write_call("completed")],
+                "revisions": [version(published(), json!({"state": "succeeded", "receipt_id": "receipt-1", "intent_id": "i"}))],
+                "completion": {"current": null, "history": ["completion-1"]}}),
+        );
+        assert!(next.starts_with("complete the Task"), "{text}");
+        assert!(text.contains("earlier Completion Receipt"), "{text}");
+        assert!(text.contains("state     open"), "{text}");
+    }
+
+    /// A failed or unknown publication is never followed by advice to integrate.
+    #[test]
+    fn failed_or_unknown_publication_points_at_the_review_not_at_integration() {
+        for state in ["failed", "unknown"] {
+            let publication = json!({"state": state, "intent_id": "pub", "repo_id": "R",
+                "attention": "PUSH_FAILED", "target_branch": "main"});
+            let (text, next) = show(
+                open_task(),
+                json!({"invocations": [write_call("completed")],
+                    "revisions": [version(publication, Value::Null)],
+                    "completion": {"current": null, "history": []}}),
+            );
+            assert_eq!(
+                next,
+                format!("publishing is {state} (PUSH_FAILED): hctl2 review show R pub"),
+                "{text}"
+            );
+            assert!(text.contains("blocking  PUSH_FAILED"), "{text}");
+        }
+    }
+
+    /// A failed integration names its record; it is not something to wait for.
+    #[test]
+    fn a_failed_integration_names_the_intent_to_read() {
+        let (text, next) = show(
+            open_task(),
+            json!({"invocations": [write_call("completed")],
+                "revisions": [version(published(), json!({"state": "failed", "intent_id": "merge-1", "attention": "SOURCE_HEAD_MISMATCH"}))],
+                "completion": {"current": null, "history": []}}),
+        );
+        assert_eq!(
+            next, "integration is failed (SOURCE_HEAD_MISMATCH): hctl2 integration show R merge-1",
+            "{text}"
+        );
+    }
+
+    /// A later read-only dispatch does not erase the Repo in the release command.
+    #[test]
+    fn a_later_read_only_dispatch_keeps_the_release_command_whole() {
+        let pending = json!({"state": "pending_human", "intent_id": "pub", "repo_id": "R",
+            "branch": "hctl2/cs-1", "target_branch": "main"});
+        let read_only = json!({"invocation_id": "invocation-b", "state": "completed",
+            "harness": "codex-cli", "model": "m", "write": null});
+        let (text, next) = show(
+            open_task(),
+            json!({"invocations": [write_call("completed"), read_only],
+                "revisions": [version(pending, Value::Null)],
+                "completion": {"current": null, "history": []}}),
+        );
+        assert_eq!(
+            next, "release publishing for review: hctl2 review publish R pub",
+            "{text}"
+        );
+    }
+
+    /// A version a create-only policy refused to publish is said so, not offered for merge.
+    #[test]
+    fn a_version_refused_by_a_create_only_policy_is_not_offered_for_integration() {
+        let refused = json!({"state": "update_not_allowed", "intent_id": "pub", "repo_id": "R",
+            "attention": "UPDATE_NOT_ALLOWED", "target_branch": "main"});
+        let (text, next) = show(
+            open_task(),
+            json!({"invocations": [write_call("completed")],
+                "revisions": [version(refused, Value::Null)],
+                "completion": {"current": null, "history": []}}),
+        );
+        assert!(next.starts_with("version csr-1 is not published"), "{text}");
+    }
+
+    /// The newest dispatch decides the harness line and waiting, whatever its id.
+    #[test]
+    fn the_newest_dispatch_decides_the_harness_line() {
+        let older = json!({"invocation_id": "invocation-zzz", "state": "completed",
+            "harness": "script", "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}});
+        let newer = json!({"invocation_id": "invocation-aaa", "state": "running",
+            "harness": "claude-code", "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}});
+        let (text, next) = show(
+            open_task(),
+            json!({"invocations": [older, newer],
+                "revisions": [version(published(), Value::Null)],
+                "completion": {"current": null, "history": []}}),
+        );
+        assert!(text.contains("harness   claude-code"), "{text}");
+        assert_eq!(next, "wait for claude-code to return (invocation running)");
     }
 }

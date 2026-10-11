@@ -108,6 +108,8 @@ struct Harness {
     client: ControlClient<tonic::transport::Channel>,
     store: Arc<Mutex<Option<Store>>>,
     root: PathBuf,
+    /// The revision the fixture admitted through the real ChangeSet admission.
+    revision: String,
 }
 
 impl Harness {
@@ -222,22 +224,44 @@ async fn harness() -> (Temp, Harness, String, PathBuf, String, String, String) {
     let registration = repo::admit(&mut store, &actor, "register", "register", prepared).unwrap();
     assert_eq!(registration.lifecycle, repo::Lifecycle::Active);
     let repo_id = registration.repo_id.clone();
-    // 测试缝：the other half of 第 6 包 admits revisions; here the admitted version is seeded.
-    repo::integration::admit_revision_seam(
-        &mut store,
-        &actor,
-        &repo_id,
-        &repo::integration::AdmittedRevision {
-            change_set_revision_id: "rev-1".into(),
-            change_set_id: "cs-1".into(),
-            parent_revision_id: None,
-            base_commit_sha: base.clone(),
-            result_tree_sha: result_tree.clone(),
-            producer_ref: json!({"kind": "human_command", "command_id": "seal"}),
-            review_subject_digest: "d".repeat(64),
-        },
-    )
-    .unwrap();
+    // The admitted version comes from the real ChangeSet admission: a ChangeSet opened for an
+    // invocation, the result sealed under its lease. A local Repo has no review publishing.
+    let revision = {
+        use repo::changeset::{self, LeaseRef, OwnerGate, ProducerRef, Seal};
+        let mut scoped = actor.0.clone();
+        scoped
+            .permission_scope
+            .push(store::Scope::Repo(repo_id.clone()));
+        let scoped = store::TrustedActor(scoped);
+        let holder = ProducerRef::Invocation {
+            invocation_id: "inv-1".into(),
+            invocation_version: 1,
+        };
+        let set =
+            changeset::open_change_set(&mut store, &scoped, &repo_id, 0, &base, "cs-key", &holder)
+                .unwrap();
+        changeset::admit(
+            &mut store,
+            &scoped,
+            Seal {
+                association_key: "seal-1".into(),
+                change_set_id: set.change_set_id.clone(),
+                change_set_version: set.version,
+                lease: Some(LeaseRef {
+                    lease_id: set.lease.lease_id.clone(),
+                    generation: set.lease.generation,
+                }),
+                base_commit_sha: base.clone(),
+                result_tree_sha: result_tree.clone(),
+                result_commit_sha: Some(result_commit.clone()),
+                parent_revision_id: None,
+                producer_ref: holder,
+            },
+            OwnerGate::Active,
+        )
+        .unwrap()
+        .change_set_revision_id
+    };
     let status = store.startup_status();
     let store = Arc::new(Mutex::new(Some(store)));
     let listener = bind_owner_socket(&socket_path(&root)).unwrap();
@@ -257,6 +281,7 @@ async fn harness() -> (Temp, Harness, String, PathBuf, String, String, String) {
             client,
             store,
             root,
+            revision,
         },
         repo_id,
         repo_path,
@@ -266,10 +291,10 @@ async fn harness() -> (Temp, Harness, String, PathBuf, String, String, String) {
     )
 }
 
-fn input(repo_id: &str, target_ref: &str, form: &str) -> Value {
+fn input(repo_id: &str, revision: &str, target_ref: &str, form: &str) -> Value {
     json!({
         "repo_id": repo_id,
-        "change_set_revision_id": "rev-1",
+        "change_set_revision_id": revision,
         "target_kind": "local",
         "target_ref": target_ref,
         "form": form,
@@ -281,7 +306,7 @@ fn input(repo_id: &str, target_ref: &str, form: &str) -> Value {
 async fn checked_out_target_waits_for_the_human_then_the_same_intent_integrates_and_signs_one_receipt()
  {
     let (_temp, mut h, repo_id, repo_path, base, result_commit, result_tree) = harness().await;
-    let input = input(&repo_id, "refs/heads/main", "expected_head");
+    let input = input(&repo_id, &h.revision, "refs/heads/main", "expected_head");
     // Preview freezes the target head seen now and says what will be checked.
     let (token, preview) = h.preview("one", &input).await;
     assert_eq!(preview["expected_head"], base, "{preview}");
@@ -370,7 +395,7 @@ async fn expected_head_drift_fails_without_retry_and_accept_advance_records_the_
     // Two targets that nobody has checked out.
     git(&repo_path, &["branch", "release", &base]);
     git(&repo_path, &["branch", "nightly", &base]);
-    let frozen = input(&repo_id, "refs/heads/release", "expected_head");
+    let frozen = input(&repo_id, &h.revision, "refs/heads/release", "expected_head");
     let (token, preview) = h.preview("frozen", &frozen).await;
     assert_eq!(preview["expected_head"], base);
     let id = h.submit("frozen", &frozen, &token).await["intent_id"]
@@ -402,7 +427,12 @@ async fn expected_head_drift_fails_without_retry_and_accept_advance_records_the_
     // Receipt records the head that was actually produced, not the previewed one. The
     // executor's branch is gone, so the admitted (base, tree) is packaged into a new commit.
     git(&repo_path, &["branch", "-D", "work"]);
-    let mut advance = input(&repo_id, "refs/heads/nightly", "accept_advance");
+    let mut advance = input(
+        &repo_id,
+        &h.revision,
+        "refs/heads/nightly",
+        "accept_advance",
+    );
     advance["strategy"] = json!("merge_commit");
     let (token, preview) = h.preview("advance", &advance).await;
     assert!(preview["expected_head"].is_null());
@@ -441,14 +471,14 @@ async fn expected_head_drift_fails_without_retry_and_accept_advance_records_the_
 #[tokio::test]
 async fn previews_refuse_what_the_repo_cannot_offer() {
     let (_temp, mut h, repo_id, _repo_path, _base, _commit, _tree) = harness().await;
-    let mut platform = input(&repo_id, "refs/heads/main", "accept_advance");
+    let mut platform = input(&repo_id, &h.revision, "refs/heads/main", "accept_advance");
     platform["target_kind"] = json!("platform");
     let (_, refused) = h.preview("p", &platform).await;
     assert_eq!(refused["error"]["code"], "PLATFORM_NOT_BOUND", "{refused}");
-    let missing = input(&repo_id, "refs/heads/nowhere", "expected_head");
+    let missing = input(&repo_id, &h.revision, "refs/heads/nowhere", "expected_head");
     let (_, refused) = h.preview("m", &missing).await;
     assert_eq!(refused["error"]["code"], "TARGET_HEAD_UNKNOWN", "{refused}");
-    let mut unknown_revision = input(&repo_id, "refs/heads/main", "expected_head");
+    let mut unknown_revision = input(&repo_id, &h.revision, "refs/heads/main", "expected_head");
     unknown_revision["change_set_revision_id"] = json!("rev-9");
     let (_, refused) = h.preview("r", &unknown_revision).await;
     assert_eq!(
@@ -461,7 +491,7 @@ async fn previews_refuse_what_the_repo_cannot_offer() {
 async fn a_fresh_clone_at_the_same_path_is_not_the_frozen_target() {
     let (temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
     git(&repo_path, &["branch", "release", &base]);
-    let input = input(&repo_id, "refs/heads/release", "expected_head");
+    let input = input(&repo_id, &h.revision, "refs/heads/release", "expected_head");
     let (token, preview) = h.preview("clone", &input).await;
     assert!(
         preview["target"]["continuity"]["inode"].is_number(),
@@ -528,7 +558,12 @@ async fn a_confirmation_lost_after_the_write_is_recovered_from_the_frozen_attemp
     let (_temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
     git(&repo_path, &["branch", "nightly", &base]);
     git(&repo_path, &["switch", "-q", "--detach"]);
-    let mut advance = input(&repo_id, "refs/heads/nightly", "accept_advance");
+    let mut advance = input(
+        &repo_id,
+        &h.revision,
+        "refs/heads/nightly",
+        "accept_advance",
+    );
     advance["strategy"] = json!("merge_commit");
     let (token, _) = h.preview("lost", &advance).await;
     let id = h.submit("lost", &advance, &token).await["intent_id"]
@@ -611,7 +646,12 @@ async fn accept_advance_fast_forward_reaches_a_target_that_already_moved_to_the_
     let (_temp, mut h, repo_id, repo_path, base, result_commit, result_tree) = harness().await;
     git(&repo_path, &["branch", "nightly", &base]);
     git(&repo_path, &["switch", "-q", "--detach"]);
-    let advance = input(&repo_id, "refs/heads/nightly", "accept_advance");
+    let advance = input(
+        &repo_id,
+        &h.revision,
+        "refs/heads/nightly",
+        "accept_advance",
+    );
     let (token, _) = h.preview("ff", &advance).await;
     let id = h.submit("ff", &advance, &token).await["intent_id"]
         .as_str()
@@ -635,7 +675,7 @@ async fn a_confirmation_lost_under_expected_head_recovers_with_the_original_pre_
     let (_temp, mut h, repo_id, repo_path, base, result_commit, _tree) = harness().await;
     git(&repo_path, &["branch", "frozen", &base]);
     git(&repo_path, &["switch", "-q", "--detach"]);
-    let mut input = input(&repo_id, "refs/heads/frozen", "expected_head");
+    let mut input = input(&repo_id, &h.revision, "refs/heads/frozen", "expected_head");
     input["strategy"] = json!("merge_commit");
     let (token, preview) = h.preview("lost-frozen", &input).await;
     assert_eq!(preview["expected_head"], base);

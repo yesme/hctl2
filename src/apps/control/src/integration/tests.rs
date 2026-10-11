@@ -36,10 +36,14 @@ fn submit(
     form: Form,
     strategy: Strategy,
 ) -> String {
+    let revision = {
+        let guard = shared.blocking_lock();
+        super::fixture::revision_id(guard.as_ref().unwrap(), repo_id)
+    };
     let input = Input {
         key: key.into(),
         repo_id: repo_id.into(),
-        change_set_revision_id: "rev-1".into(),
+        change_set_revision_id: revision,
         target_kind: TargetKind::Platform,
         target_ref: "refs/heads/main".into(),
         form,
@@ -111,7 +115,7 @@ fn gitea_merge_pins_the_published_head_and_signs_one_receipt_only_after_readback
             Input {
                 key: "frozen".into(),
                 repo_id: repo_id.clone(),
-                change_set_revision_id: "rev-1".into(),
+                change_set_revision_id: super::fixture::revision_id(store, &repo_id),
                 target_kind: TargetKind::Platform,
                 target_ref: "refs/heads/main".into(),
                 form: Form::ExpectedHead,
@@ -313,7 +317,7 @@ fn a_request_whose_response_was_lost_before_the_merge_is_only_read_back_never_re
             Input {
                 key: "other".into(),
                 repo_id: repo_id.clone(),
-                change_set_revision_id: "rev-1".into(),
+                change_set_revision_id: super::fixture::revision_id(store, &repo_id),
                 target_kind: TargetKind::Platform,
                 target_ref: "refs/heads/main".into(),
                 form: Form::AcceptAdvance,
@@ -884,10 +888,14 @@ fn live_github_canary_protected_main_is_merged_only_through_a_pull_request_with_
     let shared: Shared = Arc::new(Mutex::new(Some(store)));
     let target = github.observe(full, "refs/heads/main").unwrap();
     let id = {
+        let revision = {
+            let guard = shared.blocking_lock();
+            super::fixture::revision_id(guard.as_ref().unwrap(), &repo_id)
+        };
         let input = Input {
             key: "canary".into(),
             repo_id: repo_id.clone(),
-            change_set_revision_id: "rev-1".into(),
+            change_set_revision_id: revision,
             target_kind: TargetKind::Platform,
             target_ref: "refs/heads/main".into(),
             form: Form::AcceptAdvance,
