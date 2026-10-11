@@ -12,7 +12,10 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::{Arc, LazyLock, Mutex, Weak},
+    sync::{
+        Arc, LazyLock, Mutex, Weak,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 use store::{
@@ -190,6 +193,14 @@ impl Drop for SharedPayload {
 }
 static LIVE_PAYLOADS: LazyLock<Mutex<Vec<Weak<SharedPayload>>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
+/// Payload directories are numbered by a process-wide counter, never by the number of live
+/// copies: the last holder of a copy may still be deleting its tree while another test creates
+/// the next one, and a count-derived name would hand the new copy the old one's directory.
+static NEXT_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
+fn next_payload_dir() -> PathBuf {
+    let n = NEXT_PAYLOAD.fetch_add(1, Ordering::Relaxed) + 1;
+    std::env::temp_dir().join(format!("hctl-payload-{}-{n}", std::process::id()))
+}
 
 fn shared_payload() -> Arc<SharedPayload> {
     // A panicking test thread must not poison the registry for the rest of the binary.
@@ -213,11 +224,7 @@ fn shared_payload() -> Arc<SharedPayload> {
         },
     )
     .unwrap();
-    let dir = std::env::temp_dir().join(format!(
-        "hctl-payload-{}-{}",
-        std::process::id(),
-        live.len() + 1
-    ));
+    let dir = next_payload_dir();
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir(&dir).unwrap();
     if let Err(detail) = unpack_payload(&zstd_tool(), &archive, &dir) {
@@ -250,16 +257,27 @@ fn unpack_payload(zstd: &Path, archive: &Path, extract: &Path) -> std::result::R
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("spawning {}: {error}", zstd.display()))?;
-    let unpack = Command::new("tar")
+    let mut unpack = Command::new("tar")
         .args(["-x", "--ignore-zeros", "-f", "-", "-C"])
         .arg(extract)
         .stdin(Stdio::from(decompress.stdout.take().unwrap()))
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("spawning tar: {error}"))?;
+    // tar's stderr is drained while both processes run: it is a pipe, and a tar that writes more
+    // than fits in it (a tree of entries it cannot create, say) blocks on that write, stops
+    // reading the archive, and then zstd blocks on its own stdout while the parent waits on it.
+    let tar_stderr = unpack.stderr.take().unwrap();
+    let drain = std::thread::spawn(move || {
+        let mut stderr = tar_stderr;
+        let mut text = Vec::new();
+        std::io::Read::read_to_end(&mut stderr, &mut text).ok();
+        text
+    });
     let decompressed = decompress.wait_with_output().unwrap();
-    let unpacked = unpack.wait_with_output().unwrap();
-    if decompressed.status.success() && unpacked.status.success() {
+    let unpacked = unpack.wait().unwrap();
+    let tar_stderr = drain.join().unwrap();
+    if decompressed.status.success() && unpacked.success() {
         return Ok(());
     }
     let _ = std::fs::remove_dir_all(extract);
@@ -268,8 +286,8 @@ fn unpack_payload(zstd: &Path, archive: &Path, extract: &Path) -> std::result::R
         archive.display(),
         decompressed.status,
         String::from_utf8_lossy(&decompressed.stderr).trim(),
-        unpacked.status,
-        String::from_utf8_lossy(&unpacked.stderr).trim(),
+        unpacked,
+        String::from_utf8_lossy(&tar_stderr).trim(),
         std::env::current_dir().unwrap_or_default().display(),
     ))
 }
@@ -360,6 +378,82 @@ fn unpack_payload_reads_past_the_end_of_archive_and_rejects_a_bad_frame() {
     assert!(unpack_payload(&zstd_tool(), &bad, &half).is_err());
     assert!(
         !half.exists(),
+        "a failed unpack must take the half-extracted tree with it"
+    );
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+/// 小活 T 的核验用例（Codex #416 P2）：一份副本在删自己的目录时，下一份可以已经在建——
+/// 两次解包的名字必须不同，删掉前一份不能碰到后一份。名字来自进程内递增编号，不靠 sleep。
+#[test]
+fn shared_payload_directories_do_not_collide_across_a_release() {
+    let first = next_payload_dir();
+    std::fs::create_dir_all(&first).unwrap();
+    let released = SharedPayload { dir: first.clone() };
+    let second = next_payload_dir();
+    std::fs::create_dir_all(&second).unwrap();
+    assert_ne!(first, second, "two payloads must not share a directory");
+    drop(released);
+    assert!(!first.exists(), "the released copy takes its own tree");
+    assert!(second.exists(), "the next copy must survive the old drop");
+    let _ = std::fs::remove_dir_all(&second);
+}
+
+/// 小活 T 的核验用例（Codex #416 P2）：tar 的错误输出超过管道容量时（这里解包目录不可写，
+/// 每个条目都写不进去），父进程必须同时排空两端 stderr——只等 zstd 会让 tar 卡在写 stderr、
+/// zstd 卡在写 stdout。失败照旧如实返回，两端的退出状态都不放宽，半份也不留。
+/// 以 root 跑时权限拦不住 tar，本用例跳过；CI 的 Linux/macOS 执行器都不是 root。
+#[test]
+fn unpack_payload_survives_more_tar_stderr_than_a_pipe_holds() {
+    use std::os::unix::fs::PermissionsExt;
+    let uid = Command::new("id").arg("-u").output().unwrap();
+    if String::from_utf8_lossy(&uid.stdout).trim() == "0" {
+        println!("skipping: root writes into a read-only directory");
+        return;
+    }
+    let work = std::env::temp_dir().join(format!("hctl-unpack-noisy-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    let source = work.join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(source.join("payload")).unwrap();
+    for n in 0..3000 {
+        std::fs::write(source.join("payload").join(format!("f{n:04}")), b"x\n").unwrap();
+    }
+    let tar = work.join("noisy.tar");
+    assert!(
+        Command::new("tar")
+            .arg("-cf")
+            .arg(&tar)
+            .arg("-C")
+            .arg(&source)
+            .arg(".")
+            .status()
+            .unwrap()
+            .success()
+    );
+    let archive = work.join("noisy.tar.zst");
+    assert!(
+        Command::new(zstd_tool())
+            .args(["-q", "-f"])
+            .arg(&tar)
+            .arg("-o")
+            .arg(&archive)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let extract = work.join("extract");
+    std::fs::create_dir(&extract).unwrap();
+    std::fs::set_permissions(&extract, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let failed = unpack_payload(&zstd_tool(), &archive, &extract);
+    std::fs::set_permissions(&extract, std::fs::Permissions::from_mode(0o755)).ok();
+    assert!(
+        failed.is_err(),
+        "tar cannot write into a read-only directory"
+    );
+    assert!(
+        !extract.exists(),
         "a failed unpack must take the half-extracted tree with it"
     );
     let _ = std::fs::remove_dir_all(&work);
