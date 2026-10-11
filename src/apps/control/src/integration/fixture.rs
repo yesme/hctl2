@@ -759,6 +759,7 @@ fn admit_and_publish(
             index,
             platform_commit_sha: platform_commit.into(),
             readback: json!({"fixture": "scripted platform"}),
+            audit_sync: None,
         },
         1,
     )
