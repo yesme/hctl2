@@ -11,6 +11,33 @@ pub(super) enum ChangeSetCommand {
         #[arg(long)]
         preview_token: Option<String>,
     },
+    /// Preview and confirm a human seal of a revoked writer's residual in this ChangeSet.
+    Takeover {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        preview_token: Option<String>,
+    },
+    /// Preview and confirm adoption of preserved bytes into a different ChangeSet.
+    Adopt {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        preview_token: Option<String>,
+    },
+    /// Preview the exact residual tree before explicitly discarding its P1 worktree.
+    Discard {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        preview_token: Option<String>,
+    },
     /// Show a ChangeSet, its lease and admitted immutable versions.
     Show {
         repo_id: String,
@@ -40,8 +67,29 @@ pub(super) async fn dispatch(
 }
 
 async fn execute(command: ChangeSetCommand, root: &Path, as_json: bool) -> Result<(), String> {
+    let operation = match &command {
+        ChangeSetCommand::Takeover { .. } => "changeset.takeover",
+        ChangeSetCommand::Adopt { .. } => "changeset.adopt",
+        ChangeSetCommand::Discard { .. } => "changeset.discard",
+        _ => "changeset.seal",
+    };
     match command {
         ChangeSetCommand::Seal {
+            input,
+            key,
+            preview_token,
+        }
+        | ChangeSetCommand::Takeover {
+            input,
+            key,
+            preview_token,
+        }
+        | ChangeSetCommand::Adopt {
+            input,
+            key,
+            preview_token,
+        }
+        | ChangeSetCommand::Discard {
             input,
             key,
             preview_token,
@@ -55,14 +103,18 @@ async fn execute(command: ChangeSetCommand, root: &Path, as_json: bool) -> Resul
             object.insert("key".into(), json!(key));
             let payload = serde_json::to_vec(&payload).map_err(|e| e.to_string())?;
             let mut client = client(root).await?;
-            let command_id = format!("changeset:{key}");
+            let command_id = if operation == "changeset.seal" {
+                format!("changeset:{key}")
+            } else {
+                format!("{operation}:{key}").replacen("changeset.", "changeset:", 1)
+            };
             if let Some(preview_token) = preview_token {
                 let result = client
                     .submit(SubmitRequest {
                         protocol: Some(Protocol {
                             version: PROTOCOL.into(),
                         }),
-                        operation: "changeset.seal".into(),
+                        operation: operation.into(),
                         payload,
                         command_id,
                         idempotency_key: key,
@@ -79,7 +131,7 @@ async fn execute(command: ChangeSetCommand, root: &Path, as_json: bool) -> Resul
                         protocol: Some(Protocol {
                             version: PROTOCOL.into(),
                         }),
-                        operation: "changeset.seal".into(),
+                        operation: operation.into(),
                         payload,
                         command_id,
                     })

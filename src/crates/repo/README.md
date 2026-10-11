@@ -27,7 +27,7 @@ Claude 的集成引用这里的已准入版本，不引用提交对象。`Change
 
 调用封存的 `Seal.lease` 为 `{lease_id, generation}`。租约状态、ID、代次以及持有者的调用 ID 和版本逐项核对。`owner` 是可信调用方提供的当前状态，不是工具回读，也不进命令摘要；新准入时取消或替代会拒绝，已经准入的重投仍取回原版本。`admit_in_transaction` 复用这些检查，Project 的结果准入在同一事务重核实际 Invocation、准入 Revision 并登记发布意图，不用两次 Store 提交冒充原子准入。
 
-人的显式封存使用有 Control 与目标 Repo 权限的 `DirectClient`，`producer_ref` 为 `human_command`，其 `command_id` 就是保存的命令 ID，`Seal.lease` 为 `null`。它不借用调用的租约或状态，也不授新租约；旧租约撤销中时仍可由人的独立授权接受已封存内容。`prepare_human` / `admit_human` 接 `changeset seal` 的真实 CLI 预览与确认；重投取原封存观察，不要求原输入目录仍存在。残留接管、采用与丢弃留后续段。
+人的显式封存使用有 Control 与目标 Repo 权限的 `DirectClient`，`producer_ref` 为 `human_command`，其 `command_id` 就是保存的命令 ID，`Seal.lease` 为 `null`。它不借用调用的租约或状态，也不授新租约；旧租约撤销中时仍可由人的独立授权接受已封存内容。`prepare_human` / `admit_human` 接 `changeset seal` 的真实 CLI 预览与确认；重投取原封存观察，不要求原输入目录仍存在。残留接管与采用复用 `admit_human_checked`，额外来源引用在同一事务比较；丢弃使用 `changeset::residual` 的 outbox 与回读，不创建 Revision、不改变租约。
 
 基线、结果树和可选提交包装只接收 40 位小写 SHA-1；大写拒绝，不产生第二份身份。只换提交包装或产出来源时保留已有 Revision 的身份与首次产出者。`changeset_revision` 仍在 Repo 范围，ID 是版本 ID，正文八键不变：五个身份字段、`producer_ref`、`review_subject_digest`、`revision_digest`。
 
@@ -43,7 +43,7 @@ Claude 的集成引用这里的已准入版本，不引用提交对象。`Change
 
 发布模块提供 `repo::changeset::admit_with_publication(store, actor, seal, owner, Some(&Publication { policy, authorizing_actor }), now_ms)`；跨模块提案准入不能在自身事务中嵌套调用这个 Store 包装层，而是共用 `admit_in_transaction` 与 `repo::review::enqueue`。`policy` 由 `repo::review::policy` 读取，核对 Spec 冻结的 ID、版本和摘要；`Policy.binding_version` 等于 ChangeSet 打开时的绑定版本，入队仍按该版本检查，不取当前新绑定替代。`authorizing_actor` 来自原 Invocation 授权保存的人类提交者，不取模型的提案。推送、建立评审请求和 `changeset_platform_binding` 由 #403 的发布 worker 做。完整 CLI 用例从脚本产出、同事务准入与入队，走到随包 Gitea 的推送、建请求与映射回读；见 [Control README](../../apps/control/README.md#第-6-包--拆分-2写入预览租约与封存准入)。
 
-第 8 条的残留接管 / 采用 / 丢弃命令与第 10 条的平台评论线不在拆分 2；#405 合入后在同一个「第 6 包收尾」PR 接上。现有精确评审版本引用及 Context 读取钩子保留，尚未接通时明确拒绝。
+第 8 条残留命令与第 10 条平台评论线的运行接法见 [Control README](../../apps/control/README.md#第-6-包收尾残留命令与评审评论)。本 crate 不读取平台评论，mapping 仍由既有发布 worker 写。
 
 Result Proposal 的 `OutputLocation` 接受 `commit`、`worktree` 与 `no_changes`。后者是无改动声明，不是仅凭模型文字结束调用：control 用原生 Git 比较基线树与工作目录快照。相同的结果只接受提案，不新增 Revision 或发布意图；Project 在同一准入事务调用 `validate_in_transaction`，复用有改动结果的租约、持有者、版本与父版本检查。
 

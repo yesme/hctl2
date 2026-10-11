@@ -429,15 +429,17 @@ pub fn confirm_platform(
         let verified_reviews = reg.prepared.platform == Platform::Github;
         // Hosted Gitea: merge with a pinned source head and branch-protection readback were
         // verified live on 1.27.3 (docs/research/gitea.md, 2026-10-07); review threads, formal
-        // reviews and review text are still unverified there.
+        // reviews remain unverified there. Review text was verified with the packaged
+        // Gitea + tea through real dispatch Context (docs/research/gitea.md, 2026-10-11).
         let verified_merge = matches!(reg.prepared.platform, Platform::Github | Platform::Local);
+        let verified_text = matches!(reg.prepared.platform, Platform::Github | Platform::Local);
         let value = json!({
             "provider": reg.prepared.platform, "observation": observed,
             "account_mappings": {},
             "capabilities": {
                 "review_threads": verified_reviews, "formal_reviews": verified_reviews, "checks": checks,
                 "remote_merge": verified_merge, "identity_mapping": false, "expected_target_head": false,
-                "review_text_readback": verified_reviews, "protection_readback": verified_merge
+                "review_text_readback": verified_text, "protection_readback": verified_merge
             }
         });
         tx.put(&Record {

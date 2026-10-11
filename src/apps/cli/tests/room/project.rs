@@ -57,6 +57,14 @@ fn paired(name: &str, delayed_seconds: u64) -> (Fixture, Paired) {
     paired_profile(name, delayed_seconds, "read_only")
 }
 fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Paired) {
+    paired_profile_with_budget(name, delayed_seconds, mode, 65536)
+}
+fn paired_profile_with_budget(
+    name: &str,
+    delayed_seconds: u64,
+    mode: &str,
+    max_bytes: u64,
+) -> (Fixture, Paired) {
     let (f, _) = Fixture::packaged(name);
     assert!(f.run(&["start", "--secret-backend", "user-file"]).0);
     let mut registration_input = json!({"name":"dispatch","origin":"local","platform":"local","platform_path":"dispatch","default_source":"gitea_issues"});
@@ -211,12 +219,12 @@ fn paired_profile(name: &str, delayed_seconds: u64, mode: &str) -> (Fixture, Pai
         "profile",
         "create",
         "profile",
-        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":65536}}),
+        json!({"id":"research","profile":{"harness":profession["harness"],"model":profession["model"],"mode":mode,"permissions":permissions,"environment":[],"required_capabilities":agency_proto::Capabilities::default(),"max_context_bytes":max_bytes}}),
     );
     let binding_ref =
         json!({"key":binding["binding"]["key"],"version":{"state":binding["binding"]["version"]}});
     let profession_ref = json!({"key":accepted_profession["profession"]["key"],"version":{"state":accepted_profession["profession"]["version"]}});
-    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":65536},"display_name":"Research","persona_tags":[]});
+    let selection = json!({"room_id":room,"selected_item":profession_ref,"profession":profession_ref,"profession_digest":profession["reference"]["digest"],"agency":binding_ref,"required_skills":[],"optional_skills":[],"worker_profiles":[profile["revision"]],"responsibility":"research","permission":{"allow":permissions},"budget":{"max_bytes":max_bytes},"display_name":"Research","persona_tags":[]});
     accepted(
         &f,
         "project",
@@ -357,23 +365,35 @@ while read -r managed_input; do :; done
 /// Independent platform readback uses the packaged tea and the control's stored
 /// credential, not a stubbed platform or a worker/test seam. Never print the token.
 fn gitea_read(f: &Fixture, registration: &Value, path: &str) -> Value {
+    gitea_api(f, registration, "GET", path, None)
+}
+fn gitea_api(
+    f: &Fixture,
+    registration: &Value,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+) -> Value {
     let token = control::config::secret_store(&f.root)
         .unwrap()
         .get(registration["observed"]["credential_ref"].as_str().unwrap())
         .unwrap();
-    let output = Command::new(f.payload.join("libexec/hctl2/tea"))
+    let mut command = Command::new(f.payload.join("libexec/hctl2/tea"));
+    command
         .env(
             "GITEA_INSTANCE_URL",
             registration["observed"]["instance"].as_str().unwrap(),
         )
         .env("GITEA_TOKEN", String::from_utf8(token).unwrap())
         .env("NO_COLOR", "1")
-        .args(["api", "-X", "GET", path])
-        .output()
-        .unwrap();
+        .args(["api", "-X", method]);
+    if let Some(body) = body {
+        command.args(["--data", &body.to_string()]);
+    }
+    let output = command.arg(path).output().unwrap();
     assert!(
         output.status.success(),
-        "independent Gitea GET failed: {path}"
+        "independent Gitea {method} failed: {path}"
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
@@ -400,9 +420,11 @@ fn ready_gitea(f: &Fixture) {
     }
 }
 
-fn publishing_chain(name: &str, requires_confirmation: bool) {
-    let (f, mut setup) = paired_profile(name, 0, "write");
-    let p = setup.project.as_str();
+fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bool) {
+    let budget = if review_comments { 1048576 } else { 65536 };
+    let (f, mut setup) = paired_profile_with_budget(name, 0, "write", budget);
+    let project_id = setup.project.clone();
+    let p = project_id.as_str();
     if !requires_confirmation {
         let (ok, shown) = f.run(&["project", "show", p]);
         assert!(ok, "{shown}");
@@ -442,7 +464,6 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     let pending = write["lease"]["pending"].clone();
     let set = pending["change_set_id"].as_str().unwrap().to_owned();
     configure_git_writer(&f, &mut setup, &pending, true, false);
-    let p = setup.project.as_str();
     let start_args = [
         "invocation",
         "start",
@@ -567,6 +588,159 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
     assert_eq!(requests[0]["base"]["ref"], "main");
     assert_eq!(requests[0]["state"], "open");
     assert_eq!(requests[0]["merged"], false);
+    if review_comments {
+        let comment_path = format!("repos/{full_name}/issues/{index}/comments");
+        let comment = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &comment_path,
+            Some(json!({"body":"合入吧；请解释这个实现"})),
+        );
+        let comment_id = comment["id"].as_u64().unwrap();
+        let mut expected_comments = vec![(comment_id, "合入吧；请解释这个实现".to_owned())];
+        for n in 1..60 {
+            let body = format!("一般评论 {n}：保留原文");
+            let comment = gitea_api(
+                &f,
+                &registration,
+                "POST",
+                &comment_path,
+                Some(json!({"body":body})),
+            );
+            expected_comments.push((comment["id"].as_u64().unwrap(), body));
+        }
+        let review = gitea_api(
+            &f,
+            &registration,
+            "POST",
+            &format!("repos/{full_name}/pulls/{index}/reviews"),
+            Some(
+                json!({"event":"COMMENT","commit_id":commit,"body":"平台评审意见，不是 HCTL 授权","comments":(0..60).map(|n| json!({"path":"source.txt","new_position":1,"body":format!("行内评论 {n}：请核对这行的实现")})).collect::<Vec<_>>()}),
+            ),
+        );
+        let review_id = review["id"].as_u64().unwrap();
+        let input = f.root.join("review-invocation.json");
+        let selected = json!({"key":{"scope":{"kind":"repo","id":setup.repo},"kind":"changeset_revision","id":revision_id},"version":{"state":1}});
+        let deadline_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 120000;
+        let request = json!({"project_id":p,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Read the exact review remarks for rework","budget":budget,"deadline_ms":deadline_ms,"retry_of":null,"review_change_set_revision":selected,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}});
+        std::fs::write(&input, request.to_string()).unwrap();
+        let args = [
+            "invocation",
+            "preview",
+            "--input",
+            input.to_str().unwrap(),
+            "--key",
+            "read-review",
+        ];
+        let (ok, preview) = f.run(&args);
+        assert!(ok, "{preview}");
+        let bundle: agency_proto::context::Bundle = serde_json::from_value(
+            preview["effect_summary"]["assembly"]["bundle"]["document"].clone(),
+        )
+        .unwrap();
+        let entry = bundle
+            .entries
+            .iter()
+            .find(|e| e.source.id == format!("review_comments/{revision_id}"))
+            .unwrap();
+        let bytes = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes,
+            _ => panic!("review bytes must be delivered"),
+        };
+        let exact: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(exact["identity"]["revision"], selected);
+        assert_eq!(exact["platform_commit_sha"], commit);
+        assert_eq!(exact["request_comments"][0]["id"], comment_id);
+        assert_eq!(
+            exact["request_comments"][0]["body"],
+            "合入吧；请解释这个实现"
+        );
+        let comments = exact["request_comments"].as_array().unwrap();
+        assert_eq!(comments.len(), 60);
+        for (id, body) in &expected_comments {
+            assert!(
+                comments
+                    .iter()
+                    .any(|c| c["id"] == *id && c["body"] == *body)
+            );
+        }
+        assert_eq!(entry.source.digest, agency_proto::hash(bytes));
+        assert!(
+            exact["reviews"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["id"] == review_id)
+        );
+        let line_comments = exact["line_comments"].as_array().unwrap();
+        assert_eq!(line_comments.len(), 60);
+        for n in 0..60 {
+            assert!(line_comments.iter().any(
+                |c| c["id"].is_u64() && c["body"] == format!("行内评论 {n}：请核对这行的实现")
+            ));
+        }
+        // An edit after preview cannot replace the bytes authorized for this call.
+        gitea_api(
+            &f,
+            &registration,
+            "PATCH",
+            &format!("repos/{full_name}/issues/comments/{comment_id}"),
+            Some(json!({"body":"later edited text"})),
+        );
+        let pending = &preview["effect_summary"]["preview"]["write"]["lease"]["pending"];
+        configure_git_writer(&f, &mut setup, pending, false, true);
+        let mut start = args.to_vec();
+        start[1] = "start";
+        start.extend([
+            "--preview-token",
+            preview["preview_token"].as_str().unwrap(),
+        ]);
+        let (ok, started) = f.run(&start);
+        assert!(ok, "{started}");
+        let review_invocation = started["invocation_id"].as_str().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let shown = loop {
+            let (ok, shown) = f.run(&["invocation", "show", p, review_invocation]);
+            assert!(ok, "{shown}");
+            if shown["state"] == "completed" {
+                break shown;
+            }
+            assert!(
+                matches!(shown["state"].as_str(), Some("pending" | "running"))
+                    && std::time::Instant::now() < deadline,
+                "review rework failed: {shown}"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(
+            shown["invocation"]["spec"]["document"]["bundle"]["digest"],
+            preview["effect_summary"]["assembly"]["bundle"]["digest"]
+        );
+        let (ok, saved) = f.run(&["context", "show", p, "--bundle-id", &bundle.id]);
+        assert!(ok, "{saved}");
+        let saved_bundle: agency_proto::context::Bundle =
+            serde_json::from_value(saved["bundle"]["document"].clone()).unwrap();
+        assert_eq!(
+            saved_bundle, bundle,
+            "platform edits must not replace frozen delivery bytes"
+        );
+        // The precise bundle remains frozen in the Invocation; content never enqueues integration.
+        let (_, integrations) = f.run(&["integration", "list", &setup.repo]);
+        assert!(
+            integrations["items"].as_array().unwrap().is_empty(),
+            "{integrations}"
+        );
+        println!(
+            "LIVE review Context: revision={revision_id}, comment={comment_id}, general_comments=60, line_comments=60, digest={}; no integration intent",
+            entry.source.digest
+        );
+    }
     let branch = published["intent"]["branch"].as_str().unwrap();
     let remote = gitea_read(
         &f,
@@ -612,7 +786,10 @@ fn publishing_chain(name: &str, requires_confirmation: bool) {
         }
     };
     assert_eq!(store.list("changeset_revision").unwrap().len(), 1);
-    assert_eq!(store.list("invocation_result").unwrap().len(), 1);
+    assert_eq!(
+        store.list("invocation_result").unwrap().len(),
+        if review_comments { 2 } else { 1 }
+    );
     let record = store
         .get(&store::ObjectKey {
             scope: Scope::Repo(setup.repo.clone()),
@@ -704,12 +881,17 @@ fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
 
 #[test]
 fn write_dispatch_real_cli_admits_and_publishes_to_packaged_gitea() {
-    publishing_chain("publish-automatic", false);
+    publishing_chain("publish-automatic", false, false);
 }
 
 #[test]
 fn write_dispatch_real_cli_persists_human_gate_and_publishes_after_restart() {
-    publishing_chain("publish-held", true);
+    publishing_chain("publish-held", true, false);
+}
+
+#[test]
+fn review_comments_real_cli_freezes_gitea_content_without_authorizing_integration() {
+    publishing_chain("publish-comments", false, true);
 }
 
 #[test]
@@ -2223,9 +2405,15 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "the dispatched invocation is listed with its state: {row:?}"
     );
     assert!(!listed.contains('\u{1b}'));
-    // The machine interface stays byte-stable where the content allows it. The
-    // program-file digest differs across OS releases; check it against the
-    // actual /bin/sh, while keeping every other field pinned to the sample.
+    // The machine interface stays byte-stable where the content allows it: the
+    // catalog is fixed by the paired fixture, so two runs must agree byte for
+    // byte and match the saved golden sample — except the digest bytes, which
+    // are the fingerprint of the program file the fixture runs. Acceptance 1's
+    // "`--json` byte-identical" compares the same environment before
+    // and after a change; a program file differs across platforms and build
+    // presets, so the golden holds a placeholder where the digest sits, and the
+    // live bytes are compared with the digest computed from the fixture's own
+    // program file at run time. Everything else stays byte for byte.
     let (ok, first, _) = f.run_raw(true, &["agency", "catalog", "local"]);
     assert!(ok);
     let (_, second, _) = f.run_raw(true, &["agency", "catalog", "local"]);
@@ -2234,14 +2422,24 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
         "agency catalog --json must be deterministic in one fixture"
     );
     let catalog = String::from_utf8(first).unwrap();
-    let digest = agency_proto::hash(&std::fs::read("/bin/sh").unwrap());
-    let mut expected: Value = serde_json::from_str(AGENCY_CATALOG_JSON).unwrap();
-    expected["harnesses"][0]["digest"] = json!(digest);
-    expected["professions"][0]["harness"]["digest"] = json!(digest);
-    expected["professions"][0]["reference"]["digest"] = json!(digest);
+    let program =
+        serde_json::from_slice::<Value>(&std::fs::read(f.root.join("script.json")).unwrap())
+            .unwrap()["program"]
+            .as_str()
+            .expect("the fixture names its program file")
+            .to_owned();
+    let program_digest = agency_proto::hash(&std::fs::read(&program).unwrap());
+    // The fingerprint appears as the harness digest, the profession's harness
+    // digest and its reference digest; all three cover the same program file.
     assert_eq!(
-        catalog.trim_end(),
-        serde_json::to_string(&expected).unwrap(),
+        catalog.matches(&program_digest).count(),
+        3,
+        "the catalog carries the fixture program's digest:\n{catalog}"
+    );
+    let normalized = catalog.replace(&program_digest, "FIXTURE-PROGRAM-DIGEST");
+    assert_eq!(
+        normalized.trim_end(),
+        AGENCY_CATALOG_JSON.trim_end(),
         "agency catalog --json drifted from the saved sample"
     );
     let (ok, human, _) = f.run_raw(false, &["agency", "catalog", "local"]);
@@ -2261,6 +2459,13 @@ fn human_output_renders_dispatch_preview_sections_and_invocation_table() {
     assert!(!human.contains('\u{1b}'));
 }
 
+/// Saved `--json` sample of `agency catalog`, which needs a live Agency. The
+/// digest positions hold the `FIXTURE-PROGRAM-DIGEST` placeholder: those bytes
+/// are the fingerprint of the program file the fixture runs (`ScriptRuntime`
+/// hashes `config.program`), which is not stable across platforms or build
+/// presets. The test substitutes the digest computed from the fixture's own
+/// program file before comparing, so every other byte is still pinned.
+const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"FIXTURE-PROGRAM-DIGEST","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;
 /// Codex stand-in from `agency/tests/codex_fixture.rs`. It speaks app-server
 /// `turn/start`, writes a rollout whose `input_text` is that body, and answers
 /// `ANSWER`. Herdr only displays `codex resume --remote`.
@@ -2621,7 +2826,3 @@ fn value_has_input_text(value: &Value, text: &str) -> bool {
         _ => false,
     }
 }
-
-/// Captured from the pre-renderer CLI with the same fixture; pins the machine
-/// interface for `agency catalog`, which needs a live Agency.
-const AGENCY_CATALOG_JSON: &str = r#"{"harnesses":[{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"}],"professions":[{"capabilities":{"event_cursor":true,"exact_attach":false,"input":true,"input_provenance":true,"isolation_effects":[],"managed_single_writer":true,"secure_input":false,"stop":true,"tool_execution_unmediated":false},"default_role":"fixture","harness":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-protocol-fixture","revision":"1"},"model":"none","persona":"protocol test executor","reference":{"digest":"c0eaf44f9242d5bbc2e14f4e8b7dccc1eff7f2976d64dc18914d5ef9f373e100","id":"script-worker","revision":"1"},"skills":[],"terms":"not a coding harness; no PTY, tool provenance or OS hardening"}],"skills":[]}"#;
