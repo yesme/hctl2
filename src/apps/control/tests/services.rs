@@ -472,11 +472,9 @@ async fn backup_restored_into_a_new_root_keeps_consumption() {
     let mut fresh_client = connect(&fresh.0).await;
     wait_ready(&mut fresh_client).await;
     let before = query_json(&mut fresh_client, "services").await;
-    assert_eq!(
-        hosted(&before, "never-ready")["consumed"],
-        false,
-        "{before}"
-    );
+    let never = hosted(&before, "never-ready");
+    assert_eq!(never["consumed"], false, "{before}");
+    assert!(never["pid"].is_null(), "{before}");
     let preview = fresh_client
         .preview(proto::PreviewRequest {
             protocol: Some(proto()),
@@ -500,19 +498,27 @@ async fn backup_restored_into_a_new_root_keeps_consumption() {
         .unwrap()
         .into_inner();
     assert!(response.error.is_none(), "{:?}", response.error);
-    let mut running = false;
+    // The restore starts never-ready in the new root, and its failing readiness probe
+    // stops it again after failure_threshold 3 × period_seconds 1
+    // (testdata/process-compose/lifecycle.yaml). A status query slower than that window
+    // never sees running. The pid process-compose recorded stays, and the new root had
+    // none before the restore, so a pid proves the restored consumption started it.
+    let mut started = false;
     let mut last = serde_json::Value::Null;
     for _ in 0..200 {
         let services = query_json(&mut fresh_client, "services").await;
         let never = hosted(&services, "never-ready");
-        if never["consumed"] == true && never["running"] == true {
-            running = true;
+        if never["consumed"] == true && never["pid"].as_i64().is_some_and(|pid| pid > 0) {
+            started = true;
             break;
         }
         last = services;
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    assert!(running, "restore into a new root lost consumption: {last}");
+    assert!(
+        started,
+        "restore into a new root did not bring never-ready back: {last}"
+    );
 }
 
 #[tokio::test]
