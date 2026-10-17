@@ -59,7 +59,7 @@ Session ids:
     grok     01a0e980-c22c-7cb2-85f1-ec27f2ba0716
     kimi     session_9cb83e83-3adf-4a4c-b354-bc8db0572579
     minimax  mvs_10a70eac3ad9485abc2471f39da69467
-    muse     01a0e981-5fe8-71f3-898c-8bb01bd7ff10
+    muse     01a147e4-85a5-71a1-8c77-b9a236897dc8
     qwen     c32d605f-5c34-4748-ac64-1c7c4584cf73
 
 Examples:
@@ -234,7 +234,7 @@ case "$agent" in
     workdir="$workspace/hctl2-muse"
     case "$platform" in
       macos)  session="01a08ce4-5760-7673-abc1-edc3de391284" ;;
-      ubuntu) session="01a0e981-5fe8-71f3-898c-8bb01bd7ff10" ;;
+      ubuntu) session="01a147e4-85a5-71a1-8c77-b9a236897dc8" ;;
     esac
     cmd=(muse --yolo resume "$session")
     ;;
