@@ -434,7 +434,7 @@ fn spawn_agency_with(f: &Fixture, log: &str, installed_agency: Option<&Path>) ->
     );
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
-        if Command::new(&binary)
+        if Command::new(binary)
             .arg("--root")
             .arg(f.root.join("independent-agency"))
             .arg("status")
