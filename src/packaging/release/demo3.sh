@@ -27,16 +27,33 @@ readonly DEMO3_ANSWER="DEMO3_READ_ONLY_OK"
 
 DEMO3_ROOT=""
 DEMO3_PAYLOAD=""
+DEMO3_PATH=""
 DEMO3_AGENCY_ROOT=""
 DEMO3_AGENCY_PID=""
 DEMO3_PORTS=""
 DEMO3_PROFILE=""
+DEMO3_PROFILE_WRITE=""
+DEMO3_ROSTER_VERSION=""
+DEMO3_BINDING_REF=""
+DEMO3_PROFESSION_REF=""
+DEMO3_PROFESSION_JSON=""
+DEMO3_PROFESSION_DIGEST=""
 DEMO3_REPO=""
 DEMO3_PLATFORM_ID=""
 DEMO3_PROJECT=""
 DEMO3_ROOM=""
 DEMO3_SOURCE=""
 DEMO3_TASK=""
+DEMO3_CHANGESET=""
+DEMO3_INVOCATION=""
+DEMO3_REVISION=""
+DEMO3_PUBLISH_INTENT=""
+DEMO3_PUBLISH_COMMIT=""
+DEMO3_PR_INDEX=""
+DEMO3_MERGE_INTENT=""
+DEMO3_INTEGRATION_RECEIPT=""
+DEMO3_COMPLETION_RECEIPT=""
+DEMO3_HUMAN_PREVIEWS=""
 
 note() { printf 'demo3: %s\n' "$*"; }
 demo3_dump_agency_err() {
@@ -47,6 +64,11 @@ demo3_dump_agency_err() {
     if [[ -n "$DEMO3_ROOT" && -s "$DEMO3_ROOT/agency.err" ]]; then
         printf 'demo3 --- agency.err ---\n' >&2
         tail -n 30 "$DEMO3_ROOT/agency.err" >&2
+    fi
+    # The control's delivery and recovery loops report there and nowhere else.
+    if [[ -n "$DEMO3_ROOT" && -s "$DEMO3_ROOT/control.err" ]]; then
+        printf 'demo3 --- control.err ---\n' >&2
+        tail -n 30 "$DEMO3_ROOT/control.err" >&2
     fi
 }
 die() {
@@ -74,10 +96,58 @@ hctl2() {
 
 json_get() { "$HCTL2_JQ" -c "$1" <<<"$2"; }
 json_str() { "$HCTL2_JQ" -er "$1" <<<"$2"; }
+# Unquoted scalar for a value that may be absent: `null` stays the four letters,
+# which callers test for instead of dying.
+json_raw() { "$HCTL2_JQ" -r "$1" <<<"$2"; }
 assert_json() { # <filter> <json> <what went wrong>
     "$HCTL2_JQ" -e "$1" <<<"$2" >/dev/null || die "$3: $2"
 }
 
+# One submit, retried only on the product's documented RESULT_UNKNOWN recovery:
+# the provider write may have landed while its read-back had not caught up. The
+# product's recovery is to read the effect back, never to resend, and a preview
+# token is single-use, so each attempt previews again under the same key: the
+# preview is idempotent, and the submit then reads the existing effect.
+# Preview and submit are separate commands for `integration`, so both are given.
+DEMO3_SUBMIT_ERROR=""
+demo3_submit_resumable() { # <key> <preview command...> -- <submit command...>
+    local key="$1"
+    shift
+    local preview_args=() submit_args=() preview token submitted status attempt code split=0
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == -- && "$split" -eq 0 ]]; then
+            split=1
+            shift
+            continue
+        fi
+        if [[ "$split" -eq 0 ]]; then
+            preview_args+=("$1")
+        else
+            submit_args+=("$1")
+        fi
+        shift
+    done
+    [[ "$split" -eq 1 && ${#submit_args[@]} -gt 0 ]] ||
+        die "internal: submit command missing after --"
+    for attempt in $(seq 1 20); do
+        preview="$(hctl2 "${preview_args[@]}" --key "$key")" ||
+            die "preview of $key failed: $preview"
+        token="$(json_str '.preview_token' "$preview")" ||
+            die "preview of $key returned no token: $preview"
+        status=0
+        submitted="$(hctl2 "${submit_args[@]}" --key "$key" --preview-token "$token")" ||
+            status=$?
+        if [[ "$status" -eq 0 ]]; then
+            printf '%s\n' "$submitted"
+            return 0
+        fi
+        code="$(json_raw '.error.code // empty' "$submitted" 2>/dev/null || true)"
+        [[ "$code" == RESULT_UNKNOWN ]] || break
+        sleep 0.5
+    done
+    DEMO3_SUBMIT_ERROR="$submitted"
+    return 1
+}
 # The product's write convention: the same command twice, first without a token
 # so it only previews, then with the exact token so it submits. There is no
 # one-shot form, so the preview is never skipped by accident.
@@ -88,13 +158,8 @@ assert_json() { # <filter> <json> <what went wrong>
 two_phase() { # <key> <command...> (no --key, no --preview-token)
     local key="$1"
     shift
-    local preview token submitted status=0
-    preview="$(hctl2 "$@" --key "$key")" || die "preview of $key failed: $preview"
-    token="$(json_str '.preview_token' "$preview")" ||
-        die "preview of $key returned no token: $preview"
-    submitted="$(hctl2 "$@" --key "$key" --preview-token "$token")" || status=$?
-    [[ "$status" -eq 0 ]] || die "submit of $key exited $status: $submitted"
-    printf '%s\n' "$submitted"
+    demo3_submit_resumable "$key" "$@" -- "$@" ||
+        die "submit of $key failed: $DEMO3_SUBMIT_ERROR"
 }
 
 demo3_sha256() { # stdin -> lowercase hex
@@ -166,6 +231,13 @@ demo3_cleanup() {
             HCTL2_STATE_ROOT="$DEMO3_ROOT/services" \
                 "$DEMO3_PAYLOAD/bin/hctl2-services" stop >/dev/null 2>&1 || true
         fi
+        # A failed run is diagnosed from what the root still holds: the control
+        # log, the Agency's own store and the stream it kept. The knob is for a
+        # human debugging a red run; CI never sets it.
+        if [[ -n "${HCTL2_DEMO3_KEEP:-}" ]]; then
+            note "keeping $DEMO3_ROOT (HCTL2_DEMO3_KEEP)"
+            return 0
+        fi
         find "${DEMO3_ROOT:?}" -depth -delete
     fi
 }
@@ -193,6 +265,7 @@ demo3_unpack_payload() { # <archive> <dest>
 
 demo3_prepare() { # <name>
     local name="$1"
+    DEMO3_PATH="$name"
     DEMO3_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/hctl2-demo3-$name.XXXXXX")"
     case "$DEMO3_ROOT" in
         /*/hctl2-demo3-*) ;;
@@ -214,13 +287,27 @@ demo3_prepare() { # <name>
 }
 
 demo3_control_start() {
-    # Disposable credentials on purpose: the packaged default stays the system
-    # keyring, which a CI runner has no reason to have.
-    hctl2 start --secret-backend user-file >/dev/null
-    local status
-    status="$(hctl2 status)"
-    assert_json '.ready == true' "$status" "control did not become ready"
-    note "control $(json_str '.control_id' "$status") is ready"
+    # Started here rather than through `hctl2 start` so its stderr is kept: the
+    # delivery and recovery loops report their failures there and nowhere else,
+    # and `hctl2 start` discards that stream. The secret backend stays the
+    # disposable one on purpose; the packaged default is the system keyring,
+    # which a CI runner has no reason to have.
+    # The backend is recorded the way `hctl2 start` records it; only the spawn
+    # itself moves here.
+    hctl2 init --secret-backend user-file >/dev/null
+    HCTL2_INSTALL_ROOT="$DEMO3_PAYLOAD" "$HCTL2_CONTROL_BIN" --root "$DEMO3_ROOT" \
+        >/dev/null 2>"$DEMO3_ROOT/control.err" &
+    local attempt status
+    for attempt in $(seq 1 600); do
+        status="$(hctl2 status 2>/dev/null || true)"
+        if [[ -n "$status" ]] && printf '%s' "$status" | "$HCTL2_JQ" -e \
+            '.ready == true' >/dev/null 2>&1; then
+            note "control $(json_str '.control_id' "$status") is ready"
+            return 0
+        fi
+        sleep 0.1
+    done
+    die "control did not become ready: $status"
 }
 
 demo3_wait_service() { # <name>
@@ -263,15 +350,20 @@ DEMO3_EXECUTOR
 )
     "$HCTL2_JQ" -n --arg body "$body" \
         '{program:"/bin/sh",arguments:["-c",$body,"demo3-executor"]}' >"$config"
-    # Nothing of the Agency's stdout is kept: it answers `hctl2 agency pair`,
-    # so it holds the pairing material. Its stderr is kept for `die` to show.
-    # Neither may stay attached to the test's own output pipe, or the harness
-    # would wait for this background child after the test had finished.
-    "$HCTL2_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" serve --script-config "$config" \
+    demo3_agency_spawn
+}
+
+# Nothing of the Agency's stdout is kept: it answers `hctl2 agency pair`, so it
+# holds the pairing material. Its stderr is kept for `die` to show. Neither may
+# stay attached to the test's own output pipe, or the harness would wait for
+# this background child after the test had finished.
+demo3_agency_spawn() {
+    "$HCTL2_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" serve \
+        --script-config "$DEMO3_ROOT/script.json" \
         >/dev/null 2>"$DEMO3_ROOT/agency.err" &
     DEMO3_AGENCY_PID=$!
     local attempt
-    for attempt in $(seq 1 100); do
+    for attempt in $(seq 1 200); do
         if "$HCTL2_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" status >/dev/null 2>&1; then
             note "script Agency is serving (pid $DEMO3_AGENCY_PID)"
             return 0
@@ -279,6 +371,19 @@ DEMO3_EXECUTOR
         sleep 0.05
     done
     die "script Agency did not start"
+}
+
+demo3_agency_stop() {
+    [[ -n "$DEMO3_AGENCY_PID" ]] || return 0
+    kill "$DEMO3_AGENCY_PID" 2>/dev/null || true
+    local _
+    for _ in $(seq 1 100); do
+        kill -0 "$DEMO3_AGENCY_PID" 2>/dev/null || break
+        sleep 0.05
+    done
+    kill -9 "$DEMO3_AGENCY_PID" 2>/dev/null || true
+    wait "$DEMO3_AGENCY_PID" 2>/dev/null || true
+    DEMO3_AGENCY_PID=""
 }
 
 # Pair, accept one exact Profession, create a read-only Worker Profile and
@@ -345,9 +450,20 @@ demo3_roster_ready() { # <project> <room>
             persona_tags: []
         }]
     }' >"$DEMO3_ROOT/select.json"
-    two_phase demo3-select project select --input "$DEMO3_ROOT/select.json" \
-        >/dev/null
-    note "roster selected one read-only research Worker"
+    # The write segment reselects this roster with a write Profile, so the
+    # exact references the first selection used are kept.
+    DEMO3_BINDING_REF="$(json_get \
+        '{"key":.binding.key,"version":{"state":.binding.version}}' "$binding")"
+    DEMO3_PROFESSION_REF="$(json_get \
+        '{"key":.profession.key,"version":{"state":.profession.version}}' \
+        "$accepted_profession")"
+    DEMO3_PROFESSION_JSON="$profession"
+    DEMO3_PROFESSION_DIGEST="$digest"
+    local selected
+    selected="$(two_phase demo3-select project select \
+        --input "$DEMO3_ROOT/select.json")"
+    DEMO3_ROSTER_VERSION="$(json_str '.roster_version' "$selected")"
+    note "roster selected one read-only research Worker (version $DEMO3_ROSTER_VERSION)"
 }
 
 # <lifecycle-after-register> is what the path expects to see once the platform
@@ -388,12 +504,12 @@ demo3_project_create() { # <repo_id> <name>
         repo_id: $repo,
         definition: {
             name: $name,
-            goal: "demo 3: one read-only dispatch, answered in the Room",
+            goal: "demo 3: a scripted write dispatched from the Room, reviewed and merged on the platform, then completed",
             scope: "the registered repo",
             roles: [], role_members: {}, defaults: {},
             settings: {
                 selection_policy: {},
-                publish_review_requires_confirmation: true
+                publish_review_requires_confirmation: false
             }
         }
     }' >"$DEMO3_ROOT/project.json"
@@ -439,19 +555,23 @@ demo3_task_with_contract() { # <repo_id> <candidate_id>
     "$HCTL2_JQ" -n --arg project "$DEMO3_PROJECT" --arg source "$DEMO3_SOURCE" \
         --argjson version "$version" '{
         project_id: $project, project_version: $version, source_id: $source,
-        title: "demo 3 read-only chain",
-        body: "one read-only dispatch, answered in the Room"
+        title: "demo 3 scripted write chain",
+        body: "a scripted write is dispatched from the Room, published, merged and completed"
     }' >"$DEMO3_ROOT/task.json"
     created="$(two_phase demo3-task task create --input "$DEMO3_ROOT/task.json")"
     DEMO3_TASK="$(json_str '.task_id' "$created")"
 
     contract="$("$HCTL2_JQ" -cS -n '{
-        scope: "demo 3 read-only chain",
-        expected_outcome: "answer one read-only request in the Room",
-        acceptance: [{
-            text: "the answer reaches the Room exactly once",
-            grade: "human"
-        }],
+        scope: "demo 3 scripted write chain",
+        expected_outcome: "the scripted change is integrated into main",
+        acceptance: [
+            {
+                text: "the scripted change is integrated",
+                grade: "mechanical",
+                evidence: {accept: "integration_receipt", min_channel: "unmediated"}
+            },
+            {text: "a human judged the change done", grade: "human"}
+        ],
         roles: [], capabilities: []
     }')"
     digest="$(printf '%s' "$contract" | demo3_sha256)"
@@ -569,26 +689,411 @@ demo3_delete_card() { # <project> <task>
     note "the platform card this run created is deleted again"
 }
 
-# Interface slots for the rest of demo 3 (kickoff §四 第 9 包验收第 8 条). The
-# call sites are already in order in both paths, and since #405 every command
-# they name is on main: `changeset seal`, `review publish`, `integration
-# preview`/`submit`, `task complete`. What is still missing is an execution body
-# that can hold a write session -- this demo's body is the read-only script
-# fixture above, which answers with one fixed line and edits nothing, so a
-# write-type dispatch has nothing to lease to. Both paths therefore stop after
-# the read-only answer until 3f (Agency write-type session) lands.
-demo3_write_type_dispatch() { # <project> <room>
-    note "TODO(demo3): write-type dispatch -- a write-mode Worker Profile carrying git.write, then invocation preview showing the ChangeSet, the lease and the frozen publish policy, and a harness editing real non-document code in an isolated worktree (blocked on 3f)"
+# The write segment (kickoff §四 第 9 包验收第 8 条). The read-only chain above
+# ends with the answer in the Room; these steps carry the same Project through a
+# write-type dispatch, sealing, publication, integration and completion, and
+# every state change is a `hctl2 --json` command. The execution body is a
+# script: there is no harness here holding a write session, so the Agency's
+# script executor edits one file in its own isolated directory and answers with
+# a ChangeSet result frame, the same shape
+# apps/cli/tests/room/project.rs::configure_git_writer uses.
+#
+# Platform facts are read back once per segment. On GitHub the packaged gh
+# carries the same credential the runner gave control, so the pull request, its
+# merge commit, the new main head and the required check are read independently.
+# On the hosted Gitea the credential is control's alone (the script must not
+# read control's secret store), so the facts there are the readback control
+# itself recorded: `review show` stages and mappings, and the Integration
+# Receipt.
+
+# A second Worker Profile with the permissions a write lease needs, and a
+# roster that names it. A select resends the whole roster at its exact version,
+# so the read-only selection above is replaced rather than extended.
+demo3_write_profile() { # <project> <room>
+    local project="$1" room="$2" profile version selected
+    "$HCTL2_JQ" -n --argjson profession "$DEMO3_PROFESSION_JSON" '{
+        id: "coding",
+        profile: {
+            harness: $profession.harness,
+            model: $profession.model,
+            mode: "write",
+            permissions: ["context.read", "git.read", "git.write"],
+            environment: [],
+            required_capabilities: {
+                input: false, stop: false, event_cursor: false,
+                input_provenance: false, managed_single_writer: false,
+                secure_input: false, exact_attach: false,
+                tool_execution_unmediated: false, isolation_effects: []
+            },
+            max_context_bytes: 65536
+        }
+    }' >"$DEMO3_ROOT/write-profile.json"
+    profile="$(two_phase demo3-write-profile profile create \
+        --input "$DEMO3_ROOT/write-profile.json")"
+    DEMO3_PROFILE_WRITE="$(json_get '.revision' "$profile")"
+    version="$(demo3_project_version)"
+    "$HCTL2_JQ" -n \
+        --arg project "$project" --arg room "$room" \
+        --argjson version "$version" \
+        --argjson roster_version "$DEMO3_ROSTER_VERSION" \
+        --argjson profession_ref "$DEMO3_PROFESSION_REF" \
+        --argjson binding_ref "$DEMO3_BINDING_REF" \
+        --arg digest "$DEMO3_PROFESSION_DIGEST" \
+        --argjson profile_revision "$DEMO3_PROFILE_WRITE" '{
+        project_id: $project, project_version: $version, room_id: $room,
+        topic_command_key: null, roster_version: $roster_version,
+        selections: [{
+            room_id: $room,
+            selected_item: $profession_ref,
+            profession: $profession_ref,
+            profession_digest: $digest,
+            agency: $binding_ref,
+            required_skills: [], optional_skills: [],
+            worker_profiles: [$profile_revision],
+            responsibility: "coding",
+            permission: {allow: ["context.read", "git.read", "git.write"]},
+            budget: {max_bytes: 65536},
+            display_name: "Coding",
+            persona_tags: []
+        }]
+    }' >"$DEMO3_ROOT/select-write.json"
+    selected="$(two_phase demo3-select-write project select \
+        --input "$DEMO3_ROOT/select-write.json")"
+    DEMO3_ROSTER_VERSION="$(json_str '.roster_version' "$selected")"
+    note "roster selected one write Worker for the coding responsibility"
 }
+
+# Replace the read-only execution body with the write one, for exactly the
+# lease the preview just issued. The baseline travels as a fast-export stream
+# rather than as a path: the execution directory is the only place this body
+# may read, and the export is text for both demo repositories (a binary
+# baseline is refused below instead of silently truncated by argv).
+demo3_git_writer_up() { # <worktree> <pending> <path>
+    local worktree="$1" pending="$2" path="$3"
+    local change_set lease_id generation baseline frame envelope script
+    change_set="$(json_str '.change_set_id' "$pending")"
+    lease_id="$(json_str '.lease.lease_id' "$pending")"
+    generation="$(json_get '.lease.generation' "$pending")"
+    baseline="$(json_str '.baseline_commit' "$pending")"
+    frame="$("$HCTL2_JQ" -c -n \
+        --arg change_set "$change_set" --arg lease "$lease_id" \
+        --argjson generation "$generation" --arg baseline "$baseline" '{
+        change_set_id: $change_set,
+        lease: {lease_id: $lease, generation: $generation},
+        base_commit_sha: $baseline,
+        parent_revision_id: null,
+        location: {
+            kind: "commit", repo_path: "EXECUTION_PATH",
+            commit_sha: "RESULT_COMMIT"
+        }
+    }')"
+    # The terminal frame is the adapter envelope: its `output` is the ChangeSet
+    # result as a JSON string, which is what admission reads.
+    envelope="$("$HCTL2_JQ" -c -n --arg output "$frame" '{
+        type: "result", schema: "hctl2.changeset-output.v1", output: $output
+    }')"
+    git -C "$worktree" fast-export main >"$DEMO3_ROOT/baseline.export" ||
+        die "fast-export of $worktree failed"
+    if [[ "$(wc -c <"$DEMO3_ROOT/baseline.export")" != \
+        "$(tr -d '\000' <"$DEMO3_ROOT/baseline.export" | wc -c)" ]]; then
+        die "the write baseline carries binary data; this demo passes it as text"
+    fi
+    script="$(cat <<'DEMO3_WRITER'
+set -eu
+exec 2>git-error.txt
+read -r initial
+mkdir git-result
+cd git-result
+git init -q --initial-branch=main
+printf '%s' "$1" | git fast-import --quiet
+git reset --hard --quiet main
+git config user.name 'Demo 3 Script'
+git config user.email 'demo3@example.invalid'
+mkdir -p "$(dirname "$3")"
+printf '%s\n' 'written by the demo 3 script execution' >"$3"
+git add -A
+git commit --quiet -m 'demo 3 script result'
+commit=$(git rev-parse HEAD)
+printf '%s\n' "$2" | sed -e "s|EXECUTION_PATH|$PWD|g" -e "s|RESULT_COMMIT|$commit|g" | tee ../result-frame.json
+while read -r managed_input; do :; done
+DEMO3_WRITER
+)"
+    "$HCTL2_JQ" -n --arg body "$script" \
+        --rawfile exported "$DEMO3_ROOT/baseline.export" \
+        --arg frame "$envelope" --arg path "$path" '{
+        program: "/bin/sh",
+        arguments: ["-c", $body, "git-writer", $exported, $frame, $path]
+    }' >"$DEMO3_ROOT/script.json"
+    # The same Agency root keeps the pairing and the catalog; only the script
+    # config is replaced, so the control reaches the same binding after restart.
+    demo3_agency_stop
+    demo3_agency_spawn
+}
+
+demo3_write_type_dispatch() { # <project> <room> <worktree> <path>
+    local project="$1" room="$2" worktree="$3" path="$4"
+    local baseline deadline preview write pending token started attempt state
+    baseline="$(git -C "$worktree" rev-parse HEAD)" ||
+        die "the write worktree has no baseline: $worktree"
+    deadline=$(( $(date +%s) * 1000 + 120000 ))
+    "$HCTL2_JQ" -n \
+        --arg project "$project" --arg room "$room" --arg task "$DEMO3_TASK" \
+        --argjson profile "$DEMO3_PROFILE_WRITE" \
+        --argjson deadline "$deadline" --arg baseline "$baseline" \
+        --arg path "$path" '{
+        project_id: $project, room_id: $room, task_id: $task,
+        target: "coding", profile: $profile,
+        request: ("Write " + $path + " with one line for the adopted Task"),
+        budget: 65536, deadline_ms: $deadline, retry_of: null,
+        write: {
+            change_set_id: null, baseline_commit: $baseline,
+            target_branch: "main", allow_update: true
+        }
+    }' >"$DEMO3_ROOT/write-invocation.json"
+    preview="$(hctl2 invocation preview \
+        --input "$DEMO3_ROOT/write-invocation.json" --key demo3-write)" ||
+        die "the write preview failed: $preview"
+    write="$(json_get '.effect_summary.preview.write' "$preview")"
+    assert_json '.authorization == "publish_for_review_not_integration"' "$write" \
+        "the write preview does not authorize a review publication"
+    assert_json '.publication_target.target_branch == "main"' "$write" \
+        "the write preview does not target main"
+    assert_json '.publication_target.requires_human_confirmation == false' "$write" \
+        "the default path must publish without a separate human gate"
+    assert_json '(.lease.pending.change_set_id // "") != ""' "$write" \
+        "the write preview carries no pending ChangeSet"
+    pending="$(json_get '.lease.pending' "$write")"
+    DEMO3_CHANGESET="$(json_str '.change_set_id' "$pending")"
+    note "write lease pending on ChangeSet $DEMO3_CHANGESET (baseline $baseline)"
+    demo3_git_writer_up "$worktree" "$pending" "$path"
+    token="$(json_str '.preview_token' "$preview")"
+    started="$(hctl2 invocation start --input "$DEMO3_ROOT/write-invocation.json" \
+        --key demo3-write --preview-token "$token")" ||
+        die "starting the write invocation failed: $started"
+    DEMO3_INVOCATION="$(json_str '.invocation_id' "$started")"
+    note "write invocation $DEMO3_INVOCATION started"
+    for attempt in $(seq 1 300); do
+        state="$(hctl2 invocation show "$project" "$DEMO3_INVOCATION")"
+        case "$(json_get '.state' "$state")" in
+            '"completed"')
+                note "write invocation completed"
+                return 0 ;;
+            '"failed"')
+                die "the write invocation failed: $state" ;;
+        esac
+        sleep 0.2
+    done
+    die "the write invocation did not complete in 60 seconds"
+}
+
 demo3_seal() { # <project> <invocation>
-    note "TODO(demo3): seal -- hctl2 changeset seal freezes the ChangeSet into a Revision and admits it, then changeset show and changeset diff read the exact bytes back (blocked on the write-type dispatch above)"
+    local project="$1" invocation="$2" shown diff revision
+    shown="$(hctl2 invocation show "$project" "$invocation")" ||
+        die "invocation show failed: $shown"
+    [[ "$(json_get '.state' "$shown")" == '"completed"' ]] ||
+        die "the write invocation is not complete: $shown"
+    shown="$(hctl2 changeset show "$DEMO3_REPO" "$DEMO3_CHANGESET")" ||
+        die "changeset show failed: $shown"
+    assert_json '(.revisions | length) == 1' "$shown" \
+        "the ChangeSet did not freeze into exactly one revision"
+    revision="$(json_str '.revisions[0].change_set_revision_id' "$shown")"
+    DEMO3_REVISION="$revision"
+    diff="$(hctl2 changeset diff "$DEMO3_REPO" "$DEMO3_CHANGESET" "$revision")" ||
+        die "changeset diff failed: $diff"
+    assert_json '.diff | contains("written by the demo 3 script execution")' \
+        "$diff" "the admitted revision does not carry the script's bytes"
+    note "ChangeSet $DEMO3_CHANGESET sealed as $revision; the diff carries the script's line"
 }
-demo3_publish() { # <repo> <intent>
-    note "TODO(demo3): publish -- hctl2 review publish opens the review request on the platform, then hctl2 review show reads its two stages back (blocked on seal)"
+
+# The GitHub facts are the platform's own: the packaged gh reads the same
+# repository and pull request control pushed to.
+demo3_gh() {
+    local gh="$DEMO3_PAYLOAD/libexec/hctl2/gh"
+    [[ -x "$gh" ]] || die "the package carries no gh: $gh"
+    "$gh" "$@"
 }
-demo3_merge() { # <repo> <intent>
-    note "TODO(demo3): merge -- hctl2 integration preview then submit with the source head pinned, and hctl2 integration show reading the Integration Receipt back (blocked on publish)"
+
+# The platform only merges once the required check finished; the live GitHub
+# chain waits for it the same way before submitting.
+demo3_github_wait_check() { # <commit>
+    local commit="$1" attempt status
+    for attempt in $(seq 1 150); do
+        status="$(demo3_gh api "repos/$DEMO3_GITHUB_REPO/commits/$commit/check-runs")" ||
+            die "gh api check-runs failed for $commit"
+        if printf '%s' "$status" | "$HCTL2_JQ" -e \
+            '.check_runs[] | select(.name == "canary" and .status == "completed" and .conclusion == "success")' \
+            >/dev/null 2>&1; then
+            note "the canary check passed on $commit"
+            return 0
+        fi
+        sleep 2
+    done
+    die "the canary check did not pass on $commit: $status"
 }
+
+demo3_github_facts() { # <number> <published-commit> <receipt>
+    local number="$1" head="$2" receipt="$3" pr main
+    pr="$(demo3_gh api "repos/$DEMO3_GITHUB_REPO/pulls/$number")" ||
+        die "gh api pull $number failed"
+    main="$(demo3_gh api "repos/$DEMO3_GITHUB_REPO/branches/main")" ||
+        die "gh api main failed"
+    assert_json '.merged == true' "$pr" "the review request was not merged"
+    [[ "$(json_str '.head.sha' "$pr")" == "$head" ]] ||
+        die "the merged request does not carry the published commit"
+    [[ "$(json_str '.merge_commit_sha' "$pr")" == "$(json_str '.integrated_commit' "$receipt")" ]] ||
+        die "the platform's merge commit is not the Receipt's integrated commit"
+    [[ "$(json_str '.commit.sha' "$main")" == "$(json_str '.target_head_after' "$receipt")" ]] ||
+        die "the platform's main head is not the Receipt's target head"
+    note "GitHub facts: PR #$number merged as $(json_str '.merge_commit_sha' "$pr"), main at $(json_str '.commit.sha' "$main")"
+}
+
+demo3_publish() { # <repo>
+    local repo="$1" attempt listed intent shown
+    for attempt in $(seq 1 300); do
+        listed="$(hctl2 review list "$repo")" ||
+            die "review list failed while waiting for publication: $listed"
+        intent="$(json_raw '.items[0].intent_id // empty' "$listed")"
+        if [[ -n "$intent" && "$intent" != null ]]; then
+            shown="$(hctl2 review show "$repo" "$intent")" ||
+                die "review show failed for intent $intent (listed: $listed): $shown"
+            if [[ "$(json_get '.intent.state' "$shown")" == '"published"' ]]; then
+                DEMO3_PUBLISH_INTENT="$intent"
+                DEMO3_PUBLISH_COMMIT="$(json_str '.mappings[0].platform_commit_sha' "$shown")"
+                DEMO3_PR_INDEX="$(json_str '.mappings[0].review_request.index' "$shown")"
+                assert_json '(.mappings | length) == 1' "$shown" \
+                    "the published revision has more than one platform mapping"
+                assert_json '.stages.push.confirmed == true' "$shown" \
+                    "the platform did not confirm the push"
+                assert_json '.stages.review_request.confirmed == true' "$shown" \
+                    "the platform did not confirm the review request"
+                [[ "$(json_get '(.items | length)' "$listed")" == 1 ]] ||
+                    die "there is more than one publication intent: $listed"
+                note "published as review request #$DEMO3_PR_INDEX at $DEMO3_PUBLISH_COMMIT"
+                return 0
+            fi
+        fi
+        sleep 0.2
+    done
+    die "the publication did not reach the platform in 60 seconds"
+}
+
+demo3_merge() { # <repo>
+    local repo="$1" strategy=fast_forward input preview token submitted attempt shown receipt
+    [[ "$DEMO3_PATH" == github ]] && strategy=merge_commit
+    "$HCTL2_JQ" -n --arg repo "$repo" --arg revision "$DEMO3_REVISION" \
+        --arg strategy "$strategy" '{
+        repo_id: $repo, change_set_revision_id: $revision,
+        target_kind: "platform", target_ref: "refs/heads/main",
+        form: "accept_advance", strategy: $strategy
+    }' >"$DEMO3_ROOT/integration.json"
+    preview="$(hctl2 integration preview --input "$DEMO3_ROOT/integration.json" \
+        --key demo3-merge)" || die "the integration preview failed: $preview"
+    if [[ "$DEMO3_PATH" == github ]]; then
+        assert_json '.effect_summary.protection.required_checks == ["canary"]' "$preview" \
+            "the GitHub target does not require the canary check"
+        assert_json '.effect_summary.protection.requires_review_request == true' "$preview" \
+            "the GitHub target does not require a review request"
+        demo3_github_wait_check "$DEMO3_PUBLISH_COMMIT"
+    fi
+    submitted="$(demo3_submit_resumable demo3-merge \
+        integration preview --input "$DEMO3_ROOT/integration.json" -- \
+        integration submit --input "$DEMO3_ROOT/integration.json")" ||
+        die "the integration submit failed: $DEMO3_SUBMIT_ERROR"
+    DEMO3_MERGE_INTENT="$(json_str '.intent_id' "$submitted")"
+    DEMO3_HUMAN_PREVIEWS="$DEMO3_HUMAN_PREVIEWS integration"
+    note "human preview 1 submitted: integration $DEMO3_MERGE_INTENT"
+    for attempt in $(seq 1 450); do
+        shown="$(hctl2 integration show "$repo" "$DEMO3_MERGE_INTENT")"
+        case "$(json_get '.intent.state' "$shown")" in
+            '"succeeded"') break ;;
+            '"failed"') die "the integration failed: $shown" ;;
+        esac
+        sleep 0.2
+    done
+    [[ "$(json_get '.intent.state' "$shown")" == '"succeeded"' ]] ||
+        die "the integration did not succeed in 90 seconds"
+    receipt="$(json_get '.receipt' "$shown")"
+    DEMO3_INTEGRATION_RECEIPT="$(json_str '.receipt_id' "$receipt")"
+    [[ "$(json_str '.source.change_set_revision_id' "$receipt")" == "$DEMO3_REVISION" ]] ||
+        die "the Receipt's source is not the admitted revision"
+    [[ "$(json_str '.evidence_level' "$receipt")" == hctl2-tool ]] ||
+        die "the Receipt was not signed by the unmediated readback"
+    if [[ "$DEMO3_PATH" == github ]]; then
+        demo3_github_facts "$DEMO3_PR_INDEX" "$DEMO3_PUBLISH_COMMIT" "$receipt"
+        [[ "$(json_str '.integrated_commit' "$receipt")" != "$DEMO3_PUBLISH_COMMIT" ]] ||
+            die "a GitHub merge cannot be the candidate commit itself"
+    else
+        # The hosted Gitea merges by fast-forward: the platform's head, the
+        # Receipt's target head and the integrated commit are the published
+        # commit the platform returned on the push.
+        [[ "$(json_str '.target_head_after' "$receipt")" == "$DEMO3_PUBLISH_COMMIT" ]] ||
+            die "the target head after integration is not the published commit"
+        [[ "$(json_str '.integrated_commit' "$receipt")" == "$DEMO3_PUBLISH_COMMIT" ]] ||
+            die "the integrated commit is not the published commit"
+    fi
+    note "human preview 1 done: Receipt $DEMO3_INTEGRATION_RECEIPT for $DEMO3_REVISION"
+}
+
 demo3_complete() { # <project> <task>
-    note "TODO(demo3): complete -- hctl2 task complete, then read the Task Completion Receipt back (blocked on merge)"
+    local project="$1" task="$2" shown version lifecycle revision_number uid
+    local receipt_ref preview token progress
+    shown="$(hctl2 task show "$project" "$task")" || die "task show failed: $shown"
+    version="$(json_get '.version' "$shown")"
+    lifecycle="$(json_get '.data.lifecycle_version' "$shown")"
+    revision_number="$(json_get '.data.revision.number' "$shown")"
+    uid="$(id -u)"
+    receipt_ref="$("$HCTL2_JQ" -c -n --arg repo "$DEMO3_REPO" \
+        --arg receipt "$DEMO3_INTEGRATION_RECEIPT" '{
+        key: {scope: {kind: "repo", id: $repo},
+              kind: "integration_receipt", id: $receipt},
+        version: {state: 1}
+    }')"
+    "$HCTL2_JQ" -n \
+        --arg project "$project" --arg task "$task" \
+        --argjson version "$version" --argjson lifecycle "$lifecycle" \
+        --argjson revision_number "$revision_number" \
+        --argjson receipt_ref "$receipt_ref" --arg principal "local-owner:$uid" '{
+        project_id: $project, task_id: $task, version: $version,
+        lifecycle_version: $lifecycle, revision_number: $revision_number,
+        acceptance: [
+            {item: 0, judge: {kind: "hctl2_tool"}, channel: "unmediated",
+             references: [$receipt_ref], producer: "hctl2-tool", generation: 1},
+            {item: 1, judge: {kind: "human", actor: $principal},
+             channel: "narrated", references: [], producer: null, generation: null}
+        ]
+    }' >"$DEMO3_ROOT/complete.json"
+    preview="$(hctl2 task complete --key demo3-complete \
+        --input "$DEMO3_ROOT/complete.json")" ||
+        die "the completion preview failed: $preview"
+    assert_json '.effect_summary.result.items[0].validation_level == "unmediated"' "$preview" \
+        "the mechanical item is not backed by the unmediated Receipt"
+    demo3_submit_resumable demo3-complete \
+        task complete --input "$DEMO3_ROOT/complete.json" -- \
+        task complete --input "$DEMO3_ROOT/complete.json" >/dev/null ||
+        die "the completion submit failed: $DEMO3_SUBMIT_ERROR"
+    DEMO3_HUMAN_PREVIEWS="$DEMO3_HUMAN_PREVIEWS completion"
+    shown="$(hctl2 task show "$project" "$task")"
+    [[ "$(json_str '.data.lifecycle' "$shown")" == completed ]] ||
+        die "the Task is not completed: $shown"
+    progress="$(json_get '.progress' "$shown")"
+    DEMO3_COMPLETION_RECEIPT="$(json_str '.completion.current.receipt_id' "$progress")"
+    # Both kinds of Receipt, one each, and the whole chain reachable from the
+    # Task: the admitted revision, its review request, its integration Receipt.
+    [[ "$(json_get '(.completion.history | length)' "$progress")" == 1 ]] ||
+        die "the Task does not carry exactly one completion Receipt"
+    [[ "$(json_get '(.revisions | length)' "$progress")" == 1 ]] ||
+        die "the Task does not carry exactly one revision"
+    [[ "$(json_str '.revisions[0].change_set_revision_id' "$progress")" == "$DEMO3_REVISION" ]] ||
+        die "the Task's revision is not the admitted one"
+    [[ "$(json_str '.revisions[0].integration.receipt_id' "$progress")" == "$DEMO3_INTEGRATION_RECEIPT" ]] ||
+        die "the Task's integration Receipt is not the one signed above"
+    [[ "$(json_str '.revisions[0].publication.review_request' "$progress")" == "$DEMO3_PR_INDEX" ]] ||
+        die "the Task's review request is not the one the platform confirmed"
+    note "human preview 2 done: Task completed with Receipts $DEMO3_INTEGRATION_RECEIPT + $DEMO3_COMPLETION_RECEIPT"
+}
+
+# The default path has exactly two human previews: the merge and the completion.
+demo3_assert_previews() {
+    [[ "$DEMO3_HUMAN_PREVIEWS" == " integration completion" ]] ||
+        die "the default path must preview exactly the merge and the completion, got:$DEMO3_HUMAN_PREVIEWS"
 }
