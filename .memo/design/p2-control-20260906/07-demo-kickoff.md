@@ -82,6 +82,8 @@
 
 35. **2026-10-17 各家的能力档重排；小活 U 记档。** 所有者 2026-10-16 让主笔处理 §二 第 32 条记着的那条偶发红：「先把那个小活给干了吧，把它给处理掉，怎么老红」。主笔查下来它在 macOS x86_64 红过七次，排成小活 U（§六），Claude 写（#425）。所有者 10-17 定评审席：Grok 找问题；核验席先定 GLM，同日改给 Antigravity，「它最近刚刚升级成为Gemini 4 Agon，我想测试一下它的能力」。两席都「可合」，#425 合入（`2d7c2b0`）；Grok 的两条 P2 所有者定留到跟进（§七）。之后所有者说：「现在的模型里，能力较强的有claude, codex, agy。然后是grok, glm, deepseek. qwen和kimi都在等quota. minimax不指望了。」又说开工书「也改掉」。定下：① **排席按这几档**：Claude、Codex、Antigravity 第一档，Grok、GLM、DeepSeek 第二档；Qwen、Kimi 等额度，回来之前不排；MiniMax 不再排。§六「写的档」照此改；评的两种席位去掉暂停与不排的几家，核验席加 Antigravity（#425 的核验每一步都附了命令与原样输出），找问题席不动。② Antigravity 的模型改成 `gemini-4-argon`（#425 核验评论里自报）。③ **取消第 14 条**，所有者：「antigravity『它写的 PR 由 Claude 合、它不自己合』这条可以删了」。Antigravity 和别家一样，两席都对最终提交写「可合」、CI 绿之后自己开自动合入（第 11、23 条）。④ 同日 Muse 带着 `muse-wonder-full` 加入（ubuntu），所有者：「Muse应该是第一档的，可以把它的分工也放进去。」Muse 进第一档写；本库还没有它的实例，评的两种席位先各试一次，看结果再定。
 
+36. **2026-10-17 演示 3 收尾这一轮：重活放 ubuntu，第 7 条走查改给 GLM，Muse 试核验。** 所有者：「接下来要做哪些事情，把prompt都给我。主要是ubuntu - 那边的disk space比较充裕」，主笔排完后所有者「已经都发出去了」。① 第 1 条的真会话版（#430）由 Claude（ubuntu）作为作者的第二实例跑实测；Codex 找问题，Antigravity（ubuntu）核验。演示 3 的 Claude Code 路径在 ubuntu 上走：macOS 上 Claude Code 的登录只在钥匙串里，和第 5 条「读钥匙串失败」冲突，记在 §七。实测时发现 `task show` 的「当前 harness」在真 Agency 下两家都显示 `herdr`，在 #430 里改成按工种显示（§七）。② 第 8 条的写入段（#418 留在 `demo3.sh` 里的五步 TODO）由 DeepSeek（ubuntu）写；Grok 找问题，Antigravity 核验。③ 第 7 条走查原定 Kimi，改给 GLM（ubuntu）：从零装包，按 `08-demo3-walkthrough.md` 走 A–F，实录进 `.memo/log/`；Claude 找问题，Antigravity 抽两三步重跑。④ #424 的评审席：Grok 找问题，Muse（ubuntu）核验，这是 Muse 第一次在本库做核验。⑤ #421 的加固跟进会改 Agency 的凭据边界，等演示 3 走完再做；`services_test` 的两处小改照所有者同日的话留到跟进。
+
 ## 三、三次演示
 
 每次演示由 Fable 验收：照约束与验收用例把演示路径实际走一遍，如实报告哪些通过、哪些没有。Kimi 对照 `contract-tests.md` 走查覆盖。
@@ -694,6 +696,8 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 - 「harness 这段输出是不是在说做完了」这道 sysone 的题（§二 第 19 条）：记入 [`room-judgment-20261002.md`](../room-judgment-20261002.md) 的判断点清单；判断引擎还没有落地。演示 2 先不判，只把这一轮的回答交回 Room 由人看（所有者 2026-10-06「okay」，§二 第 25 条）；这道题什么时候接，等判断点第一批。
 - `services_test` 的两处小改：小活 U（#425）评审时 Grok 提的两条 P2，所有者 2026-10-17 定留到跟进。恢复那条的轮询上限写进注释，照实写成 200 轮（每轮一次 `services` 查询加 50 ms，慢机器上远不止 10 秒；Antigravity 退回看红时走满 200 轮各用了约 230 秒）；首次消费那条 `probe_not_ready_is_not_available_and_store_still_serves` 的判据从「`running` 或 `pid`」统一成只看 `pid`。两处同在一个文件，一起改。
 - `root//apps/control:task_native_test` 偶发红一次：Antigravity 核验 #425 时，Linux 本机全量并行第 2 轮报 `Text file busy (os error 26)`（Build `e1211545-5550-4447-8bc9-aa022d05ce34`），另两轮绿，与 #425 无关。先记下，再出现就排小活。
+- macOS 上 Claude Code 在凭据边界里登录不上：Claude Code 在 macOS 上的登录只存在钥匙串里（「Claude Code-credentials」）；第 9 包第 5 条要 harness 读钥匙串失败，`confine.rs` 的 macOS profile 于是拒了 `~/Library/Keychains`，Claude 在里面报「Not logged in」，Agency 记 `HARNESS_TURN_ERROR`（主笔 2026-10-11 实测）。Linux 上 Claude 的凭据是 `~/.claude` 下的文件，不受影响，所以演示 3 的 Claude Code 路径在 ubuntu 走（§二 第 36 条）。mac 上怎么办待所有者定，候选三个：用 `claude setup-token` 换成只给这个会话的 token；查 Seatbelt 能不能只放行 Claude 自己那一项；或者改第 5 条的说法。
+- 原生 Agency 的工种目录里，Claude Code 与 Codex 两个工种申报的 harness 都是 `herdr`（持有会话的那一层），`model` 都是 `none`；区分两家的是工种编号 `claude-code` / `codex-cli`。`spec/participant.md` 里「Harness 目录」说的是 Harness 本身是什么，这里的用法和它不一致。`task show` 原先按 harness 显示，真 Agency 下两家都是 `herdr (none)`，人答不出当前是哪一家；#430 改成按工种显示，并注明经由哪个 harness、模型是什么。目录本身要不要改成申报 Claude Code、Codex，牵动冻结引用与 Worker Profile 的匹配，等所有者定。
 
 演示 3 之后还有两大段：Run 与施工图、评审关卡（P2.5，接 Dagu），以及 Workbench（P3）。先做哪段，到演示 3 时由所有者定。Workbench 的界面零件互相独立，适合多家一起写。
 
