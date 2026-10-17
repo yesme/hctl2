@@ -126,6 +126,28 @@ impl Runtime for ScriptRuntime {
             skills: vec![],
         })
     }
+    fn start_for_tenant(
+        &self,
+        tenant: &Path,
+        spec: &Sealed<ExecutionSpec>,
+        bundle: &Sealed<Bundle>,
+        exec_root: &Path,
+        credential_root: &Path,
+    ) -> Result<Running> {
+        // A write still materializes through the installed tool. The script may
+        // describe the result, but it cannot skip the tool lookup: a missing
+        // hctl2-tool is WRITE_TOOL_UNAVAILABLE before the fixture runs.
+        if spec.document.write_lease.is_some() {
+            crate::write::prepare(
+                &spec.document,
+                &bundle.document,
+                exec_root,
+                tenant,
+                credential_root,
+            )?;
+        }
+        self.start(spec, bundle, exec_root, credential_root)
+    }
     fn start(
         &self,
         spec: &Sealed<ExecutionSpec>,

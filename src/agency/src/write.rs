@@ -480,19 +480,38 @@ fn git_optional(path: &Path, args: &[&str]) -> Result<Output> {
 }
 
 fn tool(path: &Path, args: &[&str]) -> Result<Value> {
-    let program = std::env::var_os("HCTL2_TOOL_BIN")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HCTL2_INSTALL_ROOT")
-                .map(|root| PathBuf::from(root).join("libexec/hctl2/hctl2-tool"))
-        })
-        .ok_or_else(|| {
+    // Same convention as control locating `agency` (`current_exe` parent): the
+    // install payload puts `hctl2-tool` next to `agency` in `bin/`. `HCTL2_TOOL_BIN`
+    // still overrides. `$HCTL2_INSTALL_ROOT/libexec/hctl2/hctl2-tool` is not that layout.
+    let program = if let Some(override_path) = std::env::var_os("HCTL2_TOOL_BIN") {
+        PathBuf::from(override_path)
+    } else {
+        let exe = std::env::current_exe().map_err(|error| {
             PortError::new(
                 "WRITE_TOOL_UNAVAILABLE",
-                "installed hctl2-tool is required to materialize and seal a ChangeSet",
+                format!("Agency executable cannot be resolved: {error}"),
                 "install_toolbox",
             )
         })?;
+        let sibling = exe
+            .parent()
+            .ok_or_else(|| {
+                PortError::new(
+                    "WRITE_TOOL_UNAVAILABLE",
+                    "installed hctl2-tool is required to materialize and seal a ChangeSet",
+                    "install_toolbox",
+                )
+            })?
+            .join("hctl2-tool");
+        if !sibling.is_file() {
+            return Err(PortError::new(
+                "WRITE_TOOL_UNAVAILABLE",
+                "installed hctl2-tool is required to materialize and seal a ChangeSet",
+                "install_toolbox",
+            ));
+        }
+        sibling
+    };
     // Buck supplies a relative artifact path; resolve it before moving the tool
     // into the Agency private directory.
     let program = program.canonicalize().map_err(|error| {
