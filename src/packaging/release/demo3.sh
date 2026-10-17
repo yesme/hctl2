@@ -17,6 +17,7 @@ set -Eeuo pipefail
 # first-party binaries to find.
 : "${HCTL2_CONTROL_BIN:?Buck must provide HCTL2_CONTROL_BIN}"
 : "${HCTL2_AGENCY_BIN:?Buck must provide HCTL2_AGENCY_BIN}"
+: "${HCTL2_DEMO3_TOOL_BIN:?Buck must provide HCTL2_DEMO3_TOOL_BIN}"
 : "${HCTL2_JQ:?Buck must provide HCTL2_JQ}"
 : "${HCTL2_TEST_DEPENDENCY_PACKAGE:?Buck must provide HCTL2_TEST_DEPENDENCY_PACKAGE}"
 : "${HCTL2_ZSTD_ROOT:?Buck must provide HCTL2_ZSTD_ROOT}"
@@ -30,6 +31,9 @@ DEMO3_PAYLOAD=""
 DEMO3_PATH=""
 DEMO3_AGENCY_ROOT=""
 DEMO3_AGENCY_PID=""
+# The Agency copy this run starts; it sits beside hctl2-tool the way an
+# install has both in bin/, which is where the Agency looks for the tool.
+DEMO3_AGENCY_BIN=""
 DEMO3_PORTS=""
 DEMO3_PROFILE=""
 DEMO3_PROFILE_WRITE=""
@@ -282,6 +286,14 @@ demo3_prepare() { # <name>
         -path '*/bin/*' | head -n 1)"
     [[ -n "$services_bin" ]] || die "dependency package has no bin/hctl2-services"
     DEMO3_PAYLOAD="${services_bin%/bin/hctl2-services}"
+    # The installed layout, staged here: `hctl2-tool` sits beside `agency`
+    # in `bin/`, and the Agency resolves the tool from its own executable.
+    # The build keeps the two apart, so the pair is copied together.
+    mkdir -p "$DEMO3_ROOT/bin"
+    cp "$HCTL2_AGENCY_BIN" "$DEMO3_ROOT/bin/agency"
+    cp "$HCTL2_DEMO3_TOOL_BIN" "$DEMO3_ROOT/bin/hctl2-tool"
+    chmod +x "$DEMO3_ROOT/bin/agency" "$DEMO3_ROOT/bin/hctl2-tool"
+    DEMO3_AGENCY_BIN="$DEMO3_ROOT/bin/agency"
     demo3_isolate_ports
     note "$name path: payload at $DEMO3_PAYLOAD"
 }
@@ -358,13 +370,13 @@ DEMO3_EXECUTOR
 # stay attached to the test's own output pipe, or the harness would wait for
 # this background child after the test had finished.
 demo3_agency_spawn() {
-    "$HCTL2_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" serve \
+    "$DEMO3_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" serve \
         --script-config "$DEMO3_ROOT/script.json" \
         >/dev/null 2>"$DEMO3_ROOT/agency.err" &
     DEMO3_AGENCY_PID=$!
     local attempt
     for attempt in $(seq 1 200); do
-        if "$HCTL2_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" status >/dev/null 2>&1; then
+        if "$DEMO3_AGENCY_BIN" --root "$DEMO3_AGENCY_ROOT" status >/dev/null 2>&1; then
             note "script Agency is serving (pid $DEMO3_AGENCY_PID)"
             return 0
         fi
@@ -677,16 +689,33 @@ demo3_read_only_dispatch() { # <project> <room>
 }
 
 demo3_delete_card() { # <project> <task>
-    local project="$1" task="$2" before
+    local project="$1" task="$2" before number probe
     before="$(hctl2 task show "$project" "$task")"
     "$HCTL2_JQ" -n --arg project "$project" --arg task "$task" \
         --argjson version "$(json_get '.version' "$before")" '{
         project_id: $project, task_id: $task, version: $version,
         confirm_irreversible: true, active_run_choices: []
     }' >"$DEMO3_ROOT/delete-card.json"
-    two_phase demo3-delete-card task delete-card \
-        --input "$DEMO3_ROOT/delete-card.json" >/dev/null
-    note "the platform card this run created is deleted again"
+    if demo3_submit_resumable demo3-delete-card \
+        task delete-card --input "$DEMO3_ROOT/delete-card.json" -- \
+        task delete-card --input "$DEMO3_ROOT/delete-card.json" >/dev/null; then
+        note "the platform card this run created is deleted again"
+        return 0
+    fi
+    # GitHub answers 410 for an issue that no longer exists, and the provider
+    # reads that as unavailable. The outcome this step asks for is that the card
+    # is gone, so it is read back from the platform before it is accepted.
+    if [[ "$DEMO3_PATH" == github ]]; then
+        number="$(json_str '.data.number' "$before")"
+        probe="$(demo3_gh api "repos/$DEMO3_GITHUB_REPO/issues/$number" 2>&1 || true)"
+        case "$probe" in
+            *410* | *404*)
+                note "the platform card #$number is gone (GitHub reports a deleted issue as 410; the provider saw it as unavailable)"
+                return 0 ;;
+        esac
+        die "the card #$number is not proven gone: $probe"
+    fi
+    die "deleting the card failed: $DEMO3_SUBMIT_ERROR"
 }
 
 # The write segment (kickoff §四 第 9 包验收第 8 条). The read-only chain above
@@ -792,7 +821,12 @@ demo3_git_writer_up() { # <worktree> <pending> <path>
     envelope="$("$HCTL2_JQ" -c -n --arg output "$frame" '{
         type: "result", schema: "hctl2.changeset-output.v1", output: $output
     }')"
-    git -C "$worktree" fast-export main >"$DEMO3_ROOT/baseline.export" ||
+    # The baseline commit must arrive with the same identity: a GitHub merge
+    # commit carries a signature, and dropping it would rewrite every SHA under
+    # it. Verbatim keeps the signature in the stream, so the seal finds the
+    # exact baseline the lease pinned.
+    git -C "$worktree" fast-export --signed-commits=verbatim main \
+        >"$DEMO3_ROOT/baseline.export" ||
         die "fast-export of $worktree failed"
     if [[ "$(wc -c <"$DEMO3_ROOT/baseline.export")" != \
         "$(tr -d '\000' <"$DEMO3_ROOT/baseline.export" | wc -c)" ]]; then

@@ -221,7 +221,7 @@ case "$method:$path" in
  GET:user) printf '{"id":5}' ;;
  GET:repos/owner/fixture) printf '{"id":77,"full_name":"owner/fixture","clone_url":"https://github.com/owner/fixture.git","has_issues":true,"permissions":{"push":true,"admin":true}}' ;;
  GET:*page=2*) printf '[]' ;;
- GET:*/issues\?*) if [ -f "$0.created" ] && [ ! -f "$0.hide" ]; then jqbin="$(cat "$0.jq")"; "$jqbin" -s '.' "$0.created"; else printf '[]'; fi ;;
+ GET:*/issues\?*) if [ -f "$0.created" ] && [ ! -f "$0.hide" ] && [ ! -f "$0.list-lag" ]; then jqbin="$(cat "$0.jq")"; "$jqbin" -s '.' "$0.created"; else printf '[]'; fi ;;
  GET:*/issues/1/parent) if [ "$header" = yes ]; then :; fi; printf 'null' ;;
  GET:*/issues/1) cat "$0.created" ;;
  GET:*) printf '[]' ;;
@@ -374,6 +374,33 @@ struct Adopted {
 /// The mechanical item cites the seeded fixture record with no declared evidence kind.
 fn adopt(fx: &Fixture) -> Adopted {
     adopt_contract(fx, None)
+}
+
+#[test]
+fn create_binds_card_when_issue_list_lags_successful_creation() {
+    let fx = fixture("create-list-lag", &[]);
+    // The platform accepted the POST and its issue endpoint can read the card,
+    // while the list endpoint still has the old contents.
+    std::fs::write(fx.root.join("gh.list-lag"), "").unwrap();
+    let (ok, before) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{before}");
+    // Same real CLI/RPC sequence as the walkthrough: create, then adopt a local
+    // contract. Adoption must not conceal an unbound Task behind that contract.
+    let adopted = adopt(&fx);
+    let (ok, shown) = run(&fx.root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert_eq!(
+        shown["data"]["entity"]["immutable_external_entity_id"], "node1",
+        "a successful issue creation must bind the Task: {shown}"
+    );
+    assert_eq!(shown["data"]["number"], 1);
+    let (ok, board) = run(&fx.root, &["task", "board", "A", &fx.source_id]);
+    assert!(ok && board["complete"] == true, "{board}");
+    assert_eq!(board["cards"][0]["task"]["id"], adopted.task_id);
+    let (ok, after) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{after}");
+    assert_eq!(before, after, "binding a card must not rewrite sources");
+    assert_eq!(std::fs::read(fx.root.join("gh.posts")).unwrap(), b"x");
 }
 
 /// Same, but the mechanical item's contract declares `accept: integration_receipt`.
