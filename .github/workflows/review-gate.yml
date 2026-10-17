@@ -5,6 +5,8 @@ name: Review gate
 # failed required check goes back to draft, with a comment naming the checks,
 # so nobody reviews or waits on a red head and the author is told without
 # anyone watching. The required checks are the three main's protection asks for.
+# It covers same-repository branches, which is how every seat works; a fork's
+# pull_request token is read-only and its workflow_run may name no PR.
 
 on:
   pull_request:
@@ -14,12 +16,16 @@ on:
     types: [completed]
 
 permissions:
-  contents: read
+  # convertPullRequestToDraft refuses an Actions token without contents: write
+  # ("Resource not accessible by integration", #439's probe run 39013169576).
+  contents: write
   checks: read
   pull-requests: write
 
+# One queue per PR for both triggers, so a ready event and a finished run never
+# send the same PR back twice.
 concurrency:
-  group: review-gate-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+  group: review-gate-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -40,6 +46,24 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Ready, open, and still at the head this event is about.
+          judged() {
+            gh pr view "$1" -R "$REPO" --json state,isDraft,headRefOid \
+              --jq 'if .state == "OPEN" and .isDraft == false and .headRefOid == $ENV.EVENT_HEAD then "yes" else "no" end'
+          }
+          # Each run of a workflow is its own check suite, and check-runs keeps
+          # the latest run per suite: a description edit that turned PR contract
+          # green leaves the earlier red run beside it. Judge only the newest
+          # run of each required check.
+          red() {
+            gh api "repos/$REPO/commits/$EVENT_HEAD/check-runs?per_page=100" --paginate --slurp |
+              jq -r '[.[].check_runs[]
+                  | select(.name == "CI gate" or .name == "Release gate" or .name == "PR contract")]
+                | group_by(.name) | map(max_by(.id)) | .[]
+                | select(.conclusion == "failure" or .conclusion == "timed_out")
+                | "- \(.name)：\(.html_url)"'
+          }
+
           if [ "$EVENT" = pull_request ]; then
             prs="$EVENT_PR"
           else
@@ -47,25 +71,18 @@ jobs:
           fi
 
           for pr in $prs; do
-            read -r state draft head < <(gh pr view "$pr" -R "$REPO" \
-              --json state,isDraft,headRefOid --jq '"\(.state) \(.isDraft) \(.headRefOid)"')
-            # Only the current head of an open, ready PR is judged; a run for
-            # an older head says nothing about what reviewers would look at.
-            if [ "$state" != OPEN ] || [ "$draft" != false ] || [ "$head" != "$EVENT_HEAD" ]; then
-              continue
-            fi
-            # The check-runs endpoint returns the latest run of each check.
-            failed=$(gh api "repos/$REPO/commits/$head/check-runs?per_page=100" --paginate \
-              --jq '.check_runs[]
-                | select(.name == "CI gate" or .name == "Release gate" or .name == "PR contract")
-                | select(.conclusion == "failure" or .conclusion == "timed_out")
-                | "- \(.name)：\(.html_url)"')
-            if [ -z "$failed" ]; then
-              continue
-            fi
+            [ "$(judged "$pr")" = yes ] || continue
+            failed=$(red)
+            [ -n "$failed" ] || continue
+            # Look again right before writing: a push or a green rerun since the
+            # first look narrows the window, though GitHub's mutation takes no
+            # expected head, so it cannot close it.
+            [ "$(judged "$pr")" = yes ] || continue
+            failed=$(red)
+            [ -n "$failed" ] || continue
             gh pr ready "$pr" -R "$REPO" --undo
             gh pr comment "$pr" -R "$REPO" --body "$(printf '%s\n' \
-              "## Review gate · 当前头 \`${head:0:7}\` 的必需检查红了，已退回草稿" \
+              "## Review gate · 当前头 \`${EVENT_HEAD:0:7}\` 的必需检查红了，已退回草稿" \
               "" \
               "$failed" \
               "" \
