@@ -42,16 +42,28 @@ demo3_wait_service tuwunel
 # Nothing on this path consumes the hosted Gitea, and it must stay that way.
 demo3_assert_service_down gitea
 
+# The write segment needs a working copy of the sandbox repository: the Agency
+# writes an isolated copy of it, and the baseline commit is what the lease pins.
+# The repository is public, so the clone needs no credential.
+source_repo="$DEMO3_ROOT/canary-source"
+git clone --quiet --branch main --single-branch \
+    "https://github.com/$DEMO3_GITHUB_REPO.git" "$source_repo" ||
+    die "cannot clone https://github.com/$DEMO3_GITHUB_REPO.git"
+git -C "$source_repo" config user.name 'Demo 3 Script'
+git -C "$source_repo" config user.email 'demo3@example.invalid'
+note "cloned $DEMO3_GITHUB_REPO at $(git -C "$source_repo" rev-parse HEAD)"
+
 "$HCTL2_JQ" -n \
     --arg instance "$DEMO3_GITHUB_INSTANCE" --arg path "$DEMO3_GITHUB_REPO" \
-    --arg repo_id "$DEMO3_GITHUB_REPO_ID" '{
+    --arg repo_id "$DEMO3_GITHUB_REPO_ID" --arg source "$source_repo" '{
     name: "hctl2-canary",
     origin: "external",
     platform: "github",
     instance: $instance,
     platform_repo_id: $repo_id,
     platform_path: $path,
-    default_source: "github_issues"
+    default_source: "github_issues",
+    local: {machine: "control", path: $source}
 }' >"$DEMO3_ROOT/register.json"
 demo3_register_repo "$DEMO3_ROOT/register.json" demo3-github active
 
@@ -61,11 +73,18 @@ demo3_roster_ready "$DEMO3_PROJECT" "$DEMO3_ROOM"
 demo3_task_with_contract "$DEMO3_REPO" github_issues
 demo3_read_only_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM"
 
-demo3_write_type_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM"
-demo3_seal "$DEMO3_PROJECT" ""
-demo3_publish "$DEMO3_REPO" ""
-demo3_merge "$DEMO3_REPO" ""
+# The same five steps as the Gitea path; the only differences are the merge
+# strategy (GitHub merges the pull request, it does not fast-forward) and the
+# independent readback through the packaged gh.
+write_path="demo3/script-$(date +%s).txt"
+demo3_write_profile "$DEMO3_PROJECT" "$DEMO3_ROOM"
+demo3_write_type_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM" "$source_repo" "$write_path"
+demo3_seal "$DEMO3_PROJECT" "$DEMO3_INVOCATION"
+demo3_publish "$DEMO3_REPO"
+demo3_merge "$DEMO3_REPO"
 demo3_complete "$DEMO3_PROJECT" "$DEMO3_TASK"
+demo3_assert_previews
+note "GitHub chain reached Task Completion Receipt through canary PR #$DEMO3_PR_INDEX"
 
 # The card this run created on the sandbox goes back out, so repeated runs do
 # not pile issues up on a repository other people can see.

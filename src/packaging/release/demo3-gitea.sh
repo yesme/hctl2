@@ -19,12 +19,15 @@ demo3_wait_service tuwunel
 demo3_assert_service_down gitea
 
 # A real working copy with one commit: initial delivery pushes exactly the
-# selected refs and invents nothing.
+# selected refs and invents nothing. The write segment modifies source.txt, so
+# the baseline has to carry it.
 source_repo="$DEMO3_ROOT/source"
 mkdir -p "$source_repo"
 git -C "$source_repo" init -b main >/dev/null
+printf 'initial\n' >"$source_repo/source.txt"
+git -C "$source_repo" add source.txt
 git -C "$source_repo" -c user.name='Demo 3' -c user.email=demo3@example.invalid \
-    commit --allow-empty -m 'demo 3 baseline' >/dev/null
+    commit -m 'demo 3 baseline' >/dev/null
 "$HCTL2_JQ" -n --arg path "$source_repo" '{
     name: "demo3-gitea",
     origin: "local",
@@ -41,11 +44,14 @@ demo3_roster_ready "$DEMO3_PROJECT" "$DEMO3_ROOM"
 demo3_task_with_contract "$DEMO3_REPO" gitea_issues
 demo3_read_only_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM"
 
-demo3_write_type_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM"
-demo3_seal "$DEMO3_PROJECT" ""
-demo3_publish "$DEMO3_REPO" ""
-demo3_merge "$DEMO3_REPO" ""
+demo3_write_profile "$DEMO3_PROJECT" "$DEMO3_ROOM"
+demo3_write_type_dispatch "$DEMO3_PROJECT" "$DEMO3_ROOM" "$source_repo" source.txt
+demo3_seal "$DEMO3_PROJECT" "$DEMO3_INVOCATION"
+demo3_publish "$DEMO3_REPO"
+demo3_merge "$DEMO3_REPO"
 demo3_complete "$DEMO3_PROJECT" "$DEMO3_TASK"
+demo3_assert_previews
+note "Gitea chain reached Task Completion Receipt through review request #$DEMO3_PR_INDEX"
 
 demo3_delete_card "$DEMO3_PROJECT" "$DEMO3_TASK"
 hctl2 stop >/dev/null
