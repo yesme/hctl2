@@ -34,7 +34,8 @@ Worktrees:
 Options:
   --print, --dry-run  print cd + command without launching
   --session-id        print the selected persisted session id
-  --no-sync           skip the pre-launch fast-forward to origin/main
+  --no-sync           skip the pre-launch return to the home branch and
+                      its fast-forward to origin/main
   --                  pass remaining args to the target CLI
 
 Session ids:
@@ -79,34 +80,76 @@ note() {
   echo "run: $*" >&2
 }
 
-# Fast-forward the harness branch to origin/main before the harness loads
-# AGENTS.md / CONSTRAINTS.md. Never blocks the launch: offline, detached,
-# dirty or diverged worktrees are reported and left untouched.
+# Before the harness loads AGENTS.md / CONSTRAINTS.md, put the worktree on the
+# harness home branch and fast-forward it to origin/main. A finished topic
+# branch (its remote branch deleted after the merge, nothing beyond
+# origin/main) or a detached HEAD already in origin/main gives way to the home
+# branch, and the finished branch is deleted; any other topic branch stays as
+# it is and is not fast-forwarded. Never blocks the launch: offline, dirty or
+# diverged worktrees are reported and left untouched.
 sync_worktree() {
-  local branch counts behind ahead
-  branch="$(git symbolic-ref --quiet --short HEAD)" || {
-    note "detached HEAD; not syncing"
-    return 0
-  }
+  local home="$1" branch here
+  branch="$(git symbolic-ref --quiet --short HEAD)" || branch=""
+  here="${branch:-detached HEAD at $(git rev-parse --short HEAD)}"
   if ! GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o ConnectTimeout=10" \
       git fetch --quiet --prune origin; then
-    note "fetch failed; launching $branch at $(git rev-parse --short HEAD) unsynced"
+    note "fetch failed; launching $here unsynced"
     return 0
   fi
-  counts="$(git rev-list --left-right --count origin/main...HEAD)" || {
+  if ! git rev-parse --verify --quiet origin/main >/dev/null; then
     note "origin/main not found; not syncing"
     return 0
-  }
+  fi
+  if [[ "$branch" != "$home" ]]; then
+    leave_for_home "$home" "$branch" "$here" || return 0
+  fi
+  fast_forward_home "$home"
+  if [[ -n "$branch" && "$branch" != "$home" ]]; then
+    if git branch --quiet -d "$branch" 2>/dev/null; then
+      note "deleted the merged local branch $branch"
+    else
+      note "kept the local branch $branch; delete it once $home has the merge"
+    fi
+  fi
+}
+
+# Switch to the home branch only when what is checked out is finished: a topic
+# branch whose remote branch is gone, or a detached HEAD, with no commit beyond
+# origin/main and no tracked change.
+leave_for_home() {
+  local home="$1" branch="$2" here="$3"
+  if [[ -n "$branch" && "$(git for-each-ref --format='%(upstream:track)' "refs/heads/$branch")" != "[gone]" ]]; then
+    note "on $branch, not $home; not syncing"
+    return 1
+  fi
+  if ! git merge-base --is-ancestor HEAD origin/main; then
+    note "$here has commits outside origin/main; not syncing"
+    return 1
+  fi
+  if ! git diff --quiet HEAD --; then
+    note "$here: tracked files are modified; not syncing"
+    return 1
+  fi
+  if ! git switch --quiet "$home"; then
+    note "switching from $here to $home failed; not syncing"
+    return 1
+  fi
+  note "$here is already in origin/main; switched to $home"
+}
+
+fast_forward_home() {
+  local home="$1" counts behind ahead
+  counts="$(git rev-list --left-right --count origin/main...HEAD)"
   read -r behind ahead <<<"$counts"
   ((behind)) || return 0
   if ((ahead)); then
-    note "$branch: $ahead local commit(s), $behind behind origin/main; review and rebase manually"
+    note "$home: $ahead local commit(s), $behind behind origin/main; review and rebase manually"
   elif ! git diff --quiet HEAD --; then
-    note "$branch: $behind behind origin/main, but tracked files are modified; not syncing"
+    note "$home: $behind behind origin/main, but tracked files are modified; not syncing"
   elif git merge --ff-only --quiet origin/main; then
-    note "$branch: fast-forwarded $behind commit(s) to origin/main"
+    note "$home: fast-forwarded $behind commit(s) to origin/main"
   else
-    note "$branch: fast-forward to origin/main failed; launching unsynced"
+    note "$home: fast-forward to origin/main failed; launching unsynced"
   fi
 }
 
@@ -280,7 +323,10 @@ fi
 command -v "${cmd[0]}" >/dev/null 2>&1 || die "command not found: ${cmd[0]}"
 cd "$workdir"
 if ((sync)); then
-  sync_worktree
+  case "$platform" in
+    macos)  sync_worktree "$agent/main-mac" ;;
+    ubuntu) sync_worktree "$agent/main-ubuntu" ;;
+  esac
 fi
 
 if [[ "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" =~ [Uu][Tt][Ff]-?8 ]]; then

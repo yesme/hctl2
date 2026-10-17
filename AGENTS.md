@@ -22,8 +22,9 @@
 ## 分支与同步
 
 - 每个 harness 在自己的 `~/workspace/hctl2-<harness>` worktree 里干活，家分支是 `<harness>/main-<os>`（`mac` 或 `ubuntu`，两台机器不共用）。家分支的 upstream 是同名远端分支，不是 `origin/main`；`origin/main` 是同步基线。布局与由来见 [ubuntu-multi-harness-worktree-setup](./.memo/notes/ubuntu-multi-harness-worktree-setup-20260822a.md)。
-- `git status` 只跟 upstream 比，显示已同步不代表跟上了 `main`。`./run <harness>` 启动前会先 fetch，再把家分支快进到 `origin/main`；它提示没同步（有本地提交、有未提交改动、fetch 失败）时，先处理再干活。没经过 `./run` 启动、或会话已经跑了很久时，自己跑 `git fetch --prune origin && git merge --ff-only origin/main`，不用 `git pull`（它拉的是自己的远端分支）。同步后 AGENTS.md 或 CONSTRAINTS.md 有变化就重读。
+- `git status` 只跟 upstream 比，显示已同步不代表跟上了 `main`。`./run <harness>` 启动前会先 fetch，再把家分支快进到 `origin/main`。工作树还停在已合入的分支上（远端分支已删、没有 `main` 以外的提交），或停在游离 HEAD 上、所在提交已在 `main` 里时，它先切回家分支，并删掉那个已合入的本地分支；停在别的分支上就原样不动，也不快进。它提示没同步（有本地提交、有未提交改动、停在别的分支上、fetch 失败）时，先处理再干活。没经过 `./run` 启动、或会话已经跑了很久时，自己跑 `git fetch --prune origin && git merge --ff-only origin/main`，不用 `git pull`（它拉的是自己的远端分支）。同步后 AGENTS.md 或 CONSTRAINTS.md 有变化就重读。
 - 开 PR 的分支从 `origin/main` 起：`git switch --no-track -c <harness>/<topic> origin/main`，再 `git push -u origin HEAD`。不加 `--no-track`，upstream 会被设成 `origin/main`。只推自己的分支，不推 `main`。
+- 要看别的提交（PR 的头、合并基）就另开一个工作树：`git worktree add --detach /tmp/<名字> <提交>`，用完 `git worktree remove`。不在自己的工作树里原地切过去：中途被打断（会话结束、额度用完），工作树就停在那个提交上，下次启动还以为在原来的分支。
 
 ## 评审与合入
 
