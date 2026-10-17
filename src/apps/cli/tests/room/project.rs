@@ -249,6 +249,35 @@ fn configure_git_writer(
     changed: bool,
     claim_no_changes: bool,
 ) {
+    configure_git_writer_spawn(f, setup, pending, changed, claim_no_changes, None);
+}
+
+fn configure_installed_git_writer(
+    f: &Fixture,
+    setup: &mut Paired,
+    pending: &Value,
+    changed: bool,
+    claim_no_changes: bool,
+    agency_bin: &Path,
+) {
+    configure_git_writer_spawn(
+        f,
+        setup,
+        pending,
+        changed,
+        claim_no_changes,
+        Some(agency_bin),
+    );
+}
+
+fn configure_git_writer_spawn(
+    f: &Fixture,
+    setup: &mut Paired,
+    pending: &Value,
+    changed: bool,
+    claim_no_changes: bool,
+    installed_agency: Option<&Path>,
+) {
     assert!(setup.agency.0.kill().is_ok());
     setup.agency.0.wait().unwrap();
     let exported = git_output(&f.root.join("write-site"), &["fast-export", "main"]);
@@ -301,7 +330,7 @@ while read -r managed_input; do :; done
         json!({"program":"/bin/sh","arguments":["-c",script,"git-writer",String::from_utf8(exported.stdout).unwrap(),frame.to_string(),if changed { "changed" } else { "unchanged" },pending["change_set_id"],if claim_no_changes { "no_changes" } else { "commit" }]}).to_string(),
     )
     .unwrap();
-    setup.agency = spawn_agency(f, "git-writer.log");
+    setup.agency = spawn_agency_with(f, "git-writer.log", installed_agency);
 }
 
 /// Independent platform readback uses the packaged tea and the control's stored
@@ -365,9 +394,34 @@ fn ready_gitea(f: &Fixture) {
 /// Spawn (or respawn) the fixture Agency with whatever `script.json` currently holds, and wait
 /// for its control socket. The Agency keeps its own root, so a restart keeps its bindings.
 fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
-    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    spawn_agency_with(f, log, None)
+}
+
+/// `installed_agency` is the payload `bin/agency`. The override is removed so the write path
+/// must find `hctl2-tool` beside that executable. The Buck binary has no sibling tool.
+fn spawn_agency_with(f: &Fixture, log: &str, installed_agency: Option<&Path>) -> AgencyChild {
+    let owned;
+    let binary = if let Some(installed) = installed_agency {
+        installed
+    } else {
+        owned = PathBuf::from(
+            std::env::var_os("CARGO_BIN_EXE_agency")
+                .expect("CARGO_BIN_EXE_agency must be set to run this test"),
+        );
+        owned.as_path()
+    };
+    assert!(
+        binary.is_file(),
+        "agency binary missing: {}",
+        binary.display()
+    );
+    let mut command = Command::new(binary);
+    if installed_agency.is_some() {
+        command.env_remove("HCTL2_TOOL_BIN");
+        command.env_remove("HCTL2_INSTALL_ROOT");
+    }
     let mut agency = AgencyChild(
-        Command::new(&binary)
+        command
             .arg("--root")
             .arg(f.root.join("independent-agency"))
             .arg("serve")
@@ -1564,6 +1618,98 @@ fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
     ]);
     assert!(ok, "{replay}");
     replay
+}
+
+/// P1-1：安装包里的 Agency 与 `hctl2-tool` 同在 `bin/`。去掉 `HCTL2_TOOL_BIN`
+/// 和 `HCTL2_INSTALL_ROOT` 后，写入派工仍要物化并准入一个版本。只认
+/// `libexec/hctl2/hctl2-tool` 时，派工在物化阶段失败，这条红。
+#[test]
+fn installed_payload_agency_seals_a_write_without_tool_bin() {
+    let (f, mut setup) = paired_profile("installed-tool", 0, "write");
+    // assemble.sh copies this export into payload/bin. The dependency package the
+    // other fixtures unpack does not carry these two files.
+    let party = PathBuf::from(
+        std::env::var_os("HCTL2_FIRST_PARTY").expect("HCTL2_FIRST_PARTY must be set"),
+    );
+    let agency = party.join("bin/agency");
+    let tool = party.join("bin/hctl2-tool");
+    assert!(agency.is_file(), "{}", agency.display());
+    assert!(tool.is_file(), "{}", tool.display());
+    assert!(
+        !party.join("libexec/hctl2/hctl2-tool").exists(),
+        "the installed layout must not satisfy the old libexec lookup"
+    );
+    let baseline =
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+    let deadline_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120_000;
+    let input = f.root.join("installed-tool-invocation.json");
+    std::fs::write(&input, json!({"project_id":setup.project,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Change source.txt and leave it for sealing","budget":65536,"deadline_ms":deadline_ms,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    let (ok, preview) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "installed-tool",
+    ]);
+    assert!(ok, "{preview}");
+    let pending = preview["effect_summary"]["preview"]["write"]["lease"]["pending"].clone();
+    let set = pending["change_set_id"].as_str().unwrap().to_owned();
+    configure_installed_git_writer(&f, &mut setup, &pending, true, false, &agency);
+
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "installed-tool",
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let invocation = started["invocation_id"].as_str().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        let (ok, shown) = f.run(&["invocation", "show", &setup.project, invocation]);
+        assert!(ok, "{shown}");
+        if shown["state"] == "completed" {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "installed agency did not seal: state={} results={}; {}",
+            shown["state"],
+            shown["results"],
+            script_diagnostics(&f, &shown)
+        );
+        assert!(
+            matches!(shown["state"].as_str(), Some("pending" | "running")),
+            "{shown}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let (ok, admitted) = f.run(&["changeset", "show", &setup.repo, &set]);
+    assert!(ok, "{admitted}");
+    let revisions = admitted["revisions"].as_array().unwrap();
+    assert_eq!(revisions.len(), 1, "{admitted}");
+    assert_eq!(revisions[0]["producer_ref"]["invocation_id"], invocation);
+    assert_ne!(
+        revisions[0]["base_commit_sha"], revisions[0]["result_tree_sha"],
+        "the sealed version must record the script change"
+    );
+    println!(
+        "INSTALLED AGENCY admitted {} after materializing with {}",
+        revisions[0]["change_set_revision_id"],
+        tool.display()
+    );
 }
 
 #[test]
