@@ -1,0 +1,73 @@
+name: Review gate
+
+# Asking for review is a PR state, not a comment: a PR opens as a draft and the
+# author's `gh pr ready` is the request. A ready PR whose current head has a
+# failed required check goes back to draft, with a comment naming the checks,
+# so nobody reviews or waits on a red head and the author is told without
+# anyone watching. The required checks are the three main's protection asks for.
+
+on:
+  pull_request:
+    types: [ready_for_review]
+  workflow_run:
+    workflows: [Code, Release, PR contract]
+    types: [completed]
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: write
+
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Review gate
+    runs-on: ubuntu-24.04
+    # A few API calls; no checkout, so the PR's code never runs with this token.
+    timeout-minutes: 5
+    steps:
+      - name: Send a ready PR with a red required check back to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+          RUN_PRS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = pull_request ]; then
+            prs="$EVENT_PR"
+          else
+            prs=$(printf '%s' "$RUN_PRS" | jq -r '.[].number')
+          fi
+
+          for pr in $prs; do
+            read -r state draft head < <(gh pr view "$pr" -R "$REPO" \
+              --json state,isDraft,headRefOid --jq '"\(.state) \(.isDraft) \(.headRefOid)"')
+            # Only the current head of an open, ready PR is judged; a run for
+            # an older head says nothing about what reviewers would look at.
+            if [ "$state" != OPEN ] || [ "$draft" != false ] || [ "$head" != "$EVENT_HEAD" ]; then
+              continue
+            fi
+            # The check-runs endpoint returns the latest run of each check.
+            failed=$(gh api "repos/$REPO/commits/$head/check-runs?per_page=100" --paginate \
+              --jq '.check_runs[]
+                | select(.name == "CI gate" or .name == "Release gate" or .name == "PR contract")
+                | select(.conclusion == "failure" or .conclusion == "timed_out")
+                | "- \(.name)：\(.html_url)"')
+            if [ -z "$failed" ]; then
+              continue
+            fi
+            gh pr ready "$pr" -R "$REPO" --undo
+            gh pr comment "$pr" -R "$REPO" --body "$(printf '%s\n' \
+              "## Review gate · 当前头 \`${head:0:7}\` 的必需检查红了，已退回草稿" \
+              "" \
+              "$failed" \
+              "" \
+              "作者修好、检查转绿后 \`gh pr ready $pr\` 再请审。评审席在它重新就绪之前不审；就绪之后对新头重新确认。")"
+          done
