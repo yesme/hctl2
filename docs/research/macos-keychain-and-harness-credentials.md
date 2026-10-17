@@ -107,6 +107,7 @@
 - **实测 P3**：同样的 profile 下，`security find-generic-password` 读自有 dummy 条目报找不到（rc 44）；Swift `SecItemCopyMatching` 返回 **-25300（errSecItemNotFound）**；无 sandbox 对照均为成功。也就是说整目录拒读对新旧两条钥匙串 API 都生效，表现为「条目不存在」而不是「无权限」——harness 只会以为没登录，不会报错说被拦。这与本库记录里 Claude 报「Not logged in」严丝合缝。
 - 反过来，**专属钥匙串文件**是 mac 的原生机制：`security create-keychain/list-keychains/unlock-keychain`（本机 man 页，实测 P1 全走通），本机 search list 里已有第二把 `openvpn.keychain-db` 与 login 并列（实测）。给 Agency 建一把专属钥匙串（须放在托管目录而不是 `~/Library/Keychains` 里，否则被整目录 deny 一起误伤）、把托管凭据放那里、profile 只拒 login 那把——技术上成立；但三个代价：其一，search list 与 default-keychain 是**每用户全局**设置，改它会影响人自己的其他程序，与「只对一次启动生效」相悖；其二，各家 harness 是否认非 login 钥匙串里的条目逐家不同（Claude 官方只说按 `CLAUDE_CONFIG_DIR` 分键，没说能换钥匙串文件——未查到）；其三，它仍在钥匙串体系里打转，锁、弹框、context 三病一样不落。所以这一路只列为候选，不推荐（§五）。
 - Linux 侧同构面：**源码看到** `confine.rs` 用 Landlock allow-list（整目录放行、挖不掉子目录，所以凭据根被 allow 目录覆盖时直接拒绝启动）。Linux 上 Claude 凭据本来就是 `~/.claude` 下的文件（官方文档说），托管目录在两平台是同一种东西：一个被放行、其余全拒的目录。边界规则要写成一套，抽象点应该是「目录」，不是「钥匙串条目」——条目粒度 mac 独有、Landlock 无对应物，写成一套只会一真一假。
+- **但 Linux 的现状不是「已经托管」，采纳方案 A 在 Linux 上同样要改。** **源码看到**：`src/agency/src/launch.rs` 的 `model_state` 在有 Claude 工种时把人的 `~/.claude` 与 `~/.claude.json`（Codex 工种再加 `CODEX_HOME`）放进放行名单传给 `Server::start_with_denials`，拉起时 `HOME` 也是人的真 home（`standby.rs` 的 `workspace.create`）；同文件注释直说集成用的 `CLAUDE_CONFIG_DIR` 不能导出给 Claude、「that would hide the user's native login」——即今天在 Linux 上借用人的原生登录是有意为之。**本库记录**：#430 实测里 Agency 起的 Claude 会话就落在人的 `~/.claude/projects` 里。按本文三类划分，这是第二类借用了第一类：演示 3 在 ubuntu 能跑通，靠的正是这个借用。所以本文 §五边界表里「托管目录放行（现状通道）」只在机制通道意义上成立；落到现状，mac 是「拒读误伤」、Linux 是「放行借用」，两侧都不是托管。所有者拍板 A 时要知道：它同时改两个平台——mac 把 Claude 的干活凭据移出人的钥匙串，Linux 把对人 `~/.claude`（及 Codex 的人 `CODEX_HOME`）的放行换成托管目录。
 
 ## 五、方案：三类凭据各放哪
 
@@ -117,6 +118,7 @@
 **第二类，Agency 里干活用的模型登录：Agency 给每家托管一份私有目录，边界只放行这一份。** 形态按各家旋钮分三档，优先级从上往下：
 
 1. **纯环境注入，连文件都不落**（Claude 的 `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY`、Muse 的 `META_API_KEY`、gh 场景的 `GH_TOKEN`、Codex 的 ephemeral 档）。凭据只活在这一次拉起的环境里，与钥匙串、文件全无关。注意环境变量对同用户进程可经 `/proc`（Linux）或子进程继承扩散——Agency 现有 `scrub` 已做 `env_clear` 白名单（源码看到），注入时要保证只给目标进程、不进 Herdr server 的常驻环境。
+   - **Claude 这家不能经命令行注入。** **源码看到**：Agency 现在起 pane 时把环境写成 `/usr/bin/env PATH=... HOME=...` 的启动参数数组（`standby.rs` 的 `layout.apply`）——若把 token 塞进同一排参数，同用户的 `ps` 就能看到，Herdr 还会把启动参数存进自己的状态（**本库记录**：#431 走查时在 Herdr 状态里见过 `launch_argv`；Codex 的监听 token 有同一个问题，记在 #421 的加固跟进里）。现成出路不用新机制：`CLAUDE_CODE_OAUTH_TOKEN` 除了真环境变量，还能写在 settings 文件的 `env` 块里（**官方文档说**，优先级一节原文提到「the `env` block of a settings file」）；Agency 起 Claude 本来就带私有的 `--settings <执行目录>/settings.json`，该文件经 `storage::private_file`（0600）生成（**源码看到**：`standby.rs::boot` 写 `settings.json`、argv 带 `--settings`，`#430` 实测记录亦然）。所以 Claude 的推荐注入方式是：token 只写进这一次派工的那份私有 settings 的 `env` 块，不进命令行、不进 Herdr server 的环境、不出现在任何进程参数里。
 2. **重定位到托管目录**（Codex 的 `CODEX_HOME`+`file` 档、Claude 的 `CLAUDE_CONFIG_DIR` 文件回退、omp 的 `--profile`、Qoder 的 `--config-dir`、Kimi 的 `KIMI_CODE_HOME`、opencode 改 XDG 根）。托管目录是新建的空目录，人经 Agency 在里面登录一次（下条），之后 harness 自己的刷新、过期管理都在里面自转。
 3. **改 `HOME` 兜底**（Grok、Antigravity 这类没查到重定位旋钮的）。托管目录充当假 home，harness 以为在自己家登录，实际全在托管目录里。代价是该 harness 的全部用户级状态（不止凭据）都跟人日常用的那份分开，这正是要的效果；风险是个别 harness 对 `HOME` 之外还有硬编码路径，接入时逐家验。
 
@@ -131,7 +133,7 @@
 | 规则（平台无关表述） | macOS（Seatbelt profile） | Linux（Landlock） |
 | --- | --- | --- |
 | 人的凭据区一律拒读：登录钥匙串、Secret Service 库、ssh、gh 配置、git 凭据文件 | `(deny file-read* (subpath ...))` 逐条（现状） | allow-list 不含这些目录（现状） |
-| 本次派工的托管凭据目录单独放行 | 不写 deny（`(allow default)` 下天然可读，现状即如此） | 加进 `HCTL2_CONFINE_ALLOW`（现状有此通道，harness_command 已在用） |
+| 本次派工的托管凭据目录单独放行 | 不写 deny（`(allow default)` 下天然可读，通道即现状） | 加进 `HCTL2_CONFINE_ALLOW`（通道现状有，但今天经 `model_state` 放行的是人的 `~/.claude` 与 Codex 的人 `CODEX_HOME`，采纳 A 后换成托管目录，见 §四） |
 | control 凭据根拒读拒写 | `(deny file-read*/file-write* (subpath cred))`（现状） | 同上，不进 allow-list；被 allow 目录覆盖时拒启动（现状） |
 | 环境注入型凭据只给目标进程 | `env_clear` 后按白名单逐个给（现状 `scrub`/`harness_command`） | 同左（同一段代码） |
 | 施加不了就不启动并报原因 | profile 写不出、sandbox-exec 失败即返回错误（现状） | helper 缺失、凭据根被覆盖即返回错误（现状） |
@@ -157,7 +159,7 @@
 4. 托管凭据的失效与轮换口径：托管 token 过期时 Agency 怎么报、谁来重登（本文只定「登录一次」的入口，续期未设计）。
 5. sandbox-exec deprecated 的长期出路排不排期（与本文正交）。
 
-未决（本轮没查清、别当事实用）：`keyring` 的 `store_status` 在 SSH context 下的返回值；Muse 后端选择有无公开开关及其钥匙串条目名；Antigravity、Grok、Qoder、MiniMax 的环境 token 与重定位官方口径；Claude 文件回退档在 confine 下的实际触发（官方说拒写即回退，本轮未拿真 Claude 在边界内复测）；LaunchDaemon context 下读登录钥匙串（无 sudo 未实测）。
+未决（本轮没查清、别当事实用）：`keyring` 的 `store_status` 在 SSH context 下的返回值；Muse 后端选择有无公开开关及其钥匙串条目名；Antigravity、Grok、Qoder、MiniMax 的环境 token 与重定位官方口径；Claude 文件回退档在 confine 下的实际触发（官方说拒写即回退，本轮未拿真 Claude 在边界内复测；实现时值得先测这一条——若 `CLAUDE_CONFIG_DIR` 指向托管目录后回退成立，Claude 可直接走第 2 档重定位，不用一年期 token、过期由它自己刷新）；LaunchDaemon context 下读登录钥匙串（无 sudo 未实测）。
 
 ## 证据
 
@@ -172,7 +174,7 @@
 本库：
 
 - [libs/keyring.md](./libs/keyring.md)（keyring 4.2.0 选型、2026-09-04「照 gh 做法」裁定、2026-10-03 小活 D 复核记录）；[harness-hooks-20260903.md](./harness-hooks-20260903.md)（各家重定位旋钮的先行钉版）。
-- 源码（main `287391d5`）：`src/crates/foundation/src/lib.rs::SecretStore::{detect,select,user_file}`、`src/apps/control/src/config.rs::secret_backend/secret_store`、`src/apps/cli/src/main.rs::start_daemon` 与 `--secret-backend`、`src/agency/src/confine.rs::{macos,linux,scrub,harness_command,sensitive_paths}`、`src/apps/control/README.md`《密钥后端》、`docs/usage.md:344`。
+- 源码（main `287391d5`）：`src/crates/foundation/src/lib.rs::SecretStore::{detect,select,user_file}`、`src/apps/control/src/config.rs::secret_backend/secret_store`、`src/apps/cli/src/main.rs::start_daemon` 与 `--secret-backend`、`src/agency/src/confine.rs::{macos,linux,scrub,harness_command,sensitive_paths}`、`src/agency/src/launch.rs` 的 `model_state` 放行与 `standby.rs::boot` 的私有 `settings.json`（0600）加 `--settings` 拉起、`src/apps/control/README.md`《密钥后端》、`docs/usage.md:344`。
 - 记录：`.memo/design/p2-control-20260906/07-demo-kickoff.md` §二 第 37 条 ⑤、§三缺口 5、§四 第 9 包第 5 条、§六小活 D、§七第一条；`.memo/log/2026-10-03-演示1验收.md`《钥匙串》节。
 
 本机实测（2026-10-17，macOS 26.6.2 arm64；探针只用自建 dummy 服务名 `hctl2-research-probe-20261017` 与临时钥匙串，全部验完删除，未打印、未复制任何真实凭据）：
