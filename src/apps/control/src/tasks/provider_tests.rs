@@ -293,6 +293,87 @@ pub(super) fn src() -> Source {
         auto_complete_provider_done: false,
     }
 }
+
+#[test]
+fn create_response_is_only_a_locator_not_a_confirmation() {
+    let raw = json!({"id":1,"node_id":"node1","number":1,"title":"new",
+        "body":"body\n<!-- original command -->","state":"open","updated_at":"t0"});
+    for (name, status, observed, expected) in [
+        ("missing", 404, raw.clone(), "RESULT_UNKNOWN"),
+        ("unavailable", 503, raw.clone(), "PROVIDER_UNAVAILABLE"),
+        (
+            "changed-body",
+            200,
+            {
+                let mut changed = raw.clone();
+                changed["body"] = json!("a concurrent human edit");
+                changed
+            },
+            "RESULT_UNKNOWN",
+        ),
+        (
+            "other-entity",
+            200,
+            {
+                let mut changed = raw.clone();
+                changed["node_id"] = json!("other-node");
+                changed
+            },
+            "ENTITY_CHANGED",
+        ),
+    ] {
+        let f = Fixture::new(
+            &format!("create-locator-{name}"),
+            r#"#!/bin/sh
+method=GET
+for arg do
+ if [ "$previous" = --method ]; then method="$arg"; fi
+ previous="$arg"
+ path="$arg"
+done
+printf '%s %s\n' "$method" "$path" >> "$0.calls"
+if [ "$method:$path" = GET:repos/owner/repo/issues/1 ]; then
+ printf 'HTTP/1.1 %s Status\n\n' "$(cat "$0.status")"
+ cat "$0.readback"
+ exit 0
+fi
+printf 'HTTP/1.1 200 OK\n\n'
+case "$method:$path" in
+ GET:user) printf '{"id":1}' ;;
+ GET:repos/owner/repo) printf '{"id":1,"full_name":"owner/repo"}' ;;
+ GET:*/issues\?*) printf '[]' ;;
+ POST:*/issues) cat >/dev/null; cat "$0.card" ;;
+ *) exit 1 ;;
+esac
+"#,
+        );
+        std::fs::write(f.0.join("native.card"), raw.to_string()).unwrap();
+        std::fs::write(f.0.join("native.readback"), observed.to_string()).unwrap();
+        std::fs::write(f.0.join("native.status"), status.to_string()).unwrap();
+        let mut source = src();
+        source.candidate.provider = "github_issues".into();
+        source.platform.instance = "github.com".into();
+        let client = Client::github(f.0.join("native"), "github.com".into());
+        let intent = effect(
+            "task.create",
+            json!({"title":"new", "body":raw["body"],
+            "marker":"<!-- original command -->"}),
+        );
+        assert_eq!(
+            client.effect(&source, &intent, true).unwrap_err().code,
+            expected,
+            "{name}"
+        );
+        let calls = std::fs::read_to_string(f.0.join("native.calls")).unwrap();
+        assert_eq!(
+            calls.lines().filter(|l| l.starts_with("POST ")).count(),
+            1,
+            "{name}"
+        );
+        assert!(calls.contains("GET repos/owner/repo/issues/1"), "{name}");
+    }
+}
+
 pub(super) fn effect(operation: &str, write: Value) -> EffectIntent {
     let binding = Reference {
         key: ObjectKey {
