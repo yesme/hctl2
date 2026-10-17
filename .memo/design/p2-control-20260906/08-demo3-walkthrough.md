@@ -21,7 +21,7 @@
 
 | 行 | 演示 3 哪一步能看到 | 看什么证据 | 现状 |
 | --- | --- | --- | --- |
-| 1 · 十秒回答 | F：`status`、`task show` | 人十秒内答出目标、状态、阻塞、下一步、当前 harness、证据版本 | 走查成立（2026-10-17 实录，A 链六字段）；主体用例另有覆盖 |
+| 1 · 十秒回答 | F：`status`、`task show` | 人十秒内答出目标、状态、阻塞、下一步、当前 harness、证据版本 | `c188660` 上走查不成立：harness 行是 `herdr (none)`，答不出是哪家（#430 已修为按工种显示，第二轮重看）；其余五格走查成立 |
 | 2 · 正常成功安静 | A/B 全程 | Room 与终端没有多余输出 | 走查成立（A/C 链 Room 各一句人话、无 JSON 泄漏） |
 | 3 · 自举不设隐藏特例 | A/B 全程 | 全程只走公开 CLI 与受控端口，无手工改库、无产品外补签 | 走查成立，带一处如实记的绕法（P1-1 的 `HCTL2_TOOL_BIN`） |
 | 4 · 无 Run 路径两次预览 | A：合入、完成两次确认 | 人的预览计数；发布授权在派工预览内、不计入 | 走查成立（A 链两预览；授权写明 `publish_for_review_not_integration`） |
@@ -36,7 +36,7 @@
 | 13 · S3 路径注入失败 | 演示 3 看不到 | — | 没有包覆盖（见末节） |
 | 14 · S1 双控制面 | 演示 3 看不到（单控制面） | — | 没有包覆盖（见末节） |
 
-> 2026-10-17 走查（GLM）两条 P1 注记：① 安装包 `libexec/` 缺 `hctl2-tool`，写入工种在安装包环境必 `WRITE_TOOL_UNAVAILABLE`（绕法 `HCTL2_TOOL_BIN`）；② GitHub issues 任务源建卡后不绑卡，且此后 source 记录持续变动，挡住同状态根上后续 select/task create。复现见 [.memo/log/2026-10-17-演示3走查.md](../log/2026-10-17-演示3走查.md)。
+> 2026-10-17 走查（GLM）三条 P1 注记：① 安装包 `libexec/` 缺 `hctl2-tool`，写入工种在安装包环境必 `WRITE_TOOL_UNAVAILABLE`（绕法 `HCTL2_TOOL_BIN`）；② GitHub issues 任务源建卡后不绑卡，且此后 source 记录持续变动，挡住同状态根上后续 select/task create；③（嫌疑）写路径 harness 映射或执行时序可判错——claude-code 冻结的派工建出 Codex 会话，第二轮定性。复现见 [.memo/log/2026-10-17-演示3走查.md](../log/2026-10-17-演示3走查.md)。
 
 ## CT-REPO（40 行）
 
