@@ -861,6 +861,8 @@ fn agency_start_without_claude_trust_says_how_to_set_it_up() {
             .any(|item| item.reference.id == "claude-code")
     );
     let reason = std::fs::read_to_string(root.join("serve.err")).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&install);
     assert!(reason.contains("CLAUDE_WORKSPACE_UNTRUSTED"), "{reason}");
     assert!(reason.contains("run `claude` in /tmp once"), "{reason}");
 }

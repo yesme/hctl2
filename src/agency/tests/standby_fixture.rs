@@ -92,6 +92,9 @@ fn main() {
     assert!(args.iter().any(|a| a == "--restricted"));
     assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_none());
     assert!(std::env::var_os("USER").is_some());
+    // Real Claude refuses a default temp directory the confined pane cannot
+    // read; every Agency session names its own.
+    assert!(std::env::var_os("CLAUDE_CODE_TMPDIR").is_some_and(|d| Path::new(&d).is_dir()));
     let plugin = PathBuf::from(option("--plugin-dir").unwrap());
     let root = plugin.parent().unwrap();
     let resume = option("--resume");

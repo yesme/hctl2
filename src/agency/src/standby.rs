@@ -741,15 +741,20 @@ impl Native {
                 format!("HOME={}", std::env::var("HOME").unwrap_or_default()),
                 format!("USER={}", std::env::var("USER").unwrap_or_default()),
             ];
+            // Claude refuses to start when its default /tmp/claude-<uid> exists
+            // but the confined pane cannot read it, as it is once anyone on this
+            // account has run Claude Code. Every session gets a private one.
+            let temp = dir.join("tmp");
+            crate::storage::private_dir(&temp)?;
+            shell.extend([
+                format!("TMPDIR={}", temp.display()),
+                format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
+            ]);
             if writing {
-                let temp = dir.join("tmp");
-                crate::storage::private_dir(&temp)?;
                 shell.extend([
                     "GIT_CONFIG_GLOBAL=/dev/null".into(),
                     "GIT_CONFIG_NOSYSTEM=1".into(),
                     "GIT_TERMINAL_PROMPT=0".into(),
-                    format!("TMPDIR={}", temp.display()),
-                    format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
                 ]);
             }
             shell.push("/bin/sh".into());
