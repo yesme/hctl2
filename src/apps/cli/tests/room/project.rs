@@ -1603,18 +1603,21 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
         if live { "claude-code" } else { "script-worker" },
         "{progress}"
     );
-    if live {
-        // What reached Gitea main is the session's edit, read from the merged commit
-        // itself rather than from the session's report.
-        let merged_file = git_output(
-            &f.root.join("write-site"),
-            &["show", &format!("{commit}:source.txt")],
-        );
-        assert_eq!(
-            String::from_utf8(merged_file.stdout).unwrap().trim_end(),
-            CLAUDE_LINE
-        );
-    }
+    // What reached Gitea main is exactly the requested edit, read from the merged
+    // commit itself rather than from the executor's report: one file, these bytes.
+    let site = f.root.join("write-site");
+    let changed = git_output(
+        &site,
+        &["diff", "--name-only", &format!("{commit}^"), &commit],
+    );
+    assert_eq!(String::from_utf8(changed.stdout).unwrap(), "source.txt\n");
+    let merged_file = git_output(&site, &["show", &format!("{commit}:source.txt")]);
+    let expected = if live {
+        format!("{CLAUDE_LINE}\n")
+    } else {
+        "changed by the actual script execution\n".to_owned()
+    };
+    assert_eq!(String::from_utf8(merged_file.stdout).unwrap(), expected);
     println!(
         "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: {human_previews:?}"
     );
