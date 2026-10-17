@@ -179,6 +179,18 @@ hctl2-services start
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
+## 本地 Agency 的前提：Claude Code 信任 `/tmp`
+
+本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录，Claude Code 的会话就开在这些目录里。Claude Code 第一次进入没被信任过的文件夹时，会问是否信任它。这个问题由人回答，Agency 不替人选。第一次派 Claude 之前，在终端里做一次：
+
+```bash
+cd /tmp && claude
+```
+
+选「Yes, I trust this folder」，然后退出。Claude Code 认父目录的信任，`/tmp` 下的执行目录以后不再询问。这也意味着，在 `/tmp` 下任何文件夹里打开 Claude Code 都不会再问。
+
+Agency 启动时会核验这一条：在 `/tmp` 下的新目录里开一次 Claude 会话，不派任务，也不按任何键。如果 Claude 弹出信任问题，Claude 工种就不进 Agency 的目录，Agency 根目录下的 `serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED` 和上面的做法。派工途中遇到这个问题，也会立刻以同一个错误结束。
+
 ## 写入型派工与 ChangeSet
 
 `invocation preview` 的 JSON 输入可以带 `write`。Worker Profile 也须是 `write` 模式并允许 `git.write`。基线填 Git 回读的提交 SHA；目标分支和能否更新评审请求由人明确选择：

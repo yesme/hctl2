@@ -826,6 +826,45 @@ fn agency_start_keeps_a_failed_catalog_probe_reason() {
     );
 }
 
+#[test]
+fn agency_start_without_claude_trust_says_how_to_set_it_up() {
+    let (root, install) = scratch("start-untrusted");
+    installed_fixture(&install);
+    let claude = untrusted_claude(&install);
+    let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
+    let started = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("start")
+        .env("HCTL2_INSTALL_ROOT", &install)
+        .env("HCTL2_CLAUDE", &claude)
+        .output()
+        .unwrap();
+    let catalog = paired_catalog(&root);
+    let stopped = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("stop")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stdout)
+    );
+    assert!(stopped.status.success());
+    assert!(
+        !catalog
+            .unwrap()
+            .professions
+            .iter()
+            .any(|item| item.reference.id == "claude-code")
+    );
+    let reason = std::fs::read_to_string(root.join("serve.err")).unwrap();
+    assert!(reason.contains("CLAUDE_WORKSPACE_UNTRUSTED"), "{reason}");
+    assert!(reason.contains("run `claude` in /tmp once"), "{reason}");
+}
+
 fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -863,7 +902,9 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
 fn agency_start_and_pair_catalog_the_confined_claude_profession() {
     let (root, install) = scratch("catalog-start");
     installed_fixture(&install);
-    let claude = stub_claude(&install, "2.1.289");
+    // Setup opens one native session to check workspace trust: a version-only
+    // stub would not start one.
+    let claude = waiting_claude(&install, true);
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let started = Command::new(&agency)
         .arg("--root")
@@ -1709,6 +1750,73 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
     runtime.shutdown().unwrap();
     assert!(!standby_alive(pid));
     assert!(!standby_alive(other_pid));
+}
+
+fn untrusted_claude(dir: &std::path::Path) -> PathBuf {
+    // Beside the fixture, this marker stands for "Claude does not trust the
+    // folder yet": it shows Claude's workspace trust prompt first.
+    let claude = waiting_claude(dir, true);
+    let marker = format!("{}.untrusted", claude.canonicalize().unwrap().display());
+    std::fs::write(marker, b"").unwrap();
+    claude
+}
+
+#[test]
+fn standby_reports_the_trust_prompt_and_never_answers_it() {
+    // #430 (d27e2c7): Agency pressed down and Enter on Claude's trust prompt
+    // and, under load, confirmed "No, exit". Trusting a folder is the
+    // person's decision: the dispatch fails at once and says how to trust /tmp.
+    let (cred, root, exec) = standby_root("standby-untrusted");
+    let claude = untrusted_claude(&root);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("untrusted", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let started = Instant::now();
+    let mut running = runtime
+        .start(&spec, &sealed_bundle("NEVER_ANSWERED"), &exec, &cred)
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(40));
+    let failure = events
+        .iter()
+        .find_map(|event| match event {
+            agency::runtime::RuntimeEvent::Observation { kind, payload, .. }
+                if kind == "harness_failure" =>
+            {
+                Some(payload.clone())
+            }
+            _ => None,
+        })
+        .expect("the dispatch reports a harness failure");
+    assert_eq!(failure["code"], "CLAUDE_WORKSPACE_UNTRUSTED", "{failure}");
+    assert!(
+        failure["message"]
+            .as_str()
+            .unwrap()
+            .contains("run `claude` in /tmp once"),
+        "{failure}"
+    );
+    // It stops at the prompt, not at the 30-second readiness budget.
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(!stdout_has(&events, b"NEVER_ANSWERED"));
+    let keys = std::fs::read_to_string(state.join("trust-keys.log")).unwrap_or_default();
+    assert!(keys.is_empty(), "keys reached the trust prompt: {keys}");
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn claude_trust_of_tmp_is_checked_when_agency_is_set_up() {
+    let (_, root, _) = standby_root("setup-trust");
+    let trusted = launch::InstalledHerdr::open(binary(), &waiting_claude(&root, true)).unwrap();
+    trusted.verify_claude_trust().unwrap();
+    let other = root.join("untrusted");
+    std::fs::create_dir_all(&other).unwrap();
+    let untrusted = launch::InstalledHerdr::open(binary(), &untrusted_claude(&other)).unwrap();
+    let error = untrusted.verify_claude_trust().unwrap_err();
+    assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED", "{error:?}");
+    assert!(
+        error.message.contains("run `claude` in /tmp once"),
+        "{error:?}"
+    );
 }
 
 #[test]

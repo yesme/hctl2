@@ -499,6 +499,28 @@ impl InstalledHerdr {
         })
     }
 
+    /// Agency setup precondition: Claude Code already trusts /tmp, where every
+    /// execution directory is created. One native session opens in a new
+    /// directory under /tmp and closes again; it delivers no turn and answers
+    /// no prompt. If Claude asks about trust, the error says what to do.
+    pub fn verify_claude_trust(&self) -> Result<()> {
+        let Some(pool) = &self.pool else {
+            return Ok(());
+        };
+        let cred = tempfile::Builder::new()
+            .prefix("hctl2-trust-cred-")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir()?;
+        let parent = tempfile::Builder::new()
+            .prefix("hctl2-exec-trust-")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir_in("/tmp")?;
+        let exec = parent.path().join("probe");
+        crate::storage::private_dir(&exec)?;
+        let server = self.create_server(&exec, cred.path(), None)?;
+        pool.probe(&server, &exec)
+    }
+
     pub fn codex_skip(&self) -> Option<&str> {
         self.codex_skip.as_deref()
     }
