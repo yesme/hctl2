@@ -1595,13 +1595,17 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
             "LIVE CLI demo3 restart: three kill points (publish after push, integration before readback, completion after preview) survived control + Agency + packaged service restarts with one review request, one merge and one receipt each"
         );
     }
+    // Who answered is the profession the Agency froze into the dispatch: the script
+    // worker here, Claude Code in the live run. The harness that holds a native
+    // session is herdr for every profession, so it cannot tell them apart.
+    assert_eq!(
+        progress["invocations"][0]["profession"],
+        if live { "claude-code" } else { "script-worker" },
+        "{progress}"
+    );
     if live {
-        // The turn really was Claude Code, and what reached Gitea main is its edit,
-        // read from the merged commit itself rather than from the session's report.
-        assert_eq!(
-            progress["invocations"][0]["harness"], "claude-code",
-            "{progress}"
-        );
+        // What reached Gitea main is the session's edit, read from the merged commit
+        // itself rather than from the session's report.
         let merged_file = git_output(
             &f.root.join("write-site"),
             &["show", &format!("{commit}:source.txt")],
