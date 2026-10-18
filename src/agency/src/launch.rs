@@ -875,9 +875,36 @@ impl Runtime for InstalledHerdr {
                 },
             });
         }
+        let mut harnesses = vec![harness];
+        if let Some((_, digest)) = crate::grok::installed() {
+            let grok_harness = FrozenRef {
+                id: "grok".into(),
+                revision: "acp-stdio".into(),
+                digest: digest.clone(),
+            };
+            professions.push(Profession {
+                reference: FrozenRef {
+                    id: "grok-build".into(),
+                    revision: "acp-stdio".into(),
+                    digest,
+                },
+                harness: grok_harness.clone(),
+                model: "self-reported".into(),
+                persona: "grok build".into(),
+                terms: "Bundle dispatch via grok agent stdio session/prompt; no interactive pane; read-only in this slice; write dispatch is refused; no --always-approve; no terminal input or publication".into(),
+                default_role: "worker".into(),
+                skills: vec![],
+                capabilities: Capabilities {
+                    input: false,
+                    stop: true,
+                    ..Capabilities::default()
+                },
+            });
+            harnesses.push(grok_harness);
+        }
         Ok(Catalog {
             professions,
-            harnesses: vec![harness],
+            harnesses,
             skills: vec![],
         })
     }
@@ -894,6 +921,9 @@ impl Runtime for InstalledHerdr {
         )?;
         fs::create_dir_all(exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
+        if spec.document.profession.reference.id == "grok-build" {
+            return crate::grok::dispatch(spec, bundle, exec_root);
+        }
         if spec.document.profession.reference.id == "codex-cli" {
             let Some(pool) = &self.codex_pool else {
                 return Err(PortError::new(
@@ -965,6 +995,10 @@ impl Runtime for InstalledHerdr {
         crate::confine::reject_unenforceable_isolation(
             &spec.document.required_capabilities.isolation_effects,
         )?;
+        if spec.document.profession.reference.id == "grok-build" {
+            fs::create_dir_all(exec_root)?;
+            return crate::grok::dispatch(spec, bundle, exec_root);
+        }
         if spec.document.profession.reference.id == "codex-cli" {
             fs::create_dir_all(exec_root)?;
             let server = self.ensure(exec_root, credential_root)?;

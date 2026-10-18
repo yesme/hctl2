@@ -25,7 +25,7 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 | Harness（本机或文档版本） | 不经输入框交正文 | 改写提交文字的钩子 | 一轮结束与回答 | 只对一次启动、不动全局配置 | 续接 | 结构化接口还有没有交互 pane | Herdr 进程名 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Codex CLI 0.160.1 | 有。`codex exec` 与 app-server `turn/start` 把正文当参数 | 没有替换字段。`UserPromptSubmit` 只能追加 developer context 或阻断 | `turn.completed`；回答在 `item.completed` 的 `agent_message`，也在会话 jsonl 的 assistant `output_text` | 单次 `-c` 覆盖配置、不写文件。钩子在 `~/.codex` 或项目 `.codex`，要信任 | `thread/resume`、`codex exec resume`、`codex resume`、`codex resume --remote` | exec 没有 pane。`codex resume --remote` 连到同一个 app-server 时，界面会画出另一个客户端的 `turn/start`。不带 `--remote` 的 TUI 仍是输入框 | `codex` |
-| Grok Build 1.0.46 | 有。`grok -p` 与 `grok agent stdio` 的 `session/prompt` | 未查到能替换正文的输出字段。钩子能追加上下文、拒绝工具、拦住 Stop | headless 的 json / streaming-json；ACP 的 `session/update` | 单次 `--allow` / `--deny` / `--cwd`。钩子目录是 `~/.grok/hooks` 与项目 `.grok/hooks` | `--resume`、`-c`、ACP `session/load` | `grok agent stdio` 官方文档说是没有交互界面的 ACP。TUI 另开 | `grok`、`grok-build` |
+| Grok Build 1.0.62 | 有。实测 `session/prompt` 的正文进了 `prompt_history.jsonl` | 未查到能替换正文的输出字段。钩子能追加上下文、拒绝工具、拦住 Stop | 实测 `session/prompt` 返回 `stopReason`，正文在 `session/update` | 单次 `--allow` / `--deny` / `--permission-mode` / `--leader-socket`。这次没改全局配置 | 实测 ACP `session/load`（要带 `mcpServers`）后续 `session/prompt` | 实测 stdio 没有交互界面，没有接 Herdr pane | `grok`、`grok-build` |
 | Antigravity CLI `agy` 1.2.17 | 有。`--print` / `--prompt`，stdin 可作 `stream-json` | 未查到 | `--output-format json` 或 `stream-json` | 单次 `--model`、`--mode`、`--conversation`。配置根未查到 | `--continue`、`--conversation <id>` | `--print` 的帮助写明非交互。交互 TUI 是默认路径 | `agy`、`antigravity` |
 | Kimi Code 2.1.1 | 有。`kimi -p` 与 `kimi acp` | 未查到替换字段。`UserPromptSubmit` 官方文档说返回文本附加到上下文，或阻断本轮 | `Stop`；`--output-format stream-json` 的 Assistant 消息；另有 `TurnStarted` | `KIMI_CODE_HOME` 可整份挪走。钩子默认在用户配置。单次 `--skills-dir`、`--model` | `--session`、`-c` | `-p` 与 `acp` 的帮助都写明不开 TUI | `kimi` |
 | Qoder CLI CN `qoderclicn` 1.1.65 | 有。`-p` / `--print` | 未查到。本机有 `hooks` 子命令，只看到从 Claude Code 迁移 | `-o` / `--output-format`。事件名未查到 | `--config-dir` 换这一次的用户配置根。`--disallowed` 一类限制未在帮助里写成不落盘 | `--resume`、`-c`、`--session-id` | `--print` 写明非交互 | `qoderclicn`、`qodercli` |
@@ -59,13 +59,13 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 
 ### Grok Build
 
-本机 `grok 1.0.46`。没有开新会话。
+2026-10-06 记的是本机 `grok 1.0.46`，没有开新会话。2026-10-19 H2 用本机 `grok 1.0.62 (1474f9cbdd91)` 开过一次真实 ACP 会话（cwd `/tmp/hctl2-h2-probe`，`--no-leader`，单独的 leader socket，没有 `--always-approve`）。测完已删会话目录。
 
-1. 官方文档说 `grok -p` 把一条提示送进无界面运行；`grok agent stdio` 是 ACP，`session/prompt` 送用户消息，正文在协议参数里。本机帮助有 `agent` 子命令，写明不带交互界面。
-2. 官方文档说 `--output-format json` 结束时给一个对象，`streaming-json` 按行给 ACP `session/update`。源码文档列出 `Stop`：可以 `decision: block` 把理由喂回模型，或 `continue: false` 结束。`SubagentStop` 单独列出。`--no-subagents` 在本机帮助里。dashboard 帮助写明子代理会话分开列。
-3. 钩子从 `~/.grok/hooks/*.json` 与项目 `.grok/hooks/` 合并，项目钩子要信任。未查到一次启动就换掉提交正文的开关。单次权限用 `--allow` / `--deny`。
-4. 官方文档与本机帮助：`--resume`、`-c`、ACP `session/load`。
-5. `grok agent stdio` 没有 TUI。普通 `grok` 是 TUI。Herdr 认 `grok` 与 `grok-build`。
+1. 实测：`grok agent stdio` 上 `session/prompt` 的 `prompt[].text` 原样进了 `~/.grok/sessions/<cwd>/prompt_history.jsonl` 的 `prompt` 字段，不是从 TUI 输入框交的。那一轮的回答是 `H2PROBE-PONG`。官方文档仍说 `grok -p` 是无界面单次提示。
+2. 实测：`session/prompt` 的结果是 `stopReason: end_turn`；助手正文在此前的 `session/update`（`agent_message_chunk`）里。这一轮没有子代理事件。本机帮助有 `--no-subagents`。子代理怎么从事件里分开，这次没开子代理，未查到实测。
+3. 实测这次没有改 `~/.grok/config.toml`。`--no-leader` 与 `--leader-socket` 只作用于这一进程。本机帮助的 `--allow` / `--deny` / `--permission-mode` 也是这一进程的。钩子目录仍是先前记的 `~/.grok/hooks` 与项目 `.grok/hooks`，这次没动。
+4. 实测：`initialize` 的 `agentCapabilities.loadSession` 为 true。`session/load` 必须带 `mcpServers`（空数组即可），否则 `-32602 Invalid params`。加载后续写 `session/prompt`，回答是 `H2PROBE-RESUME`，加载时先回放了上一句用户消息。官方文档的 `--resume` / `-c` 这次没走。
+5. 实测：`grok agent stdio` 没有交互界面，这次没有接 Herdr pane。普通 `grok` 仍是 TUI。pane 里看不到这一轮；所有者还没接受「没有交互界面」这一条。Herdr 认 `grok` 与 `grok-build` 仍是先前的帮助文字，这次没有重测。
 
 ### Antigravity CLI
 
@@ -158,7 +158,7 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 | Codex CLI | 本机 0.160.1 | 实测 | 2026-10-06，一轮 `codex exec --json`；会话 `rollout-2026-10-06T06-07-45-*.jsonl` 的 user `input_text` 与参数逐字相同 |
 | Codex app-server / hooks | 文档页 2026-10-06 读取；schema 为仓库 main 上的 `user-prompt-submit.command.output.schema.json` | 官方文档说；源码里看到 | [App Server](https://developers.openai.com/codex/app-server)、[Hooks](https://developers.openai.com/codex/hooks)、[schema](https://github.com/openai/codex/blob/main/codex-rs/hooks/schema/generated/user-prompt-submit.command.output.schema.json) |
 | Codex `--remote` / daemon | 本机 0.160.1；Herdr 源码 `7b116c05` | 实测；源码里看到；官方文档说 | 2026-10-06。临时 `CODEX_HOME` 上一次性 `--listen`。线程 `01a10e6f-27fb-7232-a382-1890d21314c4`：第一轮 `turn/start` 之后 `codex resume --remote` 的界面画出第二客户端的 `HCTL_REMOTE_B`。托管 daemon 只读了 `daemon version` 和进程命令行，没有 bootstrap。`codex plugin --help` 见 Codex 一节第 3 问 |
-| Grok Build | 本机 1.0.46；文档为 `xai-org/grok-build` main 与 docs.x.ai | 本机帮助；官方文档说 | [headless](https://docs.x.ai/build/cli/headless-scripting.md)、[hooks 指南](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/custom-hooks.md) |
+| Grok Build | 本机 1.0.62（2026-10-19 实测）；早前记 1.0.46 | 本机帮助；官方文档说；ACP 实测 | [headless](https://docs.x.ai/build/cli/headless-scripting.md)、[hooks 指南](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/custom-hooks.md) |
 | Antigravity CLI | 本机 `agy` 1.2.17 | 本机帮助 | 钩子与配置根未查到 |
 | Kimi Code | 本机 2.1.1；文档页标 2026-09-24 | 本机帮助；官方文档说 | [Hooks](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/hooks.html) |
 | Qoder CLI CN | 本机 `qoderclicn` 1.1.65 | 本机帮助 | 钩子语义未查到 |

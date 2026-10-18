@@ -3,6 +3,7 @@
 pub mod catalog;
 pub mod codex;
 pub mod confine;
+pub mod grok;
 pub mod harness;
 pub mod herdr;
 pub mod launch;
