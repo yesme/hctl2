@@ -219,6 +219,43 @@ fn project_select_cli_checks_real_candidates_and_admits_only_confirmed_preview()
     let input = root.join("selection.json");
     let action = json!({"project_id":"P","project_version":1,"room_id":"main",
         "topic_command_key":null,"roster_version":null,"selections":[selection]});
+    let reject_roster = |declared: Option<Value>, current: &str, key: &str| {
+        let mut wrong = action.clone();
+        let declared_text = if let Some(version) = declared {
+            wrong["roster_version"] = version.clone();
+            version.to_string()
+        } else {
+            wrong.as_object_mut().unwrap().remove("roster_version");
+            "null".into()
+        };
+        std::fs::write(&input, wrong.to_string()).unwrap();
+        let (ok, out, err) = run(
+            root,
+            &[
+                "project",
+                "select",
+                "--input",
+                input.to_str().unwrap(),
+                "--key",
+                key,
+            ],
+        );
+        assert!(!ok, "{out} {err}");
+        let rejected: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(rejected["error"]["code"], "VERSION_CONFLICT");
+        assert_eq!(
+            rejected["error"]["message"],
+            format!(
+                "Room roster version mismatch for Project P, Room main: declared roster_version={declared_text}, current roster_version={current}. null means no roster exists"
+            )
+        );
+        assert_eq!(
+            rejected["error"]["recovery_action"],
+            "correct_roster_version_and_preview_again"
+        );
+    };
+    // Before the first selection there is no roster, not a versioned empty one.
+    reject_roster(Some(json!(99)), "null", "select-nonexistent-roster");
     let mut bad = action.clone();
     bad["selections"][0]["agency"]["key"]["id"] = json!("never-accepted");
     std::fs::write(&input, serde_json::to_vec(&bad).unwrap()).unwrap();
@@ -264,6 +301,36 @@ fn project_select_cli_checks_real_candidates_and_admits_only_confirmed_preview()
     assert!(ok, "{out} {err}");
     let roster: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(roster["selections"].as_array().unwrap().len(), 1);
+    reject_roster(Some(Value::Null), "1", "select-null-roster");
+    reject_roster(None, "1", "select-omitted-roster");
+    reject_roster(Some(json!(99)), "1", "select-unknown-roster-version");
+
+    let mut current = action.clone();
+    current["roster_version"] = json!(1);
+    std::fs::write(&input, current.to_string()).unwrap();
+    let args = [
+        "project",
+        "select",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "select-current-roster",
+    ];
+    let (ok, out, err) = run(root, &args);
+    assert!(ok, "{out} {err}");
+    let preview: Value = serde_json::from_str(&out).unwrap();
+    let mut confirmed = args.to_vec();
+    confirmed.extend([
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, out, err) = run(root, &confirmed);
+    assert!(ok, "{out} {err}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&out).unwrap()["roster_version"],
+        2
+    );
+    reject_roster(Some(json!(1)), "2", "select-stale-roster");
 }
 
 #[test]
