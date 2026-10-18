@@ -31,6 +31,7 @@ fn main() {
         eprintln!("codex fixture expected --version, resume, or app-server --listen");
         process::exit(2);
     };
+    write_json("app-server-pid.json", &json!(process::id()));
     if let Some(address) = listen.strip_prefix("ws://") {
         assert!(
             args.windows(2)

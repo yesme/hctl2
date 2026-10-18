@@ -751,10 +751,10 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
     let state = crate::herdr::state_dir(&exec, &cred)?;
-    let server = Arc::new(Server::start_with_read(
-        binary, &state, &cred, &exec, read_paths,
-    )?);
     let result = (|| {
+        let server = Arc::new(Server::start_with_read(
+            binary, &state, &cred, &exec, read_paths,
+        )?);
         smoke(Arc::clone(&server), &exec, &state, &cred)?;
         let launch = Launch::start(
             Arc::clone(&server),
@@ -783,7 +783,10 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
         }
         Ok(version)
     })();
-    drop(server);
+    // This probe's state is exclusive, including on Server startup failure.
+    if let Some(dir) = crate::herdr::socket_path(&state).parent() {
+        let _ = fs::remove_dir_all(dir);
+    }
     result
 }
 
