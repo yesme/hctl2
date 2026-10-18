@@ -46,49 +46,53 @@ v0.15.0 重新核对“Dagu 原生界面能否像普通客户端一样驱动 HCT
 <a id="2026-10-19-pre-impl-probe"></a>
 ## 2026-10-19 开工前限时验证（v2.15.1 实测）
 
-在第 6 包（Workflow 与 Run 控制面）开工前，使用仓库随包锁定的 Dagu `v2.15.1`（`root//packaging/dependencies:dagu`，上游提交 [`532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)），在一处用完即删的临时目录（`/tmp/hctl2-dagu-probe.XXXXXX`，独立端口 `28080/28090/25055/28091`，不触碰 `~/.local/state/hctl2` 或任何运行中实例）逐项实测三组能力与 P0 代次栅栏判据。
+作为 **P2.5 第 0 包**（对应 `.memo/design/p2-control-20260906/07-demo-kickoff.md` §六「专项 · workflow 引擎（Dagu）的开工前限时验证」与 `.memo/design/p2-control-20260906/09-p25-kickoff.md` §四「第 0 包」），在 **P2.5 第 1 包（施工图）** 与 **P2.5 第 2 包（workflow engine 端口与 Dagu 适配器）** 开工前，使用仓库随包锁定的 Dagu `v2.15.1`（`root//packaging/dependencies:dagu`，上游提交 [`532c5129`](https://github.com/dagucloud/dagu/tree/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a)），在一处用完即删的临时目录（`/var/tmp/hctl2-dagu-probe.XXXXXX`，动态偏移独立端口，不触碰 `~/.local/state/hctl2` 或任何运行中实例）逐项实测三组能力与 P0 代次栅栏判据。
 
 ### 逐项判定汇总
 
-**总结论：三组验证项与 P0 代次栅栏判据全部闭环，不触发重开选型，照常进第 6 包。** 其中引擎层标为「做不到」的四项均属已知边界，已在 [Run 约束](../design/spec/run.md) 与 [sdk/dagu.md](./sdk/dagu.md) 中由控制面语义承接。
+**总结论：三组验证项与 P0 代次栅栏判据全部闭环，不触发重开选型，照常进 P2.5 第 1 包（施工图）与第 2 包（workflow engine 端口与 Dagu 适配器）。** 其中引擎层标为「做不到」的四项均属已知边界，已在 [Run 约束](../design/spec/run.md) 与 [sdk/dagu.md](./sdk/dagu.md) 中由控制面语义承接。
 
 | 组别 | 验证子项 | 引擎端点 / 机制 | 实测结论 | 关键行为与源码/约束落点 |
 | --- | --- | --- | --- | --- |
 | **1. DAG 提交、启动、暂停、恢复、取消与回读** | 1A-1 合法 `human.task` 规范校验 | `POST /api/v1/dags/validate` | **通过** | HTTP 200 `valid: true`；引擎自动为 `with.form` 注入 `"additionalProperties": false` 并从表单属性推导类型化 `step.outputs` |
 | | 1A-2 缺失依赖校验 | `POST /api/v1/dags/validate` | **通过** | HTTP 200 `valid: false`，`errors: ["field 'depends': step s1 depends on non-existent step missing_step ..."]` |
-| | 1A-3 依赖环静态校验 vs 运行时拦截 | `POST /api/v1/dags/validate`<br>`POST /api/v1/dag-runs` | **静态 `validate` 做不到检环；运行时启动拒绝通过** | `s1 <-> s2` 在 `/dags/validate` 返回 `valid: true`（[`DAG.Validate`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/ir/dag.go#L448-L475) 不检环）；`POST /dag-runs` 在构建执行计划时以 HTTP 500 `DAG start process exited before publishing status: exit status 1` 拒绝。印证上文「HCTL 图 lint 必须先拒绝环」 |
+| | 1A-3 依赖环静态校验 vs 运行时拦截 | `POST /api/v1/dags/validate`<br>`POST /api/v1/dag-runs` | **静态 `validate` 做不到检环；运行时启动拒绝通过** | `s1 <-> s2` 在 `/dags/validate` 返回 `valid: true`（[`DAG.Validate`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/ir/dag.go#L448-L475) 不检环）；`POST /dag-runs` 在构建执行计划时以 HTTP 500 `DAG start process exited before publishing status: exit status 1` 拒绝。印证上文「HCTL 图 lint 必须先拒绝环」（落 P2.5 第 1 包） |
 | | 1B-1 文件式提交与启动 | `POST /api/v1/dags`<br>`PUT /api/v1/dags/{fileName}/spec`<br>`POST /api/v1/dags/{fileName}/start` | **通过** | 分别返回 HTTP 201、HTTP 200 `{"errors":null}`、HTTP 200 `{"dagRunId":"run-file-001"}`；重复 `dagRunId` 返回 HTTP 409 `already_exists` |
 | | 1B-2 内联规范直接启动与入队 | `POST /api/v1/dag-runs`<br>`POST /api/v1/dag-runs/enqueue` | **通过** | 均返回 HTTP 200 `{"dagRunId":...}`，无需预建 DAG 文件；队列处理器拉起后 `gate_a` 进入 `status: 7 ("waiting")` |
 | | 1B-3 Run 与步骤状态回读 | `GET /api/v1/dag-runs/{name}/{dagRunId}`<br>`GET …/steps/{stepName}/status` | **主回读通过；独立步骤 GET 端点做不到（405）** | `GET /dag-runs/{name}/{dagRunId}` 完整返回 run `status`/`statusLabel` 及 `.dagRunDetails.nodes[]`（含每步 `status`、`statusLabel`、`doneCount`、`startedAt`、`finishedAt`、插值后 `prompt`）；`/steps/{stepName}/status` 在 OpenAPI 中仅定义 `PATCH`，`GET` 返回 HTTP 405 |
 | | 1C-1 Run 级暂停 / 恢复端点 | `POST /api/v1/dag-runs/{name}/{dagRunId}/pause`、`/suspend`<br>`POST /api/v1/dags/{fileName}/suspend`<br>`POST …/human-tasks/resume` | **引擎无 Run 级 pause（做不到）；控制面停派发方案通过** | Run 级 `/pause`、`/suspend` 均为 HTTP 404；DAG 级 `/suspend`（HTTP 200）仅切换 `.suspended` 布尔值以启停 cron 调度；`/human-tasks/resume` 仅用于 `complete` 落盘后入队失败（`humanTaskResumePending`）的补偿重入队，对仍等待输入的步骤返回 HTTP 409。HCTL 的暂停/恢复落在控制面停发派工与停调 `complete`，引擎保持无进程 `waiting (7)` |
-| | 1D-1 取消 `Running (1)` 与 `Queued (5)` 态 run | `POST /api/v1/dag-runs/{name}/{dagRunId}/stop`<br>`GET /api/v1/dag-runs/{name}/{dagRunId}/dequeue` | **通过** | `Running` 态经 `POST .../stop`（HTTP 200）转为 `status: 3 ("aborted")`；`Queued` 态经 `GET .../dequeue`（HTTP 200，调用 [`queue.AbortQueuedDAGRun`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/queue/queue_abort.go#L34-L93)）将首次入队的 attempt 标 `Aborted` 并隐藏、移除空 run 记录，后续 `GET` 回读返回 HTTP 404 `not_found` |
-| | 1D-2 取消 `Waiting (7)` 态（无进程 `human.task`）run | `POST …/stop`、`GET …/dequeue`、`POST …/reject`、`PATCH …/status` | **引擎侧做不到改写为 `aborted`（不触发重开选型）** | `human.task` 进入 `waiting` 时 runner 进程已退出：`/stop` 返回 HTTP 400 `DAG is not running`（[`TerminateDAGRun`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/dagruns.go#L3264-L3305) 只接受 `Running` 或待自动重试的 `Failed`）；`/dequeue` 返回 HTTP 400 `not queued: waiting`；`/reject` 与 `PATCH .../status` 均因 `human.task` 保护返回 HTTP 400。由于无进程 `human.task` 零进程、零定时器，HCTL 取消/替代 Run 时撤销本地租约、关闭 `Run–Engine Binding` 并永不再对该 `dagRunId` 调 `complete`，不构成阻塞 |
+| | 1D-1 取消 / 篡改 `Waiting (7)` 态（无进程 `human.task`）run | `POST …/stop`、`GET …/dequeue`、`POST …/reject`、`POST …/approve`、`POST …/push-back`、`PATCH …/status` | **引擎侧做不到改写为 `aborted`（不触发重开选型）** | `human.task` 进入 `waiting` 时 runner 进程已退出：`/stop` 返回 HTTP 400 `DAG is not running`（[`TerminateDAGRun`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/service/frontend/api/v1/dagruns.go#L3264-L3305) 只接受 `Running` 或待自动重试的 `Failed`）；`/dequeue` 返回 HTTP 400 `not queued: waiting`；`/reject`、`/approve`、`/push-back` 与 `PATCH .../status` 均因 `human.task` 保护返回 HTTP 400。由于无进程 `human.task` 零进程、零定时器，HCTL 取消/替代 Run 时撤销本地租约、关闭 `Run–Engine Binding` 并永不再对该 `dagRunId` 调 `complete` |
+| | 1D-2–1D-3 取消 `Running (1)` / `Queued (5)` 态 run 与 `Waiting (7)` 并发槽验证 | `POST /api/v1/dag-runs/{name}/{dagRunId}/stop`<br>`GET /api/v1/dag-runs/{name}/{dagRunId}/dequeue` | **通过** | `Running` 态经 `POST .../stop`（HTTP 200）转为 `status: 3 ("aborted")`；`Queued` 态经 `GET .../dequeue`（HTTP 200，调用 [`queue.AbortQueuedDAGRun`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/queue/queue_abort.go#L34-L93)）移除空 run 记录（后续 `GET` 返回 HTTP 404）。此外，处于 `waiting (7)` 的 `human.task` run **不占用** `max_active_runs: 1` 的并发槽，不会阻塞同 DAG 后续新 `dagRunId` 启动 |
 | **2. `human.task` 等待、完成与回读** | 2.1–2.2 进入等待态与跨进程重启持久化 | `dagu start-all` 重启 + `GET /api/v1/dag-runs/{name}/{dagRunId}` | **通过** | 无进程 `human.task` 进入 `status: 7 ("waiting")`；`SIGTERM` 停止并重启 `dagu start-all` 后，文件存储原样恢复 `status: 7 ("waiting")` 与 `startedAt` |
 | | 2.3–2.4 表单 Schema 校验、完成推进与下游插值 | `POST /api/v1/dag-runs/{name}/{dagRunId}/human-tasks/{stepId}/complete` | **通过（含队列过渡态约束）** | 缺必填字段返回 HTTP 400 `human task form validation failed`；合法输入返回 HTTP 200 `{"alreadyCompleted":false,"queued":true,"remainingWaitingSteps":0}`。完成会将新 attempt 入队（短暂经过 `status: 5 ("queued")`），随后拉起下游 `gate_b` 进入 `waiting (7)`，并将 `${steps.gate_a.outputs.receipt_id}` 插值进 `gate_b` 的 `prompt` |
 | | 2.5–2.6 幂等重投 vs 冲突输入拒绝 | `POST …/human-tasks/{stepId}/complete` | **通过** | 相同 canonical JSON 重投返回 HTTP 200 `{"alreadyCompleted":true,"queued":false}`（不重复入队）；不同 JSON（如不同 `attempt_generation` 或 `receipt_id`）返回 HTTP 409 `human task step "gate_a" was already completed with different input` |
 | | 2.7 终态回读与 `/outputs` 行为 | `GET /api/v1/dag-runs/{name}/{dagRunId}`<br>`GET /api/v1/dag-runs/{name}/{dagRunId}/outputs` | **通过** | `gate_b` 完成后 run 转为 `status: 4 ("succeeded")`；注意 `human.task` 禁止顶层 `output:` 字段，其表单输出存入 `StepOutputsValue` 供图内 `${steps.<id>.outputs.<field>}` 插值，不写入 `outputs.json`（`/outputs` 返回空映射 `{}`） |
-| **3. 引擎自推进 / 重试与 HCTL 回读分歧检查（含 P0 栅栏）** | 3.1–3.4 引擎禁止 `human.task` 自动/手动重试与状态篡改 | `POST /dags/validate`<br>`POST …/retry`<br>`PATCH …/steps/{stepName}/status` | **通过** | 规范层拒绝 `human.task` 配置 `retry_policy` / `repeat_policy` / `timeout_sec`（[`human_task.go#L13-L43`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/spec/human_task.go#L13-L43)）；API 层拒绝单步 retry `human.task`（HTTP 409）、拒绝在 `waiting` 态整盘 retry（HTTP 409）、拒绝 `PATCH` 改写 `human.task` 状态（HTTP 400）；`reschedule` 强制要求新 `dagRunId`（原 ID 返回 HTTP 409） |
-| | 3.5–3.6 旁路 `complete` 与迟到请求的分歧识别 | `GET /api/v1/dag-runs/{name}/{dagRunId}`<br>`POST …/human-tasks/{stepId}/complete` | **通过** | 在 HCTL Profile 下，同一 `(dagName, dagRunId)` 的每个 `human.task` 最多进入 `waiting` 一次。把 `obligation_id`、`attempt_generation`、`receipt_id` 写入必填 `form` 后：旁路直接调 `complete` 会使回读看到 `gate_a = succeeded`、`gate_b = waiting` 而控制面无对应完成 outbox（且 HCTL 事后提交合法结果会收到 HTTP 409 Conflict），control 立即将 `Run–Engine Binding` 标为**分歧**并拒绝为 `gate_b` 创建 Obligation |
+| **3. 引擎自推进 / 重试与 HCTL 回读分歧检查（含 P0 栅栏）** | 3.1–3.4 引擎禁止 `human.task` 自动/手动重试、重复、并行与状态篡改 | `POST /dags/validate`<br>`POST …/retry`<br>`PATCH …/steps/{stepName}/status` | **通过** | 规范层拒绝 `human.task` 配置 `retry_policy` / `repeat_policy` / `parallel` / `timeout_sec`（[`human_task.go#L13-L43`](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/spec/human_task.go#L13-L43)）；API 层拒绝单步 retry `human.task`（HTTP 409）、拒绝在 `waiting` 态整盘 retry（HTTP 409）、对已 `succeeded` 的 run 整盘 retry（HTTP 200）不会把已完成的 `human.task` 打回 `waiting`（保持 `succeeded`、`doneCount: 1`）、拒绝 `PATCH` 改写 `human.task` 状态（HTTP 400）；`reschedule` 强制要求新 `dagRunId`（原 ID 返回 HTTP 409） |
+| | 3.5–3.7 旁路 `complete` 分歧识别与「ACK 未知 + `SIGKILL` 崩溃恢复」压力验证 | `GET /api/v1/dag-runs/{name}/{dagRunId}`<br>`POST …/human-tasks/{stepId}/complete` | **通过** | 在 HCTL Profile 下（P2.5 第 1 包编译器禁止把 loop / 动态分支编译成重入同一 `(dagRunId, step)` 的结构），同一 `(dagName, dagRunId)` 的每个 `human.task` 最多进入 `waiting` 一次。把 `obligation_id`、`attempt_generation`、`receipt_id` 写入必填 `form` 后：① 旁路直接调 `complete` 会使回读看到 `gate_a = succeeded`、`gate_b = waiting` 而控制面无对应完成 outbox（且 HCTL 事后提交合法结果会收到 HTTP 409 Conflict），control 立即将 `Run–Engine Binding` 标为**分歧**并拒绝为 `gate_b` 创建 Obligation；② `complete` 返回 200 后立即 `kill -KILL` `dagu start-all` 并重启，立即重投同一份 `complete` 幂等返回 HTTP 200 `alreadyCompleted: true, queued: false`，队列恢复后 `gate_b` 正常进入 `waiting` 且 `prompt` 已插值 `rcpt-crash-001`，此时调 `/human-tasks/resume` 返回 HTTP 409 |
 
-### 第 6 包适配器落盘的三条机械约束
+### P2.5 第 1、2 包落盘的三条机械约束
 
-1. **静态无环 lint 前置**：编译器在调用 `POST /api/v1/dags/validate` 之前必须先完成 HCTL 图结构拓扑检环，不得依赖 Dagu `validate` 检环。
-2. **轮询回读等待 `waiting (7)` 就绪后再操作**：`complete` 返回 `"queued": true` 后，run 会先进入 `status: 5 ("queued")` 再由队列协程拉起新 attempt 使下游节点进入 `status: 7 ("waiting")`（若在 `queued` 窗口内对下游节点调 `complete` 会收到 HTTP 409 `DAG-run ... is not waiting (status: queued)`）。控制面观察器与重投器一律以 `GET /api/v1/dag-runs/{name}/{dagRunId}` 中 `dagRunDetails.status == 7` 且目标节点 `node.status == 7` 为准。
-3. **代次与凭证写入 `human.task` 必填 `form`**：编译器为每个外部检查点生成的 `human.task` 必须包含 `obligation_id`、`attempt_generation`、`verdict`、`receipt_id` 四个 `required` 表单字段。ACK 未知重投同一表单天然幂等（HTTP 200 `alreadyCompleted: true`）；旧代次迟到写入或旁路篡改均触发 HTTP 409 `conflict` 或回读状态不匹配，从而将 `Run–Engine Binding` 收口为分歧。
+1. **静态无环 lint 与不重入约束前置（落 P2.5 第 1 包 · 施工图）**：HCTL 编译器在调用 `POST /api/v1/dags/validate` 之前必须先完成 HCTL 图结构拓扑检环（不得依赖 Dagu `validate` 检环），且不得把 loop 或动态分支（`foreach`）编译成在单次 `dagRunId` 内重入同一 `step` 的 Dagu repeat 或子 DAG 结构，确保同一 `(dagName, dagRunId, stepId)` 最多进入 `waiting` 一次。
+2. **轮询回读等待 `waiting (7)` 就绪后再操作，并在非正常崩溃重启前清理残留目录锁（落 P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器）**：`complete` 返回 `"queued": true` 后，run 会先进入 `status: 5 ("queued")` 再由队列协程拉起新 attempt 使下游节点进入 `status: 7 ("waiting")`（若在 `queued` 窗口内对下游节点调 `complete` 会收到 HTTP 409 `DAG-run ... is not waiting (status: queued)`）。控制面观察器与重投器一律以 `GET /api/v1/dag-runs/{name}/{dagRunId}` 中 `dagRunDetails.status == 7` 且目标节点 `node.status == 7` 为准。另外，`dagu start-all` 若因 `SIGKILL` 非正常退出，`$DAGU_HOME/data/scheduler/locks/.dagu_lock` 目录锁不会自动触发退出清理（新进程需等待约 30s stale lock 超时才能接管 scheduler 队列）；托管器在确认旧 `dagu` 进程已退出后重启前应顺手清理残留的 `.dagu_lock` 目录。
+3. **代次与凭证写入 `human.task` 必填 `form`（生成侧落 P2.5 第 1 包，写入与回读对账侧落 P2.5 第 2 包）**：编译器为每个外部检查点生成的 `human.task` 必须包含 `obligation_id`、`attempt_generation`、`verdict`、`receipt_id` 四个 `required` 表单字段。ACK 未知重投同一表单天然幂等（HTTP 200 `alreadyCompleted: true, queued: false`）；旧代次迟到写入或旁路篡改均触发 HTTP 409 `conflict` 或回读状态不匹配，从而将 `Run–Engine Binding` 收口为分歧。
 
-### 跨平台一键复现命令（macOS / Linux 通用）
+### 跨平台一键复现命令（macOS / Linux 通用，依赖 `curl`、`jq`）
 
-在仓库根执行以下脚本即可在独立临时目录中从零跑完上述全部验证并自动清理进程与目录：
+在仓库根执行以下脚本即可在独立临时目录（`/var/tmp/hctl2-dagu-probe.XXXXXX`）中从零跑完上述全部验证并自动清理进程与目录（可通过 `DAGU_PROBE_PORT_BASE` 指定起始端口，默认按 `$$` 动态偏移）：
 
 ```bash
 bash <<'EOF'
 set -euo pipefail
 
+for cmd in curl jq awk find; do
+    command -v "$cmd" >/dev/null 2>&1 || { echo "error: required command '$cmd' not found" >&2; exit 1; }
+done
+
 DAGU_CACHE_ROOT="$(cd src && ./buck2 build root//packaging/dependencies:dagu --show-full-output | awk '/root\/\/packaging\/dependencies:dagu/ {print $2}')"
 DAGU_BIN="$(find "$DAGU_CACHE_ROOT" -type f -path '*/bin/dagu' -print -quit)"
 [[ -x "$DAGU_BIN" ]] || { echo "error: dagu binary not found under $DAGU_CACHE_ROOT" >&2; exit 1; }
 
-PROBE_DIR="$(mktemp -d /tmp/hctl2-dagu-probe.XXXXXX)"
+PROBE_DIR="$(mktemp -d /var/tmp/hctl2-dagu-probe.XXXXXX)"
 DAGU_PID=""
 
 stop_dagu() {
@@ -96,6 +100,15 @@ stop_dagu() {
         kill -TERM "$DAGU_PID" 2>/dev/null || true
         wait "$DAGU_PID" 2>/dev/null || true
     fi
+    DAGU_PID=""
+}
+
+kill9_dagu() {
+    if [[ -n "$DAGU_PID" ]] && kill -0 "$DAGU_PID" 2>/dev/null; then
+        kill -KILL "$DAGU_PID" 2>/dev/null || true
+        wait "$DAGU_PID" 2>/dev/null || true
+    fi
+    rm -rf "$PROBE_DIR/data/data/scheduler/locks/.dagu_lock"
     DAGU_PID=""
 }
 
@@ -107,13 +120,14 @@ trap cleanup EXIT
 
 mkdir -p "$PROBE_DIR/data" "$PROBE_DIR/logs"
 
+PORT_BASE="${DAGU_PROBE_PORT_BASE:-$((28000 + ($$ % 200) * 10))}"
 export DAGU_HOME="$PROBE_DIR/data"
 export DAGU_HOST="127.0.0.1"
-export DAGU_PORT="28080"
-export DAGU_SCHEDULER_PORT="28090"
+export DAGU_PORT="$((PORT_BASE + 0))"
+export DAGU_SCHEDULER_PORT="$((PORT_BASE + 1))"
 export DAGU_COORDINATOR_HOST="127.0.0.1"
-export DAGU_COORDINATOR_PORT="25055"
-export DAGU_COORDINATOR_HEALTH_PORT="28091"
+export DAGU_COORDINATOR_PORT="$((PORT_BASE + 2))"
+export DAGU_COORDINATOR_HEALTH_PORT="$((PORT_BASE + 3))"
 export DAGU_AUTH_MODE="none"
 export DAGU_TERMINAL_ENABLED="false"
 
@@ -291,11 +305,15 @@ curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/human-tasks/
 echo "=================================================================="
 echo "1D. CANCEL (STOP / DEQUEUE) ACROSS RUN STATES"
 echo "=================================================================="
-echo "--- 1D.1 Cancel a Waiting (7) human.task run via /stop, /dequeue, /reject, /status ---"
+echo "--- 1D.1 Cancel/mutate a Waiting (7) human.task run via /stop, /dequeue, /reject, /approve, /push-back, /status ---"
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/stop" -w "\nHTTP_STATUS:%{http_code}\n"
 curl -sS -X GET "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/dequeue" -w "\nHTTP_STATUS:%{http_code}\n"
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/steps/gate_a/reject" \
     -H "Content-Type: application/json" -d '{"reason":"cancel"}' -w "\nHTTP_STATUS:%{http_code}\n"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/steps/gate_a/approve" \
+    -H "Content-Type: application/json" -d '{}' -w "\nHTTP_STATUS:%{http_code}\n"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/steps/gate_a/push-back" \
+    -H "Content-Type: application/json" -d '{"reason":"rework"}' -w "\nHTTP_STATUS:%{http_code}\n"
 curl -sS -X PATCH "${BASE_URL}/dag-runs/hctl-inline-probe/run-enqueue-001/steps/gate_a/status" \
     -H "Content-Type: application/json" -d '{"status":3}' -w "\nHTTP_STATUS:%{http_code}\n"
 
@@ -318,6 +336,12 @@ curl -sS "${BASE_URL}/dag-runs/hctl-running-cancel/run-cancel-queued-002" -w "\n
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-running-cancel/run-cancel-running-001/stop" -w "\nHTTP_STATUS:%{http_code}\n"
 wait_for_run_status "hctl-running-cancel" "run-cancel-running-001" "aborted"
 curl -sS "${BASE_URL}/dag-runs/hctl-running-cancel/run-cancel-running-001" | jq '{dagRunId: .dagRunDetails.dagRunId, status: .dagRunDetails.status, statusLabel: .dagRunDetails.statusLabel, nodes: [.dagRunDetails.nodes[] | {id: .step.id, status: .status, statusLabel: .statusLabel}]}'
+
+echo "--- 1D.3 Waiting (7) human.task run does NOT block subsequent runs on same DAG (maxActiveRuns=1) ---"
+jq -n --arg spec "$SPEC_TWO_GATE" '{name: "hctl-inline-probe", dagRunId: "run-inline-002", spec: $spec}' | \
+    curl -sS -X POST "${BASE_URL}/dag-runs" -H "Content-Type: application/json" -d @- -w "\nHTTP_STATUS:%{http_code}\n"
+wait_for_step_status "hctl-inline-probe" "run-inline-002" "gate_a" "waiting"
+curl -sS "${BASE_URL}/dag-runs/hctl-inline-probe/run-inline-002" | jq '{dagRunId: .dagRunDetails.dagRunId, statusLabel: .dagRunDetails.statusLabel, gateA: (.dagRunDetails.nodes[] | select(.step.id == "gate_a") | .statusLabel)}'
 
 echo "=================================================================="
 echo "2. HUMAN.TASK WAITING, COMPLETION, RESTART PERSISTENCE, IDEMPOTENCY & OUTPUTS"
@@ -368,19 +392,30 @@ curl -sS "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/outputs" | jq .
 echo "=================================================================="
 echo "3. ENGINE SELF-ADVANCE / RETRY VS HCTL READBACK DIVERGENCE CHECKS"
 echo "=================================================================="
-echo "--- 3.1 Engine blocks retry_policy / repeat_policy / timeout_sec on human.task at spec validation ---"
+echo "--- 3.1 Engine blocks retry_policy / repeat_policy / parallel on human.task at spec validation ---"
 jq -n '{spec: "steps:\n  - id: s1\n    action: human.task\n    retry_policy:\n      limit: 2\n    with:\n      prompt: test\n"}' | \
-    curl -sS -X POST "${BASE_URL}/dags/validate" -H "Content-Type: application/json" -d @- -w "\nHTTP_STATUS:%{http_code}\n"
+    curl -sS -X POST "${BASE_URL}/dags/validate" -H "Content-Type: application/json" -d @- | jq '{valid: .valid, errors: .errors}'
+jq -n '{spec: "steps:\n  - id: s1\n    action: human.task\n    repeat_policy:\n      repeat: true\n    with:\n      prompt: test\n"}' | \
+    curl -sS -X POST "${BASE_URL}/dags/validate" -H "Content-Type: application/json" -d @- | jq '{valid: .valid, errors: .errors}'
+jq -n '{spec: "steps:\n  - id: s1\n    action: human.task\n    parallel:\n      items: [a, b]\n    with:\n      prompt: test\n"}' | \
+    curl -sS -X POST "${BASE_URL}/dags/validate" -H "Content-Type: application/json" -d @- | jq '{valid: .valid, errors: .errors}'
 
 echo "--- 3.2 Engine blocks direct step retry on human.task (even after run succeeded) ---"
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/retry" \
     -H "Content-Type: application/json" \
     -d '{"dagRunId":"run-file-001","stepName":"gate_a"}' -w "\nHTTP_STATUS:%{http_code}\n"
 
-echo "--- 3.3 Engine blocks run retry while run is Waiting on human.task ---"
+echo "--- 3.3a Engine blocks run retry while run is Waiting on human.task ---"
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-inline-probe/run-inline-001/retry" \
     -H "Content-Type: application/json" \
     -d '{"dagRunId":"run-inline-001"}' -w "\nHTTP_STATUS:%{http_code}\n"
+
+echo "--- 3.3b Full run retry after run Succeeded does NOT re-enter waiting on completed human.task steps ---"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/retry" \
+    -H "Content-Type: application/json" \
+    -d '{"dagRunId":"run-file-001"}' -w "\nHTTP_STATUS:%{http_code}\n"
+wait_for_run_status "hctl-file-probe" "run-file-001" "succeeded"
+curl -sS "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001" | jq '{dagRunId: .dagRunDetails.dagRunId, statusLabel: .dagRunDetails.statusLabel, nodes: [.dagRunDetails.nodes[] | {id: .step.id, statusLabel: .statusLabel, doneCount: .doneCount}]}'
 
 echo "--- 3.4 Engine blocks manual step status PATCH on human.task (even after run succeeded) ---"
 curl -sS -X PATCH "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/steps/gate_a/status" \
@@ -412,6 +447,29 @@ curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/reschedule" 
 curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-file-001/reschedule" \
     -H "Content-Type: application/json" \
     -d '{"dagRunId":"run-file-rescheduled-002"}' -w "\nHTTP_STATUS:%{http_code}\n"
+
+echo "--- 3.7 ACK-unknown + immediate kill -KILL crash recovery stress test ---"
+curl -sS -X POST "${BASE_URL}/dags/hctl-file-probe/start" -H "Content-Type: application/json" \
+    -d '{"dagRunId":"run-crash-001"}' -w "\nHTTP_STATUS:%{http_code}\n"
+wait_for_step_status "hctl-file-probe" "run-crash-001" "gate_a" "waiting"
+
+echo "Complete gate_a on run-crash-001 and immediately kill -KILL dagu start-all:"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-crash-001/human-tasks/gate_a/complete" \
+    -H "Content-Type: application/json" \
+    -d '{"obligation_id":"obl-crash-1","attempt_generation":1,"verdict":"accepted","receipt_id":"rcpt-crash-001"}' -w "\nHTTP_STATUS:%{http_code}\n"
+kill9_dagu
+start_dagu
+
+echo "Re-deliver identical gate_a completion immediately after restart (ACK-unknown retry -> 200 alreadyCompleted=true, queued=false):"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-crash-001/human-tasks/gate_a/complete" \
+    -H "Content-Type: application/json" \
+    -d '{"obligation_id":"obl-crash-1","attempt_generation":1,"verdict":"accepted","receipt_id":"rcpt-crash-001"}' -w "\nHTTP_STATUS:%{http_code}\n"
+
+wait_for_step_status "hctl-file-probe" "run-crash-001" "gate_b" "waiting"
+echo "Readback run-crash-001 after queue recovery advances gate_b to waiting:"
+curl -sS "${BASE_URL}/dag-runs/hctl-file-probe/run-crash-001" | jq '{dagRunId: .dagRunDetails.dagRunId, statusLabel: .dagRunDetails.statusLabel, nodes: [.dagRunDetails.nodes[] | {id: .step.id, statusLabel: .statusLabel, prompt: .step.humanTask.prompt}]}'
+echo "Calling /human-tasks/resume once gate_b is waiting returns HTTP 409:"
+curl -sS -X POST "${BASE_URL}/dag-runs/hctl-file-probe/run-crash-001/human-tasks/resume" -w "\nHTTP_STATUS:%{http_code}\n"
 EOF
 ```
 
@@ -516,11 +574,17 @@ HTTP_STATUS:409
 ==================================================================
 1D. CANCEL (STOP / DEQUEUE) ACROSS RUN STATES
 ==================================================================
---- 1D.1 Cancel a Waiting (7) human.task run via /stop, /dequeue, /reject, /status ---
+--- 1D.1 Cancel/mutate a Waiting (7) human.task run via /stop, /dequeue, /reject, /approve, /push-back, /status ---
 {"code":"not_running","message":"DAG is not running"}
 
 HTTP_STATUS:400
 {"code":"bad_request","message":"DAGRun status is not queued: waiting"}
+
+HTTP_STATUS:400
+{"code":"bad_request","message":"human-task state requires the human-task completion API: step gate_a is a human task"}
+
+HTTP_STATUS:400
+{"code":"bad_request","message":"human-task state requires the human-task completion API: step gate_a is a human task"}
 
 HTTP_STATUS:400
 {"code":"bad_request","message":"human-task state requires the human-task completion API: step gate_a is a human task"}
@@ -555,6 +619,15 @@ HTTP_STATUS:200
     }
   ]
 }
+--- 1D.3 Waiting (7) human.task run does NOT block subsequent runs on same DAG (maxActiveRuns=1) ---
+{"dagRunId":"run-inline-002"}
+
+HTTP_STATUS:200
+{
+  "dagRunId": "run-inline-002",
+  "statusLabel": "waiting",
+  "gateA": "waiting"
+}
 ==================================================================
 2. HUMAN.TASK WAITING, COMPLETION, RESTART PERSISTENCE, IDEMPOTENCY & OUTPUTS
 ==================================================================
@@ -569,7 +642,7 @@ HTTP_STATUS:200
       "status": 7,
       "statusLabel": "waiting",
       "doneCount": 1,
-      "startedAt": "2026-10-19T03:27:15+08:00",
+      "startedAt": "2026-10-19T04:03:13+08:00",
       "finishedAt": "",
       "prompt": "Obligation gate_a waiting for HCTL completion",
       "outputs": [
@@ -633,7 +706,7 @@ HTTP_STATUS:405
       "id": "gate_a",
       "status": 7,
       "statusLabel": "waiting",
-      "startedAt": "2026-10-19T03:27:15+08:00"
+      "startedAt": "2026-10-19T04:03:13+08:00"
     },
     {
       "id": "gate_b",
@@ -662,8 +735,8 @@ HTTP_STATUS:200
       "status": 4,
       "statusLabel": "succeeded",
       "doneCount": 1,
-      "startedAt": "2026-10-19T03:27:15+08:00",
-      "finishedAt": "2026-10-18T19:27:17Z",
+      "startedAt": "2026-10-19T04:03:13+08:00",
+      "finishedAt": "2026-10-18T20:03:18Z",
       "prompt": "Obligation gate_a waiting for HCTL completion",
       "completedBy": null
     },
@@ -672,7 +745,7 @@ HTTP_STATUS:200
       "status": 7,
       "statusLabel": "waiting",
       "doneCount": 1,
-      "startedAt": "2026-10-19T03:27:20+08:00",
+      "startedAt": "2026-10-19T04:03:21+08:00",
       "finishedAt": "",
       "prompt": "Obligation gate_b after gate_a (rcpt-001)",
       "completedBy": null
@@ -695,22 +768,22 @@ HTTP_STATUS:200
   "dagRunId": "run-file-001",
   "status": 4,
   "statusLabel": "succeeded",
-  "startedAt": "2026-10-19T03:27:23+08:00",
-  "finishedAt": "2026-10-19T03:27:23+08:00",
+  "startedAt": "2026-10-19T04:03:23+08:00",
+  "finishedAt": "2026-10-19T04:03:24+08:00",
   "nodes": [
     {
       "id": "gate_a",
       "status": 4,
       "statusLabel": "succeeded",
-      "startedAt": "2026-10-19T03:27:15+08:00",
-      "finishedAt": "2026-10-18T19:27:17Z"
+      "startedAt": "2026-10-19T04:03:13+08:00",
+      "finishedAt": "2026-10-18T20:03:18Z"
     },
     {
       "id": "gate_b",
       "status": 4,
       "statusLabel": "succeeded",
-      "startedAt": "2026-10-19T03:27:20+08:00",
-      "finishedAt": "2026-10-18T19:27:21Z"
+      "startedAt": "2026-10-19T04:03:21+08:00",
+      "finishedAt": "2026-10-18T20:03:21Z"
     }
   ]
 }
@@ -728,18 +801,52 @@ HTTP_STATUS:200
 ==================================================================
 3. ENGINE SELF-ADVANCE / RETRY VS HCTL READBACK DIVERGENCE CHECKS
 ==================================================================
---- 3.1 Engine blocks retry_policy / repeat_policy / timeout_sec on human.task at spec validation ---
-{"dag":{"env":[],"histRetentionDays":30,"maxActiveRuns":1,"maxActiveSteps":10,"name":"validated-dag","params":[],"preconditions":[],"schedule":[],"steps":[],"type":"graph"},"errors":["field 'steps': field 'retry_policy': action human.task does not support retry_policy (value: map[limit:2])"],"valid":false}
-
-HTTP_STATUS:200
+--- 3.1 Engine blocks retry_policy / repeat_policy / parallel on human.task at spec validation ---
+{
+  "valid": false,
+  "errors": [
+    "field 'steps': field 'retry_policy': action human.task does not support retry_policy (value: map[limit:2])"
+  ]
+}
+{
+  "valid": false,
+  "errors": [
+    "field 'steps': field 'repeat_policy': action human.task does not support repeat_policy (value: map[repeat:true])"
+  ]
+}
+{
+  "valid": false,
+  "errors": [
+    "field 'steps': field 'parallel': action human.task does not support parallel (value: map[items:[a b]])"
+  ]
+}
 --- 3.2 Engine blocks direct step retry on human.task (even after run succeeded) ---
 {"code":"conflict","message":"human task step \"gate_a\" cannot be retried directly"}
 
 HTTP_STATUS:409
---- 3.3 Engine blocks run retry while run is Waiting on human.task ---
+--- 3.3a Engine blocks run retry while run is Waiting on human.task ---
 {"code":"conflict","message":"DAG-run hctl-inline-probe:run-inline-001 is waiting and cannot be retried"}
 
 HTTP_STATUS:409
+--- 3.3b Full run retry after run Succeeded does NOT re-enter waiting on completed human.task steps ---
+
+HTTP_STATUS:200
+{
+  "dagRunId": "run-file-001",
+  "statusLabel": "succeeded",
+  "nodes": [
+    {
+      "id": "gate_a",
+      "statusLabel": "succeeded",
+      "doneCount": 1
+    },
+    {
+      "id": "gate_b",
+      "statusLabel": "succeeded",
+      "doneCount": 1
+    }
+  ]
+}
 --- 3.4 Engine blocks manual step status PATCH on human.task (even after run succeeded) ---
 {"code":"bad_request","message":"human task step gate_a must be completed through the human-task API"}
 
@@ -774,14 +881,14 @@ HCTL periodic readback sees gate_a=succeeded and gate_b=waiting while HCTL Oblig
     {
       "id": "gate_a",
       "statusLabel": "succeeded",
-      "startedAt": "2026-10-19T03:27:15+08:00",
-      "finishedAt": "2026-10-18T19:27:23Z",
+      "startedAt": "2026-10-19T04:03:13+08:00",
+      "finishedAt": "2026-10-18T20:03:27Z",
       "prompt": "Obligation gate_a waiting for HCTL completion"
     },
     {
       "id": "gate_b",
       "statusLabel": "waiting",
-      "startedAt": "2026-10-19T03:27:26+08:00",
+      "startedAt": "2026-10-19T04:03:30+08:00",
       "finishedAt": "",
       "prompt": "Obligation gate_b after gate_a (rcpt-oob)"
     }
@@ -798,4 +905,37 @@ HTTP_STATUS:409
 {"dagRunId":"run-file-rescheduled-002","queued":true}
 
 HTTP_STATUS:200
+--- 3.7 ACK-unknown + immediate kill -KILL crash recovery stress test ---
+{"dagRunId":"run-crash-001"}
+
+HTTP_STATUS:200
+Complete gate_a on run-crash-001 and immediately kill -KILL dagu start-all:
+{"alreadyCompleted":false,"dagName":"hctl-file-probe","dagRunId":"run-crash-001","queued":true,"remainingWaitingSteps":0,"stepId":"gate_a"}
+
+HTTP_STATUS:200
+Re-deliver identical gate_a completion immediately after restart (ACK-unknown retry -> 200 alreadyCompleted=true, queued=false):
+{"alreadyCompleted":true,"dagName":"hctl-file-probe","dagRunId":"run-crash-001","queued":false,"remainingWaitingSteps":0,"stepId":"gate_a"}
+
+HTTP_STATUS:200
+Readback run-crash-001 after queue recovery advances gate_b to waiting:
+{
+  "dagRunId": "run-crash-001",
+  "statusLabel": "waiting",
+  "nodes": [
+    {
+      "id": "gate_a",
+      "statusLabel": "succeeded",
+      "prompt": "Obligation gate_a waiting for HCTL completion"
+    },
+    {
+      "id": "gate_b",
+      "statusLabel": "waiting",
+      "prompt": "Obligation gate_b after gate_a (rcpt-crash-001)"
+    }
+  ]
+}
+Calling /human-tasks/resume once gate_b is waiting returns HTTP 409:
+{"code":"conflict","message":"DAG-run hctl-file-probe:run-crash-001 still has manual steps waiting for input"}
+
+HTTP_STATUS:409
 ```
