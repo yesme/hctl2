@@ -179,17 +179,15 @@ hctl2-services start
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
-## 本地 Agency 的前提：Claude Code 信任 `/tmp`
+## 本地 Agency 与 Claude Code 的工作区信任
 
-本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录，Claude Code 的会话就开在这些目录里。Claude Code 第一次进入没被信任过的文件夹时，会问是否信任它。这个问题由人回答，Agency 不替人选。第一次派 Claude 之前，在终端里做一次：
+本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录，Claude Code 的会话就开在这些目录里；写入型派工开在 git worktree 里。Claude Code 第一次进入没被信任过的文件夹时，会问是否信任它；git 仓库和 worktree 不沿用父目录的信任。
 
-```bash
-cd /tmp && claude
-```
+让不让 Claude 在执行目录里工作，由 Agency 的所有者决定，不交给守着 pane 的人逐个回答（所有者，2026-10-18）。Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动，Claude Code 2.1.302 据此不再询问。这个变量 Claude Code 没有写进公开文档。Agency 只给自己起的会话设它，不改你自己的 Claude 配置（`~/.claude.json` 等）；你在终端里自己用 Claude Code 时照常询问。用户不需要做任何事。
 
-选「Yes, I trust this folder」，然后退出。Claude Code 认父目录的信任，`/tmp` 下的执行目录以后不再询问。这也意味着，在 `/tmp` 下任何文件夹里打开 Claude Code 都不会再问。
+受信任意味着仓库里的 Claude 项目配置（例如 `.claude/settings.json` 里的 hooks）会在这些会话里生效，所以登记给 Agency 的仓库应当是你信得过的。
 
-Agency 启动时会核验这一条：在 `/tmp` 下的新目录里开一次 Claude 会话，不派任务，也不按任何键。如果 Claude 弹出信任问题，Claude 工种就不进 Agency 的目录，Agency 根目录下的 `serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED` 和上面的做法。派工途中遇到这个问题，也会立刻以同一个错误结束。
+Agency 启动时会核验这一条：在 `/tmp` 下的新目录里开一次 Claude 会话，不派任务，也不按任何键。如果 Claude 仍然弹出信任问题，例如换成了不认这个变量的版本，Claude 工种就不进 Agency 的目录，Agency 根目录下的 `serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`。派工途中遇到这个问题，也会立刻以同一个错误结束。Agency 任何时候都不替人回答这个问题。
 
 ## 写入型派工与 ChangeSet
 

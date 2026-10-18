@@ -25,8 +25,9 @@ fn event(root: &Path, name: &str, mut value: Value) {
 }
 /// Claude Code 2.1.302's workspace trust prompt: "❯ No, exit" first, the two
 /// options wrap, and Enter on "No, exit" exits 1. Shown when `<this binary>.untrusted`
-/// exists, which stands for "Claude does not trust this folder yet". Every key
-/// the prompt receives is appended to `trust-keys.log`: Agency must send none.
+/// exists, which stands for a Claude Code that asks although the session is
+/// started trusted. Every key the prompt receives is appended to
+/// `trust-keys.log`: Agency must send none.
 fn trust_prompt(root: &Path, rx: &mpsc::Receiver<u8>) {
     let cwd = std::env::current_dir().unwrap();
     let draw = |yes: bool| {
@@ -95,6 +96,9 @@ fn main() {
     // Real Claude refuses a default temp directory the confined pane cannot
     // read; every Agency session names its own.
     assert!(std::env::var_os("CLAUDE_CODE_TMPDIR").is_some_and(|d| Path::new(&d).is_dir()));
+    // Real Claude asks whether to trust a git worktree under /tmp even when
+    // /tmp is trusted; the Agency owner decides instead, for every session.
+    assert_eq!(std::env::var("CLAUDE_CODE_SANDBOXED").as_deref(), Ok("1"));
     let plugin = PathBuf::from(option("--plugin-dir").unwrap());
     let root = plugin.parent().unwrap();
     let resume = option("--resume");

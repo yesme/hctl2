@@ -827,7 +827,7 @@ fn agency_start_keeps_a_failed_catalog_probe_reason() {
 }
 
 #[test]
-fn agency_start_without_claude_trust_says_how_to_set_it_up() {
+fn agency_start_reports_a_claude_that_still_asks_for_trust() {
     let (root, install) = scratch("start-untrusted");
     installed_fixture(&install);
     let claude = untrusted_claude(&install);
@@ -864,7 +864,7 @@ fn agency_start_without_claude_trust_says_how_to_set_it_up() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&install);
     assert!(reason.contains("CLAUDE_WORKSPACE_UNTRUSTED"), "{reason}");
-    assert!(reason.contains("run `claude` in /tmp once"), "{reason}");
+    assert!(reason.contains("CLAUDE_CODE_SANDBOXED=1"), "{reason}");
 }
 
 fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
@@ -1755,8 +1755,8 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
 }
 
 fn untrusted_claude(dir: &std::path::Path) -> PathBuf {
-    // Beside the fixture, this marker stands for "Claude does not trust the
-    // folder yet": it shows Claude's workspace trust prompt first.
+    // Beside the fixture, this marker stands for a Claude Code that does not
+    // honour the trust Agency starts it with: it shows the trust prompt first.
     let claude = waiting_claude(dir, true);
     let marker = format!("{}.untrusted", claude.canonicalize().unwrap().display());
     std::fs::write(marker, b"").unwrap();
@@ -1766,8 +1766,9 @@ fn untrusted_claude(dir: &std::path::Path) -> PathBuf {
 #[test]
 fn standby_reports_the_trust_prompt_and_never_answers_it() {
     // #430 (d27e2c7): Agency pressed down and Enter on Claude's trust prompt
-    // and, under load, confirmed "No, exit". Trusting a folder is the
-    // person's decision: the dispatch fails at once and says how to trust /tmp.
+    // and, under load, confirmed "No, exit". Agency never answers it: if
+    // Claude asks although the session starts trusted, the dispatch fails at
+    // once and names the cause.
     let (cred, root, exec) = standby_root("standby-untrusted");
     let claude = untrusted_claude(&root);
     let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
@@ -1794,7 +1795,7 @@ fn standby_reports_the_trust_prompt_and_never_answers_it() {
         failure["message"]
             .as_str()
             .unwrap()
-            .contains("run `claude` in /tmp once"),
+            .contains("CLAUDE_CODE_SANDBOXED=1"),
         "{failure}"
     );
     // It stops at the prompt, not at the 30-second readiness budget.
@@ -1806,7 +1807,7 @@ fn standby_reports_the_trust_prompt_and_never_answers_it() {
 }
 
 #[test]
-fn claude_trust_of_tmp_is_checked_when_agency_is_set_up() {
+fn claude_honouring_agency_trust_is_checked_when_agency_is_set_up() {
     let (_, root, _) = standby_root("setup-trust");
     let trusted = launch::InstalledHerdr::open(binary(), &waiting_claude(&root, true)).unwrap();
     trusted.verify_claude_trust().unwrap();
@@ -1816,7 +1817,7 @@ fn claude_trust_of_tmp_is_checked_when_agency_is_set_up() {
     let error = untrusted.verify_claude_trust().unwrap_err();
     assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED", "{error:?}");
     assert!(
-        error.message.contains("run `claude` in /tmp once"),
+        error.message.contains("CLAUDE_CODE_SANDBOXED=1"),
         "{error:?}"
     );
 }

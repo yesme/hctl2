@@ -499,10 +499,10 @@ impl InstalledHerdr {
         })
     }
 
-    /// Agency setup precondition: Claude Code already trusts /tmp, where every
-    /// execution directory is created. One native session opens in a new
-    /// directory under /tmp and closes again; it delivers no turn and answers
-    /// no prompt. If Claude asks about trust, the error says what to do.
+    /// Agency setup check: Claude Code honours the trust Agency starts its
+    /// sessions with. One native session opens in a new directory under /tmp
+    /// and closes again; it delivers no turn and answers no prompt. If Claude
+    /// still asks about trust, the Claude profession is not offered.
     pub fn verify_claude_trust(&self) -> Result<()> {
         let Some(pool) = &self.pool else {
             return Ok(());
