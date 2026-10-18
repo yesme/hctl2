@@ -71,3 +71,4 @@ Workflow 场景的机械引擎。HCTL 把 Workflow Revision 编译成受限的 D
 ## 复核记录
 
 - 2026-09-04 所有者裁决：从 GPL 许可的接口描述文件生成或重写的客户端代码**不算衍生作品，可以入库**。生成物按普通源码入库并随构建复现；不需要另做「构建期产物不入库」的绕法。
+- 2026-10-19 开工前限时验证（[`workflow-engines.md` §2026-10-19 开工前限时验证](../workflow-engines.md#2026-10-19-pre-impl-probe)）：对随包 `v2.15.1` 二进制实测确认——（1）上表第 17 行所写 `GET …/steps/{stepName}/status` 在 OpenAPI 与服务端路由中仅定义 `PATCH`（且对 `human.task` 拒绝修改，返回 HTTP 400），发 `GET` 返回 HTTP 405，步骤状态、时间戳与插值后的 `prompt` 统一由 `GET /dag-runs/{name}/{dagRunId}` 的 `.dagRunDetails.nodes[]` 回读；（2）`POST /dag-runs/{name}/{dagRunId}/stop` 仅作用于 `Running`（或待自动重试的 `Failed`）态，对无进程 `Waiting(7)` 态的 `human.task` run 返回 HTTP 400 `DAG is not running`，HCTL 取消/替代处于等待态的 Run 时通过撤销本地租约、关闭 `Run–Engine Binding` 并停止调用 `complete` 收口；（3）`human.task` 完成接口将新 attempt 入队，run 会短暂经过 `Queued(5)` 再进入下游节点的 `Waiting(7)`，客户端须轮询回读确认目标节点已进入 `Waiting(7)` 后再操作。
