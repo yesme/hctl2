@@ -263,7 +263,7 @@
 
 | 包 | harness（本机调研时的版本） | 交法起点（`harness-dispatch-channel-20261006.md`） | 写 | 找问题 | 核验 | 分支 |
 | --- | --- | --- | --- | --- | --- | --- |
-| H1 | Antigravity CLI `agy` 1.2.17 | `--print` 配 `--input-format stream-json` / `--output-format stream-json`，`--conversation <id>` 续接 | Antigravity（ubuntu，演示 3 的核验做完后） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity` |
+| H1 | Antigravity CLI `agy` 1.2.17 | `--print` 配 `--input-format stream-json` / `--output-format stream-json`，`--conversation <id>` 续接 | Antigravity（mac，现在就开；`07` §二 第 44 条 ②） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity` |
 | H2 | Grok Build `grok` 1.0.46 | `grok agent stdio`（ACP）的 `session/prompt`，`session/load` 续接 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok` |
 | H3 | omp 18.6.1 | `--mode rpc --no-ui`，`--profile` 隔离状态，`-r` 续接 | DeepSeek（ubuntu） | Grok（ubuntu） | Antigravity（ubuntu） | `deepseek/harness-omp` |
 
@@ -287,8 +287,8 @@
 | --- | --- | --- |
 | Codex（mac） | 钥匙串专项 | 第 4a 包 |
 | Codex（ubuntu） | 小活 Z | 第 1 包 → 第 3 包 |
-| Antigravity（mac） | 第 0 包 | 第 2 包 |
-| Antigravity（ubuntu） | 演示 3 关键路径的核验 | H1；核验第 3、4b、5b、H3 |
+| Antigravity（mac） | 第 0 包 | H1 → 第 2 包 |
+| Antigravity（ubuntu） | 演示 3 关键路径的核验 | 核验第 3、4b、5b、H3 |
 | Claude（ubuntu） | 写入会话去留的调研；#430 实测 | 第 5a 包 → 第 5b 包 |
 | Claude（mac） | 协调、找问题、本开工书 | 第 9 包主体；找问题第 1、3、4a、8、H2、9 后半 |
 | Grok（ubuntu） | 小活 Z 找问题 | H2 → 第 9 包后半段；找问题第 4b、6、H3 |
