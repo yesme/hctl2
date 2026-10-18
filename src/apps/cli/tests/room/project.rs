@@ -1587,14 +1587,17 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
 }
 
 /// What a settle timeout can actually show. `<root>/control.log` is the daemon
-/// stderr (`HCTL2_CONTROL_LOG`); `git-writer.log` is the script Agency.
+/// stderr (`HCTL2_CONTROL_LOG`), appended across restarts. `git-writer.log` is
+/// the script Agency before the first kill; `independent-agency.log` is the one
+/// started by `kill_and_restart_everything`.
 fn settle_diagnostics(f: &Fixture, project: &str, invocation: &str) -> String {
     let shown = f.run(&["invocation", "show", project, invocation]).1;
     let services = f.run(&["services", "status"]).1;
     format!(
-        "invocation: {shown}; services: {services}; control: {}; agency: {}",
+        "invocation: {shown}; services: {services}; control: {}; agency git-writer.log: {}; agency independent-agency.log: {}",
         super::log_tail(&f.root.join("control.log")),
-        super::log_tail(&f.root.join("git-writer.log"))
+        super::log_tail(&f.root.join("git-writer.log")),
+        super::log_tail(&f.root.join("independent-agency.log"))
     )
 }
 
