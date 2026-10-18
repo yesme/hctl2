@@ -32,8 +32,9 @@
 | 8 | 测试起 herdr（`agency/tests/herdr.rs`） | `Server::start_with_denials`；`scratch()` `:39-49` 建 `hctl2-herdr-cred-<name>-<pid>`／`-exec-…` **无 Drop 删除** ✗ | 进程收 ✓、**目录留** ✗ | 同左 | 进程留 ✗、目录留 ✗ | 同左 | 上述目录 + `hctl2-herdr-state-<digest>` |
 | 9 | `agency/tests/runtime.rs` | `:24`／`:104` 建 `hctl2-exec-probe/slash-*`，各测试内 `remove_dir_all` ✓ | 收 ✓ | 收 ✓ | 留 ✗ | 留 ✗ | 同名目录 |
 | 10 | `agency launch` 的 smoke 目录 | `src/agency/src/launch.rs:718` `.prefix("hctl2-herdr-smoke-")` | 由 `TempDir` 收（待核实） | 同上 | 留 ✗ | 留 ✗ | `/tmp/hctl2-herdr-smoke-*` |
+| 11 | 产品冒烟留下的 socket 目录（`agency launch` 的 `smoke_binary`） | `launch.rs:723` 在 `TempDir` 里另算 state 再 `Server::start`；`Server::start` 在 `/tmp` 建 socket 目录（`herdr.rs:177-182`），`TempDir` 只删自己那棵树，`Server::Drop` 只杀进程组（`herdr.rs:282`） | **目录留** ✗ | 同左 | 同左 | 同左 | `/tmp/hctl2-herdr-<20位>`（`herdr.sock` 与 `herdr-client.sock` 同目录） |
 
-要点（2026-10-18 按 Claude 席审阅修正）：**主要漏源不是脚本版 Agency。** 脚本版（`--script-config`）走 `ScriptRuntime`，不起 herdr（`src/agency/src/main.rs:68` 一带）；起 herdr 的是带 `HCTL2_INSTALL_ROOT` 的**真 harness** Agency，herdr 在**派工**的 launch 路径上才起（`src/agency/src/launch.rs:623`、`:732`）。真会话用例收尾用的正是 `AgencyChild`（下第 5 行），它直接 SIGKILL——**用例正常通过，也每跑一次漏一组**（herdr server ＋ codex app-server 或 Claude 会话）。现场 4 组里三组的根目录名正是这类用例的测试根（`hctl-codex-live-cli-*`、`hctl-demo3-gitea-claude-cli-*`），与之一致。KILL9／超时是**另一类**（测试进程被杀，`Drop` 一并跳过）；目录泄漏则是第三类（第 8 行，正常结束也留）。唯一跨次兜底仍是 `reap_previous`（`herdr.rs:176`，只对同一 state 目录生效——测试每次新凭据根，永不命中 ✗），`codex app-server` 连这个兜底都没有 ✗。
+要点（2026-10-18 按 Claude 席审阅修正）：**主要漏源不是脚本版 Agency。** 脚本版（`--script-config`）走 `ScriptRuntime`，不起 herdr（`src/agency/src/main.rs:68` 一带）；起 herdr 的是带 `HCTL2_INSTALL_ROOT` 的**真 harness** Agency，herdr 在**派工**的 launch 路径上才起（`src/agency/src/launch.rs:623`、`:732`）。真会话用例收尾用的正是 `AgencyChild`（下第 5 行），它直接 SIGKILL——**用例正常通过，也每跑一次漏一组**（herdr server ＋ codex app-server 或 Claude 会话）。**第一漏源**：`project::codex_fixture_dispatch_from_real_cli_admits_the_answer_into_the_room`（不 ignore、不需要真调模型；`room-cli-test` 全套跑一次即新增一组 `hctl-codex-chain-cli-*` 孤儿，已按红绿对照复现）。现场 4 组里三组的根目录名正是这类用例的测试根（`hctl-codex-live-cli-*`、`hctl-demo3-gitea-claude-cli-*`），与之一致。KILL9／超时是**另一类**（测试进程被杀，`Drop` 一并跳过）；目录泄漏则是第三类（第 8 行，正常结束也留）。唯一跨次兜底仍是 `reap_previous`（`herdr.rs:176`，只对同一 state 目录生效——测试每次新凭据根，永不命中 ✗），`codex app-server` 连这个兜底都没有 ✗。
 
 ## 三、实际复现（macOS arm64，本机）
 
@@ -75,7 +76,7 @@ after:  herdr-dirs=302 exec-dirs=30
 3. **漏测检测（CI 上变红）。** 在 `src/build/ci/` 加收尾器 `reap-test-leftovers`（见 §七），Buck2 测试调用前后各跑一次快照：**本次 run 结束时仍有带本 run-id 的进程或目录 → 列出并退出非零**；CI 的 buck2 job 末尾只做**检测**（托管 runner 每 job 新机器，不跨 job 累积；清理只给开发机，见 §七）。
 4. **Buck2 超时。** 先在 CI 上核实 Buck2 超时杀不杀进程组（§三）；若确认不杀，把「超时」视同 KILL9——由第 3 步兜底；同时给 `agency:herdr_test` 这类慢目标加 `slow-timeout` 意识（本仓用 buck2 自带的 `--timeout`，不另造）。
 
-**第 1 步已开工**：实现分支 `deepseek/test-fixture-teardown`（所有者 2026-10-18 同意先动）——`AgencyChild` 先 `agency stop`、等退出再 `kill`；`agency/tests/herdr.rs::scratch` 目录用完即删；只停 control 的两个夹具补停服务。
+**第 1 步已开工**：本 PR 一并实现（所有者 2026-10-18 同意先动）——`AgencyChild` 在自家子进程仍存活时先 `agency stop`、等退出再 `kill`；`agency/tests/herdr.rs::scratch` 目录用完即删；只停 control 的两个夹具补停服务。
 
 ## 六、方案 · 产品层（只列选法与推荐，所有权定）
 
@@ -103,5 +104,5 @@ after:  herdr-dirs=302 exec-dirs=30
 ## 八、待核实与后续
 
 - Buck2 超时对进程组的处理（§三）；`panic=abort` 是否被开启（§三）。
-- `agency launch` smoke 目录是否由 `TempDir` 收回（§二 #10）。
+- `agency launch` smoke 的 socket 目录不随 `TempDir` 收回（§二 #11，按代码定位，未实跑）；本 PR 只在盘点表记录，验收改为「测试自己建的目录不增长」，产品层另开。
 - 定案后拆两件：夹具修复 + 收尾器/run-id（测试层，含 `docs/research/build-tools/test-leftover-reaper.md` 的新脚本调研）；产品层按 B（或 A/C）另开。
