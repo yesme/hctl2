@@ -301,10 +301,8 @@ impl Drop for Server {
             })
             .ok()
             == Some(self.socket_inode);
-        if owns_socket {
-            if let Some(dir) = self.socket.parent() {
-                let _ = std::fs::remove_dir_all(dir);
-            }
+        if owns_socket && let Some(dir) = self.socket.parent() {
+            let _ = std::fs::remove_dir_all(dir);
         }
     }
 }
