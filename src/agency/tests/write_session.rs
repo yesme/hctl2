@@ -9,6 +9,7 @@ use agency_proto::{
 use serde_json::{Value, json};
 use std::{
     fs,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -90,6 +91,7 @@ impl Rig {
         let herdr = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").unwrap())
             .canonicalize()
             .unwrap();
+        fs::set_permissions(&herdr, fs::Permissions::from_mode(0o755)).unwrap();
         let runtime = Arc::new(
             InstalledHerdr::open_with_codex(herdr, &claude, &codex, Duration::from_secs(300))
                 .unwrap(),

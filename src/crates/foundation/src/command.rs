@@ -405,7 +405,7 @@ mod tests {
         let limit = Duration::from_secs(3);
         let started = Instant::now();
         let end = run_bounded(
-            &mut Command::new(&program).args(["sleep-exec", &marker.to_string()]),
+            Command::new(&program).args(["sleep-exec", &marker.to_string()]),
             None,
             limit,
         )
@@ -470,7 +470,7 @@ mod tests {
         let limit = Duration::from_secs(2);
         let end = call_within(limit, move || {
             run_bounded(
-                &mut Command::new(&program).args(["sleep-hold", &argument]),
+                Command::new(&program).args(["sleep-hold", &argument]),
                 None,
                 limit,
             )
@@ -491,7 +491,7 @@ mod tests {
         let payload = vec![0_u8; 1024 * 1024];
         let end = call_within(limit, move || {
             run_bounded(
-                &mut Command::new(&program).args(["sleep-exec", &argument]),
+                Command::new(&program).args(["sleep-exec", &argument]),
                 Some(&payload),
                 limit,
             )
@@ -544,11 +544,7 @@ mod tests {
         let (holder_argument, stuck_argument) = (holder.clone(), stuck.clone());
         let end = call_within(limit, move || {
             run_bounded(
-                &mut Command::new(&program).args([
-                    "sleep-hold-exec",
-                    &holder_argument,
-                    &stuck_argument,
-                ]),
+                Command::new(&program).args(["sleep-hold-exec", &holder_argument, &stuck_argument]),
                 None,
                 limit,
             )
@@ -567,7 +563,7 @@ mod tests {
         let payload = vec![0_u8; 1024 * 1024];
         let started = Instant::now();
         let end = run_bounded(
-            &mut Command::new(&program).arg("refuse"),
+            Command::new(&program).arg("refuse"),
             Some(&payload),
             Duration::from_secs(10),
         )

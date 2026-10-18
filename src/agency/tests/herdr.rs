@@ -9,31 +9,19 @@ use serde_json::json;
 use std::{
     io::Write,
     os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Stdio},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 fn binary() -> PathBuf {
-    PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr binary"))
-        .canonicalize()
-        .expect("locked Herdr binary")
-}
-
-/// Point a writable path at a built fixture script. The test never writes the
-/// script it executes: a file just opened for writing can answer execve with
-/// ETXTBSY on Linux while another test thread's forked child still holds the
-/// write descriptor. A link keeps `$0` at this path, so `$0.*` state stays in
-/// the writable directory.
-fn link_fixture(name: &str, path: &std::path::Path) {
-    let root =
-        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
-    let source = Path::new(&root).join(name);
-    let source = std::fs::canonicalize(&source)
-        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
-    std::os::unix::fs::symlink(&source, path)
-        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+    let path = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr binary"));
+    let path = path.canonicalize().expect("locked Herdr binary");
+    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).unwrap();
+    path
 }
 
 fn installed_fixture(root: &std::path::Path) -> PathBuf {
@@ -681,7 +669,10 @@ fn a_locked_install_smokes_before_it_is_cataloged() {
     let install = std::env::temp_dir().join(format!("hctl2-install-ok-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&install);
     let dest = installed_fixture(&install);
-    let claude = stub_claude(&install);
+    let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&dest, permissions).unwrap();
+    let claude = stub_claude(&install, "2.1.289");
     let runtime = launch::InstalledHerdr::open(dest, &claude).unwrap();
     let catalog = runtime.catalog().unwrap();
     assert_eq!(catalog.professions[0].reference.id, "claude-code");
@@ -701,7 +692,11 @@ fn a_confined_harness_smoke_failure_prevents_cataloging() {
     let (cred, exec) = scratch("smokefail");
     let claude = exec.join("claude-fixture");
     // An unrestricted version check succeeds; the actual confined launch must fail.
-    link_fixture("agency-claude-confined.sh", &claude);
+    std::fs::write(
+        &claude,
+        "#!/bin/sh\ncase \"$PWD\" in *hctl2-herdr-smoke*) echo confined-install-unavailable >&2; exit 9;; esac\necho '2.1.289 (Claude Code)'\n",
+    ).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert!(
         Command::new(&claude)
             .arg("--version")
@@ -868,7 +863,7 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
 fn agency_start_and_pair_catalog_the_confined_claude_profession() {
     let (root, install) = scratch("catalog-start");
     installed_fixture(&install);
-    let claude = stub_claude(&install);
+    let claude = stub_claude(&install, "2.1.289");
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let started = Command::new(&agency)
         .arg("--root")
@@ -1258,9 +1253,16 @@ fn test_runtime(binary: &std::path::Path, script: &str) -> launch::InstalledHerd
     })
 }
 
-fn stub_claude(dir: &std::path::Path) -> std::path::PathBuf {
+fn stub_claude(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
     let path = dir.join("claude-stub");
-    link_fixture("agency-claude-version.sh", &path);
+    std::fs::write(
+        &path,
+        format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&path, permissions).unwrap();
     path
 }
 
@@ -1415,10 +1417,8 @@ fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
 
 fn waiting_claude(dir: &std::path::Path, _: bool) -> PathBuf {
     let claude = dir.join("waiting-claude");
-    let source = PathBuf::from(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap())
-        .canonicalize()
-        .unwrap();
-    std::os::unix::fs::symlink(&source, &claude).unwrap();
+    std::fs::copy(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap(), &claude).unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
     claude
 }
 

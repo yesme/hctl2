@@ -470,7 +470,7 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     let marker = run_marker(4165);
     let started = Instant::now();
     let error = repo::git::run_for(
-        &mut Command::new(&program).arg(&marker),
+        Command::new(&program).arg(&marker),
         None,
         std::time::Duration::from_secs(3),
     )
