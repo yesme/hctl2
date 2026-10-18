@@ -35,7 +35,45 @@ fn installed_fixture(root: &std::path::Path) -> PathBuf {
     dest
 }
 
-fn scratch(name: &str) -> (PathBuf, PathBuf) {
+/// One scratch directory, removed on drop. The old tuple returned bare paths, so every pass
+/// (passing or not) left `hctl2-herdr-cred-*`, `-exec-*` and the `hctl2-herdr-state-<digest>`
+/// beside the exec dir behind.
+struct Scratch {
+    path: PathBuf,
+    extra: Vec<PathBuf>,
+}
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+
+    fn deref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl std::ops::DerefMut for Scratch {
+    fn deref_mut(&mut self) -> &mut std::path::Path {
+        &mut self.path
+    }
+}
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl AsRef<std::ffi::OsStr> for Scratch {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.path.as_os_str()
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+        for extra in &self.extra {
+            let _ = std::fs::remove_dir_all(extra);
+        }
+    }
+}
+
+fn scratch(name: &str) -> (Scratch, Scratch) {
     let cred =
         std::env::temp_dir().join(format!("hctl2-herdr-cred-{}-{}", name, std::process::id()));
     let exec =
@@ -45,7 +83,31 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
-    (cred, exec)
+    // The herdr state dir and its socket dirs are derived from the credential root and the
+    // execution dir, so the credential guard owns every candidate it could create.
+    let mut extra = Vec::new();
+    let mut candidates = vec![cred.clone(), exec.clone()];
+    if let Some(parent) = exec.parent() {
+        let canonical = cred.canonicalize().unwrap_or_else(|_| cred.clone());
+        let digest = &agency_proto::hash(canonical.as_os_str().as_encoded_bytes())[..20];
+        let state = parent.join(format!("hctl2-herdr-state-{digest}"));
+        candidates.push(state.clone());
+        extra.push(state);
+    }
+    if let Ok(canonical) = exec.canonicalize() {
+        candidates.push(canonical);
+    }
+    for candidate in candidates {
+        let digest = &agency_proto::hash(candidate.as_os_str().as_encoded_bytes())[..20];
+        extra.push(std::env::temp_dir().join(format!("hctl2-herdr-{digest}")));
+    }
+    (
+        Scratch { path: cred, extra },
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 
 struct SecretSpecimen {
@@ -489,18 +551,19 @@ fn a_missing_credential_root_is_not_used_raw() {
     assert_eq!(error.code, "CREDENTIAL_ROOT_UNRESOLVED");
 }
 
-fn server(
-    name: &str,
-) -> (
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::sync::Arc<Server>,
-) {
+fn server(name: &str) -> (Scratch, Scratch, Scratch, std::sync::Arc<Server>) {
     let (cred, exec) = scratch(name);
     let state = herdr::state_dir(&exec, &cred).unwrap();
     let server = std::sync::Arc::new(Server::start(&binary(), &state, &cred, &exec).unwrap());
-    (cred, exec, state, server)
+    (
+        cred,
+        exec,
+        Scratch {
+            path: state,
+            extra: Vec::new(),
+        },
+        server,
+    )
 }
 
 #[test]
@@ -1164,8 +1227,8 @@ fn two_dispatches_share_one_herdr_server() {
     ));
     let left = std::sync::Arc::clone(&runtime);
     let right = std::sync::Arc::clone(&runtime);
-    let cred_left = cred.clone();
-    let cred_right = cred.clone();
+    let cred_left = std::path::PathBuf::from(&*cred);
+    let cred_right = std::path::PathBuf::from(&*cred);
     let exec_left = confine::execution_dir(&cred, "first").unwrap();
     let exec_right = confine::execution_dir(&cred, "second").unwrap();
     assert_ne!(exec_left, exec_right);
@@ -1440,11 +1503,18 @@ fn turn_state(
         .unwrap()
         .join(format!("standby-{key}"))
 }
-fn standby_root(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+fn standby_root(name: &str) -> (Scratch, Scratch, Scratch) {
     let (cred, root) = scratch(name);
     let exec = root.join("dispatches/job");
     std::fs::create_dir_all(&exec).unwrap();
-    (cred, root, exec)
+    (
+        cred,
+        root,
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 fn wait_for(path: &std::path::Path) {
     // A cold native session has a 30-second readiness budget. Parallel CI
@@ -2560,7 +2630,7 @@ async fn port_turn(name: &str, live: bool) {
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let _stop = StopAgency {
         binary: agency.clone(),
-        root: root.clone(),
+        root: PathBuf::from(&*root),
     };
     let started = Command::new(&agency)
         .arg("--root")
