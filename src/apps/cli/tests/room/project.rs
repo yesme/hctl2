@@ -630,7 +630,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
         assert!(
             std::time::Instant::now() < deadline,
             "publication not confirmed: {shown}; {}",
-            std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
+            settle_diagnostics(&f, p, invocation)
         );
         std::thread::sleep(Duration::from_millis(100));
     };
@@ -1084,25 +1084,40 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     let (ok, started) = f.run(&start);
     assert!(ok, "{started}");
     let invocation = started["invocation_id"].as_str().unwrap().to_owned();
-    let wait = |what: &str, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
-        let by = std::time::Instant::now() + Duration::from_secs(90);
-        loop {
-            if let Some(value) = done() {
-                return value;
+    let wait =
+        |what: &str, budget: Duration, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
+            let by = std::time::Instant::now() + budget;
+            loop {
+                if let Some(value) = done() {
+                    return value;
+                }
+                assert!(
+                    std::time::Instant::now() < by,
+                    "{what} did not settle; {}",
+                    settle_diagnostics(&f, &p, &invocation)
+                );
+                std::thread::sleep(Duration::from_millis(100));
             }
-            assert!(
-                std::time::Instant::now() < by,
-                "{what} did not settle; {}",
-                std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
-            );
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    };
+        };
+    // The invocation already names its deadline. Wait for a terminal state
+    // inside that budget: `failed` is the stuck step, `completed` is done.
+    // A second, shorter timer was abandoning a still-running call.
+    let invocation_budget = std::time::SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_millis(deadline))
+        .and_then(|at| at.duration_since(std::time::SystemTime::now()).ok())
+        .unwrap_or(Duration::ZERO);
     let finished = wait(
         "invocation",
+        invocation_budget,
         Box::new(|| {
             let (ok, shown) = f.run(&["invocation", "show", &p, &invocation]);
             assert!(ok, "{shown}");
+            if shown["state"] == "failed" {
+                panic!(
+                    "invocation failed; {}",
+                    settle_diagnostics(&f, &p, &invocation)
+                );
+            }
             (shown["state"] == "completed").then_some(shown)
         }),
     );
@@ -1131,6 +1146,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     };
     let bodies = wait(
         "room projection",
+        Duration::from_secs(90),
         Box::new(|| {
             let bodies = room_bodies();
             bodies
@@ -1160,6 +1176,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         // 杀点 1：分支已推送并确认，平台还没被问过评审请求。
         let held = wait(
             "publication held after push",
+            Duration::from_secs(90),
             Box::new(|| {
                 let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
                 assert!(ok, "{shown}");
@@ -1239,6 +1256,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     }
     let published = wait(
         "publication",
+        Duration::from_secs(90),
         Box::new(|| {
             let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
             assert!(ok, "{shown}");
@@ -1296,6 +1314,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
         // 杀点 2：合并已提交、结果还没回读——平台上是「已合并」，控制面还没有 Receipt。
         let held = wait(
             "integration held before readback",
+            Duration::from_secs(90),
             Box::new(|| {
                 let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
                 assert!(ok, "{shown}");
@@ -1330,6 +1349,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     }
     let merged = wait(
         "integration",
+        Duration::from_secs(90),
         Box::new(|| {
             let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
             assert!(ok, "{shown}");
@@ -1564,6 +1584,18 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool) {
     println!(
         "LIVE CLI demo3 gitea: task {task_id} -> invocation {invocation} -> {revision_id} -> review #{index} at {commit} -> integration {merge_intent} receipt {receipt_id} -> task completed; human previews: {human_previews:?}"
     );
+}
+
+/// What a settle timeout can actually show. `<root>/control.log` is the daemon
+/// stderr (`HCTL2_CONTROL_LOG`); `git-writer.log` is the script Agency.
+fn settle_diagnostics(f: &Fixture, project: &str, invocation: &str) -> String {
+    let shown = f.run(&["invocation", "show", project, invocation]).1;
+    let services = f.run(&["services", "status"]).1;
+    format!(
+        "invocation: {shown}; services: {services}; control: {}; agency: {}",
+        super::log_tail(&f.root.join("control.log")),
+        super::log_tail(&f.root.join("git-writer.log"))
+    )
 }
 
 fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
