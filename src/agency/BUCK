@@ -129,7 +129,6 @@ rust_test(
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
         "HCTL2_CONFINE_BIN": "$(location :agency)",
-        # Built fixture scripts the tests execute as processes; see src/BUCK.
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
         "HCTL2_LOCKED_HERDR": select({
             "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
@@ -153,7 +152,6 @@ rust_test(
     env = hctl2_cargo_env() | {
         "CODEX_HOME": "/tmp/hctl2-codex-fixture-home",
         "HCTL2_CONFINE_BIN": "$(location :agency)",
-        # Built fixture scripts the tests execute as processes; see src/BUCK.
         "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
         "HCTL2_LOCKED_HERDR": select({
             "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",

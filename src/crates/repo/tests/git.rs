@@ -359,18 +359,21 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
     git(&source, &["init", "-b", "main"]);
     commit(&source, "frozen");
     git(&target, &["init", "--bare"]);
-    let marker = temp.0.join("hook-ran");
     // A built fixture, never a script written here: executing a file this
     // process just opened for writing can answer ETXTBSY on Linux while another
-    // test thread's forked child holds the write descriptor. Git chooses the
-    // hook's path and arguments, so the marker path arrives in the environment
-    // (set on the child below), not in the body.
+    // test thread's forked child holds the write descriptor. The hook records
+    // beside itself (`$0.ran`), so the proof does not depend on any environment
+    // variable reaching it.
     for path in [
         source.join(".git/hooks/pre-push"),
         template.join("hooks/pre-push"),
     ] {
         link_fixture("misc-git-hook.sh", &path);
     }
+    let markers = [
+        source.join(".git/hooks/pre-push.ran"),
+        template.join("hooks/pre-push.ran"),
+    ];
     // A URL rewrite in the input copy must not affect privileged readback/push.
     git(
         &source,
@@ -397,7 +400,6 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
             "credentials_do_not_reach_user_hooks_or_configured_tracing",
         ])
         .env("HCTL2_REPO_GIT_ISOLATION_FIXTURE", &temp.0)
-        .env("HCTL2_REPO_HOOK_MARKER", &marker)
         .env("GIT_CONFIG_GLOBAL", global)
         .env("GIT_TEMPLATE_DIR", template)
         .env("GIT_TRACE", &trace)
@@ -411,7 +413,9 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
         String::from_utf8_lossy(&child.stdout),
         String::from_utf8_lossy(&child.stderr)
     );
-    assert!(!marker.exists());
+    for marker in &markers {
+        assert!(!marker.exists(), "user hook ran: {}", marker.display());
+    }
     assert!(
         !trace.exists(),
         "Git diagnostics must not inherit caller tracing"

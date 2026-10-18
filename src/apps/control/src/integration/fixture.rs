@@ -50,14 +50,7 @@ pub(crate) struct Platform {
     pub(crate) tree: String,
 }
 
-fn link_fixture(name: &str, path: &Path) {
-    let root =
-        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
-    let source = std::fs::canonicalize(Path::new(&root).join(name))
-        .unwrap_or_else(|error| panic!("fixture {name}: {error}"));
-    std::os::unix::fs::symlink(&source, path)
-        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
-}
+use crate::test_fixtures::link_fixture;
 
 impl Platform {
     pub(crate) fn new(dir: &Path) -> Self {

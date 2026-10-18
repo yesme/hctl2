@@ -2,7 +2,7 @@
 # GitHub Issues fixture for the Task acceptance tests. The product canonicalizes
 # `HCTL2_GH` before executing it, so `$0` is this built file, not the test's
 # writable link; the test passes its state base path in `HCTL2_GH_STATE`.
-base="${HCTL2_GH_STATE:-$0}"
+base="${HCTL2_GH_STATE:?HCTL2_GH_STATE must be set to the test state directory}"
 method=GET
 header=no
 for arg do

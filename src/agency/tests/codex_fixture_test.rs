@@ -312,20 +312,51 @@ fn read_json(name: &str) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+/// Materialize a fixture with a child process. The test process must never hold
+/// the write descriptor of a file it will execute: another test thread's forked
+/// child can inherit it and answer ETXTBSY (Linux execve(2)). The sandbox only
+/// admits files under the test root, so the child writes them there.
+fn write_fixture(dest: &Path, body: &str) {
+    use std::io::Write as _;
+    let mut child = std::process::Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"; chmod 755 \"$1\"", "sh"])
+        .arg(dest)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .expect("write fixture");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(body.as_bytes())
+        .expect("fixture body");
+    assert!(
+        child.wait().unwrap().success(),
+        "write {} failed",
+        dest.display()
+    );
+}
+
+fn install_fixture(source: &Path, dest: &Path) {
+    let status = std::process::Command::new("install")
+        .args(["-m", "755"])
+        .arg(source)
+        .arg(dest)
+        .status()
+        .expect("install fixture");
+    assert!(status.success(), "install {} failed", dest.display());
+}
+
 fn codex_bin() -> PathBuf {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
         let dir = std::env::temp_dir().join(format!("hctl2-codex-bin-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("codex");
-        fs::copy(
-            std::env::var("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE"),
+        install_fixture(
+            &PathBuf::from(std::env::var("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE")),
             &dest,
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&dest).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&dest, permissions).unwrap();
+        );
         dest
     })
     .clone()
@@ -367,10 +398,7 @@ fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, 
     let exec = root.join("dispatches/job");
     fs::create_dir_all(&exec).unwrap();
     let claude = root.join("claude-stub");
-    fs::write(&claude, "#!/bin/sh\necho '2.1.289 (Claude Code)'\n").unwrap();
-    let mut permissions = fs::metadata(&claude).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&claude, permissions).unwrap();
+    write_fixture(&claude, "#!/bin/sh\necho '2.1.289 (Claude Code)'\n");
     let runtime = InstalledHerdr::open_with_codex(binary(), &claude, &codex_bin(), idle)
         .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
     assert!(

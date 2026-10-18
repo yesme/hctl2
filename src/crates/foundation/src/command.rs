@@ -296,7 +296,9 @@ mod tests {
     fn fixture() -> PathBuf {
         let root = std::env::var_os("HCTL2_FIXTURES")
             .expect("HCTL2_FIXTURES must be set to run this test");
-        PathBuf::from(root).join("foundation-command.sh")
+        let path = PathBuf::from(root).join("foundation-command.sh");
+        assert!(path.is_file(), "fixture {}: not a file", path.display());
+        path
     }
 
     fn process_gone(pid: u32) -> bool {

@@ -24,10 +24,45 @@ fn binary() -> PathBuf {
     path
 }
 
+/// Materialize a fixture with a child process. The test process must never hold
+/// the write descriptor of a file it will execute: another test thread's forked
+/// child can inherit it and answer ETXTBSY (Linux execve(2)). The sandbox only
+/// admits files under the test root, so the child writes them there.
+fn install_fixture(source: &std::path::Path, dest: &std::path::Path) {
+    let status = std::process::Command::new("install")
+        .args(["-m", "755"])
+        .arg(source)
+        .arg(dest)
+        .status()
+        .expect("install fixture");
+    assert!(status.success(), "install {} failed", dest.display());
+}
+
+fn write_fixture(dest: &std::path::Path, body: &str) {
+    use std::io::Write as _;
+    let mut child = std::process::Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"; chmod 755 \"$1\"", "sh"])
+        .arg(dest)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .expect("write fixture");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(body.as_bytes())
+        .expect("fixture body");
+    assert!(
+        child.wait().unwrap().success(),
+        "write {} failed",
+        dest.display()
+    );
+}
+
 fn installed_fixture(root: &std::path::Path) -> PathBuf {
     let dest = root.join("libexec/hctl2/herdr");
     std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &dest).unwrap();
+    install_fixture(&binary(), &dest);
     let digest = agency::catalog::file_digest(&dest).unwrap();
     let manifest = root.join("share/hctl2/PAYLOAD.sha256");
     std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
@@ -692,11 +727,10 @@ fn a_confined_harness_smoke_failure_prevents_cataloging() {
     let (cred, exec) = scratch("smokefail");
     let claude = exec.join("claude-fixture");
     // An unrestricted version check succeeds; the actual confined launch must fail.
-    std::fs::write(
+    write_fixture(
         &claude,
         "#!/bin/sh\ncase \"$PWD\" in *hctl2-herdr-smoke*) echo confined-install-unavailable >&2; exit 9;; esac\necho '2.1.289 (Claude Code)'\n",
-    ).unwrap();
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     assert!(
         Command::new(&claude)
             .arg("--version")
@@ -1255,14 +1289,10 @@ fn test_runtime(binary: &std::path::Path, script: &str) -> launch::InstalledHerd
 
 fn stub_claude(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
     let path = dir.join("claude-stub");
-    std::fs::write(
+    write_fixture(
         &path,
-        format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
-    )
-    .unwrap();
-    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).unwrap();
+        &format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
+    );
     path
 }
 
@@ -1417,8 +1447,10 @@ fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
 
 fn waiting_claude(dir: &std::path::Path, _: bool) -> PathBuf {
     let claude = dir.join("waiting-claude");
-    std::fs::copy(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap(), &claude).unwrap();
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    install_fixture(
+        &std::path::PathBuf::from(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap()),
+        &claude,
+    );
     claude
 }
 

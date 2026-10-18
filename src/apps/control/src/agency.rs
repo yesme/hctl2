@@ -960,8 +960,8 @@ mod authorization_tests {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_fixtures::link_fixture;
     use std::fs;
-    use std::path::Path;
     use std::process::Command;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -991,19 +991,6 @@ mod tests {
     /// it executes: a file just opened for writing can answer execve with
     /// ETXTBSY on Linux while another test thread's forked child still holds
     /// the write descriptor.
-    fn link_fixture(name: &str, path: &Path) {
-        let root = std::env::var_os("HCTL2_FIXTURES")
-            .expect("HCTL2_FIXTURES must be set to run this test");
-        let source = Path::new(&root).join(name);
-        // The environment carries a project-relative path; a symlink resolves
-        // its target relative to the link's own directory, so it must be absolute.
-        let source = std::fs::canonicalize(&source)
-            .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
-        std::os::unix::fs::symlink(&source, path).unwrap_or_else(|error| {
-            panic!("link {} -> {}: {error}", path.display(), source.display())
-        });
-    }
-
     /// A marker unique to this run and to the call site: the leftover check
     /// looks for it, and the same test file compiles into several test
     /// binaries, so a constant would let one binary see the other's process.
