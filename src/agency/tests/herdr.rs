@@ -66,10 +66,35 @@ impl AsRef<std::ffi::OsStr> for Scratch {
 }
 impl Drop for Scratch {
     fn drop(&mut self) {
+        remove_socket_dirs_under(&self.path);
         let _ = std::fs::remove_dir_all(&self.path);
         for extra in &self.extra {
             let _ = std::fs::remove_dir_all(extra);
         }
+    }
+}
+
+/// Herdr puts its sockets in `/tmp/hctl2-herdr-<hash>` outside the state dir. Tests derive
+/// extra state paths under the scratch tree (standby turns), so walk the tree and remove the
+/// socket dir for every directory that could have been used as a state. The paths are unique
+/// to this test, so a computed dir that was never created is a no-op.
+fn remove_socket_dirs_under(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if let Some(socket_dir) = herdr::socket_path(&canonical).parent() {
+            let _ = std::fs::remove_dir_all(socket_dir);
+        }
+        remove_socket_dirs_under(&path);
     }
 }
 
@@ -420,8 +445,6 @@ fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
     );
     assert!(!text.contains("secret-credential"), "{text}");
     assert!(!text.contains("trial-keyring-secret"), "{text}");
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
 }
 
 #[test]
@@ -438,8 +461,6 @@ fn the_next_start_reaps_an_orphaned_herdr() {
     assert!(!process_matches(old, &binary));
     Client::connect(&again.socket).unwrap().ping().unwrap();
     drop(again);
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
 }
 
 #[test]

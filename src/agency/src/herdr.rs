@@ -115,6 +115,7 @@ pub struct Server {
     child: Child,
     pub socket: PathBuf,
     pub state: PathBuf,
+    socket_inode: u64,
 }
 
 impl Server {
@@ -254,10 +255,17 @@ impl Server {
                     .and_then(|client| client.ping())
                     .is_ok()
             {
+                let socket_inode = std::fs::metadata(&socket)
+                    .map(|meta| {
+                        use std::os::unix::fs::MetadataExt;
+                        meta.ino()
+                    })
+                    .unwrap_or(0);
                 return Ok(Self {
                     child: stop.disarm(),
                     socket,
                     state: state.to_path_buf(),
+                    socket_inode,
                 });
             }
             if stop.try_wait()?.is_some() {
@@ -283,6 +291,21 @@ impl Drop for Server {
     fn drop(&mut self) {
         signal_group(self.child.id(), "KILL");
         let _ = self.child.wait();
+        // The socket directory is ephemeral and lives outside the state dir. Remove it only
+        // when it still holds this server's socket: a replacement server on the same state
+        // creates a new socket file (new inode), and its directory must survive this Drop.
+        let owns_socket = std::fs::metadata(&self.socket)
+            .map(|meta| {
+                use std::os::unix::fs::MetadataExt;
+                meta.ino()
+            })
+            .ok()
+            == Some(self.socket_inode);
+        if owns_socket {
+            if let Some(dir) = self.socket.parent() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
     }
 }
 
