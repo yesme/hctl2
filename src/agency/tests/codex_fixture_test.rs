@@ -3,7 +3,6 @@ use agency::launch::InstalledHerdr;
 use agency::runtime::{Running, Runtime, RuntimeEvent};
 use agency_proto::Sealed;
 use serde_json::Value;
-use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -318,26 +317,34 @@ fn codex_bin() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("hctl2-codex-bin-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("codex");
-        fs::copy(
-            std::env::var("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE"),
-            &dest,
-        )
-        .unwrap();
-        let mut permissions = fs::metadata(&dest).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&dest, permissions).unwrap();
+        let source =
+            PathBuf::from(std::env::var("HCTL2_CODEX_FIXTURE").expect("HCTL2_CODEX_FIXTURE"))
+                .canonicalize()
+                .unwrap();
+        let _ = fs::remove_file(&dest);
+        std::os::unix::fs::symlink(source, &dest).unwrap();
         dest
     })
     .clone()
 }
 
 fn binary() -> PathBuf {
-    let path = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr"));
-    let path = path.canonicalize().expect("locked Herdr");
-    let mut permissions = fs::metadata(&path).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&path, permissions).unwrap();
-    path
+    PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").expect("locked Herdr"))
+        .canonicalize()
+        .expect("locked Herdr")
+}
+
+/// Point a writable path at a built fixture script, never at a file this test
+/// wrote: a file just opened for writing can answer execve with ETXTBSY on
+/// Linux while another test thread's forked child still holds the write fd.
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = Path::new(&root).join(name);
+    let source = fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
 }
 
 struct RuntimeGuard(InstalledHerdr);
@@ -367,10 +374,7 @@ fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, 
     let exec = root.join("dispatches/job");
     fs::create_dir_all(&exec).unwrap();
     let claude = root.join("claude-stub");
-    fs::write(&claude, "#!/bin/sh\necho '2.1.289 (Claude Code)'\n").unwrap();
-    let mut permissions = fs::metadata(&claude).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&claude, permissions).unwrap();
+    link_fixture("agency-claude-version.sh", &claude);
     let runtime = InstalledHerdr::open_with_codex(binary(), &claude, &codex_bin(), idle)
         .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
     assert!(

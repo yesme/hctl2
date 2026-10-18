@@ -4,7 +4,7 @@ use repo::integration::{
 };
 use serde_json::{Value, json};
 use std::{
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Command,
     thread,
@@ -37,6 +37,7 @@ fn run_with_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (bool, Val
             .expect("CARGO_BIN_EXE_hctl2-control must be set to run this test"),
     )
     .env("HCTL2_GH", root.join("gh"))
+    .env("HCTL2_GH_STATE", root.join("gh"))
     .envs(envs.iter().copied())
     .args(["--json", "--root", root.to_str().unwrap()])
     .args(args)
@@ -44,6 +45,23 @@ fn run_with_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> (bool, Val
     .unwrap();
     (out.status.success(),serde_json::from_slice(&out.stdout).unwrap_or_else(|_|json!({"stdout":String::from_utf8_lossy(&out.stdout),"stderr":String::from_utf8_lossy(&out.stderr)})))
 }
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = Path::new(&root).join(name);
+    // The environment carries a project-relative path; a symlink resolves its
+    // target relative to the link's own directory, so it must be absolute.
+    let source = std::fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+}
+
 /// Raw stdout without `--json`: the human renderer's exact text, for section checks.
 fn run_human(root: &Path, args: &[&str]) -> (bool, String) {
     let out = Command::new(
@@ -55,6 +73,7 @@ fn run_human(root: &Path, args: &[&str]) -> (bool, String) {
             .expect("CARGO_BIN_EXE_hctl2-control must be set"),
     )
     .env("HCTL2_GH", root.join("gh"))
+    .env("HCTL2_GH_STATE", root.join("gh"))
     .args(["--root", root.to_str().unwrap()])
     .args(args)
     .output()
@@ -76,6 +95,7 @@ fn run_json_raw(root: &Path, args: &[&str]) -> (bool, String) {
             .expect("CARGO_BIN_EXE_hctl2-control must be set"),
     )
     .env("HCTL2_GH", root.join("gh"))
+    .env("HCTL2_GH_STATE", root.join("gh"))
     .args(["--json", "--root", root.to_str().unwrap()])
     .args(args)
     .output()
@@ -200,37 +220,7 @@ fn fixture(name: &str, daemon_env: &[(&str, &str)]) -> Fixture {
             .unwrap(),
     )
     .unwrap();
-    std::fs::write(&gh,r#"#!/bin/sh
-method=GET
-header=no
-for arg do
-  if [ "$arg" = --include ]; then header=yes; fi
-  if [ "$previous" = --method ]; then method="$arg"; fi
-  previous="$arg"
-  path="$arg"
-done
-case "$path" in
- *'type=issues'*) printf 'HTTP/1.1 422 Validation Failed\n\n{"message":"Validation Failed","errors":[{"field":"type","code":"invalid","value":"issues"}]}'; exit 1 ;;
-esac
-if [ "$header" = yes ]; then
-  if [ "$method" = POST ] && [ -f "$0.hide" ]; then printf 'HTTP/1.1 503 Lost Confirmation\n\n';
-  elif [ "$method" = PATCH ]; then printf 'HTTP/1.1 403 Forbidden\n\n';
-  else printf 'HTTP/1.1 200 OK\n\n'; fi
-fi
-case "$method:$path" in
- GET:user) printf '{"id":5}' ;;
- GET:repos/owner/fixture) printf '{"id":77,"full_name":"owner/fixture","clone_url":"https://github.com/owner/fixture.git","has_issues":true,"permissions":{"push":true,"admin":true}}' ;;
- GET:*page=2*) printf '[]' ;;
- GET:*/issues\?*) if [ -f "$0.created" ] && [ ! -f "$0.hide" ] && [ ! -f "$0.list-lag" ]; then jqbin="$(cat "$0.jq")"; "$jqbin" -s '.' "$0.created"; else printf '[]'; fi ;;
- GET:*/issues/1/parent) if [ "$header" = yes ]; then :; fi; printf 'null' ;;
- GET:*/issues/1) cat "$0.created" ;;
- GET:*) printf '[]' ;;
- POST:*/issues) jqbin="$(cat "$0.jq")"; "$jqbin" '. + {id:1,node_id:"node1",number:1,state:"open",updated_at:"t0",labels:[],comments:0}' > "$0.created"; printf x >> "$0.posts"; cat "$0.created" ;;
- PATCH:*) cat >/dev/null; printf '{"message":"Forbidden"}'; exit 1 ;;
- *) exit 1 ;;
-esac
-"#).unwrap();
-    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("cli-github-issues.sh", &gh);
     let mut s = Store::open(&root).unwrap();
     let actor = TrustedActor(Actor {
         principal: "fixture-owner".into(),

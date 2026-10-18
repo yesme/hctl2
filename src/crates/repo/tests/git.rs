@@ -26,6 +26,23 @@ fn input(path: &Path) -> LocalInput {
     }
 }
 
+/// Point a path at a built fixture script. The test never writes the script it
+/// executes: a file just opened for writing can answer execve with ETXTBSY on
+/// Linux while another test thread's forked child still holds the write
+/// descriptor. A link keeps `$0` at this path, so `$0.*` state stays in the
+/// writable directory.
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = Path::new(&root).join(name);
+    // The environment carries a project-relative path; a symlink resolves its
+    // target relative to the link's own directory, so it must be absolute.
+    let source = std::fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+}
+
 #[test]
 fn unreadable_or_wrong_machine_is_not_pure_local_and_empty_is_valid() {
     let temp = Temp::new();
@@ -303,7 +320,6 @@ fn detached_head_does_not_silently_replace_existing_main() {
 
 #[test]
 fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
-    use std::os::unix::fs::PermissionsExt;
     if let Ok(root) = std::env::var("HCTL2_REPO_GIT_ISOLATION_FIXTURE") {
         let root = Path::new(&root);
         let g = Git::discover().unwrap();
@@ -344,13 +360,16 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
     commit(&source, "frozen");
     git(&target, &["init", "--bare"]);
     let marker = temp.0.join("hook-ran");
-    let hook = format!("#!/bin/sh\nprintf hook > '{}'\nexit 1\n", marker.display());
+    // A built fixture, never a script written here: executing a file this
+    // process just opened for writing can answer ETXTBSY on Linux while another
+    // test thread's forked child holds the write descriptor. Git chooses the
+    // hook's path and arguments, so the marker path arrives in the environment
+    // (set on the child below), not in the body.
     for path in [
         source.join(".git/hooks/pre-push"),
         template.join("hooks/pre-push"),
     ] {
-        std::fs::write(&path, &hook).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        link_fixture("misc-git-hook.sh", &path);
     }
     // A URL rewrite in the input copy must not affect privileged readback/push.
     git(
@@ -378,6 +397,7 @@ fn credentials_do_not_reach_user_hooks_or_configured_tracing() {
             "credentials_do_not_reach_user_hooks_or_configured_tracing",
         ])
         .env("HCTL2_REPO_GIT_ISOLATION_FIXTURE", &temp.0)
+        .env("HCTL2_REPO_HOOK_MARKER", &marker)
         .env("GIT_CONFIG_GLOBAL", global)
         .env("GIT_TEMPLATE_DIR", template)
         .env("GIT_TRACE", &trace)
@@ -438,7 +458,6 @@ fn assert_no_process_with(marker: &str) {
 
 #[test]
 fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
-    use std::os::unix::fs::PermissionsExt;
     use std::time::Instant;
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -447,12 +466,11 @@ fn a_stuck_provider_command_is_result_unknown_and_leaves_no_process() {
     let dir = std::env::temp_dir().join(format!("hctl2-repo-stuck-{nanos}"));
     std::fs::create_dir(&dir).unwrap();
     let program = dir.join("hang.sh");
+    link_fixture("misc-hang.sh", &program);
     let marker = run_marker(4165);
-    std::fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let started = Instant::now();
     let error = repo::git::run_for(
-        &mut Command::new(&program),
+        &mut Command::new(&program).arg(&marker),
         None,
         std::time::Duration::from_secs(3),
     )

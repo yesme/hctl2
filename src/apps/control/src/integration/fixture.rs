@@ -1,7 +1,6 @@
 //! The scripted platforms the integration and review-publishing tests run against: a `tea` /
 //! `gh` stand-in whose answers are files the test controls, and a real bare repository as the
 //! platform's Git, so pushes, merges and readbacks are real Git operations.
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -28,167 +27,7 @@ pub(crate) fn actor() -> TrustedActor {
     })
 }
 
-pub(crate) const TEA: &str = r#"#!/bin/sh
-# $0.state/: protection.json (absent = unprotected), rule_name (effective rule the branch
-# record names), rule_path (the one path segment the rule answers under), pr_state, pr_head,
-# pr_base, merge_sha, posts; switches: fail_merge (405), refuse_update (403 on PATCH), lose_merge (merge, then die without
-# an HTTP line), lose_unmerged (die without merging or an HTTP line), drift_after_merge.
-# $0.state/../platform.git is the platform's Git; merges are real commits there.
-S="$0.state"; R="$S/../platform.git"
-export GIT_AUTHOR_NAME=gitea GIT_AUTHOR_EMAIL=gitea@localhost GIT_COMMITTER_NAME=gitea GIT_COMMITTER_EMAIL=gitea@localhost
-# The request record. Its head follows the branch when one is recorded (pr_branch), else the
-# static pr_head the integration cases pin.
-pr_json() {
-  state="$(cat "$S/pr_state")"
-  if [ "$state" = merged ]; then merged=true; sha="\"$(cat "$S/merge_sha")\""; else merged=false; sha=null; fi
-  if [ -f "$S/pr_branch" ]; then head="$(git -C "$R" rev-parse --verify -q "refs/heads/$(cat "$S/pr_branch")")"; else head="$(cat "$S/pr_head")"; fi
-  case "$state" in merged|closed) shown=closed ;; *) shown=open ;; esac
-  printf '{"number":%s,"state":"%s","merged":%s,"merge_commit_sha":%s,"head":{"sha":"%s","ref":"%s"},"base":{"ref":"%s"},"title":"%s"}' \
-    "$(cat "$S/pr_index" 2>/dev/null || echo 7)" "$shown" "$merged" "$sha" "$head" "$(cat "$S/pr_branch" 2>/dev/null)" "$(cat "$S/pr_base")" "$(cat "$S/pr_title" 2>/dev/null)"
-}
-method="$4"
-if [ "$5" = --data ]; then path="$7"; body="$(cat)"; else path="$5"; fi
-case "$method $path" in
-  "GET "*/branches/*)
-    if [ -f "$S/down" ]; then exit 1; fi
-    head="$(git -C "$R" rev-parse --verify -q "refs/heads/${path##*/}")" || { printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{}'; exit 1; }
-    if [ -f "$S/protection.json" ]; then protected=true; name="$(cat "$S/rule_name")"; else protected=false; name=""; fi
-    printf 'HTTP/1.1 200 OK\n' >&2
-    printf '{"name":"%s","commit":{"id":"%s"},"protected":%s,"effective_branch_protection_name":"%s"}' "${path##*/}" "$head" "$protected" "$name" ;;
-  "GET "*/branch_protections/*)
-    if [ -f "$S/protection.json" ] && [ "${path##*/}" = "$(cat "$S/rule_path")" ]; then printf 'HTTP/1.1 200 OK\n' >&2; cat "$S/protection.json";
-    else printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{}'; exit 1; fi ;;
-  "GET "*/pulls/*/*)
-    # Gitea 1.22+: the request from <head> into <base>, looked up as pulls/<base>/<head>.
-    if [ -f "$S/down" ]; then exit 1; fi
-    rest="${path#*/pulls/}"; base="${rest%%/*}"; headb="${rest#*/}"
-    if [ -f "$S/pr_exists" ] && [ "$base" = "$(cat "$S/pr_base")" ] && [ "$headb" = "$(cat "$S/pr_branch")" ]; then
-      printf 'HTTP/1.1 200 OK\n' >&2; pr_json
-    else printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{"message":"pull request does not exist"}'; exit 1; fi ;;
-  "GET "*/pulls/*)
-    if [ ! -f "$S/pr_exists" ]; then printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{}'; exit 1; fi
-    printf 'HTTP/1.1 200 OK\n' >&2; pr_json ;;
-  "POST "*/pulls)
-    printf x >> "$S/creates"
-    if [ -f "$S/down" ]; then exit 1; fi
-    if [ -f "$S/pr_exists" ]; then printf 'HTTP/1.1 409 Conflict\n' >&2; printf '{"message":"pull request already exists for these targets"}'; exit 1; fi
-    headb="${body#*\"head\":\"}"; headb="${headb%%\"*}"; base="${body#*\"base\":\"}"; base="${base%%\"*}"
-    title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
-    printf '%s' "$headb" > "$S/pr_branch"; printf '%s' "$base" > "$S/pr_base"; printf open > "$S/pr_state"; : > "$S/pr_exists"
-    if [ -f "$S/lose_create" ]; then exit 1; fi
-    printf 'HTTP/1.1 201 Created\n' >&2; pr_json ;;
-  "PATCH "*/pulls/*)
-    printf x >> "$S/updates"
-    if [ -f "$S/down" ]; then exit 1; fi
-    if [ -f "$S/refuse_update" ]; then printf 'HTTP/1.1 403 Forbidden\n' >&2; printf '{"message":"user is not allowed to edit this pull request"}'; exit 1; fi
-    title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
-    printf 'HTTP/1.1 201 Created\n' >&2; pr_json ;;
-  "POST "*/pulls/*/merge)
-    printf x >> "$S/posts"
-    if [ -f "$S/lose_unmerged" ]; then exit 1; fi
-    if [ -f "$S/fail_merge" ]; then printf 'HTTP/1.1 405 Method Not Allowed\n' >&2; printf '{"message":"required status check canary missing"}'; exit 1; fi
-    if [ "$(cat "$S/pr_state")" = merged ]; then printf 'HTTP/1.1 405 Method Not Allowed\n' >&2; printf '{"message":"already merged"}'; exit 1; fi
-    want="${body#*\"head_commit_id\":\"}"; want="${want%%\"*}"
-    if [ "$want" != "$(cat "$S/pr_head")" ]; then printf 'HTTP/1.1 409 Conflict\n' >&2; printf '{"message":"head changed"}'; exit 1; fi
-    base="$(cat "$S/pr_base")"; cand="$(cat "$S/pr_head")"
-    # Like Gitea 1.27: a fast-forward-only merge's merge commit is the candidate itself.
-    case "$body" in
-      *fast-forward-only*) merge="$cand" ;;
-      *) merge="$(git -C "$R" commit-tree "$cand^{tree}" -p "refs/heads/$base" -p "$cand" -m "merge #7")" ;;
-    esac
-    git -C "$R" update-ref "refs/heads/$base" "$merge"
-    printf merged > "$S/pr_state"; printf '%s' "$merge" > "$S/merge_sha"
-    if [ -f "$S/drift_after_merge" ]; then cp "$S/drift_after_merge" "$S/protection.json"; fi
-    # Someone pushes to the source branch the instant the merge lands: the request's head
-    # (which follows the branch) moves before anyone reads it back.
-    if [ -f "$S/advance_source_after_merge" ]; then cp "$S/advance_source_after_merge" "$S/pr_head"; fi
-    if [ -f "$S/lose_merge" ]; then exit 1; fi
-    printf 'HTTP/1.1 200 OK\n' >&2 ;;
-  *) printf 'HTTP/1.1 404 Not Found\n' >&2; printf '{}'; exit 1 ;;
-esac
-exit 0
-"#;
-
 pub(crate) const PROTECTION: &str = r#"{"rule_name":"main","branch_name":"main","enable_push":false,"enable_status_check":true,"status_check_contexts":["canary"],"required_approvals":0,"block_on_outdated_branch":false,"block_admin_merge_override":false,"created_at":"2026-10-07T00:00:00Z","updated_at":"2026-10-07T00:00:00Z"}"#;
-
-pub(crate) const GH: &str = r#"#!/bin/sh
-# Scripted GitHub: `api --hostname H --method M [--input -] PATH`. $0.state/: protection.json
-# (absent = no classic protection), announce_protected (branch record says protected anyway),
-# rules.json (ruleset rules in force; absent = []), pr_state, pr_head, pr_base, merge_sha,
-# posts; switches as for tea. $0.state/../platform.git is the platform's Git.
-S="$0.state"; R="$S/../platform.git"
-export GIT_AUTHOR_NAME=github GIT_AUTHOR_EMAIL=github@localhost GIT_COMMITTER_NAME=github GIT_COMMITTER_EMAIL=github@localhost
-pr_json() {
-  state="$(cat "$S/pr_state")"
-  if [ "$state" = merged ]; then merged=true; sha="\"$(cat "$S/merge_sha")\""; else merged=false; sha=null; fi
-  if [ -f "$S/pr_branch" ]; then head="$(git -C "$R" rev-parse --verify -q "refs/heads/$(cat "$S/pr_branch")")"; else head="$(cat "$S/pr_head")"; fi
-  case "$state" in merged|closed) shown=closed ;; *) shown=open ;; esac
-  printf '{"number":%s,"state":"%s","merged":%s,"merge_commit_sha":%s,"head":{"sha":"%s","ref":"%s"},"base":{"ref":"%s"},"title":"%s"}' \
-    "$(cat "$S/pr_index" 2>/dev/null || echo 3)" "$shown" "$merged" "$sha" "$head" "$(cat "$S/pr_branch" 2>/dev/null)" "$(cat "$S/pr_base")" "$(cat "$S/pr_title" 2>/dev/null)"
-}
-method=""; path=""; body=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --method) method="$2"; shift 2 ;;
-    --hostname) shift 2 ;;
-    --input) body="$(cat)"; shift 2 ;;
-    api) shift ;;
-    *) path="$1"; shift ;;
-  esac
-done
-case "$method $path" in
-  "GET "*/branches/*/protection)
-    if [ -f "$S/protection.json" ]; then cat "$S/protection.json"; exit 0; fi
-    printf '{"message":"Branch not protected"}'; printf 'gh: Branch not protected (HTTP 404)\n' >&2; exit 1 ;;
-  "GET "*/rules/branches/*)
-    if [ -f "$S/rules.json" ]; then cat "$S/rules.json"; else printf '[]'; fi ;;
-  "GET "*/branches/*)
-    if [ -f "$S/down" ]; then printf 'gh: connection refused\n' >&2; exit 1; fi
-    b="${path##*/}"
-    head="$(git -C "$R" rev-parse --verify -q "refs/heads/$b")" || { printf '{"message":"Branch not found"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
-    if [ -f "$S/protection.json" ] || [ -f "$S/announce_protected" ]; then protected=true; else protected=false; fi
-    printf '{"name":"%s","commit":{"sha":"%s"},"protected":%s}' "$b" "$head" "$protected" ;;
-  "GET "*/pulls\?*)
-    # Lookup by base and owner:head; an array, empty when there is none.
-    if [ -f "$S/down" ]; then printf 'gh: connection refused\n' >&2; exit 1; fi
-    q="${path#*\?}"; base="${q#*base=}"; base="${base%%&*}"; headq="${q#*head=}"; headq="${headq%%&*}"; headq="${headq#*:}"
-    if [ -f "$S/pr_exists" ] && [ "$base" = "$(cat "$S/pr_base")" ] && [ "$headq" = "$(cat "$S/pr_branch")" ]; then printf '['; pr_json; printf ']'; else printf '[]'; fi ;;
-  "GET "*/pulls/*)
-    if [ ! -f "$S/pr_exists" ]; then printf '{"message":"Not Found"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; fi
-    pr_json ;;
-  "POST "*/pulls)
-    printf x >> "$S/creates"
-    if [ -f "$S/down" ]; then printf 'gh: connection refused\n' >&2; exit 1; fi
-    if [ -f "$S/pr_exists" ]; then printf '{"message":"A pull request already exists"}'; printf 'gh: Validation Failed (HTTP 422)\n' >&2; exit 1; fi
-    headb="${body#*\"head\":\"}"; headb="${headb%%\"*}"; base="${body#*\"base\":\"}"; base="${base%%\"*}"
-    title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
-    printf '%s' "$headb" > "$S/pr_branch"; printf '%s' "$base" > "$S/pr_base"; printf open > "$S/pr_state"; : > "$S/pr_exists"
-    if [ -f "$S/lose_create" ]; then exit 1; fi
-    pr_json ;;
-  "PATCH "*/pulls/*)
-    printf x >> "$S/updates"
-    if [ -f "$S/down" ]; then printf 'gh: connection refused\n' >&2; exit 1; fi
-    if [ -f "$S/refuse_update" ]; then printf '{"message":"Resource not accessible by integration"}'; printf 'gh: Resource not accessible by integration (HTTP 403)\n' >&2; exit 1; fi
-    title="${body#*\"title\":\"}"; title="${title%%\"*}"; printf '%s' "$title" > "$S/pr_title"
-    pr_json ;;
-  "PUT "*/pulls/*/merge)
-    printf x >> "$S/posts"
-    if [ -f "$S/lose_unmerged" ]; then exit 1; fi
-    if [ -f "$S/fail_merge" ]; then printf '{"message":"Required status check \"canary\" is expected."}'; printf 'gh: Required status check (HTTP 405)\n' >&2; exit 1; fi
-    if [ "$(cat "$S/pr_state")" = merged ]; then printf '{"message":"Pull Request is not mergeable"}'; printf 'gh: not mergeable (HTTP 405)\n' >&2; exit 1; fi
-    want="${body#*\"sha\":\"}"; want="${want%%\"*}"
-    if [ "$want" != "$(cat "$S/pr_head")" ]; then printf '{"message":"Head branch was modified. Review and try the merge again."}'; printf 'gh: Head branch was modified (HTTP 409)\n' >&2; exit 1; fi
-    base="$(cat "$S/pr_base")"; cand="$(cat "$S/pr_head")"
-    merge="$(git -C "$R" commit-tree "$cand^{tree}" -p "refs/heads/$base" -p "$cand" -m "Merge pull request #3")"
-    git -C "$R" update-ref "refs/heads/$base" "$merge"
-    printf merged > "$S/pr_state"; printf '%s' "$merge" > "$S/merge_sha"
-    if [ -f "$S/drift_after_merge" ]; then cp "$S/drift_after_merge" "$S/protection.json"; fi
-    if [ -f "$S/lose_merge" ]; then exit 1; fi
-    printf '{"sha":"%s","merged":true,"message":"Pull Request successfully merged"}' "$merge" ;;
-  *) printf '{"message":"Not Found"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1 ;;
-esac
-exit 0
-"#;
 
 pub(crate) const GH_PROTECTION: &str = r#"{"url":"https://api.github.com/repos/yesme/canary/branches/main/protection","required_status_checks":{"url":"u","strict":false,"contexts":["canary"],"contexts_url":"u","checks":[{"context":"canary","app_id":null}]},"required_pull_request_reviews":{"url":"u","dismiss_stale_reviews":false,"require_code_owner_reviews":false,"required_approving_review_count":0},"enforce_admins":{"url":"u","enabled":true},"required_conversation_resolution":{"enabled":false},"allow_force_pushes":{"enabled":false},"allow_deletions":{"enabled":false}}"#;
 
@@ -211,6 +50,15 @@ pub(crate) struct Platform {
     pub(crate) tree: String,
 }
 
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = std::fs::canonicalize(Path::new(&root).join(name))
+        .unwrap_or_else(|error| panic!("fixture {name}: {error}"));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+}
+
 impl Platform {
     pub(crate) fn new(dir: &Path) -> Self {
         Self::of(Kind::Gitea, dir)
@@ -222,15 +70,18 @@ impl Platform {
         let tea = dir.join("tea");
         let state = dir.join("tea.state");
         std::fs::create_dir_all(&state).unwrap();
-        std::fs::write(
-            &tea,
+        // A built fixture, never a script written here: executing a file this
+        // process just opened for writing can answer ETXTBSY on Linux while
+        // another test thread's forked child holds the write descriptor. The
+        // link keeps `$0` at this path, so `$0.state` and `platform.git` stay
+        // in the writable directory.
+        link_fixture(
             match kind {
-                Kind::Gitea => TEA,
-                Kind::GitHub => GH,
+                Kind::Gitea => "gitea-platform.sh",
+                Kind::GitHub => "github-platform.sh",
             },
-        )
-        .unwrap();
-        std::fs::set_permissions(&tea, std::fs::Permissions::from_mode(0o700)).unwrap();
+            &tea,
+        );
         let git_dir = dir.join("platform.git");
         let output = Command::new("git")
             .args(["init", "--bare", "--quiet"])

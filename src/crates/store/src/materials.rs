@@ -334,7 +334,7 @@ pub(crate) fn sync_tree(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
     use std::process::Command;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -349,12 +349,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hctl2-material-stuck-{nanos}"));
         fs::create_dir(&dir).unwrap();
         let program = dir.join("hang.sh");
+        link_fixture("misc-hang.sh", &program);
         let marker = run_marker(4166);
-        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
         let started = Instant::now();
         let mut command = Command::new("/bin/sh");
-        command.arg(&program);
+        command.arg(&program).arg(&marker);
         let error = bounded(command, None, Duration::from_secs(3))
             .expect_err("a stuck command must not succeed");
         assert!(
@@ -366,6 +365,23 @@ mod tests {
         assert!(error.message.contains("timed out"), "{}", error.message);
         assert_no_process_with(&marker);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Point a path at a built fixture script. The test never writes the script
+    /// it executes: a file just opened for writing can answer execve with
+    /// ETXTBSY on Linux while another test thread's forked child still holds
+    /// the write descriptor.
+    fn link_fixture(name: &str, path: &Path) {
+        let root = std::env::var_os("HCTL2_FIXTURES")
+            .expect("HCTL2_FIXTURES must be set to run this test");
+        let source = Path::new(&root).join(name);
+        // The environment carries a project-relative path; a symlink resolves
+        // its target relative to the link's own directory, so it must be absolute.
+        let source = std::fs::canonicalize(&source)
+            .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+        std::os::unix::fs::symlink(&source, path).unwrap_or_else(|error| {
+            panic!("link {} -> {}: {error}", path.display(), source.display())
+        });
     }
 
     /// A marker unique to this run and to the call site: the leftover check

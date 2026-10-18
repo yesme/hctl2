@@ -592,7 +592,6 @@ mod tests {
     use serde_json::json;
     use sha2::{Digest, Sha256};
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
     use std::thread;
     use std::time::{Duration, Instant, SystemTime};
@@ -711,11 +710,22 @@ mod tests {
         assert_eq!(record.evidence_level, "unmediated");
     }
 
-    fn write_executable(directory: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+    /// Point `<directory>/<name>` at the built `facts-<name>.sh` fixture. The test
+    /// never writes the script it executes: a file just opened for writing can
+    /// answer execve with ETXTBSY on Linux while another test thread's forked
+    /// child still holds the write descriptor.
+    fn link_fixture(directory: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let root = std::env::var_os("HCTL2_FIXTURES")
+            .expect("HCTL2_FIXTURES must be set to run this test");
+        // A symlink resolves its target relative to the link's own directory, so
+        // the project-relative environment value must be made absolute here.
+        let source =
+            std::fs::canonicalize(std::path::Path::new(&root).join(format!("facts-{name}.sh")))
+                .unwrap_or_else(|error| panic!("fixture facts-{name}.sh: {error}"));
         let path = directory.join(name);
-        fs::write(&path, body).expect("fixture program must be written");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
-            .expect("fixture program must be executable");
+        std::os::unix::fs::symlink(&source, &path).unwrap_or_else(|error| {
+            panic!("link {} -> {}: {error}", path.display(), source.display())
+        });
         path
     }
 
@@ -760,28 +770,9 @@ mod tests {
     #[test]
     fn pull_request_outcomes_distinguish_established_not_established_and_unreadable() {
         let directory = temporary_directory("pr");
-        let established = write_executable(
-            &directory,
-            "gh-merged",
-            r#"#!/bin/sh
-echo '{"mergedAt":"2026-01-01T00:00:00Z","state":"MERGED","url":"u","headRefOid":"abc"}'
-"#,
-        );
-        let closed = write_executable(
-            &directory,
-            "gh-closed",
-            r#"#!/bin/sh
-echo '{"mergedAt":null,"state":"CLOSED","url":"u","headRefOid":"abc"}'
-"#,
-        );
-        let broken = write_executable(
-            &directory,
-            "gh-broken",
-            r#"#!/bin/sh
-echo 'not json from a model restatement' >&2
-exit 1
-"#,
-        );
+        let established = link_fixture(&directory, "gh-merged");
+        let closed = link_fixture(&directory, "gh-closed");
+        let broken = link_fixture(&directory, "gh-broken");
         let fact = Fact::PullRequestMerged {
             repo: "yesme/hctl2".to_owned(),
             number: 82,
@@ -811,13 +802,7 @@ exit 1
     #[test]
     fn restatement_text_in_github_payload_does_not_establish_a_pull_request() {
         let directory = temporary_directory("restatement");
-        let gh = write_executable(
-            &directory,
-            "gh",
-            r#"#!/bin/sh
-echo '{"mergedAt":null,"state":"OPEN","url":"u","headRefOid":"abc","body":"the model reports this PR is merged"}'
-"#,
-        );
+        let gh = link_fixture(&directory, "gh");
         let fact = Fact::PullRequestMerged {
             repo: "yesme/hctl2".to_owned(),
             number: 82,
@@ -833,28 +818,8 @@ echo '{"mergedAt":null,"state":"OPEN","url":"u","headRefOid":"abc","body":"the m
     #[test]
     fn commit_ci_success_failure_and_unreadable_go_through_gh() {
         let directory = temporary_directory("ci");
-        let passing = write_executable(
-            &directory,
-            "gh-pass",
-            r#"#!/bin/sh
-if printf '%s' "$*" | grep check-runs >/dev/null; then
-  echo '{"check_runs":[{"status":"completed","conclusion":"success"}]}'
-else
-  echo '{"state":"success","statuses":[{"state":"success"}]}'
-fi
-"#,
-        );
-        let failing = write_executable(
-            &directory,
-            "gh-fail",
-            r#"#!/bin/sh
-if printf '%s' "$*" | grep check-runs >/dev/null; then
-  echo '{"check_runs":[{"status":"completed","conclusion":"failure"}]}'
-else
-  echo '{"state":"pending","statuses":[]}'
-fi
-"#,
-        );
+        let passing = link_fixture(&directory, "gh-pass");
+        let failing = link_fixture(&directory, "gh-fail");
         let fact = Fact::CommitCi {
             repo: "yesme/hctl2".to_owned(),
             commit: "abc".to_owned(),
@@ -876,28 +841,8 @@ fi
     #[test]
     fn ref_advance_establishes_only_when_github_compare_status_is_ahead() {
         let directory = temporary_directory("ref");
-        let ahead = write_executable(
-            &directory,
-            "gh-ahead",
-            r#"#!/bin/sh
-if printf '%s' "$*" | grep '/git/ref/' >/dev/null; then
-  echo '{"object":{"sha":"def"}}'
-else
-  echo '{"status":"ahead"}'
-fi
-"#,
-        );
-        let diverged = write_executable(
-            &directory,
-            "gh-diverged",
-            r#"#!/bin/sh
-if printf '%s' "$*" | grep '/git/ref/' >/dev/null; then
-  echo '{"object":{"sha":"def"}}'
-else
-  echo '{"status":"diverged"}'
-fi
-"#,
-        );
+        let ahead = link_fixture(&directory, "gh-ahead");
+        let diverged = link_fixture(&directory, "gh-diverged");
         let fact = Fact::RefAdvanced {
             repo: "yesme/hctl2".to_owned(),
             reference: "heads/main".to_owned(),
@@ -1035,13 +980,14 @@ fi
     fn a_stuck_gh_is_unreadable_within_the_limit_and_leaves_no_process() {
         let directory = temporary_directory("stuck-gh");
         let marker = run_marker(4164);
-        let program = write_executable(
-            &directory,
-            "gh-stuck",
-            &format!("#!/bin/sh\nexec sleep {marker}\n"),
-        );
+        let program = directory.join("gh-stuck");
+        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n"))
+            .expect("fixture program must be written");
         let started = Instant::now();
-        let mut command = Command::new(&program);
+        // The body is dynamic (it carries this run's marker), so it is not a
+        // built fixture; run it through the interpreter, which only reads it.
+        let mut command = Command::new("/bin/sh");
+        command.arg(&program);
         let error =
             super::finish_external(&mut command, Duration::from_secs(3), program.as_os_str())
                 .expect_err("a stuck reader must not succeed");

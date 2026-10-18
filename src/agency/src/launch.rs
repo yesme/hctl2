@@ -150,7 +150,7 @@ impl Launch {
         fs::write(
             &runner,
             format!(
-                "#!/bin/sh\n/bin/sh {program} > {stdout} 2> {stderr}\ncode=$?\nprintf '%s\\n' \"$code\" > {exit}\nexit \"$code\"\n",
+                "/bin/sh {program} > {stdout} 2> {stderr}\ncode=$?\nprintf '%s\\n' \"$code\" > {exit}\nexit \"$code\"\n",
                 program = sh_quote(&program),
                 stdout = sh_quote(&report_dir.join("stdout")),
                 stderr = sh_quote(&report_dir.join("stderr")),

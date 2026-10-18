@@ -11,7 +11,6 @@ mod profile;
 #[path = "cli/memo.rs"]
 mod memo;
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,6 +52,23 @@ fn control() -> PathBuf {
         std::env::var("CARGO_BIN_EXE_hctl2-control")
             .expect("CARGO_BIN_EXE_hctl2-control must be set"),
     )
+}
+
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+fn link_fixture(name: &str, path: &std::path::Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = std::path::Path::new(&root).join(name);
+    // The environment carries a project-relative path; a symlink resolves its
+    // target relative to the link's own directory, so it must be absolute.
+    let source = std::fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
 }
 
 fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
@@ -507,8 +523,7 @@ fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_no
     let temp = Temp::new();
     let root = &temp.0;
     let gh = root.join("gh-fixture");
-    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
-    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("cli-github-repo.sh", &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)
@@ -615,8 +630,7 @@ fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
     let temp = Temp::new();
     let root = &temp.0;
     let gh = root.join("gh-fixture");
-    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
-    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("cli-github-repo.sh", &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)

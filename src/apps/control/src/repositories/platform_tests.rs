@@ -1,5 +1,4 @@
 use super::*;
-use std::os::unix::fs::PermissionsExt;
 use store::{Actor, ActorSource, Scope, Store, TrustedActor};
 
 struct Temp(PathBuf);
@@ -28,26 +27,7 @@ fn lost_create_response_reads_original_correlation_without_second_post() {
     let prepared = repo::prepare(request, None).unwrap();
     let reg = repo::admit(&mut store, &actor, "register", "register", prepared).unwrap();
     let executable = temp.0.join("tea-fixture");
-    // A subprocess fixture, not an HTTP server: the native tea behavior is also exercised by complete-test.
-    std::fs::write(
-        &executable,
-        r#"#!/bin/sh
-if [ "$4" = POST ]; then
-    printf x >> "$0.posts"
-    touch "$0.created"
-    printf 'HTTP/1.1 503 Service Unavailable\n' >&2
-    printf '{}'
-elif [ -f "$0.created" ]; then
-    printf 'HTTP/1.1 200 OK\n' >&2
-    cat "$0.json"
-else
-    printf 'HTTP/1.1 404 Not Found\n' >&2
-    printf '{}'
-fi
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("tea-registration.sh", &executable);
     let mut value = json!({"id":7,"owner":{"id":1},"has_issues":true,"full_name":"admin/test",
         "clone_url":"http://127.0.0.1:3000/admin/test.git",
         "description":format!("HCTL registration {}:{}", reg.config.control_id, reg.repo_id)});
@@ -210,33 +190,27 @@ fn native_detail_reports_the_last_non_empty_stderr_line() {
     );
 }
 
-/// A subprocess fixture for the native Gitea admin CLI: `admin user list` reads the
-/// accounts recorded so far, `admin user create` prints a password and then records one.
-fn write_gitea_fixture(path: &Path) {
-    std::fs::write(
-        path,
-        r#"#!/bin/sh
-sub="$7"
-if [ "$sub" = list ]; then
-    printf 'ID\tUsername\tEmail\tIsActive\n'
-    cat "$0.users" 2>/dev/null
-    exit 0
-fi
-if [ "$sub" = create ]; then
-    name="$9"
-    printf "generated random password is '%s'\n" 'fixture-initial-password'
-    if [ -f "$0.fail" ]; then
-        exit 1
-    fi
-    printf x >> "$0.creates"
-    printf '2   %s   %s@localhost   active   public\n' "$name" "$name" >> "$0.users"
-    exit 0
-fi
-exit 1
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+/// The native Gitea admin CLI fixture: `admin user list` reads the accounts
+/// recorded so far, `admin user create` prints a password and then records one.
+fn gitea_fixture(path: &Path) {
+    link_fixture("gitea-admin.sh", path);
+}
+
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so the `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = Path::new(&root).join(name);
+    // The environment carries a project-relative path; a symlink resolves its
+    // target relative to the link's own directory, so it must be absolute.
+    let source = std::fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
 }
 
 fn fixture_paths(dir: &Path) -> HostedPaths {
@@ -254,7 +228,7 @@ fn human_account_is_created_once_and_a_failed_create_leaks_no_password() {
         Temp(std::env::temp_dir().join(format!("hctl2-human-account-{}", std::process::id())));
     let _ = std::fs::remove_dir_all(&temp.0);
     std::fs::create_dir_all(&temp.0).unwrap();
-    write_gitea_fixture(&temp.0.join("gitea-fixture"));
+    gitea_fixture(&temp.0.join("gitea-fixture"));
     let paths = fixture_paths(&temp.0);
     let creates = temp.0.join("gitea-fixture.creates");
 
@@ -266,7 +240,11 @@ fn human_account_is_created_once_and_a_failed_create_leaks_no_password() {
         Ok(_) => panic!("a failed native create must not be reported as an account"),
         Err(rejected) => rejected,
     };
-    assert_eq!(failed.code, "PLATFORM_BOOTSTRAP");
+    assert_eq!(
+        failed.code, "PLATFORM_BOOTSTRAP",
+        "a fixture that cannot start must not read as bootstrap: {}",
+        failed.message
+    );
     assert!(
         !failed.message.contains("fixture-initial-password"),
         "a rejected create must not carry the printed password: {}",
@@ -315,43 +293,11 @@ fn the_account_list_header_is_not_an_account() {
     assert!(account_listed(real, "Username"));
 }
 
-/// A subprocess fixture for `tea api`: a PUT records the account and the permission it was
-/// granted, unless the fixture is told to lose the response, and a collaborator read answers
-/// from the accounts recorded so far. Like the platform, the read names the account only and
-/// never says which permission it holds.
-fn write_tea_fixture(path: &Path) {
-    std::fs::write(
-        path,
-        r#"#!/bin/sh
-method="$4"
-if [ "$method" = PUT ]; then
-    path="$7"
-    body="$(cat)"
-else
-    path="$5"
-fi
-name="${path##*/}"
-if [ "$method" = GET ]; then
-    if cut -f1 "$0.grants" 2>/dev/null | grep -qx "$name"; then
-        printf 'HTTP/1.1 204 No Content\n' >&2
-    else
-        printf 'HTTP/1.1 404 Not Found\n' >&2
-        printf '{}'
-    fi
-    exit 0
-fi
-printf x >> "$0.puts"
-if [ ! -f "$0.lose" ]; then
-    permission="${body#*\"permission\":\"}"
-    permission="${permission%%\"*}"
-    printf '%s\t%s\n' "$name" "$permission" >> "$0.grants"
-fi
-printf 'HTTP/1.1 204 No Content\n' >&2
-exit 0
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+/// The `tea api` fixture: a PUT records the account and the permission it was
+/// granted, unless the fixture is told to lose the response, and a collaborator
+/// read answers from the accounts recorded so far.
+fn tea_fixture(path: &Path) {
+    link_fixture("tea-admin.sh", path);
 }
 
 #[test]
@@ -360,7 +306,7 @@ fn collaborator_grant_writes_the_requested_permission_and_confirms_it_by_readbac
         Temp(std::env::temp_dir().join(format!("hctl2-collaborator-{}", std::process::id())));
     let _ = std::fs::remove_dir_all(&temp.0);
     std::fs::create_dir_all(&temp.0).unwrap();
-    write_tea_fixture(&temp.0.join("tea-fixture"));
+    tea_fixture(&temp.0.join("tea-fixture"));
     let puts = temp.0.join("tea-fixture.puts");
     let grants = temp.0.join("tea-fixture.grants");
     let hosted = Hosted {
@@ -475,46 +421,13 @@ impl PackageFixture {
         if !first_api_call_is_foreign {
             std::fs::write(install.join("libexec/hctl2/tea.ours"), "").unwrap();
         }
-        write_bootstrap_stub(
-            &install.join("bin/hctl2-services"),
-            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$0.calls\"\nexit 0\n",
-        );
-        write_bootstrap_stub(
+        link_fixture("services-stub.sh", &install.join("bin/hctl2-services"));
+        link_fixture(
+            "process-compose-stub.sh",
             &install.join("libexec/hctl2/process-compose"),
-            "#!/bin/sh\nprintf '[{\"name\":\"gitea\",\"is_running\":true,\"is_ready\":\"Ready\",\"pid\":4242}]\\n'\n",
         );
-        write_bootstrap_stub(
-            &install.join("libexec/hctl2/gitea"),
-            "#!/bin/sh\nsub=\"$7\"\ncase \"$sub\" in\n\
-             \x20 list)\n\
-             \x20   if [ -f \"$0.ready\" ]; then\n\
-             \x20     printf 'ID\\tUsername\\tEmail\\tIsActive\\tIsAdmin\\n'\n\
-             \x20     exit 0\n\
-             \x20   fi\n\
-             \x20   : > \"$0.ready\"\n\
-             \x20   printf 'Command error: SQL logic error: no such table: user (1)\\n' >&2\n\
-             \x20   exit 1\n\
-             \x20   ;;\n\
-             \x20 create)\n\
-             \x20   exit 0\n\
-             \x20   ;;\n\
-             \x20 generate-access-token)\n\
-             \x20   printf '%s\\n' 0123456789abcdef0123456789abcdef01234567\n\
-             \x20   ;;\n\
-             esac\nexit 0\n",
-        );
-        write_bootstrap_stub(
-            &install.join("libexec/hctl2/tea"),
-            "#!/bin/sh\n\
-             if [ -f \"$0.ours\" ]; then\n\
-             \x20 printf 'HTTP/1.1 200 OK\\n' >&2\n\
-             \x20 printf '{\"login\":\"%s\",\"is_admin\":true}\\n' \"$(cat \"$0.user\")\"\n\
-             \x20 exit 0\n\
-             fi\n\
-             : > \"$0.ours\"\n\
-             printf 'HTTP/1.1 401 Unauthorized\\n' >&2\n\
-             printf '{}\\n'\nexit 0\n",
-        );
+        link_fixture("gitea-bootstrap.sh", &install.join("libexec/hctl2/gitea"));
+        link_fixture("tea-bootstrap.sh", &install.join("libexec/hctl2/tea"));
         Self {
             root,
             install,
@@ -529,13 +442,6 @@ impl PackageFixture {
     fn calls(&self) -> String {
         std::fs::read_to_string(self.install.join("bin/hctl2-services.calls")).unwrap()
     }
-}
-
-fn write_bootstrap_stub(path: &Path, body: &str) {
-    std::fs::write(path, body).unwrap();
-    let mut permissions = std::fs::metadata(path).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(path, permissions).unwrap();
 }
 
 #[test]
