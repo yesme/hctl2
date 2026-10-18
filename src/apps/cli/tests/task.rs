@@ -221,7 +221,7 @@ case "$method:$path" in
  GET:user) printf '{"id":5}' ;;
  GET:repos/owner/fixture) printf '{"id":77,"full_name":"owner/fixture","clone_url":"https://github.com/owner/fixture.git","has_issues":true,"permissions":{"push":true,"admin":true}}' ;;
  GET:*page=2*) printf '[]' ;;
- GET:*/issues\?*) if [ -f "$0.created" ] && [ ! -f "$0.hide" ]; then jqbin="$(cat "$0.jq")"; "$jqbin" -s '.' "$0.created"; else printf '[]'; fi ;;
+ GET:*/issues\?*) if [ -f "$0.created" ] && [ ! -f "$0.hide" ] && [ ! -f "$0.list-lag" ]; then jqbin="$(cat "$0.jq")"; "$jqbin" -s '.' "$0.created"; else printf '[]'; fi ;;
  GET:*/issues/1/parent) if [ "$header" = yes ]; then :; fi; printf 'null' ;;
  GET:*/issues/1) cat "$0.created" ;;
  GET:*) printf '[]' ;;
@@ -374,6 +374,140 @@ struct Adopted {
 /// The mechanical item cites the seeded fixture record with no declared evidence kind.
 fn adopt(fx: &Fixture) -> Adopted {
     adopt_contract(fx, None)
+}
+
+#[test]
+fn create_binds_card_when_issue_list_lags_successful_creation() {
+    let fx = fixture("create-list-lag", &[]);
+    // The platform accepted the POST and its issue endpoint can read the card,
+    // while the list endpoint still has the old contents.
+    std::fs::write(fx.root.join("gh.list-lag"), "").unwrap();
+    let (ok, before) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{before}");
+    // Same real CLI/RPC sequence as the walkthrough: create, then adopt a local
+    // contract. Adoption must not conceal an unbound Task behind that contract.
+    let adopted = adopt(&fx);
+    let (ok, shown) = run(&fx.root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert_eq!(
+        shown["data"]["entity"]["immutable_external_entity_id"], "node1",
+        "a successful issue creation must bind the Task: {shown}"
+    );
+    assert_eq!(shown["data"]["number"], 1);
+    let (ok, board) = run(&fx.root, &["task", "board", "A", &fx.source_id]);
+    assert!(ok && board["complete"] == true, "{board}");
+    assert_eq!(board["cards"][0]["task"]["id"], adopted.task_id);
+    let (ok, after) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{after}");
+    assert_eq!(before, after, "binding a card must not rewrite sources");
+    assert_eq!(std::fs::read(fx.root.join("gh.posts")).unwrap(), b"x");
+}
+
+#[test]
+fn cross_repo_source_cli_names_the_owner_and_keeps_missing_source_distinct() {
+    let fx = fixture("source-wrong-repo", &[]);
+    // Seed only the second Project's preconditions. The existing source was
+    // connected through the CLI, and each rejected command below uses CLI/RPC.
+    let requested_repo = {
+        let mut s = open_stopped(&fx.root);
+        let actor = TrustedActor(Actor {
+            principal: "fixture-owner".into(),
+            source: ActorSource::DirectClient,
+            permission_scope: vec![Scope::Control, Scope::Project("other".into())],
+            authority: None,
+        });
+        let request =
+            serde_json::from_value(json!({"name":"other","origin":"local","platform":"none"}))
+                .unwrap();
+        let reg = repo::admit(
+            &mut s,
+            &actor,
+            "repo-other",
+            "repo-other",
+            repo::prepare(request, None).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reg.lifecycle, repo::Lifecycle::Active);
+        let mut project = s
+            .get(&task::key(Scope::Project("A".into()), "project", "A"))
+            .unwrap()
+            .unwrap();
+        project.key = task::key(Scope::Project("other".into()), "project", "other");
+        let RecordData::Project { repo_id, .. } = &mut project.data else {
+            panic!("Project required")
+        };
+        *repo_id = reg.repo_id.clone();
+        project.revision_digest =
+            foundation::canonical_json_sha256(&serde_json::to_value(&project.data).unwrap())
+                .unwrap();
+        let input = serde_json::to_value(&project).unwrap();
+        let command = store::Command {
+            command_id: "project-other".into(),
+            idempotency_key: "project-other".into(),
+            actor: actor.0.clone(),
+            target: project.key.clone(),
+            expected: Expected::Absent,
+            binding: task::reference(&project),
+            operation: "fixture".into(),
+            input_digest: store::Command::digest_input("fixture", &input).unwrap(),
+            input,
+        };
+        s.submit(s.generation(), &actor, &command, None, |tx| {
+            tx.put(&project)?;
+            Ok(json!({}))
+        })
+        .unwrap();
+        reg.repo_id
+    };
+    let (ok, started) = run(&fx.root, &["start"]);
+    assert!(ok, "{started}");
+    let (ok, before) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{before}");
+    let owner_repo = before["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["key"]["id"] == fx.source_id)
+        .unwrap()["key"]["scope"]["id"]
+        .as_str()
+        .unwrap();
+    let path = fx.root.join("wrong-source.json");
+    for (source, foreign) in [(fx.source_id.as_str(), true), ("missing-source", false)] {
+        std::fs::write(&path, json!({"project_id":"other","project_version":1,"source_id":source,"approved_scope":"77","consent":true}).to_string()).unwrap();
+        let (ok, result) = run(
+            &fx.root,
+            &[
+                "task",
+                "attach",
+                "--key",
+                source,
+                "--input",
+                path.to_str().unwrap(),
+            ],
+        );
+        assert!(!ok, "{result}");
+        assert_eq!(result["error"]["code"], "NOT_FOUND");
+        if foreign {
+            assert_eq!(
+                result["error"]["message"],
+                format!(
+                    "Task source {source} belongs to Repo {owner_repo}, not Repo {requested_repo}; choose a source in the Project's Repo"
+                )
+            );
+            assert_eq!(result["error"]["recovery_action"], "hctl2 task sources");
+        } else {
+            assert_eq!(result["error"]["message"], "task_source not found");
+            assert_eq!(result["error"]["recovery_action"], "inspect_object");
+        }
+    }
+    let (ok, after) = run(&fx.root, &["task", "sources"]);
+    assert!(ok, "{after}");
+    assert_eq!(
+        before, after,
+        "rejected attaches must not change sources or references"
+    );
+    let (ok, board) = run(&fx.root, &["task", "board", "A", &fx.source_id]);
+    assert!(ok && board["complete"] == true, "{board}");
 }
 
 /// Same, but the mechanical item's contract declares `accept: integration_receipt`.

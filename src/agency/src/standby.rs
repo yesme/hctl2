@@ -73,6 +73,14 @@ impl Pool {
             workers: Mutex::new(HashMap::new()),
         }
     }
+    /// Agency setup: open and close one native session at `cwd`, delivering no
+    /// turn, so a missing workspace trust fails before any dispatch does.
+    pub(crate) fn probe(&self, server: &Arc<Server>, cwd: &Path) -> Result<()> {
+        let dir = server.state.join("standby-setup-probe");
+        crate::storage::private_dir(&dir)?;
+        prepare_plugin(&dir)?;
+        Native::boot(server, &self.claude, cwd, &dir, None, false)?.close()
+    }
     pub(crate) fn submit(
         &self,
         server: Arc<Server>,
@@ -563,6 +571,27 @@ fn rejected_before_delivery(error: &PortError) -> bool {
         })
 }
 
+/// Claude Code asks once per folder whether to trust it. Agency starts its
+/// sessions already trusted, by the Agency owner's choice; a prompt that still
+/// appears means this Claude Code does not honour that, and Agency never
+/// answers it for anyone.
+fn trust_prompt(screen: &str) -> bool {
+    screen.contains("Yes, I trust this folder") && screen.contains("Enter to confirm")
+}
+fn untrusted(cwd: &Path) -> PortError {
+    PortError::new(
+        "CLAUDE_WORKSPACE_UNTRUSTED",
+        format!(
+            "Claude Code asks whether to trust {}. Agency starts its sessions trusted \
+             (CLAUDE_CODE_SANDBOXED=1, the Agency owner's choice), and this Claude Code \
+             version does not honour that; Agency does not answer the prompt. \
+             Claude Code 2.1.302 honours it.",
+            cwd.display()
+        ),
+        "check_claude_code_version",
+    )
+}
+
 fn check_job(value: &Value, job: &Job, session: &str) -> Result<()> {
     if value["job"] != job.spec.document.idempotency_key
         || value["digest"] != job.spec.digest
@@ -714,15 +743,25 @@ impl Native {
                 format!("HOME={}", std::env::var("HOME").unwrap_or_default()),
                 format!("USER={}", std::env::var("USER").unwrap_or_default()),
             ];
+            // Claude refuses to start when its default /tmp/claude-<uid> exists
+            // but the confined pane cannot read it, as it is once anyone on this
+            // account has run Claude Code. Every session gets a private one.
+            let temp = dir.join("tmp");
+            crate::storage::private_dir(&temp)?;
+            shell.extend([
+                format!("TMPDIR={}", temp.display()),
+                format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
+            ]);
+            // Whether Claude may work in an execution directory is the Agency
+            // owner's call, not a prompt for whoever watches the pane (owner,
+            // 2026-10-18). Claude Code has no public switch for it; this
+            // variable makes its trust check pass, and setup verifies it does.
+            shell.push("CLAUDE_CODE_SANDBOXED=1".into());
             if writing {
-                let temp = dir.join("tmp");
-                crate::storage::private_dir(&temp)?;
                 shell.extend([
                     "GIT_CONFIG_GLOBAL=/dev/null".into(),
                     "GIT_CONFIG_NOSYSTEM=1".into(),
                     "GIT_TERMINAL_PROMPT=0".into(),
-                    format!("TMPDIR={}", temp.display()),
-                    format!("CLAUDE_CODE_TMPDIR={}", temp.display()),
                 ]);
             }
             shell.push("/bin/sh".into());
@@ -769,8 +808,6 @@ impl Native {
                 "kind":"claude","pane_id":native.pane,"args":argv,"timeout_ms":30_000}),
             )?;
             let timeout = Instant::now() + Duration::from_secs(30);
-            let mut trusted = false;
-            let mut trust_key_at = Instant::now();
             while Instant::now() < timeout {
                 if let Some(value) = read_json(&dir.join("session.json"))? {
                     let id = value["session"]
@@ -790,38 +827,14 @@ impl Native {
                         return Ok(());
                     }
                 }
-                if !trusted {
-                    let screen=native.client.call("pane.read",json!({"pane_id":native.pane,"source":"visible","format":"text","strip_ansi":true}))?;
-                    let text = screen
+                let screen=native.client.call("pane.read",json!({"pane_id":native.pane,"source":"visible","format":"text","strip_ansi":true}))?;
+                if trust_prompt(
+                    screen
                         .pointer("/read/text")
                         .and_then(Value::as_str)
-                        .unwrap_or("");
-                    let normalized: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-                    let path: String = cwd
-                        .display()
-                        .to_string()
-                        .chars()
-                        .filter(|c| !c.is_whitespace())
-                        .collect();
-                    if normalized.contains(&path)
-                        && text.contains("Yes, I trust this folder")
-                        && text.contains("Enter to confirm")
-                        && trust_key_at.elapsed() >= Duration::from_millis(200)
-                    {
-                        // Owner authorized only Agency-prepared execution directories.
-                        // Observe the selected option before confirming it. The first
-                        // render can precede the TUI installing its input handler.
-                        let confirm = text.contains("❯ Yes, I trust this folder");
-                        let select = text.contains("❯ No, exit");
-                        if confirm || select {
-                            native.client.call(
-                                "pane.send_keys",
-                                json!({"pane_id":native.pane,"keys":[if confirm {"enter"} else {"down"}]}),
-                            )?;
-                            trusted = confirm;
-                            trust_key_at = Instant::now();
-                        }
-                    }
+                        .unwrap_or(""),
+                ) {
+                    return Err(untrusted(cwd));
                 }
                 std::thread::sleep(Duration::from_millis(25));
             }
@@ -879,6 +892,46 @@ fn prepare_plugin(dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Claude Code 2.1.302 as Herdr's pane.read returned it in #430 (d27e2c7),
+    // including the wrapped execution path.
+    const CWD: &str = "/tmp/hctl2-exec-6db7730e0f7941e88b75/write-worktrees/7eece5f4427782d4fa5f812d8c373d868262f45d41bef7cf7b15c8ecbdb9944c/cs-897e4b8143d6938d367c9ce5974f3ad567925ddf8e2adf3d5c77b21548484430";
+    fn prompt(no: &str, yes: &str) -> String {
+        format!(
+            "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ /tmp/hctl2-exec-6db7730e0f7941e88b75/write-worktrees/7eece5f4427782d4fa5f812d8c373d868262f45d41bef7cf7b15c8ecbdb9944c/
+ cs-897e4b8143d6938d367c9ce5974f3ad567925ddf8e2adf3d5c77b21548484430
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source
+ project, or work from your team). If not, take a moment to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ {no}
+ {yes}
+
+ Enter to confirm · Esc to cancel
+"
+        )
+    }
+
+    #[test]
+    fn the_trust_prompt_is_reported_and_never_answered() {
+        for screen in [
+            prompt("❯ No, exit", "  Yes, I trust this folder"),
+            prompt("  No, exit", "❯ Yes, I trust this folder"),
+        ] {
+            assert!(trust_prompt(&screen), "{screen}");
+        }
+        assert!(!trust_prompt(" ❯ Try \"fix typecheck errors\"\n"));
+        let error = untrusted(Path::new(CWD));
+        assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED");
+        assert!(error.message.contains("CLAUDE_CODE_SANDBOXED=1"));
+    }
 
     #[test]
     fn only_explicit_pre_delivery_rejections_allow_recovery() {

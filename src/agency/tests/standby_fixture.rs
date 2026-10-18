@@ -23,6 +23,62 @@ fn event(root: &Path, name: &str, mut value: Value) {
     }
     write(root, name, value);
 }
+/// Claude Code 2.1.302's workspace trust prompt: "❯ No, exit" first, the two
+/// options wrap, and Enter on "No, exit" exits 1. Shown when `<this binary>.untrusted`
+/// exists, which stands for a Claude Code that asks although the session is
+/// started trusted. Every key the prompt receives is appended to
+/// `trust-keys.log`: Agency must send none.
+fn trust_prompt(root: &Path, rx: &mpsc::Receiver<u8>) {
+    let cwd = std::env::current_dir().unwrap();
+    let draw = |yes: bool| {
+        let (no_mark, yes_mark) = if yes { (" ", "❯") } else { ("❯", " ") };
+        print!(
+            "\x1b[2J\x1b[H Accessing workspace:\r\n\r\n {}\r\n\r\n Quick safety check: Is this a project you created or one you trust?\r\n\r\n Claude Code'll be able to read, edit, and execute files here.\r\n\r\n {no_mark} No, exit\r\n {yes_mark} Yes, I trust this folder\r\n\r\n Enter to confirm · Esc to cancel\r\n",
+            cwd.display()
+        );
+        std::io::stdout().flush().unwrap();
+    };
+    let mut yes = false;
+    draw(yes);
+    let mut log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("trust-keys.log"))
+        .unwrap();
+    let mut key = Vec::new();
+    loop {
+        let byte = match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(b) => b,
+            // A lone Esc cancels the prompt.
+            Err(mpsc::RecvTimeoutError::Timeout) if key == [27] => std::process::exit(0),
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => std::process::exit(1),
+        };
+        key.push(byte);
+        let whole = match key.as_slice() {
+            [27] | [27, b'O'] | [27, b'['] => false,
+            [27, b'[', .., last] => (0x40..=0x7e).contains(last),
+            _ => true,
+        };
+        if !whole {
+            continue;
+        }
+        let key = std::mem::take(&mut key);
+        writeln!(log, "{key:?}").unwrap();
+        match key.as_slice() {
+            b"\r" | b"\n" if yes => {
+                print!("\x1b[2J\x1b[H");
+                return;
+            }
+            b"\r" | b"\n" => std::process::exit(1),
+            b"\x1b[A" | b"\x1b[B" | b"\x1bOA" | b"\x1bOB" | b"\x0e" | b"\x10" | b"j" | b"k" => {
+                yes = !yes
+            }
+            _ => {}
+        }
+        draw(yes);
+    }
+}
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--version") {
@@ -37,6 +93,12 @@ fn main() {
     assert!(args.iter().any(|a| a == "--restricted"));
     assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_none());
     assert!(std::env::var_os("USER").is_some());
+    // Real Claude refuses a default temp directory the confined pane cannot
+    // read; every Agency session names its own.
+    assert!(std::env::var_os("CLAUDE_CODE_TMPDIR").is_some_and(|d| Path::new(&d).is_dir()));
+    // Real Claude asks whether to trust a git worktree under /tmp even when
+    // /tmp is trusted; the Agency owner decides instead, for every session.
+    assert_eq!(std::env::var("CLAUDE_CODE_SANDBOXED").as_deref(), Ok("1"));
     let plugin = PathBuf::from(option("--plugin-dir").unwrap());
     let root = plugin.parent().unwrap();
     let resume = option("--resume");
@@ -46,14 +108,6 @@ fn main() {
         resume.unwrap_or_else(|| format!("fixture-{}", std::process::id()))
     };
     fs::write(root.join("harness.pid"), std::process::id().to_string()).unwrap();
-    let mut stream = UnixStream::connect(std::env::var_os("HERDR_SOCKET_PATH").unwrap()).unwrap();
-    let request = json!({"id":"fixture-start","protocol":22,"method":"pane.report_agent_session","params":{
-        "pane_id":std::env::var("HERDR_PANE_ID").unwrap(), "source":"herdr:claude","agent":"claude",
-        "seq":1,"agent_session_id":id,"session_start_source":"startup"
-    }});
-    writeln!(stream, "{request}").unwrap();
-    let mut ack = String::new();
-    BufReader::new(stream).read_line(&mut ack).unwrap();
     assert!(
         Command::new("stty")
             .args(["raw", "-echo"])
@@ -61,8 +115,6 @@ fn main() {
             .unwrap()
             .success()
     );
-    print!("\x1b]0;✳ Claude Code\x07\r\n❯ ");
-    std::io::stdout().flush().unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         for byte in BufReader::new(std::io::stdin()).bytes() {
@@ -71,6 +123,20 @@ fn main() {
             }
         }
     });
+    let exe = std::env::current_exe().unwrap().canonicalize().unwrap();
+    if PathBuf::from(format!("{}.untrusted", exe.display())).exists() {
+        trust_prompt(root, &rx);
+    }
+    let mut stream = UnixStream::connect(std::env::var_os("HERDR_SOCKET_PATH").unwrap()).unwrap();
+    let request = json!({"id":"fixture-start","protocol":22,"method":"pane.report_agent_session","params":{
+        "pane_id":std::env::var("HERDR_PANE_ID").unwrap(), "source":"herdr:claude","agent":"claude",
+        "seq":1,"agent_session_id":id,"session_start_source":"startup"
+    }});
+    writeln!(stream, "{request}").unwrap();
+    let mut ack = String::new();
+    BufReader::new(stream).read_line(&mut ack).unwrap();
+    print!("\x1b]0;✳ Claude Code\x07\r\n❯ ");
+    std::io::stdout().flush().unwrap();
     // Publish native readiness only after the TTY and its input reader exist.
     write(root, "session.json", json!({"session":id}));
     let mut input = Vec::new();

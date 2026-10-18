@@ -164,7 +164,9 @@ fn catalog_installed_harness(install: &std::path::Path) -> Result<agency::launch
                 "install_claude_code",
             )
         })?;
-    agency::launch::InstalledHerdr::open(binary, &claude)
+    let runtime = agency::launch::InstalledHerdr::open(binary, &claude)?;
+    runtime.verify_claude_trust()?;
+    Ok(runtime)
 }
 
 fn claude_on_path() -> Option<std::path::PathBuf> {

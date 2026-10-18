@@ -171,7 +171,7 @@ fn paired_with(
         json!({"program":"/bin/sh","arguments":["-c",script,"dispatch-fixture",delay]}).to_string(),
     )
     .unwrap();
-    let agency = spawn_agency_as(&f, "agency.log", executor);
+    let agency = spawn_agency_with(&f, "agency.log", None, executor);
     let (ok, binding) = f.run(&[
         "agency",
         "pair",
@@ -279,6 +279,35 @@ fn configure_git_writer(
     changed: bool,
     claim_no_changes: bool,
 ) {
+    configure_git_writer_spawn(f, setup, pending, changed, claim_no_changes, None);
+}
+
+fn configure_installed_git_writer(
+    f: &Fixture,
+    setup: &mut Paired,
+    pending: &Value,
+    changed: bool,
+    claim_no_changes: bool,
+    agency_bin: &Path,
+) {
+    configure_git_writer_spawn(
+        f,
+        setup,
+        pending,
+        changed,
+        claim_no_changes,
+        Some(agency_bin),
+    );
+}
+
+fn configure_git_writer_spawn(
+    f: &Fixture,
+    setup: &mut Paired,
+    pending: &Value,
+    changed: bool,
+    claim_no_changes: bool,
+    installed_agency: Option<&Path>,
+) {
     assert!(setup.agency.0.kill().is_ok());
     setup.agency.0.wait().unwrap();
     let exported = git_output(&f.root.join("write-site"), &["fast-export", "main"]);
@@ -331,7 +360,7 @@ while read -r managed_input; do :; done
         json!({"program":"/bin/sh","arguments":["-c",script,"git-writer",String::from_utf8(exported.stdout).unwrap(),frame.to_string(),if changed { "changed" } else { "unchanged" },pending["change_set_id"],if claim_no_changes { "no_changes" } else { "commit" }]}).to_string(),
     )
     .unwrap();
-    setup.agency = spawn_agency(f, "git-writer.log");
+    setup.agency = spawn_agency_with(f, "git-writer.log", installed_agency, Executor::Script);
 }
 
 /// Independent platform readback uses the packaged tea and the control's stored
@@ -395,11 +424,37 @@ fn ready_gitea(f: &Fixture) {
 /// Spawn (or respawn) the fixture Agency with whatever `script.json` currently holds, and wait
 /// for its control socket. The Agency keeps its own root, so a restart keeps its bindings.
 fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
-    spawn_agency_as(f, log, Executor::Script)
+    spawn_agency_with(f, log, None, Executor::Script)
 }
-fn spawn_agency_as(f: &Fixture, log: &str, executor: Executor) -> AgencyChild {
-    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
-    let mut serve = Command::new(&binary);
+
+/// `installed_agency` is the payload `bin/agency`. The override is removed so the write path
+/// must find `hctl2-tool` beside that executable. The Buck binary has no sibling tool.
+fn spawn_agency_with(
+    f: &Fixture,
+    log: &str,
+    installed_agency: Option<&Path>,
+    executor: Executor,
+) -> AgencyChild {
+    let owned;
+    let binary = if let Some(installed) = installed_agency {
+        installed
+    } else {
+        owned = PathBuf::from(
+            std::env::var_os("CARGO_BIN_EXE_agency")
+                .expect("CARGO_BIN_EXE_agency must be set to run this test"),
+        );
+        owned.as_path()
+    };
+    assert!(
+        binary.is_file(),
+        "agency binary missing: {}",
+        binary.display()
+    );
+    let mut serve = Command::new(binary);
+    if installed_agency.is_some() {
+        serve.env_remove("HCTL2_TOOL_BIN");
+        serve.env_remove("HCTL2_INSTALL_ROOT");
+    }
     serve
         .arg("--root")
         .arg(f.root.join("independent-agency"))
@@ -426,7 +481,7 @@ fn spawn_agency_as(f: &Fixture, log: &str, executor: Executor) -> AgencyChild {
     );
     let deadline = std::time::Instant::now() + ready_within;
     loop {
-        if Command::new(&binary)
+        if Command::new(binary)
             .arg("--root")
             .arg(f.root.join("independent-agency"))
             .arg("status")
@@ -624,7 +679,7 @@ fn publishing_chain(name: &str, requires_confirmation: bool, review_comments: bo
         assert!(
             std::time::Instant::now() < deadline,
             "publication not confirmed: {shown}; {}",
-            std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
+            settle_diagnostics(&f, p, invocation)
         );
         std::thread::sleep(Duration::from_millis(100));
     };
@@ -1107,22 +1162,31 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     let (ok, started) = f.run(&start);
     assert!(ok, "{started}");
     let invocation = started["invocation_id"].as_str().unwrap().to_owned();
-    let wait = |what: &str, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
-        let by = std::time::Instant::now() + settle;
-        loop {
-            if let Some(value) = done() {
-                return value;
+    let wait =
+        |what: &str, budget: Duration, mut done: Box<dyn FnMut() -> Option<Value> + '_>| -> Value {
+            let by = std::time::Instant::now() + budget;
+            loop {
+                if let Some(value) = done() {
+                    return value;
+                }
+                assert!(
+                    std::time::Instant::now() < by,
+                    "{what} did not settle; {}",
+                    settle_diagnostics(&f, &p, &invocation)
+                );
+                std::thread::sleep(Duration::from_millis(100));
             }
-            assert!(
-                std::time::Instant::now() < by,
-                "{what} did not settle; {}",
-                std::fs::read_to_string(f.root.join("control.log")).unwrap_or_default()
-            );
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    };
+        };
+    // The invocation already names its deadline. Wait for a terminal state
+    // inside that budget: `failed` is the stuck step, `completed` is done.
+    // A second, shorter timer was abandoning a still-running call.
+    let invocation_budget = std::time::SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_millis(deadline))
+        .and_then(|at| at.duration_since(std::time::SystemTime::now()).ok())
+        .unwrap_or(Duration::ZERO);
     let finished = wait(
         "invocation",
+        invocation_budget,
         Box::new(|| {
             let (ok, shown) = f.run(&["invocation", "show", &p, &invocation]);
             assert!(ok, "{shown}");
@@ -1132,10 +1196,12 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
                     shown["state"].as_str(),
                     Some("failed" | "cancelled" | "lost")
                 ),
-                "{}; {}; Agency stderr: {}",
+                "invocation {}: {}; {}; {}; agency agency.log: {}",
+                shown["state"],
                 shown["reason"],
+                settle_diagnostics(&f, &p, &invocation),
                 script_diagnostics(&f, &shown),
-                std::fs::read_to_string(f.root.join("agency.log")).unwrap_or_default()
+                super::log_tail(&f.root.join("agency.log"))
             );
             (shown["state"] == "completed").then_some(shown)
         }),
@@ -1165,6 +1231,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     };
     let bodies = wait(
         "room projection",
+        settle,
         Box::new(|| {
             let bodies = room_bodies();
             bodies
@@ -1194,6 +1261,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
         // 杀点 1：分支已推送并确认，平台还没被问过评审请求。
         let held = wait(
             "publication held after push",
+            settle,
             Box::new(|| {
                 let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
                 assert!(ok, "{shown}");
@@ -1273,6 +1341,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     }
     let published = wait(
         "publication",
+        settle,
         Box::new(|| {
             let (ok, shown) = f.run(&["review", "show", &setup.repo, &intent]);
             assert!(ok, "{shown}");
@@ -1330,6 +1399,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
         // 杀点 2：合并已提交、结果还没回读——平台上是「已合并」，控制面还没有 Receipt。
         let held = wait(
             "integration held before readback",
+            settle,
             Box::new(|| {
                 let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
                 assert!(ok, "{shown}");
@@ -1364,6 +1434,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     }
     let merged = wait(
         "integration",
+        settle,
         Box::new(|| {
             let (ok, shown) = f.run(&["integration", "show", &setup.repo, &merge_intent]);
             assert!(ok, "{shown}");
@@ -1623,6 +1694,21 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     );
 }
 
+/// What a settle timeout can actually show. `<root>/control.log` is the daemon
+/// stderr (`HCTL2_CONTROL_LOG`), appended across restarts. `git-writer.log` is
+/// the script Agency before the first kill; `independent-agency.log` is the one
+/// started by `kill_and_restart_everything`.
+fn settle_diagnostics(f: &Fixture, project: &str, invocation: &str) -> String {
+    let shown = f.run(&["invocation", "show", project, invocation]).1;
+    let services = f.run(&["services", "status"]).1;
+    format!(
+        "invocation: {shown}; services: {services}; control: {}; agency git-writer.log: {}; agency independent-agency.log: {}",
+        super::log_tail(&f.root.join("control.log")),
+        super::log_tail(&f.root.join("git-writer.log")),
+        super::log_tail(&f.root.join("independent-agency.log"))
+    )
+}
+
 fn script_diagnostics(f: &Fixture, shown: &Value) -> String {
     let credential_root = f.root.join("independent-agency").canonicalize().unwrap();
     let digest = agency_proto::hash(credential_root.as_os_str().as_encoded_bytes());
@@ -1675,6 +1761,98 @@ fn replay_invocation(f: &Fixture, input: &Path, key: &str) -> Value {
     ]);
     assert!(ok, "{replay}");
     replay
+}
+
+/// P1-1：安装包里的 Agency 与 `hctl2-tool` 同在 `bin/`。去掉 `HCTL2_TOOL_BIN`
+/// 和 `HCTL2_INSTALL_ROOT` 后，写入派工仍要物化并准入一个版本。只认
+/// `libexec/hctl2/hctl2-tool` 时，派工在物化阶段失败，这条红。
+#[test]
+fn installed_payload_agency_seals_a_write_without_tool_bin() {
+    let (f, mut setup) = paired_profile("installed-tool", 0, "write");
+    // assemble.sh copies this export into payload/bin. The dependency package the
+    // other fixtures unpack does not carry these two files.
+    let party = PathBuf::from(
+        std::env::var_os("HCTL2_FIRST_PARTY").expect("HCTL2_FIRST_PARTY must be set"),
+    );
+    let agency = party.join("bin/agency");
+    let tool = party.join("bin/hctl2-tool");
+    assert!(agency.is_file(), "{}", agency.display());
+    assert!(tool.is_file(), "{}", tool.display());
+    assert!(
+        !party.join("libexec/hctl2/hctl2-tool").exists(),
+        "the installed layout must not satisfy the old libexec lookup"
+    );
+    let baseline =
+        String::from_utf8(git_output(&f.root.join("write-site"), &["rev-parse", "HEAD"]).stdout)
+            .unwrap()
+            .trim()
+            .to_owned();
+    let deadline_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+        + 120_000;
+    let input = f.root.join("installed-tool-invocation.json");
+    std::fs::write(&input, json!({"project_id":setup.project,"room_id":setup.room,"target":"research","profile":setup.profile["revision"],"request":"Change source.txt and leave it for sealing","budget":65536,"deadline_ms":deadline_ms,"retry_of":null,"write":{"change_set_id":null,"baseline_commit":baseline,"target_branch":"main","allow_update":true}}).to_string()).unwrap();
+    let (ok, preview) = f.run(&[
+        "invocation",
+        "preview",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "installed-tool",
+    ]);
+    assert!(ok, "{preview}");
+    let pending = preview["effect_summary"]["preview"]["write"]["lease"]["pending"].clone();
+    let set = pending["change_set_id"].as_str().unwrap().to_owned();
+    configure_installed_git_writer(&f, &mut setup, &pending, true, false, &agency);
+
+    let (ok, started) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "installed-tool",
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(ok, "{started}");
+    let invocation = started["invocation_id"].as_str().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        let (ok, shown) = f.run(&["invocation", "show", &setup.project, invocation]);
+        assert!(ok, "{shown}");
+        if shown["state"] == "completed" {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "installed agency did not seal: state={} results={}; {}",
+            shown["state"],
+            shown["results"],
+            script_diagnostics(&f, &shown)
+        );
+        assert!(
+            matches!(shown["state"].as_str(), Some("pending" | "running")),
+            "{shown}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let (ok, admitted) = f.run(&["changeset", "show", &setup.repo, &set]);
+    assert!(ok, "{admitted}");
+    let revisions = admitted["revisions"].as_array().unwrap();
+    assert_eq!(revisions.len(), 1, "{admitted}");
+    assert_eq!(revisions[0]["producer_ref"]["invocation_id"], invocation);
+    assert_ne!(
+        revisions[0]["base_commit_sha"], revisions[0]["result_tree_sha"],
+        "the sealed version must record the script change"
+    );
+    println!(
+        "INSTALLED AGENCY admitted {} after materializing with {}",
+        revisions[0]["change_set_revision_id"],
+        tool.display()
+    );
 }
 
 #[test]

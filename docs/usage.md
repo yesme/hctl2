@@ -179,6 +179,16 @@ hctl2-services start
 - 如果只启动了部分组件，`status` 和 `smoke` 返回非零是预期行为，因为这两个命令检查的是完整依赖集合。
 - 如果 Chatroom 页面可打开但无法连接，先检查 Tuwunel 与 `cinny` 两行状态；客户端配置固定指向 `http://127.0.0.1:6167`，不接受任意 homeserver URL。
 
+## 本地 Agency 与 Claude Code 的工作区信任
+
+本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录，Claude Code 的会话就开在这些目录里；写入型派工开在 git worktree 里。Claude Code 第一次进入没被信任过的文件夹时，会问是否信任它；git 仓库和 worktree 不沿用父目录的信任。
+
+让不让 Claude 在执行目录里工作，由 Agency 的所有者决定，不交给守着 pane 的人逐个回答（所有者，2026-10-18）。Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动，Claude Code 2.1.302 据此不再询问。这个变量 Claude Code 没有写进公开文档。Agency 只给自己起的会话设它，不改你自己的 Claude 配置（`~/.claude.json` 等）；你在终端里自己用 Claude Code 时照常询问。用户不需要做任何事。
+
+受信任意味着仓库里的 Claude 项目配置（例如 `.claude/settings.json` 里的 hooks）会在这些会话里生效，所以登记给 Agency 的仓库应当是你信得过的。
+
+Agency 启动时会核验这一条：在 `/tmp` 下的新目录里开一次 Claude 会话，不派任务，也不按任何键。如果 Claude 仍然弹出信任问题，例如换成了不认这个变量的版本，Claude 工种就不进 Agency 的目录，Agency 根目录下的 `serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`。派工途中遇到这个问题，也会立刻以同一个错误结束。Agency 任何时候都不替人回答这个问题。
+
 ## 写入型派工与 ChangeSet
 
 `invocation preview` 的 JSON 输入可以带 `write`。Worker Profile 也须是 `write` 模式并允许 `git.write`。基线填 Git 回读的提交 SHA；目标分支和能否更新评审请求由人明确选择：

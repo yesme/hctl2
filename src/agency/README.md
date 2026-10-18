@@ -89,7 +89,7 @@ harness 只编辑、测试工作文件，不获源 Git 配置、控制凭据或 
 
 Execution Spec 的 `isolation_effects` 只要有一项（包括 `no_network`），准备和启动都拒绝，原因码 `ISOLATION_UNAVAILABLE`，不拉起 harness。这些效果本包不施加：Landlock 不管网络，macOS profile 从 `(allow default)` 起，写入 turn 的 `externalSandbox` 仍是 `networkAccess: enabled`。派工上不把它们记成已生效。没有声明时照常启动。
 
-原生一轮完成后，Agency 保存回答并调用公开 `hctl2-tool repo seal`。Detached 副本只在 HEAD 和原生 ChangeSet 分支都仍为冻结基线时恢复原分支再封存，不放宽工具检查。工具回读基线和结果树：相同交 `no_changes`，有改动交固定 commit；输出严格按 [Repo Result Proposal schema](../crates/repo/README.md)。失败报原错误码、保留 Running / 回答 / 文件，只重试工具，不重复派工或交 Proposal。成功交回后保留 stop 句柄到原写进程实际关闭，控制面继续负责准入和发布。
+原生一轮完成后，Agency 保存回答并调用公开 `hctl2-tool repo seal`。工具位置与 control 找 `agency` 相同：`HCTL2_TOOL_BIN` 优先，否则用本进程可执行文件同目录的 `hctl2-tool`。安装包把这两个文件都放在 `bin/`，不在 `libexec/hctl2`。Detached 副本只在 HEAD 和原生 ChangeSet 分支都仍为冻结基线时恢复原分支再封存，不放宽工具检查。工具回读基线和结果树：相同交 `no_changes`，有改动交固定 commit；输出严格按 [Repo Result Proposal schema](../crates/repo/README.md)。失败报原错误码、保留 Running / 回答 / 文件，只重试工具，不重复派工或交 Proposal。成功交回后保留 stop 句柄到原写进程实际关闭，控制面继续负责准入和发布。
 
 `write_session_test` 从真实 RPC 核两家进程与 Git 结果；本机登录的原生会话用例默认 ignored / UNVERIFIED。实测、原生记录、macOS 限制及变异记录见 [Agency 写入会话调研](../../docs/research/agency-write-session.md)。模型字段与通用工具直报仍另议。包 4 的接口见 [Context](../crates/context/README.md)，包 5 见 [Participant](../crates/participant/README.md)。
 
