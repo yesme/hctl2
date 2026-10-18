@@ -1,0 +1,2 @@
+#!/bin/sh
+echo 'git version 2.38.0'

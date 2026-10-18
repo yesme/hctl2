@@ -2,6 +2,17 @@ load("//build/rules:ci.bzl", "CI_FULL")
 
 oncall("hctl2")
 
+# Fixture scripts a test executes as a process. They are built here rather than
+# written by the test: a script written and executed at once can answer execve
+# with ETXTBSY on Linux while another test thread's forked child still holds its
+# write descriptor. Tests link these into a writable directory, so `$0` (and the
+# `$0.*` state beside it) stays where the test expects.
+filegroup(
+    name = "script_fixtures",
+    srcs = {path: path for path in glob(["fixtures/scripts/*"])},
+    visibility = ["PUBLIC"],
+)
+
 export_file(
     name = "affected_targets",
     src = "build/ci/affected-targets",

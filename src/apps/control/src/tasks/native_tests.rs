@@ -61,25 +61,30 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
     std::fs::create_dir_all(&root).unwrap();
     let gitea = root.join("gitea");
     let xz = PathBuf::from(env!("HCTL2_TEST_XZ_ROOT"));
-    let out = Command::new(xz.join("bin/xz"))
+    // Both binaries are written by children. The test process must never hold the
+    // write descriptor of a file it will execute: another test thread's forked
+    // child can inherit it and answer ETXTBSY (Linux execve(2)).
+    let status = Command::new("/bin/sh")
         // Match packaging/common/action.sh: do not load the runner's older liblzma.
         .env("LD_LIBRARY_PATH", xz.join("lib"))
         .env_remove("XZ_DEFAULTS")
         .env_remove("XZ_OPT")
-        .args(["-dc"])
+        .args(["-c", "\"$1\" -dc \"$2\" > \"$3\"", "sh"])
+        .arg(xz.join("bin/xz"))
         .arg(archive)
-        .output()
+        .arg(&gitea)
+        .status()
         .unwrap();
-    assert!(
-        out.status.success(),
-        "xz: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    std::fs::write(&gitea, out.stdout).unwrap();
+    assert!(status.success(), "xz could not write {}", gitea.display());
     std::fs::set_permissions(&gitea, std::fs::Permissions::from_mode(0o700)).unwrap();
     let tea_copy = root.join("tea");
-    std::fs::copy(tea, &tea_copy).unwrap();
-    std::fs::set_permissions(&tea_copy, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let status = Command::new("install")
+        .args(["-m", "700"])
+        .arg(tea)
+        .arg(&tea_copy)
+        .status()
+        .unwrap();
+    assert!(status.success(), "install {} failed", tea_copy.display());
     let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = socket.local_addr().unwrap().port();
     drop(socket);

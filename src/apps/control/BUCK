@@ -4,6 +4,13 @@ load("//build/tools:xz.bzl", "XZ_DIRECTORY")
 
 oncall("hctl2")
 
+_TEST_ENV = hctl2_cargo_env() | {
+    # Built fixture scripts the tests execute as processes; see src/BUCK.
+    "HCTL2_FIXTURES": "$(location root//:script_fixtures)/fixtures/scripts",
+}
+
+_TEST_RESOURCES = ["root//:script_fixtures"]
+
 # Export this package's Markdown; the root glob stops at BUCK boundaries.
 filegroup(
     name = "docs",
@@ -77,8 +84,9 @@ rust_test(
     crate_root = "src/lib.rs",
     deps = CONTROL_DEPS,
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env(),
+    env = _TEST_ENV,
     labels = CI_FAST,
+    resources = _TEST_RESOURCES,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )
@@ -175,9 +183,10 @@ rust_test(
     crate_root = "src/lib.rs",
     deps = CONTROL_DEPS,
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env() | {
+    env = _TEST_ENV | {
         "HCTL2_TEST_TUWUNEL": "$(location root//packaging/dependencies:tuwunel)",
     },
+    resources = _TEST_RESOURCES,
     rustc_flags = HCTL2_RUSTC_FLAGS + ["--cfg=hctl_chat_native"],
     labels = CI_INTEGRATION,
     visibility = ["PUBLIC"],
@@ -190,10 +199,11 @@ rust_test(
     crate_root = "src/lib.rs",
     deps = CONTROL_DEPS,
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env() | {
+    env = _TEST_ENV | {
         "HCTL2_TEST_SCM_DOWNLOADS": "$(location root//packaging/dependencies:scm-downloads)",
         "HCTL2_TEST_XZ_ROOT": "$(location root//build/tools:xz)/" + XZ_DIRECTORY,
     },
+    resources = _TEST_RESOURCES,
     rustc_flags = HCTL2_RUSTC_FLAGS + ["--cfg=hctl_task_native"],
     labels = CI_INTEGRATION,
     visibility = ["PUBLIC"],

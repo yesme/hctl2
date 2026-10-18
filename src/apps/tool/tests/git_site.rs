@@ -9,6 +9,24 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so the `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+///
+/// The environment carries a project-relative path; a symlink resolves its
+/// target relative to the link's own directory, so it must be absolute.
+#[cfg(unix)]
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = std::fs::canonicalize(Path::new(&root).join(name))
+        .unwrap_or_else(|error| panic!("fixture {name}: {error}"));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+}
+
 struct Fixture {
     root: PathBuf,
     repo: PathBuf,
@@ -461,8 +479,7 @@ fn site_lock_holder() {
 fn rejects_git_below_the_pinned_minimum() {
     let root = temporary_directory("old-git");
     let fake = root.join("git");
-    fs::write(&fake, "#!/bin/sh\necho 'git version 2.38.0'\n").expect("fake git");
-    make_executable(&fake);
+    link_fixture("tool-fake-git-version.sh", &fake);
     let output = tool()
         .args(["repo", "inspect", "--path", "."])
         .env("HCTL2_GIT", &fake)
@@ -691,8 +708,7 @@ fn config_file_overrides_and_checkout_hooks_are_preserved() {
     let hooks = fixture.root.join("hooks");
     fs::create_dir(&hooks).expect("hooks");
     let hook = hooks.join("post-checkout");
-    fs::write(&hook, "#!/bin/sh\nprintf 'called' > hook-ran\n").expect("hook");
-    make_executable(&hook);
+    link_fixture("tool-checkout-hook-called.sh", &hook);
     let config = fixture.root.join("global-config");
     fs::write(
         &config,
@@ -734,8 +750,7 @@ fn failed_checkout_verification_does_not_create_a_baseline_marker() {
     let hooks = fixture.root.join("hooks");
     fs::create_dir(&hooks).expect("hooks");
     let hook = hooks.join("post-checkout");
-    fs::write(&hook, "#!/bin/sh\ngit symbolic-ref HEAD refs/heads/main\n").expect("hook");
-    make_executable(&hook);
+    link_fixture("tool-checkout-hook-branch.sh", &hook);
     git(
         Some(&fixture.repo),
         [
@@ -960,18 +975,6 @@ fn wait_for_path(path: &Path) {
     }
     panic!("timed out waiting for {}", path.display());
 }
-
-#[cfg(unix)]
-fn make_executable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path).expect("metadata").permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions).expect("chmod");
-}
-
-#[cfg(not(unix))]
-fn make_executable(_path: &Path) {}
 
 #[test]
 fn seal_reads_exact_base_and_tree_retains_objects_and_diff_uses_no_worktree_state() {
