@@ -6,6 +6,3 @@ buck-out/
 .DS_Store
 # Local Buck2 config (remote cache endpoints); the project root is the repository root.
 .buckconfig.local
-
-# Buck2 materialized root when invoked outside src/.
-buck-out.noindex/

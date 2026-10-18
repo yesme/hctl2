@@ -83,23 +83,16 @@ fn scratch(name: &str) -> (Scratch, Scratch) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
-    // The herdr state dir and its socket dirs are derived from the credential root and the
-    // execution dir, so the credential guard owns every candidate it could create.
+    // The herdr state dir and the socket dirs herdr derives from it, registered exactly as
+    // the service computes them instead of re-hashing.
     let mut extra = Vec::new();
-    let mut candidates = vec![cred.clone(), exec.clone()];
-    if let Some(parent) = exec.parent() {
-        let canonical = cred.canonicalize().unwrap_or_else(|_| cred.clone());
-        let digest = &agency_proto::hash(canonical.as_os_str().as_encoded_bytes())[..20];
-        let state = parent.join(format!("hctl2-herdr-state-{digest}"));
-        candidates.push(state.clone());
+    if let Ok(state) = herdr::state_dir(&exec, &cred) {
+        let socket = herdr::socket_path(&state);
+        extra.push(socket.clone());
+        if let Some(socket_dir) = socket.parent() {
+            extra.push(socket_dir.to_path_buf());
+        }
         extra.push(state);
-    }
-    if let Ok(canonical) = exec.canonicalize() {
-        candidates.push(canonical);
-    }
-    for candidate in candidates {
-        let digest = &agency_proto::hash(candidate.as_os_str().as_encoded_bytes())[..20];
-        extra.push(std::env::temp_dir().join(format!("hctl2-herdr-{digest}")));
     }
     (
         Scratch { path: cred, extra },
