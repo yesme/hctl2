@@ -464,6 +464,28 @@ fn the_next_start_reaps_an_orphaned_herdr() {
 }
 
 #[test]
+fn a_replaced_server_keeps_the_directory_when_the_old_object_drops() {
+    let (cred, exec) = scratch("replaced-owner");
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let binary = binary();
+    let old = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let new = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let socket_dir = new.socket.parent().unwrap().to_path_buf();
+    assert!(socket_dir.exists());
+    drop(old);
+    assert!(
+        socket_dir.exists(),
+        "the old Drop must not remove the replacement server's socket directory"
+    );
+    Client::connect(&new.socket).unwrap().ping().unwrap();
+    drop(new);
+    assert!(
+        !socket_dir.exists(),
+        "the owner still removes its own socket directory"
+    );
+}
+
+#[test]
 fn serve_on_a_new_directory_does_not_list_herdr() {
     let root = std::env::temp_dir().join(format!(
         "hctl2-serve-new-{}-{}",
