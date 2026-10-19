@@ -395,10 +395,24 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
     {
         command.env("HCTL2_INSTALL_ROOT", install);
     }
+    // Tests set this so a timeout can show the daemon's own stderr. Append, so a
+    // kill-and-restart in the same root keeps what the previous daemon wrote.
+    // Production leaves stderr discarded; nothing else writes `<root>/control.log`.
+    let stderr = match std::env::var_os("HCTL2_CONTROL_LOG") {
+        Some(path) => {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .map_err(io)?;
+            Stdio::from(file)
+        }
+        None => Stdio::null(),
+    };
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .spawn()
         .map_err(io)?;
     for _ in 0..2_400 {

@@ -290,11 +290,14 @@ mod tests {
         path
     }
 
-    fn script(dir: &Path, body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-        let path = dir.join("cmd.sh");
-        fs::write(&path, body).expect("script");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("mode");
+    /// The built process fixture. It comes from the build, never from this
+    /// test: a script written here and executed at once can answer ETXTBSY
+    /// while another test thread's forked child still holds its write fd.
+    fn fixture() -> PathBuf {
+        let root = std::env::var_os("HCTL2_FIXTURES")
+            .expect("HCTL2_FIXTURES must be set to run this test");
+        let path = PathBuf::from(root).join("foundation-command.sh");
+        assert!(path.is_file(), "fixture {}: not a file", path.display());
         path
     }
 
@@ -400,10 +403,15 @@ mod tests {
     fn a_stuck_command_ends_as_timed_out_and_leaves_no_process() {
         let dir = temp_dir("stuck");
         let marker = run_marker(4159);
-        let program = script(&dir, &format!("#!/bin/sh\nexec sleep {marker}\n"));
+        let program = fixture();
         let limit = Duration::from_secs(3);
         let started = Instant::now();
-        let end = run_bounded(&mut Command::new(&program), None, limit).expect("spawn");
+        let end = run_bounded(
+            Command::new(&program).args(["sleep-exec", &marker.to_string()]),
+            None,
+            limit,
+        )
+        .expect("spawn");
         assert!(
             started.elapsed() < limit + MARGIN,
             "stuck command ran for {:?}",
@@ -431,11 +439,11 @@ mod tests {
     fn stdin_is_fully_written_before_the_child_is_waited_on() {
         let dir = temp_dir("stdin");
         let copy = dir.join("body");
-        let program = script(&dir, "#!/bin/sh\ncat > \"$1\"\ncat \"$1\"\n");
+        let program = fixture();
         let payload = vec![0xA5_u8; 256 * 1024];
         let started = Instant::now();
         let end = run_bounded(
-            Command::new(&program).arg(&copy),
+            Command::new(&program).args(["echo-stdin", copy.to_str().unwrap()]),
             Some(&payload),
             Duration::from_secs(10),
         )
@@ -459,10 +467,16 @@ mod tests {
     fn exited_parent_with_stdout_holder_times_out_and_leaves_no_process() {
         let dir = temp_dir("hold-stdout");
         let marker = run_marker(4160);
-        let program = script(&dir, &format!("#!/bin/sh\nsleep {marker} &\nexit 0\n"));
+        let program = fixture();
+        let argument = marker.clone();
         let limit = Duration::from_secs(2);
         let end = call_within(limit, move || {
-            run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
+            run_bounded(
+                Command::new(&program).args(["sleep-hold", &argument]),
+                None,
+                limit,
+            )
+            .expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
         assert_no_process_with(&marker);
@@ -473,11 +487,17 @@ mod tests {
     fn unread_stdin_over_the_pipe_buffer_times_out_and_leaves_no_process() {
         let dir = temp_dir("unread-stdin");
         let marker = run_marker(4161);
-        let program = script(&dir, &format!("#!/bin/sh\nexec sleep {marker}\n"));
+        let program = fixture();
+        let argument = marker.clone();
         let limit = Duration::from_secs(3);
         let payload = vec![0_u8; 1024 * 1024];
         let end = call_within(limit, move || {
-            run_bounded(&mut Command::new(&program), Some(&payload), limit).expect("spawn")
+            run_bounded(
+                Command::new(&program).args(["sleep-exec", &argument]),
+                Some(&payload),
+                limit,
+            )
+            .expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
         assert_no_process_with(&marker);
@@ -488,14 +508,14 @@ mod tests {
     fn cat_of_one_mebibyte_finishes_within_the_limit_and_leaves_no_process() {
         let dir = temp_dir("cat-stdin");
         let pidfile = dir.join("pid");
-        let program = script(&dir, "#!/bin/sh\necho $$ > \"$1\"\nexec cat\n");
+        let program = fixture();
         let limit = Duration::from_secs(5);
         let payload = vec![0x5A_u8; 1024 * 1024];
         let input = payload.clone();
         let pidfile_for_call = pidfile.clone();
         let end = call_within(limit, move || {
             run_bounded(
-                Command::new(&program).arg(&pidfile_for_call),
+                Command::new(&program).args(["pid-then-cat", pidfile_for_call.to_str().unwrap()]),
                 Some(&input),
                 limit,
             )
@@ -521,13 +541,16 @@ mod tests {
         let dir = temp_dir("stuck-holder");
         let holder = run_marker(4162);
         let stuck = run_marker(4163);
-        let program = script(
-            &dir,
-            &format!("#!/bin/sh\nsleep {holder} &\nexec sleep {stuck}\n"),
-        );
+        let program = fixture();
         let limit = Duration::from_secs(3);
+        let (holder_argument, stuck_argument) = (holder.clone(), stuck.clone());
         let end = call_within(limit, move || {
-            run_bounded(&mut Command::new(&program), None, limit).expect("spawn")
+            run_bounded(
+                Command::new(&program).args(["sleep-hold-exec", &holder_argument, &stuck_argument]),
+                None,
+                limit,
+            )
+            .expect("spawn")
         });
         assert!(matches!(end, CommandEnd::TimedOut), "{end:?}");
         assert_no_process_with(&holder);
@@ -538,11 +561,11 @@ mod tests {
     #[test]
     fn unread_stdin_with_an_immediate_exit_keeps_the_child_answer() {
         let dir = temp_dir("instant-refusal");
-        let program = script(&dir, "#!/bin/sh\necho refused >&2\nexit 3\n");
+        let program = fixture();
         let payload = vec![0_u8; 1024 * 1024];
         let started = Instant::now();
         let end = run_bounded(
-            &mut Command::new(&program),
+            Command::new(&program).arg("refuse"),
             Some(&payload),
             Duration::from_secs(10),
         )

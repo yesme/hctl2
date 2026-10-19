@@ -60,7 +60,31 @@ pub fn required(store: &Store, key: &ObjectKey) -> Result<Record> {
     })
 }
 pub fn source(store: &Store, repo_id: &str, id: &str) -> Result<(Record, Source)> {
-    let record = required(store, &key(Scope::Repo(repo_id.into()), "task_source", id))?;
+    let record = match required(store, &key(Scope::Repo(repo_id.into()), "task_source", id)) {
+        Err(error) if error.code == "NOT_FOUND" => {
+            let owners = store
+                .list("task_source")?
+                .into_iter()
+                .filter(|r| r.key.id == id)
+                .filter_map(|r| match r.key.scope {
+                    Scope::Repo(owner) => Some(owner),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if owners.is_empty() {
+                return Err(error);
+            }
+            return Err(reject(
+                "NOT_FOUND",
+                format!(
+                    "Task source {id} belongs to Repo {}, not Repo {repo_id}; choose a source in the Project's Repo",
+                    owners.join(", "),
+                ),
+                "hctl2 task sources",
+            ));
+        }
+        result => result?,
+    };
     let source = decode(&record)?;
     Ok((record, source))
 }

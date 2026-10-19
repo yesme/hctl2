@@ -1,15 +1,19 @@
 use super::*;
-use std::os::unix::fs::PermissionsExt;
 use store::{EffectIntent, ObjectKey, Scope, Version};
+
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so the `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+use crate::test_fixtures::link_fixture;
 
 struct Fixture(PathBuf);
 impl Fixture {
-    fn new(name: &str, script: &str) -> Self {
+    fn new(name: &str) -> Self {
         let root = std::env::temp_dir().join(format!("task-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let exe = root.join("native");
-        std::fs::write(&exe, script).unwrap();
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        link_fixture(&format!("provider-{name}.sh"), &root.join("native"));
         Self(root)
     }
     fn client(&self) -> Client {
@@ -29,20 +33,7 @@ impl Drop for Fixture {
 
 #[test]
 fn preflight_failure_or_stale_card_never_crosses_dispatch_boundary() {
-    let f = Fixture::new(
-        "preflight",
-        r#"#!/bin/sh
-printf '%s\n' "$*" >> "$0.calls"
-case "$*" in
- *'GET repos/owner/repo') printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1,"full_name":"owner/repo","permissions":{"admin":false}}' ;;
- *'GET user') printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1}' ;;
- *'GET repos/owner/repo/issues/1')
-   if [ -f "$0.card" ]; then printf 'HTTP/1.1 200 OK\n' >&2; cat "$0.card";
-   else printf 'HTTP/1.1 503 Error\n' >&2; printf '{}'; fi ;;
- *) printf 'HTTP/1.1 500 Unexpected\n' >&2; printf '{}' ;;
-esac
-"#,
-    );
+    let f = Fixture::new("preflight");
     let c = f.client();
     let raw = json!({"id":1,"number":1,"title":"old","body":"body","state":"open","updated_at":"t0","content_version":0});
     let card = normalize(&src(), raw.clone()).unwrap();
@@ -106,17 +97,7 @@ esac
 
 #[test]
 fn github_conditional_read_and_rate_limit_stop_native_requests() {
-    let f = Fixture::new(
-        "conditional",
-        r#"#!/bin/sh
-printf '%s\n' "$*" >> "$0.calls"
-case "$*" in
- *limited*) printf 'HTTP/2.0 429 Too Many Requests\nRetry-After: 3600\n\n{}' ;;
- *If-None-Match*) printf 'HTTP/2.0 304 Not Modified\n\n' ;;
- *) printf 'HTTP/2.0 200 OK\nETag: "v1"\n\n{"id":1}' ;;
-esac
-"#,
-    );
+    let f = Fixture::new("conditional");
     let c = Client::github(f.0.join("native"), "github.com".into());
     assert_eq!(c.api("GET", "user", None).unwrap(), Some(json!({"id":1})));
     assert_eq!(c.api("GET", "user", None).unwrap(), Some(json!({"id":1})));
@@ -142,18 +123,7 @@ esac
 
 #[test]
 fn write_rejection_is_terminal_only_when_provider_response_proves_no_effect() {
-    let f = Fixture::new(
-        "reject",
-        r#"#!/bin/sh
-case "$*" in
- *'GET repos/owner/repo') printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1,"full_name":"owner/repo"}' ;;
- *'GET user') printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1}' ;;
- *'GET repos/owner/repo/issues/1') printf 'HTTP/1.1 200 OK\n' >&2; cat "$0.card" ;;
- *PATCH*) cat > "$0.input"; printf 'HTTP/1.1 %s Error\n' "$(cat "$0.status")" >&2; printf '{}' ;;
- *) printf 'HTTP/1.1 500 Unexpected\n' >&2; printf '{}' ;;
-esac
-"#,
-    );
+    let f = Fixture::new("reject");
     let raw = json!({"id":1,"number":1,"title":"old","body":"body","state":"open","updated_at":"t0","content_version":0});
     std::fs::write(f.0.join("native.card"), raw.to_string()).unwrap();
     let card = normalize(&src(), raw).unwrap();
@@ -200,20 +170,7 @@ esac
 
 #[test]
 fn incremental_board_read_does_not_rehydrate_unchanged_cards_and_paginates_changes() {
-    let f = Fixture::new(
-        "incremental",
-        r#"#!/bin/sh
-printf '%s\n' "$*" >> "$0.calls"
-printf 'HTTP/1.1 200 OK\n' >&2
-case "$*" in
- *'GET repos/owner/repo') printf '{"id":1,"full_name":"owner/repo","internal_tracker":{"enable_issue_dependencies":false}}' ;;
- *'GET user') printf '{"id":1}' ;;
- *'issues?'*'page=1') cat "$0.issues1" ;;
- *'issues?'*'page=2') cat "$0.issues2" ;;
- *) printf '[]' ;;
-esac
-"#,
-    );
+    let f = Fixture::new("incremental");
     let mut cards = vec![];
     for number in 1..=20 {
         cards.push(normalize(&src(),json!({"id":number,"number":number,"title":"card","body":"body","state":"open","updated_at":"2026-09-27T01:02:03Z","comments":1})).unwrap());
@@ -322,31 +279,7 @@ fn create_response_is_only_a_locator_not_a_confirmation() {
             "ENTITY_CHANGED",
         ),
     ] {
-        let f = Fixture::new(
-            &format!("create-locator-{name}"),
-            r#"#!/bin/sh
-method=GET
-for arg do
- if [ "$previous" = --method ]; then method="$arg"; fi
- previous="$arg"
- path="$arg"
-done
-printf '%s %s\n' "$method" "$path" >> "$0.calls"
-if [ "$method:$path" = GET:repos/owner/repo/issues/1 ]; then
- printf 'HTTP/1.1 %s Status\n\n' "$(cat "$0.status")"
- cat "$0.readback"
- exit 0
-fi
-printf 'HTTP/1.1 200 OK\n\n'
-case "$method:$path" in
- GET:user) printf '{"id":1}' ;;
- GET:repos/owner/repo) printf '{"id":1,"full_name":"owner/repo"}' ;;
- GET:*/issues\?*) printf '[]' ;;
- POST:*/issues) cat >/dev/null; cat "$0.card" ;;
- *) exit 1 ;;
-esac
-"#,
-        );
+        let f = Fixture::new("create-locator");
         std::fs::write(f.0.join("native.card"), raw.to_string()).unwrap();
         std::fs::write(f.0.join("native.readback"), observed.to_string()).unwrap();
         std::fs::write(f.0.join("native.status"), status.to_string()).unwrap();
@@ -401,16 +334,7 @@ fn tea_http_error_unknown_create_reads_exact_marker_once() {
     let root = std::env::temp_dir().join(format!("task-tea-fixture-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let exe = root.join("tea");
-    std::fs::write(&exe,r#"#!/bin/sh
-case "$*" in
- *"GET user") printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1}' ;;
- *"GET repos/owner/repo") printf 'HTTP/1.1 200 OK\n' >&2; printf '{"id":1,"full_name":"owner/repo"}' ;;
- *POST*) cat > "$0.input"; printf x >> "$0.posts"; cp "$0.result" "$0.created"; printf 'HTTP/1.1 503 Error\n' >&2; printf '{}' ;;
- *page=2*) printf 'HTTP/1.1 200 OK\n' >&2; printf '[]' ;;
- *) printf 'HTTP/1.1 200 OK\n' >&2; if [ -f "$0.created" ]; then cat "$0.created"; else printf '[]'; fi ;;
-esac
-"#).unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("provider-tea-http-error.sh", &exe);
     let raw = json!([{"id":1,"number":1,"title":"new","body":"body\n\n<!-- exact -->","state":"open","content_version":0,"updated_at":"t0","labels":[]}]);
     std::fs::write(root.join("tea.result"), raw.to_string()).unwrap();
     let client = Client::Gitea(Hosted::fixture(
@@ -448,12 +372,7 @@ fn github_native_headers_and_transfer_do_not_retarget_original_entity() {
     let root = std::env::temp_dir().join(format!("task-gh-fixture-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     let exe = root.join("gh");
-    std::fs::write(
-        &exe,
-        "#!/bin/sh\nprintf 'HTTP/2.0 200 OK\\n\\n'\ncat \"$0.json\"\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("provider-gh-native-headers.sh", &exe);
     let mut src = src();
     src.candidate.provider = "github_issues".into();
     src.platform.instance = "github.com".into();

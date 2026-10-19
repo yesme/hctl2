@@ -960,8 +960,8 @@ mod authorization_tests {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_fixtures::link_fixture;
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -974,10 +974,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hctl2-agency-stuck-{nanos}"));
         fs::create_dir(&dir).unwrap();
         let program = dir.join("hang.sh");
+        link_fixture("misc-hang.sh", &program);
         let marker = run_marker(4167);
-        fs::write(&program, format!("#!/bin/sh\nexec sleep {marker}\n")).unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
-        let command = Command::new(&program);
+        let mut command = Command::new(&program);
+        command.arg(&marker);
         let started = Instant::now();
         let error = super::run_agency_command(command, Duration::from_secs(3))
             .expect_err("stuck agency start");
@@ -987,6 +987,10 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
+    /// Point a path at a built fixture script. The test never writes the script
+    /// it executes: a file just opened for writing can answer execve with
+    /// ETXTBSY on Linux while another test thread's forked child still holds
+    /// the write descriptor.
     /// A marker unique to this run and to the call site: the leftover check
     /// looks for it, and the same test file compiles into several test
     /// binaries, so a constant would let one binary see the other's process.

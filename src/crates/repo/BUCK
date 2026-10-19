@@ -17,6 +17,12 @@ DEPS = [
     "root//third-party/rust:serde_json",
 ]
 
+_TEST_ENV = hctl2_cargo_env() | {
+    # Built fixture scripts the tests execute as processes; see src/BUCK.
+    "HCTL2_FIXTURES": "$(location root//:script_fixtures)/fixtures/scripts",
+}
+_TEST_RESOURCES = ["root//:script_fixtures"]
+
 rust_library(
     name = "repo",
     srcs = glob(["src/**/*.rs"]),
@@ -37,8 +43,9 @@ rust_library(
         crate_root = "tests/" + suite + ".rs",
         deps = [":repo"] + DEPS,
         edition = HCTL2_RUST_EDITION,
-        env = hctl2_cargo_env(),
+        env = _TEST_ENV if suite == "git" else hctl2_cargo_env(),
         labels = CI_FAST,
+        resources = _TEST_RESOURCES if suite == "git" else [],
         rustc_flags = HCTL2_RUSTC_FLAGS,
         visibility = ["PUBLIC"],
     )

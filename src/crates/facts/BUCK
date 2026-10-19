@@ -3,6 +3,13 @@ load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2
 
 oncall("hctl2")
 
+_TEST_ENV = hctl2_cargo_env() | {
+    # Built fixture scripts the tests execute as processes; see src/BUCK.
+    "HCTL2_FIXTURES": "$(location root//:script_fixtures)/fixtures/scripts",
+}
+
+_TEST_RESOURCES = ["root//:script_fixtures"]
+
 rust_library(
     name = "facts",
     srcs = ["src/lib.rs"],
@@ -34,8 +41,9 @@ rust_test(
         "root//third-party/rust:sha2",
     ],
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env(),
+    env = _TEST_ENV,
     labels = CI_FAST,
+    resources = _TEST_RESOURCES,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )

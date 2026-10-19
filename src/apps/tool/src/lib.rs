@@ -559,6 +559,25 @@ mod tests {
 
     use super::run;
 
+    /// Point a writable path at a built fixture script. The test never writes
+    /// the script it executes: a file just opened for writing can answer
+    /// execve with ETXTBSY on Linux while another test thread's forked child
+    /// still holds the write descriptor. A link keeps `$0` at this path, so
+    /// the `$0.*` state the fixtures keep stays beside it in the writable
+    /// directory.
+    ///
+    /// The environment carries a project-relative path; a symlink resolves its
+    /// target relative to the link's own directory, so it must be absolute.
+    fn link_fixture(name: &str, path: &std::path::Path) {
+        let root = std::env::var_os("HCTL2_FIXTURES")
+            .expect("HCTL2_FIXTURES must be set to run this test");
+        let source = std::fs::canonicalize(std::path::Path::new(&root).join(name))
+            .unwrap_or_else(|error| panic!("fixture {name}: {error}"));
+        std::os::unix::fs::symlink(&source, path).unwrap_or_else(|error| {
+            panic!("link {} -> {}: {error}", path.display(), source.display())
+        });
+    }
+
     #[test]
     fn reports_version() {
         let output = run([OsString::from("--version")]).expect("version must parse");
@@ -614,7 +633,6 @@ mod tests {
     #[test]
     fn wait_exit_codes_cover_all_four_outcomes() {
         use std::fs;
-        use std::os::unix::fs::PermissionsExt;
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nanos = SystemTime::now()
@@ -644,12 +662,7 @@ mod tests {
         assert_eq!(record["outcome"], "established");
 
         let gh_closed = directory.join("gh-closed");
-        fs::write(
-            &gh_closed,
-            "#!/bin/sh\necho '{\"mergedAt\":null,\"state\":\"CLOSED\",\"url\":\"u\",\"headRefOid\":\"abc\"}'\n",
-        )
-        .expect("gh fixture");
-        fs::set_permissions(&gh_closed, fs::Permissions::from_mode(0o755)).expect("chmod");
+        link_fixture("tool-gh-closed.sh", &gh_closed);
         let not_established = run([
             OsString::from("wait"),
             OsString::from("--deadline"),
@@ -666,8 +679,7 @@ mod tests {
         assert_eq!(not_established.exit_code(), 3);
 
         let gh_broken = directory.join("gh-broken");
-        fs::write(&gh_broken, "#!/bin/sh\necho broken >&2\nexit 1\n").expect("gh fixture");
-        fs::set_permissions(&gh_broken, fs::Permissions::from_mode(0o755)).expect("chmod");
+        link_fixture("tool-gh-broken.sh", &gh_broken);
         let unreadable = run([
             OsString::from("wait"),
             OsString::from("--deadline"),
