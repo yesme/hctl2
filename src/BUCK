@@ -25,6 +25,14 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+# The reaper is invoked by CI after the test steps and by developers by hand;
+# fixtures in build/tests drive it directly.
+export_file(
+    name = "reap_test_leftovers",
+    src = "build/ci/reap-test-leftovers",
+    visibility = ["PUBLIC"],
+)
+
 export_file(
     name = "Cargo.toml",
     src = "Cargo.toml",

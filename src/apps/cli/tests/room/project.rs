@@ -36,12 +36,12 @@ struct AgencyChild {
     child: std::process::Child,
     root: PathBuf,
 }
-impl Drop for AgencyChild {
-    fn drop(&mut self) {
-        // Graceful first: `agency stop` lets the Agency stop the herdr/app-server groups and
-        // panes it started. Killing alone skips every Drop on the Agency side, so a passing
-        // run would still leak one group per pass. Only stop our own instance: tests swap
-        // Agencies mid-test, and the old fixture's Drop runs after the new Agency started.
+impl AgencyChild {
+    /// Graceful first: `agency stop` lets the Agency stop the groups and script sessions it
+    /// started. Killing alone skips every Drop on the Agency side, so a passing run would
+    /// still leak one group per pass. Only stop our own instance: tests swap Agencies
+    /// mid-test, and the old fixture's Drop runs after the new Agency started.
+    fn stop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = Command::new(std::env::var_os("CARGO_BIN_EXE_agency").unwrap())
                 .arg("--root")
@@ -57,6 +57,12 @@ impl Drop for AgencyChild {
         }
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+impl Drop for AgencyChild {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 /// A control plane, a paired real Agency and one selected roster, all reached
@@ -2411,8 +2417,7 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
             .any(|e| e["operation"] == "invocation.project")
     );
     assert!(f.run(&["stop"]).0);
-    agency.child.kill().unwrap();
-    agency.child.wait().unwrap();
+    agency.stop();
     assert!(f.run(&["start"]).0);
     let mut delivered = false;
     for _ in 0..100 {
@@ -2644,8 +2649,7 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     );
 
     // Stored replay reads the control plane only: the Agency is already gone.
-    setup.agency.child.kill().unwrap();
-    setup.agency.child.wait().unwrap();
+    setup.agency.stop();
     let observations = stored();
     assert_eq!(observations, observed, "replay needs no Agency");
     assert_eq!(observations[0]["dispatch"]["owner"]["id"], id);
