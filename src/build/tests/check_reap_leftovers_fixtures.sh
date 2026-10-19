@@ -7,7 +7,8 @@ set -eu
 
 : "${REAPER:?REAPER must point at build/ci/reap-test-leftovers}"
 TMP_BASE=${TMPDIR:-/tmp}
-pidfile=
+pidfile="$TMP_BASE/hctl2-reap-fixture.$$.pids"
+: > "$pidfile"
 children=
 
 cleanup() {
@@ -40,7 +41,6 @@ spawn() {
     ln -sf /bin/sleep "$root/bin/$binary"
     "$root/bin/$binary" 60 >/dev/null 2>&1 &
     child=$!
-    [ -n "$pidfile" ] || pidfile="$TMP_BASE/hctl2-reap-fixture.$$.pids"
     printf '%s\n' "$child" >> "$pidfile"
     i=0
     while [ "$i" -lt 100 ]; do
@@ -154,6 +154,29 @@ case_directories() {
     [ -e "$alive" ] || fail "--apply must keep a live owner's directory"
 }
 
+case_root_deleted() {
+    box=$(sandbox)
+    root="$box/hctl2-exec-deleted-$$"
+    child=$(spawn "$root")
+    rm -rf "$root"
+    out=$("$REAPER" --list --root "$box")
+    printf '%s\n' "$out" | grep -Fq "pid=$child" || fail "a deleted root must count as owner gone"
+}
+
+case_cli_root() {
+    box=$(sandbox)
+    root="$box/hctl-project-b1-cli-$(dead_pid)"
+    child=$(spawn "$root")
+    old_root "$root"
+    out=$("$REAPER" --list --root "$box")
+    printf '%s\n' "$out" | grep -Fq "pid=$child" || fail "CLI fixture roots must be recognised"
+    physical=$(cd "$root" && pwd -P)
+    if ! printf '%s\n' "$out" | grep -Fq "root=$root" &&
+        ! printf '%s\n' "$out" | grep -Fq "root=$physical"; then
+        fail "detect output must name the owning root: out=[$out]"
+    fi
+}
+
 case_default_is_list() {
     box=$(sandbox)
     root="$box/hctl2-exec-default-$(dead_pid)"
@@ -165,6 +188,8 @@ case_default_is_list() {
 
 case_owner_gone
 case_owner_alive
+case_root_deleted
+case_cli_root
 case_reused_pid
 case_protected
 case_apply

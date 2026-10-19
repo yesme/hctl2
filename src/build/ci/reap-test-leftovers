@@ -1,12 +1,19 @@
 #!/bin/sh
 # reap-test-leftovers — find test leftovers, and only with --apply, clean them.
 #
-# Ownership is proved by a test pid embedded in the temp root name (test fixtures
-# put their pid at the end of the root: hctl2-exec-<name>-<pid>). A leftover is
-# only touched when that owner is gone; a pid whose start time is younger than
-# the root it supposedly owns is treated as reused, not alive. Processes without
-# an embedded owner pid, and dirs without one, are never cleaned: hashed herdr
-# socket dirs cannot be attributed, so they stay out of scope here.
+# Ownership is proved by a test pid embedded in the temp root name. Recognised
+# roots: hctl2-herdr-{cred,exec}-<name>-<pid>, hctl2-exec-<name>-<pid>,
+# hctl2-room-*, and the CLI fixture roots hctl-<name>-cli-<pid> (room.rs). The
+# real Agency execution dirs are hctl2-exec-<hash>, not a pid: by design they
+# stay out of scope. Processes without an embedded owner pid, and dirs without
+# one, are never cleaned: hashed herdr socket dirs cannot be attributed.
+#
+# A leftover is only touched when its owner is gone: the pid is dead, the root
+# is deleted, or the live pid is a reuse (younger than the root, beyond slop).
+# kill -0 failing with EPERM (another user's process) reads as gone; all seats
+# share one account, so that case is out of scope. Do not run --apply while
+# other tests may be running: a live test that reused an old root's pid would
+# otherwise be judged stale.
 #
 # Modes:
 #   --list     (default) print candidates, change nothing
@@ -100,7 +107,7 @@ owner_root() {
             acc = ""
             for (j = 1; j <= m; j++) {
                 acc = acc (j == 1 ? "" : "/") comp[j]
-                if (comp[j] ~ /^hctl.*-[0-9]+$/ && comp[j] ~ /^(hctl2-herdr-(cred|exec)-|hctl2-exec-|hctl-(codex|demo3|room))/) {
+                if (comp[j] ~ /^hctl.*-[0-9]+$/ && comp[j] ~ /^(hctl2-herdr-(cred|exec)-|hctl2-exec-|hctl2-room-|hctl-.*-cli-)/) {
                     print acc
                     exit
                 }
@@ -138,6 +145,9 @@ owner_alive() {
     o_pid=$1
     o_root=$2
     kill -0 "$o_pid" 2>/dev/null || return 1
+    # A missing root means the owner is gone even if its pid is alive: either
+    # the pid was reused, or the test deleted its root at the end.
+    [ -d "$o_root" ] || return 1
     [ "$o_pid" = "$$" ] && return 0
     elapsed=$(ps -o etime= -p "$o_pid" 2>/dev/null | tr -d ' ')
     [ -n "$elapsed" ] || return 0
@@ -166,6 +176,10 @@ scan_processes() {
         protected "$cmd" && continue
         owner=$(printf '%s\n' "$cmd" | owner_pid)
         [ -n "$owner" ] || continue
+        # Pids are at most seven digits; longer suffixes are hashes, not owners.
+        case "$owner" in
+            ?????????|??????????*) continue ;;
+        esac
         root=$(printf '%s\n' "$cmd" | owner_root)
         [ -n "$root" ] || continue
         matched=0
@@ -175,7 +189,7 @@ scan_processes() {
         done
         [ "$matched" = 1 ] || continue
         owner_alive "$owner" "$root" && continue
-        processes="${processes}process pid=$pid ppid=$(printf '%s\n' "$line" | awk '{print $2}') pgid=$pgid cmd=$cmd
+        processes="${processes}process pid=$pid ppid=$(printf '%s\n' "$line" | awk '{print $2}') pgid=$pgid root=$root cmd=$cmd
 "
         process_pgids="${process_pgids}${pid}:${pgid}
 "
@@ -188,12 +202,13 @@ scan_dirs() {
             [ -d "$dir" ] || continue
             name=${dir##*/}
             case "$name" in
-                hctl2-herdr-cred-*|hctl2-herdr-exec-*|hctl2-exec-*|hctl-codex-*|hctl-demo3-*|hctl-room-*|hctl2-room-*) ;;
+                hctl2-herdr-cred-*|hctl2-herdr-exec-*|hctl2-exec-*|hctl2-room-*|hctl-*-cli-*) ;;
                 *) continue ;;
             esac
             pid=${name##*-}
             case "$pid" in
                 ''|*[!0-9]*) continue ;;
+                ?????????|??????????*) continue ;;
             esac
             owner_alive "$pid" "$dir" && continue
             dirs="${dirs}directory path=$dir owner_pid=$pid
