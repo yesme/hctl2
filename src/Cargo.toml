@@ -9,6 +9,7 @@ members = [
     "crates/context",
     "crates/participant",
     "crates/facts",
+    "crates/gate-tally",
     "crates/foundation",
     "crates/proto",
     "crates/proto/codegen",
