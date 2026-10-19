@@ -1,6 +1,6 @@
 # 演示 3「真实交付」操作手册
 
-> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`901afa4`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 3 步，含真 Claude Code 会话写入与 `review publish` 人工发布预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**待 `#431` 第二轮走通后补入，当前标注为「照用例或代码写的，未实跑」。
+> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`0566e83`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**待 `#431` 第二轮走通后补入，当前标注为「照用例或代码写的，未实跑」。
 
 本文记录演示 3「真实交付」从零构建、离线安装到端到端走查的完整命令序列。流程覆盖：本地 Gitea 仓库注册与 Claude Code 真会话写入交付链（A 链，人类仅在合入与完成两处预览确认）、受保护 GitHub `main` 与 Codex 真会话交付链（B 链）、开启「发布评审须人显式确认」开关的三次预览链（C 链），以及重启一致性、凭据隔离与逃生口的核对方法。
 
@@ -10,11 +10,11 @@
 
 ## 一、环境构建与离线安装
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-5163.log` 与 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 ### 1. 构建完整发布包
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `3cac2287-aa73-4de1-b304-0327f97244e6`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-5163.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `b74d800c-1f90-4034-9b92-c41c04f838b2`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 在代码仓库根目录下进入 `src/`，构建当前平台的完整离线运行包：
 
@@ -29,7 +29,7 @@ cd "$REPO_ROOT"
 
 ### 2. 离线安装、前置条件检查与工作区变量设置
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 新建独立演示工作目录（建议使用磁盘上的短路径如 `/var/tmp/d3`，既避免 Unix domain socket 路径超出系统 `SUN_LEN` 限制，也避免在内存盘 `/tmp` 配额较小的机器上解压 635 MB 载荷时触发磁盘配额不足），解压并运行离线安装器 `./install.sh`：
 
@@ -46,11 +46,10 @@ PKG_DIR="$(find "$WS/pkg" -mindepth 1 -maxdepth 1 -type d -name 'hctl2-0.0.0-*' 
 
 export PATH="$WS/prefix/bin:$PATH"
 export INSTALL_ROOT="$(find "$WS/prefix/lib/hctl2" -mindepth 1 -maxdepth 1 -type d -name 'hctl2-0.0.0-*' | head -n 1)"
-export HCTL2_INSTALL_ROOT="$INSTALL_ROOT"
 export CLI="$WS/prefix/bin/hctl2"
 export ROOT="$WS/state"
 
-# 校验安装产物
+# 校验安装产物（通过 install.sh 安装后，hctl2 与 agency 会由自身二进制路径自动解析共享安装根）
 [ -x "$CLI" ] || { echo "CLI 未就绪: $CLI"; return 1 2>/dev/null || exit 1; }
 [ -x "$WS/prefix/bin/agency" ] || { echo "agency 未就绪"; return 1 2>/dev/null || exit 1; }
 [ -x "$WS/prefix/bin/hctl2-tool" ] || { echo "hctl2-tool 未就绪"; return 1 2>/dev/null || exit 1; }
@@ -58,13 +57,13 @@ export ROOT="$WS/state"
 
 > [!IMPORTANT]
 > - **状态隔离**：全程所有控制面命令均须携带 `--root "$ROOT"`，配对命令携带 `--agency-root "$ROOT/agency"`，确保状态与托管服务全部落在独立目录 `$WS/state` 下，不污染 `~/.local/state/hctl2` 与 `~/.hctl2/agency`。
-> - **版本门槛（以代码 `src/agency/src/harness/mod.rs` 为准）**：执行 A 链前请确认本机已安装并登录 `claude`（**Claude Code >= 2.1.287**，`CLAUDE_MINIMUM`）；执行 B 链前请确认本机已安装并登录 `codex`（**Codex CLI >= 0.153.4**，`CODEX_MINIMUM`）且 `gh auth status` 已登录具备 `yesme/hctl2-canary` 权限的账号。
+> - **版本门槛（以代码 `src/agency/src/harness/mod.rs` 为准）**：执行 A 链前请确认本机已安装并登录 `claude`（代码准入门槛 **Claude Code >= 2.1.287**，`CLAUDE_MINIMUM`；Ubuntu 实测通过版本为 `2.1.302` / `2.1.303`）；执行 B 链前请确认本机已安装并登录 `codex`（代码准入门槛 **Codex CLI >= 0.153.4**，`CODEX_MINIMUM`）且 `gh auth status` 已登录具备 `yesme/hctl2-canary` 权限的账号。
 > - **已知平台限制（macOS 下 A 链不可用）**：在 macOS 上，Claude Code 仅将登录凭据存放在系统钥匙串（`Claude Code-credentials`），而 Agency 的 Seatbelt 凭据隔离边界显式封禁了 `~/Library/Keychains`，导致受管执行环境内 Claude Code 报错 `Not logged in`（`HARNESS_TURN_ERROR`）。因此 **A 链（真 Claude Code 会话）目前只能在 Linux 上运行**。
 > - **Claude Code 工作区信任与启动自检**：本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录（写入型派工开在 git worktree 里）；让不让 Claude 在执行目录里工作由 Agency 所有者决定，Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动（不修改用户的 `~/.claude.json`），用户无需手工干预。Agency 启动时会在 `/tmp` 下的新目录里开一次 Claude 会话自检这一条（绝不替人按键应答）；若将来换成了不认该变量而仍弹出信任框的版本，`<agency-root>/serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`，且 `agency catalog` 不会公布 `claude-code` 工种（详见 `docs/usage.md`「本地 Agency 与 Claude Code 的工作区信任」）。
 
 ### 3. 启动控制面并核对初始状态
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 确保随包服务端口（Tuwunel `6167`、Cinny `6168`、Gitea `3001`）空闲后，以私有文件密钥后端启动控制面：
 
@@ -88,11 +87,11 @@ $CLI --json --root "$ROOT" status
 
 ## 二、A 链：本地 Gitea + 真 Claude Code 写入交付（两次人工预览）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 ### 1. 初始化带 `.gitignore` 的本地试验仓库
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 在 `$WS/write-site` 下创建一个包含真实非文档代码缺陷的 Python 仓库，并配置 `.gitignore` 忽略测试运行生成的字节码缓存（避免 `__pycache__` 混入封存版本）：
 
@@ -146,7 +145,7 @@ cd "$WS"
 
 ### 2. 注册并激活本地 Repo（两步确认）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 编写本地仓库注册输入 `$WS/work/a-repo.json`（不指定外部远端，缺省绑定随包本地 Gitea 平台与 `gitea_issues` 任务源）：
 
@@ -198,7 +197,7 @@ $CLI --json --root "$ROOT" repo register --confirm "$REPO_ID" --version "$REG_VE
 
 ### 3. 配对 Agency、接受 `claude-code` 工种并创建写入型 Profile
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 将控制面与随包原生 Agency 配对（显式指定 `--agency-root "$ROOT/agency"`），并从名册中提取 `claude-code` 工种引用并接受：
 
@@ -267,7 +266,7 @@ export WRITE_PROFILE_REV="$(echo "$SUB_PROF" | jq -c .revision)"
 
 ### 4. 创建 Project 并将写入参与者选入主 Room
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 创建缺省发布策略（`publish_review_requires_confirmation: false`）的 Project（两步确认）：
 
@@ -362,7 +361,7 @@ $CLI --json --root "$ROOT" project select --input "$WS/work/a-select.json" --key
 
 ### 5. 连接 Gitea 任务源、创建 Task 并采纳契约
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 连接并挂接随包 Gitea 的 issues 任务源（各两步确认，每次写 Project 作用域命令前从 `project show` 读取当前 `project_version`）：
 
@@ -424,10 +423,35 @@ export TASK_VER="$(echo "$SUB_TASK" | jq -r .task.version)"
 - `effect_state`: `"confirmed"`。
 - `task.data.entity.provider`: `"gitea_issues@http://127.0.0.1:3001"`，`immutable_external_entity_id`: `"1"`（卡建在随包 Gitea issues 上）。
 
-为该 Task 采纳契约（含 1 项要求 `Integration Receipt` 的机械验收项与 1 项人工验收项，两步确认）：
+为该 Task 采纳契约（含 1 项要求 `Integration Receipt` 的机械验收项与 1 项人工验收项；`proposal_digest` 为 `adoption.contract` 经 `jq -cS .` 规范化后的无换行 JSON SHA-256 摘要，当读者改动契约内容时会自动重算，两步确认）：
 
 ```bash
 PROJ_VER="$($CLI --json --root "$ROOT" project show "$PROJECT_ID" | jq -r .project.version)"
+
+CONTRACT_JSON="$(cat << 'EOF'
+{
+  "scope": "demo3-walkthrough",
+  "expected_outcome": "double() fixed and merged through review",
+  "acceptance": [
+    {
+      "text": "the Task change is integrated",
+      "grade": "mechanical",
+      "evidence": {
+        "accept": "integration_receipt",
+        "min_channel": "unmediated"
+      }
+    },
+    {
+      "text": "a human verified the fix and tests",
+      "grade": "human"
+    }
+  ],
+  "roles": [],
+  "capabilities": []
+}
+EOF
+)"
+PROPOSAL_DIGEST="$(printf '%s' "$CONTRACT_JSON" | jq -cS . | tr -d '\n' | sha256sum | awk '{print $1}')"
 
 cat << EOF > "$WS/work/a-adopt.json"
 {
@@ -436,26 +460,7 @@ cat << EOF > "$WS/work/a-adopt.json"
   "task_id": "$TASK_ID",
   "version": $TASK_VER,
   "adoption": {
-    "contract": {
-      "scope": "demo3-walkthrough",
-      "expected_outcome": "double() fixed and merged through review",
-      "acceptance": [
-        {
-          "text": "the Task change is integrated",
-          "grade": "mechanical",
-          "evidence": {
-            "accept": "integration_receipt",
-            "min_channel": "unmediated"
-          }
-        },
-        {
-          "text": "a human verified the fix and tests",
-          "grade": "human"
-        }
-      ],
-      "roles": [],
-      "capabilities": []
-    },
+    "contract": $CONTRACT_JSON,
     "origin": {
       "kind": "local",
       "reference": {
@@ -466,7 +471,7 @@ cat << EOF > "$WS/work/a-adopt.json"
         },
         "version": { "state": $PROJ_VER }
       },
-      "proposal_digest": "8544bbfeba73843dd82cfb34ea22fb3aaf98791a509474b02e8b2916f44572b7"
+      "proposal_digest": "$PROPOSAL_DIGEST"
     }
   }
 }
@@ -484,7 +489,7 @@ export TASK_VER_ADOPTED="$(echo "$SUB_ADOPT" | jq -r .task.version)"
 
 ### 6. 从 Room 发起写入型调用（真 Claude Code 会话改代码并封存）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 编写写入型调用输入 `$WS/work/a-invoke.json` 并预览：
 
@@ -525,36 +530,37 @@ export CHANGESET_ID="$(echo "$PREV_INV" | jq -r .effect_summary.preview.write.le
 - `effect_summary.preview.write.lease.pending`: 包含分配的 `change_set_id`（`cs-...`）、`baseline_commit` 与状态为 `"pending"` 的 Write Lease。
 - `effect_summary.preview.write.publication_target`: 冻结的评审发布策略（`target_branch: "main"`，`branch_rule: "hctl2/{change_set}"`，`requires_human_confirmation: false`）。
 
-确认启动写入型调用，并轮询等待真 Claude Code 会话完成修改与 Agency 封存交回：
+确认启动写入型调用，并轮询等待真 Claude Code 会话完成修改与 Agency 封存交回（轮询上限与 15 分钟 `DEADLINE_MS` 对齐，并在循环后断言调用进入 `completed`）：
 
 ```bash
 SUB_INV="$($CLI --json --root "$ROOT" invocation start --input "$WS/work/a-invoke.json" --key a-invoke --preview-token "$TOK_INV")"
 export INVOCATION_ID="$(echo "$SUB_INV" | jq -r .invocation_id)"
 
-for i in $(seq 1 180); do
+for i in $(seq 1 450); do
   INV_SHOW="$($CLI --json --root "$ROOT" invocation show "$PROJECT_ID" "$INVOCATION_ID")"
-  STATE="$(echo "$INV_SHOW" | jq -r .state)"
+  STATE="$(echo "$INV_SHOW" | jq -r .invocation.state)"
   case "$STATE" in
     completed)
-      echo "Invocation completed"
+      echo "Invocation completed: $(echo "$INV_SHOW" | jq -r .invocation.reason)"
       break
       ;;
     failed|cancelled|lost)
-      echo "Invocation ended in $STATE: $(echo "$INV_SHOW" | jq -r .reason)"
+      echo "Invocation ended in $STATE: $(echo "$INV_SHOW" | jq -r .invocation.reason)"
       break
       ;;
   esac
   sleep 2
 done
+[ "$STATE" = "completed" ] || { echo "调用未完成: state=$STATE"; return 1 2>/dev/null || exit 1; }
 ```
 
 **核对字段**：
-- `state`: `"completed"`。
-- `reason`: `"Git version admitted; not Task acceptance"`。
+- `invocation.state`: `"completed"`。
+- `invocation.reason`: `"Git version admitted; not Task acceptance"`。
 
 ### 7. 核对封存版本、自动发布与 Room 安静投影
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 查看准入的 ChangeSet Revision 与精确代码 diff：
 
@@ -596,11 +602,11 @@ $CLI --json --root "$ROOT" room timeline "$PROJECT_ID" "$MAIN_ROOM_ID" | jq '[.e
 ```
 
 **核对字段**：
-- 全程仅有唯一一条消息投影：`Write admitted as version csr-... of ChangeSet cs-... Publishing for review is queued: push to hctl2/cs-... and open or update the review request, each read back.`，无内部 JSON 泄漏或多余刷屏。
+- 全程仅有唯一一条消息投影：`Write admitted as version csr-... of ChangeSet cs-... (baseline ..., result tree ...). Publishing for review is queued: push to hctl2/cs-... and open or update the review request, each read back.`，无内部 JSON 泄漏或多余刷屏。
 
 ### 8. 第一次人工预览：合入（Integration Receipt）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 编写合入输入 `$WS/work/a-integration.json`，执行第一次人工预览与提交确认：
 
@@ -641,7 +647,7 @@ echo "$INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, e
 
 ### 9. 第二次人工预览：完成 Task（Task Completion Receipt）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 编写完成输入 `$WS/work/a-complete.json`（引用刚才签出的 `$RECEIPT_ID` 作为第 0 项机械验收项的证据），执行第二次人工预览与确认：
 
@@ -701,7 +707,7 @@ echo "$SUB_COMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_ver
 
 ### 10. 核对平台回读状态与 `task show` 十秒回答
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 通过产品自身的 `review show` 与 `integration show` 核对已回读确认的平台事实与无中介 Git 回读（不直接读取 `$ROOT/secrets` 下的控制面内部凭据文件）：
 
@@ -795,13 +801,13 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 
 ## 四、C 链：开启「须人显式确认」开关的三次预览链
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
-在已激活的本地 Gitea Repo（`$REPO_ID`）上新建一个开启 `publish_review_requires_confirmation: true` 的独立 Project，验证发布意图停在 `pending_human`，需经人类显式执行 `review publish` 预览与确认后才推送并创建评审请求。
+在已激活的本地 Gitea Repo（`$REPO_ID`）上新建一个开启 `publish_review_requires_confirmation: true` 的独立 Project，挂接同一 Gitea 任务源并创建采纳契约的 Task，以 A 链合入后的最新 `main` 头（`$MERGED_COMMIT`）为 `baseline_commit` 走完发布（`review publish`）、合入（`integration preview` / `integration submit`）与完成（`task complete`）三次人工预览闭环。
 
-### 1. 创建开启发布确认开关的 Project 并选入写入参与者
+### 1. 创建开启发布确认开关的 Project、选入写入参与者并创建采纳 Task
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 ```bash
 cat << EOF > "$WS/work/c-project.json"
@@ -883,11 +889,103 @@ EOF
 PREV_CSEL="$($CLI --json --root "$ROOT" project select --input "$WS/work/c-select.json" --key c-select)"
 TOK_CSEL="$(echo "$PREV_CSEL" | jq -r .preview_token)"
 $CLI --json --root "$ROOT" project select --input "$WS/work/c-select.json" --key c-select --preview-token "$TOK_CSEL"
+
+# 将已连接的 Gitea 任务源挂接到 C 链 Project，并创建、采纳 C 链 Task
+C_PROJ_VER="$($CLI --json --root "$ROOT" project show "$C_PROJECT_ID" | jq -r .project.version)"
+
+cat << EOF > "$WS/work/c-attach.json"
+{
+  "project_id": "$C_PROJECT_ID",
+  "project_version": $C_PROJ_VER,
+  "source_id": "$SOURCE_ID",
+  "approved_scope": "$STABLE_ID",
+  "consent": true
+}
+EOF
+
+PREV_CATT="$($CLI --json --root "$ROOT" task attach --input "$WS/work/c-attach.json" --key c-attach)"
+TOK_CATT="$(echo "$PREV_CATT" | jq -r .preview_token)"
+$CLI --json --root "$ROOT" task attach --input "$WS/work/c-attach.json" --key c-attach --preview-token "$TOK_CATT"
+
+C_PROJ_VER="$($CLI --json --root "$ROOT" project show "$C_PROJECT_ID" | jq -r .project.version)"
+
+cat << EOF > "$WS/work/c-task.json"
+{
+  "project_id": "$C_PROJECT_ID",
+  "project_version": $C_PROJ_VER,
+  "source_id": "$SOURCE_ID",
+  "title": "Add trailing comment in calculator.py (C chain)",
+  "body": "Add a trailing comment line '# demo3 C' to calculator.py and leave it uncommitted for Agency sealing. Do not push or obtain credentials."
+}
+EOF
+
+PREV_CTASK="$($CLI --json --root "$ROOT" task create --input "$WS/work/c-task.json" --key c-task-create)"
+TOK_CTASK="$(echo "$PREV_CTASK" | jq -r .preview_token)"
+SUB_CTASK="$($CLI --json --root "$ROOT" task create --input "$WS/work/c-task.json" --key c-task-create --preview-token "$TOK_CTASK")"
+export C_TASK_ID="$(echo "$SUB_CTASK" | jq -r .task_id)"
+export C_TASK_VER="$(echo "$SUB_CTASK" | jq -r .task.version)"
+
+C_PROJ_VER="$($CLI --json --root "$ROOT" project show "$C_PROJECT_ID" | jq -r .project.version)"
+
+C_CONTRACT_JSON="$(cat << 'EOF'
+{
+  "scope": "demo3-walkthrough",
+  "expected_outcome": "trailing comment added and merged after explicit review publish confirmation",
+  "acceptance": [
+    {
+      "text": "the C chain change is integrated",
+      "grade": "mechanical",
+      "evidence": {
+        "accept": "integration_receipt",
+        "min_channel": "unmediated"
+      }
+    },
+    {
+      "text": "a human verified all three previews",
+      "grade": "human"
+    }
+  ],
+  "roles": [],
+  "capabilities": []
+}
+EOF
+)"
+C_PROPOSAL_DIGEST="$(printf '%s' "$C_CONTRACT_JSON" | jq -cS . | tr -d '\n' | sha256sum | awk '{print $1}')"
+
+cat << EOF > "$WS/work/c-adopt.json"
+{
+  "project_id": "$C_PROJECT_ID",
+  "project_version": $C_PROJ_VER,
+  "task_id": "$C_TASK_ID",
+  "version": $C_TASK_VER,
+  "adoption": {
+    "contract": $C_CONTRACT_JSON,
+    "origin": {
+      "kind": "local",
+      "reference": {
+        "key": {
+          "scope": { "kind": "project", "id": "$C_PROJECT_ID" },
+          "kind": "project",
+          "id": "$C_PROJECT_ID"
+        },
+        "version": { "state": $C_PROJ_VER }
+      },
+      "proposal_digest": "$C_PROPOSAL_DIGEST"
+    }
+  }
+}
+EOF
+
+PREV_CADOPT="$($CLI --json --root "$ROOT" task adopt --input "$WS/work/c-adopt.json" --key c-task-adopt)"
+TOK_CADOPT="$(echo "$PREV_CADOPT" | jq -r .preview_token)"
+$CLI --json --root "$ROOT" task adopt --input "$WS/work/c-adopt.json" --key c-task-adopt --preview-token "$TOK_CADOPT"
 ```
 
 ### 2. 发起写入型调用并观察发布意图停在 `pending_human`
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
+
+以 A 链合入后的最新 `main` 头 `$MERGED_COMMIT` 作为 `baseline_commit`（以便后续合入可直接 fast-forward 推进 `refs/heads/main`）：
 
 ```bash
 C_DEADLINE_MS="$(( ($(date +%s) + 900) * 1000 ))"
@@ -896,6 +994,7 @@ cat << EOF > "$WS/work/c-invoke.json"
 {
   "project_id": "$C_PROJECT_ID",
   "room_id": "$C_ROOM_ID",
+  "task_id": "$C_TASK_ID",
   "target": "research",
   "profile": $WRITE_PROFILE_REV,
   "request": "Add a trailing comment line '# demo3 C' to calculator.py and leave it uncommitted. Do not run tests. Do not push or obtain credentials.",
@@ -904,7 +1003,7 @@ cat << EOF > "$WS/work/c-invoke.json"
   "retry_of": null,
   "write": {
     "change_set_id": null,
-    "baseline_commit": "$BASELINE_SHA",
+    "baseline_commit": "$MERGED_COMMIT",
     "target_branch": "main",
     "allow_update": true
   }
@@ -914,31 +1013,44 @@ EOF
 PREV_CINV="$($CLI --json --root "$ROOT" invocation preview --input "$WS/work/c-invoke.json" --key c-invoke)"
 TOK_CINV="$(echo "$PREV_CINV" | jq -r .preview_token)"
 export C_CHANGESET_ID="$(echo "$PREV_CINV" | jq -r .effect_summary.preview.write.lease.pending.change_set_id)"
+echo "$PREV_CINV" | jq '.effect_summary.preview.write.publication_target'
 
 SUB_CINV="$($CLI --json --root "$ROOT" invocation start --input "$WS/work/c-invoke.json" --key c-invoke --preview-token "$TOK_CINV")"
 export C_INVOCATION_ID="$(echo "$SUB_CINV" | jq -r .invocation_id)"
 
-for i in $(seq 1 180); do
+for i in $(seq 1 450); do
   C_SHOW="$($CLI --json --root "$ROOT" invocation show "$C_PROJECT_ID" "$C_INVOCATION_ID")"
-  C_STATE="$(echo "$C_SHOW" | jq -r .state)"
+  C_STATE="$(echo "$C_SHOW" | jq -r .invocation.state)"
   case "$C_STATE" in
-    completed|failed|cancelled|lost) break ;;
+    completed)
+      echo "C invocation completed: $(echo "$C_SHOW" | jq -r .invocation.reason)"
+      break
+      ;;
+    failed|cancelled|lost)
+      echo "C invocation ended in $C_STATE: $(echo "$C_SHOW" | jq -r .invocation.reason)"
+      break
+      ;;
   esac
   sleep 2
 done
+[ "$C_STATE" = "completed" ] || { echo "C 链调用未完成: state=$C_STATE"; return 1 2>/dev/null || exit 1; }
+
+C_CS_SHOW="$($CLI --json --root "$ROOT" changeset show "$REPO_ID" "$C_CHANGESET_ID")"
+export C_REVISION_ID="$(echo "$C_CS_SHOW" | jq -r '.revisions[0].change_set_revision_id')"
 
 C_REV_LIST="$($CLI --json --root "$ROOT" review list "$REPO_ID")"
 export C_PUBLISH_INTENT_ID="$(echo "$C_REV_LIST" | jq -r --arg cs "$C_CHANGESET_ID" '.items[] | select(.change_set_id==$cs) | .intent_id')"
-echo "$C_REV_LIST" | jq --arg cs "$C_CHANGESET_ID" '.items[] | select(.change_set_id==$cs) | {intent_id: .intent_id, state: .state, requires_human_confirmation: .policy.policy.requires_human_confirmation}'
+$CLI --json --root "$ROOT" review show "$REPO_ID" "$C_PUBLISH_INTENT_ID" \
+  | jq '{intent_id: .intent.intent_id, state: .intent.state, requires_human_confirmation: .intent.policy.policy.requires_human_confirmation, push_dispatched: .stages.push.dispatched}'
 ```
 
 **核对字段**：
 - 派工预览中 `publication_target.requires_human_confirmation` 为 `true`。
-- 调用完成后，`review list` 中该 ChangeSet 的发布意图状态停在 `state: "pending_human"`，`push.dispatched: false`，尚未向平台推送或建 PR。
+- 调用完成后，`review show` 中该 ChangeSet 的发布意图状态停在 `state: "pending_human"`，`requires_human_confirmation: true`，`push_dispatched: false`，尚未向平台推送或建 PR。
 
-### 3. 人工显式预览并确认发布（`review publish`）
+### 3. 第一次人工预览：显式确认发布（`review publish`）
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 ```bash
 # 查看人读发布预览（明确写出推到哪个分支、建到哪个目标、不是合入）
@@ -963,24 +1075,120 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
 - `effect_summary.branch`: `"hctl2/cs-..."`（推送的目标分支）。
 - `effect_summary.target_branch`: `"main"`（评审请求的目标分支）。
 - `effect_summary.authorizes`: `"publishing this revision for review on the platform: push to the branch, then create or update the review request. Not a merge."`（明确声明不是合入）。
-- 提交确认后，意图状态转为 `"published"`，`push` 与 `review_request` 两段均 `confirmed: true`。连同后续的合入预览与完成预览，开启开关的 Project 全程共需三次人工预览。
+- 提交确认后，意图状态转为 `"published"`，`push` 与 `review_request` 两段均 `confirmed: true`。
+
+### 4. 第二次人工预览：合入（`integration preview` / `integration submit`）
+
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
+
+```bash
+cat << EOF > "$WS/work/c-integration.json"
+{
+  "repo_id": "$REPO_ID",
+  "change_set_revision_id": "$C_REVISION_ID",
+  "target_kind": "platform",
+  "target_ref": "refs/heads/main",
+  "form": "accept_advance",
+  "strategy": "fast_forward"
+}
+EOF
+
+# 查看人读合入预览
+$CLI --root "$ROOT" integration preview --input "$WS/work/c-integration.json" --key c-merge
+
+PREV_CINT="$($CLI --json --root "$ROOT" integration preview --input "$WS/work/c-integration.json" --key c-merge)"
+TOK_CINT="$(echo "$PREV_CINT" | jq -r .preview_token)"
+SUB_CINT="$($CLI --json --root "$ROOT" integration submit --input "$WS/work/c-integration.json" --key c-merge --preview-token "$TOK_CINT")"
+export C_INTEGRATION_INTENT_ID="$(echo "$SUB_CINT" | jq -r .intent_id)"
+
+for i in $(seq 1 30); do
+  C_INT_SHOW="$($CLI --json --root "$ROOT" integration show "$REPO_ID" "$C_INTEGRATION_INTENT_ID")"
+  [ "$(echo "$C_INT_SHOW" | jq -r .intent.state)" = "succeeded" ] && break
+  sleep 1
+done
+
+export C_RECEIPT_ID="$(echo "$C_INT_SHOW" | jq -r .receipt.receipt_id)"
+echo "$C_INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, evidence_level: .receipt.evidence_level, git_readback_level: .receipt.readback.git.evidence_level, target_head_after: .receipt.target_head_after}'
+```
+
+**核对字段**：
+- `intent.state`: `"succeeded"`，签出 C 链对应的 `Integration Receipt`（`$C_RECEIPT_ID`）。
+
+### 5. 第三次人工预览：完成 Task（`task complete`）与十秒回答
+
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
+
+```bash
+C_TASK_CUR_VER="$($CLI --json --root "$ROOT" task show "$C_PROJECT_ID" "$C_TASK_ID" | jq -r .version)"
+
+cat << EOF > "$WS/work/c-complete.json"
+{
+  "project_id": "$C_PROJECT_ID",
+  "task_id": "$C_TASK_ID",
+  "version": $C_TASK_CUR_VER,
+  "lifecycle_version": 1,
+  "revision_number": 1,
+  "acceptance": [
+    {
+      "item": 0,
+      "channel": "unmediated",
+      "generation": 1,
+      "judge": { "kind": "hctl2_tool" },
+      "producer": "hctl2-tool",
+      "references": [
+        {
+          "key": {
+            "id": "$C_RECEIPT_ID",
+            "kind": "integration_receipt",
+            "scope": { "id": "$REPO_ID", "kind": "repo" }
+          },
+          "version": { "state": 1 }
+        }
+      ]
+    },
+    {
+      "item": 1,
+      "channel": "narrated",
+      "generation": null,
+      "judge": { "kind": "human", "actor": "local-owner:$(id -u)" },
+      "producer": null,
+      "references": []
+    }
+  ]
+}
+EOF
+
+# 查看人读完成预览
+$CLI --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-complete
+
+PREV_CCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-complete)"
+TOK_CCOMP="$(echo "$PREV_CCOMP" | jq -r .preview_token)"
+SUB_CCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-complete --preview-token "$TOK_CCOMP")"
+echo "$SUB_CCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id}'
+
+$CLI --root "$ROOT" task show "$C_PROJECT_ID" "$C_TASK_ID"
+```
+
+**核对字段**：
+- `lifecycle`: `"completed"`，`receipt_id`: `"<C_TASK_ID>:2"`，`task show` 同样给出完整六行十秒回答。开启确认开关的 Project 全程走完发布（`review publish`）、合入（`integration preview` / `integration submit`）、完成（`task complete`）三次人工预览。
 
 ---
 
 ## 五、重启恢复、凭据隔离与逃生口怎么看
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`、`/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3578.log` 与 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3566.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 ### 1. 重启恢复与不重复外部副作用怎么看
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`；常驻回归用例 Buck2 Build ID `8e13b650-e704-4c70-b58d-d16accbdac9a`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3578.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`；常驻回归用例 Buck2 Build ID `8e13b650-e704-4c70-b58d-d16accbdac9a`）。
 
-生产构建的二进制不开启测试注入缝（`test_seams` 在生产构建中恒为 `false`），演示时不通过手动猜测时机强杀进程，而是从以下两处核对重启一致性与外部副作用幂等：
+精确卡在特定阶段边界的测试注入缝由运行时环境变量 `HCTL2_TEST_SEAM_ROOT` 驱动（`src/apps/control/src/test_seams.rs`），日常手动运行不设置该环境变量，也不通过手动猜测时机强杀进程，而是从以下两处核对重启一致性与外部副作用幂等：
 
 1. **在当前状态根上查看正常启停后的记录与平台幂等**（实跑过）：
-   正常停止并重启控制面与托管服务后，回读 A 链与 C 链的各项记录：
+   正常停止并重启控制面、Agency 与托管服务后，回读 A 链与 C 链的各项记录：
    ```bash
    $CLI --root "$ROOT" stop
+   "$WS/prefix/bin/agency" --root "$ROOT/agency" stop
    $CLI --root "$ROOT" start --secret-backend user-file
 
    for i in $(seq 1 30); do
@@ -1009,32 +1217,32 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
 
 ### 2. 凭据隔离与执行加固怎么看
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`；双家凭据与加固常驻测试 Buck2 Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3566.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`；常驻测试 Buck2 Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`）。
 
-两家 harness 的执行环境读不到控制面凭据根、系统钥匙串与 `gh auth` 凭据，且写入工作树与状态根物理隔离，可通过以下两处查看：
+各家 harness 的执行环境读不到控制面凭据根、系统钥匙串与 `gh auth` 凭据，且写入工作树与状态根物理隔离，可通过以下两处查看：
 
 1. **在当前状态根上查看执行目录边界与凭据文件权限**（实跑过）：
    ```bash
    # 查看控制面凭据存储目录与文件权限（位于 $ROOT/secrets，文件权限为 0600）
    ls -la "$ROOT/secrets"
 
-   # 查看写入型调用的工作树落点（位于 $ROOT 之外的 /tmp/hctl2-exec-*/write-worktrees/...）
+   # 查看写入型调用的工作树落点（位于 $ROOT 之外的 /tmp/hctl2-exec-<20位hex>/write-worktrees/...）
    $CLI --json --root "$ROOT" changeset show "$REPO_ID" "$CHANGESET_ID" \
      | jq '.residuals[] | {status: .status, worktree_path: .worktree_path}'
    ```
    **怎么看**：控制面凭据保存在 `$ROOT/secrets` 下，而 Agency 为写入型调用物化的隔离工作树位于 `/tmp/hctl2-exec-.../write-worktrees/...`。Linux 下 Landlock（以及 macOS 下 Seatbelt）沙箱放行名单仅包含工作树与必要的运行时只读路径，不含控制面状态根 `$ROOT`、系统钥匙串目录（`~/.local/share/keyrings` 或 `~/Library/Keychains`）与 GitHub CLI 凭据目录（`~/.config/gh`）。
 
-2. **查看双家 harness 的凭据与加固常驻测试**（实跑过，Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`）：
+2. **查看凭据隔离与写入封存常驻测试**（实跑过，Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`）：
    ```bash
    cd "$REPO_ROOT/src"
    ./buck2 test root//agency:write_session_test -- --test-arg=--nocapture
    cd "$WS"
    ```
-   **怎么看**：测试逐项验证在受限执行环境中读取控制面凭据根、钥匙串与 `gh auth` 均被拒绝，同时写入型会话在租约工作树内可正常修改代码与执行测试（`test result: ok. 5 passed; 0 failed; 2 ignored`）。
+   **怎么看**：缺省运行确定性常驻用例（含各家只读/写入沙箱下读取控制面凭据根、系统钥匙串与 `gh auth` 均被拒绝的校验，以及 fixture 写入封存、越界拒绝与租约校验用例）；另有带 `#[ignore]` 的真 harness 写入用例，设置 `HCTL2_HARNESS_LIVE=1` 并传入 `-- --ignored` 时会拉起本机真实 harness 会话在租约工作树内修改非文档代码并运行测试。
 
 ### 3. 三条逃生口怎么看
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
 1. **逃生口一（无契约卡只映射不签凭证）**（实跑过）：
    先从 `project show` 取出当前 Project 版本，创建一个不执行 `task adopt` 的裸 Task（bare card），直接尝试预览 `task complete`：
@@ -1073,23 +1281,29 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
    **怎么看**：命令返回非零退出码并输出 `{"error":{"code":"CONTRACT_REQUIRED","message":"adopt a contract before completing this Task","recovery_action":"adopt_contract"}}`，拒绝签发 Completion Receipt，而 `$BARE_TASK_ID` 保持 `open` 且拥有完整的平台 issue 映射。
 
 2. **逃生口二（采纳契约后完成有 Receipt）**（实跑过）：
-   见第二节第 5、9 步：对已创建或认领的 Task 执行 `task adopt` 采纳契约后，即可凭 `Integration Receipt` 通过 `task complete` 签出 `Task Completion Receipt`。
+   见第二节第 5、9 步与第四节第 1、5 步：对已创建或认领的 Task 执行 `task adopt` 采纳契约后，即可凭 `Integration Receipt` 通过 `task complete` 签出 `Task Completion Receipt`。
 
 3. **逃生口三（无 Run 路径有可回溯对象）**（实跑过）：
-   见第二节第 6–10 步：A 链全程未创建 Run，但从 `invocation show`、`changeset show`、`review show`、`integration show` 到 `task show` 每一步都有带精确摘要和版本的可回溯治理对象与两张 Receipt。
+   见第二节第 6–10 步与第四节第 2–5 步：全程未创建 Run，但从 `invocation show`、`changeset show`、`review show`、`integration show` 到 `task show` 每一步都有带精确摘要和版本的可回溯治理对象与两张 Receipt。
 
 ---
 
 ## 六、清理环境
 
-**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
+**实跑状态**：实跑过（提交 `0566e83`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-19-demo3-manual-run.md`）。
 
-验证完成后停止控制面、Agency、Herdr 与随包服务，并清理临时工作区与执行目录（使用 `${WS:?}` 防止变量为空时误删）：
+验证完成后，先在停止控制面之前从 `changeset show` 取出本次 Agency 实例专属的 `/tmp/hctl2-exec-<20位hex>` 执行根目录，再停止控制面、Agency、Herdr 与随包服务，并仅清理本次走查的工作区 `${WS:?}` 与专属执行目录 `$EXEC_ROOT`（绝不通配删除 `/tmp/hctl2-exec-*`，以免误删同机其他正在运行的 Agency 实例的工作树）：
 
 ```bash
+EXEC_ROOT="$($CLI --json --root "$ROOT" changeset show "$REPO_ID" "$CHANGESET_ID" 2>/dev/null | jq -r '.residuals[0].worktree_path // empty | capture("^(?<root>/tmp/hctl2-exec-[0-9a-f]{20})").root // empty')"
 $CLI --root "$ROOT" stop
 "$WS/prefix/bin/agency" --root "$ROOT/agency" stop || true
 HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" stop || true
 pkill -f "$WS/prefix/.*herdr server" || true
-rm -rf "${WS:?}" /tmp/hctl2-exec-*
+case "$EXEC_ROOT" in
+  /tmp/hctl2-exec-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    rm -rf "$EXEC_ROOT"
+    ;;
+esac
+rm -rf "${WS:?}"
 ```
