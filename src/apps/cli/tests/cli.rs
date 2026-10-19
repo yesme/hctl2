@@ -32,6 +32,12 @@ impl Temp {
 }
 impl Drop for Temp {
     fn drop(&mut self) {
+        // `hctl2 stop` also stops the process-compose services this fixture may have started;
+        // killing the control pid alone leaves Tuwunel/Gitea behind.
+        let _ = Command::new(hctl2())
+            .args(["--root", self.0.to_str().unwrap()])
+            .arg("stop")
+            .output();
         if let Ok(pid) = std::fs::read_to_string(self.0.join("control.pid")) {
             let _ = Command::new("kill").arg(pid.trim()).status();
             std::thread::sleep(Duration::from_millis(50));

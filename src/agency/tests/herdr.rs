@@ -70,7 +70,70 @@ fn installed_fixture(root: &std::path::Path) -> PathBuf {
     dest
 }
 
-fn scratch(name: &str) -> (PathBuf, PathBuf) {
+/// One scratch directory, removed on drop. The old tuple returned bare paths, so every pass
+/// (passing or not) left `hctl2-herdr-cred-*`, `-exec-*` and the `hctl2-herdr-state-<digest>`
+/// beside the exec dir behind.
+struct Scratch {
+    path: PathBuf,
+    extra: Vec<PathBuf>,
+}
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+
+    fn deref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl std::ops::DerefMut for Scratch {
+    fn deref_mut(&mut self) -> &mut std::path::Path {
+        &mut self.path
+    }
+}
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl AsRef<std::ffi::OsStr> for Scratch {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.path.as_os_str()
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        remove_socket_dirs_under(&self.path);
+        let _ = std::fs::remove_dir_all(&self.path);
+        for extra in &self.extra {
+            let _ = std::fs::remove_dir_all(extra);
+        }
+    }
+}
+
+/// Herdr puts its sockets in `/tmp/hctl2-herdr-<hash>` outside the state dir. Tests derive
+/// extra state paths under the scratch tree (standby turns), so walk the tree and remove the
+/// socket dir for every directory that could have been used as a state. The paths are unique
+/// to this test, so a computed dir that was never created is a no-op.
+fn remove_socket_dirs_under(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if let Some(socket_dir) = herdr::socket_path(&canonical).parent() {
+            let _ = std::fs::remove_dir_all(socket_dir);
+        }
+        remove_socket_dirs_under(&path);
+    }
+}
+
+fn scratch(name: &str) -> (Scratch, Scratch) {
     let cred =
         std::env::temp_dir().join(format!("hctl2-herdr-cred-{}-{}", name, std::process::id()));
     let exec =
@@ -80,7 +143,24 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
-    (cred, exec)
+    // The herdr state dir and the socket dirs herdr derives from it, registered exactly as
+    // the service computes them instead of re-hashing.
+    let mut extra = Vec::new();
+    if let Ok(state) = herdr::state_dir(&exec, &cred) {
+        let socket = herdr::socket_path(&state);
+        extra.push(socket.clone());
+        if let Some(socket_dir) = socket.parent() {
+            extra.push(socket_dir.to_path_buf());
+        }
+        extra.push(state);
+    }
+    (
+        Scratch { path: cred, extra },
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 
 struct SecretSpecimen {
@@ -400,8 +480,6 @@ fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
     );
     assert!(!text.contains("secret-credential"), "{text}");
     assert!(!text.contains("trial-keyring-secret"), "{text}");
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
 }
 
 #[test]
@@ -418,8 +496,28 @@ fn the_next_start_reaps_an_orphaned_herdr() {
     assert!(!process_matches(old, &binary));
     Client::connect(&again.socket).unwrap().ping().unwrap();
     drop(again);
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_replaced_server_keeps_the_directory_when_the_old_object_drops() {
+    let (cred, exec) = scratch("replaced-owner");
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let binary = binary();
+    let old = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let new = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let socket_dir = new.socket.parent().unwrap().to_path_buf();
+    assert!(socket_dir.exists());
+    drop(old);
+    assert!(
+        socket_dir.exists(),
+        "the old Drop must not remove the replacement server's socket directory"
+    );
+    Client::connect(&new.socket).unwrap().ping().unwrap();
+    drop(new);
+    assert!(
+        !socket_dir.exists(),
+        "the owner still removes its own socket directory"
+    );
 }
 
 #[test]
@@ -524,18 +622,19 @@ fn a_missing_credential_root_is_not_used_raw() {
     assert_eq!(error.code, "CREDENTIAL_ROOT_UNRESOLVED");
 }
 
-fn server(
-    name: &str,
-) -> (
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::sync::Arc<Server>,
-) {
+fn server(name: &str) -> (Scratch, Scratch, Scratch, std::sync::Arc<Server>) {
     let (cred, exec) = scratch(name);
     let state = herdr::state_dir(&exec, &cred).unwrap();
     let server = std::sync::Arc::new(Server::start(&binary(), &state, &cred, &exec).unwrap());
-    (cred, exec, state, server)
+    (
+        cred,
+        exec,
+        Scratch {
+            path: state,
+            extra: Vec::new(),
+        },
+        server,
+    )
 }
 
 #[test]
@@ -1241,8 +1340,8 @@ fn two_dispatches_share_one_herdr_server() {
     ));
     let left = std::sync::Arc::clone(&runtime);
     let right = std::sync::Arc::clone(&runtime);
-    let cred_left = cred.clone();
-    let cred_right = cred.clone();
+    let cred_left = std::path::PathBuf::from(&*cred);
+    let cred_right = std::path::PathBuf::from(&*cred);
     let exec_left = confine::execution_dir(&cred, "first").unwrap();
     let exec_right = confine::execution_dir(&cred, "second").unwrap();
     assert_ne!(exec_left, exec_right);
@@ -1515,11 +1614,18 @@ fn turn_state(
         .unwrap()
         .join(format!("standby-{key}"))
 }
-fn standby_root(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+fn standby_root(name: &str) -> (Scratch, Scratch, Scratch) {
     let (cred, root) = scratch(name);
     let exec = root.join("dispatches/job");
     std::fs::create_dir_all(&exec).unwrap();
-    (cred, root, exec)
+    (
+        cred,
+        root,
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 fn wait_for(path: &std::path::Path) {
     // A cold native session has a 30-second readiness budget. Parallel CI
@@ -2703,7 +2809,7 @@ async fn port_turn(name: &str, live: bool) {
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let _stop = StopAgency {
         binary: agency.clone(),
-        root: root.clone(),
+        root: PathBuf::from(&*root),
     };
     let started = Command::new(&agency)
         .arg("--root")

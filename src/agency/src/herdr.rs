@@ -283,6 +283,16 @@ impl Drop for Server {
     fn drop(&mut self) {
         signal_group(self.child.id(), "KILL");
         let _ = self.child.wait();
+        // The socket directory is ephemeral and lives outside the state dir. A replacement
+        // server on the same state rewrites `herdr.pid`; only the owner removes the dir.
+        // Inode numbers are not enough: ext4 reuses a just-released inode for the new socket.
+        let owner = std::fs::read_to_string(self.state.join("herdr.pid"))
+            .ok()
+            .and_then(|pid| pid.trim().parse::<u32>().ok())
+            == Some(self.child.id());
+        if owner && let Some(dir) = self.socket.parent() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
