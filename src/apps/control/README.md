@@ -76,7 +76,7 @@ Subscribe 本轮只在内存里保留 32 条事件；游标过期时的重同步
 
 ## 密钥后端
 
-控制面保管的密钥（Gitea 管理员令牌、Matrix 应用服务令牌等）走 `foundation::SecretStore`。缺省是探测式：这台机器有可用的系统钥匙串就用钥匙串，没有就退到 `<root>/secrets/` 下的 0600 文件——所有者 2026-09-04 的裁定，两种都是获准后端。
+控制面保管的密钥（Gitea 管理员令牌、Matrix 应用服务令牌等）走 `foundation::SecretStore`。缺省用 `<root>/secrets/` 下的 0600 文件，不探测或访问系统钥匙串。所有者 2026-10-18 将后台控制面的缺省改为 `user-file`；系统钥匙串仍是获准的显式选项。
 
 要显式钉一种，用配置键 `secret_backend`，写在 `<root>/control.json`：
 
@@ -84,7 +84,9 @@ Subscribe 本轮只在内存里保留 32 条事件；游标过期时的重同步
 { "secret_backend": "user-file" }
 ```
 
-`hctl2 init --secret-backend <system-keyring|user-file>` 与 `hctl2 start --secret-backend <…>` 写这个文件（保留文件里的其他键），未知取值由命令行直接拒绝，不静默退回缺省。缺省（文件不存在或不写该键）不变，仍是探测式。
+`hctl2 init --secret-backend <system-keyring|user-file>` 与 `hctl2 start --secret-backend <…>` 写这个文件（保留文件里的其他键），未知取值由命令行直接拒绝，不静默退回缺省。文件不存在或不写该键时用 `user-file`；已显式配置 `system-keyring` 的实例仍用原选择。
+
+旧实例若没有写这个键、原先靠自动探测用了钥匙串，升级后也会用新的文件缺省；原密钥不会搬过来。继续使用原密钥须由人显式选 `system-keyring`。本版不读旧钥匙串来猜后端，也不把旧实例当成已经完成迁移。
 
 行为：
 

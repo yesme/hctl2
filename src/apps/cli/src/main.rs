@@ -52,13 +52,13 @@ enum Command {
     },
     /// Create the control root; records `--secret-backend` when given.
     Init {
-        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        /// Persistent secret backend: `user-file` (default) or explicit `system-keyring`.
         #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
         secret_backend: Option<String>,
     },
     /// Start the control daemon; records `--secret-backend` when given.
     Start {
-        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        /// Persistent secret backend: `user-file` (default) or explicit `system-keyring`.
         #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
         secret_backend: Option<String>,
     },

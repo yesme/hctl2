@@ -80,7 +80,73 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
+    if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
+        agency::managed_login::Homes::prepare(&cred)
+            .unwrap()
+            .import_claude_token(b"sk-ant-oat01-fixture-only".as_slice(), u64::MAX)
+            .unwrap();
+    }
     (cred, exec)
+}
+
+#[test]
+fn managed_login_from_real_cli_is_private_and_never_echoes_the_token() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("agency");
+    let binary = std::env::var_os("HCTL2_CONFINE_BIN").unwrap();
+    let prepared = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "prepare"])
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stdout)
+    );
+    let paths: serde_json::Value = serde_json::from_slice(&prepared.stdout).unwrap();
+    assert_eq!(paths["login_performed"], false);
+    assert_eq!(paths["codex_credential_store"], "file");
+    let marker = "sk-ant-oat01-fixture-only";
+    let mut child = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "claude-token", "--expires-at", "4102444800"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(marker.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(marker));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(marker));
+    let stored = root.join("managed-credentials/claude-code.json");
+    assert_eq!(
+        std::fs::metadata(&stored).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let token: serde_json::Value = serde_json::from_slice(&std::fs::read(stored).unwrap()).unwrap();
+    assert_eq!(token["token"], marker);
+    let rejected = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "claude-token", "--expires-at", "1"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
 }
 
 struct SecretSpecimen {
@@ -1840,13 +1906,13 @@ fn standby_reports_the_trust_prompt_and_never_answers_it() {
 
 #[test]
 fn claude_honouring_agency_trust_is_checked_when_agency_is_set_up() {
-    let (_, root, _) = standby_root("setup-trust");
+    let (cred, root, _) = standby_root("setup-trust");
     let trusted = launch::InstalledHerdr::open(binary(), &waiting_claude(&root, true)).unwrap();
-    trusted.verify_claude_trust().unwrap();
+    trusted.verify_claude_trust(&cred).unwrap();
     let other = root.join("untrusted");
     std::fs::create_dir_all(&other).unwrap();
     let untrusted = launch::InstalledHerdr::open(binary(), &untrusted_claude(&other)).unwrap();
-    let error = untrusted.verify_claude_trust().unwrap_err();
+    let error = untrusted.verify_claude_trust(&cred).unwrap_err();
     assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED", "{error:?}");
     assert!(
         error.message.contains("CLAUDE_CODE_SANDBOXED=1"),

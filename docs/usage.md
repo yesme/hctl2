@@ -351,7 +351,11 @@ GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录�
 
 Room 端口的当前命令和确认流程见 [Chat 实现说明](../src/crates/chat/README.md#cli-示例与提要)：`hctl2 room list|show` 读取已建立的 Room，`draft` 机械选入原文，`create-topic|close|rebind|send|freeze|resume` 经预览确认执行。本阶段尚未提供 Project 创建命令，主 Room 的业务入口由 P2.2 辛接线；不要把端口已实现当作完整 Project 使用路径已交付。
 
-密钥后端缺省沿用「有钥匙串就用钥匙串、没有就退到用户目录下的 0600 文件」。要显式选一种，在 `hctl2 init` 或 `hctl2 start` 上加 `--secret-backend system-keyring|user-file`：它记进控制面数据目录的 `control.json`，之后每次 start 都按它执行；`hctl2 status` 的 `policy.credential_storage` 报告实际在用的那一种。无屏幕会话（CI、纯终端）建议 `user-file`：`system-keyring` 在 macOS 上每次读都要求授权，弹不出来就直接失败。选项与配置形状见 [control 说明](../src/apps/control/README.md#密钥后端)。
+密钥后端缺省用 `user-file`，密钥留在控制面数据目录下的 0600 文件，不探测或访问系统钥匙串。要显式选一种，在 `hctl2 init` 或 `hctl2 start` 上加 `--secret-backend system-keyring|user-file`：它记进控制面数据目录的 `control.json`，之后每次 start 都按它执行；`hctl2 status` 的 `policy.credential_storage` 报告实际在用的那一种。已显式选钥匙串的实例不改选项，也不自动搬移密钥；显式选择不可用的钥匙串时启动失败。选项与配置形状见 [control 说明](../src/apps/control/README.md#密钥后端)。
+
+Agency 的模型登录另行准备，不借用上述控制面密钥或人平时的 Claude、Codex 登录。先运行 `agency --root /path/to/agency login prepare` 查看独立目录，再由人执行原生登录：Claude 用 `claude setup-token` 并经私有文件或管道交给 `agency login claude-token`；Codex 在返回的 `codex_home` 下使用 `file` 后端登录。缺登录或过期会拒绝派工并给出操作命令，不自动登录、解锁钥匙串或搬移个人凭据。完整命令、截止时间和轮换说明见 [Agency 托管登录](../src/agency/README.md#托管登录)。
+
+旧控制面若原先靠自动探测用了钥匙串、但未写 `secret_backend`，升级后原密钥不会自动迁入文件。要继续用原密钥，先由人显式选 `system-keyring`；不把改缺省当成密钥迁移。
 
 完整的端到端操作步骤见[演示 1「协作现场」操作手册](./demos/demo-1.md)。
 

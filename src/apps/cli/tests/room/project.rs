@@ -160,7 +160,7 @@ fn paired_with(
     );
     let project = created["project_id"].as_str().unwrap().to_owned();
     let room = created["main_room_id"].as_str().unwrap().to_owned();
-    let agency_root = f.root.join("independent-agency");
+    let agency_root = dispatch_agency_root(&f, executor);
     let config = f.root.join("script.json");
     let delay = f.root.join("delay-script");
     let script = format!(
@@ -427,6 +427,23 @@ fn spawn_agency(f: &Fixture, log: &str) -> AgencyChild {
     spawn_agency_with(f, log, None, Executor::Script)
 }
 
+fn dispatch_agency_root(f: &Fixture, executor: Executor) -> PathBuf {
+    if executor == Executor::ClaudeCode {
+        let root = PathBuf::from(std::env::var_os("HCTL2_LIVE_AGENCY_ROOT").expect(
+            "prepare and import an independent login first; HCTL2_LIVE_AGENCY_ROOT is required",
+        ));
+        assert!(
+            root.is_absolute() && root.is_dir(),
+            "live Agency root must already exist"
+        );
+        // The operator's dedicated test Agency keeps its own login. Fixture Drop
+        // removes only f.root, never this external root or any native credentials.
+        root
+    } else {
+        f.root.join("independent-agency")
+    }
+}
+
 /// `installed_agency` is the payload `bin/agency`. The override is removed so the write path
 /// must find `hctl2-tool` beside that executable. The Buck binary has no sibling tool.
 fn spawn_agency_with(
@@ -457,7 +474,7 @@ fn spawn_agency_with(
     }
     serve
         .arg("--root")
-        .arg(f.root.join("independent-agency"))
+        .arg(dispatch_agency_root(f, executor))
         .arg("serve");
     let ready_within = match executor {
         Executor::Script => {
@@ -483,7 +500,7 @@ fn spawn_agency_with(
     loop {
         if Command::new(binary)
             .arg("--root")
-            .arg(f.root.join("independent-agency"))
+            .arg(dispatch_agency_root(f, executor))
             .arg("status")
             .output()
             .unwrap()
@@ -979,10 +996,10 @@ fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
 }
 
 /// 第 9 包验收第 1 条的另一半：同一条链，写入那一轮换成真的 Claude Code 会话——随包 Agency
-/// 起本机装的 `claude`、用它自己的登录，在 3f 的隔离工作副本里改文件，Agency 封存。其余照旧：
+/// 起本机装的 `claude`、用独立托管登录，在 3f 的隔离工作副本里改文件，Agency 封存。其余照旧：
 /// 自动发成评审请求、人预览合入、人预览完成。只在显式要求时跑（会用掉一次真会话）。
 #[test]
-#[ignore = "UNVERIFIED: installed Claude Code with its native login; HCTL2_HARNESS_LIVE=1"]
+#[ignore = "UNVERIFIED: installed Claude Code with managed login; HCTL2_HARNESS_LIVE=1 and HCTL2_LIVE_AGENCY_ROOT"]
 fn demo3_gitea_chain_with_a_real_claude_code_session_reaches_task_completion() {
     assert_eq!(
         std::env::var("HCTL2_HARNESS_LIVE").as_deref(),
@@ -1200,7 +1217,12 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
                 shown["state"],
                 shown["reason"],
                 settle_diagnostics(&f, &p, &invocation),
-                script_diagnostics(&f, &shown),
+                if live {
+                    "native Agency uses HCTL2_LIVE_AGENCY_ROOT; details are in agency.log"
+                        .to_owned()
+                } else {
+                    script_diagnostics(&f, &shown)
+                },
                 super::log_tail(&f.root.join("agency.log"))
             );
             (shown["state"] == "completed").then_some(shown)
@@ -3484,11 +3506,38 @@ fn paired_codex(name: &str, codex_bin: &std::path::Path, private_home: bool) -> 
     );
     let project = created["project_id"].as_str().unwrap().to_owned();
     let room = created["main_room_id"].as_str().unwrap().to_owned();
-    let agency_root = f.root.join("independent-agency");
+    let agency_root = if private_home {
+        f.root.join("independent-agency")
+    } else {
+        let root = PathBuf::from(std::env::var_os("HCTL2_LIVE_CODEX_AGENCY_ROOT").expect(
+            "prepare a separate Codex-only test Agency; HCTL2_LIVE_CODEX_AGENCY_ROOT is required",
+        ));
+        assert!(root.is_absolute() && root.is_dir());
+        assert!(
+            !root.join("managed-credentials/claude-code.json").exists(),
+            "a stand-in must never receive a real Claude credential"
+        );
+        root
+    };
     let delay = f.root.join("delay-script");
-    let codex_home = f.root.join("codex-home");
+    let homes = if private_home {
+        super::agency::fixture_login(&agency_root)
+    } else {
+        super::agency::prepare_login(&agency_root)
+    };
+    let codex_home = PathBuf::from(homes["codex_home"].as_str().unwrap());
     if private_home {
         std::fs::create_dir_all(&codex_home).unwrap();
+        std::fs::write(
+            codex_home.join("auth.json"),
+            br#"{"tokens":{"access_token":"fixture-only"}}"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            codex_home.join("auth.json"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )
+        .unwrap();
     }
     let log = f.root.join("agency-serve.err");
     let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
@@ -3503,7 +3552,7 @@ fn paired_codex(name: &str, codex_bin: &std::path::Path, private_home: bool) -> 
         .env("HCTL2_CODEX", codex_bin)
         .env("HCTL2_AGENCY_IDLE_MS", "600000");
     if private_home {
-        command.env("CODEX_HOME", &codex_home);
+        command.env_remove("HCTL2_AGENCY_HARNESS_HOME");
     }
     let agency = AgencyChild(
         command
@@ -3684,7 +3733,7 @@ fn codex_fixture_dispatch_from_real_cli_admits_the_answer_into_the_room() {
 
 /// One logged-in Codex turn. Ignored unless `HCTL2_CODEX_LIVE=1`. Does not print credentials.
 #[test]
-#[ignore = "uses the local Codex login; set HCTL2_CODEX_LIVE=1"]
+#[ignore = "requires an independent managed Codex login; HCTL2_CODEX_LIVE=1 and HCTL2_LIVE_CODEX_AGENCY_ROOT"]
 fn live_codex_dispatch_returns_one_answer_to_the_room() {
     if std::env::var_os("HCTL2_CODEX_LIVE").is_none() {
         return;
@@ -3729,8 +3778,9 @@ fn live_codex_dispatch_returns_one_answer_to_the_room() {
         }),
         "the Codex answer was not projected into the Room"
     );
-    let home = std::env::var_os("HOME").expect("HOME");
-    let sessions = std::path::PathBuf::from(home).join(".codex/sessions");
+    let root = PathBuf::from(std::env::var_os("HCTL2_LIVE_CODEX_AGENCY_ROOT").unwrap());
+    let homes = super::agency::prepare_login(&root);
+    let sessions = PathBuf::from(homes["codex_home"].as_str().unwrap()).join("sessions");
     let mut matched = false;
     if sessions.is_dir() {
         let mut stack = vec![sessions];

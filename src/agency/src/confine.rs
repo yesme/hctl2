@@ -129,7 +129,7 @@ pub fn allowed_tree_contains_credential(allow: &Path, credential: &Path) -> bool
     credential.starts_with(allow) || allow.starts_with(credential)
 }
 
-fn intended_path(path: &Path) -> Result<PathBuf> {
+pub(crate) fn intended_path(path: &Path) -> Result<PathBuf> {
     if path.exists() {
         return path.canonicalize().map_err(|_| unresolved_credential());
     }
@@ -244,8 +244,7 @@ pub(crate) fn reject_unenforceable_isolation(effects: &[String]) -> Result<()> {
 
 /// An app-server has the physical credential boundary of Herdr descendants.
 /// `write` is the host sandbox flag a write turn expects. Read-only stays on
-/// this boundary without that flag. Keep the native model login; never grant
-/// the whole HOME.
+/// this boundary without that flag. Only the Agency-owned model login is granted.
 pub(crate) fn harness_command(
     program: &Path,
     arguments: &[String],
@@ -256,19 +255,17 @@ pub(crate) fn harness_command(
     write: bool,
 ) -> Result<Command> {
     let mut command = command(program, arguments, state, credential_root)?;
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| PortError::invalid("native harness HOME missing"))?;
-    let codex_home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".codex"));
+    let homes = crate::managed_login::Homes::prepare(credential_root)?;
+    homes.require_codex_login()?;
+    let home = homes.home;
+    let codex_home = homes.codex;
     let execution_parent = cwd
         .parent()
         .ok_or_else(|| PortError::invalid("session parent missing"))?;
     let socket_parent = socket
         .parent()
         .ok_or_else(|| PortError::invalid("socket parent missing"))?;
-    for path in [&codex_home, execution_parent, socket_parent, state] {
+    for path in [&home, &codex_home, execution_parent, socket_parent, state] {
         if allowed_tree_contains_credential(&intended_path(path)?, &credential_root.canonicalize()?)
         {
             return Err(PortError::new(
@@ -305,8 +302,9 @@ pub(crate) fn harness_command(
         .env(
             "HCTL2_CONFINE_ALLOW",
             format!(
-                "{}\n{}\n{}\n{}",
+                "{}\n{}\n{}\n{}\n{}",
                 codex_home.display(),
+                home.display(),
                 execution_parent.display(),
                 socket_parent.display(),
                 state.display()
@@ -320,6 +318,7 @@ pub(crate) fn harness_command(
                 .ok_or_else(|| PortError::invalid("harness parent missing"))?,
         )
         .current_dir(cwd);
+    command.args(["-c", "cli_auth_credentials_store=\"file\""]);
     if write {
         command.args(["-c", "sandbox_mode=\"danger-full-access\""]);
     }
@@ -378,6 +377,9 @@ pub(crate) fn sensitive_paths() -> Vec<PathBuf> {
         .map(PathBuf::from)
         .unwrap_or_default();
     let mut paths = vec![
+        home.join(".claude"),
+        home.join(".claude.json"),
+        home.join(".codex"),
         home.join(".config/gh"),
         home.join(".ssh"),
         home.join(".git-credentials"),
@@ -385,12 +387,21 @@ pub(crate) fn sensitive_paths() -> Vec<PathBuf> {
         home.join(".local/share/keyrings"),
         PathBuf::from("/Library/Keychains"),
     ];
+    for key in ["CLAUDE_CONFIG_DIR", "CODEX_HOME"] {
+        if let Some(path) = std::env::var_os(key) {
+            paths.push(PathBuf::from(path));
+        }
+    }
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
         paths.push(PathBuf::from(xdg).join("gh"));
     }
     if let Some(gh) = std::env::var_os("GH_CONFIG_DIR") {
         paths.push(PathBuf::from(gh));
     }
+    let resolved: Vec<_> = paths.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    paths.extend(resolved);
+    paths.sort();
+    paths.dedup();
     paths
 }
 

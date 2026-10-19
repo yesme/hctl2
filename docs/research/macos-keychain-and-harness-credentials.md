@@ -191,4 +191,6 @@
 
 - 2026-10-17 初版（Muse 席 mac）：按开工书 §二 第 37 条 ⑤ 的派工落盘；评审席 Claude（mac）找问题、Antigravity（ubuntu）核验链接与版本，结论待回填。
 
+- 2026-10-19 · Codex（mac），实现前验证：Claude Code 2.1.302 的文件回退未通过本次隔离登录验证。`CLAUDE_CONFIG_DIR` 指向空的私有目录，Seatbelt 拒读写人的 Keychains、`.claude`、`.claude.json`、`.codex`、gh 和 ssh；所有者执行原生 `claude auth login --claudeai` 后看到“找不到存储的钥匙串”弹窗，随后目录没有生成 `.credentials.json`，隔离内 `claude auth status --json` 仍为 `loggedIn:false`。只读对照中，保留或替换 `HOME`，`security default-keychain -d user` 都返回找不到默认钥匙串，不能单独归因于 `HOME`。本机原生程序的 secure-storage 实现先写 Keychain；若写入失败被标为 transient（包括超时），直接返回、不写文件回退。未取得该次登录的原生错误码，不能断言它具体走了哪个失败分支。官方 [Authentication](https://code.claude.com/docs/en/authentication#credential-management) 只说明拒写时的回退，没有找到强制选择文件后端的公开入口；本机 `auth login --help` 也没有这一选项。因此不把文件回退作为已经验证的 Agency 登录方案，实施已拍板的 `setup-token` 路径：人生成并显式导入独立 token，Agency 私有保存，只放进单个会话的 settings `env`，不进参数或 Herdr server 环境。没有读取、复制或改写人的真实凭据，没有解锁或新建钥匙串；没有完成真实模型调用。Codex 继续按官方 [`CODEX_HOME` 与 `file` 档](https://learn.chatgpt.com/docs/auth#credential-storage) 托管，原生刷新归 Codex。
+
 

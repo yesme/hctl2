@@ -11,7 +11,7 @@ use foundation::{SecretBackend, SecretStore};
 /// File name of the control configuration inside the control root.
 pub const CONFIG_FILE: &str = "control.json";
 
-/// The configured secret backend, or `None` for the detected default.
+/// The configured secret backend, or `None` for the private-file default.
 ///
 /// # Errors
 ///
@@ -95,12 +95,20 @@ mod tests {
     }
 
     #[test]
-    fn absent_file_or_absent_key_keeps_the_detected_default() {
+    fn absent_file_or_absent_key_uses_private_files() {
         let missing = root_with(None);
         assert_eq!(secret_backend(&missing).unwrap(), None);
+        assert_eq!(
+            secret_store(&missing).unwrap().backend(),
+            SecretBackend::UserFile
+        );
         let _ = std::fs::remove_dir_all(missing);
         let empty = root_with(Some("{\"other\": 1}"));
         assert_eq!(secret_backend(&empty).unwrap(), None);
+        assert_eq!(
+            secret_store(&empty).unwrap().backend(),
+            SecretBackend::UserFile
+        );
         let _ = std::fs::remove_dir_all(empty);
     }
 

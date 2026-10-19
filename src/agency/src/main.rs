@@ -4,7 +4,7 @@ use agency::{
 };
 use agency_proto::{PortError, Result, client::Client};
 use clap::{Parser, Subcommand};
-use std::{os::unix::process::CommandExt, path::PathBuf, sync::Arc};
+use std::{io::IsTerminal, os::unix::process::CommandExt, path::PathBuf, sync::Arc};
 
 #[derive(Parser)]
 #[command(name = "agency", version, about = "Independent local Agency service")]
@@ -26,6 +26,23 @@ enum Command {
     },
     Status,
     Stop,
+    /// Prepare Agency-owned native homes or import a human-generated token.
+    Login {
+        #[command(subcommand)]
+        command: LoginCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum LoginCommand {
+    /// Show private home paths; does not log in or read personal credentials.
+    Prepare,
+    /// Import a fresh `claude setup-token` value from a file or secret-manager pipe.
+    ClaudeToken {
+        /// Operator-declared expiry, in Unix seconds. Import does not authenticate the token.
+        #[arg(long)]
+        expires_at: u64,
+    },
 }
 #[cfg(target_os = "linux")]
 #[path = "../linux_confine.rs"]
@@ -56,6 +73,39 @@ fn main() {
 }
 async fn run(args: Args) -> Result<()> {
     match args.command {
+        Command::Login { command } => {
+            let homes = agency::managed_login::Homes::prepare(&args.root)?;
+            match command {
+                LoginCommand::Prepare => {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "harness_home":homes.root,"home":homes.home,
+                            "claude_config_dir":homes.claude,"codex_home":homes.codex,
+                            "claude_setup":"claude setup-token",
+                            "codex_credential_store":"file",
+                            "login_performed":false
+                        })
+                    );
+                }
+                LoginCommand::ClaudeToken { expires_at } => {
+                    if std::io::stdin().is_terminal() {
+                        return Err(PortError::invalid(
+                            "token input must be a private file or pipe, not an echoing terminal",
+                        ));
+                    }
+                    let expires_at_ms = expires_at
+                        .checked_mul(1000)
+                        .ok_or_else(|| PortError::invalid("expiry is out of range"))?;
+                    homes.import_claude_token(std::io::stdin().lock(), expires_at_ms)?;
+                    println!(
+                        "{}",
+                        serde_json::json!({"stored":true,"harness":"claude-code","expires_at":expires_at})
+                    );
+                }
+            }
+            Ok(())
+        }
         Command::Serve { script_config } => {
             agency::confine::refuse_covered_credential_root(&args.root)?;
             let config = if let Some(path) = script_config {
@@ -68,7 +118,7 @@ async fn run(args: Args) -> Result<()> {
             let runtime: Arc<dyn agency::runtime::Runtime> = if let Some(config) = &config {
                 Arc::new(ScriptRuntime::new(config.clone()))
             } else if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT") {
-                match catalog_installed_harness(std::path::Path::new(&install)) {
+                match catalog_installed_harness(std::path::Path::new(&install), &args.root) {
                     Ok(runtime) => {
                         if let Some(reason) = runtime.codex_skip() {
                             eprintln!("codex not cataloged: {reason}");
@@ -152,7 +202,10 @@ async fn status(root: &std::path::Path) -> Result<serde_json::Value> {
         .call("catalog", &serde_json::json!({}))
         .await
 }
-fn catalog_installed_harness(install: &std::path::Path) -> Result<agency::launch::InstalledHerdr> {
+fn catalog_installed_harness(
+    install: &std::path::Path,
+    root: &std::path::Path,
+) -> Result<agency::launch::InstalledHerdr> {
     let binary = agency::launch::installed_herdr(install)?;
     let claude = std::env::var_os("HCTL2_CLAUDE")
         .map(std::path::PathBuf::from)
@@ -165,7 +218,19 @@ fn catalog_installed_harness(install: &std::path::Path) -> Result<agency::launch
             )
         })?;
     let runtime = agency::launch::InstalledHerdr::open(binary, &claude)?;
-    runtime.verify_claude_trust()?;
+    agency::managed_login::Homes::prepare(root)?;
+    if let Err(error) = runtime.verify_claude_trust(root) {
+        if matches!(
+            error.code.as_str(),
+            "MANAGED_LOGIN_REQUIRED" | "MANAGED_LOGIN_INVALID" | "MANAGED_LOGIN_EXPIRED"
+        ) {
+            // A missing Claude login must not hide an independently configured
+            // Codex profession. Claude dispatch still rejects before execution.
+            eprintln!("claude managed login: {}", error.message);
+        } else {
+            return Err(error);
+        }
+    }
     Ok(runtime)
 }
 

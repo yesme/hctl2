@@ -439,7 +439,8 @@ fn run_job(
                     let text = answer.ok_or_else(|| {
                         PortError::invalid("turn completed without an agent message")
                     })?;
-                    rollout_matches(&session.thread, &job.text)?;
+                    let homes = crate::managed_login::Homes::prepare(&job.credential_root)?;
+                    rollout_matches(&homes.codex, &session.thread, &job.text)?;
                     session.ensure_pane(env.server, env.codex, cwd, env.dir)?;
                     let (schema, bytes) = if let Some(copy) = &job.copy {
                         let output = crate::write::seal_return(
@@ -718,18 +719,21 @@ fn open_pane(
         Err(e) => return Err(e.into()),
     }
     let client = Client::connect(&server.socket)?;
-    let home = std::env::var("HOME").unwrap_or_default();
+    let homes = crate::managed_login::Homes::prepare(&server.credential_root)?;
+    let home = homes.home.display().to_string();
+    let codex_home = homes.codex.display().to_string();
     let user = std::env::var("USER").unwrap_or_default();
     let path = format!(
         "{}:{}",
         bin.display(),
         std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
     );
-    let mut env = json!({"HOME":home,"USER":user,"PATH":path});
+    let mut env = json!({"HOME":home,"CODEX_HOME":codex_home,"USER":user,"PATH":path});
     let mut command = vec![
         "/usr/bin/env".to_owned(),
         format!("PATH={path}"),
         format!("HOME={home}"),
+        format!("CODEX_HOME={codex_home}"),
         format!("USER={user}"),
     ];
     if let Some(auth) = auth {
@@ -755,6 +759,8 @@ fn open_pane(
         .ok_or_else(|| PortError::invalid("layout pane missing"))?
         .to_owned();
     let mut args = vec![
+        "-c".to_owned(),
+        "cli_auth_credentials_store=\"file\"".to_owned(),
         "resume".to_owned(),
         thread.to_owned(),
         "--remote".into(),
@@ -842,12 +848,7 @@ fn write_thread(dir: &Path, thread: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn rollout_matches(thread: &str, text: &str) -> Result<()> {
-    let home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".codex")
-        });
+pub(crate) fn rollout_matches(home: &Path, thread: &str, text: &str) -> Result<()> {
     let sessions = home.join("sessions");
     let mut found = None;
     if sessions.is_dir() {
