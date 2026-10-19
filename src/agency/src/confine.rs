@@ -326,6 +326,87 @@ pub(crate) fn harness_command(
     Ok(command)
 }
 
+/// Antigravity CLI (`agy`) runs with a managed `HOME` (`<state>/agy-home`) so
+/// `~/.gemini/antigravity-cli/settings.json`, `antigravity-oauth-token`,
+/// `brain/<conversation_id>/...`, and `~/.gemini/config/hooks.json` resolve
+/// inside the Agency-managed profile without touching the workspace or the
+/// person's `~/.gemini`.
+pub(crate) fn agy_command(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    state: &Path,
+    profile: &Path,
+    credential_root: &Path,
+    write: bool,
+) -> Result<Command> {
+    let mut command = command(program, arguments, state, credential_root)?;
+    let temp = state.join("tmp");
+    crate::storage::private_dir(&temp)?;
+    crate::storage::private_dir(profile)?;
+    let credential = credential_root.canonicalize()?;
+    for path in [profile, cwd, state, &temp] {
+        if allowed_tree_contains_credential(&intended_path(path)?, &credential) {
+            return Err(PortError::new(
+                "CREDENTIAL_ROOT_COVERED",
+                "agy allowance overlaps credentials",
+                "move_credential_root",
+            ));
+        }
+    }
+    protect_native_credentials(state, credential_root)?;
+    if cfg!(target_os = "macos") {
+        let profile_file = state.join("credential.sb");
+        let mut rules = fs::read_to_string(&profile_file)?;
+        if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+            let user_gemini = home.join(".gemini");
+            if !profile.starts_with(&user_gemini) {
+                let literal = scheme_literal(&user_gemini.display().to_string())?;
+                rules.push_str(&format!(
+                    "(deny file-read* (subpath \"{literal}\"))\n(deny file-write* (subpath \"{literal}\"))\n"
+                ));
+            }
+        }
+        if write {
+            rules.push_str(&worktree_git_denial(cwd)?);
+        }
+        fs::remove_file(&profile_file)?;
+        fs::write(&profile_file, rules)?;
+        fs::set_permissions(profile_file, fs::Permissions::from_mode(0o400))?;
+    }
+    command
+        .env_clear()
+        .env("HOME", profile)
+        .env(
+            "PATH",
+            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
+        )
+        .env("LANG", "C.UTF-8")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("TMPDIR", &temp)
+        .env(
+            "HCTL2_CONFINE_ALLOW",
+            format!(
+                "{}\n{}\n{}\n{}",
+                profile.display(),
+                state.display(),
+                cwd.display(),
+                temp.display()
+            ),
+        )
+        .env(
+            "HCTL2_CONFINE_READ",
+            program
+                .canonicalize()?
+                .parent()
+                .ok_or_else(|| PortError::invalid("harness parent missing"))?,
+        )
+        .current_dir(cwd);
+    Ok(command)
+}
+
 pub(crate) fn protect_native_credentials(state: &Path, credential_root: &Path) -> Result<()> {
     if cfg!(target_os = "macos") {
         let profile = state.join("credential.sb");

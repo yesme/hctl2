@@ -31,6 +31,12 @@ struct Rig {
 }
 impl Rig {
     async fn new(live: bool) -> Self {
+        Self::build(live, false).await
+    }
+    async fn new_agy(live: bool) -> Self {
+        Self::build(live, true).await
+    }
+    async fn build(live: bool, agy: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("credentials");
         let repo = temp.path().join("source");
@@ -64,11 +70,19 @@ impl Rig {
         );
         let bin = temp.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
-        let (claude, codex) = if live {
-            (on_path("claude"), on_path("codex"))
+        let (claude, codex, agy_bin) = if live {
+            let claude = on_path("claude");
+            let codex = if agy {
+                claude.clone()
+            } else {
+                on_path("codex")
+            };
+            let agy_bin = if agy { on_path("agy") } else { claude.clone() };
+            (claude, codex, agy_bin)
         } else {
             let claude = bin.join("claude");
             let codex = bin.join("codex");
+            let agy_bin = bin.join("agy");
             std::os::unix::fs::symlink(
                 PathBuf::from(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap())
                     .canonicalize()
@@ -83,20 +97,33 @@ impl Rig {
                 &codex,
             )
             .unwrap();
+            std::os::unix::fs::symlink(
+                PathBuf::from(std::env::var("HCTL2_AGY_FIXTURE").unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                &agy_bin,
+            )
+            .unwrap();
             let home = fixture_home();
             fs::create_dir_all(&home).unwrap();
             fs::write(home.join("mode"), "ok").unwrap();
-            (claude, codex)
+            (claude, codex, agy_bin)
         };
         let herdr = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").unwrap())
             .canonicalize()
             .unwrap();
         fs::set_permissions(&herdr, fs::Permissions::from_mode(0o755)).unwrap();
-        let runtime = Arc::new(
+        let runtime = Arc::new(if agy {
+            InstalledHerdr::open_with_agy(herdr, &claude, &agy_bin, Duration::from_secs(300))
+                .unwrap()
+        } else {
             InstalledHerdr::open_with_codex(herdr, &claude, &codex, Duration::from_secs(300))
-                .unwrap(),
-        );
+                .unwrap()
+        });
         let agency = Agency::open(&root, runtime.clone()).unwrap();
+        if agy {
+            seed_agy_profile(&root, live);
+        }
         let endpoint = agency_proto::client::admin_endpoint(&root).unwrap();
         let admin = Client::new(endpoint.clone(), Agency::bootstrap_key(&root).unwrap());
         let pairing = Client::new(endpoint, fs::read_to_string(root.join("pair.key")).unwrap());
@@ -530,7 +557,11 @@ async fn check_proposal(rig: &Rig, dispatch: &Dispatch, trace: &Trace, empty: bo
 }
 
 async fn fixture_writes(harness: &str) {
-    let rig = Rig::new(false).await;
+    let rig = if harness == "antigravity-cli" {
+        Rig::new_agy(false).await
+    } else {
+        Rig::new(false).await
+    };
     let keyring = rig.temp.path().join("keyrings/login.keyring");
     fs::create_dir_all(keyring.parent().unwrap()).unwrap();
     fs::write(&keyring, b"trial-keyring").unwrap();
@@ -598,6 +629,21 @@ async fn fixture_writes(harness: &str) {
                 .contains(&String::from_utf8(canonical(&boundary).unwrap()).unwrap())
         );
         json_file(&state.join("write-probe.json"))
+    } else if harness == "antigravity-cli" {
+        let exec = confine::execution_dir(&rig.root, &dispatch.reference).unwrap();
+        let agy_dir = herdr::state_dir(&exec, &rig.root)
+            .unwrap()
+            .join("agy-home/.gemini/antigravity-cli");
+        let argv = json_file(&agy_dir.join("argv.json"));
+        assert_eq!(argv["settings"]["toolPermission"], "always-proceed");
+        assert_eq!(argv["settings"]["allowNonWorkspaceAccess"], false);
+        assert_eq!(
+            PathBuf::from(argv["cwd"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            worktree
+        );
+        json_file(&agy_dir.join("write-probe.json"))
     } else {
         let turn = json_file(&fixture_home().join("last-turn.json"));
         assert_eq!(turn["sandboxPolicy"]["type"], "externalSandbox");
@@ -761,6 +807,14 @@ async fn fixture_writes(harness: &str) {
             &rig.claude_state(&readonly, &readonly_dispatch)
                 .join("secret-probe.json"),
         )
+    } else if harness == "antigravity-cli" {
+        let exec = confine::execution_dir(&rig.root, &readonly_dispatch.reference).unwrap();
+        let agy_dir = herdr::state_dir(&exec, &rig.root)
+            .unwrap()
+            .join("agy-home/.gemini/antigravity-cli");
+        let argv = json_file(&agy_dir.join("argv.json"));
+        assert_eq!(argv["settings"]["toolPermission"], "request-review");
+        json_file(&agy_dir.join("secret-probe.json"))
     } else {
         json_file(&fixture_home().join("secret-probe.json"))
     };
@@ -791,6 +845,11 @@ async fn claude_write_entry_uses_materialized_worktree_and_keeps_unsealed_edits(
 async fn codex_write_entry_uses_materialized_worktree_and_cannot_read_credentials() {
     let _guard = SERIAL.lock().await;
     fixture_writes("codex-cli").await;
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn agy_write_entry_uses_materialized_worktree_and_cannot_read_credentials() {
+    let _guard = SERIAL.lock().await;
+    fixture_writes("antigravity-cli").await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -1075,7 +1134,11 @@ async fn live_writes(harness: &str) {
         Ok("1"),
         "UNVERIFIED: local login required"
     );
-    let rig = Rig::new(true).await;
+    let rig = if harness == "antigravity-cli" {
+        Rig::new_agy(true).await
+    } else {
+        Rig::new(true).await
+    };
     let text = "Fix the bug in calculator.py: double(value) must return twice its argument. Edit the non-documentation Python code, run /usr/bin/python3 -m unittest -v test_calculator, and report the command and its output. Leave all changes uncommitted. Do not push, access credentials, or edit harness global settings.";
     let (input, _) = rig
         .request(harness, &format!("live-{harness}"), text, |_, _| {})
@@ -1135,6 +1198,30 @@ async fn live_writes(harness: &str) {
             "Claude native returned: {}",
             fs::read_to_string(state.join("returned.json")).unwrap()
         );
+    } else if harness == "antigravity-cli" {
+        let file = trace
+            .events
+            .iter()
+            .find_map(|event| event.payload["file"].as_str())
+            .expect("agy transcript file");
+        let records: Vec<Value> = fs::read_to_string(file)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(records.iter().any(|record| {
+            record["type"] == "USER_INPUT"
+                && record["content"].as_str().is_some_and(|body| {
+                    body.contains(text)
+                        && body.contains("Agency ChangeSet: cs-trial")
+                        && body.contains("Write lease: lease-trial generation 1")
+                })
+        }));
+        assert!(records.iter().any(|record| {
+            let body = serde_json::to_string(record).unwrap();
+            body.contains("test_double") && body.contains("OK")
+        }));
+        eprintln!("agy own transcript: {file}");
     } else {
         let thread = trace
             .events
@@ -1179,6 +1266,29 @@ async fn live_writes(harness: &str) {
     rig.close().await;
 }
 
+fn seed_agy_profile(cred: &Path, live: bool) {
+    let parent = confine::execution_parent(cred).unwrap();
+    fs::create_dir_all(&parent).unwrap();
+    let seed = parent.join("seed");
+    fs::create_dir_all(&seed).unwrap();
+    let state = herdr::state_dir(&seed, cred).unwrap();
+    let agy_dir = state.join("agy-home/.gemini/antigravity-cli");
+    fs::create_dir_all(&agy_dir).unwrap();
+    let dest = agy_dir.join("antigravity-oauth-token");
+    if live {
+        let token_src = std::env::var_os("HCTL2_AGY_OAUTH_TOKEN")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(std::env::var_os("HOME").expect("HOME"))
+                    .join(".gemini/antigravity-cli/antigravity-oauth-token")
+            });
+        fs::copy(token_src, &dest).unwrap();
+    } else {
+        fs::write(&dest, b"fixture-oauth-token\n").unwrap();
+    }
+    fs::set_permissions(&dest, fs::Permissions::from_mode(0o600)).unwrap();
+}
+
 fn native_text_matches(content: &Value, text: &str) -> bool {
     content.as_str() == Some(text)
         || content.as_array().is_some_and(|blocks| {
@@ -1216,6 +1326,12 @@ fn native_records(root: &Path, session: &str) -> (PathBuf, Vec<Value>) {
     (path, records)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "UNVERIFIED: installed agy, managed profile login and HCTL2_HARNESS_LIVE=1 required"]
+async fn live_agy_changes_non_documentation_code_and_runs_tests() {
+    let _guard = SERIAL.lock().await;
+    live_writes("antigravity-cli").await;
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "UNVERIFIED: installed Claude Code and native login required; HCTL2_HARNESS_LIVE=1"]
 async fn live_claude_changes_non_documentation_code_and_runs_tests() {

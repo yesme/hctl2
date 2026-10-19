@@ -76,6 +76,7 @@ impl Agency {
             )
         })?;
         crate::codex::reap_previous(&root)?;
+        crate::agy::reap_previous(&root)?;
         let db = database(&root.join("registry.sqlite"), &registry_migrations())?;
         let key: Option<String> = sql(db
             .query_row(

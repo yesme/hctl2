@@ -50,12 +50,14 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
 | `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架两家工种；为写入启动合成凭据隔离规则 |
 | `src/codex.rs` | 每个选入记录一个常驻 app-server；两种模式都用独立鉴权的本机 WebSocket；`turn/start` 交正文，pane 展示同一原生线程 |
+| `src/agy.rs` | 每个选入记录一个常驻 `agy` stream-json 进程；托管 `HOME` 隔离登录令牌、`settings.json`、`hooks.json` 与 `transcript.jsonl` |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
 | `src/write.rs` | 按 Bundle / Spec 核写边界，调用 P1 materialize 与公开 repo seal，保全副本、失败重试并交 ChangeSet 输出 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
 | `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
 | `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及子进程读取凭据根；Linux 二进制目录只读、可执行 |
 | `tests/herdr.rs`、`tests/standby_fixture.rs` | 原生 Herdr 回归与结构化测试夹具；真实 Claude 会话另设开关 |
+| `tests/agy_fixture.rs`、`tests/agy_fixture_test.rs` | Antigravity CLI stream-json 子集的确定性夹具与用例；真实 `agy` 会话另设开关 |
 
 `serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按包内 `PAYLOAD.sha256` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种记实际版本与二进制摘要。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
 
@@ -82,6 +84,8 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次。Codex 0.161 的 Unix 监听会去准备 `/tmp/codex-daemon-<uid>`，Landlock 不允许 `/tmp`，所以只读和写入都改听带 capability token 的 `ws://127.0.0.1`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `approvalPolicy: never`。只读的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`：Codex 自己的 bubblewrap 在这层 Landlock 里建不起用户名字空间，命令由宿主边界执行，不把网络记成已切断。写入 turn 仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
 
 人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
+
+Antigravity CLI 工种 `antigravity-cli` 与 Claude、Codex 并列，模型字段缺省 `none`（指定时传 `--model`）。最低版本 1.2.17。`HCTL2_AGY` 可指定路径，否则从 PATH 找；冒烟不过就不上架，原因写到 `serve.err`。每个选入记录一个常驻 `agy --output-format stream-json --input-format stream-json --disable-slash-commands --print=` 进程：启动读 `init` 帧取 `conversation_id`，每轮通过 stdin 发一行 `{"event":"user","message":{"content":...}}`，忽略子代理 `step_update` 与外会话帧，只认本 `conversation_id` 的顶层 `result` 帧。回答交回前在 `agy` 自己的 `<HOME>/.gemini/antigravity-cli/brain/<conversation_id>/.system_generated/logs/transcript.jsonl` 里逐字核对 `USER_INPUT`，不一致报 `STANDBY_PROMPT_MISMATCH`。取消或截止向进程组发 `SIGINT`，三秒内未退出则强制关闭进程组；闲置超时关闭后下次派工传 `--conversation <id>` 续接，失败则起新会话并记 `resume_failed`。子进程按 PID、启动时间与参数摘要记录在 `<root>/agy-processes/`，`shutdown` 与 `Agency::open` 重启时确定性回收。托管 `HOME` 设在 `<state>/agy-home`（`ANTIGRAVITY_APP_DATA_DIR` 不搬迁 `settings.json`）：登录令牌位于 `<state>/agy-home/.gemini/antigravity-cli/antigravity-oauth-token`，缺失或过期报 `HARNESS_LOGIN_REQUIRED`；只读写入各自的 `settings.json` 与 `<HOME>/.gemini/config/hooks.json`，不污染源仓库或工作树。macOS 启动 profile 另拒读人的 `~/.gemini`，Linux Landlock 允许名单只含托管 `HOME`、状态目录、工作目录与 `TMPDIR`。stream-json 占用 stdio 且无 `--remote` 附着机制，观测里 `pane` 为 `null`（待所有者裁定）。确定性用例 `root//agency:agy_fixture_test` 默认运行；真实只读与写入用例默认 `ignore`，需 `HCTL2_HARNESS_LIVE=1`。
 
 ### 3f · 写入型会话
 

@@ -3,6 +3,7 @@
 // Native turn mods are available from this Claude Code version.
 pub const CLAUDE_MINIMUM: &str = "2.1.287";
 pub const CODEX_MINIMUM: &str = "0.153.4";
+pub const AGY_MINIMUM: &str = "1.2.17";
 
 pub fn version_at_least(actual: &str, minimum: &str) -> bool {
     let parse = |text: &str| {
