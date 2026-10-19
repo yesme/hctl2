@@ -402,6 +402,8 @@ pub struct InstalledHerdr {
     script: Option<Arc<LaunchScript>>,
     pool: Option<crate::standby::Pool>,
     codex_pool: Option<crate::codex::Pool>,
+    grok_pool: Option<crate::grok::Pool>,
+    grok_digest: Option<String>,
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
@@ -478,6 +480,10 @@ impl InstalledHerdr {
         }
         let digest = crate::catalog::file_digest(&claude)?;
         let herdr_digest = crate::catalog::file_digest(&binary)?;
+        let (grok_pool, grok_digest) = match crate::grok::installed() {
+            Some((path, digest)) => (Some(crate::grok::Pool::new(path, idle)), Some(digest)),
+            None => (None, None),
+        };
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -491,6 +497,8 @@ impl InstalledHerdr {
             codex_pool: codex
                 .as_ref()
                 .map(|(path, _, _)| crate::codex::Pool::new(path.clone(), idle)),
+            grok_pool,
+            grok_digest,
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
@@ -541,6 +549,8 @@ impl InstalledHerdr {
             script: Some(Arc::new(script)),
             pool: None,
             codex_pool: None,
+            grok_pool: None,
+            grok_digest: None,
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
@@ -813,8 +823,13 @@ impl Runtime for InstalledHerdr {
             .as_ref()
             .map(|pool| pool.shutdown())
             .transpose();
+        let grok = self
+            .grok_pool
+            .as_ref()
+            .map(|pool| pool.shutdown())
+            .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
-        let pooled = codex.and(pooled);
+        let pooled = codex.and(grok).and(pooled);
         for server in
             std::mem::take(&mut *self.write_slots.lock().expect("writing herdr")).into_values()
         {
@@ -876,7 +891,7 @@ impl Runtime for InstalledHerdr {
             });
         }
         let mut harnesses = vec![harness];
-        if let Some((_, digest)) = crate::grok::installed() {
+        if let Some(digest) = self.grok_digest.clone() {
             let grok_harness = FrozenRef {
                 id: "grok".into(),
                 revision: "acp-stdio".into(),
@@ -891,7 +906,7 @@ impl Runtime for InstalledHerdr {
                 harness: grok_harness.clone(),
                 model: "self-reported".into(),
                 persona: "grok build".into(),
-                terms: "Bundle dispatch via grok agent stdio session/prompt; no interactive pane; read-only in this slice; write dispatch is refused; no --always-approve; no terminal input or publication".into(),
+                terms: "Bundle dispatch via grok agent stdio; one process per selection until idle, then session/load; no interactive pane; read-only in this slice; write dispatch is refused; no --always-approve; no terminal input or publication".into(),
                 default_role: "worker".into(),
                 skills: vec![],
                 capabilities: Capabilities {
@@ -919,11 +934,19 @@ impl Runtime for InstalledHerdr {
         crate::confine::reject_unenforceable_isolation(
             &spec.document.required_capabilities.isolation_effects,
         )?;
+        if spec.document.profession.reference.id == "grok-build" {
+            fs::create_dir_all(exec_root)?;
+            let Some(pool) = &self.grok_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    "HCTL2_GROK is unset",
+                    "set_hctl2_grok",
+                ));
+            };
+            return pool.submit(spec, bundle, exec_root, credential_root, credential_root);
+        }
         fs::create_dir_all(exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
-        if spec.document.profession.reference.id == "grok-build" {
-            return crate::grok::dispatch(spec, bundle, exec_root);
-        }
         if spec.document.profession.reference.id == "codex-cli" {
             let Some(pool) = &self.codex_pool else {
                 return Err(PortError::new(
@@ -997,7 +1020,14 @@ impl Runtime for InstalledHerdr {
         )?;
         if spec.document.profession.reference.id == "grok-build" {
             fs::create_dir_all(exec_root)?;
-            return crate::grok::dispatch(spec, bundle, exec_root);
+            let Some(pool) = &self.grok_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    "HCTL2_GROK is unset",
+                    "set_hctl2_grok",
+                ));
+            };
+            return pool.submit(spec, bundle, exec_root, tenant, credential_root);
         }
         if spec.document.profession.reference.id == "codex-cli" {
             fs::create_dir_all(exec_root)?;
