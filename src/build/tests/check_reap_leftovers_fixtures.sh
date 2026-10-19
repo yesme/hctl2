@@ -36,10 +36,12 @@ sandbox() {
 
 spawn() {
     root=$1
-    binary=${2:-hctl-sleeper}
+    name=${2:-keepalive}
     mkdir -p "$root/bin"
-    ln -sf /bin/sleep "$root/bin/$binary"
-    "$root/bin/$binary" 60 >/dev/null 2>&1 &
+    : > "$root/bin/$name"
+    # tail, not a renamed sleep: uutils coreutils refuses an argv[0] that does
+    # not match the executable name. The root stays on the command line.
+    /usr/bin/tail -f "$root/bin/$name" >/dev/null 2>&1 &
     child=$!
     printf '%s\n' "$child" >> "$pidfile"
     i=0
@@ -105,7 +107,7 @@ case_reused_pid() {
 case_protected() {
     box=$(sandbox)
     root="$box/hctl2-exec-protected-$(dead_pid)"
-    child=$(spawn "$root" buck2d-probe)
+    child=$(spawn "$root" buck2d-keepalive)
     old_root "$root"
     out=$("$REAPER" --list --root "$box")
     if printf '%s\n' "$out" | grep -Fq "pid=$child"; then

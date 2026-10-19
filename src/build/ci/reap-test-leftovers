@@ -177,9 +177,7 @@ scan_processes() {
         owner=$(printf '%s\n' "$cmd" | owner_pid)
         [ -n "$owner" ] || continue
         # Pids are at most seven digits; longer suffixes are hashes, not owners.
-        case "$owner" in
-            ?????????|??????????*) continue ;;
-        esac
+        [ "$owner" -le 9999999 ] || continue
         root=$(printf '%s\n' "$cmd" | owner_root)
         [ -n "$root" ] || continue
         matched=0
