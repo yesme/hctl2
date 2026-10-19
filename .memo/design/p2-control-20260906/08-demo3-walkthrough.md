@@ -25,7 +25,7 @@
 | 2 · 正常成功安静 | A/B 全程 | Room 与终端没有多余输出 | 走查成立（A/C 链 Room 各一句人话、无 JSON 泄漏） |
 | 3 · 自举不设隐藏特例 | A/B 全程 | 全程只走公开 CLI 与受控端口，无手工改库、无产品外补签 | 走查成立，带一处如实记的绕法（P1-1 的 `HCTL2_TOOL_BIN`） |
 | 4 · 无 Run 路径两次预览 | A：合入、完成两次确认 | 人的预览计数；发布授权在派工预览内、不计入 | 走查成立（A 链两预览；授权写明 `publish_for_review_not_integration`） |
-| 5 · 两条 B2 成功路径 | A 与 B | 两条链各自走通，不借 Gate 或特例权限 | A 走查成立；B 第二轮：直接 request 写入链路走通（发布→Receipt）；**Task 关联写入不成立**（P1-R2-1：Codex 收不到 Task 正文） |
+| 5 · 两条 B2 成功路径 | A 与 B | 两条链各自走通，不借 Gate 或特例权限 | A 走查成立；B 带 task_id + 规格写进 request 走通到 Task Completion Receipt（r3 绕法）；**Task 关联写入的 Context 组装缺契约内联**（P1-R2-1，全工种共性，修复排小活 AA） |
 | 6 · 开关 Project 三次预览 | C | 意图停在 `pending_human`，`review publish` 预览写明推到哪、建到哪、不是合入；三次预览 | 走查成立（C 链 `pending_human` → Not a merge → published） |
 | 7 · 受限路径检出与确认丢失 | A 的本地目标变体（若走） | 检出拒绝给精确工作树路径、切离后同一意图续上；确认丢失按冻结尝试恢复 | 已有用例覆盖（#385：`checked_out_target_waits_for_the_human…`、`a_confirmation_lost_after_the_write…`）；演示不专门走 |
 | 8 · 三条逃生口 | F | 无契约卡只映射不签凭证；采纳契约后完成有 Receipt；无 Run 路径有可回溯对象 | 二、三走查成立；一**第二轮成立**（CONTRACT_REQUIRED 拒） |
