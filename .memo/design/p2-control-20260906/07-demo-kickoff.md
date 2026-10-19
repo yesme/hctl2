@@ -104,6 +104,8 @@
 
 46. **2026-10-20 「继续」之后停得快：规矩里两处歧义补上；第 1 包的循环边界按设计已定的来。** 所有者：「自从用了『继续』后，很多harness停的很快 - 我不知道是会不会因为他们读了错误的开工书，或者是错误地读了开工书，导致停滞不前。」主笔查了最近一批（20:20–20:36 UTC）各席的脚印，又看了两席的回报：DeepSeek（ubuntu）读对了表、活也做了，#463 没接是因为 PR「请审」写 Kimi、表写它，按规矩停下来等所有者定；Codex（ubuntu）也读对了，停在「施工图的循环边界」这个它以为要所有者定的问题上；Antigravity（mac）这一批没有任何动作，H0 没开；另有两席做到一半就停（Codex（ubuntu）交出小活 Z 后没接着开第 1 包，Codex（mac）审了 #459、#465 漏了 #462）。查出两处是规矩本身的歧义：固定 prompt 与 AGENTS.md 都写「开工书 §六『当前派活』表」，没点文件名——表在 `07`，而最新的开工书是 `09`，`09` 的 §六 没有表，一席认定「当前开工书 = 09」就会老实回「没活」；「一轮」也没写明要把第 2、3、4 步都走完。所有者：「落。开PR自合」。定下：① AGENTS.md「自己找活」点明派活表的文件名，加「一轮是三步都走完」「开工书、设计正文与约束里已有答案的自己查了照做，查不到再报」；`09` §六 开头加一行指回 `07` §六；§六「规矩」同句补一句。② 下一批「继续」由所有者附一句点明文件名与「三步走完」（主笔给的原文），之后恢复只发「继续」。③ **第 1 包的循环边界**：按施工图声明的返工轮数上限（缺省 2 轮）展开成有界结构，每轮一个新检查点；超过上限走失败边或请人；不编译成 Dagu repeat 或子 DAG，也不跨 dagRun；Manifest 冻结的上限与编译用的是同一个数。这不是新裁定，是 `spec/run.md` §启动与 Manifest 第 3、4 条（loop 每次重入创建新 Obligation、不算环、批准后节点集不变）、`run.md` 关键规则「返工有轮数上限……不原地转圈」、`delivery.md` §运行默认值 与 `workflow-engines.md` 2026-10-19 复核第 1 条（同一 `(dagName, dagRunId, stepId)` 最多进 `waiting` 一次）的直接推论，补进 `09` §四 第 1 包验收第 2 条；Codex（ubuntu）照此继续，不等所有者再定。④ #463 的核验席以表为准是 DeepSeek（ubuntu），PR 描述由作者改。
 
+47. **2026-10-20 走查第二轮的 P1-R2-1 定性：控制面 Context 组装漏了契约与卡正文；排成小活 AA。** #431 第二轮（GLM，`42a858f`）报「Task 关联的写入调用，Codex 收不到正文」，Antigravity（ubuntu）核验判不可合——读了同一个 rollout（第 9 行有 2436 字节的完整开工包）和两轮的开工包条目，指出病灶是控制面：关联 `task_id` 时只内联 `task_comments`，卡正文与已采纳契约都不放，全工种一样，与 Codex 无关；第一轮 A 链能过是因为工作树里本来就有文件。主笔对着 main 核了 `dispatch/context.rs:55-79` 与 `context/sources.rs:44-46、119-209`，并查了设计（`spec/project.md` §三种交付方式「契约与范围说明」是 `inline` 的必用内容；`context.md` §内联、§开工包；`contract-tests.md` 第 49 行「不能静默省略」），采信 Antigravity 的定性：是控制面不合设计的 P1。#431 的结论：不可合，实录三句改对、B 链保留 `task_id` 重走、日志路径写准。主笔报所有者要排一个小活并建议了席位，所有者：「小活你决定。」定下：① 排成 §六「小活 AA」，Claude（ubuntu）写（#459、#462 在收尾，下一包 5b 还早），Codex（mac）找问题（控制面 Context 代码它最熟），Antigravity（ubuntu）核验（它定位的，第二轮环境在它手上，重跑 B 链最合适）；现在就写，不等演示 3。② #431 的前提改为「小活 AA 合入后走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）」。③ 这不改约束：设计早就写明要内联，是实现漏了；失败用例挂在 `contract-tests.md` 第 49 行那条下面。
+
 ## 三、三次演示
 
 每次演示由 Fable 验收：照约束与验收用例把演示路径实际走一遍，如实报告哪些通过、哪些没有。Kimi 对照 `contract-tests.md` 走查覆盖。
@@ -467,9 +469,10 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 | 专项 · 测试留下的常驻进程（方案与测试层第 1 步） | §六 同名专项 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu），核验代码部分 | `deepseek/test-process-cleanup`，#447 | 无 |
 | 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
 | 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
-| 第 9 包第 7 条走查 | §二 第 36 条 ③、第 37 条 ① | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | `glm/demo3-walkthrough`，#431 | #430 合入后走第二轮 |
+| 第 9 包第 7 条走查 | §二 第 36 条 ③、第 37 条 ① | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | `glm/demo3-walkthrough`，#431 | 第二轮已走（P1-R2-1 见 §二 第 47 条）；小活 AA 合入后走第三轮：B 链带 `task_id` 走到 Task Completion Receipt |
 | 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
 | 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
+| 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
 | 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，还没开 PR | 现在就写；演示 3 走完（所有者看过演示）才开自动合入 |
 | workflow 引擎（Dagu）的开工前限时验证 | §六「专项 · workflow 引擎（Dagu）的开工前限时验证」 | Antigravity（mac） | Claude（mac） | DeepSeek（ubuntu），照记录从零重跑 | `agy/dagu-probe`，还没开 PR | 无 |
 | 写入会话完成之后的去留：调研 | §六「专项 · 写入会话完成之后的去留：调研」 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/write-session-hibernation`，还没开 PR | 无 |
@@ -749,6 +752,24 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
   3. 不另起看守进程（所有者没选 B）。state 目录的取法不改；做的时候发现非改不可，先报所有者。
 - **验收**：起一个接 Codex 夹具的真 harness Agency，派一次只读调研，等 `codex app-server` 起来后 `kill -9` Agency，附前后 `ps`。在同一个 root 上再起，旧进程组没了；换一个 root 起，旧的不动；退回第 1 条，旧进程组留下。冒烟：跑一次 `herdr_test`，`/tmp/hctl2-herdr-*` 前后数目不变。跑完按进程号清掉自己留下的。
 - **分支**：`codex/agency-reap-app-server`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席对最终提交「可合」、CI 绿之后作者开自动合入。
+
+### 小活 AA · Context 组装把已采纳契约与范围内联进开工包，卡正文并进评论线（Claude（ubuntu）写；Codex（mac）找问题，Antigravity（ubuntu）核验）
+
+- **来由**：#431 第二轮走查的 P1-R2-1（GLM 发现，Antigravity 核验定位，主笔对着 main 核过代码；§二 第 47 条）。带 `task_id` 的派工，`src/apps/control/src/dispatch/context.rs:55-79` 经 `select_context` 选源，能选到的只有 `task_comments`（`src/crates/context/src/sources.rs:44-46`，三种源里没有契约这一种）；`task_line()`（同文件 `:119-209`）只序列化 `card.comments`，新卡就是 `[]`。卡的正文、已采纳的 Task Revision（契约与范围）都不进开工包，对哪家 harness 都一样。设计写的是要进：`spec/project.md` §三种交付方式 里 `inline` 的必用内容点名「契约与范围说明」；`context.md` §内联、§开工包；`contract-tests.md` 第 49 行「必需正文预算内内联……不能静默省略」。演示 3 第一轮 A 链能过，是因为工作树里本来就有带注释的 `calculator.py`；第二轮 B 链要按契约新建文件，harness 拿不到规格，只能回一句「请把 Task 正文贴给我」。
+- **要求**：
+  1. 关联 `task_id` 时，把已采纳的 Task Revision（契约与范围的原文：验收项、范围说明）作为必用条目内联进开工包；没有已采纳契约的 Task 就没有这一条，不报错。契约在 `src/crates/task`（采纳见 `planning.rs`），取当前已采纳的版本，不取提案。
+  2. 卡的标题与正文并进评论线条目（作为 `task_comments` 的头一条），或单独一条，作者定，写进 `src/crates/context` 的 README；评论线照旧。
+  3. 预算按 `spec/project.md` 的三档：放得下内联，放不下降 `pointer` 附分片建议，不静默省略；复用现有预算机制。
+  4. 新条目和其他条目一样带冻结引用（版本含来源链、摘要）；预览之后契约换了版本，启动按现有的版本比对拒绝。
+  5. 不改约束层，不改 Agency，两家 harness 不用动——它们拿到的就是开工包正文。
+- **验收**（缺一条不算过）：
+  1. 带 `task_id` 且已采纳契约的写入派工与只读派工，预览里的开工包都有契约条目，正文与采纳时保存的原文逐字相同（金样）；
+  2. 裸 Task 不放这一条、不报错；预览之后契约换版本，启动拒绝；
+  3. 卡正文进了开工包，评论线条目不变；
+  4. `contract-tests.md` 第 49 行的失败用例：把内联去掉（静默省略）时用例红；
+  5. 真会话一次：在试验仓库上照 #431 第二轮 B 链的做法——带 `task_id`、`request` 里不写规格、规格只在 Task 正文与契约里——派一次写入，harness 按契约干活并封存。ubuntu 上用 Codex（核验席重跑），mac 上也用 Codex（Claude Code 在 mac 的钥匙串问题未解）；实录附 Bundle 条目与 harness 记录的输入。
+  6. 退回看红两处：去掉契约条目、去掉版本比对，对应用例要红。
+- **分支**：`claude/context-task-contract`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。合入后 #431 走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）。
 
 ### 专项 · 钥匙串整体方案的实现（Codex（mac）写；Claude 找问题，Antigravity 核验；演示 3 走完再合）
 
