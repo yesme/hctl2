@@ -106,6 +106,8 @@
 
 47. **2026-10-20 走查第二轮的 P1-R2-1 定性：控制面 Context 组装漏了契约与卡正文；排成小活 AA。** #431 第二轮（GLM，`42a858f`）报「Task 关联的写入调用，Codex 收不到正文」，Antigravity（ubuntu）核验判不可合——读了同一个 rollout（第 9 行有 2436 字节的完整开工包）和两轮的开工包条目，指出病灶是控制面：关联 `task_id` 时只内联 `task_comments`，卡正文与已采纳契约都不放，全工种一样，与 Codex 无关；第一轮 A 链能过是因为工作树里本来就有文件。主笔对着 main 核了 `dispatch/context.rs:55-79` 与 `context/sources.rs:44-46、119-209`，并查了设计（`spec/project.md` §三种交付方式「契约与范围说明」是 `inline` 的必用内容；`context.md` §内联、§开工包；`contract-tests.md` 第 49 行「不能静默省略」），采信 Antigravity 的定性：是控制面不合设计的 P1。#431 的结论：不可合，实录三句改对、B 链保留 `task_id` 重走、日志路径写准。主笔报所有者要排一个小活并建议了席位，所有者：「小活你决定。」定下：① 排成 §六「小活 AA」，Claude（ubuntu）写（#459、#462 在收尾，下一包 5b 还早），Codex（mac）找问题（控制面 Context 代码它最熟），Antigravity（ubuntu）核验（它定位的，第二轮环境在它手上，重跑 B 链最合适）；现在就写，不等演示 3。② #431 的前提改为「小活 AA 合入后走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）」。③ 这不改约束：设计早就写明要内联，是实现漏了；失败用例挂在 `contract-tests.md` 第 49 行那条下面。
 
+48. **2026-10-20 走查一轮一个 PR，持续走，不淤在一处。** 所有者问「#431 还要多久能合啊？？」，主笔答还要等第三轮、并给了「现在合、第三轮另开」的选法；所有者先答「继续这样走，不直接合。不过你要给我个复盘，为什么这样back-and-fouth」。主笔复盘：#431 挂了三天，大头是结构——一个 PR 装下第 9 包第 7 条整条验收，每轮查出的毛病在别的 PR 修，走查 PR 跟着它们等（这是主笔 10-17 第一次评审时建议、后来写进派活表的）；其次走查记录三次把原因写错，各多一轮；主笔自己拆成两次发意见、前后口径不一；还有「继续」节奏下前提满足后空等。所有者：「走查一轮一个PR，要不断走查，而不是都淤积在一个地方。你看431，找出来的问题并不是都相关的。」定下：① **走查一轮一个 PR。** 一轮走完、记录经两席核对无误就合入；下一轮在最新的 main 上另开 PR（分支 `<席位>/<演示>-walkthrough-r<n>`），追加到同一份实录、改同一份清单。第 7 条做没做完看清单（`08-demo3-walkthrough.md`）每一行的判定，不看哪个 PR 开着。② **持续走。** 走查席不等「全部修好」：上一轮合入后，main 上只要有新的修复合入，就开下一轮，重看相关的行；没有新东西就不开。③ **查出的毛病各走各的。** 每条 P1 当轮就报主笔排成小活或接进对应的包，在清单那一行挂上修复的 PR；走查 PR 不因此挡合入，也不等修复。④ #431 按此收口：它装的是第一、二轮（含 r3 绕法的实录），记录两席都核过，照常合入；不靠绕法的第三轮另开 PR。派活表「第 9 包第 7 条走查」一行改成常驻一行。⑤ 同样用于 P2.5 的走查（`09` §四 第 9 包）。
+
 ## 三、三次演示
 
 每次演示由 Fable 验收：照约束与验收用例把演示路径实际走一遍，如实报告哪些通过、哪些没有。Kimi 对照 `contract-tests.md` 走查覆盖。
@@ -469,7 +471,7 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 | 专项 · 测试留下的常驻进程（方案与测试层第 1 步） | §六 同名专项 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu），核验代码部分 | `deepseek/test-process-cleanup`，#447 | 无 |
 | 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
 | 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
-| 第 9 包第 7 条走查 | §二 第 36 条 ③、第 37 条 ① | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | `glm/demo3-walkthrough`，#431 | 第二轮已走（P1-R2-1 见 §二 第 47 条）；小活 AA 合入后走第三轮：B 链带 `task_id` 走到 Task Completion Receipt |
+| 第 9 包第 7 条走查（一轮一个 PR，持续走） | §二 第 36 条 ③、第 37 条 ①、第 48 条 | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | 第一、二轮 `glm/demo3-walkthrough`，#431；第三轮 `glm/demo3-walkthrough-r3`，还没开 PR | #431 两席可合即合；第三轮现在就开（#477 已合）：B 链带 `task_id`、`request` 里不写规格，走到 Task Completion Receipt；之后 main 上有新修复合入就开下一轮（§二 第 48 条） |
 | 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
 | 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
 | 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
