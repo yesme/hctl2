@@ -254,7 +254,7 @@
   4. 退回看红：至少退回一处跨包的接线（如归约器提交集成意图前不核 Gate Receipt），链路用例要红。
 - **后半段**（Grok（ubuntu）写，H2 之后；找问题 Claude（mac），核验 GLM（ubuntu）；分支 `grok/p25-demo-scripts`）：演示 4、5 脚本化（脚本只驱动命令行）进完整包测试；随包 Gitea 与 Dagu 真起；GitHub 用 `yesme/hctl2-canary`，凭据来自 runner secret，缺则跳过并标明。
 - **手册**（Antigravity 写，DeepSeek 照着从零重跑）：从零安装到演示 4、5 的命令序列。
-- **走查**（GLM（ubuntu））：按 CT-RUN 逐条对照，实录进 `.memo/log/`。
+- **走查**（GLM（ubuntu））：按 CT-RUN 逐条对照，实录进 `.memo/log/`。一轮一个 PR、持续走，查出的毛病各自排修复、不挡走查 PR 合入（`07` §二 第 48 条）。
 - **依赖**：第 6、7、8 包；演示 5 另要 H1–H3 里至少一包合入。
 
 ### H0 · 观测窗格原语（H1–H3 共用；Antigravity（mac）写，Codex（mac）找问题，DeepSeek（ubuntu）核验）
