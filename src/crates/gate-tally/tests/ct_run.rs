@@ -51,7 +51,12 @@ fn outcome(quorum: usize, seats: &[Seat]) -> Outcome {
     count(quorum, seats).outcome
 }
 
+fn members(group: &Group) -> Vec<&str> {
+    group.votes.iter().map(|(seat, _)| seat.as_str()).collect()
+}
+
 const CR: Verdict = Verdict::ChangesRequested(Locus::Implementation);
+const CONTRACT: Verdict = Verdict::ChangesRequested(Locus::Contract);
 
 // --- CT-RUN 29: duplicate groups ---
 
@@ -76,7 +81,7 @@ fn quorum_one_same_group_gives_the_same_result_whichever_verdict_comes_first() {
     // already short (CT-RUN 31); once a's verdict is in, the same group stands.
     assert_eq!(
         outcome(1, &[a(), voted(b(), CR, P, "d")]),
-        Outcome::QuorumUnreachable { upper_bound: 0 }
+        Outcome::NoPass { upper_bound: 0 }
     );
     let requested_first = count(
         1,
@@ -87,13 +92,13 @@ fn quorum_one_same_group_gives_the_same_result_whichever_verdict_comes_first() {
     );
 
     assert_eq!(accepted_first, requested_first);
-    assert_eq!(
-        accepted_first.outcome,
-        Outcome::QuorumUnreachable { upper_bound: 0 }
-    );
+    assert_eq!(accepted_first.outcome, Outcome::NoPass { upper_bound: 0 });
     let group = &accepted_first.groups[0];
-    assert_eq!(group.seats, ["a", "b"]);
-    assert_eq!(group.verdict, CR, "the least favourable verdict stands");
+    assert_eq!(
+        group.votes,
+        [("a".into(), Verdict::Accepted), ("b".into(), CR)]
+    );
+    assert!(!group.passing, "the least favourable verdict stands");
     assert!(group.split && group.decided, "split groups need attention");
 }
 
@@ -103,7 +108,7 @@ fn quorum_two_with_both_seats_bound_to_one_proven_key_is_unreachable() {
     let b = running(seat("b", "m", &[P]), Some("d"));
     assert_eq!(
         outcome(2, &[a.clone(), b.clone()]),
-        Outcome::QuorumUnreachable { upper_bound: 1 }
+        Outcome::NoPass { upper_bound: 1 }
     );
 
     let both = count(
@@ -113,10 +118,10 @@ fn quorum_two_with_both_seats_bound_to_one_proven_key_is_unreachable() {
             voted(b, Verdict::Accepted, P, "d"),
         ],
     );
-    assert_eq!(both.outcome, Outcome::QuorumUnreachable { upper_bound: 1 });
+    assert_eq!(both.outcome, Outcome::NoPass { upper_bound: 1 });
     assert_eq!(both.groups.len(), 1);
     assert_eq!(
-        both.groups[0].seats,
+        members(&both.groups[0]),
         ["a", "b"],
         "both votes stay on record"
     );
@@ -171,7 +176,7 @@ fn a_frozen_proposal_awaiting_admission_is_neither_counted_nor_revoked() {
     same_key.pending = Some(key(P, "d"));
     let tally = count(1, &[a, same_key]);
     assert_eq!(tally.outcome, Outcome::Pending { upper_bound: 1 });
-    assert_eq!(tally.groups[0].seats, ["a"]);
+    assert_eq!(members(&tally.groups[0]), ["a"]);
 }
 
 #[test]
@@ -231,7 +236,7 @@ fn two_ended_seats_without_admitted_verdicts_form_no_vote() {
     b.end = Some(End::Cancelled);
     let tally = count(1, &[a, b]);
     assert!(tally.groups.is_empty());
-    assert_eq!(tally.outcome, Outcome::QuorumUnreachable { upper_bound: 0 });
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 0 });
 }
 
 // --- CT-RUN 30: switching and veto ---
@@ -249,8 +254,8 @@ fn without_declared_diversity_a_legal_switch_onto_the_same_key_counts_once() {
 
     let switched = voted(b, Verdict::Accepted, P, "d");
     let tally = count(2, &[a.clone(), switched.clone()]);
-    assert_eq!(tally.outcome, Outcome::QuorumUnreachable { upper_bound: 1 });
-    assert_eq!(tally.groups[0].seats, ["a", "b"]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
+    assert_eq!(members(&tally.groups[0]), ["a", "b"]);
     assert_eq!(
         outcome(1, &[a, switched]),
         Outcome::Pass {
@@ -329,6 +334,24 @@ fn declared_diversity_rejects_a_selection_or_switch_that_breaks_it() {
 }
 
 #[test]
+fn avoiding_the_author_profile_without_knowing_it_is_a_violation() {
+    let avoid = Diversity {
+        distinct_profiles: false,
+        avoid_author_profile: true,
+    };
+    assert_eq!(
+        avoid.check(None, &[("a".into(), P.into())]),
+        [Violation::AuthorUnknown]
+    );
+    // Nothing declared, nothing needed.
+    assert!(
+        Diversity::default()
+            .check(None, &[("a".into(), P.into())])
+            .is_empty()
+    );
+}
+
+#[test]
 fn a_producing_veto_seat_without_a_verdict_blocks_pass_and_is_not_revoked() {
     let a = voted(seat("a", "m", &[P]), Verdict::Accepted, P, "d");
     let v = veto(running(seat("v", "m2", &[P2]), None));
@@ -399,24 +422,99 @@ fn a_veto_seat_that_runs_out_of_candidates_is_a_technical_failure_not_a_pass_or_
     let a = voted(seat("a", "m", &[P]), Verdict::Accepted, P, "d");
     let mut v = veto(seat("v", "m2", &[P2]));
     v.attempt = Attempt::Failed { allowed: false };
-    assert_eq!(
-        outcome(1, &[a, v]),
-        Outcome::VetoUnresolved {
-            seats: vec!["v".into()],
-        }
-    );
+    let tally = count(1, &[a, v]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
+    assert_eq!(tally.findings.veto_unresolved, ["v"]);
+    assert!(tally.findings.vetoes.is_empty());
 }
 
 #[test]
-fn a_veto_verdict_other_than_accepted_takes_the_rework_path() {
+fn a_veto_verdict_other_than_accepted_stops_the_pass_and_goes_to_step_three() {
+    // a alone reaches quorum; v's rejection still stops the pass, and the count
+    // hands v's verdict to step three instead of naming a route itself.
     let a = voted(seat("a", "m", &[P]), Verdict::Accepted, P, "d");
     let v = veto(voted(seat("v", "m2", &[P2]), Verdict::Rejected, P2, "e"));
+    let tally = count(1, &[a, v]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
+    assert_eq!(tally.findings.vetoes, [("v".into(), Verdict::Rejected)]);
+}
+
+#[test]
+fn a_veto_and_a_short_bound_both_mean_no_pass_whichever_is_recorded_first() {
+    // Quorum two, both seats bound to one key: a rejects, veto seat v asks for
+    // changes. Whichever is admitted first, the round cannot pass from then on.
+    let a = || running(seat("a", "m", &[P]), Some("d"));
+    let v = || veto(running(seat("v", "m", &[P]), Some("d")));
+    let rejected = voted(a(), Verdict::Rejected, P, "d");
+    let vetoed = voted(v(), CR, P, "d");
+
+    let a_first = count(2, &[rejected.clone(), v()]);
+    let v_first = count(2, &[a(), vetoed.clone()]);
+    assert_eq!(a_first.outcome, Outcome::NoPass { upper_bound: 0 });
+    assert_eq!(v_first.outcome, Outcome::NoPass { upper_bound: 0 });
+    // What step three has to act on differs until both are in; when to act is
+    // the reducer's.
+    assert!(a_first.findings.vetoes.is_empty());
+    assert_eq!(v_first.findings.vetoes, [("v".into(), CR)]);
+
+    let both = count(2, &[rejected, vetoed]);
+    assert_eq!(both.outcome, Outcome::NoPass { upper_bound: 0 });
+    assert_eq!(both.findings.vetoes, [("v".into(), CR)]);
+}
+
+// --- Step three: non-pass verdicts are reported, not routed ---
+
+#[test]
+fn an_ordinary_implementation_disagreement_is_reported_with_its_locus() {
+    // Quorum one, the only seat asks for changes in the implementation. The
+    // count says the round cannot pass; it does not call that a failure edge,
+    // since the reducer may send the round to rework instead.
+    let a = voted(seat("a", "m", &[P]), CR, P, "d");
+    let tally = count(1, &[a]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 0 });
+    assert_eq!(tally.groups[0].votes, [("a".into(), CR)]);
+    assert_eq!(tally.findings, Findings::default());
+}
+
+#[test]
+fn a_contract_disagreement_is_flagged_for_a_human() {
+    let a = voted(seat("a", "m", &[P]), CONTRACT, P, "d");
+    let b = voted(seat("b", "m2", &[P2]), Verdict::Accepted, P2, "e");
+    let tally = count(2, &[a.clone(), b.clone()]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
+    assert_eq!(tally.findings.contract, ["a"]);
+    assert!(tally.findings.vetoes.is_empty());
+
+    // With quorum one b passes the round, and a's contract disagreement is
+    // still flagged: the Task needs attention either way.
+    let passed = count(1, &[a, b]);
+    assert!(matches!(passed.outcome, Outcome::Pass { .. }));
+    assert_eq!(passed.findings.contract, ["a"]);
+}
+
+#[test]
+fn a_veto_contract_disagreement_is_flagged_as_contract_not_only_as_a_veto() {
+    let a = voted(seat("a", "m", &[P]), Verdict::Accepted, P, "d");
+    let v = veto(voted(seat("v", "m2", &[P2]), CONTRACT, P2, "e"));
+    let tally = count(1, &[a, v]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
+    assert_eq!(tally.findings.vetoes, [("v".into(), CONTRACT)]);
+    assert_eq!(tally.findings.contract, ["v"]);
+}
+
+#[test]
+fn a_rejection_and_a_contract_disagreement_in_one_group_keep_both() {
+    let a = voted(seat("a", "m", &[P]), Verdict::Rejected, P, "d");
+    let b = voted(seat("b", "m", &[P]), CONTRACT, P, "d");
+    let tally = count(1, &[a, b]);
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 0 });
+    let group = &tally.groups[0];
     assert_eq!(
-        outcome(1, &[a, v]),
-        Outcome::Vetoed {
-            seats: vec!["v".into()],
-        }
+        group.votes,
+        [("a".into(), Verdict::Rejected), ("b".into(), CONTRACT)]
     );
+    assert!(!group.passing && group.split && group.decided);
+    assert_eq!(tally.findings.contract, ["b"]);
 }
 
 // --- CT-RUN 31 and 17: the running upper bound ---
@@ -430,7 +528,7 @@ fn the_upper_bound_counts_admitted_verdicts_in_undecided_groups() {
     let b = seat("b", "m2", &[P3]);
     let tally = count(2, &[a, b, c]);
     assert!(!tally.groups[0].decided);
-    assert_eq!(tally.outcome, Outcome::QuorumUnreachable { upper_bound: 1 });
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
 }
 
 #[test]
@@ -458,10 +556,7 @@ fn when_every_seat_has_ended_short_of_quorum_the_gate_is_unreachable() {
     let a = voted(seat("a", "m", &[P]), Verdict::Accepted, P, "d");
     let mut b = seat("b", "m2", &[P2]);
     b.attempt = Attempt::Failed { allowed: false };
-    assert_eq!(
-        outcome(2, &[a, b]),
-        Outcome::QuorumUnreachable { upper_bound: 1 }
-    );
+    assert_eq!(outcome(2, &[a, b]), Outcome::NoPass { upper_bound: 1 });
 }
 
 // --- CT-RUN 32: diversity has two items ---
@@ -474,7 +569,7 @@ fn the_evidence_channel_neither_splits_nor_merges_groups() {
     b.vote.as_mut().unwrap().evidence_channel = "adapter_event".into();
     let tally = count(2, &[a.clone(), b]);
     assert_eq!(tally.groups.len(), 1);
-    assert_eq!(tally.outcome, Outcome::QuorumUnreachable { upper_bound: 1 });
+    assert_eq!(tally.outcome, Outcome::NoPass { upper_bound: 1 });
 
     let mut c = voted(seat("c", "m", &[P2]), Verdict::Accepted, P2, "d");
     c.vote.as_mut().unwrap().evidence_channel = "direct_report".into();
@@ -509,7 +604,7 @@ fn a_restart_behind_the_agency_is_not_a_switch_and_adds_no_vote() {
     gone.end = Some(End::Cancelled);
     assert_eq!(
         outcome(2, &[restarted, gone]),
-        Outcome::QuorumUnreachable { upper_bound: 1 }
+        Outcome::NoPass { upper_bound: 1 }
     );
 }
 

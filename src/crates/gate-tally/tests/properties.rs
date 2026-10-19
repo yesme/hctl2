@@ -1,5 +1,8 @@
-//! Property cases over generated fact sequences: the conclusion does not depend
-//! on the order facts arrive in, and a signed pass never changes.
+//! Property cases over generated fact sequences. Facts are recorded one at a
+//! time and recounted after each, as control does. Whether a round passes is
+//! decided by the first conclusion that is not `Pending`; that conclusion does
+//! not depend on the order facts arrive in, and neither a pass nor a no-pass
+//! turns into anything else afterwards.
 //!
 //! The generator is a fixed-seed splitmix64, so every failure names the seed
 //! that reproduces it; no third-party crate is needed for that.
@@ -149,19 +152,27 @@ fn count(quorum: usize, seats: &[Seat]) -> Tally {
     .unwrap()
 }
 
-struct Run {
+/// The first conclusion that was not `Pending`, and what step three held then.
+struct First {
     passed: bool,
+    findings: Findings,
+}
+
+struct Run {
+    first: First,
     last: Tally,
 }
 
-/// Records facts one at a time, recounting after each, the way control does.
-/// A pass revokes the listed seats; whatever they hand in later is history and
-/// never recorded.
+/// Records facts one at a time, recounting after each. A pass revokes the
+/// listed seats; whatever they hand in later is history and never recorded.
+/// After a no-pass the remaining facts are still recorded, only to check that
+/// none of them turns it back: what control does with the round then is the
+/// reducer's, not the count's.
 fn run(world: &World, order: &[usize]) -> Result<Run, String> {
     let mut seats = world.seats.clone();
     let mut next = vec![0; seats.len()];
     let mut signed: Option<Vec<Key>> = None;
-    let mut unreachable = false;
+    let mut first: Option<First> = None;
     for &i in order {
         let fact = &world.facts[i][next[i]];
         next[i] += 1;
@@ -170,6 +181,7 @@ fn run(world: &World, order: &[usize]) -> Result<Run, String> {
         }
         record(&mut seats[i], fact);
         let tally = count(world.quorum, &seats);
+        let no_pass = first.as_ref().is_some_and(|first| !first.passed);
         match (&tally.outcome, &signed) {
             (Outcome::Pass { counted, .. }, Some(before)) => {
                 if !before.iter().all(|key| counted.contains(key)) {
@@ -177,32 +189,43 @@ fn run(world: &World, order: &[usize]) -> Result<Run, String> {
                 }
             }
             (other, Some(_)) => return Err(format!("a signed pass became {other:?}")),
+            (Outcome::Pass { .. }, None) if no_pass => {
+                return Err("a no-pass became a pass".into());
+            }
             (Outcome::Pass { counted, revoke }, None) => {
-                if unreachable {
-                    return Err("quorum-unreachable became a pass".into());
-                }
                 signed = Some(counted.clone());
+                first = Some(First {
+                    passed: true,
+                    findings: tally.findings.clone(),
+                });
                 for seat in seats.iter_mut().filter(|seat| revoke.contains(&seat.id)) {
                     seat.end = Some(End::Cancelled);
                 }
             }
-            (Outcome::QuorumUnreachable { .. }, None) => unreachable = true,
-            (_, None) => {}
+            (Outcome::NoPass { .. }, None) => {
+                first.get_or_insert_with(|| First {
+                    passed: false,
+                    findings: tally.findings.clone(),
+                });
+            }
+            (Outcome::Pending { .. }, None) if no_pass => {
+                return Err(format!("a no-pass became pending: {tally:?}"));
+            }
+            (Outcome::Pending { .. }, None) => {}
         }
     }
     let last = count(world.quorum, &seats);
     if matches!(last.outcome, Outcome::Pending { .. }) {
         return Err(format!("still pending once every seat ended: {last:?}"));
     }
-    Ok(Run {
-        passed: signed.is_some(),
-        last,
-    })
+    let first = first.ok_or("no conclusion was ever reached")?;
+    Ok(Run { first, last })
 }
 
 #[test]
-fn the_conclusion_does_not_depend_on_arrival_order_and_a_pass_never_changes() {
+fn pass_or_no_pass_does_not_depend_on_arrival_order_and_never_turns() {
     let mut passes = 0;
+    let mut findings_differ = 0;
     for seed in 0..WORLDS {
         let mut rng = Rng(seed);
         let world = world(&mut rng);
@@ -220,17 +243,29 @@ fn the_conclusion_does_not_depend_on_arrival_order_and_a_pass_never_changes() {
         let first = &runs[0];
         for other in &runs[1..] {
             assert_eq!(
-                first.passed, other.passed,
+                first.first.passed, other.first.passed,
                 "seed {seed}: pass depends on order"
             );
-            if !first.passed {
+            if !first.first.passed {
                 // Nothing was revoked, so every order recorded the same facts.
                 assert_eq!(first.last, other.last, "seed {seed}");
             }
         }
-        passes += usize::from(first.passed);
+        passes += usize::from(first.first.passed);
+        // Not asserted: when the round first cannot pass, what step three holds
+        // may still depend on order. When to act on it is the reducer's.
+        findings_differ += usize::from(
+            !first.first.passed
+                && runs[1..]
+                    .iter()
+                    .any(|other| other.first.findings != first.first.findings),
+        );
     }
     eprintln!("{passes} of {WORLDS} worlds passed");
+    eprintln!(
+        "{findings_differ} of the {} that did not pass held different step-three findings at their first no-pass, depending on order",
+        WORLDS as usize - passes
+    );
     // The generator has to reach both conclusions for the property to mean anything.
     assert!(
         passes > 0 && passes < WORLDS as usize,

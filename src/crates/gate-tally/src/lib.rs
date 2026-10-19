@@ -1,8 +1,10 @@
 //! The vote count of a review Gate (`docs/design/spec/run.md` §计票与结束).
 //!
-//! Input is recorded facts and frozen data; output is pass, quorum unreachable
-//! or not yet collected, plus the seats to revoke. Nothing here reads or writes
-//! storage, and nothing depends on the order facts arrived in.
+//! Input is recorded facts and frozen data; output is pass, no pass or not yet
+//! collected, plus the seats to revoke and what step three acts on. Routing a
+//! round that cannot pass (rework, a human, a Request or technical failure, the
+//! failure edge) is the reducer's, not this crate's. Nothing here reads or
+//! writes storage, and nothing depends on the order facts arrived in.
 
 #![forbid(unsafe_code)]
 
@@ -39,19 +41,6 @@ pub enum Verdict {
     Accepted,
     ChangesRequested(Locus),
     Rejected,
-}
-
-impl Verdict {
-    /// Higher is less favourable to passing. A contract disagreement stops
-    /// rework and goes to a human, so it ranks above an implementation one.
-    fn severity(self) -> u8 {
-        match self {
-            Verdict::Accepted => 0,
-            Verdict::ChangesRequested(Locus::Implementation) => 1,
-            Verdict::ChangesRequested(Locus::Contract) => 2,
-            Verdict::Rejected => 3,
-        }
-    }
 }
 
 /// A seat's verdict that passed result admission (有效裁决).
@@ -188,14 +177,33 @@ pub struct Gate {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Group {
     pub key: Key,
-    /// Seat ids, sorted.
-    pub seats: Vec<String>,
-    /// The least favourable verdict in the group.
-    pub verdict: Verdict,
-    /// The verdicts disagree: the group counts as `verdict` and needs attention.
+    /// Each member seat with its admitted verdict, sorted by seat. Every
+    /// verdict stays here, so a contract disagreement is never hidden behind
+    /// another non-pass verdict.
+    pub votes: Vec<(String, Verdict)>,
+    /// Every verdict is `accepted`, so the least favourable one is too. Which
+    /// non-pass verdict outranks another is the reducer's, not the count's.
+    pub passing: bool,
+    /// The verdicts disagree: the group needs attention.
     pub split: bool,
     /// 已定: no seat may still join.
     pub decided: bool,
+}
+
+/// What step three acts on before anything is counted (§计票与结束 第三步).
+/// The reducer of the frozen rules decides what follows; the count only stops
+/// a pass while any of it stands in the way.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Findings {
+    /// Veto seats whose admitted verdict is not `accepted`, with that verdict.
+    /// No pass can be signed this round.
+    pub vetoes: Vec<(String, Verdict)>,
+    /// Veto seats that ended without an admitted verdict: candidates exhausted,
+    /// so a Request or a typed technical failure, never a pass.
+    pub veto_unresolved: Vec<String>,
+    /// Seats whose admitted verdict places the disagreement in the contract:
+    /// the Task needs attention, and no rework follows from them.
+    pub contract: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,14 +214,13 @@ pub enum Outcome {
         counted: Vec<Key>,
         revoke: Vec<String>,
     },
-    /// A veto seat's admitted verdict is not `accepted`: the rework path.
-    Vetoed { seats: Vec<String> },
-    /// A veto seat ended without an admitted verdict. Candidates are exhausted:
-    /// a Request or a typed technical failure, never a pass.
-    VetoUnresolved { seats: Vec<String> },
-    /// Even the most favourable landing of every producing seat falls short
-    /// (`quorum-unreachable`).
-    QuorumUnreachable { upper_bound: usize },
+    /// This round can no longer pass: the bound is short of quorum (约束里的
+    /// 确定不可达), or `findings` holds a veto that is not `accepted` or a veto
+    /// seat that ended without one. Either reason may be recorded first; that
+    /// the round cannot pass does not depend on which. Whether the Gate then
+    /// returns `quorum-unreachable` and follows the failure edge, or step three
+    /// sends the round to rework, a human or a Request, is the reducer's.
+    NoPass { upper_bound: usize },
     /// Not yet collected. Each seat's ending bounds the wait.
     Pending { upper_bound: usize },
 }
@@ -223,6 +230,7 @@ pub struct Tally {
     pub outcome: Outcome,
     /// Sorted by key.
     pub groups: Vec<Group>,
+    pub findings: Findings,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -243,8 +251,13 @@ pub fn tally(gate: &Gate) -> Result<Tally, Invalid> {
         return Err(Invalid::DuplicateSeat(pair[0].id.clone()));
     }
     let groups = groups(&seats);
-    let outcome = outcome(gate.quorum, &seats, &groups);
-    Ok(Tally { outcome, groups })
+    let findings = findings(&seats);
+    let outcome = outcome(gate.quorum, &seats, &groups, &findings);
+    Ok(Tally {
+        outcome,
+        groups,
+        findings,
+    })
 }
 
 fn groups(seats: &[&Seat]) -> Vec<Group> {
@@ -257,61 +270,65 @@ fn groups(seats: &[&Seat]) -> Vec<Group> {
     by_key
         .into_iter()
         .map(|(key, members)| {
-            let verdicts: Vec<Verdict> = members
+            let votes: Vec<(String, Verdict)> = members
                 .iter()
-                .filter_map(|seat| seat.vote.as_ref().map(|vote| vote.verdict))
+                .filter_map(|seat| {
+                    seat.vote
+                        .as_ref()
+                        .map(|vote| (seat.id.clone(), vote.verdict))
+                })
                 .collect();
-            let verdict = verdicts
-                .iter()
-                .copied()
-                .max_by_key(|verdict| verdict.severity())
-                .expect("a group has a vote");
             let materials: BTreeSet<Material> =
                 members.iter().map(|seat| seat.material.clone()).collect();
             Group {
                 key: key.clone(),
-                seats: members.iter().map(|seat| seat.id.clone()).collect(),
-                verdict,
-                split: verdicts.iter().any(|other| *other != verdict),
+                passing: votes
+                    .iter()
+                    .all(|(_, verdict)| *verdict == Verdict::Accepted),
+                split: votes.iter().any(|(_, verdict)| *verdict != votes[0].1),
                 decided: !seats.iter().any(|seat| seat.may_join(key, &materials)),
+                votes,
             }
         })
         .collect()
 }
 
-fn outcome(quorum: usize, seats: &[&Seat], groups: &[Group]) -> Outcome {
-    // Step three: a veto decides before anything is counted.
-    let vetoed = ids(seats, |seat| {
-        seat.veto
-            && seat
-                .vote
-                .as_ref()
-                .is_some_and(|vote| vote.verdict != Verdict::Accepted)
-    });
-    if !vetoed.is_empty() {
-        return Outcome::Vetoed { seats: vetoed };
+fn findings(seats: &[&Seat]) -> Findings {
+    let verdict = |seat: &Seat| seat.vote.as_ref().map(|vote| vote.verdict);
+    Findings {
+        vetoes: seats
+            .iter()
+            .filter(|seat| seat.veto)
+            .filter_map(|seat| Some((seat.id.clone(), verdict(seat)?)))
+            .filter(|(_, verdict)| *verdict != Verdict::Accepted)
+            .collect(),
+        veto_unresolved: ids(seats, |seat| {
+            seat.veto && seat.vote.is_none() && seat.ended()
+        }),
+        contract: ids(seats, |seat| {
+            verdict(seat) == Some(Verdict::ChangesRequested(Locus::Contract))
+        }),
     }
-    let unresolved = ids(seats, |seat| {
-        seat.veto && seat.vote.is_none() && seat.ended()
-    });
-    if !unresolved.is_empty() {
-        return Outcome::VetoUnresolved { seats: unresolved };
-    }
-    // Step four: enough decided passing groups, and no veto still to come.
+}
+
+fn outcome(quorum: usize, seats: &[&Seat], groups: &[Group], findings: &Findings) -> Outcome {
+    // Step four: enough decided passing groups, no veto still to come, and no
+    // veto in step three standing against the pass.
     let counted: Vec<Key> = groups
         .iter()
-        .filter(|group| group.decided && group.verdict == Verdict::Accepted)
+        .filter(|group| group.decided && group.passing)
         .map(|group| group.key.clone())
         .collect();
     let veto_open = seats.iter().any(|seat| seat.veto && seat.producing());
-    if counted.len() >= quorum && !veto_open {
+    let veto_against = !findings.vetoes.is_empty() || !findings.veto_unresolved.is_empty();
+    if counted.len() >= quorum && !veto_open && !veto_against {
         let revoke = ids(seats, |seat| seat.producing() && seat.pending.is_none());
         return Outcome::Pass { counted, revoke };
     }
     // Step five: the most passing groups still possible.
     let upper_bound = upper_bound(seats, groups);
-    if upper_bound < quorum {
-        Outcome::QuorumUnreachable { upper_bound }
+    if upper_bound < quorum || veto_against {
+        Outcome::NoPass { upper_bound }
     } else {
         Outcome::Pending { upper_bound }
     }
@@ -331,10 +348,7 @@ fn ids(seats: &[&Seat], keep: impl Fn(&Seat) -> bool) -> Vec<String> {
 /// a key of its own, since nothing proves its content equal to another's.
 fn upper_bound(seats: &[&Seat], groups: &[Group]) -> usize {
     let taken: BTreeSet<&Key> = groups.iter().map(|group| &group.key).collect();
-    let passing = groups
-        .iter()
-        .filter(|group| group.verdict == Verdict::Accepted)
-        .count();
+    let passing = groups.iter().filter(|group| group.passing).count();
     let mut open = 0;
     let mut options: Vec<Vec<Key>> = Vec::new();
     for seat in seats.iter().filter(|seat| seat.producing()) {
@@ -410,11 +424,16 @@ pub enum Violation {
     AuthorProfile {
         seat: String,
     },
+    /// The author's profile is declared to be avoided but was not given, so
+    /// the check has nothing to compare against.
+    AuthorUnknown,
 }
 
 impl Diversity {
     /// Checks the profiles seats are selected with at start, or run with after
-    /// a switch. Any violation rejects the start or the switch.
+    /// a switch. Any violation rejects the start or the switch. `author` is the
+    /// Worker Profile the reviewed revision was produced with; leaving it out
+    /// while `avoid_author_profile` is declared is a violation, not a pass.
     pub fn check(&self, author: Option<&Profile>, seats: &[(String, Profile)]) -> Vec<Violation> {
         let mut seats = seats.to_vec();
         seats.sort();
@@ -431,12 +450,15 @@ impl Diversity {
                 }
             }
         }
-        if self.avoid_author_profile
-            && let Some(author) = author
-        {
-            for (seat, profile) in &seats {
-                if profile == author {
-                    violations.push(Violation::AuthorProfile { seat: seat.clone() });
+        if self.avoid_author_profile {
+            match author {
+                None => violations.push(Violation::AuthorUnknown),
+                Some(author) => {
+                    for (seat, profile) in &seats {
+                        if profile == author {
+                            violations.push(Violation::AuthorProfile { seat: seat.clone() });
+                        }
+                    }
                 }
             }
         }
