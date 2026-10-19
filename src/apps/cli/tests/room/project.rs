@@ -184,7 +184,7 @@ fn paired_with(
     let config = f.root.join("script.json");
     let delay = f.root.join("delay-script");
     let script = format!(
-        "read -r initial; if test -f \"$1\"; then sleep {delayed_seconds}; fi; printf '%s\\n' '{{\"type\":\"result\",\"schema\":\"adapter.stdout.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}}'"
+        "read -r initial; if test -f \"$1\"; then sleep {delayed_seconds}; fi; printf '%s\\n' '{{\"type\":\"result\",\"schema\":\"agency.turn.v1\",\"output\":\"DISPATCH_CHAIN_OK\"}}'"
     );
     std::fs::write(
         &config,

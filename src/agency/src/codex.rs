@@ -27,6 +27,137 @@ use std::{
 
 const LIMIT: u64 = 16 * 1024 * 1024;
 
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+struct ProcessIdentity {
+    pid: u32,
+    started: String,
+    command_digest: String,
+}
+
+fn process_identity(pid: u32) -> Result<Option<ProcessIdentity>> {
+    if pid == 0 {
+        return Ok(None);
+    }
+    let output = Command::new("/bin/ps")
+        .args([
+            "-ww",
+            "-p",
+            &pid.to_string(),
+            "-o",
+            "lstart=,pgid=,stat=,command=",
+        ])
+        .env("LC_ALL", "C")
+        .env("TZ", "UTC")
+        .output()?;
+    if !output.status.success() {
+        if output.status.code() == Some(1) && output.stdout.is_empty() && output.stderr.is_empty() {
+            return Ok(None);
+        }
+        return Err(PortError::new(
+            "CODEX_IDENTITY_UNAVAILABLE",
+            "ps could not read the app-server identity",
+            "inspect_agency_processes",
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut fields = text.split_whitespace();
+    let started = fields.by_ref().take(5).collect::<Vec<_>>().join(" ");
+    let group = fields.next().and_then(|value| value.parse::<u32>().ok());
+    let status = fields.next().unwrap_or("");
+    let command = fields.collect::<Vec<_>>().join(" ");
+    if group != Some(pid) || status.is_empty() || status.starts_with('Z') {
+        return Ok(None);
+    }
+    Ok(Some(ProcessIdentity {
+        pid,
+        started,
+        // The confinement helper execs Codex in place. Its app-server arguments
+        // (including the unique listener and token digest) survive that exec.
+        command_digest: hash(
+            command
+                .split_once(" app-server ")
+                .map_or(command.as_str(), |(_, args)| args)
+                .as_bytes(),
+        ),
+    }))
+}
+
+/// Only records under this locked Agency root are considered, never a process scan.
+pub(crate) fn reap_previous(root: &Path) -> Result<()> {
+    let dir = root.join("codex-processes");
+    if !dir.exists() {
+        return Ok(());
+    }
+    crate::storage::private_dir(&dir)?;
+    for entry in fs::read_dir(&dir)? {
+        let path = entry?.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let saved: ProcessIdentity = serde_json::from_slice(&fs::read(&path)?)?;
+        if process_identity(saved.pid)?.as_ref() == Some(&saved) {
+            signal_group(saved.pid, "TERM");
+            let deadline = Instant::now() + Duration::from_millis(400);
+            while Instant::now() < deadline && process_identity(saved.pid)?.as_ref() == Some(&saved)
+            {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            if process_identity(saved.pid)?.as_ref() == Some(&saved) {
+                signal_group(saved.pid, "KILL");
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while Instant::now() < deadline
+                    && process_identity(saved.pid)?.as_ref() == Some(&saved)
+                {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                if process_identity(saved.pid)?.as_ref() == Some(&saved) {
+                    return Err(PortError::new(
+                        "CODEX_REAP_FAILED",
+                        "previous Codex app-server did not stop",
+                        "inspect_agency_processes",
+                    ));
+                }
+            }
+        }
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+/// Own the child immediately, including errors before the RPC connection is ready.
+struct AppServer {
+    child: Child,
+    record: Option<PathBuf>,
+}
+
+impl Drop for AppServer {
+    fn drop(&mut self) {
+        if matches!(self.child.try_wait(), Ok(None)) {
+            signal_group(self.child.id(), "KILL");
+        }
+        let _ = self.child.wait();
+        if let Some(path) = &self.record {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+impl AppServer {
+    fn record(&mut self, root: &Path) -> Result<()> {
+        let identity = process_identity(self.child.id())?
+            .ok_or_else(|| PortError::invalid("Codex app-server identity unavailable"))?;
+        let dir = root.join("codex-processes");
+        crate::storage::private_dir(&dir)?;
+        let path = dir.join(format!("{}.json", self.child.id()));
+        let mut file = tempfile::NamedTempFile::new_in(&dir)?;
+        file.write_all(&serde_json::to_vec(&identity)?)?;
+        file.as_file().sync_all()?;
+        file.persist(&path).map_err(|error| error.error)?;
+        self.record = Some(path);
+        Ok(())
+    }
+}
+
 struct Token {
     writing: bool,
     cancelled: AtomicBool,
@@ -465,7 +596,10 @@ fn run_job(
                         };
                         output
                     } else {
-                        ("codex.turn.v1".into(), text.into_bytes())
+                        (
+                            crate::observation::TURN_OUTPUT_SCHEMA.into(),
+                            text.into_bytes(),
+                        )
                     };
                     job.token.finished.store(true, Ordering::SeqCst);
                     let _ = job.tx.send(RuntimeEvent::Proposal {
@@ -494,7 +628,7 @@ fn run_job(
 }
 
 struct Live {
-    child: Child,
+    process: AppServer,
     rpc: Rpc,
     socket: PathBuf,
     remote: String,
@@ -553,11 +687,15 @@ impl Live {
             .stderr(Stdio::from(log))
             .current_dir(cwd)
             .process_group(0);
-        let mut child = child.spawn()?;
-        let rpc = wait_tcp(address, &auth, &mut child)?;
+        let mut process = AppServer {
+            child: child.spawn()?,
+            record: None,
+        };
+        process.record(credential_root)?;
+        let rpc = wait_tcp(address, &auth, &mut process.child)?;
         let saved = read_thread(dir)?;
         let mut live = Self {
-            child,
+            process,
             rpc,
             socket: socket.to_path_buf(),
             remote,
@@ -677,16 +815,16 @@ impl Live {
         if let Some(pane) = self.pane.as_mut() {
             let _ = pane.client.call("pane.close", json!({"pane_id": pane.id}));
         }
-        signal_group(self.child.id(), "TERM");
+        signal_group(self.process.child.id(), "TERM");
         let deadline = Instant::now() + Duration::from_millis(400);
         while Instant::now() < deadline {
-            if self.child.try_wait()?.is_some() {
+            if self.process.child.try_wait()?.is_some() {
                 return Ok(());
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        signal_group(self.child.id(), "KILL");
-        let _ = self.child.wait();
+        signal_group(self.process.child.id(), "KILL");
+        let _ = self.process.child.wait();
         let _ = fs::remove_file(&self.socket);
         Ok(())
     }

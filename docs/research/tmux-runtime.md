@@ -6,6 +6,8 @@
 
 > **2026-08-29 更新**：Herdr 已取代 tmux，作为 Agent 模块 / Terminal 场景的运行服务。下文保留当时的 tmux 方案和测试记录，用于对照，不再指导产品实现。
 
+> **2026-10-20 更新**：所有者改定终端复用器回到 tmux 3.7c（决策史 §41）：控制走各家 harness 自己的结构化协议，tmux 只承担只读观测窗格；下文 2026-08-28 的分发复核与 08-29 的三目标接口验证重新作为采用依据，control mode 驱动 agentd 的那部分方案不恢复。替换 Herdr 的包排在演示 3 验收之后，见文末复核记录。
+
 <a id="e-l1-tmux-runtime"></a>
 ## E-L1-TMUX-RUNTIME · 运行时后端复审
 
@@ -54,3 +56,7 @@ v0.13.2 曾把 tmux 定义为内置运行服务的基础组件；直接采用 He
 ### 2026-08-29 Agent 运行服务候选复核
 
 在旧 agentd 实现前又逐源码复审了 Termio `termiod`、tty7-server、cmuxd-remote、Pilotty、WezTerm mux、产品内 PTY daemon、远程操控产品与两个 Rust tmux client 库。当时的 tmux 结论现已由 Herdr 选型取代；完整矩阵、RSS 和改动成本见 [运行服务候选全量复审](./agentd-runtime-candidates-20260829.md)。
+
+### 2026-10-20 改定复核
+
+所有者 2026-10-20 定终端复用器回到 tmux（[决策史 §41](../design/references/decision-history.md#41-harness-protocol-tmux)）。和 2026-08 的方案相比，这次的用法窄得多：不用 control mode 当 agentd 的控制通道，不往窗格里投递正文；控制——交正文、续接、判一轮结束、取回答——走各家 harness 自己的结构化协议。tmux 只承担：一个 Agency 实例一个 server（`-S` 私有 socket），每次派工一个窗格，窗格里跑这家 harness 自己连上同一会话的界面，或跑 `tail -f <session_dir>/view.log` 显示 Agency 渲染的事件投影；读屏（`capture-pane`）只用于识别信任确认框一类要告诉人的情形，不用于判完成；人用 `attach -r` 只读旁观；窗格退出靠 `remain-on-exit` 读回。上面 2026-08-28 的分发复核（tmux-builds v3.7c 三目标静态包与体积）和 08-29 的接口验证（socket 权限、输入与 resize、断线重连后 ID 稳定、退出码读回）重新作为采用依据。替换 Herdr 的包排在演示 3 验收之后；换过去时要补的是 Claude Code 路径还靠 Herdr agent 层做的两件：认出界面何时能收输入（改为读屏认提示符，或靠会话插件的启动钩子），以及读屏识别信任确认框。随包的 Herdr 在替换完成前保留。

@@ -6,6 +6,7 @@ Cinny
 Vikunja
 Dagu
 Herdr
+tmux
 Tauri
 Electron
 Reindeer

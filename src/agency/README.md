@@ -38,6 +38,8 @@ Codex 用 `login prepare` 返回的 `codex_home`：由人执行 `CODEX_HOME=/pat
 
 本机端口为权限 0600 的 Unix socket。为适应 macOS 路径长度，套接字目录用数据根摘要生成，数据根与凭据留在私有运维存储，不进入 Binding、Spec 或 Proposal。控制面停止不停止 Agency；`agency stop` 是服务所有者的独立操作，会请求停止所有租户的执行。
 
+Agency 被强杀后，在同一个数据根重新启动，会先核验该根登记的 Codex app-server 身份并收回旧进程组，再接新调用；不必先派工。换数据根启动不会收另一根的进程，也不会扫描或停止人自己的 Codex daemon。登记含 PID、启动时间和启动参数摘要，放在该根私有的 `codex-processes/`；身份不符时不发信号，记录不可读或回收失败则启动报错。旧版本未登记的进程不靠猜测回收；本机制也不处理自行离开进程组的程序。
+
 ## 脚本协议与恢复
 
 `serve --script-config FILE` 读取服务所有者的配置 `{"program":"/absolute/program","arguments":[]}`，不是派工请求中的任意命令。脚本从 stdin 读一行含 Spec / Bundle 的 JCS，之后读获准输入。stdout 每行是 `observation`（kind / payload）或唯一的 `result`（schema / output 字符串）。单帧上限 1 MiB；异常帧标观测缺口，不当成成功。脚本报告的结果和自述只记 narrated。
