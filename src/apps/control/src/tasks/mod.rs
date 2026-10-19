@@ -515,6 +515,7 @@ fn progress(s: &Store, t: &task::Task) -> Result<Value> {
             sequence,
             json!({
                 "invocation_id": id, "state": state, "reason": reason,
+                "profession": profession.reference.id,
                 "harness": profession.harness.id, "model": profession.model, "write": write,
             }),
         ));

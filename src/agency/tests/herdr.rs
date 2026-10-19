@@ -70,7 +70,70 @@ fn installed_fixture(root: &std::path::Path) -> PathBuf {
     dest
 }
 
-fn scratch(name: &str) -> (PathBuf, PathBuf) {
+/// One scratch directory, removed on drop. The old tuple returned bare paths, so every pass
+/// (passing or not) left `hctl2-herdr-cred-*`, `-exec-*` and the `hctl2-herdr-state-<digest>`
+/// beside the exec dir behind.
+struct Scratch {
+    path: PathBuf,
+    extra: Vec<PathBuf>,
+}
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+
+    fn deref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl std::ops::DerefMut for Scratch {
+    fn deref_mut(&mut self) -> &mut std::path::Path {
+        &mut self.path
+    }
+}
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+impl AsRef<std::ffi::OsStr> for Scratch {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.path.as_os_str()
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        remove_socket_dirs_under(&self.path);
+        let _ = std::fs::remove_dir_all(&self.path);
+        for extra in &self.extra {
+            let _ = std::fs::remove_dir_all(extra);
+        }
+    }
+}
+
+/// Herdr puts its sockets in `/tmp/hctl2-herdr-<hash>` outside the state dir. Tests derive
+/// extra state paths under the scratch tree (standby turns), so walk the tree and remove the
+/// socket dir for every directory that could have been used as a state. The paths are unique
+/// to this test, so a computed dir that was never created is a no-op.
+fn remove_socket_dirs_under(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if let Some(socket_dir) = herdr::socket_path(&canonical).parent() {
+            let _ = std::fs::remove_dir_all(socket_dir);
+        }
+        remove_socket_dirs_under(&path);
+    }
+}
+
+fn scratch(name: &str) -> (Scratch, Scratch) {
     let cred =
         std::env::temp_dir().join(format!("hctl2-herdr-cred-{}-{}", name, std::process::id()));
     let exec =
@@ -80,7 +143,24 @@ fn scratch(name: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
-    (cred, exec)
+    // The herdr state dir and the socket dirs herdr derives from it, registered exactly as
+    // the service computes them instead of re-hashing.
+    let mut extra = Vec::new();
+    if let Ok(state) = herdr::state_dir(&exec, &cred) {
+        let socket = herdr::socket_path(&state);
+        extra.push(socket.clone());
+        if let Some(socket_dir) = socket.parent() {
+            extra.push(socket_dir.to_path_buf());
+        }
+        extra.push(state);
+    }
+    (
+        Scratch { path: cred, extra },
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 
 struct SecretSpecimen {
@@ -400,8 +480,6 @@ fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
     );
     assert!(!text.contains("secret-credential"), "{text}");
     assert!(!text.contains("trial-keyring-secret"), "{text}");
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
 }
 
 #[test]
@@ -418,8 +496,28 @@ fn the_next_start_reaps_an_orphaned_herdr() {
     assert!(!process_matches(old, &binary));
     Client::connect(&again.socket).unwrap().ping().unwrap();
     drop(again);
-    let _ = std::fs::remove_dir_all(&cred);
-    let _ = std::fs::remove_dir_all(&exec);
+}
+
+#[test]
+fn a_replaced_server_keeps_the_directory_when_the_old_object_drops() {
+    let (cred, exec) = scratch("replaced-owner");
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let binary = binary();
+    let old = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let new = Server::start(&binary, &state, &cred, &exec).unwrap();
+    let socket_dir = new.socket.parent().unwrap().to_path_buf();
+    assert!(socket_dir.exists());
+    drop(old);
+    assert!(
+        socket_dir.exists(),
+        "the old Drop must not remove the replacement server's socket directory"
+    );
+    Client::connect(&new.socket).unwrap().ping().unwrap();
+    drop(new);
+    assert!(
+        !socket_dir.exists(),
+        "the owner still removes its own socket directory"
+    );
 }
 
 #[test]
@@ -524,18 +622,19 @@ fn a_missing_credential_root_is_not_used_raw() {
     assert_eq!(error.code, "CREDENTIAL_ROOT_UNRESOLVED");
 }
 
-fn server(
-    name: &str,
-) -> (
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::sync::Arc<Server>,
-) {
+fn server(name: &str) -> (Scratch, Scratch, Scratch, std::sync::Arc<Server>) {
     let (cred, exec) = scratch(name);
     let state = herdr::state_dir(&exec, &cred).unwrap();
     let server = std::sync::Arc::new(Server::start(&binary(), &state, &cred, &exec).unwrap());
-    (cred, exec, state, server)
+    (
+        cred,
+        exec,
+        Scratch {
+            path: state,
+            extra: Vec::new(),
+        },
+        server,
+    )
 }
 
 #[test]
@@ -1094,7 +1193,7 @@ fn live_claude_dispatch_returns_one_turn() {
         "LIVE claude {} via locked Herdr protocol 22",
         spec.document.profession.reference.revision
     );
-    eprintln!("Proposal(schema=claude.turn.v1, source=adapter_event): {proposal}");
+    eprintln!("Proposal(schema=agency.turn.v1, source=adapter_event): {proposal}");
     eprintln!("TurnReturned (not Task completion; does not require process exit)");
     let herdr_pid = runtime.pid().unwrap();
     running.session.lock().unwrap().stop().unwrap();
@@ -1241,8 +1340,8 @@ fn two_dispatches_share_one_herdr_server() {
     ));
     let left = std::sync::Arc::clone(&runtime);
     let right = std::sync::Arc::clone(&runtime);
-    let cred_left = cred.clone();
-    let cred_right = cred.clone();
+    let cred_left = std::path::PathBuf::from(&*cred);
+    let cred_right = std::path::PathBuf::from(&*cred);
     let exec_left = confine::execution_dir(&cred, "first").unwrap();
     let exec_right = confine::execution_dir(&cred, "second").unwrap();
     assert_ne!(exec_left, exec_right);
@@ -1515,11 +1614,18 @@ fn turn_state(
         .unwrap()
         .join(format!("standby-{key}"))
 }
-fn standby_root(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+fn standby_root(name: &str) -> (Scratch, Scratch, Scratch) {
     let (cred, root) = scratch(name);
     let exec = root.join("dispatches/job");
     std::fs::create_dir_all(&exec).unwrap();
-    (cred, root, exec)
+    (
+        cred,
+        root,
+        Scratch {
+            path: exec,
+            extra: Vec::new(),
+        },
+    )
 }
 fn wait_for(path: &std::path::Path) {
     // A cold native session has a 30-second readiness budget. Parallel CI
@@ -2703,7 +2809,7 @@ async fn port_turn(name: &str, live: bool) {
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let _stop = StopAgency {
         binary: agency.clone(),
-        root: root.clone(),
+        root: PathBuf::from(&*root),
     };
     let started = Command::new(&agency)
         .arg("--root")
@@ -3145,4 +3251,522 @@ fn json_has_input(value: &serde_json::Value, text: &str) -> bool {
         }
     }
     false
+}
+
+#[test]
+fn observation_pane_opens_for_fixture_session_and_returns_pane_id() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-open");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-open");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-open",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id when enabled");
+    assert!(!pane_id.is_empty());
+    assert_eq!(pane.pane_id(), Some(pane_id.as_str()));
+    assert!(session_dir.join("view.log").is_file());
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+    assert!(pane.is_alive().unwrap());
+    assert!(!pane.exited().unwrap());
+    assert_eq!(runtime.servers_started(), 1);
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_appends_lines_with_golden_view_log_format() {
+    use agency::observation::{self, ObservationConfig};
+
+    let (cred, exec) = scratch("obs-append");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-append");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-append",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("Check workspace\nand report status")
+        .unwrap();
+    pane.append_tool_call("Bash", Some("git status\n--short"))
+        .unwrap();
+    pane.append_tool_call("Read", None).unwrap();
+    pane.append_answer("OBS_GOLDEN_LINE_1\nOBS_GOLDEN_LINE_2")
+        .unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    let golden = "\
+=== turn 1 start ===
+[prompt] Check workspace and report status
+[tool] Bash: git status --short
+[tool] Read
+[answer]
+OBS_GOLDEN_LINE_1
+OBS_GOLDEN_LINE_2
+=== turn 1 end (completed) ===
+";
+    assert_eq!(std::fs::read_to_string(pane.view_log()).unwrap(), golden);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("=== turn 1 end (completed) ===") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        visible.contains("[prompt] Check workspace and report status"),
+        "visible pane missing prompt summary: {visible}"
+    );
+    assert!(
+        visible.contains("[tool] Bash: git status --short"),
+        "visible pane missing tool call: {visible}"
+    );
+    assert!(
+        visible.contains("OBS_GOLDEN_LINE_2"),
+        "visible pane missing answer: {visible}"
+    );
+    assert!(
+        visible.contains("=== turn 1 end (completed) ==="),
+        "visible pane missing turn end: {visible}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_closes_idempotently() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-close");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-close");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-close",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    pane.close().unwrap();
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    assert!(pane.exited().unwrap());
+    assert!(!pane.is_alive().unwrap());
+
+    // Closing an already-closed pane is a no-op.
+    pane.close().unwrap();
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_disabled_config_succeeds_without_starting_multiplexer() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-disabled");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-disabled");
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::disabled(),
+        &session_dir,
+        "obs-disabled",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let started = runtime.servers_started();
+    if started > 0 {
+        let _ = pane.close();
+        let _ = runtime.shutdown();
+    }
+    assert_eq!(started, 0, "disabled config must not start multiplexer");
+    assert_eq!(pane_id, None);
+    assert_eq!(pane.pane_id(), None);
+    assert!(runtime.pid().is_none());
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("disabled pane prompt").unwrap();
+    pane.append_tool_call("Read", Some("README.md")).unwrap();
+    pane.append_answer("DISABLED_PANE_ANSWER_OK").unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    assert_eq!(pane.status().unwrap(), PaneStatus::Disabled);
+    assert!(!pane.is_alive().unwrap());
+    assert!(!pane.exited().unwrap());
+    assert_eq!(pane.read_visible().unwrap(), None);
+
+    pane.close().unwrap();
+    assert_eq!(runtime.servers_started(), 0);
+    assert!(runtime.pid().is_none());
+
+    let log = std::fs::read_to_string(pane.view_log()).unwrap();
+    assert!(log.contains("DISABLED_PANE_ANSWER_OK"), "{log}");
+}
+
+#[test]
+fn observation_pane_closed_by_human_keeps_appending_and_reports_exited() {
+    use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
+
+    let (cred, exec) = scratch("obs-human-close");
+    let runtime = test_runtime(
+        &binary(),
+        "printf '%s\\n' DISPATCH_AFTER_PANE_CLOSE_OK\nexit 0\n",
+    );
+    let session_dir = exec.join("antigravity").join("session-human-close");
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-human-close",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id");
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("prompt before human closes pane")
+        .unwrap();
+
+    // Simulate a human closing the pane externally on the terminal multiplexer.
+    runtime
+        .multiplexer(&exec, &cred)
+        .unwrap()
+        .close_pane(&pane_id)
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && pane.status().unwrap() != PaneStatus::Exited {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    assert!(pane.exited().unwrap());
+    assert!(!pane.is_alive().unwrap());
+
+    // Appending after external pane close still writes to view.log without error.
+    pane.append_tool_call("Bash", Some("ls -la")).unwrap();
+    pane.append_answer("ANSWER_AFTER_HUMAN_CLOSE_OK").unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    let log = std::fs::read_to_string(pane.view_log()).unwrap();
+    assert!(log.contains("ANSWER_AFTER_HUMAN_CLOSE_OK"), "{log}");
+
+    // Dispatch is completely unaffected by the closed observation pane.
+    let mut running = runtime
+        .start(
+            &sealed_spec("after-human-close", now_ms() + 30_000),
+            &sealed_bundle("task after pane close\n"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(10));
+    let proposal = events.iter().find_map(|event| match event {
+        agency::runtime::RuntimeEvent::Proposal { schema, bytes, .. } => {
+            Some((schema.as_str(), String::from_utf8_lossy(bytes).into_owned()))
+        }
+        _ => None,
+    });
+    let (schema, body) = proposal.expect("dispatch proposal after pane close");
+    assert_eq!(schema, TURN_OUTPUT_SCHEMA);
+    assert!(body.contains("DISPATCH_AFTER_PANE_CLOSE_OK"), "{body}");
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_relative_session_dir_streams_view_log_into_pane() {
+    use agency::observation::{self, ObservationConfig, ViewEntry};
+    use std::path::Component;
+
+    let (cred, exec) = scratch("obs-relative");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let cwd = std::env::current_dir()
+        .expect("current_dir")
+        .canonicalize()
+        .expect("canonical cwd");
+    let target = exec.join("antigravity").join("session-rel");
+    let mut session_dir = PathBuf::new();
+    for comp in cwd.components() {
+        if matches!(comp, Component::Normal(_)) {
+            session_dir.push("..");
+        }
+    }
+    session_dir.push(target.strip_prefix("/").expect("absolute scratch path"));
+    assert!(session_dir.is_relative());
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-relative",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+    assert!(pane.view_log().is_absolute());
+
+    observation::append_view_line(
+        &session_dir,
+        ViewEntry::Answer {
+            text: "RELATIVE_VIEW_OK",
+        },
+    )
+    .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("RELATIVE_VIEW_OK") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        visible.contains("RELATIVE_VIEW_OK"),
+        "relative view: {visible:?}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+/// H0 + native `agy` CLI display probe (not the H1 adapter/Runtime dispatch path, which
+/// merges in #467 after rebasing onto H0). Verifies that H0's `ObservationPane` renders
+/// live `agy --output-format stream-json` NDJSON events inside an operator-specified login
+/// environment (`HCTL2_AGY_LIVE_HOME`) with bounded waiting and child cleanup.
+#[test]
+#[ignore = "UNVERIFIED: requires HCTL2_HARNESS_LIVE=1 and operator-specified HCTL2_AGY_LIVE_HOME"]
+fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
+    use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
+
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let pid = self.0.id();
+            let _ = Command::new("/bin/kill")
+                .args(["-s", "KILL", "--", &format!("-{pid}")])
+                .status();
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    assert!(
+        std::env::var_os("HCTL2_HARNESS_LIVE").is_some(),
+        "explicit live validation also requires HCTL2_HARNESS_LIVE=1"
+    );
+    let live_home = PathBuf::from(
+        std::env::var_os("HCTL2_AGY_LIVE_HOME")
+            .expect("explicit operator login directory required via HCTL2_AGY_LIVE_HOME"),
+    );
+    assert!(
+        live_home.is_dir(),
+        "HCTL2_AGY_LIVE_HOME must point to an existing operator login directory"
+    );
+    let agy_bin = std::env::var_os("HCTL2_AGY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let out = Command::new("/usr/bin/which").arg("agy").output().unwrap();
+            assert!(out.status.success(), "agy not on PATH");
+            PathBuf::from(String::from_utf8(out.stdout).unwrap().trim())
+        });
+
+    let (cred, exec) = scratch("h1-agy-obs-live");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-live-1");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "h1-agy-live",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id");
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    let prompt = "Reply with exactly HCTL_H0_PANE_OK and nothing else.";
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary(prompt).unwrap();
+
+    let path_env =
+        std::env::var_os("PATH").unwrap_or_else(|| std::ffi::OsString::from("/usr/bin:/bin"));
+    let child = Command::new(&agy_bin)
+        .args([
+            "--output-format",
+            "stream-json",
+            "--input-format",
+            "stream-json",
+            "--disable-slash-commands",
+            "--print=",
+        ])
+        .current_dir(&exec)
+        .env_clear()
+        .env("HOME", &live_home)
+        .env("PATH", path_env)
+        .env("TMPDIR", &exec)
+        .env("LANG", "C.UTF-8")
+        .process_group(0)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn agy");
+    let mut guard = ChildGuard(child);
+
+    let mut stdin = guard.0.stdin.take().expect("agy stdin");
+    let stdout = guard.0.stdout.take().expect("agy stdout");
+    let stderr = guard.0.stderr.take().expect("agy stderr");
+
+    let stderr_handle = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for _ in reader.lines() {}
+    });
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let stdout_handle = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut events_jsonl = String::new();
+    let mut final_answer = None;
+    let mut conversation_id = String::new();
+    let mut prompt_sent = false;
+    let stream_deadline = Instant::now() + Duration::from_secs(60);
+
+    while Instant::now() < stream_deadline {
+        let remaining = stream_deadline.saturating_duration_since(Instant::now());
+        let Ok(line_res) = rx.recv_timeout(remaining) else {
+            break;
+        };
+        let line = line_res.expect("read agy stdout line");
+        if line.trim().is_empty() {
+            continue;
+        }
+        events_jsonl.push_str(&line);
+        events_jsonl.push('\n');
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if val["event"] == "init"
+            && let Some(cid) = val["conversation_id"].as_str()
+        {
+            conversation_id = cid.to_owned();
+            if !prompt_sent {
+                let msg = json!({
+                    "event": "user",
+                    "message": {
+                        "content": prompt,
+                    }
+                });
+                writeln!(stdin, "{msg}").unwrap();
+                stdin.flush().unwrap();
+                prompt_sent = true;
+            }
+        }
+        if val["event"] == "step_update"
+            && let Some(calls) = val
+                .pointer("/step_update/tool_calls")
+                .and_then(|v| v.as_array())
+        {
+            for call in calls {
+                if let Some(name) = call["name"].as_str() {
+                    let detail = call.get("arguments").map(|v| v.to_string());
+                    pane.append_tool_call(name, detail.as_deref()).unwrap();
+                }
+            }
+        }
+        if val["event"] == "result"
+            && val["result"]["conversation_id"].as_str() == Some(conversation_id.as_str())
+        {
+            let status = val["result"]["status"].as_str().unwrap_or("SUCCESS");
+            let result_text = val["result"]["response"].as_str().unwrap_or("").to_owned();
+            pane.append_answer(&result_text).unwrap();
+            pane.append_turn_end(1, status).unwrap();
+            final_answer = Some(result_text);
+            break;
+        }
+    }
+    drop(stdin);
+    drop(guard);
+    let _ = stdout_handle.join();
+    let _ = stderr_handle.join();
+    std::fs::write(session_dir.join("events.jsonl"), &events_jsonl).unwrap();
+    std::fs::write(
+        session_dir.join("state.json"),
+        serde_json::to_vec_pretty(&json!({
+            "conversation_id": conversation_id,
+            "pane_id": pane_id,
+            "schema": TURN_OUTPUT_SCHEMA,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let answer = final_answer.expect("agy result event before timeout");
+    assert!(answer.contains("HCTL_H0_PANE_OK"), "{answer}");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("=== turn 1 end") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let raw_read = Client::connect(&herdr::socket_path(&state))
+        .unwrap()
+        .call(
+            "pane.read",
+            json!({
+                "pane_id": pane_id,
+                "source": "visible",
+                "format": "text",
+                "strip_ansi": true,
+            }),
+        )
+        .unwrap();
+    eprintln!(
+        "LIVE H0+agy display probe pane.read response:\n{}",
+        serde_json::to_string_pretty(&raw_read).unwrap()
+    );
+
+    assert!(
+        visible.contains("[prompt] Reply with exactly HCTL_H0_PANE_OK and nothing else."),
+        "visible pane missing prompt summary: {visible}"
+    );
+    assert!(
+        visible.contains("[answer]") && visible.contains("HCTL_H0_PANE_OK"),
+        "visible pane missing answer: {visible}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
 }

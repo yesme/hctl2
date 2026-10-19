@@ -1520,7 +1520,7 @@ fn writer_cannot_activate_without_delivered_exact_changeset_boundary() {
 fn writing_call_cannot_be_completed_as_a_read_only_answer() {
     let (mut e, input) = write_setup();
     let (preview, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     assert_eq!(
         call::admit_result(
             &mut e.store,
@@ -1616,7 +1616,7 @@ fn assert_admission_rejected(
 fn invocation_result_rejects_pending_lifecycle() {
     let (mut e, input) = setup();
     let (p, owner, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let state = value_record(
         call::state_key(&e.a, &p.consumer.id),
         3,
@@ -1635,7 +1635,7 @@ fn invocation_result_rejects_pending_lifecycle() {
 fn invocation_result_rejects_changed_proposal_spec_digest() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
     proposal.header.spec_digest = hash(b"another frozen Spec");
     let changed = replace_proposal(&mut e, &inbox, &proposal);
@@ -1646,7 +1646,7 @@ fn invocation_result_rejects_changed_proposal_spec_digest() {
 fn invocation_result_rejects_output_different_from_preserved_bytes() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
     proposal.output = b"different read-only answer".to_vec();
     proposal.content_digest = hash(&proposal.output);
@@ -1660,7 +1660,7 @@ fn invocation_result_rejects_output_different_from_preserved_bytes() {
 fn invocation_result_rejects_output_hash_mismatch() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
     proposal.content_digest = hash(b"not the output");
     proposal.outputs[0].content_digest = proposal.content_digest.clone();
@@ -1673,7 +1673,7 @@ fn invocation_result_rejects_output_hash_mismatch() {
 fn invocation_result_rejects_delivery_outside_original_room() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let (root, mut invocation) = call::invocation(&e.store, &e.a, &p.consumer.id).unwrap();
     // Change just this target: every Proposal identity and digest still matches.
     invocation.spec.document.delivery_scope = vec!["another-room".into()];
@@ -1687,7 +1687,7 @@ fn invocation_result_rejects_delivery_outside_original_room() {
 fn invocation_result_rejects_multiple_outputs() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
     proposal.outputs.push(proposal.outputs[0].clone());
     let changed = replace_proposal(&mut e, &inbox, &proposal);
@@ -1698,7 +1698,7 @@ fn invocation_result_rejects_multiple_outputs() {
 fn invocation_result_rejects_non_utf8_answer() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut proposal: agency_proto::Proposal = participant::decode(&inbox).unwrap();
     proposal.header.proposal_id = "invalid-utf8".into();
     proposal.header.idempotency_key = "invalid-utf8".into();
@@ -1720,7 +1720,7 @@ fn invocation_result_rejects_non_utf8_answer() {
 fn invocation_result_rechecks_stale_inbox_inside_transaction() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let mut changed = inbox.clone();
     changed.version += 1;
     replace_record(&mut e, changed);
@@ -1732,7 +1732,7 @@ fn invocation_result_rechecks_stale_inbox_inside_transaction() {
 fn invocation_result_rejects_original_reducer_without_project_scope() {
     let (mut e, input) = setup();
     let (p, _, mut reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     reducer.0.permission_scope = vec![Scope::Project(e.b.clone())];
     let error = assert_admission_rejected(&mut e, &p, &reducer, &inbox, "PERMISSION_DENIED");
     // A later Store material/command denial must not stand in for this reducer guard.
@@ -1743,7 +1743,7 @@ fn invocation_result_rejects_original_reducer_without_project_scope() {
 fn invocation_admits_exact_answer_and_projection_atomically_and_terminal_guard_is_independent() {
     let (mut e, input) = setup();
     let (p, owner, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let result =
         call::admit_result(&mut e.store, &reducer, &e.a, &p.consumer.id, &inbox, NOW).unwrap();
     assert_eq!(result["state"], "completed");
@@ -1808,16 +1808,37 @@ fn invocation_rejects_unsupported_schema_but_can_admit_a_subsequent_good_answer(
             .state,
         State::Running
     );
-    let good = preserved(&mut e, &dispatch, "claude.turn.v1", 2);
+    let good = preserved(&mut e, &dispatch, "agency.turn.v1", 2);
     call::admit_result(&mut e.store, &reducer, &e.a, &p.consumer.id, &good, NOW).unwrap();
     assert_eq!(e.store.list("proposal_inbox").unwrap().len(), 2);
 }
 
 #[test]
-fn invocation_admits_a_codex_turn_answer() {
+fn invocation_rejects_legacy_claude_turn_schema_and_only_admits_agency_turn_v1() {
     let (mut e, input) = setup();
     let (p, _, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "codex.turn.v1", 1);
+    for (seq, legacy) in [
+        (1, "claude.turn.v1"),
+        (2, "codex.turn.v1"),
+        (3, "adapter.stdout.v1"),
+    ] {
+        let legacy_inbox = preserved(&mut e, &dispatch, legacy, seq);
+        assert_eq!(
+            call::admit_result(
+                &mut e.store,
+                &reducer,
+                &e.a,
+                &p.consumer.id,
+                &legacy_inbox,
+                NOW
+            )
+            .unwrap_err()
+            .code,
+            "PROPOSAL_MISMATCH",
+            "legacy schema {legacy} must be rejected"
+        );
+    }
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 4);
     let admitted =
         call::admit_result(&mut e.store, &reducer, &e.a, &p.consumer.id, &inbox, NOW).unwrap();
     assert_eq!(admitted["state"], "completed");
@@ -1834,7 +1855,7 @@ fn invocation_admits_a_codex_turn_answer() {
 fn invocation_projection_conflict_rolls_back_result_and_completion_but_keeps_preserved_bytes() {
     let (mut e, input) = setup();
     let (p, owner, reducer, dispatch) = running(&mut e, input);
-    let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+    let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
     let effect_id = format!("projection:{}:proposal-1", p.consumer.id);
     let input = json!({"occupied":true});
     let command = Command {
@@ -1949,7 +1970,7 @@ fn invocation_cancelled_or_expired_answer_is_preserved_but_never_admitted_or_pro
     for cancel in [false, true] {
         let (mut e, input) = setup();
         let (p, _, reducer, dispatch) = running(&mut e, input);
-        let inbox = preserved(&mut e, &dispatch, "adapter.stdout.v1", 1);
+        let inbox = preserved(&mut e, &dispatch, "agency.turn.v1", 1);
         let now = if cancel {
             let end = end_input(&e, &p.consumer.id, 2, State::Cancelled);
             call::end(&mut e.store, &actor(), end).unwrap();

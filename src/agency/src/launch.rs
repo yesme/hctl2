@@ -25,13 +25,13 @@ use std::{
 const OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 
 /// Only the exit subscription used by this adapter. It is not a second supervisor.
-struct ExitFeed {
+pub(crate) struct ExitFeed {
     stream: UnixStream,
     pending: Vec<u8>,
     exited: bool,
 }
 impl ExitFeed {
-    fn subscribe(socket: &Path) -> Result<Self> {
+    pub(crate) fn subscribe(socket: &Path) -> Result<Self> {
         use std::io::{BufRead, BufReader, Write};
         let mut stream = UnixStream::connect(socket)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -59,7 +59,7 @@ impl ExitFeed {
             exited: false,
         })
     }
-    fn poll(&mut self, pane: &str) -> Result<bool> {
+    pub(crate) fn poll(&mut self, pane: &str) -> Result<bool> {
         if self.exited {
             return Ok(true);
         }
@@ -571,6 +571,16 @@ impl InstalledHerdr {
             .map(|server| server.pid())
     }
 
+    pub fn multiplexer(
+        &self,
+        exec: &Path,
+        credential_root: &Path,
+    ) -> Result<crate::observation::Multiplexer> {
+        Ok(crate::observation::Multiplexer::from_server(
+            self.ensure(exec, credential_root)?,
+        ))
+    }
+
     fn ensure(&self, exec: &Path, credential_root: &Path) -> Result<Arc<Server>> {
         let mut slot = self.slot.lock().expect("herdr");
         if let Some(server) = slot.as_ref()
@@ -761,39 +771,50 @@ fn smoke_binary(binary: &Path, claude: &Path, read_paths: &[PathBuf]) -> Result<
     fs::create_dir_all(&cred)?;
     fs::create_dir_all(&exec)?;
     let state = crate::herdr::state_dir(&exec, &cred)?;
-    let server = Arc::new(Server::start_with_read(
-        binary, &state, &cred, &exec, read_paths,
-    )?);
-    let result = (|| {
-        smoke(Arc::clone(&server), &exec, &state, &cred)?;
-        let launch = Launch::start(
-            Arc::clone(&server),
-            &exec,
-            &state,
-            &cred,
-            &format!("{} --version\n", sh_quote(claude)),
-            "harness-smoke",
-        )?;
-        let finished = launch.wait(Duration::from_secs(15))?;
-        let text = String::from_utf8_lossy(&finished.stdout);
-        let version = text.lines().next().unwrap_or("").trim().to_owned();
-        if finished.code != Some(0) || version.is_empty() {
-            return Err(PortError::new(
-                "HARNESS_SMOKE_FAILED",
-                format!(
-                    "confined Claude --version exit {:?}: {}",
-                    finished.code,
-                    String::from_utf8_lossy(&finished.stderr)
-                        .chars()
-                        .take(4096)
-                        .collect::<String>()
-                ),
-                "check_harness_installation_and_policy",
-            ));
-        }
-        Ok(version)
+    // The socket directory lives in /tmp, outside the TempDir; the Server only kills its
+    // process group on drop, so remove the directory once the smoke server is gone.
+    let socket_dir = crate::herdr::socket_path(&state)
+        .parent()
+        .map(std::path::Path::to_path_buf);
+    let result = (|| -> Result<String> {
+        let server = Arc::new(Server::start_with_read(
+            binary, &state, &cred, &exec, read_paths,
+        )?);
+        let result = (|| {
+            smoke(Arc::clone(&server), &exec, &state, &cred)?;
+            let launch = Launch::start(
+                Arc::clone(&server),
+                &exec,
+                &state,
+                &cred,
+                &format!("{} --version\n", sh_quote(claude)),
+                "harness-smoke",
+            )?;
+            let finished = launch.wait(Duration::from_secs(15))?;
+            let text = String::from_utf8_lossy(&finished.stdout);
+            let version = text.lines().next().unwrap_or("").trim().to_owned();
+            if finished.code != Some(0) || version.is_empty() {
+                return Err(PortError::new(
+                    "HARNESS_SMOKE_FAILED",
+                    format!(
+                        "confined Claude --version exit {:?}: {}",
+                        finished.code,
+                        String::from_utf8_lossy(&finished.stderr)
+                            .chars()
+                            .take(4096)
+                            .collect::<String>()
+                    ),
+                    "check_harness_installation_and_policy",
+                ));
+            }
+            Ok(version)
+        })();
+        drop(server);
+        result
     })();
-    drop(server);
+    if let Some(socket_dir) = socket_dir {
+        let _ = fs::remove_dir_all(socket_dir);
+    }
     result
 }
 
@@ -1101,7 +1122,7 @@ fn dispatch_events(
             // Only the explicit script fixture uses stdout-at-exit; no real harness takes this branch.
             if code == Some(0) {
                 let _ = tx.send(RuntimeEvent::Proposal {
-                    schema: "adapter.stdout.v1".into(),
+                    schema: crate::observation::TURN_OUTPUT_SCHEMA.into(),
                     bytes: stdout,
                     source: EvidenceLevel::AdapterEvent,
                 });

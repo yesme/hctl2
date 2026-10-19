@@ -7,6 +7,7 @@ pub mod grok;
 pub mod harness;
 pub mod herdr;
 pub mod launch;
+pub mod observation;
 pub mod runtime;
 pub mod service;
 mod standby;

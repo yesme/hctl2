@@ -357,7 +357,7 @@ demo3_agency_up() {
     local config="$DEMO3_ROOT/script.json" body
     body=$(cat <<DEMO3_EXECUTOR
 read -r assembly || exit 1
-printf '%s\n' '{"type":"result","schema":"adapter.stdout.v1","output":"$DEMO3_ANSWER"}'
+printf '%s\n' '{"type":"result","schema":"agency.turn.v1","output":"$DEMO3_ANSWER"}'
 DEMO3_EXECUTOR
 )
     "$HCTL2_JQ" -n --arg body "$body" \

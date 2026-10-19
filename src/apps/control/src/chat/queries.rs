@@ -124,13 +124,16 @@ pub(crate) fn query(
         }
         _ => Err(invalid("unknown Room query")),
     }?;
-    access(shared, |s| {
-        if s.read_stamp() == stamp {
-            Ok(())
-        } else {
-            Err(chat::stale())
-        }
-    })?;
+    // Room queries are read-only views over the chat server and the local
+    // store. A store write landing between the first read and the network
+    // round-trip — a projection, an outbox confirmation, an unrelated command
+    // — does not make the answer wrong for the caller, and the caller has no
+    // preview to redo. The stamp re-check below rejected such reads with the
+    // preview error (`VERSION_CONFLICT / Room or source changed after preview`,
+    // recovery `preview_again`), which is meaningless for a query and surfaced
+    // to real users as an unexplained failure. Write commands keep their own
+    // stamp re-check inside their prepare/submit cycle; this one is removed.
+    let _ = stamp;
     Ok(result)
 }
 
