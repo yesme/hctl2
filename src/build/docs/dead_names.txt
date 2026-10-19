@@ -50,9 +50,8 @@ agentd	decision-history §28：agentd 退场（小写；同时覆盖 hctl2-agent
 hctl2-agency	decision-history §29：中间方案已取消，不建设
 Conductor	decision-history §18：workflow engine 已改选 Dagu
 Zellij	decision-history §19：运行时后端已改 tmux 再退场（§29）
-tmux	decision-history §29：tmux 随 agentd 方案一并退场
 Electron	decision-history §30：Workbench 壳改选 Tauri 2，Electron 仅为安全网（合法提法经 dead_names.allowlist 豁免）
-WezTerm	decision-history §29 后：一等原生 Terminal 客户端是 Herdr TUI，WezTerm 只可作可选提及（豁免须逐条注明）
+WezTerm	decision-history §41 后：一等原生 Terminal 客户端是终端复用器的只读附着（替换前为 Herdr TUI），WezTerm 只可作可选提及（豁免须逐条注明）
 
 # --- v0.16.2 Binding 族重构（decision-history §35 台账 v0.16.2）---
 Resolved Port Binding	v0.16.2：改名 Port–Provider Binding

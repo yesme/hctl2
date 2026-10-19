@@ -52,7 +52,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 <a id="l1-selected-evidence"></a>
 ### ⑥ 机械后端与基础设施 · 已选依赖与选型对照
 
-不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Gitea 与 tea、Herdr、Cinny 采用二进制，Tauri 2 与 UI 通用库采用 SDK，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，tmux 和旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
+不拥有 HCTL 业务决定权的部件中，Dagu、Tuwunel、Vikunja、Gitea 与 tea、tmux、Cinny 采用二进制，Tauri 2 与 UI 通用库采用 SDK，Linear/GitHub 及 [Termio/ATP](https://www.termio.sh/docs/atp) 适配协议，Herdr 自 2026-10-20 起只到替换完成为止（决策史 §41；替换前随包仍是它），旧运行服务候选只留历史对照；补充证据只取 [xterm.js](https://github.com/xtermjs/xterm.js/) 的终端渲染与输入、[WezTerm](https://wezterm.org/cli/cli/index.html) 的外部终端行为、[assistant-ui](https://www.assistant-ui.com/docs/api-reference/primitives/message) 的消息部件、[virtua](https://github.com/inokawa/virtua) 的动态视口、[Rocket.Chat](https://github.com/RocketChat/Rocket.Chat/tree/develop/apps/meteor/client/views/room/MessageList)/[Mattermost](https://github.com/mattermost/mattermost/tree/master/webapp/channels/src/components/dynamic_virtualized_list)/[Zulip](https://github.com/zulip/zulip/blob/main/docs/subsystems/unread_messages.md) 的时间线行为及 [Tiptap/ProseMirror](https://tiptap.dev/docs/editor/extensions/custom-extensions) 的 Composer 扩展，不采用其领域模型，文件与完整边界见[条目索引](#条目索引)和[运维表](#已选外部服务的运维与资源占用)。
 
 ### ⑦ 直接谱系
 
@@ -110,7 +110,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [remote-control/servercc.md](./remote-control/servercc.md) | ServerCC | E-L1-SERVERCC | ⑤ 远程操控与会话同步 | 仅参考行为 |
 | [remote-control/quicktui.md](./remote-control/quicktui.md) | QuickTUI | E-L1-QUICKTUI | ⑤ 远程操控与会话同步 | 仅参考行为 |
 | [remote-control/redock.md](./remote-control/redock.md) | Redock | E-L1-REDOCK | ⑤ 远程操控与会话同步 | 仅参考行为 |
-| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用二进制 |
+| [herdr.md](./runtime/herdr.md) | Herdr | E-L1-HERDR、E-L2-HERDR-BOUNDARY | ⑥ 机械后端与基础设施 | 采用二进制到替换完成为止：所有者 2026-10-20 改定 tmux（决策史 §41），替换排在演示 3 验收后；agent 层不再使用 |
 | [harness-hooks-20260903.md](./harness-hooks-20260903.md) | 八家编码 Harness 的「工具调用前」钩子与 ACP 权限请求 | E-L1-HARNESS-HOOKS | ① Coding Harness | 适配协议：PTY 模式用各家原生钩子、ACP 模式用协议权限请求；白名单与检查入口与 harness 无关 |
 | [harness-adapters.md](./harness-adapters.md) | Claude Code / Codex CLI / Gemini CLI 的无界面事件、终局、会话与审批 | E-L1-HARNESS-ADAPTERS | ① Coding Harness | 适配协议：三家共用骨架；JSONL 观察与双向审批分开声明，钉 2.1.263 / 0.153.4 / 0.58.0 |
 | [harness-dispatch-channel-20261006.md](./harness-dispatch-channel-20261006.md) | 各家 harness 怎么把一轮正文交进活着的会话 | E-HARNESS-DISPATCH-CHANNEL | ① Coding Harness | 仅参考行为。Codex 正文走 app-server `turn/start` 或 exec。`codex resume --remote` 的界面能显示另一客户端的同一轮；不带 `--remote` 的默认 pane 仍是输入框 |
@@ -131,8 +131,8 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
 | [scm-platforms.md](./scm-platforms.md) | 代码协作平台市场调研：GitHub、GitLab、Gitea、Forgejo、Gerrit、Bitbucket、Azure DevOps 在合入调用面上的能力（源头校验、目标头保证、队列语义、官方命令行） | E-SCM-PLATFORMS | ⑥ 机械后端与基础设施 | 外部平台：采用二进制、GitHub 缺省，其余暂缓、按能力声明维度按需接入；本地平台另见 gitea.md |
 | [gitea.md](./gitea.md) | 随包的本地代码协作平台：Gitea v1.27.3 的调用面核对、运行形态与 tea 命令行覆盖 | E-SCM-GITEA | ⑥ 机械后端与基础设施 | 采用二进制（Gitea 与 tea 都随包），Forgejo 备选，Gogs 落选（没有评审请求接口，也不明显小）；适配器第一级用 tea，字段级操作走 `tea api` |
-| [tmux-runtime.md](./tmux-runtime.md) | 运行时后端复审 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 | 历史选型，不再采用 |
-| [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 采用 Herdr 的验证证据 |
+| [tmux-runtime.md](./tmux-runtime.md) | 终端复用器复审：tmux 3.7c 官方静态包、三目标接口验证与分发复核 | E-L1-TMUX-RUNTIME | ⑥ 机械后端与基础设施 | 采用二进制（所有者 2026-10-20 改定，决策史 §41）：只承担只读观测窗格，不承担控制；替换 Herdr 的包排在演示 3 验收后 |
+| [agency-runtime-validation-20260829.md](./runtime/agency-runtime-validation-20260829.md) | Herdr 作为 Agent / Terminal 运行服务的验证清单、源码核对与 macOS 实测 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | Herdr 的验证证据；2026-10-20 改定 tmux 后只到替换完成为止 |
 | [agentd-runtime-candidates-20260829.md](./agentd-runtime-candidates-20260829.md) | Agent 运行服务候选的源码复审：Termio、tty7、cmux、Pilotty 及相邻候选 | — | ⑥ 外部运行服务与基础设施 · 补充审计 | 旧结论废止，源码与实测证据保留 |
 | [workbench-shell.md](./workbench-shell.md) | Workbench 桌面壳：Electron 与 Tauri 2 | E-WORKBENCH-SHELL | ⑥ 机械后端与基础设施 | 采用 Tauri 2，Electron 为安全网 |
 | [hctl1.md](./lineage/hctl1.md) | HCTL1 / yesme/hctl | E-L2-HCTL1 | ⑦ 直接谱系 | 仅参考行为（直接谱系证据） |
