@@ -1,6 +1,6 @@
 # 演示 3「真实交付」操作手册
 
-> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`249ddda5`），**第一节（构建、离线安装、启动控制面）、第二节第 1–5 步与第 6 步预览段、第四节第 1 步、第五节第 1.2 / 2.2 / 3.1 小节、第六节清理**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过；**第二节第 6 步启动段至第 10 步、第四节第 2–3 步**（从离线安装包拉起真 Claude Code 会话完成写入与封存）因 `#433`（北京时间 2026-10-18 03:57 合入前安装包内 Agency 找不到 `hctl2-tool`）、`#441`（Claude `/tmp` 信任前置检查，待合入）与 `#430`（`task show` 按工种显示 `claude-code`，待合入）的时间线原因，尚未在无绕法前提下从安装包走通真 Claude 会话，当前标注为「照用例或代码写的，未实跑」（GLM 在 `#431` 第一轮于提交 `c188660` 上借 `HCTL2_TOOL_BIN` 绕法跑通的记录见 `.memo/log/2026-10-17-演示3走查.md`；安装包配脚本执行体的五步写入链已由 Antigravity 在 `#442` 头 `fddc65a` 上实跑通过）。**第三节（B 链）**待 `#431` 第二轮走通后补入。
+> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`901afa4`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 3 步，含真 Claude Code 会话写入与 `review publish` 人工发布预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**待 `#431` 第二轮走通后补入，当前标注为「照用例或代码写的，未实跑」。
 
 本文记录演示 3「真实交付」从零构建、离线安装到端到端走查的完整命令序列。流程覆盖：本地 Gitea 仓库注册与 Claude Code 真会话写入交付链（A 链，人类仅在合入与完成两处预览确认）、受保护 GitHub `main` 与 Codex 真会话交付链（B 链）、开启「发布评审须人显式确认」开关的三次预览链（C 链），以及重启一致性、凭据隔离与逃生口的核对方法。
 
@@ -10,11 +10,11 @@
 
 ## 一、环境构建与离线安装
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3560.log` 与 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-5163.log` 与 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 ### 1. 构建完整发布包
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `766f40e5-50fd-4f8c-a82c-460f0a54428f`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3560.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `3cac2287-aa73-4de1-b304-0327f97244e6`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-5163.log`）。
 
 在代码仓库根目录下进入 `src/`，构建当前平台的完整离线运行包：
 
@@ -29,7 +29,7 @@ cd "$REPO_ROOT"
 
 ### 2. 离线安装、前置条件检查与工作区变量设置
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 新建独立演示工作目录（建议使用磁盘上的短路径如 `/var/tmp/d3`，既避免 Unix domain socket 路径超出系统 `SUN_LEN` 限制，也避免在内存盘 `/tmp` 配额较小的机器上解压 635 MB 载荷时触发磁盘配额不足），解压并运行离线安装器 `./install.sh`：
 
@@ -60,13 +60,11 @@ export ROOT="$WS/state"
 > - **状态隔离**：全程所有控制面命令均须携带 `--root "$ROOT"`，配对命令携带 `--agency-root "$ROOT/agency"`，确保状态与托管服务全部落在独立目录 `$WS/state` 下，不污染 `~/.local/state/hctl2` 与 `~/.hctl2/agency`。
 > - **版本门槛（以代码 `src/agency/src/harness/mod.rs` 为准）**：执行 A 链前请确认本机已安装并登录 `claude`（**Claude Code >= 2.1.287**，`CLAUDE_MINIMUM`）；执行 B 链前请确认本机已安装并登录 `codex`（**Codex CLI >= 0.153.4**，`CODEX_MINIMUM`）且 `gh auth status` 已登录具备 `yesme/hctl2-canary` 权限的账号。
 > - **已知平台限制（macOS 下 A 链不可用）**：在 macOS 上，Claude Code 仅将登录凭据存放在系统钥匙串（`Claude Code-credentials`），而 Agency 的 Seatbelt 凭据隔离边界显式封禁了 `~/Library/Keychains`，导致受管执行环境内 Claude Code 报错 `Not logged in`（`HARNESS_TURN_ERROR`）。因此 **A 链（真 Claude Code 会话）目前只能在 Linux 上运行**。
-> - **Claude Code `/tmp` 目录信任前提（安全检查不代答）**：Agency 在 `/tmp/hctl2-exec-*` 下为每次调用创建隔离执行目录；Claude Code 对未信任目录会弹出交互式信任框并阻塞会话，而产品遵循「遇到安全性检查，不替用户做 workaround」原则，绝不代用户自动应答信任框。Claude Code 会继承父目录的信任状态，因此启动 A 链前 `/tmp` 必须已被 Claude Code 信任：
->   - **怎么检查**：在终端运行 `jq '.projects["/tmp"].hasTrustDialogAccepted' ~/.claude.json`，输出应为 `true`（`#441` 合入后，Agency 启动时也会自检该项；若未满足，`<agency-root>/serve.err` 会记录 `CLAUDE_WORKSPACE_UNTRUSTED`，且 `agency catalog` 不会公布 `claude-code` 工种）。
->   - **不满足时人该怎么做**：在配对或启动 Agency 之前，由人自己在终端运行一次 `cd /tmp && claude`，在信任提示框中选择确认信任（`Yes, I trust this folder`）后退出 `claude`。若 Agency 已启动，完成授权后需重启 Agency（`agency --root "$ROOT/agency" stop` 后重新 `agency pair`）。
+> - **Claude Code 工作区信任与启动自检**：本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录（写入型派工开在 git worktree 里）；让不让 Claude 在执行目录里工作由 Agency 所有者决定，Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动（不修改用户的 `~/.claude.json`），用户无需手工干预。Agency 启动时会在 `/tmp` 下的新目录里开一次 Claude 会话自检这一条（绝不替人按键应答）；若将来换成了不认该变量而仍弹出信任框的版本，`<agency-root>/serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`，且 `agency catalog` 不会公布 `claude-code` 工种（详见 `docs/usage.md`「本地 Agency 与 Claude Code 的工作区信任」）。
 
 ### 3. 启动控制面并核对初始状态
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 确保随包服务端口（Tuwunel `6167`、Cinny `6168`、Gitea `3001`）空闲后，以私有文件密钥后端启动控制面：
 
@@ -90,11 +88,11 @@ $CLI --json --root "$ROOT" status
 
 ## 二、A 链：本地 Gitea + 真 Claude Code 写入交付（两次人工预览）
 
-**实跑状态**：第 1–5 步及第 6 步 `invocation preview` 已在 Ubuntu 上从零实跑通过（提交 `0126b49` / 基线 `249ddda5`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）；第 6 步 `invocation start` 至第 10 步为照用例或代码编写，尚未在无绕法前提下从安装包实跑真 Claude 会话（详见各小节标注）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 ### 1. 初始化带 `.gitignore` 的本地试验仓库
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 在 `$WS/write-site` 下创建一个包含真实非文档代码缺陷的 Python 仓库，并配置 `.gitignore` 忽略测试运行生成的字节码缓存（避免 `__pycache__` 混入封存版本）：
 
@@ -148,7 +146,7 @@ cd "$WS"
 
 ### 2. 注册并激活本地 Repo（两步确认）
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 编写本地仓库注册输入 `$WS/work/a-repo.json`（不指定外部远端，缺省绑定随包本地 Gitea 平台与 `gitea_issues` 任务源）：
 
@@ -200,7 +198,7 @@ $CLI --json --root "$ROOT" repo register --confirm "$REPO_ID" --version "$REG_VE
 
 ### 3. 配对 Agency、接受 `claude-code` 工种并创建写入型 Profile
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 将控制面与随包原生 Agency 配对（显式指定 `--agency-root "$ROOT/agency"`），并从名册中提取 `claude-code` 工种引用并接受：
 
@@ -269,7 +267,7 @@ export WRITE_PROFILE_REV="$(echo "$SUB_PROF" | jq -c .revision)"
 
 ### 4. 创建 Project 并将写入参与者选入主 Room
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 创建缺省发布策略（`publish_review_requires_confirmation: false`）的 Project（两步确认）：
 
@@ -364,7 +362,7 @@ $CLI --json --root "$ROOT" project select --input "$WS/work/a-select.json" --key
 
 ### 5. 连接 Gitea 任务源、创建 Task 并采纳契约
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 连接并挂接随包 Gitea 的 issues 任务源（各两步确认，每次写 Project 作用域命令前从 `project show` 读取当前 `project_version`）：
 
@@ -486,7 +484,7 @@ export TASK_VER_ADOPTED="$(echo "$SUB_ADOPT" | jq -r .task.version)"
 
 ### 6. 从 Room 发起写入型调用（真 Claude Code 会话改代码并封存）
 
-**实跑状态**：前半段 `invocation preview` 已在 Ubuntu 上实跑过（提交 `0126b49` / 基线 `249ddda5`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）；后半段 `invocation start` 拉起真 Claude Code 会话为**照用例或代码写的，未实跑**（`#433` 合入前安装包内 Agency 找不到 `hctl2-tool`，GLM 在 `#431` 第一轮于提交 `c188660` 上设置 `HCTL2_TOOL_BIN` 绕法跑通的记录见 `.memo/log/2026-10-17-演示3走查.md`；待 `#441` 与 `#430` 合入后无绕法复跑）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 编写写入型调用输入 `$WS/work/a-invoke.json` 并预览：
 
@@ -556,7 +554,7 @@ done
 
 ### 7. 核对封存版本、自动发布与 Room 安静投影
 
-**实跑状态**：照用例或代码写的，未实跑（依赖第 6 步真 Claude 会话封存产物；GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的对应输出见 `.memo/log/2026-10-17-演示3走查.md`，脚本执行体版本已由 Antigravity 在 `#442` 头 `fddc65a` 的 `root//packaging/release:demo3-gitea-test` Build ID `9fd12b42-2626-4229-b64e-3b9f7910274e` 中实跑核过）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 查看准入的 ChangeSet Revision 与精确代码 diff：
 
@@ -565,7 +563,7 @@ CS_SHOW="$($CLI --json --root "$ROOT" changeset show "$REPO_ID" "$CHANGESET_ID")
 export REVISION_ID="$(echo "$CS_SHOW" | jq -r '.revisions[0].change_set_revision_id')"
 echo "$CS_SHOW" | jq '.revisions[0]'
 
-$CLI --json --root "$ROOT" changeset diff "$REPO_ID" "$REVISION_ID" | jq -r .diff
+$CLI --json --root "$ROOT" changeset diff "$REPO_ID" "$CHANGESET_ID" "$REVISION_ID" | jq -r .diff
 ```
 
 **核对字段**：
@@ -602,7 +600,7 @@ $CLI --json --root "$ROOT" room timeline "$PROJECT_ID" "$MAIN_ROOM_ID" | jq '[.e
 
 ### 8. 第一次人工预览：合入（Integration Receipt）
 
-**实跑状态**：照用例或代码写的，未实跑（依赖第 6–7 步真 Claude 会话产物；GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的记录见 `.memo/log/2026-10-17-演示3走查.md`，脚本执行体版本已由 Antigravity 在 `#442` 头 `fddc65a` 的 `demo3-gitea-test` Build ID `9fd12b42-2626-4229-b64e-3b9f7910274e` 中实跑核过）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 编写合入输入 `$WS/work/a-integration.json`，执行第一次人工预览与提交确认：
 
@@ -643,7 +641,7 @@ echo "$INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, e
 
 ### 9. 第二次人工预览：完成 Task（Task Completion Receipt）
 
-**实跑状态**：照用例或代码写的，未实跑（依赖第 8 步签出的 `Integration Receipt`；GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的记录见 `.memo/log/2026-10-17-演示3走查.md`，脚本执行体版本已由 Antigravity 在 `#442` 头 `fddc65a` 的 `demo3-gitea-test` Build ID `9fd12b42-2626-4229-b64e-3b9f7910274e` 中实跑核过）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 编写完成输入 `$WS/work/a-complete.json`（引用刚才签出的 `$RECEIPT_ID` 作为第 0 项机械验收项的证据），执行第二次人工预览与确认：
 
@@ -703,7 +701,7 @@ echo "$SUB_COMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_ver
 
 ### 10. 核对平台回读状态与 `task show` 十秒回答
 
-**实跑状态**：照用例或代码写的，未实跑（其中 `harness: claude-code (via herdr, model none)` 为 `#430` 的改动，当前 `main` 上显示为 `herdr (none)`；`#430` 合入后复跑确认）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 通过产品自身的 `review show` 与 `integration show` 核对已回读确认的平台事实与无中介 Git 回读（不直接读取 `$ROOT/secrets` 下的控制面内部凭据文件）：
 
@@ -712,7 +710,7 @@ $CLI --json --root "$ROOT" review show "$REPO_ID" "$PUBLISH_INTENT_ID" \
   | jq '{state: .intent.state, push_confirmed: .stages.push.confirmed, pr_confirmed: .stages.review_request.confirmed, platform_commit_sha: .mappings[0].platform_commit_sha, review_request: .mappings[0].review_request}'
 
 $CLI --json --root "$ROOT" integration show "$REPO_ID" "$INTEGRATION_INTENT_ID" \
-  | jq '{state: .intent.state, integrated_commit: .receipt.integrated_commit, target_head_after: .receipt.target_head_after, git_readback: .receipt.readback.git, platform_readback: .receipt.readback.platform}'
+  | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, evidence_level: .receipt.evidence_level, integrated_commit: .receipt.integrated_commit, target_head_after: .receipt.target_head_after, git_readback: .receipt.readback.git, platform_readback: .receipt.readback.platform}'
 ```
 
 > [!TIP]
@@ -720,7 +718,7 @@ $CLI --json --root "$ROOT" integration show "$REPO_ID" "$INTEGRATION_INTENT_ID" 
 
 **核对字段**：
 - `review show` 中 `push_confirmed: true`、`pr_confirmed: true`，`review_request` 记录了 Gitea 上的 PR 编号与链接。
-- `integration show` 中 `git_readback.evidence_level` 为 `"unmediated"`，`platform_readback.evidence_level` 为 `"hctl2-tool"`，且 `integrated_commit` 与 `target_head_after`（`$MERGED_COMMIT`）完全一致。
+- `integration show` 中 `evidence_level`（`receipt.evidence_level`）为 `"hctl2-tool"`，`git_readback.evidence_level` 为 `"unmediated"`，且 `integrated_commit` 与 `target_head_after`（`$MERGED_COMMIT`）完全一致。
 
 运行人读输出 `task show`，核对「十秒回答」：
 
@@ -733,7 +731,7 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
   - `goal`: `Fix double() in calculator.py`
   - `state`: `completed; contract revision 1`
   - `blocking`: `nothing`
-  - `harness`: 在 `#430` 合入后显示 `claude-code (via herdr, model none) — invocation invocation-... completed`（按工种明确显示当前是谁在回答；在当前未合入 `#430` 的 `main` 上该行显示为 `herdr (none) — invocation invocation-... completed`）
+  - `harness`: `claude-code (via herdr, model none) — invocation invocation-... completed`（按工种明确显示当前是谁在回答）
   - `evidence`: 同时列出准入版本 `csr-...`、已发布评审请求、Integration Receipt 与 Completion Receipt
   - `next`: `nothing — the Task is completed`
 
@@ -791,19 +789,19 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 **实跑状态**：照用例或代码写的，未实跑。
 
 - 引用该 `Integration Receipt` 执行 `task complete` 预览与确认，签出 `Task Completion Receipt`。
-- 核对 `task show` 中 `harness` 行显示 `codex-cli (via herdr, model none)`（`#430` 合入后），并与 GitHub 远端 PR 状态及 `main` 头比对一致。
+- 核对 `task show` 中 `harness` 行显示 `codex-cli (via herdr, model none)`，并与 GitHub 远端 PR 状态及 `main` 头比对一致。
 
 ---
 
 ## 四、C 链：开启「须人显式确认」开关的三次预览链
 
-**实跑状态**：第 1 步已在 Ubuntu 上从零实跑通过（提交 `0126b49` / 基线 `249ddda5`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）；第 2–3 步为照用例或代码写的，未实跑（GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的对应记录见 `.memo/log/2026-10-17-演示3走查.md`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 在已激活的本地 Gitea Repo（`$REPO_ID`）上新建一个开启 `publish_review_requires_confirmation: true` 的独立 Project，验证发布意图停在 `pending_human`，需经人类显式执行 `review publish` 预览与确认后才推送并创建评审请求。
 
 ### 1. 创建开启发布确认开关的 Project 并选入写入参与者
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 ```bash
 cat << EOF > "$WS/work/c-project.json"
@@ -889,7 +887,7 @@ $CLI --json --root "$ROOT" project select --input "$WS/work/c-select.json" --key
 
 ### 2. 发起写入型调用并观察发布意图停在 `pending_human`
 
-**实跑状态**：照用例或代码写的，未实跑（GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的对应记录见 `.memo/log/2026-10-17-演示3走查.md`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 ```bash
 C_DEADLINE_MS="$(( ($(date +%s) + 900) * 1000 ))"
@@ -940,17 +938,17 @@ echo "$C_REV_LIST" | jq --arg cs "$C_CHANGESET_ID" '.items[] | select(.change_se
 
 ### 3. 人工显式预览并确认发布（`review publish`）
 
-**实跑状态**：照用例或代码写的，未实跑（GLM 在提交 `c188660` 上借 `HCTL2_TOOL_BIN` 跑通的对应记录见 `.memo/log/2026-10-17-演示3走查.md`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 ```bash
 # 查看人读发布预览（明确写出推到哪个分支、建到哪个目标、不是合入）
-$CLI --root "$ROOT" review publish --repo-id "$REPO_ID" --intent-id "$C_PUBLISH_INTENT_ID" --key c-publish
+$CLI --root "$ROOT" review publish "$REPO_ID" "$C_PUBLISH_INTENT_ID"
 
-PREV_CPUB="$($CLI --json --root "$ROOT" review publish --repo-id "$REPO_ID" --intent-id "$C_PUBLISH_INTENT_ID" --key c-publish)"
+PREV_CPUB="$($CLI --json --root "$ROOT" review publish "$REPO_ID" "$C_PUBLISH_INTENT_ID")"
 TOK_CPUB="$(echo "$PREV_CPUB" | jq -r .preview_token)"
 echo "$PREV_CPUB" | jq '.effect_summary | {branch: .branch, target_branch: .target_branch, authorizes: .authorizes}'
 
-$CLI --json --root "$ROOT" review publish --repo-id "$REPO_ID" --intent-id "$C_PUBLISH_INTENT_ID" --key c-publish --preview-token "$TOK_CPUB"
+$CLI --json --root "$ROOT" review publish "$REPO_ID" "$C_PUBLISH_INTENT_ID" --preview-token "$TOK_CPUB"
 
 for i in $(seq 1 30); do
   C_PUB_SHOW="$($CLI --json --root "$ROOT" review show "$REPO_ID" "$C_PUBLISH_INTENT_ID")"
@@ -971,15 +969,15 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
 
 ## 五、重启恢复、凭据隔离与逃生口怎么看
 
-**实跑状态**：第 1.2 小节、第 2.2 小节与第 3.1 小节已在 Ubuntu 上实跑通过；第 1.1、2.1、3.2、3.3 小节依赖第二节第 6–10 步的完整产物，标注为「照用例或代码写的，未实跑」（详见各小节标注）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`、`/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3578.log` 与 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3566.log`）。
 
 ### 1. 重启恢复与不重复外部副作用怎么看
 
-**实跑状态**：第 1.1 项为照用例或代码写的，未实跑；第 1.2 项常驻回归用例已实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `8e13b650-e704-4c70-b58d-d16accbdac9a`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3578.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`；常驻回归用例 Buck2 Build ID `8e13b650-e704-4c70-b58d-d16accbdac9a`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3578.log`）。
 
 生产构建的二进制不开启测试注入缝（`test_seams` 在生产构建中恒为 `false`），演示时不通过手动猜测时机强杀进程，而是从以下两处核对重启一致性与外部副作用幂等：
 
-1. **在当前状态根上查看正常启停后的记录与平台幂等**（照用例或代码写的，未实跑）：
+1. **在当前状态根上查看正常启停后的记录与平台幂等**（实跑过）：
    正常停止并重启控制面与托管服务后，回读 A 链与 C 链的各项记录：
    ```bash
    $CLI --root "$ROOT" stop
@@ -1011,11 +1009,11 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
 
 ### 2. 凭据隔离与执行加固怎么看
 
-**实跑状态**：第 2.1 项中 `ls -la "$ROOT/secrets"` 已实跑过，`changeset show` 工作树残留段为照用例或代码写的，未实跑；第 2.2 项双家凭据与加固常驻测试已实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，Buck2 Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3566.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`；双家凭据与加固常驻测试 Buck2 Build ID `927e8eb2-fc6d-41a1-86db-9f30c7de3cc6`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/.system_generated/tasks/task-3566.log`）。
 
 两家 harness 的执行环境读不到控制面凭据根、系统钥匙串与 `gh auth` 凭据，且写入工作树与状态根物理隔离，可通过以下两处查看：
 
-1. **在当前状态根上查看执行目录边界与凭据文件权限**（照用例或代码写的，未实跑）：
+1. **在当前状态根上查看执行目录边界与凭据文件权限**（实跑过）：
    ```bash
    # 查看控制面凭据存储目录与文件权限（位于 $ROOT/secrets，文件权限为 0600）
    ls -la "$ROOT/secrets"
@@ -1036,7 +1034,7 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
 
 ### 3. 三条逃生口怎么看
 
-**实跑状态**：第 3.1 项逃生口一已在 Ubuntu 上实跑过（提交 `0126b49` / 基线 `249ddda5`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）；第 3.2、3.3 项指向第二节对应步骤（照用例或代码写的，未实跑）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
 1. **逃生口一（无契约卡只映射不签凭证）**（实跑过）：
    先从 `project show` 取出当前 Project 版本，创建一个不执行 `task adopt` 的裸 Task（bare card），直接尝试预览 `task complete`：
@@ -1074,23 +1072,24 @@ echo "$C_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappi
    ```
    **怎么看**：命令返回非零退出码并输出 `{"error":{"code":"CONTRACT_REQUIRED","message":"adopt a contract before completing this Task","recovery_action":"adopt_contract"}}`，拒绝签发 Completion Receipt，而 `$BARE_TASK_ID` 保持 `open` 且拥有完整的平台 issue 映射。
 
-2. **逃生口二（采纳契约后完成有 Receipt）**（照用例或代码写的，未实跑）：
+2. **逃生口二（采纳契约后完成有 Receipt）**（实跑过）：
    见第二节第 5、9 步：对已创建或认领的 Task 执行 `task adopt` 采纳契约后，即可凭 `Integration Receipt` 通过 `task complete` 签出 `Task Completion Receipt`。
 
-3. **逃生口三（无 Run 路径有可回溯对象）**（照用例或代码写的，未实跑）：
+3. **逃生口三（无 Run 路径有可回溯对象）**（实跑过）：
    见第二节第 6–10 步：A 链全程未创建 Run，但从 `invocation show`、`changeset show`、`review show`、`integration show` 到 `task show` 每一步都有带精确摘要和版本的可回溯治理对象与两张 Receipt。
 
 ---
 
 ## 六、清理环境
 
-**实跑状态**：实跑过（提交 `0126b49` / 基线 `249ddda5`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-run-20261018.log`）。
+**实跑状态**：实跑过（提交 `901afa4`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `/home/jackywang/.gemini/antigravity-cli/brain/c56d1e4d-9efc-4fea-a730-f40b5a9a5c65/scratch/demo3-manual-full-run-20261019.log`）。
 
-验证完成后停止控制面、Agency 与随包服务，并清理临时工作区（使用 `${WS:?}` 防止变量为空时误删）：
+验证完成后停止控制面、Agency、Herdr 与随包服务，并清理临时工作区与执行目录（使用 `${WS:?}` 防止变量为空时误删）：
 
 ```bash
 $CLI --root "$ROOT" stop
 "$WS/prefix/bin/agency" --root "$ROOT/agency" stop || true
 HCTL2_STATE_ROOT="$ROOT/services" "$INSTALL_ROOT/bin/hctl2-services" stop || true
-rm -rf "${WS:?}"
+pkill -f "$WS/prefix/.*herdr server" || true
+rm -rf "${WS:?}" /tmp/hctl2-exec-*
 ```
