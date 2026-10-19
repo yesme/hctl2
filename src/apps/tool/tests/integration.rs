@@ -11,6 +11,24 @@ use serde_json::{Value, json};
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const TARGET: &str = "refs/heads/main";
 
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so the `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+///
+/// The environment carries a project-relative path; a symlink resolves its
+/// target relative to the link's own directory, so it must be absolute.
+#[cfg(unix)]
+fn link_fixture(name: &str, path: &Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = std::fs::canonicalize(Path::new(&root).join(name))
+        .unwrap_or_else(|error| panic!("fixture {name}: {error}"));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
+}
+
 struct Fixture {
     root: PathBuf,
     repo: PathBuf,
@@ -130,59 +148,8 @@ impl Fixture {
     // Only the precise target update/read is paused or fails; no product-only test flags.
     #[cfg(unix)]
     fn wrapper(&self, mode: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let path = self.root.join(format!("git-{mode}.sh"));
-        let source = r#"#!/bin/sh
-if [ "$HCTL2_TEST_MODE" = checkout-after-prepare ] && [ "$3" = update-ref ] && [ "$7" = --create-reflog ]; then
-    "$HCTL2_TEST_GIT" "$@" || exit $?
-    "$HCTL2_TEST_GIT" -C "$2" worktree add "$HCTL2_TEST_WORKTREE" main || exit $?
-    exit 0
-fi
-if [ "$3" = update-ref ] && [ "$7" = refs/heads/main ]; then
-    case "$HCTL2_TEST_MODE" in
-        before)
-            : > "$HCTL2_TEST_READY"
-            while [ ! -f "$HCTL2_TEST_RELEASE" ]; do sleep 0.01; done
-            ;;
-        after)
-            "$HCTL2_TEST_GIT" "$@" || exit $?
-            : > "$HCTL2_TEST_READY"
-            while [ ! -f "$HCTL2_TEST_RELEASE" ]; do sleep 0.01; done
-            exit 0
-            ;;
-        read-failure)
-            "$HCTL2_TEST_GIT" "$@" || exit $?
-            : > "$HCTL2_TEST_READY"
-            exit 0
-            ;;
-        advanced-after|failed-and-advanced-after|ancestry-failure)
-            "$HCTL2_TEST_GIT" "$@" || exit $?
-            "$HCTL2_TEST_GIT" -C "$2" update-ref refs/heads/main "$HCTL2_TEST_OTHER" "$8" || exit $?
-            if [ "$HCTL2_TEST_MODE" = failed-and-advanced-after ]; then exit 73; fi
-            exit 0
-            ;;
-        rejected)
-            echo 'injected target update rejection' >&2
-            exit 73
-            ;;
-        failed-after)
-            "$HCTL2_TEST_GIT" "$@" || exit $?
-            exit 73
-            ;;
-    esac
-fi
-if [ "$HCTL2_TEST_MODE" = ancestry-failure ] && [ "$3" = merge-base ] && [ "$5" = "$HCTL2_TEST_RESULT" ] && [ "$6" = "$HCTL2_TEST_OTHER" ]; then
-    echo 'injected unreadable ancestry' >&2
-    exit 73
-fi
-if [ "$HCTL2_TEST_MODE" = read-failure ] && [ "$3" = for-each-ref ] && [ "$5" = refs/heads/main ] && [ -f "$HCTL2_TEST_READY" ]; then
-    echo 'injected unreadable target' >&2
-    exit 73
-fi
-exec "$HCTL2_TEST_GIT" "$@"
-"#;
-        fs::write(&path, source).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        link_fixture("tool-git-wrapper.sh", &path);
         path
     }
 
@@ -1043,22 +1010,9 @@ fn failed_exit_after_update_still_confirms_result_in_descendant_head() {
 #[test]
 #[cfg(unix)]
 fn native_reference_transaction_hook_can_reject_target_and_retry_uses_prepared_commit() {
-    use std::os::unix::fs::PermissionsExt;
     let fixture = Fixture::new("hook");
     let hook = fixture.repo.join(".git/hooks/reference-transaction");
-    fs::write(
-        &hook,
-        r#"#!/bin/sh
-if [ "$1" = prepared ]; then
-    while read -r old new ref; do
-        if [ "$ref" = refs/heads/main ]; then exit 1; fi
-    done
-fi
-exit 0
-"#,
-    )
-    .unwrap();
-    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    link_fixture("tool-reference-transaction-hook.sh", &hook);
     rejected_output(
         &mut fixture.tool("merge-commit", &fixture.base, "hook"),
         "HCTL2_TOOL_INTEGRATION_CAS_REJECTED",

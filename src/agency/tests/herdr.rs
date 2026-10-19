@@ -24,10 +24,45 @@ fn binary() -> PathBuf {
     path
 }
 
+/// Materialize a fixture with a child process. The test process must never hold
+/// the write descriptor of a file it will execute: another test thread's forked
+/// child can inherit it and answer ETXTBSY (Linux execve(2)). The sandbox only
+/// admits files under the test root, so the child writes them there.
+fn install_fixture(source: &std::path::Path, dest: &std::path::Path) {
+    let status = std::process::Command::new("install")
+        .args(["-m", "755"])
+        .arg(source)
+        .arg(dest)
+        .status()
+        .expect("install fixture");
+    assert!(status.success(), "install {} failed", dest.display());
+}
+
+fn write_fixture(dest: &std::path::Path, body: &str) {
+    use std::io::Write as _;
+    let mut child = std::process::Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"; chmod 755 \"$1\"", "sh"])
+        .arg(dest)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .expect("write fixture");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(body.as_bytes())
+        .expect("fixture body");
+    assert!(
+        child.wait().unwrap().success(),
+        "write {} failed",
+        dest.display()
+    );
+}
+
 fn installed_fixture(root: &std::path::Path) -> PathBuf {
     let dest = root.join("libexec/hctl2/herdr");
     std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    std::fs::copy(binary(), &dest).unwrap();
+    install_fixture(&binary(), &dest);
     let digest = agency::catalog::file_digest(&dest).unwrap();
     let manifest = root.join("share/hctl2/PAYLOAD.sha256");
     std::fs::create_dir_all(manifest.parent().unwrap()).unwrap();
@@ -692,11 +727,10 @@ fn a_confined_harness_smoke_failure_prevents_cataloging() {
     let (cred, exec) = scratch("smokefail");
     let claude = exec.join("claude-fixture");
     // An unrestricted version check succeeds; the actual confined launch must fail.
-    std::fs::write(
+    write_fixture(
         &claude,
         "#!/bin/sh\ncase \"$PWD\" in *hctl2-herdr-smoke*) echo confined-install-unavailable >&2; exit 9;; esac\necho '2.1.289 (Claude Code)'\n",
-    ).unwrap();
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
     assert!(
         Command::new(&claude)
             .arg("--version")
@@ -826,6 +860,47 @@ fn agency_start_keeps_a_failed_catalog_probe_reason() {
     );
 }
 
+#[test]
+fn agency_start_reports_a_claude_that_still_asks_for_trust() {
+    let (root, install) = scratch("start-untrusted");
+    installed_fixture(&install);
+    let claude = untrusted_claude(&install);
+    let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
+    let started = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("start")
+        .env("HCTL2_INSTALL_ROOT", &install)
+        .env("HCTL2_CLAUDE", &claude)
+        .output()
+        .unwrap();
+    let catalog = paired_catalog(&root);
+    let stopped = Command::new(&agency)
+        .arg("--root")
+        .arg(&root)
+        .arg("stop")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stdout)
+    );
+    assert!(stopped.status.success());
+    assert!(
+        !catalog
+            .unwrap()
+            .professions
+            .iter()
+            .any(|item| item.reference.id == "claude-code")
+    );
+    let reason = std::fs::read_to_string(root.join("serve.err")).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&install);
+    assert!(reason.contains("CLAUDE_WORKSPACE_UNTRUSTED"), "{reason}");
+    assert!(reason.contains("CLAUDE_CODE_SANDBOXED=1"), "{reason}");
+}
+
 fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -863,7 +938,9 @@ fn paired_catalog(root: &std::path::Path) -> agency_proto::Result<Catalog> {
 fn agency_start_and_pair_catalog_the_confined_claude_profession() {
     let (root, install) = scratch("catalog-start");
     installed_fixture(&install);
-    let claude = stub_claude(&install, "2.1.289");
+    // Setup opens one native session to check workspace trust: a version-only
+    // stub would not start one.
+    let claude = waiting_claude(&install, true);
     let agency = PathBuf::from(std::env::var("HCTL2_CONFINE_BIN").unwrap());
     let started = Command::new(&agency)
         .arg("--root")
@@ -1255,14 +1332,10 @@ fn test_runtime(binary: &std::path::Path, script: &str) -> launch::InstalledHerd
 
 fn stub_claude(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
     let path = dir.join("claude-stub");
-    std::fs::write(
+    write_fixture(
         &path,
-        format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
-    )
-    .unwrap();
-    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-    permissions.set_mode(0o755);
-    std::fs::set_permissions(&path, permissions).unwrap();
+        &format!("#!/bin/sh\necho '{version} (Claude Code)'\n"),
+    );
     path
 }
 
@@ -1417,8 +1490,10 @@ fn stdout_has(events: &[agency::runtime::RuntimeEvent], marker: &[u8]) -> bool {
 
 fn waiting_claude(dir: &std::path::Path, _: bool) -> PathBuf {
     let claude = dir.join("waiting-claude");
-    std::fs::copy(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap(), &claude).unwrap();
-    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o755)).unwrap();
+    install_fixture(
+        &std::path::PathBuf::from(std::env::var("HCTL2_STANDBY_FIXTURE").unwrap()),
+        &claude,
+    );
     claude
 }
 
@@ -1709,6 +1784,74 @@ fn standby_reuses_one_live_herdr_process_and_routes_each_queued_answer() {
     runtime.shutdown().unwrap();
     assert!(!standby_alive(pid));
     assert!(!standby_alive(other_pid));
+}
+
+fn untrusted_claude(dir: &std::path::Path) -> PathBuf {
+    // Beside the fixture, this marker stands for a Claude Code that does not
+    // honour the trust Agency starts it with: it shows the trust prompt first.
+    let claude = waiting_claude(dir, true);
+    let marker = format!("{}.untrusted", claude.canonicalize().unwrap().display());
+    std::fs::write(marker, b"").unwrap();
+    claude
+}
+
+#[test]
+fn standby_reports_the_trust_prompt_and_never_answers_it() {
+    // #430 (d27e2c7): Agency pressed down and Enter on Claude's trust prompt
+    // and, under load, confirmed "No, exit". Agency never answers it: if
+    // Claude asks although the session starts trusted, the dispatch fails at
+    // once and names the cause.
+    let (cred, root, exec) = standby_root("standby-untrusted");
+    let claude = untrusted_claude(&root);
+    let runtime = launch::InstalledHerdr::open(binary(), &claude).unwrap();
+    let spec = sealed_spec("untrusted", now_ms() + 60_000);
+    let state = turn_state(&exec, &cred, &spec);
+    let started = Instant::now();
+    let mut running = runtime
+        .start(&spec, &sealed_bundle("NEVER_ANSWERED"), &exec, &cred)
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(40));
+    let failure = events
+        .iter()
+        .find_map(|event| match event {
+            agency::runtime::RuntimeEvent::Observation { kind, payload, .. }
+                if kind == "harness_failure" =>
+            {
+                Some(payload.clone())
+            }
+            _ => None,
+        })
+        .expect("the dispatch reports a harness failure");
+    assert_eq!(failure["code"], "CLAUDE_WORKSPACE_UNTRUSTED", "{failure}");
+    assert!(
+        failure["message"]
+            .as_str()
+            .unwrap()
+            .contains("CLAUDE_CODE_SANDBOXED=1"),
+        "{failure}"
+    );
+    // It stops at the prompt, not at the 30-second readiness budget.
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(!stdout_has(&events, b"NEVER_ANSWERED"));
+    let keys = std::fs::read_to_string(state.join("trust-keys.log")).unwrap_or_default();
+    assert!(keys.is_empty(), "keys reached the trust prompt: {keys}");
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn claude_honouring_agency_trust_is_checked_when_agency_is_set_up() {
+    let (_, root, _) = standby_root("setup-trust");
+    let trusted = launch::InstalledHerdr::open(binary(), &waiting_claude(&root, true)).unwrap();
+    trusted.verify_claude_trust().unwrap();
+    let other = root.join("untrusted");
+    std::fs::create_dir_all(&other).unwrap();
+    let untrusted = launch::InstalledHerdr::open(binary(), &untrusted_claude(&other)).unwrap();
+    let error = untrusted.verify_claude_trust().unwrap_err();
+    assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED", "{error:?}");
+    assert!(
+        error.message.contains("CLAUDE_CODE_SANDBOXED=1"),
+        "{error:?}"
+    );
 }
 
 #[test]

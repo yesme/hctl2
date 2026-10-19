@@ -119,6 +119,7 @@ impl Fixture {
             // 第 9 包验收第 4 条的测试缝：control 从这里找标记文件，决定尝试停在哪个状态。
             // 没有标记时行为不变；每个夹具的根不同，别的用例不受影响。
             .env("HCTL2_TEST_SEAM_ROOT", self.root.join("test-seams"))
+            .env("HCTL2_CONTROL_LOG", self.root.join("control.log"))
             .env(
                 "HCTL2_CONTROL_BIN",
                 std::env::var("CARGO_BIN_EXE_hctl2-control")
@@ -522,6 +523,18 @@ fn shared_payload_leaves_nothing_behind_after_exit_or_a_failed_init() {
     let _ = std::fs::remove_dir_all(&probe);
 }
 
+fn log_tail(path: &Path) -> String {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    if text.is_empty() {
+        return "(no stderr)".to_owned();
+    }
+    let start = text.len().saturating_sub(2_000);
+    let start = (start..=text.len())
+        .find(|index| text.is_char_boundary(*index))
+        .unwrap_or(text.len());
+    text[start..].to_owned()
+}
+
 #[test]
 fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
     let (f, port) = Fixture::packaged("room");
@@ -640,9 +653,9 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         }
         assert!(
             ready,
-            "room creation: {last}; status: {}; log: {}; room: {}",
+            "room creation: {last}; services: {}; control: {}; room: {}",
             f.run(&["services", "status"]).1,
-            std::fs::read_to_string(root.join("control.log")).unwrap_or_default(),
+            log_tail(&root.join("control.log")),
             f.show(project, room)
         );
     }

@@ -56,6 +56,7 @@ rust_test(
         "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
         "CARGO_BIN_EXE_agency": "$(location root//agency:agency)",
         "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
+        "HCTL2_FIRST_PARTY": "$(location :first-party)",
         "HCTL2_STANDBY_FIXTURE": "$(location root//agency:standby_fixture)",
         "HCTL2_CODEX_FIXTURE": "$(location root//agency:codex_fixture)",
         "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
@@ -101,6 +102,9 @@ _DEMO3_ENV = {
     "HCTL2_CLI_BIN": "$(location root//apps/cli:hctl2)",
     "HCTL2_CONTROL_BIN": "$(location root//apps/control:hctl2-control)",
     "HCTL2_DEMO3_COMMON": "$(location :demo3.sh)",
+    # The Agency finds the tool for a write beside its own executable, as the
+    # install has it; demo3.sh stages the two under the run's own bin/.
+    "HCTL2_DEMO3_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
     "HCTL2_JQ": "$(location root//build/tools:jq-bin)",
     "HCTL2_TEST_DEPENDENCY_PACKAGE": "$(location root//packaging/dependencies:package)",
     "HCTL2_ZSTD_ROOT": "$(location root//build/tools:zstd-bin)",
@@ -111,6 +115,7 @@ _DEMO3_RESOURCES = [
     "root//agency:agency",
     "root//apps/cli:hctl2",
     "root//apps/control:hctl2-control",
+    "root//apps/tool:hctl2-tool",
     "root//build/tools:jq-bin",
     "root//build/tools:zstd-bin",
     "root//packaging/dependencies:package",

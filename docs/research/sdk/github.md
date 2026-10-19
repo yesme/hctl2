@@ -249,3 +249,11 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 真实 `task attach` 在 canary 返回 `PROVIDER_UNAVAILABLE / HTTP 422`。独立用原生 gh 回读：`GET repos/yesme/hctl2-canary/issues?state=all&type=issues&per_page=100&page=1` 返回 `Validation Failed`，错误为 `Issue / type / invalid / issues`；删除 `type=issues` 后返回 200、3 条。
 
 [GitHub List repository issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues) 的 `type` 是 issue type 名称，不是 issue 与 PR 的分类开关。GitHub 的结果仍按 `pull_request` 字段排除 PR；不发送这个过滤参数。随包 Gitea 保留它原有的 `type=issues`。修正同时覆盖全量／增量快照与创建后的关联键回读，不改分页、ETag 或准入语义。真实整链已通过：Codex 改两份 Python 代码，公开封存回读、准入、原生 gh 凭据助手推送与 PR #8、canary 检查、保护合并与 Git Receipt、Task 完成。命令与输出见 [2026-10-11 Codex / GitHub 实录](../../../.memo/log/2026-10-11-Codex-GitHub.md)；仅验证此公开 canary 的经典分支保护，不据此扩大私有仓库或规则集能力声明。
+
+## 2026-10-17 · 创建 issue 后的精确回读
+
+官方 [Create an issue](https://docs.github.com/en/rest/issues/issues#create-an-issue) 以 `201 Created` 返回新 issue；[Get an issue](https://docs.github.com/en/rest/issues/issues#get-an-issue) 接受仓库路径和 `issue_number`。已有的随包 `gh api` 足够完成「创建响应提供定位、单卡 GET 核实身份和正文」，不加 SDK、轮询或自建协议。
+
+演示 3 P1-2 在 Ubuntu 的新状态根复现：canary issue #22 已建出，旧实现却返回 `RESULT_UNKNOWN`、Task `entity=null`；独立 GET 回读标题、正文和命令标记均一致。代码把 POST 响应丢掉，只依赖列表再次枚举命中。CI 夹具固定列表尚未收录新卡、单卡端点可读这一输入，真实 CLI 的 create 在修正前同样失败。
+
+修正使用创建响应的 number 和不可变实体 ID 作定位，再通过既有 `read_card` 精确 GET；GET 必须仍是同一实体、同一标题和正文，才进入既有 Task 确认事务。POST 丢响应时仍按原意图的标记回读，不重发；单卡回读失败或不符仍如实失败，不把 POST 接受当作已绑定。

@@ -379,6 +379,20 @@ impl Client {
                     Some(json!({"title":write["title"],"body":write["body"]})),
                 );
                 check_rejection(&result, false, json!({"matching_cards":[]}), &mut rejected)?;
+                if let Ok(Some(raw)) = result {
+                    // The create response locates the new card. The list endpoint
+                    // may still show its pre-write contents, so read this exact
+                    // entity instead of requiring it to appear in that list.
+                    let created = normalize(src, raw)?;
+                    let card = self.read_card(src, &created)?.ok_or_else(unknown)?;
+                    if card.raw.get("pull_request").is_some_and(|v| !v.is_null())
+                        || card.title != write["title"].as_str().unwrap_or("")
+                        || card.body != write["body"].as_str().unwrap_or("")
+                    {
+                        return Err(unknown());
+                    }
+                    return Ok(card);
+                }
             }
             return find()?.ok_or_else(unknown);
         }

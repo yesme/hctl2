@@ -11,7 +11,6 @@ mod profile;
 #[path = "cli/memo.rs"]
 mod memo;
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -53,6 +52,23 @@ fn control() -> PathBuf {
         std::env::var("CARGO_BIN_EXE_hctl2-control")
             .expect("CARGO_BIN_EXE_hctl2-control must be set"),
     )
+}
+
+/// Point a writable path at a built fixture script. The test never writes the
+/// script it executes: a file just opened for writing can answer execve with
+/// ETXTBSY on Linux while another test thread's forked child still holds the
+/// write descriptor. A link keeps `$0` at this path, so `$0.*` state the
+/// fixtures keep stays beside it in the writable directory.
+fn link_fixture(name: &str, path: &std::path::Path) {
+    let root =
+        std::env::var_os("HCTL2_FIXTURES").expect("HCTL2_FIXTURES must be set to run this test");
+    let source = std::path::Path::new(&root).join(name);
+    // The environment carries a project-relative path; a symlink resolves its
+    // target relative to the link's own directory, so it must be absolute.
+    let source = std::fs::canonicalize(&source)
+        .unwrap_or_else(|error| panic!("fixture {}: {error}", source.display()));
+    std::os::unix::fs::symlink(&source, path)
+        .unwrap_or_else(|error| panic!("link {} -> {}: {error}", path.display(), source.display()));
 }
 
 fn run(root: &std::path::Path, args: &[&str]) -> (bool, String, String) {
@@ -219,6 +235,43 @@ fn project_select_cli_checks_real_candidates_and_admits_only_confirmed_preview()
     let input = root.join("selection.json");
     let action = json!({"project_id":"P","project_version":1,"room_id":"main",
         "topic_command_key":null,"roster_version":null,"selections":[selection]});
+    let reject_roster = |declared: Option<Value>, current: &str, key: &str| {
+        let mut wrong = action.clone();
+        let declared_text = if let Some(version) = declared {
+            wrong["roster_version"] = version.clone();
+            version.to_string()
+        } else {
+            wrong.as_object_mut().unwrap().remove("roster_version");
+            "null".into()
+        };
+        std::fs::write(&input, wrong.to_string()).unwrap();
+        let (ok, out, err) = run(
+            root,
+            &[
+                "project",
+                "select",
+                "--input",
+                input.to_str().unwrap(),
+                "--key",
+                key,
+            ],
+        );
+        assert!(!ok, "{out} {err}");
+        let rejected: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(rejected["error"]["code"], "VERSION_CONFLICT");
+        assert_eq!(
+            rejected["error"]["message"],
+            format!(
+                "Room roster version mismatch for Project P, Room main: declared roster_version={declared_text}, current roster_version={current}. null means no roster exists"
+            )
+        );
+        assert_eq!(
+            rejected["error"]["recovery_action"],
+            "correct_roster_version_and_preview_again"
+        );
+    };
+    // Before the first selection there is no roster, not a versioned empty one.
+    reject_roster(Some(json!(99)), "null", "select-nonexistent-roster");
     let mut bad = action.clone();
     bad["selections"][0]["agency"]["key"]["id"] = json!("never-accepted");
     std::fs::write(&input, serde_json::to_vec(&bad).unwrap()).unwrap();
@@ -264,6 +317,36 @@ fn project_select_cli_checks_real_candidates_and_admits_only_confirmed_preview()
     assert!(ok, "{out} {err}");
     let roster: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(roster["selections"].as_array().unwrap().len(), 1);
+    reject_roster(Some(Value::Null), "1", "select-null-roster");
+    reject_roster(None, "1", "select-omitted-roster");
+    reject_roster(Some(json!(99)), "1", "select-unknown-roster-version");
+
+    let mut current = action.clone();
+    current["roster_version"] = json!(1);
+    std::fs::write(&input, current.to_string()).unwrap();
+    let args = [
+        "project",
+        "select",
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "select-current-roster",
+    ];
+    let (ok, out, err) = run(root, &args);
+    assert!(ok, "{out} {err}");
+    let preview: Value = serde_json::from_str(&out).unwrap();
+    let mut confirmed = args.to_vec();
+    confirmed.extend([
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    let (ok, out, err) = run(root, &confirmed);
+    assert!(ok, "{out} {err}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&out).unwrap()["roster_version"],
+        2
+    );
+    reject_roster(Some(json!(1)), "2", "select-stale-roster");
 }
 
 #[test]
@@ -507,8 +590,7 @@ fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_no
     let temp = Temp::new();
     let root = &temp.0;
     let gh = root.join("gh-fixture");
-    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
-    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("cli-github-repo.sh", &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)
@@ -615,8 +697,7 @@ fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
     let temp = Temp::new();
     let root = &temp.0;
     let gh = root.join("gh-fixture");
-    std::fs::write(&gh, "#!/bin/sh\ncase \"$6\" in\n user) printf '%s\\n' '{\"id\":9}' ;;\n repos/a/b) printf '%s\\n' '{\"id\":12,\"full_name\":\"a/b\",\"clone_url\":\"https://github.com/a/b.git\",\"has_issues\":true,\"permissions\":{\"push\":true}}' ;;\n *) exit 1 ;;\nesac\n").unwrap();
-    std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    link_fixture("cli-github-repo.sh", &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)

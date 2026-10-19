@@ -278,8 +278,17 @@ pub fn prepare(
             }
             let roster_key = key(scope.clone(), "room_roster", room_id);
             let roster = store.get(&roster_key)?;
-            if roster.as_ref().map(|r| r.version) != *roster_version {
-                return Err(stale());
+            let current_roster_version = roster.as_ref().map(|r| r.version);
+            if current_roster_version != *roster_version {
+                return Err(reject(
+                    "VERSION_CONFLICT",
+                    format!(
+                        "Room roster version mismatch for Project {id}, Room {room_id}: declared roster_version={}, current roster_version={}. null means no roster exists",
+                        json!(roster_version),
+                        json!(current_roster_version),
+                    ),
+                    "correct_roster_version_and_preview_again",
+                ));
             }
             plan.checks.push(chat::Check {
                 key: roster_key.clone(),

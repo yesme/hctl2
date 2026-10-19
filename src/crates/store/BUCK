@@ -37,8 +37,12 @@ rust_test(
     crate_root = "src/lib.rs",
     deps = STORE_DEPS,
     edition = HCTL2_RUST_EDITION,
-    env = hctl2_cargo_env(),
+    env = hctl2_cargo_env() | {
+        # Built fixture scripts the tests execute as processes; see src/BUCK.
+        "HCTL2_FIXTURES": "$(location root//:script_fixtures)/fixtures/scripts",
+    },
     labels = CI_FAST,
+    resources = ["root//:script_fixtures"],
     rustc_flags = HCTL2_RUSTC_FLAGS,
     visibility = ["PUBLIC"],
 )

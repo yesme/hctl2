@@ -132,27 +132,12 @@ fn run(f: &Fixture, args: &[&str]) -> Value {
 }
 
 fn accept(f: &Fixture, namespace: &str, kind: &str, key: &str, input: Value) -> Value {
-    let by = Instant::now() + Duration::from_secs(90);
-    loop {
-        let (ok, value) = f.command_ns(namespace, kind, key, &input);
-        if ok {
-            println!("CLI {namespace} {kind} --key {key} --input JSON; input={input}; accepted");
-            return value;
-        }
-        // A just-created GitHub issue may not yet be visible on the list endpoint.
-        // Replay the same authorized command: control reads back the original effect,
-        // never issues another POST. Do not treat unknown as success or switch keys.
-        assert!(
-            namespace == "task"
-                && value["error"]["code"] == "RESULT_UNKNOWN"
-                && Instant::now() < by,
-            "hctl2 {namespace} {kind}: {value}"
-        );
-        println!(
-            "CLI task {kind} key={key}: RESULT_UNKNOWN; replaying original command for readback"
-        );
-        std::thread::sleep(Duration::from_secs(2));
-    }
+    // A healthy create must bind on its first submission. Recovery is tested
+    // separately; replaying RESULT_UNKNOWN here concealed the walkthrough's P1-2.
+    let (ok, value) = f.command_ns(namespace, kind, key, &input);
+    assert!(ok, "hctl2 {namespace} {kind}: {value}");
+    println!("CLI {namespace} {kind} --key {key} --input JSON; input={input}; accepted");
+    value
 }
 
 fn git(path: &Path, args: &[&str]) -> String {

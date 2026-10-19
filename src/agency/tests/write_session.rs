@@ -899,6 +899,59 @@ async fn both_write_entries_return_verified_empty_result() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_claude_code_spec_starts_only_claude() {
+    // #431 found a Codex session beside a claude-code dispatch. With both
+    // professions cataloged, a frozen claude-code Spec runs in the Claude
+    // standby session and never reaches the Codex launch path, which creates
+    // codex-session-* beside the execution directories and codex-* in Herdr state.
+    let _guard = SERIAL.lock().await;
+    let rig = Rig::new(false).await;
+    let (input, _) = rig
+        .request(
+            "claude-code",
+            "only-claude",
+            "Report no changes.\nHCTL2_WRITE_FIXTURE {\"edit\":false,\"secret_paths\":[]}",
+            |_, _| {},
+        )
+        .await;
+    assert_eq!(input.spec.document.profession.reference.id, "claude-code");
+    let (dispatch, ticket) = rig.activate(&input).await;
+    let trace = rig.finish(&ticket).await;
+    assert_eq!(
+        trace.dispatch.state,
+        DispatchState::ResultReturned,
+        "{trace:?}"
+    );
+    fn codex_paths(dir: &Path, depth: u8, found: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_name().to_string_lossy().starts_with("codex-") {
+                found.push(path.clone());
+            }
+            if depth < 3 && path.is_dir() && !path.is_symlink() {
+                codex_paths(&path, depth + 1, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    codex_paths(
+        &confine::execution_parent(&rig.root).unwrap(),
+        0,
+        &mut found,
+    );
+    assert!(found.is_empty(), "{found:?}");
+    assert!(
+        rig.claude_state(&input, &dispatch)
+            .join("harness.pid")
+            .exists()
+    );
+    rig.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn both_write_entries_preserve_failed_seal_and_retry_without_redispatch() {
     let _guard = SERIAL.lock().await;
     for (harness, recover) in [

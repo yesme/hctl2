@@ -20,6 +20,8 @@ mod service;
 mod services;
 mod socket;
 mod tasks;
+#[cfg(test)]
+mod test_fixtures;
 mod test_seams;
 
 pub use chat::MatrixClient;

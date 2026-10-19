@@ -614,7 +614,8 @@ fn task_show(value: &Value) -> String {
         "none dispatched yet".to_owned()
     } else {
         format!(
-            "{} ({}) — invocation {} {}",
+            "{} (via {}, model {}) — invocation {} {}",
+            dash(&latest["profession"]),
             dash(&latest["harness"]),
             dash(&latest["model"]),
             short_id(&cell(&latest["invocation_id"])),
@@ -715,7 +716,7 @@ fn next_step(
     ) {
         return format!(
             "wait for {} to return (invocation {})",
-            dash(&latest["harness"]),
+            dash(&latest["profession"]),
             dash(&latest["state"])
         );
     }
@@ -811,8 +812,8 @@ mod tests {
     }
 
     fn write_call(state: &str) -> Value {
-        json!({"invocation_id": "invocation-a", "state": state, "harness": "claude-code",
-            "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}})
+        json!({"invocation_id": "invocation-a", "state": state, "profession": "claude-code",
+            "harness": "herdr", "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}})
     }
 
     fn version(publication: Value, integration: Value) -> Value {
@@ -912,16 +913,21 @@ mod tests {
     #[test]
     fn the_newest_dispatch_decides_the_harness_line() {
         let older = json!({"invocation_id": "invocation-zzz", "state": "completed",
-            "harness": "script", "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}});
+            "profession": "script-worker", "harness": "script", "model": "m",
+            "write": {"repo_id": "R", "change_set_id": "cs-1"}});
         let newer = json!({"invocation_id": "invocation-aaa", "state": "running",
-            "harness": "claude-code", "model": "m", "write": {"repo_id": "R", "change_set_id": "cs-1"}});
+            "profession": "claude-code", "harness": "herdr", "model": "m",
+            "write": {"repo_id": "R", "change_set_id": "cs-1"}});
         let (text, next) = show(
             open_task(),
             json!({"invocations": [older, newer],
                 "revisions": [version(published(), Value::Null)],
                 "completion": {"current": null, "history": []}}),
         );
-        assert!(text.contains("harness   claude-code"), "{text}");
+        assert!(
+            text.contains("harness   claude-code (via herdr, model m) — invocation"),
+            "{text}"
+        );
         assert_eq!(next, "wait for claude-code to return (invocation running)");
     }
 }
