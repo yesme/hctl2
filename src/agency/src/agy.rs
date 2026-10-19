@@ -1112,8 +1112,10 @@ fn write_conversation(dir: &Path, conversation: &str) -> Result<()> {
 
 fn signal_group(pid: u32, signal: &str) {
     let _ = Command::new("/bin/kill")
-        .arg(format!("-{signal}"))
-        .arg(format!("-{pid}"))
+        .args(["-s", signal, "--", &format!("-{pid}")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
 }
 
