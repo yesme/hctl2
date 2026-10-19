@@ -1,6 +1,6 @@
 # 契约测试矩阵
 
-> 状态：验证文档 · 草案 v0.19.4<br>
+> 状态：验证文档 · 草案 v0.19.5<br>
 > 本文列出十一族可观察行为的失败用例，不描述状态机、不新增约束；约束变更须先改 spec 再加用例。
 
 交付测试检查可观察行为，不复述模块状态机。每族一个稳定的族标识符；模块新增约束必须在对应族里增加一个失败用例，而不是再建一份不变量文档。[参考用例 S1](./scenarios/S1-multi-unit.md)、[S2](./scenarios/S2-rough-road.md) 与 [S3](./scenarios/S3-user-journey.md) 引用本表用例的描述文本，不引用会随插入变化的序号。本轮按[体验基线](../user-experience/README.md#基础用户体验)同步：S1 保留四个 Project，新路径由 S3 串联。本表是待实现与执行的行为验收要求；文档检查通过不证明这些行为已通过。
@@ -215,7 +215,7 @@
 - 外部副作用的确认回执未知时不重复执行，adapter 也不写 Receipt
 - provider 离线时，不要求当前回读的查询/命令可继续，要求当前 head/revision/租约/回读的准入统一 fail closed
 - Harness 绕过受控端口的 API 写能力被拒绝，带外 drift 只形成 Snapshot/观测而不是结果
-- Dagu、Vikunja、Herdr、Gitea 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
+- Dagu、Vikunja、tmux（替换前 Herdr）、Gitea 的私有对象 ID 或状态被提升为 HCTL 稳定身份、权限或完成判定时拒绝
 - 新 provider/adapter 未通过对应模块契约测试时不得产生 Port–Provider Binding；换绑不能改写活动 Run、Task、Room、派工或集成意图的冻结绑定
 - Project 或 Run 准入提案与 Repo 模块准入 ChangeSet Revision 在同一控制面事务；`hctl2-tool` 封存回读先于准入，缺任一步不产生获准版本
 - Execution Spec 的评审发布策略作为字段冻结；Result Proposal 提供策略之外的发布地点或内容时拒绝
@@ -269,7 +269,7 @@
 
 - 自声明 trust、有副作用的 discovery、未经用户配置的联网探测、静默 install/upgrade、缺省策略下非本地未认证 Dagu、renderer Node/raw IPC/远程脚本或不满足下述源码合规门禁时均拒绝
 - 未声明的 capability/permission/scope、未声明的 IPC 或插件能力、远程运行时脚本/CDN 时拒绝；Electron 安全网形态下 renderer Node/raw IPC 同样拒绝
-- 本地 Agency 参考实现缺配对认证、租户隔离、票据校验与转发、待交成果保管任一项却接受派工时失败；Herdr 只在交付文档与负例样本具名
+- 本地 Agency 参考实现缺配对认证、租户隔离、票据校验与转发、待交成果保管任一项却接受派工时失败；终端复用器的实现名（tmux，替换前 Herdr）只在交付文档与负例样本具名
 
 ### `CT-WORKBENCH-IA` · Workbench 信息架构
 
@@ -283,7 +283,7 @@
 - Run 导航隐藏等待或暂停中的活动 Run、默认不是 DAG、任务书与 DAG 的 Worker 侧栏串到别的 Run、并行两个节点只显示一个时失败；选中施工者后超出本次观察能力或票据开放输入、Headless 被当作无状态、关观察窗使 Run 取消时失败
 - 进度分开投影执行、检查、评审、集成与 Task 验收：旧版本绿灯、未知集成、单个施工者结束或平台已合入被显示成整项 Task 已验收时失败；未要求的环节被强加为完成前置时失败
 - 一个前端连两个控制面时把两份 Task 合成一份或丢了控制面来源时失败；第二期有权用户从远程前端对目标控制面预览并提交前置满足的治理命令时成功且只作用于目标控制面，无故拒绝失败；提交的治理动作丢失控制面来源或被当作本地动作时失败（按第二期跨机交付阶段验证，不要求第一期提前实现跨机）
-- Workbench 不运行时，CLI、Matrix/Vikunja/Herdr 原生客户端、GitHub 页面与 `gh`、control 和已启动 Run 仍可独立工作，Change 场景对应的命令仍可达；安装 Workbench 不得增加公共命令服务尚未提供的 HCTL 命令
+- Workbench 不运行时，CLI、Matrix/Vikunja 原生客户端、终端复用器（tmux，替换前 Herdr）的只读附着、GitHub 页面与 `gh`、control 和已启动 Run 仍可独立工作，Change 场景对应的命令仍可达；安装 Workbench 不得增加公共命令服务尚未提供的 HCTL 命令
 
 ### `CT-WORKBENCH-INPUT` · Workbench 输入与无障碍
 
