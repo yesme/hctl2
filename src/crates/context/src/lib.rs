@@ -24,6 +24,8 @@ pub use sources::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceKind {
     Room,
+    TaskContract,
+    TaskCard,
     TaskComments,
     ReviewComments,
 }

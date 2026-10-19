@@ -1,7 +1,9 @@
 //! Source adapters. Room lines read the frozen `chat_source_reference`
-//! records (with their admitted material bytes); Task-comment lines read the
-//! selected Task's comments from its complete Task Backend Snapshot; the platform review-comment line is
-//! package 6's wiring and reports not-configured until then.
+//! records (with their admitted material bytes). For the selected Task, three
+//! lines: its adopted contract (the exact bytes saved at adoption), and its
+//! bound card's title and body and comments from the complete Task Backend
+//! Snapshot. The platform review-comment line is package 6's wiring and
+//! reports not-configured until then.
 
 use crate::{SourceContent, SourceKind, Sources};
 use agency_proto::{FrozenRef, PortError, Result, hash};
@@ -44,6 +46,15 @@ pub fn frozen_from_record(record: &Record) -> Result<FrozenRef> {
 pub const ROOM_LINE_KIND: &str = "chat_source_reference";
 pub const ROOM_BRIEF_KIND: &str = "room_binding";
 pub const TASK_LINE_KIND: &str = "task_comments";
+pub const TASK_CARD_KIND: &str = "task_card";
+pub const TASK_CONTRACT_KIND: &str = "task_contract";
+
+/// A bound card read from the complete Snapshot, with the inspectable
+/// identity of every record it was read through.
+struct BoundCard {
+    identity: serde_json::Value,
+    card: task::Card,
+}
 
 /// Reuse the authenticated owner's Project access used by chat commands.
 /// Other trusted callers must already carry that Project's permission scope.
@@ -116,7 +127,8 @@ impl<'a> StoreSources<'a> {
         })
     }
 
-    pub(crate) fn task_line(&self, id: &str) -> Result<SourceContent> {
+    /// The Task, checked to belong to this Project and its Repo.
+    fn owned_task(&self, id: &str) -> Result<(Record, task::Task, String)> {
         project_actor(self.actor, &self.project)?;
         let project = store_call(|| {
             self.store.get(&task::key(
@@ -137,6 +149,12 @@ impl<'a> StoreSources<'a> {
                 "request_authorization",
             ));
         }
+        Ok((record, task, repo_id.clone()))
+    }
+
+    fn bound_card(&self, id: &str) -> Result<BoundCard> {
+        let (record, task, repo_id) = self.owned_task(id)?;
+        let repo_id = &repo_id;
         let (source_record, source) =
             store_call(|| task::source(self.store, repo_id, &task.source_id))?;
         let approval_record = store_call(|| {
@@ -181,20 +199,21 @@ impl<'a> StoreSources<'a> {
                     "refresh_source",
                 )
             })?;
-        // Keep the exact Snapshot locator, version and digest inspectable in
-        // the projection revision; a hash alone would lose its source chain.
         let identity = serde_json::json!({
             "task": source_version(&record)?,
             "snapshot": source_version(&snapshot_record)?,
             "approval": source_version(&approval_record)?,
             "binding": source_version(&source_record)?
         });
-        let revision = String::from_utf8(
-            foundation::canonical_json(&identity).map_err(|e| PortError::invalid(e.to_string()))?,
-        )
-        .map_err(|e| PortError::invalid(e.to_string()))?;
-        let bytes = foundation::canonical_json(&serde_json::to_value(&card.comments)?)
-            .map_err(|e| PortError::invalid(e.to_string()))?;
+        Ok(BoundCard {
+            identity,
+            card: card.clone(),
+        })
+    }
+
+    pub(crate) fn task_line(&self, id: &str) -> Result<SourceContent> {
+        let BoundCard { identity, card } = self.bound_card(id)?;
+        let bytes = canonical(&serde_json::to_value(&card.comments)?)?;
         let digest = foundation::canonical_json_sha256(
             &serde_json::json!({"identity":identity,"comments":card.comments}),
         )
@@ -202,12 +221,116 @@ impl<'a> StoreSources<'a> {
         Ok(SourceContent {
             reference: FrozenRef {
                 id: pack_reference(TASK_LINE_KIND, id),
-                revision,
+                revision: revision_text(&identity)?,
                 digest,
             },
             bytes,
         })
     }
+
+    /// The bound card's title and body, from the same Snapshot as its comments.
+    /// A separate line, so the comment line keeps its bytes.
+    pub(crate) fn task_card(&self, id: &str) -> Result<SourceContent> {
+        let BoundCard { identity, card } = self.bound_card(id)?;
+        let text = serde_json::json!({"title":card.title,"body":card.body});
+        let bytes = canonical(&text)?;
+        let digest = foundation::canonical_json_sha256(
+            &serde_json::json!({"identity":identity,"card":text}),
+        )
+        .map_err(|e| PortError::invalid(e.to_string()))?;
+        Ok(SourceContent {
+            reference: FrozenRef {
+                id: pack_reference(TASK_CARD_KIND, id),
+                revision: revision_text(&identity)?,
+                digest,
+            },
+            bytes,
+        })
+    }
+
+    /// The adopted Task Revision's contract, byte for byte as saved at
+    /// adoption. A proposal is not a contract; a Task without an adopted
+    /// Revision has no such line. The revision names the Revision record and
+    /// its material, so another adoption moves it and any other Task change
+    /// does not.
+    pub(crate) fn task_contract(&self, id: &str) -> Result<Option<SourceContent>> {
+        let (_, task, _) = self.owned_task(id)?;
+        let Some(adopted) = &task.revision else {
+            return Ok(None);
+        };
+        let actor = project_actor(self.actor, &self.project)?;
+        let revision_record = store_call(|| {
+            task::required(
+                self.store,
+                &task::key(
+                    Scope::Project(self.project.clone()),
+                    "task_revision",
+                    &format!("{id}:{}", adopted.number),
+                ),
+            )
+        })?;
+        if revision_record.materials.first() != Some(&adopted.material) {
+            return Err(PortError::new(
+                "SOURCE_UNAVAILABLE",
+                "Task Revision record does not carry the adopted contract",
+                "inspect_storage",
+            ));
+        }
+        let bytes = store_call(|| self.store.read_material(&actor, &adopted.material))?;
+        let identity = serde_json::json!({
+            "task_revision": source_version(&revision_record)?,
+            "number": adopted.number,
+            "material": {
+                "material_id": adopted.material.material_id,
+                "byte_digest": adopted.material.byte_digest
+            }
+        });
+        let digest = foundation::canonical_json_sha256(
+            &serde_json::json!({"identity":identity,"bytes":hash(&bytes)}),
+        )
+        .map_err(|e| PortError::invalid(e.to_string()))?;
+        Ok(Some(SourceContent {
+            reference: FrozenRef {
+                id: pack_reference(TASK_CONTRACT_KIND, id),
+                revision: revision_text(&identity)?,
+                digest,
+            },
+            bytes,
+        }))
+    }
+
+    /// Recompute a Task line and require the frozen reference to still match.
+    fn exact_task_line(&self, reference: &FrozenRef) -> Result<SourceContent> {
+        let (kind, id) = split_reference(&reference.id)?;
+        let current = match kind.as_str() {
+            TASK_LINE_KIND => Some(self.task_line(&id)?),
+            TASK_CARD_KIND => Some(self.task_card(&id)?),
+            TASK_CONTRACT_KIND => self.task_contract(&id)?,
+            _ => {
+                return Err(PortError::invalid(
+                    "Task lines require a Project-local Task id, not a bare Snapshot id",
+                ));
+            }
+        };
+        match current {
+            Some(source) if source.reference == *reference => Ok(source),
+            _ => Err(PortError::new(
+                "SOURCE_VERSION_CHANGED",
+                "Task, its adopted contract or its Snapshot changed since selection",
+                "preview_again",
+            )),
+        }
+    }
+}
+
+fn canonical(value: &serde_json::Value) -> Result<Vec<u8>> {
+    foundation::canonical_json(value).map_err(|e| PortError::invalid(e.to_string()))
+}
+
+/// Keep the exact locators, versions and digests inspectable in the
+/// reference's revision; a hash alone would lose the source chain.
+fn revision_text(identity: &serde_json::Value) -> Result<String> {
+    String::from_utf8(canonical(identity)?).map_err(|e| PortError::invalid(e.to_string()))
 }
 
 fn source_version(record: &Record) -> Result<serde_json::Value> {
@@ -235,22 +358,19 @@ impl Sources for StoreSources<'_> {
     fn exact(&self, kind: SourceKind, reference: &FrozenRef) -> Result<SourceContent> {
         match kind {
             SourceKind::Room => self.room_line(reference),
-            SourceKind::TaskComments => {
-                let (kind, id) = split_reference(&reference.id)?;
-                if kind != TASK_LINE_KIND {
+            SourceKind::TaskComments | SourceKind::TaskCard | SourceKind::TaskContract => {
+                let (packed, _) = split_reference(&reference.id)?;
+                let expected = match kind {
+                    SourceKind::TaskComments => TASK_LINE_KIND,
+                    SourceKind::TaskCard => TASK_CARD_KIND,
+                    _ => TASK_CONTRACT_KIND,
+                };
+                if packed != expected {
                     return Err(PortError::invalid(
-                        "Task comments require a Project-local Task id, not a bare Snapshot id",
+                        "Task lines require a Project-local Task id, not a bare Snapshot id",
                     ));
                 }
-                let source = self.task_line(&id)?;
-                if source.reference != *reference {
-                    return Err(PortError::new(
-                        "SOURCE_VERSION_CHANGED",
-                        "Task or Snapshot changed since selection",
-                        "preview_again",
-                    ));
-                }
-                Ok(source)
+                self.exact_task_line(reference)
             }
             SourceKind::ReviewComments => Err(PortError::new(
                 "REVIEW_LINE_NOT_CONFIGURED",

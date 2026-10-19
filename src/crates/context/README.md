@@ -7,7 +7,7 @@
 | 文件 | 职责 |
 | --- | --- |
 | `src/selection.rs` | `select_context(SelectionRequest)` 接收精确消费者、消费 Room、可选 Task 与预算。Topic 只选自己的已确认前情提要及其中的来源列表，不按来源所在 Room 搜集所有 Topic。Manifest ID 由完整冻结输入的规范摘要生成，新增来源或权限答案变化会得到新 ID。 |
-| `src/sources.rs` | Room 线读取已准入材料。Task 线按 Project 内的 Task 定位 Repo、已接入的源、当前完整 Snapshot 与绑定卡片，只交付这张卡的整条评论线，不交付整个看板。来源版本变化返回 `SOURCE_VERSION_CHANGED`；评审评论线未接线时返回 `REVIEW_LINE_NOT_CONFIGURED`。 |
+| `src/sources.rs` | Room 线读取已准入材料。Task 有三条线，见下文「Task 的三条线」。来源版本变化返回 `SOURCE_VERSION_CHANGED`；评审评论线未接线时返回 `REVIEW_LINE_NOT_CONFIGURED`。 |
 | `src/assembler.rs` | 校验冻结的权限摘要与预算，稳定内容在前。预算内内联，超限转为携带精确字节副本的 Pointer，分片建议在条目说明中；必需材料不静默丢弃，也不退为 Recall。指针使用安全相对名，不携带生产者目录。 |
 | `src/records.rs` | 保存前核对封存摘要、交付字节、Manifest 引用、Project、策略与完整来源集合。正文先保存，准入和记录写入在同一事务中。同 ID 同内容重放，同 ID 异内容拒绝；读取时复核封存摘要与已准入材料。 |
 | `apps/control/src/context_query.rs` | 只读 `context.preview` / `context.show`；RPC 外层 Query 白名单已接通。保留类型化错误与恢复动作。 |
@@ -19,7 +19,23 @@ Buck：`root//crates/context:{context,domain_test,clippy}`。
 
 `SelectionRequest.consumer` 是已有的 `Owner`：Project、`room_invocation` / `run_attempt`、ID、精确代次。派工端负责提供真实归属者；组装器不创建 Invocation，也不把 Room ID 冒充消费执行。
 
-`room_id` 指消费上下文的 Room；`task_id` 是这个 Project 内显式选择的 Task。没有 Task 就不混入任务评论。Task 来源校验复用 `task::source`、`task::latest` 与 Project 的来源准入记录。Task 评论引用的 `revision` 保存规范 JSON：Task、Snapshot、来源准入与源绑定的精确引用、版本和摘要；`digest` 覆盖这些身份与评论。Snapshot 位置和摘要可直接检查，不只有一个无法追溯的合成摘要。
+`room_id` 指消费上下文的 Room；`task_id` 是这个 Project 内显式选择的 Task。没有 Task 就不混入任务材料。
+
+## Task 的三条线
+
+选了 Task，开工包里依次有三条，都是必用条目（`spec/project.md` §三种交付方式 的 `inline`：「契约与范围说明」「Task 评论」）：
+
+| 条目 | 内容 | `revision` 记什么 | 什么时候没有 |
+| --- | --- | --- | --- |
+| `task_contract/<task>` | 已采纳的 Task Revision 的契约，字节与采纳时 Task 模块保存的材料逐字相同（`Contract` 的规范 JSON：范围、预期结果、验收项、角色、能力） | `task_revision` 记录的精确引用与摘要、Revision 编号、契约材料的 ID 与字节摘要 | Task 没有已采纳的契约。只有提案（`pending_contract`）不算，不取提案 |
+| `task_card/<task>` | 绑定卡片的标题与正文，`{"title","body"}` 的规范 JSON。正文照后端原样，包括 Task 模块建卡时附在末尾的 `<!-- hctl2:… -->` 标记 | 与评论线相同：Task、Snapshot、来源准入与源绑定 | — |
+| `task_comments/<task>` | 这张卡的整条评论线，不交付整个看板 | Task、Snapshot、来源准入与源绑定的精确引用、版本和摘要 | — |
+
+卡的标题正文单独成一条，不并进评论线：评论线条目的字节因此不变，已冻结的评论引用照旧可核。契约放在最前：它是管着这次工作的文本，最稳定；卡与评论更常变。预算不够时按顺序先内联前面的，放不下的降为带精确字节副本与分片建议的指针，仍是必用，不丢（CT 第 49 行）。
+
+契约的引用只跟 Revision 走：Task 的其他改动（生命周期、看板位置）不使它失效；再采纳一次（Revision 编号变了）就失效，派工启动时按版本比对拒绝（`SOURCE_VERSION_CHANGED`）。卡与评论的引用记着 Task 记录的版本，Task 有任何改动都会失效，这是原有行为。
+
+Task 来源校验复用 `task::source`、`task::latest` 与 Project 的来源准入记录。`revision` 保存规范 JSON，位置和摘要可直接检查，不只有一个无法追溯的合成摘要；`digest` 覆盖这些身份与正文。
 
 CLI 预览输入示例：
 
@@ -42,7 +58,7 @@ CLI 预览输入示例：
 | CT 现行条款 | 已验证 | 未实现或后续接线 |
 | --- | --- | --- |
 | 来源可解释、必备字段齐全 | D：缺字段拒绝；N：真实 chat 命令创建 Topic，选自己的前情提要与来源，另一 Topic 不混入；Task 评论保留精确 Snapshot 引用和摘要 | 在线当前窗口、显式 Artifact / Memo / Skill 的选材由第 5 包接入 |
-| 必需材料交付、摘要核对 | D：必需 Recall、篡改副本、重新封存坏字节、错误 Manifest、重复条目替掉必需来源均拒绝；超限 Pointer 保留字节 | Agency 派发前最后核对由第 5 包接入 |
+| 必需材料交付、摘要核对（CT 第 49 行） | D：必需 Recall、篡改副本、重新封存坏字节、错误 Manifest、重复条目替掉必需来源均拒绝；超限 Pointer 保留字节。N：已采纳契约逐字内联，超限降为带字节与分片建议的指针、不丢；契约换 Revision 后旧引用拒绝，其他 Task 改动不影响；没有契约的 Task 没有这一条、不报错。R：带 `task_id` 的写入派工（demo3 链）与只读派工，开工包里的契约与采纳时保存的材料逐字相同；契约换版本后启动拒绝 | Agency 派发前最后核对由第 5 包接入 |
 | 材料集合不授整库读权 | N：跨 Project 权限不足拒绝；同名源跨 Repo 不串读，只读取所选 Task 的卡片评论 | 正式权限策略未实现；占位明示 |
 | 来源、权限或预算变化使旧预览失效 | D：来源版本、权限、预算变化；N：Task Snapshot 更新使旧引用失效，不完整 Snapshot 拒绝 | 在线读取变化由派工链接入 |
 | 每个消费者独立冻结，旧记录不改写 | N：同 Manifest 两消费者分别保存与读取；同 ID 异内容拒绝；代次变化独立保存；新增 Topic 后再次预览能保存，旧 Manifest 仍可读 | — |
@@ -52,7 +68,7 @@ CLI 预览输入示例：
 | 保留策略与丢弃事实 | Bundle 携带保留至归属者终态且准入窗口关闭的策略名 | 实际保留与清理未实现 |
 | token 计量与 Pointer 名 | D：无 tokenizer 时计量为 `None`；Pointer 名碰撞拒绝 | 实数 token 计量未实现 |
 
-D = `tests/domain.rs`；N = `tests/native.rs`，两者由 `root//crates/context:domain_test` 运行。C = `root//apps/cli:cli_test`。
+D = `tests/domain.rs`；N = `tests/native.rs`，两者由 `root//crates/context:domain_test` 运行。C = `root//apps/cli:cli_test`。R = `apps/cli/tests/room/project.rs`，由 `root//packaging/release:room-cli-test` 运行。
 
 ## 范围收窄
 
