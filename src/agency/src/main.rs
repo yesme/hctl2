@@ -37,6 +37,11 @@ enum Command {
 enum LoginCommand {
     /// Show private home paths; does not log in or read personal credentials.
     Prepare,
+    /// Check managed login files only; does not launch a harness or authenticate remotely.
+    Check {
+        #[arg(value_parser = ["claude-code", "codex-cli"])]
+        harness: String,
+    },
     /// Import a fresh `claude setup-token` value from a file or secret-manager pipe.
     ClaudeToken {
         /// Operator-declared expiry, in Unix seconds. Import does not authenticate the token.
@@ -85,6 +90,16 @@ async fn run(args: Args) -> Result<()> {
                             "claude_setup":"claude setup-token",
                             "codex_credential_store":"file",
                             "login_performed":false
+                        })
+                    );
+                }
+                LoginCommand::Check { harness } => {
+                    homes.check(&harness)?;
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "harness":harness,"local_preconditions_met":true,
+                            "remote_authentication_checked":false
                         })
                     );
                 }

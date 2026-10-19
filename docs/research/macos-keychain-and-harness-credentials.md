@@ -193,4 +193,11 @@
 
 - 2026-10-19 · Codex（mac），实现前验证：Claude Code 2.1.302 的文件回退未通过本次隔离登录验证。`CLAUDE_CONFIG_DIR` 指向空的私有目录，Seatbelt 拒读写人的 Keychains、`.claude`、`.claude.json`、`.codex`、gh 和 ssh；所有者执行原生 `claude auth login --claudeai` 后看到“找不到存储的钥匙串”弹窗，随后目录没有生成 `.credentials.json`，隔离内 `claude auth status --json` 仍为 `loggedIn:false`。只读对照中，保留或替换 `HOME`，`security default-keychain -d user` 都返回找不到默认钥匙串，不能单独归因于 `HOME`。本机原生程序的 secure-storage 实现先写 Keychain；若写入失败被标为 transient（包括超时），直接返回、不写文件回退。未取得该次登录的原生错误码，不能断言它具体走了哪个失败分支。官方 [Authentication](https://code.claude.com/docs/en/authentication#credential-management) 只说明拒写时的回退，没有找到强制选择文件后端的公开入口；本机 `auth login --help` 也没有这一选项。因此不把文件回退作为已经验证的 Agency 登录方案，实施已拍板的 `setup-token` 路径：人生成并显式导入独立 token，Agency 私有保存，只放进单个会话的 settings `env`，不进参数或 Herdr server 环境。没有读取、复制或改写人的真实凭据，没有解锁或新建钥匙串；没有完成真实模型调用。Codex 继续按官方 [`CODEX_HOME` 与 `file` 档](https://learn.chatgpt.com/docs/auth#credential-storage) 托管，原生刷新归 Codex。
 
+- 2026-10-20 · Codex（mac），按开工书 §二第 45 条 ⑤ 补两家的前提检查。下表命令由操作者执行；Agency 的检查入口只读自己的托管文件，不运行原生认证探测。`agency login prepare` 返回路径，不代表已登录；本地检查通过也不代表服务端接受凭据。没有新的真登录或真模型实测。
+
+  | harness | 起会话前的检查命令与判据 | 最小环境与人工准备 |
+  | --- | --- | --- |
+  | Claude Code | `agency --root <agency-root> login check claude-code`：托管 token 为本用户的私有普通文件、格式可读且未到人声明的截止；缺失、权限错误或到期均拒绝。只输出本地前提结果，不回显 token，不读人的钥匙串。 | 操作者先运行原生 `claude setup-token`，从私有文件或密钥管理器管道交给 `agency --root <agency-root> login claude-token --expires-at <Unix秒>`；不在参数、聊天或 Agency server 环境放 token。会话用 prepare 返回的 `HOME`、`CLAUDE_CONFIG_DIR`，`CLAUDE_CODE_OAUTH_TOKEN` 只放当前私有 settings 的 `env`。安装目录、Claude 可执行路径等沿原有启动配置。远端失效仍须原生实际请求才能发现；本检查不声称验证或刷新它。 |
+  | Codex | `agency --root <agency-root> login check codex-cli`：托管 `auth.json` 是本用户的私有普通文件，含原生登录字段；不验证远端有效性。 | 操作者用 prepare 返回的 `codex_home` 执行 `CODEX_HOME=<codex_home> codex -c 'cli_auth_credentials_store="file"' login`；Agency 起会话时设置托管 `HOME`、同一 `CODEX_HOME` 并钉 `file`，不继承个人登录环境。官方 [Authentication · Credential storage](https://learn.chatgpt.com/docs/auth#credential-storage) 规定 `file` 使用 `CODEX_HOME/auth.json`；原生刷新由 Codex 负责。 |
+
 

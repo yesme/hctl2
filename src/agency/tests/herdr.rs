@@ -192,6 +192,20 @@ fn managed_login_from_real_cli_is_private_and_never_echoes_the_token() {
     let paths: serde_json::Value = serde_json::from_slice(&prepared.stdout).unwrap();
     assert_eq!(paths["login_performed"], false);
     assert_eq!(paths["codex_credential_store"], "file");
+    let check = |harness: &str| {
+        Command::new(&binary)
+            .arg("--root")
+            .arg(&root)
+            .args(["login", "check", harness])
+            .output()
+            .unwrap()
+    };
+    for harness in ["claude-code", "codex-cli"] {
+        let missing = check(harness);
+        assert!(!missing.status.success());
+        let value: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();
+        assert_eq!(value["error"]["code"], "MANAGED_LOGIN_REQUIRED");
+    }
     let marker = "sk-ant-oat01-fixture-only";
     let mut child = Command::new(&binary)
         .arg("--root")
@@ -221,8 +235,32 @@ fn managed_login_from_real_cli_is_private_and_never_echoes_the_token() {
         std::fs::metadata(&stored).unwrap().permissions().mode() & 0o777,
         0o600
     );
-    let token: serde_json::Value = serde_json::from_slice(&std::fs::read(stored).unwrap()).unwrap();
+    let mut token: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&stored).unwrap()).unwrap();
     assert_eq!(token["token"], marker);
+    let checked = check("claude-code");
+    assert!(checked.status.success());
+    assert!(!String::from_utf8_lossy(&checked.stdout).contains(marker));
+    let value: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(value["local_preconditions_met"], true);
+    assert_eq!(value["remote_authentication_checked"], false);
+    token["expires_at_ms"] = serde_json::json!(1);
+    std::fs::write(&stored, serde_json::to_vec(&token).unwrap()).unwrap();
+    let expired = check("claude-code");
+    assert!(!expired.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&expired.stdout).unwrap();
+    assert_eq!(value["error"]["code"], "MANAGED_LOGIN_EXPIRED");
+    let codex_home = PathBuf::from(paths["codex_home"].as_str().unwrap());
+    let auth = codex_home.join("auth.json");
+    std::fs::write(&auth, br#"{"OPENAI_API_KEY":"fixture-only"}"#).unwrap();
+    std::fs::set_permissions(&auth, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(check("codex-cli").status.success());
+    std::fs::set_permissions(&auth, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let public = check("codex-cli");
+    assert!(!public.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&public.stdout).unwrap();
+    assert_eq!(value["error"]["code"], "MANAGED_LOGIN_INVALID");
+    assert!(!check("unknown-harness").status.success());
     let rejected = Command::new(&binary)
         .arg("--root")
         .arg(&root)

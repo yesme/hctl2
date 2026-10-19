@@ -78,6 +78,16 @@ impl Homes {
             .join("managed-credentials/claude-code.json")
     }
 
+    /// Check only the managed files used by startup. No harness, keychain,
+    /// network login or remote token validation is performed.
+    pub fn check(&self, harness: &str) -> Result<()> {
+        match harness {
+            "claude-code" => self.claude_token().map(drop),
+            "codex-cli" => self.require_codex_login(),
+            _ => Err(PortError::invalid("expected claude-code or codex-cli")),
+        }
+    }
+
     /// Human-authorized input only. The CLI refuses a terminal on stdin so a
     /// pasted token cannot be echoed; use a private file or a secret-manager pipe.
     pub fn import_claude_token(&self, reader: impl Read, expires_at_ms: u64) -> Result<()> {

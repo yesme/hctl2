@@ -32,6 +32,8 @@ Codex 用 `login prepare` 返回的 `codex_home`：由人执行 `CODEX_HOME=/pat
 
 两家都用托管的 `HOME`，Claude 另钉 `CLAUDE_CONFIG_DIR`，不读取人的项目外全局配置。旧登录和原生历史不会自动搬迁。Claude 文件回退在本机边界内没有验证通过，本版不依赖它；证据见[钥匙串研究复核记录](../../docs/research/macos-keychain-and-harness-credentials.md#复核记录)。
 
+启动前可执行 `agency --root /path/to/agency login check claude-code` 或 `login check codex-cli`。这复用启动时的托管文件检查，只输出本地前提是否满足，不调用 harness、网络或钥匙串；`remote_authentication_checked: false` 表示未向服务端验证，不能据此宣称真会话已可用。最小环境与人工登录步骤见同一研究复核记录。
+
 真会话的演示 3 用例用 `HCTL2_LIVE_AGENCY_ROOT` 指定已由人导入 token 的独立测试 Agency，再传 `HCTL2_HARNESS_LIVE=1`，只跑 `root//packaging/release:room-cli-test` 中的 `demo3_gitea_chain_with_a_real_claude_code_session_reaches_task_completion`（`--include-ignored`）。测试不替人登录，也不删除该测试 Agency 的凭据。Codex 的真实 Room 用例另用 `HCTL2_LIVE_CODEX_AGENCY_ROOT` 与 `HCTL2_CODEX_LIVE=1`；这是一份只配置 Codex 的测试 Agency，避免把真实 Claude token 交给夹具。其他 Agency 原生 live 用例的托管登录接线仍待补齐，不应直接沿用以前借个人登录的命令。
 
 本机端口为权限 0600 的 Unix socket。为适应 macOS 路径长度，套接字目录用数据根摘要生成，数据根与凭据留在私有运维存储，不进入 Binding、Spec 或 Proposal。控制面停止不停止 Agency；`agency stop` 是服务所有者的独立操作，会请求停止所有租户的执行。
