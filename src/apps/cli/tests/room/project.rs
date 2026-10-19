@@ -546,7 +546,8 @@ fn seam_marker(f: &Fixture, name: &str, present: bool) {
 /// 第 9 包验收第 4 条：control、Agency 与随包服务各杀一次再起，顺序与整包安装时的启动一致。
 fn kill_and_restart_everything(f: &Fixture, setup: &mut Paired) {
     assert!(f.run(&["stop"]).0, "control must stop cleanly");
-    setup.agency.stop();
+    setup.agency.child.kill().unwrap();
+    setup.agency.child.wait().unwrap();
     let services = || {
         let mut command = Command::new(f.payload.join("bin/hctl2-services"));
         command.env("HCTL2_STATE_ROOT", f.root.join("services"));

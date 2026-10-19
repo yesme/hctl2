@@ -206,8 +206,9 @@ scan_dirs() {
             pid=${name##*-}
             case "$pid" in
                 ''|*[!0-9]*) continue ;;
-                ?????????|??????????*) continue ;;
             esac
+            # Pids are at most seven digits; longer suffixes are hashes, not owners.
+            [ "$pid" -le 9999999 ] || continue
             owner_alive "$pid" "$dir" && continue
             dirs="${dirs}directory path=$dir owner_pid=$pid
 "
