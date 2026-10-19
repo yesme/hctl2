@@ -25,13 +25,13 @@ use std::{
 const OUTPUT_LIMIT: u64 = 16 * 1024 * 1024;
 
 /// Only the exit subscription used by this adapter. It is not a second supervisor.
-struct ExitFeed {
+pub(crate) struct ExitFeed {
     stream: UnixStream,
     pending: Vec<u8>,
     exited: bool,
 }
 impl ExitFeed {
-    fn subscribe(socket: &Path) -> Result<Self> {
+    pub(crate) fn subscribe(socket: &Path) -> Result<Self> {
         use std::io::{BufRead, BufReader, Write};
         let mut stream = UnixStream::connect(socket)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -59,7 +59,7 @@ impl ExitFeed {
             exited: false,
         })
     }
-    fn poll(&mut self, pane: &str) -> Result<bool> {
+    pub(crate) fn poll(&mut self, pane: &str) -> Result<bool> {
         if self.exited {
             return Ok(true);
         }
@@ -561,6 +561,16 @@ impl InstalledHerdr {
             .map(|server| server.pid())
     }
 
+    pub fn multiplexer(
+        &self,
+        exec: &Path,
+        credential_root: &Path,
+    ) -> Result<crate::observation::Multiplexer> {
+        Ok(crate::observation::Multiplexer::from_server(
+            self.ensure(exec, credential_root)?,
+        ))
+    }
+
     fn ensure(&self, exec: &Path, credential_root: &Path) -> Result<Arc<Server>> {
         let mut slot = self.slot.lock().expect("herdr");
         if let Some(server) = slot.as_ref()
@@ -1048,7 +1058,7 @@ fn dispatch_events(
             // Only the explicit script fixture uses stdout-at-exit; no real harness takes this branch.
             if code == Some(0) {
                 let _ = tx.send(RuntimeEvent::Proposal {
-                    schema: "adapter.stdout.v1".into(),
+                    schema: crate::observation::TURN_OUTPUT_SCHEMA.into(),
                     bytes: stdout,
                     source: EvidenceLevel::AdapterEvent,
                 });

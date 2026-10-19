@@ -1193,7 +1193,7 @@ fn live_claude_dispatch_returns_one_turn() {
         "LIVE claude {} via locked Herdr protocol 22",
         spec.document.profession.reference.revision
     );
-    eprintln!("Proposal(schema=claude.turn.v1, source=adapter_event): {proposal}");
+    eprintln!("Proposal(schema=agency.turn.v1, source=adapter_event): {proposal}");
     eprintln!("TurnReturned (not Task completion; does not require process exit)");
     let herdr_pid = runtime.pid().unwrap();
     running.session.lock().unwrap().stop().unwrap();
@@ -3251,4 +3251,406 @@ fn json_has_input(value: &serde_json::Value, text: &str) -> bool {
         }
     }
     false
+}
+
+#[test]
+fn observation_pane_opens_for_fixture_session_and_returns_pane_id() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-open");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-open");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-open",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id when enabled");
+    assert!(!pane_id.is_empty());
+    assert_eq!(pane.pane_id(), Some(pane_id.as_str()));
+    assert!(session_dir.join("view.log").is_file());
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+    assert!(pane.is_alive().unwrap());
+    assert!(!pane.exited().unwrap());
+    assert_eq!(runtime.servers_started(), 1);
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_appends_lines_with_golden_view_log_format() {
+    use agency::observation::{self, ObservationConfig};
+
+    let (cred, exec) = scratch("obs-append");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-append");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-append",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("Check workspace\nand report status")
+        .unwrap();
+    pane.append_tool_call("Bash", Some("git status\n--short"))
+        .unwrap();
+    pane.append_tool_call("Read", None).unwrap();
+    pane.append_answer("OBS_GOLDEN_LINE_1\nOBS_GOLDEN_LINE_2")
+        .unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    let golden = "\
+=== turn 1 start ===
+[prompt] Check workspace and report status
+[tool] Bash: git status --short
+[tool] Read
+[answer]
+OBS_GOLDEN_LINE_1
+OBS_GOLDEN_LINE_2
+=== turn 1 end (completed) ===
+";
+    assert_eq!(std::fs::read_to_string(pane.view_log()).unwrap(), golden);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("=== turn 1 end (completed) ===") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        visible.contains("[prompt] Check workspace and report status"),
+        "visible pane missing prompt summary: {visible}"
+    );
+    assert!(
+        visible.contains("[tool] Bash: git status --short"),
+        "visible pane missing tool call: {visible}"
+    );
+    assert!(
+        visible.contains("OBS_GOLDEN_LINE_2"),
+        "visible pane missing answer: {visible}"
+    );
+    assert!(
+        visible.contains("=== turn 1 end (completed) ==="),
+        "visible pane missing turn end: {visible}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_closes_idempotently() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-close");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-close");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-close",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    pane.close().unwrap();
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    assert!(pane.exited().unwrap());
+    assert!(!pane.is_alive().unwrap());
+
+    // Closing an already-closed pane is a no-op.
+    pane.close().unwrap();
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+fn observation_pane_disabled_config_succeeds_without_starting_multiplexer() {
+    use agency::observation::{self, ObservationConfig, PaneStatus};
+
+    let (cred, exec) = scratch("obs-disabled");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-disabled");
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::disabled(),
+        &session_dir,
+        "obs-disabled",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let started = runtime.servers_started();
+    if started > 0 {
+        let _ = pane.close();
+        let _ = runtime.shutdown();
+    }
+    assert_eq!(started, 0, "disabled config must not start multiplexer");
+    assert_eq!(pane_id, None);
+    assert_eq!(pane.pane_id(), None);
+    assert!(runtime.pid().is_none());
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("disabled pane prompt").unwrap();
+    pane.append_tool_call("Read", Some("README.md")).unwrap();
+    pane.append_answer("DISABLED_PANE_ANSWER_OK").unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    assert_eq!(pane.status().unwrap(), PaneStatus::Disabled);
+    assert!(!pane.is_alive().unwrap());
+    assert!(!pane.exited().unwrap());
+    assert_eq!(pane.read_visible().unwrap(), None);
+
+    pane.close().unwrap();
+    assert_eq!(runtime.servers_started(), 0);
+    assert!(runtime.pid().is_none());
+
+    let log = std::fs::read_to_string(pane.view_log()).unwrap();
+    assert!(log.contains("DISABLED_PANE_ANSWER_OK"), "{log}");
+}
+
+#[test]
+fn observation_pane_closed_by_human_keeps_appending_and_reports_exited() {
+    use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
+
+    let (cred, exec) = scratch("obs-human-close");
+    let runtime = test_runtime(&binary(), "printf '%s\\n' DISPATCH_AFTER_PANE_CLOSE_OK\nexit 0\n");
+    let session_dir = exec.join("antigravity").join("session-human-close");
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-human-close",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id");
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary("prompt before human closes pane")
+        .unwrap();
+
+    // Simulate a human closing the pane externally on the terminal multiplexer.
+    runtime
+        .multiplexer(&exec, &cred)
+        .unwrap()
+        .close_pane(&pane_id)
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && pane.status().unwrap() != PaneStatus::Exited {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(pane.status().unwrap(), PaneStatus::Exited);
+    assert!(pane.exited().unwrap());
+    assert!(!pane.is_alive().unwrap());
+
+    // Appending after external pane close still writes to view.log without error.
+    pane.append_tool_call("Bash", Some("ls -la")).unwrap();
+    pane.append_answer("ANSWER_AFTER_HUMAN_CLOSE_OK").unwrap();
+    pane.append_turn_end(1, "completed").unwrap();
+
+    let log = std::fs::read_to_string(pane.view_log()).unwrap();
+    assert!(log.contains("ANSWER_AFTER_HUMAN_CLOSE_OK"), "{log}");
+
+    // Dispatch is completely unaffected by the closed observation pane.
+    let mut running = runtime
+        .start(
+            &sealed_spec("after-human-close", now_ms() + 30_000),
+            &sealed_bundle("task after pane close\n"),
+            &exec,
+            &cred,
+        )
+        .unwrap();
+    let events = collect(&mut running, Duration::from_secs(10));
+    let proposal = events.iter().find_map(|event| match event {
+        agency::runtime::RuntimeEvent::Proposal { schema, bytes, .. } => {
+            Some((schema.as_str(), String::from_utf8_lossy(bytes).into_owned()))
+        }
+        _ => None,
+    });
+    let (schema, body) = proposal.expect("dispatch proposal after pane close");
+    assert_eq!(schema, TURN_OUTPUT_SCHEMA);
+    assert!(body.contains("DISPATCH_AFTER_PANE_CLOSE_OK"), "{body}");
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+#[test]
+#[ignore = "UNVERIFIED: requires a logged-in agy session and HCTL2_HARNESS_LIVE=1"]
+fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
+    use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
+    use std::io::{BufRead, BufReader};
+
+    assert!(
+        std::env::var_os("HCTL2_HARNESS_LIVE").is_some(),
+        "explicit live validation also requires HCTL2_HARNESS_LIVE=1"
+    );
+    let agy_bin = std::env::var_os("HCTL2_AGY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let out = Command::new("/usr/bin/which").arg("agy").output().unwrap();
+            assert!(out.status.success(), "agy not on PATH");
+            PathBuf::from(String::from_utf8(out.stdout).unwrap().trim())
+        });
+
+    let (cred, exec) = scratch("h1-agy-obs-live");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let session_dir = exec.join("antigravity").join("session-live-1");
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "h1-agy-live",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    let pane_id = pane_id.expect("pane_id");
+    assert_eq!(pane.status().unwrap(), PaneStatus::Alive);
+
+    let prompt = "Reply with exactly HCTL_H0_PANE_OK and nothing else.";
+    pane.append_turn_start(1).unwrap();
+    pane.append_prompt_summary(prompt).unwrap();
+
+    let mut child = Command::new(&agy_bin)
+        .args([
+            "--output-format",
+            "stream-json",
+            "--input-format",
+            "stream-json",
+            "--disable-slash-commands",
+            "--print=",
+        ])
+        .current_dir(&exec)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn agy");
+
+    let mut stdin = child.stdin.take().expect("agy stdin");
+    let stdout = child.stdout.take().expect("agy stdout");
+    let reader = BufReader::new(stdout);
+    let mut events_jsonl = String::new();
+    let mut final_answer = None;
+    let mut conversation_id = String::new();
+    let mut prompt_sent = false;
+
+    for line in reader.lines() {
+        let line = line.unwrap();
+        if line.trim().is_empty() {
+            continue;
+        }
+        events_jsonl.push_str(&line);
+        events_jsonl.push('\n');
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if val["event"] == "init"
+            && let Some(cid) = val["conversation_id"].as_str()
+        {
+            conversation_id = cid.to_owned();
+            if !prompt_sent {
+                let msg = json!({
+                    "event": "user",
+                    "message": {
+                        "content": prompt,
+                    }
+                });
+                writeln!(stdin, "{msg}").unwrap();
+                stdin.flush().unwrap();
+                prompt_sent = true;
+            }
+        }
+        if val["event"] == "step_update"
+            && let Some(calls) = val
+                .pointer("/step_update/tool_calls")
+                .and_then(|v| v.as_array())
+        {
+            for call in calls {
+                if let Some(name) = call["name"].as_str() {
+                    let detail = call.get("arguments").map(|v| v.to_string());
+                    pane.append_tool_call(name, detail.as_deref()).unwrap();
+                }
+            }
+        }
+        if val["event"] == "result"
+            && val["result"]["conversation_id"].as_str() == Some(conversation_id.as_str())
+        {
+            let status = val["result"]["status"].as_str().unwrap_or("SUCCESS");
+            let result_text = val["result"]["response"].as_str().unwrap_or("").to_owned();
+            pane.append_answer(&result_text).unwrap();
+            pane.append_turn_end(1, status).unwrap();
+            final_answer = Some(result_text);
+            break;
+        }
+    }
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+    std::fs::write(session_dir.join("events.jsonl"), &events_jsonl).unwrap();
+    std::fs::write(
+        session_dir.join("state.json"),
+        serde_json::to_vec_pretty(&json!({
+            "conversation_id": conversation_id,
+            "pane_id": pane_id,
+            "schema": TURN_OUTPUT_SCHEMA,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let answer = final_answer.expect("agy result event");
+    assert!(answer.contains("HCTL_H0_PANE_OK"), "{answer}");
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("=== turn 1 end") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    let state = herdr::state_dir(&exec, &cred).unwrap();
+    let raw_read = Client::connect(&herdr::socket_path(&state))
+        .unwrap()
+        .call(
+            "pane.read",
+            json!({
+                "pane_id": pane_id,
+                "source": "visible",
+                "format": "text",
+                "strip_ansi": true,
+            }),
+        )
+        .unwrap();
+    eprintln!(
+        "LIVE H0+H1 pane.read response:\n{}",
+        serde_json::to_string_pretty(&raw_read).unwrap()
+    );
+
+    assert!(
+        visible.contains("[prompt] Reply with exactly HCTL_H0_PANE_OK and nothing else."),
+        "visible pane missing prompt summary: {visible}"
+    );
+    assert!(
+        visible.contains("[answer]") && visible.contains("HCTL_H0_PANE_OK"),
+        "visible pane missing answer: {visible}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
 }

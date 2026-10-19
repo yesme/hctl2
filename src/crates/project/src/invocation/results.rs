@@ -234,10 +234,7 @@ fn admit(
         || if invocation.authorization.write {
             proposal.schema != repo::changeset::OUTPUT_SCHEMA
         } else {
-            !matches!(
-                proposal.schema.as_str(),
-                "adapter.stdout.v1" | "claude.turn.v1" | "codex.turn.v1"
-            ) || seal.is_some()
+            proposal.schema != "agency.turn.v1" || seal.is_some()
         }
         || proposal.outputs.len() != 1
         || inbox.materials.len() != 1
