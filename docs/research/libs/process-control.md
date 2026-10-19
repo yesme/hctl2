@@ -57,3 +57,11 @@ crates.io 在 2026-10-05 仍把 5.2.0 标为最新稳定版，没有更高版本
 采用 SDK：钉 `process_control` `=5.2.0`，不开 `parking_lot`。一个辅助函数放在 `foundation::command::run_bounded`。标准输入在单独的线程里写；子进程先退出、写线程拿到 `BrokenPipe` 时不算失败，仍按已读到的状态与输出返回。标准输出和标准错误由本库的线程读，任一路超过 16 MiB 就拒绝。等待和直接子进程的超时终止用 `time_limit` + `terminate_for_timeout`（macOS 与 Linux 仍是 `waitid`）。管道到截止时刻还开着（子进程已退出或已按超时终止、组里还有活口）记为超时，这时子进程在自己的进程组里，用仓库里已有的 `rustix` 1.1.5 `kill_process_group` 结束还握着管道的同组进程。这一刀只在管道到点还开着时发出，不代替 `terminate_for_timeout`。不调用 `memory_limit`。
 
 各调用的时限与超时在领域上的含义由调用方保持：`git` / `gh` / `tea` 仍是结果未知，材料库仍是材料不可读，其余调用给出自己的错误码，不把超时当成成功。
+
+## Agency 重启回收（2026-10-19，小活 Z）
+
+这是已脱离父进程的进程组，`Child::wait` 与 process_control 的直接子进程超时接口不能跨 Agency 重启使用。沿用 herdr 的平台命令，不加依赖或看守进程：[`ps(1)`](https://www.man7.org/linux/man-pages/man1/ps.1.html) 提供启动时间、进程组和命令；[Apple 的 ps 源码手册](https://github.com/apple-oss-distributions/adv_cmds/blob/main/ps/ps.1) 同样列出 `lstart`、`pgid`、`stat` 和 `command`。固定 C locale 与 UTC，命令只存摘要。启动时间加每次启动独有的监听地址及认证摘要对应的命令摘要，避免仅凭 PID 回收。
+
+Agency 在自己的凭据根中保存 0600 的进程记录，harness 不可读。`Agency::open` 取得该根的写锁后，只读该根的记录；PID 必须仍为组长，启动时间和命令摘要必须相同，才对组发 TERM，宽限后重新核验再发 KILL。正常关闭删除记录。身份不符时不发信号；记录不可读或回收失败时报错。`ps` 和信号之间仍有平台命令的短暂竞争窗口，不宣称具有 pidfd 的原子性；Linux 专用 pidfd 也不能统一两个平台的进程组回收。
+
+本机 Linux 实测与退回看红记录随小活 Z 的 PR 提供；macOS 的字段依据为官方源码，运行证据以 PR CI 为准。

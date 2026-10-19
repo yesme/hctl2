@@ -14,6 +14,310 @@ use std::{
 
 static GATE: Mutex<()> = Mutex::new(());
 
+/// Real `agency serve` -> pairing/prepare/activate -> InstalledHerdr -> app-server.
+/// No login, model request, or production root is used.
+#[test]
+fn agency_restart_reaps_only_its_recorded_codex_group() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    prepare("ok");
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        use agency_proto::{client::Client, *};
+        use serde_json::json;
+        let temp = tempfile::Builder::new()
+            .prefix("hctl2-codex-reap-")
+            .tempdir()
+            .unwrap();
+        let install = temp.path().join("install");
+        let herdr = install.join("libexec/hctl2/herdr");
+        fs::create_dir_all(herdr.parent().unwrap()).unwrap();
+        install_fixture(&binary(), &herdr);
+        let manifest = install.join("share/hctl2/PAYLOAD.sha256");
+        fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+        fs::write(
+            manifest,
+            format!(
+                "{}  libexec/hctl2/herdr\n",
+                agency::catalog::file_digest(&herdr).unwrap()
+            ),
+        )
+        .unwrap();
+        let claude = install.join("claude");
+        install_fixture(
+            &PathBuf::from(std::env::var_os("HCTL2_STANDBY_FIXTURE").unwrap()),
+            &claude,
+        );
+        let a = temp.path().join("agency-a");
+        let fixture = install.join("codex-fixture");
+        install_fixture(&codex_bin(), &fixture);
+        // Ignored dispositions survive exec: recovery must escalate to KILL.
+        write_fixture(
+            &install.join("codex"),
+            &format!(
+                "#!/bin/sh\ntrap '' TERM\nexec '{}' \"$@\"\n",
+                fixture.display().to_string().replace('\'', "'\\''")
+            ),
+        );
+        let b = temp.path().join("agency-b");
+        let mut cleanup = CrashCleanup::default();
+        let (mut first, _) = crash_agency(&a, &install, &claude).await;
+        let pairing = Client::new(
+            client::admin_endpoint(&a).unwrap(),
+            fs::read_to_string(a.join("pair.key")).unwrap(),
+        );
+        let pair: Pairing = pairing
+            .call(
+                "pair",
+                &Pair {
+                    control_id: "crash-test".into(),
+                    tenant_key: client::new_credential().unwrap(),
+                },
+            )
+            .await
+            .unwrap();
+        let tenant = Client::new(pair.endpoint.into(), pair.key);
+        let _: Value = tenant
+            .call(
+                "fence",
+                &Fence {
+                    writer_generation: 1,
+                },
+            )
+            .await
+            .unwrap();
+        let catalog: Catalog = tenant.call("catalog", &json!({})).await.unwrap();
+        let bundle = sealed_bundle("Read-only research: answer HELLO without changing files.");
+        let mut spec = sealed_spec("crash").document;
+        spec.profession = catalog
+            .professions
+            .into_iter()
+            .find(|p| p.reference.id == "codex-cli")
+            .expect("Codex cataloged");
+        spec.bundle.digest = bundle.digest.clone();
+        let dispatch: Dispatch = tenant
+            .call(
+                "prepare",
+                &Prepare {
+                    writer_generation: 1,
+                    spec: Sealed::new(spec).unwrap(),
+                    bundle,
+                },
+            )
+            .await
+            .unwrap();
+        let exec = agency::confine::execution_parent(&a)
+            .unwrap()
+            .join(&dispatch.reference);
+        cleanup.trees.push(exec.parent().unwrap().to_path_buf());
+        let _: Dispatch = tenant
+            .call(
+                "activate",
+                &DispatchAction {
+                    dispatch: dispatch.reference,
+                    writer_generation: 1,
+                    idempotency_key: "activate-crash".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !home().join("last-turn.json").exists() {
+            assert!(Instant::now() < deadline, "read-only turn did not start");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let pid = read_json("app-server-pid.json").as_u64().unwrap() as u32;
+        cleanup.groups.push(pid);
+        let state = agency::herdr::state_dir(&exec, &a).unwrap();
+        cleanup.servers.push(agency::herdr::socket_path(&state));
+        cleanup.groups.push(
+            fs::read_to_string(state.join("herdr.pid"))
+                .unwrap()
+                .parse()
+                .unwrap(),
+        );
+        cleanup.trees.push(state.clone());
+        cleanup.trees.push(
+            agency::herdr::socket_path(&state)
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+        );
+        assert!(crash_process_alive(pid));
+        print_crash_ps("before kill -9 Agency", first.0.id(), pid);
+        // A competing writer must not reap the live owner's app-server.
+        let busy = std::process::Command::new(std::env::var_os("HCTL2_CONFINE_BIN").unwrap())
+            .arg("--root")
+            .arg(&a)
+            .arg("serve")
+            .output()
+            .unwrap();
+        assert!(!busy.status.success());
+        assert!(String::from_utf8_lossy(&busy.stdout).contains("AGENCY_WRITER_BUSY"));
+        assert!(crash_process_alive(pid));
+        first.0.kill().unwrap();
+        first.0.wait().unwrap();
+        print_crash_ps("after kill -9 Agency", first.0.id(), pid);
+        assert!(crash_process_alive(pid), "fixture did not leave an orphan");
+
+        let (other, _) = crash_agency(&b, &install, &claude).await;
+        assert!(
+            crash_process_alive(pid),
+            "another root reaped this root's process"
+        );
+        println!("different root: old app-server {pid} remains alive");
+        drop(other);
+
+        // Simulate a recorded PID whose identity no longer matches.
+        let record = a.join(format!("codex-processes/{pid}.json"));
+        let original = fs::read(&record).unwrap();
+        let mut changed: Value = serde_json::from_slice(&original).unwrap();
+        changed["started"] = json!("different process start");
+        fs::write(&record, changed.to_string()).unwrap();
+        let (mismatch, _) = crash_agency(&a, &install, &claude).await;
+        assert!(crash_process_alive(pid), "mismatching identity was killed");
+        println!("identity mismatch: old app-server {pid} remains alive");
+        drop(mismatch);
+        fs::write(&record, original).unwrap();
+
+        let (restarted, _) = crash_agency(&a, &install, &claude).await;
+        print_crash_ps("same root restarted", restarted.0.id(), pid);
+        assert!(
+            !crash_process_alive(pid),
+            "old app-server survived same-root restart"
+        );
+        assert!(
+            !crash_group_alive(pid),
+            "old app-server group survived restart"
+        );
+        assert!(!record.exists());
+        println!("same root: old app-server {pid} reaped; record removed");
+        drop(restarted);
+    });
+}
+
+#[derive(Default)]
+struct CrashCleanup {
+    groups: Vec<u32>,
+    trees: Vec<PathBuf>,
+    servers: Vec<PathBuf>,
+}
+impl Drop for CrashCleanup {
+    fn drop(&mut self) {
+        for socket in &self.servers {
+            if let Ok(client) = agency::herdr::Client::connect(socket) {
+                let _ = client.call("server.stop", serde_json::json!({}));
+            }
+        }
+        for pid in &self.groups {
+            let _ = std::process::Command::new("/bin/kill")
+                .args(["-KILL", "--", &format!("-{pid}")])
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+        for tree in &self.trees {
+            let _ = fs::remove_dir_all(tree);
+        }
+    }
+}
+
+struct CrashAgency(std::process::Child, PathBuf);
+impl Drop for CrashAgency {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new(std::env::var_os("HCTL2_CONFINE_BIN").unwrap())
+            .arg("--root")
+            .arg(&self.1)
+            .arg("stop")
+            .stdout(std::process::Stdio::null())
+            .status();
+        if matches!(self.0.try_wait(), Ok(None)) {
+            let _ = self.0.kill();
+        }
+        let _ = self.0.wait();
+    }
+}
+
+async fn crash_agency(
+    root: &Path,
+    install: &Path,
+    claude: &Path,
+) -> (CrashAgency, agency_proto::client::Client) {
+    fs::create_dir_all(root).unwrap();
+    let log = fs::File::create(root.join("fixture-serve.err")).unwrap();
+    let child = std::process::Command::new(std::env::var_os("HCTL2_CONFINE_BIN").unwrap())
+        .arg("--root")
+        .arg(root)
+        .arg("serve")
+        .env("HCTL2_INSTALL_ROOT", install)
+        .env("HCTL2_CLAUDE", claude)
+        .env("HCTL2_CODEX", install.join("codex"))
+        .stdout(log.try_clone().unwrap())
+        .stderr(log)
+        .spawn()
+        .unwrap();
+    let mut child = CrashAgency(child, root.to_path_buf());
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        if let (Ok(endpoint), Ok(key)) = (
+            agency_proto::client::admin_endpoint(root),
+            agency::Agency::bootstrap_key(root),
+        ) {
+            let admin = agency_proto::client::Client::new(endpoint, key);
+            if admin
+                .call::<_, Value>("catalog", &serde_json::json!({}))
+                .await
+                .is_ok()
+            {
+                return (child, admin);
+            }
+        }
+        assert!(
+            child.0.try_wait().unwrap().is_none() && Instant::now() < deadline,
+            "Agency failed: {}",
+            fs::read_to_string(root.join("fixture-serve.err")).unwrap()
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+fn crash_process_alive(pid: u32) -> bool {
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "stat="])
+        .output()
+        .unwrap();
+    output.status.success()
+        && !String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .starts_with('Z')
+}
+
+fn crash_group_alive(group: u32) -> bool {
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-e", "-o", "pgid=,stat="])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+        let mut fields = line.split_whitespace();
+        fields.next().and_then(|value| value.parse::<u32>().ok()) == Some(group)
+            && fields.next().is_some_and(|status| !status.starts_with('Z'))
+    })
+}
+
+fn print_crash_ps(label: &str, agency: u32, codex: u32) {
+    let output = std::process::Command::new("/bin/ps")
+        .args([
+            "-p",
+            &format!("{agency},{codex}"),
+            "-o",
+            "pid=,ppid=,pgid=,stat=",
+        ])
+        .output()
+        .unwrap();
+    println!(
+        "{label} (pid ppid pgid stat):\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 #[test]
 fn codex_fixture_turn_matches_rollout_and_uses_a_read_only_sandbox() {
     let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
