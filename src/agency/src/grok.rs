@@ -212,8 +212,9 @@ fn worker(bin: PathBuf, idle: Duration, stopped: Arc<AtomicBool>, receiver: mpsc
                     }),
                     source: EvidenceLevel::AdapterEvent,
                 });
+                let _ = publish_layout(&job.state, &turn, &job.text);
                 let _ = job.tx.send(RuntimeEvent::Proposal {
-                    schema: "grok.turn.v1".into(),
+                    schema: crate::observation::TURN_OUTPUT_SCHEMA.into(),
                     bytes: turn.text.into_bytes(),
                     source: EvidenceLevel::AdapterEvent,
                 });
@@ -254,8 +255,56 @@ fn run_job(bin: &Path, live: &mut Option<Link>, job: &Job) -> Result<Turn> {
         .prompt(&job.text, deadline(job.budget), &job.token.cancelled)
         .map(|mut turn| {
             turn.opened = link.opened.clone();
+            turn.session_id = link.dialogue.session_id.clone().unwrap_or_default();
             turn
         })
+}
+
+fn publish_layout(state: &Path, turn: &Turn, prompt: &str) -> Result<()> {
+    if turn.session_id.is_empty() {
+        return Ok(());
+    }
+    let dir = state.join("grok").join(&turn.session_id);
+    fs::create_dir_all(&dir)?;
+    fs::write(
+        dir.join("state.json"),
+        serde_json::to_vec(&json!({
+            "session_id": turn.session_id,
+            "opened": turn.opened,
+            "pane_id": Value::Null,
+        }))?,
+    )?;
+    let mut events = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("events.jsonl"))?;
+    let event = json!({
+        "method": "session/prompt",
+        "text": prompt,
+        "stop_reason": turn.stop_reason,
+    });
+    writeln!(events, "{event}")?;
+    let summary: String = prompt.chars().take(80).collect();
+    crate::observation::append_view_line(
+        &dir,
+        crate::observation::ViewEntry::TurnStart { turn: 1 },
+    )?;
+    crate::observation::append_view_line(
+        &dir,
+        crate::observation::ViewEntry::PromptSummary { summary: &summary },
+    )?;
+    crate::observation::append_view_line(
+        &dir,
+        crate::observation::ViewEntry::Answer { text: &turn.text },
+    )?;
+    crate::observation::append_view_line(
+        &dir,
+        crate::observation::ViewEntry::TurnEnd {
+            turn: 1,
+            status: &turn.stop_reason,
+        },
+    )?;
+    Ok(())
 }
 
 fn deadline(budget: Duration) -> Instant {
@@ -498,6 +547,7 @@ impl<W: Write> Dialogue<W> {
                 .unwrap_or("unknown")
                 .to_owned(),
             opened: String::new(),
+            session_id: session_id.clone(),
         })
     }
 
@@ -596,12 +646,41 @@ struct Turn {
     text: String,
     stop_reason: String,
     opened: String,
+    session_id: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{BufRead, Write};
+
+    #[test]
+    fn layout_uses_the_shared_turn_schema_and_three_files() {
+        assert_eq!(crate::observation::TURN_OUTPUT_SCHEMA, "agency.turn.v1");
+        let root = std::env::temp_dir().join(format!("hctl2-grok-layout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let turn = Turn {
+            text: "pong".into(),
+            stop_reason: "end_turn".into(),
+            opened: "new".into(),
+            session_id: "sess-1".into(),
+        };
+        publish_layout(&root, &turn, "one\n!/two").unwrap();
+        let dir = root.join("grok").join("sess-1");
+        let state: Value =
+            serde_json::from_slice(&fs::read(dir.join("state.json")).unwrap()).unwrap();
+        assert_eq!(state["session_id"], "sess-1");
+        assert!(state["pane_id"].is_null());
+        let events = fs::read_to_string(dir.join("events.jsonl")).unwrap();
+        assert!(
+            events.contains("one\\n!/two") || events.contains("one\n!/two"),
+            "{events}"
+        );
+        let view = fs::read_to_string(dir.join("view.log")).unwrap();
+        assert!(view.contains("pong"), "{view}");
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn argv_does_not_auto_approve() {
