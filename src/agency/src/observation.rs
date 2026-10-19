@@ -145,7 +145,13 @@ impl ViewEntry<'_> {
 fn sanitize_single_line(input: &str) -> String {
     input
         .chars()
-        .map(|c| if matches!(c, '\r' | '\n' | '\t') { ' ' } else { c })
+        .map(|c| {
+            if matches!(c, '\r' | '\n' | '\t') {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()

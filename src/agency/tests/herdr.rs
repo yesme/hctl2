@@ -3424,7 +3424,10 @@ fn observation_pane_closed_by_human_keeps_appending_and_reports_exited() {
     use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
 
     let (cred, exec) = scratch("obs-human-close");
-    let runtime = test_runtime(&binary(), "printf '%s\\n' DISPATCH_AFTER_PANE_CLOSE_OK\nexit 0\n");
+    let runtime = test_runtime(
+        &binary(),
+        "printf '%s\\n' DISPATCH_AFTER_PANE_CLOSE_OK\nexit 0\n",
+    );
     let session_dir = exec.join("antigravity").join("session-human-close");
 
     let (pane, pane_id) = observation::open_pane(
