@@ -409,6 +409,7 @@ pub struct InstalledHerdr {
     agy_revision: Option<String>,
     agy_digest: Option<String>,
     agy_skip: Option<String>,
+    observation: crate::observation::ObservationConfig,
     herdr_digest: String,
     read_paths: Vec<PathBuf>,
 }
@@ -525,6 +526,7 @@ impl InstalledHerdr {
             agy_revision: agy.as_ref().map(|(_, revision, _)| revision.clone()),
             agy_digest: agy.as_ref().map(|(_, _, digest)| digest.clone()),
             agy_skip,
+            observation: crate::observation::ObservationConfig::from_env(),
             herdr_digest,
             read_paths,
         })
@@ -560,6 +562,11 @@ impl InstalledHerdr {
         self.agy_skip.as_deref()
     }
 
+    pub fn with_observation(mut self, observation: crate::observation::ObservationConfig) -> Self {
+        self.observation = observation;
+        self
+    }
+
     pub fn for_test(
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
@@ -583,6 +590,7 @@ impl InstalledHerdr {
             agy_revision: None,
             agy_digest: None,
             agy_skip: None,
+            observation: crate::observation::ObservationConfig::from_env(),
             herdr_digest,
             read_paths: vec![],
         }
@@ -1003,7 +1011,7 @@ impl Runtime for InstalledHerdr {
                 harness: harness.clone(),
                 model: "none".into(),
                 persona: "antigravity".into(),
-                terms: "Bundle dispatch via stdio stream-json in one selection conversation; managed profile isolates auth, transcripts, settings and hooks; the structured transport has no pane; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
+                terms: "Bundle dispatch via stdio stream-json in one selection conversation; managed profile isolates auth, transcripts, settings and hooks; startup approval policy uses request-review for read-only and always-proceed with publication and credential deny hooks for write dispatches inside execution confinement; read-only observation pane tails view.log; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
                 default_role: "worker".into(),
                 skills: vec![],
                 capabilities: Capabilities {
@@ -1042,6 +1050,11 @@ impl Runtime for InstalledHerdr {
                 ));
             };
             let state = crate::herdr::state_dir(exec_root, credential_root)?;
+            let mux = if self.observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
             return pool.submit(
                 &state,
                 spec,
@@ -1049,6 +1062,8 @@ impl Runtime for InstalledHerdr {
                 exec_root,
                 credential_root,
                 credential_root,
+                self.observation,
+                mux,
             );
         }
         let server = self.ensure(exec_root, credential_root)?;
@@ -1149,7 +1164,21 @@ impl Runtime for InstalledHerdr {
                 ));
             };
             let state = crate::herdr::state_dir(exec_root, credential_root)?;
-            return pool.submit(&state, spec, bundle, exec_root, tenant, credential_root);
+            let mux = if self.observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
+            return pool.submit(
+                &state,
+                spec,
+                bundle,
+                exec_root,
+                tenant,
+                credential_root,
+                self.observation,
+                mux,
+            );
         }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;

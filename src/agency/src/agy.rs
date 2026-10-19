@@ -2,7 +2,10 @@
 //! Prompts are sent as `{"event":"user","message":{"content":...}}` frames on
 //! stdin; `result` frames on stdout end a turn after verifying the exact prompt
 //! in `agy`'s own `transcript.jsonl`.
-use crate::runtime::{Running, RuntimeEvent, Session};
+use crate::{
+    observation::{Multiplexer, ObservationConfig, ObservationPane, TURN_OUTPUT_SCHEMA},
+    runtime::{Running, RuntimeEvent, Session},
+};
 use agency_proto::context::Bundle;
 use agency_proto::{EvidenceLevel, ExecutionSpec, PortError, Result, Sealed, hash};
 use serde_json::{Value, json};
@@ -203,6 +206,8 @@ struct Job {
     text: String,
     copy: Option<crate::write::WorkCopy>,
     credential_root: PathBuf,
+    observation: ObservationConfig,
+    mux: Option<Multiplexer>,
     token: Arc<Token>,
     tx: mpsc::SyncSender<RuntimeEvent>,
 }
@@ -233,6 +238,7 @@ impl Pool {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn submit(
         &self,
         state_root: &Path,
@@ -241,6 +247,8 @@ impl Pool {
         exec_root: &Path,
         tenant: &Path,
         credential_root: &Path,
+        observation: ObservationConfig,
+        mux: Option<Multiplexer>,
     ) -> Result<Running> {
         crate::confine::reject_unenforceable_isolation(
             &spec.document.required_capabilities.isolation_effects,
@@ -276,6 +284,8 @@ impl Pool {
             text,
             copy,
             credential_root: credential_root.to_path_buf(),
+            observation,
+            mux,
             token: Arc::clone(&token),
             tx,
         });
@@ -313,9 +323,11 @@ impl Pool {
     }
 
     fn spawn_slot(&self, state_root: &Path, key: &str, exec_root: &Path) -> Result<Sender> {
-        let dir = state_root.join(format!("agy-{key}"));
+        let harness_dir = state_root.join("antigravity");
+        let dir = harness_dir.join(key);
         let profile = state_root.join("agy-home");
         let cwd = state_root.join(format!("agy-cwd-{key}"));
+        crate::storage::private_dir(&harness_dir)?;
         crate::storage::private_dir(&dir)?;
         crate::storage::private_dir(&profile)?;
         crate::storage::private_dir(&cwd)?;
@@ -523,7 +535,14 @@ fn run_job(
             &job.credential_root,
             job.copy.is_some(),
             &model,
+            job.observation,
+            job.mux.clone(),
         )?;
+        let pane_val = session
+            .pane
+            .as_ref()
+            .and_then(|p| p.pane_id())
+            .map_or(Value::Null, |id| Value::String(id.to_owned()));
         let _ = job.tx.send(RuntimeEvent::Observation {
             kind: "session_opened".into(),
             payload: json!({
@@ -531,7 +550,8 @@ fn run_job(
                 "resume_failed": resume_failed,
                 "conversation": session.conversation,
                 "file": session.transcript.display().to_string(),
-                "pane": Value::Null,
+                "session_dir": env.dir.display().to_string(),
+                "pane": pane_val,
             }),
             source: EvidenceLevel::AdapterEvent,
         });
@@ -550,6 +570,12 @@ fn run_job(
         return Ok(());
     }
     let session = live.as_mut().expect("agy session");
+    session.turn += 1;
+    session.sync_state()?;
+    if let Some(pane) = &session.pane {
+        pane.append_turn_start(session.turn)?;
+        pane.append_prompt_summary(&job.text)?;
+    }
     session.send_user(&job.text)?;
     let mut interrupt: Option<(Instant, bool)> = None;
     loop {
@@ -565,6 +591,19 @@ fn run_job(
         }
         match session.poll(Duration::from_millis(200))? {
             Poll::Frame(msg) => {
+                if msg["event"] == "step_update"
+                    && let Some(calls) = msg
+                        .pointer("/step_update/tool_calls")
+                        .and_then(Value::as_array)
+                    && let Some(pane) = &session.pane
+                {
+                    for call in calls {
+                        if let Some(name) = call["name"].as_str() {
+                            let detail = call.get("arguments").map(Value::to_string);
+                            pane.append_tool_call(name, detail.as_deref())?;
+                        }
+                    }
+                }
                 // Subagent steps emit step_update frames with subagent_info; only
                 // top-level result frames for this conversation end the turn.
                 if msg["event"] == "result"
@@ -572,6 +611,9 @@ fn run_job(
                         == Some(session.conversation.as_str())
                 {
                     if let Some((_, requested_stop)) = interrupt {
+                        if let Some(pane) = &session.pane {
+                            let _ = pane.append_turn_end(session.turn, "stopped");
+                        }
                         let session_closed = job.copy.is_some();
                         if let Some(mut closed_session) = live.take() {
                             closed_session.close()?;
@@ -592,6 +634,10 @@ fn run_job(
                                 })?
                                 .to_owned();
                             transcript_matches(&session.transcript, &job.text)?;
+                            if let Some(pane) = &session.pane {
+                                pane.append_answer(&text)?;
+                                pane.append_turn_end(session.turn, "completed")?;
+                            }
                             let (schema, bytes) = if let Some(copy) = &job.copy {
                                 let output = crate::write::seal_return(
                                     copy,
@@ -616,7 +662,7 @@ fn run_job(
                                 };
                                 output
                             } else {
-                                ("agy.turn.v1".into(), text.into_bytes())
+                                (TURN_OUTPUT_SCHEMA.into(), text.into_bytes())
                             };
                             job.token.finished.store(true, Ordering::SeqCst);
                             let _ = job.tx.send(RuntimeEvent::Proposal {
@@ -628,6 +674,9 @@ fn run_job(
                             return Ok(());
                         }
                         Some("ERROR") => {
+                            if let Some(pane) = &session.pane {
+                                let _ = pane.append_turn_end(session.turn, "error");
+                            }
                             let err_text = msg["result"]["error"]
                                 .as_str()
                                 .or_else(|| msg["result"]["response"].as_str())
@@ -654,6 +703,9 @@ fn run_job(
             Poll::Timeout => {}
             Poll::Closed => {
                 if let Some((_, requested_stop)) = interrupt {
+                    if let Some(pane) = &session.pane {
+                        let _ = pane.append_turn_end(session.turn, "stopped");
+                    }
                     let session_closed = job.copy.is_some();
                     if let Some(mut closed_session) = live.take() {
                         closed_session.close()?;
@@ -674,6 +726,9 @@ fn run_job(
         if let Some((sent, requested_stop)) = interrupt
             && sent.elapsed() >= Duration::from_secs(3)
         {
+            if let Some(pane) = &session.pane {
+                let _ = pane.append_turn_end(session.turn, "stopped");
+            }
             if let Some(mut closed_session) = live.take() {
                 closed_session.close()?;
             }
@@ -793,6 +848,11 @@ struct Live {
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Value>>,
     reader: Option<thread::JoinHandle<()>>,
+    dir: PathBuf,
+    pane: Option<ObservationPane>,
+    resumed: bool,
+    resume_failed: bool,
+    turn: u64,
     conversation: String,
     transcript: PathBuf,
     closed: bool,
@@ -802,6 +862,7 @@ struct Live {
 }
 
 impl Live {
+    #[allow(clippy::too_many_arguments)]
     fn open(
         agy: &Path,
         cwd: &Path,
@@ -810,10 +871,12 @@ impl Live {
         credential_root: &Path,
         writing: bool,
         model: &Option<String>,
+        observation: ObservationConfig,
+        mux: Option<Multiplexer>,
     ) -> Result<(Self, bool, bool)> {
         prepare_profile(profile, writing)?;
         let saved = read_conversation(dir)?;
-        if let Some(saved_id) = &saved {
+        let (mut live, resumed, resume_failed) = if let Some(saved_id) = &saved {
             match Self::spawn_one(
                 agy,
                 cwd,
@@ -824,17 +887,39 @@ impl Live {
                 model,
                 Some(saved_id),
             ) {
-                Ok(live) if live.conversation == *saved_id => {
-                    write_conversation(dir, &live.conversation)?;
-                    return Ok((live, true, false));
-                }
+                Ok(live) if live.conversation == *saved_id => (live, true, false),
                 Ok(mut live) => {
                     live.close()?;
+                    let _ = fs::remove_file(dir.join("state.json"));
+                    let fresh = Self::spawn_one(
+                        agy,
+                        cwd,
+                        dir,
+                        profile,
+                        credential_root,
+                        writing,
+                        model,
+                        None,
+                    )?;
+                    (fresh, false, true)
                 }
-                Err(_) => {}
+                Err(_) => {
+                    let _ = fs::remove_file(dir.join("state.json"));
+                    let fresh = Self::spawn_one(
+                        agy,
+                        cwd,
+                        dir,
+                        profile,
+                        credential_root,
+                        writing,
+                        model,
+                        None,
+                    )?;
+                    (fresh, false, true)
+                }
             }
-            let _ = fs::remove_file(dir.join("conversation.id"));
-            let live = Self::spawn_one(
+        } else {
+            let fresh = Self::spawn_one(
                 agy,
                 cwd,
                 dir,
@@ -844,21 +929,33 @@ impl Live {
                 model,
                 None,
             )?;
-            write_conversation(dir, &live.conversation)?;
-            return Ok((live, false, true));
+            (fresh, false, false)
+        };
+        live.resumed = resumed;
+        live.resume_failed = resume_failed;
+        let (pane, _) = ObservationPane::open(observation, dir, &live.conversation, || {
+            mux.ok_or_else(|| PortError::invalid("observation multiplexer unavailable"))
+        })?;
+        if resume_failed {
+            pane.append_tool_call("session", Some("resume_failed: started new conversation"))?;
         }
-        let live = Self::spawn_one(
-            agy,
-            cwd,
-            dir,
-            profile,
-            credential_root,
-            writing,
-            model,
-            None,
-        )?;
-        write_conversation(dir, &live.conversation)?;
-        Ok((live, false, false))
+        live.pane = Some(pane);
+        live.sync_state()?;
+        Ok((live, resumed, resume_failed))
+    }
+
+    fn sync_state(&self) -> Result<()> {
+        write_private_json(
+            &self.dir.join("state.json"),
+            &json!({
+                "conversation_id": self.conversation,
+                "pane_id": self.pane.as_ref().and_then(ObservationPane::pane_id),
+                "resumed": self.resumed,
+                "resume_failed": self.resume_failed,
+                "turn": self.turn,
+                "schema": TURN_OUTPUT_SCHEMA,
+            }),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -917,6 +1014,11 @@ impl Live {
             stdin: Some(stdin),
             frames: rx,
             reader: Some(reader),
+            dir: dir.to_path_buf(),
+            pane: None,
+            resumed: false,
+            resume_failed: false,
+            turn: 0,
             conversation: String::new(),
             transcript: PathBuf::new(),
             closed: false,
@@ -991,6 +1093,7 @@ impl Live {
         serde_json::to_writer(&mut *stdin, &frame)?;
         stdin.write_all(b"\n")?;
         stdin.flush()?;
+        append_event(&self.dir, &frame)?;
         Ok(())
     }
 
@@ -1000,7 +1103,10 @@ impl Live {
 
     fn poll(&mut self, wait: Duration) -> Result<Poll> {
         match self.frames.recv_timeout(wait) {
-            Ok(Ok(value)) => Ok(Poll::Frame(value)),
+            Ok(Ok(value)) => {
+                append_event(&self.dir, &value)?;
+                Ok(Poll::Frame(value))
+            }
             Ok(Err(error)) => Err(error),
             Err(mpsc::RecvTimeoutError::Timeout) => Ok(Poll::Timeout),
             Err(mpsc::RecvTimeoutError::Disconnected) => Ok(Poll::Closed),
@@ -1012,6 +1118,9 @@ impl Live {
             return Ok(());
         }
         self.closed = true;
+        if let Some(pane) = self.pane.take() {
+            let _ = pane.close();
+        }
         drop(self.stdin.take());
         let deadline = Instant::now() + Duration::from_millis(400);
         while Instant::now() < deadline {
@@ -1095,17 +1204,26 @@ fn read_frames(stdout: std::process::ChildStdout, tx: mpsc::Sender<Result<Value>
 }
 
 fn read_conversation(dir: &Path) -> Result<Option<String>> {
-    match fs::read_to_string(dir.join("conversation.id")) {
-        Ok(id) => Ok(Some(id.trim().to_owned()).filter(|id| !id.is_empty())),
+    match fs::read(dir.join("state.json")) {
+        Ok(bytes) => {
+            let value: Value = serde_json::from_slice(&bytes)?;
+            Ok(value["conversation_id"]
+                .as_str()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned))
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
 }
 
-fn write_conversation(dir: &Path, conversation: &str) -> Result<()> {
-    let mut file = crate::storage::private_file(&dir.join("conversation.id"))?;
-    file.set_len(0)?;
-    file.write_all(conversation.as_bytes())?;
+fn append_event(dir: &Path, frame: &Value) -> Result<()> {
+    let path = dir.join("events.jsonl");
+    let _ = crate::storage::private_file(&path)?;
+    let mut file = fs::OpenOptions::new().append(true).open(&path)?;
+    serde_json::to_writer(&mut file, frame)?;
+    file.write_all(b"\n")?;
     file.sync_all()?;
     Ok(())
 }

@@ -86,7 +86,7 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
   2. **一轮。** 启动先输出 `init`（含 `conversation_id`、`cwd`、`tools`、`permission_mode`）；每轮结束输出唯一一条顶层 `result`（含 `status:"SUCCESS"`、`response`、`num_turns`、`usage`），随后进程保持存活等待下一行 stdin。同一进程连续送两轮，依次收到 `num_turns: 1`（`H1_TURN1_OK`）与 `num_turns: 2`（`H1_TURN2_AFTER_H1_TURN1_OK`）。子代理事件在 `step_update` 上带 `subagent_info`，不产生顶层 `result`。
   3. **按次启动。** 仅设 `ANTIGRAVITY_APP_DATA_DIR` 与 `ANTIGRAVITY_GEMINI_DIR` 不重定位 `settings.json`；把子进程 `HOME` 设为托管目录后，`<HOME>/.gemini/antigravity-cli/settings.json`、`antigravity-oauth-token`、`<HOME>/.gemini/config/hooks.json` 与 `brain/<conversation_id>/` 全部落在该目录，不动用户 `~/.gemini`。
   4. **续接。** 关掉第一进程 stdin 后，第二进程带 `--conversation 9a852764-6ccd-4a53-8c10-69aac733c12d` 启动并送第 3 轮，模型答出前两轮 token 并回 `H1_RESUMED_OK`（`num_turns: 3`，`cache_read_tokens: 10175`，同一份 `transcript.jsonl` 续写 `step_index: 4, 6`）。
-  5. **pane。** `--print=` 无交互 TUI，也没有类似 `codex resume --remote` 的本地附加客户端（`--remote-control` 是连向 `antigravity.google.com` 的云端网页通道）。把该进程放进 Herdr 0.9.3 的 pane 时，`agent.list` / `agent.get` 认出 `"agent":"agy"`，`pane.read` 看到的是 `stream-json` 的 NDJSON 事件流；pane 里看到什么、接不接受交所有者定。
+  5. **pane。** `--print=` 无交互 TUI，也没有类似 `codex resume --remote` 的本地附加客户端（`--remote-control` 是连向 `antigravity.google.com` 的云端网页通道）。按 `09-p25-kickoff.md` §四 H0/H1 裁定，控制与结果走 `stream-json` 管道（只读 Proposal schema 为 `agency.turn.v1`），会话目录 `<state>/antigravity/<session_id>/` 落 `state.json`、`events.jsonl` 与可读 `view.log`，终端复用器里开只读观测窗格 `tail -n +1 -f view.log` 供人实时观看。
 
 ### Kimi Code
 

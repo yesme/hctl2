@@ -2,6 +2,7 @@
 use agency::{
     Agency,
     launch::InstalledHerdr,
+    observation::{ObservationConfig, TURN_OUTPUT_SCHEMA},
     runtime::{Running, Runtime, RuntimeEvent},
 };
 use agency_proto::{
@@ -84,7 +85,7 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
     let first_events = collect(&mut first, Duration::from_secs(20));
     let (schema, bytes) =
         proposal(&first_events).unwrap_or_else(|| panic!("{}", show(&first_events)));
-    assert_eq!(schema, "agy.turn.v1");
+    assert_eq!(schema, TURN_OUTPUT_SCHEMA);
     assert!(
         String::from_utf8_lossy(bytes).starts_with("AGY_ANSWER:"),
         "{}",
@@ -100,7 +101,20 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
     let first_open = opened(&first_events);
     assert_eq!(first_open["resumed"], false);
     assert_eq!(first_open["resume_failed"], false);
-    assert!(first_open["pane"].is_null());
+    let pane_id = first_open["pane"]
+        .as_str()
+        .expect("observation pane id")
+        .to_owned();
+    let session_dir = PathBuf::from(first_open["session_dir"].as_str().expect("session_dir"));
+    assert_eq!(
+        session_dir
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str()),
+        Some("antigravity"),
+        "{}",
+        session_dir.display()
+    );
     let conv_1 = first_open["conversation"].as_str().unwrap().to_owned();
     let argv_1 = agy_home_json(&exec, &cred, "argv.json");
     let pid_1 = argv_1["pid"].as_u64().unwrap();
@@ -149,8 +163,9 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
     )
     .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
     let second_events = collect(&mut second, Duration::from_secs(20));
-    let (_, second_bytes) =
+    let (second_schema, second_bytes) =
         proposal(&second_events).unwrap_or_else(|| panic!("{}", show(&second_events)));
+    assert_eq!(second_schema, TURN_OUTPUT_SCHEMA);
     assert!(
         String::from_utf8_lossy(second_bytes).ends_with(":2"),
         "{}",
@@ -160,6 +175,56 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
     assert_eq!(argv_2["pid"].as_u64().unwrap(), pid_1);
     assert_eq!(argv_2["spawn_seq"], 1);
     assert_eq!(argv_2["conversation_id"], conv_1);
+
+    let state_json: Value =
+        serde_json::from_slice(&fs::read(session_dir.join("state.json")).unwrap()).unwrap();
+    assert_eq!(state_json["conversation_id"], conv_1);
+    assert_eq!(state_json["pane_id"], pane_id);
+    assert_eq!(state_json["turn"], 2);
+    assert_eq!(state_json["schema"], TURN_OUTPUT_SCHEMA);
+
+    let events_jsonl = fs::read_to_string(session_dir.join("events.jsonl")).unwrap();
+    let event_kinds: Vec<String> = events_jsonl
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Value>(line).unwrap()["event"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert!(event_kinds.contains(&"init".to_owned()), "{events_jsonl}");
+    assert!(event_kinds.contains(&"user".to_owned()), "{events_jsonl}");
+    assert!(
+        event_kinds.contains(&"step_update".to_owned()),
+        "{events_jsonl}"
+    );
+    assert!(event_kinds.contains(&"result".to_owned()), "{events_jsonl}");
+
+    let view_log = fs::read_to_string(session_dir.join("view.log")).unwrap();
+    assert!(view_log.contains("=== turn 1 start ==="), "{view_log}");
+    assert!(view_log.contains("[tool] view_file"), "{view_log}");
+    assert!(view_log.contains("AGY_ANSWER:"), "{view_log}");
+    assert!(
+        view_log.contains("=== turn 2 end (completed) ==="),
+        "{view_log}"
+    );
+
+    let mux = runtime.multiplexer(&exec, &cred).expect("multiplexer");
+    let pane_wait = Instant::now() + Duration::from_secs(5);
+    let visible = loop {
+        let text = mux.read_pane(&pane_id).expect("read observation pane");
+        if text.contains("=== turn 2 end (completed) ===") {
+            break text;
+        }
+        assert!(
+            Instant::now() < pane_wait,
+            "observation pane did not render view.log: {text}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    };
+    assert!(visible.contains("[tool] view_file"), "{visible}");
+    assert!(visible.contains("AGY_ANSWER:"), "{visible}");
 
     let transcript_path = PathBuf::from(first_open["file"].as_str().unwrap());
     let transcript = fs::read_to_string(&transcript_path).unwrap();
@@ -181,6 +246,32 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
         "{transcript}"
     );
 
+    runtime.shutdown().expect("shutdown");
+    cleanup(&cred, &root);
+}
+
+#[test]
+fn agy_fixture_succeeds_with_observation_pane_disabled_without_starting_multiplexer() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let (runtime, cred, root, exec) = open_runtime_with_observation(
+        "agy-no-pane",
+        Duration::from_secs(300),
+        ObservationConfig::disabled(),
+    );
+    let mut running = dispatch(&runtime, &exec, &cred, "turn-without-pane");
+    let events = collect(&mut running, Duration::from_secs(20));
+    let (schema, bytes) = proposal(&events).unwrap_or_else(|| panic!("{}", show(&events)));
+    assert_eq!(schema, TURN_OUTPUT_SCHEMA);
+    assert!(String::from_utf8_lossy(bytes).starts_with("AGY_ANSWER:"));
+    let open = opened(&events);
+    assert!(open["pane"].is_null(), "{open}");
+    assert_eq!(runtime.servers_started(), 0);
+    let session_dir = PathBuf::from(open["session_dir"].as_str().expect("session_dir"));
+    let state_json: Value =
+        serde_json::from_slice(&fs::read(session_dir.join("state.json")).unwrap()).unwrap();
+    assert!(state_json["pane_id"].is_null(), "{state_json}");
+    assert!(session_dir.join("events.jsonl").is_file());
+    assert!(session_dir.join("view.log").is_file());
     runtime.shutdown().expect("shutdown");
     cleanup(&cred, &root);
 }
@@ -471,7 +562,7 @@ fn declared_no_network_is_refused_before_agy_starts() {
 }
 
 #[test]
-#[ignore = "UNVERIFIED: installed agy and managed profile login required; HCTL2_HARNESS_LIVE=1"]
+#[ignore = "UNVERIFIED: installed agy and managed profile login required; HCTL2_HARNESS_LIVE=1 and HCTL2_AGY_OAUTH_TOKEN=<path>"]
 fn agy_real_read_only_research_returns_a_proposal() {
     let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
     assert_eq!(
@@ -485,10 +576,29 @@ fn agy_real_read_only_research_returns_a_proposal() {
         .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
     let events = collect(&mut running, Duration::from_secs(120));
     let (schema, bytes) = proposal(&events).unwrap_or_else(|| panic!("{}", show(&events)));
-    assert_eq!(schema, "agy.turn.v1", "{}", show(&events));
+    assert_eq!(schema, TURN_OUTPUT_SCHEMA, "{}", show(&events));
     let text = String::from_utf8_lossy(bytes);
     assert!(text.contains("HCTL2_AGY_REAL_OK"), "{text}");
     let opened = opened(&events);
+    let pane_id = opened["pane"].as_str().expect("observation pane id");
+    let session_dir = PathBuf::from(opened["session_dir"].as_str().expect("session_dir"));
+    assert!(session_dir.join("state.json").is_file());
+    assert!(session_dir.join("events.jsonl").is_file());
+    let view_log = fs::read_to_string(session_dir.join("view.log")).expect("view.log");
+    assert!(view_log.contains("HCTL2_AGY_REAL_OK"), "{view_log}");
+    let mux = runtime.multiplexer(&exec, &cred).expect("multiplexer");
+    let pane_wait = Instant::now() + Duration::from_secs(5);
+    loop {
+        let visible = mux.read_pane(pane_id).expect("read observation pane");
+        if visible.contains("HCTL2_AGY_REAL_OK") {
+            break;
+        }
+        assert!(
+            Instant::now() < pane_wait,
+            "observation pane did not render HCTL2_AGY_REAL_OK: {visible}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
     let file = PathBuf::from(opened["file"].as_str().expect("transcript file"));
     let body = fs::read_to_string(&file).expect("transcript body");
     assert!(body.contains(task), "{body}");
@@ -498,6 +608,14 @@ fn agy_real_read_only_research_returns_a_proposal() {
 }
 
 fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, PathBuf) {
+    open_runtime_with_observation(name, idle, ObservationConfig::enabled())
+}
+
+fn open_runtime_with_observation(
+    name: &str,
+    idle: Duration,
+    observation: ObservationConfig,
+) -> (RuntimeGuard, PathBuf, PathBuf, PathBuf) {
     let cred = std::env::temp_dir().join(format!("hctl2-agy-cred-{}-{}", name, std::process::id()));
     let root = std::env::temp_dir().join(format!("hctl2-agy-root-{}-{}", name, std::process::id()));
     let _ = fs::remove_dir_all(&cred);
@@ -525,7 +643,8 @@ fn open_runtime(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, 
         .canonicalize()
         .expect("agy fixture");
     let runtime = InstalledHerdr::open_with_agy(binary(), &claude, &fixture, idle)
-        .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message));
+        .unwrap_or_else(|error| panic!("{}: {}", error.code, error.message))
+        .with_observation(observation);
     assert!(
         runtime.agy_skip().is_none(),
         "{}",
@@ -554,12 +673,10 @@ fn open_runtime_real(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, Path
     let state = agency::herdr::state_dir(&exec, &cred).unwrap();
     let agy_dir = state.join("agy-home/.gemini/antigravity-cli");
     fs::create_dir_all(&agy_dir).unwrap();
-    let token_src = std::env::var_os("HCTL2_AGY_OAUTH_TOKEN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("HOME").expect("HOME"))
-                .join(".gemini/antigravity-cli/antigravity-oauth-token")
-        });
+    let token_src = PathBuf::from(
+        std::env::var_os("HCTL2_AGY_OAUTH_TOKEN")
+            .expect("UNVERIFIED: set HCTL2_AGY_OAUTH_TOKEN to a test oauth token file"),
+    );
     fs::copy(&token_src, agy_dir.join("antigravity-oauth-token")).expect("seed agy oauth token");
     fs::set_permissions(
         agy_dir.join("antigravity-oauth-token"),

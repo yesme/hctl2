@@ -180,7 +180,13 @@ fn main() {
                     "conversation_id": conversation_id,
                     "step_index": turn_seq,
                     "state": "DONE",
-                    "step_type": "agent_response"
+                    "step_type": "agent_response",
+                    "tool_calls": [
+                        {
+                            "name": "view_file",
+                            "arguments": {"path": "README.md"}
+                        }
+                    ]
                 }
             }),
         );
