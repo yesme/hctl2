@@ -595,7 +595,10 @@ fn run_job(
                         };
                         output
                     } else {
-                        ("codex.turn.v1".into(), text.into_bytes())
+                        (
+                            crate::observation::TURN_OUTPUT_SCHEMA.into(),
+                            text.into_bytes(),
+                        )
                     };
                     job.token.finished.store(true, Ordering::SeqCst);
                     let _ = job.tx.send(RuntimeEvent::Proposal {
