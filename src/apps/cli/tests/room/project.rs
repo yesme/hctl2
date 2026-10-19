@@ -32,11 +32,31 @@ fn ready_timeline(f: &Fixture, project: &str, room: &str) -> Value {
     panic!("chat server did not become ready");
 }
 
-struct AgencyChild(std::process::Child);
+struct AgencyChild {
+    child: std::process::Child,
+    root: PathBuf,
+}
 impl Drop for AgencyChild {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        // Graceful first: `agency stop` lets the Agency stop the herdr/app-server groups and
+        // panes it started. Killing alone skips every Drop on the Agency side, so a passing
+        // run would still leak one group per pass. Only stop our own instance: tests swap
+        // Agencies mid-test, and the old fixture's Drop runs after the new Agency started.
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = Command::new(std::env::var_os("CARGO_BIN_EXE_agency").unwrap())
+                .arg("--root")
+                .arg(&self.root)
+                .arg("stop")
+                .output();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while self.child.try_wait().ok().flatten().is_none()
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 /// A control plane, a paired real Agency and one selected roster, all reached
@@ -308,8 +328,8 @@ fn configure_git_writer_spawn(
     claim_no_changes: bool,
     installed_agency: Option<&Path>,
 ) {
-    assert!(setup.agency.0.kill().is_ok());
-    setup.agency.0.wait().unwrap();
+    assert!(setup.agency.child.kill().is_ok());
+    setup.agency.child.wait().unwrap();
     let exported = git_output(&f.root.join("write-site"), &["fast-export", "main"]);
     let output = json!({
         "change_set_id": pending["change_set_id"],
@@ -455,10 +475,8 @@ fn spawn_agency_with(
         serve.env_remove("HCTL2_TOOL_BIN");
         serve.env_remove("HCTL2_INSTALL_ROOT");
     }
-    serve
-        .arg("--root")
-        .arg(f.root.join("independent-agency"))
-        .arg("serve");
+    let agency_root = f.root.join("independent-agency");
+    serve.arg("--root").arg(&agency_root).arg("serve");
     let ready_within = match executor {
         Executor::Script => {
             serve.arg("--script-config").arg(f.root.join("script.json"));
@@ -472,13 +490,14 @@ fn spawn_agency_with(
             Duration::from_secs(90)
         }
     };
-    let mut agency = AgencyChild(
-        serve
+    let mut agency = AgencyChild {
+        child: serve
             .stdout(Stdio::null())
             .stderr(File::create(f.root.join(log)).unwrap())
             .spawn()
             .unwrap(),
-    );
+        root: agency_root.clone(),
+    };
     let deadline = std::time::Instant::now() + ready_within;
     loop {
         if Command::new(binary)
@@ -493,7 +512,7 @@ fn spawn_agency_with(
             return agency;
         }
         assert!(
-            agency.0.try_wait().unwrap().is_none(),
+            agency.child.try_wait().unwrap().is_none(),
             "Agency exited before it answered status: {}",
             std::fs::read_to_string(f.root.join(log)).unwrap_or_default()
         );
@@ -521,8 +540,8 @@ fn seam_marker(f: &Fixture, name: &str, present: bool) {
 /// 第 9 包验收第 4 条：control、Agency 与随包服务各杀一次再起，顺序与整包安装时的启动一致。
 fn kill_and_restart_everything(f: &Fixture, setup: &mut Paired) {
     assert!(f.run(&["stop"]).0, "control must stop cleanly");
-    setup.agency.0.kill().unwrap();
-    setup.agency.0.wait().unwrap();
+    setup.agency.child.kill().unwrap();
+    setup.agency.child.wait().unwrap();
     let services = || {
         let mut command = Command::new(f.payload.join("bin/hctl2-services"));
         command.env("HCTL2_STATE_ROOT", f.root.join("services"));
@@ -2392,8 +2411,8 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
             .any(|e| e["operation"] == "invocation.project")
     );
     assert!(f.run(&["stop"]).0);
-    agency.0.kill().unwrap();
-    agency.0.wait().unwrap();
+    agency.child.kill().unwrap();
+    agency.child.wait().unwrap();
     assert!(f.run(&["start"]).0);
     let mut delivered = false;
     for _ in 0..100 {
@@ -2625,8 +2644,8 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     );
 
     // Stored replay reads the control plane only: the Agency is already gone.
-    setup.agency.0.kill().unwrap();
-    setup.agency.0.wait().unwrap();
+    setup.agency.child.kill().unwrap();
+    setup.agency.child.wait().unwrap();
     let observations = stored();
     assert_eq!(observations, observed, "replay needs no Agency");
     assert_eq!(observations[0]["dispatch"]["owner"]["id"], id);
@@ -3505,13 +3524,14 @@ fn paired_codex(name: &str, codex_bin: &std::path::Path, private_home: bool) -> 
     if private_home {
         command.env("CODEX_HOME", &codex_home);
     }
-    let agency = AgencyChild(
-        command
+    let agency = AgencyChild {
+        child: command
             .stdout(Stdio::null())
             .stderr(std::fs::File::create(&log).unwrap())
             .spawn()
             .unwrap(),
-    );
+        root: agency_root.clone(),
+    };
     let mut ready = false;
     for _ in 0..400 {
         if Command::new(&binary)
