@@ -405,6 +405,10 @@ pub struct InstalledHerdr {
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
+    omp_pool: Option<crate::omp::Pool>,
+    omp_revision: Option<String>,
+    omp_digest: Option<String>,
+    omp_skip: Option<String>,
     herdr_digest: String,
     read_paths: Vec<PathBuf>,
 }
@@ -427,7 +431,7 @@ impl InstalledHerdr {
     }
 
     pub fn open_with_idle(binary: PathBuf, claude: &Path, idle: Duration) -> Result<Self> {
-        Self::open_inner(binary, claude, idle, None)
+        Self::open_inner(binary, claude, idle, None, None)
     }
 
     /// Catalog and run this Codex binary. Does not consult `HCTL2_CODEX` or `PATH`.
@@ -437,7 +441,17 @@ impl InstalledHerdr {
         codex: &Path,
         idle: Duration,
     ) -> Result<Self> {
-        Self::open_inner(binary, claude, idle, Some(codex.to_path_buf()))
+        Self::open_inner(binary, claude, idle, Some(codex.to_path_buf()), None)
+    }
+
+    /// Catalog and run this omp binary. Does not consult `HCTL2_OMP` or `PATH`.
+    pub fn open_with_omp(
+        binary: PathBuf,
+        claude: &Path,
+        omp: &Path,
+        idle: Duration,
+    ) -> Result<Self> {
+        Self::open_inner(binary, claude, idle, None, Some(omp.to_path_buf()))
     }
 
     fn open_inner(
@@ -445,6 +459,7 @@ impl InstalledHerdr {
         claude: &Path,
         idle: Duration,
         codex_override: Option<PathBuf>,
+        omp_override: Option<PathBuf>,
     ) -> Result<Self> {
         if idle.is_zero() {
             return Err(PortError::invalid("standby idle duration must be positive"));
@@ -463,6 +478,16 @@ impl InstalledHerdr {
         };
         if let Some((path, _, _)) = &codex
             && let Some(parent) = path.parent()
+        {
+            read_paths.push(parent.to_path_buf());
+        }
+        let (omp, omp_skip) = match omp_override {
+            Some(path) => inspect_omp(&binary, path),
+            None => probe_omp(&binary),
+        };
+        if let Some((path, _, _)) = &omp
+            && let Some(parent) = path.parent()
+            && !read_paths.iter().any(|known| known == parent)
         {
             read_paths.push(parent.to_path_buf());
         }
@@ -494,6 +519,12 @@ impl InstalledHerdr {
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
+            omp_pool: omp
+                .as_ref()
+                .map(|(path, _, _)| crate::omp::Pool::new(path.clone(), idle)),
+            omp_revision: omp.as_ref().map(|(_, revision, _)| revision.clone()),
+            omp_digest: omp.as_ref().map(|(_, _, digest)| digest.clone()),
+            omp_skip,
             herdr_digest,
             read_paths,
         })
@@ -525,6 +556,10 @@ impl InstalledHerdr {
         self.codex_skip.as_deref()
     }
 
+    pub fn omp_skip(&self) -> Option<&str> {
+        self.omp_skip.as_deref()
+    }
+
     pub fn for_test(
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
@@ -544,6 +579,10 @@ impl InstalledHerdr {
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
+            omp_pool: None,
+            omp_revision: None,
+            omp_digest: None,
+            omp_skip: None,
             herdr_digest,
             read_paths: vec![],
         }
@@ -731,6 +770,59 @@ fn inspect_codex(
     }
 }
 
+fn probe_omp(herdr: &Path) -> (Option<(PathBuf, String, String)>, Option<String>) {
+    let Some(omp) = std::env::var_os("HCTL2_OMP")
+        .map(PathBuf::from)
+        .or_else(omp_on_path)
+    else {
+        return (
+            None,
+            Some("omp is not on PATH and HCTL2_OMP is unset".into()),
+        );
+    };
+    inspect_omp(herdr, omp)
+}
+
+fn inspect_omp(herdr: &Path, omp: PathBuf) -> (Option<(PathBuf, String, String)>, Option<String>) {
+    let Ok(omp) = omp.canonicalize() else {
+        return (None, Some("omp path cannot be canonicalized".into()));
+    };
+    let Some(parent) = omp.parent().map(Path::to_path_buf) else {
+        return (None, Some("omp has no parent directory".into()));
+    };
+    let version = match smoke_binary(herdr, &omp, &[parent]) {
+        Ok(version) => version,
+        Err(error) => return (None, Some(format!("omp smoke failed: {}", error.message))),
+    };
+    if !crate::harness::version_at_least(&version, crate::harness::OMP_MINIMUM) {
+        return (
+            None,
+            Some(format!(
+                "omp {version} is below {}",
+                crate::harness::OMP_MINIMUM
+            )),
+        );
+    }
+    match crate::catalog::file_digest(&omp) {
+        Ok(digest) => (Some((omp, version, digest)), None),
+        Err(error) => (None, Some(format!("omp digest failed: {}", error.message))),
+    }
+}
+
+fn omp_on_path() -> Option<PathBuf> {
+    let output = Command::new("/usr/bin/which").arg("omp").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let path = text.lines().next()?.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
+}
+
 fn codex_on_path() -> Option<PathBuf> {
     let output = Command::new("/usr/bin/which").arg("codex").output().ok()?;
     if !output.status.success() {
@@ -834,8 +926,13 @@ impl Runtime for InstalledHerdr {
             .as_ref()
             .map(|pool| pool.shutdown())
             .transpose();
+        let omp = self
+            .omp_pool
+            .as_ref()
+            .map(|pool| pool.shutdown())
+            .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
-        let pooled = codex.and(pooled);
+        let pooled = codex.and(omp).and(pooled);
         for server in
             std::mem::take(&mut *self.write_slots.lock().expect("writing herdr")).into_values()
         {
@@ -896,6 +993,26 @@ impl Runtime for InstalledHerdr {
                 },
             });
         }
+        if let (Some(revision), Some(digest)) = (&self.omp_revision, &self.omp_digest) {
+            professions.push(Profession {
+                reference: FrozenRef {
+                    id: "omp".into(),
+                    revision: revision.clone(),
+                    digest: digest.clone(),
+                },
+                harness: harness.clone(),
+                model: "none".into(),
+                persona: "omp".into(),
+                terms: "Bundle dispatch via stdio JSONL RPC prompt in one selection session; managed HOME isolates auth, sessions and settings; startup approval declared as --approval-mode yolo (same shape as approvalPolicy never, hardening allow-list is the fence); H0 read-only observation pane over view.log (panes can be disabled); read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
+                default_role: "worker".into(),
+                skills: vec![],
+                capabilities: Capabilities {
+                    input: false,
+                    stop: true,
+                    ..Capabilities::default()
+                },
+            });
+        }
         Ok(Catalog {
             professions,
             harnesses: vec![harness],
@@ -914,6 +1031,36 @@ impl Runtime for InstalledHerdr {
             &spec.document.required_capabilities.isolation_effects,
         )?;
         fs::create_dir_all(exec_root)?;
+        if spec.document.profession.reference.id == "omp" {
+            let Some(pool) = &self.omp_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.omp_skip
+                        .clone()
+                        .unwrap_or_else(|| "omp is not cataloged".into()),
+                    "install_omp",
+                ));
+            };
+            let state = crate::herdr::state_dir(exec_root, credential_root)?;
+            let observation = crate::observation::ObservationConfig::from_env();
+            let multiplexer = if observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
+            return pool.submit(
+                crate::omp::PaneEnv {
+                    state,
+                    config: observation,
+                    multiplexer,
+                },
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+            );
+        }
         let server = self.ensure(exec_root, credential_root)?;
         if spec.document.profession.reference.id == "codex-cli" {
             let Some(pool) = &self.codex_pool else {
@@ -999,6 +1146,37 @@ impl Runtime for InstalledHerdr {
                 ));
             };
             return pool.submit(server, spec, bundle, exec_root, tenant, credential_root);
+        }
+        if spec.document.profession.reference.id == "omp" {
+            fs::create_dir_all(exec_root)?;
+            let Some(pool) = &self.omp_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.omp_skip
+                        .clone()
+                        .unwrap_or_else(|| "omp is not cataloged".into()),
+                    "install_omp",
+                ));
+            };
+            let state = crate::herdr::state_dir(exec_root, credential_root)?;
+            let observation = crate::observation::ObservationConfig::from_env();
+            let multiplexer = if observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
+            return pool.submit(
+                crate::omp::PaneEnv {
+                    state,
+                    config: observation,
+                    multiplexer,
+                },
+                spec,
+                bundle,
+                exec_root,
+                tenant,
+                credential_root,
+            );
         }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;

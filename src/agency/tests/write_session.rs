@@ -31,6 +31,12 @@ struct Rig {
 }
 impl Rig {
     async fn new(live: bool) -> Self {
+        Self::build(live, false).await
+    }
+    async fn new_omp() -> Self {
+        Self::build(true, true).await
+    }
+    async fn build(live: bool, omp: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("credentials");
         let repo = temp.path().join("source");
@@ -92,11 +98,17 @@ impl Rig {
             .canonicalize()
             .unwrap();
         fs::set_permissions(&herdr, fs::Permissions::from_mode(0o755)).unwrap();
-        let runtime = Arc::new(
+        let runtime = Arc::new(if omp {
+            InstalledHerdr::open_with_omp(herdr, &claude, &on_path("omp"), Duration::from_secs(300))
+                .unwrap()
+        } else {
             InstalledHerdr::open_with_codex(herdr, &claude, &codex, Duration::from_secs(300))
-                .unwrap(),
-        );
+                .unwrap()
+        });
         let agency = Agency::open(&root, runtime.clone()).unwrap();
+        if omp {
+            seed_omp_profile(&root);
+        }
         let endpoint = agency_proto::client::admin_endpoint(&root).unwrap();
         let admin = Client::new(endpoint.clone(), Agency::bootstrap_key(&root).unwrap());
         let pairing = Client::new(endpoint, fs::read_to_string(root.join("pair.key")).unwrap());
@@ -1075,7 +1087,11 @@ async fn live_writes(harness: &str) {
         Ok("1"),
         "UNVERIFIED: local login required"
     );
-    let rig = Rig::new(true).await;
+    let rig = if harness == "omp" {
+        Rig::new_omp().await
+    } else {
+        Rig::new(true).await
+    };
     let text = "Fix the bug in calculator.py: double(value) must return twice its argument. Edit the non-documentation Python code, run /usr/bin/python3 -m unittest -v test_calculator, and report the command and its output. Leave all changes uncommitted. Do not push, access credentials, or edit harness global settings.";
     let (input, _) = rig
         .request(harness, &format!("live-{harness}"), text, |_, _| {})
@@ -1135,6 +1151,36 @@ async fn live_writes(harness: &str) {
             "Claude native returned: {}",
             fs::read_to_string(state.join("returned.json")).unwrap()
         );
+    } else if harness == "omp" {
+        let file = trace
+            .events
+            .iter()
+            .find_map(|event| event.payload["file"].as_str())
+            .expect("omp session file");
+        let records: Vec<Value> = fs::read_to_string(file)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(records.iter().any(|record| {
+            record["message"]["role"] == "user"
+                && record["message"]["content"]
+                    .as_array()
+                    .is_some_and(|blocks| {
+                        blocks.iter().any(|block| {
+                            block["text"].as_str().is_some_and(|body| {
+                                body.starts_with(text)
+                                    && body.contains("Agency ChangeSet: cs-trial")
+                                    && body.contains("Write lease: lease-trial generation 1")
+                            })
+                        })
+                    })
+        }));
+        assert!(records.iter().any(|record| {
+            let body = serde_json::to_string(record).unwrap();
+            body.contains("test_double") && body.contains("OK")
+        }));
+        eprintln!("omp own record: {file}");
     } else {
         let thread = trace
             .events
@@ -1179,6 +1225,23 @@ async fn live_writes(harness: &str) {
     rig.close().await;
 }
 
+fn seed_omp_profile(cred: &Path) {
+    let Ok(db) = std::env::var("HCTL2_OMP_AGENT_DB") else {
+        return;
+    };
+    let parent = confine::execution_parent(cred).unwrap();
+    fs::create_dir_all(&parent).unwrap();
+    let seed = parent.join("seed");
+    fs::create_dir_all(&seed).unwrap();
+    let state = herdr::state_dir(&seed, cred).unwrap();
+    let agent = state.join("omp-home/.omp/agent");
+    fs::create_dir_all(&agent).unwrap();
+    fs::copy(db, agent.join("agent.db")).unwrap();
+    if let Ok(config) = std::env::var("HCTL2_OMP_CONFIG") {
+        fs::copy(config, agent.join("config.yml")).unwrap();
+    }
+}
+
 fn native_text_matches(content: &Value, text: &str) -> bool {
     content.as_str() == Some(text)
         || content.as_array().is_some_and(|blocks| {
@@ -1216,6 +1279,12 @@ fn native_records(root: &Path, session: &str) -> (PathBuf, Vec<Value>) {
     (path, records)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "UNVERIFIED: installed omp, managed profile login and HCTL2_HARNESS_LIVE=1 required; seed with HCTL2_OMP_AGENT_DB and HCTL2_OMP_CONFIG"]
+async fn live_omp_changes_non_documentation_code_and_runs_tests() {
+    let _guard = SERIAL.lock().await;
+    live_writes("omp").await;
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "UNVERIFIED: installed Claude Code and native login required; HCTL2_HARNESS_LIVE=1"]
 async fn live_claude_changes_non_documentation_code_and_runs_tests() {

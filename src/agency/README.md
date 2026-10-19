@@ -43,19 +43,21 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 
 ## 第 3 包任务说明
 
-3a（#323）、3b（#328）、3c（#335）、3d 已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话。3e 把 Codex 接成并列工种：正文走一次性 app-server 的 `turn/start`，Herdr pane 跑 `codex resume --remote`。脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d、3e，以及 `docs/research/harness-dispatch-channel-20261006.md` 的决定建议。
+3a（#323）、3b（#328）、3c（#335）、3d 已合。3d 把 Claude Code 换成 Herdr 中的常驻交互会话。3e 把 Codex 接成并列工种：正文走一次性 app-server 的 `turn/start`，Herdr pane 跑 `codex resume --remote`。H3 把 omp 接成第三家：正文走 `omp --mode rpc --no-ui` 的 stdio JSONL，托管 HOME 隔离登录。脚本协议与确定性夹具仍只作测试。依据：[演示线开工书](../../.memo/design/p2-control-20260906/07-demo-kickoff.md) §四 第 3 包 3d、3e，以及 `docs/research/harness-dispatch-channel-20261006.md` 的决定建议。
 
 | 文件 | 当前职责 |
 | --- | --- |
 | `src/herdr.rs` | 官方 Herdr 0.9.3 / 协议 22 的私有客户端与共用服务；物理标识不进入控制面 |
 | `src/launch.rs` | 核定制品、Claude 版本与冒烟；私有安装官方 SessionStart 集成；上架两家工种；为写入启动合成凭据隔离规则 |
 | `src/codex.rs` | 每个选入记录一个常驻 app-server；两种模式都用独立鉴权的本机 WebSocket；`turn/start` 交正文，pane 展示同一原生线程 |
+| `src/omp.rs` | 每个选入记录一个常驻 omp RPC 进程；stdio JSONL 交正文、取回答、打断与按会话目录续接；托管 HOME 隔离登录 |
 | `src/standby.rs` | 按租户、Binding、Project、选入记录排队；用原生 agent 接口派工、打断、闲置关闭和续接 |
 | `src/write.rs` | 按 Bundle / Spec 核写边界，调用 P1 materialize 与公开 repo seal，保全副本、失败重试并交 ChangeSet 输出 |
 | `src/harness/turn.js` | Claude 原生会话插件；将本轮 ID、最终回答与结束原因写到 Agency 私有文件 |
 | `src/main.rs` | 随包 Herdr 的摘要核验、独立 Agency 启停与诊断 |
 | `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及子进程读取凭据根；Linux 二进制目录只读、可执行 |
 | `tests/herdr.rs`、`tests/standby_fixture.rs` | 原生 Herdr 回归与结构化测试夹具；真实 Claude 会话另设开关 |
+| `tests/omp_fixture.rs`、`tests/omp_fixture_test.rs` | omp RPC 子集的确定性夹具与用例；真实 omp 会话另设开关 |
 
 `serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按包内 `PAYLOAD.sha256` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种记实际版本与二进制摘要。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
 
@@ -82,6 +84,18 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次。Codex 0.161 的 Unix 监听会去准备 `/tmp/codex-daemon-<uid>`，Landlock 不允许 `/tmp`，所以只读和写入都改听带 capability token 的 `ws://127.0.0.1`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `approvalPolicy: never`。只读的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`：Codex 自己的 bubblewrap 在这层 Landlock 里建不起用户名字空间，命令由宿主边界执行，不把网络记成已切断。写入 turn 仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
 
 人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
+
+Codex 之后是 omp 工种 `omp`，模型字段仍是 `none`。最低版本 18.6.1。`HCTL2_OMP` 可指定路径，否则从 PATH 找；冒烟不过就不上架，原因写到 `serve.err`。每个选入记录一个常驻 `omp --mode rpc --no-ui` 进程，传输是 stdin/stdout 上的按行 JSON（不是 JSON-RPC 2.0）：`prompt` 交正文，`prompt_result` 报本轮结局，`get_last_assistant_text` 取回答，`abort` 打断，`open_session` 按会话目录续接。正文在 omp 自己的会话 jsonl 里逐字核对，只读本轮投递之后追加的那一段（旧轮同文不作证，历史再长也不影响本轮）；两轮之间进程退出时，下次派工先收旧句柄、按会话目录续接再交。注册的斜杠命令若在本地完成（`agentInvoked:false`）判为正文不匹配。一轮只读回答的 Proposal schema 是 H0 统一的 `agency.turn.v1`，不另起 `omp.turn.v1`；写入结果仍是封存 ChangeSet 的 schema。每轮自带 `--approval-mode yolo`：形状同 3e 的 `approvalPolicy: never`，是 Agency 所有者在启动时声明的策略，不是 Agency 替人点确认，围栏仍是执行加固的放行名单（所有者 2026-10-20 已定，工艺种的 `terms` 里写明）。
+
+托管登录用假 `HOME`：进程的 `HOME` 是 Agency 私有的 `<state>/omp-home`，`~/.omp`（auth、sessions、run 注册表、natives）全落在这里。没有用绝对 `PI_CONFIG_DIR`——实测 omp 写 `run/daemons/*/clients` 时会把它拼到 `HOME` 下。人在这个 HOME 里登录一次（`HOME=<state>/omp-home omp auth-broker login ...`），或按钥匙串方案 A 注入；RPC 的 `login` 请求只报 `HARNESS_LOGIN_REQUIRED`，不替人登录。模型由托管 profile 的 `modelRoles.default` 决定。
+
+隔离：Linux Landlock 允许名单只有托管 HOME、状态目录、执行目录（写入时是 ChangeSet 工作树）与 `TMPDIR`；程序目录只读；人的 `~/.omp`、钥匙串、`gh` 不在名单里。macOS 用启动 profile 拒读凭据区，写入另拒源 Git common dir。`isolation_effects` 的声明与 3f 相同，一律拒绝启动。
+
+pane 与落盘（H0，`07` §二 第 45 条）：`--mode rpc --no-ui` 没有原生交互界面，控制全在 stdio；每次会话经 H0 的观测窗格原语开一个 `tail -f <session_dir>/view.log` 的只读窗格（`pane_id` 记进 `<state>/omp/<session_id>/state.json`），窗格里是提示词摘要、回答与一轮起止的渲染行，人不能在窗格里打字，窗格内容不作证据。窗格开关是 Agency 配置（`HCTL2_AGENCY_OBSERVATION_PANE`，`0/false/off/no` 关），关掉时四个调用都不启动终端复用器，派工照常；CI 夹具按关窗格跑。会话目录固定为 `<state>/omp/<session_id>/`，含 `state.json`、`events.jsonl`（RPC 原样帧）与 `view.log`；Agency 停止时窗格与进程一起收掉。
+
+正文边界（所有者 2026-10-20 已定）：`!echo X` 在协议层逐字记录、RPC 不自动执行；模型在工具开着时把 `!cmd` 当 shell 请求去跑，是模型对数据的解释，不是输入框被劫持；接受，不加系统提示。`/clear` 在 RPC 里是普通用户消息，会话记录与之前的对话都还在。
+
+确定性用例 `root//agency:omp_fixture_test` 覆盖：一轮回答与托管 HOME、正文不匹配、本地命令、登录请求、打断、续接失败起新会话、凭据/钥匙串/gh 边界、只读不能写源仓库、`no_network` 拒绝启动。真实会话用 Rust 原生 `ignore` 标未验证：只读用例在 `tests/omp_fixture_test.rs`，写用例在 `tests/write_session.rs`，需 `HCTL2_HARNESS_LIVE=1`、`HCTL2_OMP_REAL=1`、`HCTL2_OMP_AGENT_DB` 与 `HCTL2_OMP_CONFIG`。
 
 ### 3f · 写入型会话
 

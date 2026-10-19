@@ -326,6 +326,76 @@ pub(crate) fn harness_command(
     Ok(command)
 }
 
+/// omp's RPC process runs with a managed `HOME`: `~/.omp` (auth, sessions,
+/// run registry, native addons) resolves inside it. An absolute
+/// `PI_CONFIG_DIR` is not used because omp joins it under `HOME` when it writes
+/// `run/daemons/*/clients` (observed). Sessions, the temporary directory and
+/// (for a write turn) the ChangeSet worktree are allowed too. The person's
+/// home, keyrings and `gh` are not allowed. No Codex-specific flags are passed.
+pub(crate) fn omp_command(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    state: &Path,
+    profile: &Path,
+    credential_root: &Path,
+    write: bool,
+) -> Result<Command> {
+    let mut command = command(program, arguments, state, credential_root)?;
+    let temp = state.join("tmp");
+    crate::storage::private_dir(&temp)?;
+    crate::storage::private_dir(profile)?;
+    let credential = credential_root.canonicalize()?;
+    for path in [profile, cwd, state, &temp] {
+        if allowed_tree_contains_credential(&intended_path(path)?, &credential) {
+            return Err(PortError::new(
+                "CREDENTIAL_ROOT_COVERED",
+                "omp allowance overlaps credentials",
+                "move_credential_root",
+            ));
+        }
+    }
+    protect_native_credentials(state, credential_root)?;
+    if write && cfg!(target_os = "macos") {
+        let profile_file = state.join("credential.sb");
+        let rules = fs::read_to_string(&profile_file)? + &worktree_git_denial(cwd)?;
+        fs::remove_file(&profile_file)?;
+        fs::write(&profile_file, rules)?;
+        fs::set_permissions(profile_file, fs::Permissions::from_mode(0o400))?;
+    }
+    command
+        .env_clear()
+        .env("HOME", profile)
+        .env(
+            "PATH",
+            std::env::var_os("PATH").unwrap_or_else(|| "/usr/bin:/bin".into()),
+        )
+        .env("LANG", "C.UTF-8")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("TMPDIR", &temp)
+        .env(
+            "HCTL2_CONFINE_ALLOW",
+            format!(
+                "{}\n{}\n{}\n{}",
+                profile.display(),
+                state.display(),
+                cwd.display(),
+                temp.display()
+            ),
+        )
+        .env(
+            "HCTL2_CONFINE_READ",
+            program
+                .canonicalize()?
+                .parent()
+                .ok_or_else(|| PortError::invalid("harness parent missing"))?,
+        )
+        .current_dir(cwd);
+    Ok(command)
+}
+
 pub(crate) fn protect_native_credentials(state: &Path, credential_root: &Path) -> Result<()> {
     if cfg!(target_os = "macos") {
         let profile = state.join("credential.sb");

@@ -107,6 +107,17 @@ Herdr 认不认得，统一对着官方 Herdr 0.9.3 源码 `7b116c05bfda646af39d
 4. `-r` / `--resume`、`-c`。另有 `--from-claude` 导入，不是 omp 自己的续接。
 5. 默认是交互。`rpc --no-ui` 无界面。Herdr 认 `omp`，文档写状态要装集成。
 
+### omp（2026-10-19 H3 复核，本机 18.11.1）
+
+- **官方文档说**（`omp://rpc.md`、`cli-reference.md`、`config-usage.md`、`settings.md`）：RPC 是 stdin/stdout 上的按行 JSON（不是 JSON-RPC 2.0）。启动先写 `ready` 帧；`prompt` 在消息被接纳后确认，`prompt_result` 带本次 id 报本轮结局；回答用 `get_last_assistant_text` 或 `message_end`；打断用 `abort`；`open_session {sessionDir}` 接上该目录里最新的会话；子代理帧要先 `set_subagent_subscription`。`--profile` 只收名字（不接受路径）；`PI_CONFIG_DIR` 换配置根，`PI_CODING_AGENT_DIR` 换 agent 目录（含 `agent.db` 与 `config.yml`）。
+- **实测**（`omp/18.11.1`，Linux x86_64；临时 `PI_CONFIG_DIR` + `PI_CODING_AGENT_DIR`，未写 `~/.omp`）：
+  1. **交法。** `prompt.message` 就是数据。25 行、约 2 KB 的正文在会话 jsonl 里与提交逐字相同；`message_start/update/end`、`turn_start/end`、`agent_start/end` 同流。
+  2. **一轮。** `prompt_result {status:"completed"}` 后 `get_last_assistant_text` 取到本轮回答。子代理：`set_subagent_subscription: events` 后收 `subagent_lifecycle`、`subagent_event`、`subagent_progress`，带 `id`、`parentToolCallId`、`sessionFile`，与主轮事件按类型区分。
+  3. **按次启动。** `PI_CONFIG_DIR` 与 `PI_CODING_AGENT_DIR` 指到临时目录后，20 分钟内 `~/.omp` 无写入。只把 `agent.db` 拷进新的 `PI_CONFIG_DIR/agent` 时 omp 报 `No API key found for deepseek`；同时设 `PI_CODING_AGENT_DIR` 指向同一 agent 目录才读到（实测 `-p` 成功）。托管目录的登录要人在该目录里登一次，或按钥匙串方案 A 注入。
+  4. **续接。** 收掉 stdin 让进程退出后，新进程 `open_session {sessionDir}` 返回 `resumed:true`、同一 `sessionId`/`sessionFile`，前一轮记的词答得出。
+  5. **pane。** `--mode rpc --no-ui` 没有交互界面；Herdr 从 0.9.3 起按进程名认 `omp`。RPC 的 stdio 归 Agency，不能像 Codex 的 `--remote` 再开一个界面接到同一线程。2026-10-20 所有者定：这类没有原生附着能力的 harness 一律用 H0 的只读观测窗格（`tail -f <session_dir>/view.log`，`pane_id` 记进 `state.json`）；H3 已按此接入，回答 schema 统一为 `agency.turn.v1`。
+- **正文边界实测。** `!echo X` 在协议层逐字记录，RPC 不自动执行；但 omp 自己的提示把 `!cmd` 当 shell 请求，工具开着时模型会调 bash 去跑（`--no-tools` 时该调用失败）。`/clear` 在 RPC `prompt` 里是普通用户消息（会话记录仍在、之前的话答得出）；注册的斜杠命令会走本地命令并回 `agentInvoked:false`，适配器把这种轮判为正文不匹配。
+
 ### OpenCode
 
 本机 `opencode 1.18.34`。没有开新会话。服务器页面为 2026-10-03 的官方文档。
