@@ -268,6 +268,8 @@ fn kind_of(packed: &str) -> Result<SourceKind> {
         .ok_or_else(|| PortError::invalid("reference must be kind/id"))?;
     match kind {
         crate::sources::ROOM_LINE_KIND | crate::sources::ROOM_BRIEF_KIND => Ok(SourceKind::Room),
+        crate::sources::TASK_CONTRACT_KIND => Ok(SourceKind::TaskContract),
+        crate::sources::TASK_CARD_KIND => Ok(SourceKind::TaskCard),
         crate::sources::TASK_LINE_KIND => Ok(SourceKind::TaskComments),
         "review_comments" => Ok(SourceKind::ReviewComments),
         other => Err(PortError::invalid(format!("unknown source kind {other}"))),
@@ -278,8 +280,10 @@ fn order_key(kind: &SourceKind, reference: &FrozenRef) -> (u8, String) {
     let rank = match kind {
         SourceKind::Room if reference.id.starts_with("room_binding/") => 0,
         SourceKind::Room => 1,
-        SourceKind::TaskComments => 2,
-        SourceKind::ReviewComments => 3,
+        SourceKind::TaskContract => 2,
+        SourceKind::TaskCard => 3,
+        SourceKind::TaskComments => 4,
+        SourceKind::ReviewComments => 5,
     };
     (rank, reference.id.clone())
 }

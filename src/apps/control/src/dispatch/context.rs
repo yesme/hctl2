@@ -102,7 +102,7 @@ pub(super) fn assemble(
         sources: contents.iter().map(|c| c.reference.clone()).collect(),
         selection_policy: policy.clone(),
         freshness: "server-ordered exact window at human preview".into(),
-        coverage: "explicit request, this Room's confirmed brief and its sources, selected Task / ChangeSet review comments and current window".into(),
+        coverage: "explicit request, this Room's confirmed brief and its sources, selected Task's adopted contract, card and comments, selected ChangeSet review comments and current window".into(),
         known_gaps: vec![
             "window limited to the latest 100 server events; no inferred Task or additional Memo / Artifact"
                 .into(),
@@ -131,7 +131,11 @@ pub(super) fn assemble(
 }
 
 fn kind(r: &agency_proto::FrozenRef) -> store::Result<SourceKind> {
-    if r.id.starts_with("task_comments/") {
+    if r.id.starts_with("task_contract/") {
+        Ok(SourceKind::TaskContract)
+    } else if r.id.starts_with("task_card/") {
+        Ok(SourceKind::TaskCard)
+    } else if r.id.starts_with("task_comments/") {
         Ok(SourceKind::TaskComments)
     } else if r.id.starts_with("room_binding/") || r.id.starts_with("chat_source_reference/") {
         Ok(SourceKind::Room)
@@ -145,7 +149,9 @@ pub(super) fn verify_sources(s: &Store, actor: &TrustedActor, plan: &Plan) -> st
         if r.id.starts_with("review_comments/") {
             review_source::verify(s, r)?;
         }
-        if r.id.starts_with("task_comments/")
+        if r.id.starts_with("task_contract/")
+            || r.id.starts_with("task_card/")
+            || r.id.starts_with("task_comments/")
             || r.id.starts_with("room_binding/")
             || r.id.starts_with("chat_source_reference/")
         {
