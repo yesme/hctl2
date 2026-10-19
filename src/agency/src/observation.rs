@@ -190,7 +190,7 @@ impl ObservationPane {
         label: &str,
         multiplexer: impl FnOnce() -> Result<Multiplexer>,
     ) -> Result<(Self, Option<String>)> {
-        let view_log = ensure_view_log(session_dir)?;
+        let (session_dir, view_log) = ensure_view_log(session_dir)?;
         if !config.enabled {
             return Ok((
                 Self {
@@ -206,7 +206,7 @@ impl ObservationPane {
         let created = client.call(
             "workspace.create",
             json!({
-                "cwd": session_dir,
+                "cwd": &session_dir,
                 "label": label,
                 "focus": false,
             }),
@@ -222,7 +222,7 @@ impl ObservationPane {
                 "focus": false,
                 "root": {
                     "type": "pane",
-                    "cwd": session_dir,
+                    "cwd": &session_dir,
                     "command": ["/usr/bin/tail", "-n", "+1", "-f", &view_log],
                 }
             }),
@@ -395,17 +395,16 @@ pub fn open_pane(
 
 /// Convenience function to append a rendered entry directly to `<session_dir>/view.log`.
 pub fn append_view_line(session_dir: &Path, entry: ViewEntry<'_>) -> Result<()> {
-    let view_log = ensure_view_log(session_dir)?;
+    let (_session_dir, view_log) = ensure_view_log(session_dir)?;
     append_rendered(&view_log, &entry.render())
 }
 
-fn ensure_view_log(session_dir: &Path) -> Result<PathBuf> {
+fn ensure_view_log(session_dir: &Path) -> Result<(PathBuf, PathBuf)> {
     crate::storage::private_dir(session_dir)?;
+    let session_dir = fs::canonicalize(session_dir)?;
     let view_log = session_dir.join("view.log");
-    if !view_log.exists() {
-        fs::write(&view_log, [])?;
-    }
-    Ok(view_log)
+    let _ = crate::storage::private_file(&view_log)?;
+    Ok((session_dir, view_log))
 }
 
 fn append_rendered(view_log: &Path, rendered: &str) -> Result<()> {

@@ -3492,14 +3492,96 @@ fn observation_pane_closed_by_human_keeps_appending_and_reports_exited() {
 }
 
 #[test]
-#[ignore = "UNVERIFIED: requires a logged-in agy session and HCTL2_HARNESS_LIVE=1"]
+fn observation_pane_relative_session_dir_streams_view_log_into_pane() {
+    use agency::observation::{self, ObservationConfig, ViewEntry};
+    use std::path::Component;
+
+    let (cred, exec) = scratch("obs-relative");
+    let runtime = test_runtime(&binary(), "exit 0\n");
+    let cwd = std::env::current_dir()
+        .expect("current_dir")
+        .canonicalize()
+        .expect("canonical cwd");
+    let target = exec.join("antigravity").join("session-rel");
+    let mut session_dir = PathBuf::new();
+    for comp in cwd.components() {
+        if matches!(comp, Component::Normal(_)) {
+            session_dir.push("..");
+        }
+    }
+    session_dir.push(target.strip_prefix("/").expect("absolute scratch path"));
+    assert!(session_dir.is_relative());
+
+    let (pane, pane_id) = observation::open_pane(
+        ObservationConfig::enabled(),
+        &session_dir,
+        "obs-relative",
+        || runtime.multiplexer(&exec, &cred),
+    )
+    .unwrap();
+    assert!(pane_id.is_some());
+    assert!(pane.view_log().is_absolute());
+
+    observation::append_view_line(
+        &session_dir,
+        ViewEntry::Answer {
+            text: "RELATIVE_VIEW_OK",
+        },
+    )
+    .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut visible = String::new();
+    while Instant::now() < deadline {
+        visible = pane.read_visible().unwrap().unwrap_or_default();
+        if visible.contains("RELATIVE_VIEW_OK") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        visible.contains("RELATIVE_VIEW_OK"),
+        "relative view: {visible:?}"
+    );
+
+    pane.close().unwrap();
+    runtime.shutdown().unwrap();
+}
+
+/// H0 + native `agy` CLI display probe (not the H1 adapter/Runtime dispatch path, which
+/// merges in #467 after rebasing onto H0). Verifies that H0's `ObservationPane` renders
+/// live `agy --output-format stream-json` NDJSON events inside an operator-specified login
+/// environment (`HCTL2_AGY_LIVE_HOME`) with bounded waiting and child cleanup.
+#[test]
+#[ignore = "UNVERIFIED: requires HCTL2_HARNESS_LIVE=1 and operator-specified HCTL2_AGY_LIVE_HOME"]
 fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
     use agency::observation::{self, ObservationConfig, PaneStatus, TURN_OUTPUT_SCHEMA};
     use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
+
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let pid = self.0.id();
+            let _ = Command::new("/bin/kill")
+                .args(["-s", "KILL", "--", &format!("-{pid}")])
+                .status();
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
 
     assert!(
         std::env::var_os("HCTL2_HARNESS_LIVE").is_some(),
         "explicit live validation also requires HCTL2_HARNESS_LIVE=1"
+    );
+    let live_home = PathBuf::from(
+        std::env::var_os("HCTL2_AGY_LIVE_HOME")
+            .expect("explicit operator login directory required via HCTL2_AGY_LIVE_HOME"),
+    );
+    assert!(
+        live_home.is_dir(),
+        "HCTL2_AGY_LIVE_HOME must point to an existing operator login directory"
     );
     let agy_bin = std::env::var_os("HCTL2_AGY")
         .map(PathBuf::from)
@@ -3526,7 +3608,9 @@ fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
     pane.append_turn_start(1).unwrap();
     pane.append_prompt_summary(prompt).unwrap();
 
-    let mut child = Command::new(&agy_bin)
+    let path_env =
+        std::env::var_os("PATH").unwrap_or_else(|| std::ffi::OsString::from("/usr/bin:/bin"));
+    let child = Command::new(&agy_bin)
         .args([
             "--output-format",
             "stream-json",
@@ -3536,22 +3620,50 @@ fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
             "--print=",
         ])
         .current_dir(&exec)
+        .env_clear()
+        .env("HOME", &live_home)
+        .env("PATH", path_env)
+        .env("TMPDIR", &exec)
+        .env("LANG", "C.UTF-8")
+        .process_group(0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn agy");
+    let mut guard = ChildGuard(child);
 
-    let mut stdin = child.stdin.take().expect("agy stdin");
-    let stdout = child.stdout.take().expect("agy stdout");
-    let reader = BufReader::new(stdout);
+    let mut stdin = guard.0.stdin.take().expect("agy stdin");
+    let stdout = guard.0.stdout.take().expect("agy stdout");
+    let stderr = guard.0.stderr.take().expect("agy stderr");
+
+    let stderr_handle = std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for _ in reader.lines() {}
+    });
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let stdout_handle = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
     let mut events_jsonl = String::new();
     let mut final_answer = None;
     let mut conversation_id = String::new();
     let mut prompt_sent = false;
+    let stream_deadline = Instant::now() + Duration::from_secs(60);
 
-    for line in reader.lines() {
-        let line = line.unwrap();
+    while Instant::now() < stream_deadline {
+        let remaining = stream_deadline.saturating_duration_since(Instant::now());
+        let Ok(line_res) = rx.recv_timeout(remaining) else {
+            break;
+        };
+        let line = line_res.expect("read agy stdout line");
         if line.trim().is_empty() {
             continue;
         }
@@ -3600,8 +3712,9 @@ fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
         }
     }
     drop(stdin);
-    let _ = child.kill();
-    let _ = child.wait();
+    drop(guard);
+    let _ = stdout_handle.join();
+    let _ = stderr_handle.join();
     std::fs::write(session_dir.join("events.jsonl"), &events_jsonl).unwrap();
     std::fs::write(
         session_dir.join("state.json"),
@@ -3614,7 +3727,7 @@ fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
     )
     .unwrap();
 
-    let answer = final_answer.expect("agy result event");
+    let answer = final_answer.expect("agy result event before timeout");
     assert!(answer.contains("HCTL_H0_PANE_OK"), "{answer}");
 
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -3641,7 +3754,7 @@ fn live_h1_agy_turn_renders_prompt_and_answer_in_observation_pane() {
         )
         .unwrap();
     eprintln!(
-        "LIVE H0+H1 pane.read response:\n{}",
+        "LIVE H0+agy display probe pane.read response:\n{}",
         serde_json::to_string_pretty(&raw_read).unwrap()
     );
 
