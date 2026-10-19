@@ -53,11 +53,12 @@ export ROOT="$WS/state"
 [ -x "$CLI" ] || { echo "CLI 未就绪: $CLI"; return 1 2>/dev/null || exit 1; }
 [ -x "$WS/prefix/bin/agency" ] || { echo "agency 未就绪"; return 1 2>/dev/null || exit 1; }
 [ -x "$WS/prefix/bin/hctl2-tool" ] || { echo "hctl2-tool 未就绪"; return 1 2>/dev/null || exit 1; }
+[ "$(jq -r .hasCompletedOnboarding ~/.claude.json 2>/dev/null)" = "true" ] || { echo "请先在终端运行一次 claude 完成登录与初始主题选择引导"; return 1 2>/dev/null || exit 1; }
 ```
 
 > [!IMPORTANT]
 > - **状态隔离**：全程所有控制面命令均须携带 `--root "$ROOT"`，配对命令携带 `--agency-root "$ROOT/agency"`，确保状态与托管服务全部落在独立目录 `$WS/state` 下，不污染 `~/.local/state/hctl2` 与 `~/.hctl2/agency`。
-> - **版本门槛（以代码 `src/agency/src/harness/mod.rs` 为准）**：执行 A 链前请确认本机已安装并登录 `claude`（代码准入门槛 **Claude Code >= 2.1.287**，`CLAUDE_MINIMUM`；Ubuntu 实测通过版本为 `2.1.302` / `2.1.303`）；执行 B 链前请确认本机已安装并登录 `codex`（代码准入门槛 **Codex CLI >= 0.153.4**，`CODEX_MINIMUM`）且 `gh auth status` 已登录具备 `yesme/hctl2-canary` 权限的账号。
+> - **版本门槛与首次引导前置（以代码 `src/agency/src/harness/mod.rs` 为准）**：执行 A 链与 C 链前请确认本机已安装并登录 `claude`（代码准入门槛 **Claude Code >= 2.1.287**，`CLAUDE_MINIMUM`；Ubuntu 实测通过版本为 `2.1.302` / `2.1.303`），且已由人在终端运行过一次 `claude` 完成初始登录与主题选择引导（`~/.claude.json` 中 `hasCompletedOnboarding` 为 `true`；Agency 不替人按键，未完成引导会停在 `Choose the text style` 界面导致 `STANDBY_START_TIMEOUT`）。此外，Linux 下 `Herdr` 启动时通过 Landlock `PathFd` 按文件 inode 放行 `~/.claude.json`（`src/agency/linux_confine.rs`）；若 A 链与 C 链之间宿主机上有其他 `claude` 进程原子重写过 `~/.claude.json`（改变 inode），旧 `Herdr` 进程将因无权读取新 inode 而使受管 `claude` 回退到首次引导界面——第四.2 节在启动 C 链派工前会重启一次本实例的 `agency` 以刷新 `Herdr` 的 Landlock 句柄。执行 B 链前请确认本机已安装并登录 `codex`（代码准入门槛 **Codex CLI >= 0.153.4**，`CODEX_MINIMUM`）且 `gh auth status` 已登录具备 `yesme/hctl2-canary` 权限的账号。
 > - **已知平台限制（macOS 下 A 链不可用）**：在 macOS 上，Claude Code 仅将登录凭据存放在系统钥匙串（`Claude Code-credentials`），而 Agency 的 Seatbelt 凭据隔离边界显式封禁了 `~/Library/Keychains`，导致受管执行环境内 Claude Code 报错 `Not logged in`（`HARNESS_TURN_ERROR`）。因此 **A 链（真 Claude Code 会话）目前只能在 Linux 上运行**。
 > - **Claude Code 工作区信任与启动自检**：本地 Agency 在 `/tmp/hctl2-exec-*` 下为派工建执行目录（写入型派工开在 git worktree 里）；让不让 Claude 在执行目录里工作由 Agency 所有者决定，Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动（不修改用户的 `~/.claude.json`），用户无需手工干预。Agency 启动时会在 `/tmp` 下的新目录里开一次 Claude 会话自检这一条（绝不替人按键应答）；若将来换成了不认该变量而仍弹出信任框的版本，`<agency-root>/serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`，且 `agency catalog` 不会公布 `claude-code` 工种（详见 `docs/usage.md`「本地 Agency 与 Claude Code 的工作区信任」）。
 
@@ -538,14 +539,14 @@ export INVOCATION_ID="$(echo "$SUB_INV" | jq -r .invocation_id)"
 
 for i in $(seq 1 450); do
   INV_SHOW="$($CLI --json --root "$ROOT" invocation show "$PROJECT_ID" "$INVOCATION_ID")"
-  STATE="$(echo "$INV_SHOW" | jq -r .invocation.state)"
+  STATE="$(echo "$INV_SHOW" | jq -r .state)"
   case "$STATE" in
     completed)
-      echo "Invocation completed: $(echo "$INV_SHOW" | jq -r .invocation.reason)"
+      echo "Invocation completed: $(echo "$INV_SHOW" | jq -r .reason)"
       break
       ;;
     failed|cancelled|lost)
-      echo "Invocation ended in $STATE: $(echo "$INV_SHOW" | jq -r .invocation.reason)"
+      echo "Invocation ended in $STATE: $(echo "$INV_SHOW" | jq -r .reason)"
       break
       ;;
   esac
@@ -555,8 +556,8 @@ done
 ```
 
 **核对字段**：
-- `invocation.state`: `"completed"`。
-- `invocation.reason`: `"Git version admitted; not Task acceptance"`。
+- `state`: `"completed"`。
+- `reason`: `"Git version admitted; not Task acceptance"`。
 
 ### 7. 核对封存版本、自动发布与 Room 安静投影
 
@@ -1015,19 +1016,24 @@ TOK_CINV="$(echo "$PREV_CINV" | jq -r .preview_token)"
 export C_CHANGESET_ID="$(echo "$PREV_CINV" | jq -r .effect_summary.preview.write.lease.pending.change_set_id)"
 echo "$PREV_CINV" | jq '.effect_summary.preview.write.publication_target'
 
+# 若 A 链与 C 链之间宿主机上有其他 claude 进程重写过 ~/.claude.json（改变 inode），
+# 重启一次本实例的 agency 以刷新 Herdr 对 ~/.claude.json 的 Landlock PathFd 句柄（不改配对与状态）：
+"$WS/prefix/bin/agency" --root "$ROOT/agency" stop >/dev/null 2>&1 || true
+HCTL2_INSTALL_ROOT="$INSTALL_ROOT" "$WS/prefix/bin/agency" --root "$ROOT/agency" start >/dev/null
+
 SUB_CINV="$($CLI --json --root "$ROOT" invocation start --input "$WS/work/c-invoke.json" --key c-invoke --preview-token "$TOK_CINV")"
 export C_INVOCATION_ID="$(echo "$SUB_CINV" | jq -r .invocation_id)"
 
 for i in $(seq 1 450); do
   C_SHOW="$($CLI --json --root "$ROOT" invocation show "$C_PROJECT_ID" "$C_INVOCATION_ID")"
-  C_STATE="$(echo "$C_SHOW" | jq -r .invocation.state)"
+  C_STATE="$(echo "$C_SHOW" | jq -r .state)"
   case "$C_STATE" in
     completed)
-      echo "C invocation completed: $(echo "$C_SHOW" | jq -r .invocation.reason)"
+      echo "C invocation completed: $(echo "$C_SHOW" | jq -r .reason)"
       break
       ;;
     failed|cancelled|lost)
-      echo "C invocation ended in $C_STATE: $(echo "$C_SHOW" | jq -r .invocation.reason)"
+      echo "C invocation ended in $C_STATE: $(echo "$C_SHOW" | jq -r .reason)"
       break
       ;;
   esac
