@@ -291,7 +291,7 @@ fn lint(graph: &Graph, ancestors: &BTreeSet<String>, warnings: &mut Vec<Warning>
                     }
                 }
                 match selection {
-                    Selection::All if candidates.len() > *max_cardinality as usize => {
+                    Selection::All {} if candidates.len() > *max_cardinality as usize => {
                         return Err(invalid("all candidates exceed cardinality"));
                     }
                     Selection::First { count } if *count == 0 || *count > *max_cardinality => {

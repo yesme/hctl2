@@ -8,6 +8,7 @@
 
 ```text
 hctl2 --root <root> --json workflow list <project>
+hctl2 --root <root> --json workflow list <project> --task <task>
 hctl2 --root <root> --json workflow show <project> <workflow> [--revision <n>]
 hctl2 --root <root> --json workflow register --input register.json --key <key>
 hctl2 --root <root> --json workflow register --input register.json --key <key> --preview-token <token>
@@ -59,11 +60,15 @@ hctl2 --root <root> --json workflow approve --input approve.json --key <key> --p
 }
 ```
 
-`compile.json` 为 `{project_id, project_version, workflow_id, revision}`；`approve.json` 另加精确 `readback` Reference。新版本须用 supersedes 声明当前版号；旧正文与批准不改写。task 是同 Project 的精确 Task Reference，与版本一起准入关联。`show` 返回原图、判据、边、提示、部署、批准；`list` 只列本 Project 指针。`startable` 只表示版本已批准，不替代启动时 Task、候选、预算与租约准入。后续 Run 启动必须调用 `require_approved`。
+`compile.json` 为 `{project_id, project_version, workflow_id, revision}`；`approve.json` 另加精确 `readback` Reference。新版本须用 supersedes 声明当前版号；旧正文与批准不改写。task 是同 Project 的精确 Task Reference，与版本一起准入关联。`show` 返回原图、判据、边、提示、部署、批准；`list` 只列本 Project 指针。
+
+`list --task <task>` 从 Run 保存的关联投影该 Task 的全部施工图历史版本，返回 workflow_id、revision、revision_reference 与登记时的精确 task。按稳定 Task 身份检索，Task 升版、施工图最新版本解绑或转绑都不隐藏旧关联；按图 id、数字版号排序，不含别的 Project。取到入口后用 `show <project> <workflow_id> --revision <revision>` 读原文，继续编辑时以当前图的版号声明 supersedes。查询不另写 Task 计划，公共查询 payload 为 `{project_id, task_id?}`；Task 不存在则拒绝。
+
+`startable` 只表示版本已批准，不替代启动时 Task、候选、预算与租约准入。后续 Run 启动必须调用 `require_approved`。
 
 ## 规范 JSON 与 Profile
 
-所有对象拒绝未知字段；执行种类为闭集，不透传 Dagu DSL。补齐缺省值后，使用现有 RFC 8785 实现保存规范 JSON、计算 SHA-256。摘要不是 Git 对象编号。
+所有对象拒绝未知字段；执行种类为闭集，不透传 Dagu DSL。内部标记枚举的无字段种类也用空结构体变体，使 serde 对多余字段报错；合法 JSON 形状和规范摘要不变。补齐缺省值后，使用现有 RFC 8785 实现保存规范 JSON、计算 SHA-256。摘要不是 Git 对象编号。
 
 - Workflow：schema、profile、context、readback、graph。读回缺省启用，缺省回避所有产出调用的 Worker Profile。显式 `readback: {required:false, different_worker_profile:true}` 才关闭；模板无特权。
 - Graph：nodes、edges。Node 是 id、outputs、operation；node/output/Seat id 使用 ASCII 字母、数字与下划线。输出种类：change_set_revision、artifact_revision、verdict、receipt、mechanical_fact。

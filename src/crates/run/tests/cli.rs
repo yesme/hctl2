@@ -21,7 +21,19 @@ impl Cli {
             },
             archived: false,
         };
-        seed(&mut store, &[p], "cli-setup");
+        let mut q = p.clone();
+        q.key = key(Scope::Project("Q".into()), "project", "Q");
+        seed(
+            &mut store,
+            &[
+                p,
+                q,
+                task_record("P", "T"),
+                task_record("P", "U"),
+                task_record("Q", "T"),
+            ],
+            "cli-setup",
+        );
         // The package-7 test double writes internal evidence, never command input.
         let p = proof();
         let scoped = chat::owner(&actor(), "P").unwrap();
@@ -168,6 +180,150 @@ impl Drop for Cli {
     fn drop(&mut self) {
         let _ = self.stop();
     }
+}
+#[test]
+fn workflow_real_cli_recovers_task_versions_and_rejects_foreign_or_unknown_input() {
+    let cli = Cli::new();
+    for kind in ["fork", "join", "noop"] {
+        let mut input = serde_json::to_value(register(kind, workflow()).action).unwrap();
+        input["workflow"]["graph"]["nodes"][0]["operation"] = json!({"kind":kind,"seconds":10});
+        let path = cli.temp.0.join(format!("bad-{kind}.json"));
+        std::fs::write(&path, serde_json::to_vec(&input).unwrap()).unwrap();
+        let (ok, value) = cli.run(&[
+            "workflow",
+            "register",
+            "--input",
+            path.to_str().unwrap(),
+            "--key",
+            kind,
+        ]);
+        assert!(!ok, "unknown {kind} field accepted: {value}");
+        assert!(value["error"].is_object(), "{value}");
+    }
+    let mut foreign = register("foreign-task", workflow());
+    if let Action::Register { task, .. } = &mut foreign.action {
+        *task = Some(chat::reference(&task_record("Q", "T")));
+    }
+    let path = cli.temp.0.join("foreign.json");
+    std::fs::write(&path, serde_json::to_vec(&foreign.action).unwrap()).unwrap();
+    let (ok, error) = cli.run(&[
+        "workflow",
+        "register",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        &foreign.key,
+    ]);
+    assert!(!ok, "foreign Task accepted: {error}");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("reference belongs to another Project")
+    );
+    assert_eq!(cli.ok(&["workflow", "list", "P"])["workflows"], json!([]));
+
+    let mut input = register("task-first", workflow());
+    if let Action::Register { task, .. } = &mut input.action {
+        *task = Some(target("task", "T"));
+    }
+    let (path, preview) = cli.preview(&input);
+    assert_eq!(
+        cli.ok(&["workflow", "list", "P", "--task", "T"])["workflows"],
+        json!([])
+    );
+    cli.ok(&[
+        "workflow",
+        "register",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        &input.key,
+        "--preview-token",
+        preview["preview_token"].as_str().unwrap(),
+    ]);
+    // The Task may advance; saved versions remain reachable by its stable identity.
+    assert!(cli.stop());
+    let mut store = Store::open(&cli.temp.0).unwrap();
+    let mut task = task_record("P", "T");
+    task.version = 2;
+    seed(&mut store, &[task.clone()], "task-advanced");
+    drop(store);
+    cli.ok(&["start"]);
+    input.key = "task-second".into();
+    if let Action::Register {
+        supersedes,
+        task: target,
+        workflow,
+        ..
+    } = &mut input.action
+    {
+        *supersedes = Some(1);
+        *target = Some(chat::reference(&task));
+        workflow.context = "second saved version".into();
+    }
+    cli.write(&input);
+    input.key = "unlinked-third".into();
+    if let Action::Register {
+        supersedes, task, ..
+    } = &mut input.action
+    {
+        *supersedes = Some(2);
+        *task = None;
+    }
+    cli.write(&input);
+    let mut unrelated = register("another-task", workflow());
+    if let Action::Register {
+        workflow_id, task, ..
+    } = &mut unrelated.action
+    {
+        *workflow_id = "unrelated".into();
+        *task = Some(target("task", "U"));
+    }
+    cli.write(&unrelated);
+    if let Action::Register {
+        project_id,
+        workflow_id,
+        task,
+        ..
+    } = &mut unrelated.action
+    {
+        *project_id = "Q".into();
+        *workflow_id = "foreign".into();
+        *task = Some(chat::reference(&task_record("Q", "T")));
+    }
+    unrelated.key = "other-project".into();
+    cli.write(&unrelated);
+    let listed = cli.ok(&["workflow", "list", "P", "--task", "T"]);
+    let versions = listed["workflows"].as_array().unwrap();
+    assert_eq!(versions.len(), 2, "{listed}");
+    for (entry, revision) in versions.iter().zip([1, 2]) {
+        assert_eq!(entry["workflow_id"], "plan");
+        assert_eq!(entry["revision"], revision);
+        assert_eq!(
+            entry["task"]["version"],
+            serde_json::to_value(Version::State(revision)).unwrap()
+        );
+        let shown = cli.ok(&[
+            "workflow",
+            "show",
+            "P",
+            entry["workflow_id"].as_str().unwrap(),
+            "--revision",
+            &revision.to_string(),
+        ]);
+        assert_eq!(shown["reference"], entry["revision_reference"]);
+        assert_eq!(shown["revision"]["revision"], revision);
+    }
+    assert_eq!(
+        cli.ok(&["workflow", "show", "P", "plan"])["revision"]["revision"],
+        3
+    );
+    let (ok, _) = cli.run(&["workflow", "list", "P", "--task", "absent"]);
+    assert!(!ok, "missing Task silently accepted");
+    println!(
+        "real CLI rejects unknown structure fields and existing foreign Task; Task query retrieves exact historical versions after Task and workflow advance"
+    );
 }
 #[test]
 fn workflow_real_cli_previews_then_registers_compiles_and_approves() {

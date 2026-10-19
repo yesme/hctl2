@@ -81,9 +81,9 @@ fn snapshot() -> Snapshot {
 }
 fn provenance() -> Provenance {
     Provenance {
-        snapshot_source: SnapshotSource::DirectText,
+        snapshot_source: SnapshotSource::DirectText {},
         source_chain: vec![],
-        production: Production::None,
+        production: Production::None {},
     }
 }
 #[test]
@@ -123,6 +123,36 @@ fn schema_profile_and_side_effects_are_closed() {
         s[field] = json!([]);
         assert!(serde_json::from_value::<Snapshot>(s).is_err());
     }
+}
+#[test]
+fn empty_tagged_variants_reject_unknown_fields() {
+    for kind in ["fork", "join", "noop"] {
+        let clean = json!({"kind":kind});
+        assert!(serde_json::from_value::<Operation>(clean.clone()).is_ok());
+        for field in ["command", "script", "http", "seconds"] {
+            let mut bad = clean.clone();
+            bad[field] = json!("unexpected");
+            assert!(
+                serde_json::from_value::<Operation>(bad).is_err(),
+                "{kind}.{field}"
+            );
+        }
+    }
+    macro_rules! closed {
+        ($ty:ty, $kind:literal) => {{
+            let clean = json!({"kind":$kind});
+            let parsed: $ty = serde_json::from_value(clean.clone()).unwrap();
+            assert_eq!(serde_json::to_value(parsed).unwrap(), clean);
+            let mut bad = clean;
+            bad["unexpected"] = json!(true);
+            assert!(serde_json::from_value::<$ty>(bad).is_err(), $kind);
+        }};
+    }
+    closed!(Selection, "all");
+    closed!(MechanicalFact, "pr_merged");
+    closed!(SnapshotSource, "direct_text");
+    closed!(Production, "none");
+    closed!(Production, "missing");
 }
 #[test]
 fn static_cycle_is_rejected() {
@@ -407,7 +437,17 @@ fn setup() -> (Temp, Store) {
         },
         archived: false,
     };
-    let mut t = value_record(target("task", "T").key, 1, &json!({})).unwrap();
+    let t = task_record("P", "T");
+    seed(&mut store, &[p, t], "setup");
+    (temp, store)
+}
+fn task_record(project: &str, id: &str) -> Record {
+    let mut t = value_record(
+        key(Scope::Project(project.into()), "task", id),
+        1,
+        &json!({}),
+    )
+    .unwrap();
     t.data = RecordData::Task {
         entity: None,
         source: Reference {
@@ -415,8 +455,7 @@ fn setup() -> (Temp, Store) {
             version: Version::State(1),
         },
     };
-    seed(&mut store, &[p, t], "setup");
-    (temp, store)
+    t
 }
 struct NoEngine;
 impl Validator for NoEngine {
@@ -464,13 +503,25 @@ fn registration_is_atomic_idempotent_append_only_and_does_not_start() {
         "WORKFLOW_NOT_APPROVED"
     );
     assert!(store.list("run").unwrap().is_empty());
+    let mut q = store.get(&target("project", "P").key).unwrap().unwrap();
+    q.key = key(Scope::Project("Q".into()), "project", "Q");
+    let q_task = task_record("Q", "T");
+    seed(&mut store, &[q, q_task.clone()], "other-project-task");
     let mut other = register("wrong-project", workflow());
-    if let Action::Register { task, .. } = &mut other.action {
-        let mut t = target("task", "T");
-        t.key.scope = Scope::Project("Q".into());
-        *task = Some(t);
+    if let Action::Register {
+        task, workflow_id, ..
+    } = &mut other.action
+    {
+        *workflow_id = "foreign".into();
+        *task = Some(chat::reference(&q_task));
     }
-    assert!(prepare(&store, other, &actor(), &NoEngine).is_err());
+    let error = prepare(&store, other, &actor(), &NoEngine).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("reference belongs to another Project"),
+        "{error}"
+    );
     assert_eq!(store.list("workflow_task_link").unwrap().len(), 1);
     let mut stale = register("failed-admission", workflow());
     if let Action::Register { workflow_id, .. } = &mut stale.action {
@@ -680,7 +731,7 @@ fn no_source_room_only_exempts_roster_not_isolation_or_production_origin() {
     reseal(&mut p);
     assert!(verify(&p, &provenance()).is_err());
     let mut source = provenance();
-    source.production = Production::Missing;
+    source.production = Production::Missing {};
     assert!(verify(&proof(), &source).is_err());
     source.production = Production::Invocations { references: vec![] };
     assert!(verify(&proof(), &source).is_err());

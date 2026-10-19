@@ -104,3 +104,33 @@ test result: FAILED. 15 passed; 1 failed
 ## 没做
 
 Run 启动、运行时归约、引擎服务与适配器、真实无 Run 模型读回分别由后续包完成。本包的部署有被动检查点与显式 activation 映射；尚未把运行时跳过、返工超限或失败边推进当成实测。Manifest 后续直接冻结部署的 frozen_rework_limits，不再另算默认值。
+
+## 第一轮评审修正
+
+Claude（mac）对 `0e389da` 指出三个阻断项：无字段结构节点吞未知字段、没有按 Task 取回已存版本的入口、跨 Project 的反例没有实际 Task。沿既有 serde 和 Store 机制修正，没有新增依赖或存储副本。
+
+先核 [serde 内部标记枚举](https://serde.rs/enum-representations.html#internally-tagged) 与 [deny_unknown_fields](https://serde.rs/container-attrs.html#deny_unknown_fields)（2026-10-20 读取），再用仓库锁定版本实测：单元变体能吞字段，空结构体变体拒绝。fork、join、noop，以及同形状的 all、pr_merged、direct_text、none、missing 一起改为空结构体变体；合法 JSON 的序列化形状不变。
+
+新增 `empty_tagged_variants_reject_unknown_fields`，并从真实 CLI 登记三个结构节点的错误输入。`workflow list <project> --task <task>` 只投影 Run 保存的关联；新增第四个 CLI 用例检验：预览未准入不留入口，Task 从 v1 升到 v2 后仍取回施工图 1、2 版，施工图当前第 3 版不带 Task 也不藏旧关联，别的 Task 和 Project 不混进来，再按返回的精确版本 show 原文。查询缺失 Task 拒绝。
+
+跨 Project 用例现在真建 Q 及其 Task，登记使用未占用的施工图 id，避免先被已有图的版号冲突挡住；域层和真实 CLI 都断言归属错误。
+
+先加用例、未改实现时，同一命令 `./src/buck2 test root//crates/run:domain_test` 得到：
+
+```text
+empty_tagged_variants_reject_unknown_fields ... FAILED (fork.command)
+cli::workflow_real_cli_recovers_task_versions_and_rejects_foreign_or_unknown_input ... FAILED (unknown fork field accepted)
+16 passed; 2 failed
+```
+
+只修未知字段后，剩余新 CLI 例因 `unexpected argument '--task'` 红，17 passed / 1 failed。补查询后，Run 18 passed / 0 failed / 0 ignored；CLI unit 6、control boundary 14、65 份 Clippy 空，四目标全绿。
+
+另外逐一退回并恢复三处，各跑同一完整 domain_test，均为测试断言失败：
+
+| 退回 | 红灯 |
+| --- | --- |
+| 仅把 Noop 改回单元变体 | 未知字段域用例与真实 CLI 例红；16 passed / 2 failed |
+| 不投影命中的 workflow_task_link | 真实 CLI 例取不回两版；17 passed / 1 failed |
+| 关闭 exact 的 Project scope 检查 | 域层与真实 CLI 例接受实际存在的 Q Task；16 passed / 2 failed |
+
+三处恢复后复跑原六目标，Run 18、CLI unit 6、control boundary 14 全过，65 份 Clippy 空；文档链接与退休词检查通过，Pass 6 / Fail 0。旧头 GLM 的「可合」不沿用到追加的内容提交，两席须复核最终头。

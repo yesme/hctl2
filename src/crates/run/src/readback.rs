@@ -171,8 +171,8 @@ pub fn verify(
     }
     let comparison = if different_profile {
         match &provenance.production {
-            Production::Missing => return Err(fail("production origin is missing")),
-            Production::None => "explicit_no_model_producer",
+            Production::Missing {} => return Err(fail("production origin is missing")),
+            Production::None {} => "explicit_no_model_producer",
             Production::Invocations { references } => {
                 if references.is_empty() {
                     return Err(fail("an empty set is not explicit no-model production"));

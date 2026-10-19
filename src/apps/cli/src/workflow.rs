@@ -17,6 +17,9 @@ pub(super) enum WorkflowCommand {
     Approve(Write),
     List {
         project_id: String,
+        /// Recover every saved version associated with this Task, including history.
+        #[arg(long = "task")]
+        task_id: Option<String>,
     },
     Show {
         project_id: String,
@@ -41,12 +44,15 @@ pub(super) async fn dispatch(
 }
 async fn execute(command: WorkflowCommand, root: &Path, as_json: bool) -> Result<(), String> {
     let (kind, write) = match command {
-        WorkflowCommand::List { project_id } => {
+        WorkflowCommand::List {
+            project_id,
+            task_id,
+        } => {
             return query_task(
                 root,
                 as_json,
                 "workflow.list",
-                json!({"project_id":project_id}),
+                json!({"project_id":project_id,"task_id":task_id}),
             )
             .await;
         }

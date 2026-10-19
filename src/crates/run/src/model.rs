@@ -50,8 +50,8 @@ pub enum Operation {
         seats: Vec<Seat>,
         gate: Option<Gate>,
     },
-    Fork,
-    Join,
+    Fork {},
+    Join {},
     Switch {
         cases: Vec<String>,
     },
@@ -72,7 +72,7 @@ pub enum Operation {
     TimerWait {
         seconds: u64,
     },
-    Noop,
+    Noop {},
     Transform {
         fields: BTreeMap<String, String>,
     },
@@ -90,7 +90,7 @@ pub enum Exhausted {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Selection {
-    All,
+    All {},
     First { count: u32 },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,7 +123,7 @@ pub enum Criterion {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MechanicalFact {
     Ci { check: String },
-    PrMerged,
+    PrMerged {},
     PathDigest { path: String, digest: String },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,7 +194,7 @@ pub struct Decision {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SnapshotSource {
     Message { room_id: String, event: Reference },
-    DirectText,
+    DirectText {},
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -202,15 +202,17 @@ pub struct SourceMessage {
     pub room_id: String,
     pub event: Reference,
 }
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Production {
-    Invocations {
-        references: Vec<Reference>,
-    },
-    None,
-    #[default]
-    Missing,
+    Invocations { references: Vec<Reference> },
+    None {},
+    Missing {},
+}
+impl Default for Production {
+    fn default() -> Self {
+        Self::Missing {}
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

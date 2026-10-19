@@ -33,7 +33,15 @@ pub(crate) fn query(
     let slot = shared.blocking_lock();
     let store = slot.as_ref().ok_or_else(not_ready)?;
     if kind == "workflow.list" {
-        return list(store, actor, project_id);
+        let task = match payload.get("task_id") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| invalid("task_id must be a string"))?,
+            ),
+        };
+        return list(store, actor, project_id, task);
     }
     if kind != "workflow.show" {
         return Err(invalid(format!("unknown Workflow query {kind}")));

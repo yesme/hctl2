@@ -95,6 +95,12 @@ pub struct Revision {
     pub task: Option<Reference>,
     pub warnings: Vec<crate::compiler::Warning>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TaskLink {
+    workflow: Reference,
+    task: Reference,
+}
 /// Engine definitions are a separate immutable revision family, not the Workflow's version counter.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -332,7 +338,10 @@ pub fn prepare(
                         &format!("{workflow_id}:{revision}"),
                     ),
                     1,
-                    &json!({"workflow":reference(&record),"task":task}),
+                    &TaskLink {
+                        workflow: reference(&record),
+                        task: task.clone(),
+                    },
                 )?);
             }
             let result = json!({"workflow_id":workflow_id,"revision":revision,"revision_reference":reference(&record),"workflow_digest":revision_data.workflow_digest,"snapshot_digest":revision_data.snapshot_digest,"warnings":revision_data.warnings,"started":false});
@@ -639,8 +648,35 @@ pub fn show(
         json!({"reference":reference(&record),"revision":data,"deployment":deployment,"approval":approval,"startable":approval.is_some()}),
     )
 }
-pub fn list(store: &Store, actor: &TrustedActor, project: &str) -> Result<Value> {
+pub fn list(
+    store: &Store,
+    actor: &TrustedActor,
+    project: &str,
+    task: Option<&str>,
+) -> Result<Value> {
     chat::owner(actor, project)?;
+    if let Some(task_id) = task {
+        let task_key = key(scope(project), "task", task_id);
+        required(store, &task_key)?;
+        let mut saved = vec![];
+        for record in store.list("workflow_task_link")? {
+            if record.key.scope != scope(project) {
+                continue;
+            }
+            let link: TaskLink = decode(&record)?;
+            // Match the stable Task identity, preserving links to older Task versions
+            // even when the current Workflow is unlinked or bound elsewhere.
+            if link.task.key == task_key {
+                let revision: Revision = decode(&exact(store, project, &link.workflow)?)?;
+                saved.push((revision.workflow_id, revision.revision, link));
+            }
+        }
+        saved.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
+        let workflows: Vec<_> = saved.into_iter().map(|(id, revision, link)| {
+            json!({"workflow_id":id,"revision":revision,"revision_reference":link.workflow,"task":link.task})
+        }).collect();
+        return Ok(json!({"workflows":workflows}));
+    }
     let workflows = store
         .list("workflow")?
         .into_iter()
