@@ -126,7 +126,7 @@ Context 管理以 MyContext 的成本纪律、LobeHub 的机械组装管道、Fi
 | [libs/process-control.md](./libs/process-control.md) | 外部命令的时限与超时终止 | E-LIB-PROCESS-CONTROL | ⑥ 机械后端与基础设施 | 采用 SDK：process_control 5.2.0；macOS 不用内存上限，输出用 filter 截断 |
 | [runtime/agency-port.md](./runtime/agency-port.md) | 独立 Agency 服务与端口 | E-RUNTIME-AGENCY-PORT | ⑥ 机械后端与基础设施 | 采用 tonic 原生 UDS，SQLite 持久状态；可信脚本仅验证协议 |
 | [process-compose.md](./runtime/process-compose.md) | 随包服务生命周期 | E-RUNTIME-PROCESS-COMPOSE | ⑥ 机械后端与基础设施 | 采用二进制：1.122.0，经现有 UDS、CLI JSON 与组件动作接入 |
-| [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审 | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
+| [workflow-engines.md](./workflow-engines.md) | Dagu 机械状态后端与 workflow 候选复审（含 2026-10-19 `v2.15.1` 开工前限时验证：提交/启动/暂停/恢复/取消、`human.task` 等待/完成/回读与分歧/代次栅栏实测） | E-L2-DAGU | ⑥ 机械后端与基础设施 | 采用 Dagu 为依赖，其余候选暂缓 |
 | [matrix-homeserver.md](./matrix-homeserver.md) | chat server 选型（限时验证） | E-L4-MATRIX-HOMESERVER | ⑥ 机械后端与基础设施 | 采用 Tuwunel 为依赖，Continuwuity 暂缓 |
 | [task-backends.md](./task-backends.md) | L3 外部系统与观察清单 | E-L3-VIKUNJA、E-L3-GIT-BUG | ⑥ 机械后端与基础设施 | 采用 Vikunja 为依赖，git-bug 暂缓，Linear/GitHub 适配协议 |
 | [scm-platforms.md](./scm-platforms.md) | 代码协作平台市场调研：GitHub、GitLab、Gitea、Forgejo、Gerrit、Bitbucket、Azure DevOps 在合入调用面上的能力（源头校验、目标头保证、队列语义、官方命令行） | E-SCM-PLATFORMS | ⑥ 机械后端与基础设施 | 外部平台：采用二进制、GitHub 缺省，其余暂缓、按能力声明维度按需接入；本地平台另见 gitea.md |
