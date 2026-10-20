@@ -108,7 +108,7 @@ prepare_runtime() {
         "$P0_RUNTIME_DIR" "$P0_RUNTIME_DIR/herdr"
 
     for component in \
-        tuwunel static-web-server vikunja dagu herdr process-compose gitea; do
+        tuwunel static-web-server vikunja dagu herdr tmux process-compose gitea; do
         [[ -x "$P0_BIN_DIR/$component" ]] || \
             die "$component is missing; reinstall the HCTL2 package"
     done
@@ -296,6 +296,10 @@ wait_components_ready() {
 
 file_mode() {
     platform_file_mode "$1"
+}
+
+run_tmux() {
+    "$P0_BIN_DIR/tmux" -S "$(platform_tmux_socket_path)" "$@"
 }
 
 run_herdr() {

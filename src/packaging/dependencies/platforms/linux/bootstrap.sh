@@ -83,6 +83,21 @@ prepare_herdr_dependency() {
     "$P0_BIN_DIR/herdr" --version
 }
 
+prepare_tmux_dependency() {
+    require_target_host
+    require_command readelf
+    require_command tar
+
+    install_tmux_release
+    if readelf -d "$P0_BIN_DIR/tmux" 2>/dev/null | grep -F '(NEEDED)' >/dev/null; then
+        die "official Linux tmux binary unexpectedly has dynamic dependencies"
+    fi
+    find "$P0_VENDOR_DIR" -depth -delete
+    [[ "$("$P0_BIN_DIR/tmux" -V)" == "tmux $TMUX_VERSION" ]] || \
+        die "tmux version differs from the lock"
+    note "prepared tmux for $HCTL2_TARGET_ID"
+}
+
 prepare_gh_dependency() {
     require_target_host
     require_command tar

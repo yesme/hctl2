@@ -142,6 +142,18 @@ test_dependency_package() {
         die "runtime package records the wrong Herdr build input or source digest"
     [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Herdr-Apache-2.0.txt" ]] || \
         die "runtime package is missing the Herdr license"
+    [[ -x "$test_root/$PACKAGE_ID/payload/libexec/hctl2/tmux" ]] || \
+        die "runtime package does not contain tmux"
+    [[ "$("$test_root/$PACKAGE_ID/payload/libexec/hctl2/tmux" -V)" == "tmux $TMUX_VERSION" ]] || \
+        die "runtime package tmux version differs from the lock"
+    awk -F '\t' \
+        -v build_input="$TMUX_BUILD_INPUT_SHA256" \
+        -v source="$TMUX_SOURCE_SHA256" \
+        '$1 == "tmux" && $4 == build_input && $5 == source { found = 1 } END { exit !found }' \
+        "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" || \
+        die "runtime package records the wrong tmux build input or source digest"
+    [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Tmux-ISC.txt" ]] || \
+        die "runtime package is missing the tmux license"
     [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Process-Compose-Apache-2.0.txt" ]] || \
         die "runtime package is missing the Process Compose license"
     ! grep -F $'element-web\t' \
@@ -159,6 +171,12 @@ test_dependency_package() {
     grep -F $'herdr\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
         grep -F "$HERDR_SOURCE_ASSET" >/dev/null || \
         die "source package does not contain the locked Herdr source"
+    grep -F $'tmux\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
+        grep -F "$TMUX_SOURCE_ASSET" >/dev/null || \
+        die "source package does not contain the locked tmux source"
+    grep -F $'tmux-licenses\t' "$test_root/$SOURCE_PACKAGE_ID/sources.tsv" | \
+        grep -F "$TMUX_LICENSES_ASSET" >/dev/null || \
+        die "source package does not contain the locked tmux licenses"
     verify_locked_scm_source "$test_root" gitea "$GITEA_VERSION" \
         "$GITEA_SOURCE_COMMIT" "$GITEA_SOURCE_ASSET" "$GITEA_SOURCE_SHA256"
     verify_locked_scm_source "$test_root" tea "$TEA_VERSION" \

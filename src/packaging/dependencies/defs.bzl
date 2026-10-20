@@ -19,6 +19,7 @@ _COMPONENT_PREFIXES = {
     "dagu": "DAGU",
     "gh": "GH",
     "herdr": "HERDR",
+    "tmux": "TMUX",
     "process_compose": "PROCESS_COMPOSE",
     "static_web_server": "STATIC_WEB_SERVER",
     "tuwunel": "TUWUNEL",
@@ -147,6 +148,12 @@ def _metadata_lines(target: str, component = None) -> list[str]:
             _readonly("{}_SOURCE_ASSET".format(prefix), source_asset["filename"]),
             _readonly("{}_SOURCE_SHA256".format(prefix), source_asset["sha256"]),
         ])
+        if "licenses_asset" in component_metadata:
+            licenses_asset = common_assets[component_metadata["licenses_asset"]]
+            lines.extend([
+                _readonly("{}_LICENSES_ASSET".format(prefix), licenses_asset["filename"]),
+                _readonly("{}_LICENSES_SHA256".format(prefix), licenses_asset["sha256"]),
+            ])
 
     if component == None or component == "cinny":
         cinny = common_assets["cinny"]
@@ -156,7 +163,7 @@ def _metadata_lines(target: str, component = None) -> list[str]:
             "",
         ])
 
-    target_components = ["tuwunel", "vikunja", "dagu", "gh", "herdr", "static_web_server", "process_compose"]
+    target_components = ["tuwunel", "vikunja", "dagu", "gh", "herdr", "tmux", "static_web_server", "process_compose"]
     selected_target_components = target_components if component == None else [component]
     for selected_component in selected_target_components:
         if selected_component == "cinny":
@@ -400,6 +407,12 @@ def _package_sources(package_sources: dict) -> dict:
         sources["downloads/{}".format(asset["filename"])] = ":{}".format(
             _asset_target_name("common", name),
         )
+        if "licenses_asset" in component_metadata:
+            licenses_name = component_metadata["licenses_asset"]
+            licenses_asset = common_assets[licenses_name]
+            sources["downloads/{}".format(licenses_asset["filename"])] = ":{}".format(
+                _asset_target_name("common", licenses_name),
+            )
     return sources
 
 def _package_command(target: str) -> str:

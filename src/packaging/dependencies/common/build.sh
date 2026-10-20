@@ -39,6 +39,17 @@ install_herdr_release() {
     install -m 0755 "$source" "$P0_BIN_DIR/herdr"
 }
 
+install_tmux_release() {
+    local destination="$P0_VENDOR_DIR/tmux-$TMUX_VERSION"
+    local binary
+
+    mkdir -p "$destination"
+    tar -xzf "$P0_DOWNLOAD_DIR/$TMUX_ASSET" -C "$destination"
+    binary="$(find "$destination" -type f -name tmux -print -quit)"
+    [[ -n "$binary" ]] || die "tmux archive did not contain an executable named tmux"
+    install -m 0755 "$binary" "$P0_BIN_DIR/tmux"
+}
+
 install_gh_release() {
     local destination="$P0_VENDOR_DIR/gh-$GH_VERSION"
     local binary

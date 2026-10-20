@@ -27,8 +27,8 @@ HCTL2 两份归档使用锁定的 [zstd 1.5.7](../../../docs/research/build-tool
 | target | 构建宿主 | 组件来源 |
 | --- | --- | --- |
 | `linux-x86_64` | Linux x86_64 | 全部第三方运行内容均消费上游官方发行包 |
-| `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
-| `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/Herdr/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
+| `macos-aarch64` | Apple Silicon macOS 15+ | Vikunja/Dagu/Herdr/tmux/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
+| `macos-x86_64` | Intel macOS 15+ | Vikunja/Dagu/Herdr/tmux/Cinny/Static Web Server/Process Compose/gh/Gitea/tea 官方包；Tuwunel 使用 HCTL2 托管制品 |
 
 Intel 发布包优先在 Intel Mac runner 上产出；Apple Silicon 的交叉构建只能生成候选，该候选必须由 Intel runner 对同一 SHA-256 完成 Mach-O 检查和完整生命周期后才能采用。
 
@@ -64,7 +64,7 @@ macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必�
 
 运行安装包包括：
 
-- Tuwunel、Vikunja、Dagu、Herdr、Gitea 五个内容与运行服务，以及所需的非系统动态库；
+- Tuwunel、Vikunja、Dagu、Herdr、Gitea 五个内容与运行服务，以及 tmux 3.7c 单二进制与所需的非系统动态库；
 - Cinny 官方 Web 发行内容，以及只绑定 loopback 的官方 `static-web-server` 单二进制；
 - Process Compose、供 `hctl2-tool wait` 使用的 GitHub CLI、Gitea 的 tea 客户端，以及声明式服务配置；
 - `hctl2-services` 薄客户端和目标平台 runtime hook；
@@ -72,7 +72,7 @@ macOS 正常组包需要 Xcode Command Line Tools 来检查 Mach-O、重写必�
 - HCTL2 与所有分发依赖的许可证；
 - 根归档与 payload 两层 SHA-256 清单。
 
-源码伴随包包括全部随包第三方组件的锁定上游源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`。源码包没有安装器，也不进入安装前缀。
+源码伴随包包括全部随包第三方组件的锁定上游源码。`sources.tsv` 记录版本、commit、归档 digest 与纳入原因，`target.tsv` 标识对应平台，`SOURCE-MANIFEST.sha256` 校验整包。Dagu、Vikunja 和 Cinny 标为 `corresponding-source`，其余标为 `reproducibility`；tmux 另有一行 `tmux-licenses` 锁定官方 `LICENSES.tar.gz`。源码包没有安装器，也不进入安装前缀。
 
 运行包与源码包必须在同一个 Release 下载位置以相同方式、无额外费用提供；运行包内的 `SOURCES.md` 指向精确的源码包名。真正通过 U 盘或其他离线介质再次分发时，应同时携带两份归档。当前各平台体积见[实现证据](../../../docs/research/README.md#已选外部服务的运维与资源占用)；Intel macOS 仍需在对应 runner 上刷新。
 
@@ -101,6 +101,7 @@ cd hctl2-0.0.0-<target>
 | Vikunja | 2.5.0 | `http://127.0.0.1:3456` |
 | Dagu | 2.15.1 | `http://127.0.0.1:18080` |
 | Herdr | 0.9.3 | owner-only Unix socket；协议版本 22 |
+| tmux | 3.7c | 随包单二进制，私有 socket；`libexec/hctl2/tmux` |
 | Gitea | 1.27.3 | `http://127.0.0.1:3001` |
 
 所有 listener 都绑定 loopback。Cinny 与 Tuwunel 合在一起是 Chatroom 解决方案，不另增一类运行依赖；它是随包的互操作与查看客户端，不是 HCTL2 Workbench。Cinny 只允许连接随包 Tuwunel，并启用 hash router 适配内部静态服务。HCTL Room 的本地 Tuwunel 配置关闭 federation 与房间加密；Dagu 只在 loopback listener 上关闭认证；Vikunja 首次启动时生成随机本地 secret。
