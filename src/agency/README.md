@@ -21,6 +21,8 @@ Buck：`root//agency:agency`、`:service`、`:cli_test`、`:port_test`、`:contr
 
 空目录配对后才上架时，控制面用新 Binding ID 重新配对并接受目录，步骤见 [Participant 接法](../crates/participant/README.md#已有接法)。旧 Binding 保留，不因上架改写。
 
+Grok Build 走 `grok agent stdio` 的 ACP：正文用 `session/prompt` 交，续接用 `session/load`。stdio 没有能连上同一会话的界面，给人看的是观测窗格里的 `view.log`（`HCTL2_AGENCY_OBSERVATION_PANE` 关掉时只落盘、不开窗格）。一轮只读回答的 schema 是 `agency.turn.v1`；写入结果是封存后的 ChangeSet。窗格按 `HCTL2_AGENCY_OBSERVATION_PANE` 开，关掉时 `pane_id` 为空、`view.log` 仍落盘。取消与截止先发 `session/cancel`；宽限内没有结局就关掉进程，这一轮不交 Proposal。以 `!` 开头的正文按协议原样交进去；模型若把它当成要执行的 shell，是模型对数据的解释，这里不加系统提示去改它。
+
 本机端口为权限 0600 的 Unix socket。为适应 macOS 路径长度，套接字目录用数据根摘要生成，数据根与凭据留在私有运维存储，不进入 Binding、Spec 或 Proposal。控制面停止不停止 Agency；`agency stop` 是服务所有者的独立操作，会请求停止所有租户的执行。
 
 Agency 被强杀后，在同一个数据根重新启动，会先核验该根登记的 Codex app-server 身份并收回旧进程组，再接新调用；不必先派工。换数据根启动不会收另一根的进程，也不会扫描或停止人自己的 Codex daemon。登记含 PID、启动时间和启动参数摘要，放在该根私有的 `codex-processes/`；身份不符时不发信号，记录不可读或回收失败则启动报错。旧版本未登记的进程不靠猜测回收；本机制也不处理自行离开进程组的程序。

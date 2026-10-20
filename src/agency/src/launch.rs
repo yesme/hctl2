@@ -402,6 +402,8 @@ pub struct InstalledHerdr {
     script: Option<Arc<LaunchScript>>,
     pool: Option<crate::standby::Pool>,
     codex_pool: Option<crate::codex::Pool>,
+    grok_pool: Option<crate::grok::Pool>,
+    grok_digest: Option<String>,
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
@@ -477,6 +479,10 @@ impl InstalledHerdr {
         }
         let digest = crate::catalog::file_digest(&claude)?;
         let _herdr_digest = crate::catalog::file_digest(&binary)?;
+        let (grok_pool, grok_digest) = match crate::grok::installed() {
+            Some((path, digest)) => (Some(crate::grok::Pool::new(path, idle)), Some(digest)),
+            None => (None, None),
+        };
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -490,6 +496,8 @@ impl InstalledHerdr {
             codex_pool: codex
                 .as_ref()
                 .map(|(path, _, _)| crate::codex::Pool::new(path.clone(), idle)),
+            grok_pool,
+            grok_digest,
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
@@ -539,6 +547,8 @@ impl InstalledHerdr {
             script: Some(Arc::new(script)),
             pool: None,
             codex_pool: None,
+            grok_pool: None,
+            grok_digest: None,
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
@@ -566,6 +576,19 @@ impl InstalledHerdr {
         Ok(crate::observation::Multiplexer::from_server(
             self.ensure(exec, credential_root)?,
         ))
+    }
+
+    fn grok_view(&self, exec: &Path, credential_root: &Path) -> Result<crate::grok::View> {
+        let observation = crate::observation::ObservationConfig::from_env();
+        let multiplexer = if observation.enabled {
+            Some(self.multiplexer(exec, credential_root)?)
+        } else {
+            None
+        };
+        Ok(crate::grok::View {
+            observation,
+            multiplexer,
+        })
     }
 
     fn ensure(&self, exec: &Path, credential_root: &Path) -> Result<Arc<Server>> {
@@ -835,8 +858,13 @@ impl Runtime for InstalledHerdr {
             .as_ref()
             .map(|pool| pool.shutdown())
             .transpose();
+        let grok = self
+            .grok_pool
+            .as_ref()
+            .map(|pool| pool.shutdown())
+            .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
-        let pooled = codex.and(pooled);
+        let pooled = codex.and(grok).and(pooled);
         for server in
             std::mem::take(&mut *self.write_slots.lock().expect("writing herdr")).into_values()
         {
@@ -896,6 +924,32 @@ impl Runtime for InstalledHerdr {
             });
             harnesses.push(codex_harness);
         }
+        if let Some(digest) = self.grok_digest.clone() {
+            let grok_harness = FrozenRef {
+                id: "grok".into(),
+                revision: "acp-stdio".into(),
+                digest: digest.clone(),
+            };
+            professions.push(Profession {
+                reference: FrozenRef {
+                    id: "grok-build".into(),
+                    revision: "acp-stdio".into(),
+                    digest,
+                },
+                harness: grok_harness.clone(),
+                model: default_model(&grok_harness),
+                persona: "grok build".into(),
+                terms: "Bundle dispatch via grok agent stdio; one process per selection until idle, then session/load; H0 read-only observation pane over view.log; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet; no --always-approve; no terminal input or publication".into(),
+                default_role: "worker".into(),
+                skills: vec![],
+                capabilities: Capabilities {
+                    input: false,
+                    stop: true,
+                    ..Capabilities::default()
+                },
+            });
+            harnesses.push(grok_harness);
+        }
         Ok(Catalog {
             professions,
             harnesses,
@@ -913,6 +967,25 @@ impl Runtime for InstalledHerdr {
         crate::confine::reject_unenforceable_isolation(
             &spec.document.required_capabilities.isolation_effects,
         )?;
+        if spec.document.profession.reference.id == "grok-build" {
+            fs::create_dir_all(exec_root)?;
+            let Some(pool) = &self.grok_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    "HCTL2_GROK is unset",
+                    "set_hctl2_grok",
+                ));
+            };
+            let view = self.grok_view(exec_root, credential_root)?;
+            return pool.submit(
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+                view,
+            );
+        }
         fs::create_dir_all(exec_root)?;
         let server = self.ensure(exec_root, credential_root)?;
         if spec.document.profession.reference.id == "codex-cli" {
@@ -986,6 +1059,18 @@ impl Runtime for InstalledHerdr {
         crate::confine::reject_unenforceable_isolation(
             &spec.document.required_capabilities.isolation_effects,
         )?;
+        if spec.document.profession.reference.id == "grok-build" {
+            fs::create_dir_all(exec_root)?;
+            let Some(pool) = &self.grok_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    "HCTL2_GROK is unset",
+                    "set_hctl2_grok",
+                ));
+            };
+            let view = self.grok_view(exec_root, credential_root)?;
+            return pool.submit(spec, bundle, exec_root, tenant, credential_root, view);
+        }
         if spec.document.profession.reference.id == "codex-cli" {
             fs::create_dir_all(exec_root)?;
             let server = self.ensure(exec_root, credential_root)?;
