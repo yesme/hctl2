@@ -228,7 +228,7 @@
   6. **退回看红。** 至少退回两处：Bundle 夹带 Room 消息、声明回避却用了同一 Worker Profile，对应用例要红。
   7. **三道摘要各有用例。** 第 1 包批准核对的三道摘要比较（登记、读回、实际交付）各有一条只让那一道不符的用例；只删其中一道，对应用例要红。现在第三道没有单独的用例：把它关掉，`root//crates/run:domain_test` 的 18 条照样全过（MiniMax 试用时发现，主笔在 main `257437dd` 上复核，`07` §二 第 51 条 ⑦）。
 - **依赖**：第 1 包；碰派工与 Context，演示 3 走完之前不合。
-- **写**：GLM（ubuntu，小活 W 之后）；找问题 Codex（mac）；核验 DeepSeek（ubuntu）。
+- **写**：GLM（ubuntu，小活 W 之后）；找问题 Claude（ubuntu）（2026-10-20 由 Codex（mac）改，`07` §二 第 53 条）；核验 DeepSeek（ubuntu）。
 - **分支**：`glm/workflow-readback`。
 
 ### 第 8 包 · 命令行的人读输出与「待你处理」
