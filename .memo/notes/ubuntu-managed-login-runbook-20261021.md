@@ -66,6 +66,8 @@ $A --root "$ROOT" login check codex-cli
 
 ## 3. omp：H3（#464）用的专用登录
 
+omp 用 DeepSeek 的 API key，不是浏览器登录。所有者在 DeepSeek 后台为 Agency 新建一个专用 key（不复用平时用的那个：用量单独看，出事单独吊销）。`omp auth-broker login deepseek` 是 omp 把 key 存进专用 HOME 下自己凭据库的命令；带路的 agent 先看 `HOME=/var/tmp/hctl2-omp-managed omp auth-broker login --help` 弄清它怎么收 key，提示时由所有者粘贴。
+
 ```bash
 export OMP_MANAGED_LOGIN_HOME=/var/tmp/hctl2-omp-managed
 install -d -m 700 "$OMP_MANAGED_LOGIN_HOME"
@@ -77,7 +79,7 @@ CFG
 ls -l "$OMP_MANAGED_LOGIN_HOME/.omp/agent/"
 ```
 
-- 第三条是交互登录，按提示由所有者完成；产物只落在 `/var/tmp/hctl2-omp-managed/.omp/agent` 下，不碰所有者个人的 `~/.omp`。
+- 第三条按提示由所有者粘贴 key；产物只落在 `/var/tmp/hctl2-omp-managed/.omp/agent` 下，不碰所有者个人的 `~/.omp`。
 - 最后一条只看目录里有没有登录产物（如 `agent.db`），不打开文件内容。
 
 ## 做完以后
