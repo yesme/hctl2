@@ -109,6 +109,7 @@
 48. **2026-10-20 走查一轮一个 PR，持续走，不淤在一处。** 所有者问「#431 还要多久能合啊？？」，主笔答还要等第三轮、并给了「现在合、第三轮另开」的选法；所有者先答「继续这样走，不直接合。不过你要给我个复盘，为什么这样back-and-fouth」。主笔复盘：#431 挂了三天，大头是结构——一个 PR 装下第 9 包第 7 条整条验收，每轮查出的毛病在别的 PR 修，走查 PR 跟着它们等（这是主笔 10-17 第一次评审时建议、后来写进派活表的）；其次走查记录三次把原因写错，各多一轮；主笔自己拆成两次发意见、前后口径不一；还有「继续」节奏下前提满足后空等。所有者：「走查一轮一个PR，要不断走查，而不是都淤积在一个地方。你看431，找出来的问题并不是都相关的。」定下：① **走查一轮一个 PR。** 一轮走完、记录经两席核对无误就合入；下一轮在最新的 main 上另开 PR（分支 `<席位>/<演示>-walkthrough-r<n>`），追加到同一份实录、改同一份清单。第 7 条做没做完看清单（`08-demo3-walkthrough.md`）每一行的判定，不看哪个 PR 开着。② **持续走。** 走查席不等「全部修好」：上一轮合入后，main 上只要有新的修复合入，就开下一轮，重看相关的行；没有新东西就不开。③ **查出的毛病各走各的。** 每条 P1 当轮就报主笔排成小活或接进对应的包，在清单那一行挂上修复的 PR；走查 PR 不因此挡合入，也不等修复。④ #431 按此收口：它装的是第一、二轮（含 r3 绕法的实录），记录两席都核过，照常合入；不靠绕法的第三轮另开 PR。派活表「第 9 包第 7 条走查」一行改成常驻一行。⑤ 同样用于 P2.5 的走查（`09` §四 第 9 包）。
 
 49. **2026-10-20 演示 3 验收怎么走。** #479（走查第三轮）两席可合后，演示 3 能在演示里看到的清单行全部成立，主笔提验收的排法：Claude（ubuntu）照 `docs/demos/demo-3.md` 从零装包走 A 链（本地 Gitea + 真 Claude Code）与 C 链（开关 Project 三次预览）——Claude Code 只能在 ubuntu 上跑（§七 钥匙串一条）；Claude（mac）走 B 链（受保护的 GitHub `main` + 真 Codex），并写验收记录、汇总哪些过哪些没过；所有者看实录或挑一段现场看。所有者：「演示3验收，可以按你的流程」。定下：① 两边各从最新 main 构建完整包、各用新的 root，不碰 `~/.local/state/hctl2` 与别席的环境；手册命令照抄，和手册不一致、要绕、跑不通的如实记，不在验收里改手册，问题另排。② 实录分别进 `.memo/log/2026-10-20-演示3验收-ubuntu.md` 与 `…-mac.md`，ID 全长、原样。③ 验收结果照演示 1、2 的做法写进 §三「演示 3 验收」一节，由 Claude（mac）在所有者看过之后落；实录 PR 照 #381 的先例由作者自合。④ 所有者看过演示，即「演示 3 走完」：钥匙串专项、H1–H3 可合，P2.5 第 2、3、7 包与第 10 包按各自前提开工。
+50. **2026-10-20 control 调 GitHub 用的凭据归第 38 条的第三类（方案 A）；演示 3 的 B 链挪到 ubuntu。** 主笔在 mac 上走 B 链前停下：随包的 `gh` 要用所有者的 GitHub 登录，而 mac 上 gh 把登录存在人的钥匙串里。按 CONSTRAINTS「遇到安全性检查」报所有者，给了三个选法：B 链挪到 ubuntu、所有者自己在弹窗上点允许、给环境变量令牌。所有者问：「ubuntu上的问题能解决，那么mac上呢？我们无法假定用户不用mac-gh吧。那怎么办」。主笔答：mac 上把 gh 登录存在钥匙串里的用户必须支持；ubuntu 其实也没解决——现行做法（`docs/usage.md` 第 344 行「复用用户已有登录」，`src/crates/repo/README.md` 发布与集成两节「以它自己的登录」）在两个平台都是 control 借人的登录，ubuntu 上登录在 `~/.config/gh` 的明文文件里，只是不弹窗。第 38 条按归属分三类时，没给「control 调外部平台用的凭据」归类，按理属于第三类：control 是后台进程，不该借人手用工具的登录，理由和第 38 条 ② 相同。方向上主笔给了三个选法：A，control 有自己的 GitHub 凭据，人交一次，存在 control 的密钥后端，每次只经 `GH_TOKEN` 交给那一次的 `gh`；B，维持借人的登录；C，GitHub App 发的短期令牌。所有者：「方案还是A吧」。定下：① control 调 GitHub 用的凭据属第 38 条第三类，存在 control 的密钥后端，人交一次；control 不读人的钥匙串、不读人的 `~/.config/gh`、不用人这台机器上 Git 的凭据助手。缺凭据或令牌失效时，产品报错并写明人要跑的命令，不替人登录、不替人续期（CONSTRAINTS「遇到安全性检查」）。mac 与 Linux 走同一条路。人自己在终端里跑的 `gh`、`git` 照旧用人的登录。② B 不取：它违背第 38 条的分类；mac 上 control 在后台时要么弹不出授权直接失败，要么不声不响就读走了（实现层脚注：gh 在 mac 上经系统自带的 `security` 命令读钥匙串，人登录时存进去的那一项信任的正是这条命令，所以随包的 gh 很可能不弹窗就读到；主笔没有实测，也没有去查所有者那一项的权限）。C 留作以后可选的策略，不排。③ 实现排成 §六「小活 AB」，#466 合入后开。`docs/usage.md` 与 repo README 那几句描述的是现行实现，随小活 AB 一起改，不先改。④ 演示 3 的 B 链不等小活 AB：挪到 ubuntu，由 Claude（ubuntu）照现行做法和 A、C 两链一起走（GLM 走查第二、三轮已在 ubuntu 上走通过 B 链）；Claude（mac）只写验收记录，并在记录里写明「control 借用人的 gh 登录」是已知缺口、由小活 AB 收。mac 上带钥匙串 gh 的 B 链真跑，改作小活 AB 的验收。第 49 条其余照旧。④ 与小活 AB 的席位按主笔同一条回答里的推荐排。
 
 ## 三、三次演示
 
@@ -474,12 +475,13 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 | 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
 | 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
 | 第 9 包第 7 条走查（一轮一个 PR，持续走） | §二 第 36 条 ③、第 37 条 ①、第 48 条 | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | 第一、二轮 `glm/demo3-walkthrough`，#431；第三轮 `glm/demo3-walkthrough-r3`，还没开 PR | #431 两席可合即合；第三轮现在就开（#477 已合）：B 链带 `task_id`、`request` 里不写规格，走到 Task Completion Receipt；之后 main 上有新修复合入就开下一轮（§二 第 48 条） |
-| 演示 3 验收 · A 链与 C 链（真 Claude Code） | §三；§二 第 49 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 现在就走：最新 main 构建完整包，照 `docs/demos/demo-3.md` 一、二、四、五、六节从零走 |
-| 演示 3 验收 · B 链（真 Codex）与验收记录 | §三；§二 第 49 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-acceptance`，实录 `.memo/log/2026-10-20-演示3验收-mac.md`；§三 加「演示 3 验收」 | 现在就走 B 链；验收记录在两边实录交出、所有者看过之后落 |
+| 演示 3 验收 · A、B、C 三条链 | §三；§二 第 49、50 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 现在就走：最新 main 构建完整包，照 `docs/demos/demo-3.md` 一、二、四、五、六节从零走 A、C 两链；B 链（受保护的 GitHub `main` + 真 Codex）照第三节与 `src/packaging/release/demo3-github.sh`，用 `yesme/hctl2-canary`，记进同一份实录、同一个 PR |
+| 演示 3 验收记录 | §三；§二 第 49、50 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-acceptance`；§三 加「演示 3 验收」 | 实录交出、所有者看过之后落；写明「control 借用人的 gh 登录」是已知缺口，由小活 AB 收 |
 | 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
 | 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
 | 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
 | 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，还没开 PR | 现在就写；演示 3 走完（所有者看过演示）才开自动合入 |
+| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
 | workflow 引擎（Dagu）的开工前限时验证 | §六「专项 · workflow 引擎（Dagu）的开工前限时验证」 | Antigravity（mac） | Claude（mac） | DeepSeek（ubuntu），照记录从零重跑 | `agy/dagu-probe`，还没开 PR | 无 |
 | 写入会话完成之后的去留：调研 | §六「专项 · 写入会话完成之后的去留：调研」 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/write-session-hibernation`，还没开 PR | 无 |
 | P2.5 第 1 包 · 施工图 | `09` §四 第 1 包 | Codex（ubuntu） | Claude（mac） | GLM（ubuntu） | `codex/workflow-revision`，还没开 PR | 小活 Z 交出后就开，不等它合入，也不等演示 3 |
@@ -776,6 +778,23 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
   5. 真会话一次：在试验仓库上照 #431 第二轮 B 链的做法——带 `task_id`、`request` 里不写规格、规格只在 Task 正文与契约里——派一次写入，harness 按契约干活并封存。ubuntu 上用 Codex（核验席重跑），mac 上也用 Codex（Claude Code 在 mac 的钥匙串问题未解）；实录附 Bundle 条目与 harness 记录的输入。
   6. 退回看红两处：去掉契约条目、去掉版本比对，对应用例要红。
 - **分支**：`claude/context-task-contract`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。合入后 #431 走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）。
+
+### 小活 AB · control 自己的 GitHub 凭据（Codex（mac）写；Claude（mac）找问题，Antigravity（ubuntu）核验）
+
+- **来由**：§二 第 50 条（方案 A）。现在 control 调 GitHub 的各处都借人的登录：随包的 `gh`（或 `HCTL2_GH`）继承 control 的环境，读人的 gh 配置与钥匙串——集成（`src/apps/control/src/integration/github.rs`）、发布推送的 `gh auth git-credential`（`review.rs`）、GitHub Issues 任务源（`tasks/github.rs`）、仓库注册时的平台读取（`scm.rs`）；私有仓库的 Git 回读靠这台机器上 Git 自己配的凭据助手。`docs/usage.md` 第 344 行写的就是「复用用户已有登录」。mac 上人的 gh 登录在钥匙串里，后台的 control 要么弹不出授权，要么不声不响读走；Linux 上读的是人的明文 `hosts.yml`。
+- **要求**：
+  1. control 有一份自己的 GitHub 凭据，存在 control 的密钥后端（#466 之后缺省是 `user-file`）。给人一条交凭据的命令，命令名与形状作者定，写进 control README；支持两种交法：从标准输入交一个令牌；或在 control 私有的配置目录里走一遍随包 gh 的登录流程，再把结果收进密钥后端。登录流程不得写进人的钥匙串：gh 在 mac 上缺省把登录存进系统凭据库，服务名 `gh:github.com` 和人的那一项相同，同一账号会覆盖人的登录（主笔读源码推断，没有实测；作者动手前用假账号或单独的 keychain 实测一次，不动所有者的）。
+  2. control 每次调 `gh`（上面各处，以及 control 经 `hctl2-tool` 调的 GitHub 事实读取），只经 `GH_TOKEN` 把凭据交给那一次的进程，`GH_CONFIG_DIR` 指到 control 的私有目录；从 control 自己的环境继承来的 `GH_TOKEN`、`GITHUB_TOKEN` 不用。令牌不进命令行、日志和错误信息。Git 推送与私有仓库的回读用同一份凭据，走现有的每进程凭据助手（`repo::git::Credential`），不读人的 Git 凭据配置。
+  3. 前提检查：注册 GitHub 仓库、接 GitHub Issues 任务源、发布、集成之前，control 没有凭据或平台回 401，就报错（错误码作者定），写明人要跑的那条命令；不替人登录、不替人续期。`hctl2 status` 报有没有 GitHub 凭据、是哪个账号，不报值。
+  4. 人自己在终端里直接跑的 `hctl2-tool` 是人在用自己的工具，照旧用人的登录；只有 control 调它时，才由 control 交凭据。
+  5. `docs/usage.md` 第 344 行、`src/crates/repo/README.md` 发布与集成两节、control README 一并改成新做法。
+- **验收**（缺一条不算过）：
+  1. 夹具：假 `gh` 记下它拿到的环境，断言 `GH_TOKEN` 是 control 存的那一份、`GH_CONFIG_DIR` 在 control 的私有目录、继承来的 `GH_TOKEN` 被丢掉。假的人 home 里放一份 gh 配置：control 没有凭据时，注册 GitHub 仓库被拒，报错写明命令，那份配置没被读。
+  2. 用一串认得出的假令牌跑全部用例，命令行、日志、错误信息里都找不到它。
+  3. 退回看红：去掉注入、退回继承环境，对应用例要红。
+  4. mac 真跑一次：所有者照报错给出的命令自己交一次凭据；照 `docs/demos/demo-3.md` 第三节在 `yesme/hctl2-canary` 上走 B 链（受保护的 `main` + 真 Codex）到 Task Completion Receipt，全程没有钥匙串弹窗；前后所有者自己跑一次 `gh auth status`，人的登录不变。实录进 PR，不打印令牌。
+  5. Linux 上核验席照同样做法重跑一次 B 链（所有者自己交凭据），用 `strace -f -e trace=openat` 一类的办法看 control 及其子进程没有打开人的 `~/.config/gh`。
+- **分支**：`codex/control-github-credential`，从 `origin/main` 起，#466 合入后开。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
 
 ### 专项 · 钥匙串整体方案的实现（Codex（mac）写；Claude 找问题，Antigravity 核验；演示 3 走完再合）
 
