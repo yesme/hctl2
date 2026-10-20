@@ -1,6 +1,6 @@
 # 演示 3「真实交付」操作手册
 
-> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`0566e83`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**待 `#431` 第二轮走通后补入，当前标注为「照用例或代码写的，未实跑」。
+> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`631e47c`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第三节（B 链全部 8 步，含受保护 GitHub `main` 上拉起真 Codex 会话完成写入与封存、自动发布 GitHub PR、`hctl2-tool wait commit-ci` 等待必需检查 `canary`、合入预览、完成预览、十秒回答及远端遗留清理）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**均已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md` 与 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
 
 本文记录演示 3「真实交付」从零构建、离线安装到端到端走查的完整命令序列。流程覆盖：本地 Gitea 仓库注册与 Claude Code 真会话写入交付链（A 链，人类仅在合入与完成两处预览确认）、受保护 GitHub `main` 与 Codex 真会话交付链（B 链）、开启「发布评审须人显式确认」开关的三次预览链（C 链），以及重启一致性、凭据隔离与逃生口的核对方法。
 
@@ -81,8 +81,8 @@ $CLI --json --root "$ROOT" status
 ```
 
 **核对字段**：
-- 人读输出 `$CLI --root "$ROOT" status` 十秒内直接给出控制面就绪状态、密钥存储策略与各托管服务状态。
-- JSON 输出中 `ready` 为 `true`，`policy.credential_storage` 为 `"user-file"`，`services.hosted` 中 `tuwunel` 的 `ready: true`、`gitea` 的 `consumed: false`（首次注册本地仓库时按需拉起）。
+- `$CLI --root "$ROOT" status` 当前在不加 `--json` 时同样直接输出缩进的 JSON 对象（与 `--json` 结构一致，约 45 行，包含控制面 socket 路径、密钥存储策略与三项随包托管服务的 `consumed` / `ready` / `pid` / `endpoint` 等字段）。
+- 输出中 `ready` 为 `true`，`policy.credential_storage` 为 `"user-file"`，`services.hosted` 中 `tuwunel` 的 `ready: true`、`gitea` 的 `consumed: false`（首次注册本地仓库时按需拉起）。
 
 ---
 
@@ -627,6 +627,7 @@ EOF
 $CLI --root "$ROOT" integration preview --input "$WS/work/a-integration.json" --key a-merge
 
 PREV_INT="$($CLI --json --root "$ROOT" integration preview --input "$WS/work/a-integration.json" --key a-merge)"
+echo "$PREV_INT" | jq -c '.effect_summary.protection'
 TOK_INT="$(echo "$PREV_INT" | jq -r .preview_token)"
 SUB_INT="$($CLI --json --root "$ROOT" integration submit --input "$WS/work/a-integration.json" --key a-merge --preview-token "$TOK_INT")"
 export INTEGRATION_INTENT_ID="$(echo "$SUB_INT" | jq -r .intent_id)"
@@ -643,7 +644,7 @@ echo "$INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, e
 ```
 
 **核对字段**：
-- 预览输出写明 `form: "accept_advance"`（本地 Gitea 不提供原子预期目标头合并，只能选接受目标前移）以及冻结的目标保护快照。
+- 人读预览的 `Object` 段列出 `ChangeSet Revision`、`repo`、`target ref`、`authorization form: accept_advance`（本地 Gitea 不提供原子预期目标头合并，只能选接受目标前移）、`strategy` 与 `target head at preview`，末尾 `Confirm with` 给出可直接按原词执行的 `integration submit --input ... --key a-merge --preview-token ...` 命令；冻结的目标保护快照在 `--json` 预览的 `effect_summary.protection` 中查看。
 - 提交回读后：`intent.state: "succeeded"`，签出唯一一张 `Integration Receipt`（`receipt_id: "receipt-..."`，`evidence_level: "hctl2-tool"`，`git_readback_level: "unmediated"`）。
 
 ### 9. 第二次人工预览：完成 Task（Task Completion Receipt）
@@ -746,57 +747,527 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 
 ## 三、B 链：受保护 GitHub `main` + 真 Codex 写入交付
 
-**实跑状态**：照用例或代码写的，未实跑（B 链真 Codex 交互走查待 `#431` 第二轮走通后补入完整可复制命令；安装包配脚本执行体的 GitHub 写入段已由 Antigravity 在 `#442` 头 `fddc65a` 上通过 `root//packaging/release:demo3-github-test` Build ID `44067490-b7ff-4a79-9019-a58534f70cd6` 实跑验证，对应 `yesme/hctl2-canary` PR `#33`）。
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`；其中 `hctl2-tool wait commit-ci` 亦在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实跑核验）。
 
 > [!NOTE]
-> B 链完整可复制命令序列将在 `#431` 第二轮走查实录走通后补入本节；以下为完整步骤骨架。
+> **GitHub 登录与凭据说明**：现行做法复用人这台机器上已登录的 `gh`（随包的 `$WS/prefix/libexec/hctl2/gh` 与 `hctl2-tool` 读取宿主机当前用户的 `gh` 登录态，操作前确认 `gh auth status` 已登录并对 `yesme/hctl2-canary` 有写权限）。小活 AB 合入后改成 control 自己的凭据。
 
-### 1. 前置检查：核对 `yesme/hctl2-canary` 分支保护与本地克隆
+### 1. 前置检查与克隆 `yesme/hctl2-canary`
 
-**实跑状态**：照用例或代码写的，未实跑。
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
 
-- 确认本机 `gh auth status` 已登录，且 `codex --version` 满足最低版本要求（`>= 0.153.4`）。
-- 核对公开沙盒仓库 `yesme/hctl2-canary` 的 `main` 分支保护快照（要求经 PR 合入、必需检查 `canary`、对管理员生效），并在 `$WS/canary-source` 准备本地克隆。
+确认本机 `gh` 已登录（滤除令牌行）、`codex --version` 满足最低版本要求（`>= 0.153.4`），核对公开沙盒仓库 `yesme/hctl2-canary` 的 `main` 分支保护规则，并将 `yesme/hctl2-canary` 克隆到 `$WS/canary-source`：
 
-### 2. 注册并激活外部 GitHub Repo
+```bash
+gh auth status 2>&1 | grep -v -i 'token'
+codex --version
+gh api repos/yesme/hctl2-canary --jq '{id, full_name, default_branch}'
+gh api repos/yesme/hctl2-canary/branches/main/protection \
+  --jq '{required_checks: .required_status_checks.contexts, enforce_admins: .enforce_admins.enabled, required_approvals: .required_pull_request_reviews.required_approving_review_count}'
 
-**实跑状态**：照用例或代码写的，未实跑。
+rm -rf "$WS/canary-source"
+git clone --quiet --branch main --single-branch https://github.com/yesme/hctl2-canary.git "$WS/canary-source"
+git -C "$WS/canary-source" config user.name "Demo3 Acceptance"
+git -C "$WS/canary-source" config user.email "demo3@example.test"
+export B_BASELINE_SHA="$(git -C "$WS/canary-source" rev-parse HEAD)"
+echo "B_BASELINE_SHA=$B_BASELINE_SHA"
+```
 
-- 以 `origin: "external"`、`platform: "github"`、`platform_path: "yesme/hctl2-canary"`、`platform_repo_id: "1407796416"`、`default_source: "github_issues"` 预览并提交 `repo register`（外部平台直接进入 `active`，不在本地 Gitea 建镜像仓）。
+**核对字段**：
+- `yesme/hctl2-canary` 的仓库数字 ID 为 `1407796416`，`default_branch` 为 `"main"`。
+- `main` 分支保护规则：`required_checks: ["canary"]`、`enforce_admins: true`、`required_approvals: 0`。
 
-### 3. 接受 `codex-cli` 工种、创建写入型 Profile 并选入名册
+### 2. 注册并激活外部 GitHub Repo（`repo register`）
 
-**实跑状态**：照用例或代码写的，未实跑。
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
 
-- 从已配对的原生 Agency 目录中提取 `codex-cli` 工种引用并执行 `agency accept`。
-- 创建对应 `codex-cli` 的写入型 Worker Profile，新建绑定该 GitHub Repo 的 Project，并将 `codex-cli` 选入主 Room 名册。
+注册输入照 `src/packaging/release/demo3-github.sh`（`origin: "external"`、`platform: "github"`、`instance: "github.com"`、`platform_repo_id: "1407796416"`、`platform_path: "yesme/hctl2-canary"`、`default_source: "github_issues"`），预览并提交确认：
+
+```bash
+cat << EOF > "$WS/work/b-repo.json"
+{
+  "name": "hctl2-canary",
+  "origin": "external",
+  "platform": "github",
+  "instance": "github.com",
+  "platform_repo_id": "1407796416",
+  "platform_path": "yesme/hctl2-canary",
+  "default_source": "github_issues",
+  "local": { "machine": "control", "path": "$WS/canary-source" }
+}
+EOF
+
+PREV_BREG="$($CLI --json --root "$ROOT" repo register --input "$WS/work/b-repo.json" --key b-register)"
+TOK_BREG="$(echo "$PREV_BREG" | jq -r .preview_token)"
+SUB_BREG="$($CLI --json --root "$ROOT" repo register --input "$WS/work/b-repo.json" --key b-register --preview-token "$TOK_BREG")"
+echo "$SUB_BREG" | jq -c '{lifecycle: .registration.lifecycle, version: .registration.version, delivered: .registration.delivered, repo_id: .registration.repo_id, full_name: .registration.observed.full_name, stable_id: .registration.observed.stable_id, error: .error}'
+export B_REPO_ID="$(echo "$SUB_BREG" | jq -r .registration.repo_id)"
+export B_STABLE_ID="$(echo "$SUB_BREG" | jq -r .registration.observed.stable_id)"
+```
+
+**核对字段**：
+- `registration.lifecycle`: `"active"`，`registration.delivered`: `true`（外部 GitHub 仓库直接激活，不触发本地 Gitea 镜像创建）。
+- `registration.observed.full_name`: `"yesme/hctl2-canary"`，`registration.observed.stable_id`: `"1407796416"`。
+
+### 3. 接受 `codex-cli` 工种、创建写入型 Profile、新建 Project 并选入主 Room 名册
+
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
+
+从已配对的原生 Agency 目录中提取 `codex-cli` 工种引用并执行 `agency accept`，创建对应 `codex-cli` 的写入型 Worker Profile，新建绑定 `$B_REPO_ID` 的 Project 并将 `codex-cli` 选入主 Room 名册：
+
+```bash
+CATALOG_OUT="$($CLI --json --root "$ROOT" agency catalog native)"
+echo "$CATALOG_OUT" | jq -c '.professions[] | select(.reference.id=="codex-cli")' > "$WS/work/codex-profession.json"
+jq -c '.reference' "$WS/work/codex-profession.json" > "$WS/work/codex-ref.json"
+jq -c '{id: .reference.id, revision: .reference.revision, harness, model, terms}' "$WS/work/codex-profession.json"
+
+ACCEPT_CODEX="$($CLI --json --root "$ROOT" agency accept --binding-id native --reference "$WS/work/codex-ref.json" --key b-accept-codex)"
+export B_PROF_KEY="$(echo "$ACCEPT_CODEX" | jq -c .profession.key)"
+export B_PROF_VER="$(echo "$ACCEPT_CODEX" | jq -r .profession.version)"
+export B_PROF_DIGEST="$(jq -r '.digest' "$WS/work/codex-ref.json")"
+
+B_HARNESS="$(jq -c '.harness' "$WS/work/codex-profession.json")"
+B_MODEL="$(jq -c '.model' "$WS/work/codex-profession.json")"
+
+cat << EOF > "$WS/work/b-profile.json"
+{
+  "id": "demo3-codex-write",
+  "profile": {
+    "harness": $B_HARNESS,
+    "model": $B_MODEL,
+    "mode": "write",
+    "permissions": ["context.read", "git.read", "git.write"],
+    "environment": [],
+    "required_capabilities": {
+      "event_cursor": false,
+      "exact_attach": false,
+      "input": false,
+      "input_provenance": false,
+      "isolation_effects": [],
+      "managed_single_writer": false,
+      "secure_input": false,
+      "stop": true,
+      "tool_execution_unmediated": false
+    },
+    "max_context_bytes": 262144
+  }
+}
+EOF
+
+PREV_BPROF="$($CLI --json --root "$ROOT" profile create --input "$WS/work/b-profile.json" --key b-profile)"
+TOK_BPROF="$(echo "$PREV_BPROF" | jq -r .preview_token)"
+SUB_BPROF="$($CLI --json --root "$ROOT" profile create --input "$WS/work/b-profile.json" --key b-profile --preview-token "$TOK_BPROF")"
+export B_PROFILE_REV="$(echo "$SUB_BPROF" | jq -c .revision)"
+
+cat << EOF > "$WS/work/b-project.json"
+{
+  "repo_id": "$B_REPO_ID",
+  "definition": {
+    "name": "demo3 github acceptance",
+    "goal": "deliver tested code through protected GitHub main",
+    "scope": "yesme/hctl2-canary",
+    "roles": [],
+    "role_members": {},
+    "defaults": {},
+    "settings": {
+      "selection_policy": {},
+      "publish_review_requires_confirmation": false
+    }
+  }
+}
+EOF
+
+PREV_BPROJ="$($CLI --json --root "$ROOT" project create --input "$WS/work/b-project.json" --key b-project)"
+TOK_BPROJ="$(echo "$PREV_BPROJ" | jq -r .preview_token)"
+SUB_BPROJ="$($CLI --json --root "$ROOT" project create --input "$WS/work/b-project.json" --key b-project --preview-token "$TOK_BPROJ")"
+export B_PROJECT_ID="$(echo "$SUB_BPROJ" | jq -r .project_id)"
+export B_ROOM_ID="$(echo "$SUB_BPROJ" | jq -r .main_room_id)"
+
+B_PROJ_VER="$($CLI --json --root "$ROOT" project show "$B_PROJECT_ID" | jq -r .project.version)"
+
+cat << EOF > "$WS/work/b-select.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "project_version": $B_PROJ_VER,
+  "room_id": "$B_ROOM_ID",
+  "topic_command_key": null,
+  "roster_version": null,
+  "selections": [
+    {
+      "room_id": "$B_ROOM_ID",
+      "selected_item": { "key": $B_PROF_KEY, "version": { "state": $B_PROF_VER } },
+      "profession": { "key": $B_PROF_KEY, "version": { "state": $B_PROF_VER } },
+      "profession_digest": "$B_PROF_DIGEST",
+      "agency": {
+        "key": { "id": "native", "kind": "agency_binding", "scope": { "kind": "control" } },
+        "version": { "state": 1 }
+      },
+      "required_skills": [],
+      "optional_skills": [],
+      "worker_profiles": [ $B_PROFILE_REV ],
+      "responsibility": "research",
+      "permission": { "allow": ["context.read", "git.read", "git.write"] },
+      "budget": { "max_bytes": 262144 },
+      "display_name": "Codex writer",
+      "persona_tags": []
+    }
+  ]
+}
+EOF
+
+PREV_BSEL="$($CLI --json --root "$ROOT" project select --input "$WS/work/b-select.json" --key b-select)"
+TOK_BSEL="$(echo "$PREV_BSEL" | jq -r .preview_token)"
+$CLI --json --root "$ROOT" project select --input "$WS/work/b-select.json" --key b-select --preview-token "$TOK_BSEL" \
+  | jq -c '{roster_version, candidate_validation, error}'
+```
+
+**核对字段**：
+- `candidate_validation`: `"accepted_catalog_and_project_policy"`，`roster_version`: `1`，`error`: `null`。
 
 ### 4. 连接 `github_issues` 任务源、创建 Task 并采纳契约
 
-**实跑状态**：照用例或代码写的，未实跑。
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
 
-- 连接 `github_issues` 任务源并挂接至该 Project（`approved_scope: "1407796416"`）。
-- 创建要求在独立子目录下编写非文档代码与单元测试的 Task，确认 issue 在 `yesme/hctl2-canary` 上建出且绑定生效，随后执行 `task adopt` 采纳契约。
+> [!IMPORTANT]
+> **耗时提示**：从 `task connect` 到 `task create` 完成要等几分钟（本次实跑共约 4 分 50 秒，其中 `task create` 从预览到 GitHub issue 建出约 2 分 30 秒）。原因是 `task attach` 与 `task create` 在预览和提交前会触发对 `github_issues` 源的对账快照读取，随包的 `$WS/prefix/libexec/hctl2/gh` 会逐个读取 `yesme/hctl2-canary` 上已有 issue 的依赖与子 issue（`parent`、`sub_issues`、`dependencies/blocked_by`、`dependencies/blocking`），执行期间请耐心等待返回，不要误判为挂起而中断。
 
-### 5. 发起写入型调用（真 Codex 会话改代码并封存）
+连接 `github_issues` 任务源并挂接到 `$B_PROJECT_ID`，创建要求在独立子目录 `canary_cases/acc_$B_TS/` 下实现 `digit_sum.py` 与单元测试 `test_digit_sum.py` 的 Task，随后执行 `task adopt` 采纳契约：
 
-**实跑状态**：照用例或代码写的，未实跑。
+```bash
+cat << EOF > "$WS/work/b-source.json"
+{
+  "repo_id": "$B_REPO_ID",
+  "candidate_id": "github_issues",
+  "consent": true,
+  "make_default": false
+}
+EOF
 
-- 执行 `invocation preview` 与 `invocation start`，由 Agency 经 app-server `turn/start` 与 Herdr pane 中的 `codex resume --remote` 在隔离工作树中完成代码编写与测试，并由 `hctl2-tool` 封存交回。
+PREV_BSRC="$($CLI --json --root "$ROOT" task connect --input "$WS/work/b-source.json" --key b-connect)"
+TOK_BSRC="$(echo "$PREV_BSRC" | jq -r .preview_token)"
+SUB_BSRC="$($CLI --json --root "$ROOT" task connect --input "$WS/work/b-source.json" --key b-connect --preview-token "$TOK_BSRC")"
+export B_SOURCE_ID="$(echo "$SUB_BSRC" | jq -r .source_id)"
 
-### 6. 自动发布 PR、等待 `canary` 检查通过并预览合入
+B_PROJ_VER="$($CLI --json --root "$ROOT" project show "$B_PROJECT_ID" | jq -r .project.version)"
 
-**实跑状态**：照用例或代码写的，未实跑。
+cat << EOF > "$WS/work/b-attach.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "project_version": $B_PROJ_VER,
+  "source_id": "$B_SOURCE_ID",
+  "approved_scope": "$B_STABLE_ID",
+  "consent": true
+}
+EOF
 
-- 核对 `review show` 中分支推送与 GitHub PR 创建两段各自确认。
-- 等待 GitHub Actions 必需检查 `canary` 通过后，执行 `integration preview`（核对冻结的保护快照且只允许 `accept_advance`）与 `integration submit`，回读合并提交并签出 `Integration Receipt`。
+PREV_BATT="$($CLI --json --root "$ROOT" task attach --input "$WS/work/b-attach.json" --key b-attach)"
+TOK_BATT="$(echo "$PREV_BATT" | jq -r .preview_token)"
+$CLI --json --root "$ROOT" task attach --input "$WS/work/b-attach.json" --key b-attach --preview-token "$TOK_BATT" \
+  | jq -c '{source_id, error}'
 
-### 7. 完成 Task 与平台事实核对
+export B_TS="$(date +%s)"
+B_PROJ_VER="$($CLI --json --root "$ROOT" project show "$B_PROJECT_ID" | jq -r .project.version)"
 
-**实跑状态**：照用例或代码写的，未实跑。
+cat << EOF > "$WS/work/b-task.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "project_version": $B_PROJ_VER,
+  "source_id": "$B_SOURCE_ID",
+  "title": "Demo 3 acceptance B chain $B_TS",
+  "body": "In a new directory canary_cases/acc_$B_TS/, add digit_sum.py defining digit_sum(n), which returns the sum of the decimal digits of abs(n) (digit_sum(0) == 0, digit_sum(-907) == 16), and test_digit_sum.py with unittest cases for zero, a positive and a negative number. Run /usr/bin/python3 -B -m unittest -v test_digit_sum inside that directory and report the command and its output. Leave all changes uncommitted for Agency sealing. Do not push, publish, obtain credentials, or edit harness global settings."
+}
+EOF
 
-- 引用该 `Integration Receipt` 执行 `task complete` 预览与确认，签出 `Task Completion Receipt`。
-- 核对 `task show` 中 `harness` 行显示 `codex-cli (via herdr, model none)`，并与 GitHub 远端 PR 状态及 `main` 头比对一致。
+PREV_BTASK="$($CLI --json --root "$ROOT" task create --input "$WS/work/b-task.json" --key b-task-create)"
+TOK_BTASK="$(echo "$PREV_BTASK" | jq -r .preview_token)"
+SUB_BTASK="$($CLI --json --root "$ROOT" task create --input "$WS/work/b-task.json" --key b-task-create --preview-token "$TOK_BTASK")"
+export B_TASK_ID="$(echo "$SUB_BTASK" | jq -r .task_id)"
+export B_TASK_VER="$(echo "$SUB_BTASK" | jq -r .task.version)"
+echo "$SUB_BTASK" | jq -c '{effect_state, task_id, version: .task.version, number: .task.data.number, entity: .task.data.entity, error}'
+
+B_PROJ_VER="$($CLI --json --root "$ROOT" project show "$B_PROJECT_ID" | jq -r .project.version)"
+
+B_CONTRACT_JSON="$(cat << EOF
+{
+  "scope": "canary_cases/acc_$B_TS",
+  "expected_outcome": "tested digit_sum merged through protected main",
+  "acceptance": [
+    {
+      "text": "the Task change is integrated",
+      "grade": "mechanical",
+      "evidence": {
+        "accept": "integration_receipt",
+        "min_channel": "unmediated"
+      }
+    },
+    {
+      "text": "a human verified the change and its tests",
+      "grade": "human"
+    }
+  ],
+  "roles": [],
+  "capabilities": []
+}
+EOF
+)"
+B_PROPOSAL_DIGEST="$(printf '%s' "$B_CONTRACT_JSON" | jq -cS . | tr -d '\n' | sha256sum | awk '{print $1}')"
+
+cat << EOF > "$WS/work/b-adopt.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "project_version": $B_PROJ_VER,
+  "task_id": "$B_TASK_ID",
+  "version": $B_TASK_VER,
+  "adoption": {
+    "contract": $B_CONTRACT_JSON,
+    "origin": {
+      "kind": "local",
+      "reference": {
+        "key": {
+          "scope": { "kind": "project", "id": "$B_PROJECT_ID" },
+          "kind": "project",
+          "id": "$B_PROJECT_ID"
+        },
+        "version": { "state": $B_PROJ_VER }
+      },
+      "proposal_digest": "$B_PROPOSAL_DIGEST"
+    }
+  }
+}
+EOF
+
+PREV_BADOPT="$($CLI --json --root "$ROOT" task adopt --input "$WS/work/b-adopt.json" --key b-task-adopt)"
+TOK_BADOPT="$(echo "$PREV_BADOPT" | jq -r .preview_token)"
+SUB_BADOPT="$($CLI --json --root "$ROOT" task adopt --input "$WS/work/b-adopt.json" --key b-task-adopt --preview-token "$TOK_BADOPT")"
+echo "$SUB_BADOPT" | jq -c '{revision_number: .task.data.revision.number, version: .task.version, error}'
+```
+
+**核对字段**：
+- `task create` 返回 `effect_state: "confirmed"`，`entity.provider` 为 `"github_issues@github.com"`，`number` 为 `yesme/hctl2-canary` 上新建的 GitHub issue 编号。
+- `task adopt` 返回 `revision_number: 1`、`error: null`。
+
+### 5. 带 `task_id` 发起写入型调用（真 Codex 会话改代码并封存）
+
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
+
+带 `task_id` 发起写入型调用，`request` 只写一句 `"Work on the adopted Task as its contract specifies."`（不重复实现规格，由开工包内联交付的 `task_contract` 与 `task_card` 驱动真 Codex 会话完成代码编写与测试，并由 Agency 调用 `hctl2-tool` 封存交回）：
+
+```bash
+B_DEADLINE_MS="$(( ($(date +%s) + 900) * 1000 ))"
+
+cat << EOF > "$WS/work/b-invoke.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "room_id": "$B_ROOM_ID",
+  "task_id": "$B_TASK_ID",
+  "target": "research",
+  "profile": $B_PROFILE_REV,
+  "request": "Work on the adopted Task as its contract specifies.",
+  "budget": 262144,
+  "deadline_ms": $B_DEADLINE_MS,
+  "retry_of": null,
+  "write": {
+    "change_set_id": null,
+    "baseline_commit": "$B_BASELINE_SHA",
+    "target_branch": "main",
+    "allow_update": true
+  }
+}
+EOF
+
+# 查看人读派工预览
+$CLI --root "$ROOT" invocation preview --input "$WS/work/b-invoke.json" --key b-invoke
+
+PREV_BINV="$($CLI --json --root "$ROOT" invocation preview --input "$WS/work/b-invoke.json" --key b-invoke)"
+TOK_BINV="$(echo "$PREV_BINV" | jq -r .preview_token)"
+export B_CHANGESET_ID="$(echo "$PREV_BINV" | jq -r .effect_summary.preview.write.lease.pending.change_set_id)"
+echo "$PREV_BINV" | jq -c '{authorization: .effect_summary.preview.write.authorization, change_set_id: .effect_summary.preview.write.lease.pending.change_set_id, baseline: .effect_summary.preview.write.lease.pending.baseline_commit, publication_target: .effect_summary.preview.write.publication_target}'
+
+SUB_BINV="$($CLI --json --root "$ROOT" invocation start --input "$WS/work/b-invoke.json" --key b-invoke --preview-token "$TOK_BINV")"
+export B_INVOCATION_ID="$(echo "$SUB_BINV" | jq -r .invocation_id)"
+
+for i in $(seq 1 450); do
+  B_SHOW="$($CLI --json --root "$ROOT" invocation show "$B_PROJECT_ID" "$B_INVOCATION_ID")"
+  B_STATE="$(echo "$B_SHOW" | jq -r .state)"
+  case "$B_STATE" in
+    completed)
+      echo "B invocation completed: $(echo "$B_SHOW" | jq -r .reason)"
+      break
+      ;;
+    failed|cancelled|lost)
+      echo "B invocation ended in $B_STATE: $(echo "$B_SHOW" | jq -r .reason)"
+      break
+      ;;
+  esac
+  sleep 2
+done
+[ "$B_STATE" = "completed" ] || { echo "B 链调用未完成: state=$B_STATE"; return 1 2>/dev/null || exit 1; }
+
+# 核对开工包条目（契约 task_contract 与卡正文 task_card 已内联封入 Context Bundle）
+echo "$B_SHOW" | jq -c '.dispatch_intent.data.value.bundle.document.entries[] | {source: .source.id, mode: .delivery.mode, bytes: (.delivery.bytes | @base64d | length), bytes_digest}'
+```
+
+**核对字段**：
+- `invocation show` 返回 `state: "completed"`，`reason: "Git version admitted; not Task acceptance"`。
+- `bundle.document.entries` 中包含内联的 `task_contract/<B_TASK_ID>` 与 `task_card/<B_TASK_ID>`。
+
+### 6. 自动发布 PR、用 `hctl2-tool wait commit-ci` 等待 `canary` 通过并预览提交合入
+
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`；`hctl2-tool wait commit-ci` 亦在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实跑核验）。
+
+核对封存的 `ChangeSet Revision` 与 diff，等待 `review show` 中两段发布（推送分支与创建 GitHub PR）各自回读确认，随后用产品自己的 `$WS/prefix/bin/hctl2-tool wait commit-ci`（见 `docs/usage.md`「事实等待」，不用人的 `gh api`）等待受保护 `main` 的必需检查 `canary` 通过，再执行合入预览与提交：
+
+```bash
+B_CS_SHOW="$($CLI --json --root "$ROOT" changeset show "$B_REPO_ID" "$B_CHANGESET_ID")"
+export B_REVISION_ID="$(echo "$B_CS_SHOW" | jq -r '.revisions[0].change_set_revision_id')"
+echo "$B_CS_SHOW" | jq '.revisions[0]'
+$CLI --json --root "$ROOT" changeset diff "$B_REPO_ID" "$B_CHANGESET_ID" "$B_REVISION_ID" | jq -r .diff
+
+for i in $(seq 1 60); do
+  B_REV_LIST="$($CLI --json --root "$ROOT" review list "$B_REPO_ID")"
+  B_PUB_STATE="$(echo "$B_REV_LIST" | jq -r --arg cs "$B_CHANGESET_ID" '.items[] | select(.change_set_id==$cs) | .state')"
+  [ "$B_PUB_STATE" = "published" ] && break
+  sleep 2
+done
+export B_PUBLISH_INTENT_ID="$(echo "$B_REV_LIST" | jq -r --arg cs "$B_CHANGESET_ID" '.items[] | select(.change_set_id==$cs) | .intent_id')"
+B_PUB_SHOW="$($CLI --json --root "$ROOT" review show "$B_REPO_ID" "$B_PUBLISH_INTENT_ID")"
+echo "$B_PUB_SHOW" | jq '{state: .intent.state, stages: .stages, mapping: .mappings[0]}'
+export B_PUBLISH_COMMIT="$(echo "$B_PUB_SHOW" | jq -r '.mappings[0].platform_commit_sha')"
+export B_PR_INDEX="$(echo "$B_PUB_SHOW" | jq -r '.mappings[0].review_request.index')"
+export B_HEAD_BRANCH="$(echo "$B_PUB_SHOW" | jq -r '.mappings[0].review_request.head_branch')"
+
+# 用产品自己的 hctl2-tool wait commit-ci 等待必需检查 canary 在发布提交上通过（不用人的 gh api）
+"$WS/prefix/bin/hctl2-tool" wait --deadline "$(( $(date +%s) + 600 ))" \
+  commit-ci --repo yesme/hctl2-canary --commit "$B_PUBLISH_COMMIT" \
+  | jq '{schema, outcome, evidence_level, checks: [.observation.check_runs[] | {name, status, conclusion}]}'
+
+cat << EOF > "$WS/work/b-integration.json"
+{
+  "repo_id": "$B_REPO_ID",
+  "change_set_revision_id": "$B_REVISION_ID",
+  "target_kind": "platform",
+  "target_ref": "refs/heads/main",
+  "form": "accept_advance",
+  "strategy": "merge_commit"
+}
+EOF
+
+# 查看人读合入预览（末尾 Confirm with 给出可直接按原词执行的 integration submit 命令）
+$CLI --root "$ROOT" integration preview --input "$WS/work/b-integration.json" --key b-merge
+
+PREV_BINT="$($CLI --json --root "$ROOT" integration preview --input "$WS/work/b-integration.json" --key b-merge)"
+echo "$PREV_BINT" | jq -c '.effect_summary.protection'
+TOK_BINT="$(echo "$PREV_BINT" | jq -r .preview_token)"
+SUB_BINT="$($CLI --json --root "$ROOT" integration submit --input "$WS/work/b-integration.json" --key b-merge --preview-token "$TOK_BINT")"
+export B_INTEGRATION_INTENT_ID="$(echo "$SUB_BINT" | jq -r .intent_id)"
+
+for i in $(seq 1 90); do
+  B_INT_SHOW="$($CLI --json --root "$ROOT" integration show "$B_REPO_ID" "$B_INTEGRATION_INTENT_ID")"
+  B_INT_STATE="$(echo "$B_INT_SHOW" | jq -r .intent.state)"
+  [ "$B_INT_STATE" = "succeeded" ] || [ "$B_INT_STATE" = "failed" ] && break
+  sleep 1
+done
+
+export B_RECEIPT_ID="$(echo "$B_INT_SHOW" | jq -r .receipt.receipt_id)"
+export B_MERGED_COMMIT="$(echo "$B_INT_SHOW" | jq -r .receipt.integrated_commit)"
+echo "$B_INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id, evidence_level: .receipt.evidence_level, git_readback_level: .receipt.readback.git.evidence_level, integrated_commit: .receipt.integrated_commit, target_head_after: .receipt.target_head_after, platform_readback: .receipt.readback.platform}'
+```
+
+**核对字段**：
+- `review show` 中 `state: "published"`，`stages.push.confirmed` 与 `stages.review_request.confirmed` 均为 `true`。
+- `hctl2-tool wait commit-ci` 返回退出码 `0`，输出 `schema: "hctl2.external-fact.v1"`、`outcome: "established"`、`evidence_level: "unmediated"`，且 `checks` 中 `canary` 的 `status: "completed"`、`conclusion: "success"`。
+- `--json` 合入预览的 `effect_summary.protection` 给出冻结的 GitHub 分支保护快照（`required_checks: ["canary"]`、`requires_review_request: true`、`enforce_admins.enabled: true`）；人读合入预览末尾 `Confirm with` 给出 `integration submit --input ... --key b-merge --preview-token ...`。
+- `integration show` 返回 `state: "succeeded"`，签出 `Integration Receipt`（`evidence_level: "hctl2-tool"`、`git_readback_level: "unmediated"`，`integrated_commit` 与 `target_head_after` 一致）。
+
+### 7. 完成 Task（`task complete`）与十秒回答（`task show`）
+
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
+
+引用 `$B_RECEIPT_ID` 执行 `task complete` 的人读预览、`--json` 预览与确认提交，并运行 `task show` 核对十秒回答：
+
+```bash
+B_TASK_CUR_VER="$($CLI --json --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID" | jq -r .version)"
+
+cat << EOF > "$WS/work/b-complete.json"
+{
+  "project_id": "$B_PROJECT_ID",
+  "task_id": "$B_TASK_ID",
+  "version": $B_TASK_CUR_VER,
+  "lifecycle_version": 1,
+  "revision_number": 1,
+  "acceptance": [
+    {
+      "item": 0,
+      "channel": "unmediated",
+      "generation": 1,
+      "judge": { "kind": "hctl2_tool" },
+      "producer": "hctl2-tool",
+      "references": [
+        {
+          "key": {
+            "id": "$B_RECEIPT_ID",
+            "kind": "integration_receipt",
+            "scope": { "id": "$B_REPO_ID", "kind": "repo" }
+          },
+          "version": { "state": 1 }
+        }
+      ]
+    },
+    {
+      "item": 1,
+      "channel": "narrated",
+      "generation": null,
+      "judge": { "kind": "human", "actor": "local-owner:$(id -u)" },
+      "producer": null,
+      "references": []
+    }
+  ]
+}
+EOF
+
+# 查看人读完成预览
+$CLI --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-complete
+
+PREV_BCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-complete)"
+TOK_BCOMP="$(echo "$PREV_BCOMP" | jq -r .preview_token)"
+SUB_BCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-complete --preview-token "$TOK_BCOMP")"
+echo "$SUB_BCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, items: [.items[] | {item, grade, outcome, validation_level, references: [.references[].key.id]}]}'
+
+$CLI --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID"
+```
+
+**核对字段**：
+- `task complete` 返回 `lifecycle: "completed"`、`lifecycle_version: 2`、`receipt_id: "<B_TASK_ID>:2"`。
+- `task show` 单屏输出六行十秒回答：`goal`、`state: completed; contract revision 1`、`blocking: nothing`、`harness: codex-cli (via herdr, model none) — invocation ... completed`、`evidence`（同时列出 `version csr-...`、`review request #<B_PR_INDEX> (published)`、`Integration Receipt` 与 `Completion Receipt`）与 `next: nothing — the Task is completed`。
+- **Task 完成后外部卡写回现状**：`src/crates/task/src/planning.rs` 中的 `Action::Complete` 在同一 Store 事务内写入 `Task Completion Receipt`（`task_completion_receipt`）并将 `Task.lifecycle` 推进为 `"completed"`，但 `plan.effects` 为空，未向任务源 outbox 入队关闭外部 issue 或追加完成评论的写回意图（GitHub `github_issues` 与本地 Gitea `gitea_issues` 均如此）。因此 `task complete` 完成后，GitHub issue（如本次实跑的 `#41`）与本地 Gitea issue（A 链 `#1`、C 链 `#2`）在平台侧仍保持 `open`。GitHub 侧留下的 issue 与 PR 源分支按下一小节由人用 `gh` 清理。
+
+### 8. 收尾清理 `yesme/hctl2-canary` 上留下的远端对象
+
+**实跑状态**：照用例或代码写的，未实跑（供人类操作者在完成核验后用自己的 `gh` 收尾清理远端沙盒遗留物）。
+
+B 链跑完后，`yesme/hctl2-canary` 上会留下两项未关闭/未删除的远端对象：一是第 4 步新建的 GitHub issue（`task complete` 未自动写回关闭，仍为 `open`），二是第 6 步已合入 PR 的远端源分支 `refs/heads/$B_HEAD_BRANCH`（即 `hctl2/cs-<B_CHANGESET_ID>`）。由人用自己的 `gh` 执行以下命令收尾：
+
+```bash
+export B_ISSUE_NUMBER="$($CLI --json --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID" | jq -r .data.number)"
+export B_HEAD_BRANCH="$(echo "$B_PUB_SHOW" | jq -r '.mappings[0].review_request.head_branch')"
+
+# 1. 关闭本次 B 链在 yesme/hctl2-canary 上创建的 issue
+gh issue close "$B_ISSUE_NUMBER" --repo yesme/hctl2-canary --comment "Closed after demo-3 B chain walkthrough."
+
+# 2. 删除已合入 PR（#$B_PR_INDEX）留下的远端源分支
+gh api -X DELETE "repos/yesme/hctl2-canary/git/refs/heads/$B_HEAD_BRANCH"
+
+# 3. 核对 issue 已关闭、远端源分支已不存在
+gh api "repos/yesme/hctl2-canary/issues/$B_ISSUE_NUMBER" --jq '{number, state, title}'
+gh api "repos/yesme/hctl2-canary/pulls/$B_PR_INDEX" --jq '{number, state, merged, head_ref: .head.ref}'
+```
+
+若要直接清理 `2026-10-20` 验收实跑（`.memo/log/2026-10-20-演示3验收-ubuntu.md`）在 `yesme/hctl2-canary` 上留下的 issue `#41` 与 PR `#42` 源分支 `hctl2/cs-9bc595043cf485f07bcf90479ac85dc56518ba2ece0b262aae0dda5b9929a399`，可直接执行：
+
+```bash
+gh issue close 41 --repo yesme/hctl2-canary --comment "Closed after 2026-10-20 demo-3 B chain acceptance."
+gh api -X DELETE "repos/yesme/hctl2-canary/git/refs/heads/hctl2/cs-9bc595043cf485f07bcf90479ac85dc56518ba2ece0b262aae0dda5b9929a399"
+```
 
 ---
 
