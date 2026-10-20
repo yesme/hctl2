@@ -591,6 +591,87 @@ fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
 }
 
 #[test]
+fn the_pane_cannot_read_personal_claude_or_codex_credentials() {
+    const PROBE_ROOT: &str = "HCTL2_PERSONAL_HOME_PROBE_ROOT";
+    const TARGETS: [&str; 3] = [".claude/login", ".claude.json", ".codex/auth.json"];
+    if let Some(root) = std::env::var_os(PROBE_ROOT) {
+        let home = PathBuf::from(root).join("home");
+        assert_eq!(
+            std::env::var_os("HOME"),
+            Some(home.clone().into_os_string())
+        );
+        let (cred, exec, state, server) = server("personal-home");
+        let public = exec.join("ordinary-file");
+        std::fs::write(&public, b"ordinary test file").unwrap();
+        let mut body = String::new();
+        for (index, path) in TARGETS
+            .iter()
+            .map(|target| home.join(target))
+            .chain(std::iter::once(public))
+            .enumerate()
+        {
+            let quoted = path.display().to_string().replace('\'', "'\"'\"'");
+            body.push_str(&format!(
+                "if /bin/cat '{quoted}' >/dev/null 2>&1; then printf 'readable {index}\\n'; else printf 'denied {index}\\n'; fi\n"
+            ));
+        }
+        let finished = launch::Launch::start(server, &exec, &state, &cred, &body, "personal-home")
+            .unwrap()
+            .wait(Duration::from_secs(15))
+            .unwrap();
+        assert_eq!(finished.code, Some(0));
+        assert_eq!(
+            String::from_utf8(finished.stdout).unwrap(),
+            "denied 0\ndenied 1\ndenied 2\nreadable 3\n",
+            "the pane must deny all three personal credential paths but read an ordinary file"
+        );
+        return;
+    }
+
+    // Change HOME only in a fresh process: other tests keep their environment,
+    // and neither this process nor the pane ever reads the operator's login.
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let private_tmp = temp.path().join("tmp");
+    std::fs::create_dir_all(&private_tmp).unwrap();
+    for target in TARGETS {
+        let path = home.join(target);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"fake personal credential").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"fake personal credential");
+    }
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "the_pane_cannot_read_personal_claude_or_codex_credentials",
+            "--nocapture",
+        ])
+        .env_clear()
+        .env(PROBE_ROOT, temp.path())
+        .env("HOME", &home)
+        .env("TMPDIR", &private_tmp)
+        .env("PATH", "/usr/bin:/bin")
+        .env("USER", "hctl2-test")
+        .env("HCTL2_LOCKED_HERDR", binary())
+        .env(
+            "HCTL2_CONFINE_BIN",
+            std::fs::canonicalize(std::env::var_os("HCTL2_CONFINE_BIN").unwrap()).unwrap(),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"),
+        "the fresh process must actually run the pane probe"
+    );
+}
+
+#[test]
 fn the_next_start_reaps_an_orphaned_herdr() {
     let (cred, exec) = scratch("orphan");
     let state = herdr::state_dir(&exec, &cred).unwrap();

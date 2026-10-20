@@ -28,6 +28,8 @@ Buck：`root//agency:agency`、`:service`、`:cli_test`、`:port_test`、`:contr
 
 Claude 登录由人运行原生 `claude setup-token`，然后从私有文件或密钥管理器管道导入：`agency --root /path/to/agency login claude-token --expires-at <Unix秒> < /path/to/private-token-file`。不把 token 写进参数或聊天；命令拒绝会回显的终端 stdin。`--expires-at` 是人声明的截止时间，导入只验证格式、权限和截止，不声称已经向服务端验证登录。token 原件在 Agency 凭据根内的 0600 文件；启动时只写进当前会话私有 settings 的 `env`，不进 Herdr server 环境、workspace 环境或参数。到声明的截止后停止接受新派工，不替人登录或续期；替换 token 后重启 Agency。
 
+当前策略点：每个 Claude 会话的 0600 settings 文件含该 token 的副本。Herdr 状态目录不是逐会话的权限边界；macOS 现行 profile 下，同一 OS 用户的其他 harness 进程可能读到这些副本。替换 token 后，旧副本在会话重建时才被替换。本版没有收紧这层共享状态权限，也不声称 0600 能隔开同一 OS 用户的不同进程。
+
 Codex 用 `login prepare` 返回的 `codex_home`：由人执行 `CODEX_HOME=/path/from/prepare codex -c 'cli_auth_credentials_store="file"' login`。Agency 起 app-server 和展示 pane 都钉相同的托管目录与 `file` 后端。不读取人的 `~/.codex`、继承的个人 `CODEX_HOME` 或钥匙串。Agency 检查私有 `auth.json` 是否存在、权限与内容形状；远端有效性和原生刷新由 Codex 自己处理。原生登录失效须人重新登录，替换后重启 Agency。
 
 macOS 的两种 Codex 进程都用原生 `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem` 读取系统公共证书包，不为证书加载放行钥匙串，也不关闭 TLS 校验。Codex 可执行文件及其同目录辅助程序应安装在个人凭据目录之外；例如放在 `~/.codex` 下的安装会被同一凭据边界拒读，工具调用不可用。`HCTL2_CODEX` 可选择独立安装的位置，不复制个人登录材料。

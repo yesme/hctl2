@@ -88,6 +88,8 @@ Subscribe 本轮只在内存里保留 32 条事件；游标过期时的重同步
 
 旧实例若没有写这个键、原先靠自动探测用了钥匙串，升级后也会用新的文件缺省；原密钥不会搬过来。继续使用原密钥须由人显式选 `system-keyring`。本版不读旧钥匙串来猜后端，也不把旧实例当成已经完成迁移。
 
+遇到 `CREDENTIAL_UNAVAILABLE` 时，先核对这个实例原先使用的后端。若原密钥在系统钥匙串，针对同一个 control root 执行 `hctl2 --root /path/to/control stop`，再执行 `hctl2 --root /path/to/control start --secret-backend system-keyring`。不要换成一个新的 root，也不要为绕过缺密钥报错另铸 Gitea 令牌。显式后端仍不可用时，恢复原后端或由人处理原密钥，不自动迁移。
+
 行为：
 
 - `user-file`：只用私有文件后端，完全不碰系统钥匙串。无屏幕会话（CI、纯终端）与隔离测试用这一档。
