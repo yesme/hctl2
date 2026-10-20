@@ -23,6 +23,7 @@ foundation = { path = "../../crates/foundation" }
 proto = { path = "../../crates/proto" }
 project = { path = "../../crates/project" }
 repo = { path = "../../crates/repo" }
+run = { path = "../../crates/run" }
 reqwest.workspace = true
 ruma.workspace = true
 rustix.workspace = true

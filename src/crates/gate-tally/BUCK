@@ -1,0 +1,11 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+oncall("hctl2")
+filegroup(name = "docs", srcs = glob(["**/*.md"]), visibility = ["PUBLIC"])
+rust_library(name = "gate_tally", srcs = ["src/lib.rs"], crate_root = "src/lib.rs",
+    edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS, env = hctl2_cargo_env(), labels = CI_FAST, tests = [":ct_run_test", ":properties_test"], visibility = ["PUBLIC"])
+rust_test(name = "ct_run_test", srcs = ["tests/ct_run.rs"], crate_root = "tests/ct_run.rs", deps = [":gate_tally"],
+    edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS, env = hctl2_cargo_env(), labels = CI_FAST, visibility = ["PUBLIC"])
+rust_test(name = "properties_test", srcs = ["tests/properties.rs"], crate_root = "tests/properties.rs", deps = [":gate_tally"],
+    edition = HCTL2_RUST_EDITION, rustc_flags = HCTL2_RUSTC_FLAGS, env = hctl2_cargo_env(), labels = CI_FAST, visibility = ["PUBLIC"])
+filegroup(name = "clippy", srcs = {"library": ":gate_tally[clippy.txt]", "ct_run": ":ct_run_test[clippy.txt]", "properties": ":properties_test[clippy.txt]"}, labels = CI_FAST, visibility = ["PUBLIC"])

@@ -395,6 +395,14 @@ jobs:
           ./buck2 test --build-default-info "${selected_targets[@]}" \
             --target-platforms root//build/platforms:${{ matrix.target }}
 
+      # Test leftovers keep running after their run; the harness embeds the
+      # owner pid in the temp root name, so this separates a leftover from
+      # another seat's live test and from the owner's own herdr. Hosted
+      # runners are fresh per job: CI only detects, cleaning is for dev boxes.
+      - name: Detect leftover test processes
+        if: always()
+        run: build/ci/reap-test-leftovers --detect
+
       - name: Stop Buck2 action cache
         if: always()
         run: |

@@ -1,0 +1,25 @@
+[package]
+name = "run"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Immutable Workflow Revision registration, compilation and approval"
+
+[dependencies]
+agency-proto = { path = "../agency-proto" }
+chat = { path = "../chat" }
+context = { path = "../context" }
+gate-tally = { path = "../gate-tally" }
+participant = { path = "../participant" }
+repo = { path = "../repo" }
+task = { path = "../task" }
+foundation = { path = "../foundation" }
+store = { path = "../store" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

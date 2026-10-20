@@ -1,6 +1,9 @@
 //! Mechanical selection for an explicit consumer, consuming Room and optional
 //! Project-local Task. Online windows and dispatch authorization stay outside.
-use crate::sources::{ROOM_BRIEF_KIND, ROOM_LINE_KIND, TASK_LINE_KIND, project_actor, store_call};
+use crate::sources::{
+    ROOM_BRIEF_KIND, ROOM_LINE_KIND, TASK_CARD_KIND, TASK_CONTRACT_KIND, TASK_LINE_KIND,
+    project_actor, store_call,
+};
 use crate::{
     FrozenRef, Manifest, Owner, PortError, Result, StoreSources, frozen_from_record,
     pack_reference, permission_digest,
@@ -22,6 +25,8 @@ pub fn permitted_source_ids(store: &Store, project: &str) -> Result<Vec<String>>
     for (record_kind, source_kind) in [
         (ROOM_LINE_KIND, ROOM_LINE_KIND),
         (ROOM_BRIEF_KIND, ROOM_BRIEF_KIND),
+        ("task_state", TASK_CONTRACT_KIND),
+        ("task_state", TASK_CARD_KIND),
         ("task_state", TASK_LINE_KIND),
     ] {
         for record in store_call(|| store.list(record_kind))?
@@ -88,11 +93,14 @@ pub fn select_context(
         }
     }
     if let Some(task) = &request.task_id {
-        sources.push(
-            StoreSources::new(store, &actor, project)
-                .task_line(task)?
-                .reference,
-        );
+        // The adopted contract first: it is the stable, governing text; the
+        // card and its comments churn. A Task without one has no contract line.
+        let lines = StoreSources::new(store, &actor, project);
+        if let Some(contract) = lines.task_contract(task)? {
+            sources.push(contract.reference);
+        }
+        sources.push(lines.task_card(task)?.reference);
+        sources.push(lines.task_line(task)?.reference);
     }
     if sources.is_empty() {
         return Err(PortError::new(
@@ -112,7 +120,7 @@ pub fn select_context(
         sources,
         selection_policy: policy_ref("policy/mechanical-v1", b"hctl2.context.mechanical.v1"),
         freshness: "precise admitted versions at selection".into(),
-        coverage: "confirmed Topic brief and its sources; explicitly selected Task comments".into(),
+        coverage: "confirmed Topic brief and its sources; explicitly selected Task's adopted contract, card and comments".into(),
         known_gaps: vec![
             "online discussion window and additional explicit materials were not selected".into(),
             "platform review-comment line is not configured".into(),

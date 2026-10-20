@@ -1005,8 +1005,124 @@ fn a_locked_install_smokes_before_it_is_cataloged() {
             .iter()
             .any(|item| item.reference.id == "herdr-locked")
     );
-    assert_eq!(catalog.harnesses[0].revision, "protocol-22");
+    assert!(
+        !catalog
+            .harnesses
+            .iter()
+            .any(|item| item.id == "herdr" || item.revision == "protocol-22")
+    );
+    assert_eq!(catalog.harnesses[0], catalog.professions[0].reference);
+    assert_eq!(
+        catalog.professions[0].harness,
+        catalog.professions[0].reference
+    );
+    assert_eq!(catalog.professions[0].model, "claude-code/default");
     assert_eq!(catalog.harnesses[0].digest.len(), 64);
+    let _ = std::fs::remove_dir_all(&install);
+}
+
+#[test]
+fn claude_code_and_codex_catalog_their_own_harnesses_and_produce_distinct_write_profiles() {
+    let install = std::env::temp_dir().join(format!(
+        "hctl2-install-distinct-profiles-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&install);
+    let dest = installed_fixture(&install);
+    let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&dest, permissions).unwrap();
+    let claude = stub_claude(&install, "2.1.289");
+    let codex = install.join("codex-stub");
+    write_fixture(&codex, "#!/bin/sh\necho 'codex-cli 0.160.1'\n");
+    let runtime =
+        launch::InstalledHerdr::open_with_codex(dest, &claude, &codex, Duration::from_secs(60))
+            .unwrap();
+    let catalog = runtime.catalog().unwrap();
+    let claude_prof = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "claude-code")
+        .unwrap();
+    let codex_prof = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "codex-cli")
+        .unwrap();
+
+    let store_dir = install.join("store");
+    let mut store = store::Store::open(&store_dir).unwrap();
+    let actor = store::TrustedActor(store::Actor {
+        principal: "local-owner:1000".into(),
+        source: store::ActorSource::DirectClient,
+        authority: None,
+        permission_scope: vec![store::Scope::Control],
+    });
+    participant::accept_binding(
+        &mut store,
+        &actor,
+        "pair-native",
+        participant::Binding {
+            id: "native".into(),
+            protocol: agency_proto::PROTOCOL.into(),
+            catalog: catalog.clone(),
+        },
+    )
+    .unwrap();
+    participant::accept_profession(&mut store, &actor, "accept-claude", "native", claude_prof)
+        .unwrap();
+    participant::accept_profession(&mut store, &actor, "accept-codex", "native", codex_prof)
+        .unwrap();
+
+    let create_write_profile =
+        |store: &mut store::Store, key: &str, id: &str, prof: &agency_proto::Profession| {
+            let plan = participant::profiles::prepare_profile(
+                store,
+                participant::profiles::ProfileInput {
+                    key: key.into(),
+                    action: participant::profiles::ProfileAction::Create {
+                        id: id.into(),
+                        profile: participant::profiles::WorkerProfile {
+                            harness: prof.harness.clone(),
+                            model: prof.model.clone(),
+                            mode: "write".into(),
+                            permissions: vec![
+                                "context.read".into(),
+                                "git.read".into(),
+                                "git.write".into(),
+                            ],
+                            environment: vec![],
+                            required_capabilities: prof.capabilities.clone(),
+                            max_context_bytes: 262_144,
+                        },
+                    },
+                },
+                &actor,
+            )
+            .unwrap();
+            participant::profiles::admit_profile(store, &actor, plan).unwrap()
+        };
+    let claude_profile =
+        create_write_profile(&mut store, "profile-claude", "claude-write", claude_prof);
+    let codex_profile =
+        create_write_profile(&mut store, "profile-codex", "codex-write", codex_prof);
+    assert_ne!(
+        claude_profile["revision"]["key"]["id"], codex_profile["revision"]["key"]["id"],
+        "Claude Code and Codex write profiles must produce distinct worker_profile_revision digests"
+    );
+    assert_eq!(catalog.professions.len(), 2);
+    assert_eq!(catalog.harnesses.len(), 2);
+    assert!(
+        !catalog
+            .harnesses
+            .iter()
+            .any(|item| item.id == "herdr" || item.revision == "protocol-22")
+    );
+    assert_eq!(claude_prof.harness, claude_prof.reference);
+    assert_eq!(codex_prof.harness, codex_prof.reference);
+    assert_eq!(claude_prof.model, "claude-code/default");
+    assert_eq!(codex_prof.model, "codex-cli/default");
+    drop(store);
     let _ = std::fs::remove_dir_all(&install);
 }
 
@@ -1655,8 +1771,8 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
         selection_policy_digest: agency_proto::hash(b"policy"),
         profession: Profession {
             reference: frozen("claude-code"),
-            harness: frozen("herdr"),
-            model: "none".into(),
+            harness: frozen("claude-code"),
+            model: "claude-code/default".into(),
             persona: "test".into(),
             terms: "test".into(),
             default_role: "worker".into(),
