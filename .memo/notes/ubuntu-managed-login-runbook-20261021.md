@@ -9,7 +9,7 @@
 - **你可以自己做的只有只读检查**：`ls -ld <路径>`、`<agency> --root ... login check ...`、`<命令> --help`、`git log` 一类。
 - **不碰这些**：`~/.local/state/hctl2`（所有者自己的实例）；所有者个人的 `~/.claude`、`~/.claude.json`、`~/.codex`、`~/.omp`（不读、不复制）；别的席位的 `/var/tmp` 目录与进程。
 - 每一步的检查没过，就停下告诉所有者卡在哪一步、输出是什么，不自己想办法绕。
-- 四件事互相独立：第 4 件（omp）最急，H3（#464）合入前要用；Claude、Codex 两件可以晚点做。所有者说先做哪件就做哪件。
+- 三件事互相独立：第 3 件（omp）最急，H3（#464）合入前要用；Claude、Codex 两件可以晚点做。所有者说先做哪件就做哪件。
 
 ## 0. 准备：找到带 `login` 子命令的 agency
 
@@ -28,35 +28,32 @@ $A --root "$ROOT" login prepare
 
 输出是一行 JSON，记下其中三个路径（只是路径，不是密钥）：`home`、`claude_config_dir`、`codex_home`；`harness_home` 也记下，核验席跑测试时要用。
 
-## 1. Claude Code：导入所有者已有的 token
+## 1. Claude Code：导入所有者已有的 token，顺手把第一次启动的几屏点完
 
-所有者已经有一个 `claude setup-token` 生成的 token（在 mac 上生成过），同一个 token 在 ubuntu 上照样能用，不用重新生成。
+所有者已经有一个 `claude setup-token` 生成的 token（在 mac 上生成过），同一个 token 在 ubuntu 上照样能用，不用重新生成。下面几条在**同一个 shell** 里连着敲：
 
 ```bash
-umask 077
-${EDITOR:-nano} /var/tmp/claude-token.txt     # 所有者把 token 粘进去，存盘；只有这一行
-$A --root "$ROOT" login claude-token --expires-at "$(date -d '2027-09-15' +%s)" < /var/tmp/claude-token.txt
+read -rs -p '粘贴 Claude token，回车（屏幕上不显示）: ' CLAUDE_TOKEN; echo
+printf '%s' "$CLAUDE_TOKEN" | $A --root "$ROOT" login claude-token --expires-at "$(date -d '2027-09-15' +%s)"
 $A --root "$ROOT" login check claude-code
 ```
 
+- `read -s` 不回显、不进 shell 历史；`printf` 是 bash 内建命令，不另起进程，`ps` 里看不到 token。导入命令拒绝直接从终端读，从管道读是允许的。
 - `--expires-at` 是所有者自己声明的截止时间。setup-token 一年有效；上面写的 2027-09-15 留了余量。所有者记得 mac 上导入时写的日期，就用同一个。
-- 检查要看到 `"local_preconditions_met":true`。导入命令拒绝从终端直接读 token，必须用文件，这是有意的。
-- **先别删 `/var/tmp/claude-token.txt`**，第 2 步还要用一次。
+- 检查要看到 `"local_preconditions_met":true`。
 
-## 2. Claude Code：把第一次启动的几屏点完
-
-托管目录里的 Claude 是全新的，第一次启动会停在欢迎、主题、文字样式、信任这几屏，不点完 Agency 起不来会话。所有者在 mac 上做过同样一步。
+接着在同一个 shell 里点完第一次启动的几屏。托管目录里的 Claude 是全新的，会停在欢迎、主题、文字样式、信任这几屏，不点完 Agency 起不来会话；所有者在 mac 上做过同样一步：
 
 ```bash
 mkdir -p /var/tmp/claude-firstrun && cd /var/tmp/claude-firstrun
-HOME=<home> CLAUDE_CONFIG_DIR=<claude_config_dir> CLAUDE_CODE_OAUTH_TOKEN="$(cat /var/tmp/claude-token.txt)" claude
+HOME=<home> CLAUDE_CONFIG_DIR=<claude_config_dir> CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_TOKEN" claude
+# 一屏一屏点完，看到输入框后输入 /exit
+unset CLAUDE_TOKEN
 ```
 
-- `<home>`、`<claude_config_dir>` 换成第 0 步记下的路径。token 是命令执行时从文件读的，不会留在 shell 历史里；你（带路的 agent）不要自己执行这一条。
-- 一屏一屏点完，看到输入框后输入 `/exit` 退出。
-- 退出后删掉 token 文件：`shred -u /var/tmp/claude-token.txt`。
+- `<home>`、`<claude_config_dir>` 换成第 0 步记下的路径。你（带路的 agent）不要自己执行这几条。
 
-## 3. Codex：登录订阅账号到托管目录
+## 2. Codex：登录订阅账号到托管目录
 
 ```bash
 codex login --help        # 带路的 agent 可以先看：有没有不开浏览器的登录方式（设备码一类）
@@ -67,7 +64,7 @@ $A --root "$ROOT" login check codex-cli
 - 登录会打开浏览器，用所有者的 Codex 订阅账号授权。ubuntu 上开不了浏览器：先看 `--help` 里有没有设备码一类的选项，有就用；没有就停下，告诉所有者「需要在有桌面的会话里做」。
 - 检查要看到 `"local_preconditions_met":true`。
 
-## 4. omp：H3（#464）用的专用登录
+## 3. omp：H3（#464）用的专用登录
 
 ```bash
 export OMP_MANAGED_LOGIN_HOME=/var/tmp/hctl2-omp-managed
