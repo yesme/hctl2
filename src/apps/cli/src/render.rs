@@ -242,7 +242,7 @@ pub(crate) fn integration_preview(token: &str, effect: &Value) -> String {
             "an Integration Receipt is written only after readback confirms the target head".to_owned(),
         ],
     };
-    sections.render(&confirm_command(token))
+    sections.render(&confirm_command_renaming("preview", "submit", token))
 }
 
 /// A review-publish preview: one frozen intent about to push a branch and open the review
