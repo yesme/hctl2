@@ -492,7 +492,7 @@ mod tests {
         );
 
         // Wait for cp_2 to enter Waiting(7) and cp_1 to be Succeeded(4).
-        for _ in 0..40 {
+        for _ in 0..80 {
             let step2 = adapter
                 .readback_step(&binding.dag_name, &binding.dag_run_id, "cp_2")
                 .await
@@ -530,6 +530,24 @@ mod tests {
             res_advanced.action_taken,
             CompletionRecoveryAction::ConfirmedAdvancedWithoutResubmit
         );
+
+        // Observe cp_2 in Waiting(7) so its initial arrival is recorded before testing progress stall.
+        let _ = poll_and_reconcile(
+            &mut store,
+            &actor,
+            &adapter,
+            &PollReconcileParams {
+                command_key: "poll-cp2-waiting".to_owned(),
+                project_id: "P".to_owned(),
+                binding_id: "b1".to_owned(),
+                now_ms: 1_600,
+                from_cache: false,
+                incoming_event_seq: None,
+                incoming_cursor: None,
+            },
+        )
+        .await
+        .expect("poll cp_2 waiting");
 
         // 4. Progress timeout marks binding Diverged(EngineProgressStalled) without advancing Run (CT-RUN #18, 验收 3).
         let stalled = poll_and_reconcile(
