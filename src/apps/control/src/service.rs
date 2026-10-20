@@ -57,6 +57,9 @@ pub struct ControlService {
 }
 
 impl ControlService {
+    pub(crate) fn reconcile_runs(&self) -> impl std::future::Future<Output = ()> + Send + use<> {
+        crate::runs::reconcile(Arc::clone(&self.store))
+    }
     pub(crate) fn reconcile_dispatch(
         &self,
     ) -> impl std::future::Future<Output = ()> + Send + use<> {
@@ -331,6 +334,8 @@ impl Control for ControlService {
             | "memo.list"
             | "workflow.list"
             | "workflow.show"
+            | "run.list"
+            | "run.show"
             | "integration.show"
             | "integration.list"
             | "review.show"
@@ -376,6 +381,8 @@ impl Control for ControlService {
                         crate::profiles::query(&store, &actor, &payload)
                     } else if kind.starts_with("workflow.") {
                         crate::workflow::query(&store, &actor, &kind, &payload)
+                    } else if kind.starts_with("run.") {
+                        crate::runs::query(&store, &actor, &kind, &payload)
                     } else if kind.starts_with("memo.") {
                         crate::memo::query(&store, &actor, &kind, &payload)
                     } else if kind.starts_with("integration.") {
@@ -481,6 +488,7 @@ impl Control for ControlService {
             || req.operation.starts_with("profile.")
             || req.operation.starts_with("memo.")
             || req.operation.starts_with("workflow.")
+            || req.operation.starts_with("run.")
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
             || req.operation.starts_with("review.")
@@ -515,6 +523,8 @@ impl Control for ControlService {
                     crate::changesets::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("workflow.") {
                     crate::workflow::preview(&store, &services, &root, &actor, &operation, &payload)
+                } else if operation.starts_with("run.") {
+                    crate::runs::preview(&store, &services, &root, &actor, &operation, &payload)
                 } else if operation.starts_with("memo.") {
                     crate::memo::preview(&store, &actor, &operation, &payload)
                 } else if operation.starts_with("project.") {
@@ -550,6 +560,7 @@ impl Control for ControlService {
             || req.operation.starts_with("profile.")
             || req.operation.starts_with("memo.")
             || req.operation.starts_with("workflow.")
+            || req.operation.starts_with("run.")
             || req.operation.starts_with("invocation.")
             || req.operation.starts_with("integration.")
             || req.operation.starts_with("review.")
@@ -729,6 +740,17 @@ impl Control for ControlService {
             }
             if operation.starts_with("workflow.") {
                 return crate::workflow::submit(
+                    &store,
+                    &services,
+                    &root,
+                    &actor,
+                    &repo_request,
+                    &details,
+                )
+                .map_err(|err| present(&err));
+            }
+            if operation.starts_with("run.") {
+                return crate::runs::submit(
                     &store,
                     &services,
                     &root,
@@ -1155,6 +1177,7 @@ fn is_dangerous(operation: &str) -> bool {
         || operation.starts_with("profile.")
         || operation.starts_with("memo.")
         || operation.starts_with("workflow.")
+        || operation.starts_with("run.")
         || operation.starts_with("invocation.")
         || operation.starts_with("integration.")
         || operation.starts_with("review.")

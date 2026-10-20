@@ -11,6 +11,11 @@ description = "Immutable Workflow Revision registration, compilation and approva
 [dependencies]
 agency-proto = { path = "../agency-proto" }
 chat = { path = "../chat" }
+context = { path = "../context" }
+gate-tally = { path = "../gate-tally" }
+participant = { path = "../participant" }
+repo = { path = "../repo" }
+task = { path = "../task" }
 foundation = { path = "../foundation" }
 store = { path = "../store" }
 serde.workspace = true
