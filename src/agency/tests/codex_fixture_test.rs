@@ -882,8 +882,8 @@ fn sealed_spec(key: &str) -> Sealed<agency_proto::ExecutionSpec> {
         selection_policy_digest: agency_proto::hash(b"policy"),
         profession: Profession {
             reference: frozen("codex-cli"),
-            harness: frozen("herdr"),
-            model: "none".into(),
+            harness: frozen("codex-cli"),
+            model: "codex-cli/default".into(),
             persona: "test".into(),
             terms: "test".into(),
             default_role: "worker".into(),
