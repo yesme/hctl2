@@ -2,6 +2,13 @@
 
 > 所有者 2026-10-21 要的（「能不能放个文本，我找ubuntu上的minimax指导我做」），同日照第一次实操改写：每件事一段，所有者整段复制、粘贴一次，要输入时它自己提示（所有者：「codex直接把zsh的()给包好，我一运行，输入，就好了」）。依据：`07` §二 第 38 条（凭据按归属分三类）、第 55 条（真会话测试一律用专用登录，不指向所有者个人的）、第 58 条（ubuntu 专用登录的位置）。
 
+## 现状（2026-10-21）
+
+- **omp：已做。** 所有者在 ubuntu 上导入，`/var/tmp/hctl2-omp-managed/.omp/agent` 下有 `agent.db`、`config.yml`。
+- **Claude Code、Codex：没做，用到时再做。** 所有者第一次粘贴第 2 段就停在第一行：`zsh: no such file or directory: /var/tmp/hctl2-466-bin/agency`——段里写死的那份临时编译已经被清掉，主笔给段之前没有确认它还在。所有者：「那你这样吧，记下来，然后后边需要的时候再跑吧。我不陪你玩这个了。本来都是你应该确定好的事情，怎么让我一遍遍自己去测试呢？？？」
+- **什么时候用到**：小活 AB 的核验（ubuntu 上用真 Codex 重跑 B 链，`07` §六 小活 AB 验收第 5 条）要 Codex 那件；第 10 包第二步的核验（ubuntu 上 Claude Code 真会话，`07` §二 第 60 条）要 Claude 那件。
+- **到时候主笔先做完这些，再把段交给所有者**：编译 agency 那一步并进同一段，不依赖任何已有的临时文件（下面「编译 agency」那段已在 mac 上真跑通过：从零编译 2 分 33 秒，`login --help` 正常）；整段在本机用真 agency 跑一遍，只有 claude、codex 的登录用桩；给所有者的仍是一段、粘贴一次。
+
 ## 怎么用
 
 三件互相独立，要哪件做哪件。每段整段复制，粘贴进 ubuntu 的终端，回车。
@@ -85,9 +92,34 @@ codex -c 'cli_auth_credentials_store="file"' login --device-auth
 
 `cli_auth_credentials_store="file"` 让登录落成托管目录里的 `auth.json`，不进系统钥匙串；Agency 起会话时钉同一个后端。
 
+## 编译 agency
+
+第 2、3 段要用带 `login` 子命令的 agency（#466）。这一段在 ubuntu 上从 #466 的头 `a7c2885a` 编出一份，放到段里写死的位置，编完收掉临时工作树和它的 Buck2 守护进程。#466 合入以后这个提交在 `main` 上，照样能取到。它假定 ubuntu 上有 `~/workspace/hctl2-claude` 这个工作树（AGENTS「分支与同步」的布局）。
+
+```
+(
+set -e
+R=~/workspace/hctl2-claude
+W=/var/tmp/hctl2-agency-login-build
+C=a7c2885a06c25e259881421eb580fb3103121701
+git -C "$R" fetch -q origin
+[ -d "$W" ] || git -C "$R" worktree add -q --detach "$W" "$C"
+cd "$W/src"
+O=$(./buck2 build root//agency:agency --show-full-output | tail -1)
+mkdir -p /var/tmp/hctl2-466-bin
+install -m 0755 "${O#* }" /var/tmp/hctl2-466-bin/agency
+./buck2 kill
+cd /
+git -C "$R" worktree remove --force "$W"
+/var/tmp/hctl2-466-bin/agency login --help | head -4
+)
+```
+
+主笔 2026-10-21 在 mac 上真跑过这一段（只把临时工作树与安装位置换到别处，每行前加两格缩进）：`BUILD SUCCEEDED`，从零 504 个动作，2 分 33 秒；最后打出 `Usage: agency --root <ROOT> login <COMMAND>`；临时工作树已收掉。
+
 ## 段里写死的位置
 
-- agency 程序：`/var/tmp/hctl2-466-bin/agency`，是 Antigravity（ubuntu）预先编好的 #466 版本。段里第一次调用它就报「没有这个文件」，说明 #466 已合入、这份临时编译被清掉了：在任一工作树同步 main 后 `cd src && ./buck2 build root//agency:agency --show-full-output`，把段里那一行换成输出的路径。
+- agency 程序：`/var/tmp/hctl2-466-bin/agency`，由上面「编译 agency」那段放进去。原先是 Antigravity（ubuntu）预先编好的一份，2026-10-21 已经不在了。
 - Claude、Codex：Agency 根 `/var/tmp/hctl2-managed-login/agency`，托管目录是它的同级 `/var/tmp/hctl2-managed-login/agency.harness-login`（`login prepare` 自己建，0700；下面有 `home`、`claude`、`codex`）。段里先 `unset HCTL2_AGENCY_HARNESS_HOME`，保证落在这个缺省位置。
 - omp：`/var/tmp/hctl2-omp-managed`。
 
