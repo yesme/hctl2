@@ -111,6 +111,7 @@
 49. **2026-10-20 演示 3 验收怎么走。** #479（走查第三轮）两席可合后，演示 3 能在演示里看到的清单行全部成立，主笔提验收的排法：Claude（ubuntu）照 `docs/demos/demo-3.md` 从零装包走 A 链（本地 Gitea + 真 Claude Code）与 C 链（开关 Project 三次预览）——Claude Code 只能在 ubuntu 上跑（§七 钥匙串一条）；Claude（mac）走 B 链（受保护的 GitHub `main` + 真 Codex），并写验收记录、汇总哪些过哪些没过；所有者看实录或挑一段现场看。所有者：「演示3验收，可以按你的流程」。定下：① 两边各从最新 main 构建完整包、各用新的 root，不碰 `~/.local/state/hctl2` 与别席的环境；手册命令照抄，和手册不一致、要绕、跑不通的如实记，不在验收里改手册，问题另排。② 实录分别进 `.memo/log/2026-10-20-演示3验收-ubuntu.md` 与 `…-mac.md`，ID 全长、原样。③ 验收结果照演示 1、2 的做法写进 §三「演示 3 验收」一节，由 Claude（mac）在所有者看过之后落；实录 PR 照 #381 的先例由作者自合。④ 所有者看过演示，即「演示 3 走完」：钥匙串专项、H1–H3 可合，P2.5 第 2、3、7 包与第 10 包按各自前提开工。
 50. **2026-10-20 control 调 GitHub 用的凭据归第 38 条的第三类（方案 A）；演示 3 的 B 链挪到 ubuntu。** 主笔在 mac 上走 B 链前停下：随包的 `gh` 要用所有者的 GitHub 登录，而 mac 上 gh 把登录存在人的钥匙串里。按 CONSTRAINTS「遇到安全性检查」报所有者，给了三个选法：B 链挪到 ubuntu、所有者自己在弹窗上点允许、给环境变量令牌。所有者问：「ubuntu上的问题能解决，那么mac上呢？我们无法假定用户不用mac-gh吧。那怎么办」。主笔答：mac 上把 gh 登录存在钥匙串里的用户必须支持；ubuntu 其实也没解决——现行做法（`docs/usage.md` 第 344 行「复用用户已有登录」，`src/crates/repo/README.md` 发布与集成两节「以它自己的登录」）在两个平台都是 control 借人的登录，ubuntu 上登录在 `~/.config/gh` 的明文文件里，只是不弹窗。第 38 条按归属分三类时，没给「control 调外部平台用的凭据」归类，按理属于第三类：control 是后台进程，不该借人手用工具的登录，理由和第 38 条 ② 相同。方向上主笔给了三个选法：A，control 有自己的 GitHub 凭据，人交一次，存在 control 的密钥后端，每次只经 `GH_TOKEN` 交给那一次的 `gh`；B，维持借人的登录；C，GitHub App 发的短期令牌。所有者：「方案还是A吧」。定下：① control 调 GitHub 用的凭据属第 38 条第三类，存在 control 的密钥后端，人交一次；control 不读人的钥匙串、不读人的 `~/.config/gh`、不用人这台机器上 Git 的凭据助手。缺凭据或令牌失效时，产品报错并写明人要跑的命令，不替人登录、不替人续期（CONSTRAINTS「遇到安全性检查」）。mac 与 Linux 走同一条路。人自己在终端里跑的 `gh`、`git` 照旧用人的登录。② B 不取：它违背第 38 条的分类；mac 上 control 在后台时要么弹不出授权直接失败，要么不声不响就读走了（实现层脚注：gh 在 mac 上经系统自带的 `security` 命令读钥匙串，人登录时存进去的那一项信任的正是这条命令，所以随包的 gh 很可能不弹窗就读到；主笔没有实测，也没有去查所有者那一项的权限）。C 留作以后可选的策略，不排。③ 实现排成 §六「小活 AB」，#466 合入后开。`docs/usage.md` 与 repo README 那几句描述的是现行实现，随小活 AB 一起改，不先改。④ 演示 3 的 B 链不等小活 AB：挪到 ubuntu，由 Claude（ubuntu）照现行做法和 A、C 两链一起走（GLM 走查第二、三轮已在 ubuntu 上走通过 B 链）；Claude（mac）只写验收记录，并在记录里写明「control 借用人的 gh 登录」是已知缺口、由小活 AB 收。mac 上带钥匙串 gh 的 B 链真跑，改作小活 AB 的验收。第 49 条其余照旧。④ 与小活 AB 的席位按主笔同一条回答里的推荐排。
 51. **2026-10-20 演示 3 验收查出的问题怎么排；MiniMax 试用的结论。** Claude（ubuntu）在 main `009cfab` 上从零走完 A、B、C 三条链与第五、六节，全部通过（#482，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md`），并如实记了九处和手册不一致的地方、一条观察。主笔逐条看过报所有者，所有者：「验收出来的问题，你看怎么处理。」定下：① **Claude Code 与 Codex 的写入 Profile 合成了同一个 Worker Profile**：两个工种申报的 harness 都是 `herdr` `protocol-22`、model 都是 `none`，两次 `profile create` 给出同一个 `worker_profile_revision`。演示 3 不受影响；但第 5b 包按 Worker Profile 判多样性、做去重时，会把两家当成一个。这是 §七「工种目录里 harness 填的是 herdr」那一条的后果；那一条在 §二 第 37 条 ③ 已经定了「演示 3 之后改，Antigravity 写」，现在照办，排成 §六「小活 AD」：工种简历写 harness 本身，终端复用器不进简历（和 H1–H3 验收第 6 条同一口径）。Antigravity（mac）写，它在 H1 里给 Antigravity 工种改过同一个字段；现在就写，演示 3 走完才合。② **手册补齐、合入预览的确认命令改对**，排成 §六「小活 AC」：第三节写成可照抄的 B 链命令；等 `canary` 用产品自己的 `hctl2-tool wait commit-ci`；建卡要等几分钟写明；canary 上留下的东西怎么收写明；合入预览末尾「Confirm with」给的是 `integration preview … --preview-token`，应是 `integration submit`，产品的人读输出改对；Task 完成后 GitHub 上的卡没关（issue #41），对照 `spec/task.md`「Receipt……和必要的外部写回 outbox 在同一事务提交」查实现做没做、写回什么，没做就写明、报主笔另排，不在小活 AC 里实现。③ `status` 不带 `--json` 时输出的是缩进的 JSON，人读合入预览没单列冻结的保护快照：归 `09` 第 8 包（命令行的人读输出），加进它的范围与验收。④ GitHub 任务源建卡约 2 分 30 秒（随包 gh 逐个读 canary 上已有 issue 的依赖与子 issue）：记进 §七，不排期。⑤ 三次写入的工作树一直没收回：已有「写入会话完成之后的去留」一条（§七，#459 调研），不另排。⑥ 主笔在第 50 条写的「ubuntu 上 gh 登录在 `~/.config/gh` 的明文文件里」不对：这台 ubuntu 上 `gh auth status` 显示登录存在系统 keyring，control 调随包 gh 照样不弹窗就读到了。第 50 条的结论不变，这反倒说明 control 借人的登录在两个平台上都不声不响。⑦ **MiniMax（m3.1-flash）试用。** 所有者：「minimax的m3.1-flash已上线，可以尝试让它做一些review的工作看下模型能力。」主笔排了三份盲审，用别席当时已经查出的问题打分：#475 第一稿（主笔挡过 3 条）、#467 第一稿（Codex 挡过 4 条 P1）、#463 第二稿（DeepSeek 抓到主笔漏的 `jq` 取值路径）。结果：挡合入的 8 条只抓到 1 条，就是 #463 那条；#463 另报了 1 条挡合入的误报，把确认那一步的返回当成了注册那一步的；新找到 2 条成立的建议（读回那条主笔在 main 上关掉第三道比较复核过，18 条用例照样全过）；三份文件写的结束时间都晚于文件最后写入的时间。长处是拿文档对代码的静态核对。主笔的判断是不适合当找问题席，所有者：「Minimax同意你的观点。后边按你的安排来分配席位。」定下：MiniMax（mac）不进找问题席、核验席；只在文档、手册类 PR 上做额外的静态核对，派活表的核验一栏注明「不计入可合」；它报的问题由作者按评审意见处理，有争议由找问题席判。它新找到的两条：读回三道摘要比较的第三道没有单独的用例，进 `09` 第 7 包验收；Antigravity 写入派工拦 `gh` 的规则能被 `sh -c 'gh …'` 一类写法绕过，这是 harness 有意绕规则，按 AGENTS「找规则挡不住的输入只限诚实路径」记成策略点，凭据由沙箱兜住，不挡 #467，记进 §七。⑧ 两个小活的席位按主笔推荐排：小活 AC 由 Antigravity（ubuntu）写（第 9 包第 9 条手册是它写的），Claude（mac）找问题，DeepSeek（ubuntu）照新手册从零重跑 B 链；小活 AD 由 Antigravity（mac）写，Codex（mac）找问题（它在 #467 提过同一处），DeepSeek（ubuntu）核验。
+52. **2026-10-20 所有者看过演示 3 验收实录：演示 3 走完。** 主笔把实录怎么看（开头的结果表、「和手册不一致」一节、「观察」，以及 GitHub 上 canary 的 PR #42）给了所有者，所有者：「看过了。」照第 49 条 ④ 与 `09` §五「先后」，定下：① 验收结论写进 §三「演示 3 验收 · 2026-10-20」。② 钥匙串专项（#466）不再等演示 3：它自己的验收补齐（mac 上的托管登录由所有者导入）、两席「可合」后即开自动合入；H1–H3（#467、#461、#464）在钥匙串专项合入后即可合。③ P2.5 照 `09` §五 的先后开：第 0 包已合（#457）→ 开第 2 包；第 1 包已合（#475）→ 开第 3、7 包。派活表加三行，席位照 `09` §四 各包写的。Antigravity（mac）手上有小活 AD，第 2 包在 AD 交出后就开，不等它合入。④ 第 10 包的前提全部满足（演示 3 验收，#447、#454、#460、H0 合入），Claude（mac）现在开。⑤ 小活 AD 的「演示 3 走完才合」已满足。
 
 ## 三、三次演示
 
@@ -167,6 +168,26 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
 2. **binding 冻结的目录刷不了。** 目录为空时配对的 binding 冻结了空目录，之后 `agency accept` 报 `PROFESSION_CHANGED`，`recovery_action: refresh_binding`，但 `agency` 没有这条命令。这次换一个 binding id 再配对绕过去。
 
 观察（不挡）：pane 里 Claude Code 显示「auto mode」，是从用户全局设置继承的权限模式，本次隔离靠 `--restricted --tools ""`；回答在 Room 里是 `@hctl2_control` 发的普通消息，没有标明是哪次派工、哪个工种答的，人在 Cinny 里看不出它是派工结果（第 8 包「人读输出」或投影格式另议）；回答是 Claude 凭知识答的，演示时问题要选成不需要看仓库的。
+
+### 演示 3 验收 · 2026-10-20
+
+Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479、#481）构建的完整包从零装了一套，照 `docs/demos/demo-3.md` 走了 A、C 两链与第五、六节；B 链用同一个包另开 Project，照第三节在 `yesme/hctl2-canary` 上走（§二 第 49、50 条）。harness 是 Claude Code 2.1.303 与 Codex CLI 0.163.0。命令与原样输出记在 [`2026-10-20-演示3验收-ubuntu.md`](../../log/2026-10-20-演示3验收-ubuntu.md)（#482）。所有者 2026-10-20 看过实录：「看过了。」
+
+| 演示表那一行 | 结果 |
+| --- | --- |
+| 写入型调用改代码，封存成版本 | 通过。A 链真 Claude Code 26 秒 `completed`，diff 只有 `return value * 2` 一行；B 链真 Codex 59 秒，`request` 里只写一句照契约做，开工包里 353 字节的契约原样到了 Codex 的输入（小活 AA 生效） |
+| 平台上开出评审 | 通过。推送与建评审请求两段各自确认：A 链 Gitea PR #2，B 链 GitHub PR #42；C 链开着「发布须人确认」，发布意图停在 `pending_human`，`review publish` 预览确认后才发出 Gitea PR #4；Room 里只有一条投影 |
+| 人预览合入 | 通过。A、C 两链的 Integration Receipt 由 `hctl2-tool` 签，Git 回读 `unmediated`；B 链等必需检查 `canary` 通过后合入受保护的 `main`，合并提交 `c1e756b10d24ba9ca63b42a939d3e47099084c05` 既是 Receipt 的 `integrated_commit`，也是 GitHub 上 `main` 的头 |
+| 再预览完成 Task，两张凭证落库 | 通过。三条链都签出 Task Completion Receipt；没有契约的裸卡完成被拒（`CONTRACT_REQUIRED`） |
+| 本地 Gitea 与受保护的 GitHub `main` 各走一遍 | 通过。A、C 两链在本地 Gitea，B 链在 GitHub |
+| Codex 与 Claude Code 各跑一遍 | 通过。A、C 两链 Claude Code，B 链 Codex；`task show` 答得出这次是谁在答 |
+| 重启、凭据隔离、清理（手册第五、六节） | 通过。正常启停后三条链的记录不变；三处杀点的常驻用例过；`$ROOT/secrets` 下四个文件都是 0600；`write_session_test` 过；清理后没有这次起的进程 |
+
+全程没有绕法，也没有失败重试；唯一一次同键重跑是验收人自己抽命令出错，不是手册的问题。和手册不一致的九处与一条观察，所有者交主笔处理，排法见 §二 第 51 条：两家的写入 Profile 合成了同一个 Worker Profile → 小活 AD；手册补齐、合入预览的确认命令、Task 完成后外部卡没关 → 小活 AC；`status` 与合入预览的人读输出 → `09` 第 8 包；GitHub 建卡慢 → §七。
+
+已知缺口，不挡：B 链里 control 借用的是人的 gh 登录（这台 ubuntu 上存在系统 keyring 里），由小活 AB 收（§二 第 50 条）；Claude Code 的路径只在 ubuntu 上走，mac 上等钥匙串专项（#466）；三次写入的工作树一直没收回（§七「写入会话完成之后的去留」）。
+
+所有者看过演示，即「演示 3 走完」（§二 第 49 条 ④），解锁的事见 §二 第 52 条。
 
 ## 四、九个包
 
@@ -476,24 +497,27 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 | 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
 | 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
 | 第 9 包第 7 条走查（一轮一个 PR，持续走） | §二 第 36 条 ③、第 37 条 ①、第 48 条 | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | 第一、二轮 `glm/demo3-walkthrough`，#431；第三轮 `glm/demo3-walkthrough-r3`，还没开 PR | #431 两席可合即合；第三轮现在就开（#477 已合）：B 链带 `task_id`、`request` 里不写规格，走到 Task Completion Receipt；之后 main 上有新修复合入就开下一轮（§二 第 48 条） |
-| 演示 3 验收 · A、B、C 三条链 | §三；§二 第 49、50 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 现在就走：最新 main 构建完整包，照 `docs/demos/demo-3.md` 一、二、四、五、六节从零走 A、C 两链；B 链（受保护的 GitHub `main` + 真 Codex）照第三节走 `yesme/hctl2-canary`，输入参照 `src/packaging/release/demo3-github.sh` 与 `.memo/log/2026-10-20-演示3走查第三轮.md`；用所有者在 ubuntu 上现有的 gh 登录（现行做法），不跑那个脚本（它要 CI 的令牌），不把令牌取进环境；记进同一份实录、同一个 PR |
-| 演示 3 验收记录 | §三；§二 第 49、50 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-acceptance`；§三 加「演示 3 验收」 | 实录交出、所有者看过之后落；写明「control 借用人的 gh 登录」是已知缺口，由小活 AB 收 |
+| 演示 3 验收 · A、B、C 三条链 | §三；§二 第 49、50 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，#482 已合，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 已完成（§三「演示 3 验收」） |
+| 演示 3 验收记录 | §三；§二 第 49、50 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-accepted`；§三「演示 3 验收 · 2026-10-20」 | 所有者 2026-10-20 看过实录（§二 第 52 条），本 PR 落 |
 | 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
 | 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
 | 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
-| 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，还没开 PR | 现在就写；演示 3 走完（所有者看过演示）才开自动合入 |
+| 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，#466 | 演示 3 已走完（§二 第 52 条）；mac 上的托管登录由所有者导入后补齐验收，两席可合即开自动合入 |
 | 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
 | 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对 | §六「小活 AC」；§二 第 51 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照新的第三节从零重跑 B 链；MiniMax（mac）额外静态核对，不计入可合 | `agy/demo-3-manual-b`，还没开 PR | 现在就写 |
-| 小活 AD · 工种简历写 harness 本身 | §六「小活 AD」；§二 第 37 条 ③、第 51 条 ① | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/profession-resume`，还没开 PR | 现在就写；演示 3 走完才合 |
+| 小活 AD · 工种简历写 harness 本身 | §六「小活 AD」；§二 第 37 条 ③、第 51 条 ① | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/profession-resume`，还没开 PR | 现在就写 |
 | workflow 引擎（Dagu）的开工前限时验证 | §六「专项 · workflow 引擎（Dagu）的开工前限时验证」 | Antigravity（mac） | Claude（mac） | DeepSeek（ubuntu），照记录从零重跑 | `agy/dagu-probe`，还没开 PR | 无 |
 | 写入会话完成之后的去留：调研 | §六「专项 · 写入会话完成之后的去留：调研」 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/write-session-hibernation`，还没开 PR | 无 |
 | P2.5 第 1 包 · 施工图 | `09` §四 第 1 包 | Codex（ubuntu） | Claude（mac） | GLM（ubuntu） | `codex/workflow-revision`，还没开 PR | 小活 Z 交出后就开，不等它合入，也不等演示 3 |
 | P2.5 第 5a 包 · 计票的纯算法 | `09` §四 第 5a 包 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/gate-tally`，还没开 PR | 会话去留调研交出后就开，不等它合入，也不等演示 3 |
+| P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器 | `09` §四 第 2 包；§二 第 52 条 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/dagu-port`，还没开 PR | 小活 AD 交出后就开，不等它合入 |
+| P2.5 第 3 包 · Run 生命周期与施工清单 | `09` §四 第 3 包；§二 第 52 条 | Codex（ubuntu） | Claude（mac） | Antigravity（ubuntu） | `codex/run-lifecycle`，还没开 PR | 现在就开 |
+| P2.5 第 7 包 · 读回链路 | `09` §四 第 7 包；§二 第 52 条 | GLM（ubuntu） | Codex（mac） | DeepSeek（ubuntu） | `glm/workflow-readback`，还没开 PR | 现在就开 |
 | P2.5 H0 · 观测窗格原语（H1–H3 共用） | `09` §四 H0 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/observation-pane`，还没开 PR | 现在就写，不等演示 3，也不等钥匙串专项；合入后 H1–H3 在它上面 rebase（§二 第 45 条 ④） |
-| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，还没开 PR | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，还没开 PR | 现在就写；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu） | Antigravity（ubuntu） | `deepseek/harness-omp`，还没开 PR | 现在就写；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 第 10 包 · 终端复用器：Herdr 换 tmux | `09` §四 第 10 包 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 演示 3 验收后；#447、#454、#460 与 H0 合入后；分两步交，第二步（Claude Code 路径）单独验收（§二 第 45 条 ③） |
+| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，#467 | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
+| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，#461 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
+| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu） | Antigravity（ubuntu） | `deepseek/harness-omp`，#464 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
+| P2.5 第 10 包 · 终端复用器：Herdr 换 tmux | `09` §四 第 10 包 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 前提已满足（§二 第 52 条），现在开；分两步交，第二步（Claude Code 路径）单独验收（§二 第 45 条 ③） |
 
 ### 专项 · 自建方案盘点（高优；Grok、Codex、DeepSeek 各查一块，Claude 汇总）
 
