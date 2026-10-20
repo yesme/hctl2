@@ -116,6 +116,7 @@
 54. **2026-10-20 完成 Task 时写回连接的任务源，排成小活 AE。** 小活 AC（#485）按任务书第 7 条查实：`src/crates/task/src/planning.rs` 的 `Action::Complete` 只写 Completion Receipt、推进 lifecycle，不往 outbox 放任何写回，所以演示 3 验收里 Task 完成后，GitHub issue #41 与 Gitea 上的两张卡都还开着。设计写的是要写：`spec/task.md`「Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交……外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实」；`task.md`「HCTL 已验证而外部写回未确认时显示『已完成 · 已验证 · 外部同步中』」。主笔报所有者、建议排小活，所有者：「排。既然是connect to the external source (注意用词，这叫connect)，那么自然对于它是有写操作的。就看权限是不是允许了。」定下：① 用词照所有者：这是对**连接的任务源**（`task connect` 接入的那一个）的写回，不另起「外部卡」一类的说法。② 连接了就有写操作，写不写只看权限：绑定的能力声明允许字段写回、平台也接受，就写；能力不含写回或平台拒绝，完成照常成立，写回记成需要关注，不撤销完成。③ 排成 §六「小活 AE」。按 §二 第 53 条它是难的活（外部副作用只做一次、丢失后恢复），两席找问题：Claude（ubuntu）写；Codex（ubuntu）找问题（GitHub 建卡绑定 #432 是它写的，任务源的写路径它最熟）、Claude（mac）找问题；DeepSeek（ubuntu）核验。现在就写。
 55. **2026-10-20 Agency 的真会话测试一律用专用登录，不再指向所有者个人的登录。** Claude（ubuntu）对 #464（接 omp）补的那道找问题里记了一笔：核验的实跑把测试变量 `HCTL2_OMP_AGENT_DB` 指向了 `$HOME/.omp/agent/agent.db`，也就是所有者个人的 omp 登录。这属于 CONSTRAINTS 的凭据一类，主笔报所有者，建议这次已跑的证据照算、以后照 #466 的做法用所有者另行导入的专用登录。所有者：「按你的建议，既然都已经往agency的方向去做了，当然就是限制专用登录，不再用我个人的。」定下：① Agency 的各家 harness，真会话测试（作者实测、核验席重跑、走查）一律用所有者经 Agency 托管入口另行导入的专用登录；测试变量、`HOME`、配置目录都不指向所有者个人的登录文件或目录，缺专用登录就停下报所有者，由所有者自己导入，不替所有者做。这是第 38 条三类凭据在测试上的落实，和 #467 R4、#466 同一口径。② `09` §四「控制与窗格的通则」加这一句，H1–H3 都照此办。③ #464 已跑过的核验证据照算；合入前，作者在 PR 里写明 omp 专用登录的导入命令（交所有者执行），核验席用专用登录重跑一次真会话。派活表 H3 一行的前提照此改。
 56. **2026-10-20 空着的四席各接一件：小活 AF、AG、AH；第 10 包拆出随包加 tmux。** 所有者：「都发了。现在看还有deepseek mac, grok mac, glm mac， agy ubuntu是空着的」。主笔按 §二 第 53 条的难度排了三件规格写清、和别人改的地方不重叠的活；所有者：「落。还有别忘了你自己 - 你写代码也是这里最强的」。定下：① **小活 AF**（§六）Grok（mac）写：#475 评审时主笔提的建议第 4–7、9 条，中等、规格清楚；Claude（mac）找问题，GLM（mac）核验。读回权限改允许名单留给第 7 包，`外部 → noop → 外部` 纯排序仍等所有者定，都不放进来。② **小活 AG**（§六）GLM（mac）写：#477 的 `verify_sources` 错误码跟进、`docs/usage.md:188` 与 `--restricted` 不符，简单；Grok（mac）找问题，Antigravity（ubuntu）核验。③ **小活 AH**（§六）DeepSeek（mac）写：把第 10 包里「随包加 tmux 3.7c」这一块拆出来先做，只加不删，中等、规格清楚（分发方案 2026-08-28 已调研）；Claude（mac）找问题，Antigravity（ubuntu）核验。第 10 包改为在 AH 合入后只删 Herdr 的条目与制品。④ #441 里 Codex 跟进的「Claude 信任的启动探针在普通目录里做、可能误过」并进 `09` 第 10 包第二步，那一步本来就要重做 Claude Code 的信任框识别。⑤ 所有者提醒主笔别只做协调：第 10 包照常由主笔写。
+57. **2026-10-20 唤醒时直接说干什么：派活从「唤醒、自己看表」改回「唤醒、提示」；AGENTS 随之清理。** 所有者给空着的几席发了「继续」之后，主笔说「光发『继续』，几家可能又读成『没活』」，给了一张逐席写明动作的提示词表。所有者问：「为啥？如果真的是这样，是不是表明我们的策略失败了 - 应该rewind回之前的贴prompt方式（事实上这证明未来的workflow执行里，依赖『唤醒、自己看』策略是不保险的，还是『唤醒、告诉你具体干啥』更靠谱一些）」。主笔的回答：是。依据——MiniMax 盲审收到「继续」后照「自己找活」查表、表里没有它就停了，重贴写明动作的提示词才做完；第 46 条查出的「停得快」原因全在「自己看」这一步（读错表、半轮、评论只看最后一条、前提的时间差），AGENTS 为此补了三次；GLM 在 #465 两席可合时回「没有新的评审结论」；这一轮派活表上写着「现在就开」的第 3 包、第 7 包与小活 AF、AG、AH 在各席回报做完后都没有分支（原因待各席回话确认）。「自己看」的失败是静默的，要所有者发现后再补一轮；把「这一轮做什么」交给 harness 读表判断，也正是第 41 条要避免的把监督权交给 LLM。这和所有者 2026-10-05「不能depend on harness自己的context去『记得』要做完什么事，而是要通过DAG workflow去不断地记忆、主动提醒」、和 P2.5 Run 的派工（引擎派一个冻结的节点、指名的动作）同一个方向。所有者：「落 - 另外清理一下AGENTS.md，未来我们是『唤醒+提示』的路子，有的AGENTS guardrail可以去掉。」定下：① 每次唤醒都带提示词：哪一件、PR 号或分支、要做的动作、依据（派活表那一行或开工书那一节）。主笔每轮照派活表拟一张逐席提示词表，所有者照贴；以后由 workflow 引擎发。② 派活表照旧是唯一的权威记录：提示词从表生成，两者对不上以表为准，席位发现对不上就停下报。合入的行照 §六 的规矩删掉。③ `AGENTS.md`「自己找活」一节换成「唤醒与派活」：只做提示词写的那几件、动手前同步并对照权威记录、处理评审把评论读全、要所有者定的停下报、做完回报。为「自己看」加的护栏去掉：一轮五步的顺序、「一轮是三步都走完」、派活只认两处的细则、无活时回「没活」。第 41 条里「各席只在被叫醒时做、不自己定时」不变。④ 作为 P2.5 Run 派工的依据：引擎唤醒 harness 时带指名的动作与冻结的引用，不让 harness 去看板上自己挑——这本来就是 `spec/run.md` 的派工形状，本条不改设计正文。⑤ 演示 3 已验收（第 52 条），派活表里常驻的「第 9 包第 7 条走查」一行撤下，不再开第四轮；P2.5 的走查照 `09` §四 第 9 包另排。GLM（ubuntu）在这一轮里只看到了走查那一行、漏了写着它的第 7 包，DeepSeek（mac）与 Grok（mac）回报的是一天前、十天前的旧状态（#460、#421），也记在这里作为依据。
 
 ## 三、三次演示
 
@@ -478,7 +479,7 @@ Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479�
 规矩：
 
 - 评审席按 §二 第 10 条配：一席找问题、一席核验。合入条件里的「两席」指这两席，陪审与点审不计。
-- 2026-10-19 起各席自己找活（AGENTS.md「自己找活」，§二 第 41 条）：所有者每席贴一次固定 prompt，之后只发「继续」；谁做什么以下面「当前派活」表为准（表只有这一张，`09` 里没有；表里指向 `09` 的任务书去 `09` 读；§二 第 46 条），要看的地方写在 PR 描述的「请审」节。各席只在被叫醒时做一轮，不自己定时，也不自己接着开下一轮。原先「评审提示词由作者贴在 PR 里、所有者转贴给审阅者」「各家定时查看评论与 CI」两条由此取代。
+- 2026-10-20 起「唤醒、提示」（AGENTS.md「唤醒与派活」，§二 第 57 条；取代 2026-10-19 起的「各席自己找活、所有者只发『继续』」，§二 第 41 条）：每次唤醒都带提示词，写明哪一件、PR 号或分支、要做的动作、依据；提示词由主笔照下面「当前派活」表拟定，所有者发出。表是唯一的权威记录（只有这一张，`09` 里没有；表里指向 `09` 的任务书去 `09` 读），要看的地方写在 PR 描述的「请审」节。各席只在被叫醒时做提示词写的那几件，不自己定时，也不自己接着找下一件。
 - 合入与两轮规则见 §二 第 4 条；「可合」之后怎么合见 §二 第 11 条。
 - 小活一次只放一个，不占主线。
 
@@ -488,20 +489,10 @@ Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479�
 
 ### 当前派活
 
-主笔在所有者拍板后改，和 §二 的裁定同一个 PR 落（§二 第 41 条）。只写谁做、前提是什么，进度看 PR 本身。前提里写「X 之后」指 X 交出（标就绪）之后，不等合入；要等合入的写明「合入后」（§二 第 44 条 ①）。合入的行删掉，来历看本文的 git 记录与各件的任务书。席位都写到机器；同一家另一台机器的活不碰（AGENTS.md「自己找活」）。
+主笔在所有者拍板后改，和 §二 的裁定同一个 PR 落（§二 第 41 条）。只写谁做、前提是什么，进度看 PR 本身。前提里写「X 之后」指 X 交出（标就绪）之后，不等合入；要等合入的写明「合入后」（§二 第 44 条 ①）。合入的行删掉，来历看本文的 git 记录与各件的任务书。席位都写到机器；同一家另一台机器的活不碰（AGENTS.md「唤醒与派活」）。
 
 | 件 | 任务书 | 写 | 找问题 | 核验 | 分支 / PR | 前提 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 小活 W | §六「小活 W」 | GLM（ubuntu） | Codex（mac） | DeepSeek（ubuntu） | `glm/dispatch-room-version`，还没开 PR | 无 |
-| 专项 · 测试留下的常驻进程（方案与测试层第 1 步） | §六 同名专项 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu），核验代码部分 | `deepseek/test-process-cleanup`，#447 | 无 |
-| 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
-| 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
-| 第 9 包第 7 条走查（一轮一个 PR，持续走） | §二 第 36 条 ③、第 37 条 ①、第 48 条 | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | 第一、二轮 `glm/demo3-walkthrough`，#431；第三轮 `glm/demo3-walkthrough-r3`，还没开 PR | #431 两席可合即合；第三轮现在就开（#477 已合）：B 链带 `task_id`、`request` 里不写规格，走到 Task Completion Receipt；之后 main 上有新修复合入就开下一轮（§二 第 48 条） |
-| 演示 3 验收 · A、B、C 三条链 | §三；§二 第 49、50 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，#482 已合，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 已完成（§三「演示 3 验收」） |
-| 演示 3 验收记录 | §三；§二 第 49、50 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-accepted`；§三「演示 3 验收 · 2026-10-20」 | 所有者 2026-10-20 看过实录（§二 第 52 条），本 PR 落 |
-| 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
-| 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
-| 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
 | 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，#466 | 演示 3 已走完（§二 第 52 条）；mac 上的托管登录由所有者导入后补齐验收，两席可合即开自动合入 |
 | 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
 | 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对 | §六「小活 AC」；§二 第 51 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照新的第三节从零重跑 B 链；MiniMax（mac）额外静态核对，不计入可合 | `agy/demo-3-manual-b`，还没开 PR | 现在就写 |
@@ -510,14 +501,9 @@ Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479�
 | 小活 AF · 第 1 包评审留下的五条 | §六「小活 AF」；§二 第 56 条 | Grok（mac） | Claude（mac） | GLM（mac） | `grok/workflow-lint-followups`，还没开 PR | 现在就写；和第 3、7 包碰同一个 crate，后合的 rebase |
 | 小活 AG · 两处评审遗留的小修 | §六「小活 AG」；§二 第 56 条 | GLM（mac） | Grok（mac） | Antigravity（ubuntu） | `glm/review-followups`，还没开 PR | 现在就写 |
 | 小活 AH · 随包加 tmux 3.7c（第 10 包的前置，只加不删） | §六「小活 AH」；§二 第 56 条 | DeepSeek（mac） | Claude（mac） | Antigravity（ubuntu） | `deepseek/package-tmux`，还没开 PR | 现在就写 |
-| workflow 引擎（Dagu）的开工前限时验证 | §六「专项 · workflow 引擎（Dagu）的开工前限时验证」 | Antigravity（mac） | Claude（mac） | DeepSeek（ubuntu），照记录从零重跑 | `agy/dagu-probe`，还没开 PR | 无 |
-| 写入会话完成之后的去留：调研 | §六「专项 · 写入会话完成之后的去留：调研」 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/write-session-hibernation`，还没开 PR | 无 |
-| P2.5 第 1 包 · 施工图 | `09` §四 第 1 包 | Codex（ubuntu） | Claude（mac） | GLM（ubuntu） | `codex/workflow-revision`，还没开 PR | 小活 Z 交出后就开，不等它合入，也不等演示 3 |
-| P2.5 第 5a 包 · 计票的纯算法 | `09` §四 第 5a 包 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/gate-tally`，还没开 PR | 会话去留调研交出后就开，不等它合入，也不等演示 3 |
 | P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器 | `09` §四 第 2 包；§二 第 52 条 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/dagu-port`，还没开 PR | 小活 AD 交出后就开，不等它合入 |
 | P2.5 第 3 包 · Run 生命周期与施工清单 | `09` §四 第 3 包；§二 第 52 条 | Codex（ubuntu） | Claude（mac） | Antigravity（ubuntu） | `codex/run-lifecycle`，还没开 PR | 现在就开 |
 | P2.5 第 7 包 · 读回链路 | `09` §四 第 7 包；§二 第 52 条 | GLM（ubuntu） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `glm/workflow-readback`，还没开 PR | 现在就开 |
-| P2.5 H0 · 观测窗格原语（H1–H3 共用） | `09` §四 H0 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/observation-pane`，还没开 PR | 现在就写，不等演示 3，也不等钥匙串专项；合入后 H1–H3 在它上面 rebase（§二 第 45 条 ④） |
 | P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，#467 | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
 | P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，#461 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
 | P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu）；Claude（ubuntu）合入前补一道，专看 #467 四条 P1 的同类问题（§二 第 53 条） | Antigravity（ubuntu） | `deepseek/harness-omp`，#464 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合；Claude（ubuntu）补的那道对当前头写了「可合」才合；合入前核验席用所有者导入的 omp 专用登录重跑一次真会话（§二 第 55 条） |
