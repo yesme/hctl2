@@ -16,7 +16,7 @@ Pending 的 prepare / activate 先通过本租户的幂等 `fence` 同步控制�
 
 主体分段交付：5a（#332）提供选入校验与 Profile；5b 首段（#334）接 Profile 创建入口；Invocation 领域段（#360）接授权冻结与状态。本次主链接线补 Context、实际四步启动、只读回答准入、Room 投影与内部观察 / 停止票据。完整 Terminal 客户端与演示 2 验收仍未完成。
 
-`profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
+`profiles::prepare_profile / admit_profile` 沿用 Store 的命令、幂等结果与事务。创建和更新只移动 `worker_profile` 指针；`worker_profile_revision` 用规范内容摘要定位，不原地修改。已冻结的旧 `worker_profile_revision` 记录（例如工种目录迁到本家 harness 之前冻结的 `harness = herdr`、`model = none` 记录）保持不可变，按精确 `Reference` 经 `profile_at` 原样可读、不重写；新接受的工种目录与新建 / 更新的 Profile 按本家 `Profession.harness` 与 `Profession.model` 绑定并匹配。选入记录只引用精确 Revision，不引用 current。重投须保持 actor 与输入，修改预览内容或提交旧指针版本均拒绝。`profile_at` 读取并复核精确版本与内容摘要。
 
 Profile 支持 `mode = read_only | write`。权限为 `context.read`、`git.read`、`git.write`、`terminal.observe` 的不重复子集；`git.write` 只在写入型中允许，且写入型必须包含它。Profile 定义不授予租约、治理命令、Task 完成、派工或集成权。`max_context_bytes` 是字节预算，不是 token 估算。`environment` 是环境要求的描述文本，不作为连接地址、目录、进程、shell 环境变量或执行加固的声明；当前未验证其满足情况。Invocation 的人确认与租约启动由 Project 负责，以上是实现范围，不是新增约束。
 

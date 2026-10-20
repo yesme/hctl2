@@ -111,6 +111,15 @@ impl Executor {
             Executor::Codex => "codex-cli",
         }
     }
+
+    /// The harness id in the profession's resume.
+    fn harness(self) -> &'static str {
+        match self {
+            Executor::Script => "script-protocol-fixture",
+            Executor::ClaudeCode => "claude-code",
+            Executor::Codex => "codex-cli",
+        }
+    }
 }
 fn paired_with(
     name: &str,
@@ -1966,12 +1975,16 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
             "LIVE CLI demo3 restart: three kill points (publish after push, integration before readback, completion after preview) survived control + Agency + packaged service restarts with one review request, one merge and one receipt each"
         );
     }
-    // Who answered is the profession the Agency froze into the dispatch: the script
-    // worker here, Claude Code or Codex in the live runs. The harness that holds a native
-    // session is herdr for every profession, so it cannot tell them apart.
+    // Who answered is the profession and harness the Agency froze into the dispatch:
+    // the script worker/fixture here, Claude Code or Codex in the live runs.
     assert_eq!(
         progress["invocations"][0]["profession"],
         executor.profession(),
+        "{progress}"
+    );
+    assert_eq!(
+        progress["invocations"][0]["harness"],
+        executor.harness(),
         "{progress}"
     );
     // What reached Gitea main is exactly the requested edit, read from the merged

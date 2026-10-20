@@ -405,7 +405,6 @@ pub struct InstalledHerdr {
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
-    herdr_digest: String,
     read_paths: Vec<PathBuf>,
 }
 
@@ -477,7 +476,7 @@ impl InstalledHerdr {
             ));
         }
         let digest = crate::catalog::file_digest(&claude)?;
-        let herdr_digest = crate::catalog::file_digest(&binary)?;
+        let _herdr_digest = crate::catalog::file_digest(&binary)?;
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -494,7 +493,6 @@ impl InstalledHerdr {
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
-            herdr_digest,
             read_paths,
         })
     }
@@ -529,12 +527,12 @@ impl InstalledHerdr {
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
     ) -> Self {
-        let herdr_digest = crate::catalog::file_digest(&binary).expect("herdr digest");
+        let profession_digest = crate::catalog::file_digest(&binary).expect("herdr digest");
         Self {
             binary,
             profession_id: "test-adapter".into(),
             profession_revision: "test".into(),
-            profession_digest: "test".into(),
+            profession_digest,
             slot: Mutex::new(None),
             write_slots: Mutex::new(HashMap::new()),
             starts: AtomicUsize::new(0),
@@ -544,7 +542,6 @@ impl InstalledHerdr {
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
-            herdr_digest,
             read_paths: vec![],
         }
     }
@@ -745,6 +742,10 @@ fn codex_on_path() -> Option<PathBuf> {
     }
 }
 
+fn default_model(harness: &FrozenRef) -> String {
+    format!("{}/default", harness.id)
+}
+
 fn smoke_directory() -> Result<tempfile::TempDir> {
     Ok(tempfile::Builder::new()
         .prefix("hctl2-herdr-smoke-")
@@ -852,19 +853,15 @@ impl Runtime for InstalledHerdr {
     }
 
     fn catalog(&self) -> Result<Catalog> {
-        let harness = FrozenRef {
-            id: "herdr".into(),
-            revision: "protocol-22".into(),
-            digest: self.herdr_digest.clone(),
+        let claude_harness = FrozenRef {
+            id: self.profession_id.clone(),
+            revision: self.profession_revision.clone(),
+            digest: self.profession_digest.clone(),
         };
         let profession = Profession {
-            reference: FrozenRef {
-                id: self.profession_id.clone(),
-                revision: self.profession_revision.clone(),
-                digest: self.profession_digest.clone(),
-            },
-            harness: harness.clone(),
-            model: "none".into(),
+            reference: claude_harness.clone(),
+            model: default_model(&claude_harness),
+            harness: claude_harness.clone(),
             persona: "claude code".into(),
             terms: "Bundle dispatch in a selection-local native Claude Herdr session; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
             default_role: "worker".into(),
@@ -875,16 +872,18 @@ impl Runtime for InstalledHerdr {
                 ..Capabilities::default()
             },
         };
+        let mut harnesses = vec![claude_harness];
         let mut professions = vec![profession];
         if let (Some(revision), Some(digest)) = (&self.codex_revision, &self.codex_digest) {
+            let codex_harness = FrozenRef {
+                id: "codex-cli".into(),
+                revision: revision.clone(),
+                digest: digest.clone(),
+            };
             professions.push(Profession {
-                reference: FrozenRef {
-                    id: "codex-cli".into(),
-                    revision: revision.clone(),
-                    digest: digest.clone(),
-                },
-                harness: harness.clone(),
-                model: "none".into(),
+                reference: codex_harness.clone(),
+                model: default_model(&codex_harness),
+                harness: codex_harness.clone(),
                 persona: "codex".into(),
                 terms: "Bundle dispatch via app-server turn/start in one selection thread; Herdr pane runs codex resume --remote; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
                 default_role: "worker".into(),
@@ -895,10 +894,11 @@ impl Runtime for InstalledHerdr {
                     ..Capabilities::default()
                 },
             });
+            harnesses.push(codex_harness);
         }
         Ok(Catalog {
             professions,
-            harnesses: vec![harness],
+            harnesses,
             skills: vec![],
         })
     }
