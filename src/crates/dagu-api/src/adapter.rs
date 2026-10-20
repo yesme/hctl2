@@ -474,14 +474,14 @@ impl DaguAdapter {
         }
         self.readback_run(dag_name, dag_run_id)
             .await
-            .or_else(|err| {
-                Err(last_error.unwrap_or_else(|| {
+            .map_err(|err| {
+                last_error.unwrap_or_else(|| {
                     reject(
                         "WORKFLOW_ENGINE_READBACK",
                         format!("DAG run {dag_name}/{dag_run_id} did not become visible: {err}"),
                         "check_services",
                     )
-                }))
+                })
             })
     }
 
