@@ -1,0 +1,24 @@
+[package]
+name = "dagu-api-codegen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Generate the Dagu v1 OpenAPI client from the locked api/v1/api.yaml specification using progenitor 0.14.0"
+
+[[bin]]
+name = "dagu-api-codegen"
+path = "main.rs"
+
+[dependencies]
+openapiv3.workspace = true
+prettyplease.workspace = true
+progenitor.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+syn.workspace = true
+
+[lints]
+workspace = true

@@ -85,6 +85,7 @@ prepare_runtime() {
     local gitea_secret
     local gitea_internal
     local gitea_jwt
+    local dagu_token_secret
     local gitea_config
     local gitea_config_tmp
 
@@ -119,11 +120,13 @@ prepare_runtime() {
     write_secret_once "$P0_CONFIG_DIR/gitea-secret-key"
     write_secret_once "$P0_CONFIG_DIR/gitea-internal-token"
     write_b64url_once "$P0_CONFIG_DIR/gitea-jwt-secret"
+    write_secret_once "$P0_CONFIG_DIR/dagu-token-secret"
     IFS= read -r registration_token <"$P0_CONFIG_DIR/tuwunel-registration-token"
     IFS= read -r vikunja_secret <"$P0_CONFIG_DIR/vikunja-secret"
     IFS= read -r gitea_secret <"$P0_CONFIG_DIR/gitea-secret-key"
     IFS= read -r gitea_internal <"$P0_CONFIG_DIR/gitea-internal-token"
     IFS= read -r gitea_jwt <"$P0_CONFIG_DIR/gitea-jwt-secret"
+    IFS= read -r dagu_token_secret <"$P0_CONFIG_DIR/dagu-token-secret"
 
     tuwunel_config="$P0_CONFIG_DIR/tuwunel.toml"
     tuwunel_config_tmp="$tuwunel_config.tmp.$$"
@@ -194,6 +197,7 @@ prepare_runtime() {
     export HCTL2_VIKUNJA_DATA="$P0_DATA_DIR/vikunja"
     export HCTL2_VIKUNJA_SECRET="$vikunja_secret"
     export HCTL2_DAGU_DATA="$P0_DATA_DIR/dagu"
+    export HCTL2_DAGU_TOKEN_SECRET="$dagu_token_secret"
     export HCTL2_HERDR_CONFIG="$P0_CONFIG_DIR/herdr/config.toml"
     export HCTL2_HERDR_DATA="$P0_DATA_DIR/herdr"
     export HCTL2_HERDR_SOCKET="$(platform_herdr_socket_path)"

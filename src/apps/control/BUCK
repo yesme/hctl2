@@ -23,6 +23,7 @@ CONTROL_DEPS = [
     "root//crates/participant:participant",
     "root//crates/chat:chat",
     "root//crates/context:context",
+    "root//crates/dagu-api:dagu_api",
     "root//crates/foundation:foundation",
     "root//crates/proto:proto",
     "root//crates/project:project",

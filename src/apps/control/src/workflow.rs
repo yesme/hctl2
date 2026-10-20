@@ -27,6 +27,9 @@ pub(crate) fn query(
     kind: &str,
     payload: &Value,
 ) -> Result<Value> {
+    if kind.starts_with("workflow.engine.") {
+        return crate::dagu::query(shared, actor, kind, payload);
+    }
     let project_id = payload["project_id"]
         .as_str()
         .ok_or_else(|| invalid("project_id required"))?;
@@ -69,6 +72,9 @@ pub(crate) fn preview(
     operation: &str,
     payload: &Value,
 ) -> Result<Value> {
+    if operation.starts_with("workflow.engine.") {
+        return crate::dagu::preview(shared, services, root, actor, operation, payload);
+    }
     let input = input(operation, payload)?;
     let slot = shared.blocking_lock();
     let store = slot.as_ref().ok_or_else(not_ready)?;
@@ -88,6 +94,9 @@ pub(crate) fn submit(
     request: &proto::SubmitRequest,
     details: &Value,
 ) -> Result<Value> {
+    if request.operation.starts_with("workflow.engine.") {
+        return crate::dagu::submit(shared, services, root, actor, request, details);
+    }
     let input = input(
         &request.operation,
         &serde_json::from_slice(&request.payload)?,

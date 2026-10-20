@@ -7,6 +7,7 @@ mod changesets;
 pub mod chat;
 pub mod config;
 mod context_query;
+pub mod dagu;
 pub mod dispatch;
 mod identity;
 pub mod integration;

@@ -1,0 +1,23 @@
+[package]
+name = "dagu-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Progenitor-generated Dagu v1 OpenAPI client, controlled workflow engine port, and Dagu adapter"
+
+[dependencies]
+bytes.workspace = true
+foundation = { path = "../foundation" }
+futures-core.workspace = true
+progenitor-client.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+store = { path = "../store" }
+tokio.workspace = true
+
+[lints]
+workspace = true

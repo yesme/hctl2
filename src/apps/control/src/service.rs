@@ -331,6 +331,7 @@ impl Control for ControlService {
             | "memo.list"
             | "workflow.list"
             | "workflow.show"
+            | "workflow.engine.show"
             | "integration.show"
             | "integration.list"
             | "review.show"
