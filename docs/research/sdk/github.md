@@ -257,3 +257,27 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 演示 3 P1-2 在 Ubuntu 的新状态根复现：canary issue #22 已建出，旧实现却返回 `RESULT_UNKNOWN`、Task `entity=null`；独立 GET 回读标题、正文和命令标记均一致。代码把 POST 响应丢掉，只依赖列表再次枚举命中。CI 夹具固定列表尚未收录新卡、单卡端点可读这一输入，真实 CLI 的 create 在修正前同样失败。
 
 修正使用创建响应的 number 和不可变实体 ID 作定位，再通过既有 `read_card` 精确 GET；GET 必须仍是同一实体、同一标题和正文，才进入既有 Task 确认事务。POST 丢响应时仍按原意图的标记回读，不重发；单卡回读失败或不符仍如实失败，不把 POST 接受当作已绑定。
+
+## 2026-10-21 · control 专用 GitHub 凭据的实现前复核
+
+决定建议：按开工书 `07` §二第 50 条与 §六「小活 AB」已定的方案 A，继续用随包 **gh 2.102.0**（源码 `fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd`）、既有 SecretStore 和 `repo::git::Credential`。不新写 OAuth 客户端，不运行 `gh auth setup-git` 改人的全局配置。以下是开工前证据，不是 AB 已实现或演示 B 链已通过。
+
+### 配置目录不等于独立的钥匙串
+
+钉定源码 [AuthConfig.Login / activateUser](https://github.com/cli/cli/blob/fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd/internal/config/config.go) 表明：`GH_CONFIG_DIR` 只移动配置文件；钥匙串的服务名仍取 `gh:<hostname>`，不含配置目录。`--insecure-storage` 让 Login 跳过按用户名保存到钥匙串，但随后仍调用 `activateUser`：先删除该主机的空账号条目，再查询该用户名的钥匙串条目，查到时还会写回空账号条目。因此不能把该选项或私有配置目录单独当成「不会碰人的钥匙串」的保证。这里的删除、覆盖风险是源码推演，没有拿所有者的登录验证。
+
+随包版本使用 [go-keyring 0.2.8](https://github.com/cli/cli/blob/fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd/go.mod)。其 [macOS 实现](https://github.com/zalando/go-keyring/blob/v0.2.8/keyring_darwin.go) 调用绝对路径 `/usr/bin/security`，改变 PATH 不能隔离它；[Unix 实现](https://github.com/zalando/go-keyring/blob/v0.2.8/keyring_unix.go) 通过 Secret Service 访问凭据。Linux 的实际隔离与原生登录仍待运行验证。
+
+### macOS 假账号实测
+
+`cd src && ./buck2 build root//packaging/dependencies:gh --show-output` 成功，Build `4ba0c142-9664-4e0c-a56b-bdbddeda2afa`。使用该目标的 `macos-aarch64/bin/gh`，不是仅拿本机 Homebrew 版本代替随包制品。
+
+- 临时根 `/var/tmp/hctl2-ab-gh-preflight.5XaMuM`，两个假账号、假令牌和专用 HOME / GH_CONFIG_DIR。API 是本机 Unix socket 上的测试服务；通过 gh 已有的 `http_unix_socket` 配置接入，没有访问真实 GitHub 账号。
+- 原生 Seatbelt profile 禁止执行 `/usr/bin/security`，并拒读写人的 Keychains 与 gh 配置目录。先运行 `sandbox-exec -f boundary.sb /usr/bin/security help`，exit 71、`Operation not permitted`，确认这条禁止确实生效。
+- 同一限制下执行 `gh auth switch --hostname hctl2-ab-preflight.invalid --user hctl2-fake-new`，exit 0，切换只针对临时配置中的假账号。此步先用同版 Homebrew gh 验证共享的账号激活路径。
+- 随后用上述 Buck 产出的 gh 执行 `auth login --hostname hctl2-ab-preflight.invalid --with-token --insecure-storage --git-protocol https`，假令牌只从 stdin 输入，exit 0。测试服务收到 `GET /api/v3/` 与 `POST /api/graphql`；临时 `hosts.yml` 含预期假令牌，命令 stdout / stderr 没有令牌。真实钥匙串程序不能被执行，也没有创建钥匙串、修改 search list / default-keychain 或操作个人登录。
+- 测试服务进程已停止。没有让所有者重新登录，没有取得、读取或复制真实凭据；未跑浏览器授权、control 命令、macOS 真 B 链或 Linux B 链。这些仍是 AB 的待实现与验收范围。
+
+### 后续接线的已有机制
+
+[gh 登录](https://cli.github.com/manual/gh_auth_login) 负责原生授权；[gh 环境](https://cli.github.com/manual/gh_help_environment) 说明环境令牌优先于已存凭据。control 的运行调用使用自己的 SecretStore 凭据与私有 GH_CONFIG_DIR，只交给那一次子进程；不继承人的环境令牌。Git 推送与私有仓库回读继续用仓库已有的每进程凭据助手，直接执行的 `hctl2-tool` 保留人的工具行为。注册、Issues、发布、集成与 control 调工具的各处都要分别用会失败的夹具核到，不能以这次原生登录预查代替。
