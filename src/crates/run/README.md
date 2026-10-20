@@ -71,11 +71,11 @@ hctl2 --root <root> --json workflow approve --input approve.json --key <key> --p
 所有对象拒绝未知字段；执行种类为闭集，不透传 Dagu DSL。内部标记枚举的无字段种类也用空结构体变体，使 serde 对多余字段报错；合法 JSON 形状和规范摘要不变。补齐缺省值后，使用现有 RFC 8785 实现保存规范 JSON、计算 SHA-256。摘要不是 Git 对象编号。
 
 - Workflow：schema、profile、context、readback、graph。读回缺省启用，缺省回避所有产出调用的 Worker Profile。显式 `readback: {required:false, different_worker_profile:true}` 才关闭；模板无特权。
-- Graph：nodes、edges。Node 是 id、outputs、operation；node/output/Seat id 使用 ASCII 字母、数字与下划线。输出种类：change_set_revision、artifact_revision、verdict、receipt、mechanical_fact。
-- external 节点须声明 criterion：绑定本节点输出的机械事实（ci / pr_merged / path_digest），或 Gate 加证据下限。机械事实仍须运行时由工具回读精确版本；可派发不等于已达成。
+- Graph：nodes、edges。Node 是 id、outputs、operation；node/output/Seat id 使用 ASCII 字母、数字与下划线。节点 id 不得含 `__`：这段留给展开出来的检查点名（`loop__exit`、`loop__r0__work`、`fork__s0__worker`）。输出种类：change_set_revision、artifact_revision、verdict、receipt、mechanical_fact。
+- external 节点须声明 criterion：绑定本节点输出的机械事实（ci / pr_merged / path_digest），或 Gate 加证据下限。这三种事实按规格是该输出所在提交的 CI、对应 PR 的合并状态、路径与摘要，所以只能绑在 change_set_revision、artifact_revision 或 mechanical_fact 上；verdict 与 receipt 的权威在控制面，绑上就拒绝。规格没有把这三种事实再拆到前三种输出上，那些搭配仍接受。机械事实仍须运行时由工具回读精确版本；可派发不等于已达成。
 - 结构件为 fork、join、switch（cases）、loop（body、max_reworks、on_exhausted）、dynamic_fork、timer_wait（seconds）、noop、transform（fields）。这些由未来 control 归约器处理，不能执行命令或调用模型。
-- Edge：from、to、可选 artifact（output、kind）、outcome（缺省 success，也可 failure）、可选 case。switch 出边必须引用声明内的 case，其他边不得带 case。产物引用须在本层静态图解析到源节点的同类型输出，可以尚未产生；两外部节点直接相连必须引用产物。HCTL 自己先检环。
-- Gate：quorum、distinct_worker_profiles。Seat：id、required、profession、evidence、required_skills、review_subject_node、template。同一身份的相同声明重复引用只算一个席位，编译映射去重；同身份声明互相冲突则拒绝。法定票数超过不同必需席位数拒绝。相同模板不证明实际同键；声明层同要求、材料且不要求 Profile 互异只提示「可能合成一票」、缺失信息和可选处理。实际计票键仍是实际 Worker Profile 摘要与交付条目加必需 Skill 的内容摘要，排除消费者身份、计量与保留字段；本包不做运行时计票。
+- Edge：from、to、可选 artifact（output、kind）、outcome（缺省 success，也可 failure）、可选 case。switch 出边必须引用声明内的 case，其他边不得带 case。重复边按起点、终点和 case 一起判：两个 case 可以指向同一个节点，同一个 case 再指到同一节点才是重复。产物引用须在本层静态图解析到源节点的同类型输出，可以尚未产生；两外部节点直接相连必须引用产物。HCTL 自己先检环。
+- Gate：quorum、distinct_worker_profiles。Seat：id、required、profession、evidence、required_skills、review_subject_node、template。同一身份的相同声明重复引用只算一个席位，编译映射去重；同身份声明互相冲突则拒绝。法定票数超过不同必需席位数拒绝。相同模板不证明实际同键；声明层同要求、材料且不要求 Profile 互异、法定票数大于 1 时，只提示「可能合成一票」、缺失信息和可选处理。法定票数为 1 时不再提示。实际计票键仍是实际 Worker Profile 摘要与交付条目加必需 Skill 的内容摘要，排除消费者身份、计量与保留字段；本包不做运行时计票。
 
 ## 有界展开与引擎定义
 
@@ -95,7 +95,7 @@ NativeDagu 只调用锁定二进制的 version、validate，各最多 20 秒且�
 
 snapshot 只含 decided、unresolved、out_of_scope；decided 条目固定 id、text、delivery_obligation，其余为文字数组。provenance 不进入读回 Bundle：snapshot_source 是冻结消息（room_id、event）或 direct_text；直接文本提交者与摘要在 Revision 的 author/snapshot_digest。source_chain 列真实冻结消息，事件须经 Room 命令保存且绑定 id 与 room_id 一致。按实际事件收集所有来源 Room，直接文本不免检。
 
-production 为非空 invocations references（精确 room_invocation 引用）、显式 none、或 missing。普通空集合拒绝，missing 可保存但要求 Profile 回避时不能批准。每版来源冻结；批准逐一回读真实产出调用的 spec/profile，不取最近一次调用。
+production 为非空 invocations references（精确 room_invocation 引用）、显式 none、或 missing。普通空集合拒绝，missing 可保存但要求 Profile 回避时不能批准。每版来源冻结；批准逐一回读真实产出调用的 spec/profile，不取最近一次调用。读回开着时，登记必须带三张清单快照和显式来源链；关掉读回才可以两者都缺。
 
 `readback::Readbacks` 是第 7 包的可信端口，不是公开写入接口。Readback 固定 workflow_digest、snapshot_digest、invocation、selection、bundle_digest、body_digest；InvocationEvidence 固定新起会话证明、实际 Sealed ExecutionSpec、实际送达 Sealed Bundle、selection、可选 source_room。第 7 包须在真实派工送达后写，不能从模型所报摘要或旧 Bundle 拼装；本包用内部测试替身。**尚无真实读回生产入口**，approve 只收引用，不收自报证明。
 
