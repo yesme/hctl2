@@ -185,7 +185,7 @@ hctl2-services start
 
 让不让 Claude 在执行目录里工作，由 Agency 的所有者决定，不交给守着 pane 的人逐个回答（所有者，2026-10-18）。Agency 起的每个 Claude 会话都带 `CLAUDE_CODE_SANDBOXED=1` 启动，Claude Code 2.1.302 据此不再询问。这个变量 Claude Code 没有写进公开文档。Agency 只给自己起的会话设它，不改你自己的 Claude 配置（`~/.claude.json` 等）；你在终端里自己用 Claude Code 时照常询问。用户不需要做任何事。
 
-受信任意味着仓库里的 Claude 项目配置（例如 `.claude/settings.json` 里的 hooks）会在这些会话里生效，所以登记给 Agency 的仓库应当是你信得过的。
+一般的信任会允许 Claude 加载仓库里的项目配置（例如 `.claude/settings.json` 里的 hooks）；当前 Agency 起 Claude 会话还带 `--restricted`，忽略 user、project、local 三处 settings，仓库 settings 因此不会在这些会话里生效，显式注入的 settings（`--settings`）与 managed settings 仍生效。将来若放开 `--restricted`，项目配置就会随信任生效，所以登记给 Agency 的仓库应当是你信得过的。
 
 Agency 启动时会核验这一条：在 `/tmp` 下的新目录里开一次 Claude 会话，不派任务，也不按任何键。如果 Claude 仍然弹出信任问题，例如换成了不认这个变量的版本，Claude 工种就不进 Agency 的目录，Agency 根目录下的 `serve.err` 会写明 `CLAUDE_WORKSPACE_UNTRUSTED`。派工途中遇到这个问题，也会立刻以同一个错误结束。Agency 任何时候都不替人回答这个问题。
 

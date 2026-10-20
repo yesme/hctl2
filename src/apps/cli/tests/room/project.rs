@@ -1222,15 +1222,10 @@ fn a_task_bound_read_only_dispatch_carries_the_adopted_contract_and_refuses_a_ne
         !ok,
         "a start on a superseded contract must be refused: {refused}"
     );
-    // The dispatch maps Context errors through the Agency error table, so the
-    // code arrives wrapped; the refusal itself names the version check.
-    assert!(
-        refused["error"]["message"]
-            .as_str()
-            .unwrap()
-            .starts_with("SOURCE_VERSION_CHANGED:"),
-        "{refused}"
-    );
+    // The refusal keeps Context's own code and recovery action at the boundary;
+    // both fields are asserted, not just a message prefix.
+    assert_eq!(refused["error"]["code"], "SOURCE_VERSION_CHANGED");
+    assert_eq!(refused["error"]["recovery_action"], "preview_again");
     println!(
         "start after a new contract Revision -> {}",
         refused["error"]
