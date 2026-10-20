@@ -186,6 +186,7 @@ rust_test(
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | {
+        "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_AGY_FIXTURE": "$(location :agy_fixture)",
         "HCTL2_LOCKED_HERDR": select({

@@ -190,6 +190,6 @@
 ## 复核记录
 
 - 2026-10-17 初版（Muse 席 mac）：按开工书 §二 第 37 条 ⑤ 的派工落盘；评审席 Claude（mac）找问题、Antigravity（ubuntu）核验链接与版本，结论待回填。
-- 2026-10-20 H1 Antigravity CLI（`agy` 1.4.0，Antigravity 席 mac）：起会话前由 `agy::ensure_oauth_token` 检查托管目录 `<state>/agy-home/.gemini/antigravity-cli/antigravity-oauth-token` 为非空普通文件（缺失或空直接报 `HARNESS_LOGIN_REQUIRED`，提示 `HOME=<state>/agy-home agy login`；运行期令牌失效由 `result` 错误帧映射同一错误码）；最小环境为 `env_clear` 后仅给 `HOME=<state>/agy-home`、`PATH`、`LANG=C.UTF-8`、`TMPDIR=<state>/tmp`、`GIT_CONFIG_NOSYSTEM=1`、`GIT_CONFIG_GLOBAL=/dev/null`、`GIT_TERMINAL_PROMPT=0`（macOS 另拒读人的 `~/.gemini`，Linux Landlock 仅放行托管 `HOME`、状态目录、执行目录与 `TMPDIR`），全程不读钥匙串。
+- 2026-10-20 H1 Antigravity CLI（`agy` 1.4.0，Antigravity 席 mac）：起会话前由 `agy::prepare_profile`（调用 `agy::read_managed_oauth_token`）用 `fs::symlink_metadata` 检查托管登录入口 `<state>/agy-home/.gemini/antigravity-cli/antigravity-oauth-token` 存在、为非符号链接的普通文件且内容非空（`NotFound` 或空内容报 `HARNESS_LOGIN_REQUIRED`，提示 `HOME=<state>/agy-home agy login`；符号链接或非常规文件报 `INVALID_INPUT`；其它读取 I/O 错误原样上抛；运行期令牌失效由 `result` 错误帧映射 `HARNESS_LOGIN_REQUIRED`），随后按选入记录把令牌与会话配置写进该 slot 独立的 `<state>/antigravity/<session_id>/home/.gemini/`（`0600`），避免并发 slot 串配置；最小环境为 `env_clear` 后仅给 `HOME=<state>/antigravity/<session_id>/home`、`PATH`、`LANG=C.UTF-8`、`TMPDIR=<state>/antigravity/<session_id>/tmp`、`GIT_CONFIG_NOSYSTEM=1`、`GIT_CONFIG_GLOBAL=/dev/null`、`GIT_TERMINAL_PROMPT=0`（macOS 另拒读人的 `~/.gemini`，Linux Landlock 仅放行该 slot 的 `HOME`、状态目录、执行目录与 `TMPDIR`）；真会话测试入口（`agy_fixture_test` 与 `write_session`）均要求显式传 `HCTL2_AGY_OAUTH_TOKEN=<path>`，不从人的 `HOME` 回退复制，全程不读钥匙串。
 
 

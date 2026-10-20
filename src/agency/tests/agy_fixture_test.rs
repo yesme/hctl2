@@ -141,7 +141,15 @@ fn agy_fixture_returns_multiple_turns_in_one_process_and_verifies_transcript_and
         "{argv_1}"
     );
     let home = argv_1["home"].as_str().expect("managed home");
-    assert!(home.ends_with("/agy-home"), "{home}");
+    assert_eq!(Path::new(home), session_dir.join("home"));
+    let catalog = runtime.catalog().expect("catalog");
+    let agy_prof = catalog
+        .professions
+        .iter()
+        .find(|p| p.reference.id == "antigravity-cli")
+        .expect("antigravity-cli cataloged");
+    assert_eq!(agy_prof.harness.id, "antigravity");
+    assert!(catalog.harnesses.contains(&agy_prof.harness));
     assert_eq!(argv_1["settings"]["toolPermission"], "request-review");
     assert_eq!(argv_1["settings"]["allowNonWorkspaceAccess"], false);
     assert!(
@@ -539,6 +547,274 @@ fn agy_read_only_cannot_write_the_source_repo() {
 }
 
 #[test]
+fn agy_fixture_dead_between_turns_process_is_resumed_before_next_delivery() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let (runtime, cred, root, exec) = open_runtime_with_observation(
+        "agy-dead-between-turns",
+        Duration::from_secs(300),
+        ObservationConfig::disabled(),
+    );
+    let mut first = dispatch(&runtime, &exec, &cred, "first-turn-before-kill");
+    let first_events = collect(&mut first, Duration::from_secs(20));
+    assert!(proposal(&first_events).is_some(), "{}", show(&first_events));
+    let first_open = opened(&first_events);
+    let conv_1 = first_open["conversation"].as_str().unwrap().to_owned();
+    let argv_1 = agy_home_json(&exec, &cred, "argv.json");
+    let pid_1 = argv_1["pid"].as_u64().unwrap() as u32;
+
+    // Kill the live fixture process between turns (before idle timeout) and wait for exit.
+    let _ = Command::new("/bin/kill")
+        .args(["-s", "TERM", &pid_1.to_string()])
+        .status();
+    let wait_dead = Instant::now() + Duration::from_secs(5);
+    loop {
+        let ps = Command::new("/bin/ps")
+            .args(["-p", &pid_1.to_string(), "-o", "stat="])
+            .output()
+            .unwrap();
+        let stat = String::from_utf8_lossy(&ps.stdout).trim().to_owned();
+        if !ps.status.success() || stat.is_empty() || stat.starts_with('Z') {
+            break;
+        }
+        assert!(Instant::now() < wait_dead, "process {pid_1} did not exit");
+        thread::sleep(Duration::from_millis(20));
+    }
+
+    // Dispatching the second turn on the same selection before idle must detect the dead
+    // process prior to writing stdin, resume the saved conversation, and return once.
+    let mut second = dispatch(&runtime, &exec, &cred, "second-turn-after-kill");
+    let second_events = collect(&mut second, Duration::from_secs(20));
+    let second_open = opened(&second_events);
+    assert_eq!(second_open["resumed"], true, "{}", show(&second_events));
+    assert_eq!(
+        second_open["resume_failed"],
+        false,
+        "{}",
+        show(&second_events)
+    );
+    assert_eq!(second_open["conversation"].as_str().unwrap(), conv_1);
+    let proposals: Vec<_> = second_events
+        .iter()
+        .filter(|event| matches!(event, RuntimeEvent::Proposal { .. }))
+        .collect();
+    assert_eq!(proposals.len(), 1, "{}", show(&second_events));
+    let returned = second_events
+        .iter()
+        .filter(|event| matches!(event, RuntimeEvent::TurnReturned))
+        .count();
+    assert_eq!(returned, 1, "{}", show(&second_events));
+    let argv_2 = agy_home_json(&exec, &cred, "argv.json");
+    assert_ne!(argv_2["pid"].as_u64().unwrap() as u32, pid_1);
+    assert_eq!(argv_2["spawn_seq"], 2);
+    let args = argv_2["args"].as_array().unwrap();
+    assert!(
+        args.windows(2)
+            .any(|pair| pair[0] == "--conversation" && pair[1] == conv_1),
+        "{argv_2}"
+    );
+
+    runtime.shutdown().expect("shutdown");
+    cleanup(&cred, &root);
+}
+
+#[test]
+fn agy_fixture_repeated_identical_prompt_succeeds_and_mismatched_current_turn_fails_even_with_matching_history()
+ {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let (runtime, cred, root, exec) = open_runtime_with_observation(
+        "agy-repeat-history",
+        Duration::from_millis(250),
+        ObservationConfig::disabled(),
+    );
+    let prompt = "repeat this task";
+
+    // Turn 1: initial turn records `repeat this task`.
+    let mut first = dispatch(&runtime, &exec, &cred, prompt);
+    let first_events = collect(&mut first, Duration::from_secs(20));
+    assert!(proposal(&first_events).is_some(), "{}", show(&first_events));
+    let conv_1 = opened(&first_events)["conversation"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Turn 2 (same process): repeating the exact same prompt succeeds.
+    let mut second = dispatch(&runtime, &exec, &cred, prompt);
+    let second_events = collect(&mut second, Duration::from_secs(20));
+    assert!(
+        proposal(&second_events).is_some(),
+        "{}",
+        show(&second_events)
+    );
+
+    // Wait for idle eviction, then Turn 3 (resumed): repeating the exact same prompt succeeds.
+    thread::sleep(Duration::from_millis(700));
+    let mut third = dispatch(&runtime, &exec, &cred, prompt);
+    let third_events = collect(&mut third, Duration::from_secs(20));
+    let third_open = opened(&third_events);
+    assert_eq!(third_open["resumed"], true, "{}", show(&third_events));
+    assert_eq!(third_open["conversation"].as_str().unwrap(), conv_1);
+    assert!(proposal(&third_events).is_some(), "{}", show(&third_events));
+
+    // Wait for idle eviction again, enable transcript tampering for the next turn, and
+    // verify that even with three matching historical USER_INPUT entries, a mismatched
+    // current turn is rejected after resume.
+    thread::sleep(Duration::from_millis(700));
+    fs::write(agy_home_file(&exec, &cred, "tamper-transcript"), b"1").unwrap();
+    let mut fourth = dispatch(&runtime, &exec, &cred, prompt);
+    let fourth_events = collect(&mut fourth, Duration::from_secs(20));
+    let fourth_open = opened(&fourth_events);
+    assert_eq!(fourth_open["resumed"], true, "{}", show(&fourth_events));
+    assert_eq!(fourth_open["conversation"].as_str().unwrap(), conv_1);
+    assert_eq!(
+        protocol(&fourth_events),
+        Some("STANDBY_PROMPT_MISMATCH"),
+        "{}",
+        show(&fourth_events)
+    );
+    assert!(
+        proposal(&fourth_events).is_none(),
+        "{}",
+        show(&fourth_events)
+    );
+
+    runtime.shutdown().expect("shutdown");
+    cleanup(&cred, &root);
+}
+
+#[test]
+fn agy_fixture_concurrent_read_and_write_selections_isolate_settings_and_hooks() {
+    let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
+    let (runtime, cred, root, exec) = open_runtime_with_observation(
+        "agy-slot-isolation",
+        Duration::from_secs(300),
+        ObservationConfig::disabled(),
+    );
+    let repo = root.join("source-repo");
+    fs::create_dir_all(&repo).unwrap();
+    Command::new("git")
+        .args(["init", "--initial-branch=main", "--quiet"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "trial@example.invalid"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Trial"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    fs::write(repo.join("README.md"), b"hello\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "baseline", "--quiet"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    let baseline = String::from_utf8(
+        Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+
+    let mut read_running = start_task_with_selection(
+        &runtime,
+        &exec,
+        &cred,
+        "read-slot",
+        "selection-read",
+        "fixture/model",
+        "read-only turn",
+        &[],
+        None,
+    )
+    .unwrap();
+    let mut write_running = start_task_with_selection(
+        &runtime,
+        &exec,
+        &cred,
+        "write-slot",
+        "selection-write",
+        "fixture/model",
+        "write turn",
+        &[],
+        Some((&repo, &baseline)),
+    )
+    .unwrap();
+
+    let read_events = collect(&mut read_running, Duration::from_secs(20));
+    let write_events = collect(&mut write_running, Duration::from_secs(20));
+    assert!(proposal(&read_events).is_some(), "{}", show(&read_events));
+
+    let read_dir = PathBuf::from(opened(&read_events)["session_dir"].as_str().unwrap());
+    let write_dir = PathBuf::from(opened(&write_events)["session_dir"].as_str().unwrap());
+    assert_ne!(read_dir, write_dir);
+
+    let read_argv: Value = serde_json::from_slice(
+        &fs::read(read_dir.join("home/.gemini/antigravity-cli/argv.json")).unwrap(),
+    )
+    .unwrap();
+    let write_argv: Value = serde_json::from_slice(
+        &fs::read(write_dir.join("home/.gemini/antigravity-cli/argv.json")).unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        Path::new(read_argv["home"].as_str().unwrap()),
+        read_dir.join("home")
+    );
+    assert_eq!(
+        Path::new(write_argv["home"].as_str().unwrap()),
+        write_dir.join("home")
+    );
+    assert_eq!(read_argv["settings"]["toolPermission"], "request-review");
+    assert_eq!(write_argv["settings"]["toolPermission"], "always-proceed");
+    assert_eq!(
+        read_argv["hooks"]["hooks"]["PreToolUse"][0]["matcher"],
+        "write_to_file|replace_file_content|multi_replace_file_content|sed_file|notebook_edit|run_command"
+    );
+    assert_eq!(
+        write_argv["hooks"]["hooks"]["PreToolUse"][0]["matcher"],
+        "run_command"
+    );
+
+    runtime.shutdown().expect("shutdown");
+    cleanup(&cred, &root);
+}
+
+#[test]
+fn agy_live_token_seeding_refuses_missing_env_without_copying_personal_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let fake_home = temp.path().join("fake-personal-home");
+    let personal_dir = fake_home.join(".gemini/antigravity-cli");
+    fs::create_dir_all(&personal_dir).unwrap();
+    let personal_token = personal_dir.join("antigravity-oauth-token");
+    fs::write(&personal_token, b"personal-home-token-do-not-copy\n").unwrap();
+
+    let state = temp.path().join("state");
+    let err = seed_real_agy_profile_from(&state, None).unwrap_err();
+    assert!(err.contains("HCTL2_AGY_OAUTH_TOKEN"), "{err}");
+    assert!(
+        !state
+            .join("agy-home/.gemini/antigravity-cli/antigravity-oauth-token")
+            .exists(),
+        "missing HCTL2_AGY_OAUTH_TOKEN must not copy personal HOME credentials"
+    );
+}
+
+#[test]
 fn declared_no_network_is_refused_before_agy_starts() {
     let _gate = GATE.lock().unwrap_or_else(|poison| poison.into_inner());
     let (runtime, cred, root, exec) = open_runtime("agy-isolate", Duration::from_secs(300));
@@ -653,6 +929,32 @@ fn open_runtime_with_observation(
     (RuntimeGuard(runtime), cred, root, exec)
 }
 
+fn seed_real_agy_profile_from(
+    state: &Path,
+    explicit_token: Option<&std::ffi::OsStr>,
+) -> std::result::Result<PathBuf, String> {
+    let token_src = explicit_token
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| {
+            "UNVERIFIED: HCTL2_AGY_OAUTH_TOKEN must point to a dedicated managed oauth token file; personal HOME is never copied".to_owned()
+        })?;
+    let meta = fs::symlink_metadata(&token_src)
+        .map_err(|e| format!("HCTL2_AGY_OAUTH_TOKEN {}: {e}", token_src.display()))?;
+    if meta.file_type().is_symlink() || !meta.file_type().is_file() {
+        return Err(format!(
+            "HCTL2_AGY_OAUTH_TOKEN {} must be a regular file",
+            token_src.display()
+        ));
+    }
+    let agy_dir = state.join("agy-home/.gemini/antigravity-cli");
+    fs::create_dir_all(&agy_dir).map_err(|e| e.to_string())?;
+    let dest = agy_dir.join("antigravity-oauth-token");
+    fs::copy(&token_src, &dest).map_err(|e| e.to_string())?;
+    fs::set_permissions(&dest, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
 fn open_runtime_real(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, PathBuf, PathBuf) {
     let cred = std::env::temp_dir().join(format!(
         "hctl2-agy-real-cred-{}-{}",
@@ -671,18 +973,8 @@ fn open_runtime_real(name: &str, idle: Duration) -> (RuntimeGuard, PathBuf, Path
     let exec = root.join("dispatches/job");
     fs::create_dir_all(&exec).unwrap();
     let state = agency::herdr::state_dir(&exec, &cred).unwrap();
-    let agy_dir = state.join("agy-home/.gemini/antigravity-cli");
-    fs::create_dir_all(&agy_dir).unwrap();
-    let token_src = PathBuf::from(
-        std::env::var_os("HCTL2_AGY_OAUTH_TOKEN")
-            .expect("UNVERIFIED: set HCTL2_AGY_OAUTH_TOKEN to a test oauth token file"),
-    );
-    fs::copy(&token_src, agy_dir.join("antigravity-oauth-token")).expect("seed agy oauth token");
-    fs::set_permissions(
-        agy_dir.join("antigravity-oauth-token"),
-        fs::Permissions::from_mode(0o600),
-    )
-    .unwrap();
+    seed_real_agy_profile_from(&state, std::env::var_os("HCTL2_AGY_OAUTH_TOKEN").as_deref())
+        .unwrap_or_else(|error| panic!("{error}"));
     let claude = root.join("claude-stub");
     write_fixture(&claude, "#!/bin/sh\necho '2.1.289 (Claude Code)'\n");
     let agy = Command::new("/usr/bin/which")
@@ -711,10 +1003,15 @@ fn cleanup(cred: &Path, root: &Path) {
 }
 
 fn agy_home_file(exec: &Path, cred: &Path, name: &str) -> PathBuf {
-    agency::herdr::state_dir(exec, cred)
+    let antigravity = agency::herdr::state_dir(exec, cred)
         .unwrap()
-        .join("agy-home/.gemini/antigravity-cli")
-        .join(name)
+        .join("antigravity");
+    let slot = fs::read_dir(&antigravity)
+        .unwrap_or_else(|e| panic!("{}: {e}", antigravity.display()))
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .find(|path| path.is_dir())
+        .unwrap_or_else(|| panic!("no slot under {}", antigravity.display()));
+    slot.join("home/.gemini/antigravity-cli").join(name)
 }
 
 fn agy_home_json(exec: &Path, cred: &Path, name: &str) -> Value {
@@ -737,6 +1034,31 @@ fn start_task(
     task: &str,
     isolation: &[&str],
 ) -> Result<Running> {
+    start_task_with_selection(
+        runtime,
+        exec,
+        cred,
+        key,
+        "selection-1",
+        model,
+        task,
+        isolation,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_task_with_selection(
+    runtime: &InstalledHerdr,
+    exec: &Path,
+    cred: &Path,
+    key: &str,
+    selection_id: &str,
+    model: &str,
+    task: &str,
+    isolation: &[&str],
+    write_repo: Option<(&Path, &str)>,
+) -> Result<Running> {
     let mut profession = runtime
         .catalog()?
         .professions
@@ -744,12 +1066,108 @@ fn start_task(
         .find(|item| item.reference.id == "antigravity-cli")
         .expect("antigravity-cli cataloged");
     profession.model = model.into();
-    let bundle = sealed_bundle(task);
     let mut spec = spec(key, now_ms() + 60_000);
+    spec.selection = frozen(selection_id);
     spec.profession = profession;
-    spec.bundle.digest = bundle.digest.clone();
     spec.required_capabilities.isolation_effects =
         isolation.iter().map(|item| (*item).into()).collect();
+    let bundle = if let Some((repo_path, baseline)) = write_repo {
+        let active = serde_json::json!({
+            "lease_id": "lease-1",
+            "generation": 1,
+            "state": "active",
+            "holder": {
+                "kind": "invocation",
+                "invocation_id": spec.owner.id,
+                "invocation_version": 1
+            }
+        });
+        let lease = FrozenRef {
+            id: "lease-1".into(),
+            revision: "1".into(),
+            digest: hash(&agency_proto::canonical(&active).unwrap()),
+        };
+        let publication = serde_json::json!({
+            "repo_id": "repo-1",
+            "binding_version": 1,
+            "branch_rule": "hctl2/{change_set}",
+            "target_branch": "main",
+            "allow_update": true,
+            "description_source": "none",
+            "requires_human_confirmation": false,
+            "audit_scope": "minimal"
+        });
+        let mut policy = frozen("policy-1");
+        policy.digest = hash(&agency_proto::canonical(&publication).unwrap());
+        let mut pending = active;
+        pending["state"] = serde_json::json!("pending");
+        let boundary = serde_json::json!({
+            "lease": {
+                "pending": {
+                    "change_set_id": "cs-1",
+                    "repo_id": "repo-1",
+                    "binding_version": 1,
+                    "baseline_commit": baseline,
+                    "version": 1,
+                    "lease": pending
+                },
+                "previous": null
+            },
+            "review_publish_policy": policy,
+            "authorization": "publish_for_review_not_integration",
+            "repo_local_path": repo_path,
+            "repo_local_machine": "control",
+            "objective": task,
+            "publication_target": publication
+        });
+        let boundary_bytes = agency_proto::canonical(&boundary).unwrap();
+        let task_bytes = task.as_bytes().to_vec();
+        spec.permissions = vec!["context.read".into(), "git.read".into(), "git.write".into()];
+        spec.permission_digest = hash(b"write-permissions");
+        spec.repo = Some(frozen("repo-1"));
+        spec.base = Some(baseline.into());
+        spec.write_lease = Some(lease);
+        spec.review_publish_policy = Some(policy);
+        Sealed::new(Bundle {
+            id: "bundle-1".into(),
+            manifest: spec.manifest.clone(),
+            consumer: spec.owner.clone(),
+            entries: vec![
+                Entry {
+                    source: frozen("task"),
+                    description: "task".into(),
+                    required: true,
+                    offline_required: true,
+                    bytes_digest: hash(&task_bytes),
+                    delivery: Delivery::Inline { bytes: task_bytes },
+                },
+                Entry {
+                    source: frozen(&format!("write-boundary/{}", spec.owner.id)),
+                    description: "write-boundary".into(),
+                    required: true,
+                    offline_required: true,
+                    bytes_digest: hash(&boundary_bytes),
+                    delivery: Delivery::Inline {
+                        bytes: boundary_bytes,
+                    },
+                },
+            ],
+            renderer: frozen("renderer"),
+            tokenizer: frozen("tokenizer"),
+            redaction: frozen("redaction"),
+            compression: vec![],
+            candidate_tokens: None,
+            selected_tokens: None,
+            delivered_tokens: None,
+            permission_digest: spec.permission_digest.clone(),
+            budget: spec.budget,
+            retention: "test".into(),
+        })
+        .unwrap()
+    } else {
+        sealed_bundle(task)
+    };
+    spec.bundle.digest = bundle.digest.clone();
     runtime.start(&Sealed::new(spec)?, &bundle, exec, cred)
 }
 

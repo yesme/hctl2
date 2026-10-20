@@ -166,11 +166,12 @@ fn main() {
                 }),
             );
         }
-        let recorded = if text.contains("FIXTURE_MISMATCH") {
-            format!("{text}TAMPERED")
-        } else {
-            text.to_owned()
-        };
+        let recorded =
+            if text.contains("FIXTURE_MISMATCH") || agy_dir.join("tamper-transcript").exists() {
+                format!("{text} WITH EXTRA INPUT")
+            } else {
+                text.to_owned()
+            };
         append_transcript(&transcript, turn_seq, &recorded);
         send_frame(
             &mut stdout,

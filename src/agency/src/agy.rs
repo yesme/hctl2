@@ -519,10 +519,9 @@ fn run_job(
     }
     let cwd = job.copy.as_ref().map_or(env.cwd, |copy| copy.cwd.as_path());
     let model = model_arg(&job.model);
-    if live
-        .as_ref()
-        .is_some_and(|s| s.cwd != cwd || s.writing != job.copy.is_some() || s.model != model)
-        && let Some(mut prev) = live.take()
+    if live.as_mut().is_some_and(|s| {
+        s.cwd != cwd || s.writing != job.copy.is_some() || s.model != model || !s.is_alive()
+    }) && let Some(mut prev) = live.take()
     {
         prev.close()?;
     }
@@ -576,6 +575,11 @@ fn run_job(
         pane.append_turn_start(session.turn)?;
         pane.append_prompt_summary(&job.text)?;
     }
+    let transcript_offset = match fs::metadata(&session.transcript) {
+        Ok(meta) => meta.len(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(error) => return Err(error.into()),
+    };
     session.send_user(&job.text)?;
     let mut interrupt: Option<(Instant, bool)> = None;
     loop {
@@ -633,7 +637,11 @@ fn run_job(
                                     PortError::invalid("agy turn completed without a response")
                                 })?
                                 .to_owned();
-                            transcript_matches(&session.transcript, &job.text)?;
+                            transcript_matches_since(
+                                &session.transcript,
+                                transcript_offset,
+                                &job.text,
+                            )?;
                             if let Some(pane) = &session.pane {
                                 pane.append_answer(&text)?;
                                 pane.append_turn_end(session.turn, "completed")?;
@@ -760,19 +768,45 @@ fn login_required_error(profile: &Path) -> PortError {
     )
 }
 
-fn prepare_profile(profile: &Path, writing: bool) -> Result<()> {
-    let gemini = profile.join(".gemini");
+pub(crate) fn slot_home(dir: &Path) -> PathBuf {
+    dir.join("home")
+}
+
+fn read_managed_oauth_token(auth_profile: &Path) -> Result<String> {
+    let token_path = auth_profile
+        .join(".gemini/antigravity-cli")
+        .join("antigravity-oauth-token");
+    let meta = match fs::symlink_metadata(&token_path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(login_required_error(auth_profile));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if meta.file_type().is_symlink() || !meta.file_type().is_file() {
+        return Err(PortError::invalid(
+            "managed agy oauth token must be a regular file, not a symlink",
+        ));
+    }
+    let token = fs::read_to_string(&token_path)?;
+    if token.trim().is_empty() || token.trim() == "login_required" {
+        return Err(login_required_error(auth_profile));
+    }
+    Ok(token)
+}
+
+fn prepare_profile(dir: &Path, auth_profile: &Path, writing: bool) -> Result<PathBuf> {
+    let token = read_managed_oauth_token(auth_profile)?;
+    let home = slot_home(dir);
+    let gemini = home.join(".gemini");
     let agy_dir = gemini.join("antigravity-cli");
     let config_dir = gemini.join("config");
-    crate::storage::private_dir(profile)?;
+    crate::storage::private_dir(dir)?;
+    crate::storage::private_dir(&home)?;
     crate::storage::private_dir(&gemini)?;
     crate::storage::private_dir(&agy_dir)?;
     crate::storage::private_dir(&config_dir)?;
-    let token_path = agy_dir.join("antigravity-oauth-token");
-    let token = fs::read_to_string(&token_path).unwrap_or_default();
-    if token.trim().is_empty() || token.trim() == "login_required" {
-        return Err(login_required_error(profile));
-    }
+    write_private_bytes(&agy_dir.join("antigravity-oauth-token"), token.as_bytes())?;
     let settings = if writing {
         json!({
             "toolPermission": "always-proceed",
@@ -826,15 +860,19 @@ fn prepare_profile(profile: &Path, writing: bool) -> Result<()> {
     };
     write_private_json(&agy_dir.join("settings.json"), &settings)?;
     write_private_json(&config_dir.join("hooks.json"), &hooks)?;
+    Ok(home)
+}
+
+fn write_private_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let mut file = crate::storage::private_file(path)?;
+    file.set_len(0)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
     Ok(())
 }
 
 fn write_private_json(path: &Path, value: &Value) -> Result<()> {
-    let mut file = crate::storage::private_file(path)?;
-    file.set_len(0)?;
-    file.write_all(&serde_json::to_vec(value)?)?;
-    file.sync_all()?;
-    Ok(())
+    write_private_bytes(path, &serde_json::to_vec(value)?)
 }
 
 enum Poll {
@@ -847,6 +885,7 @@ struct Live {
     process: AgyProcess,
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Value>>,
+    eof: Arc<AtomicBool>,
     reader: Option<thread::JoinHandle<()>>,
     dir: PathBuf,
     pane: Option<ObservationPane>,
@@ -867,27 +906,30 @@ impl Live {
         agy: &Path,
         cwd: &Path,
         dir: &Path,
-        profile: &Path,
+        auth_profile: &Path,
         credential_root: &Path,
         writing: bool,
         model: &Option<String>,
         observation: ObservationConfig,
         mux: Option<Multiplexer>,
     ) -> Result<(Self, bool, bool)> {
-        prepare_profile(profile, writing)?;
-        let saved = read_conversation(dir)?;
-        let (mut live, resumed, resume_failed) = if let Some(saved_id) = &saved {
+        let home = prepare_profile(dir, auth_profile, writing)?;
+        let saved = read_saved_state(dir)?;
+        let (mut live, resumed, resume_failed) = if let Some((saved_id, saved_turn)) = &saved {
             match Self::spawn_one(
                 agy,
                 cwd,
                 dir,
-                profile,
+                &home,
                 credential_root,
                 writing,
                 model,
                 Some(saved_id),
             ) {
-                Ok(live) if live.conversation == *saved_id => (live, true, false),
+                Ok(mut live) if live.conversation == *saved_id => {
+                    live.turn = *saved_turn;
+                    (live, true, false)
+                }
                 Ok(mut live) => {
                     live.close()?;
                     let _ = fs::remove_file(dir.join("state.json"));
@@ -895,7 +937,7 @@ impl Live {
                         agy,
                         cwd,
                         dir,
-                        profile,
+                        &home,
                         credential_root,
                         writing,
                         model,
@@ -909,7 +951,7 @@ impl Live {
                         agy,
                         cwd,
                         dir,
-                        profile,
+                        &home,
                         credential_root,
                         writing,
                         model,
@@ -919,16 +961,8 @@ impl Live {
                 }
             }
         } else {
-            let fresh = Self::spawn_one(
-                agy,
-                cwd,
-                dir,
-                profile,
-                credential_root,
-                writing,
-                model,
-                None,
-            )?;
+            let fresh =
+                Self::spawn_one(agy, cwd, dir, &home, credential_root, writing, model, None)?;
             (fresh, false, false)
         };
         live.resumed = resumed;
@@ -942,6 +976,10 @@ impl Live {
         live.pane = Some(pane);
         live.sync_state()?;
         Ok((live, resumed, resume_failed))
+    }
+
+    fn is_alive(&mut self) -> bool {
+        !self.eof.load(Ordering::SeqCst) && matches!(self.process.child.try_wait(), Ok(None))
     }
 
     fn sync_state(&self) -> Result<()> {
@@ -1008,11 +1046,14 @@ impl Live {
         };
         process.record(credential_root)?;
         let (tx, rx) = mpsc::channel();
-        let reader = thread::spawn(move || read_frames(stdout, tx));
+        let eof = Arc::new(AtomicBool::new(false));
+        let reader_eof = Arc::clone(&eof);
+        let reader = thread::spawn(move || read_frames(stdout, tx, reader_eof));
         let mut live = Self {
             process,
             stdin: Some(stdin),
             frames: rx,
+            eof,
             reader: Some(reader),
             dir: dir.to_path_buf(),
             pane: None,
@@ -1159,7 +1200,18 @@ impl Drop for Live {
     }
 }
 
-fn read_frames(stdout: std::process::ChildStdout, tx: mpsc::Sender<Result<Value>>) {
+fn read_frames(
+    stdout: std::process::ChildStdout,
+    tx: mpsc::Sender<Result<Value>>,
+    eof: Arc<AtomicBool>,
+) {
+    struct EofGuard(Arc<AtomicBool>);
+    impl Drop for EofGuard {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+    let _guard = EofGuard(eof);
     let mut reader = BufReader::new(stdout);
     loop {
         let mut line = Vec::new();
@@ -1203,15 +1255,16 @@ fn read_frames(stdout: std::process::ChildStdout, tx: mpsc::Sender<Result<Value>
     }
 }
 
-fn read_conversation(dir: &Path) -> Result<Option<String>> {
+fn read_saved_state(dir: &Path) -> Result<Option<(String, u64)>> {
     match fs::read(dir.join("state.json")) {
         Ok(bytes) => {
             let value: Value = serde_json::from_slice(&bytes)?;
+            let turn = value["turn"].as_u64().unwrap_or(0);
             Ok(value["conversation_id"]
                 .as_str()
                 .map(str::trim)
                 .filter(|id| !id.is_empty())
-                .map(str::to_owned))
+                .map(|id| (id.to_owned(), turn)))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
@@ -1237,7 +1290,7 @@ fn signal_group(pid: u32, signal: &str) {
         .status();
 }
 
-pub(crate) fn transcript_matches(file: &Path, text: &str) -> Result<()> {
+pub(crate) fn transcript_matches_since(file: &Path, offset: u64, text: &str) -> Result<()> {
     if !file.is_file() {
         return Err(PortError::new(
             "AGY_TRANSCRIPT_MISSING",
@@ -1245,7 +1298,12 @@ pub(crate) fn transcript_matches(file: &Path, text: &str) -> Result<()> {
             "inspect_agy_session",
         ));
     }
-    if transcript_file_has_input(file, text)? {
+    let matched = if offset == 0 {
+        transcript_file_has_input(file, text)?
+    } else {
+        transcript_file_has_input_since(file, offset, text)?
+    };
+    if matched {
         Ok(())
     } else {
         Err(PortError::new(
@@ -1257,29 +1315,47 @@ pub(crate) fn transcript_matches(file: &Path, text: &str) -> Result<()> {
 }
 
 pub(crate) fn transcript_file_has_input(file: &Path, text: &str) -> Result<bool> {
+    transcript_file_has_input_since(file, 0, text)
+}
+
+pub(crate) fn transcript_file_has_input_since(
+    file: &Path,
+    offset: u64,
+    text: &str,
+) -> Result<bool> {
+    use std::io::{Seek, SeekFrom};
     let mut handle = fs::File::open(file)?;
+    let len = handle.metadata()?.len();
+    if len < offset {
+        return Ok(false);
+    }
+    handle.seek(SeekFrom::Start(offset))?;
     let mut bytes = Vec::new();
     Read::by_ref(&mut handle)
         .take(LIMIT + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() as u64 > LIMIT {
-        return Err(PortError::invalid("agy transcript exceeds read limit"));
+        return Err(PortError::invalid(
+            "agy transcript turn slice exceeds read limit",
+        ));
     }
-    for line in String::from_utf8_lossy(&bytes).lines() {
+    let slice = String::from_utf8_lossy(&bytes);
+    let mut last_user_input: Option<Option<String>> = None;
+    for line in slice.lines() {
         if !line.contains("USER_INPUT") {
             continue;
         }
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if value["type"] == "USER_INPUT"
-            && let Some(content) = value["content"].as_str()
-            && user_input_matches(content, text)
-        {
-            return Ok(true);
+        if value["type"] == "USER_INPUT" {
+            last_user_input = Some(value["content"].as_str().map(str::to_owned));
         }
     }
-    Ok(false)
+    Ok(matches!(
+        last_user_input,
+        Some(Some(ref content)) if user_input_matches(content, text)
+    ))
 }
 
 fn user_input_matches(content: &str, expected: &str) -> bool {
@@ -1290,4 +1366,199 @@ fn user_input_matches(content: &str, expected: &str) -> bool {
         .strip_prefix("<USER_REQUEST>\n")
         .and_then(|rest| rest.strip_prefix(expected))
         .is_some_and(|tail| tail == "\n</USER_REQUEST>" || tail.starts_with("\n</USER_REQUEST>\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn write_transcript_lines(path: &Path, inputs: &[&str]) {
+        let mut file = fs::File::create(path).unwrap();
+        for (idx, text) in inputs.iter().enumerate() {
+            let entry = json!({
+                "step_index": idx + 1,
+                "source": "USER_EXPLICIT",
+                "type": "USER_INPUT",
+                "status": "DONE",
+                "content": format!("<USER_REQUEST>\n{text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\ntest\n</ADDITIONAL_METADATA>")
+            });
+            writeln!(file, "{entry}").unwrap();
+        }
+        file.sync_all().unwrap();
+    }
+
+    #[test]
+    fn old_equal_input_cannot_certify_a_mismatched_current_turn_and_matching_repeat_passes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mismatched = dir.path().join("mismatched.jsonl");
+        write_transcript_lines(
+            &mismatched,
+            &["repeat this task", "repeat this task WITH EXTRA INPUT"],
+        );
+        assert!(!transcript_file_has_input(&mismatched, "repeat this task").unwrap());
+
+        let matched = dir.path().join("matched.jsonl");
+        write_transcript_lines(&matched, &["repeat this task"]);
+        let offset = fs::metadata(&matched).unwrap().len();
+        // Without a new USER_INPUT appended in the current turn after `offset`,
+        // the historical turn alone cannot certify the new turn.
+        assert!(!transcript_file_has_input_since(&matched, offset, "repeat this task").unwrap());
+
+        // Appending a mismatched turn after `offset` is rejected.
+        write_transcript_lines(
+            &matched,
+            &["repeat this task", "repeat this task WITH EXTRA INPUT"],
+        );
+        assert!(!transcript_file_has_input_since(&matched, offset, "repeat this task").unwrap());
+
+        // Appending an identical USER_INPUT in the current turn after `offset` passes.
+        write_transcript_lines(&matched, &["repeat this task", "repeat this task"]);
+        assert!(transcript_file_has_input(&matched, "repeat this task").unwrap());
+        assert!(transcript_file_has_input_since(&matched, offset, "repeat this task").unwrap());
+    }
+
+    #[test]
+    fn transcript_verification_since_offset_handles_history_exceeding_16_mib() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large-history.jsonl");
+        {
+            let mut file = fs::File::create(&path).unwrap();
+            let filler = "h".repeat(1024 * 1024);
+            for idx in 0..17 {
+                let entry = json!({
+                    "step_index": idx,
+                    "source": "USER_EXPLICIT",
+                    "type": "USER_INPUT",
+                    "status": "DONE",
+                    "content": filler,
+                });
+                writeln!(file, "{entry}").unwrap();
+            }
+            file.sync_all().unwrap();
+        }
+        let offset = fs::metadata(&path).unwrap().len();
+        assert!(offset > LIMIT);
+        {
+            let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+            let entry = json!({
+                "step_index": 18,
+                "source": "USER_EXPLICIT",
+                "type": "USER_INPUT",
+                "status": "DONE",
+                "content": "<USER_REQUEST>\npost-limit turn\n</USER_REQUEST>",
+            });
+            writeln!(file, "{entry}").unwrap();
+            file.sync_all().unwrap();
+        }
+        assert!(transcript_matches_since(&path, offset, "post-limit turn").is_ok());
+        assert_eq!(
+            transcript_matches_since(&path, offset, "wrong turn")
+                .unwrap_err()
+                .code,
+            "STANDBY_PROMPT_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn interleaved_start_isolates_read_only_and_write_settings_and_hooks_per_slot() {
+        let temp = tempfile::tempdir().unwrap();
+        let cred = temp.path().join("cred");
+        let state = temp.path().join("state");
+        let auth_profile = state.join("agy-home");
+        let auth_dir = auth_profile.join(".gemini/antigravity-cli");
+        fs::create_dir_all(&cred).unwrap();
+        fs::create_dir_all(&auth_dir).unwrap();
+        let token_path = auth_dir.join("antigravity-oauth-token");
+        fs::write(&token_path, b"managed-token\n").unwrap();
+        fs::set_permissions(&token_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let dir_read = state.join("antigravity/slot-read");
+        let dir_write = state.join("antigravity/slot-write");
+        let cwd_read = state.join("cwd-read");
+        let cwd_write = state.join("cwd-write");
+        fs::create_dir_all(&cwd_read).unwrap();
+        fs::create_dir_all(&cwd_write).unwrap();
+        // Create minimal git metadata for write worktree denial on macOS.
+        Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&cwd_write)
+            .status()
+            .unwrap();
+
+        // Interleave profile preparation before spawning the read-only child:
+        // read-only A prepares -> write B prepares -> read-only A spawns -> write B spawns.
+        let home_read = prepare_profile(&dir_read, &auth_profile, false).unwrap();
+        let home_write = prepare_profile(&dir_write, &auth_profile, true).unwrap();
+
+        let probe_bin = state.join("agy-probe.sh");
+        fs::write(
+            &probe_bin,
+            "#!/bin/sh\ncp \"$HOME/.gemini/antigravity-cli/settings.json\" \"$PWD/observed-settings.json\"\ncp \"$HOME/.gemini/config/hooks.json\" \"$PWD/observed-hooks.json\"\nprintf '%s\\n' '{\"event\":\"init\",\"conversation_id\":\"conv-probe\"}'\nexec sleep 5\n",
+        )
+        .unwrap();
+        fs::set_permissions(&probe_bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut live_read = Live::spawn_one(
+            &probe_bin, &cwd_read, &dir_read, &home_read, &cred, false, &None, None,
+        )
+        .unwrap();
+        let mut live_write = Live::spawn_one(
+            &probe_bin,
+            &cwd_write,
+            &dir_write,
+            &home_write,
+            &cred,
+            true,
+            &None,
+            None,
+        )
+        .unwrap();
+        live_read.close().unwrap();
+        live_write.close().unwrap();
+
+        let read_settings: Value =
+            serde_json::from_slice(&fs::read(cwd_read.join("observed-settings.json")).unwrap())
+                .unwrap();
+        let write_settings: Value =
+            serde_json::from_slice(&fs::read(cwd_write.join("observed-settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(read_settings["toolPermission"], "request-review");
+        assert_eq!(write_settings["toolPermission"], "always-proceed");
+
+        let read_hooks: Value =
+            serde_json::from_slice(&fs::read(cwd_read.join("observed-hooks.json")).unwrap())
+                .unwrap();
+        let write_hooks: Value =
+            serde_json::from_slice(&fs::read(cwd_write.join("observed-hooks.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            read_hooks["hooks"]["PreToolUse"][0]["matcher"],
+            "write_to_file|replace_file_content|multi_replace_file_content|sed_file|notebook_edit|run_command"
+        );
+        assert_eq!(
+            write_hooks["hooks"]["PreToolUse"][0]["matcher"],
+            "run_command"
+        );
+    }
+
+    #[test]
+    fn managed_oauth_token_rejects_symlinks_and_missing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let auth_profile = temp.path().join("agy-home");
+        let agy_dir = auth_profile.join(".gemini/antigravity-cli");
+        fs::create_dir_all(&agy_dir).unwrap();
+        assert_eq!(
+            read_managed_oauth_token(&auth_profile).unwrap_err().code,
+            "HARNESS_LOGIN_REQUIRED"
+        );
+
+        let target = temp.path().join("outside-token");
+        fs::write(&target, b"secret-token\n").unwrap();
+        std::os::unix::fs::symlink(&target, agy_dir.join("antigravity-oauth-token")).unwrap();
+        assert_eq!(
+            read_managed_oauth_token(&auth_profile).unwrap_err().code,
+            "INVALID_INPUT"
+        );
+    }
 }

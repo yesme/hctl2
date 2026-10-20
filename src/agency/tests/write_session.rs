@@ -113,6 +113,10 @@ impl Rig {
             .canonicalize()
             .unwrap();
         fs::set_permissions(&herdr, fs::Permissions::from_mode(0o755)).unwrap();
+        if agy {
+            fs::create_dir_all(&root).unwrap();
+            seed_agy_profile(&root, live).unwrap_or_else(|error| panic!("{error}"));
+        }
         let runtime = Arc::new(if agy {
             InstalledHerdr::open_with_agy(herdr, &claude, &agy_bin, Duration::from_secs(300))
                 .unwrap()
@@ -121,9 +125,6 @@ impl Rig {
                 .unwrap()
         });
         let agency = Agency::open(&root, runtime.clone()).unwrap();
-        if agy {
-            seed_agy_profile(&root, live);
-        }
         let endpoint = agency_proto::client::admin_endpoint(&root).unwrap();
         let admin = Client::new(endpoint.clone(), Agency::bootstrap_key(&root).unwrap());
         let pairing = Client::new(endpoint, fs::read_to_string(root.join("pair.key")).unwrap());
@@ -357,6 +358,14 @@ impl Rig {
             None
         }
         find(&state, &input.spec.document.idempotency_key, 0).expect("selection state")
+    }
+    fn agy_state(&self, trace: &Trace) -> PathBuf {
+        let session_dir = trace
+            .events
+            .iter()
+            .find_map(|event| event.payload["session_dir"].as_str())
+            .expect("agy session_dir in trace");
+        PathBuf::from(session_dir).join("home/.gemini/antigravity-cli")
     }
     async fn close(self) {
         let _: Value = self.admin.call("shutdown", &json!({})).await.unwrap();
@@ -630,10 +639,7 @@ async fn fixture_writes(harness: &str) {
         );
         json_file(&state.join("write-probe.json"))
     } else if harness == "antigravity-cli" {
-        let exec = confine::execution_dir(&rig.root, &dispatch.reference).unwrap();
-        let agy_dir = herdr::state_dir(&exec, &rig.root)
-            .unwrap()
-            .join("agy-home/.gemini/antigravity-cli");
+        let agy_dir = rig.agy_state(&trace);
         let argv = json_file(&agy_dir.join("argv.json"));
         assert_eq!(argv["settings"]["toolPermission"], "always-proceed");
         assert_eq!(argv["settings"]["allowNonWorkspaceAccess"], false);
@@ -808,10 +814,7 @@ async fn fixture_writes(harness: &str) {
                 .join("secret-probe.json"),
         )
     } else if harness == "antigravity-cli" {
-        let exec = confine::execution_dir(&rig.root, &readonly_dispatch.reference).unwrap();
-        let agy_dir = herdr::state_dir(&exec, &rig.root)
-            .unwrap()
-            .join("agy-home/.gemini/antigravity-cli");
+        let agy_dir = rig.agy_state(&readonly_trace);
         let argv = json_file(&agy_dir.join("argv.json"));
         assert_eq!(argv["settings"]["toolPermission"], "request-review");
         json_file(&agy_dir.join("secret-probe.json"))
@@ -1266,27 +1269,75 @@ async fn live_writes(harness: &str) {
     rig.close().await;
 }
 
-fn seed_agy_profile(cred: &Path, live: bool) {
-    let parent = confine::execution_parent(cred).unwrap();
-    fs::create_dir_all(&parent).unwrap();
+fn seed_agy_profile_from(
+    cred: &Path,
+    live: bool,
+    explicit_token: Option<&std::ffi::OsStr>,
+) -> std::result::Result<PathBuf, String> {
+    let parent = confine::execution_parent(cred).map_err(|e| e.message)?;
+    fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
     let seed = parent.join("seed");
-    fs::create_dir_all(&seed).unwrap();
-    let state = herdr::state_dir(&seed, cred).unwrap();
+    fs::create_dir_all(&seed).map_err(|e| e.to_string())?;
+    let state = herdr::state_dir(&seed, cred).map_err(|e| e.message)?;
     let agy_dir = state.join("agy-home/.gemini/antigravity-cli");
-    fs::create_dir_all(&agy_dir).unwrap();
     let dest = agy_dir.join("antigravity-oauth-token");
     if live {
-        let token_src = std::env::var_os("HCTL2_AGY_OAUTH_TOKEN")
+        let token_src = explicit_token
             .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(std::env::var_os("HOME").expect("HOME"))
-                    .join(".gemini/antigravity-cli/antigravity-oauth-token")
-            });
-        fs::copy(token_src, &dest).unwrap();
+            .filter(|path| !path.as_os_str().is_empty())
+            .ok_or_else(|| {
+                "UNVERIFIED: HCTL2_AGY_OAUTH_TOKEN must point to a dedicated managed oauth token file; personal HOME login is never copied".to_owned()
+            })?;
+        let meta = fs::symlink_metadata(&token_src)
+            .map_err(|e| format!("HCTL2_AGY_OAUTH_TOKEN {}: {e}", token_src.display()))?;
+        if meta.file_type().is_symlink() || !meta.file_type().is_file() {
+            return Err(format!(
+                "HCTL2_AGY_OAUTH_TOKEN {} must be a regular file",
+                token_src.display()
+            ));
+        }
+        fs::create_dir_all(&agy_dir).map_err(|e| e.to_string())?;
+        fs::copy(&token_src, &dest).map_err(|e| e.to_string())?;
     } else {
-        fs::write(&dest, b"fixture-oauth-token\n").unwrap();
+        fs::create_dir_all(&agy_dir).map_err(|e| e.to_string())?;
+        fs::write(&dest, b"fixture-oauth-token\n").map_err(|e| e.to_string())?;
     }
-    fs::set_permissions(&dest, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(&dest, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    Ok(dest)
+}
+
+fn seed_agy_profile(cred: &Path, live: bool) -> std::result::Result<PathBuf, String> {
+    seed_agy_profile_from(
+        cred,
+        live,
+        std::env::var_os("HCTL2_AGY_OAUTH_TOKEN").as_deref(),
+    )
+}
+
+#[test]
+fn seed_agy_profile_refuses_missing_live_token_without_copying_personal_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let cred = temp.path().join("credentials");
+    fs::create_dir_all(&cred).unwrap();
+    let fake_home = temp.path().join("fake-home");
+    let personal_dir = fake_home.join(".gemini/antigravity-cli");
+    fs::create_dir_all(&personal_dir).unwrap();
+    fs::write(
+        personal_dir.join("antigravity-oauth-token"),
+        b"personal-home-token\n",
+    )
+    .unwrap();
+
+    let err = seed_agy_profile_from(&cred, true, None).unwrap_err();
+    assert!(err.contains("HCTL2_AGY_OAUTH_TOKEN"), "{err}");
+    let parent = confine::execution_parent(&cred).unwrap();
+    let state = herdr::state_dir(&parent.join("seed"), &cred).unwrap();
+    assert!(
+        !state
+            .join("agy-home/.gemini/antigravity-cli/antigravity-oauth-token")
+            .exists()
+    );
+    let _ = fs::remove_dir_all(parent);
 }
 
 fn native_text_matches(content: &Value, text: &str) -> bool {

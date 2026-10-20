@@ -326,11 +326,12 @@ pub(crate) fn harness_command(
     Ok(command)
 }
 
-/// Antigravity CLI (`agy`) runs with a managed `HOME` (`<state>/agy-home`) so
-/// `~/.gemini/antigravity-cli/settings.json`, `antigravity-oauth-token`,
-/// `brain/<conversation_id>/...`, and `~/.gemini/config/hooks.json` resolve
-/// inside the Agency-managed profile without touching the workspace or the
-/// person's `~/.gemini`.
+/// Antigravity CLI (`agy`) runs with a slot-local managed `HOME`
+/// (`<state>/antigravity/<session_id>/home`, seeded with the managed token from
+/// `<state>/agy-home`) so `~/.gemini/antigravity-cli/settings.json`,
+/// `antigravity-oauth-token`, `brain/<conversation_id>/...`, and
+/// `~/.gemini/config/hooks.json` resolve inside the slot-isolated profile
+/// without touching the workspace, sibling slots, or the person's `~/.gemini`.
 pub(crate) fn agy_command(
     program: &Path,
     arguments: &[String],

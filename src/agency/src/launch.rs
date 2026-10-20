@@ -980,6 +980,7 @@ impl Runtime for InstalledHerdr {
                 ..Capabilities::default()
             },
         };
+        let mut harnesses = vec![harness.clone()];
         let mut professions = vec![profession];
         if let (Some(revision), Some(digest)) = (&self.codex_revision, &self.codex_digest) {
             professions.push(Profession {
@@ -1002,16 +1003,21 @@ impl Runtime for InstalledHerdr {
             });
         }
         if let (Some(revision), Some(digest)) = (&self.agy_revision, &self.agy_digest) {
+            let agy_harness = FrozenRef {
+                id: "antigravity".into(),
+                revision: revision.clone(),
+                digest: digest.clone(),
+            };
             professions.push(Profession {
                 reference: FrozenRef {
                     id: "antigravity-cli".into(),
                     revision: revision.clone(),
                     digest: digest.clone(),
                 },
-                harness: harness.clone(),
+                harness: agy_harness.clone(),
                 model: "none".into(),
                 persona: "antigravity".into(),
-                terms: "Bundle dispatch via stdio stream-json in one selection conversation; managed profile isolates auth, transcripts, settings and hooks; startup approval policy uses request-review for read-only and always-proceed with publication and credential deny hooks for write dispatches inside execution confinement; read-only observation pane tails view.log; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
+                terms: "Bundle dispatch via stdio stream-json in one selection conversation; managed profile isolates auth, transcripts, settings and hooks per slot; startup approval policy uses request-review for read-only and always-proceed with publication and credential deny hooks for write dispatches inside execution confinement; read-only observation pane tails view.log; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
                 default_role: "worker".into(),
                 skills: vec![],
                 capabilities: Capabilities {
@@ -1020,10 +1026,11 @@ impl Runtime for InstalledHerdr {
                     ..Capabilities::default()
                 },
             });
+            harnesses.push(agy_harness);
         }
         Ok(Catalog {
             professions,
-            harnesses: vec![harness],
+            harnesses,
             skills: vec![],
         })
     }
