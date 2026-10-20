@@ -15,6 +15,7 @@ members = [
     "crates/proto/codegen",
     "crates/project",
     "crates/repo",
+    "crates/run",
     "crates/store",
     "crates/task",
 ]

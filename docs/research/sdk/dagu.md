@@ -72,3 +72,11 @@ Workflow 场景的机械引擎。HCTL 把 Workflow Revision 编译成受限的 D
 
 - 2026-09-04 所有者裁决：从 GPL 许可的接口描述文件生成或重写的客户端代码**不算衍生作品，可以入库**。生成物按普通源码入库并随构建复现；不需要另做「构建期产物不入库」的绕法。
 - 2026-10-19 开工前限时验证（[`workflow-engines.md` §2026-10-19 开工前限时验证](../workflow-engines.md#2026-10-19-pre-impl-probe)）：对随包 `v2.15.1` 二进制实测确认——（1）上表第 17 行所写 `GET …/steps/{stepName}/status` 在 OpenAPI 与服务端路由中仅定义 `PATCH`（且对 `human.task` 拒绝修改，返回 HTTP 400），发 `GET` 返回 HTTP 405，步骤状态、时间戳与插值后的 `prompt` 统一由 `GET /dag-runs/{name}/{dagRunId}` 的 `.dagRunDetails.nodes[]` 回读；（2）`POST /dag-runs/{name}/{dagRunId}/stop` 仅作用于 `Running`（或待自动重试的 `Failed`）态，对无进程 `Waiting(7)` 态的 `human.task` run 返回 HTTP 400 `DAG is not running`，HCTL 取消/替代处于等待态的 Run 时通过撤销本地租约、关闭 `Run–Engine Binding` 并停止调用 `complete` 收口；（3）`human.task` 完成接口将新 attempt 入队，run 会短暂经过 `Queued(5)` 再进入下游节点的 `Waiting(7)`，客户端须轮询回读确认目标节点已进入 `Waiting(7)` 后再操作。
+
+## 施工图编译的本机校验（2026-10-20）
+
+P2.5 第 1 包继续使用仓库锁定的 Dagu v2.15.1，不增加引擎、YAML 库或服务。先按 HCTL Profile 校验规范化 JSON，再生成 JSON 形式的 YAML（YAML 的 JSON 子集），调用随包 `dagu validate <file>`；不启动 scheduler。原生入口见固定提交的 [validate.go](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/cmd/validate.go)，检查点限制见 [human_task.go](https://github.com/dagucloud/dagu/blob/532c512944b2e5eb8991b5bc7cbeafa74fd5b47a/internal/spec/human_task.go)。不复制上游源码。
+
+本机对锁定二进制的预检：单个及两个串联 `human.task` 的 JSON 文件校验退出 0；加 `repeat_policy` 退出 1（`action human.task does not support repeat_policy`）；静态依赖环竟退出 0，因此 HCTL 必须自己先检环。每步表单固定要求 `obligation_id`、`attempt_generation`、`verdict`、`receipt_id`。校验使用独立临时 HOME/DAGU_HOME，结束后删除，不改全局配置。
+
+循环按设计既定的返工上限展开，缺省 2 轮返工，另含最初一轮；每轮检查点有不同身份，编译输出带冻结上限供 Manifest 复用。超限沿失败边或 Request；不使用 repeat、子 DAG 或跨 dagRun。结构分支同样只生成固定检查点，是否达成、跳过或失败由后续 Run 归约器按冻结结构裁定，不能由模型或引擎自述补足。控制面保存的引擎定义、映射与编译器版本是一份不可变部署，不能从 Dagu 文件反向改写施工图。

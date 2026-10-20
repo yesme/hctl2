@@ -23,6 +23,7 @@ mod tasks;
 #[cfg(test)]
 mod test_fixtures;
 mod test_seams;
+mod workflow;
 
 pub use chat::MatrixClient;
 pub use identity::owner_actor;
