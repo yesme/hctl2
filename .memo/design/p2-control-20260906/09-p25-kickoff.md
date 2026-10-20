@@ -297,14 +297,14 @@
 
 - **来由**：所有者 2026-10-20 定（`07` §二 第 45 条 ③；决策史 §41；`delivery.md` §开工前限时验证 第 2 项）：Herdr 存在的意义已经消失——它的 agent 层对每一家 harness 都不再用——终端复用器回到 tmux 3.7c；排在后面只是开发上的便利。
 - **范围**：把 Agency 里对 Herdr 的调用换成 tmux，功能不增不减。
-  - 随包：`src/packaging/dependencies/lock.json` 的 Herdr 条目换成 tmux-builds v3.7c 三目标静态包（摘要锁定、随包许可证，`docs/research/tmux-runtime.md` 2026-08-28 分发复核），macOS `bootstrap.sh` / `runtime.sh`、Linux `runtime.sh`、`smoke.sh`、`hctl2-services` 里的 Herdr 项跟着换；Herdr 条目与制品删掉。
+  - 随包（加 tmux 那一块 2026-10-20 拆给 `07` §六 小活 AH 先做，只加不删；本包在 AH 合入后删 Herdr，`07` §二 第 56 条）：`src/packaging/dependencies/lock.json` 的 Herdr 条目换成 tmux-builds v3.7c 三目标静态包（摘要锁定、随包许可证，`docs/research/tmux-runtime.md` 2026-08-28 分发复核），macOS `bootstrap.sh` / `runtime.sh`、Linux `runtime.sh`、`smoke.sh`、`hctl2-services` 里的 Herdr 项跟着换；Herdr 条目与制品删掉。
   - 代码：`src/agency/src/herdr.rs` 换成 tmux 客户端（一个 Agency 实例一个 server，`-S` 私有 socket，目录权限照 #447），`launch.rs` 的布局、窗格退出事件（`remain-on-exit` 加轮询或 `pipe-pane`）、冒烟与服务器停止，`codex.rs` 的 `codex resume --remote` 窗格，H0 的观测窗格原语；`standby.rs` 的 Claude Code 路径要补两件 Herdr agent 层现在做的事——认出界面何时能收输入（读屏认提示符，或靠会话插件的启动钩子），读屏识别信任确认框（#441 的做法改用 `capture-pane`）；标记的投递改 `send-keys -l` 加回车。上次启动残留的 server 照 `reap_previous` 与小活 Z 的做法收。
   - 测试：`src/agency/tests/herdr.rs` 与 `standby_fixture.rs`、`write_session.rs`、`codex_fixture_test.rs`、`src/apps/cli/tests/room/agency.rs`、`project.rs` 里碰窗格的用例改到 tmux 上，用例数不少于现在；#460 的残留检测与清理认的进程名跟着改。
   - 文档：`delivery.md` 里「替换完成前随包仍是 Herdr」的几句删掉，§打包策略 的 macOS 最低版本一句按 tmux 制品实测改；研究索引 Herdr 行改「历史对照」；`src/agency/README.md` 与 `docs/usage.md`；退休词表加 Herdr。
 - **不做的**：不把终端复用器写回工种简历（`07` §六 小活 AD）；不用 control mode 当控制通道，不往窗格里投递正文（Claude Code 的标记除外）；不做人在窗格里接管（Claude Code、Codex 的窗格照旧能打字）；不改控制面对象与端口合同。
 - **验收**（缺一条不算过）：① 演示 3 第 9 包第 1 条的真会话版在 tmux 上照跑（ubuntu，Claude Code；mac，Codex），四条结果不变；② 完整包测试与冒烟在三平台 CI 绿，包里没有 Herdr；③ 人用 `tmux -S <sock> attach -r` 能旁观任一窗格、敲键无效；④ 窗格退出、Agency 停止、Agency 被 `kill -9` 后再起，窗格与 server 的收法与现在一致（附前后 `ps`）；⑤ 10 个会话空载时 tmux server 的 RSS 附实测，与研究文件同口径；⑥ 退回看红至少两处：去掉就绪判断，Claude 的标记在界面没就绪时发出、对应用例红；去掉信任确认框识别，#441 的用例红。
-- **前提**：演示 3 验收后；#447、#454、#460 合入后；H0 合入后。不在 P2.5 关键路径上，不挡第 2 包。
-- **分两步交**：第一步 tmux 客户端、H0 原语换底、Codex 与 H1–H3 的窗格、打包锁与脚本、测试迁移；第二步 Claude Code 路径（就绪判断、信任框识别、标记投递），单独 PR、单独验收，第一步合入前演示 3 路径照旧跑在 Herdr 上。每条验收附原样输出，PR 里找不到对应输出的「实测」按没做算；清理只收自己记下的进程与目录，按进程号。
+- **前提**：演示 3 验收后；#447、#454、#460 合入后；H0 合入后；删 Herdr 制品那一步在小活 AH 合入后。不在 P2.5 关键路径上，不挡第 2 包。
+- **分两步交**：第一步 tmux 客户端、H0 原语换底、Codex 与 H1–H3 的窗格、打包锁与脚本、测试迁移；第二步 Claude Code 路径（就绪判断、信任框识别、标记投递；Claude 工作区信任的启动探针改在新建的空 Git 仓库里做，补「父目录已信任、新仓库未信任」的成对用例——#441 Codex 跟进：普通目录能继承父目录信任，Git 仓库在仓库边界停止，探针放在普通目录里可能误过，`07` §二 第 56 条），单独 PR、单独验收，第一步合入前演示 3 路径照旧跑在 Herdr 上。每条验收附原样输出，PR 里找不到对应输出的「实测」按没做算；清理只收自己记下的进程与目录，按进程号。
 - **席位**：Claude（mac）写，Codex（mac）找问题，Antigravity（ubuntu）核验（所有者 2026-10-20 定，`07` §二 第 45 条 ③），已进 `07` §六「当前派活」表。
 - **分支**：`claude/agency-tmux`，从 `origin/main` 起。
 
