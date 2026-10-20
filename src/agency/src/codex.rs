@@ -874,6 +874,10 @@ fn open_pane(
         format!("CODEX_HOME={codex_home}"),
         format!("USER={user}"),
     ];
+    if let Some(bundle) = crate::confine::CODEX_CA_BUNDLE {
+        env["CODEX_CA_CERTIFICATE"] = json!(bundle);
+        command.push(format!("CODEX_CA_CERTIFICATE={bundle}"));
+    }
     if let Some(auth) = auth {
         env["HCTL2_CODEX_REMOTE_TOKEN"] = json!(auth);
         command.push(format!("HCTL2_CODEX_REMOTE_TOKEN={auth}"));

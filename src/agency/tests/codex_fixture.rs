@@ -29,6 +29,12 @@ fn main() {
         PathBuf::from(env::var_os("HOME").unwrap()),
         native_home.parent().unwrap().join("home")
     );
+    if cfg!(target_os = "macos") {
+        assert_eq!(
+            env::var("CODEX_CA_CERTIFICATE").as_deref(),
+            Ok("/etc/ssl/cert.pem")
+        );
+    }
     if args.iter().any(|arg| arg == "resume") {
         loop {
             std::thread::park();

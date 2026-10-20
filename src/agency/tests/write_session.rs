@@ -32,7 +32,16 @@ struct Rig {
 impl Rig {
     async fn new(live: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("credentials");
+        let root = if live {
+            let root = PathBuf::from(
+                std::env::var("HCTL2_LIVE_AGENCY_ROOT")
+                    .expect("prepare a dedicated managed login before running live tests"),
+            );
+            assert!(root.is_absolute() && root.is_dir());
+            root
+        } else {
+            temp.path().join("credentials")
+        };
         let repo = temp.path().join("source");
         fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "--initial-branch=main"]);
@@ -121,7 +130,11 @@ impl Rig {
             .call(
                 "pair",
                 &Pair {
-                    control_id: "trial-control".into(),
+                    control_id: if live {
+                        format!("trial-{}", hash(temp.path().as_os_str().as_encoded_bytes()))
+                    } else {
+                        "trial-control".into()
+                    },
                     tenant_key: agency_proto::client::new_credential().unwrap(),
                 },
             )

@@ -242,6 +242,13 @@ pub(crate) fn reject_unenforceable_isolation(effects: &[String]) -> Result<()> {
     ))
 }
 
+// Use public certificate roots without opening the denied macOS keychains.
+pub(crate) const CODEX_CA_BUNDLE: Option<&str> = if cfg!(target_os = "macos") {
+    Some("/etc/ssl/cert.pem")
+} else {
+    None
+};
+
 /// An app-server has the physical credential boundary of Herdr descendants.
 /// `write` is the host sandbox flag a write turn expects. Read-only stays on
 /// this boundary without that flag. Only the Agency-owned model login is granted.
@@ -318,6 +325,10 @@ pub(crate) fn harness_command(
                 .ok_or_else(|| PortError::invalid("harness parent missing"))?,
         )
         .current_dir(cwd);
+    if let Some(bundle) = CODEX_CA_BUNDLE {
+        // Public roots remain available without opening credential keychains.
+        command.env("CODEX_CA_CERTIFICATE", bundle);
+    }
     command.args(["-c", "cli_auth_credentials_store=\"file\""]);
     if write {
         command.args(["-c", "sandbox_mode=\"danger-full-access\""]);
@@ -409,6 +420,45 @@ pub(crate) fn sensitive_paths() -> Vec<PathBuf> {
 mod tests {
     use super::reject_unenforceable_isolation;
     use agency_proto::PortError;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn codex_uses_public_ca_while_personal_credentials_stay_denied() {
+        use std::{ffi::OsStr, fs, io::Write, path::Path};
+
+        let root = tempfile::tempdir().unwrap();
+        let credentials = root.path().join("credentials");
+        let homes = crate::managed_login::Homes::prepare(&credentials).unwrap();
+        crate::storage::private_file(&homes.codex.join("auth.json"))
+            .unwrap()
+            .write_all(br#"{"tokens":{"access_token":"fixture-only"}}"#)
+            .unwrap();
+        let execution = root.path().join("execution");
+        let cwd = execution.join("work");
+        let state = execution.join("state");
+        fs::create_dir_all(&cwd).unwrap();
+        fs::create_dir_all(&state).unwrap();
+        let command = super::harness_command(
+            Path::new("/usr/bin/true"),
+            &[],
+            &cwd,
+            &state,
+            &state.join("app.sock"),
+            &credentials,
+            false,
+        )
+        .unwrap();
+        let ca = command
+            .get_envs()
+            .find_map(|(name, value)| (name == "CODEX_CA_CERTIFICATE").then_some(value).flatten());
+        assert_eq!(ca, Some(OsStr::new("/etc/ssl/cert.pem")));
+
+        let profile = fs::read_to_string(state.join("credential.sb")).unwrap();
+        for path in super::sensitive_paths() {
+            let path = super::scheme_literal(&path.display().to_string()).unwrap();
+            assert!(profile.contains(&format!("(deny file-read* (subpath \"{path}\"))")));
+        }
+    }
 
     #[test]
     fn empty_isolation_starts_and_any_declared_effect_is_refused() {
