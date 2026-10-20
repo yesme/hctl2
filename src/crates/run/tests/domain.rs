@@ -765,3 +765,5 @@ fn current_roster_and_actual_producer_profiles_are_checked() {
 }
 
 mod cli;
+
+mod summary;
