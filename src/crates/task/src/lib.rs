@@ -5,11 +5,13 @@ mod commands;
 mod model;
 mod observations;
 mod planning;
+mod run;
 pub use commands::*;
 pub use model::*;
 pub use observations::*;
 pub use planning::*;
 pub use repo::reject;
+pub use run::*;
 pub use store::{Result, StoreError};
 
 use foundation::canonical_json_sha256;

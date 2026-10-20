@@ -64,7 +64,7 @@ pub(super) fn assemble(
                     budget: preview.input.budget,
                 },
             )
-            .map_err(participant::port_error)?;
+            .map_err(crate::context_query::port_error)?;
             selected
                 .sources
                 .iter()
@@ -155,9 +155,13 @@ pub(super) fn verify_sources(s: &Store, actor: &TrustedActor, plan: &Plan) -> st
             || r.id.starts_with("room_binding/")
             || r.id.starts_with("chat_source_reference/")
         {
+            // Context sources speak Context's codes (SOURCE_VERSION_CHANGED and
+            // its preview_again, for example); routing them through the Agency
+            // error table would point recovery at the Agency, which never saw
+            // this store read.
             StoreSources::new(s, actor, &plan.preview.input.project_id)
                 .exact(kind(r)?, r)
-                .map_err(participant::port_error)?;
+                .map_err(crate::context_query::port_error)?;
         }
     }
     Ok(())

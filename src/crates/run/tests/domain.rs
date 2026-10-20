@@ -313,6 +313,91 @@ fn gate_workflow(quorum: u32) -> Workflow {
     w
 }
 #[test]
+fn switch_cases_may_share_a_destination() {
+    let shared = with_graph(
+        json!({"nodes":[{"id":"switch","operation":{"kind":"switch","cases":["left","right"]}},noop("same")],"edges":[{"from":"switch","to":"same","case":"left"},{"from":"switch","to":"same","case":"right"}]}),
+    );
+    assert!(compile(&shared).is_ok());
+    let mut twice = serde_json::to_value(&shared).unwrap();
+    twice["graph"]["edges"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"from":"switch","to":"same","case":"left"}));
+    assert_eq!(
+        compile(&serde_json::from_value(twice).unwrap())
+            .unwrap_err()
+            .message,
+        "duplicate edge"
+    );
+}
+#[test]
+fn mechanical_fact_must_match_output_kind() {
+    let mut matched = workflow();
+    if let Operation::External { criterion, .. } = &mut matched.graph.nodes[0].operation {
+        *criterion = Some(Criterion::Mechanical {
+            output: "code".into(),
+            fact: MechanicalFact::PrMerged {},
+        });
+    }
+    assert!(compile(&matched).is_ok());
+    for (kind, fact) in [
+        ("verdict", json!({"kind":"pr_merged"})),
+        ("verdict", json!({"kind":"ci","check":"test"})),
+        (
+            "receipt",
+            json!({"kind":"path_digest","path":"a","digest":"ab".repeat(32)}),
+        ),
+    ] {
+        let bad = json!({"id":"build","outputs":{"code":kind},"operation":{"kind":"external","criterion":{"kind":"mechanical","output":"code","fact":fact},"seats":[],"gate":null}});
+        let err = compile(&with_graph(json!({"nodes":[bad],"edges":[]}))).unwrap_err();
+        assert_eq!(err.code, "WORKFLOW_CRITERION");
+        assert_eq!(
+            err.message,
+            "mechanical fact does not match this output kind"
+        );
+    }
+}
+#[test]
+fn node_ids_reserve_double_underscore() {
+    let err = compile(&with_graph(
+        json!({"nodes":[noop("loop__exit")],"edges":[]}),
+    ))
+    .unwrap_err();
+    assert_eq!(err.code, "INVALID_INPUT");
+    assert!(err.message.contains("__"), "{}", err.message);
+}
+#[test]
+fn quorum_one_does_not_warn_about_collapsed_votes() {
+    let compiled = compile(&gate_workflow(1)).unwrap();
+    assert!(compiled.warnings.is_empty());
+}
+#[test]
+fn open_readback_requires_snapshot_and_source() {
+    let (_temp, store) = setup();
+    for (drop_snapshot, drop_source) in [(true, false), (false, true)] {
+        let mut input = register("open-readback", workflow());
+        if let Action::Register {
+            snapshot,
+            provenance,
+            ..
+        } = &mut input.action
+        {
+            if drop_snapshot {
+                *snapshot = None;
+            }
+            if drop_source {
+                *provenance = None;
+            }
+        }
+        let err = prepare(&store, input, &actor(), &NoEngine).unwrap_err();
+        assert_eq!(err.code, "INVALID_INPUT");
+        assert_eq!(
+            err.message,
+            "readback requires a frozen three-list snapshot and explicit source chain"
+        );
+    }
+}
+#[test]
 fn quorum_refuses_only_proven_shortfall_and_warns_about_unknown_keys() {
     assert_eq!(
         compile(&gate_workflow(3)).unwrap_err().code,
