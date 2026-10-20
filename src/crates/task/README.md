@@ -68,7 +68,7 @@ GitHub 使用现有 gh 登录；Gitea 1.27.3 经随包 tea 0.15.1 的 `api`，�
 
 平台的明确权限 / 目标拒绝（401/403/404，Gitea 另有 405、412），以及 Gitea 单独正文条件更新的 409，保存原目标回读与拒绝响应，进入 Rejected 并释放冲突范围，重放仍返回拒绝而非成功。混合 PATCH 的 409、未核实的 422、GraphQL errors、超时与 5xx 不直接当未生效；原目标读得出准确结果才确认，否则 Unknown。未知写入没有“无条件放弃”出口。确认结果含平台修订时间和评论实体；契约投影只排除已确认写回的精确评论，复制标记或修改评论仍触发待采纳。
 
-「完成 Task」对连接的任务源写回（`spec/task.md`：Receipt 与必要的外部写回 outbox 同一事务提交）。绑定能力含字段写回、源启用、卡已回读且这张卡上没有未决写回时，完成在同一事务入队一个 `task.completion_writeback` 意图：先追加一条带控制面、Task 与 Receipt 标识（及 `<!-- hctl2:… -->` 标记）的评论，再把卡改成 `closed`。缺任一条件就不入队，完成照常，预览的 `writeback` 写明原因；卡上有未决写回时不排第二个，以免完成本身被冲突范围挡下。评论先发，卡就不会在没有说明的情况下被关掉；每一步先读后写，评论按原文回读，结果未知后只读回、不再发。关卡重复无害，所以显式重试（`resume` 或原命令）读回了评论后仍可补发关卡，并重核原授权：Task 仍是入队时那次完成的 lifecycle 版本。平台拒绝（含 Gitea 关闭仍被未关闭依赖挡着的卡时回的 412）进入 Rejected，Task 记需要关注，之后的观测不清这个标记，完成不撤销。重开撤回尚未发出的完成写回；已发出的照旧只读回。写回关卡的是控制面自己的平台账号，回读到的关闭态只追加 Snapshot，不产生完成请求；同卡的另一 Project 只观测到卡已关闭。`task show` 的 `progress.completion.writeback` 给出冻结的决定与 outbox 状态，人读输出在 `state` 行写「card closed on the task source」「external sync pending」或「needs attention」。
+「完成 Task」对连接的任务源写回（`spec/task.md`：Receipt 与必要的外部写回 outbox 同一事务提交）。绑定能力含字段写回、源启用、卡已回读且这张卡上没有未决写回时，完成在同一事务入队一个 `task.completion_writeback` 意图：先追加一条带控制面、Task 与 Receipt 标识（及 `<!-- hctl2:… -->` 标记）的评论，再把卡改成 `closed`。缺任一条件就不入队，完成照常，预览的 `writeback` 写明原因；卡上有未决写回时不排第二个，以免完成本身被冲突范围挡下。评论先发，卡就不会在没有说明的情况下被关掉；每一步先读后写，评论按原文回读，结果未知后只读回、不再发。关卡重复无害，所以显式重试（`resume` 或原命令）读回了评论后仍可补发关卡，并重核原授权：Task 仍是入队时那次完成的 lifecycle 版本。平台拒绝（含 Gitea 关闭仍被未关闭依赖挡着的卡时回的 412）进入 Rejected，Task 记需要关注，之后的观测不清这个标记，完成不撤销。重开撤回尚未发出的完成写回；已发出的照旧只读回。写回之后回读到的关闭态只追加 Snapshot：完成请求只为开放的 Task 归档，所以即使 control 借用的是人的登录（GitHub 上现行如此，小活 AB 收）、平台记的关闭者就是那个人，也不会再归档一次；同卡的另一 Project 只观测到卡已关闭。`task show` 的 `progress.completion.writeback` 给出冻结的决定与 outbox 状态，人读输出在 `state` 行写「card closed on the task source」「external sync pending」或「needs attention」。
 
 创建已发出但尚未确认时，对账及人工认领都保留原 Task 的位置，不再生成第二个 Task。取消会撤销尚未发送的意图；未知意图保留以待回读。删除在准入和未发送意图恢复时重核受影响集合，新增绑定 Task / Run 会拒绝旧确认。
 
@@ -93,7 +93,7 @@ GitHub 使用现有 gh 登录；Gitea 1.27.3 经随包 tea 0.15.1 的 `api`，�
 | 验收项带等级 | `domain_test`：缺 grade 反序列化拒绝，空验收项拒绝；等级证据与凭证验收留 P2.4 |
 | 正文保存 / 准入崩溃与建卡确认丢失 | `domain_test`：保存材料后重开 Store 同命令仅一 Revision；待确认创建不被重复认领、Pending 取消、Unknown 仅回读；`task_cli_test`：POST 已生效但返回 503、回读暂不可见，真实 daemon 重启后原命令确认且总共一次 POST；403 拒绝释放冲突范围后另一 Project 可提交 |
 | 后端无条件写入未确认不报成功 | `unit_test`：tea 退出码 0 但 HTTP 503、响应丢失后按精确标记回读只 POST 一次；原卡被转移至不同实体拒绝。`task_native_test`：建卡、条件冲突、标题与正文版本差异、评论幂等与删除 |
-| 完成时写回连接的任务源（小活 AE） | `domain_test`：同事务入队一条带标识的写回、能力不含写回不入队、卡上有未决写回时完成照常不入队、重开撤回未发出的写回、拒绝记需要关注且观测不清、写回回读只追加 Snapshot 且同卡另一 Project 不动；`unit_test`：先评论后关卡、重投不再写、评论确认丢失仍读回并只关一次、拒绝不在无评论时关卡、结果未知只读回评论但可补关卡；`task_native_test`：真 Gitea 上被依赖挡着的卡以 412 拒绝、未挡的卡评论一条并由控制面账号关闭；`task_cli_test`：真命令行完成后卡关闭、确认丢失后重启 resume 仍只一条评论、关卡被拒时完成成立并记需要关注 |
+| 完成时写回连接的任务源（小活 AE） | `domain_test`：同事务入队一条带标识的写回、能力不含写回不入队、卡上有未决写回时完成照常不入队、重开撤回未发出的写回、拒绝记需要关注且观测不清、写回回读只追加 Snapshot 且同卡另一 Project 不动、借人登录关卡也不归档完成请求；`unit_test`：先评论后关卡、重投不再写、评论确认丢失仍读回并只关一次、拒绝不在无评论时关卡、结果未知只读回评论但可补关卡；`task_native_test`：真 Gitea 上被依赖挡着的卡以 412 拒绝、未挡的卡评论一条并由控制面账号关闭；`task_cli_test`：真命令行完成后卡关闭、确认丢失后重启 resume 仍只一条评论、关卡被拒时完成成立并记需要关注 |
 | Start / Complete、Run reducer、Vikunja Done、证据等级、候选交付与完成凭证各行 | 按开工书留 P2.3 / P2.4，不把本批领域测试记成这些行为已经交付 |
 
 Buck 目标：`root//crates/task:{task,domain_test,clippy}`；`root//apps/control:{unit_test,task_native_test,boundary_test,services_test,clippy}`；`root//apps/cli:{task_cli_test,cli_test,clippy}`。根 `root//:clippy` 包含 Task。原生 Gitea 测试消费 lock.json 已有四平台制品，在私有临时目录运行回环服务；不下载另一套版本，不启动开发者已有实例。

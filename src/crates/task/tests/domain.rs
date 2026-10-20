@@ -2640,3 +2640,21 @@ fn the_writeback_readback_is_only_a_snapshot_for_both_bound_projects() {
     assert_eq!(b.lifecycle, "open");
     assert_eq!(b.lifecycle_version, 1);
 }
+
+/// control 借用人的 gh 登录时（小活 AB 收的缺口），完成写回关卡在平台上记的关闭者
+/// 就是归属 human 的那个账号；这次关闭只追加 Snapshot，不再归档完成请求。
+#[test]
+fn a_writeback_closed_under_the_borrowed_human_login_is_not_a_completion_request() {
+    let mut e = Env::new();
+    set_source(&mut e, |src| {
+        src.human_account = Some("human".into());
+        src.auto_complete_provider_done = true;
+    });
+    let id = ready(&mut e, mixed_contract("A"));
+    complete_mixed(&mut e, &id, "complete-A").unwrap();
+    observe_closed(&mut e, "human");
+    assert!(completion_requests(&e).is_empty());
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "completed");
+    assert_eq!(t.lifecycle_version, 2);
+}

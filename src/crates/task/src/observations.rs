@@ -127,8 +127,11 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
         }
         // 供应端 Done：绑定声明了归属 human 的账号，且卡片由它从非终态推进到终态，
         // 归档一次「完成 Task」请求。HCTL 服务账号写回、未知 actor、只见当前 Done、
-        // 重复或迟到的投递都不产生新请求（同一幂等键落到同一条记录）。
+        // 重复或迟到的投递都不产生新请求（同一幂等键落到同一条记录）。请求只为开放的
+        // Task 归档：完成写回关卡时，control 借用的若正是人的登录，平台上的关闭者就是那个
+        // 人，账号辨认不出这是 HCTL 的写回。
         if let (Some(card), Some(account)) = (found, src.human_account.as_deref())
+            && t.lifecycle == "open"
             && !card.tombstone
             && terminal_stage(&card.stage)
             && old_card.is_some_and(|c| !terminal_stage(&c.stage))
