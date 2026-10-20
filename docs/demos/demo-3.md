@@ -1,6 +1,6 @@
 # 演示 3「真实交付」操作手册
 
-> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`631e47c`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第三节（B 链全部 8 步，含受保护 GitHub `main` 上拉起真 Codex 会话完成写入与封存、自动发布 GitHub PR、`hctl2-tool wait commit-ci` 等待必需检查 `canary`、合入预览、完成预览、十秒回答及远端遗留清理）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**均已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md` 与 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
+> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`631e47c`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**第 1–7 步各步已在验收实录（提交 `009cfab`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上实测核验，第 8 步收尾命令与第三节整体待核验席重跑。
 
 本文记录演示 3「真实交付」从零构建、离线安装到端到端走查的完整命令序列。流程覆盖：本地 Gitea 仓库注册与 Claude Code 真会话写入交付链（A 链，人类仅在合入与完成两处预览确认）、受保护 GitHub `main` 与 Codex 真会话交付链（B 链）、开启「发布评审须人显式确认」开关的三次预览链（C 链），以及重启一致性、凭据隔离与逃生口的核对方法。
 
@@ -747,10 +747,10 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 
 ## 三、B 链：受保护 GitHub `main` + 真 Codex 写入交付
 
-**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`；其中 `hctl2-tool wait commit-ci` 亦在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实跑核验）。
+**实跑状态**：各步在验收实录（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实测核验，本节整体待核验席重跑。
 
 > [!NOTE]
-> **GitHub 登录与凭据说明**：现行做法复用人这台机器上已登录的 `gh`（随包的 `$WS/prefix/libexec/hctl2/gh` 与 `hctl2-tool` 读取宿主机当前用户的 `gh` 登录态，操作前确认 `gh auth status` 已登录并对 `yesme/hctl2-canary` 有写权限）。小活 AB 合入后改成 control 自己的凭据。
+> **GitHub 登录与凭据说明**：现行做法复用人这台机器上已登录的 `gh`（control 调用随包的 `$INSTALL_ROOT/libexec/hctl2/gh`，`hctl2-tool` 缺省调用 `PATH` 上的 `gh` 或由 `HCTL2_GH` 指定，均读取宿主机当前用户的 `gh` 登录态；操作前确认 `gh auth status` 已登录并对 `yesme/hctl2-canary` 有写权限）。小活 AB 合入后改成 control 自己的凭据。
 
 ### 1. 前置检查与克隆 `yesme/hctl2-canary`
 
@@ -929,7 +929,7 @@ $CLI --json --root "$ROOT" project select --input "$WS/work/b-select.json" --key
 **实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
 
 > [!IMPORTANT]
-> **耗时提示**：从 `task connect` 到 `task create` 完成要等几分钟（本次实跑共约 4 分 50 秒，其中 `task create` 从预览到 GitHub issue 建出约 2 分 30 秒）。原因是 `task attach` 与 `task create` 在预览和提交前会触发对 `github_issues` 源的对账快照读取，随包的 `$WS/prefix/libexec/hctl2/gh` 会逐个读取 `yesme/hctl2-canary` 上已有 issue 的依赖与子 issue（`parent`、`sub_issues`、`dependencies/blocked_by`、`dependencies/blocking`），执行期间请耐心等待返回，不要误判为挂起而中断。
+> **耗时提示**：从 `task connect` 到 `task create` 完成要等几分钟（本次实跑共约 4 分 50 秒，其中 `task create` 从预览到 GitHub issue 建出约 2 分 30 秒）。原因是 `task attach` 与 `task create` 在预览和提交前会触发对 `github_issues` 源的对账快照读取，随包的 `$INSTALL_ROOT/libexec/hctl2/gh` 会逐个读取 `yesme/hctl2-canary` 上已有 issue 的依赖与子 issue（`parent`、`sub_issues`、`dependencies/blocked_by`、`dependencies/blocking`），执行期间请耐心等待返回，不要误判为挂起而中断。
 
 连接 `github_issues` 任务源并挂接到 `$B_PROJECT_ID`，创建要求在独立子目录 `canary_cases/acc_$B_TS/` 下实现 `digit_sum.py` 与单元测试 `test_digit_sum.py` 的 Task，随后执行 `task adopt` 采纳契约：
 
@@ -1239,7 +1239,7 @@ $CLI --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID"
 **核对字段**：
 - `task complete` 返回 `lifecycle: "completed"`、`lifecycle_version: 2`、`receipt_id: "<B_TASK_ID>:2"`。
 - `task show` 单屏输出六行十秒回答：`goal`、`state: completed; contract revision 1`、`blocking: nothing`、`harness: codex-cli (via herdr, model none) — invocation ... completed`、`evidence`（同时列出 `version csr-...`、`review request #<B_PR_INDEX> (published)`、`Integration Receipt` 与 `Completion Receipt`）与 `next: nothing — the Task is completed`。
-- **Task 完成后外部卡写回现状**：`src/crates/task/src/planning.rs` 中的 `Action::Complete` 在同一 Store 事务内写入 `Task Completion Receipt`（`task_completion_receipt`）并将 `Task.lifecycle` 推进为 `"completed"`，但 `plan.effects` 为空，未向任务源 outbox 入队关闭外部 issue 或追加完成评论的写回意图（GitHub `github_issues` 与本地 Gitea `gitea_issues` 均如此）。因此 `task complete` 完成后，GitHub issue（如本次实跑的 `#41`）与本地 Gitea issue（A 链 `#1`、C 链 `#2`）在平台侧仍保持 `open`。GitHub 侧留下的 issue 与 PR 源分支按下一小节由人用 `gh` 清理。
+- `task complete` 之后平台上的卡不会自动关，收尾见第 8 步。
 
 ### 8. 收尾清理 `yesme/hctl2-canary` 上留下的远端对象
 
@@ -1260,13 +1260,6 @@ gh api -X DELETE "repos/yesme/hctl2-canary/git/refs/heads/$B_HEAD_BRANCH"
 # 3. 核对 issue 已关闭、远端源分支已不存在
 gh api "repos/yesme/hctl2-canary/issues/$B_ISSUE_NUMBER" --jq '{number, state, title}'
 gh api "repos/yesme/hctl2-canary/pulls/$B_PR_INDEX" --jq '{number, state, merged, head_ref: .head.ref}'
-```
-
-若要直接清理 `2026-10-20` 验收实跑（`.memo/log/2026-10-20-演示3验收-ubuntu.md`）在 `yesme/hctl2-canary` 上留下的 issue `#41` 与 PR `#42` 源分支 `hctl2/cs-9bc595043cf485f07bcf90479ac85dc56518ba2ece0b262aae0dda5b9929a399`，可直接执行：
-
-```bash
-gh issue close 41 --repo yesme/hctl2-canary --comment "Closed after 2026-10-20 demo-3 B chain acceptance."
-gh api -X DELETE "repos/yesme/hctl2-canary/git/refs/heads/hctl2/cs-9bc595043cf485f07bcf90479ac85dc56518ba2ece0b262aae0dda5b9929a399"
 ```
 
 ---
