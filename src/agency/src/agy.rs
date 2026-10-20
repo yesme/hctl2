@@ -1486,36 +1486,66 @@ mod tests {
             .status()
             .unwrap();
 
-        // Interleave profile preparation before spawning the read-only child:
-        // read-only A prepares -> write B prepares -> read-only A spawns -> write B spawns.
+        // Interleave profile preparation before either child starts:
+        // read-only A prepares -> write B prepares -> read-only A starts -> write B starts.
         let home_read = prepare_profile(&dir_read, &auth_profile, false).unwrap();
         let home_write = prepare_profile(&dir_write, &auth_profile, true).unwrap();
+        assert_eq!(home_read, dir_read.join("home"));
+        assert_eq!(home_write, dir_write.join("home"));
+        assert_ne!(home_read, home_write);
 
         let probe_bin = state.join("agy-probe.sh");
         fs::write(
             &probe_bin,
-            "#!/bin/sh\ncp \"$HOME/.gemini/antigravity-cli/settings.json\" \"$PWD/observed-settings.json\"\ncp \"$HOME/.gemini/config/hooks.json\" \"$PWD/observed-hooks.json\"\nprintf '%s\\n' '{\"event\":\"init\",\"conversation_id\":\"conv-probe\"}'\nexec sleep 5\n",
+            "#!/bin/sh\ncp \"$HOME/.gemini/antigravity-cli/settings.json\" \"$PWD/observed-settings.json\"\ncp \"$HOME/.gemini/config/hooks.json\" \"$PWD/observed-hooks.json\"\n",
         )
         .unwrap();
         fs::set_permissions(&probe_bin, fs::Permissions::from_mode(0o755)).unwrap();
 
-        let mut live_read = Live::spawn_one(
-            &probe_bin, &cwd_read, &dir_read, &home_read, &cred, false, &None, None,
+        let cmd_read = crate::confine::agy_command(
+            &probe_bin,
+            &[],
+            &cwd_read,
+            &dir_read,
+            &home_read,
+            &cred,
+            false,
         )
         .unwrap();
-        let mut live_write = Live::spawn_one(
+        let cmd_write = crate::confine::agy_command(
             &probe_bin,
+            &[],
             &cwd_write,
             &dir_write,
             &home_write,
             &cred,
             true,
-            &None,
-            None,
         )
         .unwrap();
-        live_read.close().unwrap();
-        live_write.close().unwrap();
+        let env_home = |cmd: &Command| {
+            cmd.get_envs()
+                .find_map(|(k, v)| (k == "HOME").then_some(v?).map(PathBuf::from))
+                .unwrap()
+        };
+        assert_eq!(env_home(&cmd_read), home_read);
+        assert_eq!(env_home(&cmd_write), home_write);
+
+        assert!(
+            Command::new(&probe_bin)
+                .env("HOME", env_home(&cmd_read))
+                .current_dir(&cwd_read)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            Command::new(&probe_bin)
+                .env("HOME", env_home(&cmd_write))
+                .current_dir(&cwd_write)
+                .status()
+                .unwrap()
+                .success()
+        );
 
         let read_settings: Value =
             serde_json::from_slice(&fs::read(cwd_read.join("observed-settings.json")).unwrap())
