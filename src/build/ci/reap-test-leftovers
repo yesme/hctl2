@@ -1,0 +1,264 @@
+#!/bin/sh
+# reap-test-leftovers — find test leftovers, and only with --apply, clean them.
+#
+# Ownership is proved by a test pid embedded in the temp root name. Recognised
+# roots: hctl2-herdr-{cred,exec}-<name>-<pid>, hctl2-exec-<name>-<pid>,
+# hctl2-room-*, and the CLI fixture roots hctl-<name>-cli-<pid> (room.rs). The
+# real Agency execution dirs are hctl2-exec-<hash>, not a pid: by design they
+# stay out of scope. Processes without an embedded owner pid, and dirs without
+# one, are never cleaned: hashed herdr socket dirs cannot be attributed.
+#
+# A leftover is only touched when its owner is gone: the pid is dead, the root
+# is deleted, or the live pid is a reuse (younger than the root, beyond slop).
+# kill -0 failing with EPERM (another user's process) reads as gone; all seats
+# share one account, so that case is out of scope. Do not run --apply while
+# other tests may be running: a live test that reused an old root's pid would
+# otherwise be judged stale.
+#
+# Modes:
+#   --list     (default) print candidates, change nothing
+#   --detect   print candidates and exit 1 when a leftover *process* exists (CI)
+#   --apply    stop candidate process groups (TERM, grace, KILL) and remove
+#              candidate directories
+#   --root DIR narrow scanning to DIR; repeatable. Default: $TMPDIR, /tmp,
+#              /private/tmp, /var/tmp, /private/var/tmp.
+#
+# Never touched: the owner's own herdr, ~/.local/state/hctl2, ~/.config/herdr,
+# buck2d / bazel-remote / nativelink.
+
+set -eu
+
+MODE=list
+ROOTS=
+
+die() {
+    printf 'reap-test-leftovers: %s\n' "$*" >&2
+    exit 2
+}
+
+usage() {
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --list) MODE=list ;;
+        --detect) MODE=detect ;;
+        --apply) MODE=apply ;;
+        --root)
+            shift
+            [ $# -gt 0 ] || die "--root needs a directory"
+            ROOTS="${ROOTS}${ROOTS:+:}$1"
+            ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown argument: $1" ;;
+    esac
+    shift
+done
+
+if [ -z "$ROOTS" ]; then
+    ROOTS="${TMPDIR:-/tmp}:/tmp:/private/tmp:/var/tmp:/private/var/tmp"
+fi
+
+# The fixture tests rely on this hook to keep scanning inside their sandbox.
+roots() {
+    printf '%s\n' "$ROOTS" | tr ':' '\n' | while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        [ -d "$root" ] || continue
+        root=${root%/}
+        printf '%s\n' "$root"
+        # macOS reports /private/var in ps while TMPDIR is /var; match both.
+        physical=$(cd "$root" && pwd -P) || continue
+        [ "$physical" = "$root" ] || printf '%s\n' "$physical"
+    done
+}
+
+protected() {
+    case "$1" in
+        */.local/bin/herdr*|*/.local/state/hctl2*|*/.config/herdr*) return 0 ;;
+        */buck2d*|*/bazel-remote*|*/nativelink*) return 0 ;;
+    esac
+    return 1
+}
+
+# The test pid is the trailing -<digits> of a path component named hctl*.
+owner_pid() {
+    awk '{
+        n = split($0, parts, /[ \t]+/)
+        for (i = 1; i <= n; i++) {
+            m = split(parts[i], comp, "/")
+            for (j = 1; j <= m; j++) {
+                if (comp[j] ~ /^hctl.*-[0-9]+$/) {
+                    sub(/^.*-/, "", comp[j])
+                    print comp[j]
+                    exit
+                }
+            }
+        }
+    }'
+}
+
+# The root directory that carries that pid, needed for the reuse check.
+owner_root() {
+    awk '{
+        n = split($0, parts, /[ \t]+/)
+        for (i = 1; i <= n; i++) {
+            m = split(parts[i], comp, "/")
+            acc = ""
+            for (j = 1; j <= m; j++) {
+                acc = acc (j == 1 ? "" : "/") comp[j]
+                if (comp[j] ~ /^hctl.*-[0-9]+$/ && comp[j] ~ /^(hctl2-herdr-(cred|exec)-|hctl2-exec-|hctl2-room-|hctl-.*-cli-)/) {
+                    print acc
+                    exit
+                }
+            }
+        }
+    }'
+}
+
+etime_secs() {
+    awk '{
+        days = 0
+        rest = $0
+        if (index(rest, "-") > 0) {
+            days = substr(rest, 1, index(rest, "-") - 1)
+            rest = substr(rest, index(rest, "-") + 1)
+        }
+        n = split(rest, t, ":")
+        if (n == 3) print days * 86400 + t[1] * 3600 + t[2] * 60 + t[3]
+        else if (n == 2) print days * 86400 + t[1] * 60 + t[2]
+        else print days * 86400 + t[1]
+    }'
+}
+
+mtime() {
+    # GNU stat first: on Linux `stat -f` is filesystem status, not the mtime.
+    if stat -c %Y "$1" >/dev/null 2>&1; then
+        stat -c %Y "$1"
+    else
+        stat -f %m "$1" 2>/dev/null
+    fi
+}
+
+# 0 = owner still there, 1 = owner gone (dead pid, or a reused pid).
+owner_alive() {
+    o_pid=$1
+    o_root=$2
+    kill -0 "$o_pid" 2>/dev/null || return 1
+    # A missing root means the owner is gone even if its pid is alive: either
+    # the pid was reused, or the test deleted its root at the end.
+    [ -d "$o_root" ] || return 1
+    [ "$o_pid" = "$$" ] && return 0
+    elapsed=$(ps -o etime= -p "$o_pid" 2>/dev/null | tr -d ' ')
+    [ -n "$elapsed" ] || return 0
+    started=$(mtime "$o_root") || return 0
+    [ -n "$started" ] || return 0
+    age=$(( $(date +%s) - started ))
+    # The owner starts before its root exists, so a process younger than the
+    # root (beyond clock slop) is a different process that reused the pid.
+    [ "$age" -gt $(( $(printf '%s' "$elapsed" | etime_secs) + 60 )) ] && return 1
+    return 0
+}
+
+processes=
+process_pgids=
+dirs=
+
+scan_processes() {
+    ps -axww -o pid=,ppid=,pgid=,command= > "$1"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        pid=$(printf '%s\n' "$line" | awk '{print $1}')
+        pgid=$(printf '%s\n' "$line" | awk '{print $3}')
+        cmd=$(printf '%s\n' "$line" | cut -c1-2000 | sed 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*[0-9][0-9]*[[:space:]]*[0-9][0-9]*[[:space:]]*//')
+        [ "$pid" = "$$" ] && continue
+        [ "$pid" = "1" ] && continue
+        protected "$cmd" && continue
+        owner=$(printf '%s\n' "$cmd" | owner_pid)
+        [ -n "$owner" ] || continue
+        # Pids are at most seven digits; longer suffixes are hashes, not owners.
+        [ "$owner" -le 9999999 ] || continue
+        root=$(printf '%s\n' "$cmd" | owner_root)
+        [ -n "$root" ] || continue
+        matched=0
+        for base in $(roots); do
+            case "$cmd" in *"$base"/hctl*) matched=1 ;; esac
+            [ "$matched" = 1 ] && break
+        done
+        [ "$matched" = 1 ] || continue
+        owner_alive "$owner" "$root" && continue
+        processes="${processes}process pid=$pid ppid=$(printf '%s\n' "$line" | awk '{print $2}') pgid=$pgid root=$root cmd=$cmd
+"
+        process_pgids="${process_pgids}${pid}:${pgid}
+"
+    done < "$1"
+}
+
+scan_dirs() {
+    for base in $(roots); do
+        for dir in "$base"/hctl*; do
+            [ -d "$dir" ] || continue
+            name=${dir##*/}
+            case "$name" in
+                hctl2-herdr-cred-*|hctl2-herdr-exec-*|hctl2-exec-*|hctl2-room-*|hctl-*-cli-*) ;;
+                *) continue ;;
+            esac
+            pid=${name##*-}
+            case "$pid" in
+                ''|*[!0-9]*) continue ;;
+            esac
+            # Pids are at most seven digits; longer suffixes are hashes, not owners.
+            [ "$pid" -le 9999999 ] || continue
+            owner_alive "$pid" "$dir" && continue
+            dirs="${dirs}directory path=$dir owner_pid=$pid
+"
+        done
+    done
+}
+
+tmp=$(mktemp "${TMPDIR:-/tmp}/hctl2-reap.XXXXXX")
+trap 'rm -f "$tmp"' EXIT INT TERM HUP
+scan_processes "$tmp"
+scan_dirs
+
+printf '%s' "$processes"
+printf '%s' "$dirs"
+
+case "$MODE" in
+    list)
+        exit 0
+        ;;
+    detect)
+        if [ -n "$processes" ]; then
+            exit 1
+        fi
+        exit 0
+        ;;
+    apply)
+        printf '%s' "$process_pgids" | while IFS=: read -r pid pgid; do
+            [ -n "$pid" ] || continue
+            if [ -n "$pgid" ] && [ "$pgid" -gt 1 ] && [ "$pgid" != "$(ps -o pgid= -p $$ | tr -d ' ')" ]; then
+                kill -TERM "-$pgid" 2>/dev/null || true
+            else
+                kill -TERM "$pid" 2>/dev/null || true
+            fi
+        done
+        sleep 3
+        printf '%s' "$process_pgids" | while IFS=: read -r pid pgid; do
+            [ -n "$pid" ] || continue
+            kill -0 "$pid" 2>/dev/null || continue
+            if [ -n "$pgid" ] && [ "$pgid" -gt 1 ] && [ "$pgid" != "$(ps -o pgid= -p $$ | tr -d ' ')" ]; then
+                kill -KILL "-$pgid" 2>/dev/null || true
+            else
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        done
+        printf '%s' "$dirs" | while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            path=${line#directory path=}
+            path=${path%% owner_pid=*}
+            rm -rf -- "$path"
+        done
+        exit 0
+        ;;
+esac

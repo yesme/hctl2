@@ -27,6 +27,7 @@ CONTROL_DEPS = [
     "root//crates/proto:proto",
     "root//crates/project:project",
     "root//crates/repo:repo",
+    "root//crates/run:run",
     "root//crates/store:store",
     "root//crates/task:task",
     "root//apps/tool:tool",

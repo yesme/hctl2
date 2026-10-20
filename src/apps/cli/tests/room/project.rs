@@ -36,12 +36,12 @@ struct AgencyChild {
     child: std::process::Child,
     root: PathBuf,
 }
-impl Drop for AgencyChild {
-    fn drop(&mut self) {
-        // Graceful first: `agency stop` lets the Agency stop the herdr/app-server groups and
-        // panes it started. Killing alone skips every Drop on the Agency side, so a passing
-        // run would still leak one group per pass. Only stop our own instance: tests swap
-        // Agencies mid-test, and the old fixture's Drop runs after the new Agency started.
+impl AgencyChild {
+    /// Graceful first: `agency stop` lets the Agency stop the groups and script sessions it
+    /// started. Killing alone skips every Drop on the Agency side, so a passing run would
+    /// still leak one group per pass. Only stop our own instance: tests swap Agencies
+    /// mid-test, and the old fixture's Drop runs after the new Agency started.
+    fn stop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             let _ = Command::new(std::env::var_os("CARGO_BIN_EXE_agency").unwrap())
                 .arg("--root")
@@ -57,6 +57,12 @@ impl Drop for AgencyChild {
         }
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+impl Drop for AgencyChild {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 /// A control plane, a paired real Agency and one selected roster, all reached
@@ -93,6 +99,27 @@ fn paired_profile_with_budget(
 enum Executor {
     Script,
     ClaudeCode,
+    Codex,
+}
+
+impl Executor {
+    /// The catalog id of the profession, which the dispatch also reports.
+    fn profession(self) -> &'static str {
+        match self {
+            Executor::Script => "script-worker",
+            Executor::ClaudeCode => "claude-code",
+            Executor::Codex => "codex-cli",
+        }
+    }
+
+    /// The harness id in the profession's resume.
+    fn harness(self) -> &'static str {
+        match self {
+            Executor::Script => "script-protocol-fixture",
+            Executor::ClaudeCode => "claude-code",
+            Executor::Codex => "codex-cli",
+        }
+    }
 }
 fn paired_with(
     name: &str,
@@ -207,14 +234,15 @@ fn paired_with(
     assert!(ok, "{catalog}");
     let profession = match executor {
         Executor::Script => catalog["professions"][0].clone(),
-        Executor::ClaudeCode => catalog["professions"]
+        Executor::ClaudeCode | Executor::Codex => catalog["professions"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|p| p["reference"]["id"] == "claude-code")
+            .find(|p| p["reference"]["id"] == executor.profession())
             .unwrap_or_else(|| {
                 panic!(
-                    "UNVERIFIED: native Claude Code not cataloged: {catalog}; {}",
+                    "UNVERIFIED: native {} not cataloged: {catalog}; {}",
+                    executor.profession(),
                     std::fs::read_to_string(f.root.join("agency.log")).unwrap_or_default()
                 )
             })
@@ -483,7 +511,8 @@ fn spawn_agency_with(
             Duration::from_secs(10)
         }
         // The native Agency digests the installed harnesses before it answers.
-        Executor::ClaudeCode => {
+        // Codex is found on PATH, as `claude` is.
+        Executor::ClaudeCode | Executor::Codex => {
             serve
                 .env("HCTL2_INSTALL_ROOT", &f.payload)
                 .env_remove("GH_DEBUG");
@@ -997,6 +1026,21 @@ fn demo3_gitea_chain_with_confirmation_needs_a_third_preview_for_publishing() {
     demo3_gitea_chain("demo3-gitea-confirm", true, false, Executor::Script);
 }
 
+/// 小活 AA 验收第 5 条：同一条链，写入那一轮换成真的 Codex 会话，而且请求里不写要改什么——
+/// 要改成哪一行只在 Task 正文与已采纳的契约里，照 #431 第二轮 B 链的做法。Codex 只能从开工包
+/// 读到这一行，照着改、Agency 封存，其余照旧走到 Task 完成。随包 Agency 从 PATH 起本机装的
+/// `codex`、用它自己的登录。只在显式要求时跑（会用掉一次真会话）。
+#[test]
+#[ignore = "UNVERIFIED: installed Codex with its native login; HCTL2_HARNESS_LIVE=1"]
+fn demo3_gitea_chain_with_a_real_codex_session_follows_the_adopted_contract() {
+    assert_eq!(
+        std::env::var("HCTL2_HARNESS_LIVE").as_deref(),
+        Ok("1"),
+        "UNVERIFIED: HCTL2_HARNESS_LIVE=1 required"
+    );
+    demo3_gitea_chain("demo3-gitea-codex", false, false, Executor::Codex);
+}
+
 /// 第 9 包验收第 1 条的另一半：同一条链，写入那一轮换成真的 Claude Code 会话——随包 Agency
 /// 起本机装的 `claude`、用它自己的登录，在 3f 的隔离工作副本里改文件，Agency 封存。其余照旧：
 /// 自动发成评审请求、人预览合入、人预览完成。只在显式要求时跑（会用掉一次真会话）。
@@ -1009,6 +1053,188 @@ fn demo3_gitea_chain_with_a_real_claude_code_session_reaches_task_completion() {
         "UNVERIFIED: HCTL2_HARNESS_LIVE=1 required"
     );
     demo3_gitea_chain("demo3-gitea-claude", false, false, Executor::ClaudeCode);
+}
+
+/// The bytes a previewed Bundle delivers for `source`, inline or behind a pointer.
+fn delivered(preview: &Value, source: &str) -> Option<Vec<u8>> {
+    let bundle: agency_proto::context::Bundle =
+        serde_json::from_value(preview["effect_summary"]["assembly"]["bundle"]["document"].clone())
+            .unwrap();
+    bundle
+        .entries
+        .iter()
+        .find(|e| e.source.id == source)
+        .map(|e| match &e.delivery {
+            agency_proto::context::Delivery::Inline { bytes }
+            | agency_proto::context::Delivery::Pointer { bytes, .. } => bytes.clone(),
+            _ => panic!("{source} must be delivered"),
+        })
+}
+
+/// Adopt `contract` on `task` as a local contract; returns the bytes the Task module saves.
+fn adopt_contract(f: &Fixture, p: &str, task: &str, key: &str, contract: &Value) -> Vec<u8> {
+    let (ok, current) = f.run(&["project", "show", p]);
+    assert!(ok, "{current}");
+    let pv = current["project"]["version"].clone();
+    let (ok, before) = f.run(&["task", "show", p, task]);
+    assert!(ok, "{before}");
+    let digest = foundation::canonical_json_sha256(contract).unwrap();
+    let adoption = json!({"contract":contract,"origin":{"kind":"local","reference":{"key":{"scope":{"kind":"project","id":p},"kind":"project","id":p},"version":{"state":pv}},"proposal_digest":digest}});
+    accepted(
+        f,
+        "task",
+        "adopt",
+        key,
+        json!({"project_id":p,"project_version":pv,"task_id":task,"version":before["version"],"adoption":adoption}),
+    );
+    foundation::canonical_json(contract).unwrap()
+}
+
+/// 小活 AA（CT 第 49 行）：只读派工带 `task_id` 时，开工包里有已采纳的契约，与采纳时保存的
+/// 原文逐字相同；卡的标题与正文另成一条，评论线照旧。裸 Task 没有契约条目，也不报错。预览之后
+/// 契约换了版本，启动拒绝。
+#[test]
+fn a_task_bound_read_only_dispatch_carries_the_adopted_contract_and_refuses_a_newer_one() {
+    let (f, setup) = paired("task-contract-read-only", 0);
+    let p = setup.project.clone();
+    let (ok, current) = f.run(&["project", "show", &p]);
+    assert!(ok, "{current}");
+    let pv = current["project"]["version"].clone();
+    let (ok, registration) = f.run(&["repo", "show", &setup.repo]);
+    assert!(ok, "{registration}");
+    let platform_id = registration["observed"]["stable_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let source = accepted(
+        &f,
+        "task",
+        "connect",
+        "contract-source",
+        json!({"repo_id":setup.repo,"candidate_id":"gitea_issues","consent":true,"make_default":false}),
+    );
+    let source = source["source_id"].as_str().unwrap().to_owned();
+    accepted(
+        &f,
+        "task",
+        "attach",
+        "contract-attach",
+        json!({"project_id":p,"project_version":pv,"source_id":source,"approved_scope":platform_id,"consent":true}),
+    );
+    let create = |key: &str, title: &str, body: &str| {
+        accepted(
+            &f,
+            "task",
+            "create",
+            key,
+            json!({"project_id":p,"project_version":pv,"source_id":source,"title":title,"body":body}),
+        )["task_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let task = create(
+        "contract-task",
+        "add a sub() function",
+        "calculator.py needs sub(a, b); the contract has the acceptance",
+    );
+    let bare = create("contract-bare", "no contract", "mapped only");
+    let contract = json!({"scope":"calculator.py only","expected_outcome":"sub(a, b) returns a - b",
+        "acceptance":[{"text":"pytest passes","grade":"mechanical"},{"text":"a human judged it done","grade":"human"}],
+        "roles":[],"capabilities":[]});
+    let golden = adopt_contract(&f, &p, &task, "contract-adopt-1", &contract);
+
+    let deadline = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 120000
+    };
+    let preview = |key: &str, task: &str| {
+        let path = f.root.join(format!("{key}.json"));
+        std::fs::write(
+            &path,
+            json!({"project_id":p,"room_id":setup.room,"task_id":task,"target":"research","profile":setup.profile["revision"],"request":"Do what the Task asks","budget":65536,"deadline_ms":deadline(),"retry_of":null})
+                .to_string(),
+        )
+        .unwrap();
+        let (ok, plan) = f.run(&[
+            "invocation",
+            "preview",
+            "--input",
+            path.to_str().unwrap(),
+            "--key",
+            key,
+        ]);
+        assert!(ok, "{plan}");
+        (path, plan)
+    };
+    let (path, plan) = preview("contract-read", &task);
+    let (ok, adopted) = f.run(&["task", "show", &p, &task]);
+    assert!(ok, "{adopted}");
+    let contract_bytes = delivered(&plan, &format!("task_contract/{task}"))
+        .expect("the adopted contract is in the read-only Bundle");
+    assert_eq!(contract_bytes, golden);
+    assert_eq!(
+        json!(agency_proto::hash(&contract_bytes)),
+        adopted["data"]["revision"]["material"]["byte_digest"]
+    );
+    let card: Value =
+        serde_json::from_slice(&delivered(&plan, &format!("task_card/{task}")).unwrap()).unwrap();
+    assert_eq!(card["title"], "add a sub() function");
+    // Verbatim from the backend, including the marker the Task module appended.
+    let body = card["body"].as_str().unwrap();
+    assert!(
+        body.starts_with(
+            "calculator.py needs sub(a, b); the contract has the acceptance\n\n<!-- hctl2:"
+        ),
+        "{body}"
+    );
+    let comments: Value =
+        serde_json::from_slice(&delivered(&plan, &format!("task_comments/{task}")).unwrap())
+            .unwrap();
+    assert!(comments.is_array(), "{comments}");
+
+    // A Task with no adopted contract: no contract line, no error.
+    let (_, bare_plan) = preview("contract-bare-read", &bare);
+    assert_eq!(
+        delivered(&bare_plan, &format!("task_contract/{bare}")),
+        None
+    );
+    assert!(delivered(&bare_plan, &format!("task_card/{bare}")).is_some());
+
+    // The contract moves to a new Revision after the preview: start refuses.
+    let mut revised = contract.clone();
+    revised["expected_outcome"] = json!("sub(a, b) and mul(a, b) work");
+    adopt_contract(&f, &p, &task, "contract-adopt-2", &revised);
+    let (ok, refused) = f.run(&[
+        "invocation",
+        "start",
+        "--input",
+        path.to_str().unwrap(),
+        "--key",
+        "contract-read",
+        "--preview-token",
+        plan["preview_token"].as_str().unwrap(),
+    ]);
+    assert!(
+        !ok,
+        "a start on a superseded contract must be refused: {refused}"
+    );
+    // The dispatch maps Context errors through the Agency error table, so the
+    // code arrives wrapped; the refusal itself names the version check.
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("SOURCE_VERSION_CHANGED:"),
+        "{refused}"
+    );
+    println!(
+        "start after a new contract Revision -> {}",
+        refused["error"]
+    );
 }
 
 /// `task show` for a person, and its `next` line.
@@ -1033,18 +1259,38 @@ fn task_next(f: &Fixture, project: &str, task: &str) -> (String, String) {
 }
 
 const CLAUDE_LINE: &str = "changed by Claude Code";
+const CODEX_LINE: &str = "changed by Codex from the adopted contract";
 
 fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, executor: Executor) {
     let (f, mut setup) = paired_with(name, 0, "write", 65536, executor);
-    let live = executor == Executor::ClaudeCode;
+    let live = executor != Executor::Script;
+    // The Codex run names no change in its request: the change is only in the
+    // Task body and the adopted contract, which reach it through the Bundle.
+    let contract_bound = executor == Executor::Codex;
+    let edit_line = if contract_bound {
+        CODEX_LINE
+    } else {
+        CLAUDE_LINE
+    };
     // A real session edits and the Agency seals; the script answers at once.
     let settle = Duration::from_secs(if live { 900 } else { 90 });
-    let request = if live {
-        format!(
-            "Replace the whole content of source.txt with the single line `{CLAUDE_LINE}` followed by a newline. Change no other file. Leave the change uncommitted for Agency sealing, and do not push, publish, obtain credentials, or change global harness configuration."
-        )
+    let spec = format!(
+        "Replace the whole content of source.txt with the single line `{edit_line}` followed by a newline. Change no other file."
+    );
+    let rules = "Leave the change uncommitted for Agency sealing, and do not push, publish, obtain credentials, or change global harness configuration.";
+    let request = if contract_bound {
+        format!("Do the work that the adopted Task contract in your context describes. {rules}")
+    } else if live {
+        format!("{spec} {rules}")
     } else {
         "Change source.txt for the adopted Task".to_owned()
+    };
+    let body = if contract_bound {
+        spec.clone()
+    } else if live {
+        request.clone()
+    } else {
+        "the script executor rewrites source.txt".to_owned()
     };
     let p = setup.project.clone();
     let mut human_previews = Vec::new();
@@ -1101,12 +1347,17 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
         "task",
         "create",
         "demo3-task",
-        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"change source.txt","body":if live { request.as_str() } else { "the script executor rewrites source.txt" }}),
+        json!({"project_id":p,"project_version":pv,"source_id":source,"title":"change source.txt","body":body}),
     );
     let task_id = created["task_id"].as_str().unwrap().to_owned();
     let (ok, before) = f.run(&["task", "show", &p, &task_id]);
     assert!(ok, "{before}");
-    let contract = json!({"scope":"demo3","expected_outcome":"source.txt changed and merged","acceptance":[
+    let (scope, outcome) = if contract_bound {
+        (spec.as_str(), spec.as_str())
+    } else {
+        ("demo3", "source.txt changed and merged")
+    };
+    let contract = json!({"scope":scope,"expected_outcome":outcome,"acceptance":[
         {"text":"the change is integrated","grade":"mechanical","evidence":{"accept":"integration_receipt","min_channel":"unmediated"}},
         {"text":"a human judged it done","grade":"human"}],"roles":[],"capabilities":[]});
     let digest = foundation::canonical_json_sha256(&contract).unwrap();
@@ -1160,6 +1411,45 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     ];
     let (ok, preview) = f.run(&preview_args);
     assert!(ok, "{preview}");
+    // 小活 AA：带 task_id 的写入派工，开工包里有已采纳的契约，和采纳时保存的原文逐字相同；
+    // 卡的标题与正文另成一条（CT 第 49 行）。
+    let (ok, adopted) = f.run(&["task", "show", &p, &task_id]);
+    assert!(ok, "{adopted}");
+    let contract_bytes = delivered(&preview, &format!("task_contract/{task_id}"))
+        .expect("the adopted contract is in the write Bundle");
+    assert_eq!(
+        contract_bytes,
+        foundation::canonical_json(&contract).unwrap()
+    );
+    assert_eq!(
+        json!(agency_proto::hash(&contract_bytes)),
+        adopted["data"]["revision"]["material"]["byte_digest"]
+    );
+    let card: Value = serde_json::from_slice(
+        &delivered(&preview, &format!("task_card/{task_id}"))
+            .expect("the card is in the write Bundle"),
+    )
+    .unwrap();
+    assert_eq!(card["title"], "change source.txt");
+    // The body as the backend holds it, verbatim: what was written, then the
+    // marker the Task module appended when it created the card.
+    let delivered_body = card["body"].as_str().unwrap();
+    assert!(delivered_body.starts_with(&body), "{delivered_body}");
+    // The record a reviewer reruns against: what the write Bundle carries, in order.
+    let bundle: agency_proto::context::Bundle =
+        serde_json::from_value(preview["effect_summary"]["assembly"]["bundle"]["document"].clone())
+            .unwrap();
+    for entry in &bundle.entries {
+        let (how, size) = match &entry.delivery {
+            agency_proto::context::Delivery::Inline { bytes } => ("inline", bytes.len()),
+            agency_proto::context::Delivery::Pointer { bytes, .. } => ("pointer", bytes.len()),
+            agency_proto::context::Delivery::Recall { .. } => ("recall", 0),
+        };
+        println!(
+            "LIVE CLI demo3 bundle entry {} {how} {size} bytes {}",
+            entry.source.id, entry.bytes_digest
+        );
+    }
     let write = &preview["effect_summary"]["preview"]["write"];
     assert_eq!(write["authorization"], "publish_for_review_not_integration");
     assert_eq!(write["publication_target"]["target_branch"], "main");
@@ -1685,12 +1975,16 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
             "LIVE CLI demo3 restart: three kill points (publish after push, integration before readback, completion after preview) survived control + Agency + packaged service restarts with one review request, one merge and one receipt each"
         );
     }
-    // Who answered is the profession the Agency froze into the dispatch: the script
-    // worker here, Claude Code in the live run. The harness that holds a native
-    // session is herdr for every profession, so it cannot tell them apart.
+    // Who answered is the profession and harness the Agency froze into the dispatch:
+    // the script worker/fixture here, Claude Code or Codex in the live runs.
     assert_eq!(
         progress["invocations"][0]["profession"],
-        if live { "claude-code" } else { "script-worker" },
+        executor.profession(),
+        "{progress}"
+    );
+    assert_eq!(
+        progress["invocations"][0]["harness"],
+        executor.harness(),
         "{progress}"
     );
     // What reached Gitea main is exactly the requested edit, read from the merged
@@ -1703,7 +1997,7 @@ fn demo3_gitea_chain(name: &str, requires_confirmation: bool, restart: bool, exe
     assert_eq!(String::from_utf8(changed.stdout).unwrap(), "source.txt\n");
     let merged_file = git_output(&site, &["show", &format!("{commit}:source.txt")]);
     let expected = if live {
-        format!("{CLAUDE_LINE}\n")
+        format!("{edit_line}\n")
     } else {
         "changed by the actual script execution\n".to_owned()
     };
@@ -2411,8 +2705,7 @@ fn dispatch_from_real_cli_pairing_to_room_answer_and_restart_keeps_one_invocatio
             .any(|e| e["operation"] == "invocation.project")
     );
     assert!(f.run(&["stop"]).0);
-    agency.child.kill().unwrap();
-    agency.child.wait().unwrap();
+    agency.stop();
     assert!(f.run(&["start"]).0);
     let mut delivered = false;
     for _ in 0..100 {
@@ -2644,8 +2937,7 @@ fn dispatch_rest_surface_lists_cancels_retries_and_reads_terminal_from_real_cli(
     );
 
     // Stored replay reads the control plane only: the Agency is already gone.
-    setup.agency.child.kill().unwrap();
-    setup.agency.child.wait().unwrap();
+    setup.agency.stop();
     let observations = stored();
     assert_eq!(observations, observed, "replay needs no Agency");
     assert_eq!(observations[0]["dispatch"]["owner"]["id"], id);

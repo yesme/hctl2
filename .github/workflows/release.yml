@@ -282,6 +282,14 @@ jobs:
           --target-platforms root//build/platforms:${{ matrix.buck_target }}
           -- --env "HCTL2_DEMO3_GITHUB_TOKEN=${HCTL2_CANARY_GITHUB_TOKEN}"
 
+      # Test leftovers keep running after their run; the harness embeds the
+      # owner pid in the temp root name, so this separates a leftover from
+      # another seat's live test and from the owner's own herdr. Hosted
+      # runners are fresh per job: CI only detects, cleaning is for dev boxes.
+      - name: Detect leftover test processes
+        if: always()
+        run: build/ci/reap-test-leftovers --detect
+
       - name: Stop Buck2 action cache
         if: always()
         run: |

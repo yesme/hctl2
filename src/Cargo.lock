@@ -584,6 +584,7 @@ dependencies = [
  "repo",
  "reqwest",
  "ruma",
+ "run",
  "rusqlite",
  "rustix",
  "serde",
@@ -919,6 +920,10 @@ dependencies = [
  "pin-project-lite",
  "slab",
 ]
+
+[[package]]
+name = "gate-tally"
+version = "0.0.0"
 
 [[package]]
 name = "getrandom"
@@ -2134,6 +2139,18 @@ dependencies = [
  "serde",
  "syn 2.0.119",
  "toml",
+]
+
+[[package]]
+name = "run"
+version = "0.0.0"
+dependencies = [
+ "agency-proto",
+ "chat",
+ "foundation",
+ "serde",
+ "serde_json",
+ "store",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 # 测试残留进程的收尾器（reap-test-leftovers）
 
 > 对象：本仓 CI 与开发机上「清掉测试留下的常驻进程与临时目录」的那一个脚本。
-> 状态：提议（随 [.memo/design/test-process-cleanup-20261018.md](../../../.memo/design/test-process-cleanup-20261018.md) 等所有者拍板，未实现）。
+> 状态：第 2 步已实现（#460）；第 1 步已随 #447 合入。
 > 结论先行：不引入新依赖，用一个随仓脚本 + 「每次测试 run 一个 run-id」解决归属；清理手段优先用各服务自己的 stop，其次按进程组 TERM→KILL。
 
 ## 一、要解决的问题边界

@@ -354,8 +354,386 @@ fn two_consumers_save_independently_and_conflicts_are_detected() {
 #[test]
 fn selected_task_comments_are_project_local_exact_and_not_the_whole_board() {
     use context::{SelectionRequest, SourceKind, Sources, select_context};
+    let TaskFixture {
+        mut store,
+        trusted,
+        source_key,
+        snapshot,
+        task,
+    } = task_fixture("task");
+    let consumer = Owner {
+        project: "A".into(),
+        kind: OwnerKind::RoomInvocation,
+        id: "actual-invocation".into(),
+        generation: 3,
+    };
+    let (manifest, chosen) = select_context(
+        &store,
+        &trusted,
+        SelectionRequest {
+            consumer: consumer.clone(),
+            room_id: "main".into(),
+            task_id: Some("T".into()),
+            budget: 4096,
+        },
+    )
+    .unwrap();
+    assert_eq!(chosen, consumer);
+    // No adopted contract: no contract line, and no error. The card and its
+    // comments are separate lines.
+    assert_eq!(
+        manifest
+            .sources
+            .iter()
+            .map(|r| r.id.as_str())
+            .collect::<Vec<_>>(),
+        ["task_card/T", "task_comments/T"]
+    );
+    let adapter = StoreSources::new(&store, &trusted, "A");
+    let card = adapter
+        .exact(SourceKind::TaskCard, &manifest.sources[0])
+        .unwrap();
+    assert_eq!(card.bytes, br#"{"body":"body","title":"task"}"#);
+    let source = adapter
+        .exact(SourceKind::TaskComments, &manifest.sources[1])
+        .unwrap();
+    let provenance: serde_json::Value = serde_json::from_str(&source.reference.revision).unwrap();
+    let snapshot_record = task::required(
+        &store,
+        &task::key(
+            Scope::Repo("fixture-repo".into()),
+            "task_snapshot",
+            "issues",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        provenance["snapshot"]["reference"],
+        json!(task::reference(&snapshot_record))
+    );
+    assert_eq!(
+        provenance["snapshot"]["digest"],
+        json!(
+            context::frozen_from_record(&snapshot_record)
+                .unwrap()
+                .digest
+        )
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&source.bytes).unwrap(),
+        json!([{"id":"c1","body":"only-the-bound-card"}])
+    );
+    let mut stale = source.reference.clone();
+    stale.revision = hash(b"wrong version");
+    assert_eq!(
+        adapter
+            .exact(SourceKind::TaskComments, &stale)
+            .unwrap_err()
+            .code,
+        "SOURCE_VERSION_CHANGED"
+    );
+    assert!(
+        StoreSources::new(&store, &trusted, "B")
+            .exact(SourceKind::TaskComments, &source.reference)
+            .is_err()
+    );
+    assert!(
+        adapter
+            .exact(
+                SourceKind::TaskComments,
+                &reference("task_snapshot/issues", &hash(b"raw snapshot"))
+            )
+            .is_err()
+    );
+    let limited = TrustedActor(store::Actor {
+        permission_scope: vec![Scope::Project("B".into())],
+        ..trusted.0.clone()
+    });
+    assert_eq!(
+        StoreSources::new(&store, &limited, "A")
+            .exact(SourceKind::TaskComments, &source.reference)
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    let assembly = LocalAssembler {
+        permitted: context::permitted_source_ids(&store, "A")
+            .unwrap()
+            .into_iter()
+            .collect(),
+        budget: 4096,
+    }
+    .assemble(
+        &adapter,
+        AssemblyRequest {
+            manifest,
+            consumer: chosen,
+        },
+    )
+    .unwrap();
+    context::save_assembly(&mut store, &trusted, "A", "task-context", &assembly).unwrap();
+    let saved = context::read_bundle(&store, &trusted, "A", &assembly.bundle.document.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.document.consumer, consumer);
+    let entry = |id: &str| {
+        saved
+            .document
+            .entries
+            .iter()
+            .find(|e| e.source.id == id)
+            .unwrap()
+            .bytes_digest
+            .clone()
+    };
+    assert_eq!(entry("task_comments/T"), hash(&source.bytes));
+    assert_eq!(entry("task_card/T"), hash(&card.bytes));
+
+    let mut changed = snapshot;
+    changed["cards"][0]["comments"] = json!([{"body":"new comment"}]);
+    seed(
+        &mut store,
+        &trusted,
+        &source_key.scope,
+        "task_snapshot",
+        "issues",
+        &changed,
+    );
+    assert_eq!(
+        StoreSources::new(&store, &trusted, "A")
+            .exact(SourceKind::TaskComments, &source.reference)
+            .unwrap_err()
+            .code,
+        "SOURCE_VERSION_CHANGED"
+    );
+    changed["complete"] = json!(false);
+    seed(
+        &mut store,
+        &trusted,
+        &source_key.scope,
+        "task_snapshot",
+        "issues",
+        &changed,
+    );
+    assert_eq!(
+        select_context(
+            &store,
+            &trusted,
+            SelectionRequest {
+                consumer: consumer.clone(),
+                room_id: "main".into(),
+                task_id: Some("T".into()),
+                budget: 4096,
+            }
+        )
+        .unwrap_err()
+        .code,
+        "READBACK_REQUIRED"
+    );
+    // A failed refresh does not rewrite an already frozen consumer's bytes.
+    assert_eq!(
+        context::read_bundle(&store, &trusted, "A", &assembly.bundle.document.id)
+            .unwrap()
+            .unwrap(),
+        saved
+    );
+    changed["complete"] = json!(true);
+    seed(
+        &mut store,
+        &trusted,
+        &source_key.scope,
+        "task_snapshot",
+        "issues",
+        &changed,
+    );
+    let mut foreign = task;
+    foreign["repo_id"] = json!("other-repo");
+    seed(
+        &mut store,
+        &trusted,
+        &Scope::Project("A".into()),
+        "task_state",
+        "T",
+        &foreign,
+    );
+    assert_eq!(
+        select_context(
+            &store,
+            &trusted,
+            SelectionRequest {
+                consumer,
+                room_id: "main".into(),
+                task_id: Some("T".into()),
+                budget: 4096,
+            }
+        )
+        .unwrap_err()
+        .code,
+        "PERMISSION_DENIED"
+    );
+}
+
+/// CT 第 49 行（必需正文预算内内联、超限给副本指针与分片建议，不能静默省略）下的
+/// 失败用例：带 `task_id` 时，已采纳契约作为必用条目进开工包，字节与采纳时保存的
+/// 原文相同；超出预算降为指针、带分片建议，不丢；契约换了版本，旧引用拒绝。
+#[test]
+fn an_adopted_contract_is_delivered_byte_for_byte_and_never_silently_dropped() {
+    use agency_proto::context::Delivery;
+    use context::{SelectionRequest, SourceKind, Sources, select_context};
+    let TaskFixture {
+        mut store,
+        trusted,
+        mut task,
+        ..
+    } = task_fixture("task-contract");
+    let contract = json!({"scope":"only calculator.py","expected_outcome":"add() returns the sum",
+        "acceptance":[{"text":"pytest passes","grade":"mechanical"},{"text":"a human judged it done","grade":"human"}],
+        "roles":[],"capabilities":[]});
+    let golden = adopt(&mut store, &trusted, &mut task, 1, &contract);
+    let consumer = Owner {
+        project: "A".into(),
+        kind: OwnerKind::RoomInvocation,
+        id: "contract-invocation".into(),
+        generation: 1,
+    };
+    let select = |store: &Store, budget: u64| {
+        select_context(
+            store,
+            &trusted,
+            SelectionRequest {
+                consumer: consumer.clone(),
+                room_id: "main".into(),
+                task_id: Some("T".into()),
+                budget,
+            },
+        )
+        .unwrap()
+        .0
+    };
+    let manifest = select(&store, 4096);
+    assert_eq!(
+        manifest
+            .sources
+            .iter()
+            .map(|r| r.id.as_str())
+            .collect::<Vec<_>>(),
+        ["task_contract/T", "task_card/T", "task_comments/T"]
+    );
+    let contract_ref = manifest.sources[0].clone();
+    let adapter = StoreSources::new(&store, &trusted, "A");
+    let delivered = adapter
+        .exact(SourceKind::TaskContract, &contract_ref)
+        .unwrap();
+    assert_eq!(delivered.bytes, golden, "the bytes saved at adoption");
+    let provenance: serde_json::Value = serde_json::from_str(&contract_ref.revision).unwrap();
+    assert_eq!(provenance["number"], 1);
+    assert_eq!(provenance["task_revision"]["reference"]["key"]["id"], "T:1");
+
+    let assemble = |store: &Store, manifest: Manifest, budget: u64| {
+        LocalAssembler {
+            permitted: context::permitted_source_ids(store, "A")
+                .unwrap()
+                .into_iter()
+                .collect(),
+            budget,
+        }
+        .assemble(
+            &StoreSources::new(store, &trusted, "A"),
+            AssemblyRequest {
+                manifest,
+                consumer: consumer.clone(),
+            },
+        )
+        .unwrap()
+    };
+    let assembly = assemble(&store, manifest, 4096);
+    let entry = assembly
+        .bundle
+        .document
+        .entries
+        .iter()
+        .find(|e| e.source.id == "task_contract/T")
+        .expect("the contract is never silently omitted");
+    assert!(entry.required);
+    assert_eq!(
+        entry.delivery,
+        Delivery::Inline {
+            bytes: golden.clone()
+        }
+    );
+
+    // Over budget: a pointer carrying the same bytes and a shard suggestion.
+    let tight = assemble(&store, select(&store, 8), 8);
+    let entry = tight
+        .bundle
+        .document
+        .entries
+        .iter()
+        .find(|e| e.source.id == "task_contract/T")
+        .expect("over budget is not a reason to drop the contract");
+    assert!(entry.required && entry.offline_required);
+    assert!(
+        entry.description.contains("shard suggestion"),
+        "{}",
+        entry.description
+    );
+    match &entry.delivery {
+        Delivery::Pointer { bytes, .. } => assert_eq!(bytes, &golden),
+        other => panic!("expected a pointer, got {other:?}"),
+    }
+
+    // Another change to the Task leaves the adopted contract's reference alone.
+    task["lifecycle_version"] = json!(2);
+    seed(
+        &mut store,
+        &trusted,
+        &Scope::Project("A".into()),
+        "task_state",
+        "T",
+        &task,
+    );
+    assert_eq!(
+        StoreSources::new(&store, &trusted, "A")
+            .exact(SourceKind::TaskContract, &contract_ref)
+            .unwrap()
+            .bytes,
+        golden
+    );
+
+    // A new Revision moves it: the frozen reference no longer resolves.
+    let mut revised = contract.clone();
+    revised["expected_outcome"] = json!("add() and sub() work");
+    let newer = adopt(&mut store, &trusted, &mut task, 2, &revised);
+    assert_eq!(
+        StoreSources::new(&store, &trusted, "A")
+            .exact(SourceKind::TaskContract, &contract_ref)
+            .unwrap_err()
+            .code,
+        "SOURCE_VERSION_CHANGED"
+    );
+    let current = select(&store, 4096);
+    assert_eq!(
+        StoreSources::new(&store, &trusted, "A")
+            .exact(SourceKind::TaskContract, &current.sources[0])
+            .unwrap()
+            .bytes,
+        newer
+    );
+}
+
+/// One Project `A` with a Room, an approved Task source, a complete Snapshot
+/// holding the bound card and another card, and Task `T` bound to the first.
+struct TaskFixture {
+    store: Store,
+    trusted: TrustedActor,
+    source_key: store::ObjectKey,
+    snapshot: serde_json::Value,
+    task: serde_json::Value,
+}
+
+fn task_fixture(name: &str) -> TaskFixture {
     let root = std::env::temp_dir().join(format!(
-        "hctl-context-task-{}-{}",
+        "hctl-context-{name}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -446,192 +824,13 @@ fn selected_task_comments_are_project_local_exact_and_not_the_whole_board() {
         "T",
         &task,
     );
-    let consumer = Owner {
-        project: "A".into(),
-        kind: OwnerKind::RoomInvocation,
-        id: "actual-invocation".into(),
-        generation: 3,
-    };
-    let (manifest, chosen) = select_context(
-        &store,
-        &trusted,
-        SelectionRequest {
-            consumer: consumer.clone(),
-            room_id: "main".into(),
-            task_id: Some("T".into()),
-            budget: 4096,
-        },
-    )
-    .unwrap();
-    assert_eq!(chosen, consumer);
-    assert_eq!(manifest.sources.len(), 1);
-    let adapter = StoreSources::new(&store, &trusted, "A");
-    let source = adapter
-        .exact(SourceKind::TaskComments, &manifest.sources[0])
-        .unwrap();
-    let provenance: serde_json::Value = serde_json::from_str(&source.reference.revision).unwrap();
-    let snapshot_record = task::required(
-        &store,
-        &task::key(
-            Scope::Repo("fixture-repo".into()),
-            "task_snapshot",
-            "issues",
-        ),
-    )
-    .unwrap();
-    assert_eq!(
-        provenance["snapshot"]["reference"],
-        json!(task::reference(&snapshot_record))
-    );
-    assert_eq!(
-        provenance["snapshot"]["digest"],
-        json!(
-            context::frozen_from_record(&snapshot_record)
-                .unwrap()
-                .digest
-        )
-    );
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&source.bytes).unwrap(),
-        json!([{"id":"c1","body":"only-the-bound-card"}])
-    );
-    let mut stale = source.reference.clone();
-    stale.revision = hash(b"wrong version");
-    assert_eq!(
-        adapter
-            .exact(SourceKind::TaskComments, &stale)
-            .unwrap_err()
-            .code,
-        "SOURCE_VERSION_CHANGED"
-    );
-    assert!(
-        StoreSources::new(&store, &trusted, "B")
-            .exact(SourceKind::TaskComments, &source.reference)
-            .is_err()
-    );
-    assert!(
-        adapter
-            .exact(
-                SourceKind::TaskComments,
-                &reference("task_snapshot/issues", &hash(b"raw snapshot"))
-            )
-            .is_err()
-    );
-    let limited = TrustedActor(store::Actor {
-        permission_scope: vec![Scope::Project("B".into())],
-        ..trusted.0.clone()
-    });
-    assert_eq!(
-        StoreSources::new(&store, &limited, "A")
-            .exact(SourceKind::TaskComments, &source.reference)
-            .unwrap_err()
-            .code,
-        "PERMISSION_DENIED"
-    );
-    let assembly = LocalAssembler {
-        permitted: context::permitted_source_ids(&store, "A")
-            .unwrap()
-            .into_iter()
-            .collect(),
-        budget: 4096,
+    TaskFixture {
+        store,
+        trusted,
+        source_key,
+        snapshot,
+        task,
     }
-    .assemble(
-        &adapter,
-        AssemblyRequest {
-            manifest,
-            consumer: chosen,
-        },
-    )
-    .unwrap();
-    context::save_assembly(&mut store, &trusted, "A", "task-context", &assembly).unwrap();
-    let saved = context::read_bundle(&store, &trusted, "A", &assembly.bundle.document.id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(saved.document.consumer, consumer);
-    assert_eq!(saved.document.entries[0].bytes_digest, hash(&source.bytes));
-
-    let mut changed = snapshot;
-    changed["cards"][0]["comments"] = json!([{"body":"new comment"}]);
-    seed(
-        &mut store,
-        &trusted,
-        &source_key.scope,
-        "task_snapshot",
-        "issues",
-        &changed,
-    );
-    assert_eq!(
-        StoreSources::new(&store, &trusted, "A")
-            .exact(SourceKind::TaskComments, &source.reference)
-            .unwrap_err()
-            .code,
-        "SOURCE_VERSION_CHANGED"
-    );
-    changed["complete"] = json!(false);
-    seed(
-        &mut store,
-        &trusted,
-        &source_key.scope,
-        "task_snapshot",
-        "issues",
-        &changed,
-    );
-    assert_eq!(
-        select_context(
-            &store,
-            &trusted,
-            SelectionRequest {
-                consumer: consumer.clone(),
-                room_id: "main".into(),
-                task_id: Some("T".into()),
-                budget: 4096,
-            }
-        )
-        .unwrap_err()
-        .code,
-        "READBACK_REQUIRED"
-    );
-    // A failed refresh does not rewrite an already frozen consumer's bytes.
-    assert_eq!(
-        context::read_bundle(&store, &trusted, "A", &assembly.bundle.document.id)
-            .unwrap()
-            .unwrap(),
-        saved
-    );
-    changed["complete"] = json!(true);
-    seed(
-        &mut store,
-        &trusted,
-        &source_key.scope,
-        "task_snapshot",
-        "issues",
-        &changed,
-    );
-    let mut foreign = task;
-    foreign["repo_id"] = json!("other-repo");
-    seed(
-        &mut store,
-        &trusted,
-        &Scope::Project("A".into()),
-        "task_state",
-        "T",
-        &foreign,
-    );
-    assert_eq!(
-        select_context(
-            &store,
-            &trusted,
-            SelectionRequest {
-                consumer,
-                room_id: "main".into(),
-                task_id: Some("T".into()),
-                budget: 4096,
-            }
-        )
-        .unwrap_err()
-        .code,
-        "PERMISSION_DENIED"
-    );
 }
 
 fn seed(
@@ -641,6 +840,19 @@ fn seed(
     kind: &str,
     id: &str,
     data: &serde_json::Value,
+) {
+    seed_admitting(store, actor, scope, kind, id, data, &[]);
+}
+
+/// `seed`, admitting `materials` with the record in the same transaction.
+fn seed_admitting(
+    store: &mut Store,
+    actor: &TrustedActor,
+    scope: &Scope,
+    kind: &str,
+    id: &str,
+    data: &serde_json::Value,
+    materials: &[store::MaterialRef],
 ) {
     let object = store::ObjectKey {
         scope: scope.clone(),
@@ -662,7 +874,7 @@ fn seed(
                 value: data.clone(),
             },
             sources: vec![],
-            materials: vec![],
+            materials: materials.to_vec(),
         }
     };
     let record = record_value(version);
@@ -681,10 +893,54 @@ fn seed(
     };
     store
         .submit(store.generation(), actor, &command, None, |tx| {
+            for material in materials {
+                tx.admit_material(material)?;
+            }
             tx.put(&record)?;
             Ok(json!({}))
         })
         .unwrap();
+}
+
+/// Adopt `contract` as Task `T`'s Revision `number` the way the Task module
+/// stores it: the canonical bytes saved as material, admitted with the
+/// `task_revision` record, and the Revision on the Task. Returns the bytes.
+fn adopt(
+    store: &mut Store,
+    trusted: &TrustedActor,
+    task: &mut serde_json::Value,
+    number: i64,
+    contract: &serde_json::Value,
+) -> Vec<u8> {
+    let bytes = foundation::canonical_json(contract).unwrap();
+    let scope = Scope::Project("A".into());
+    let material = store
+        .save_material(
+            store.generation(),
+            trusted,
+            &scope,
+            // The key of the seed command below, which admits it.
+            &format!("seed-{scope:?}-task_revision-T:{number}-1"),
+            "contract",
+            &bytes,
+        )
+        .unwrap();
+    let digest = foundation::canonical_json_sha256(contract).unwrap();
+    let revision = json!({"number":number,"material":material,
+        "origin":{"kind":"local","reference":store_reference("project","A"),"proposal_digest":digest},
+        "proposal_digest":digest,"binding":null,"policy_digest":hash(b"policy"),"backend_projection_digest":null});
+    seed_admitting(
+        store,
+        trusted,
+        &scope,
+        "task_revision",
+        &format!("T:{number}"),
+        &revision,
+        &[material],
+    );
+    task["revision"] = revision;
+    seed(store, trusted, &scope, "task_state", "T", task);
+    bytes
 }
 
 fn seed_project(store: &mut Store, actor: &TrustedActor, project: &str) {

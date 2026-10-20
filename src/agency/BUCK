@@ -124,7 +124,7 @@ rust_test(
     name = "herdr_test",
     srcs = ["tests/herdr.rs", "tests/turn.test.ts"],
     crate_root = "tests/herdr.rs",
-    deps = [":service"] + DEPS,
+    deps = [":service", "root//crates/participant:participant", "root//crates/store:store"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {

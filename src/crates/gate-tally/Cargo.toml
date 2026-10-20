@@ -1,0 +1,12 @@
+[package]
+name = "gate-tally"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "The vote count of an HCTL2 review Gate, from recorded facts only"
+
+[lints]
+workspace = true
