@@ -26,7 +26,7 @@ ROOT=/var/tmp/hctl2-managed-login/agency
 $A --root "$ROOT" login prepare
 ```
 
-输出是一行 JSON，记下其中三个路径（只是路径，不是密钥）：`home`、`claude_config_dir`、`codex_home`；`harness_home` 也记下，核验席跑测试时要用。
+目录不用先建，`login prepare` 自己建（0700）。输出是一行 JSON，记下其中三个路径（只是路径，不是密钥）：`home`、`claude_config_dir`、`codex_home`；`harness_home`（缺省是 `/var/tmp/hctl2-managed-login/agency.harness-login`）也记下，核验席跑测试时要用。
 
 ## 1. Claude Code：导入所有者已有的 token，顺手把第一次启动的几屏点完
 
@@ -51,20 +51,22 @@ HOME=<home> CLAUDE_CONFIG_DIR=<claude_config_dir> CLAUDE_CODE_OAUTH_TOKEN="$CLAU
 unset CLAUDE_TOKEN
 ```
 
-- `<home>`、`<claude_config_dir>` 换成第 0 步记下的路径。你（带路的 agent）不要自己执行这几条。
+- `<home>`、`<claude_config_dir>` 换成第 0 步记下的路径。Agency 起 Claude 会话用的正是这两个目录（`src/agency/src/standby.rs` 设 `HOME`、`CLAUDE_CONFIG_DIR`），所以这里点完的几屏，Agency 起会话时就不会再出现。你（带路的 agent）不要自己执行这几条。
 
 ## 2. Codex：登录订阅账号到托管目录
 
 ```bash
-codex login --help        # 带路的 agent 可以先看：有没有不开浏览器的登录方式（设备码一类）
-CODEX_HOME=<codex_home> HOME=<home> codex -c 'cli_auth_credentials_store="file"' login
+CODEX_HOME=<codex_home> HOME=<home> codex -c 'cli_auth_credentials_store="file"' login --device-auth
 $A --root "$ROOT" login check codex-cli
 ```
 
-- 登录会打开浏览器，用所有者的 Codex 订阅账号授权。ubuntu 上开不了浏览器：先看 `--help` 里有没有设备码一类的选项，有就用；没有就停下，告诉所有者「需要在有桌面的会话里做」。
+- `--device-auth` 是设备码登录：终端打印一个网址和一串码，所有者在任何一台有浏览器的设备上打开网址、输入码、用 Codex 订阅账号授权。ubuntu 上没有桌面也能做。（Codex 0.163.0 的 `codex login --help` 里有这个选项；ubuntu 上版本不同，先 `codex login --help` 看一眼。）
+- `cli_auth_credentials_store="file"` 让登录落成托管目录里的 `auth.json`，不进系统钥匙串；Agency 起会话时钉同一个后端。
 - 检查要看到 `"local_preconditions_met":true`。
 
 ## 3. omp：H3（#464）用的专用登录
+
+omp 用 DeepSeek 的 API key，不是浏览器登录。所有者先在 DeepSeek 后台（https://platform.deepseek.com/api_keys）为 Agency 新建一个专用 key，不复用平时用的那个：用量单独看，出事单独吊销。然后敲下面几条；第三条 `omp auth-broker login deepseek` 会打印同一个网址，提示粘贴 key，所有者粘贴、回车即可，key 存进专用 HOME 下的 `.omp/agent/agent.db`。
 
 ```bash
 export OMP_MANAGED_LOGIN_HOME=/var/tmp/hctl2-omp-managed
@@ -77,8 +79,8 @@ CFG
 ls -l "$OMP_MANAGED_LOGIN_HOME/.omp/agent/"
 ```
 
-- 第三条是交互登录，按提示由所有者完成；产物只落在 `/var/tmp/hctl2-omp-managed/.omp/agent` 下，不碰所有者个人的 `~/.omp`。
-- 最后一条只看目录里有没有登录产物（如 `agent.db`），不打开文件内容。
+- 第三条由所有者粘贴 key（粘贴时屏幕上回不回显没查到；回显了也只在所有者自己的终端里，不进命令参数和历史）；产物只落在 `/var/tmp/hctl2-omp-managed/.omp/agent` 下，不碰所有者个人的 `~/.omp`。
+- 最后一条只看目录里有没有 `agent.db` 和 `config.yml`，不打开文件内容。`config.yml` 的模型名照 #464 作者 DeepSeek（ubuntu）2026-10-20 18:56 评论里实跑过的写法。
 
 ## 做完以后
 
@@ -90,3 +92,7 @@ ls -l "$OMP_MANAGED_LOGIN_HOME/.omp/agent/"
 | omp 真会话（#464） | 照 #464 里 DeepSeek（ubuntu）2026-10-20 18:56 的评论，指向 `/var/tmp/hctl2-omp-managed` |
 
 `/var/tmp` 在重启后一般还在；被清掉了就照本文重做一遍。
+
+## 本文命令查证到哪一步
+
+主笔 Claude（mac）2026-10-21 核过：`agency login` 的三个子命令、`prepare` 输出的字段名、`check` 输出的 `local_preconditions_met`、导入命令拒绝终端但收管道（#466 头 `a7c2885a` 的 `src/agency/src/main.rs`、`managed_login.rs`）；Agency 起 Claude 用的 `HOME`、`CLAUDE_CONFIG_DIR`（同头 `standby.rs`）；`codex login --device-auth`（mac 上 Codex 0.163.0 的帮助）；`omp auth-broker login deepseek` 打印 DeepSeek 后台网址、提示粘贴 key、落 `~/.omp/agent/agent.db`（mac 上在临时 HOME 里实看，没有粘贴真 key）。没核到的：ubuntu 上三家的版本与帮助、omp 粘贴时是否回显；遇到和本文不符的，停下报。
