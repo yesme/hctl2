@@ -128,8 +128,8 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
         // 供应端 Done：绑定声明了归属 human 的账号，且卡片由它从非终态推进到终态，
         // 归档一次「完成 Task」请求。HCTL 服务账号写回、未知 actor、只见当前 Done、
         // 重复或迟到的投递都不产生新请求（同一幂等键落到同一条记录）。请求只为开放的
-        // Task 归档：完成写回关卡时，control 借用的若正是人的登录，平台上的关闭者就是那个
-        // 人，账号辨认不出这是 HCTL 的写回。
+        // Task 归档。control 借用的若正是人的登录，完成写回关卡时平台上的关闭者就是那个
+        // 人，账号辨认不出，所以按本控制面记下的写回事实认：同卡的每个绑定都不把它当人的 Done。
         if let (Some(card), Some(account)) = (found, src.human_account.as_deref())
             && t.lifecycle == "open"
             && !card.tombstone
@@ -137,6 +137,7 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
             && old_card.is_some_and(|c| !terminal_stage(&c.stage))
             && closer_of(card).as_deref() == Some(account)
             && account != src.platform.account_id
+            && !closed_by_completion_writeback(store, card)?
         {
             let tuple = json!([
                 current.binding_revision,
@@ -656,6 +657,57 @@ pub fn mark_completion_request(
 /// acts, however often the card is observed again.
 fn completion_writeback_refused(store: &Store, t: &Task) -> Result<bool> {
     Ok(crate::planning::completion_writeback_status(store, t)?["effect_state"] == "rejected")
+}
+
+/// Whether this close is, or may be, this control plane's own completion writeback. A
+/// writeback to the card that went out without a read-back result leaves the closer
+/// unknown; a confirmed one whose readback saw this same close made it. Either way the
+/// close only appends a Snapshot, for every Task bound to the card (spec/task.md: HCTL
+/// 服务账号的写回、未知 actor……只追加 Snapshot，不能取得 human 来源). A later close by
+/// a person is another close and still counts.
+fn closed_by_completion_writeback(store: &Store, card: &Card) -> Result<bool> {
+    let scope = format!(
+        "issue:{}",
+        canonical_json_sha256(&serde_json::to_value(&card.entity)?)?
+    );
+    for id in store.pending_effects()? {
+        let (effect, state) = store.effect(&id)?;
+        if effect.operation == COMPLETION_WRITEBACK
+            && effect.conflict_scope == scope
+            && state == EffectState::Unknown
+        {
+            return Ok(true);
+        }
+    }
+    for record in store.list("task_effect_result")? {
+        let value: Value = decode(&record)?;
+        if value["outcome"] != "confirmed"
+            || !store.has_effect(&record.key.id)?
+            || store.effect(&record.key.id)?.0.operation != COMPLETION_WRITEBACK
+        {
+            continue;
+        }
+        let ours: Card = serde_json::from_value(value["card"].clone())?;
+        if ours.entity == card.entity && terminal_stage(&ours.stage) && same_close(&ours, card) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Two observations of a closed card show the same close: the platform's close time when
+/// both carry it, otherwise the same remote revision.
+fn same_close(a: &Card, b: &Card) -> bool {
+    let closed_at = |c: &Card| {
+        c.raw
+            .get("closed_at")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
+    match (closed_at(a), closed_at(b)) {
+        (Some(a), Some(b)) => a == b,
+        _ => a.remote_revision == b.remote_revision,
+    }
 }
 
 /// 供应端把卡片推进到的终态名（issue 源只有 open/closed）。

@@ -1126,6 +1126,18 @@ fn an_unknown_completion_writeback_reads_back_after_restart_and_comments_once() 
     assert!(ok, "{shown}");
     assert!(shown.contains("external sync pending"), "{shown}");
     assert!(shown.contains("hctl2 task resume"), "{shown}");
+    // Claude（mac）#491：评论可能已发出、却按原文读不回时，显式重试也只读回：不再发评论，
+    // 不关卡，写回仍是未知。
+    let (ok, still) = cmd_result(
+        &root,
+        "resume",
+        "resume-unreadable",
+        json!({"effect_id": effect}),
+    );
+    assert!(!ok, "{still}");
+    assert_eq!(still["effect_state"], "unknown", "{still}");
+    assert_eq!(gh_count(&root, "comment-posts"), 1, "no second comment");
+    assert_eq!(gh_count(&root, "closes"), 0);
     assert!(run(&root, &["stop"]).0);
     thread::sleep(Duration::from_millis(100));
     std::fs::remove_file(root.join("gh.comment-lost")).unwrap();

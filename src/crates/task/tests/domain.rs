@@ -2536,6 +2536,7 @@ fn reopen_withdraws_an_unsent_completion_writeback_but_a_sent_one_stays_to_read_
     let unsent = first["writeback"]["effect_id"].as_str().unwrap().to_owned();
     let reopened = reopen(&mut e, &id, "reopen-1");
     assert_eq!(reopened["withdrawn_writebacks"], json!([unsent]));
+    assert_eq!(reopened["unresolved_writebacks"], json!([]));
     assert_eq!(
         e.store.effect(&unsent).unwrap().1,
         store::EffectState::Cancelled
@@ -2556,6 +2557,7 @@ fn reopen_withdraws_an_unsent_completion_writeback_but_a_sent_one_stays_to_read_
     assert!(begin(&mut e.store, &actor(), &sent).unwrap().1);
     let reopened = reopen(&mut e, &id, "reopen-2");
     assert_eq!(reopened["withdrawn_writebacks"], json!([]));
+    assert_eq!(reopened["unresolved_writebacks"], json!([sent]));
     assert_eq!(
         e.store.effect(&sent).unwrap().1,
         store::EffectState::Unknown
@@ -2657,4 +2659,100 @@ fn a_writeback_closed_under_the_borrowed_human_login_is_not_a_completion_request
     let (_, t) = task(&e.store, "A", &id).unwrap();
     assert_eq!(t.lifecycle, "completed");
     assert_eq!(t.lifecycle_version, 2);
+}
+
+/// The card as the source last showed it, closed by `closer` at `closed_at`.
+fn closed_card(e: &Env, closer: &str, closed_at: &str) -> Card {
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (_, previous) = latest(&e.store, &src).unwrap();
+    let mut card = previous.cards[0].clone();
+    card.stage = "closed".into();
+    card.remote_revision = format!("rev-{closed_at}");
+    card.raw["state"] = json!("closed");
+    card.raw["closed_by"] = json!({"login": closer});
+    card.raw["closed_at"] = json!(closed_at);
+    card
+}
+
+fn observe_card(e: &mut Env, card: Card) {
+    let (r, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    observe(
+        &mut e.store,
+        &src,
+        Snapshot {
+            source: reference(&r),
+            observed_at: now(),
+            complete: true,
+            error: None,
+            cards: vec![card],
+            stable_groups: Vec::new(),
+        },
+    )
+    .unwrap();
+}
+
+/// Project A completes and writes back under the borrowed human login; Project B holds
+/// an open Task on the same card, with the same human account and auto-submission.
+fn borrowed_login_on_a_shared_card(e: &mut Env) -> (String, String, String) {
+    set_source(e, |src| {
+        src.human_account = Some("human".into());
+        src.auto_complete_provider_done = true;
+    });
+    let id = ready(e, mixed_contract("A"));
+    e.attach("B", None);
+    let other = e.claim("B");
+    let result = complete_mixed(e, &id, "complete-A").unwrap();
+    let effect = result["writeback"]["effect_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    begin(&mut e.store, &actor(), &effect).unwrap();
+    (id, other, effect)
+}
+
+/// Codex（ubuntu）#491 P1：写回在路上（已发出、结果未知）时读到的关闭，关闭者说不清，
+/// 同卡另一个 Project 的开放 Task 只追加 Snapshot。
+#[test]
+fn a_close_seen_while_the_writeback_is_unresolved_is_no_human_done_for_another_project() {
+    let mut e = Env::new();
+    let (_, other, effect) = borrowed_login_on_a_shared_card(&mut e);
+    assert_eq!(
+        e.store.effect(&effect).unwrap().1,
+        store::EffectState::Unknown
+    );
+    let closed = closed_card(&e, "human", "2026-10-21T00:00:01Z");
+    observe_card(&mut e, closed);
+    assert!(completion_requests(&e).is_empty());
+    let (_, b) = task(&e.store, "B", &other).unwrap();
+    assert_eq!(b.lifecycle, "open");
+}
+
+/// 写回已确认、读回的正是这一次关闭：同卡另一个 Project 也不把它当人的 Done。人之后重开
+/// 再关，是另一次关闭，照常归档。
+#[test]
+fn the_confirmed_writeback_close_is_no_human_done_for_another_project_but_a_later_close_is() {
+    let mut e = Env::new();
+    let (id, other, effect) = borrowed_login_on_a_shared_card(&mut e);
+    let mut ours = closed_card(&e, "human", "2026-10-21T00:00:01Z");
+    ours.comments = vec![json!({"id": 100, "body": "Completed in HCTL2"})];
+    confirm(&mut e.store, &effect, &ours).unwrap();
+    observe_card(&mut e, ours.clone());
+    assert!(completion_requests(&e).is_empty());
+    // The person reopens the card and closes it again: a close of their own.
+    let mut reopened = ours.clone();
+    reopened.stage = "open".into();
+    reopened.remote_revision = "rev-reopened".into();
+    reopened.raw["state"] = json!("open");
+    reopened.raw["closed_by"] = Value::Null;
+    reopened.raw["closed_at"] = Value::Null;
+    observe_card(&mut e, reopened);
+    let again = closed_card(&e, "human", "2026-10-21T00:05:00Z");
+    observe_card(&mut e, again);
+    let requests = completion_requests(&e);
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(requests[0].project_id, "B");
+    assert_eq!(requests[0].task_id, other);
+    assert_eq!(requests[0].provider_actor, "human");
+    let (_, a) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(a.lifecycle, "completed");
 }

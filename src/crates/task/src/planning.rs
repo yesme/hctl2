@@ -1425,15 +1425,19 @@ fn prepare_inner(
                 _ => {}
             }
             // A completion writeback that never left must not close the reopened card.
-            // One already sent (unknown) still only reads back.
+            // One already sent (unknown) still only reads back; it keeps holding the card
+            // against other writes, so the result names it.
             let identity = key(Scope::Project(project_id.clone()), "task", task_id);
+            let mut unresolved = vec![];
             for id in store.pending_effects()? {
                 let (effect, state) = store.effect(&id)?;
-                if effect.operation == COMPLETION_WRITEBACK
-                    && effect.owner.key == identity
-                    && state == store::EffectState::Pending
-                {
+                if effect.operation != COMPLETION_WRITEBACK || effect.owner.key != identity {
+                    continue;
+                }
+                if state == store::EffectState::Pending {
                     p.cancel_effects.push(id);
+                } else {
+                    unresolved.push(id);
                 }
             }
             t.lifecycle = "open".into();
@@ -1447,6 +1451,7 @@ fn prepare_inner(
                 "lifecycle": "open",
                 "lifecycle_version": t.lifecycle_version,
                 "withdrawn_writebacks": p.cancel_effects,
+                "unresolved_writebacks": unresolved,
             });
         }
         Action::DeleteCard {
