@@ -108,6 +108,8 @@
 
 48. **2026-10-20 走查一轮一个 PR，持续走，不淤在一处。** 所有者问「#431 还要多久能合啊？？」，主笔答还要等第三轮、并给了「现在合、第三轮另开」的选法；所有者先答「继续这样走，不直接合。不过你要给我个复盘，为什么这样back-and-fouth」。主笔复盘：#431 挂了三天，大头是结构——一个 PR 装下第 9 包第 7 条整条验收，每轮查出的毛病在别的 PR 修，走查 PR 跟着它们等（这是主笔 10-17 第一次评审时建议、后来写进派活表的）；其次走查记录三次把原因写错，各多一轮；主笔自己拆成两次发意见、前后口径不一；还有「继续」节奏下前提满足后空等。所有者：「走查一轮一个PR，要不断走查，而不是都淤积在一个地方。你看431，找出来的问题并不是都相关的。」定下：① **走查一轮一个 PR。** 一轮走完、记录经两席核对无误就合入；下一轮在最新的 main 上另开 PR（分支 `<席位>/<演示>-walkthrough-r<n>`），追加到同一份实录、改同一份清单。第 7 条做没做完看清单（`08-demo3-walkthrough.md`）每一行的判定，不看哪个 PR 开着。② **持续走。** 走查席不等「全部修好」：上一轮合入后，main 上只要有新的修复合入，就开下一轮，重看相关的行；没有新东西就不开。③ **查出的毛病各走各的。** 每条 P1 当轮就报主笔排成小活或接进对应的包，在清单那一行挂上修复的 PR；走查 PR 不因此挡合入，也不等修复。④ #431 按此收口：它装的是第一、二轮（含 r3 绕法的实录），记录两席都核过，照常合入；不靠绕法的第三轮另开 PR。派活表「第 9 包第 7 条走查」一行改成常驻一行。⑤ 同样用于 P2.5 的走查（`09` §四 第 9 包）。
 
+49. **2026-10-20 演示 3 验收怎么走。** #479（走查第三轮）两席可合后，演示 3 能在演示里看到的清单行全部成立，主笔提验收的排法：Claude（ubuntu）照 `docs/demos/demo-3.md` 从零装包走 A 链（本地 Gitea + 真 Claude Code）与 C 链（开关 Project 三次预览）——Claude Code 只能在 ubuntu 上跑（§七 钥匙串一条）；Claude（mac）走 B 链（受保护的 GitHub `main` + 真 Codex），并写验收记录、汇总哪些过哪些没过；所有者看实录或挑一段现场看。所有者：「演示3验收，可以按你的流程」。定下：① 两边各从最新 main 构建完整包、各用新的 root，不碰 `~/.local/state/hctl2` 与别席的环境；手册命令照抄，和手册不一致、要绕、跑不通的如实记，不在验收里改手册，问题另排。② 实录分别进 `.memo/log/2026-10-20-演示3验收-ubuntu.md` 与 `…-mac.md`，ID 全长、原样。③ 验收结果照演示 1、2 的做法写进 §三「演示 3 验收」一节，由 Claude（mac）在所有者看过之后落；实录 PR 照 #381 的先例由作者自合。④ 所有者看过演示，即「演示 3 走完」：钥匙串专项、H1–H3 可合，P2.5 第 2、3、7 包与第 10 包按各自前提开工。
+
 ## 三、三次演示
 
 每次演示由 Fable 验收：照约束与验收用例把演示路径实际走一遍，如实报告哪些通过、哪些没有。Kimi 对照 `contract-tests.md` 走查覆盖。
@@ -472,6 +474,8 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 | 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
 | 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
 | 第 9 包第 7 条走查（一轮一个 PR，持续走） | §二 第 36 条 ③、第 37 条 ①、第 48 条 | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | 第一、二轮 `glm/demo3-walkthrough`，#431；第三轮 `glm/demo3-walkthrough-r3`，还没开 PR | #431 两席可合即合；第三轮现在就开（#477 已合）：B 链带 `task_id`、`request` 里不写规格，走到 Task Completion Receipt；之后 main 上有新修复合入就开下一轮（§二 第 48 条） |
+| 演示 3 验收 · A 链与 C 链（真 Claude Code） | §三；§二 第 49 条 | Claude（ubuntu） | 所有者看实录 | — | `claude/demo3-acceptance-ubuntu`，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md` | 现在就走：最新 main 构建完整包，照 `docs/demos/demo-3.md` 一、二、四、五、六节从零走 |
+| 演示 3 验收 · B 链（真 Codex）与验收记录 | §三；§二 第 49 条 | Claude（mac） | 所有者看实录 | — | `claude/demo3-acceptance`，实录 `.memo/log/2026-10-20-演示3验收-mac.md`；§三 加「演示 3 验收」 | 现在就走 B 链；验收记录在两边实录交出、所有者看过之后落 |
 | 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
 | 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
 | 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
