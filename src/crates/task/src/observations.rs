@@ -101,8 +101,10 @@ pub fn observe(store: &mut Store, src: &Source, mut snap: Snapshot) -> Result<()
             && serde_json::to_value(old_card)? == serde_json::to_value(found)?;
         let old_attention = t.needs_attention;
         let old_pending = t.pending_contract.clone();
-        t.needs_attention =
-            !snap.complete || snap.error.is_some() || found.is_none_or(|c| c.tombstone);
+        t.needs_attention = !snap.complete
+            || snap.error.is_some()
+            || found.is_none_or(|c| c.tombstone)
+            || completion_writeback_refused(store, &t)?;
         if let Some(expected) = t
             .revision
             .as_ref()
@@ -296,9 +298,28 @@ pub fn begin(
     if !e.operation.starts_with("task.") {
         return Err(stale());
     }
-    if state == EffectState::Confirmed {
-        return Ok((e, false));
+    if state == EffectState::Pending {
+        still_authorized(store, &e)?;
+        store.resume_pending_effect(store.generation(), id, true)?;
+        store.begin_effect(store.generation(), id)?;
+        return Ok((e, true));
     }
+    Ok((e, false))
+}
+
+/// An unknown completion writeback has read its comment back; closing the card is
+/// idempotent, so an explicit retry may still send it under the original authorization.
+pub fn recheck_completion_close(store: &Store, actor: &TrustedActor, id: &str) -> Result<()> {
+    let (e, state) = store.effect(id)?;
+    owner(actor, [e.permission_scope.clone()])?;
+    if e.operation != COMPLETION_WRITEBACK || state != EffectState::Unknown {
+        return Err(stale());
+    }
+    still_authorized(store, &e)
+}
+
+/// The Project, binding and Task still grant the original write.
+fn still_authorized(store: &Store, e: &store::EffectIntent) -> Result<()> {
     let (_, t) = task(
         store,
         e.input["project_id"].as_str().ok_or_else(stale)?,
@@ -313,38 +334,42 @@ pub fn begin(
             &t.project_id,
         ),
     )?;
-    if state == EffectState::Pending {
-        if e.operation == "task.delete"
-            && e.input["write"]["affected"] != crate::planning::deletion_consequences(store, &t)?
-        {
-            return Err(reject(
-                "VERSION_CONFLICT",
-                "delete consequences changed before dispatch",
-                "cancel_intent_then_preview_again",
-            ));
-        }
-        if !src.active
-            || reference(&sr) != e.binding
-            || !matches!(
-                pr.data,
-                RecordData::Project {
-                    archived: false,
-                    ..
-                }
-            )
-            || (t.lifecycle != "open" && e.operation != "task.delete")
-        {
-            return Err(reject(
-                "PERMISSION_DENIED",
-                "original write authorization no longer applies",
-                "inspect_original_intent",
-            ));
-        }
-        store.resume_pending_effect(store.generation(), id, true)?;
-        store.begin_effect(store.generation(), id)?;
-        return Ok((e, true));
+    if e.operation == "task.delete"
+        && e.input["write"]["affected"] != crate::planning::deletion_consequences(store, &t)?
+    {
+        return Err(reject(
+            "VERSION_CONFLICT",
+            "delete consequences changed before dispatch",
+            "cancel_intent_then_preview_again",
+        ));
     }
-    Ok((e, false))
+    // A completion writeback is authorized by exactly the completion that queued it.
+    let lifecycle_allows = match e.operation.as_str() {
+        "task.delete" => true,
+        COMPLETION_WRITEBACK => {
+            t.lifecycle == "completed"
+                && e.input["write"]["lifecycle_version"] == json!(t.lifecycle_version)
+        }
+        _ => t.lifecycle == "open",
+    };
+    if !src.active
+        || reference(&sr) != e.binding
+        || !matches!(
+            pr.data,
+            RecordData::Project {
+                archived: false,
+                ..
+            }
+        )
+        || !lifecycle_allows
+    {
+        return Err(reject(
+            "PERMISSION_DENIED",
+            "original write authorization no longer applies",
+            "inspect_original_intent",
+        ));
+    }
+    Ok(())
 }
 
 /// Exact adapter readback is committed with Task identity/projection changes.
@@ -427,9 +452,25 @@ pub fn reject_effect(store: &mut Store, id: &str, evidence: Value) -> Result<()>
         1,
         &evidence,
     )?;
+    // A refused completion writeback leaves the completion standing and the Task in
+    // need of attention (spec/task.md); other refusals keep the Task as it was.
+    let attention = if e.operation == COMPLETION_WRITEBACK {
+        let (r, mut t) = task(
+            store,
+            e.input["project_id"].as_str().ok_or_else(stale)?,
+            e.input["task_id"].as_str().ok_or_else(stale)?,
+        )?;
+        t.needs_attention = true;
+        Some(value_record(r.key, r.version + 1, &t)?)
+    } else {
+        None
+    };
     let actor = observer(e.owner.clone(), vec![e.permission_scope.clone()]);
     let cmd = command(&actor, &record, "task.rejected", evidence.clone())?;
     store.submit(store.generation(), &actor, &cmd, None, |tx| {
+        if let Some(r) = &attention {
+            tx.put(r)?;
+        }
         tx.confirm_effect(
             id,
             &Readback::Rejected {
@@ -606,6 +647,12 @@ pub fn mark_completion_request(
         Ok(json!({"request":k.id}))
     })?;
     Ok(())
+}
+
+/// The platform refused this completion's writeback: attention stays until a human
+/// acts, however often the card is observed again.
+fn completion_writeback_refused(store: &Store, t: &Task) -> Result<bool> {
+    Ok(crate::planning::completion_writeback_status(store, t)?["effect_state"] == "rejected")
 }
 
 /// 供应端把卡片推进到的终态名（issue 源只有 open/closed）。

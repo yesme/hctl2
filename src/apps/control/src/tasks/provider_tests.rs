@@ -11,7 +11,11 @@ use crate::test_fixtures::link_fixture;
 struct Fixture(PathBuf);
 impl Fixture {
     fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("task-{name}-{}", std::process::id()));
+        Self::labelled(name, name)
+    }
+    /// The same script for several tests, each in its own directory.
+    fn labelled(name: &str, label: &str) -> Self {
+        let root = std::env::temp_dir().join(format!("task-{label}-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         link_fixture(&format!("provider-{name}.sh"), &root.join("native"));
         Self(root)
@@ -387,4 +391,188 @@ fn github_native_headers_and_transfer_do_not_retarget_original_entity() {
         "ENTITY_CHANGED"
     );
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+const DONE: &str = "Completed in HCTL2 <!-- hctl2:control:task:complete -->";
+
+/// An open issue 1 and the completion writeback intent for it.
+fn completion(f: &Fixture) -> EffectIntent {
+    let raw = json!({"id":1,"number":1,"title":"t","body":"b","state":"open","updated_at":"t0","content_version":0});
+    std::fs::write(f.0.join("native.card"), raw.to_string()).unwrap();
+    let card = normalize(&src(), raw).unwrap();
+    effect(
+        task::COMPLETION_WRITEBACK,
+        json!({"card":card,"fields":{"comment":DONE,"state":"closed"},"lifecycle_version":2}),
+    )
+}
+
+fn count(f: &Fixture, name: &str) -> usize {
+    std::fs::read_to_string(f.0.join(format!("native.{name}")))
+        .map(|s| s.len())
+        .unwrap_or(0)
+}
+
+#[test]
+fn completion_writeback_comments_before_closing_and_a_retry_sends_nothing_again() {
+    let f = Fixture::labelled("completion", "completion-twice");
+    let e = completion(&f);
+    let c = f.client();
+    let mut dispatched = 0;
+    let card = c
+        .effect_with_dispatch(
+            &src(),
+            &e,
+            true,
+            || {
+                dispatched += 1;
+                Ok(())
+            },
+            |_| panic!("nothing was refused"),
+        )
+        .unwrap();
+    // One dispatch boundary for the whole intent, though it sends two writes.
+    assert_eq!(dispatched, 1);
+    assert_eq!(card.stage, "closed");
+    assert_eq!(card.comments, vec![json!({"id":100,"body":DONE})]);
+    let calls = std::fs::read_to_string(f.0.join("native.calls")).unwrap();
+    let post = calls.find("POST").unwrap();
+    let patch = calls.find("PATCH").unwrap();
+    assert!(post < patch, "{calls}");
+    assert_eq!(
+        std::fs::read_to_string(f.0.join("native.patch")).unwrap(),
+        r#"{"state":"closed"}"#
+    );
+    // Driving the same intent again finds both results and writes nothing.
+    let again = c
+        .effect_with_dispatch(
+            &src(),
+            &e,
+            true,
+            || panic!("nothing left to send"),
+            |_| panic!("nothing was refused"),
+        )
+        .unwrap();
+    assert_eq!(again.stage, "closed");
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (1, 1));
+}
+
+#[test]
+fn a_lost_completion_comment_response_is_read_back_and_the_card_still_closes_once() {
+    let f = Fixture::labelled("completion", "completion-lost");
+    let e = completion(&f);
+    std::fs::write(f.0.join("native.comment-lost"), "").unwrap();
+    let card = f
+        .client()
+        .effect_with_dispatch(&src(), &e, true, || Ok(()), |_| panic!("not refused"))
+        .unwrap();
+    assert_eq!(card.stage, "closed");
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (1, 1));
+}
+
+#[test]
+fn completion_writeback_refusals_are_terminal_and_never_close_without_the_comment() {
+    let f = Fixture::labelled("completion", "completion-refused");
+    let e = completion(&f);
+    std::fs::write(f.0.join("native.comment-status"), "403").unwrap();
+    let mut evidence = None;
+    let error = f
+        .client()
+        .effect_with_dispatch(
+            &src(),
+            &e,
+            true,
+            || Ok(()),
+            |v| {
+                evidence = Some(v);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "PROVIDER_REJECTED");
+    assert_eq!(
+        evidence.unwrap()["prior_read"]["matching_comments"],
+        json!([])
+    );
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (0, 0));
+    assert!(
+        !std::fs::read_to_string(f.0.join("native.calls"))
+            .unwrap()
+            .contains("PATCH")
+    );
+    // The comment goes out, closing is refused: refused, with the comment as evidence.
+    std::fs::remove_file(f.0.join("native.comment-status")).unwrap();
+    std::fs::write(f.0.join("native.close-status"), "403").unwrap();
+    let mut evidence = None;
+    let error = f
+        .client()
+        .effect_with_dispatch(
+            &src(),
+            &e,
+            true,
+            || Ok(()),
+            |v| {
+                evidence = Some(v);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "PROVIDER_REJECTED");
+    let evidence = evidence.unwrap();
+    assert_eq!(evidence["prior_read"]["comment"]["body"], DONE);
+    assert_eq!(evidence["prior_read"]["card"]["stage"], "open");
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (1, 0));
+}
+
+#[test]
+fn an_unknown_completion_writeback_only_reads_its_comment_back_but_may_still_close() {
+    let f = Fixture::labelled("completion", "completion-unknown");
+    let e = completion(&f);
+    let c = f.client();
+    // Nothing read back: no comment is sent again and the card is not closed without it.
+    let error = c
+        .completion_writeback(
+            &src(),
+            &e,
+            false,
+            true,
+            || panic!("nothing may be sent"),
+            |_| panic!("not refused"),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "RESULT_UNKNOWN");
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (0, 0));
+    // The comment is read back and the card is open: closing still needs the permission.
+    std::fs::write(
+        f.0.join("native.comments"),
+        json!([{"id":100,"body":DONE}]).to_string(),
+    )
+    .unwrap();
+    let error = c
+        .completion_writeback(
+            &src(),
+            &e,
+            false,
+            false,
+            || panic!("nothing may be sent"),
+            |_| panic!("not refused"),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "RESULT_UNKNOWN");
+    let mut rechecked = 0;
+    let card = c
+        .completion_writeback(
+            &src(),
+            &e,
+            false,
+            true,
+            || {
+                rechecked += 1;
+                Ok(())
+            },
+            |_| panic!("not refused"),
+        )
+        .unwrap();
+    assert_eq!(rechecked, 1);
+    assert_eq!(card.stage, "closed");
+    assert_eq!((count(&f, "posts"), count(&f, "closes")), (0, 1));
 }

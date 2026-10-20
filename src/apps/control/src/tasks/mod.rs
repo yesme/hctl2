@@ -243,7 +243,18 @@ pub(super) fn submit(
         result["effect_state"] = access(shared, |s| Ok(serde_json::to_value(s.effect(&id)?.1)?))?;
     }
     if let Some(project) = result["project_id"].as_str().map(str::to_owned) {
-        result["provider_done"] = drive_completion_requests(shared, &project, actor)?;
+        let mut handled = drive_completion_requests(shared, &project, actor)?;
+        // A completion admitted from a provider Done queues the same writeback.
+        for outcome in handled.as_array_mut().into_iter().flatten() {
+            if let Some(id) = outcome["result"]["effect_id"].as_str().map(str::to_owned) {
+                if let Err(e) = drive(shared, services, root, actor, &id) {
+                    outcome["result"]["error"] = json!({"code":e.code,"message":e.message,"recovery_action":e.recovery_action});
+                }
+                outcome["result"]["effect_state"] =
+                    access(shared, |s| Ok(serde_json::to_value(s.effect(&id)?.1)?))?;
+            }
+        }
+        result["provider_done"] = handled;
     }
     if let (Some(project), Some(id)) = (result["project_id"].as_str(), result["task_id"].as_str()) {
         result["task"] = access(shared, |s| {
@@ -370,20 +381,33 @@ fn drive(
     })?;
     // Bootstrap/connect failure occurs before uncertainty, so the untouched intent stays Pending.
     let client = provider::Client::connect(&src, root, &control, services)?;
-    let observed = client.effect_with_dispatch(
-        &src,
-        &e,
-        state == EffectState::Pending,
-        || {
-            access(shared, |s| {
-                if !task::begin(s, actor, id)?.1 {
-                    return Err(task::stale());
-                }
-                Ok(())
-            })
-        },
-        |evidence| access(shared, |s| task::reject_effect(s, id, evidence)),
-    )?;
+    let observed = if e.operation == task::COMPLETION_WRITEBACK && state == EffectState::Unknown {
+        // The comment may have been sent: it is only read back. Once it is, the card
+        // may still be closed, because closing again changes nothing.
+        client.completion_writeback(
+            &src,
+            &e,
+            false,
+            true,
+            || access(shared, |s| task::recheck_completion_close(s, actor, id)),
+            |evidence| access(shared, |s| task::reject_effect(s, id, evidence)),
+        )?
+    } else {
+        client.effect_with_dispatch(
+            &src,
+            &e,
+            state == EffectState::Pending,
+            || {
+                access(shared, |s| {
+                    if !task::begin(s, actor, id)?.1 {
+                        return Err(task::stale());
+                    }
+                    Ok(())
+                })
+            },
+            |evidence| access(shared, |s| task::reject_effect(s, id, evidence)),
+        )?
+    };
     access(shared, |s| {
         // The desired result can already exist before dispatch. Authorize the original
         // intent before confirming that readback, without sending a redundant write.
@@ -540,7 +564,8 @@ fn progress(s: &Store, t: &task::Task) -> Result<Value> {
     Ok(json!({
         "invocations": invocations.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "revisions": revisions,
-        "completion": {"current": current, "history": history},
+        "completion": {"current": current, "history": history,
+            "writeback": task::completion_writeback_status(s, t)?},
     }))
 }
 

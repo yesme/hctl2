@@ -331,6 +331,20 @@ pub(crate) fn completion_preview(token: &str, effect: &Value) -> String {
             ));
         }
     }
+    let writeback = &result["writeback"];
+    if !writeback.is_null() {
+        object.push((
+            "writeback".to_owned(),
+            if writeback["enqueued"] == true {
+                format!(
+                    "comment, then close card #{} on the connected task source",
+                    cell(&writeback["card"])
+                )
+            } else {
+                format!("none — {}", dash(&writeback["message"]))
+            },
+        ));
+    }
     let mut after = vec![
         "writes the Task Completion Receipt and advances the Task to completed in the same control-store transaction".to_owned(),
         "the receipt binds exactly the Task Revision and the items above; nothing is rewritten later".to_owned(),
@@ -340,7 +354,7 @@ pub(crate) fn completion_preview(token: &str, effect: &Value) -> String {
         .is_some_and(|effects| !effects.is_empty())
     {
         after.push(
-            "queues the listed external writeback and reads it back in the background; a failed writeback only marks attention".to_owned(),
+            "queues the writeback in that transaction, then sends it and reads each step back; a refused or unknown writeback marks attention and never undoes the completion".to_owned(),
         );
     }
     after.push(
@@ -663,11 +677,21 @@ fn task_show(value: &Value) -> String {
     } else {
         "nothing".to_owned()
     };
-    let next = next_step(&project, &task, data, &blockers, &latest, &revision);
+    let writeback = &progress["completion"]["writeback"];
+    let next = match writeback_next(writeback) {
+        Some(next) if data["lifecycle"] == "completed" => next,
+        _ => next_step(&project, &task, data, &blockers, &latest, &revision),
+    };
+    let synced = writeback_state(writeback)
+        .map(|state| format!("; {state}"))
+        .unwrap_or_default();
     [
         format!("Task {} — {}", short_id(&task), dash(&data["title"])),
         format!("  goal      {}", dash(&data["title"])),
-        format!("  state     {}; {contract}", dash(&data["lifecycle"])),
+        format!(
+            "  state     {}; {contract}{synced}",
+            dash(&data["lifecycle"])
+        ),
         format!("  blocking  {blocking}"),
         format!("  harness   {harness}"),
         format!(
@@ -681,6 +705,40 @@ fn task_show(value: &Value) -> String {
         format!("  next      {next}"),
     ]
     .join("\n")
+}
+
+/// Where the completion's writeback to the connected task source stands. Completed in
+/// HCTL but not yet confirmed on the source reads as external sync pending (task.md).
+fn writeback_state(writeback: &Value) -> Option<String> {
+    if writeback.is_null() {
+        return None;
+    }
+    if writeback["enqueued"] != true {
+        return Some(format!("not written back: {}", dash(&writeback["message"])));
+    }
+    Some(
+        match writeback["effect_state"].as_str() {
+            Some("confirmed") => "card closed on the task source",
+            Some("rejected") => "the task source refused the writeback — needs attention",
+            Some("cancelled") => "writeback withdrawn",
+            _ => "external sync pending",
+        }
+        .to_owned(),
+    )
+}
+
+/// A completed Task's only next step is its unfinished writeback.
+fn writeback_next(writeback: &Value) -> Option<String> {
+    let effect = cell(&writeback["effect_id"]);
+    match writeback["effect_state"].as_str() {
+        Some("pending" | "unknown") => Some(format!(
+            "send or read back the writeback: hctl2 task resume --input <resume.json> --key <key> (resume.json: {{\"effect_id\":\"{effect}\"}})"
+        )),
+        Some("rejected") => Some(format!(
+            "the completion stands; check the card and the binding's access, the refusal is recorded on effect {effect}"
+        )),
+        _ => None,
+    }
 }
 
 /// The one command that moves the Task on, from its current lifecycle and the newest
@@ -929,5 +987,81 @@ mod tests {
             "{text}"
         );
         assert_eq!(next, "wait for claude-code to return (invocation running)");
+    }
+
+    fn completed_with(writeback: Value) -> (String, String) {
+        let mut data = open_task();
+        data["lifecycle"] = json!("completed");
+        show(
+            data,
+            json!({"invocations": [write_call("completed")],
+                "revisions": [version(published(), json!({"state": "succeeded", "receipt_id": "receipt-1", "intent_id": "i"}))],
+                "completion": {"current": {"receipt_id": "t-1:2", "lifecycle_version": 2},
+                    "history": ["t-1:2"], "writeback": writeback}}),
+        )
+    }
+
+    /// 小活 AE：已完成的 Task 写明写回到了哪一步；没确认的是「外部同步中」，下一步是它。
+    #[test]
+    fn a_completed_task_states_its_writeback_and_points_at_an_unfinished_one() {
+        let queued = |state: &str| json!({"enqueued": true, "effect_id": "task:e1", "card": 3, "effect_state": state});
+        let (text, next) = completed_with(queued("confirmed"));
+        assert!(
+            text.contains("completed; contract revision 1; card closed on the task source"),
+            "{text}"
+        );
+        assert_eq!(next, "nothing — the Task is completed");
+        for state in ["pending", "unknown"] {
+            let (text, next) = completed_with(queued(state));
+            assert!(text.contains("; external sync pending"), "{text}");
+            assert!(next.contains("hctl2 task resume"), "{next}");
+            assert!(next.contains(r#"{"effect_id":"task:e1"}"#), "{next}");
+        }
+        let (text, next) = completed_with(queued("rejected"));
+        assert!(
+            text.contains("refused the writeback — needs attention"),
+            "{text}"
+        );
+        assert!(next.starts_with("the completion stands"), "{next}");
+        let (text, next) = completed_with(json!({"enqueued": false,
+            "reason": "binding_cannot_write_fields",
+            "message": "the binding's capabilities do not include field writeback"}));
+        assert!(
+            text.contains(
+                "not written back: the binding's capabilities do not include field writeback"
+            ),
+            "{text}"
+        );
+        assert_eq!(next, "nothing — the Task is completed");
+        // A completion recorded before writeback existed shows no writeback at all.
+        let (text, _) = completed_with(Value::Null);
+        assert!(
+            text.contains("  state     completed; contract revision 1\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn the_completion_preview_says_what_is_written_back_or_why_not() {
+        let preview = |writeback: Value| {
+            completion_preview(
+                "token",
+                &json!({"input": {"action": {"revision_number": 1, "lifecycle_version": 1}},
+                    "result": {"project_id": "P", "task_id": "t-1", "receipt_id": "t-1:2",
+                        "lifecycle_version": 2, "items": [], "writeback": writeback},
+                    "effects": []}),
+            )
+        };
+        let queued = preview(json!({"enqueued": true, "card": 3}));
+        assert!(
+            queued.contains("comment, then close card #3 on the connected task source"),
+            "{queued}"
+        );
+        let skipped =
+            preview(json!({"enqueued": false, "message": "the task source binding is disabled"}));
+        assert!(
+            skipped.contains("none — the task source binding is disabled"),
+            "{skipped}"
+        );
     }
 }

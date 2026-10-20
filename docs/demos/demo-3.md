@@ -698,13 +698,15 @@ $CLI --root "$ROOT" task complete --input "$WS/work/a-complete.json" --key a-com
 PREV_COMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/a-complete.json" --key a-complete)"
 TOK_COMP="$(echo "$PREV_COMP" | jq -r .preview_token)"
 SUB_COMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/a-complete.json" --key a-complete --preview-token "$TOK_COMP")"
-echo "$SUB_COMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, items: .items}'
+echo "$SUB_COMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, items: .items, writeback: .writeback, effect_state: .effect_state}'
 ```
 
 **核对字段**：
 - `lifecycle`: `"completed"`，`lifecycle_version`: `2`。
 - `receipt_id`: `"<TASK_ID>:2"`（Task Completion Receipt 与状态更新在同一事务写入）。
 - `items[0]`: `grade: "mechanical"`，`outcome: "passed"`，`validation_level: "unmediated"`，引用 `$RECEIPT_ID`。
+- 人读预览的 `writeback` 一行写明完成后对连接的任务源写回什么：`comment, then close card #<编号> on the connected task source`；绑定不能写字段、源已停用、卡上还有未决写回时写 `none — <原因>`，完成照常。
+- `writeback.enqueued`: `true`，`effect_state`: `"confirmed"`：写回意图与 Receipt 同一事务入队，提交后先在随包 Gitea 的卡上追加一条带控制面、Task 与 Receipt 标识的评论，再把卡关闭，两步都回读确认。写回被平台拒绝或结果未知时，完成照常成立，命令以非零退出、带 `error`，Task 记需要关注或显示外部同步中（见第 10 步）。
 
 ### 10. 核对平台回读状态与 `task show` 十秒回答
 
@@ -727,16 +729,20 @@ $CLI --json --root "$ROOT" integration show "$REPO_ID" "$INTEGRATION_INTENT_ID" 
 - `review show` 中 `push_confirmed: true`、`pr_confirmed: true`，`review_request` 记录了 Gitea 上的 PR 编号与链接。
 - `integration show` 中 `evidence_level`（`receipt.evidence_level`）为 `"hctl2-tool"`，`git_readback.evidence_level` 为 `"unmediated"`，且 `integrated_commit` 与 `target_head_after`（`$MERGED_COMMIT`）完全一致。
 
-运行人读输出 `task show`，核对「十秒回答」：
+运行人读输出 `task show`，核对「十秒回答」与完成写回：
 
 ```bash
 $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
+
+$CLI --json --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID" \
+  | jq '.progress.completion.writeback | {enqueued, card, effect_state}'
 ```
 
 **核对字段**：
+- `progress.completion.writeback`：`enqueued: true`，`card` 是本 Task 在随包 Gitea 上的卡号，`effect_state: "confirmed"`（卡已回读为关闭、评论已回读）。
 - 输出直接包含六行核心状态：
   - `goal`: `Fix double() in calculator.py`
-  - `state`: `completed; contract revision 1`
+  - `state`: `completed; contract revision 1; card closed on the task source`（写回未确认时是 `external sync pending`，`next` 给出 `hctl2 task resume` 的命令；被平台拒绝时是 `the task source refused the writeback — needs attention`）
   - `blocking`: `nothing`
   - `harness`: `claude-code (via herdr, model none) — invocation invocation-... completed`（按工种明确显示当前是谁在回答）
   - `evidence`: 同时列出准入版本 `csr-...`、已发布评审请求、Integration Receipt 与 Completion Receipt
@@ -1170,13 +1176,14 @@ $CLI --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-com
 PREV_CCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-complete)"
 TOK_CCOMP="$(echo "$PREV_CCOMP" | jq -r .preview_token)"
 SUB_CCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/c-complete.json" --key c-complete --preview-token "$TOK_CCOMP")"
-echo "$SUB_CCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id}'
+echo "$SUB_CCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, writeback: .writeback, effect_state: .effect_state}'
 
 $CLI --root "$ROOT" task show "$C_PROJECT_ID" "$C_TASK_ID"
 ```
 
 **核对字段**：
 - `lifecycle`: `"completed"`，`receipt_id`: `"<C_TASK_ID>:2"`，`task show` 同样给出完整六行十秒回答。开启确认开关的 Project 全程走完发布（`review publish`）、合入（`integration preview` / `integration submit`）、完成（`task complete`）三次人工预览。
+- 「须人显式确认」开关管的是发布评审，不管完成写回：`writeback.enqueued`: `true`，`effect_state`: `"confirmed"`，`task show` 的 `state` 行以 `card closed on the task source` 结尾，C 链的卡同样被关闭并追加一条完成评论。
 
 ---
 

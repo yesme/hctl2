@@ -261,6 +261,49 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
             .len(),
         1
     );
+    // 小活 AE：完成写回在真实 Gitea 上先评论、再关卡。卡还被未关闭的依赖挡着时，Gitea
+    // 以 412 拒绝关闭：这是平台的明确拒绝，不是结果未知；评论已经发出，卡仍开着。
+    let writeback = |card: &Card, comment: &str| {
+        super::tests::effect(
+            task::COMPLETION_WRITEBACK,
+            json!({"card":card,"fields":{"comment":comment,"state":"closed"},"lifecycle_version":2}),
+        )
+    };
+    let blocked = client.read_card(&src, &first).unwrap().unwrap();
+    let mut evidence = None;
+    let refused = client
+        .effect_with_dispatch(
+            &src,
+            &writeback(
+                &blocked,
+                "Completed in HCTL2 <!-- hctl2:control:task:blocked -->",
+            ),
+            true,
+            || Ok(()),
+            |v| {
+                evidence = Some(v);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+    assert_eq!(refused.code, "PROVIDER_REJECTED", "{}", refused.message);
+    let evidence = evidence.unwrap();
+    assert!(
+        evidence["provider_error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("HTTP Some(412)"),
+        "{evidence}"
+    );
+    assert_eq!(evidence["prior_read"]["card"]["stage"], "open");
+    assert_eq!(
+        evidence["prior_read"]["comment"]["body"],
+        "Completed in HCTL2 <!-- hctl2:control:task:blocked -->"
+    );
+    assert_eq!(
+        client.read_card(&src, &first).unwrap().unwrap().stage,
+        "open"
+    );
     // 「人在平台上关闭」在真实 Gitea 上带得回演员：第 7 包的 provider Done 映射要靠它。
     let out = admin(&[
         "create",
@@ -309,6 +352,25 @@ fn native_gitea_conditionals_dependencies_comments_delete_and_recovery() {
             Some(json!({"owner":"owner","repo":"repo","index":dep["number"]})),
         )
         .unwrap();
+    // 没有依赖挡着的卡：评论一条、关上，关卡的是控制面自己的账号（只追加 Snapshot，
+    // 不能取得 human 来源）；同一意图再走一遍不再写。
+    let free = client
+        .read_card(&src, &normalize(&src, dep.clone()).unwrap())
+        .unwrap()
+        .unwrap();
+    let done = writeback(
+        &free,
+        "Completed in HCTL2 <!-- hctl2:control:task:native -->",
+    );
+    let closed_by_control = client.effect(&src, &done, true).unwrap();
+    assert_eq!(closed_by_control.stage, "closed");
+    assert_eq!(closed_by_control.comments.len(), 1);
+    assert_eq!(closed_by_control.raw["closed_by"]["login"], json!("owner"));
+    client.effect(&src, &done, true).unwrap();
+    let thread = client
+        .list(&format!("repos/owner/repo/issues/{}/comments", free.number))
+        .unwrap();
+    assert_eq!(thread.len(), 1, "{thread:?}");
     let human = Client::Gitea(Hosted::fixture(
         tea_copy,
         url.clone(),
