@@ -1,8 +1,10 @@
-# Run：施工图的登记、编译与批准
+# Run：施工图、生命周期与冻结施工清单
 
-本模块拥有 Workflow Revision、Engine Deployment、批准版本、Workflow–Task 关联，使用共享 Store 与材料保存机制；Task 只投影关联。本包不创建 Run、Obligation、Seat 或 Attempt，不起 Dagu、不派工。后续包以这里的对象、命令与存储布局为准，不能把施工图登记当成启动许可。
+本模块拥有 Workflow Revision、Engine Deployment、批准版本、Workflow–Task 关联，以及 Run 生命周期与不可变 Manifest。共享 Store 保存材料、版本与外部意图；Task 占用更新由 Task 提供事务片段，与 Run 一起提交。施工图批准不等于启动许可。
 
-设计权威：[Run 约束](../../../docs/design/spec/run.md)、[运行默认值](../../../docs/design/delivery.md#运行默认值)。类型权威在 `model.rs` 与 `commands.rs`。
+第 1 包实现施工图，第 3 包实现下文生命周期；真实引擎接线归第 2 包，Obligation、Seat、Attempt 与派工归第 4a 包。本模块不启动 Dagu 服务或 harness。
+
+设计权威：[Run 约束](../../../docs/design/spec/run.md)、[运行默认值](../../../docs/design/delivery.md#运行默认值)。施工图类型权威在 `model.rs` 与 `commands.rs`；运行类型与准入在 `lifecycle/`。
 
 ## 命令
 
@@ -103,7 +105,7 @@ production 为非空 invocations references（精确 room_invocation 引用）�
 
 ## Store 布局
 
-下列记录全部在 Project scope；Run 不写 Task 内部对象。
+下列施工图记录全部在 Project scope；Task 关联由 Task 投影。
 
 | kind / id | 版本与内容 |
 | --- | --- |
@@ -126,3 +128,65 @@ production 为非空 invocations references（精确 room_invocation 引用）�
 ```
 
 目标覆盖真实 CLI → control → Run 的预览/确认、随包 Dagu 原生 validate、内部读回测试替身，以及 schema/Profile、判据、产物边、检环、有界 loop/fork、票数提示、关联原子性、幂等、新版本、三处摘要、权限、名册和实际 Profile。无平台或模型凭据。退回检环、产物落地、实际送达摘要比较的三份红灯输出随 PR 附上。
+
+## Run 命令与启动授权
+
+```text
+hctl2 --root <root> --json run list <project>
+hctl2 --root <root> --json run show <project> <run>
+hctl2 --root <root> --json run preview --input start.json --key <key>
+hctl2 --root <root> --json run start --input start.json --key <key> --preview-token <token>
+hctl2 --root <root> --json run pause --input action.json --key <key> [--preview-token <token>]
+hctl2 --root <root> --json run resume --input action.json --key <key> [--preview-token <token>]
+hctl2 --root <root> --json run cancel --input action.json --key <key> [--preview-token <token>]
+hctl2 --root <root> --json run replace --input replace.json --key <key> [--preview-token <token>]
+hctl2 --root <root> --json run place --input place.json --key <key> [--preview-token <token>]
+```
+
+没有 token 的写命令只预览；`run preview` 是 start 预览的别名。`start.json` 为 `{ "spec": <lifecycle::Start> }`，暂停、恢复、取消为 `{project_id, run_id, version}`，替代另加新 `spec`，调整放置另加精确 `destination` Reference。CLI 补入 kind；公共负载 `{key, action}`，操作 `run.start|pause|resume|cancel|replace|place`，command id `run:<key>`。没有公共 finish、complete 或引擎回报接口。
+
+Start 必须明确 Project 版本、独立 Run id、批准的 Workflow 版本、零或一个 Task Revision、Repo、40 位基线 SHA、精确根 Context Manifest 与摘要、接受的 workflow_engine_binding、每个编译后外部席位的候选、预算、期限、集成方式与放置范围。基线在这里冻结输入；Git 提交是否存在由后续工具读取，不把语法检查称为 Git 回读。引擎绑定的真实生产入口归第 2 包。
+
+带 Task 时，控制面先经现有任务源端口刷新源快照，再准备预览；确认时重新刷新并比较计划，最后事务内复核全部版本。只接受开放 Project、开放且未归档的 Task、已采纳且仍为 current 的完整契约、匹配 Repo、无占用。`blocked_by` 中未关闭的阻塞方列在 `blockers_requiring_confirmation`，等人用预览 token 确认；父子关系本身不作阻塞。源故障如实拒绝。原幂等输入响应丢失后的重放不重新访问平台，返回原 Run。
+
+Manifest 冻结精确 Project/Task/Workflow/批准/Deployment/Repo/根上下文引用、基线、批准的读回依据、Project 选择策略摘要、逐席位选择、候选 Profile 摘要、必需 Skill、权限、预算、期限、技术故障换候选策略、网络与秘密作用域、初始放置及获准放置范围、集成授权。`frozen_rework_limits` 直接复制批准部署编译时的数，不重新套缺省值或展开节点。
+
+集成必填目标分支、target_kind、form、strategy；mode 缺省 automatic，也可 human_preview。预览和 show 都展示这些字段；人的启动确认就是对这份冻结授权的确认。目标保护、预期目标头和 Integration Intent 的实际准入属于后续集成包，不能从启动清单推断已合入。运行中换授权用 replace，不改原 Manifest。
+
+选择复用 Participant 的接受名册与 Project 策略校验，不取 Room 名册。必需 Skill 是 Workflow 席位与 Profession 声明的并集。票数上界复用 gate-tally，检查全部获准候选；初始选定候选另查声明的 Profile 互异。`Pick.frozen_bundle` 可声明本席位未来交付的完整不可变内容约定，不代表已经向新消费者送达。未知内容只警告，不凭模板判同键；明确的内容按源条目、精确字节摘要与必需 Skill 引用求摘要，排除消费者身份、预算、保留和定位路径。第 4a 包交付前须调用 `validate_delivery_contract`，后续计票复用 `delivered_content_digest`；改正文不得沿用旧内容约定。
+
+## 生命周期、事务与引擎端口
+
+`State::allows` 按设计的状态转移表闭集校验。公开 resume 只接受 Paused，不借 Starting → Running 的引擎确认边绕过启动。终态不可恢复。Starting、Pausing、Cancelling 到默认 900000ms 或声明的墙钟期限只标需要关注，保留状态和 Task 占用，不自动取消、替代、重试或虚构引擎观察。
+
+Start 在一个 Store submit 写入 Run、准入规范 Manifest 材料、逐席位选择、Task 占用、引擎启动意图及幂等结果。所有引用版本进入 CAS。Replace 先准备完整新清单，同一事务撤旧授权、撤所属活动、转移占用、新建 Run 与清单、入队新启动和旧停止意图；任何一步失败全部回滚。其他 Run 不被连带撤销。
+
+取消或失败先撤资格与未发送意图。未知写入是否隔离不能按空集合或停止回执推断；保留占用并标关注，等控制面准入同一 Manifest、同一 Attempt 的 confined 或 silent 证明。第 4a 包必须在真实派工的同一事务中调用 `authorize_activity_in`，传入实际 Sealed ExecutionSpec 与 Bundle；它校验冻结选择、候选、权限、预算、内容及当前 Run 授权。Activity 和 IsolationProof 是可信内部接缝，本包只有内部夹具生产者，没有真实工作树隔离证明或物理租约撤销的生产入口。
+
+`engine::Port` 接收已提交意图，测试使用有状态假端口。投递前用 Store 标 Unknown；响应丢失先回读，只有 NotApplied 且授权仍有效才按原幂等键投递。epoch、Manifest、绑定与 scope 不匹配的迟到观察不推进 Run；引擎观察没有“完成 Run”的种类。`engine_binding_generation` 是端口读回的独立引擎代次，不借控制面写者代次或操作 epoch 充数。生产控制面本包只运行超时标记器，不把未接的真实引擎调用说成成功。
+
+`finish` 仅供冻结 Manifest 授权的内部 reducer。正常完成还须控制面证明必需义务已满足、Attempt 已终结或撤销、无未解决输出副作用、引用一致，并检查所属活动及 outbox；缺失/未知不通过。证明生产者归后续归约器包。完成把 Task 占用推进为 completion_pending，不自动完成 Task；Task 独立验收归后续包。失败或取消只有满足撤销边界才释放占用。
+
+外部 Room/Task 引用只展示关联，不拥有 Run。`place` 只在冻结范围内调整向外结果投递位置，每次写不可变 before/after/actor/rule 审计，不改 Manifest，也不改 harness 工作目录、权限或执行身份。
+
+新增 Project scope 记录：
+
+| kind / id | 内容 |
+| --- | --- |
+| run / run_id | 生命周期、授权有效位、操作 epoch、墙钟进入时刻、关注与当前放置引用 |
+| run_manifest / run_id | immutable version=1，准入规范材料与所有冻结字段 |
+| run_selection / run:checkpoint:seat | immutable version=1，接受选择及 Manifest 来源 |
+| run_command / sha256(key) | 原 actor、Input、Plan 和幂等结果 |
+| run_engine_binding / run_id | 精确清单、部署、引擎执行 id/代次、分歧或关闭状态 |
+| run_activity / attempt_id | 内部派工登记、资格与隔离证明引用 |
+| run_isolation / proof_id | 内部可信物理隔离证明；第 4a 包负责真实生产 |
+| run_placement / audit_id | 不可变放置调整审计 |
+| run_finish_command / sha256(key) | 内部完成/失败的原输入与幂等结果 |
+
+Task 模块的 `plan_run_occupancy` 返回保留材料和来源的 task_state 更新片段，不自行提交。调用方在同一事务复核旧版本；Manifest 不符、占用不属原 Run 或 completion_pending 都不当成可空闲槽。
+
+```bash
+./src/buck2 test root//crates/run:lifecycle_test
+```
+
+19 条用例覆盖真实 CLI → 认证 socket → control → Run 五命令、预览 token、版本与原子回滚、全部状态对、候选与票数、阻塞方、冻结授权、隔离未知、完成证明及超时。平台/批准读回/引擎/Attempt 隔离使用明示内部夹具，不需要平台或模型凭据。逐条证据与三次退回见 [生命周期实测](../../../docs/research/runtime/run-lifecycle-validation.md)。
