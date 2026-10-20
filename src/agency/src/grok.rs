@@ -175,7 +175,7 @@ fn budget(deadline_ms: u64) -> Duration {
 }
 
 fn worker(bin: PathBuf, idle: Duration, stopped: Arc<AtomicBool>, receiver: mpsc::Receiver<Job>) {
-    let mut live: Option<Link> = None;
+    let mut live: Option<Link<std::process::ChildStdin>> = None;
     let mut last = Instant::now();
     loop {
         if stopped.load(Ordering::SeqCst) {
@@ -203,6 +203,21 @@ fn worker(bin: PathBuf, idle: Duration, stopped: Arc<AtomicBool>, receiver: mpsc
             continue;
         }
         match run_job(&bin, &mut live, &job) {
+            Ok(turn) if turn.stop_reason == "cancelled" => {
+                let _ = job.tx.send(RuntimeEvent::Observation {
+                    kind: "grok.stop".into(),
+                    payload: json!({
+                        "stop_reason": turn.stop_reason,
+                        "session": turn.opened,
+                    }),
+                    source: EvidenceLevel::AdapterEvent,
+                });
+                let _ = job.tx.send(RuntimeEvent::TurnStopped {
+                    requested_stop: job.token.cancelled.load(Ordering::SeqCst),
+                    session_closed: false,
+                });
+                let _ = job.tx.send(RuntimeEvent::DispatchReleased);
+            }
             Ok(turn) => {
                 let _ = job.tx.send(RuntimeEvent::Observation {
                     kind: "grok.stop".into(),
@@ -237,22 +252,27 @@ fn worker(bin: PathBuf, idle: Duration, stopped: Arc<AtomicBool>, receiver: mpsc
     }
 }
 
-fn run_job(bin: &Path, live: &mut Option<Link>, job: &Job) -> Result<Turn> {
+fn run_job(
+    bin: &Path,
+    live: &mut Option<Link<std::process::ChildStdin>>,
+    job: &Job,
+) -> Result<Turn> {
+    let limit = deadline(job.budget);
     if live.is_none() {
-        *live = Some(Link::spawn(bin, &job.state, &job.credential_root)?);
+        *live = Some(Link::spawn(bin, &job.state, &job.credential_root, limit)?);
     }
     let link = live.as_mut().expect("grok link");
     let saved = fs::read_to_string(job.state.join("session-id")).ok();
     let saved = saved.as_deref().map(str::trim).filter(|id| !id.is_empty());
     if link.dialogue.session_id.is_none() {
-        let opened = link.dialogue.ensure(saved, deadline(job.budget))?;
+        let opened = link.dialogue.ensure(saved, limit)?;
         if let Some(id) = &link.dialogue.session_id {
             fs::write(job.state.join("session-id"), id)?;
         }
         link.opened = opened;
     }
     link.dialogue
-        .prompt(&job.text, deadline(job.budget), &job.token.cancelled)
+        .prompt(&job.text, limit, &job.token.cancelled)
         .map(|mut turn| {
             turn.opened = link.opened.clone();
             turn.session_id = link.dialogue.session_id.clone().unwrap_or_default();
@@ -311,14 +331,18 @@ fn deadline(budget: Duration) -> Instant {
     Instant::now() + budget
 }
 
-struct Link {
+/// How long to wait for `session/cancel` to finish the turn before the process is closed.
+const CANCEL_GRACE: Duration = Duration::from_millis(400);
+
+struct Link<W: Write> {
     child: Child,
-    dialogue: Dialogue<std::process::ChildStdin>,
+    dialogue: Dialogue<W>,
     opened: String,
+    closed: bool,
 }
 
-impl Link {
-    fn spawn(bin: &Path, state: &Path, credential_root: &Path) -> Result<Self> {
+impl Link<std::process::ChildStdin> {
+    fn spawn(bin: &Path, state: &Path, credential_root: &Path, deadline: Instant) -> Result<Self> {
         let socket = state.join("leader.sock");
         reap_previous(state, &socket);
         let args = argv(&socket);
@@ -365,13 +389,19 @@ impl Link {
             child,
             dialogue,
             opened: "new".into(),
+            closed: false,
         };
-        link.dialogue
-            .handshake(Instant::now() + Duration::from_secs(30))?;
+        link.dialogue.handshake(deadline)?;
         Ok(link)
     }
+}
 
+impl<W: Write> Link<W> {
     fn close(&mut self) {
+        if self.closed {
+            return;
+        }
+        self.closed = true;
         let _ = self.dialogue.cancel();
         let pid = self.child.id();
         let _ = Command::new("kill")
@@ -388,6 +418,12 @@ impl Link {
             .args(["-KILL", &format!("-{pid}")])
             .status();
         let _ = self.child.wait();
+    }
+}
+
+impl<W: Write> Drop for Link<W> {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -535,7 +571,7 @@ impl<W: Write> Dialogue<W> {
             &mut answer,
             cancel,
         )?;
-        if answer.is_empty() {
+        if answer.is_empty() && result["stopReason"] != "cancelled" {
             return Err(PortError::invalid(
                 "turn completed without an agent message",
             ));
@@ -573,16 +609,21 @@ impl<W: Write> Dialogue<W> {
         let id = self.next_id;
         self.next_id += 1;
         let body = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+        if Instant::now() >= deadline {
+            return Err(Self::budget_error(method));
+        }
         writeln!(self.writer, "{body}")?;
         self.writer.flush()?;
         let mut notified = false;
         loop {
             if Instant::now() >= deadline {
-                return Err(PortError::new(
-                    "HARNESS_TURN_ERROR",
-                    format!("{method} exceeded the turn budget"),
-                    "retry_dispatch",
-                ));
+                if !notified {
+                    let _ = self.cancel();
+                }
+                if let Some(result) = self.read_until(Instant::now() + CANCEL_GRACE, id, answer)? {
+                    return Ok(result);
+                }
+                return Err(Self::budget_error(method));
             }
             if cancel.load(Ordering::SeqCst) && !notified {
                 self.cancel()?;
@@ -622,15 +663,73 @@ impl<W: Write> Dialogue<W> {
                 continue;
             }
             if message.get("id") == Some(&json!(id)) {
-                if let Some(error) = message.get("error") {
-                    return Err(PortError::invalid(format!(
-                        "{method} error {}: {}",
-                        error["code"], error["message"]
-                    )));
-                }
-                return Ok(message["result"].clone());
+                return Self::parse_result(method, &message);
             }
         }
+    }
+
+    /// After `session/cancel`, wait out the grace for this request's result.
+    /// A line that belongs to another id is ignored. No result means the
+    /// interrupt did not land, and the caller closes the process.
+    fn read_until(
+        &mut self,
+        grace: Instant,
+        id: i64,
+        answer: &mut String,
+    ) -> Result<Option<Value>> {
+        while Instant::now() < grace {
+            let line = match self.lines.recv_timeout(Duration::from_millis(20)) {
+                Ok(line) => line?,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
+            };
+            let message: Value = serde_json::from_str(line.trim())
+                .map_err(|error| PortError::invalid(format!("grok acp is not json: {error}")))?;
+            if message.get("method").is_some()
+                && message.get("id").is_some()
+                && message["id"] != json!(id)
+            {
+                return Err(PortError::new(
+                    "HARNESS_TURN_ERROR",
+                    format!(
+                        "grok asked for {} and Agency will not answer it",
+                        message["method"].as_str().unwrap_or("a request")
+                    ),
+                    "owner_must_confirm",
+                ));
+            }
+            if message["method"] == "session/update" {
+                let update = &message["params"]["update"];
+                if update["sessionUpdate"] == "agent_message_chunk"
+                    && let Some(text) = update["content"]["text"].as_str()
+                {
+                    answer.push_str(text);
+                }
+                continue;
+            }
+            if message.get("id") == Some(&json!(id)) {
+                return Ok(Some(Self::parse_result("session/prompt", &message)?));
+            }
+        }
+        Ok(None)
+    }
+
+    fn parse_result(method: &str, message: &Value) -> Result<Value> {
+        if let Some(error) = message.get("error") {
+            return Err(PortError::invalid(format!(
+                "{method} error {}: {}",
+                error["code"], error["message"]
+            )));
+        }
+        Ok(message["result"].clone())
+    }
+
+    fn budget_error(method: &str) -> PortError {
+        PortError::new(
+            "HARNESS_TURN_ERROR",
+            format!("{method} exceeded the turn budget"),
+            "retry_dispatch",
+        )
     }
 }
 
@@ -642,6 +741,7 @@ fn session_id(created: &Value) -> Result<String> {
         .ok_or_else(|| PortError::invalid("session/new returned no session id"))
 }
 
+#[derive(Debug)]
 struct Turn {
     text: String,
     stop_reason: String,
@@ -653,6 +753,7 @@ struct Turn {
 mod tests {
     use super::*;
     use std::io::{BufRead, Write};
+    use std::os::unix::process::CommandExt;
 
     #[test]
     fn layout_uses_the_shared_turn_schema_and_three_files() {
@@ -767,6 +868,138 @@ mod tests {
                 .iter()
                 .any(|(method, _)| method == "session/cancel")
         );
+    }
+
+    #[test]
+    fn a_deadline_that_cancel_finishes_is_a_cancelled_turn() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut dialogue = hanging_dialogue(Arc::clone(&seen), true);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        dialogue.handshake(deadline).unwrap();
+        dialogue.ensure(None, deadline).unwrap();
+        let turn = dialogue
+            .prompt(
+                "hang",
+                Instant::now() + Duration::from_millis(40),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+        assert_eq!(turn.stop_reason, "cancelled");
+        assert!(turn.text.is_empty());
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|(method, _)| method == "session/cancel")
+        );
+    }
+
+    #[test]
+    fn a_deadline_cancel_that_is_not_answered_is_an_error() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut dialogue = hanging_dialogue(Arc::clone(&seen), false);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        dialogue.handshake(deadline).unwrap();
+        dialogue.ensure(None, deadline).unwrap();
+        let started = Instant::now();
+        let error = dialogue
+            .prompt(
+                "hang",
+                Instant::now() + Duration::from_millis(40),
+                &AtomicBool::new(false),
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "HARNESS_TURN_ERROR");
+        assert!(
+            error
+                .message
+                .contains("session/prompt exceeded the turn budget")
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(900),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|(method, _)| method == "session/cancel")
+        );
+    }
+
+    #[test]
+    fn dropping_the_link_kills_the_process_group() {
+        let child = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let (agent_read, client_write) = std::io::pipe().unwrap();
+        let (client_read, _agent_write) = std::io::pipe().unwrap();
+        drop(agent_read);
+        let dialogue = Dialogue::new(BufReader::new(client_read), client_write);
+        drop(Link {
+            child,
+            dialogue,
+            opened: String::new(),
+            closed: false,
+        });
+        assert!(
+            fs::metadata(format!("/proc/{pid}")).is_err(),
+            "pid {pid} still alive"
+        );
+    }
+
+    fn hanging_dialogue(
+        seen: Arc<Mutex<Vec<(String, String)>>>,
+        answer_cancel: bool,
+    ) -> Dialogue<std::io::PipeWriter> {
+        let (agent_read, client_write) = std::io::pipe().unwrap();
+        let (client_read, mut agent_write) = std::io::pipe().unwrap();
+        std::thread::spawn(move || {
+            let mut incoming = BufReader::new(agent_read);
+            let mut pending = None;
+            loop {
+                let mut line = String::new();
+                if incoming.read_line(&mut line).unwrap() == 0 {
+                    break;
+                }
+                let message: Value = serde_json::from_str(line.trim()).unwrap();
+                let method = message["method"].as_str().unwrap_or("").to_owned();
+                seen.lock().unwrap().push((method.clone(), String::new()));
+                if method == "session/prompt" {
+                    pending = Some(message["id"].clone());
+                    continue;
+                }
+                if method == "session/cancel" {
+                    if answer_cancel && let Some(id) = pending.take() {
+                        let response = json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "result": {"stopReason": "cancelled"}
+                        });
+                        writeln!(agent_write, "{response}").unwrap();
+                    }
+                    continue;
+                }
+                let id = message["id"].clone();
+                let result = match method.as_str() {
+                    "initialize" => {
+                        json!({"protocolVersion": 1, "authMethods": [{"id": "cached_token"}]})
+                    }
+                    "session/new" => json!({"sessionId": "sess-1"}),
+                    _ => json!({}),
+                };
+                let response = json!({"jsonrpc": "2.0", "id": id, "result": result});
+                writeln!(agent_write, "{response}").unwrap();
+            }
+        });
+        Dialogue::new(BufReader::new(client_read), client_write)
     }
 
     fn dialogue_with(
