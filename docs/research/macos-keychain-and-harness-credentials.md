@@ -190,5 +190,6 @@
 ## 复核记录
 
 - 2026-10-17 初版（Muse 席 mac）：按开工书 §二 第 37 条 ⑤ 的派工落盘；评审席 Claude（mac）找问题、Antigravity（ubuntu）核验链接与版本，结论待回填。
+- 2026-10-20 omp（H3，DeepSeek（ubuntu））：前提检查命令 `HOME=<state>/omp-home omp -p --model <模型> "Reply with exactly HCTL2_OMP_PREFLIGHT_OK"`（一次真实调用，输出含该串才算登录可用；缺登录时报 `No API key found` 或 RPC 的 `login` 请求）；最小环境 `HOME=<state>/omp-home`、`PATH`、`TMPDIR=<state>/tmp`，不设 `PI_CONFIG_DIR`（绝对路径会在 `run/daemons` 被拼到 HOME 下，见 `harness-dispatch-channel-20261006.md` omp 复核）。
 
 
