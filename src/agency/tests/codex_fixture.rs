@@ -18,6 +18,23 @@ fn main() {
         println!("codex-cli 0.160.1");
         return;
     }
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["-c", "cli_auth_credentials_store=\"file\""]),
+        "native fixture must use the file credential backend"
+    );
+    let native_home = PathBuf::from(env::var_os("CODEX_HOME").unwrap());
+    assert_eq!(native_home.file_name().unwrap(), "codex");
+    assert_eq!(
+        PathBuf::from(env::var_os("HOME").unwrap()),
+        native_home.parent().unwrap().join("home")
+    );
+    if cfg!(target_os = "macos") {
+        assert_eq!(
+            env::var("CODEX_CA_CERTIFICATE").as_deref(),
+            Ok("/etc/ssl/cert.pem")
+        );
+    }
     if args.iter().any(|arg| arg == "resume") {
         loop {
             std::thread::park();

@@ -91,7 +91,13 @@ fn main() {
         assert_eq!(option("--tools").as_deref(), Some(""));
     }
     assert!(args.iter().any(|a| a == "--restricted"));
-    assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_none());
+    assert!(std::env::var_os("CLAUDE_CONFIG_DIR").is_some_and(|p| Path::new(&p).is_dir()));
+    let config = PathBuf::from(std::env::var_os("CLAUDE_CONFIG_DIR").unwrap());
+    assert_eq!(config.file_name().unwrap(), "claude");
+    assert_eq!(
+        PathBuf::from(std::env::var_os("HOME").unwrap()),
+        config.parent().unwrap().join("home")
+    );
     assert!(std::env::var_os("USER").is_some());
     // Real Claude refuses a default temp directory the confined pane cannot
     // read; every Agency session names its own.
@@ -101,6 +107,29 @@ fn main() {
     assert_eq!(std::env::var("CLAUDE_CODE_SANDBOXED").as_deref(), Ok("1"));
     let plugin = PathBuf::from(option("--plugin-dir").unwrap());
     let root = plugin.parent().unwrap();
+    let settings: Value =
+        serde_json::from_slice(&fs::read(option("--settings").unwrap()).unwrap()).unwrap();
+    assert_eq!(
+        settings["env"]["CLAUDE_CODE_OAUTH_TOKEN"],
+        "sk-ant-oat01-fixture-only"
+    );
+    assert!(
+        std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN").is_none(),
+        "credential leaked into pane environment"
+    );
+    assert!(
+        !args.iter().any(|a| a.contains("sk-ant-oat")),
+        "credential leaked into arguments"
+    );
+    write(
+        root,
+        "login-probe.json",
+        json!({
+            "home":std::env::var_os("HOME"),
+            "claude_config_dir":std::env::var_os("CLAUDE_CONFIG_DIR"),
+            "token_only_in_settings":true
+        }),
+    );
     let resume = option("--resume");
     let id = if root.join("fail-resume").exists() {
         format!("fixture-{}", std::process::id())

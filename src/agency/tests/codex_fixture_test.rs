@@ -599,16 +599,22 @@ fn prepare(mode: &str) {
         let _ = fs::remove_file(home.join(name));
     }
     fs::write(home.join("mode"), mode).unwrap();
+    fs::write(
+        home.join("auth.json"),
+        br#"{"tokens":{"access_token":"fixture-only"}}"#,
+    )
+    .unwrap();
+    fs::set_permissions(home.join("auth.json"), fs::Permissions::from_mode(0o600)).unwrap();
 }
 
 fn home() -> PathBuf {
-    let home = PathBuf::from(std::env::var("CODEX_HOME").expect("CODEX_HOME"));
+    let root = PathBuf::from(std::env::var("HCTL2_AGENCY_HARNESS_HOME").expect("managed home"));
     assert!(
-        home.ends_with("hctl2-codex-fixture-home"),
+        root.ends_with("hctl2-codex-fixture-home"),
         "{}",
-        home.display()
+        root.display()
     );
-    home
+    root.join("codex")
 }
 
 fn read_json(name: &str) -> Value {

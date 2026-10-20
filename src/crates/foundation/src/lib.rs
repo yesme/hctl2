@@ -250,7 +250,7 @@ impl SecretBackend {
     }
 }
 
-/// System-keyring-first secret storage with the owner-approved 0600 file fallback.
+/// Secret storage using private files by default; the system keyring is opt-in.
 pub struct SecretStore {
     service: String,
     fallback_root: PathBuf,
@@ -258,20 +258,6 @@ pub struct SecretStore {
 }
 
 impl SecretStore {
-    #[must_use]
-    pub fn detect(service: impl Into<String>, fallback_root: PathBuf) -> Self {
-        let backend = if keyring::Entry::store_status().is_ok() {
-            SecretBackend::SystemKeyring
-        } else {
-            SecretBackend::UserFile
-        };
-        Self {
-            service: service.into(),
-            fallback_root,
-            backend,
-        }
-    }
-
     #[must_use]
     pub const fn backend(&self) -> SecretBackend {
         self.backend
@@ -288,10 +274,11 @@ impl SecretStore {
         }
     }
 
-    /// Resolves an explicitly configured backend, or keeps the detected default.
+    /// Resolves an explicitly configured backend, or uses private files.
     ///
-    /// `None` is the default configuration: the system keyring when this machine has
-    /// one, the private file otherwise. An explicit `system-keyring` never silently
+    /// `None` uses private files without probing the system keyring. A background
+    /// control must not depend on an interactive login session or keychain prompt.
+    /// An explicit `system-keyring` never silently
     /// degrades to the file backend — an unusable keyring is a configuration error,
     /// because falling back would move secrets without the operator asking for it.
     ///
@@ -305,24 +292,12 @@ impl SecretStore {
         requested: Option<SecretBackend>,
     ) -> Result<Self, FoundationError> {
         let service = service.into();
-        match requested {
-            None => Ok(Self::detect(service, fallback_root)),
-            Some(SecretBackend::UserFile) => Ok(Self::user_file(service, fallback_root)),
-            Some(SecretBackend::SystemKeyring) => {
-                if keyring::Entry::store_status().is_ok() {
-                    Ok(Self {
-                        service,
-                        fallback_root,
-                        backend: SecretBackend::SystemKeyring,
-                    })
-                } else {
-                    Err(FoundationError::Secret(
-                        "system-keyring is configured but this machine has no usable system keyring"
-                            .to_owned(),
-                    ))
-                }
-            }
-        }
+        let backend = resolve_secret_backend(requested, || keyring::Entry::store_status().is_ok())?;
+        Ok(Self {
+            service,
+            fallback_root,
+            backend,
+        })
     }
 
     /// Stores a secret in the selected persistent backend.
@@ -375,6 +350,21 @@ impl SecretStore {
             "{}.secret",
             lower_hex(&Sha256::digest(identity.as_bytes()))
         ))
+    }
+}
+
+fn resolve_secret_backend(
+    requested: Option<SecretBackend>,
+    system_available: impl FnOnce() -> bool,
+) -> Result<SecretBackend, FoundationError> {
+    match requested {
+        None | Some(SecretBackend::UserFile) => Ok(SecretBackend::UserFile),
+        Some(SecretBackend::SystemKeyring) if system_available() => {
+            Ok(SecretBackend::SystemKeyring)
+        }
+        Some(SecretBackend::SystemKeyring) => Err(FoundationError::Secret(
+            "system-keyring is configured but this machine has no usable system keyring".to_owned(),
+        )),
     }
 }
 
@@ -478,6 +468,7 @@ impl SearchIndex {
 
 #[cfg(test)]
 mod tests {
+    use super::resolve_secret_backend;
     use std::fs;
     use std::io::Read;
     use std::path::PathBuf;
@@ -726,6 +717,36 @@ mod tests {
             assert_eq!(SecretBackend::parse(backend.as_str()), Some(backend));
         }
         assert_eq!(SecretBackend::parse("keychain"), None);
+    }
+
+    #[test]
+    fn default_secret_backend_never_probes_the_keyring() {
+        for requested in [None, Some(SecretBackend::UserFile)] {
+            assert_eq!(
+                resolve_secret_backend(requested, || panic!("unexpected keyring probe")).unwrap(),
+                SecretBackend::UserFile
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_keyring_fails_closed_when_unavailable() {
+        let requested = Some(SecretBackend::SystemKeyring);
+        assert!(resolve_secret_backend(requested, || false).is_err());
+        assert_eq!(
+            resolve_secret_backend(requested, || true).unwrap(),
+            SecretBackend::SystemKeyring
+        );
+    }
+
+    #[test]
+    fn default_secret_store_round_trips_in_private_files() {
+        let directory = temporary_directory("secrets-default");
+        let store = SecretStore::select("hctl2-test", directory.clone(), None).unwrap();
+        assert_eq!(store.backend(), SecretBackend::UserFile);
+        store.set("account", b"fixture-value").unwrap();
+        assert_eq!(store.get("account").unwrap(), b"fixture-value");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

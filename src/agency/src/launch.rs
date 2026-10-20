@@ -501,21 +501,17 @@ impl InstalledHerdr {
     /// sessions with. One native session opens in a new directory under /tmp
     /// and closes again; it delivers no turn and answers no prompt. If Claude
     /// still asks about trust, the Claude profession is not offered.
-    pub fn verify_claude_trust(&self) -> Result<()> {
+    pub fn verify_claude_trust(&self, credential_root: &Path) -> Result<()> {
         let Some(pool) = &self.pool else {
             return Ok(());
         };
-        let cred = tempfile::Builder::new()
-            .prefix("hctl2-trust-cred-")
-            .permissions(fs::Permissions::from_mode(0o700))
-            .tempdir()?;
         let parent = tempfile::Builder::new()
             .prefix("hctl2-exec-trust-")
             .permissions(fs::Permissions::from_mode(0o700))
             .tempdir_in("/tmp")?;
         let exec = parent.path().join("probe");
         crate::storage::private_dir(&exec)?;
-        let server = self.create_server(&exec, cred.path(), None)?;
+        let server = self.create_server(&exec, credential_root, None)?;
         pool.probe(&server, &exec)
     }
 
@@ -635,19 +631,16 @@ impl InstalledHerdr {
         } else {
             parent
         };
-        let mut model_state = if self.pool.is_some() {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .map(|home| vec![home.join(".claude"), home.join(".claude.json")])
-                .unwrap_or_default()
-        } else {
-            vec![]
-        };
-        if self.codex_pool.is_some() {
-            let codex_home = std::env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex")));
-            model_state.extend(codex_home);
+        let mut model_state = vec![];
+        if self.pool.is_some() || self.codex_pool.is_some() {
+            let homes = crate::managed_login::Homes::prepare(credential_root)?;
+            model_state.push(homes.home);
+            if self.pool.is_some() {
+                model_state.push(homes.claude);
+            }
+            if self.codex_pool.is_some() {
+                model_state.push(homes.codex);
+            }
         }
         let server = Arc::new(Server::start_with_denials(
             &self.binary,
@@ -662,8 +655,8 @@ impl InstalledHerdr {
                 .collect::<Vec<_>>(),
         )?);
         if self.pool.is_some() {
-            // Herdr's own installer, redirected privately. Never export this
-            // variable to Claude: that would hide the user's native login.
+            // Herdr's installer has private state separate from the managed
+            // Claude config. The actual session receives only its managed login.
             let integration = server.state.join("claude-integration");
             crate::storage::private_dir(&integration)?;
             let output = std::process::Command::new(&self.binary)
