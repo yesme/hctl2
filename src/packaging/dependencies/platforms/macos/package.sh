@@ -19,10 +19,11 @@ platform_stage_payload() {
         "$PAYLOAD_ROOT/libexec/hctl2/dagu" \
         "$PAYLOAD_ROOT/libexec/hctl2/gh" \
         "$PAYLOAD_ROOT/libexec/hctl2/herdr" \
+        "$PAYLOAD_ROOT/libexec/hctl2/tmux" \
         "$PAYLOAD_ROOT/libexec/hctl2/static-web-server" \
         "$PAYLOAD_ROOT/libexec/hctl2/process-compose"
 
-    for component in vikunja dagu gh herdr static-web-server process-compose; do
+    for component in vikunja dagu gh herdr tmux static-web-server process-compose; do
         relocate_macos_consumer \
             "$PAYLOAD_ROOT/libexec/hctl2/$component" binary "$dependency_dir"
     done
@@ -39,7 +40,7 @@ platform_stage_payload() {
         verify_macos_binary_compatibility "$(basename -- "$library")" "$library"
         codesign --force --sign - "$library"
     done < <(find "$dependency_dir" -type f -print | LC_ALL=C sort)
-    for component in tuwunel vikunja dagu gh herdr static-web-server process-compose; do
+    for component in tuwunel vikunja dagu gh herdr tmux static-web-server process-compose; do
         assert_macos_dependencies_relocatable "$PAYLOAD_ROOT/libexec/hctl2/$component"
         verify_macos_binary_compatibility "$component" "$PAYLOAD_ROOT/libexec/hctl2/$component"
         codesign --force --sign - "$PAYLOAD_ROOT/libexec/hctl2/$component"
