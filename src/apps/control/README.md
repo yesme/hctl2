@@ -74,6 +74,16 @@ Subscribe 本轮只在内存里保留 32 条事件；游标过期时的重同步
 
 缺省 `--root` 时与 `hctl2-services` 共用 `~/.local/state/hctl2`（或 `XDG_STATE_HOME/hctl2`）。显式 `--root` 才把服务状态嵌在该目录的 `services/` 下。没有其他组件在跑时，`hctl2 stop` 会 `down` 掉 Process Compose 项目；有 Cinny/Vikunja 等仍在跑则只停 Tuwunel 与 Gitea，本体可按 `--keep-project` 留下。
 
+## control 专用 GitHub 凭据
+
+`hctl2 --root /path/to/control github login` 由人前台执行随包 gh 的原生浏览器登录；加 `--with-token` 改从标准输入交令牌，加 `--hostname` 指定企业主机。`github status` 只读账号元数据。命令委托 `hctl2-control --root … github …`，不把令牌装入会保存输入的治理命令。凭据以 `github:<hostname>` 存在同一 root 的 SecretStore。
+
+gh 登录使用 `<root>/github/<hostname>/login` 的暂存配置，收进密钥后端后删除。macOS 用原生 Seatbelt 禁止钉定 gh 的 go-keyring 调用 `/usr/bin/security`；Linux 指定不可连接的私有 D-Bus 地址，不让 Secret Service 触碰人的登录。两边 HOME 与 XDG_CONFIG_HOME 也私有。登录时若人同意 gh 配置 Git，写入的也是这个私有 HOME，不是人的 Git 配置；control 的 Git 调用不依赖该配置。不修改个人配置，不自动续期。
+
+`github.rs::Credential` 统一注册、Issues、评审评论、发布与集成的子进程环境。github.com / *.ghe.com 用 GH_TOKEN，企业自托管主机用 GH_ENTERPRISE_TOKEN；所有者 2026-10-22 确认按 gh 的原生主机规则处理。继承的四种令牌、GH_DEBUG 与个人配置定位均被清掉。发布与 control 调工具的 Git 回读经既有 `repo::git::Credential::Static` / HCTL2_GIT_USER、HCTL2_GIT_TOKEN 交同一份凭据；不读人的 Git 全局凭据配置。直接运行的 hctl2-tool 行为不变。
+
+缺凭据或平台回 401 报 GITHUB_LOGIN_REQUIRED，消息带同 root 的完整登录命令；不替人登录。`hctl2 status` 的 github 只报 configured、hostname、account、account_id，不把“已保存”说成“令牌仍有效”。恢复到新 root 时重新计算私有配置路径，不沿用旧绝对路径。
+
 ## 密钥后端
 
 控制面保管的密钥（Gitea 管理员令牌、Matrix 应用服务令牌等）走 `foundation::SecretStore`。缺省用 `<root>/secrets/` 下的 0600 文件，不探测或访问系统钥匙串。所有者 2026-10-18 将后台控制面的缺省改为 `user-file`；系统钥匙串仍是获准的显式选项。

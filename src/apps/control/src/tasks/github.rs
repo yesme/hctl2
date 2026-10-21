@@ -27,6 +27,7 @@ impl Reads {
         &mut self,
         gh: &Path,
         host: &str,
+        credential: &crate::github::Credential,
         method: &str,
         path: &str,
         input: Option<Value>,
@@ -38,6 +39,7 @@ impl Reads {
             None
         };
         let mut cmd = Command::new(gh);
+        credential.apply(&mut cmd);
         cmd.env("GH_PROMPT_DISABLED", "1")
             .env("NO_COLOR", "1")
             .env_remove("GH_DEBUG")
@@ -63,6 +65,9 @@ impl Reads {
             .next()
             .and_then(|s| s.split_whitespace().nth(1))
             .and_then(|s| s.parse::<u16>().ok());
+        if status == Some(401) {
+            return Err(credential.rejected());
+        }
         let header = |name: &str| {
             headers
                 .lines()
@@ -147,10 +152,15 @@ impl Reads {
 }
 
 impl Client {
-    pub(super) fn github(gh: std::path::PathBuf, host: String) -> Self {
+    pub(super) fn github(
+        gh: std::path::PathBuf,
+        host: String,
+        credential: crate::github::Credential,
+    ) -> Self {
         Self::Github {
             gh,
             host,
+            credential,
             reads: Default::default(),
         }
     }

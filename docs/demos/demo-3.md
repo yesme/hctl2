@@ -750,7 +750,7 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 **实跑状态**：各步在验收实录（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实测核验，本节整体待核验席重跑。
 
 > [!NOTE]
-> **GitHub 登录与凭据说明**：现行做法复用人这台机器上已登录的 `gh`（control 调用随包的 `$INSTALL_ROOT/libexec/hctl2/gh`，`hctl2-tool` 缺省调用 `PATH` 上的 `gh` 或由 `HCTL2_GH` 指定，均读取宿主机当前用户的 `gh` 登录态；操作前确认 `gh auth status` 已登录并对 `yesme/hctl2-canary` 有写权限）。小活 AB 合入后改成 control 自己的凭据。
+> **GitHub 登录与凭据说明**：control 使用自己密钥后端中的凭据。由人在本节使用的同一个 root 执行 `$CLI --root "$ROOT" github login`；登录账号对 `yesme/hctl2-canary` 有写权限。本节人手运行的 gh 与 hctl2-tool 仍用人的登录。先后各由人运行一次 `gh auth status`，核对人的登录没变。自动真会话用例改用 `HCTL2_GITHUB_CONTROL_ROOT` 指定已由人登录的新 root，并保留这个 root，不从人的配置、环境令牌或钥匙串导入。旧实录是原实现的证据，不代表新凭据路径已复核。
 
 ### 1. 前置检查与克隆 `yesme/hctl2-canary`
 
@@ -760,6 +760,8 @@ $CLI --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID"
 
 ```bash
 gh auth status 2>&1 | grep -v -i 'token'
+$CLI --root "$ROOT" github login
+$CLI --root "$ROOT" github status
 codex --version
 gh api repos/yesme/hctl2-canary --jq '{id, full_name, default_branch}'
 gh api repos/yesme/hctl2-canary/branches/main/protection \

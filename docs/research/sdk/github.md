@@ -281,3 +281,12 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 ### 后续接线的已有机制
 
 [gh 登录](https://cli.github.com/manual/gh_auth_login) 负责原生授权；[gh 环境](https://cli.github.com/manual/gh_help_environment) 说明环境令牌优先于已存凭据。control 的运行调用使用自己的 SecretStore 凭据与私有 GH_CONFIG_DIR，只交给那一次子进程；不继承人的环境令牌。Git 推送与私有仓库回读继续用仓库已有的每进程凭据助手，直接执行的 `hctl2-tool` 保留人的工具行为。注册、Issues、发布、集成与 control 调工具的各处都要分别用会失败的夹具核到，不能以这次原生登录预查代替。
+
+
+## 2026-10-22 · control 凭据接线与主机变量
+
+决定建议不变：继续用随包 gh 2.102.0、SecretStore 与既有 Git 每进程助手，不引 SDK。所有者确认企业主机按 gh 的原生环境变量处理：[环境文档](https://cli.github.com/manual/gh_help_environment) 区分 github.com / *.ghe.com 的 GH_TOKEN 与企业自托管主机的 GH_ENTERPRISE_TOKEN；两者都只交 control 保存的凭据，不继承人的令牌。这个补充保留已有企业主机支持，不新开认证方案。
+
+实现入口是 `hctl2 --root <control-root> github login`，加 `--with-token` 从 stdin 导入。原生浏览器登录在私有暂存目录完成，随后收进密钥后端并删除暂存配置；macOS 对钉定 gh 禁止执行 /usr/bin/security，Linux 以不可连接的 DBUS_SESSION_BUS_ADDRESS 隔开 Secret Service。后者依据钉定的 [go-keyring Unix 实现](https://github.com/zalando/go-keyring/blob/v0.2.8/keyring_unix.go)，运行核验归 Ubuntu 席，本机不冒称测过。
+
+macOS 确定性验证：Buck Build `bb7b66f3-1501-44ed-bafd-d8a1606a95b6`，control unit / boundary / integration、CLI / Task CLI 五个目标通过。包含原生 Seatbelt 拒绝 security 程序的正对照、缺凭据不执行 gh、stdin 经真实 CLI 导入后注册、401 给真实登录入口、个人配置不变、三类主机的令牌环境隔离与状态不含令牌。原生 gh 的假账号登录证据仍见上一节；本节不把夹具说成真 GitHub 或真 B 链。macOS 与 Linux 的真 B 链仍待所有者分别交凭据后验收，完成前 #505 保留草稿。

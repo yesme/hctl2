@@ -251,11 +251,7 @@ pub(crate) fn drive(
                 user: hosted.username.clone(),
                 token: hosted.token.clone(),
             },
-            // GitHub's own credential helper for Git; control copies no token.
-            Connection::GitHub(github) => Credential::Helper(format!(
-                "!{} auth git-credential",
-                github.gh_path().display()
-            )),
+            Connection::GitHub(github) => github.credential().git(),
         };
         Ok((connection, credential))
     })

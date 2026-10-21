@@ -60,7 +60,7 @@ hctl2 task show PROJECT_ID TASK_ID
 
 ## 写回与恢复边界
 
-GitHub 使用现有 gh 登录；Gitea 1.27.3 经随包 tea 0.15.1 的 `api`，复用 Repo 的托管实例与凭据。删除能力在接源时回读管理员权限；删除确认再次核当前仓库身份与权限，单个 404 不证明已删除。
+GitHub 只用 control 密钥后端中的专用凭据，经 gh 原生令牌环境变量交给单次子进程；没配置或平台回 401 时，按错误提示在同一 `--root` 执行 `hctl2 github login`，再重试原命令，不替人登录或续期。Gitea 1.27.3 经随包 tea 0.15.1 的 `api`，复用 Repo 的托管实例与凭据。删除能力在接源时回读管理员权限；删除确认再次核当前仓库身份与权限，单个 404 不证明已删除。
 
 两家写前回读、写后核目标和字段。Gitea 的 `content_version` 数据库条件更新只覆盖正文；标题 / 状态与正文混合 PATCH 不是原子事务，因此能力声明另列 `conditional_fields=["body"]`，不会把整次 PATCH 说成原子比较并更新。GitHub 不声明条件更新。具体证据见 [Gitea 复核](../../../docs/research/gitea.md#2026-09-21--任务源写入条件的范围复核)。
 

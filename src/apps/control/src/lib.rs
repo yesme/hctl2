@@ -8,6 +8,7 @@ pub mod chat;
 pub mod config;
 mod context_query;
 pub mod dispatch;
+pub mod github;
 mod identity;
 pub mod integration;
 mod memo;

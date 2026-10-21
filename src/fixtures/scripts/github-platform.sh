@@ -4,6 +4,12 @@
 # rules.json (ruleset rules in force; absent = []), pr_state, pr_head, pr_base, merge_sha,
 # posts; switches as for tea. $0.state/../platform.git is the platform's Git.
 S="$0.state"; R="$S/../platform.git"
+if [ "$GH_TOKEN" != hctl2-test-token-not-a-credential ] || [ -n "$GITHUB_TOKEN$GH_ENTERPRISE_TOKEN$GH_DEBUG" ]; then
+  printf 'control credential was not isolated\n' >&2; exit 1
+fi
+if [ -f "$S/unauthorized" ]; then
+  printf 'gh: credential rejected (HTTP 401)\n' >&2; exit 1
+fi
 export GIT_AUTHOR_NAME=github GIT_AUTHOR_EMAIL=github@localhost GIT_COMMITTER_NAME=github GIT_COMMITTER_EMAIL=github@localhost
 pr_json() {
   state="$(cat "$S/pr_state")"

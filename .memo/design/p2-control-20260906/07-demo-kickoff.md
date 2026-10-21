@@ -498,7 +498,7 @@ Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479�
 | 件 | 任务书 | 写 | 找问题 | 核验 | 分支 / PR | 前提 |
 | --- | --- | --- | --- | --- | --- | --- |
 | 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，#466 | 演示 3 已走完（§二 第 52 条）；mac 上的托管登录由所有者导入后补齐验收，两席可合即开自动合入 |
-| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
+| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，#505 草稿，接线与验收中 | #466 已合；真 B 链待人交专用凭据 |
 | 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对 | §六「小活 AC」；§二 第 51 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照新的第三节从零重跑 B 链；MiniMax（mac）额外静态核对，不计入可合 | `agy/demo-3-manual-b`，还没开 PR | 现在就写 |
 | 小活 AD · 工种简历写 harness 本身 | §六「小活 AD」；§二 第 37 条 ③、第 51 条 ① | Antigravity（mac） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `agy/profession-resume`，还没开 PR | 现在就写 |
 | 小活 AE · 完成 Task 时写回连接的任务源 | §六「小活 AE」；§二 第 54 条 | Claude（ubuntu） | Codex（ubuntu）、Claude（mac） | DeepSeek（ubuntu） | `claude/task-complete-writeback`，还没开 PR | 现在就写 |
