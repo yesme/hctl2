@@ -4,7 +4,7 @@
 # into.
 #
 # The credential arrives as a runner secret and stays in the environment that
-# gh reads; control never copies it and this script never prints it. Without
+# control imports into its own secret backend; this script never prints it. Without
 # one there is nothing to reach GitHub with, so the path skips and says so on
 # stdout, where the CI log keeps it.
 
@@ -31,10 +31,10 @@ demo3_prepare github
 [[ -x "$DEMO3_PAYLOAD/libexec/hctl2/gh" ]] ||
     die "the package carries no gh: $DEMO3_PAYLOAD/libexec/hctl2/gh"
 note "GitHub path drives the packaged gh at $DEMO3_PAYLOAD/libexec/hctl2/gh"
-# gh reads the token from its own environment and keeps its state in this
-# directory, so the run touches neither the runner's home nor a login.
-export GH_TOKEN="$HCTL2_DEMO3_GITHUB_TOKEN"
-export GH_CONFIG_DIR="$DEMO3_ROOT/gh"
+# Use the public credential import command before any platform operation.
+printf '%s' "$HCTL2_DEMO3_GITHUB_TOKEN" |
+    hctl2 github login --with-token >/dev/null
+DEMO3_GITHUB_FACTS_TOKEN="$HCTL2_DEMO3_GITHUB_TOKEN"
 unset HCTL2_DEMO3_GITHUB_TOKEN
 
 demo3_control_start

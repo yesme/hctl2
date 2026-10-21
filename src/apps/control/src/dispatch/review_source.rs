@@ -210,6 +210,7 @@ fn read_connection(
         )?)),
         Platform::Github => Ok(Connection::GitHub(
             crate::integration::github::GitHub::connect(
+                root,
                 services,
                 registration
                     .prepared

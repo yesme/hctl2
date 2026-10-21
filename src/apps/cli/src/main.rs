@@ -47,6 +47,9 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Manage this control's own GitHub credential, not your personal gh login.
+    #[command(subcommand)]
+    Github(GithubCommand),
     /// Build a Context assembly preview without saving it.
     Context {
         #[command(subcommand)]
@@ -115,6 +118,20 @@ enum Command {
     Review(review::ReviewCommand),
     #[command(subcommand)]
     Changeset(changeset::ChangeSetCommand),
+}
+
+#[derive(Subcommand)]
+enum GithubCommand {
+    Login {
+        #[arg(long, default_value = "github.com")]
+        hostname: String,
+        #[arg(long)]
+        with_token: bool,
+    },
+    Status {
+        #[arg(long, default_value = "github.com")]
+        hostname: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -218,6 +235,35 @@ async fn context_cli(command: ContextCommand, root: &Path, as_json: bool) -> Res
 
 async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), String> {
     match command {
+        Command::Github(command) => {
+            let mut cmd = std::process::Command::new(control_binary()?);
+            cmd.arg("--root").arg(root).arg("github");
+            if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT")
+                .map(PathBuf::from)
+                .or_else(install_root_from_exe)
+            {
+                cmd.env("HCTL2_INSTALL_ROOT", install);
+            }
+            match command {
+                GithubCommand::Login {
+                    hostname,
+                    with_token,
+                } => {
+                    cmd.arg("login").arg("--hostname").arg(hostname);
+                    if with_token {
+                        cmd.arg("--with-token");
+                    }
+                }
+                GithubCommand::Status { hostname } => {
+                    cmd.arg("status").arg("--hostname").arg(hostname);
+                }
+            }
+            if cmd.status().map_err(io)?.success() {
+                Ok(())
+            } else {
+                Err("control GitHub credential command failed".into())
+            }
+        }
         Command::Agency(command) => agency::dispatch(command, root, json).await,
         Command::Profession(command) => profession::dispatch(command, root, json).await,
         Command::Profile(command) => profile::dispatch(command, root, json).await,
@@ -378,6 +424,18 @@ fn write_secret_backend(root: &Path, backend: &str) -> Result<(), String> {
     std::fs::rename(&temporary, &path).map_err(io)
 }
 
+fn control_binary() -> Result<PathBuf, String> {
+    std::env::var_os("HCTL2_CONTROL_BIN")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe().ok().and_then(|exe| {
+                let sibling = exe.parent()?.join("hctl2-control");
+                sibling.exists().then_some(sibling)
+            })
+        })
+        .ok_or_else(|| "hctl2-control binary not found; set HCTL2_CONTROL_BIN".to_owned())
+}
+
 async fn start_daemon(root: &Path) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(io)?;
     let socket = root.join("control.sock");
@@ -387,15 +445,7 @@ async fn start_daemon(root: &Path) -> Result<(), String> {
             socket.display()
         ));
     }
-    let bin = std::env::var_os("HCTL2_CONTROL_BIN")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::current_exe().ok().and_then(|exe| {
-                let sibling = exe.parent()?.join("hctl2-control");
-                sibling.exists().then_some(sibling)
-            })
-        })
-        .ok_or_else(|| "hctl2-control binary not found; set HCTL2_CONTROL_BIN".to_owned())?;
+    let bin = control_binary()?;
     let mut command = std::process::Command::new(&bin);
     command.arg("--root").arg(root);
     if let Some(install) = std::env::var_os("HCTL2_INSTALL_ROOT")

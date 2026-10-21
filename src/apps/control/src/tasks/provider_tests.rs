@@ -98,7 +98,15 @@ fn preflight_failure_or_stale_card_never_crosses_dispatch_boundary() {
 #[test]
 fn github_conditional_read_and_rate_limit_stop_native_requests() {
     let f = Fixture::new("conditional");
-    let c = Client::github(f.0.join("native"), "github.com".into());
+    let c = Client::github(
+        f.0.join("native"),
+        "github.com".into(),
+        crate::github::Credential::fixture(&f.0),
+    );
+    assert_eq!(
+        c.api("GET", "unauthorized", None).unwrap_err().code,
+        "GITHUB_LOGIN_REQUIRED"
+    );
     assert_eq!(c.api("GET", "user", None).unwrap(), Some(json!({"id":1})));
     assert_eq!(c.api("GET", "user", None).unwrap(), Some(json!({"id":1})));
     assert!(
@@ -286,7 +294,11 @@ fn create_response_is_only_a_locator_not_a_confirmation() {
         let mut source = src();
         source.candidate.provider = "github_issues".into();
         source.platform.instance = "github.com".into();
-        let client = Client::github(f.0.join("native"), "github.com".into());
+        let client = Client::github(
+            f.0.join("native"),
+            "github.com".into(),
+            crate::github::Credential::fixture(&f.0),
+        );
         let intent = effect(
             "task.create",
             json!({"title":"new", "body":raw["body"],
@@ -381,7 +393,11 @@ fn github_native_headers_and_transfer_do_not_retarget_original_entity() {
     let mut moved = raw;
     moved["node_id"] = json!("transferred");
     std::fs::write(root.join("gh.json"), moved.to_string()).unwrap();
-    let client = Client::github(exe, "github.com".into());
+    let client = Client::github(
+        exe,
+        "github.com".into(),
+        crate::github::Credential::fixture(&root),
+    );
     assert_eq!(
         client.read_card(&src, &original).unwrap_err().code,
         "ENTITY_CHANGED"
