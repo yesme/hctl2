@@ -19,7 +19,7 @@ fn github_platform_401_points_to_the_control_login_without_echoing_credentials()
     let temp = temp("github-expired-control-token");
     let platform = Platform::github(&temp.0);
     platform.set("unauthorized", "1");
-    let error = platform.observe().err().expect("401 must reject");
+    let error = platform.observe().expect_err("401 must reject");
     assert_eq!(error.code, "GITHUB_LOGIN_REQUIRED");
     assert!(error.message.contains("github login --hostname github.com"));
     assert!(!error.message.contains("hctl2-test-token-not-a-credential"));

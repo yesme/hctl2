@@ -290,3 +290,11 @@ P2.2 仍不依赖公网 webhook。实现每分钟增量对账、每 15 分钟完
 实现入口是 `hctl2 --root <control-root> github login`，加 `--with-token` 从 stdin 导入。原生浏览器登录在私有暂存目录完成，随后收进密钥后端并删除暂存配置；macOS 对钉定 gh 禁止执行 /usr/bin/security，Linux 以不可连接的 DBUS_SESSION_BUS_ADDRESS 隔开 Secret Service。后者依据钉定的 [go-keyring Unix 实现](https://github.com/zalando/go-keyring/blob/v0.2.8/keyring_unix.go)，运行核验归 Ubuntu 席，本机不冒称测过。
 
 macOS 确定性验证：Buck Build `bb7b66f3-1501-44ed-bafd-d8a1606a95b6`，control unit / boundary / integration、CLI / Task CLI 五个目标通过。包含原生 Seatbelt 拒绝 security 程序的正对照、缺凭据不执行 gh、stdin 经真实 CLI 导入后注册、401 给真实登录入口、个人配置不变、三类主机的令牌环境隔离与状态不含令牌。原生 gh 的假账号登录证据仍见上一节；本节不把夹具说成真 GitHub 或真 B 链。macOS 与 Linux 的真 B 链仍待所有者分别交凭据后验收，完成前 #505 保留草稿。
+
+### 2026-10-22 · macOS 真实浏览器登录与 B 链
+
+所有者经 control 私有入口完成原生 gh 浏览器授权，账号回读为 yesme；暂存 gh 登录文件随后删除。所有者确认个人 gh 前后都是 yesme / keyring，全程未报告钥匙串弹窗。登录中的 Git 配置询问若获同意，写入的是私有 HOME，不是个人配置。
+
+Buck Build `cc378541-17ba-4669-a1b3-1b4e1f7c0307`：`root//packaging/release:room-cli-test` 的 `demo3_github_codex_real_cli_reaches_protected_main_and_task_completion` 实跑通过，1 passed / 0 failed，461.44 秒。使用 #466 的托管 Codex 登录和此次 control 凭据；实际代码与测试经 [canary PR #47](https://github.com/yesme/hctl2-canary/pull/47) 合进受保护 main，提交 `0ae16db2b1f4fe44724d04b4867edcf09bdcac17`，生成 Integration Receipt 与 Task Completion Receipt。首次尝试曾因 Tuwunel 尚未就绪而停在建主 Room；等待就绪后在同一 root 重放初始化，没有清理已有凭据或治理记录。详细命令与输出见 [#505](https://github.com/yesme/hctl2/pull/505)。
+
+Linux B 链及个人 gh 配置的 openat 核验仍未在本机执行，留 Ubuntu 核验席；不由 macOS 的通过推定。
