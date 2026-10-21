@@ -12,7 +12,8 @@ processes:
       - "DAGU_COORDINATOR_HOST=127.0.0.1"
       - "DAGU_COORDINATOR_PORT=${DAGU_COORDINATOR_PORT}"
       - "DAGU_COORDINATOR_HEALTH_PORT=${DAGU_COORDINATOR_HEALTH_PORT}"
-      - "DAGU_AUTH_MODE=none"
+      - "DAGU_AUTH_MODE=builtin"
+      - "DAGU_AUTH_TOKEN_SECRET=${HCTL2_DAGU_TOKEN_SECRET}"
       - "DAGU_TERMINAL_ENABLED=false"
     log_location: "${HCTL2_LOG_DIR}/dagu.log"
     availability:

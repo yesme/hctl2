@@ -18,7 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-const HOSTED: &[&str] = &["tuwunel", "gitea"];
+const HOSTED: &[&str] = &["tuwunel", "gitea", "dagu"];
 const BASELINE: &[&str] = &["tuwunel"];
 const CONSUMED_FILE: &str = "hosted-consumed.json";
 static WRITE_SERIAL: AtomicU64 = AtomicU64::new(0);

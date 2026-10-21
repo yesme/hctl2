@@ -157,6 +157,7 @@ export HCTL2_GITEA_WORK="$work"
 export HCTL2_VIKUNJA_DATA="$work"
 export HCTL2_VIKUNJA_SECRET="fixture"
 export HCTL2_DAGU_DATA="$work"
+export HCTL2_DAGU_TOKEN_SECRET="fixture"
 export HCTL2_HERDR_CONFIG="$work/herdr.toml"
 export HCTL2_HERDR_SOCKET="$work/herdr.sock"
 export TUWUNEL_PORT=1 CINNY_PORT=1 VIKUNJA_PORT=1 GITEA_PORT=1

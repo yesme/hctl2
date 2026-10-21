@@ -1,0 +1,102 @@
+load("//build/rules:ci.bzl", "CI_FAST")
+load("//build/rules:rust.bzl", "HCTL2_RUST_EDITION", "HCTL2_RUSTC_FLAGS", "hctl2_cargo_env")
+
+oncall("hctl2")
+
+filegroup(
+    name = "docs",
+    srcs = glob(["**/*.md"]),
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "api_yaml",
+    src = "api/v1/api.yaml",
+)
+
+rust_binary(
+    name = "codegen",
+    visibility = ["PUBLIC"],
+    srcs = ["codegen/main.rs"],
+    crate_root = "codegen/main.rs",
+    deps = [
+        "root//third-party/rust:openapiv3",
+        "root//third-party/rust:prettyplease",
+        "root//third-party/rust:progenitor",
+        "root//third-party/rust:serde_json",
+        "root//third-party/rust:serde_yaml",
+        "root//third-party/rust:syn",
+    ],
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+)
+
+genrule(
+    name = "generated_check",
+    srcs = [
+        ":api_yaml",
+        ":codegen",
+    ],
+    out = "generated.rs",
+    cmd = """
+set -euo pipefail
+"$(location :codegen)" "$(location :api_yaml)" "$OUT"
+""",
+    labels = CI_FAST,
+)
+
+DEPS = [
+    "root//crates/foundation:foundation",
+    "root//crates/store:store",
+    "root//third-party/rust:bytes",
+    "root//third-party/rust:futures-core",
+    "root//third-party/rust:progenitor-client",
+    "root//third-party/rust:reqwest",
+    "root//third-party/rust:serde",
+    "root//third-party/rust:serde_json",
+    "root//third-party/rust:tokio",
+]
+
+rust_library(
+    name = "dagu_api",
+    crate = "dagu_api",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    tests = [":contract_test"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "contract_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = DEPS,
+    edition = HCTL2_RUST_EDITION,
+    env = hctl2_cargo_env() | {
+        "CARGO_BIN_EXE_hctl2": "$(location root//apps/cli:hctl2)",
+        "CARGO_BIN_EXE_hctl2-control": "$(location root//apps/control:hctl2-control)",
+        "HCTL2_DAGU_GENERATED_CHECK": "$(location :generated_check)",
+        "HCTL2_TEST_DAGU_CACHE": "$(location root//packaging/dependencies:dagu)",
+    },
+    labels = CI_FAST,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "clippy",
+    srcs = {
+        "codegen": ":codegen[clippy.txt]",
+        "contract": ":contract_test[clippy.txt]",
+        "library": ":dagu_api[clippy.txt]",
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
