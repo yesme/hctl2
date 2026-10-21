@@ -90,6 +90,8 @@ impl Pool {
         tenant: &Path,
         credential_root: &Path,
     ) -> Result<Running> {
+        // Reject before materializing a worktree or queueing an execution.
+        crate::managed_login::Homes::prepare(credential_root)?.claude_token()?;
         let copy = crate::write::prepare(
             &spec.document,
             &bundle.document,
@@ -678,6 +680,8 @@ impl Native {
         resume: Option<&str>,
         writing: bool,
     ) -> Result<Self> {
+        let homes = crate::managed_login::Homes::prepare(&server.credential_root)?;
+        let token = homes.claude_token()?;
         let integration = server.state.join("claude-integration");
         let hook = integration.join("hooks/herdr-agent-state.sh");
         if !hook.exists() {
@@ -687,6 +691,9 @@ impl Native {
         }
         let command = format!("bash {} session", crate::launch::sh_quote(&hook));
         let mut settings = json!({"hooks":{"SessionStart":[{"matcher":"^(startup|resume|clear|compact|fork)$","hooks":[{"type":"command","command":command,"timeout":10}]}]}});
+        // Claude's native settings env block is the credential injection point.
+        // The bearer value never enters pane argv, workspace env or server env.
+        settings["env"] = json!({"CLAUDE_CODE_OAUTH_TOKEN":token});
         if writing {
             settings["sandbox"] = json!({"enabled":false,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false,
                 "filesystem":{"denyRead":crate::confine::sensitive_paths()},"network":{"allowedDomains":[]}});
@@ -712,7 +719,7 @@ impl Native {
         }
         let client = Client::connect(&server.socket)?;
         let created=client.call("workspace.create",json!({"cwd":cwd,"focus":false,"label":"agency-standby","env":{
-            "HOME":std::env::var("HOME").unwrap_or_default(),"USER":std::env::var("USER").unwrap_or_default(),"PATH":format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_else(|_|"/usr/bin:/bin".into()))}}))?;
+            "HOME":homes.home,"CLAUDE_CONFIG_DIR":homes.claude,"USER":std::env::var("USER").unwrap_or_default(),"PATH":format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_else(|_|"/usr/bin:/bin".into()))}}))?;
         let pane = created
             .pointer("/root_pane/pane_id")
             .and_then(Value::as_str)
@@ -740,7 +747,8 @@ impl Native {
                     bin.display(),
                     std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
                 ),
-                format!("HOME={}", std::env::var("HOME").unwrap_or_default()),
+                format!("HOME={}", homes.home.display()),
+                format!("CLAUDE_CONFIG_DIR={}", homes.claude.display()),
                 format!("USER={}", std::env::var("USER").unwrap_or_default()),
             ];
             // Claude refuses to start when its default /tmp/claude-<uid> exists

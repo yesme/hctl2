@@ -14,8 +14,10 @@ mod render;
 mod repo;
 mod review;
 mod room;
+mod runs;
 mod task;
 mod terminal;
+mod workflow;
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -52,13 +54,13 @@ enum Command {
     },
     /// Create the control root; records `--secret-backend` when given.
     Init {
-        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        /// Persistent secret backend: `user-file` (default) or explicit `system-keyring`.
         #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
         secret_backend: Option<String>,
     },
     /// Start the control daemon; records `--secret-backend` when given.
     Start {
-        /// Persistent secret backend: `system-keyring` (default when available) or `user-file`.
+        /// Persistent secret backend: `user-file` (default) or explicit `system-keyring`.
         #[arg(long, value_name = "BACKEND", value_parser = ["system-keyring", "user-file"])]
         secret_backend: Option<String>,
     },
@@ -96,6 +98,11 @@ enum Command {
     /// Publish governance text as an append-only Memo revision: preview, confirm, read back.
     #[command(subcommand)]
     Memo(memo::MemoCommand),
+    /// Register, compile and approve an immutable workflow (preview, then confirm).
+    #[command(subcommand)]
+    Workflow(workflow::WorkflowCommand),
+    #[command(subcommand)]
+    Run(runs::RunCommand),
     #[command(subcommand)]
     Invocation(invocation::InvocationCommand),
     #[command(subcommand)]
@@ -215,6 +222,8 @@ async fn dispatch(command: Command, root: &Path, json: bool) -> Result<(), Strin
         Command::Profession(command) => profession::dispatch(command, root, json).await,
         Command::Profile(command) => profile::dispatch(command, root, json).await,
         Command::Memo(command) => memo::dispatch(command, root, json).await,
+        Command::Workflow(command) => workflow::dispatch(command, root, json).await,
+        Command::Run(command) => runs::dispatch(command, root, json).await,
         Command::Invocation(command) => invocation::dispatch(command, root, json).await,
         Command::Terminal(command) => terminal::dispatch(command, root, json).await,
         Command::Integration(command) => integration::dispatch(command, root, json).await,

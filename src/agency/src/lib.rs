@@ -7,6 +7,7 @@ pub mod confine;
 pub mod harness;
 pub mod herdr;
 pub mod launch;
+pub mod managed_login;
 pub mod observation;
 pub mod runtime;
 pub mod service;

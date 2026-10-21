@@ -340,3 +340,100 @@ fn write_profiles_require_scoped_write_permission_and_cannot_grant_commands() {
         assert_eq!(error.code, "PERMISSION_SCOPE_INVALID", "{permission}");
     }
 }
+
+#[test]
+fn frozen_legacy_herdr_profile_reads_back_unchanged_alongside_harness_resumes() {
+    let mut e = Env::new();
+    // Golden sample from Demo 3 acceptance (`2026-10-20-演示3验收-ubuntu.md`):
+    // legacy write profile frozen when Profession.harness was `herdr` (`protocol-22`)
+    // and model was `none`, with exact worker_profile_revision digest
+    // `6b356f220a4949ee5dadfb8d90c0a0068fefe0096a69041a6c623ad49d69e78a`.
+    let legacy_revision_id = "6b356f220a4949ee5dadfb8d90c0a0068fefe0096a69041a6c623ad49d69e78a";
+    let legacy_profile = WorkerProfile {
+        harness: FrozenRef {
+            id: "herdr".into(),
+            revision: "protocol-22".into(),
+            digest: "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7".into(),
+        },
+        model: "none".into(),
+        mode: "write".into(),
+        permissions: vec!["context.read".into(), "git.read".into(), "git.write".into()],
+        environment: vec![],
+        required_capabilities: Capabilities {
+            stop: true,
+            ..Capabilities::default()
+        },
+        max_context_bytes: 262_144,
+    };
+    let legacy_plan = prepare_profile(
+        &e.store,
+        input(
+            "legacy-herdr-write",
+            ProfileAction::Create {
+                id: "legacy-write".into(),
+                profile: legacy_profile.clone(),
+            },
+        ),
+        &actor(),
+    )
+    .unwrap();
+    let legacy_created = admit_profile(&mut e.store, &actor(), legacy_plan).unwrap();
+    assert_eq!(legacy_created["revision"]["key"]["id"], legacy_revision_id);
+    let legacy_ref = serde_json::from_value(legacy_created["revision"].clone()).unwrap();
+    assert_eq!(profile_at(&e.store, &legacy_ref).unwrap().1, legacy_profile);
+
+    let claude_plan = prepare_profile(
+        &e.store,
+        input(
+            "claude-write",
+            ProfileAction::Create {
+                id: "demo3-claude-write".into(),
+                profile: WorkerProfile {
+                    harness: FrozenRef {
+                        id: "claude-code".into(),
+                        revision: "2.1.303 (Claude Code)".into(),
+                        digest: "375988f457756524234695cf2d8f64ace99c5f68682e47ea24862a843c191450"
+                            .into(),
+                    },
+                    model: "claude-code/default".into(),
+                    ..legacy_profile.clone()
+                },
+            },
+        ),
+        &actor(),
+    )
+    .unwrap();
+    let claude_created = admit_profile(&mut e.store, &actor(), claude_plan).unwrap();
+
+    let codex_plan = prepare_profile(
+        &e.store,
+        input(
+            "codex-write",
+            ProfileAction::Create {
+                id: "demo3-codex-write".into(),
+                profile: WorkerProfile {
+                    harness: FrozenRef {
+                        id: "codex-cli".into(),
+                        revision: "codex-cli 0.163.0".into(),
+                        digest: "399ff69c431c066e40de318fba45c2b07f45a76b19939d247ee4828fc70c4215"
+                            .into(),
+                    },
+                    model: "codex-cli/default".into(),
+                    ..legacy_profile.clone()
+                },
+            },
+        ),
+        &actor(),
+    )
+    .unwrap();
+    let codex_created = admit_profile(&mut e.store, &actor(), codex_plan).unwrap();
+
+    assert_ne!(
+        claude_created["revision"]["key"]["id"],
+        codex_created["revision"]["key"]["id"]
+    );
+    assert_ne!(claude_created["revision"]["key"]["id"], legacy_revision_id);
+    assert_ne!(codex_created["revision"]["key"]["id"], legacy_revision_id);
+    // Already-frozen legacy Profile remains readable byte-for-byte without rewrite.
+    assert_eq!(profile_at(&e.store, &legacy_ref).unwrap().1, legacy_profile);
+}

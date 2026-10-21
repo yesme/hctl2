@@ -106,6 +106,22 @@
 
 47. **2026-10-20 走查第二轮的 P1-R2-1 定性：控制面 Context 组装漏了契约与卡正文；排成小活 AA。** #431 第二轮（GLM，`42a858f`）报「Task 关联的写入调用，Codex 收不到正文」，Antigravity（ubuntu）核验判不可合——读了同一个 rollout（第 9 行有 2436 字节的完整开工包）和两轮的开工包条目，指出病灶是控制面：关联 `task_id` 时只内联 `task_comments`，卡正文与已采纳契约都不放，全工种一样，与 Codex 无关；第一轮 A 链能过是因为工作树里本来就有文件。主笔对着 main 核了 `dispatch/context.rs:55-79` 与 `context/sources.rs:44-46、119-209`，并查了设计（`spec/project.md` §三种交付方式「契约与范围说明」是 `inline` 的必用内容；`context.md` §内联、§开工包；`contract-tests.md` 第 49 行「不能静默省略」），采信 Antigravity 的定性：是控制面不合设计的 P1。#431 的结论：不可合，实录三句改对、B 链保留 `task_id` 重走、日志路径写准。主笔报所有者要排一个小活并建议了席位，所有者：「小活你决定。」定下：① 排成 §六「小活 AA」，Claude（ubuntu）写（#459、#462 在收尾，下一包 5b 还早），Codex（mac）找问题（控制面 Context 代码它最熟），Antigravity（ubuntu）核验（它定位的，第二轮环境在它手上，重跑 B 链最合适）；现在就写，不等演示 3。② #431 的前提改为「小活 AA 合入后走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）」。③ 这不改约束：设计早就写明要内联，是实现漏了；失败用例挂在 `contract-tests.md` 第 49 行那条下面。
 
+48. **2026-10-20 走查一轮一个 PR，持续走，不淤在一处。** 所有者问「#431 还要多久能合啊？？」，主笔答还要等第三轮、并给了「现在合、第三轮另开」的选法；所有者先答「继续这样走，不直接合。不过你要给我个复盘，为什么这样back-and-fouth」。主笔复盘：#431 挂了三天，大头是结构——一个 PR 装下第 9 包第 7 条整条验收，每轮查出的毛病在别的 PR 修，走查 PR 跟着它们等（这是主笔 10-17 第一次评审时建议、后来写进派活表的）；其次走查记录三次把原因写错，各多一轮；主笔自己拆成两次发意见、前后口径不一；还有「继续」节奏下前提满足后空等。所有者：「走查一轮一个PR，要不断走查，而不是都淤积在一个地方。你看431，找出来的问题并不是都相关的。」定下：① **走查一轮一个 PR。** 一轮走完、记录经两席核对无误就合入；下一轮在最新的 main 上另开 PR（分支 `<席位>/<演示>-walkthrough-r<n>`），追加到同一份实录、改同一份清单。第 7 条做没做完看清单（`08-demo3-walkthrough.md`）每一行的判定，不看哪个 PR 开着。② **持续走。** 走查席不等「全部修好」：上一轮合入后，main 上只要有新的修复合入，就开下一轮，重看相关的行；没有新东西就不开。③ **查出的毛病各走各的。** 每条 P1 当轮就报主笔排成小活或接进对应的包，在清单那一行挂上修复的 PR；走查 PR 不因此挡合入，也不等修复。④ #431 按此收口：它装的是第一、二轮（含 r3 绕法的实录），记录两席都核过，照常合入；不靠绕法的第三轮另开 PR。派活表「第 9 包第 7 条走查」一行改成常驻一行。⑤ 同样用于 P2.5 的走查（`09` §四 第 9 包）。
+
+49. **2026-10-20 演示 3 验收怎么走。** #479（走查第三轮）两席可合后，演示 3 能在演示里看到的清单行全部成立，主笔提验收的排法：Claude（ubuntu）照 `docs/demos/demo-3.md` 从零装包走 A 链（本地 Gitea + 真 Claude Code）与 C 链（开关 Project 三次预览）——Claude Code 只能在 ubuntu 上跑（§七 钥匙串一条）；Claude（mac）走 B 链（受保护的 GitHub `main` + 真 Codex），并写验收记录、汇总哪些过哪些没过；所有者看实录或挑一段现场看。所有者：「演示3验收，可以按你的流程」。定下：① 两边各从最新 main 构建完整包、各用新的 root，不碰 `~/.local/state/hctl2` 与别席的环境；手册命令照抄，和手册不一致、要绕、跑不通的如实记，不在验收里改手册，问题另排。② 实录分别进 `.memo/log/2026-10-20-演示3验收-ubuntu.md` 与 `…-mac.md`，ID 全长、原样。③ 验收结果照演示 1、2 的做法写进 §三「演示 3 验收」一节，由 Claude（mac）在所有者看过之后落；实录 PR 照 #381 的先例由作者自合。④ 所有者看过演示，即「演示 3 走完」：钥匙串专项、H1–H3 可合，P2.5 第 2、3、7 包与第 10 包按各自前提开工。
+50. **2026-10-20 control 调 GitHub 用的凭据归第 38 条的第三类（方案 A）；演示 3 的 B 链挪到 ubuntu。** 主笔在 mac 上走 B 链前停下：随包的 `gh` 要用所有者的 GitHub 登录，而 mac 上 gh 把登录存在人的钥匙串里。按 CONSTRAINTS「遇到安全性检查」报所有者，给了三个选法：B 链挪到 ubuntu、所有者自己在弹窗上点允许、给环境变量令牌。所有者问：「ubuntu上的问题能解决，那么mac上呢？我们无法假定用户不用mac-gh吧。那怎么办」。主笔答：mac 上把 gh 登录存在钥匙串里的用户必须支持；ubuntu 其实也没解决——现行做法（`docs/usage.md` 第 344 行「复用用户已有登录」，`src/crates/repo/README.md` 发布与集成两节「以它自己的登录」）在两个平台都是 control 借人的登录，ubuntu 上登录在 `~/.config/gh` 的明文文件里，只是不弹窗。第 38 条按归属分三类时，没给「control 调外部平台用的凭据」归类，按理属于第三类：control 是后台进程，不该借人手用工具的登录，理由和第 38 条 ② 相同。方向上主笔给了三个选法：A，control 有自己的 GitHub 凭据，人交一次，存在 control 的密钥后端，每次只经 `GH_TOKEN` 交给那一次的 `gh`；B，维持借人的登录；C，GitHub App 发的短期令牌。所有者：「方案还是A吧」。定下：① control 调 GitHub 用的凭据属第 38 条第三类，存在 control 的密钥后端，人交一次；control 不读人的钥匙串、不读人的 `~/.config/gh`、不用人这台机器上 Git 的凭据助手。缺凭据或令牌失效时，产品报错并写明人要跑的命令，不替人登录、不替人续期（CONSTRAINTS「遇到安全性检查」）。mac 与 Linux 走同一条路。人自己在终端里跑的 `gh`、`git` 照旧用人的登录。② B 不取：它违背第 38 条的分类；mac 上 control 在后台时要么弹不出授权直接失败，要么不声不响就读走了（实现层脚注：gh 在 mac 上经系统自带的 `security` 命令读钥匙串，人登录时存进去的那一项信任的正是这条命令，所以随包的 gh 很可能不弹窗就读到；主笔没有实测，也没有去查所有者那一项的权限）。C 留作以后可选的策略，不排。③ 实现排成 §六「小活 AB」，#466 合入后开。`docs/usage.md` 与 repo README 那几句描述的是现行实现，随小活 AB 一起改，不先改。④ 演示 3 的 B 链不等小活 AB：挪到 ubuntu，由 Claude（ubuntu）照现行做法和 A、C 两链一起走（GLM 走查第二、三轮已在 ubuntu 上走通过 B 链）；Claude（mac）只写验收记录，并在记录里写明「control 借用人的 gh 登录」是已知缺口、由小活 AB 收。mac 上带钥匙串 gh 的 B 链真跑，改作小活 AB 的验收。第 49 条其余照旧。④ 与小活 AB 的席位按主笔同一条回答里的推荐排。
+51. **2026-10-20 演示 3 验收查出的问题怎么排；MiniMax 试用的结论。** Claude（ubuntu）在 main `009cfab` 上从零走完 A、B、C 三条链与第五、六节，全部通过（#482，实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md`），并如实记了九处和手册不一致的地方、一条观察。主笔逐条看过报所有者，所有者：「验收出来的问题，你看怎么处理。」定下：① **Claude Code 与 Codex 的写入 Profile 合成了同一个 Worker Profile**：两个工种申报的 harness 都是 `herdr` `protocol-22`、model 都是 `none`，两次 `profile create` 给出同一个 `worker_profile_revision`。演示 3 不受影响；但第 5b 包按 Worker Profile 判多样性、做去重时，会把两家当成一个。这是 §七「工种目录里 harness 填的是 herdr」那一条的后果；那一条在 §二 第 37 条 ③ 已经定了「演示 3 之后改，Antigravity 写」，现在照办，排成 §六「小活 AD」：工种简历写 harness 本身，终端复用器不进简历（和 H1–H3 验收第 6 条同一口径）。Antigravity（mac）写，它在 H1 里给 Antigravity 工种改过同一个字段；现在就写，演示 3 走完才合。② **手册补齐、合入预览的确认命令改对**，排成 §六「小活 AC」：第三节写成可照抄的 B 链命令；等 `canary` 用产品自己的 `hctl2-tool wait commit-ci`；建卡要等几分钟写明；canary 上留下的东西怎么收写明；合入预览末尾「Confirm with」给的是 `integration preview … --preview-token`，应是 `integration submit`，产品的人读输出改对；Task 完成后 GitHub 上的卡没关（issue #41），对照 `spec/task.md`「Receipt……和必要的外部写回 outbox 在同一事务提交」查实现做没做、写回什么，没做就写明、报主笔另排，不在小活 AC 里实现。③ `status` 不带 `--json` 时输出的是缩进的 JSON，人读合入预览没单列冻结的保护快照：归 `09` 第 8 包（命令行的人读输出），加进它的范围与验收。④ GitHub 任务源建卡约 2 分 30 秒（随包 gh 逐个读 canary 上已有 issue 的依赖与子 issue）：记进 §七，不排期。⑤ 三次写入的工作树一直没收回：已有「写入会话完成之后的去留」一条（§七，#459 调研），不另排。⑥ 主笔在第 50 条写的「ubuntu 上 gh 登录在 `~/.config/gh` 的明文文件里」不对：这台 ubuntu 上 `gh auth status` 显示登录存在系统 keyring，control 调随包 gh 照样不弹窗就读到了。第 50 条的结论不变，这反倒说明 control 借人的登录在两个平台上都不声不响。⑦ **MiniMax（m3.1-flash）试用。** 所有者：「minimax的m3.1-flash已上线，可以尝试让它做一些review的工作看下模型能力。」主笔排了三份盲审，用别席当时已经查出的问题打分：#475 第一稿（主笔挡过 3 条）、#467 第一稿（Codex 挡过 4 条 P1）、#463 第二稿（DeepSeek 抓到主笔漏的 `jq` 取值路径）。结果：挡合入的 8 条只抓到 1 条，就是 #463 那条；#463 另报了 1 条挡合入的误报，把确认那一步的返回当成了注册那一步的；新找到 2 条成立的建议（读回那条主笔在 main 上关掉第三道比较复核过，18 条用例照样全过）；三份文件写的结束时间都晚于文件最后写入的时间。长处是拿文档对代码的静态核对。主笔的判断是不适合当找问题席，所有者：「Minimax同意你的观点。后边按你的安排来分配席位。」定下：MiniMax（mac）不进找问题席、核验席；只在文档、手册类 PR 上做额外的静态核对，派活表的核验一栏注明「不计入可合」；它报的问题由作者按评审意见处理，有争议由找问题席判。它新找到的两条：读回三道摘要比较的第三道没有单独的用例，进 `09` 第 7 包验收；Antigravity 写入派工拦 `gh` 的规则能被 `sh -c 'gh …'` 一类写法绕过，这是 harness 有意绕规则，按 AGENTS「找规则挡不住的输入只限诚实路径」记成策略点，凭据由沙箱兜住，不挡 #467，记进 §七。⑧ 两个小活的席位按主笔推荐排：小活 AC 由 Antigravity（ubuntu）写（第 9 包第 9 条手册是它写的），Claude（mac）找问题，DeepSeek（ubuntu）照新手册从零重跑 B 链；小活 AD 由 Antigravity（mac）写，Codex（mac）找问题（它在 #467 提过同一处），DeepSeek（ubuntu）核验。
+52. **2026-10-20 所有者看过演示 3 验收实录：演示 3 走完。** 主笔把实录怎么看（开头的结果表、「和手册不一致」一节、「观察」，以及 GitHub 上 canary 的 PR #42）给了所有者，所有者：「看过了。」照第 49 条 ④ 与 `09` §五「先后」，定下：① 验收结论写进 §三「演示 3 验收 · 2026-10-20」。② 钥匙串专项（#466）不再等演示 3：它自己的验收补齐（mac 上的托管登录由所有者导入）、两席「可合」后即开自动合入；H1–H3（#467、#461、#464）在钥匙串专项合入后即可合。③ P2.5 照 `09` §五 的先后开：第 0 包已合（#457）→ 开第 2 包；第 1 包已合（#475）→ 开第 3、7 包。派活表加三行，席位照 `09` §四 各包写的。Antigravity（mac）手上有小活 AD，第 2 包在 AD 交出后就开，不等它合入。④ 第 10 包的前提全部满足（演示 3 验收，#447、#454、#460、H0 合入），Claude（mac）现在开。⑤ 小活 AD 的「演示 3 走完才合」已满足。
+53. **2026-10-20 回顾各家 harness 的四种能力；排席改按活的难度；评审加两条规矩。** 所有者：「你回顾一下这一段时间来的开发，我们重新理解一下各个harness+llm的统筹能力、编码能力、找错能力、验收能力。这个retrospective有助于我们未来安排工作。」并给了额度：Claude、Codex、Antigravity 各 $200，Grok $100，都富余；DeepSeek 按量付费，可以放开用；GLM 约等于 5 个 Kimi，Kimi 约等于 Qwen；MiniMax 有额度但用不上。主笔整理了 #363 到 #484 的 122 个 PR（57 个有评审记录），第一稿按条数打分；所有者：「$200不挤啊，是每个各$200」「你在评估各个harness的时候，也需要考虑到这个活儿的开放程度、代码量、难度等因素，而不是简单地点个数。」主笔按改动量、开放程度、难度与评审席强弱重排：Codex 的写改回 9（最大最难的 PR 几乎都是它写的，每个被挡 0 到 4 条、一轮收住）；GLM、Kimi 的核验漏判几乎都在难 PR 上，简单 PR 上可靠；#464 只被挡 1 条是因为找问题席只读代码，同类问题在 #467 被 Codex 判成 P1。所有者：「全都落下来。」定下：① 回顾落成 [`harness-performance-20261020.md`](../../notes/harness-performance-20261020.md)。② **排席按活的难度与开放程度，不按家**，§六 的席位表照此改：难的 PR（状态、并发、丢失后恢复、外部副作用只做一次、凭据、控制面）两席找问题（Codex 加 Claude）、一席核验（Antigravity 或 DeepSeek）；中等的一席找问题、一席核验；简单的 GLM、Kimi 可以坐核验；开放的活优先 Codex、Claude 两席，其次 Antigravity；DeepSeek、Grok 接的活，开工书先把规格与验收钉死。卡人的不是额度，是同时开着的会话与所有者转发的精力。③ `AGENTS.md`「评审与合入」加两条：代码 PR 先找问题、后核验（核验席等找问题席对同一提交写了结论再下结论，先逐条复现找问题席报的问题）；引用的名字逐个核对（用例名、函数名、错误码、Build ID、run ID、提交号，有一处编的判「不可合」）。④ 席位：第 7 包与小活 AD 的找问题席由 Codex（mac）换成 Claude（ubuntu）——Codex（mac）同时写 #466、找问题第 2 包与第 10 包，Claude（ubuntu）写过第 5a 包的计票去重，正熟小活 AD 那一块；#464 合入前由 Claude（ubuntu）补一道找问题，专看 #467 那四条 P1（两轮之间进程死掉、拿整份历史核对本轮输入、多个槽位共用配置、测试复制个人登录）在 omp 上有没有同类问题，Grok（ubuntu）与 Antigravity（ubuntu）已有的结论照旧算。⑤ 统筹的备份是 Claude（ubuntu）。
+54. **2026-10-20 完成 Task 时写回连接的任务源，排成小活 AE。** 小活 AC（#485）按任务书第 7 条查实：`src/crates/task/src/planning.rs` 的 `Action::Complete` 只写 Completion Receipt、推进 lifecycle，不往 outbox 放任何写回，所以演示 3 验收里 Task 完成后，GitHub issue #41 与 Gitea 上的两张卡都还开着。设计写的是要写：`spec/task.md`「Receipt、生命周期事件、current 投影、匹配的 `completion_pending` 占用标记清除和必要的外部写回 outbox 在同一事务提交……外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实」；`task.md`「HCTL 已验证而外部写回未确认时显示『已完成 · 已验证 · 外部同步中』」。主笔报所有者、建议排小活，所有者：「排。既然是connect to the external source (注意用词，这叫connect)，那么自然对于它是有写操作的。就看权限是不是允许了。」定下：① 用词照所有者：这是对**连接的任务源**（`task connect` 接入的那一个）的写回，不另起「外部卡」一类的说法。② 连接了就有写操作，写不写只看权限：绑定的能力声明允许字段写回、平台也接受，就写；能力不含写回或平台拒绝，完成照常成立，写回记成需要关注，不撤销完成。③ 排成 §六「小活 AE」。按 §二 第 53 条它是难的活（外部副作用只做一次、丢失后恢复），两席找问题：Claude（ubuntu）写；Codex（ubuntu）找问题（GitHub 建卡绑定 #432 是它写的，任务源的写路径它最熟）、Claude（mac）找问题；DeepSeek（ubuntu）核验。现在就写。
+55. **2026-10-20 Agency 的真会话测试一律用专用登录，不再指向所有者个人的登录。** Claude（ubuntu）对 #464（接 omp）补的那道找问题里记了一笔：核验的实跑把测试变量 `HCTL2_OMP_AGENT_DB` 指向了 `$HOME/.omp/agent/agent.db`，也就是所有者个人的 omp 登录。这属于 CONSTRAINTS 的凭据一类，主笔报所有者，建议这次已跑的证据照算、以后照 #466 的做法用所有者另行导入的专用登录。所有者：「按你的建议，既然都已经往agency的方向去做了，当然就是限制专用登录，不再用我个人的。」定下：① Agency 的各家 harness，真会话测试（作者实测、核验席重跑、走查）一律用所有者经 Agency 托管入口另行导入的专用登录；测试变量、`HOME`、配置目录都不指向所有者个人的登录文件或目录，缺专用登录就停下报所有者，由所有者自己导入，不替所有者做。这是第 38 条三类凭据在测试上的落实，和 #467 R4、#466 同一口径。② `09` §四「控制与窗格的通则」加这一句，H1–H3 都照此办。③ #464 已跑过的核验证据照算；合入前，作者在 PR 里写明 omp 专用登录的导入命令（交所有者执行），核验席用专用登录重跑一次真会话。派活表 H3 一行的前提照此改。
+56. **2026-10-20 空着的四席各接一件：小活 AF、AG、AH；第 10 包拆出随包加 tmux。** 所有者：「都发了。现在看还有deepseek mac, grok mac, glm mac， agy ubuntu是空着的」。主笔按 §二 第 53 条的难度排了三件规格写清、和别人改的地方不重叠的活；所有者：「落。还有别忘了你自己 - 你写代码也是这里最强的」。定下：① **小活 AF**（§六）Grok（mac）写：#475 评审时主笔提的建议第 4–7、9 条，中等、规格清楚；Claude（mac）找问题，GLM（mac）核验。读回权限改允许名单留给第 7 包，`外部 → noop → 外部` 纯排序仍等所有者定，都不放进来。② **小活 AG**（§六）GLM（mac）写：#477 的 `verify_sources` 错误码跟进、`docs/usage.md:188` 与 `--restricted` 不符，简单；Grok（mac）找问题，Antigravity（ubuntu）核验。③ **小活 AH**（§六）DeepSeek（mac）写：把第 10 包里「随包加 tmux 3.7c」这一块拆出来先做，只加不删，中等、规格清楚（分发方案 2026-08-28 已调研）；Claude（mac）找问题，Antigravity（ubuntu）核验。第 10 包改为在 AH 合入后只删 Herdr 的条目与制品。④ #441 里 Codex 跟进的「Claude 信任的启动探针在普通目录里做、可能误过」并进 `09` 第 10 包第二步，那一步本来就要重做 Claude Code 的信任框识别。⑤ 所有者提醒主笔别只做协调：第 10 包照常由主笔写。
+57. **2026-10-20 唤醒时直接说干什么：派活从「唤醒、自己看表」改回「唤醒、提示」；AGENTS 随之清理。** 所有者给空着的几席发了「继续」之后，主笔说「光发『继续』，几家可能又读成『没活』」，给了一张逐席写明动作的提示词表。所有者问：「为啥？如果真的是这样，是不是表明我们的策略失败了 - 应该rewind回之前的贴prompt方式（事实上这证明未来的workflow执行里，依赖『唤醒、自己看』策略是不保险的，还是『唤醒、告诉你具体干啥』更靠谱一些）」。主笔的回答：是。依据——MiniMax 盲审收到「继续」后照「自己找活」查表、表里没有它就停了，重贴写明动作的提示词才做完；第 46 条查出的「停得快」原因全在「自己看」这一步（读错表、半轮、评论只看最后一条、前提的时间差），AGENTS 为此补了三次；GLM 在 #465 两席可合时回「没有新的评审结论」；这一轮派活表上写着「现在就开」的第 3 包、第 7 包与小活 AF、AG、AH 在各席回报做完后都没有分支（原因待各席回话确认）。「自己看」的失败是静默的，要所有者发现后再补一轮；把「这一轮做什么」交给 harness 读表判断，也正是第 41 条要避免的把监督权交给 LLM。这和所有者 2026-10-05「不能depend on harness自己的context去『记得』要做完什么事，而是要通过DAG workflow去不断地记忆、主动提醒」、和 P2.5 Run 的派工（引擎派一个冻结的节点、指名的动作）同一个方向。所有者：「落 - 另外清理一下AGENTS.md，未来我们是『唤醒+提示』的路子，有的AGENTS guardrail可以去掉。」定下：① 每次唤醒都带提示词：哪一件、PR 号或分支、要做的动作、依据（派活表那一行或开工书那一节）。主笔每轮照派活表拟一张逐席提示词表，所有者照贴；以后由 workflow 引擎发。② 派活表照旧是唯一的权威记录：提示词从表生成，两者对不上以表为准，席位发现对不上就停下报。合入的行照 §六 的规矩删掉。③ `AGENTS.md`「自己找活」一节换成「唤醒与派活」：只做提示词写的那几件、动手前同步并对照权威记录、处理评审把评论读全、要所有者定的停下报、做完回报。为「自己看」加的护栏去掉：一轮五步的顺序、「一轮是三步都走完」、派活只认两处的细则、无活时回「没活」。第 41 条里「各席只在被叫醒时做、不自己定时」不变。④ 作为 P2.5 Run 派工的依据：引擎唤醒 harness 时带指名的动作与冻结的引用，不让 harness 去看板上自己挑——这本来就是 `spec/run.md` 的派工形状，本条不改设计正文。⑤ 演示 3 已验收（第 52 条），派活表里常驻的「第 9 包第 7 条走查」一行撤下，不再开第四轮；P2.5 的走查照 `09` §四 第 9 包另排。GLM（ubuntu）在这一轮里只看到了走查那一行、漏了写着它的第 7 包，DeepSeek（mac）与 Grok（mac）回报的是一天前、十天前的旧状态（#460、#421），也记在这里作为依据。⑥ 所有者补充：「『所以上面每条都把事实写死在提示词里。』这个也应该是未来workflow的必备点。就是要能mechanical/clear的地方，就不要指望LLM自己把manual读对 - 毕竟人类早就说过：RTFM!」起因是同一轮里 Grok（ubuntu）以为旧头的「可合」带到新头、Antigravity（ubuntu）以为 #485 还在等复核、Claude（ubuntu）回话时没看到 #464 的新头。定下：提示词里凡能机械取得的事实——PR 号与当前头、谁已对哪个提交写了什么结论、CI 状态、前提满足没有、分支名——由发令方查好写死，不让席位自己从手册、派活表或评论里推；席位只做判断与施工。以后的 workflow 引擎派工同理：冻结的引用与已知状态随派工下发。
+58. **2026-10-21 #466 的真会话以 mac 为准；ubuntu 的专用登录统一放两处，所有者照带路文本导入。** Antigravity（ubuntu）核验 #466（`a7c2885a`）时，确定性部分（凭据边界、托管目录、缺省 `user-file`、引用核对、四处退回）全过，真会话因 ubuntu 上没有专用登录停下报所有者。主笔建议以 mac 为准：任务书对真会话只要求 mac，Codex（mac）已用所有者在 mac 上导入的专用登录跑通。所有者：「#466 的真会话以 mac 为准，行。不过另外，ubuntu怎么办？告诉我流程我去办。」主笔给了流程，所有者：「这个流程好复杂。能不能放个文本，我找ubuntu上的minimax指导我做？事实上，token我有... 之前claude code在mac上我拿了」。定下：① #466 的真会话以 mac 为准，ubuntu 不补，Antigravity（ubuntu）照确定性部分下核验结论。② ubuntu 上真会话测试与核验统一用两处专用登录：Claude Code 与 Codex 在 Agency 根 `/var/tmp/hctl2-managed-login/agency`（托管目录是它的同级 `.harness-login`），omp 在 `/var/tmp/hctl2-omp-managed`。所有者照 [`ubuntu-managed-login-runbook-20261021.md`](../../notes/ubuntu-managed-login-runbook-20261021.md) 由 ubuntu 上的 agent 带路导入；Claude 用所有者在 mac 上已生成的 setup-token，不重新生成。带路的 agent 只做只读检查，登录命令由所有者执行，不经手 token（CONSTRAINTS 凭据一条）。③ 提示词里给核验席写死这两处位置（第 57 条 ⑥）。
+59. **2026-10-21 写代码 Codex 排在 Claude（mac）前面；带路文本改成整段粘贴。** ubuntu 专用登录的带路文本（第 58 条）第一次实操磕磕绊绊：主笔没先查实命令（omp 写成浏览器登录，实为粘贴 DeepSeek API key；Codex 没查到 `--device-auth`），又照 bash 逐条写，在所有者的 zsh 里 heredoc 因复制带缩进失败、`read -p` 不是提示。所有者：「也不知道是minimax理解有问题，还是你的任务书写的有问题。codex直接把zsh的()给包好，我一运行，输入，就好了。你这一条条的，很多该包起来的东西都暴露给用户（我），我还得帮你去debug。」「你的coding能力，确实低于codex. 记下来，后边分任务的时候要考虑。」定下：① 写代码 Codex 排在 Claude（mac）前面：新的写代码活先排 Codex 两席，Claude（mac）的位置在统筹、写验收、找问题（`.memo/notes/harness-performance-20261020.md` §八）。已在写的第 10 包第一步照原排开 PR；第二步谁写，主笔向所有者提议后再改表。② 给所有者执行的步骤写成一段包好的 `( … )`：zsh 与 bash 都能跑，没有 heredoc 和行内注释，要输入时自己提示，主笔先用桩实跑过再给；带路文本照此改写（`.memo/notes/ubuntu-managed-login-runbook-20261021.md`）。
+60. **2026-10-21 第 10 包第二步改由 Codex（mac）写。** 照第 59 条，主笔提议：「第 10 包第二步谁写。我建议改给 Codex（mac）写，我坐找问题席。第二步是把 Claude Code 路径也换到 tmux、删掉 Herdr，再在空的 git 仓库里探测信任提示。第一步我已经写完，等小活 AH 合入后开 PR，找问题席本来就是 Codex（mac），它审第一步时正好把代码读熟，接第二步顺手。」所有者：「可以。」定下：① 第一步照原排：Claude（mac）写，Codex（mac）找问题，Antigravity（ubuntu）核验，分支 `claude/agency-tmux`，小活 AH 合入后开 PR。② 第二步：Codex（mac）写，Claude（mac）找问题，Antigravity（ubuntu）核验，分支 `codex/agency-tmux-claude`，第一步合入后开。③ 删 Herdr 的条目与制品落在第二步：第一步里 Claude Code 的待命会话还跑在 Herdr 上（`09` §四 第 10 包「第一步合入前演示 3 路径照旧跑在 Herdr 上」），第二步把它换到 tmux 之后 Herdr 才没有用处；第 56 条「本包在 AH 合入后删 Herdr」照此由第二步做。第二步的验收照 `09` §四 第 10 包 ①（ubuntu 上 Claude Code 的真会话）与 ⑥，用所有者在 ubuntu 导入的专用登录（第 58 条）。
+61. **2026-10-21 ubuntu 上 Claude Code、Codex 的专用登录用到时再导入；交给所有者的步骤由主笔先跑通。** 主笔给了第 2、3 段，所有者粘贴第 2 段停在第一行：`zsh: no such file or directory: /var/tmp/hctl2-466-bin/agency`——段里写死的临时编译已被清掉，主笔没先确认。所有者：「那你这样吧，记下来，然后后边需要的时候再跑吧。我不陪你玩这个了。本来都是你应该确定好的事情，怎么让我一遍遍自己去测试呢？？？」定下：① Claude Code 那件到第 10 包第二步核验前、Codex 那件到小活 AB 核验前再做；现状与做法记在带路文本「现状」一节。② 交给所有者执行的步骤，主笔先在本机端到端跑通——前提（程序、目录）由这一段自己备好，不假定别人留下的临时文件还在；只有所有者本人的登录这一步可以用桩；跑过的输出随段附上。
+
 ## 三、三次演示
 
 每次演示由 Fable 验收：照约束与验收用例把演示路径实际走一遍，如实报告哪些通过、哪些没有。Kimi 对照 `contract-tests.md` 走查覆盖。
@@ -161,6 +177,26 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
 2. **binding 冻结的目录刷不了。** 目录为空时配对的 binding 冻结了空目录，之后 `agency accept` 报 `PROFESSION_CHANGED`，`recovery_action: refresh_binding`，但 `agency` 没有这条命令。这次换一个 binding id 再配对绕过去。
 
 观察（不挡）：pane 里 Claude Code 显示「auto mode」，是从用户全局设置继承的权限模式，本次隔离靠 `--restricted --tools ""`；回答在 Room 里是 `@hctl2_control` 发的普通消息，没有标明是哪次派工、哪个工种答的，人在 Cinny 里看不出它是派工结果（第 8 包「人读输出」或投影格式另议）；回答是 Claude 凭知识答的，演示时问题要选成不需要看仓库的。
+
+### 演示 3 验收 · 2026-10-20
+
+Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479、#481）构建的完整包从零装了一套，照 `docs/demos/demo-3.md` 走了 A、C 两链与第五、六节；B 链用同一个包另开 Project，照第三节在 `yesme/hctl2-canary` 上走（§二 第 49、50 条）。harness 是 Claude Code 2.1.303 与 Codex CLI 0.163.0。命令与原样输出记在 [`2026-10-20-演示3验收-ubuntu.md`](../../log/2026-10-20-演示3验收-ubuntu.md)（#482）。所有者 2026-10-20 看过实录：「看过了。」
+
+| 演示表那一行 | 结果 |
+| --- | --- |
+| 写入型调用改代码，封存成版本 | 通过。A 链真 Claude Code 26 秒 `completed`，diff 只有 `return value * 2` 一行；B 链真 Codex 59 秒，`request` 里只写一句照契约做，开工包里 353 字节的契约原样到了 Codex 的输入（小活 AA 生效） |
+| 平台上开出评审 | 通过。推送与建评审请求两段各自确认：A 链 Gitea PR #2，B 链 GitHub PR #42；C 链开着「发布须人确认」，发布意图停在 `pending_human`，`review publish` 预览确认后才发出 Gitea PR #4；Room 里只有一条投影 |
+| 人预览合入 | 通过。A、C 两链的 Integration Receipt 由 `hctl2-tool` 签，Git 回读 `unmediated`；B 链等必需检查 `canary` 通过后合入受保护的 `main`，合并提交 `c1e756b10d24ba9ca63b42a939d3e47099084c05` 既是 Receipt 的 `integrated_commit`，也是 GitHub 上 `main` 的头 |
+| 再预览完成 Task，两张凭证落库 | 通过。三条链都签出 Task Completion Receipt；没有契约的裸卡完成被拒（`CONTRACT_REQUIRED`） |
+| 本地 Gitea 与受保护的 GitHub `main` 各走一遍 | 通过。A、C 两链在本地 Gitea，B 链在 GitHub |
+| Codex 与 Claude Code 各跑一遍 | 通过。A、C 两链 Claude Code，B 链 Codex；`task show` 答得出这次是谁在答 |
+| 重启、凭据隔离、清理（手册第五、六节） | 通过。正常启停后三条链的记录不变；三处杀点的常驻用例过；`$ROOT/secrets` 下四个文件都是 0600；`write_session_test` 过；清理后没有这次起的进程 |
+
+全程没有绕法，也没有失败重试；唯一一次同键重跑是验收人自己抽命令出错，不是手册的问题。和手册不一致的九处与一条观察，所有者交主笔处理，排法见 §二 第 51 条：两家的写入 Profile 合成了同一个 Worker Profile → 小活 AD；手册补齐、合入预览的确认命令、Task 完成后外部卡没关 → 小活 AC；`status` 与合入预览的人读输出 → `09` 第 8 包；GitHub 建卡慢 → §七。
+
+已知缺口，不挡：B 链里 control 借用的是人的 gh 登录（这台 ubuntu 上存在系统 keyring 里），由小活 AB 收（§二 第 50 条）；Claude Code 的路径只在 ubuntu 上走，mac 上等钥匙串专项（#466）；三次写入的工作树一直没收回（§七「写入会话完成之后的去留」）。
+
+所有者看过演示，即「演示 3 走完」（§二 第 49 条 ④），解锁的事见 §二 第 52 条。
 
 ## 四、九个包
 
@@ -415,25 +451,21 @@ Fable 用 main `6ced659`（含第 5 包主链 #372、第 3d 包 #362、小活 M 
 
 ## 六、席位、模型与小活
 
-写的档与评的席位（所有者 2026-10-17 重排，§二 第 35 条；取代 2026-10-05 晚按 §二 第 10 条定的表，旧表见本文的 git 历史）：
+排席按活的难度与开放程度，不按家（所有者 2026-10-20 按回顾重排，§二 第 53 条；取代 2026-10-17 按家分档的表，§二 第 35 条，旧表见本文的 git 历史）：
 
-| 写 | 谁 | 给什么活 |
-| --- | --- | --- |
-| 第一档 | Claude、Codex、Antigravity、Muse（2026-10-18 起不可用） | 难包、定框架、别家收不住时接手 |
-| 第二档 | Grok、GLM、DeepSeek | 范围清楚的包、小活、修 CI、难包拆出来的后半段 |
-| 等额度 | Qwen、Kimi | 额度回来之前不排 |
-| 不排 | MiniMax | 所有者 2026-10-17「不指望了」 |
+| 活 | 写 | 找问题 | 核验 |
+| --- | --- | --- | --- |
+| 难：状态、并发、丢失后恢复、外部副作用只做一次、凭据、控制面 | Codex、Claude | 两席：Codex 加 Claude | Antigravity 或 DeepSeek |
+| 开放：要先调查、做取舍（调研、探针、排查、接一家没摸过的 harness） | Codex、Claude 优先，其次 Antigravity | Codex 或 Claude | Antigravity 或 DeepSeek |
+| 中等、规格清楚 | Antigravity、DeepSeek、Qwen（有额度时）；Grok（验收写死） | 一席：Codex、Claude 或 Grok（Grok 至少实跑一次） | Antigravity、DeepSeek 或 GLM |
+| 简单：小修、测试、文档 | DeepSeek、Grok、GLM 优先 | 一席 | GLM、Kimi 可以坐 |
+| 文档、手册类 | — | — | 另加 MiniMax（mac）额外静态核对，不计入可合（§二 第 51 条 ⑦） |
 
-| 评 | 做什么 | 谁 |
-| --- | --- | --- |
-| 找问题的席位 | 对着开工书和代码找反例，看范围和验收有没有达到 | Codex、Claude、Grok |
-| 核验的席位 | 从零实跑；把一处修正退回去看用例红不红；看 CI 日志确认真跑了 | GLM、DeepSeek、Antigravity；Qwen、Kimi 额度回来后照旧 |
+额度（所有者 2026-10-20）：Claude、Codex、Antigravity 各 $200，Grok $100，都富余；DeepSeek 按量付费，可以放开用；GLM 约等于 5 个 Kimi，Kimi 约等于 Qwen；Muse 2026-10-18 起不可用。卡人的不是额度，是同时开着的会话与所有者转发的精力。统筹的备份是 Claude（ubuntu）。
 
-Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看结果再列进上表。
+每个 PR 至少一席找问题、一席核验（难的两席找问题），都「可合」才合；核验席等找问题席对同一提交写了结论再下结论（`AGENTS.md`「评审与合入」）。陪审照样写结论和问题，作者照样逐条处理，但不计入合入条件；Codex 的点审同样不计。第 3 包这条线照旧由 Claude、Codex 两席审。
 
-每个 PR 一席找问题、一席核验，两席都「可合」才合。陪审照样写结论和问题，作者照样逐条处理，但不计入合入条件；Codex 的点审同样不计。第 3 包这条线照旧由 Claude、Codex 两席审。
-
-各家写与评的表现：四梯队规则下的那一轮见 [`harness-performance-20261005.md`](../../notes/harness-performance-20261005.md)，改规则时的依据见 [`harness-performance-20261005b.md`](../../notes/harness-performance-20261005b.md)；下表「依据」一列是 10-03 之前的。
+各家写与评的表现：最近一次回顾（10-06 到 10-20，按活的难度看）见 [`harness-performance-20261020.md`](../../notes/harness-performance-20261020.md)；四梯队规则下的那一轮见 [`harness-performance-20261005.md`](../../notes/harness-performance-20261005.md)，改规则时的依据见 [`harness-performance-20261005b.md`](../../notes/harness-performance-20261005b.md)；下表「依据」一列是 10-03 之前的。
 
 | 席位 | 这一段做什么 | 依据（本库里的表现） |
 | --- | --- | --- |
@@ -451,7 +483,7 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 规矩：
 
 - 评审席按 §二 第 10 条配：一席找问题、一席核验。合入条件里的「两席」指这两席，陪审与点审不计。
-- 2026-10-19 起各席自己找活（AGENTS.md「自己找活」，§二 第 41 条）：所有者每席贴一次固定 prompt，之后只发「继续」；谁做什么以下面「当前派活」表为准（表只有这一张，`09` 里没有；表里指向 `09` 的任务书去 `09` 读；§二 第 46 条），要看的地方写在 PR 描述的「请审」节。各席只在被叫醒时做一轮，不自己定时，也不自己接着开下一轮。原先「评审提示词由作者贴在 PR 里、所有者转贴给审阅者」「各家定时查看评论与 CI」两条由此取代。
+- 2026-10-20 起「唤醒、提示」（AGENTS.md「唤醒与派活」，§二 第 57 条；取代 2026-10-19 起的「各席自己找活、所有者只发『继续』」，§二 第 41 条）：每次唤醒都带提示词，写明哪一件、PR 号或分支、要做的动作、依据；提示词由主笔照下面「当前派活」表拟定，所有者发出。表是唯一的权威记录（只有这一张，`09` 里没有；表里指向 `09` 的任务书去 `09` 读），要看的地方写在 PR 描述的「请审」节。各席只在被叫醒时做提示词写的那几件，不自己定时，也不自己接着找下一件。
 - 合入与两轮规则见 §二 第 4 条；「可合」之后怎么合见 §二 第 11 条。
 - 小活一次只放一个，不占主线。
 
@@ -461,28 +493,26 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 
 ### 当前派活
 
-主笔在所有者拍板后改，和 §二 的裁定同一个 PR 落（§二 第 41 条）。只写谁做、前提是什么，进度看 PR 本身。前提里写「X 之后」指 X 交出（标就绪）之后，不等合入；要等合入的写明「合入后」（§二 第 44 条 ①）。合入的行删掉，来历看本文的 git 记录与各件的任务书。席位都写到机器；同一家另一台机器的活不碰（AGENTS.md「自己找活」）。
+主笔在所有者拍板后改，和 §二 的裁定同一个 PR 落（§二 第 41 条）。只写谁做、前提是什么，进度看 PR 本身。前提里写「X 之后」指 X 交出（标就绪）之后，不等合入；要等合入的写明「合入后」（§二 第 44 条 ①）。合入的行删掉，来历看本文的 git 记录与各件的任务书。席位都写到机器；同一家另一台机器的活不碰（AGENTS.md「唤醒与派活」）。
 
 | 件 | 任务书 | 写 | 找问题 | 核验 | 分支 / PR | 前提 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 小活 W | §六「小活 W」 | GLM（ubuntu） | Codex（mac） | DeepSeek（ubuntu） | `glm/dispatch-room-version`，还没开 PR | 无 |
-| 专项 · 测试留下的常驻进程（方案与测试层第 1 步） | §六 同名专项 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu），核验代码部分 | `deepseek/test-process-cleanup`，#447 | 无 |
-| 专项 · 测试留下的常驻进程（第 2 步：CI 上检测漏进程、开发机一键清理） | §六 同名专项「第 2 步」 | DeepSeek（mac） | Claude（mac） | GLM（ubuntu） | `deepseek/test-leftover-detection`，还没开 PR | 现在就写；用到 #447 代码的部分等 #447 合入后再接 |
-| 第 9 包第 1 条的真会话版 | §二 第 36 条 ① | Claude（mac）；Claude（ubuntu）跑实测 | Codex（mac） | Antigravity（ubuntu） | `claude/pkg9-claude-session`，#430 | #441 合入后：Claude（mac）并 main，Claude（ubuntu）对新头重跑四条 |
-| 第 9 包第 7 条走查 | §二 第 36 条 ③、第 37 条 ① | GLM（ubuntu） | Claude（mac） | Antigravity（ubuntu），抽两三步重跑 | `glm/demo3-walkthrough`，#431 | 第二轮已走（P1-R2-1 见 §二 第 47 条）；小活 AA 合入后走第三轮：B 链带 `task_id` 走到 Task Completion Receipt |
-| 第 9 包第 9 条手册 | §四 第 9 包第 9 条；§二 第 37 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照手册从零重跑 | `agy/demo-3-manual`，还没开 PR | A 链（Claude Code）的实跑等 #430 合入 |
-| 小活 Z | §六「小活 Z」 | Codex（ubuntu） | Grok（ubuntu） | GLM（ubuntu） | `codex/agency-reap-app-server`，还没开 PR | 无 |
-| 小活 AA · Context 组装内联契约与卡正文 | §六「小活 AA」；§二 第 47 条 | Claude（ubuntu） | Codex（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `claude/context-task-contract`，还没开 PR | 现在就写，不等演示 3 |
-| 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，还没开 PR | 现在就写；演示 3 走完（所有者看过演示）才开自动合入 |
-| workflow 引擎（Dagu）的开工前限时验证 | §六「专项 · workflow 引擎（Dagu）的开工前限时验证」 | Antigravity（mac） | Claude（mac） | DeepSeek（ubuntu），照记录从零重跑 | `agy/dagu-probe`，还没开 PR | 无 |
-| 写入会话完成之后的去留：调研 | §六「专项 · 写入会话完成之后的去留：调研」 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/write-session-hibernation`，还没开 PR | 无 |
-| P2.5 第 1 包 · 施工图 | `09` §四 第 1 包 | Codex（ubuntu） | Claude（mac） | GLM（ubuntu） | `codex/workflow-revision`，还没开 PR | 小活 Z 交出后就开，不等它合入，也不等演示 3 |
-| P2.5 第 5a 包 · 计票的纯算法 | `09` §四 第 5a 包 | Claude（ubuntu） | Codex（mac） | GLM（ubuntu） | `claude/gate-tally`，还没开 PR | 会话去留调研交出后就开，不等它合入，也不等演示 3 |
-| P2.5 H0 · 观测窗格原语（H1–H3 共用） | `09` §四 H0 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/observation-pane`，还没开 PR | 现在就写，不等演示 3，也不等钥匙串专项；合入后 H1–H3 在它上面 rebase（§二 第 45 条 ④） |
-| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，还没开 PR | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，还没开 PR | 现在就写；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu） | Antigravity（ubuntu） | `deepseek/harness-omp`，还没开 PR | 现在就写；H0 合入后在它上面 rebase；演示 3 走完、钥匙串专项合入后才合 |
-| P2.5 第 10 包 · 终端复用器：Herdr 换 tmux | `09` §四 第 10 包 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 演示 3 验收后；#447、#454、#460 与 H0 合入后；分两步交，第二步（Claude Code 路径）单独验收（§二 第 45 条 ③） |
+| 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，#466 | 演示 3 已走完（§二 第 52 条）；mac 上的托管登录由所有者导入后补齐验收，两席可合即开自动合入 |
+| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
+| 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对 | §六「小活 AC」；§二 第 51 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照新的第三节从零重跑 B 链；MiniMax（mac）额外静态核对，不计入可合 | `agy/demo-3-manual-b`，还没开 PR | 现在就写 |
+| 小活 AD · 工种简历写 harness 本身 | §六「小活 AD」；§二 第 37 条 ③、第 51 条 ① | Antigravity（mac） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `agy/profession-resume`，还没开 PR | 现在就写 |
+| 小活 AE · 完成 Task 时写回连接的任务源 | §六「小活 AE」；§二 第 54 条 | Claude（ubuntu） | Codex（ubuntu）、Claude（mac） | DeepSeek（ubuntu） | `claude/task-complete-writeback`，还没开 PR | 现在就写 |
+| 小活 AF · 第 1 包评审留下的五条 | §六「小活 AF」；§二 第 56 条 | Grok（mac） | Claude（mac） | GLM（mac） | `grok/workflow-lint-followups`，还没开 PR | 现在就写；和第 3、7 包碰同一个 crate，后合的 rebase |
+| 小活 AG · 两处评审遗留的小修 | §六「小活 AG」；§二 第 56 条 | GLM（mac） | Grok（mac） | Antigravity（ubuntu） | `glm/review-followups`，还没开 PR | 现在就写 |
+| 小活 AH · 随包加 tmux 3.7c（第 10 包的前置，只加不删） | §六「小活 AH」；§二 第 56 条 | DeepSeek（mac） | Claude（mac） | Antigravity（ubuntu） | `deepseek/package-tmux`，还没开 PR | 现在就写 |
+| P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器 | `09` §四 第 2 包；§二 第 52 条 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/dagu-port`，还没开 PR | 小活 AD 交出后就开，不等它合入 |
+| P2.5 第 3 包 · Run 生命周期与施工清单 | `09` §四 第 3 包；§二 第 52 条 | Codex（ubuntu） | Claude（mac） | Antigravity（ubuntu） | `codex/run-lifecycle`，还没开 PR | 现在就开 |
+| P2.5 第 7 包 · 读回链路 | `09` §四 第 7 包；§二 第 52 条 | GLM（ubuntu） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `glm/workflow-readback`，还没开 PR | 现在就开 |
+| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，#467 | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
+| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，#461 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
+| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu）；Claude（ubuntu）合入前补一道，专看 #467 四条 P1 的同类问题（§二 第 53 条） | Antigravity（ubuntu） | `deepseek/harness-omp`，#464 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合；Claude（ubuntu）补的那道对当前头写了「可合」才合；合入前核验席用所有者导入的 omp 专用登录重跑一次真会话（§二 第 55 条） |
+| P2.5 第 10 包第一步 · tmux 客户端、窗格换底、Codex 与 H1–H3 的窗格、测试迁移 | `09` §四 第 10 包；§二 第 60 条 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 代码已写完，小活 AH 合入后开 PR；Claude Code 的待命会话这一步仍在 Herdr 上 |
+| P2.5 第 10 包第二步 · Claude Code 路径换到 tmux、删 Herdr、空 Git 仓库里的信任探针 | `09` §四 第 10 包「分两步交」；§二 第 56、60 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），用 ubuntu 的专用登录跑 Claude Code 真会话（§二 第 58 条） | `codex/agency-tmux-claude`，还没开 PR | 第一步合入后开 |
 
 ### 专项 · 自建方案盘点（高优；Grok、Codex、DeepSeek 各查一块，Claude 汇总）
 
@@ -771,6 +801,108 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
   6. 退回看红两处：去掉契约条目、去掉版本比对，对应用例要红。
 - **分支**：`claude/context-task-contract`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。合入后 #431 走第三轮（B 链带 `task_id` 走到 Task Completion Receipt）。
 
+### 小活 AB · control 自己的 GitHub 凭据（Codex（mac）写；Claude（mac）找问题，Antigravity（ubuntu）核验）
+
+- **来由**：§二 第 50 条（方案 A）。现在 control 调 GitHub 的各处都借人的登录：随包的 `gh`（或 `HCTL2_GH`）继承 control 的环境，读人的 gh 配置与钥匙串——集成（`src/apps/control/src/integration/github.rs`）、发布推送的 `gh auth git-credential`（`review.rs`）、GitHub Issues 任务源（`tasks/github.rs`）、仓库注册时的平台读取（`scm.rs`）；私有仓库的 Git 回读靠这台机器上 Git 自己配的凭据助手。`docs/usage.md` 第 344 行写的就是「复用用户已有登录」。mac 上人的 gh 登录在钥匙串里，后台的 control 要么弹不出授权，要么不声不响读走；Linux 上读的是人的明文 `hosts.yml`。
+- **要求**：
+  1. control 有一份自己的 GitHub 凭据，存在 control 的密钥后端（#466 之后缺省是 `user-file`）。给人一条交凭据的命令，命令名与形状作者定，写进 control README；支持两种交法：从标准输入交一个令牌；或在 control 私有的配置目录里走一遍随包 gh 的登录流程，再把结果收进密钥后端。登录流程不得写进人的钥匙串：gh 在 mac 上缺省把登录存进系统凭据库，服务名 `gh:github.com` 和人的那一项相同，同一账号会覆盖人的登录（主笔读源码推断，没有实测；作者动手前用假账号或单独的 keychain 实测一次，不动所有者的）。
+  2. control 每次调 `gh`（上面各处，以及 control 经 `hctl2-tool` 调的 GitHub 事实读取），只经 `GH_TOKEN` 把凭据交给那一次的进程，`GH_CONFIG_DIR` 指到 control 的私有目录；从 control 自己的环境继承来的 `GH_TOKEN`、`GITHUB_TOKEN` 不用。令牌不进命令行、日志和错误信息。Git 推送与私有仓库的回读用同一份凭据，走现有的每进程凭据助手（`repo::git::Credential`），不读人的 Git 凭据配置。
+  3. 前提检查：注册 GitHub 仓库、接 GitHub Issues 任务源、发布、集成之前，control 没有凭据或平台回 401，就报错（错误码作者定），写明人要跑的那条命令；不替人登录、不替人续期。`hctl2 status` 报有没有 GitHub 凭据、是哪个账号，不报值。
+  4. 人自己在终端里直接跑的 `hctl2-tool` 是人在用自己的工具，照旧用人的登录；只有 control 调它时，才由 control 交凭据。
+  5. `docs/usage.md` 第 344 行、`src/crates/repo/README.md` 发布与集成两节、`src/crates/task/README.md`「写回与恢复边界」、control README 一并改成新做法。
+- **验收**（缺一条不算过）：
+  1. 夹具：假 `gh` 记下它拿到的环境，断言 `GH_TOKEN` 是 control 存的那一份、`GH_CONFIG_DIR` 在 control 的私有目录、继承来的 `GH_TOKEN` 被丢掉。假的人 home 里放一份 gh 配置：control 没有凭据时，注册 GitHub 仓库被拒，报错写明命令，那份配置没被读。
+  2. 用一串认得出的假令牌跑全部用例，命令行、日志、错误信息里都找不到它。
+  3. 退回看红：去掉注入、退回继承环境，对应用例要红。
+  4. mac 真跑一次：所有者照报错给出的命令自己交一次凭据；照 `docs/demos/demo-3.md` 第三节在 `yesme/hctl2-canary` 上走 B 链（受保护的 `main` + 真 Codex）到 Task Completion Receipt，全程没有钥匙串弹窗；前后所有者自己跑一次 `gh auth status`，人的登录不变。实录进 PR，不打印令牌。
+  5. Linux 上核验席照同样做法重跑一次 B 链（所有者自己交凭据），用 `strace -f -e trace=openat` 一类的办法看 control 及其子进程没有打开人的 `~/.config/gh`。
+- **分支**：`codex/control-github-credential`，从 `origin/main` 起，#466 合入后开。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
+
+### 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对（Antigravity（ubuntu）写；Claude（mac）找问题，DeepSeek（ubuntu）核验，MiniMax（mac）额外静态核对）
+
+- **来由**：演示 3 验收（#482，§二 第 51 条 ②）。实录 `.memo/log/2026-10-20-演示3验收-ubuntu.md`「和手册不一致、要绕、跑不通的」一节。
+- **要求**：
+  1. `docs/demos/demo-3.md` 第三节写成可照抄的命令：照实录「三 · B 链 1–8」，注册输入照 `src/packaging/release/demo3-github.sh`，`request` 只写一句照契约做，带 `task_id` 走到 Task Completion Receipt。GitHub 登录照现行做法写（复用人这台机器上的 gh 登录），加一句：小活 AB 合入后改成 control 自己的凭据。
+  2. 等必需检查 `canary` 用产品自己的 `hctl2-tool wait commit-ci`（`docs/usage.md` 事实等待一节），不用人的 `gh api`。
+  3. 写明 `task connect` 到 `task create` 要等几分钟（这次约 4 分 50 秒）和原因。
+  4. 写明 canary 上这次留下的东西怎么收：issue、PR 的源分支，由人用自己的 gh 收，命令写全。
+  5. 第一节第 3 步对 `status` 人读输出的描述改成实际（人读格式本身归 `09` 第 8 包）；第二节第 8 步「冻结的目标保护快照」改成到 `--json` 预览的 `effect_summary.protection` 里看。
+  6. 合入预览末尾「Confirm with」改成 `integration submit … --preview-token …`。`src/apps/cli/src/render.rs` 的 `confirm_command` 照搬人刚敲的子命令；`invocation preview` 已经会换成 `invocation start`，照它的做法改，补一条用例；其余有预览的命令一并核，确认提示都要能直接贴着用。
+  7. 查清 Task 完成后外部卡的写回：`spec/task.md` 要求完成时「必要的外部写回 outbox」和 Receipt 同一事务提交；这次 GitHub issue #41 在 Task 完成后仍是 open，Gitea 那张卡也一并看。在 PR 里写明实现做了什么、写回什么；没做就写明，报主笔另排，不在本小活里实现。
+- **验收**：
+  1. DeepSeek（ubuntu）照新的第三节从零走一遍 B 链：新 `--root`，用所有者在 ubuntu 上现有的 gh 登录，不跑 `gh auth token`，不把令牌取进环境，走到 Task Completion Receipt；跑不通的写在 PR 里。
+  2. 第 6 条的用例退回看红。
+  3. MiniMax（mac）逐条核手册的命令、参数、输入 JSON、`jq` 取值和这个提交的代码对不对得上，结论贴 PR 评论，注明「额外静态核对，不计入可合」。
+- **分支**：`agy/demo-3-manual-b`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；Claude（mac）、DeepSeek（ubuntu）两席「可合」后作者开自动合入。
+
+### 小活 AD · 工种简历写 harness 本身（Antigravity（mac）写；Claude（ubuntu）找问题，DeepSeek（ubuntu）核验；找问题席 2026-10-20 由 Codex（mac）改，§二 第 53 条）
+
+- **来由**：§二 第 37 条 ③（所有者 2026-10-17：工种的简历是 harness 加模型或模型组；harness 是 harness 本身，Herdr 只是管理 harness 的舷窗，不进简历；模型或模型组是自述，不验证；演示 3 之后改）与 §七 同一条。演示 3 验收看到了后果：Claude Code 与 Codex 的写入 Profile 合成了同一个 Worker Profile（§二 第 51 条 ①），第 5b 包判多样性、做去重时会把两家当成一个。
+- **要求**：
+  1. 原生 Agency 工种目录（`src/agency/src/launch.rs` 的 `catalog`）里 `claude-code`、`codex-cli` 两个工种申报的 harness 改成 harness 本身，终端复用器不进简历；口径和 #467 给 Antigravity 工种的改法一致。模型照 harness 自述；取不到时怎么写由作者定、写进 README，但不能让两家因为都取不到而撞成同一个 Worker Profile。
+  2. 牵动的冻结引用、Worker Profile 的匹配与金样一并改；已经冻结的旧 Profile 照旧可读、不改写，写进 README。
+  3. `task show` 里「谁在答」那一行照新字段显示（现在是 `claude-code (via herdr, model none)`）。
+- **验收**：
+  1. Claude Code 与 Codex 的写入 Profile 给出不同的 `worker_profile_revision`；把两家的 harness 改回同一个值，对应用例要红。
+  2. `task show` 显示 harness 本身与模型。
+  3. 已冻结的旧 Profile 回读不变（金样）。
+  4. 第 5a 包计票去重的用例照过。
+- **前提**：现在就写，演示 3 走完才合。和 #467、`09` 第 10 包碰同一处 `catalog`，后合的 rebase。
+- **分支**：`agy/profession-resume`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
+
+### 小活 AE · 完成 Task 时写回连接的任务源（Claude（ubuntu）写；Codex（ubuntu）、Claude（mac）找问题，DeepSeek（ubuntu）核验）
+
+- **来由**：§二 第 54 条。演示 3 验收（#482）里三条链的 Task 都签出了 Completion Receipt，平台上的卡却都还开着；小活 AC（#485）查实 `src/crates/task/src/planning.rs` 的 `Action::Complete` 不往 outbox 放写回（全文件的 `add_effect` 只在建卡、改卡、删卡三处）。设计要写：`spec/task.md`「Receipt……和必要的外部写回 outbox 在同一事务提交」「外部写回失败只显示需要关注，不撤销已经成立的 HCTL 完成事实」，`task.md` 的「已完成 · 已验证 · 外部同步中」。所有者：「既然是connect to the external source……那么自然对于它是有写操作的。就看权限是不是允许了。」
+- **要求**：
+  1. 完成 Task 时，卡在连接的任务源上、绑定的能力声明允许字段写回的，在完成的同一事务里入队写回：把卡改成该平台的完成态（GitHub、Gitea 的 issue 关闭），并追加一条完成评论，带控制面与 Task 标识（`spec/task.md`：HCTL 自动写回不能冒充人的新动作，写回评论必须带控制面与 Task 标识）。复用现有的 `task.update` 一类 outbox 与写后回读（`src/crates/task/README.md`「写回与恢复边界」），不另起通道。
+  2. 写不写只看权限：能力声明不含写回的，不入队，完成照常；平台拒绝（401、403、404）的，完成照常成立，写回记成需要关注，不重试出成功的假象。完成预览写明完成后会写回什么，或者为什么不写。
+  3. 写回之后回读到的关闭态只追加 Snapshot，不能被当成人的 Done 再触发一次完成请求（`spec/task.md`：HCTL 服务账号的写回……只追加 Snapshot，不能取得 human 来源）。同一张卡绑了多个 Project 的，只写自己这一个绑定（多写通则）。
+  4. 写回结果未知时照现有规则：只按关联标记回读，不再次 POST，不另建评论。
+  5. `docs/demos/demo-3.md` 跟着改：B 链第 7 步写明完成后卡会关、第 8 步不再要人手动关 issue；A、C 两链的核对字段一并补。
+- **验收**（缺一条不算过）：
+  1. 夹具：GitHub 与 Gitea 两种源，完成后卡关闭、评论带控制面与 Task 标识，outbox 条目与 Receipt 在同一事务里；
+  2. 能力不含写回的绑定：完成成立、预览写明不写回、不入队；平台拒绝：完成成立、写回记需要关注；
+  3. 写回后的回读不触发第二次完成请求；
+  4. 写回结果未知后重启 control：评论只有一条（按关联标记回读）；
+  5. 真跑一次：本地 Gitea 一次、`yesme/hctl2-canary` 一次，完成后平台上的卡关闭，实录附回读；
+  6. 退回看红：去掉入队、去掉能力判断，对应用例要红。
+- **分支**：`claude/task-complete-writeback`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；三席「可合」后作者开自动合入。
+
+### 小活 AF · 第 1 包评审留下的五条（Grok（mac）写；Claude（mac）找问题，GLM（mac）核验）
+
+- **来由**：#475（P2.5 第 1 包 · 施工图）评审时主笔提的建议第 4–7、9 条，当时不挡合入、留作跟进；§二 第 56 条。
+- **要求**（每条一处改动加一条用例）：
+  1. `switch` 的两个 case 指向同一个节点时，现在被当成重复边拒绝（`src/crates/run/src/compiler.rs` 判重的键是起点和终点）。改成连 case 一起判重，或者写明为什么不允许并给出说得清的错误；作者选一种，写进 crate README。
+  2. 机械判据核对输出种类与事实种类配不配，例如 `pr_merged` 不能绑在 `verdict` 输出上。按 `docs/design/spec/run.md` 与 `contract-tests.md` CT-RUN 已经写明的种类；规格没写清的搭配报主笔，不自己定。
+  3. 法定票数为 1 时，不再给「可能按去重合成一票」的提示（设计举的是法定票数二）。
+  4. 节点 id 含 `__` 时，要么在 lint 就拒（把 `__` 留给展开出来的名字），要么撞名时的错误写清原因；作者选一种，写进 README。
+  5. 登记时「开着读回就必须带快照和来源」那道检查（`src/crates/run/src/commands.rs` 登记一步）补一条用例。
+  - 不做：读回权限的禁止名单改允许名单（留给第 7 包）；`外部 → noop → 外部` 纯排序（等所有者定）。
+- **验收**：五条各有用例，每条把对应改动退回去用例要红；`root//crates/run:domain_test` 全过；CI 绿。
+- **分支**：`grok/workflow-lint-followups`，从 `origin/main` 起。和第 3、7 包碰同一个 crate，后合的 rebase。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
+
+### 小活 AG · 两处评审遗留的小修（GLM（mac）写；Grok（mac）找问题，Antigravity（ubuntu）核验）
+
+- **来由**：#477 Codex（mac）跟进的 P2；#441 Codex（mac）跟进 P2 里文档那一半；§二 第 56 条。
+- **要求**：
+  1. `src/apps/control/src/dispatch/context.rs` 的 `verify_sources` 经 `participant::port_error`，把 Context 的 `SOURCE_VERSION_CHANGED / preview_again` 包成了 `AGENCY_ERROR / inspect_agency`，恢复方向错指向 Agency。改成保留 Context 原来的错误码与恢复动作；真实 CLI 用例断言 `code` 与 `recovery_action` 两个字段，不只断言 message 前缀。
+  2. `docs/usage.md:188` 说「仓库里的 `.claude/settings.json` hooks 会在这些会话里生效」，和当前启动参数不符：Agency 用 `--restricted`，忽略 user、project、local 三处 settings，保留 managed settings 与 `--settings`。照 #441 评审给的改法写准：一般的信任会允许加载项目配置；当前 Agency 还用 `--restricted` 排除仓库 settings，显式注入的 settings 与 managed settings 仍生效。保留「只登记可信仓库」的提醒。
+- **验收**：第 1 条的用例在退回改动后要红；CI 绿。
+- **分支**：`glm/review-followups`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
+
+### 小活 AH · 随包加 tmux 3.7c，第 10 包的前置，只加不删（DeepSeek（mac）写；Claude（mac）找问题，Antigravity（ubuntu）核验）
+
+- **来由**：`09` 第 10 包把终端复用器换回 tmux 3.7c。所有者 2026-10-20 让空席接活（§二 第 56 条），把第 10 包里「随包加 tmux」这一块拆出来先做；Herdr 等第 10 包切代码时再删。分发方案已调研：`docs/research/tmux-runtime.md`「2026-08-28 分发复核」——直接消费 `tmux/tmux-builds` v3.7c 的官方预编译单二进制，运行归档、官方 `LICENSES.tar.gz`、上游源码三类各自摘要锁定。
+- **要求**：
+  1. `src/packaging/dependencies/lock.json` 加 tmux：三个目标（macOS arm64、macOS x86_64、Linux x86_64）各自的运行归档，加上许可证与上游源码，各锁摘要；制品取自 `tmux/tmux-builds` 的 v3.7c release。
+  2. 打包与运行脚本照 Herdr 那几处的做法加上 tmux：`platforms/macos`、`platforms/linux` 的 `bootstrap.sh`、`package.sh`、`runtime.sh`，`common/` 下的 `package.sh`、`test-package.sh`，`smoke.sh`，`PACKAGE-README.md`、`SOURCE-INFO.md.in` 与源码伴随包；装好后在 `libexec/hctl2/tmux`。
+  3. 冒烟：用私有 socket（`tmux -S <私有目录>/sock`）起一个 server，建一个 detached session，`list-panes`，做一次只读接入的检查，`kill-server`；前后进程不残留（照 #447、#460 的残留检测）。
+  4. 完整包测试检查 tmux 在包里、能跑、摘要对得上。
+  5. macOS 最低版本：调研时两份 Mach-O 都声明 `minos 15.0`；照这次实测改 `docs/design/delivery.md` §打包策略 那一句与相关 README，实测不同就照实测写，决策史台账记一行。
+  6. 不动 Herdr，不改 Agency 代码。PR 改了三方依赖锁，调研节要引用 `docs/research/tmux-runtime.md`（PR contract 的要求）。
+- **验收**：三平台完整包作业绿；冒烟的原样输出与前后 `ps` 附在 PR 里；macOS 的 `otool -l`（`minos`）与 Linux 的 `file`（静态 ELF）输出附上；退回看红：改坏一个摘要，完整包测试要红。
+- **分支**：`deepseek/package-tmux`，从 `origin/main` 起。开草稿，CI 绿后 `gh pr ready` 即请审；两席「可合」后作者开自动合入。
+
 ### 专项 · 钥匙串整体方案的实现（Codex（mac）写；Claude 找问题，Antigravity 核验；演示 3 走完再合）
 
 - **来由**：§二 第 38 条五件裁定（方案 A：凭据按归属分三类），调研在 `docs/research/macos-keychain-and-harness-credentials.md`（#436）。原定演示 3 之后由 Muse 写；Muse 不可用后，所有者 2026-10-19 定由 Codex（mac）现在开写、演示 3 走完再合（§二 第 42 条 ③）。
@@ -851,8 +983,10 @@ Muse 新加入（§二 第 35 条 ④），两种席位都先各试一次，看�
 - `root//packaging/release:demo3-gitea-test` 在 Intel 上红一次：GLM 为小活 W 手动派的发布线（`199fd4f`，见 §六 小活 X「又红一次」），run `39120722944` / job `117655645567`，macOS x86_64。脚本 Agency 的只读调研调用判成 `failed`，理由 `Agency cannot fulfill this dispatch`，`agency.stop` 结果未知；control 的报错里只有 `Invocation delivery: READBACK_REQUIRED (read_back_original_intent)`。`demo3.sh` 报红时只打 control 的报错，不打 Agency 的日志，看不出 Agency 为什么接不了。主笔 2026-10-18 记下；再出现就排小活，排时先让它报红时带上 Agency 的日志。
 - macOS 上 Claude Code 在凭据边界里登录不上：Claude Code 在 macOS 上的登录只存在钥匙串里（「Claude Code-credentials」）；第 9 包第 5 条要 harness 读钥匙串失败，`confine.rs` 的 macOS profile 于是拒了 `~/Library/Keychains`，Claude 在里面报「Not logged in」，Agency 记 `HARNESS_TURN_ERROR`（主笔 2026-10-11 实测）。Linux 上 Claude 的凭据是 `~/.claude` 下的文件，不受影响，所以演示 3 的 Claude Code 路径在 ubuntu 走（§二 第 36 条）。mac 上怎么办待所有者定，候选三个：用 `claude setup-token` 换成只给这个会话的 token；查 Seatbelt 能不能只放行 Claude 自己那一项；或者改第 5 条的说法。所有者 2026-10-17 指出，钥匙串的问题在 mac 上不止这一处（Muse 自己登录时也写不进钥匙串），要一个整体方案，不逐个修；方案在讨论中（§二 第 37 条 ⑤）。所有者 2026-10-18 定了整体方案：采纳 #436 的方案 A，control 缺省改 `user-file`，第 5 条重述，演示 3 之后 Muse 写（§二 第 38 条）。
 - `confine.rs` 在 macOS 上经 `/usr/bin/sandbox-exec` 施加边界，本机 man 页首行标着 DEPRECATED（#436 实测）。它在当前系统上照常可用，Codex CLI 在 mac 上的沙箱也是经它施加的。所有者 2026-10-18 定记跟进、不排期（§二 第 38 条 ⑤）；真到 Apple 移除时，作为执行加固的整体选型处理。
-- 原生 Agency 的工种目录里，Claude Code 与 Codex 两个工种申报的 harness 都是 `herdr`（持有会话的那一层），`model` 都是 `none`；区分两家的是工种编号 `claude-code` / `codex-cli`。`spec/participant.md` 里「Harness 目录」说的是 Harness 本身是什么，这里的用法和它不一致。`task show` 原先按 harness 显示，真 Agency 下两家都是 `herdr (none)`，人答不出当前是哪一家；#430 改成按工种显示，并注明经由哪个 harness、模型是什么。所有者 2026-10-17 定了方向（§二 第 37 条 ③）：工种的简历是 harness 加模型（或模型组）；harness 是 harness 本身，Herdr 只是管理 harness 的舷窗，不进简历；模型或模型组是自述，不验证。演示 3 之后改，会牵动冻结引用、Worker Profile 的匹配和金样，Antigravity 写。
+- 原生 Agency 的工种目录里，Claude Code 与 Codex 两个工种申报的 harness 都是 `herdr`（持有会话的那一层），`model` 都是 `none`；区分两家的是工种编号 `claude-code` / `codex-cli`。`spec/participant.md` 里「Harness 目录」说的是 Harness 本身是什么，这里的用法和它不一致。`task show` 原先按 harness 显示，真 Agency 下两家都是 `herdr (none)`，人答不出当前是哪一家；#430 改成按工种显示，并注明经由哪个 harness、模型是什么。所有者 2026-10-17 定了方向（§二 第 37 条 ③）：工种的简历是 harness 加模型（或模型组）；harness 是 harness 本身，Herdr 只是管理 harness 的舷窗，不进简历；模型或模型组是自述，不验证。演示 3 之后改，会牵动冻结引用、Worker Profile 的匹配和金样，Antigravity 写。2026-10-20 演示 3 验收看到后果：两家的写入 Profile 合成了同一个 Worker Profile；排成 §六「小活 AD」（§二 第 51 条 ①）。
 - 写入会话完成之后的去留（设计待讨论，§二 第 37 条 ④）：真会话按「雇着就一直待命」不退出，Task 完成后写入租约停在 `revoking`，`changeset show` 一直挂着一条残留（#431 走查）。这不只是演示的事，正常使用都会碰到。所有者倾向像本地 harness 的会话那样休眠，之后可以再唤醒；`delivery.md` §本地 Agency 参考实现里「只有闲置超时才冬眠，被杀后按会话文件恢复，唤醒不算新派工」是同一个方向。这一次写入的租约与工作树什么时候收回、休眠的时机，专门讨论。所有者 2026-10-19 定先出调研，Claude（ubuntu）写（§二 第 42 条 ⑤，§六）。
+- GitHub 任务源建卡慢：演示 3 验收的 B 链里，`task connect` 到 `task create` 共约 4 分 50 秒，其中 `task create` 从预览到 issue 建出约 2 分 30 秒；等待时随包 gh 在逐个读 canary 上已有 issue 的依赖与子 issue（`…/issues/19/dependencies/blocking`、`…/issues/17/sub_issues`）。仓库 issue 多了会更慢。所有者 2026-10-20 交主笔处理，主笔定先记下、不排期，再出现就排小活（§二 第 51 条 ④）。
+- Antigravity 写入派工拦 `gh` 的规则不封闭（策略点，未处理）：#467 的写入 settings 只拒前缀为 `gh` 的 Bash 调用，钩子只认紧挨双引号或斜杠的 `gh `，`sh -c 'gh …'`、`cd x && gh …` 这类写法都能过。这是 harness 有意绕规则，按 AGENTS「找规则挡不住的输入只限诚实路径」记成策略点；人的 gh 凭据由沙箱拒读兜住。MiniMax 盲审 #467 第一稿时发现（§二 第 51 条 ⑦）。
 
 演示 3 之后还有两大段：Run 与施工图、评审关卡（P2.5，接 Dagu），以及 Workbench（P3）。先做哪段，所有者 2026-10-19 定：先做 P2.5（§二 第 42 条 ④）。Workbench 的界面零件互相独立，适合多家一起写。
 

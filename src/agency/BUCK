@@ -124,7 +124,7 @@ rust_test(
     name = "herdr_test",
     srcs = ["tests/herdr.rs", "tests/turn.test.ts"],
     crate_root = "tests/herdr.rs",
-    deps = [":service"] + DEPS,
+    deps = [":service", "root//crates/participant:participant", "root//crates/store:store"] + DEPS,
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
@@ -150,7 +150,7 @@ rust_test(
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | {
-        "CODEX_HOME": "/tmp/hctl2-codex-fixture-home",
+        "HCTL2_AGENCY_HARNESS_HOME": "/tmp/hctl2-codex-fixture-home",
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
@@ -221,7 +221,7 @@ rust_test(
     edition = HCTL2_RUST_EDITION,
     rustc_flags = HCTL2_RUSTC_FLAGS,
     env = hctl2_cargo_env() | HEAVY_AGENCY_RPC_ENV | {
-        "CODEX_HOME": "/tmp/hctl2-write-session-fixture-home",
+        "HCTL2_AGENCY_HARNESS_HOME": "/tmp/hctl2-write-session-fixture-home",
         "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",

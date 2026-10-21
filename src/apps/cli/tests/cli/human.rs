@@ -1103,4 +1103,34 @@ fn human_integration_preview_names_source_target_and_confirm_command() {
     );
     assert!(human.contains("--preview-token"), "{human}");
     assert!(!human.contains('\u{1b}'), "{human}");
+    let confirm_line = human
+        .lines()
+        .skip_while(|line| *line != "Confirm with")
+        .nth(1)
+        .expect("Confirm with command line")
+        .trim();
+    assert!(
+        confirm_line.contains("integration submit")
+            && !confirm_line.contains("integration preview"),
+        "Confirm with must use integration submit:\n{confirm_line}"
+    );
+    let words: Vec<&str> = confirm_line.split_whitespace().collect();
+    let submit = Command::new(words[0])
+        .env("HCTL2_CONTROL_BIN", control())
+        .args(&words[1..])
+        .output()
+        .unwrap();
+    let submit_out = String::from_utf8_lossy(&submit.stdout);
+    let submit_err = String::from_utf8_lossy(&submit.stderr);
+    assert!(
+        submit.status.success(),
+        "executing Confirm with line failed: {submit_out} {submit_err}"
+    );
+    let submitted: Value = serde_json::from_str(&submit_out).unwrap();
+    assert!(
+        submitted["intent_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
+        "submitted integration intent: {submitted}"
+    );
 }

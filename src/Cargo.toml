@@ -9,11 +9,13 @@ members = [
     "crates/context",
     "crates/participant",
     "crates/facts",
+    "crates/gate-tally",
     "crates/foundation",
     "crates/proto",
     "crates/proto/codegen",
     "crates/project",
     "crates/repo",
+    "crates/run",
     "crates/store",
     "crates/task",
 ]

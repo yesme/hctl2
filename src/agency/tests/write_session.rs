@@ -38,7 +38,19 @@ impl Rig {
     }
     async fn build(live: bool, agy: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("credentials");
+        let root = if live {
+            match std::env::var("HCTL2_LIVE_AGENCY_ROOT") {
+                Ok(path) => {
+                    let root = PathBuf::from(path);
+                    assert!(root.is_absolute() && root.is_dir());
+                    root
+                }
+                Err(_) if agy => temp.path().join("credentials"),
+                Err(_) => panic!("prepare a dedicated managed login before running live tests"),
+            }
+        } else {
+            temp.path().join("credentials")
+        };
         let repo = temp.path().join("source");
         fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "--initial-branch=main"]);
@@ -107,6 +119,16 @@ impl Rig {
             let home = fixture_home();
             fs::create_dir_all(&home).unwrap();
             fs::write(home.join("mode"), "ok").unwrap();
+            fs::write(
+                home.join("auth.json"),
+                br#"{"tokens":{"access_token":"fixture-only"}}"#,
+            )
+            .unwrap();
+            fs::set_permissions(home.join("auth.json"), fs::Permissions::from_mode(0o600)).unwrap();
+            agency::managed_login::Homes::prepare(&root)
+                .unwrap()
+                .import_claude_token(b"sk-ant-oat01-fixture-only".as_slice(), u64::MAX)
+                .unwrap();
             (claude, codex, agy_bin)
         };
         let herdr = PathBuf::from(std::env::var("HCTL2_LOCKED_HERDR").unwrap())
@@ -139,7 +161,11 @@ impl Rig {
             .call(
                 "pair",
                 &Pair {
-                    control_id: "trial-control".into(),
+                    control_id: if live {
+                        format!("trial-{}", hash(temp.path().as_os_str().as_encoded_bytes()))
+                    } else {
+                        "trial-control".into()
+                    },
                     tenant_key: agency_proto::client::new_credential().unwrap(),
                 },
             )
@@ -418,7 +444,7 @@ fn on_path(name: &str) -> PathBuf {
     PathBuf::from(String::from_utf8(out.stdout).unwrap().trim())
 }
 fn fixture_home() -> PathBuf {
-    PathBuf::from(std::env::var("CODEX_HOME").unwrap())
+    PathBuf::from(std::env::var("HCTL2_AGENCY_HARNESS_HOME").unwrap()).join("codex")
 }
 
 /// macOS write and read turns deny this path via the startup profile.
@@ -1170,7 +1196,10 @@ async fn live_writes(harness: &str) {
     if harness == "claude-code" {
         let state = rig.claude_state(&input, &dispatch);
         let started = json_file(&state.join("started.json"));
-        let root = PathBuf::from(std::env::var_os("HOME").unwrap()).join(".claude/projects");
+        let root = agency::managed_login::Homes::prepare(&rig.root)
+            .unwrap()
+            .claude
+            .join("projects");
         let (path, records) = native_records(&root, started["session"].as_str().unwrap());
         assert!(records.iter().any(|record| record["type"] == "user"
             && native_text_matches(
@@ -1231,7 +1260,10 @@ async fn live_writes(harness: &str) {
             .iter()
             .find_map(|event| event.payload["thread"].as_str())
             .unwrap();
-        let root = PathBuf::from(std::env::var_os("CODEX_HOME").unwrap()).join("sessions");
+        let root = agency::managed_login::Homes::prepare(&rig.root)
+            .unwrap()
+            .codex
+            .join("sessions");
         let (path, records) = native_records(&root, thread);
         assert!(records.iter().any(|record| {
             record["payload"]["role"] == "user"

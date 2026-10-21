@@ -38,6 +38,17 @@ sh_test(
     test_rule_timeout_ms = 120000,
 )
 
+# The leftover reaper is the one place that decides what belongs to a test run;
+# its ownership and "owner is gone" rules are fixtures, not prose.
+sh_test(
+    name = "reap_leftovers_fixtures_test",
+    test = "check_reap_leftovers_fixtures.sh",
+    env = {"REAPER": "$(location root//:reap_test_leftovers)"},
+    resources = ["root//:reap_test_leftovers"],
+    labels = CI_FAST,
+    test_rule_timeout_ms = 180000,
+)
+
 sh_test(
     name = "clippy_coverage_fixtures_test",
     test = "check_clippy_coverage_fixtures.sh",
