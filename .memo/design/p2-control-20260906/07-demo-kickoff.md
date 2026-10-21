@@ -497,21 +497,15 @@ Claude（ubuntu）用 main `009cfab`（含小活 AA #477、走查第三轮 #479�
 
 | 件 | 任务书 | 写 | 找问题 | 核验 | 分支 / PR | 前提 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 钥匙串整体方案的实现 | §六「专项 · 钥匙串整体方案的实现」；§二 第 38 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu） | `codex/managed-harness-login`，#466 | 演示 3 已走完（§二 第 52 条）；mac 上的托管登录由所有者导入后补齐验收，两席可合即开自动合入 |
-| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，还没开 PR | #466 合入后开 |
-| 小活 AC · 演示 3 手册补齐，合入预览的确认命令改对 | §六「小活 AC」；§二 第 51 条 ② | Antigravity（ubuntu） | Claude（mac） | DeepSeek（ubuntu），照新的第三节从零重跑 B 链；MiniMax（mac）额外静态核对，不计入可合 | `agy/demo-3-manual-b`，还没开 PR | 现在就写 |
-| 小活 AD · 工种简历写 harness 本身 | §六「小活 AD」；§二 第 37 条 ③、第 51 条 ① | Antigravity（mac） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `agy/profession-resume`，还没开 PR | 现在就写 |
-| 小活 AE · 完成 Task 时写回连接的任务源 | §六「小活 AE」；§二 第 54 条 | Claude（ubuntu） | Codex（ubuntu）、Claude（mac） | DeepSeek（ubuntu） | `claude/task-complete-writeback`，还没开 PR | 现在就写 |
-| 小活 AF · 第 1 包评审留下的五条 | §六「小活 AF」；§二 第 56 条 | Grok（mac） | Claude（mac） | GLM（mac） | `grok/workflow-lint-followups`，还没开 PR | 现在就写；和第 3、7 包碰同一个 crate，后合的 rebase |
-| 小活 AG · 两处评审遗留的小修 | §六「小活 AG」；§二 第 56 条 | GLM（mac） | Grok（mac） | Antigravity（ubuntu） | `glm/review-followups`，还没开 PR | 现在就写 |
-| 小活 AH · 随包加 tmux 3.7c（第 10 包的前置，只加不删） | §六「小活 AH」；§二 第 56 条 | DeepSeek（mac） | Claude（mac） | Antigravity（ubuntu） | `deepseek/package-tmux`，还没开 PR | 现在就写 |
-| P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器 | `09` §四 第 2 包；§二 第 52 条 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/dagu-port`，还没开 PR | 小活 AD 交出后就开，不等它合入 |
-| P2.5 第 3 包 · Run 生命周期与施工清单 | `09` §四 第 3 包；§二 第 52 条 | Codex（ubuntu） | Claude（mac） | Antigravity（ubuntu） | `codex/run-lifecycle`，还没开 PR | 现在就开 |
-| P2.5 第 7 包 · 读回链路 | `09` §四 第 7 包；§二 第 52 条 | GLM（ubuntu） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `glm/workflow-readback`，还没开 PR | 现在就开 |
-| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，#467 | 现在就写（§二 第 44 条 ②）；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
-| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，#461 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合 |
-| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu）；Claude（ubuntu）合入前补一道，专看 #467 四条 P1 的同类问题（§二 第 53 条） | Antigravity（ubuntu） | `deepseek/harness-omp`，#464 | 现在就写；H0 合入后在它上面 rebase；演示 3 已走完，钥匙串专项合入后即可合；Claude（ubuntu）补的那道对当前头写了「可合」才合；合入前核验席用所有者导入的 omp 专用登录重跑一次真会话（§二 第 55 条） |
-| P2.5 第 10 包第一步 · tmux 客户端、窗格换底、Codex 与 H1–H3 的窗格、测试迁移 | `09` §四 第 10 包；§二 第 60 条 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 代码已写完，小活 AH 合入后开 PR；Claude Code 的待命会话这一步仍在 Herdr 上 |
+| 小活 AB · control 自己的 GitHub 凭据 | §六「小活 AB」；§二 第 50 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），在 ubuntu 上重跑 B 链 | `codex/control-github-credential`，#505 | 现在就写（#466 已合入） |
+| 小活 AE · 完成 Task 时写回连接的任务源 | §六「小活 AE」；§二 第 54 条 | Claude（ubuntu） | Codex（ubuntu）、Claude（mac） | DeepSeek（ubuntu） | `claude/task-complete-writeback`，#491 | 小活 AC（#485）先合入了：并 main 后照要求 5 改 B 链第 7、8 步，三席对新头复核后开自动合入 |
+| 小活 AH · 随包加 tmux 3.7c（第 10 包的前置，只加不删） | §六「小活 AH」；§二 第 56 条 | DeepSeek（mac） | Claude（mac） | Antigravity（ubuntu） | `deepseek/package-tmux`，#497 | 现在就写 |
+| P2.5 第 2 包 · workflow engine 端口与 Dagu 适配器 | `09` §四 第 2 包；§二 第 52 条 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/dagu-port`，#502 | 现在就写 |
+| P2.5 第 7 包 · 读回链路 | `09` §四 第 7 包；§二 第 52 条 | GLM（ubuntu） | Claude（ubuntu）（§二 第 53 条） | DeepSeek（ubuntu） | `glm/workflow-readback`，#495 | 现在就写 |
+| P2.5 H1 · 接 Antigravity | `09` §四 H1–H3 | Antigravity（mac） | Codex（mac） | DeepSeek（ubuntu） | `agy/harness-antigravity`，#467 | H1–H3 按 #467、#464、#461 的顺序合入（#467 与 #464 有 7 个文件重叠，同时并 main 的话，后合的那件还要再解一遍冲突）；每件在前一件合入后并 main，解冲突动了代码的请评审席对新头复核；钥匙串专项（#466）已合入 |
+| P2.5 H2 · 接 Grok | `09` §四 H1–H3 | Grok（ubuntu） | Claude（mac） | GLM（ubuntu） | `grok/harness-grok`，#461 | 现在就写；排在 #464 之后合入（顺序见 H1 一行） |
+| P2.5 H3 · 接 omp | `09` §四 H1–H3 | DeepSeek（ubuntu） | Grok（ubuntu）；Claude（ubuntu）合入前补一道，专看 #467 四条 P1 的同类问题（§二 第 53 条） | Antigravity（ubuntu） | `deepseek/harness-omp`，#464 | 排在 #467 之后合入（顺序见 H1 一行）；Claude（ubuntu）补的那道对当前头写了「可合」才合；核验席用所有者导入的 omp 专用登录跑的真会话已在 `ee9ce8f` 上做过（§二 第 55 条） |
+| P2.5 第 10 包第一步 · tmux 客户端、窗格换底、Codex 与 H1–H3 的窗格、测试迁移 | `09` §四 第 10 包；§二 第 60 条 | Claude（mac） | Codex（mac） | Antigravity（ubuntu） | `claude/agency-tmux`，还没开 PR | 代码已写完；小活 AH（#497）与 H1–H3 合入后并 main 开 PR（这一步要把 H1–H3 的窗格一起换到 tmux）；Claude Code 的待命会话这一步仍在 Herdr 上 |
 | P2.5 第 10 包第二步 · Claude Code 路径换到 tmux、删 Herdr、空 Git 仓库里的信任探针 | `09` §四 第 10 包「分两步交」；§二 第 56、60 条 | Codex（mac） | Claude（mac） | Antigravity（ubuntu），用 ubuntu 的专用登录跑 Claude Code 真会话（§二 第 58 条） | `codex/agency-tmux-claude`，还没开 PR | 第一步合入后开 |
 
 ### 专项 · 自建方案盘点（高优；Grok、Codex、DeepSeek 各查一块，Claude 汇总）
