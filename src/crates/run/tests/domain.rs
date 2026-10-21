@@ -767,3 +767,49 @@ fn current_roster_and_actual_producer_profiles_are_checked() {
 mod cli;
 
 mod summary;
+
+#[test]
+fn each_of_the_three_digest_checks_fails_independently() {
+    // A different workflow (extra noop node) whose canonical hash differs.
+    let mut other = workflow();
+    other.graph.nodes.push(crate::Node {
+        id: "extra".into(),
+        outputs: Default::default(),
+        operation: crate::Operation::Noop {},
+    });
+    let other_value = serde_json::to_value(&other).unwrap();
+    let other_bytes = canonical_json(&other_value).unwrap();
+
+    // Check 1 only: entry.source.digest wrong, content unchanged.
+    let mut p = proof();
+    p.actual.delivered.document.entries[0].source.digest = sha("wrong source");
+    reseal(&mut p);
+    assert!(
+        verify(&p, &provenance()).is_err(),
+        "entry.source.digest mismatch must fail"
+    );
+
+    // Check 2 only: entry.bytes_digest wrong, bytes unchanged.
+    let mut p = proof();
+    p.actual.delivered.document.entries[0].bytes_digest = sha("wrong bytes");
+    reseal(&mut p);
+    assert!(
+        verify(&p, &provenance()).is_err(),
+        "bytes_digest mismatch must fail"
+    );
+
+    // Check 3 only: content is a different workflow, source.digest claims the
+    // original (so check 1 passes), bytes_digest is recomputed (so check 2
+    // passes) — only the canonical-hash-of-content check catches the swap.
+    let mut p = proof();
+    let declared = canonical_json_sha256(&serde_json::to_value(workflow()).unwrap()).unwrap();
+    let entry = &mut p.actual.delivered.document.entries[0];
+    entry.source.digest = declared;
+    entry.bytes_digest = bytes_sha256(&other_bytes);
+    entry.delivery = Delivery::Inline { bytes: other_bytes };
+    reseal(&mut p);
+    assert!(
+        verify(&p, &provenance()).is_err(),
+        "canonical hash of delivered content differing from declared must fail"
+    );
+}
