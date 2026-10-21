@@ -135,8 +135,15 @@ assemble_dependency_package() {
     tar -xOf "$P0_DOWNLOAD_DIR/$HERDR_SOURCE_ASSET" \
         "herdr-$HERDR_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Herdr-Apache-2.0.txt"
-    tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" ./COPYING.tmux \
-        >"$payload_root/share/hctl2/licenses/Tmux-ISC.txt"
+    for entry in \
+        COPYING.tmux:Tmux-ISC.txt \
+        LICENSE.libevent:Libevent-BSD-3-Clause.txt \
+        COPYING.ncurses:Ncurses-MIT.txt \
+        LICENSE.utf8proc:Utf8proc-MIT.txt \
+        COPYRIGHT.musl:Musl-MIT.txt; do
+        tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" "./${entry%%:*}" \
+            >"$payload_root/share/hctl2/licenses/${entry##*:}"
+    done
     tar -xOf "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
         "process-compose-$PROCESS_COMPOSE_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Process-Compose-Apache-2.0.txt"

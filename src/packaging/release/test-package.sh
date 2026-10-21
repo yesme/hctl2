@@ -97,6 +97,12 @@ awk -F '\t' '$1 == "tmux" { found = 1 } END { exit !found }' \
     sed -n '1,20p' "$release_root/payload/share/hctl2/dependencies.tsv" >&2 || true
     die "release dependencies.tsv is missing tmux"
 }
+for license in \
+    Tmux-ISC.txt Libevent-BSD-3-Clause.txt Ncurses-MIT.txt \
+    Utf8proc-MIT.txt Musl-MIT.txt; do
+    [[ -s "$release_root/payload/share/hctl2/licenses/$license" ]] || \
+        die "release is missing the $license license"
+done
 "$release_root/payload/libexec/hctl2/process-compose" version | \
     grep -F 'v1.122.0' >/dev/null
 "$release_root/payload/libexec/hctl2/gh" --version | grep -F 'gh version 2.102.0' >/dev/null

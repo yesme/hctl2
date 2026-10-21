@@ -152,8 +152,12 @@ test_dependency_package() {
         '$1 == "tmux" && $4 == build_input && $5 == source { found = 1 } END { exit !found }' \
         "$test_root/$PACKAGE_ID/payload/share/hctl2/dependencies.tsv" || \
         die "runtime package records the wrong tmux build input or source digest"
-    [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Tmux-ISC.txt" ]] || \
-        die "runtime package is missing the tmux license"
+    for license in \
+        Tmux-ISC.txt Libevent-BSD-3-Clause.txt Ncurses-MIT.txt \
+        Utf8proc-MIT.txt Musl-MIT.txt; do
+        [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/$license" ]] || \
+            die "runtime package is missing the $license license"
+    done
     [[ -s "$test_root/$PACKAGE_ID/payload/share/hctl2/licenses/Process-Compose-Apache-2.0.txt" ]] || \
         die "runtime package is missing the Process Compose license"
     ! grep -F $'element-web\t' \

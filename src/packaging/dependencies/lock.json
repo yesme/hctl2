@@ -105,7 +105,7 @@
       },
       "tmux": {
         "version": "3.7c",
-        "source_commit": "79072dd1a9f5fb437a5859e362a496fd57ec0981",
+        "source_commit": "e476c1230b958df0cb12977517d24b3dc931375b",
         "source_asset": "tmux_source",
         "licenses_asset": "tmux_licenses"
       }
@@ -181,12 +181,12 @@
       "sha256": "e242dd3589c31a36320d75e0de9eefa3fa429bd9b0af89d35af8585c7f514b9c"
     },
     "tmux_source": {
-      "filename": "tmux-79072dd1a9f5fb437a5859e362a496fd57ec0981-source.tar.gz",
-      "url": "https://github.com/tmux/tmux/archive/79072dd1a9f5fb437a5859e362a496fd57ec0981.tar.gz",
-      "sha256": "9cb5a8728bb48b7e21bce54060594bc871f61629e71f9cf9c915c4053c7b94de"
+      "filename": "tmux-e476c1230b958df0cb12977517d24b3dc931375b-source.tar.gz",
+      "url": "https://github.com/tmux/tmux/archive/e476c1230b958df0cb12977517d24b3dc931375b.tar.gz",
+      "sha256": "7c530752cd0633b980214c3dbaeae6d889feed152d6360e26b8d9661033d7348"
     },
     "tmux_licenses": {
-      "filename": "LICENSES.tar.gz",
+      "filename": "tmux-3.7c-LICENSES.tar.gz",
       "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/LICENSES.tar.gz",
       "sha256": "094905d3ba42397c65fecd817dc29736dd14bd35e75600441403a365125f47d1"
     }
