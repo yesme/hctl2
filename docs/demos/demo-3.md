@@ -1,6 +1,6 @@
 # 演示 3「真实交付」操作手册
 
-> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`631e47c`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**第 1–7 步各步已在验收实录（提交 `009cfab`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上实测核验，第 8 步收尾命令与第三节整体待核验席重跑。
+> **核验状态总览**：本手册分节标注实跑状态。截至当前 `main`（`631e47c`），**第一节（构建、离线安装、启动控制面）、第二节（A 链全部 10 步，含从离线安装包拉起真 Claude Code 会话完成写入与封存、自动发布、合入预览、完成预览及十秒回答）、第四节（C 链全部 5 步，含真 Claude Code 会话写入与发布、合入、完成三次人工预览）、第五节（重启恢复、凭据隔离与三条逃生口全部小节）、第六节（清理环境）**已在 Ubuntu（`Linux 7.0.0-34-generic x86_64`）上从零实跑通过（原始终端输出日志见仓内 `.memo/log/2026-10-19-demo3-manual-run.md`）；**第三节（B 链：受保护 GitHub `main` + 真 Codex 写入交付）**第 1–7 步各步已在验收实录（提交 `009cfab`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上实测核验；第 7 步的完成写回是小活 AE 之后加的，只在 canary 上单独实跑过（日志 `.memo/log/2026-10-21-小活AE-完成写回真跑-ubuntu.md`）；第 8 步收尾命令与第三节整体待核验席重跑。
 
 本文记录演示 3「真实交付」从零构建、离线安装到端到端走查的完整命令序列。流程覆盖：本地 Gitea 仓库注册与 Claude Code 真会话写入交付链（A 链，人类仅在合入与完成两处预览确认）、受保护 GitHub `main` 与 Codex 真会话交付链（B 链）、开启「发布评审须人显式确认」开关的三次预览链（C 链），以及重启一致性、凭据隔离与逃生口的核对方法。
 
@@ -753,7 +753,7 @@ $CLI --json --root "$ROOT" task show "$PROJECT_ID" "$TASK_ID" \
 
 ## 三、B 链：受保护 GitHub `main` + 真 Codex 写入交付
 
-**实跑状态**：各步在验收实录（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实测核验，本节整体待核验席重跑。
+**实跑状态**：各步在验收实录（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）里实跑过，第 6 步 `hctl2-tool wait commit-ci` 另在提交 `631e47c` 上对发布提交 `f8e4a451fd6db10aff5f8e33adbd06b287602db0` 实测核验，第 7 步的完成写回只在 canary 上单独实跑过（见第 7 步），本节整体待核验席重跑。
 
 > [!NOTE]
 > **GitHub 登录与凭据说明**：现行做法复用人这台机器上已登录的 `gh`（control 调用随包的 `$INSTALL_ROOT/libexec/hctl2/gh`，`hctl2-tool` 缺省调用 `PATH` 上的 `gh` 或由 `HCTL2_GH` 指定，均读取宿主机当前用户的 `gh` 登录态；操作前确认 `gh auth status` 已登录并对 `yesme/hctl2-canary` 有写权限）。小活 AB 合入后改成 control 自己的凭据。
@@ -1187,9 +1187,9 @@ echo "$B_INT_SHOW" | jq '{state: .intent.state, receipt_id: .receipt.receipt_id,
 
 ### 7. 完成 Task（`task complete`）与十秒回答（`task show`）
 
-**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。
+**实跑状态**：实跑过（提交 `009cfab`，机器 Ubuntu `Linux 7.0.0-34-generic x86_64`，日志 `.memo/log/2026-10-20-演示3验收-ubuntu.md`）。完成写回那几项是小活 AE 加的，没在整条 B 链上重跑；同一种任务源在 `yesme/hctl2-canary` 上单独实跑过一次（提交 `b61a43f`，issue #45，日志 `.memo/log/2026-10-21-小活AE-完成写回真跑-ubuntu.md`）。
 
-引用 `$B_RECEIPT_ID` 执行 `task complete` 的人读预览、`--json` 预览与确认提交，并运行 `task show` 核对十秒回答：
+引用 `$B_RECEIPT_ID` 执行 `task complete` 的人读预览、`--json` 预览与确认提交，并运行 `task show` 核对十秒回答与完成写回：
 
 ```bash
 B_TASK_CUR_VER="$($CLI --json --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID" | jq -r .version)"
@@ -1237,36 +1237,41 @@ $CLI --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-com
 PREV_BCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-complete)"
 TOK_BCOMP="$(echo "$PREV_BCOMP" | jq -r .preview_token)"
 SUB_BCOMP="$($CLI --json --root "$ROOT" task complete --input "$WS/work/b-complete.json" --key b-complete --preview-token "$TOK_BCOMP")"
-echo "$SUB_BCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, items: [.items[] | {item, grade, outcome, validation_level, references: [.references[].key.id]}]}'
+echo "$SUB_BCOMP" | jq '{lifecycle: .lifecycle, lifecycle_version: .lifecycle_version, receipt_id: .receipt_id, items: [.items[] | {item, grade, outcome, validation_level, references: [.references[].key.id]}], writeback: .writeback, effect_state: .effect_state}'
 
 $CLI --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID"
+
+$CLI --json --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID" \
+  | jq '.progress.completion.writeback | {enqueued, card, effect_state}'
 ```
 
 **核对字段**：
 - `task complete` 返回 `lifecycle: "completed"`、`lifecycle_version: 2`、`receipt_id: "<B_TASK_ID>:2"`。
-- `task show` 单屏输出六行十秒回答：`goal`、`state: completed; contract revision 1`、`blocking: nothing`、`harness: codex-cli (via herdr, model none) — invocation ... completed`、`evidence`（同时列出 `version csr-...`、`review request #<B_PR_INDEX> (published)`、`Integration Receipt` 与 `Completion Receipt`）与 `next: nothing — the Task is completed`。
-- `task complete` 之后平台上的卡不会自动关，收尾见第 8 步。
+- 人读预览的 `writeback` 一行是 `comment, then close card #<第 4 步建的 issue 编号> on the connected task source`。
+- `writeback.enqueued`: `true`，`effect_state`: `"confirmed"`：写回意图与 Receipt 同一事务入队，提交后先在第 4 步建的 issue 上追加一条带控制面、Task 与 Receipt 标识的完成评论，再把 issue 关闭，两步都回读确认；`task show --json` 的 `progress.completion.writeback` 同样是 `enqueued: true`、`effect_state: "confirmed"`。
+- 写回结果未知时，命令以非零退出、带 `error`，`state` 行写 `external sync pending`，`next` 给出 `hctl2 task resume` 的命令，照它重跑只回读、不再发第二条评论；被平台拒绝时，完成照常成立，`state` 行写 `the task source refused the writeback — needs attention`，issue 由人在平台上关。
+- `task show` 单屏输出六行十秒回答：`goal`、`state: completed; contract revision 1; card closed on the task source`、`blocking: nothing`、`harness: codex-cli (via herdr, model none) — invocation ... completed`、`evidence`（同时列出 `version csr-...`、`review request #<B_PR_INDEX> (published)`、`Integration Receipt` 与 `Completion Receipt`）与 `next: nothing — the Task is completed`。
+- 小活 AB 合入前，control 借用的是人的 `gh` 登录（本节开头的说明），所以 GitHub 上这条评论的作者与 issue 的关闭者都显示人自己的账号；评论正文写明了控制面与 Task。
 
 ### 8. 收尾清理 `yesme/hctl2-canary` 上留下的远端对象
 
 **实跑状态**：照用例或代码写的，未实跑（供人类操作者在完成核验后用自己的 `gh` 收尾清理远端沙盒遗留物）。
 
-B 链跑完后，`yesme/hctl2-canary` 上会留下两项未关闭/未删除的远端对象：一是第 4 步新建的 GitHub issue（`task complete` 未自动写回关闭，仍为 `open`），二是第 6 步已合入 PR 的远端源分支 `refs/heads/$B_HEAD_BRANCH`（即 `hctl2/cs-<B_CHANGESET_ID>`）。由人用自己的 `gh` 执行以下命令收尾：
+第 4 步新建的 GitHub issue 已由第 7 步的完成写回关闭，不用人再关。B 链跑完后，`yesme/hctl2-canary` 上只留下一项远端对象：第 6 步已合入 PR 的远端源分支 `refs/heads/$B_HEAD_BRANCH`（即 `hctl2/cs-<B_CHANGESET_ID>`）。由人用自己的 `gh` 执行以下命令收尾：
 
 ```bash
 export B_ISSUE_NUMBER="$($CLI --json --root "$ROOT" task show "$B_PROJECT_ID" "$B_TASK_ID" | jq -r .data.number)"
 export B_HEAD_BRANCH="$(echo "$B_PUB_SHOW" | jq -r '.mappings[0].review_request.head_branch')"
 
-# 1. 关闭本次 B 链在 yesme/hctl2-canary 上创建的 issue
-gh issue close "$B_ISSUE_NUMBER" --repo yesme/hctl2-canary --comment "Closed after demo-3 B chain walkthrough."
-
-# 2. 删除已合入 PR（#$B_PR_INDEX）留下的远端源分支
+# 1. 删除已合入 PR（#$B_PR_INDEX）留下的远端源分支
 gh api -X DELETE "repos/yesme/hctl2-canary/git/refs/heads/$B_HEAD_BRANCH"
 
-# 3. 核对 issue 已关闭、远端源分支已不存在
-gh api "repos/yesme/hctl2-canary/issues/$B_ISSUE_NUMBER" --jq '{number, state, title}'
+# 2. 核对 issue 已由完成写回关闭、带一条完成评论，远端源分支已不存在
+gh api "repos/yesme/hctl2-canary/issues/$B_ISSUE_NUMBER" --jq '{number, state, state_reason, comments, title}'
 gh api "repos/yesme/hctl2-canary/pulls/$B_PR_INDEX" --jq '{number, state, merged, head_ref: .head.ref}'
 ```
+
+**核对字段**：issue 的 `state: "closed"`、`state_reason: "completed"`、`comments: 1`（第 7 步写回的那条完成评论）。
 
 ---
 
