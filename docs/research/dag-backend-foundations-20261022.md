@@ -2,8 +2,8 @@
 
 > 状态：调研 · 日期：2026-10-22<br>
 > 类别：⑥ 机械后端与基础设施（跨候选归纳） · 证据编号：E-L2-DAG-BACKEND<br>
-> 对象：替换 Dagu 的 hctl-dag 的底座候选：Rust 与 C/C++ 的框架和组件、Go/Python/Node 的持久执行库、独立进程的引擎；本库 main `86fd3666` 的 control store crate 与依赖树<br>
-> 定位：Informative 研究备忘录。所有者 2026-10-22 定去掉 Dagu、自建 hctl-dag（与 control 解耦，只做机械推进，裁决仍在 control），并要求「不到万不得已，我不想我们自己写代码」，所以先查可集成的 SDK。本文给推荐，不定案，路线由所有者定。按 extern C 嵌入的 workflow/DAG 引擎另做补充调研，结果追加在文末。发布后正文不改，只在文末追加复核记录。<br>
+> 对象：替换 Dagu 的 hctl-dag 的底座候选：Rust 与 C/C++ 的框架和组件、Go/Python/Node 的持久执行库、独立进程的引擎，以及能经 extern C 嵌入的 BPMN、状态图、Petri 网等图原生引擎；本库 main `86fd3666` 的 control store crate 与依赖树<br>
+> 定位：Informative 研究备忘录。所有者 2026-10-22 定去掉 Dagu、自建 hctl-dag（与 control 解耦，只做机械推进，裁决仍在 control），并要求「不到万不得已，我不想我们自己写代码」，所以先查可集成的 SDK。本文给推荐，不定案，路线由所有者定。按 extern C 嵌入的图原生引擎的补充调研见第七节。发布后正文不改，只在文末追加复核记录。<br>
 > 相关：[工作流引擎：Dagu 与七个候选对照](./workflow-engines.md)、[Dagu SDK 记录](./sdk/dagu.md)
 
 ## 一、结论
@@ -23,6 +23,8 @@
 - 以图为模型的引擎（Elsa、Camunda、Flowable、LittleHorse）范式是对的。但它们要带 .NET 或 JVM，有的还要 Kafka 或 Elasticsearch；节点和边级的增量接口、全局游标也照样缺。
 
 **推荐路线甲**：用 control 已有的 store crate 和树里已有的依赖拼装，不加任何第三方依赖。DBOS Transact Go 作备选。见第四、五节。
+
+**补充（同日）**：所有者看过上述结论后，定「不自己写状态机或 workflow 的代码」，并让我们把凡是能经 extern C 嵌入的图原生引擎都拿来看。按这个口径补查后，推荐改为 Operaton（Camunda 7 的社区分支）。路线甲降为不接受 JVM 时的兜底。见第七节。
 
 ## 二、需求与口径
 
@@ -145,6 +147,126 @@
 - 路线甲的行数是判断，不是原型量出来的。
 
 各路回报里还有一批更细的未核实项（各引擎重复完成的语义、二进制体积、许可细节等），定了路线后，只核与所选路线有关的那几项。
+
+## 七、补充：能经 extern C 嵌入的图原生引擎
+
+所有者看过第一至六节后说：「我仍然不认为需要自己写自动机/workflow的代码 - 你去调研一下workflow/dag的SDK，只要是符合extern C的，都可以拿来看。我们要把这个包装成一个service-able的dag/workflow」。
+
+本节按这个口径补查：图语义要由引擎原生提供，我们只写服务接口、持久化接线和映射。以下嵌入方式都算 extern C：
+- C/C++ 或 Rust 库；
+- Go 编成 c-shared；
+- 经 CPython 的 C API 嵌入 Python；
+- 经 JNI 嵌入 JVM；
+- 经 hostfxr 加载 .NET；
+- 带 C API 的 JS 引擎。
+
+两路并行，一路查 BPMN 引擎，一路查状态图、Petri 网、DAG 库和行为树。
+
+### 7.1 评判口径
+
+| 编号 | 引擎要原生提供的 |
+|---|---|
+| N1 | 图语义：并行分叉与全部汇合、排他分支、错误路径、有界循环或多实例、定时器 |
+| N2 | 由外部完成的等待节点，有可寻址的 id；重复完成、过期完成时怎么处理 |
+| N3 | 持久化：自带存储，或者能导出、恢复整个实例状态 |
+| N4 | 定义有不可变的版本，运行中的实例钉在自己的版本上 |
+| N5 | 运行中的实例能迁移到新版本（例如加了节点），已完成的部分保留 |
+| N6 | 带序号或游标的事件流 |
+| N7 | 不需要执行任意代码，或者能关掉 |
+| N8 | 怎么经 C 接口嵌进来，要把什么运行时带进进程 |
+| N9 | 活跃度 |
+| N10 | 体积 |
+
+N5 正是讨论中所有者问的「运行中加节点、继承已完成的节点」。
+
+### 7.2 结论
+
+**图语义全由引擎原生提供、又能原生迁移运行中实例的，只有 Camunda 7 一系（Operaton、CIB seven、EximeeBPMS、Fluxnova、OrqueIO）和 Flowable，都是 Java。** 其余候选至少缺一样：
+- .NET 的 Elsa：迁移只按节点 id 重新挂接，没有映射计划。
+- Python 的 SpiffWorkflow：迁移功能文档自称「brand new」；定时器要宿主去推；缺省用 `eval` 执行表达式。
+- Go 的 ZenBPM：没有迁移，存储层要我们实现约 74 个方法。
+- Rust 的 graphrun：语义最贴，但没有迁移，项目才五周。
+- 状态图、Petri 网、DAG 库、行为树：每个至少缺 N3–N6 里的两样。
+- C/C++/Zig：没有能用的引擎。
+
+### 7.3 候选一览
+
+**BPMN 引擎**
+
+| 候选 | 嵌入方式 · 运行时 | 许可 · 最新版 | N5 迁移 | 关键事实 |
+|---|---|---|---|---|
+| **Operaton**（Camunda 7 的社区分支） | JNI 或独立 JVM；JRE 17+；依赖 jar 约 32 MB | Apache-2.0，README 写明「no open-core model, no commercial editions」，另有第三方付费支持 · v2.1.5（2026-09-18），自 2025-11 起每月发版 | **有**：迁移计划（`mapActivities` / `mapEqualActivities`）加 `newMigration(...).execute()`，保留运行中的活动实例、任务实例和变量 | N1–N4 原生；外部完成走 `taskService.complete` 或消息关联，任务不存在会抛异常，并发写会抛乐观锁异常；存储是 H2 文件库，不支持 SQLite；部署时可按内容去重（`enableDuplicateFiltering`）；没有全局游标（N6 部分）；JUEL 表达式能调方法，要部署时校验（N7 部分）。[迁移文档](https://docs.operaton.org/docs/documentation/user-guide/process-engine/process-instance-migration) |
+| CIB seven、EximeeBPMS、Fluxnova、OrqueIO | 同上 | Apache-2.0，各有厂商支持 · 2026 年都有发版 | 有 | 引擎代码同源。EximeeBPMS 自带一张事务内写入的发件箱表，最接近原生的全局游标 |
+| Camunda 7 CE | 同上 | Apache-2.0，已停止维护 · 7.24.0（2025-10-14）为最后一版 | 有 | 用分支，不用它 |
+| **Flowable** | JNI 或独立 JVM；JRE 17+ | Apache-2.0，有商业平台 · 8.0.0（2026-02-27） | **有**：`ProcessMigrationService`；另能往单个运行中实例注入节点（`DynamicBpmnService`） | 存储是 H2 或 HSQLDB；全局日志号只覆盖任务、默认关闭 |
+| Elsa 3.9 | hostfxr；.NET 加 ASP.NET Core 约 106 MB | MIT · 3.9.0（2026-10-04） | 部分：只按节点 id 重新挂接 | SQLite；User Tasks 的完成带 `OperationId` 与 `ExpectedRevision`；不是 BPMN |
+| SpiffWorkflow | CPython，经 pyo3 嵌入 | LGPL-3.0-or-later · 3.2.0（2026-08-10） | 部分，文档自称「brand new」 | 实例状态序列化成 JSON；定时器要宿主推；缺省用 `eval`/`exec`，必须替换 |
+| ZenBPM `pkg/bpmn` | Go c-shared | AGPL-3.0-or-later，或可购买的 Enterprise 授权 · v1.9.0（2026-10-17） | 无 | 重复完成是幂等的；库里只有内存存储，约 74 个方法要我们实现 |
+| Activiti、jBPM、Imixs、lib-bpmn-engine、gobpm、olive-io/bpmn、bpmn-engine（JS）、各 Rust BPMN 包 | — | — | 无或很弱 | 各自卡在迁移、成熟度、内置 JS 引擎或要编译期建模 |
+
+**非 BPMN 的图原生引擎**
+
+| 候选 | 嵌入方式 | 许可 · 最新版 | N5 | 关键事实 |
+|---|---|---|---|---|
+| graphrun | Rust 库，redb 加单节点 Raft 日志 | MIT · crates.io 0.1.4（2026-09-26），0 星 | 无（规范原文：「There is no in-place workflow-instance migration」） | 语义和 hctl-dag 最贴：定义是数据、不含代码；外部完成按事件 id 幂等；有持久定时器；游标只在未发布的 main 上。依赖约 350 个包 |
+| YAWL | JNI；Hibernate 加 H2 | LGPL-3.0 · v6.1（2026-06-01） | 无 | N1–N4、N6、N7 原生 |
+| acts | Rust 库 | Apache-2.0 · v0.25.0 | 无 | 条件是 QuickJS 跑的 JavaScript，还有执行任意 JS 的 step，N7 不过 |
+| SCXML（uSCXML、Qt SCXML、XState 等）、Petri 网库、Taskflow 与 oneTBB、BehaviorTree.CPP | — | — | 无 | 至少缺 N3–N6 里的两样 |
+
+### 7.4 推荐：Operaton
+
+**理由。**
+- 它是唯一同时满足下面几条的选择：
+  - 图语义全部原生；
+  - 迁移运行中实例原生，第一至六节说的「追加与继承」不用我们写；
+  - 许可是 Apache-2.0，没有开源核心加收费版那种安排；
+  - 每月发版。
+- 它承接的是 Camunda 7 的引擎代码与数据库结构，这套引擎在生产上用了多年。
+- 我们的模型映射到 BPMN 很直接：
+  - 每个节点是一个等待节点（接收任务或用户任务）；
+  - 汇合用并行网关，分支用排他网关或事件网关；
+  - 定时器用定时事件；
+  - 批准后的施工图仍由 control 冻结，编译成 BPMN 部署进去，同一内容重复部署不产生新版本。
+
+**两种形态。**
+- 一是经 JNI 把 JVM 嵌进 Rust 进程，可用 `jni` crate 的 invocation 特性。限制有三条：一个进程只能有一个 JVM；JVM 要活到进程结束；信号处理要和 Rust 运行时协调。
+- 二是 hctl-dag 本身就是一个 JVM 服务，control 通过接口调用它。
+
+我建议第二种。hctl-dag 本来就和 control 解耦，单独起进程最省事，JNI 那几样限制也都绕开了。
+
+**要写的，都在映射和接线范围内：**
+1. 门面接口（部署、启动、列出等待节点、完成、关联消息、迁移、读历史）和错误码映射。
+2. 把施工图编译成 BPMN XML。
+3. 完成的幂等：任务已不存在时查历史，区分「已经完成过」和「过期」。
+4. 全局游标：自定义历史事件处理器在同一事务里写一张发件箱表；改用 EximeeBPMS 则自带。
+5. 部署时校验：拒绝脚本任务和调用方法的表达式。
+6. 打包：用 jlink 裁出的 JRE（要带 `java.desktop`）、H2 文件库、托管启停与备份。
+
+**代价。**
+- 离线包里多一个 JRE：完整版约 95 MB，裁剪后多大未量。
+- 常驻内存要 JVM 的量，未量。
+- 存储是 H2，不是 SQLite。hctl-dag 本来就是独立服务，这一点不碍事。
+
+**定之前先做一次限时验证，要核的几件：**
+1. 把一张样例施工图编成 BPMN：等待节点、并行汇合、排他分支、定时器都要有；
+2. 完成节点，含重复完成和过期完成；
+3. `kill -9` 后重启，看状态和定时器是否都在；
+4. 把运行中的实例迁移到加了一个节点的 v2，看已完成的部分是否保留；
+5. 在 macOS 和 Linux 上量磁盘、常驻内存和启动时间。
+
+### 7.5 不用 JVM 时
+
+- **graphrun（Rust）**：语义最贴。但没有迁移，而迁移恰恰是我们要的继承；项目才五周，要准备好维护一个分支。
+- **Elsa（.NET）**：成熟，迁移只做到按节点 id 重新挂接；要带 .NET 运行时。
+- **第四节的路线甲**：拼装，图语义自己写，作最后的兜底。
+
+### 7.6 本节未核实
+
+- JVM 的常驻内存，jlink 裁剪后的大小，Operaton 能否去掉 DMN/FEEL 依赖以缩小体积。
+- Operaton 对重复消息怎么处理：从接口推断没有去重键，没实测。
+- Flowable 和 Operaton 在 H2 文件库下长期单用户运行的表现：文档列为支持，没实测。
+- GraalVM native-image 能否把这些 Java 引擎编成带 C 接口的共享库：没有找到可行的证据。
+- graphrun 的体积，以及睡眠唤醒、时钟跳变下的行为。
 
 ## 复核记录
 
