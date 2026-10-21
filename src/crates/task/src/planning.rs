@@ -636,19 +636,17 @@ fn add_effect(
     } else {
         id.clone()
     };
+    // The owner is the Task identity this command leaves behind: the one it writes, if any.
+    let identity = key(Scope::Project(task.project_id.clone()), "task", &task.id);
+    let owner_version = match plan.records.iter().find(|r| r.key == identity) {
+        Some(r) => r.version,
+        None => store.get(&identity)?.map_or(1, |r| r.version),
+    };
     plan.effects.push(EffectIntent {
         intent_id: id.clone(),
         owner: Reference {
-            key: key(Scope::Project(task.project_id.clone()), "task", &task.id),
-            version: Version::State(
-                store
-                    .get(&key(
-                        Scope::Project(task.project_id.clone()),
-                        "task",
-                        &task.id,
-                    ))?
-                    .map_or(1, |r| r.version),
-            ),
+            key: identity,
+            version: Version::State(owner_version),
         },
         binding: reference(src),
         operation: operation.into(),
@@ -661,6 +659,117 @@ fn add_effect(
     });
     plan.result["effect_id"] = json!(id);
     Ok(())
+}
+
+/// What 「完成 Task」 writes back to the connected task source (spec/task.md: the
+/// Receipt and the needed external writeback outbox commit in one transaction). A
+/// binding that may write fields gets one intent: a comment naming this control plane,
+/// Task and Receipt, then the card closed. Whatever stops the writeback is stated in the
+/// preview and leaves the completion itself alone.
+fn completion_writeback(
+    store: &Store,
+    plan: &mut Plan,
+    task: &Task,
+    binding: &Record,
+    source: &Source,
+    receipt_id: &str,
+) -> Result<Value> {
+    let skipped = |reason: &str, message: &str| {
+        Ok(json!({"enqueued": false, "reason": reason, "message": message}))
+    };
+    // The decision below reads the binding; a changed binding makes the preview stale.
+    plan.check(binding);
+    if !source.capabilities.field_writeback {
+        return skipped(
+            "binding_cannot_write_fields",
+            "the binding's capabilities do not include field writeback",
+        );
+    }
+    if !source.active {
+        return skipped("source_disabled", "the task source binding is disabled");
+    }
+    let (Some(entity), Some(snapshot)) = (&task.entity, &task.snapshot) else {
+        return skipped(
+            "card_not_confirmed",
+            "the card has not been read back from the task source",
+        );
+    };
+    let snapshot = snapshot_at(store, snapshot)?;
+    let Some(card) = snapshot
+        .cards
+        .iter()
+        .find(|c| &c.entity == entity && !c.tombstone)
+    else {
+        return skipped(
+            "card_not_observed",
+            "the Task's last Snapshot does not show the card",
+        );
+    };
+    // One unresolved write per card (the outbox conflict scope). Queueing a second one
+    // would refuse the whole completion, so the completion goes ahead without it.
+    let scope = format!(
+        "issue:{}",
+        canonical_json_sha256(&serde_json::to_value(entity)?)?
+    );
+    for id in store.pending_effects()? {
+        if store.effect(&id)?.0.conflict_scope == scope {
+            return Ok(json!({
+                "enqueued": false, "reason": "card_write_unresolved", "blocking_effect_id": id,
+                "message": "another write to this card is still unresolved; resume or withdraw it first",
+            }));
+        }
+    }
+    let comment = format!(
+        "Completed in HCTL2 — control `{control}`, Task `{task}`, Task Completion Receipt `{receipt_id}`.\n\n<!-- hctl2:{control}:{task}:{command} -->",
+        control = store.control_id(),
+        task = task.id,
+        command = command_key(store, &plan.input.key).id,
+    );
+    add_effect(
+        store,
+        plan,
+        task,
+        binding,
+        COMPLETION_WRITEBACK,
+        json!({
+            "fields": {"comment": comment, "state": "closed"},
+            "card": card,
+            "lifecycle_version": task.lifecycle_version,
+        }),
+    )?;
+    Ok(json!({
+        "enqueued": true, "effect_id": plan.result["effect_id"],
+        "card": card.number, "comment": comment, "state": "closed",
+    }))
+}
+
+/// The current completion's writeback as its 「完成 Task」 command froze it, with the
+/// outbox state when one was queued. Null for an open Task or a completion recorded
+/// before writeback existed.
+pub fn completion_writeback_status(store: &Store, task: &Task) -> Result<Value> {
+    if task.lifecycle != "completed" {
+        return Ok(Value::Null);
+    }
+    let Some(receipt) = store.get(&key(
+        Scope::Project(task.project_id.clone()),
+        COMPLETION_RECEIPT_KIND,
+        &format!("{}:{}", task.id, task.lifecycle_version),
+    ))?
+    else {
+        return Ok(Value::Null);
+    };
+    let receipt: CompletionReceipt = decode(&receipt)?;
+    let Some(command) = store.get(&command_key(store, &receipt.idempotency_key))? else {
+        return Ok(Value::Null);
+    };
+    let plan: Plan = decode(&command)?;
+    let mut status = plan.result["writeback"].clone();
+    if let Some(id) = status["effect_id"].as_str()
+        && store.has_effect(id)?
+    {
+        status["effect_state"] = serde_json::to_value(store.effect(id)?.1)?;
+    }
+    Ok(status)
 }
 
 pub fn prepare(store: &Store, input: Input) -> Result<Plan> {
@@ -1266,7 +1375,7 @@ fn prepare_inner(
             )?;
             t.lifecycle = "completed".into();
             t.lifecycle_version += 1;
-            let (sr, _) = source(store, &t.repo_id, &t.source_id)?;
+            let (sr, src) = source(store, &t.repo_id, &t.source_id)?;
             p.put_task(store, &t, &reference(&sr))?;
             p.result = json!({
                 "project_id": project_id,
@@ -1276,6 +1385,8 @@ fn prepare_inner(
                 "lifecycle_version": t.lifecycle_version,
                 "items": &receipt.items,
             });
+            p.result["writeback"] =
+                completion_writeback(store, &mut p, &t, &sr, &src, &receipt_id)?;
         }
         Action::Reopen {
             project_id,
@@ -1313,6 +1424,22 @@ fn prepare_inner(
                 }
                 _ => {}
             }
+            // A completion writeback that never left must not close the reopened card.
+            // One already sent (unknown) still only reads back; it keeps holding the card
+            // against other writes, so the result names it.
+            let identity = key(Scope::Project(project_id.clone()), "task", task_id);
+            let mut unresolved = vec![];
+            for id in store.pending_effects()? {
+                let (effect, state) = store.effect(&id)?;
+                if effect.operation != COMPLETION_WRITEBACK || effect.owner.key != identity {
+                    continue;
+                }
+                if state == store::EffectState::Pending {
+                    p.cancel_effects.push(id);
+                } else {
+                    unresolved.push(id);
+                }
+            }
             t.lifecycle = "open".into();
             t.lifecycle_version += 1;
             t.archived = false;
@@ -1323,6 +1450,8 @@ fn prepare_inner(
                 "task_id": task_id,
                 "lifecycle": "open",
                 "lifecycle_version": t.lifecycle_version,
+                "withdrawn_writebacks": p.cancel_effects,
+                "unresolved_writebacks": unresolved,
             });
         }
         Action::DeleteCard {

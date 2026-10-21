@@ -340,6 +340,9 @@ impl Client {
         before_send: impl FnOnce() -> Result<()>,
         mut rejected: impl FnMut(Value) -> Result<()>,
     ) -> Result<Card> {
+        if e.operation == task::COMPLETION_WRITEBACK {
+            return self.completion_writeback(src, e, send, send, before_send, rejected);
+        }
         self.repository(src)?;
         let write = &e.input["write"];
         let base = format!("repos/{}/issues", src.platform.full_name);
@@ -517,6 +520,85 @@ impl Client {
         }
         let c = self.read_card(src, &original)?.ok_or_else(unknown)?;
         if matches(&c) { Ok(c) } else { Err(unknown()) }
+    }
+
+    /// A completion written back to the connected source: the identified comment first,
+    /// so the card is never closed without saying which control plane and Task closed it,
+    /// then the closed state. Each step reads before it writes. `post` may send the
+    /// comment; once it may have been sent it is only read back by its exact body.
+    /// `close` may send the closed state, which repeats harmlessly.
+    pub fn completion_writeback(
+        &self,
+        src: &Source,
+        e: &store::EffectIntent,
+        post: bool,
+        close: bool,
+        before_send: impl FnOnce() -> Result<()>,
+        mut rejected: impl FnMut(Value) -> Result<()>,
+    ) -> Result<Card> {
+        self.repository(src)?;
+        let write = &e.input["write"];
+        let original: Card = serde_json::from_value(write["card"].clone())?;
+        let comment = write["fields"]["comment"].as_str().ok_or_else(unknown)?;
+        let state = write["fields"]["state"].as_str().ok_or_else(unknown)?;
+        let path = format!(
+            "repos/{}/issues/{}",
+            src.platform.full_name, original.number
+        );
+        let found = || -> Result<Option<Value>> {
+            let matching = self
+                .list(&format!("{path}/comments"))?
+                .into_iter()
+                .filter(|v| v["body"].as_str() == Some(comment))
+                .collect::<Vec<_>>();
+            if matching.len() > 1 {
+                return Err(unknown());
+            }
+            Ok(matching.into_iter().next())
+        };
+        let mut before_send = Some(before_send);
+        let mut dispatch = || -> Result<()> {
+            self.ready_to_send()?;
+            if let Some(before_send) = before_send.take() {
+                before_send()?;
+            }
+            Ok(())
+        };
+        let current = self.read_card(src, &original)?.ok_or_else(unknown)?;
+        let mut posted = found()?;
+        if posted.is_none() && post {
+            dispatch()?;
+            let result = self.api(
+                "POST",
+                &format!("{path}/comments"),
+                Some(json!({"body":comment})),
+            );
+            check_rejection(
+                &result,
+                false,
+                json!({"card":current,"matching_comments":[]}),
+                &mut rejected,
+            )?;
+            posted = found()?;
+        }
+        let posted = posted.ok_or_else(unknown)?;
+        let mut card = self.read_card(src, &original)?.ok_or_else(unknown)?;
+        if card.stage != state && close {
+            dispatch()?;
+            let result = self.api("PATCH", &path, Some(json!({"state":state})));
+            check_rejection(
+                &result,
+                false,
+                json!({"card":card,"comment":posted}),
+                &mut rejected,
+            )?;
+            card = self.read_card(src, &original)?.ok_or_else(unknown)?;
+        }
+        if card.stage != state {
+            return Err(unknown());
+        }
+        card.comments = vec![posted];
+        Ok(card)
     }
 
     fn ready_to_send(&self) -> Result<()> {

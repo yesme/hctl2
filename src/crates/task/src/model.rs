@@ -352,6 +352,10 @@ pub const COMPLETION_RECEIPT_KIND: &str = "task_completion_receipt";
 
 pub const COMPLETION_REQUEST_KIND: &str = "task_completion_request";
 
+/// The outbox operation that writes a completion back to the connected task source:
+/// one identified comment, then the card's closed state. Queued by 「完成 Task」 itself.
+pub const COMPLETION_WRITEBACK: &str = "task.completion_writeback";
+
 /// 供应端 Done 归档成的「完成 Task」命令草稿。只有映射到归属 human 的账号、
 /// 由非终态进入终态的**一次变化**才产生；control 用它走同一条预览与准入。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -170,7 +170,7 @@ fn mask_digits_after(input: &str, marker: &str, replacement: &str) -> String {
 /// Saved `--json` sample of the completion preview, captured before the human renderer
 /// landed; run-varying values are masked by `mask_unstable` on both sides. Regenerate with
 /// `HCTL2_GOLDEN_DIR` and paste the file back.
-const COMPLETION_PREVIEW_JSON: &str = r#"{"effect_summary":{"adoption":null,"cancel_effects":[],"checks":[{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":1},{"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"version":null},{"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"version":4},{"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"version":3}],"effects":[],"input":{"action":{"acceptance":[{"channel":"unmediated","generation":7,"item":0,"judge":{"kind":"hctl2_tool"},"producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}]},{"channel":"narrated","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"references":[]}],"kind":"complete","lifecycle_version":1,"project_id":"A","revision_number":1,"task_id":"MASKED-ID","version":4},"key":"complete-human"},"records":[{"data":{"type":"value","value":{"command_id":"task:complete-human","completed_at":MASKED-AT,"idempotency_key":"complete-human","items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle_version":2,"policy_digest":"MASKED-ID","project_id":"A","receipt_id":"MASKED-ID:2","revision_digest":"MASKED-ID","revision_number":1,"task_id":"MASKED-ID"}},"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":1},{"data":{"type":"value","value":{"archived":false,"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"id":"MASKED-ID","lifecycle":"completed","lifecycle_version":2,"needs_attention":false,"number":1,"pending_contract":null,"project_id":"A","repo_id":"MASKED-ID","revision":{"backend_projection_digest":null,"binding":null,"material":{"byte_digest":"MASKED-ID","control_id":"MASKED-SHORT-ID","material_id":"MASKED-ID","scope":{"id":"A","kind":"project"}},"number":1,"origin":{"kind":"local","proposal_digest":"MASKED-ID","reference":{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":{"state":1}}},"policy_digest":"MASKED-ID","proposal_digest":"MASKED-ID"},"run_occupancy":null,"snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"source_id":"MASKED-ID","state_version":1,"title":"new"}},"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":5},{"data":{"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"source":{"key":{"id":"MASKED-ID","kind":"task_source","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":1}},"type":"task"},"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":4}],"result":{"items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle":"completed","lifecycle_version":2,"project_id":"A","receipt_id":"MASKED-ID:2","task_id":"MASKED-ID"},"task_key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}}},"preview_token":"MASKED-PREVIEW-TOKEN"}"#;
+const COMPLETION_PREVIEW_JSON: &str = r#"{"effect_summary":{"adoption":null,"cancel_effects":[],"checks":[{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":1},{"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"version":null},{"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"version":4},{"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"version":3},{"key":{"id":"MASKED-ID","kind":"task_source","scope":{"id":"MASKED-ID","kind":"repo"}},"version":1}],"effects":[{"binding":{"key":{"id":"MASKED-ID","kind":"task_source","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":1}},"conflict_scope":"issue:MASKED-ID","idempotency_key":"task:MASKED-ID","input":{"project_id":"A","repo_id":"MASKED-ID","source_id":"MASKED-ID","task_id":"MASKED-ID","write":{"card":{"body":"body\n\n<!-- hctl2:MASKED-SHORT-ID:MASKED-ID:MASKED-ID -->","comments":[],"content_version":null,"dependencies":{"blocked_by":[],"blocking":[],"children":[],"parent":null},"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"groups":[],"number":1,"raw":{"body":"body\n\n<!-- hctl2:MASKED-SHORT-ID:MASKED-ID:MASKED-ID -->","comments":0,"id":1,"labels":[],"node_id":"node1","number":1,"state":"open","title":"new","updated_at":"t0"},"remote_revision":"t0","stage":"open","title":"new","tombstone":false},"fields":{"comment":"Completed in HCTL2 — control `MASKED-SHORT-ID`, Task `MASKED-ID`, Task Completion Receipt `MASKED-ID:2`.\n\n<!-- hctl2:MASKED-SHORT-ID:MASKED-ID:MASKED-ID -->","state":"closed"},"lifecycle_version":2}},"input_digest":"MASKED-ID","intent_id":"task:MASKED-ID","operation":"task.completion_writeback","owner":{"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"version":{"state":4}},"permission_scope":{"id":"A","kind":"project"},"target":"MASKED-ID"}],"input":{"action":{"acceptance":[{"channel":"unmediated","generation":7,"item":0,"judge":{"kind":"hctl2_tool"},"producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}]},{"channel":"narrated","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"references":[]}],"kind":"complete","lifecycle_version":1,"project_id":"A","revision_number":1,"task_id":"MASKED-ID","version":4},"key":"complete-human"},"records":[{"data":{"type":"value","value":{"command_id":"task:complete-human","completed_at":MASKED-AT,"idempotency_key":"complete-human","items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle_version":2,"policy_digest":"MASKED-ID","project_id":"A","receipt_id":"MASKED-ID:2","revision_digest":"MASKED-ID","revision_number":1,"task_id":"MASKED-ID"}},"key":{"id":"MASKED-ID:2","kind":"task_completion_receipt","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":1},{"data":{"type":"value","value":{"archived":false,"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"id":"MASKED-ID","lifecycle":"completed","lifecycle_version":2,"needs_attention":false,"number":1,"pending_contract":null,"project_id":"A","repo_id":"MASKED-ID","revision":{"backend_projection_digest":null,"binding":null,"material":{"byte_digest":"MASKED-ID","control_id":"MASKED-SHORT-ID","material_id":"MASKED-ID","scope":{"id":"A","kind":"project"}},"number":1,"origin":{"kind":"local","proposal_digest":"MASKED-ID","reference":{"key":{"id":"A","kind":"project","scope":{"id":"A","kind":"project"}},"version":{"state":1}}},"policy_digest":"MASKED-ID","proposal_digest":"MASKED-ID"},"run_occupancy":null,"snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"source_id":"MASKED-ID","state_version":1,"title":"new"}},"key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":5},{"data":{"entity":{"account_stable_id":"5","external_entity_kind":"issue","immutable_external_entity_id":"node1","provider":"github_issues@github.com"},"source":{"key":{"id":"MASKED-ID","kind":"task_source","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":1}},"type":"task"},"key":{"id":"MASKED-ID","kind":"task","scope":{"id":"A","kind":"project"}},"materials":[],"revision_digest":"MASKED-ID","sources":[],"version":4}],"result":{"effect_id":"task:MASKED-ID","items":[{"generation":7,"grade":"mechanical","item":0,"judge":{"kind":"hctl2_tool"},"outcome":"passed","producer":"hctl2-tool","references":[{"key":{"id":"evidence-1","kind":"fixture_evidence","scope":{"id":"A","kind":"project"}},"version":{"state":1}}],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a mechanical check passed","text_digest":"MASKED-ID","validation_level":"unmediated"},{"grade":"human","item":1,"judge":{"actor":"local-owner:MASKED","kind":"human"},"outcome":"passed","references":[],"source_snapshot":{"key":{"id":"MASKED-ID","kind":"task_snapshot","scope":{"id":"MASKED-ID","kind":"repo"}},"version":{"state":2}},"text":"a human judged it done","text_digest":"MASKED-ID","validation_level":"narrated"}],"lifecycle":"completed","lifecycle_version":2,"project_id":"A","receipt_id":"MASKED-ID:2","task_id":"MASKED-ID","writeback":{"card":1,"comment":"Completed in HCTL2 — control `MASKED-SHORT-ID`, Task `MASKED-ID`, Task Completion Receipt `MASKED-ID:2`.\n\n<!-- hctl2:MASKED-SHORT-ID:MASKED-ID:MASKED-ID -->","effect_id":"task:MASKED-ID","enqueued":true,"state":"closed"}},"task_key":{"id":"MASKED-ID","kind":"task_state","scope":{"id":"A","kind":"project"}}},"preview_token":"MASKED-PREVIEW-TOKEN"}"#;
 
 fn cmd(root: &Path, kind: &str, key: &str, action: Value) -> Value {
     let (ok, result) = cmd_result(root, kind, key, action);
@@ -867,6 +867,13 @@ fn human_completion_preview_names_items_and_confirm_command() {
     assert!(!human.contains('\u{1b}'), "{human}");
 }
 
+/// How many writes of one kind the gh fixture took (`gh.posts`, `gh.comment-posts`, ...).
+fn gh_count(root: &Path, name: &str) -> usize {
+    std::fs::read_to_string(root.join(format!("gh.{name}")))
+        .map(|s| s.len())
+        .unwrap_or(0)
+}
+
 /// Stop the daemon so this process can hold the store's exclusive lock and read it.
 fn open_stopped(root: &Path) -> Store {
     assert!(run(root, &["stop"]).0);
@@ -904,6 +911,10 @@ fn completion_crosses_the_real_command_line_and_writes_one_receipt() {
     assert_eq!(items[1]["text"], "a human judged it done");
     assert_eq!(items[1]["grade"], "human");
     assert_eq!(items[1]["judge"]["kind"], "human");
+    // 小活 AE：预览写明完成后对连接的任务源写回什么。
+    let writeback = &preview["effect_summary"]["result"]["writeback"];
+    assert_eq!(writeback["enqueued"], true, "{preview}");
+    assert_eq!(writeback["card"], 1);
     let completed = cmd(&root, "complete", "complete", action.clone());
     assert_eq!(completed["lifecycle"], "completed", "{completed}");
     let receipt_id = completed["receipt_id"]
@@ -911,10 +922,30 @@ fn completion_crosses_the_real_command_line_and_writes_one_receipt() {
         .unwrap_or_else(|| panic!("receipt_id missing: {completed}"))
         .to_string();
     assert_eq!(completed["lifecycle_version"], 2, "{completed}");
+    // The writeback went out in the same submission: one identified comment, then the
+    // card closed, both read back.
+    assert_eq!(completed["effect_state"], "confirmed", "{completed}");
+    assert_eq!(gh_count(&root, "comment-posts"), 1);
+    assert_eq!(gh_count(&root, "closes"), 1);
+    let card: Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("gh.created")).unwrap()).unwrap();
+    assert_eq!(card["state"], "closed");
+    let comments: Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("gh.comments")).unwrap()).unwrap();
+    let body = comments[0]["body"].as_str().unwrap();
+    assert!(
+        body.contains(&adopted.task_id) && body.contains(&receipt_id),
+        "{body}"
+    );
+    let (ok, shown) = run_human(&root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert!(shown.contains("card closed on the task source"), "{shown}");
     // The same key must replay the frozen result, never write a second completion.
     let replay = cmd(&root, "complete", "complete", action);
     assert_eq!(replay["receipt_id"], completed["receipt_id"]);
     assert_eq!(replay["lifecycle_version"], 2, "{replay}");
+    assert_eq!(gh_count(&root, "comment-posts"), 1);
+    assert_eq!(gh_count(&root, "closes"), 1);
     let s = open_stopped(&root);
     let receipts = s.list(task::COMPLETION_RECEIPT_KIND).unwrap();
     assert_eq!(receipts.len(), 1, "exactly one receipt: {receipts:?}");
@@ -1015,6 +1046,9 @@ fn completion_failure_inside_the_transaction_leaves_nothing() {
         s.list(task::COMPLETION_RECEIPT_KIND).unwrap().is_empty(),
         "no receipt may survive the aborted transaction"
     );
+    // Its writeback was queued in that transaction, so it went with it.
+    assert!(s.pending_effects().unwrap().is_empty());
+    assert_eq!(gh_count(&root, "comment-posts"), 0);
     let (_, t) = task::task(&s, "A", &adopted.task_id).unwrap();
     assert_eq!(t.lifecycle, "open");
     assert_eq!(t.lifecycle_version, 1);
@@ -1065,4 +1099,100 @@ fn reopen_crosses_the_real_command_line_and_keeps_the_receipt() {
     assert_eq!(t.lifecycle, "open");
     assert_eq!(t.lifecycle_version, 3);
     drop(s);
+}
+
+/// 小活 AE 验收 4：写回的评论已发出、确认丢了，读回也一时看不到。完成照常成立，写回是
+/// 未知；重启 control 后显式 resume，评论只按原文读回、不再发，卡随后关上。
+#[test]
+fn an_unknown_completion_writeback_reads_back_after_restart_and_comments_once() {
+    let fx = fixture("writeback-unknown", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    std::fs::write(root.join("gh.comment-lost"), "lose the response").unwrap();
+    std::fs::write(root.join("gh.comment-hide"), "hide reads until restart").unwrap();
+    let action = completion_action(&adopted, &actor_principal(&root));
+    let (ok, pending) = cmd_result(&root, "complete", "complete", action);
+    assert!(
+        !ok,
+        "an unconfirmed writeback is not reported as success: {pending}"
+    );
+    assert_eq!(pending["lifecycle"], "completed", "{pending}");
+    assert_eq!(pending["effect_state"], "unknown", "{pending}");
+    assert_eq!(pending["error"]["code"], "RESULT_UNKNOWN");
+    let effect = pending["effect_id"].as_str().unwrap().to_owned();
+    assert_eq!(gh_count(&root, "comment-posts"), 1);
+    assert_eq!(gh_count(&root, "closes"), 0);
+    let (ok, shown) = run_human(&root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert!(shown.contains("external sync pending"), "{shown}");
+    assert!(shown.contains("hctl2 task resume"), "{shown}");
+    // Claude（mac）#491：评论可能已发出、却按原文读不回时，显式重试也只读回：不再发评论，
+    // 不关卡，写回仍是未知。
+    let (ok, still) = cmd_result(
+        &root,
+        "resume",
+        "resume-unreadable",
+        json!({"effect_id": effect}),
+    );
+    assert!(!ok, "{still}");
+    assert_eq!(still["effect_state"], "unknown", "{still}");
+    assert_eq!(gh_count(&root, "comment-posts"), 1, "no second comment");
+    assert_eq!(gh_count(&root, "closes"), 0);
+    assert!(run(&root, &["stop"]).0);
+    thread::sleep(Duration::from_millis(100));
+    std::fs::remove_file(root.join("gh.comment-lost")).unwrap();
+    std::fs::remove_file(root.join("gh.comment-hide")).unwrap();
+    assert!(run(&root, &["start", "--secret-backend", "user-file"]).0);
+    let resumed = cmd(
+        &root,
+        "resume",
+        "resume-writeback",
+        json!({"effect_id": effect}),
+    );
+    assert_eq!(resumed["effect_state"], "confirmed", "{resumed}");
+    assert_eq!(
+        gh_count(&root, "comment-posts"),
+        1,
+        "the comment is never sent twice"
+    );
+    assert_eq!(gh_count(&root, "closes"), 1);
+    let card: Value =
+        serde_json::from_str(&std::fs::read_to_string(root.join("gh.created")).unwrap()).unwrap();
+    assert_eq!(card["state"], "closed");
+    let (ok, shown) = run_human(&root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert!(shown.contains("card closed on the task source"), "{shown}");
+    assert!(shown.contains("nothing — the Task is completed"), "{shown}");
+}
+
+/// 小活 AE 验收 2 后半：平台拒绝关卡。完成照常成立，写回记成需要关注，不重试出成功。
+#[test]
+fn a_refused_completion_writeback_leaves_the_completion_and_marks_attention() {
+    let fx = fixture("writeback-refused", &[]);
+    let root = fx.root.clone();
+    let adopted = adopt(&fx);
+    std::fs::write(root.join("gh.close-deny"), "refuse closing").unwrap();
+    let action = completion_action(&adopted, &actor_principal(&root));
+    let (ok, refused) = cmd_result(&root, "complete", "complete", action.clone());
+    assert!(!ok, "{refused}");
+    assert_eq!(refused["lifecycle"], "completed", "{refused}");
+    assert_eq!(refused["effect_state"], "rejected", "{refused}");
+    assert_eq!(refused["error"]["code"], "PROVIDER_REJECTED");
+    assert_eq!(
+        refused["task"]["data"]["needs_attention"], true,
+        "{refused}"
+    );
+    // Replaying the command reports the same refusal; it does not try again.
+    let (ok, again) = cmd_result(&root, "complete", "complete", action);
+    assert!(!ok);
+    assert_eq!(again["effect_state"], "rejected");
+    assert_eq!(gh_count(&root, "comment-posts"), 1);
+    assert_eq!(gh_count(&root, "closes"), 0);
+    let (ok, shown) = run_human(&root, &["task", "show", "A", &adopted.task_id]);
+    assert!(ok, "{shown}");
+    assert!(
+        shown.contains("refused the writeback — needs attention"),
+        "{shown}"
+    );
+    assert!(shown.contains("the completion stands"), "{shown}");
 }

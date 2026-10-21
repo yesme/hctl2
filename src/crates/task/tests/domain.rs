@@ -2354,3 +2354,405 @@ fn saved_material_before_admission_recovers_once_after_reopen() {
     assert_eq!(first, second);
     assert_eq!(e.store.list("task_revision").unwrap().len(), 1);
 }
+
+// —— 小活 AE：完成 Task 时写回连接的任务源 ————————————————————————
+
+/// The completion of Task `id` in Project "A" under the mixed contract: tool evidence
+/// for the mechanical item, the submitting person for the human one.
+fn mixed_completion(e: &mut Env, id: &str, key: &str) -> Action {
+    let reference = evidence_record(e, &format!("green-{key}"));
+    complete_action(
+        e,
+        "A",
+        id,
+        vec![
+            ItemEvidence {
+                item: 0,
+                judge: Judge::Hctl2Tool,
+                channel: "unmediated".into(),
+                references: vec![reference],
+                producer: None,
+                generation: None,
+            },
+            ItemEvidence {
+                item: 1,
+                judge: human_judge(),
+                channel: "unmediated".into(),
+                references: vec![],
+                producer: None,
+                generation: None,
+            },
+        ],
+    )
+}
+
+fn complete_mixed(e: &mut Env, id: &str, key: &str) -> Result<Value> {
+    let action = mixed_completion(e, id, key);
+    apply_as(&mut e.store, &completing_actor("A"), key, action)
+}
+
+fn reopen(e: &mut Env, id: &str, key: &str) -> Value {
+    let (r, t) = task(&e.store, "A", id).unwrap();
+    apply_as(
+        &mut e.store,
+        &completing_actor("A"),
+        key,
+        Action::Reopen {
+            project_id: "A".into(),
+            task_id: id.into(),
+            version: r.version,
+            lifecycle_version: t.lifecycle_version,
+            revision_number: None,
+        },
+    )
+    .unwrap()
+}
+
+fn set_source(e: &mut Env, change: impl FnOnce(&mut Source)) {
+    let (sr, mut src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    change(&mut src);
+    seed(
+        &mut e.store,
+        value_record(sr.key.clone(), sr.version + 1, &src).unwrap(),
+    );
+}
+
+#[test]
+fn completion_queues_one_identified_writeback_with_its_receipt() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let action = mixed_completion(&mut e, &id, "complete-A");
+    let actor_a = completing_actor("A");
+    let result = apply_as(&mut e.store, &actor_a, "complete-A", action.clone()).unwrap();
+    assert_eq!(result["lifecycle"], "completed");
+    assert_eq!(result["writeback"]["enqueued"], true, "{result}");
+    let effect_id = result["writeback"]["effect_id"].as_str().unwrap();
+    assert_eq!(result["effect_id"], effect_id);
+    let (effect, state) = e.store.effect(effect_id).unwrap();
+    assert_eq!(state, store::EffectState::Pending);
+    assert_eq!(effect.operation, COMPLETION_WRITEBACK);
+    assert_eq!(
+        e.store.pending_effects().unwrap(),
+        vec![effect_id.to_owned()]
+    );
+    let write = &effect.input["write"];
+    assert_eq!(write["fields"]["state"], "closed");
+    assert_eq!(write["lifecycle_version"], 2);
+    assert_eq!(write["card"]["number"], 1);
+    // The comment names this control plane, the Task and its Receipt, and carries the
+    // same marker shape as every other HCTL comment (spec/task.md 多写通则).
+    let comment = write["fields"]["comment"].as_str().unwrap();
+    let control = e.store.control_id().to_owned();
+    for part in [
+        control.as_str(),
+        id.as_str(),
+        result["receipt_id"].as_str().unwrap(),
+    ] {
+        assert!(comment.contains(part), "{part} missing from {comment}");
+    }
+    assert!(
+        comment.contains(&format!("<!-- hctl2:{control}:{id}:")),
+        "{comment}"
+    );
+    // The receipt is there with it; the status reads the frozen decision and the outbox.
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert!(
+        required(
+            &e.store,
+            &key(
+                Scope::Project("A".into()),
+                COMPLETION_RECEIPT_KIND,
+                result["receipt_id"].as_str().unwrap()
+            )
+        )
+        .is_ok()
+    );
+    let status = completion_writeback_status(&e.store, &t).unwrap();
+    assert_eq!(status["effect_state"], "pending", "{status}");
+    // The writeback is authorized by this completion: it may be dispatched now.
+    assert!(begin(&mut e.store, &actor(), effect_id).unwrap().1);
+    // Replaying the same key returns the same frozen decision, never a second intent.
+    let again = apply_as(&mut e.store, &actor_a, "complete-A", action).unwrap();
+    assert_eq!(again, result);
+    assert_eq!(
+        e.store.pending_effects().unwrap(),
+        vec![effect_id.to_owned()]
+    );
+}
+
+#[test]
+fn completion_without_field_writeback_says_so_and_queues_nothing() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    set_source(&mut e, |src| src.capabilities.field_writeback = false);
+    let result = complete_mixed(&mut e, &id, "complete-A").unwrap();
+    assert_eq!(result["lifecycle"], "completed");
+    assert_eq!(result["writeback"]["enqueued"], false, "{result}");
+    assert_eq!(result["writeback"]["reason"], "binding_cannot_write_fields");
+    assert!(result.get("effect_id").is_none(), "{result}");
+    assert!(e.store.pending_effects().unwrap().is_empty());
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "completed");
+}
+
+#[test]
+fn completion_beside_an_unresolved_card_write_completes_without_a_second_write() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let (r, t) = task(&e.store, "A", &id).unwrap();
+    let update = apply(
+        &mut e.store,
+        "note",
+        Action::Update {
+            project_id: "A".into(),
+            task_id: id.clone(),
+            version: r.version,
+            state_version: t.state_version,
+            fields: Fields {
+                title: None,
+                body: None,
+                comment: Some("note".into()),
+            },
+        },
+    )
+    .unwrap();
+    let blocking = update["effect_id"].as_str().unwrap();
+    let result = complete_mixed(&mut e, &id, "complete-A").unwrap();
+    assert_eq!(result["lifecycle"], "completed", "{result}");
+    assert_eq!(result["writeback"]["enqueued"], false);
+    assert_eq!(result["writeback"]["reason"], "card_write_unresolved");
+    assert_eq!(result["writeback"]["blocking_effect_id"], blocking);
+    assert_eq!(
+        e.store.pending_effects().unwrap(),
+        vec![blocking.to_owned()]
+    );
+}
+
+#[test]
+fn reopen_withdraws_an_unsent_completion_writeback_but_a_sent_one_stays_to_read_back() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let first = complete_mixed(&mut e, &id, "complete-1").unwrap();
+    let unsent = first["writeback"]["effect_id"].as_str().unwrap().to_owned();
+    let reopened = reopen(&mut e, &id, "reopen-1");
+    assert_eq!(reopened["withdrawn_writebacks"], json!([unsent]));
+    assert_eq!(reopened["unresolved_writebacks"], json!([]));
+    assert_eq!(
+        e.store.effect(&unsent).unwrap().1,
+        store::EffectState::Cancelled
+    );
+    let second = complete_mixed(&mut e, &id, "complete-2").unwrap();
+    assert_eq!(second["writeback"]["enqueued"], true, "{second}");
+    let sent = second["writeback"]["effect_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_ne!(sent, unsent);
+    assert_eq!(
+        second["writeback"]["comment"]
+            .as_str()
+            .map(|c| c.contains(":4`")),
+        Some(true)
+    );
+    assert!(begin(&mut e.store, &actor(), &sent).unwrap().1);
+    let reopened = reopen(&mut e, &id, "reopen-2");
+    assert_eq!(reopened["withdrawn_writebacks"], json!([]));
+    assert_eq!(reopened["unresolved_writebacks"], json!([sent]));
+    assert_eq!(
+        e.store.effect(&sent).unwrap().1,
+        store::EffectState::Unknown
+    );
+    // A sent writeback is not re-authorized for a later lifecycle.
+    assert_eq!(
+        recheck_completion_close(&e.store, &actor(), &sent)
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+}
+
+#[test]
+fn a_refused_completion_writeback_marks_attention_and_the_completion_stands() {
+    let mut e = Env::new();
+    let id = ready(&mut e, mixed_contract("A"));
+    let result = complete_mixed(&mut e, &id, "complete-A").unwrap();
+    let effect = result["writeback"]["effect_id"].as_str().unwrap();
+    begin(&mut e.store, &actor(), effect).unwrap();
+    reject_effect(
+        &mut e.store,
+        effect,
+        json!({"provider_error":{"code":"NATIVE_REJECTED","message":"403"}}),
+    )
+    .unwrap();
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "completed");
+    assert!(t.needs_attention);
+    assert_eq!(
+        completion_writeback_status(&e.store, &t).unwrap()["effect_state"],
+        "rejected"
+    );
+    // A later observation of the card does not clear the refusal's attention.
+    e.observe("card edited", false);
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert!(t.needs_attention);
+    assert_eq!(t.lifecycle, "completed");
+    // The refusal released the card for other writes.
+    assert!(e.store.pending_effects().unwrap().is_empty());
+}
+
+#[test]
+fn the_writeback_readback_is_only_a_snapshot_for_both_bound_projects() {
+    let mut e = Env::new();
+    set_source(&mut e, |src| {
+        src.human_account = Some("human".into());
+        src.auto_complete_provider_done = true;
+    });
+    let id = ready(&mut e, mixed_contract("A"));
+    e.attach("B", None);
+    let other = e.claim("B");
+    let result = complete_mixed(&mut e, &id, "complete-A").unwrap();
+    let effect = result["writeback"]["effect_id"].as_str().unwrap();
+    begin(&mut e.store, &actor(), effect).unwrap();
+    // The adapter reads the card back closed by the control plane's own account, with
+    // the comment it wrote; then the next observation sees the same closed card.
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (_, before) = latest(&e.store, &src).unwrap();
+    let mut closed = before.cards[0].clone();
+    closed.stage = "closed".into();
+    closed.remote_revision = "closed-1".into();
+    closed.raw["state"] = json!("closed");
+    closed.raw["closed_by"] = json!({"login": src.platform.account_id});
+    closed.comments = vec![json!({"id": 100, "body": result["writeback"]["comment"]})];
+    confirm(&mut e.store, effect, &closed).unwrap();
+    observe_closed(&mut e, &src.platform.account_id);
+    assert_eq!(
+        e.store.effect(effect).unwrap().1,
+        store::EffectState::Confirmed
+    );
+    assert!(completion_requests(&e).is_empty());
+    let (_, a) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(a.lifecycle, "completed");
+    assert!(!a.needs_attention);
+    assert_eq!(
+        completion_writeback_status(&e.store, &a).unwrap()["effect_state"],
+        "confirmed"
+    );
+    // Project B's Task on the same card is not completed, cancelled or asked to be.
+    let (_, b) = task(&e.store, "B", &other).unwrap();
+    assert_eq!(b.lifecycle, "open");
+    assert_eq!(b.lifecycle_version, 1);
+}
+
+/// control 借用人的 gh 登录时（小活 AB 收的缺口），完成写回关卡在平台上记的关闭者
+/// 就是归属 human 的那个账号；这次关闭只追加 Snapshot，不再归档完成请求。
+#[test]
+fn a_writeback_closed_under_the_borrowed_human_login_is_not_a_completion_request() {
+    let mut e = Env::new();
+    set_source(&mut e, |src| {
+        src.human_account = Some("human".into());
+        src.auto_complete_provider_done = true;
+    });
+    let id = ready(&mut e, mixed_contract("A"));
+    complete_mixed(&mut e, &id, "complete-A").unwrap();
+    observe_closed(&mut e, "human");
+    assert!(completion_requests(&e).is_empty());
+    let (_, t) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(t.lifecycle, "completed");
+    assert_eq!(t.lifecycle_version, 2);
+}
+
+/// The card as the source last showed it, closed by `closer` at `closed_at`.
+fn closed_card(e: &Env, closer: &str, closed_at: &str) -> Card {
+    let (_, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    let (_, previous) = latest(&e.store, &src).unwrap();
+    let mut card = previous.cards[0].clone();
+    card.stage = "closed".into();
+    card.remote_revision = format!("rev-{closed_at}");
+    card.raw["state"] = json!("closed");
+    card.raw["closed_by"] = json!({"login": closer});
+    card.raw["closed_at"] = json!(closed_at);
+    card
+}
+
+fn observe_card(e: &mut Env, card: Card) {
+    let (r, src) = source(&e.store, &e.rid, &e.sid).unwrap();
+    observe(
+        &mut e.store,
+        &src,
+        Snapshot {
+            source: reference(&r),
+            observed_at: now(),
+            complete: true,
+            error: None,
+            cards: vec![card],
+            stable_groups: Vec::new(),
+        },
+    )
+    .unwrap();
+}
+
+/// Project A completes and writes back under the borrowed human login; Project B holds
+/// an open Task on the same card, with the same human account and auto-submission.
+fn borrowed_login_on_a_shared_card(e: &mut Env) -> (String, String, String) {
+    set_source(e, |src| {
+        src.human_account = Some("human".into());
+        src.auto_complete_provider_done = true;
+    });
+    let id = ready(e, mixed_contract("A"));
+    e.attach("B", None);
+    let other = e.claim("B");
+    let result = complete_mixed(e, &id, "complete-A").unwrap();
+    let effect = result["writeback"]["effect_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    begin(&mut e.store, &actor(), &effect).unwrap();
+    (id, other, effect)
+}
+
+/// Codex（ubuntu）#491 P1：写回在路上（已发出、结果未知）时读到的关闭，关闭者说不清，
+/// 同卡另一个 Project 的开放 Task 只追加 Snapshot。
+#[test]
+fn a_close_seen_while_the_writeback_is_unresolved_is_no_human_done_for_another_project() {
+    let mut e = Env::new();
+    let (_, other, effect) = borrowed_login_on_a_shared_card(&mut e);
+    assert_eq!(
+        e.store.effect(&effect).unwrap().1,
+        store::EffectState::Unknown
+    );
+    let closed = closed_card(&e, "human", "2026-10-21T00:00:01Z");
+    observe_card(&mut e, closed);
+    assert!(completion_requests(&e).is_empty());
+    let (_, b) = task(&e.store, "B", &other).unwrap();
+    assert_eq!(b.lifecycle, "open");
+}
+
+/// 写回已确认、读回的正是这一次关闭：同卡另一个 Project 也不把它当人的 Done。人之后重开
+/// 再关，是另一次关闭，照常归档。
+#[test]
+fn the_confirmed_writeback_close_is_no_human_done_for_another_project_but_a_later_close_is() {
+    let mut e = Env::new();
+    let (id, other, effect) = borrowed_login_on_a_shared_card(&mut e);
+    let mut ours = closed_card(&e, "human", "2026-10-21T00:00:01Z");
+    ours.comments = vec![json!({"id": 100, "body": "Completed in HCTL2"})];
+    confirm(&mut e.store, &effect, &ours).unwrap();
+    observe_card(&mut e, ours.clone());
+    assert!(completion_requests(&e).is_empty());
+    // The person reopens the card and closes it again: a close of their own.
+    let mut reopened = ours.clone();
+    reopened.stage = "open".into();
+    reopened.remote_revision = "rev-reopened".into();
+    reopened.raw["state"] = json!("open");
+    reopened.raw["closed_by"] = Value::Null;
+    reopened.raw["closed_at"] = Value::Null;
+    observe_card(&mut e, reopened);
+    let again = closed_card(&e, "human", "2026-10-21T00:05:00Z");
+    observe_card(&mut e, again);
+    let requests = completion_requests(&e);
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(requests[0].project_id, "B");
+    assert_eq!(requests[0].task_id, other);
+    assert_eq!(requests[0].provider_actor, "human");
+    let (_, a) = task(&e.store, "A", &id).unwrap();
+    assert_eq!(a.lifecycle, "completed");
+}
