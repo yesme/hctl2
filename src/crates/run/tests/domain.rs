@@ -813,3 +813,46 @@ fn each_of_the_three_digest_checks_fails_independently() {
         "canonical hash of delivered content differing from declared must fail"
     );
 }
+
+#[test]
+fn readback_bundle_with_room_message_entry_is_rejected() {
+    let mut p = proof();
+    // Sneak a Room message entry into the readback Bundle.
+    let entry = json!({
+        "source": {"id": "chat-window/some-room", "revision": "1", "digest": sha("chat")},
+        "description": "smuggled room message",
+        "required": false,
+        "offline_required": false,
+        "delivery": {"mode": "inline", "bytes": base64_for_fixture(b"room message")},
+        "bytes_digest": bytes_sha256(b"room message")
+    });
+    let bundle = &mut p.actual.delivered.document;
+    bundle.entries.push(serde_json::from_value(entry).unwrap());
+    reseal(&mut p);
+    assert!(
+        verify(&p, &provenance()).is_err(),
+        "Bundle with extra Room message entry must be rejected"
+    );
+}
+
+#[test]
+fn declared_avoidance_with_same_worker_profile_is_rejected() {
+    let mut p = proof();
+    let mut source = provenance();
+    source.source_chain.push(SourceMessage {
+        room_id: "source".into(),
+        event: target("chat_source_reference", "e"),
+    });
+    source.production = Production::Invocations {
+        references: vec![target("room_invocation", "producer")],
+    };
+    // Producer has a DIFFERENT source room, but the SAME profile as readback.
+    let mut producer = p.actual.clone();
+    producer.source_room = Some("source".into());
+    // p.actual's profile digest is the same as the readback's — same profile.
+    p.producer = Some(producer);
+    assert!(
+        verify(&p, &source).is_err(),
+        "same Worker Profile as a source invocation must be rejected"
+    );
+}
