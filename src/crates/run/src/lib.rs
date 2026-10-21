@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 mod commands;
 pub mod compiler;
+pub mod lifecycle;
 mod model;
 mod native;
 pub mod readback;

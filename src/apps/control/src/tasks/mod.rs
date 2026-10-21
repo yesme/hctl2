@@ -29,7 +29,7 @@ pub(super) fn input(operation: &str, payload: &Value) -> Result<Input> {
     }
     Ok(input)
 }
-fn read(
+pub(crate) fn read(
     shared: &Shared,
     services: &Supervisor,
     root: &Path,

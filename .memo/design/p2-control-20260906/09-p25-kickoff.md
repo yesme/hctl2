@@ -271,7 +271,7 @@
 
 三包同一个模子，照 `07` §四 第 3 包「3e」（接 Codex）的写法。各家用什么交法，由写的那一席在调研的基础上查清本机实际情况、先实测再定，PR 里写明理由（§二 第 2 件）；下面「交法起点」是调研的结论，不是定论。
 
-**控制与窗格的通则（所有者 2026-10-20，`07` §二 第 45 条）。** 控制——交正文、续接、判一轮结束、取回答——走这家 harness 自己的结构化协议；终端窗格只给人看，不承担控制，窗格内容不作证据，派工不以窗格存在为前提。各家的适配是 Agency 内部的实现，一家一个文件或目录；对上只暴露一个可观测接口——终端复用器渲染出来的只读窗格。control 不直接调用任何 harness 的原生能力，也不认按家命名的结果格式：一轮的回答统一用 H0 定的那一个 schema，三家不另起 `agy.turn.v1` 一类的名字（第 45 条 ② 的补充）。三家的窗格由 H0 的原语开：`tail -f <session_dir>/view.log`，里面是 Agency 从协议事件渲染的提示词摘要、工具调用与回答；人不能在里面打字，要插手只能经 Agency 再派一轮（所有者接受这个和 Claude Code、Codex 窗格的不对称）。落盘布局三家统一：`<harness>/<session_id>/state.json`（会话状态与续接所需的 ID）、`events.jsonl`（协议事件原样）、`view.log`（渲染给人看的行）。
+**控制与窗格的通则（所有者 2026-10-20，`07` §二 第 45 条）。** 控制——交正文、续接、判一轮结束、取回答——走这家 harness 自己的结构化协议；终端窗格只给人看，不承担控制，窗格内容不作证据，派工不以窗格存在为前提。各家的适配是 Agency 内部的实现，一家一个文件或目录；对上只暴露一个可观测接口——终端复用器渲染出来的只读窗格。control 不直接调用任何 harness 的原生能力，也不认按家命名的结果格式：一轮的回答统一用 H0 定的那一个 schema，三家不另起 `agy.turn.v1` 一类的名字（第 45 条 ② 的补充）。三家的窗格由 H0 的原语开：`tail -f <session_dir>/view.log`，里面是 Agency 从协议事件渲染的提示词摘要、工具调用与回答；人不能在里面打字，要插手只能经 Agency 再派一轮（所有者接受这个和 Claude Code、Codex 窗格的不对称）。落盘布局三家统一：`<harness>/<session_id>/state.json`（会话状态与续接所需的 ID）、`events.jsonl`（协议事件原样）、`view.log`（渲染给人看的行）。真会话测试（作者实测、核验席重跑、走查）一律用所有者经 Agency 托管入口另行导入的专用登录；测试变量、`HOME`、配置目录都不指向所有者个人的登录文件或目录，缺专用登录就停下报所有者（所有者 2026-10-20，`07` §二 第 55 条）。
 
 
 
@@ -297,16 +297,16 @@
 
 - **来由**：所有者 2026-10-20 定（`07` §二 第 45 条 ③；决策史 §41；`delivery.md` §开工前限时验证 第 2 项）：Herdr 存在的意义已经消失——它的 agent 层对每一家 harness 都不再用——终端复用器回到 tmux 3.7c；排在后面只是开发上的便利。
 - **范围**：把 Agency 里对 Herdr 的调用换成 tmux，功能不增不减。
-  - 随包：`src/packaging/dependencies/lock.json` 的 Herdr 条目换成 tmux-builds v3.7c 三目标静态包（摘要锁定、随包许可证，`docs/research/tmux-runtime.md` 2026-08-28 分发复核），macOS `bootstrap.sh` / `runtime.sh`、Linux `runtime.sh`、`smoke.sh`、`hctl2-services` 里的 Herdr 项跟着换；Herdr 条目与制品删掉。
+  - 随包（加 tmux 那一块 2026-10-20 拆给 `07` §六 小活 AH 先做，只加不删；本包在 AH 合入后删 Herdr，`07` §二 第 56 条）：`src/packaging/dependencies/lock.json` 的 Herdr 条目换成 tmux-builds v3.7c 三目标静态包（摘要锁定、随包许可证，`docs/research/tmux-runtime.md` 2026-08-28 分发复核），macOS `bootstrap.sh` / `runtime.sh`、Linux `runtime.sh`、`smoke.sh`、`hctl2-services` 里的 Herdr 项跟着换；Herdr 条目与制品删掉。
   - 代码：`src/agency/src/herdr.rs` 换成 tmux 客户端（一个 Agency 实例一个 server，`-S` 私有 socket，目录权限照 #447），`launch.rs` 的布局、窗格退出事件（`remain-on-exit` 加轮询或 `pipe-pane`）、冒烟与服务器停止，`codex.rs` 的 `codex resume --remote` 窗格，H0 的观测窗格原语；`standby.rs` 的 Claude Code 路径要补两件 Herdr agent 层现在做的事——认出界面何时能收输入（读屏认提示符，或靠会话插件的启动钩子），读屏识别信任确认框（#441 的做法改用 `capture-pane`）；标记的投递改 `send-keys -l` 加回车。上次启动残留的 server 照 `reap_previous` 与小活 Z 的做法收。
   - 测试：`src/agency/tests/herdr.rs` 与 `standby_fixture.rs`、`write_session.rs`、`codex_fixture_test.rs`、`src/apps/cli/tests/room/agency.rs`、`project.rs` 里碰窗格的用例改到 tmux 上，用例数不少于现在；#460 的残留检测与清理认的进程名跟着改。
   - 文档：`delivery.md` 里「替换完成前随包仍是 Herdr」的几句删掉，§打包策略 的 macOS 最低版本一句按 tmux 制品实测改；研究索引 Herdr 行改「历史对照」；`src/agency/README.md` 与 `docs/usage.md`；退休词表加 Herdr。
 - **不做的**：不把终端复用器写回工种简历（`07` §六 小活 AD）；不用 control mode 当控制通道，不往窗格里投递正文（Claude Code 的标记除外）；不做人在窗格里接管（Claude Code、Codex 的窗格照旧能打字）；不改控制面对象与端口合同。
 - **验收**（缺一条不算过）：① 演示 3 第 9 包第 1 条的真会话版在 tmux 上照跑（ubuntu，Claude Code；mac，Codex），四条结果不变；② 完整包测试与冒烟在三平台 CI 绿，包里没有 Herdr；③ 人用 `tmux -S <sock> attach -r` 能旁观任一窗格、敲键无效；④ 窗格退出、Agency 停止、Agency 被 `kill -9` 后再起，窗格与 server 的收法与现在一致（附前后 `ps`）；⑤ 10 个会话空载时 tmux server 的 RSS 附实测，与研究文件同口径；⑥ 退回看红至少两处：去掉就绪判断，Claude 的标记在界面没就绪时发出、对应用例红；去掉信任确认框识别，#441 的用例红。
-- **前提**：演示 3 验收后；#447、#454、#460 合入后；H0 合入后。不在 P2.5 关键路径上，不挡第 2 包。
-- **分两步交**：第一步 tmux 客户端、H0 原语换底、Codex 与 H1–H3 的窗格、打包锁与脚本、测试迁移；第二步 Claude Code 路径（就绪判断、信任框识别、标记投递），单独 PR、单独验收，第一步合入前演示 3 路径照旧跑在 Herdr 上。每条验收附原样输出，PR 里找不到对应输出的「实测」按没做算；清理只收自己记下的进程与目录，按进程号。
-- **席位**：Claude（mac）写，Codex（mac）找问题，Antigravity（ubuntu）核验（所有者 2026-10-20 定，`07` §二 第 45 条 ③），已进 `07` §六「当前派活」表。
-- **分支**：`claude/agency-tmux`，从 `origin/main` 起。
+- **前提**：演示 3 验收后；#447、#454、#460 合入后；H0 合入后；删 Herdr 制品那一步在小活 AH 合入后。不在 P2.5 关键路径上，不挡第 2 包。
+- **分两步交**：第一步 tmux 客户端、H0 原语换底、Codex 与 H1–H3 的窗格、打包锁与脚本、测试迁移；第二步 Claude Code 路径（就绪判断、信任框识别、标记投递；Claude 工作区信任的启动探针改在新建的空 Git 仓库里做，补「父目录已信任、新仓库未信任」的成对用例——#441 Codex 跟进：普通目录能继承父目录信任，Git 仓库在仓库边界停止，探针放在普通目录里可能误过，`07` §二 第 56 条），单独 PR、单独验收，第一步合入前演示 3 路径照旧跑在 Herdr 上。每条验收附原样输出，PR 里找不到对应输出的「实测」按没做算；清理只收自己记下的进程与目录，按进程号。
+- **席位**：第一步 Claude（mac）写，Codex（mac）找问题，Antigravity（ubuntu）核验（所有者 2026-10-20 定，`07` §二 第 45 条 ③）；第二步改由 Codex（mac）写，Claude（mac）找问题，Antigravity（ubuntu）核验，删 Herdr 的条目与制品随第二步做（所有者 2026-10-21，`07` §二 第 60 条）。已进 `07` §六「当前派活」表。
+- **分支**：第一步 `claude/agency-tmux`，第二步 `codex/agency-tmux-claude`，都从 `origin/main` 起。
 
 ## 五、席位与派活建议
 
@@ -314,12 +314,12 @@
 
 | 实例 | 手上的活（10-19） | P2.5 依次接 |
 | --- | --- | --- |
-| Codex（mac） | 钥匙串专项 | 第 4a 包；找问题第 10 包 |
+| Codex（mac） | 钥匙串专项 | 第 4a 包；找问题第 10 包第一步、写第二步（`07` §二 第 60 条） |
 | Codex（ubuntu） | 小活 Z | 第 1 包 → 第 3 包 |
 | Antigravity（mac） | 第 0 包 | H0 → H1 → 第 2 包 |
 | Antigravity（ubuntu） | 演示 3 关键路径的核验 | 核验第 3、4b、5b、H3、第 10 包 |
 | Claude（ubuntu） | 写入会话去留的调研；#430 实测 | 第 5a 包 → 第 5b 包 |
-| Claude（mac） | 协调、找问题、本开工书 | 第 10 包（演示 3 验收后）→ 第 9 包主体；找问题第 1、3、4a、8、H2、9 后半 |
+| Claude（mac） | 协调、找问题、本开工书 | 第 10 包第一步（演示 3 验收后）→ 第 9 包主体；找问题第 1、3、4a、8、H2、9 后半、第 10 包第二步 |
 | Grok（ubuntu） | 小活 Z 找问题 | H2 → 第 9 包后半段；找问题第 4b、6、H3 |
 | DeepSeek（mac） | #447 | 第 4b 包 → 第 6 包 |
 | DeepSeek（ubuntu） | 第 0 包重跑 | H3；核验第 2、7、8、H1；手册重跑 |

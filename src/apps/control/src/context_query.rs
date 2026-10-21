@@ -130,7 +130,9 @@ fn show(shared: &Shared, actor: &TrustedActor, payload: &Value) -> store::Result
 }
 
 /// Port errors keep their codes and recovery actions at the boundary.
-fn port_error(error: context::PortError) -> store::StoreError {
+/// Shared with the dispatch path (`verify_sources`), which resolves the same
+/// Context sources and must surface the same codes, not Agency ones.
+pub(crate) fn port_error(error: context::PortError) -> store::StoreError {
     let static_code = match error.code.as_str() {
         "INVALID_INPUT" => "INVALID_INPUT",
         "NOT_FOUND" => "NOT_FOUND",

@@ -12,7 +12,8 @@
 | `src/tenant.rs` | 每租户自己的派工、输入租约、观测、待交结果 journal |
 | `src/storage.rs` | SQLite WAL / FULL、数据权限与独占写锁 |
 | `src/runtime.rs` | 私有 Runtime / Session 接口；第 2 包的脚本协议执行体 |
-| `src/main.rs` | `agency --root PATH start\|serve\|status\|stop` |
+| `src/main.rs` | `agency --root PATH start\|serve\|status\|stop\|login` |
+| `src/managed_login.rs` | 独立的 harness 登录目录、Claude token 导入与缺失或过期检查 |
 | `skills/` | Harness 原生技能目录 |
 
 Buck：`root//agency:agency`、`:service`、`:cli_test`、`:port_test`、`:control_port_test`、`:clippy`。发行包安装 `agency`；控制面首次执行 `hctl2 agency pair --binding-id ID --key KEY` 时拉起它。可用 `--agency-root PATH` 选择私有数据目录。未配置运行时的 Agency 目录为空，不假报已安装真实 Harness。配对与工种接受重试须保留原 key；查询已接受项不重新发接受命令。
@@ -20,6 +21,26 @@ Buck：`root//agency:agency`、`:service`、`:cli_test`、`:port_test`、`:contr
 安装后的 Herdr 按 `share/hctl2/PAYLOAD.sha256` 中唯一的 `libexec/hctl2/herdr` 条目校验。清单在动态库搬迁和 macOS 重签后生成；下载仍由 Buck 按 `lock.json` 校验。清单缺失、条目损坏或文件摘要不符均不上架工种。`root//packaging/release:room-cli-test` 会执行依赖包的安装脚本、用安装后的 Herdr 探测版本夹具，并检查文件被修改后拒绝上架；它不是模型真实派工的验收。
 
 空目录配对后才上架时，控制面用新 Binding ID 重新配对并接受目录，步骤见 [Participant 接法](../crates/participant/README.md#已有接法)。旧 Binding 保留，不因上架改写。
+
+### 托管登录
+
+人自己的登录不供 Agency 使用。`agency --root /path/to/agency login prepare` 只建 0700 的托管目录，返回路径，不执行登录。缺省目录是 Agency root 的同级 `<目录名>.harness-login`；可用 `HCTL2_AGENCY_HARNESS_HOME` 指定，启动和登录准备须使用同一取值。该目录不能与 Agency 凭据根或人的凭据目录重叠。备份 Agency 时，两处目录都要单独保全，control 备份不包括它们。
+
+Claude 登录由人运行原生 `claude setup-token`，然后从私有文件或密钥管理器管道导入：`agency --root /path/to/agency login claude-token --expires-at <Unix秒> < /path/to/private-token-file`。不把 token 写进参数或聊天；命令拒绝会回显的终端 stdin。`--expires-at` 是人声明的截止时间，导入只验证格式、权限和截止，不声称已经向服务端验证登录。token 原件在 Agency 凭据根内的 0600 文件；启动时只写进当前会话私有 settings 的 `env`，不进 Herdr server 环境、workspace 环境或参数。到声明的截止后停止接受新派工，不替人登录或续期；替换 token 后重启 Agency。
+
+当前策略点：每个 Claude 会话的 0600 settings 文件含该 token 的副本。Herdr 状态目录不是逐会话的权限边界；macOS 现行 profile 下，同一 OS 用户的其他 harness 进程可能读到这些副本。替换 token 后，旧副本在会话重建时才被替换。本版没有收紧这层共享状态权限，也不声称 0600 能隔开同一 OS 用户的不同进程。
+
+Codex 用 `login prepare` 返回的 `codex_home`：由人执行 `CODEX_HOME=/path/from/prepare codex -c 'cli_auth_credentials_store="file"' login`。Agency 起 app-server 和展示 pane 都钉相同的托管目录与 `file` 后端。不读取人的 `~/.codex`、继承的个人 `CODEX_HOME` 或钥匙串。Agency 检查私有 `auth.json` 是否存在、权限与内容形状；远端有效性和原生刷新由 Codex 自己处理。原生登录失效须人重新登录，替换后重启 Agency。
+
+macOS 的两种 Codex 进程都用原生 `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem` 读取系统公共证书包，不为证书加载放行钥匙串，也不关闭 TLS 校验。Codex 可执行文件及其同目录辅助程序应安装在个人凭据目录之外；例如放在 `~/.codex` 下的安装会被同一凭据边界拒读，工具调用不可用。`HCTL2_CODEX` 可选择独立安装的位置，不复制个人登录材料。
+
+两家都用托管的 `HOME`，Claude 另钉 `CLAUDE_CONFIG_DIR`，不读取人的项目外全局配置。旧登录和原生历史不会自动搬迁。Claude 文件回退在本机边界内没有验证通过，本版不依赖它；证据见[钥匙串研究复核记录](../../docs/research/macos-keychain-and-harness-credentials.md#复核记录)。
+
+启动前可执行 `agency --root /path/to/agency login check claude-code` 或 `login check codex-cli`。这复用启动时的托管文件检查，只输出本地前提是否满足，不调用 harness、网络或钥匙串；`remote_authentication_checked: false` 表示未向服务端验证，不能据此宣称真会话已可用。最小环境与人工登录步骤见同一研究复核记录。
+
+真会话的演示 3 用例用 `HCTL2_LIVE_AGENCY_ROOT` 指定已由人导入 token 的独立测试 Agency，再传 `HCTL2_HARNESS_LIVE=1`，只跑 `root//packaging/release:room-cli-test` 中的 `demo3_gitea_chain_with_a_real_claude_code_session_reaches_task_completion`（`--include-ignored`）。测试不替人登录，也不删除该测试 Agency 的凭据。Codex 的真实 Room 用例另用 `HCTL2_LIVE_CODEX_AGENCY_ROOT` 与 `HCTL2_CODEX_LIVE=1`；这是一份只配置 Codex 的测试 Agency，避免把真实 Claude token 交给夹具。
+
+`root//agency:write_session_test` 的两条 `live_*` 写入用例也只用显式的 `HCTL2_LIVE_AGENCY_ROOT`，每次配对采用独立控制面 ID，不删除该根或其托管登录。运行时须将测试环境的 `HCTL2_AGENCY_HARNESS_HOME` 覆盖为该根的 `login prepare` 结果，不能沿用 Buck 的离线夹具目录；一次只选已准备好对应登录的用例。其他 Agency 原生 live 用例的托管登录接线仍待补齐，不应直接沿用以前借个人登录的命令。
 
 本机端口为权限 0600 的 Unix socket。为适应 macOS 路径长度，套接字目录用数据根摘要生成，数据根与凭据留在私有运维存储，不进入 Binding、Spec 或 Proposal。控制面停止不停止 Agency；`agency stop` 是服务所有者的独立操作，会请求停止所有租户的执行。
 
@@ -57,13 +78,13 @@ Agency 的数据库和待交成果不属于 control 备份。它的恢复要保�
 | `src/confine.rs`、`linux_confine.rs` | 限制 Herdr 及子进程读取凭据根；Linux 二进制目录只读、可执行 |
 | `tests/herdr.rs`、`tests/standby_fixture.rs` | 原生 Herdr 回归与结构化测试夹具；真实 Claude 会话另设开关 |
 
-`serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按包内 `PAYLOAD.sha256` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种记实际版本与二进制摘要。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
+`serve` 未设 `HCTL2_INSTALL_ROOT` 时目录仍为空。设了它以后，从安装目录找 Herdr，按包内 `PAYLOAD.sha256` 核摘要；受限环境里的终端与 Claude 冒烟通过后才上架。3d 用原生插件机制，Claude Code 最低版本升为 2.1.287，工种简历（`Profession.harness` 与 `Profession.model`）记本家 harness 自身（`claude-code` / `codex-cli`，版本与二进制摘要与 `Profession.reference` 相同），终端复用器（`herdr`）不进工种简历与 `Catalog.harnesses`。冒烟阶段 `--version` 不自报具体模型标识时，模型字段填 `<harness.id>/default`（`claude-code/default`、`codex-cli/default`）作为本家默认模型组自述，保证不同工种建出的 Worker Profile 不会撞成同一个 `worker_profile_revision`；Store 中已冻结的旧 `worker_profile_revision`（如 `harness = herdr`、`model = none`）保持不可变原样回读，不改写。`HCTL2_CLAUDE` 可指定路径，否则从 PATH 找。失败原因留在 `serve.err`，不阻止空目录的 Agency 端口启动。
 
 Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.prompt` 只交本次派工的固定标记，原生插件在 `prompt.submit` 核对标记后注入冻结正文。正文不经过输入框，不变成粘贴附件或原生命令。同一选入记录复用一个会话，派工按 FIFO 逐轮执行；不同租户、Binding、Project 或选入记录不共用。复用键取这些对象的 ID，不取版本或摘要，记录更新不换会话。每轮结果按本次派工键、Spec 摘要、原生 Session ID 与 Turn ID 配对。原生插件的 `turn.complete` 给最终回答与 `answer / refusal / aborted / error`；子代理事件不算主调用结果。回答与拒绝原文交回一条 Proposal、一次 `TurnReturned`，证据为 adapter_event；错误与打断不伪报回答。不看终端空闲或进程退出判这一轮结束。
 
 3d/3e 的只读路径只允许 `context.read`，工具列表为空、MCP 严格限制，每次检查本轮 Spec，不续用旧授权。带写租约的派工由下面的 3f 路径处理；未完整交付写入边界时拒绝，不用历史会话猜权限。
 
-官方 SessionStart 资产由安装器放在 Agency 私有目录，用会话级 `--settings` 引用；Claude 插件只通过 `--plugin-dir` 加载。保留用户 HOME、PATH、USER，不向 Claude 设置 `CLAUDE_CONFIG_DIR`，不复制登录材料、不直接编辑全局设置。按所有者授权，只自动确认 Agency 准备的执行目录的原生信任提示，允许 Claude 保存该目录的信任记录；不跳过工具权限检查。
+官方 SessionStart 资产由安装器放在 Agency 私有目录，用会话级 `--settings` 引用；Claude 插件只通过 `--plugin-dir` 加载。登录与用户级状态使用[托管目录](#托管登录)，保留 PATH、USER，不复制个人登录材料、不直接编辑人的全局设置。按所有者 2026-10-18 的选择，每个原生 Claude 会话带 `CLAUDE_CODE_SANDBOXED=1`，只将 Agency 准备的执行目录视为可信；仓库内 Claude 项目配置（包括 hooks）会生效，不跳过工具权限检查。若仍出现信任提示，以 `CLAUDE_WORKSPACE_UNTRUSTED` 失败，不替人按键。
 
 单次停止或截止先用原生 Esc 打断当前轮，等结构化打断事件，留下会话。Claude 可能把早取消的输入放回输入框；下一次派工用原生 `prompt.edit` 替换旧草稿，保留本次标记的后续片段。`prompt.submit` 拒绝不匹配的标记，再原样注入正文；Runtime 逐字核 `turn.start.text`，首尾空白、换行和制表符都保留。不拦人的原生 `!` 或 `/` 操作；不能归到派工的模型轮不会交成派工结果。三秒内无法确认打断则原生关闭 pane，报告会话已关闭，不伪报正常回答。
 
@@ -71,15 +92,15 @@ Herdr 用 `agent.start` 持有 Claude 的交互界面、进程与 PTY；`agent.p
 
 只激活 stop，不上架 input，不提供终端接管或 exact attach。一轮返回不是 Task 完成，不代 sysone 判断或生成物验收。状态目录在执行目录之外，但官方版没有逐 pane 防篡改，恶意伪造仍是未实现的策略点。依据与实现前实测见 [Herdr 复核](../../docs/research/sdk/herdr.md#复核记录) 与 [Claude 钩子复核](../../docs/research/harness-hooks-20260903.md#2026-10-06--claude-常驻会话的一轮结束)。
 
-默认 `root//agency:herdr_test` 跑确定性夹具；真实用例用 Rust 原生 `ignore` 标未验证。Codex 的 app-server 子集由 `tests/codex_fixture.rs` 说，`root//agency:codex_fixture_test` 默认会跑：rollout 逐字核对、`turn/completed` 与 `item/completed` 只认本轮、打断后 `TurnStopped`、续接失败起新线程并标 `resume_failed`。开真实验证：`cd src && ./buck2 test root//agency:herdr_test -- --env HCTL2_HARNESS_LIVE=1 --test-arg=live_ --test-arg=--include-ignored --test-arg=--nocapture`。macOS 上测试进程须在可访问登录钥匙串的 Aqua 会话；如果 Buck daemon 属于 Background，先用 Buck 构建，再在 Aqua 中运行同一产物。测试环境另需 Buck 声明的 `HCTL2_LOCKED_HERDR`、`HCTL2_CONFINE_BIN`、`HCTL2_STANDBY_FIXTURE`。真实 Linux 登录会话仍未验证，不放宽其登录材料路径。
+默认 `root//agency:herdr_test` 跑确定性夹具；真实用例用 Rust 原生 `ignore` 标未验证。Codex 的 app-server 子集由 `tests/codex_fixture.rs` 说，`root//agency:codex_fixture_test` 默认会跑：rollout 逐字核对、`turn/completed` 与 `item/completed` 只认本轮、打断后 `TurnStopped`、续接失败起新线程并标 `resume_failed`。真实验证另需显式准备独立的托管登录；不再借 Aqua 会话读取个人钥匙串。测试环境需 Buck 声明的 `HCTL2_LOCKED_HERDR`、`HCTL2_CONFINE_BIN`、`HCTL2_STANDBY_FIXTURE`。本专项的双平台真登录验收未完成前，不将夹具通过写成真会话通过。
 
 夹具模拟原生界面的草稿恢复，不执行插件。`tests/turn.test.ts` 另用 Claude 自带的 `claude plugin test` 测实际生成插件；本机执行 `root//agency:herdr_test -- --test-arg=native_mod_ --test-arg=--include-ignored --test-arg=--nocapture`，需要已安装 Claude，不需要登录。CI 没有原生 Claude，默认略过；改插件后须另跑这组与真实会话用例。
 
-当前限制：目录信任自动确认只识别英文界面；测试目录的信任记录由 Claude 原生保存，不自动删除。失效的续接标识可能等到三十秒启动时限才改用新会话。Herdr 关闭 pane 本身失败时，该选入记录的工作线程可能退出，后续请求报 `STANDBY_UNAVAILABLE`，须恢复 Runtime；不把关闭失败报成已回收。
+当前限制：未识别的原生信任提示可能等到三十秒启动时限才失败，不会自动确认。失效的续接标识可能等到同一时限才改用新会话。Herdr 关闭 pane 本身失败时，该选入记录的工作线程可能退出，后续请求报 `STANDBY_UNAVAILABLE`，须恢复 Runtime；不把关闭失败报成已回收。
 
 人在 pane 里操作的限制（#362 第三轮实测）：两次派工之间敲 `!` 命令照常执行，不影响下一次派工。敲普通的话会被会话插件挡掉，界面有提示。`/clear` 会换原生会话号，下一次派工失败一次；再下一次续接回的是清空之前的对话。派工正在回答时敲普通的话，会让当前派工以 `STANDBY_PROMPT_MISMATCH` 失败，回答丢失。这不是终端接管能力；接管做出来之前，派工期间不要动那个 pane，也不要在其中用 `/clear`。
 
-Codex 工种 `codex-cli` 与 Claude 工种并列，模型字段仍是 `none`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次。Codex 0.161 的 Unix 监听会去准备 `/tmp/codex-daemon-<uid>`，Landlock 不允许 `/tmp`，所以只读和写入都改听带 capability token 的 `ws://127.0.0.1`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录用进程里已经有的 `CODEX_HOME` 或 `~/.codex`。每一轮 `turn/start` 自带 `approvalPolicy: never`。只读的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`：Codex 自己的 bubblewrap 在这层 Landlock 里建不起用户名字空间，命令由宿主边界执行，不把网络记成已切断。写入 turn 仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
+Codex 工种 `codex-cli` 与 Claude 工种并列，工种简历的 `harness` 报 `codex-cli`（版本与二进制摘要同 `Profession.reference`），冒烟阶段未自报具体模型时 `model` 填 `codex-cli/default`。最低版本 0.153.4。`HCTL2_CODEX` 可指定路径，否则从 PATH 找。冒烟不过就不上架，原因写到服务的 stderr（`serve.err`）。app-server 由 Agency 为这个选入记录拉起一次。Codex 0.161 的 Unix 监听会去准备 `/tmp/codex-daemon-<uid>`，Landlock 不允许 `/tmp`，所以只读和写入都改听带 capability token 的 `ws://127.0.0.1`，不跑 `daemon`、不写 `~/.codex` 的配置、不复制登录材料。登录只用 Agency 的托管 `CODEX_HOME`，app-server 和 resume pane 都显式钉 `cli_auth_credentials_store="file"`。每一轮 `turn/start` 自带 `approvalPolicy: never`。只读的 `sandboxPolicy` 是 `externalSandbox`，`networkAccess` 为 `restricted`：Codex 自己的 bubblewrap 在这层 Landlock 里建不起用户名字空间，命令由宿主边界执行，不把网络记成已切断。写入 turn 仍是 `externalSandbox` 且 `networkAccess` 为 `enabled`。不沿用上一轮。rollout 里的 `input_text` 必须与正文逐字相同，否则不交 Proposal。结束看 `turn/completed`，回答取 `item/completed` 里 `agentMessage` 的 `text`，一轮一条 Proposal、一次 `TurnReturned`。新线程的第一轮进行中没有 pane：`codex resume --remote` 要先有 rollout，所以 `ensure_pane` 放在第一轮 `turn/completed` 之后。这一轮在 Herdr 里看不到过程，轮结束时 pane 才出现。2026-10-06 热身一轮返回后，`--remote` 进程有 1 个。Herdr 认得出 pane 里的进程是 `codex`，但没有装 Codex 集成，`agent.list` 里的 `agent_status` 是 `unknown`。Claude 会在私有目录执行 `integration install claude`。要不要给 Codex 同样私有装一份，另议。取消或截止先 `turn/interrupt`；三秒内没有结束，或打断调用失败，就关掉 pane 和这个 app-server，并标明会话已关闭。闲置超时同样关掉两者；下次派工 `thread/resume`，接不上就新线程并在 `session_opened` 里写 `resume_failed`。Agency 停止时工作线程把这些进程收掉。
 
 人在 Codex pane 里敲的字进的是 Codex 自己的界面，不经过 Claude 那条会话插件。本包不做接管。2026-10-06 在 Codex 0.160.1 上对着 `codex resume --remote` 试过三下，都没有按回车把草稿送成一轮：空闲时打 `hello pane`，字出现在输入行；空闲时打 `/`，这个字符出现在输入行，没有执行斜杠命令；另一个客户端的 `turn/start` 还在跑时打 `typed-during`，字出现在界面上，resume 进程还在，观察用的连接在 45 秒内没有读到 `turn/completed`。派工进行中不要在 pane 里打字：若这个观察成立，人在那一轮里打字，这次派工可能一直等到截止。不把 Claude 3d 里插件挡住普通字、`/clear` 换会话号的结果抄过来。
 

@@ -143,9 +143,19 @@ fn scratch(name: &str) -> (Scratch, Scratch) {
     std::fs::create_dir_all(&cred).unwrap();
     std::fs::create_dir_all(&exec).unwrap();
     std::fs::write(cred.join("pair.key"), b"secret-credential").unwrap();
+    let mut extra = Vec::new();
+    if std::env::var_os("HCTL2_HARNESS_LIVE").is_none() {
+        let homes = agency::managed_login::Homes::prepare(&cred).unwrap();
+        homes
+            .import_claude_token(b"sk-ant-oat01-fixture-only".as_slice(), u64::MAX)
+            .unwrap();
+        // Only delete the test's own default home, never an explicit external home.
+        if std::env::var_os("HCTL2_AGENCY_HARNESS_HOME").is_none() {
+            extra.push(homes.root);
+        }
+    }
     // The herdr state dir and the socket dirs herdr derives from it, registered exactly as
     // the service computes them instead of re-hashing.
-    let mut extra = Vec::new();
     if let Ok(state) = herdr::state_dir(&exec, &cred) {
         let socket = herdr::socket_path(&state);
         extra.push(socket.clone());
@@ -161,6 +171,104 @@ fn scratch(name: &str) -> (Scratch, Scratch) {
             extra: Vec::new(),
         },
     )
+}
+
+#[test]
+fn managed_login_from_real_cli_is_private_and_never_echoes_the_token() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("agency");
+    let binary = std::env::var_os("HCTL2_CONFINE_BIN").unwrap();
+    let prepared = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "prepare"])
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stdout)
+    );
+    let paths: serde_json::Value = serde_json::from_slice(&prepared.stdout).unwrap();
+    assert_eq!(paths["login_performed"], false);
+    assert_eq!(paths["codex_credential_store"], "file");
+    let check = |harness: &str| {
+        Command::new(&binary)
+            .arg("--root")
+            .arg(&root)
+            .args(["login", "check", harness])
+            .output()
+            .unwrap()
+    };
+    for harness in ["claude-code", "codex-cli"] {
+        let missing = check(harness);
+        assert!(!missing.status.success());
+        let value: serde_json::Value = serde_json::from_slice(&missing.stdout).unwrap();
+        assert_eq!(value["error"]["code"], "MANAGED_LOGIN_REQUIRED");
+    }
+    let marker = "sk-ant-oat01-fixture-only";
+    let mut child = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "claude-token", "--expires-at", "4102444800"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(marker.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(marker));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(marker));
+    let stored = root.join("managed-credentials/claude-code.json");
+    assert_eq!(
+        std::fs::metadata(&stored).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let mut token: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&stored).unwrap()).unwrap();
+    assert_eq!(token["token"], marker);
+    let checked = check("claude-code");
+    assert!(checked.status.success());
+    assert!(!String::from_utf8_lossy(&checked.stdout).contains(marker));
+    let value: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(value["local_preconditions_met"], true);
+    assert_eq!(value["remote_authentication_checked"], false);
+    token["expires_at_ms"] = serde_json::json!(1);
+    std::fs::write(&stored, serde_json::to_vec(&token).unwrap()).unwrap();
+    let expired = check("claude-code");
+    assert!(!expired.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&expired.stdout).unwrap();
+    assert_eq!(value["error"]["code"], "MANAGED_LOGIN_EXPIRED");
+    let codex_home = PathBuf::from(paths["codex_home"].as_str().unwrap());
+    let auth = codex_home.join("auth.json");
+    std::fs::write(&auth, br#"{"OPENAI_API_KEY":"fixture-only"}"#).unwrap();
+    std::fs::set_permissions(&auth, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(check("codex-cli").status.success());
+    std::fs::set_permissions(&auth, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let public = check("codex-cli");
+    assert!(!public.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&public.stdout).unwrap();
+    assert_eq!(value["error"]["code"], "MANAGED_LOGIN_INVALID");
+    assert!(!check("unknown-harness").status.success());
+    let rejected = Command::new(&binary)
+        .arg("--root")
+        .arg(&root)
+        .args(["login", "claude-token", "--expires-at", "1"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
 }
 
 struct SecretSpecimen {
@@ -480,6 +588,87 @@ fn the_pane_cannot_read_credentials_keyring_or_gh_auth() {
     );
     assert!(!text.contains("secret-credential"), "{text}");
     assert!(!text.contains("trial-keyring-secret"), "{text}");
+}
+
+#[test]
+fn the_pane_cannot_read_personal_claude_or_codex_credentials() {
+    const PROBE_ROOT: &str = "HCTL2_PERSONAL_HOME_PROBE_ROOT";
+    const TARGETS: [&str; 3] = [".claude/login", ".claude.json", ".codex/auth.json"];
+    if let Some(root) = std::env::var_os(PROBE_ROOT) {
+        let home = PathBuf::from(root).join("home");
+        assert_eq!(
+            std::env::var_os("HOME"),
+            Some(home.clone().into_os_string())
+        );
+        let (cred, exec, state, server) = server("personal-home");
+        let public = exec.join("ordinary-file");
+        std::fs::write(&public, b"ordinary test file").unwrap();
+        let mut body = String::new();
+        for (index, path) in TARGETS
+            .iter()
+            .map(|target| home.join(target))
+            .chain(std::iter::once(public))
+            .enumerate()
+        {
+            let quoted = path.display().to_string().replace('\'', "'\"'\"'");
+            body.push_str(&format!(
+                "if /bin/cat '{quoted}' >/dev/null 2>&1; then printf 'readable {index}\\n'; else printf 'denied {index}\\n'; fi\n"
+            ));
+        }
+        let finished = launch::Launch::start(server, &exec, &state, &cred, &body, "personal-home")
+            .unwrap()
+            .wait(Duration::from_secs(15))
+            .unwrap();
+        assert_eq!(finished.code, Some(0));
+        assert_eq!(
+            String::from_utf8(finished.stdout).unwrap(),
+            "denied 0\ndenied 1\ndenied 2\nreadable 3\n",
+            "the pane must deny all three personal credential paths but read an ordinary file"
+        );
+        return;
+    }
+
+    // Change HOME only in a fresh process: other tests keep their environment,
+    // and neither this process nor the pane ever reads the operator's login.
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let private_tmp = temp.path().join("tmp");
+    std::fs::create_dir_all(&private_tmp).unwrap();
+    for target in TARGETS {
+        let path = home.join(target);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"fake personal credential").unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"fake personal credential");
+    }
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "the_pane_cannot_read_personal_claude_or_codex_credentials",
+            "--nocapture",
+        ])
+        .env_clear()
+        .env(PROBE_ROOT, temp.path())
+        .env("HOME", &home)
+        .env("TMPDIR", &private_tmp)
+        .env("PATH", "/usr/bin:/bin")
+        .env("USER", "hctl2-test")
+        .env("HCTL2_LOCKED_HERDR", binary())
+        .env(
+            "HCTL2_CONFINE_BIN",
+            std::fs::canonicalize(std::env::var_os("HCTL2_CONFINE_BIN").unwrap()).unwrap(),
+        )
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed"),
+        "the fresh process must actually run the pane probe"
+    );
 }
 
 #[test]
@@ -816,8 +1005,124 @@ fn a_locked_install_smokes_before_it_is_cataloged() {
             .iter()
             .any(|item| item.reference.id == "herdr-locked")
     );
-    assert_eq!(catalog.harnesses[0].revision, "protocol-22");
+    assert!(
+        !catalog
+            .harnesses
+            .iter()
+            .any(|item| item.id == "herdr" || item.revision == "protocol-22")
+    );
+    assert_eq!(catalog.harnesses[0], catalog.professions[0].reference);
+    assert_eq!(
+        catalog.professions[0].harness,
+        catalog.professions[0].reference
+    );
+    assert_eq!(catalog.professions[0].model, "claude-code/default");
     assert_eq!(catalog.harnesses[0].digest.len(), 64);
+    let _ = std::fs::remove_dir_all(&install);
+}
+
+#[test]
+fn claude_code_and_codex_catalog_their_own_harnesses_and_produce_distinct_write_profiles() {
+    let install = std::env::temp_dir().join(format!(
+        "hctl2-install-distinct-profiles-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&install);
+    let dest = installed_fixture(&install);
+    let mut permissions = std::fs::metadata(&dest).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&dest, permissions).unwrap();
+    let claude = stub_claude(&install, "2.1.289");
+    let codex = install.join("codex-stub");
+    write_fixture(&codex, "#!/bin/sh\necho 'codex-cli 0.160.1'\n");
+    let runtime =
+        launch::InstalledHerdr::open_with_codex(dest, &claude, &codex, Duration::from_secs(60))
+            .unwrap();
+    let catalog = runtime.catalog().unwrap();
+    let claude_prof = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "claude-code")
+        .unwrap();
+    let codex_prof = catalog
+        .professions
+        .iter()
+        .find(|item| item.reference.id == "codex-cli")
+        .unwrap();
+
+    let store_dir = install.join("store");
+    let mut store = store::Store::open(&store_dir).unwrap();
+    let actor = store::TrustedActor(store::Actor {
+        principal: "local-owner:1000".into(),
+        source: store::ActorSource::DirectClient,
+        authority: None,
+        permission_scope: vec![store::Scope::Control],
+    });
+    participant::accept_binding(
+        &mut store,
+        &actor,
+        "pair-native",
+        participant::Binding {
+            id: "native".into(),
+            protocol: agency_proto::PROTOCOL.into(),
+            catalog: catalog.clone(),
+        },
+    )
+    .unwrap();
+    participant::accept_profession(&mut store, &actor, "accept-claude", "native", claude_prof)
+        .unwrap();
+    participant::accept_profession(&mut store, &actor, "accept-codex", "native", codex_prof)
+        .unwrap();
+
+    let create_write_profile =
+        |store: &mut store::Store, key: &str, id: &str, prof: &agency_proto::Profession| {
+            let plan = participant::profiles::prepare_profile(
+                store,
+                participant::profiles::ProfileInput {
+                    key: key.into(),
+                    action: participant::profiles::ProfileAction::Create {
+                        id: id.into(),
+                        profile: participant::profiles::WorkerProfile {
+                            harness: prof.harness.clone(),
+                            model: prof.model.clone(),
+                            mode: "write".into(),
+                            permissions: vec![
+                                "context.read".into(),
+                                "git.read".into(),
+                                "git.write".into(),
+                            ],
+                            environment: vec![],
+                            required_capabilities: prof.capabilities.clone(),
+                            max_context_bytes: 262_144,
+                        },
+                    },
+                },
+                &actor,
+            )
+            .unwrap();
+            participant::profiles::admit_profile(store, &actor, plan).unwrap()
+        };
+    let claude_profile =
+        create_write_profile(&mut store, "profile-claude", "claude-write", claude_prof);
+    let codex_profile =
+        create_write_profile(&mut store, "profile-codex", "codex-write", codex_prof);
+    assert_ne!(
+        claude_profile["revision"]["key"]["id"], codex_profile["revision"]["key"]["id"],
+        "Claude Code and Codex write profiles must produce distinct worker_profile_revision digests"
+    );
+    assert_eq!(catalog.professions.len(), 2);
+    assert_eq!(catalog.harnesses.len(), 2);
+    assert!(
+        !catalog
+            .harnesses
+            .iter()
+            .any(|item| item.id == "herdr" || item.revision == "protocol-22")
+    );
+    assert_eq!(claude_prof.harness, claude_prof.reference);
+    assert_eq!(codex_prof.harness, codex_prof.reference);
+    assert_eq!(claude_prof.model, "claude-code/default");
+    assert_eq!(codex_prof.model, "codex-cli/default");
+    drop(store);
     let _ = std::fs::remove_dir_all(&install);
 }
 
@@ -1466,8 +1771,8 @@ fn sealed_spec(key: &str, deadline_ms: u64) -> agency_proto::Sealed<agency_proto
         selection_policy_digest: agency_proto::hash(b"policy"),
         profession: Profession {
             reference: frozen("claude-code"),
-            harness: frozen("herdr"),
-            model: "none".into(),
+            harness: frozen("claude-code"),
+            model: "claude-code/default".into(),
             persona: "test".into(),
             terms: "test".into(),
             default_role: "worker".into(),
@@ -1946,13 +2251,13 @@ fn standby_reports_the_trust_prompt_and_never_answers_it() {
 
 #[test]
 fn claude_honouring_agency_trust_is_checked_when_agency_is_set_up() {
-    let (_, root, _) = standby_root("setup-trust");
+    let (cred, root, _) = standby_root("setup-trust");
     let trusted = launch::InstalledHerdr::open(binary(), &waiting_claude(&root, true)).unwrap();
-    trusted.verify_claude_trust().unwrap();
+    trusted.verify_claude_trust(&cred).unwrap();
     let other = root.join("untrusted");
     std::fs::create_dir_all(&other).unwrap();
     let untrusted = launch::InstalledHerdr::open(binary(), &untrusted_claude(&other)).unwrap();
-    let error = untrusted.verify_claude_trust().unwrap_err();
+    let error = untrusted.verify_claude_trust(&cred).unwrap_err();
     assert_eq!(error.code, "CLAUDE_WORKSPACE_UNTRUSTED", "{error:?}");
     assert!(
         error.message.contains("CLAUDE_CODE_SANDBOXED=1"),

@@ -115,6 +115,7 @@ pub struct Server {
     child: Child,
     pub socket: PathBuf,
     pub state: PathBuf,
+    pub(crate) credential_root: PathBuf,
 }
 
 impl Server {
@@ -258,6 +259,7 @@ impl Server {
                     child: stop.disarm(),
                     socket,
                     state: state.to_path_buf(),
+                    credential_root: credential_root.canonicalize()?,
                 });
             }
             if stop.try_wait()?.is_some() {

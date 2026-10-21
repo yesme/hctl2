@@ -1618,8 +1618,12 @@ pub fn active_runs(store: &Store, task: &Task) -> Result<Vec<Record>> {
             let RecordData::Value { value } = &r.data else {
                 return true;
             };
-            let target = value.get("task_id").and_then(Value::as_str);
-            target.is_none_or(|s| s == task.id)
+            let bound = match value.get("task_id") {
+                Some(Value::Null) => false,
+                Some(Value::String(id)) => *id == task.id,
+                _ => true,
+            };
+            bound
                 && !["completed", "cancelled", "failed", "replaced"]
                     .contains(&value["lifecycle"].as_str().unwrap_or("unknown"))
         })

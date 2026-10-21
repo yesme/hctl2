@@ -190,7 +190,7 @@ chat 探针在 B1 首次消费前完成；平台 issues 作任务源的运行验
 
 桌面壳的最小权限面是[安全策略面](./spec/system.md#安全策略面)「客户端最小权限」策略点的当前实现：Tauri 2 按 window/webview 以 capability/permission/scope 显式声明，不开放未声明的 IPC 与插件能力；以 Electron 安全网形态发行时固定 `nodeIntegration=false`、`contextIsolation=true`、sandbox=true，narrow preload 不暴露 raw ipcRenderer；CSP 拒绝远程或未声明的可执行来源。
 
-五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、本地冲突写入的锁用标准库文件锁（用于需互斥的资源，不锁住整个共享对象库）、治理记录备份用 SQLite Online Backup API、密钥用 `keyring` 进系统钥匙串、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作直报级证据；在参与者内部运行时，能否算直报看 Agency 是否声明「代为执行工具并直报」。
+五处通用机制不手写，用现成库：规范化 JSON 摘要用 RFC 8785 的 Rust 实现（`serde_json_canonicalizer`，契约测试钉官方测试向量）、本地冲突写入的锁用标准库文件锁（用于需互斥的资源，不锁住整个共享对象库）、治理记录备份用 SQLite Online Backup API、密钥缺省用已有的私有文件后端（目录 0700、文件 0600），显式选系统钥匙串时用 `keyring`、全文索引用 FTS5，逐项判定见[通用机制的现成库](../research/libs/README.md)；outbox、租约与代次维持自研，它们是治理内核。供应端客户端按四级顺序接入：随包官方命令行工具 > 官方 SDK > 从接口描述生成 > 手写，逐家判定见[供应端客户端层](../research/sdk/README.md)；GitHub 的控制面一侧先看随包的 `gh`，`octocrab` 退为第二选择。执行体侧的外部机械事实（CI 状态、合并状态、引用推进、路径与摘要）由 `hctl2-tool` 的 `wait` 子命令读回：闭集事实、带截止、一次调用一个答案，结果可作直报级证据；在参与者内部运行时，能否算直报看 Agency 是否声明「代为执行工具并直报」。
 
 治理记录继续用 SQLite，治理正文以 Git 为后端：每个控制面一份私有本地裸库，供它管理的多个 Repo/Project 共用，不注册成另一个业务仓库。沿用既有 Git 调用与校验机制（见 [Git 研究](../research/sdk/git.md)），不另做一套存储协议；四个存取动作与事务边界见[系统约束](./spec/system.md#控制面自己的存储)。
 

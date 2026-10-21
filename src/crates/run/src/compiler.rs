@@ -67,6 +67,16 @@ fn id(value: &str) -> Result<()> {
     }
     Ok(())
 }
+/// Spec ties these facts to the output's commit, pull request, or path.
+/// Verdict and Receipt stay on the control plane, so they do not match.
+/// The spec does not split the three facts across ChangeSet, Artifact, and
+/// MechanicalFact outputs; those pairings stay accepted.
+fn mechanical_fact_matches(kind: &OutputKind) -> bool {
+    matches!(
+        kind,
+        OutputKind::ChangeSetRevision | OutputKind::ArtifactRevision | OutputKind::MechanicalFact
+    )
+}
 pub fn compile(workflow: &Workflow) -> Result<Compiled> {
     if workflow.schema != "hctl2.workflow.v1" || workflow.profile != "hctl2.passive.v1" {
         return Err(fail(
@@ -146,6 +156,9 @@ fn lint(graph: &Graph, ancestors: &BTreeSet<String>, warnings: &mut Vec<Warning>
     let mut nodes = BTreeMap::new();
     for node in &graph.nodes {
         id(&node.id)?;
+        if node.id.contains("__") {
+            return Err(invalid("node ids reserve __ for expanded checkpoint names"));
+        }
         if nodes.insert(node.id.as_str(), node).is_some() {
             return Err(invalid("duplicate node id"));
         }
@@ -166,10 +179,16 @@ fn lint(graph: &Graph, ancestors: &BTreeSet<String>, warnings: &mut Vec<Warning>
                     ));
                 }
                 Some(Criterion::Mechanical { output, fact }) => {
-                    if !node.outputs.contains_key(output) {
+                    let Some(kind) = node.outputs.get(output) else {
                         return Err(fail(
                             "WORKFLOW_CRITERION",
                             "mechanical fact must bind this node's declared output",
+                        ));
+                    };
+                    if !mechanical_fact_matches(kind) {
+                        return Err(fail(
+                            "WORKFLOW_CRITERION",
+                            "mechanical fact does not match this output kind",
                         ));
                     }
                     match fact {
@@ -230,7 +249,7 @@ fn lint(graph: &Graph, ancestors: &BTreeSet<String>, warnings: &mut Vec<Warning>
                                     && a.review_subject_node == b.review_subject_node
                             })
                             .collect();
-                        if !matches.is_empty() {
+                        if gate.quorum > 1 && !matches.is_empty() {
                             warnings.push(Warning {
                                 node: node.id.clone(),
                                 seats: std::iter::once(a.id.clone())
@@ -327,7 +346,7 @@ fn lint(graph: &Graph, ancestors: &BTreeSet<String>, warnings: &mut Vec<Warning>
         let to = nodes
             .get(edge.to.as_str())
             .ok_or_else(|| fail("WORKFLOW_DEPENDENCY", "consumer node missing"))?;
-        if !edges.insert((&edge.from, &edge.to)) {
+        if !edges.insert((&edge.from, &edge.to, edge.case.as_deref())) {
             return Err(invalid("duplicate edge"));
         }
         match (&from.operation, &edge.case) {

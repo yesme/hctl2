@@ -191,4 +191,24 @@
 
 - 2026-10-17 初版（Muse 席 mac）：按开工书 §二 第 37 条 ⑤ 的派工落盘；评审席 Claude（mac）找问题、Antigravity（ubuntu）核验链接与版本，结论待回填。
 
+- 2026-10-19 · Codex（mac），实现前验证：Claude Code 2.1.302 的文件回退未通过本次隔离登录验证。`CLAUDE_CONFIG_DIR` 指向空的私有目录，Seatbelt 拒读写人的 Keychains、`.claude`、`.claude.json`、`.codex`、gh 和 ssh；所有者执行原生 `claude auth login --claudeai` 后看到“找不到存储的钥匙串”弹窗，随后目录没有生成 `.credentials.json`，隔离内 `claude auth status --json` 仍为 `loggedIn:false`。只读对照中，保留或替换 `HOME`，`security default-keychain -d user` 都返回找不到默认钥匙串，不能单独归因于 `HOME`。本机原生程序的 secure-storage 实现先写 Keychain；若写入失败被标为 transient（包括超时），直接返回、不写文件回退。未取得该次登录的原生错误码，不能断言它具体走了哪个失败分支。官方 [Authentication](https://code.claude.com/docs/en/authentication#credential-management) 只说明拒写时的回退，没有找到强制选择文件后端的公开入口；本机 `auth login --help` 也没有这一选项。因此不把文件回退作为已经验证的 Agency 登录方案，实施已拍板的 `setup-token` 路径：人生成并显式导入独立 token，Agency 私有保存，只放进单个会话的 settings `env`，不进参数或 Herdr server 环境。没有读取、复制或改写人的真实凭据，没有解锁或新建钥匙串；没有完成真实模型调用。Codex 继续按官方 [`CODEX_HOME` 与 `file` 档](https://learn.chatgpt.com/docs/auth#credential-storage) 托管，原生刷新归 Codex。
 
+- 2026-10-20 · Codex（mac），按开工书 §二第 45 条 ⑤ 补两家的前提检查。下表命令由操作者执行；Agency 的检查入口只读自己的托管文件，不运行原生认证探测。`agency login prepare` 返回路径，不代表已登录；本地检查通过也不代表服务端接受凭据。没有新的真登录或真模型实测。
+
+  | harness | 起会话前的检查命令与判据 | 最小环境与人工准备 |
+  | --- | --- | --- |
+  | Claude Code | `agency --root <agency-root> login check claude-code`：托管 token 为本用户的私有普通文件、格式可读且未到人声明的截止；缺失、权限错误或到期均拒绝。只输出本地前提结果，不回显 token，不读人的钥匙串。 | 操作者先运行原生 `claude setup-token`，从私有文件或密钥管理器管道交给 `agency --root <agency-root> login claude-token --expires-at <Unix秒>`；不在参数、聊天或 Agency server 环境放 token。会话用 prepare 返回的 `HOME`、`CLAUDE_CONFIG_DIR`，`CLAUDE_CODE_OAUTH_TOKEN` 只放当前私有 settings 的 `env`。安装目录、Claude 可执行路径等沿原有启动配置。远端失效仍须原生实际请求才能发现；本检查不声称验证或刷新它。 |
+  | Codex | `agency --root <agency-root> login check codex-cli`：托管 `auth.json` 是本用户的私有普通文件，含原生登录字段；不验证远端有效性。 | 操作者用 prepare 返回的 `codex_home` 执行 `CODEX_HOME=<codex_home> codex -c 'cli_auth_credentials_store="file"' login`；Agency 起会话时设置托管 `HOME`、同一 `CODEX_HOME` 并钉 `file`，不继承个人登录环境。官方 [Authentication · Credential storage](https://learn.chatgpt.com/docs/auth#credential-storage) 规定 `file` 使用 `CODEX_HOME/auth.json`；原生刷新由 Codex 负责。 |
+
+- 2026-10-21 · Codex（mac），托管订阅登录的连接验证。Codex CLI 0.163.0 使用同一独立 `CODEX_HOME` 与 `file` 档：现有凭据隔离 profile 内，原生 `exec --sandbox read-only` 报 `workspace routing discovery failed`；所有者批准的单次无外层隔离对照返回 `CODEX_MANAGED_OK`。随后保持原 profile 不动，只加 `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem`，同一请求也返回该答案。`auth.json` 的认证方式是 `chatgpt`，没有 API Key；未输出或复制 OAuth 值。这说明该连接失败与隔离下的缺省证书加载有关，不能归为订阅登录无效；未取得原生 TLS 错误链，不断言是哪个 Keychain API 或系统错误码。
+
+  官方 [Authentication · Custom CA bundles](https://learn.chatgpt.com/docs/auth#custom-ca-bundles) 规定 `CODEX_CA_CERTIFICATE` 指向 PEM 证书包，未设时回退 `SSL_CERT_FILE`，同时用于 HTTPS 与安全 WebSocket。实测本机 `/etc/ssl/cert.pem` 为系统提供的公共证书包，root 所有、0644。macOS 的 Agency 启动可用这条原生配置提供证书，而不放行人的 Keychains 或凭据目录，也不关闭 TLS 校验。Linux 保留原生缺省；本条未在 Linux 实跑。最小环境表的 macOS Codex 行据此补充 `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem`。在 Agency 中重跑调用与写入仍须另列结果，不能把单次对照当作派工验收。
+
+- 2026-10-21 · Codex（mac），接入原生 CA 配置后的真实派工复验，Codex CLI 0.163.0、同一份 `chatgpt` 订阅登录。另一个前提是程序安装位置：本机 Codex 安装在人的 `.codex` 下，同目录 `codex-code-mode-host` 被既有凭据拒读规则挡住，原生只读对照出现 `Code Mode unavailable`。未放行该目录；测试只将官方 `codex` 与其辅助可执行文件原样放进独立临时安装目录，没有复制登录或配置。两份程序与原件的 SHA-256 分别均为 `8813367285524ac798dd96d1b071aea30d58708c7226fd236cd275cf1cfdee31`、`79f123a85dbc61e8f5d0f0c050dfc3f4b81a8305d33a32b41e008b7f6e035698`。
+
+  | 实跑范围 | 结果与边界 |
+  | --- | --- |
+  | 控制面 → Agency → 原生 Codex → 准入 → Room 投影 | `root//packaging/release:room-cli-test` 的 `live_codex_dispatch_returns_one_answer_to_the_room`：1 passed / 0 failed，Build `b5d5eff3-6f3c-4fa2-8fd0-e34b904fdf01`。核回答与 Room 消息均含 `CODEX_ROOM_OK`，原生 rollout 的输入逐字等于派工正文。使用随包外部组件与 Buck 构建的第一方程序，不算全部第一方均取自安装包。 |
+  | Agency RPC → 原生写入 → 工具封存 → Result Proposal | `root//agency:write_session_test` 的 `live_codex_changes_non_documentation_code_and_runs_tests`：1 passed / 0 failed，Build `c7bf54c3-caf3-4e4f-8959-0935dd080fd4`。原生记录核对派工正文和 `CommandExecution` 的测试退出码 0；再独立执行 `/usr/bin/python3 -m unittest -v test_calculator` 成功，代码由 `value + 2` 改为 `value * 2`；工具核出的结果树与 Proposal 一致。原生线程 `01a15a22-1574-7c33-ae0b-75ea011c2378`。未运行平台发布与 Task 完成。 |
+
+  两条均保留完整 Agency 凭据边界，没有读人的钥匙串、放行个人 `.codex` 或切换 API Key。CA 已接入 app-server 与 resume pane，Linux 不注入 macOS 的 CA 路径。回归 `codex_uses_public_ca_while_personal_credentials_stay_denied` 在加修正前失败（Build `bae6ba13-e882-40ff-97dc-8bd0e0fb3066`，缺少该环境变量），加修正后通过（Build `0f41252a-2c98-48f8-8172-57565ff997e4`），并核生成 profile 中人的凭据拒读规则仍在。保留红例：只加 CA、仍用个人 `.codex` 下安装的 Room 用例失败（Build `41424ab4-40dd-4c65-b93b-eb0ef2b59e73`）；不能把证书配置单独写成修好了所有安装方式。Linux 的边界验收仍待核验席实跑。

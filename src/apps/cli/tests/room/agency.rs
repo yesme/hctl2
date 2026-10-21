@@ -2,6 +2,61 @@
 use super::*;
 use std::time::Instant;
 
+pub(super) fn prepare_login(root: &Path) -> Value {
+    login_paths(root, false)
+}
+
+fn login_paths(root: &Path, fixture: bool) -> Value {
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let mut command = Command::new(&binary);
+    if fixture {
+        command.env_remove("HCTL2_AGENCY_HARNESS_HOME");
+    }
+    let prepared = command
+        .arg("--root")
+        .arg(root)
+        .args(["login", "prepare"])
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stdout)
+    );
+    serde_json::from_slice(&prepared.stdout).unwrap()
+}
+
+/// Only the deterministic stand-in receives this non-secret fixture token.
+/// Production/live logins are supplied by the operator, never copied from HOME.
+pub(super) fn fixture_login(root: &Path) -> Value {
+    use std::io::Write;
+    let homes = login_paths(root, true);
+    let binary = std::env::var_os("CARGO_BIN_EXE_agency").unwrap();
+    let mut child = Command::new(&binary)
+        .env_remove("HCTL2_AGENCY_HARNESS_HOME")
+        .arg("--root")
+        .arg(root)
+        .args(["login", "claude-token", "--expires-at", "4102444800"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"sk-ant-oat01-fixture-only")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    homes
+}
+
 struct AgencyProcess {
     child: std::process::Child,
     root: PathBuf,
@@ -10,9 +65,13 @@ struct AgencyProcess {
 impl AgencyProcess {
     fn start(root: &Path, install: Option<&Path>, script: Option<&Path>) -> Self {
         std::fs::create_dir_all(root).unwrap();
+        if install.is_some() && script.is_none() {
+            fixture_login(root);
+        }
         let log = root.join("test-serve.err");
         let mut command = Command::new(std::env::var_os("CARGO_BIN_EXE_agency").unwrap());
         command
+            .env_remove("HCTL2_AGENCY_HARNESS_HOME")
             .arg("--root")
             .arg(root)
             .arg("serve")

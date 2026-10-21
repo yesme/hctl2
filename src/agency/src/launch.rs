@@ -405,7 +405,6 @@ pub struct InstalledHerdr {
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
-    herdr_digest: String,
     read_paths: Vec<PathBuf>,
 }
 
@@ -477,7 +476,7 @@ impl InstalledHerdr {
             ));
         }
         let digest = crate::catalog::file_digest(&claude)?;
-        let herdr_digest = crate::catalog::file_digest(&binary)?;
+        let _herdr_digest = crate::catalog::file_digest(&binary)?;
         Ok(Self {
             binary,
             profession_id: "claude-code".into(),
@@ -494,7 +493,6 @@ impl InstalledHerdr {
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
-            herdr_digest,
             read_paths,
         })
     }
@@ -503,21 +501,17 @@ impl InstalledHerdr {
     /// sessions with. One native session opens in a new directory under /tmp
     /// and closes again; it delivers no turn and answers no prompt. If Claude
     /// still asks about trust, the Claude profession is not offered.
-    pub fn verify_claude_trust(&self) -> Result<()> {
+    pub fn verify_claude_trust(&self, credential_root: &Path) -> Result<()> {
         let Some(pool) = &self.pool else {
             return Ok(());
         };
-        let cred = tempfile::Builder::new()
-            .prefix("hctl2-trust-cred-")
-            .permissions(fs::Permissions::from_mode(0o700))
-            .tempdir()?;
         let parent = tempfile::Builder::new()
             .prefix("hctl2-exec-trust-")
             .permissions(fs::Permissions::from_mode(0o700))
             .tempdir_in("/tmp")?;
         let exec = parent.path().join("probe");
         crate::storage::private_dir(&exec)?;
-        let server = self.create_server(&exec, cred.path(), None)?;
+        let server = self.create_server(&exec, credential_root, None)?;
         pool.probe(&server, &exec)
     }
 
@@ -529,12 +523,12 @@ impl InstalledHerdr {
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
     ) -> Self {
-        let herdr_digest = crate::catalog::file_digest(&binary).expect("herdr digest");
+        let profession_digest = crate::catalog::file_digest(&binary).expect("herdr digest");
         Self {
             binary,
             profession_id: "test-adapter".into(),
             profession_revision: "test".into(),
-            profession_digest: "test".into(),
+            profession_digest,
             slot: Mutex::new(None),
             write_slots: Mutex::new(HashMap::new()),
             starts: AtomicUsize::new(0),
@@ -544,7 +538,6 @@ impl InstalledHerdr {
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
-            herdr_digest,
             read_paths: vec![],
         }
     }
@@ -638,19 +631,16 @@ impl InstalledHerdr {
         } else {
             parent
         };
-        let mut model_state = if self.pool.is_some() {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .map(|home| vec![home.join(".claude"), home.join(".claude.json")])
-                .unwrap_or_default()
-        } else {
-            vec![]
-        };
-        if self.codex_pool.is_some() {
-            let codex_home = std::env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex")));
-            model_state.extend(codex_home);
+        let mut model_state = vec![];
+        if self.pool.is_some() || self.codex_pool.is_some() {
+            let homes = crate::managed_login::Homes::prepare(credential_root)?;
+            model_state.push(homes.home);
+            if self.pool.is_some() {
+                model_state.push(homes.claude);
+            }
+            if self.codex_pool.is_some() {
+                model_state.push(homes.codex);
+            }
         }
         let server = Arc::new(Server::start_with_denials(
             &self.binary,
@@ -665,8 +655,8 @@ impl InstalledHerdr {
                 .collect::<Vec<_>>(),
         )?);
         if self.pool.is_some() {
-            // Herdr's own installer, redirected privately. Never export this
-            // variable to Claude: that would hide the user's native login.
+            // Herdr's installer has private state separate from the managed
+            // Claude config. The actual session receives only its managed login.
             let integration = server.state.join("claude-integration");
             crate::storage::private_dir(&integration)?;
             let output = std::process::Command::new(&self.binary)
@@ -743,6 +733,10 @@ fn codex_on_path() -> Option<PathBuf> {
     } else {
         Some(PathBuf::from(path))
     }
+}
+
+fn default_model(harness: &FrozenRef) -> String {
+    format!("{}/default", harness.id)
 }
 
 fn smoke_directory() -> Result<tempfile::TempDir> {
@@ -852,19 +846,15 @@ impl Runtime for InstalledHerdr {
     }
 
     fn catalog(&self) -> Result<Catalog> {
-        let harness = FrozenRef {
-            id: "herdr".into(),
-            revision: "protocol-22".into(),
-            digest: self.herdr_digest.clone(),
+        let claude_harness = FrozenRef {
+            id: self.profession_id.clone(),
+            revision: self.profession_revision.clone(),
+            digest: self.profession_digest.clone(),
         };
         let profession = Profession {
-            reference: FrozenRef {
-                id: self.profession_id.clone(),
-                revision: self.profession_revision.clone(),
-                digest: self.profession_digest.clone(),
-            },
-            harness: harness.clone(),
-            model: "none".into(),
+            reference: claude_harness.clone(),
+            model: default_model(&claude_harness),
+            harness: claude_harness.clone(),
             persona: "claude code".into(),
             terms: "Bundle dispatch in a selection-local native Claude Herdr session; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
             default_role: "worker".into(),
@@ -875,16 +865,18 @@ impl Runtime for InstalledHerdr {
                 ..Capabilities::default()
             },
         };
+        let mut harnesses = vec![claude_harness];
         let mut professions = vec![profession];
         if let (Some(revision), Some(digest)) = (&self.codex_revision, &self.codex_digest) {
+            let codex_harness = FrozenRef {
+                id: "codex-cli".into(),
+                revision: revision.clone(),
+                digest: digest.clone(),
+            };
             professions.push(Profession {
-                reference: FrozenRef {
-                    id: "codex-cli".into(),
-                    revision: revision.clone(),
-                    digest: digest.clone(),
-                },
-                harness: harness.clone(),
-                model: "none".into(),
+                reference: codex_harness.clone(),
+                model: default_model(&codex_harness),
+                harness: codex_harness.clone(),
                 persona: "codex".into(),
                 terms: "Bundle dispatch via app-server turn/start in one selection thread; Herdr pane runs codex resume --remote; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
                 default_role: "worker".into(),
@@ -895,10 +887,11 @@ impl Runtime for InstalledHerdr {
                     ..Capabilities::default()
                 },
             });
+            harnesses.push(codex_harness);
         }
         Ok(Catalog {
             professions,
-            harnesses: vec![harness],
+            harnesses,
             skills: vec![],
         })
     }
