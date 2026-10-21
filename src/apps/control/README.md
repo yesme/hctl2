@@ -84,6 +84,8 @@ gh 登录使用 `<root>/github/<hostname>/login` 的暂存配置，收进密钥�
 
 缺凭据或平台回 401 报 GITHUB_LOGIN_REQUIRED，消息带同 root 的完整登录命令；不替人登录。`hctl2 status` 的 github 只报 configured、hostname、account、account_id，不把“已保存”说成“令牌仍有效”。恢复到新 root 时重新计算私有配置路径，不沿用旧绝对路径。
 
+文件后端由 root 的目录隔离；显式选系统钥匙串时，存储键另含 canonical root 的摘要，避免同一用户的两个 control 覆盖彼此的登录。该档换 root 后需由人重新交 GitHub 凭据，不自动读取旧 root 的条目；不改已有 Gitea / Matrix 密钥的命名。
+
 ## 密钥后端
 
 控制面保管的密钥（Gitea 管理员令牌、Matrix 应用服务令牌等）走 `foundation::SecretStore`。缺省用 `<root>/secrets/` 下的 0600 文件，不探测或访问系统钥匙串。所有者 2026-10-18 将后台控制面的缺省改为 `user-file`；系统钥匙串仍是获准的显式选项。

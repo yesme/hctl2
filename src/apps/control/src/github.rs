@@ -52,6 +52,24 @@ fn account(host: &str) -> String {
     format!("github:{host}")
 }
 
+fn stored_account(
+    root: &Path,
+    hostname: &str,
+    backend: foundation::SecretBackend,
+) -> Result<String> {
+    // File stores already have a root-specific directory. A system keyring has one
+    // service namespace per user, so its account must distinguish control roots too.
+    if backend == foundation::SecretBackend::SystemKeyring {
+        let root = root.canonicalize()?;
+        Ok(format!(
+            "github:{}:{hostname}",
+            foundation::bytes_sha256(root.as_os_str().as_encoded_bytes())
+        ))
+    } else {
+        Ok(account(hostname))
+    }
+}
+
 pub(crate) fn login_required(root: &Path, hostname: &str) -> store::StoreError {
     let quoted_root = format!("'{}'", root.display().to_string().replace('\'', "'\\''"));
     reject(
@@ -105,8 +123,9 @@ impl Credential {
         let hostname = host(hostname)?;
         let store =
             crate::config::secret_store(root).map_err(|_| login_required(root, &hostname))?;
+        let key = stored_account(root, &hostname, store.backend())?;
         let bytes = store
-            .get(&account(&hostname))
+            .get(&key)
             .map_err(|_| login_required(root, &hostname))?;
         let saved: Self =
             serde_json::from_slice(&bytes).map_err(|_| login_required(root, &hostname))?;
@@ -200,22 +219,21 @@ impl Credential {
                 )
             })?
             .to_string();
-        crate::config::secret_store(root)
-            .map_err(|_| {
-                reject(
-                    "CREDENTIAL_UNAVAILABLE",
-                    "cannot open control secret backend",
-                    "fix_control_config",
-                )
-            })?
-            .set(&account(&self.host), &serde_json::to_vec(&self)?)
-            .map_err(|_| {
-                reject(
-                    "CREDENTIAL_UNAVAILABLE",
-                    "cannot save GitHub credential",
-                    "fix_control_config",
-                )
-            })?;
+        let store = crate::config::secret_store(root).map_err(|_| {
+            reject(
+                "CREDENTIAL_UNAVAILABLE",
+                "cannot open control secret backend",
+                "fix_control_config",
+            )
+        })?;
+        let key = stored_account(root, &self.host, store.backend())?;
+        store.set(&key, &serde_json::to_vec(&self)?).map_err(|_| {
+            reject(
+                "CREDENTIAL_UNAVAILABLE",
+                "cannot save GitHub credential",
+                "fix_control_config",
+            )
+        })?;
         Ok(self.status())
     }
 
@@ -390,6 +408,27 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn system_keyring_accounts_distinguish_roots_but_not_aliases_without_touching_a_keyring() {
+        let first = Temp::new();
+        let second = Temp::new();
+        let system = foundation::SecretBackend::SystemKeyring;
+        assert_ne!(
+            stored_account(&first.0, "github.com", system).unwrap(),
+            stored_account(&second.0, "github.com", system).unwrap()
+        );
+        let alias = second.0.join("alias");
+        std::os::unix::fs::symlink(&first.0, &alias).unwrap();
+        assert_eq!(
+            stored_account(&first.0, "github.com", system).unwrap(),
+            stored_account(&alias, "github.com", system).unwrap()
+        );
+        assert_eq!(
+            stored_account(&first.0, "github.com", foundation::SecretBackend::UserFile).unwrap(),
+            account("github.com")
+        );
     }
 
     #[test]
