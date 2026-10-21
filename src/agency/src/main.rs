@@ -138,6 +138,9 @@ async fn run(args: Args) -> Result<()> {
                         if let Some(reason) = runtime.codex_skip() {
                             eprintln!("codex not cataloged: {reason}");
                         }
+                        if let Some(reason) = runtime.agy_skip() {
+                            eprintln!("agy not cataloged: {reason}");
+                        }
                         Arc::new(runtime)
                     }
                     Err(error) => {

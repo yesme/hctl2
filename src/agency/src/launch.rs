@@ -405,6 +405,11 @@ pub struct InstalledHerdr {
     codex_revision: Option<String>,
     codex_digest: Option<String>,
     codex_skip: Option<String>,
+    agy_pool: Option<crate::agy::Pool>,
+    agy_revision: Option<String>,
+    agy_digest: Option<String>,
+    agy_skip: Option<String>,
+    observation: crate::observation::ObservationConfig,
     read_paths: Vec<PathBuf>,
 }
 
@@ -426,7 +431,7 @@ impl InstalledHerdr {
     }
 
     pub fn open_with_idle(binary: PathBuf, claude: &Path, idle: Duration) -> Result<Self> {
-        Self::open_inner(binary, claude, idle, None)
+        Self::open_inner(binary, claude, idle, None, None)
     }
 
     /// Catalog and run this Codex binary. Does not consult `HCTL2_CODEX` or `PATH`.
@@ -436,7 +441,17 @@ impl InstalledHerdr {
         codex: &Path,
         idle: Duration,
     ) -> Result<Self> {
-        Self::open_inner(binary, claude, idle, Some(codex.to_path_buf()))
+        Self::open_inner(binary, claude, idle, Some(codex.to_path_buf()), None)
+    }
+
+    /// Catalog and run this Antigravity CLI binary. Does not consult `HCTL2_AGY` or `PATH`.
+    pub fn open_with_agy(
+        binary: PathBuf,
+        claude: &Path,
+        agy: &Path,
+        idle: Duration,
+    ) -> Result<Self> {
+        Self::open_inner(binary, claude, idle, None, Some(agy.to_path_buf()))
     }
 
     fn open_inner(
@@ -444,6 +459,7 @@ impl InstalledHerdr {
         claude: &Path,
         idle: Duration,
         codex_override: Option<PathBuf>,
+        agy_override: Option<PathBuf>,
     ) -> Result<Self> {
         if idle.is_zero() {
             return Err(PortError::invalid("standby idle duration must be positive"));
@@ -456,12 +472,24 @@ impl InstalledHerdr {
                 .to_path_buf(),
         ];
         let version = smoke_binary(&binary, &claude, &read_paths)?;
-        let (codex, codex_skip) = match codex_override {
-            Some(path) => inspect_codex(&binary, path),
-            None => probe_codex(&binary),
+        let (codex, codex_skip) = match (&codex_override, &agy_override) {
+            (Some(path), _) => inspect_codex(&binary, path.clone()),
+            (None, Some(_)) => (None, Some("codex skipped by open_with_agy".into())),
+            (None, None) => probe_codex(&binary),
         };
         if let Some((path, _, _)) = &codex
             && let Some(parent) = path.parent()
+        {
+            read_paths.push(parent.to_path_buf());
+        }
+        let (agy, agy_skip) = match (&agy_override, &codex_override) {
+            (Some(path), _) => inspect_agy(&binary, path.clone()),
+            (None, Some(_)) => (None, Some("agy skipped by open_with_codex".into())),
+            (None, None) => probe_agy(&binary),
+        };
+        if let Some((path, _, _)) = &agy
+            && let Some(parent) = path.parent()
+            && !read_paths.iter().any(|known| known == parent)
         {
             read_paths.push(parent.to_path_buf());
         }
@@ -493,6 +521,13 @@ impl InstalledHerdr {
             codex_revision: codex.as_ref().map(|(_, revision, _)| revision.clone()),
             codex_digest: codex.as_ref().map(|(_, _, digest)| digest.clone()),
             codex_skip,
+            agy_pool: agy
+                .as_ref()
+                .map(|(path, _, _)| crate::agy::Pool::new(path.clone(), idle)),
+            agy_revision: agy.as_ref().map(|(_, revision, _)| revision.clone()),
+            agy_digest: agy.as_ref().map(|(_, _, digest)| digest.clone()),
+            agy_skip,
+            observation: crate::observation::ObservationConfig::from_env(),
             read_paths,
         })
     }
@@ -519,6 +554,15 @@ impl InstalledHerdr {
         self.codex_skip.as_deref()
     }
 
+    pub fn agy_skip(&self) -> Option<&str> {
+        self.agy_skip.as_deref()
+    }
+
+    pub fn with_observation(mut self, observation: crate::observation::ObservationConfig) -> Self {
+        self.observation = observation;
+        self
+    }
+
     pub fn for_test(
         binary: PathBuf,
         script: impl Fn(&ExecutionSpec, &Bundle, &Path) -> Result<String> + Send + Sync + 'static,
@@ -538,6 +582,11 @@ impl InstalledHerdr {
             codex_revision: None,
             codex_digest: None,
             codex_skip: None,
+            agy_pool: None,
+            agy_revision: None,
+            agy_digest: None,
+            agy_skip: None,
+            observation: crate::observation::ObservationConfig::from_env(),
             read_paths: vec![],
         }
     }
@@ -735,6 +784,59 @@ fn codex_on_path() -> Option<PathBuf> {
     }
 }
 
+fn probe_agy(herdr: &Path) -> (Option<(PathBuf, String, String)>, Option<String>) {
+    let Some(agy) = std::env::var_os("HCTL2_AGY")
+        .map(PathBuf::from)
+        .or_else(agy_on_path)
+    else {
+        return (
+            None,
+            Some("agy is not on PATH and HCTL2_AGY is unset".into()),
+        );
+    };
+    inspect_agy(herdr, agy)
+}
+
+fn inspect_agy(herdr: &Path, agy: PathBuf) -> (Option<(PathBuf, String, String)>, Option<String>) {
+    let Ok(agy) = agy.canonicalize() else {
+        return (None, Some("agy path cannot be canonicalized".into()));
+    };
+    let Some(parent) = agy.parent().map(Path::to_path_buf) else {
+        return (None, Some("agy has no parent directory".into()));
+    };
+    let version = match smoke_binary(herdr, &agy, &[parent]) {
+        Ok(version) => version,
+        Err(error) => return (None, Some(format!("agy smoke failed: {}", error.message))),
+    };
+    if !crate::harness::version_at_least(&version, crate::harness::AGY_MINIMUM) {
+        return (
+            None,
+            Some(format!(
+                "agy {version} is below {}",
+                crate::harness::AGY_MINIMUM
+            )),
+        );
+    }
+    match crate::catalog::file_digest(&agy) {
+        Ok(digest) => (Some((agy, version, digest)), None),
+        Err(error) => (None, Some(format!("agy digest failed: {}", error.message))),
+    }
+}
+
+fn agy_on_path() -> Option<PathBuf> {
+    let output = Command::new("/usr/bin/which").arg("agy").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let path = text.lines().next()?.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
+}
+
 fn default_model(harness: &FrozenRef) -> String {
     format!("{}/default", harness.id)
 }
@@ -828,8 +930,13 @@ impl Runtime for InstalledHerdr {
             .as_ref()
             .map(|pool| pool.shutdown())
             .transpose();
+        let agy = self
+            .agy_pool
+            .as_ref()
+            .map(|pool| pool.shutdown())
+            .transpose();
         let pooled = self.pool.as_ref().map(|pool| pool.shutdown()).transpose();
-        let pooled = codex.and(pooled);
+        let pooled = codex.and(agy).and(pooled);
         for server in
             std::mem::take(&mut *self.write_slots.lock().expect("writing herdr")).into_values()
         {
@@ -889,6 +996,32 @@ impl Runtime for InstalledHerdr {
             });
             harnesses.push(codex_harness);
         }
+        if let (Some(revision), Some(digest)) = (&self.agy_revision, &self.agy_digest) {
+            let agy_harness = FrozenRef {
+                id: "antigravity".into(),
+                revision: revision.clone(),
+                digest: digest.clone(),
+            };
+            professions.push(Profession {
+                reference: FrozenRef {
+                    id: "antigravity-cli".into(),
+                    revision: revision.clone(),
+                    digest: digest.clone(),
+                },
+                harness: agy_harness.clone(),
+                model: "none".into(),
+                persona: "antigravity".into(),
+                terms: "Bundle dispatch via stdio stream-json in one selection conversation; managed profile isolates auth, transcripts, settings and hooks per slot; startup approval policy uses request-review for read-only and always-proceed with publication and credential deny hooks for write dispatches inside execution confinement; read-only observation pane tails view.log; read-only or leased ChangeSet worktree; write return is a tool-sealed ChangeSet output; no terminal input or publication".into(),
+                default_role: "worker".into(),
+                skills: vec![],
+                capabilities: Capabilities {
+                    input: false,
+                    stop: true,
+                    ..Capabilities::default()
+                },
+            });
+            harnesses.push(agy_harness);
+        }
         Ok(Catalog {
             professions,
             harnesses,
@@ -907,6 +1040,33 @@ impl Runtime for InstalledHerdr {
             &spec.document.required_capabilities.isolation_effects,
         )?;
         fs::create_dir_all(exec_root)?;
+        if spec.document.profession.reference.id == "antigravity-cli" {
+            let Some(pool) = &self.agy_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.agy_skip
+                        .clone()
+                        .unwrap_or_else(|| "agy is not cataloged".into()),
+                    "install_agy",
+                ));
+            };
+            let state = crate::herdr::state_dir(exec_root, credential_root)?;
+            let mux = if self.observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
+            return pool.submit(
+                &state,
+                spec,
+                bundle,
+                exec_root,
+                credential_root,
+                credential_root,
+                self.observation,
+                mux,
+            );
+        }
         let server = self.ensure(exec_root, credential_root)?;
         if spec.document.profession.reference.id == "codex-cli" {
             let Some(pool) = &self.codex_pool else {
@@ -992,6 +1152,34 @@ impl Runtime for InstalledHerdr {
                 ));
             };
             return pool.submit(server, spec, bundle, exec_root, tenant, credential_root);
+        }
+        if spec.document.profession.reference.id == "antigravity-cli" {
+            fs::create_dir_all(exec_root)?;
+            let Some(pool) = &self.agy_pool else {
+                return Err(PortError::new(
+                    "HARNESS_NOT_STARTED",
+                    self.agy_skip
+                        .clone()
+                        .unwrap_or_else(|| "agy is not cataloged".into()),
+                    "install_agy",
+                ));
+            };
+            let state = crate::herdr::state_dir(exec_root, credential_root)?;
+            let mux = if self.observation.enabled {
+                Some(self.multiplexer(exec_root, credential_root)?)
+            } else {
+                None
+            };
+            return pool.submit(
+                &state,
+                spec,
+                bundle,
+                exec_root,
+                tenant,
+                credential_root,
+                self.observation,
+                mux,
+            );
         }
         if let Some(pool) = &self.pool {
             fs::create_dir_all(exec_root)?;

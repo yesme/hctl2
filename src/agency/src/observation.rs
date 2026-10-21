@@ -77,6 +77,25 @@ impl Multiplexer {
             Err(error) => Err(error),
         }
     }
+
+    /// Read the visible text of a pane by ID on the multiplexer.
+    pub fn read_pane(&self, pane_id: &str) -> Result<String> {
+        let client = Client::connect(&self.server.socket)?;
+        let value = client.call(
+            "pane.read",
+            json!({
+                "pane_id": pane_id,
+                "source": "visible",
+                "format": "text",
+                "strip_ansi": true,
+            }),
+        )?;
+        Ok(value
+            .pointer("/read/text")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned())
+    }
 }
 
 /// Liveness state of an observation pane.

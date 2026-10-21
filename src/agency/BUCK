@@ -179,6 +179,41 @@ rust_binary(
 )
 
 rust_test(
+    name = "agy_fixture_test",
+    srcs = ["tests/agy_fixture_test.rs"],
+    crate_root = "tests/agy_fixture_test.rs",
+    deps = [":service"] + DEPS,
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env() | {
+        "HCTL2_TOOL_BIN": "$(location root//apps/tool:hctl2-tool)",
+        "HCTL2_CONFINE_BIN": "$(location :agency)",
+        "HCTL2_AGY_FIXTURE": "$(location :agy_fixture)",
+        "HCTL2_LOCKED_HERDR": select({
+            "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
+            "prelude//os:macos": select({
+                "prelude//cpu:arm64": "$(location root//packaging/dependencies:asset_macos_arm64_herdr)",
+                "prelude//cpu:x86_64": "$(location root//packaging/dependencies:asset_macos_x86_64_herdr)",
+            }),
+        }),
+    },
+    labels = CI_FAST,
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "agy_fixture",
+    visibility = ["root//packaging/release:room-cli-test"],
+    srcs = ["tests/agy_fixture.rs", "tests/write_probe.rs"],
+    crate_root = "tests/agy_fixture.rs",
+    deps = ["root//third-party/rust:serde_json"],
+    edition = HCTL2_RUST_EDITION,
+    rustc_flags = HCTL2_RUSTC_FLAGS,
+    env = hctl2_cargo_env(),
+    labels = CI_FAST,
+)
+
+rust_test(
     name = "write_session_test",
     srcs = ["tests/write_session.rs"],
     crate_root = "tests/write_session.rs",
@@ -191,6 +226,7 @@ rust_test(
         "HCTL2_CONFINE_BIN": "$(location :agency)",
         "HCTL2_STANDBY_FIXTURE": "$(location :standby_fixture)",
         "HCTL2_CODEX_FIXTURE": "$(location :codex_fixture)",
+        "HCTL2_AGY_FIXTURE": "$(location :agy_fixture)",
         "HCTL2_LOCKED_HERDR": select({
             "prelude//os:linux": "$(location root//packaging/dependencies:asset_linux_x86_64_herdr)",
             "prelude//os:macos": select({
@@ -242,6 +278,8 @@ filegroup(
         "standby_fixture": ":standby_fixture[clippy.txt]",
         "codex_fixture": ":codex_fixture[clippy.txt]",
         "codex_fixture_test": ":codex_fixture_test[clippy.txt]",
+        "agy_fixture": ":agy_fixture[clippy.txt]",
+        "agy_fixture_test": ":agy_fixture_test[clippy.txt]",
         "write_session": ":write_session_test[clippy.txt]",
     },
     labels = CI_FAST,
