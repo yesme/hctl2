@@ -1026,11 +1026,13 @@ impl ControlService {
                 error("CREDENTIAL_STORAGE_INVALID", message, "fix_control_config")
             })?;
             let credential_storage = secrets.backend().as_str();
-            Ok(if kind == "doctor" {
+            let mut payload = if kind == "doctor" {
                 doctor_payload(store, &root, actor_json, services, credential_storage)
             } else {
                 status_payload(store, actor_json, services, credential_storage)
-            })
+            };
+            payload["github"] = crate::github::status(&root, "github.com");
+            Ok(payload)
         })
         .await
         .unwrap_or_else(|_| {

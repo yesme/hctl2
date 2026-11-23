@@ -11,7 +11,8 @@ mod profile;
 #[path = "cli/memo.rs"]
 mod memo;
 
-use std::path::PathBuf;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -592,11 +593,119 @@ fn register(root: &std::path::Path, arguments: &[&str]) -> (bool, serde_json::Va
 }
 
 #[test]
+fn github_control_login_missing_and_401_have_a_real_recovery_command_and_never_borrow_parent_login()
+{
+    let temp = Temp::new();
+    let root = &temp.0;
+    let gh = root.join("gh-fixture");
+    link_fixture("cli-github-repo.sh", &gh);
+    let personal = root.join("personal");
+    std::fs::create_dir_all(personal.join(".config/gh")).unwrap();
+    let hosts = personal.join(".config/gh/hosts.yml");
+    let personal_bytes = b"github.com:\n  oauth_token: personal-token-do-not-use\n";
+    std::fs::write(&hosts, personal_bytes).unwrap();
+    let started = Command::new(hctl2())
+        .env("HCTL2_CONTROL_BIN", control())
+        .env("HCTL2_GH", &gh)
+        .env("HOME", &personal)
+        .env("GH_CONFIG_DIR", personal.join(".config/gh"))
+        .env("GH_TOKEN", "parent-personal-token")
+        .env("GITHUB_TOKEN", "parent-personal-token")
+        .env("GH_DEBUG", "api")
+        .args(["--root", root.to_str().unwrap(), "start"])
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    let input = root.join("missing-github.json");
+    std::fs::write(&input, r#"{"name":"external","origin":"external","platform":"github","instance":"github.com","platform_repo_id":"12","platform_path":"a/b","default_source":"github_issues"}"#).unwrap();
+    let args = [
+        "--input",
+        input.to_str().unwrap(),
+        "--key",
+        "missing-credential",
+    ];
+    let (ok, missing) = register(root, &args);
+    assert!(!ok, "{missing}");
+    assert_eq!(missing["error"]["code"], "GITHUB_LOGIN_REQUIRED");
+    assert!(
+        missing["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("github login --hostname github.com")
+    );
+    assert!(!root.join("github/github.com/runtime/commands").exists());
+    import_github_fixture(root, &gh);
+    let (ok, active) = register(root, &args);
+    assert!(ok, "{active}");
+    let (ok, out, err) = run(root, &["status"]);
+    assert!(ok, "{err}");
+    let status: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(status["github"]["account"], "fixture-owner");
+    assert!(!out.contains("hctl2-fixture-control-token"));
+    let config = root.join("github/github.com/runtime");
+    let commands = std::fs::read_to_string(config.join("commands")).unwrap();
+    assert!(!commands.contains("hctl2-fixture-control-token"));
+    std::fs::write(config.join("reject"), "401").unwrap();
+    let (ok, rejected) = register(
+        root,
+        &[
+            "--input",
+            input.to_str().unwrap(),
+            "--key",
+            "expired-credential",
+        ],
+    );
+    assert!(!ok);
+    assert_eq!(rejected["error"]["code"], "GITHUB_LOGIN_REQUIRED");
+    assert!(!rejected.to_string().contains("hctl2-fixture-control-token"));
+    assert_eq!(std::fs::read(&hosts).unwrap(), personal_bytes);
+    assert!(run(root, &["stop"]).0);
+}
+
+fn import_github_fixture(root: &Path, gh: &Path) {
+    let mut child = Command::new(hctl2())
+        .env("HCTL2_CONTROL_BIN", control())
+        .env("HCTL2_GH", gh)
+        .env("GH_TOKEN", "parent-personal-token")
+        .env("GITHUB_TOKEN", "parent-personal-token")
+        .args([
+            "--root",
+            root.to_str().unwrap(),
+            "github",
+            "login",
+            "--with-token",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(
+        child.stdin.take().as_mut().unwrap(),
+        b"hctl2-fixture-control-token\n",
+    )
+    .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("hctl2-fixture-control-token"));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("hctl2-fixture-control-token"));
+}
+
+#[test]
 fn repo_commands_use_preview_persist_and_do_not_consume_gitea_for_external_or_none() {
     let temp = Temp::new();
     let root = &temp.0;
     let gh = root.join("gh-fixture");
     link_fixture("cli-github-repo.sh", &gh);
+    import_github_fixture(root, &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)
@@ -704,6 +813,7 @@ fn repo_grant_refuses_an_external_registration_and_one_that_is_not_active() {
     let root = &temp.0;
     let gh = root.join("gh-fixture");
     link_fixture("cli-github-repo.sh", &gh);
+    import_github_fixture(root, &gh);
     let out = Command::new(hctl2())
         .env("HCTL2_CONTROL_BIN", control())
         .env("HCTL2_GH", &gh)

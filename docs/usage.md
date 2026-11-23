@@ -341,7 +341,20 @@ hctl2-tool wait --deadline 1788451200 path-digest \
 hctl2-tool wait --deadline 1788451200 process-exited --pid 12345
 ```
 
-GitHub 三类事实调用随包固定版本的 `gh` 并复用用户已有登录；它不会发起交互登录，使用前可由用户运行 `gh auth login` 建立凭据，或按 GitHub CLI 支持的环境变量提供令牌。
+人在终端直接运行 `hctl2-tool wait` 时，GitHub 三类事实仍调用随包 gh、使用人的登录，不发起交互登录。control 的 GitHub 调用另用自己的凭据，不借人的配置、钥匙串或环境令牌。
+
+### control 专用 GitHub 登录
+
+注册 GitHub 仓库之前，在同一个 control root 执行：
+
+```bash
+hctl2 --root /path/to/control github login
+hctl2 --root /path/to/control github status
+```
+
+第一条由人在前台运行随包 gh 的原生浏览器授权。临时登录配置归 control；macOS 禁止 gh 调用系统钥匙串程序，Linux 禁止接入个人的 Secret Service。登录结果收进 control 的密钥后端，临时 gh 登录文件随后删除，不修改人的登录。已有令牌也可从标准输入交给 `github login --with-token`；不要把值写进命令参数、脚本或聊天。企业自托管主机加 `--hostname git.example.org`。
+
+注册、任务源、评审发布与集成都使用这份凭据。github.com 使用 `GH_TOKEN`，企业自托管主机使用 gh 原生的 `GH_ENTERPRISE_TOKEN`，只给单次进程，均不继承人的环境令牌。Git 推送与私有回读用同一份凭据和既有每进程助手，不运行 `gh auth setup-git`。没配置或平台回 401 时错误给出登录命令；由人重新交凭据后重试原操作。`hctl2 status` 的 `github` 字段只报告配置状态与账号，不显示令牌，也不表示已经在线验证有效。
 
 ## 安装完整离线包
 

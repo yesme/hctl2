@@ -257,7 +257,7 @@ fn drive(
                     )
                 })?
         } else {
-            platform::github(&reg, services)?
+            platform::github(root, &reg, services)?
         };
         reg = access(shared, |store| {
             repo::confirm_platform(store, &reg.repo_id, observed)
@@ -345,7 +345,7 @@ fn reconcile_residual(
         };
         (observed, delivered)
     } else {
-        (platform::github(reg, services)?, true)
+        (platform::github(root, reg, services)?, true)
     };
     access(shared, |store| {
         repo::reconcile_residual(store, actor, &reg.repo_id, observed, delivered)

@@ -1,8 +1,6 @@
 //! GitHub as an integration target through the packaged `gh`: read the branch head and the
 //! protection in force for it, merge an existing pull request with the source head pinned,
-//! read the request back. The credential stays in `gh`'s own store; control never copies a
-//! token, and the Git readback of the target uses whatever credential helper Git has (for a
-//! private repository, `gh auth setup-git` is GitHub's own way to provide one).
+//! read the request back. API and Git use the same control-owned SecretStore credential.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
@@ -18,36 +16,44 @@ use crate::services::Supervisor;
 pub(crate) struct GitHub {
     gh: PathBuf,
     hostname: String,
+    credential: crate::github::Credential,
 }
 
 impl GitHub {
-    /// The packaged `gh` (or `HCTL2_GH`), talking to `hostname` with its own login.
-    pub(crate) fn connect(services: &Supervisor, hostname: &str) -> Result<Self> {
-        let requested = std::env::var_os("HCTL2_GH")
-            .or_else(|| {
-                services
-                    .packaged_paths()
-                    .map(|(install, _)| install.join("libexec/hctl2/gh").into_os_string())
-            })
-            .unwrap_or_else(|| "gh".into());
-        let gh = foundation::git::resolve_executable(&requested)
-            .ok_or_else(|| reject("PROVIDER_UNAVAILABLE", "gh is not available", "install_gh"))?;
-        Ok(Self {
+    pub(crate) fn connect(
+        root: &std::path::Path,
+        services: &Supervisor,
+        hostname: &str,
+    ) -> Result<Self> {
+        let credential = crate::github::Credential::load(root, hostname)?;
+        let gh = crate::github::executable(services)?;
+        let connection = Self {
             gh,
             hostname: hostname.into(),
-        })
+            credential,
+        };
+        // Check before Git push/readback as well: an expired token has a login recovery,
+        // not an ambiguous Git transport failure. Do not silently change the account.
+        let identity = connection.api("GET", "user", None)?.unwrap_or(Value::Null);
+        if identity["id"].as_u64().map(|id| id.to_string()).as_deref()
+            != Some(connection.credential.account_id())
+        {
+            return Err(connection.credential.rejected());
+        }
+        Ok(connection)
     }
 
-    /// The `gh` this connection uses; Git's credential helper for pushes is built from it.
-    pub(crate) fn gh_path(&self) -> &std::path::Path {
-        &self.gh
+    pub(crate) fn credential(&self) -> &crate::github::Credential {
+        &self.credential
     }
 
     #[cfg(test)]
     pub(crate) fn fixture(gh: PathBuf, hostname: &str) -> Self {
+        let credential = crate::github::Credential::fixture(gh.parent().unwrap());
         Self {
             gh,
             hostname: hostname.into(),
+            credential,
         }
     }
 
@@ -60,6 +66,7 @@ impl GitHub {
         body: Option<Value>,
     ) -> Result<Option<Value>> {
         let mut cmd = Command::new(&self.gh);
+        self.credential.apply(&mut cmd);
         cmd.env("GH_PROMPT_DISABLED", "1")
             .env("NO_COLOR", "1")
             .args(["api", "--hostname", &self.hostname, "--method", method]);
@@ -85,10 +92,9 @@ impl GitHub {
         if method == "GET" && status == Some(404) {
             return Ok(None);
         }
-        let detail = serde_json::from_slice::<Value>(&output.stdout)
-            .ok()
-            .and_then(|v| v["message"].as_str().map(str::to_owned))
-            .unwrap_or_else(|| stderr.trim().to_owned());
+        if status == Some(401) {
+            return Err(self.credential.rejected());
+        }
         Err(reject(
             if method != "GET" && matches!(status, Some(401 | 403 | 404 | 405 | 422)) {
                 "NATIVE_REJECTED"
@@ -97,7 +103,7 @@ impl GitHub {
             } else {
                 "PLATFORM_UNAVAILABLE"
             },
-            format!("gh api {method} {path} not confirmed (HTTP {status:?}): {detail}"),
+            format!("gh api {method} {path} not confirmed (HTTP {status:?})"),
             "read_back_original_intent",
         ))
     }

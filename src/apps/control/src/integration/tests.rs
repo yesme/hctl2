@@ -2,6 +2,7 @@
 //! repository standing in for the platform's Git: the API answers are files the test controls,
 //! the merges are real commits, so protection drift, refusals, lost responses and readback are
 //! deterministic. The integration rules are shared; GitHub cases cover what differs.
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use repo::integration::{self as domain, Form, Input, Strategy, TargetKind};
@@ -12,6 +13,17 @@ use tokio::sync::Mutex;
 use super::fixture::*;
 use super::target::PlatformTarget;
 use super::{Connection, Shared, drive_with, github};
+
+#[test]
+fn github_platform_401_points_to_the_control_login_without_echoing_credentials() {
+    let temp = temp("github-expired-control-token");
+    let platform = Platform::github(&temp.0);
+    platform.set("unauthorized", "1");
+    let error = platform.observe().expect_err("401 must reject");
+    assert_eq!(error.code, "GITHUB_LOGIN_REQUIRED");
+    assert!(error.message.contains("github login --hostname github.com"));
+    assert!(!error.message.contains("hctl2-test-token-not-a-credential"));
+}
 
 /// A fresh control store with the hosted Repo, and one submitted intent against `main`.
 fn scenario(
@@ -811,7 +823,11 @@ fn live_github_canary_protected_main_is_merged_only_through_a_pull_request_with_
     assert!(std::env::var_os("HCTL2_GITHUB_LIVE").is_some());
     let temp = temp("canary-live");
     let services = Supervisor::from_root(temp.0.clone());
-    let github = github::GitHub::connect(&services, "github.com").unwrap();
+    let credential_root = PathBuf::from(
+        std::env::var_os("HCTL2_GITHUB_CONTROL_ROOT")
+            .expect("import a control credential first; set HCTL2_GITHUB_CONTROL_ROOT"),
+    );
+    let github = github::GitHub::connect(&credential_root, &services, "github.com").unwrap();
     let full = "yesme/hctl2-canary";
     let api = |method: &str, path: &str, body: Option<Value>| {
         github
@@ -929,7 +945,7 @@ fn live_github_canary_protected_main_is_merged_only_through_a_pull_request_with_
     let readback_root = temp.0.join("readback");
     let mut connect = |_: &repo::Registration| {
         Ok(Connection::GitHub(
-            github::GitHub::connect(&services, "github.com").unwrap(),
+            github::GitHub::connect(&credential_root, &services, "github.com").unwrap(),
         ))
     };
     for _ in 0..12 {

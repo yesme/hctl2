@@ -1,8 +1,11 @@
 #!/bin/sh
 # GitHub Issues fixture for the Task acceptance tests. The product canonicalizes
-# `HCTL2_GH` before executing it, so `$0` is this built file, not the test's
-# writable link; the test passes its state base path in `HCTL2_GH_STATE`.
-base="${HCTL2_GH_STATE:?HCTL2_GH_STATE must be set to the test state directory}"
+# `HCTL2_GH` before executing it, so `$0` is this built file. State belongs
+# to the control root, not to inherited caller environment.
+base="$(cd "$GH_CONFIG_DIR/../../.." && pwd)/gh"
+if [ "$GH_TOKEN" != hctl2-fixture-control-token ] || [ -n "$GITHUB_TOKEN$GH_ENTERPRISE_TOKEN$GH_DEBUG" ]; then
+  printf 'control credential was not isolated\n' >&2; exit 1
+fi
 method=GET
 header=no
 for arg do
@@ -20,7 +23,7 @@ if [ "$header" = yes ]; then
   else printf 'HTTP/1.1 200 OK\n\n'; fi
 fi
 case "$method:$path" in
- GET:user) printf '{"id":5}' ;;
+ GET:user) printf '{"id":5,"login":"fixture-owner"}' ;;
  GET:repos/owner/fixture) printf '{"id":77,"full_name":"owner/fixture","clone_url":"https://github.com/owner/fixture.git","has_issues":true,"permissions":{"push":true,"admin":true}}' ;;
  GET:*page=2*) printf '[]' ;;
  GET:*/issues\?*) if [ -f "$base.created" ] && [ ! -f "$base.hide" ] && [ ! -f "$base.list-lag" ]; then jqbin="$(cat "$base.jq")"; "$jqbin" -s '.' "$base.created"; else printf '[]'; fi ;;

@@ -473,7 +473,7 @@ pub(crate) fn connect_platform(
                 .as_deref()
                 .unwrap_or("github.com");
             Ok(Connection::GitHub(github::GitHub::connect(
-                services, instance,
+                root, services, instance,
             )?))
         }
         Platform::None => Err(reject(
@@ -664,11 +664,10 @@ pub(crate) fn plan_attempt_with(
                     attempt
                 }
             };
-            // The packaged Gitea is read with control's own account; GitHub with whatever
-            // credential helper Git has (`gh auth setup-git`), control copies no token.
+            // Both providers use the control credential, never a personal Git helper.
             let credential = match &connection {
                 Connection::Gitea(hosted) => Some((hosted.username.clone(), hosted.token.clone())),
-                Connection::GitHub(_) => None,
+                Connection::GitHub(github) => Some(github.credential().git_pair()),
             };
             let readback = Box::new(ReadbackSite {
                 repository: readback_root.join(format!("{repo_id}.git")),
@@ -1191,7 +1190,7 @@ fn readback_facts(site: &ReadbackSite, target_ref: &str, commit: &str) -> Result
         "--commit".into(),
         commit.into(),
     ];
-    let env = site
+    let mut env = site
         .credential
         .as_ref()
         .map(|(user, token)| {
@@ -1201,6 +1200,23 @@ fn readback_facts(site: &ReadbackSite, target_ref: &str, commit: &str) -> Result
             ]
         })
         .unwrap_or_default();
+    if site.credential.is_some() {
+        env.extend([
+            ("GIT_CONFIG_GLOBAL".to_owned(), OsString::from("/dev/null")),
+            ("GIT_CONFIG_SYSTEM".to_owned(), OsString::from("/dev/null")),
+            ("GIT_CONFIG_NOSYSTEM".to_owned(), OsString::from("1")),
+        ]);
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("GIT_TRACE") {
+                env.push((name.to_string_lossy().into_owned(), OsString::from("0")));
+            }
+        }
+        env.extend([
+            ("GIT_CURL_VERBOSE".to_owned(), OsString::from("0")),
+            ("GIT_ASKPASS".to_owned(), OsString::from("/usr/bin/false")),
+            ("SSH_ASKPASS".to_owned(), OsString::from("/usr/bin/false")),
+        ]);
+    }
     let (code, record) = tool_json_with_env(&arguments, env)?;
     if code != 0 || record["schema"] != json!("hctl2.readback.v1") {
         return Err(reject(

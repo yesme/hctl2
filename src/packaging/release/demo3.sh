@@ -941,11 +941,16 @@ demo3_seal() { # <project> <invocation>
 
 # The GitHub facts are the platform's own: the packaged gh reads the same
 # repository and pull request control pushed to.
-demo3_gh() {
+demo3_gh() (
     local gh="$DEMO3_PAYLOAD/libexec/hctl2/gh"
     [[ -x "$gh" ]] || die "the package carries no gh: $gh"
+    : "${DEMO3_GITHUB_FACTS_TOKEN:?GitHub driver must provide its dedicated facts credential}"
+    unset GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN GH_DEBUG GH_HOST
+    export GH_TOKEN="$DEMO3_GITHUB_FACTS_TOKEN"
+    export GH_CONFIG_DIR="$DEMO3_ROOT/github-facts"
+    export GH_PROMPT_DISABLED=1
     "$gh" "$@"
-}
+)
 
 # The platform only merges once the required check finished; the live GitHub
 # chain waits for it the same way before submitting.

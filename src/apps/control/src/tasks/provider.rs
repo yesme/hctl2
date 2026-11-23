@@ -12,6 +12,7 @@ pub(super) enum Client {
     Github {
         gh: PathBuf,
         host: String,
+        credential: crate::github::Credential,
         reads: RefCell<super::github::Reads>,
     },
     Gitea(Hosted),
@@ -34,16 +35,9 @@ impl Client {
             }
             Ok(Self::Gitea(hosted))
         } else if src.candidate.provider == "github_issues" {
-            let requested = std::env::var_os("HCTL2_GH")
-                .or_else(|| {
-                    services
-                        .gitea_paths()
-                        .map(|(i, _)| i.join("libexec/hctl2/gh").into_os_string())
-                })
-                .unwrap_or_else(|| "gh".into());
-            let gh = foundation::git::resolve_executable(&requested)
-                .ok_or_else(|| reject("PROVIDER_UNAVAILABLE", "gh unavailable", "install_gh"))?;
-            Ok(Self::github(gh, src.platform.instance.clone()))
+            let credential = crate::github::Credential::load(root, &src.platform.instance)?;
+            let gh = crate::github::executable(services)?;
+            Ok(Self::github(gh, src.platform.instance.clone(), credential))
         } else {
             Err(reject(
                 "PROVIDER_UNSUPPORTED",
@@ -55,9 +49,14 @@ impl Client {
     pub fn api(&self, method: &str, path: &str, body: Option<Value>) -> Result<Option<Value>> {
         match self {
             Self::Gitea(h) => h.api(method, path, body),
-            Self::Github { gh, host, reads } => {
-                reads.borrow_mut().api(gh, host, method, path, body)
-            }
+            Self::Github {
+                gh,
+                host,
+                credential,
+                reads,
+            } => reads
+                .borrow_mut()
+                .api(gh, host, credential, method, path, body),
         }
     }
     fn required(&self, path: &str) -> Result<Value> {

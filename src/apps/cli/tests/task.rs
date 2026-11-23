@@ -221,6 +221,35 @@ fn fixture(name: &str, daemon_env: &[(&str, &str)]) -> Fixture {
     )
     .unwrap();
     link_fixture("cli-github-issues.sh", &gh);
+    let mut login = Command::new(std::env::var("CARGO_BIN_EXE_hctl2").unwrap())
+        .env(
+            "HCTL2_CONTROL_BIN",
+            std::env::var("CARGO_BIN_EXE_hctl2-control").unwrap(),
+        )
+        .env("HCTL2_GH", &gh)
+        .args([
+            "--root",
+            root.to_str().unwrap(),
+            "github",
+            "login",
+            "--with-token",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(
+        login.stdin.take().as_mut().unwrap(),
+        b"hctl2-fixture-control-token\n",
+    )
+    .unwrap();
+    let output = login.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let mut s = Store::open(&root).unwrap();
     let actor = TrustedActor(Actor {
         principal: "fixture-owner".into(),

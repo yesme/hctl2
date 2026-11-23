@@ -498,26 +498,23 @@ fn account_listed(stdout: &[u8], username: &str) -> bool {
     })
 }
 
-pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<PlatformObservation> {
-    let requested = std::env::var_os("HCTL2_GH")
-        .or_else(|| {
-            services
-                .gitea_paths()
-                .map(|(install, _)| install.join("libexec/hctl2/gh").into_os_string())
-        })
-        .unwrap_or_else(|| "gh".into());
-    let gh = foundation::git::resolve_executable(&requested)
-        .ok_or_else(|| reject("PROVIDER_UNAVAILABLE", "gh is not available", "install_gh"))?;
+pub(super) fn github(
+    root: &Path,
+    reg: &Registration,
+    services: &Supervisor,
+) -> Result<PlatformObservation> {
     let instance = reg.prepared.request.instance.as_deref().unwrap();
+    let credential = crate::github::Credential::load(root, instance)?;
+    let gh = crate::github::executable(services)?;
     let read = |path: &str| -> Result<Value> {
-        let output = run(
-            Command::new(&gh)
-                .env("GH_PROMPT_DISABLED", "1")
-                .env("NO_COLOR", "1")
-                .args(["api", "--hostname", instance, "--method", "GET", path]),
-            None,
-        )?;
+        let mut command = Command::new(&gh);
+        credential.apply(&mut command);
+        command.args(["api", "--hostname", instance, "--method", "GET", path]);
+        let output = run(&mut command, None)?;
         if !output.status.success() {
+            if String::from_utf8_lossy(&output.stderr).contains("(HTTP 401)") {
+                return Err(credential.rejected());
+            }
             return Err(reject(
                 "PLATFORM_UNAVAILABLE",
                 "GitHub identity readback failed",
@@ -540,7 +537,7 @@ pub(super) fn github(reg: &Registration, services: &Supervisor) -> Result<Platfo
         has_issues: value["has_issues"].as_bool() == Some(true),
         can_write_issues: value["permissions"]["push"].as_bool() == Some(true)
             || value["permissions"]["triage"].as_bool() == Some(true),
-        credential_ref: String::new(), // gh owns its credential store; no copied token.
+        credential_ref: credential.reference(),
     })
 }
 /// How long the Gitea bootstrap waits, covering liveness and the two usability checks.

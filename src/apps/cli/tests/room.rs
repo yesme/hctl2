@@ -25,6 +25,8 @@ use store::{
 
 struct Fixture {
     root: PathBuf,
+    /// An explicitly supplied live-test root belongs to the owner; retain its credentials/logs.
+    preserve_root: bool,
     payload: PathBuf,
     /// Keeps the shared payload this fixture linked from alive; the last holder's drop removes it.
     source: Arc<SharedPayload>,
@@ -36,7 +38,9 @@ impl Drop for Fixture {
             .env("HCTL2_STATE_ROOT", self.root.join("services"))
             .arg("stop")
             .output();
-        let _ = std::fs::remove_dir_all(&self.root);
+        if !self.preserve_root {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
     }
 }
 impl Fixture {
@@ -87,13 +91,20 @@ impl Fixture {
         // The shared payload comes first: a failed initialization must not leave a fixture root
         // (or half a package) behind.
         let source = shared_payload();
-        let root = std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()));
+        let declared = (name == "demo3-github-codex")
+            .then(|| std::env::var_os("HCTL2_GITHUB_CONTROL_ROOT"))
+            .flatten();
+        let preserve_root = declared.is_some();
+        let root = declared.map(PathBuf::from).unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("hctl-{name}-cli-{}", std::process::id()))
+        });
         std::fs::create_dir_all(&root).unwrap();
         let extract = root.join("install");
         link_tree(&source.dir, &extract);
         let payload = find(&extract, |p| p.join("bin/hctl2-services").is_file()).unwrap();
         Self {
             root,
+            preserve_root,
             payload,
             source,
         }
@@ -837,6 +848,7 @@ fn room_cli_native_lifecycle_preview_draft_replay_and_recovery() {
         root: root.join("restored"),
         payload: f.payload.clone(),
         source: Arc::clone(&f.source),
+        preserve_root: false,
     };
     // A new directory imports the control identity before the daemon starts, rather than
     // overwriting an unrelated initialized control. Native services restore through the CLI.

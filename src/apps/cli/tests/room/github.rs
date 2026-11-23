@@ -1,5 +1,5 @@
 //! 第 9 包第 2 条: real CLI -> native Codex -> protected GitHub main -> Task receipt.
-//! No seeded governance records, admission seams, copied credentials or direct merges.
+//! No seeded governance records, admission seams, personal logins or direct merges.
 use super::*;
 use agency_proto::context::{Bundle, Delivery};
 use std::{os::unix::fs::MetadataExt, time::Instant};
@@ -156,17 +156,26 @@ fn git(path: &Path, args: &[&str]) -> String {
 }
 
 fn gh(f: &Fixture, path: &str) -> Value {
-    // Same bundled native client and login as control. Read only, no token extraction.
+    // Read only. The owner imported this control-specific credential through the public CLI;
+    // never read a personal gh configuration, keychain or inherited token for live tests.
+    let bytes = foundation::SecretStore::user_file("hctl2", f.root.join("secrets"))
+        .get("github:github.com")
+        .expect("run hctl2 --root <live root> github login first");
+    let credential: Value = serde_json::from_slice(&bytes).unwrap();
     let output = Command::new(f.payload.join("libexec/hctl2/gh"))
-        .env_remove("GH_DEBUG")
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap())
+        .env("HOME", f.root.join("github/github.com/home"))
+        .env("GH_CONFIG_DIR", f.root.join("github/github.com/runtime"))
+        .env("GH_TOKEN", credential["token"].as_str().unwrap())
         .env("GH_PROMPT_DISABLED", "1")
         .args(["api", "--hostname", "github.com", "--method", "GET", path])
         .output()
         .unwrap();
     assert!(
         output.status.success(),
-        "gh api {path} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
+        "gh api {path} failed: {:?}",
+        output.status.code()
     );
     serde_json::from_slice(&output.stdout).unwrap()
 }
@@ -252,7 +261,7 @@ impl Drop for NativeAgency {
 }
 
 #[test]
-#[ignore = "UNVERIFIED: native Codex/Claude installations, Codex login and gh push/admin login to yesme/hctl2-canary; HCTL2_HARNESS_LIVE=1 HCTL2_GITHUB_LIVE=1"]
+#[ignore = "UNVERIFIED: native harnesses with managed login, owner-imported control credential; HCTL2_HARNESS_LIVE=1 HCTL2_GITHUB_LIVE=1 HCTL2_GITHUB_CONTROL_ROOT=<fresh root with github login>"]
 fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
     for flag in ["HCTL2_HARNESS_LIVE", "HCTL2_GITHUB_LIVE"] {
         assert_eq!(
@@ -261,7 +270,33 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
             "UNVERIFIED: {flag}=1 required"
         );
     }
-    let (f, _) = Fixture::packaged("demo3-github-codex");
+    let declared = PathBuf::from(std::env::var_os("HCTL2_GITHUB_CONTROL_ROOT").expect(
+        "set HCTL2_GITHUB_CONTROL_ROOT to the fresh root where the owner ran github login",
+    ));
+    assert!(
+        !declared.join("codex-invocation.json").exists(),
+        "use a root that has not dispatched this live Task; the owner root is never deleted"
+    );
+    let credential_status = control::github::status(&declared, "github.com");
+    assert_eq!(
+        credential_status["configured"], true,
+        "owner must import a control credential first"
+    );
+    // A first-boot service failure may be resumed before dispatch, using the same
+    // credential, CLI idempotency keys and installed service ports. Never reset the store.
+    let f = if declared.join("install").is_dir() {
+        Fixture {
+            payload: find(&declared.join("install"), |p| {
+                p.join("bin/hctl2-services").is_file()
+            })
+            .unwrap(),
+            root: declared,
+            preserve_root: true,
+            source: shared_payload(),
+        }
+    } else {
+        Fixture::packaged("demo3-github-codex").0
+    };
     // Assert the target before starting anything that can publish or merge. Do not repair or
     // weaken the target's protection as part of a test.
     let metadata = gh(&f, &format!("repos/{CANARY}"));
@@ -280,23 +315,25 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
     );
     println!("PLATFORM gh api repos/{CANARY}/branches/main/protection -> {protection}");
     let source_repo = f.root.join("canary-source");
-    let output = Command::new("git")
-        .args([
-            "clone",
-            "--branch",
-            "main",
-            "--single-branch",
-            "https://github.com/yesme/hctl2-canary.git",
-        ])
-        .arg(&source_repo)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    if !source_repo.is_dir() {
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--branch",
+                "main",
+                "--single-branch",
+                "https://github.com/yesme/hctl2-canary.git",
+            ])
+            .arg(&source_repo)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     git(
         &source_repo,
         &["config", "user.name", "Codex Agency Canary"],
@@ -311,6 +348,13 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
     );
     let baseline = git(&source_repo, &["rev-parse", "HEAD"]);
     run(&f, &["start", "--secret-backend", "user-file"]);
+    wait(&f, &["services", "status"], 90, |v| {
+        v["hosted"].as_array().is_some_and(|items| {
+            items
+                .iter()
+                .any(|s| s["name"] == "tuwunel" && s["available"] == true)
+        })
+    });
     let registered = accept(
         &f,
         "repo",
@@ -529,9 +573,11 @@ fn demo3_github_codex_real_cli_reaches_protected_main_and_task_completion() {
         .iter()
         .find_map(|e| e["payload"]["thread"].as_str())
         .unwrap();
-    let home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".codex"));
+    let home = PathBuf::from(
+        std::env::var_os("HCTL2_AGENCY_HARNESS_HOME")
+            .expect("set HCTL2_AGENCY_HARNESS_HOME to the owner-managed login root"),
+    )
+    .join("codex");
     let rollout = find(&home.join("sessions"), |p| {
         p.is_file()
             && p.file_name().unwrap().to_str().unwrap().contains(thread)

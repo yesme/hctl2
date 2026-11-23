@@ -143,7 +143,7 @@ pub(super) fn preview(
     if let Action::Connect { repo_id, .. } = &input.action {
         let reg = access(shared, |s| repo::require_active(s, repo_id))?;
         let observed = match reg.prepared.platform {
-            repo::Platform::Github => crate::scm::github(&reg, services)?,
+            repo::Platform::Github => crate::scm::github(root, &reg, services)?,
             repo::Platform::Local => {
                 crate::scm::Hosted::connect(root, &reg.config.control_id, services)?
                     .repository(&reg, false)?
