@@ -69,6 +69,21 @@ prepare_herdr_dependency() {
     "$P0_BIN_DIR/herdr" --version
 }
 
+prepare_tmux_dependency() {
+    require_target_host
+    require_command lipo
+    require_command otool
+    require_command tar
+    require_command vtool
+
+    install_tmux_release
+    verify_macos_binary_compatibility Tmux "$P0_BIN_DIR/tmux"
+    find "$P0_VENDOR_DIR" -depth -delete
+    [[ "$("$P0_BIN_DIR/tmux" -V)" == "tmux $TMUX_VERSION" ]] || \
+        die "tmux version differs from the lock"
+    note "prepared tmux for $HCTL2_TARGET_ID"
+}
+
 prepare_gh_dependency() {
     require_target_host
     require_command lipo

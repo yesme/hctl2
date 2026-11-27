@@ -102,6 +102,12 @@
         "version": "0.15.1",
         "source_commit": "f34697c5ed65928e265d6f48e16928819ce0f332",
         "source_asset": "tea_source"
+      },
+      "tmux": {
+        "version": "3.7c",
+        "source_commit": "e476c1230b958df0cb12977517d24b3dc931375b",
+        "source_asset": "tmux_source",
+        "licenses_asset": "tmux_licenses"
       }
     },
     "runtime": {
@@ -173,6 +179,16 @@
       "filename": "tea-0.15.1-source.tar.gz",
       "url": "https://gitea.com/gitea/tea/archive/v0.15.1.tar.gz",
       "sha256": "e242dd3589c31a36320d75e0de9eefa3fa429bd9b0af89d35af8585c7f514b9c"
+    },
+    "tmux_source": {
+      "filename": "tmux-e476c1230b958df0cb12977517d24b3dc931375b-source.tar.gz",
+      "url": "https://github.com/tmux/tmux/archive/e476c1230b958df0cb12977517d24b3dc931375b.tar.gz",
+      "sha256": "7c530752cd0633b980214c3dbaeae6d889feed152d6360e26b8d9661033d7348"
+    },
+    "tmux_licenses": {
+      "filename": "tmux-3.7c-LICENSES.tar.gz",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/LICENSES.tar.gz",
+      "sha256": "094905d3ba42397c65fecd817dc29736dd14bd35e75600441403a365125f47d1"
     }
   },
   "targets": {
@@ -218,6 +234,11 @@
           "filename": "process-compose-v1.122.0-linux-amd64.tar.gz",
           "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_linux_amd64.tar.gz",
           "sha256": "9b6dbc38324c0b0481f1cd1dd828ffdc78117129ec797678f4bf8c4023311281"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-linux-x86_64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-linux-x86_64.tar.gz",
+          "sha256": "cc56bd1cc873eb6089c615f0496b072385bda8a6d944069f38564a5d49c128aa"
         }
       }
     },
@@ -263,6 +284,11 @@
           "filename": "process-compose-v1.122.0-darwin-amd64.tar.gz",
           "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_amd64.tar.gz",
           "sha256": "b4f76e881759e13f7913a5b2fed16a0e75275c04d3a61e656d40448921f1c3ec"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-macos-x86_64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-x86_64.tar.gz",
+          "sha256": "1c21f9ade964e4a539be05ffe3a4e95854ab76a0a9c4c05d0ffbe7fc6c4d783f"
         }
       }
     },
@@ -308,6 +334,11 @@
           "filename": "process-compose-v1.122.0-darwin-arm64.tar.gz",
           "url": "https://github.com/F1bonacc1/process-compose/releases/download/v1.122.0/process-compose_darwin_arm64.tar.gz",
           "sha256": "eaa1238a1d6c300e928ef855d36a3d95aab8da64997104d74ea73d91d3cb6c60"
+        },
+        "tmux": {
+          "filename": "tmux-3.7c-macos-arm64.tar.gz",
+          "url": "https://github.com/tmux/tmux-builds/releases/download/v3.7c/tmux-3.7c-macos-arm64.tar.gz",
+          "sha256": "0a763dd0380aa980d239509654da1bc7455843706a3c050f6709c8cd2e13d12d"
         }
       }
     }

@@ -79,7 +79,7 @@ assemble_dependency_package() {
 
     [[ -x "$P0_TUWUNEL_BIN_DIR/tuwunel" ]] || \
         die "tuwunel is missing from the Tuwunel action"
-    for component in vikunja dagu gh herdr static-web-server process-compose; do
+    for component in vikunja dagu gh herdr tmux static-web-server process-compose; do
         [[ -x "$P0_BIN_DIR/$component" ]] || die "$component is missing from its component action"
     done
     [[ -f "$P0_DOWNLOAD_DIR/gitea.xz" ]] || die "Gitea xz asset is missing"
@@ -98,7 +98,7 @@ assemble_dependency_package() {
         "$source_files_root"
 
     install -m 0755 "$P0_TUWUNEL_BIN_DIR/tuwunel" "$payload_root/libexec/hctl2/tuwunel"
-    for component in vikunja dagu gh herdr static-web-server process-compose; do
+    for component in vikunja dagu gh herdr tmux static-web-server process-compose; do
         install -m 0755 "$P0_BIN_DIR/$component" "$payload_root/libexec/hctl2/$component"
     done
     run_xz -dc "$P0_DOWNLOAD_DIR/gitea.xz" >"$payload_root/libexec/hctl2/gitea"
@@ -135,6 +135,15 @@ assemble_dependency_package() {
     tar -xOf "$P0_DOWNLOAD_DIR/$HERDR_SOURCE_ASSET" \
         "herdr-$HERDR_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Herdr-Apache-2.0.txt"
+    for entry in \
+        COPYING.tmux:Tmux-ISC.txt \
+        LICENSE.libevent:Libevent-BSD-3-Clause.txt \
+        COPYING.ncurses:Ncurses-MIT.txt \
+        LICENSE.utf8proc:Utf8proc-MIT.txt \
+        COPYRIGHT.musl:Musl-MIT.txt; do
+        tar -xOf "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" "./${entry%%:*}" \
+            >"$payload_root/share/hctl2/licenses/${entry##*:}"
+    done
     tar -xOf "$P0_DOWNLOAD_DIR/$PROCESS_COMPOSE_SOURCE_ASSET" \
         "process-compose-$PROCESS_COMPOSE_SOURCE_COMMIT/LICENSE" \
         >"$payload_root/share/hctl2/licenses/Process-Compose-Apache-2.0.txt"
@@ -170,6 +179,10 @@ assemble_dependency_package() {
             "$HERDR_VERSION" "$HERDR_SOURCE_COMMIT" "$HERDR_BUILD_INPUT_SHA256" \
             "$HERDR_SOURCE_SHA256" \
             "$(hash_file "$payload_root/libexec/hctl2/herdr")"
+        printf 'tmux\t%s\t%s\t%s\t%s\t%s\n' \
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" "$TMUX_BUILD_INPUT_SHA256" \
+            "$TMUX_SOURCE_SHA256" \
+            "$(hash_file "$payload_root/libexec/hctl2/tmux")"
         printf 'cinny\t%s\t%s\t%s\t%s\t%s\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" "$CINNY_SHA256" \
             "$CINNY_SOURCE_SHA256" "$CINNY_SHA256"
@@ -211,6 +224,10 @@ assemble_dependency_package() {
         "$source_files_root/$TUWUNEL_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$HERDR_SOURCE_ASSET" \
         "$source_files_root/$HERDR_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_SOURCE_ASSET" \
+        "$source_files_root/$TMUX_SOURCE_ASSET"
+    install -m 0644 "$P0_DOWNLOAD_DIR/$TMUX_LICENSES_ASSET" \
+        "$source_files_root/$TMUX_LICENSES_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$CINNY_SOURCE_ASSET" \
         "$source_files_root/$CINNY_SOURCE_ASSET"
     install -m 0644 "$P0_DOWNLOAD_DIR/$STATIC_WEB_SERVER_SOURCE_ASSET" \
@@ -238,6 +255,12 @@ assemble_dependency_package() {
         printf 'herdr\t%s\t%s\t%s\t%s\treproducibility\n' \
             "$HERDR_VERSION" "$HERDR_SOURCE_COMMIT" \
             "$HERDR_SOURCE_ASSET" "$HERDR_SOURCE_SHA256"
+        printf 'tmux\t%s\t%s\t%s\t%s\treproducibility\n' \
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" \
+            "$TMUX_SOURCE_ASSET" "$TMUX_SOURCE_SHA256"
+        printf 'tmux-licenses\t%s\t%s\t%s\t%s\tlicenses\n' \
+            "$TMUX_VERSION" "$TMUX_SOURCE_COMMIT" \
+            "$TMUX_LICENSES_ASSET" "$TMUX_LICENSES_SHA256"
         printf 'cinny\t%s\t%s\t%s\t%s\tcorresponding-source\n' \
             "$CINNY_VERSION" "$CINNY_SOURCE_COMMIT" \
             "$CINNY_SOURCE_ASSET" "$CINNY_SOURCE_SHA256"

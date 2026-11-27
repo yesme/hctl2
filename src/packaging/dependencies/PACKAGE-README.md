@@ -1,6 +1,6 @@
 # HCTL2 离线依赖包
 
-这是按目标平台构建的 HCTL2 可离线安装开发包。它包含锁定版本的 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr）、Static Web Server、Process Compose、供 `hctl2-tool` 使用的 GitHub CLI、所需的非系统动态库与许可证。`hctl2-services` 是 Process Compose 的薄入口。
+这是按目标平台构建的 HCTL2 可离线安装开发包。它包含锁定版本的 Chatroom（Tuwunel 服务端与 Cinny 浏览器客户端）、Kanban（Vikunja）、Workflow（Dagu）和 Terminal（Herdr 与 tmux 3.7c）、Static Web Server、Process Compose、供 `hctl2-tool` 使用的 GitHub CLI、所需的非系统动态库与许可证。`hctl2-services` 是 Process Compose 的薄入口。
 
 安装到当前用户：
 

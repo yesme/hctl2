@@ -31,6 +31,10 @@ platform_herdr_socket_path() {
     platform_short_socket_path herdr
 }
 
+platform_tmux_socket_path() {
+    platform_short_socket_path tmux
+}
+
 platform_process_compose_socket_path() {
     platform_short_socket_path process-compose
 }

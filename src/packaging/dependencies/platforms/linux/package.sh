@@ -6,6 +6,10 @@ platform_stage_payload() {
         grep -F '(NEEDED)' >/dev/null; then
         die "official Linux Herdr binary unexpectedly has dynamic dependencies"
     fi
+    if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/tmux" 2>/dev/null | \
+        grep -F '(NEEDED)' >/dev/null; then
+        die "official Linux tmux binary unexpectedly has dynamic dependencies"
+    fi
     if readelf -d "$PAYLOAD_ROOT/libexec/hctl2/process-compose" 2>/dev/null | \
         grep -F '(NEEDED)' >/dev/null; then
         die "official Linux Process Compose binary unexpectedly has dynamic dependencies"
